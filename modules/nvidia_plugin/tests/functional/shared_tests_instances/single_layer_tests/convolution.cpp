@@ -2,17 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "single_layer_tests/convolution.hpp"
+#include "common_test_utils/ov_tensor_utils.hpp"
+#include "common_test_utils/test_constants.hpp"
+#include "functional_test_utils/skip_tests_config.hpp"
+#include "ov_average_finder.hpp"
+#include "single_op_tests/convolution.hpp"
 
 #include <cuda_test_constants.hpp>
 #include <vector>
 
-#include "average_finder.hpp"
-#include "common_test_utils/test_constants.hpp"
+namespace {
 
-using namespace LayerTestsDefinitions;
-
-namespace LayerTestsDefinitions {
+using namespace ov::test;
+using namespace ov::test::utils;
+using ov::test::ConvolutionLayerTest;
 
 constexpr uint32_t RANGE = 10;
 constexpr int32_t START_FROM = -5;
@@ -24,35 +27,37 @@ constexpr float THRESHOLD_BASE_FP16 = 0.01f;
 
 class ConvolutionLayerThresholdTest : public AverageFinder<ConvolutionLayerTest> {
 public:
-    InferenceEngine::Blob::Ptr GenerateInput(const InferenceEngine::InputInfo& info) const override {
-        return FuncTestUtils::createAndFillBlob(info.getTensorDesc(), RANGE, START_FROM, RESOLUTION, SEED);
+    void generate_inputs(const std::vector<ov::Shape>& target_input_static_shapes) override {
+        inputs.clear();
+        const auto& func_inputs = function->inputs();
+        for (int i = 0; i < func_inputs.size(); ++i) {
+            const auto& param = func_inputs[i];
+            auto tensor = create_and_fill_tensor(param.get_element_type(), target_input_static_shapes[i], RANGE, START_FROM, RESOLUTION, SEED);
+            inputs.insert({param.get_node_shared_ptr(), tensor});
+        }
     }
 
 protected:
     void SetUp() override {
         ConvolutionLayerTest::SetUp();
 
-        const auto& netPrecision = std::get<1>(this->GetParam());
-        if (netPrecision == InferenceEngine::Precision::FP32) {
+        const auto& model_precision = std::get<1>(this->GetParam());
+        if (model_precision == ov::element::f32) {
             this->threshold_base = THRESHOLD_BASE_FP32;
-        } else if (netPrecision == InferenceEngine::Precision::FP16) {
+        } else if (model_precision == ov::element::f16) {
             this->threshold_base = THRESHOLD_BASE_FP16;
         }
     }
 };
 
-TEST_P(ConvolutionLayerThresholdTest, CompareWithRefs) {
+TEST_P(ConvolutionLayerThresholdTest, Inference) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED()
-    Run();
+    run();
 }
 
-}  // namespace LayerTestsDefinitions
-
-namespace {
-
-const std::vector<InferenceEngine::Precision> netPrecisions = {
-    InferenceEngine::Precision::FP16,
-    InferenceEngine::Precision::FP32,
+const std::vector<ov::element::Type> model_precisions = {
+    ov::element::f16,
+    ov::element::f32,
 };
 
 /* ============= 1D Convolution ============= */
@@ -104,58 +109,38 @@ const auto conv1DParams_AutoPadValid = ::testing::Combine(::testing::ValuesIn(ke
 INSTANTIATE_TEST_CASE_P(smoke_Convolution1D_ExplicitPaddingSymmetric1,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv1DParams_ExplicitPaddingSymmetric1,
-                                           ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(std::vector<size_t>({1, 3, 30})),
-                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+                                           ::testing::ValuesIn(model_precisions),
+                                           ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 30}}))),
+                                           ::testing::Values(DEVICE_NVIDIA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
 INSTANTIATE_TEST_CASE_P(smoke_Convolution1D_ExplicitPaddingSymmetric2,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv1DParams_ExplicitPaddingSymmetric2,
-                                           ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(std::vector<size_t>({1, 3, 30})),
-                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+                                           ::testing::ValuesIn(model_precisions),
+                                           ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 30}}))),
+                                           ::testing::Values(DEVICE_NVIDIA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
 INSTANTIATE_TEST_CASE_P(smoke_Convolution1D_ExplicitPaddingAsymmetric1,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv1DParams_ExplicitPaddingAsymmetric1,
-                                           ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(std::vector<size_t>({1, 3, 30})),
-                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+                                           ::testing::ValuesIn(model_precisions),
+                                           ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 30}}))),
+                                           ::testing::Values(DEVICE_NVIDIA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
 INSTANTIATE_TEST_CASE_P(smoke_Convolution1D_ExplicitPaddingAsymmetric2,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv1DParams_ExplicitPaddingAsymmetric2,
-                                           ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(std::vector<size_t>({1, 3, 30})),
-                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+                                           ::testing::ValuesIn(model_precisions),
+                                           ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 30}}))),
+                                           ::testing::Values(DEVICE_NVIDIA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_Convolution1D_AutoPadValid,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv1DParams_AutoPadValid,
-                                           ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(std::vector<size_t>({1, 3, 30})),
-                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+                                           ::testing::ValuesIn(model_precisions),
+                                           ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 30}}))),
+                                           ::testing::Values(DEVICE_NVIDIA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
 
 /* ============= 2D Convolution ============= */
@@ -208,73 +193,49 @@ const auto conv2DParams_AutoPadValid = ::testing::Combine(::testing::ValuesIn(ke
 INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_ExplicitPaddingSymmetric1,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv2DParams_ExplicitPaddingSymmetric1,
-                                           ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+                                           ::testing::ValuesIn(model_precisions),
+                                           ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 30, 30}}))),
+                                           ::testing::Values(DEVICE_NVIDIA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_ExplicitPaddingSymmetric2_FP32,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv2DParams_ExplicitPaddingSymmetric2,
-                                           ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+                                           ::testing::ValuesIn(model_precisions),
+                                           ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 30, 30}}))),
+                                           ::testing::Values(DEVICE_NVIDIA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_ExplicitPaddingSymmetric2,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv2DParams_ExplicitPaddingSymmetric2,
-                                           ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+                                           ::testing::ValuesIn(model_precisions),
+                                           ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 30, 30}}))),
+                                           ::testing::Values(DEVICE_NVIDIA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_ExplicitPaddingAsymmetric1,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv2DParams_ExplicitPaddingAsymmetric1,
-                                           ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+                                           ::testing::ValuesIn(model_precisions),
+                                           ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 30, 30}}))),
+                                           ::testing::Values(DEVICE_NVIDIA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_ExplicitPaddingAsymmetric2,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv2DParams_ExplicitPaddingAsymmetric2,
-                                           ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+                                           ::testing::ValuesIn(model_precisions),
+                                           ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 30, 30}}))),
+                                           ::testing::Values(DEVICE_NVIDIA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_AutoPadValid,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv2DParams_AutoPadValid,
-                                           ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+                                           ::testing::ValuesIn(model_precisions),
+                                           ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 30, 30}}))),
+                                           ::testing::Values(DEVICE_NVIDIA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
 
 /* ============= 3D Convolution ============= */
@@ -326,62 +287,69 @@ const auto conv3DParams_AutoPadValid = ::testing::Combine(::testing::ValuesIn(ke
 INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_ExplicitPaddingSymmetric1,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv3DParams_ExplicitPaddingSymmetric1,
-                                           ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
-                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+                                           ::testing::ValuesIn(model_precisions),
+                                           ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 10, 10, 10}}))),
+                                           ::testing::Values(DEVICE_NVIDIA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_ExplicitPaddingSymmetric2,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv3DParams_ExplicitPaddingSymmetric2,
-                                           ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
-                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+                                           ::testing::ValuesIn(model_precisions),
+                                           ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 10, 10, 10}}))),
+                                           ::testing::Values(DEVICE_NVIDIA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_ExplicitPaddingAsymmetric1,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv3DParams_ExplicitPaddingAsymmetric1,
-                                           ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
-                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+                                           ::testing::ValuesIn(model_precisions),
+                                           ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 10, 10, 10}}))),
+                                           ::testing::Values(DEVICE_NVIDIA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_ExplicitPaddingAsymmetric2,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv3DParams_ExplicitPaddingAsymmetric2,
-                                           ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
-                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+                                           ::testing::ValuesIn(model_precisions),
+                                           ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 10, 10, 10}}))),
+                                           ::testing::Values(DEVICE_NVIDIA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_AutoPadValid,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv3DParams_AutoPadValid,
-                                           ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
-                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+                                           ::testing::ValuesIn(model_precisions),
+                                           ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 10, 10, 10}}))),
+                                           ::testing::Values(DEVICE_NVIDIA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
+
+/* ============= asym pad ============= */
+
+const std::vector<std::vector<size_t>> asym_pad_kernels = {{3, 3}};
+const std::vector<std::vector<size_t>> asym_pad_strides = {{1, 1}};
+const std::vector<std::vector<ptrdiff_t>> asym_pad_pad_begins = {{1, 1}};
+const std::vector<std::vector<ptrdiff_t>> asym_pad_pad_ends = {{0, 2}};
+const std::vector<std::vector<size_t>> asym_pad_dilations = {{1, 1}};
+const std::vector<size_t> asym_pad_num_out_channels = {2};
+const std::vector<ov::op::PadType> asym_pad_pad_types = {ov::op::PadType::EXPLICIT};
+const auto input_shapes = std::vector<ov::Shape>({{1, 4, 10, 10}});
+
+const auto asym_pad_params = ::testing::Combine(::testing::ValuesIn(asym_pad_kernels),
+                                       ::testing::ValuesIn(asym_pad_strides),
+                                       ::testing::ValuesIn(asym_pad_pad_begins),
+                                       ::testing::ValuesIn(asym_pad_pad_ends),
+                                       ::testing::ValuesIn(asym_pad_dilations),
+                                       ::testing::ValuesIn(asym_pad_num_out_channels),
+                                       ::testing::ValuesIn(asym_pad_pad_types));
+
+INSTANTIATE_TEST_CASE_P(smoke_ConvolutionAsymPadCUDA2D_Run,
+                        ConvolutionLayerTest,
+                        ::testing::Combine(asym_pad_params,
+                                           ::testing::Values(ov::element::f32),
+                                           ::testing::Values(static_shapes_to_test_representation(input_shapes)),
+                                           ::testing::Values(DEVICE_NVIDIA)),
+                        ConvolutionLayerTest::getTestCaseName);
 
 // =============================================================================
 // clang-format off
@@ -403,13 +371,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 2, 1000})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 2, 1000}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -429,13 +393,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 1000})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 1000}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -455,13 +415,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1})), // dilations
             ::testing::Values(80), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 1000})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 1000}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -481,13 +437,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 80, 1000})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 80, 1000}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -507,13 +459,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1024, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1024, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -533,13 +481,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1024, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1024, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -559,13 +503,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1024, 20, 20})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1024, 20, 20}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -585,13 +525,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 114, 114})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 114, 114}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -611,13 +547,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 28, 28})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 28, 28}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -637,13 +569,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 28, 28})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 28, 28}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -663,13 +591,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 40, 40})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 40, 40}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -689,13 +613,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(16), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 56, 56})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 56, 56}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -715,13 +635,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 58, 58})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 58, 58}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -741,13 +657,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 80, 80})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 80, 80}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -767,13 +679,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(255), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 80, 80})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 80, 80}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -793,13 +701,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 80, 80})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 80, 80}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -819,13 +723,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 16, 56, 56})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 16, 56, 56}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -845,13 +745,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 2048, 7, 7})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 2048, 7, 7}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -871,13 +767,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(1024), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -897,13 +789,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(48), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -923,13 +811,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 20, 20})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 20, 20}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -949,13 +833,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 28, 28})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 28, 28}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -975,13 +855,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 40, 40})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 40, 40}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1001,13 +877,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(255), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 40, 40})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 40, 40}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1027,13 +899,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 40, 40})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 40, 40}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1053,13 +921,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 56, 56})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 56, 56}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1079,13 +943,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 56, 56})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 56, 56}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1105,13 +965,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 80, 80})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 80, 80}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1131,13 +987,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 3, 232, 232})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 232, 232}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1157,13 +1009,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 160, 160})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 160, 160}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1183,13 +1031,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(3), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 232, 232})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 232, 232}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1209,13 +1053,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 28, 28})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 28, 28}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1235,13 +1075,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(48), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 384, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 384, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1261,13 +1097,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 384, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 384, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1287,13 +1119,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(192), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 48, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 48, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1313,13 +1141,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(1000), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1339,13 +1163,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1365,13 +1185,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(255), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 20, 20})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 20, 20}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1391,13 +1207,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 20, 20})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 20, 20}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1417,13 +1229,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 20, 20})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 20, 20}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1443,13 +1251,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 28, 28})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 28, 28}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1469,13 +1273,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 28, 28})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 28, 28}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1495,13 +1295,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 40, 40})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 40, 40}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1521,13 +1317,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(2048), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 7, 7})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 7, 7}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1547,13 +1339,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1573,13 +1361,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 160, 160})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 160, 160}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1599,13 +1383,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 160, 160})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 160, 160}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1625,13 +1405,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 226, 226})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 226, 226}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1651,13 +1427,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(16), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 56, 56})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 56, 56}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1677,13 +1449,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 56, 56})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 56, 56}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1703,13 +1471,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 56, 56})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 56, 56}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1729,13 +1493,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 80, 80})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 80, 80}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1755,13 +1515,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(5), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({100, 5, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{100, 5, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1781,13 +1537,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(2048), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1024, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1024, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1807,13 +1559,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 56, 56})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 56, 56}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1833,13 +1581,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 3, 227, 227})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 227, 227}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1859,13 +1603,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 226, 226})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 226, 226}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1885,13 +1625,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(1024), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 28, 28})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 28, 28}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1911,13 +1647,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 114, 114})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 114, 114}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1937,13 +1669,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 104, 104})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 104, 104}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1963,13 +1691,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 152, 152})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 152, 152}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -1989,13 +1713,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 76, 76})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 76, 76}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2015,13 +1735,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 38, 38})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 38, 38}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2041,13 +1757,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 52, 52})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 52, 52}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2067,13 +1779,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 76, 76})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 76, 76}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2093,13 +1801,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 416, 416})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 416, 416}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2119,13 +1823,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 608, 608})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 608, 608}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2145,13 +1845,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(1024), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 26, 26})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 26, 26}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2171,13 +1867,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(1024), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 38, 38})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 38, 38}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2197,13 +1889,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 208, 208})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 208, 208}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2223,13 +1911,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 304, 304})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 304, 304}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2249,13 +1933,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 12, 320, 320})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 12, 320, 320}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2275,13 +1955,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 112, 112})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 112, 112}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2301,13 +1977,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 28, 28})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 28, 28}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2327,13 +1999,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 40, 40})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 40, 40}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2353,13 +2021,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 56, 56})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 56, 56}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2379,13 +2043,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 16, 56, 56})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 16, 56, 56}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2405,13 +2065,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2431,13 +2087,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 20, 20})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 20, 20}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2457,13 +2109,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::Values(InferenceEngine::Precision::FP32), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 28, 28})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::element::f32), // Net precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 28, 28}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2483,13 +2131,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::Values(InferenceEngine::Precision::FP32), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 56, 56})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::element::f32), // Net precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 56, 56}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2509,13 +2153,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 3, 224, 224})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 224, 224}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2535,13 +2175,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 160, 160})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 160, 160}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2561,13 +2197,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 28, 28})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 28, 28}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2587,13 +2219,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(192), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 48, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 48, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2613,13 +2241,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2639,13 +2263,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 28, 28})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 28, 28}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2665,13 +2285,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 7, 7})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 7, 7}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2691,13 +2307,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 112, 112})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 112, 112}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2717,13 +2329,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2743,13 +2351,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 224, 224})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 224, 224}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2769,13 +2373,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 56, 56})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 56, 56}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2795,13 +2395,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 80, 80})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 80, 80}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2821,13 +2417,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 56, 56})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 56, 56}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2847,13 +2439,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 80, 80})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 80, 80}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2873,13 +2461,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 80, 80})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 80, 80}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2899,13 +2483,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 28, 28})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 28, 28}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2925,13 +2505,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 40, 40})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 40, 40}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2951,13 +2527,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 40, 40})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 40, 40}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -2977,13 +2549,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 320, 320})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 320, 320}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3003,13 +2571,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3029,13 +2593,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 160, 160})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 160, 160}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3055,13 +2615,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 3, 224, 224})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 224, 224}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3081,13 +2637,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({64, 106, 64})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{64, 106, 64}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3107,13 +2659,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({64, 128, 64})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{64, 128, 64}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3133,13 +2681,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(16), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1, 128, 128})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1, 128, 128}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3159,13 +2703,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1, 224, 224})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1, 224, 224}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3185,13 +2725,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(240), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 10, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 10, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3211,13 +2747,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(255), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1024, 13, 13})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1024, 13, 13}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3237,13 +2769,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1024, 13, 13})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1024, 13, 13}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3263,13 +2791,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1024, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1024, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3289,13 +2813,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1024, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1024, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3315,13 +2835,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1024, 17, 17})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1024, 17, 17}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3341,13 +2857,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(192), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1024, 17, 17})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1024, 17, 17}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3367,13 +2879,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1024, 17, 17})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1024, 17, 17}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3393,13 +2901,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(384), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1024, 17, 17})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1024, 17, 17}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3419,13 +2923,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(1024), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1024, 19, 19})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1024, 19, 19}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3445,13 +2945,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(255), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1024, 19, 19})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1024, 19, 19}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3471,13 +2967,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1024, 19, 19})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1024, 19, 19}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3497,13 +2989,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(672), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 112, 40, 40})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 112, 40, 40}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3523,13 +3011,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(88), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 112, 40, 40})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 112, 40, 40}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3549,13 +3033,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(48), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1152, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1152, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3575,13 +3055,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(192), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1152, 20, 20})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1152, 20, 20}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3601,13 +3077,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(320), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1152, 20, 20})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1152, 20, 20}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3627,13 +3099,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(24), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3653,13 +3121,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(546), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3679,13 +3143,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 104, 104})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 104, 104}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3705,13 +3165,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 152, 152})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 152, 152}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3731,13 +3187,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 152, 152})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 152, 152}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3757,13 +3209,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 16, 16})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 16, 16}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3783,13 +3231,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 2, 2})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 2, 2}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3809,13 +3253,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 28, 28})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 28, 28}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3835,13 +3275,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 28, 28})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 28, 28}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3861,13 +3297,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 3, 3})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 3, 3}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3887,13 +3319,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 304, 304})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 304, 304}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3913,13 +3341,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 32, 32})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 32, 32}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3939,13 +3363,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 50, 86})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 50, 86}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3965,13 +3385,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(160), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 50, 86})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 50, 86}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -3991,13 +3407,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(192), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 50, 86})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 50, 86}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4017,13 +3429,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 52, 52})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 52, 52}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4043,13 +3451,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 76, 76})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 76, 76}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4069,13 +3473,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 76, 76})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 76, 76}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4095,13 +3495,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 76, 76})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 76, 76}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4121,13 +3517,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 8, 8})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 8, 8}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4147,13 +3539,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(24), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1280, 10, 10})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1280, 10, 10}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4173,13 +3561,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1280, 10, 10})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1280, 10, 10}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4199,13 +3583,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(546), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1280, 10, 10})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1280, 10, 10}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4225,13 +3605,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(6), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 144, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 144, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4251,13 +3627,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(24), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 144, 160, 160})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 144, 160, 160}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4277,13 +3649,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 144, 38, 38})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 144, 38, 38}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4303,13 +3671,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(24), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 144, 75, 75})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 144, 75, 75}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4329,13 +3693,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(40), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 144, 80, 80})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 144, 80, 80}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4355,13 +3715,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1536, 8, 8})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1536, 8, 8}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4381,13 +3737,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(384), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1536, 8, 8})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1536, 8, 8}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4407,13 +3759,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(4), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 16, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 16, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4433,13 +3781,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(16), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 16, 128, 128})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 16, 128, 128}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4459,13 +3803,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(96), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 16, 150, 150})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 16, 150, 150}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4485,13 +3825,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(16), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 16, 320, 320})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 16, 320, 320}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4511,13 +3847,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(96), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 16, 320, 320})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 16, 320, 320}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4537,13 +3869,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 16, 64, 64})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 16, 64, 64}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4563,13 +3891,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(960), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 160, 10, 10})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 160, 10, 10}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4589,13 +3913,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(160), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 160, 50, 86})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 160, 50, 86}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4615,13 +3935,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(192), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 160, 50, 86})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 160, 50, 86}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4641,13 +3957,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 160, 73, 73})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 160, 73, 73}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4667,13 +3979,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 192, 100, 171})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 192, 100, 171}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4693,13 +4001,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 192, 100, 171})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 192, 100, 171}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4719,13 +4023,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(192), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 192, 17, 17})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 192, 17, 17}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4745,13 +4045,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(224), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 192, 17, 17})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 192, 17, 17}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4771,13 +4067,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 192, 19, 19})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 192, 19, 19}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4797,13 +4089,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(1152), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 192, 20, 20})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 192, 20, 20}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4823,13 +4111,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(224), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 192, 35, 35})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 192, 35, 35}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4849,13 +4133,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 192, 38, 38})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 192, 38, 38}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4875,13 +4155,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(192), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 192, 50, 86})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 192, 50, 86}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4901,13 +4177,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(80), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1920, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1920, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4927,13 +4199,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(320), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1920, 20, 20})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1920, 20, 20}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4953,13 +4221,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(480), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 20, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 20, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -4979,13 +4243,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 2048, 19, 19})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 2048, 19, 19}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5005,13 +4265,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 2048, 7, 7})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 2048, 7, 7}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5031,13 +4287,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(224), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 224, 17, 17})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 224, 17, 17}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5057,13 +4309,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 224, 17, 17})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 224, 17, 17}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5083,13 +4331,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 224, 17, 17})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 224, 17, 17}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5109,13 +4353,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(144), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 24, 160, 160})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 24, 160, 160}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5135,13 +4375,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(144), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 24, 75, 75})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 24, 75, 75}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5161,13 +4397,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(10), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 240, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 240, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5187,13 +4419,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(80), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 240, 40, 40})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 240, 40, 40}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5213,13 +4441,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(40), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 240, 80, 80})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 240, 80, 80}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5239,13 +4463,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 100, 171})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 100, 171}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5265,13 +4485,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(1024), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5291,13 +4507,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5317,13 +4529,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 16, 16})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 16, 16}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5343,13 +4551,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 17, 17})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 17, 17}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5369,13 +4573,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(320), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 17, 17})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 17, 17}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5395,13 +4595,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(24), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 2, 2})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 2, 2}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5421,13 +4617,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(546), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 2, 2})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 2, 2}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5447,13 +4639,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 2, 2})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 2, 2}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5473,13 +4661,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 26, 26})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 26, 26}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5499,13 +4683,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 26, 26})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 26, 26}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5525,13 +4705,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 3, 3})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 3, 3}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5551,13 +4727,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(24), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 3, 3})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 3, 3}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5577,13 +4749,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(546), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 3, 3})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 3, 3}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5603,13 +4771,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 38, 38})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 38, 38}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5629,13 +4793,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 38, 38})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 38, 38}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5655,13 +4815,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::Values(InferenceEngine::Precision::FP32), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 38, 38})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::element::f32), // Net precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 38, 38}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5681,13 +4837,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 38, 38})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 38, 38}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5707,13 +4859,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 5, 5})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 5, 5}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5733,13 +4881,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 52, 52})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 52, 52}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5759,13 +4903,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(255), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 52, 52})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 52, 52}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5785,13 +4925,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 56, 56})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 56, 56}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5811,13 +4947,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 56, 56})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 56, 56}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5837,13 +4969,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 76, 76})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 76, 76}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5863,13 +4991,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(255), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 76, 76})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 76, 76}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5889,13 +5013,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 76, 76})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 76, 76}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5915,13 +5035,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 8, 8})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 8, 8}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5941,13 +5057,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(672), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 28, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 28, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5967,13 +5079,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 3, 416, 416})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 416, 416}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -5993,13 +5101,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 3, 608, 608})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 608, 608}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6019,13 +5123,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(8), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6045,13 +5145,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(16), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 128, 128})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 128, 128}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6071,13 +5167,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 147, 147})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 147, 147}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6097,13 +5189,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(16), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 150, 150})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 150, 150}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6123,13 +5211,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 208, 208})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 208, 208}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6149,13 +5233,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(5), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 224, 224})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 224, 224}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6175,13 +5255,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(9), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 224, 224})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 224, 224}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6201,13 +5277,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 304, 304})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 304, 304}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6227,13 +5299,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 32, 32})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 32, 32}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6253,13 +5321,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(16), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 320, 320})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 320, 320}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6279,13 +5343,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(192), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 38, 38})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 38, 38}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6305,13 +5365,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 64, 64})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 64, 64}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6331,13 +5387,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(1280), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 320, 10, 10})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 320, 10, 10}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6357,13 +5409,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 320, 100, 171})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 320, 100, 171}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6383,13 +5431,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 320, 100, 171})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 320, 100, 171}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6409,13 +5453,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(1920), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 320, 20, 20})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 320, 20, 20}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6435,13 +5475,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(88), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 320, 20, 20})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 320, 20, 20}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6461,13 +5497,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 384, 19, 19})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 384, 19, 19}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6487,13 +5519,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(96), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 384, 19, 19})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 384, 19, 19}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6513,13 +5541,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(192), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 384, 35, 35})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 384, 35, 35}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6539,13 +5563,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 384, 35, 35})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 384, 35, 35}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6565,13 +5585,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(96), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 384, 35, 35})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 384, 35, 35}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6591,13 +5607,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 384, 52, 52})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 384, 52, 52}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6617,13 +5629,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 384, 8, 8})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 384, 8, 8}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6643,13 +5651,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 384, 8, 8})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 384, 8, 8}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6669,13 +5673,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(448), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 384, 8, 8})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 384, 8, 8}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6695,13 +5695,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(16), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 4, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 4, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6721,13 +5717,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(96), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 4, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 4, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6747,13 +5739,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(240), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 40, 80, 80})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 40, 80, 80}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6773,13 +5761,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(88), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 40, 80, 80})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 40, 80, 80}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6799,13 +5783,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 448, 8, 8})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 448, 8, 8}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6825,13 +5805,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(1152), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 48, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 48, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6851,13 +5827,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(20), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 480, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 480, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6877,13 +5849,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(112), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 480, 40, 40})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 480, 40, 40}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6903,13 +5871,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(80), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 480, 40, 40})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 480, 40, 40}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6929,13 +5893,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 5, 224, 224})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 5, 224, 224}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6955,13 +5915,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(5), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 5, 224, 224})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 5, 224, 224}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -6981,13 +5937,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(1024), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 13, 13})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 13, 13}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7007,13 +5959,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 13, 13})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 13, 13}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7033,13 +5981,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(1024), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 19, 19})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 19, 19}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7059,13 +6003,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 19, 19})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 19, 19}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7085,13 +6025,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 19, 19})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 19, 19}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7111,13 +6047,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 19, 19})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 19, 19}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7137,13 +6069,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(255), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 26, 26})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 26, 26}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7163,13 +6091,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 26, 26})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 26, 26}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7189,13 +6113,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 28, 28})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 28, 28}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7215,13 +6135,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 28, 28})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 28, 28}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7241,13 +6157,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(255), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 38, 38})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 38, 38}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7267,13 +6179,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 38, 38})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 38, 38}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7293,13 +6201,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 38, 38})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 38, 38}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7319,13 +6223,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 5, 5})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 5, 5}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7345,13 +6245,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(24), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 5, 5})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 5, 5}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7371,13 +6267,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(546), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 5, 5})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 5, 5}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7397,13 +6289,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(24), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 50, 86})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 50, 86}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7423,13 +6311,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(48), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 50, 86})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 50, 86}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7449,13 +6333,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(2048), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 7, 7})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 7, 7}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7475,13 +6355,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 7, 7})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 7, 7}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7501,13 +6377,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 8, 8})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 8, 8}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7527,13 +6399,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 8, 8})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 8, 8}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7553,13 +6421,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(160), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 576, 10, 10})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 576, 10, 10}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7579,13 +6443,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(12), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 576, 19, 19})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 576, 19, 19}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7605,13 +6465,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(273), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 576, 19, 19})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 576, 19, 19}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7631,13 +6487,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(96), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 576, 19, 19})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 576, 19, 19}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7657,13 +6509,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 576, 50, 86})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 576, 50, 86}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7683,13 +6531,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(160), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 576, 50, 86})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 576, 50, 86}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7709,13 +6553,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(192), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 576, 50, 86})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 576, 50, 86}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7735,13 +6575,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(224), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 576, 50, 86})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 576, 50, 86}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7761,13 +6597,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 576, 50, 86})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 576, 50, 86}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7787,13 +6619,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 576, 50, 86})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 576, 50, 86}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7813,13 +6641,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(96), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 576, 50, 86})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 576, 50, 86}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7839,13 +6663,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(144), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 6, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 6, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7865,13 +6685,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7891,13 +6707,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 100, 171})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 100, 171}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7917,13 +6729,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(96), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 100, 171})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 100, 171}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7943,13 +6751,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 104, 104})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 104, 104}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7969,13 +6773,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 152, 152})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 152, 152}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -7995,13 +6795,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 152, 152})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 152, 152}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8021,13 +6817,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 16, 16})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 16, 16}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8047,13 +6839,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(384), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 19, 19})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 19, 19}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8073,13 +6861,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(192), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 200, 342})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 200, 342}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8099,13 +6883,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 200, 342})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 200, 342}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8125,13 +6905,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 208, 208})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 208, 208}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8151,13 +6927,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 304, 304})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 304, 304}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8177,13 +6949,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 304, 304})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 304, 304}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8203,13 +6971,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 32, 32})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 32, 32}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8229,13 +6993,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(96), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 35, 35})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 35, 35}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8255,13 +7015,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(96), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 50, 86})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 50, 86}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8281,13 +7037,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 56, 56})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 56, 56}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8307,13 +7059,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 56, 56})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 56, 56}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8333,13 +7081,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 56, 56})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 56, 56}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8359,13 +7103,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 64, 64})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 64, 64}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8385,13 +7125,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 73, 73})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 73, 73}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8411,13 +7147,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 73, 73})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 73, 73}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8437,13 +7169,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(28), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 672, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 672, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8463,13 +7191,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(192), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 672, 20, 20})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 672, 20, 20}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8489,13 +7213,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(112), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 672, 40, 40})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 672, 40, 40}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8515,13 +7235,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 768, 26, 26})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 768, 26, 26}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8541,13 +7257,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 8, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 8, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8567,13 +7279,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(1920), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 80, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 80, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8593,13 +7301,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(480), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 80, 40, 40})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 80, 40, 40}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8619,13 +7323,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(4), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 96, 1, 1})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 96, 1, 1}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8645,13 +7345,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(96), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 96, 100, 171})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 96, 100, 171}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8671,13 +7367,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(24), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 96, 160, 160})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 96, 160, 160}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8697,13 +7389,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(576), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 96, 19, 19})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 96, 19, 19}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8723,13 +7411,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(96), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 96, 35, 35})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 96, 35, 35}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8749,13 +7433,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 96, 50, 86})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 96, 50, 86}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8775,13 +7455,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(24), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 96, 75, 75})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 96, 75, 75}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8801,13 +7477,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(160), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 960, 10, 10})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 960, 10, 10}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8827,13 +7499,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(320), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 960, 10, 10})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 960, 10, 10}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8853,13 +7521,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({100, 1024, 15, 15})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{100, 1024, 15, 15}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8879,13 +7543,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({100, 1024, 4, 4})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{100, 1024, 4, 4}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8905,13 +7565,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(160), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({100, 1024, 4, 4})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{100, 1024, 4, 4}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8931,13 +7587,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(192), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({100, 1024, 4, 4})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{100, 1024, 4, 4}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8957,13 +7609,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(352), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({100, 1024, 4, 4})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{100, 1024, 4, 4}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -8983,13 +7631,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(224), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({100, 160, 4, 4})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{100, 160, 4, 4}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9009,13 +7653,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(224), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({100, 192, 4, 4})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{100, 192, 4, 4}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9035,13 +7675,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(320), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({100, 192, 4, 4})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{100, 192, 4, 4}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9061,13 +7697,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({100, 192, 7, 7})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{100, 192, 7, 7}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9087,13 +7719,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(224), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({100, 224, 4, 4})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{100, 224, 4, 4}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9113,13 +7741,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(90), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({100, 256, 15, 15})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{100, 256, 15, 15}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9139,13 +7763,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({100, 576, 7, 7})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{100, 576, 7, 7}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9165,13 +7785,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(192), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({100, 576, 7, 7})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{100, 576, 7, 7}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9191,13 +7807,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(160), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 100, 171})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 100, 171}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9217,13 +7829,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 3, 300, 300})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 300, 300}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9243,13 +7851,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 3, 640, 640})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 640, 640}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9269,13 +7873,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(96), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 96, 100, 171})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 96, 100, 171}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9295,13 +7895,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(192), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({100, 128, 7, 7})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{100, 128, 7, 7}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9321,13 +7917,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({100, 256, 7, 7})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{100, 256, 7, 7}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9347,13 +7939,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
             ::testing::Values(16), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1, 144, 144, 144})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1, 144, 144, 144}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9373,13 +7961,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 18, 18, 18})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 18, 18, 18}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9399,13 +7983,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 36, 36, 36})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 36, 36, 36}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9425,13 +8005,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 128, 9, 9, 9})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 128, 9, 9, 9}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9451,13 +8027,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
             ::testing::Values(16), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 16, 144, 144, 144})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 16, 144, 144, 144}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9477,13 +8049,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 16, 72, 72, 72})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 16, 72, 72, 72}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9503,13 +8071,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 18, 18, 18})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 18, 18, 18}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9529,13 +8093,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 9, 9, 9})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 9, 9, 9}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9555,13 +8115,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
             ::testing::Values(16), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 144, 144, 144})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 144, 144, 144}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9581,13 +8137,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 36, 36, 36})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 36, 36, 36}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9607,13 +8159,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 72, 72, 72})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 72, 72, 72}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9633,13 +8181,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
             ::testing::Values(128), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 18, 18, 18})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 18, 18, 18}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9659,13 +8203,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 36, 36, 36})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 36, 36, 36}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9685,13 +8225,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 72, 72, 72})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 72, 72, 72}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9711,13 +8247,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(1), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 16, 128, 128})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 16, 128, 128}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9737,13 +8269,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(64), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 24, 400, 683})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 24, 400, 683}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9763,13 +8291,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 32, 149, 149})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 32, 149, 149}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9789,13 +8313,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(96), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 73, 73})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 73, 73}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9815,13 +8335,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(36), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 88, 10, 10})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 88, 10, 10}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9841,13 +8357,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(810), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 88, 10, 10})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 88, 10, 10}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9867,13 +8379,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(88), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 88, 10, 10})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 88, 10, 10}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9893,13 +8401,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(36), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 88, 20, 20})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 88, 20, 20}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9919,13 +8423,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(810), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 88, 20, 20})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 88, 20, 20}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9945,13 +8445,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(88), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 88, 20, 20})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 88, 20, 20}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9971,13 +8467,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(36), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 88, 40, 40})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 88, 40, 40}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -9997,13 +8489,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(810), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 88, 40, 40})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 88, 40, 40}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -10023,13 +8511,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(88), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 88, 40, 40})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 88, 40, 40}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -10049,13 +8533,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(36), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 88, 5, 5})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 88, 5, 5}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -10075,13 +8555,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(810), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 88, 5, 5})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 88, 5, 5}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -10101,13 +8577,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(88), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 88, 5, 5})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 88, 5, 5}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -10127,13 +8599,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(36), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 88, 80, 80})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 88, 80, 80}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -10153,13 +8621,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(810), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 88, 80, 80})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 88, 80, 80}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -10179,13 +8643,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(88), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 88, 80, 80})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 88, 80, 80}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -10205,13 +8665,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(2048), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 1024, 14, 14})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 1024, 14, 14}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -10231,13 +8687,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(192), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 192, 17, 17})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 192, 17, 17}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -10257,13 +8709,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(192), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 192, 71, 71})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 192, 71, 71}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -10283,13 +8731,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 224, 35, 35})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 224, 35, 35}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -10309,13 +8753,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 256, 56, 56})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 256, 56, 56}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -10335,13 +8775,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(32), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 3, 299, 299})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 3, 299, 299}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -10361,13 +8797,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(320), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 320, 17, 17})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 320, 17, 17}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -10387,13 +8819,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(384), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 384, 35, 35})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 384, 35, 35}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -10413,13 +8841,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(1024), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 512, 28, 28})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 512, 28, 28}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -10439,13 +8863,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(96), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 64, 147, 147})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 64, 147, 147}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -10465,13 +8885,9 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
             ::testing::Values(1), // Num out channels
             ::testing::Values(ov::op::PadType::VALID)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})), // Net precisions
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
-        ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
-        ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
-        ::testing::Values(std::vector<size_t>({1, 16, 144, 144, 144})), // Input shape
-        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+        ::testing::ValuesIn(model_precisions), // Model precisions
+        ::testing::Values(static_shapes_to_test_representation(std::vector<ov::Shape>({{1, 16, 144, 144, 144}}))), // Input shape
+        ::testing::Values(DEVICE_NVIDIA)),
     ConvolutionLayerThresholdTest::getTestCaseName);
 
 // {AUTOGENERATED_TESTS_END_TAG}
