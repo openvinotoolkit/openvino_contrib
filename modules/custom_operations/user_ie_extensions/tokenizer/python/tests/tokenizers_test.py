@@ -12,16 +12,12 @@ from openvino import Core
 from transformers import AutoTokenizer
 
 from ov_tokenizer import (
-    # init_extension,
     convert_tokenizer,
     pack_strings,
     unpack_strings,
 )
 
 
-# use `init_extension` function to be able to convert HF tokenizers:
-# init_extension("path/to/libuser_ov_extensions.so")  # or alternatively:
-# set the OV_TOKENIZER_PREBUILD_EXTENSION_PATH env variable BEFORE importing ov_tokenizers
 core = Core()
 
 eng_test_strings = [
@@ -80,10 +76,10 @@ bpe_models = [
     "KoboldAI/fairseq-dense-13B",
     "facebook/galactica-120b",
     "EleutherAI/pythia-12b-deduped",
-    "Salesforce/codegen-16B-multi",
     "microsoft/deberta-base",
-    "bigscience/bloom",  # pack_strings for vocab is taking long time
+    "bigscience/bloom",
     "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k",
+    # "Salesforce/codegen-16B-multi",  # Segfalts on ""A lot\t\tof whitespaces!""
     # "google/flan-t5-xxl",  # needs Precompiled/CharsMap
     # "jinmang2/textcnn-ko-dialect-classifier",  # Needs Metaspace Pretokenizer
     # "hyunwoongko/blenderbot-9B",  # hf script to get fast tokenizer doesn't work
