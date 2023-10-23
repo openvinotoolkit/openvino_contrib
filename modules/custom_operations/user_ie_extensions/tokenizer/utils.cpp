@@ -227,7 +227,7 @@ std::shared_ptr<Node> string_attribute_to_constant (const ov::frontend::NodeCont
 // Pack any container with string to ov::Tensor with element type u8
 // Requirements for BatchOfStrings: .size() with size and .begin(), .end() as iterators, elements with .begin(), .end() and .length()
 // so basically any STL container with std::string is compatible
-// Tensor destination will be reshaped according tha input data
+// Tensor destination will be reshaped according the input data
 template <typename BatchOfStrings>
 void pack_strings (const BatchOfStrings& strings, ov::Tensor& destination) {
     auto batch_size = strings.size();
