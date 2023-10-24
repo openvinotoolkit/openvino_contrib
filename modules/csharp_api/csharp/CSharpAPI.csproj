@@ -13,8 +13,8 @@
     <Product>OpenVINO C# API</Product>
     <Description>Based on the C # platform, call the OpenVINO suite to deploy a deep learning model.
     </Description>
-    <PackageProjectUrl>https://github.com/guojin-yan/OpenVINO-CSharp-API</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/guojin-yan/OpenVINO-CSharp-API</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/openvinotoolkit/openvino_contrib/tree/master/modules/csharp_api</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/openvinotoolkit/openvino_contrib/tree/master/modules/csharp_api</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageOutputPath>../../nuget</PackageOutputPath>
     <NeutralLanguage>zh</NeutralLanguage>
