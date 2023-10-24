@@ -20,11 +20,20 @@ FetchContent_Declare(
   URL_HASH SHA256=a7c105aca0131b4a899155a6c44ea9728e63514edaa8d71fa92e7a5de53b6ca0
 )
 
-FetchContent_Declare(
-  fast_tokenizer
-  URL      https://bj.bcebos.com/paddlenlp/fast_tokenizer/fast_tokenizer-linux-x64-1.0.2.tgz
-  URL_HASH SHA256=843a8299b55ef2e06ea50ba0d4ab4cb05b9e4cdb7cb8e29f3d55c494a1b7aecc
-)
+if(WIN32)
+    FetchContent_Declare(
+      fast_tokenizer
+      URL      https://bj.bcebos.com/paddlenlp/fast_tokenizer/fast_tokenizer-win-x64-1.0.2.zip
+      URL_HASH SHA256=56470954014bdd3c8c8ad702d20f5f6aa5ab913bff92fd9c3c49ec6da31ff11d
+    )
+else()
+    FetchContent_Declare(
+      fast_tokenizer
+      URL      https://bj.bcebos.com/paddlenlp/fast_tokenizer/fast_tokenizer-linux-x64-1.0.2.tgz
+      URL_HASH SHA256=843a8299b55ef2e06ea50ba0d4ab4cb05b9e4cdb7cb8e29f3d55c494a1b7aecc
+    )
+endif()
+
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "^(Apple)?Clang$")
     set(cxx_flags "-Wno-undef")
