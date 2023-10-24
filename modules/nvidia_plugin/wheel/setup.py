@@ -13,9 +13,11 @@ import glob
 import errno
 import multiprocessing
 import typing
+import sysconfig
 import defusedxml.ElementTree as ET
 from defusedxml import defuse_stdlib
 
+from textwrap import dedent
 from pathlib import Path
 from setuptools import setup
 from setuptools.command.build_clib import build_clib
@@ -39,7 +41,7 @@ if not any(pl in sys.platform for pl in platforms):
 
 PACKAGE_NAME = config('WHEEL_PACKAGE_NAME', 'openvino-nvidia')
 OPENVINO_REPO_URI = config('OPENVINO_REPO_DOWNLOAD_URL', 'https://github.com/openvinotoolkit/openvino.git')
-WHEEL_VERSION = config('WHEEL_VERSION', '2022.3.0')
+WHEEL_VERSION = config('WHEEL_VERSION', "2024.1.0")
 OPENVINO_REPO_TAG = config('OPENVINO_REPO_TAG', WHEEL_VERSION)
 NVIDIA_PLUGIN_CMAKE_TARGET_NAME = 'openvino_nvidia_gpu_plugin'
 LIBS_RPATH = '$ORIGIN' if sys.platform == 'linux' else '@loader_path'
@@ -226,8 +228,14 @@ class BuildCMakeLib(build_clib):
         if self.cmake_exec is None:
             raise FileNotFoundError("cmake path not located on path")
 
-        self.mkpath(self.deps_dir)
         self.clone_openvino_src()
+        # TODO: Uncomment when issue with conan dependecies will be resolved.
+        #       When uncomment this line, got the following error during
+        #       cmake configuration step:
+        #           CMake Error at build/protobuf-Target-release.cmake:74 (set_property):
+        #               set_property can not be used on an ALIAS target.
+        #               ...
+        # self.openvino_conan_install()
         self.configure_openvino_cmake()
         if self.force:
             self.build_openvino()
@@ -235,6 +243,8 @@ class BuildCMakeLib(build_clib):
         self.locate_built_lib()
 
     def clone_openvino_src(self):
+        self.mkpath(self.deps_dir)
+
         if os.path.isdir(self.openvino_src_dir):
             return
         self.announce("Cloning the OpenVINO sources", level=3)
@@ -246,16 +256,40 @@ class BuildCMakeLib(build_clib):
                     cwd=self.openvino_src_dir,
                     on_fail_msg='Failed to update the OpenVINO git submodules')
 
+    def openvino_conan_install(self):
+        if not os.path.isdir(self.openvino_build_dir):
+            self.mkpath(self.openvino_build_dir)
+
+        run_command(["conan",
+                     "install",
+                     f'-of={self.openvino_build_dir}',
+                     '--build=missing',
+                     self.openvino_src_dir],
+                     cwd=self.openvino_build_dir,
+                     on_fail_msg='Failed to install conan dependecies for OpenVINO CMake Project')
+
     def configure_openvino_cmake(self):
         if not os.path.isdir(self.openvino_build_dir):
             self.mkpath(self.openvino_build_dir)
 
-        configure_command = [self.cmake_exec, f'-S{self.openvino_src_dir}', f'-B{self.openvino_build_dir}',
-                             f'-DCMAKE_BUILD_TYPE={self.build_configuration_name}',
+        python_include_dir = sysconfig.get_path("include")
+        configure_command = [self.cmake_exec,
+                             '-G', 'Unix Makefiles',
+                             f'-S{self.openvino_src_dir}',
+                             f'-B{self.openvino_build_dir}',
+                             '-DENABLE_PLUGINS_XML=ON',
+                             '-DCMAKE_VERBOSE_MAKEFILE=ON',
+                             '-DENABLE_NVIDIA=ON',
                              '-DENABLE_PYTHON=ON',
+                             f'-DPython3_EXECUTABLE={sys.executable}',
+                             f'-DPython3_INCLUDE_DIR={python_include_dir}',
                              f'-DPYTHON_EXECUTABLE={sys.executable}',
-                             f'-DWHEEL_VERSION={WHEEL_VERSION}',
-                             '-DENABLE_WHEEL=ON']
+                             f'-DPYTHON_INCLUDE_DIR={python_include_dir}',
+                             '-DNGRAPH_PYTHON_BUILD_ENABLE=ON',
+                             f'-DCMAKE_BUILD_TYPE={self.build_configuration_name}',
+                             f'-DOPENVINO_EXTRA_MODULES={self.openvino_contrib_src_dir}/modules/nvidia_plugin',
+                             '-DENABLE_WHEEL=ON',
+                             f'-DWHEEL_VERSION={WHEEL_VERSION}']
         self.announce("Configuring OpenVINO CMake Project", level=3)
         run_command(configure_command,
                     cwd=self.openvino_build_dir,
@@ -333,11 +367,18 @@ class BuildCMakeLib(build_clib):
                     set_rpath(LIBS_RPATH, os.path.realpath(path))
 
 
-class InstallCMakeLib(install_lib):
+class InstallCMakeLib(install_lib, build_clib):
+    def initialize_options(self):
+        install_lib.initialize_options(self)
+        build_clib.initialize_options(self)
+    
     def finalize_options(self):
-        super().finalize_options()
+        install_lib.finalize_options(self)
+        build_clib.finalize_options(self)
+        
         self.git_exec = shutil.which("git")
         self.force = None
+        self.deps_dir = os.path.abspath(os.path.join(self.build_temp, "deps"))
         self.set_undefined_options('install', ('force', 'force'))
 
     def run(self):
@@ -373,6 +414,24 @@ class InstallCMakeLib(install_lib):
         run_command(requirements_py,
                     on_fail_msg=f'Failed to install dependencies from {path_to_requirements_txt}')
 
+    def update_plugins_xml(self, xml_file, openvino_nvidia_gpu_library):
+        if not os.path.exists(xml_file):
+            plugins_xml_src = dedent('''\
+            <ie>
+                <plugins>
+                </plugins>
+            </ie>
+            ''')
+            tree = ET.fromstring(plugins_xml_src)
+        else:
+            tree = ET.parse(xml_file).getroot()
+        
+        plugins = tree.find("plugins")
+        if all(plugin.get('name') != 'NVIDIA' for plugin in plugins.iter('plugin')):
+            plugins.append(Element('plugin', {'name': 'NVIDIA', 'location': openvino_nvidia_gpu_library}))
+            with open(xml_file, "w") as f:
+                f.write(ET.tostring(tree).decode('utf8'))
+
     def get_openvino_package_dir(self):
         import openvino
         openvino_package_dir = os.path.dirname(os.path.abspath(openvino.__file__))
@@ -386,12 +445,8 @@ class InstallCMakeLib(install_lib):
                                                    f"libopenvino_nvidia_gpu_plugin.{platform_specifics.get_lib_file_extension()}")
 
         xml_file = os.path.join(openvino_package_libs_dir, "plugins.xml")
-        tree = ET.parse(xml_file).getroot()
-        plugins = tree.find("plugins")
-        if all(plugin.get('name') != 'NVIDIA' for plugin in plugins.iter('plugin')):
-            plugins.append(Element('plugin', {'name': 'NVIDIA', 'location': openvino_nvidia_gpu_library}))
-            with open(xml_file, "w") as f:
-                f.write(ET.tostring(tree).decode('utf8'))
+        
+        self.update_plugins_xml(xml_file, openvino_nvidia_gpu_library)
 
     def unregister_nvidia_plugin(self):
         openvino_package_libs_dir = self.get_openvino_package_dir()
@@ -407,7 +462,7 @@ class InstallCMakeLib(install_lib):
                 break
 
     def test_nvidia_plugin(self):
-        from openvino.runtime import Core
+        import openvino as ov
         test_model_convert_fp32 = """
             <?xml version="1.0"?>
             <net name="Function_1208" version="10">
@@ -439,7 +494,7 @@ class InstallCMakeLib(install_lib):
                 </edges>
             </net>
             """.encode('ascii')
-        core = Core()
+        core = ov.Core()
         model = core.read_model(model=test_model_convert_fp32)
         try:
             core.compile_model(model=model, device_name="NVIDIA")
