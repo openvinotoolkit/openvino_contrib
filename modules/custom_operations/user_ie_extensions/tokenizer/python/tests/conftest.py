@@ -1,6 +1,7 @@
 import json
 import os
 from math import isclose
+from pathlib import Path
 
 import pytest
 
@@ -16,7 +17,7 @@ def prebuild_extenson_path():
 
 
 os.environ["OV_TOKENIZER_PREBUILD_EXTENSION_PATH"] = prebuild_extenson_path()
-PASS_RATES_FILE = "pass_rates.json"
+PASS_RATES_FILE = Path(__file__).parent / "pass_rates.json"
 
 
 @pytest.hookimpl(trylast=True)
@@ -36,6 +37,7 @@ def pytest_sessionfinish(session, exitstatus) -> None:
     previous = previous_rates.get(parent, 0)
 
     if isclose(pass_rate, previous):
+        session.exitstatus = pytest.ExitCode.OK
         return
 
     if pass_rate > previous:
