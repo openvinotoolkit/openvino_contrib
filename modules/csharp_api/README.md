@@ -52,20 +52,20 @@ The following article provides installation methods for OpenVINO™ C# API on di
 ## 🏷How to use OpenVINO™ C# API?
 
 - **Quick start**
-  - [Deploying the Yolov8 full series model using OpenVINO™ C# API](https://github.com/guojin-yan/OpenVINO-CSharp-API/blob/csharp3.0/demos/yolov8/README.md)
+  - [Deploying the Yolov8 full series model using OpenVINO™ C# API](demos/yolov8/README.md)
 - **Simple usage**
 
 If you don't know how to use it, simply understand the usage method through the following code.
 
 ```c#
-using OpenVINO™ C# API;
-namespace test 
+using OpenVinoSharp;
+namespace test
 {
     internal class Program
     {
         static void Main(string[] args)
         {
-        	using Core core = new Core();
+            using Core core = new Core();
             using Model model = core.read_model("./model.xml");
             using CompiledModel compiled_model = core.compiled_model(model, "AUTO");
             using InferRequest infer_request = compiled_model.create_infer_request();
@@ -81,8 +81,8 @@ The classes and objects encapsulated in the project, such as Core, Model, Tensor
 
 ## 💻 Tutorial Examples
 
-- [Using OpenVINO™ C# API to Deploy the Yolov8 Model on the AIxBoard](https://github.com/guojin-yan/OpenVINO-CSharp-API/blob/csharp3.0/tutorial_examples/AlxBoard_deploy_yolov8/README.md)
-- [Pedestrian fall detection - Deploying PP-Human based on OpenVINO C # API](https://github.com/guojin-yan/OpenVINO-CSharp-API/blob/csharp3.0/tutorial_examples/PP-Human_Fall_Detection/README.md) 
+- [Using OpenVINO™ C# API to Deploy the Yolov8 Model on the AIxBoard](tutorial_examples/AlxBoard_deploy_yolov8/README.md)
+- [Pedestrian fall detection - Deploying PP-Human based on OpenVINO C # API](tutorial_examples\PP-Human_Fall_Detection\README.md) 
 - [Deploying RT-DETR based on OpenVINO](https://github.com/guojin-yan/RT-DETR-OpenVINO)
 
 ## 🗂 API Reference

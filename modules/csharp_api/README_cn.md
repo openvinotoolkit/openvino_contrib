@@ -54,7 +54,7 @@
 
 - **快速体验**
 
-  [使用OpenVINO™ C# API部署Yolov8全系列模型](https://github.com/guojin-yan/OpenVINO-CSharp-API/blob/csharp3.0/demos/yolov8/README_cn.md)
+  [使用OpenVINO™ C# API部署Yolov8全系列模型](demos/yolov8/README_cn.md)
 
 - **使用方法**
 
@@ -62,13 +62,13 @@
 
 ```c#
 using OpenVinoSharp;  // 引用命名空间
-namespace test 
+namespace test
 {
     internal class Program
     {
         static void Main(string[] args)
         {
- 			using Core core = new Core();  // 初始化 Core 核心
+            using Core core = new Core();  // 初始化 Core 核心
             using Model model = core.read_model("./model.xml");  // 读取模型文件
             using CompiledModel compiled_model = core.compiled_model(model, "AUTO");  // 将模型加载到设备
             using InferRequest infer_request = compiled_model.create_infer_request();  // 创建推理通道
@@ -84,8 +84,8 @@ namespace test
 
 ## 💻 应用案例
 
-- [爱克斯开发板使用OpenVINO™ C# API部署Yolov8模型](https://github.com/guojin-yan/OpenVINO-CSharp-API/blob/csharp3.0/tutorial_examples/AlxBoard_deploy_yolov8/README_cn.md)
--  [行人摔倒检测 — 基于 OpenVINO C# API 部署PP-Human](https://github.com/guojin-yan/OpenVINO-CSharp-API/blob/csharp3.0/tutorial_examples/PP-Human_Fall_Detection/README_cn.md) 
+- [爱克斯开发板使用OpenVINO™ C# API部署Yolov8模型](tutorial_examples/AlxBoard_deploy_yolov8/README_cn.md)
+-  [行人摔倒检测 — 基于 OpenVINO C# API 部署PP-Human](tutorial_examples\PP-Human_Fall_Detection\README_cn.md) 
 - [基于 OpenVINO 部署 RT-DETR](https://github.com/guojin-yan/RT-DETR-OpenVINO)
 
 ## 🗂 API 文档
