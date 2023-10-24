@@ -5,6 +5,7 @@
 #include <functional>
 
 #include "normalizer.h"
+#include "model_interface.h"
 
 #include "openvino/op/util/framework_node.hpp"
 #include "openvino/opsets/opset10.hpp"
@@ -374,8 +375,14 @@ bool SentencepieceStreamDetokenizer::evaluate(TensorVector& outputs, const Tenso
             const auto token_id = input_data[seq];
             const auto token = m_sp->IdToPiece(token_id);
 
-            std::copy(token.begin(), token.end(), &chars[char_offset]);
-            char_offset += token.size();
+            if(token.rfind("<") == 0 && token.rfind(">") == 5) {
+                // convert "byte tokens" into bytes
+                int ch = sentencepiece::PieceToByte(token);
+                chars[char_offset++] = ch;
+            } else {
+                std::copy(token.begin(), token.end(), &chars[char_offset]);
+                char_offset += token.size();
+            };
         };
         ends[batch] = char_offset;
     }

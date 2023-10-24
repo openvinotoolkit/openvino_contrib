@@ -186,6 +186,6 @@ jobs:
   - script: |
       . $(SETUPVARS)
       source  $(WORK_DIR)/.env3/bin/activate
-      python -m pytest user_ie_extensions/tokenizer/python/tests/tokenizers_test.py
+      python -m pytest --tb=no user_ie_extensions/tokenizer/python/tests/tokenizers_test.py
     workingDirectory: $(REPO_DIR)/modules/custom_operations
     displayName: 'Tokenizers extension regression test'
