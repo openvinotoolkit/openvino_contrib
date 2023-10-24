@@ -170,7 +170,7 @@ jobs:
       source .env3/bin/activate
       python -m pip install --upgrade pip
       python -m pip install -r $(REPO_DIR)/modules/custom_operations/tests/requirements.txt
-      python -m pip install -r $(REPO_DIR)/modules/custom_operations/user_ie_extensions/tokenizer/python/.[all]
+      python -m pip install $(REPO_DIR)/modules/custom_operations/user_ie_extensions/tokenizer/python/.[all]
       cd ${OPENVINO_REPO_DIR}/tools && python -m pip install mo/
     workingDirectory: $(WORK_DIR)
     displayName: 'Create user custom operations env'
