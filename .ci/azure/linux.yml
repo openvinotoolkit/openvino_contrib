@@ -6,6 +6,7 @@ trigger:
   paths:
     exclude:
     - modules/nvidia_plugin
+    - modules/csharp_api
 
 pr:
   branches:
@@ -15,6 +16,7 @@ pr:
   paths:
     exclude:
     - modules/nvidia_plugin
+    - modules/csharp_api
 
 resources:
   repositories:
