@@ -14,7 +14,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "black",
     "ruff",
     "pytest",
 ]
@@ -24,12 +23,6 @@ transformers = [
 all = [
     "ov_tokenizer[dev,transformers]"
 ]
-
-
-[tool.black]
-line-length = 119
-target-versions = ["py38", "py39", "py310", "py311", "py312"]
-
 
 [tool.ruff]
 ignore = ["C901", "E501", "E741", "W605"]
