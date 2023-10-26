@@ -128,6 +128,7 @@ jobs:
         -DENABLE_PYTHON=ON ^
         -DCMAKE_C_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
         -DCMAKE_CXX_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
+        -DCUSTOM_OPERATIONS="calculate_grid;complex_mul;fft;sparse_conv_transpose;sparse_conv" ^
         $(OPENVINO_REPO_DIR)
     workingDirectory: $(BUILD_DIR)
     displayName: 'CMake OpenVINO Contrib'
