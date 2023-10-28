@@ -4,7 +4,9 @@
 
 set(TARGET_NAME "user_ov_extensions")
 
-set(CMAKE_CXX_STANDARD 11)
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 11)
+endif()
 
 find_package(OpenVINO REQUIRED COMPONENTS Runtime)
 find_package(TBB COMPONENTS tbb tbbmalloc)
