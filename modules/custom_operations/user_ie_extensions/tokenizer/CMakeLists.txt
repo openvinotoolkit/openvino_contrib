@@ -65,6 +65,7 @@ target_include_directories(${TARGET_NAME} PRIVATE
   "${sentencepiece_BINARY_DIR}"
   "${FAST_TOKENIZER_INCS}")
 
+target_include_directories(${TARGET_NAME} PUBLIC .)
 
 if(CMAKE_CL_64)
     target_compile_definitions(sentencepiece-static PRIVATE _CRT_SECURE_NO_WARNINGS _SCL_SECURE_NO_WARNINGS)
