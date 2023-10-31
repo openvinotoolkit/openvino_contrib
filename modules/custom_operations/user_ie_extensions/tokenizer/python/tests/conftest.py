@@ -36,16 +36,18 @@ def pytest_sessionfinish(session, exitstatus) -> None:
     pass_rate = 1 - session.testsfailed / session.testscollected
     previous = previous_rates.get(parent, 0)
 
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
     if isclose(pass_rate, previous):
         session.exitstatus = pytest.ExitCode.OK
+        reporter.write_line(f"New pass rate isclose to previous: {pass_rate}")
         return
 
     if pass_rate > previous:
+        reporter.write_line(f"New pass rate {pass_rate} is bigger then previous: {previous}")
         session.exitstatus = pytest.ExitCode.OK
         previous_rates[parent] = pass_rate
 
         with open(PASS_RATES_FILE, "w") as f:
             json.dump(previous_rates, f, indent=4)
     else:
-        reporter = session.config.pluginmanager.get_plugin("terminalreporter")
         reporter.write_line(f"Pass rate is lower! Current: {pass_rate}, previous: {previous}")
