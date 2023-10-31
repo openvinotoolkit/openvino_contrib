@@ -16,24 +16,24 @@ include(FetchContent)
 
 FetchContent_Declare(
   sentencepiece
-  URL      https://github.com/google/sentencepiece/archive/87721596842ab099c603b23357d948906813e853.tar.gz
-  URL_HASH SHA256=a7c105aca0131b4a899155a6c44ea9728e63514edaa8d71fa92e7a5de53b6ca0
+  URL      https://github.com/google/sentencepiece/archive/refs/tags/v0.1.99.tar.gz
+  URL_HASH SHA256=63617eaf56c7a3857597dcd8780461f57dd21381b56a27716ef7d7e02e14ced4
 )
 
-if(WIN32)
-    FetchContent_Declare(
-      fast_tokenizer
-      URL      https://bj.bcebos.com/paddlenlp/fast_tokenizer/fast_tokenizer-win-x64-1.0.2.zip
-      URL_HASH SHA256=56470954014bdd3c8c8ad702d20f5f6aa5ab913bff92fd9c3c49ec6da31ff11d
-    )
-else()
-    FetchContent_Declare(
-      fast_tokenizer
-      URL      https://bj.bcebos.com/paddlenlp/fast_tokenizer/fast_tokenizer-linux-x64-1.0.2.tgz
-      URL_HASH SHA256=843a8299b55ef2e06ea50ba0d4ab4cb05b9e4cdb7cb8e29f3d55c494a1b7aecc
-    )
-endif()
+FetchContent_Declare(
+  fast_tokenizer
+  URL      https://github.com/PaddlePaddle/PaddleNLP/archive/refs/tags/v2.6.1.tar.gz
+  URL_HASH SHA256=10e3489bc91e938c449a0448fa719e4536803ed6b1c1c95b3402430d6a8a221a
+)
 
+FetchContent_GetProperties(fast_tokenizer)
+if(NOT fast_tokenizer_POPULATED)
+  FetchContent_Populate(
+    fast_tokenizer
+  )
+  set(WITH_PYTHON OFF CACHE BOOL "Disable Python API for fast_tokenizer")
+  add_subdirectory(${fast_tokenizer_SOURCE_DIR}/fast_tokenizer ${CMAKE_CURRENT_BINARY_DIR}/fast_tokenizer)
+endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "^(Apple)?Clang$")
     set(cxx_flags "-Wno-undef")
@@ -51,19 +51,20 @@ endif()
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${cxx_flags}")
 
 FetchContent_MakeAvailable(sentencepiece)
-FetchContent_MakeAvailable(fast_tokenizer)
-
-include("${fast_tokenizer_SOURCE_DIR}/FastTokenizer.cmake")
 
 # set include dirs for specific source files
 target_include_directories(${TARGET_NAME} PRIVATE
+  # sentensepiece
   "${sentencepiece_SOURCE_DIR}/src/builtin_pb"
   "${sentencepiece_SOURCE_DIR}/src"
   "${sentencepiece_SOURCE_DIR}/third_party/protobuf-lite"
   "${sentencepiece_SOURCE_DIR}"
   "${sentencepiece_SOURCE_DIR}"
   "${sentencepiece_BINARY_DIR}"
-  "${FAST_TOKENIZER_INCS}")
+  # fast_tokenizer
+  "${fast_tokenizer_SOURCE_DIR}/fast_tokenizer"
+  "${CMAKE_BINARY_DIR}/third_party/dart/src/extern_dart/include/"
+  "${CMAKE_BINARY_DIR}/third_party/install/re2/include/")
 
 target_include_directories(${TARGET_NAME} PUBLIC .)
 
@@ -71,7 +72,7 @@ if(CMAKE_CL_64)
     target_compile_definitions(sentencepiece-static PRIVATE _CRT_SECURE_NO_WARNINGS _SCL_SECURE_NO_WARNINGS)
 endif()
 
-target_link_libraries(${TARGET_NAME} PRIVATE sentencepiece-static ${FAST_TOKENIZER_LIBS})
+target_link_libraries(${TARGET_NAME} PRIVATE core_tokenizers sentencepiece-static)
 
 # string_view is used from cxx17
 string(REPLACE " " ";" cxx_flags "${cxx_flags}")

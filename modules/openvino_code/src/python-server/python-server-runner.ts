@@ -12,6 +12,7 @@ import { LogOutputChannel, window } from 'vscode';
 import { join } from 'path';
 import { MODEL_NAME_TO_ID_MAP, ModelName } from '@shared/model';
 import { extensionState } from '../state';
+import { clearLruCache } from '../lru-cache.decorator';
 
 const SERVER_STARTED_STDOUT_ANCHOR = 'OpenVINO Code Server started';
 
@@ -101,6 +102,8 @@ export class NativePythonServerRunner {
   }
 
   async _start() {
+    clearLruCache();
+    
     const os = detectOs();
     logger.info(`System detected: ${os}`);
 
