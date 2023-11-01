@@ -171,7 +171,8 @@
             "default": "codet5p-220m-py",
             "enum": [
               "codet5p-220m-py",
-              "decicoder-1b-openvino-int8"
+              "decicoder-1b-openvino-int8",
+              "stablecode-completion-3b"
             ],
             "description": "Which model to use for code generation."
           },
