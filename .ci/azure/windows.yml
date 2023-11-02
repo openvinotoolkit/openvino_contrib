@@ -128,7 +128,6 @@ jobs:
         -DENABLE_PYTHON=ON ^
         -DCMAKE_C_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
         -DCMAKE_CXX_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
-        -DCUSTOM_OPERATIONS="calculate_grid;complex_mul;fft;sparse_conv_transpose;sparse_conv" ^
         $(OPENVINO_REPO_DIR)
     workingDirectory: $(BUILD_DIR)
     displayName: 'CMake OpenVINO Contrib'
@@ -161,7 +160,6 @@ jobs:
   - script: |
       call C:\tools\opencv\build\setup_vars_opencv4.cmd
       call $(SETUPVARS)
-      python -m pip list
       python -m pytest -k "not sparse_conv" tests\run_tests.py
     workingDirectory: $(REPO_DIR)\modules\custom_operations
     displayName: 'Custom user operation tests'
