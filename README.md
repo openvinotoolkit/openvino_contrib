@@ -10,6 +10,7 @@ This list gives an overview of all modules available inside the contrib reposito
 
 * [**nvidia_plugin**](./modules/nvidia_plugin): NVIDIA GPU Plugin -- allows to perform deep neural networks inference on NVIDIA GPUs using CUDA, using OpenVINO API.
 * [**java_api**](./modules/java_api): Inference Engine Java API -- provides Java wrappers for Inference Engine public API.
+* [**rust_api**](./modules/rust_api): Inference Engine Rust API -- explains how to use the OpenVINO APIs from Rust.
 * [**custom_operations**](./modules/custom_operations/): Collection of Custom Operations -- implement Custom Operations with OpenVINO Extensibility Mechanism.
 * [**Token Merging**](./modules/token_merging/): adaptation of [Token Merging method](https://arxiv.org/abs/2210.09461) for OpenVINO.
 * [**OpenVINO Code**](./modules/openvino_code): VSCode extension for AI code completion with OpenVINO.
