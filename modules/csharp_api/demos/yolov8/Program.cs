@@ -59,7 +59,7 @@ namespace yolov8
             print_model_info(model);
 
             // -------- Step 3. Loading a model to the device --------
-            CompiledModel compiled_model = core.compiled_model(model, device);
+            CompiledModel compiled_model = core.compile_model(model, device);
 
             // -------- Step 4. Create an infer request --------
             InferRequest infer_request = compiled_model.create_infer_request();
