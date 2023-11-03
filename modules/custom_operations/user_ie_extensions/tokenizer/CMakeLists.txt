@@ -24,6 +24,7 @@ FetchContent_Declare(
   fast_tokenizer
   URL      https://github.com/PaddlePaddle/PaddleNLP/archive/refs/tags/v2.6.1.tar.gz
   URL_HASH SHA256=10e3489bc91e938c449a0448fa719e4536803ed6b1c1c95b3402430d6a8a221a
+  PATCH_COMMAND git apply --ignore-whitespace "${CMAKE_CURRENT_LIST_DIR}/icu4c.patch"
 )
 
 FetchContent_GetProperties(fast_tokenizer)
