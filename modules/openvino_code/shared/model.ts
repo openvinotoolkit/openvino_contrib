@@ -9,8 +9,7 @@ enum ModelId {
 export enum ModelName {
   CODE_T5_220M = 'codet5p-220m-py',
   DECICODER_1B_OPENVINO_INT8 = 'decicoder-1b-openvino-int8',
-  STABLECODE_COMPLETION_ALPHA_3B_4K_OPENVINO_INT8 = 'stablecode-completion-3b',
-
+  STABLECODE_COMPLETION_ALPHA_3B_4K_OPENVINO_INT8 = 'stablecode-completion-3b-int8',
 }
 
 export const MODEL_NAME_TO_ID_MAP: Record<ModelName, ModelId> = {
@@ -22,5 +21,5 @@ export const MODEL_NAME_TO_ID_MAP: Record<ModelName, ModelId> = {
 export const MODEL_SUPPORTED_FEATURES: Record<ModelName, Features[]> = {
   [ModelName.CODE_T5_220M]: [Features.CODE_COMPLETION],
   [ModelName.DECICODER_1B_OPENVINO_INT8]: [Features.CODE_COMPLETION, Features.SUMMARIZATION],
-  [ModelName.STABLECODE_COMPLETION_ALPHA_3B_4K_OPENVINO_INT8]: [Features.CODE_COMPLETION],
+  [ModelName.STABLECODE_COMPLETION_ALPHA_3B_4K_OPENVINO_INT8]: [Features.CODE_COMPLETION, Features.SUMMARIZATION],
 };

@@ -6,6 +6,7 @@ import { Features } from '@shared/features';
 const options: SelectOptionProps<ModelName>[] = [
   { value: ModelName.CODE_T5_220M },
   { value: ModelName.DECICODER_1B_OPENVINO_INT8 },
+  { value: ModelName.STABLECODE_COMPLETION_ALPHA_3B_4K_OPENVINO_INT8 },
 ];
 
 interface ModelSelectProps {
