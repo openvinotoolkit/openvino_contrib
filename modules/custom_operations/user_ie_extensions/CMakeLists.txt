@@ -8,6 +8,8 @@ if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 11)
 endif()
 
+include(cmake/platforms.cmake)
+
 find_package(OpenVINO REQUIRED COMPONENTS Runtime)
 find_package(TBB COMPONENTS tbb tbbmalloc)
 find_package(OpenCV COMPONENTS core)
@@ -21,6 +23,7 @@ set(OP_REQ_TBB "complex_mul" "fft")
 if(NOT CUSTOM_OPERATIONS)
   file(GLOB op_src "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
   file(GLOB op_dirs LIST_DIRECTORIES true "${CMAKE_CURRENT_SOURCE_DIR}/*")
+  list(REMOVE_ITEM op_dirs "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
   foreach(op IN LISTS op_src)
     get_filename_component(op_name ${op} NAME_WE)
