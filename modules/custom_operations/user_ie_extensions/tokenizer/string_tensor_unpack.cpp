@@ -25,15 +25,18 @@ void StringTensorUnpack::validate_and_infer_types() {
     // - when string tensor is passed and we are after the hack in CPU (element::u8) and
     // - when stirng tensor is not really used, and we expect a packed string tensor in this case (element::u8)
 
-    OPENVINO_ASSERT(
 #if OPENVINO_ELEMENT_STRING_SUPPORTED
+    OPENVINO_ASSERT(
         get_input_element_type(0) == element::string ||
-#endif
-#if OPENVINO_USE_INPUT_OUTPUT_STRING_TENSOR_HACK || !USE_STRING_TENSORS
-        get_input_element_type(0) == element::u8 ||
-#endif
         get_input_element_type(0) == element::dynamic,
         "Type of StringTensorUnpack input is expected to be element::string before a model compilation or element::u8 after the compilation or when element::string is not supported");
+#endif
+#if OPENVINO_USE_INPUT_OUTPUT_STRING_TENSOR_HACK || !USE_STRING_TENSORS
+    OPENVINO_ASSERT(
+        get_input_element_type(0) == element::u8 ||
+        get_input_element_type(0) == element::dynamic,
+        "Type of StringTensorUnpack input is expected to be element::string before a model compilation or element::u8 after the compilation or when element::string is not supported");
+#endif
 
 #if OPENVINO_ELEMENT_STRING_SUPPORTED
     if(get_input_element_type(0) == element::string) {
