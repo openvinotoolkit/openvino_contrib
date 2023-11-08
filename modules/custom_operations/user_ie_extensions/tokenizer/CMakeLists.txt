@@ -65,6 +65,7 @@ target_include_directories(${TARGET_NAME} PRIVATE
   # fast_tokenizer
   "${fast_tokenizer_SOURCE_DIR}/fast_tokenizer"
   "${CMAKE_BINARY_DIR}/third_party/dart/src/extern_dart/include/"
+  "${CMAKE_BINARY_DIR}/third_party/json/src/extern_json/single_include/"
   "${CMAKE_BINARY_DIR}/third_party/install/re2/include/")
 
 if(CMAKE_CL_64)
