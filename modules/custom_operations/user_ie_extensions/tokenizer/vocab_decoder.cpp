@@ -33,8 +33,7 @@ bool VocabDecoder::evaluate(ov::TensorVector& outputs, const ov::TensorVector& i
     OPENVINO_ASSERT(inputs.size() == 4, "Too few inputs passed to VocabDecoder, it means it is not converted properly or it is not used in the supported pattern");
 
     for(size_t id = 0; id < vocab_size; ++id) {
-        std::vector<uint8_t> token = std::vector(vocab_chars + vocab_begins[id], vocab_chars + vocab_ends[id]);
-        vocab[id] = token;
+        vocab[id] = std::vector<uint8_t>(vocab_chars + vocab_begins[id], vocab_chars + vocab_ends[id]);
     }
     // Set output shapes
     outputs[0].set_shape({batch_size});
