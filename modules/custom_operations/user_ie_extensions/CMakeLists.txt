@@ -2,6 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+if(POLICY CMP0079)
+  cmake_policy(SET CMP0079 NEW)
+endif()
+
+if(POLICY CMP0057)
+  cmake_policy(SET CMP0057 NEW)
+endif()
+
 set(TARGET_NAME "user_ov_extensions")
 
 if(NOT CMAKE_CXX_STANDARD)
