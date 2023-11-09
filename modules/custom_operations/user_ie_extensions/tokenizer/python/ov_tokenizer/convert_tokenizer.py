@@ -23,12 +23,26 @@ def convert_tokenizer(
     if "transformers" in sys.modules:
         from transformers import PreTrainedTokenizerBase, PreTrainedTokenizerFast
 
-        from .hf_parser import convert_fast_tokenizer, convert_sentencepiece_model_tokenizer, is_sentencepiece_model
+        from .hf_parser import (
+            convert_fast_tokenizer,
+            convert_sentencepiece_model_tokenizer,
+            convert_tiktoken_model_tokenizer,
+            is_sentencepiece_model,
+            is_tiktoken_model,
+        )
 
         if isinstance(tokenizer_object, PreTrainedTokenizerBase):
             if is_sentencepiece_model(tokenizer_object):
                 logger.info("Convert tokenizer using SentencePiece .model file.")
                 return convert_sentencepiece_model_tokenizer(
+                    tokenizer_object,
+                    add_attention_mask=True,
+                    with_decoder=with_decoder,
+                    streaming_decoder=streaming_decoder,
+                )
+            elif is_tiktoken_model(tokenizer_object):
+                logger.info("Convert tiktoken-based tokenizer")
+                return convert_tiktoken_model_tokenizer(
                     tokenizer_object,
                     add_attention_mask=True,
                     with_decoder=with_decoder,

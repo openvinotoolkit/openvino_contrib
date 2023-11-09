@@ -5,6 +5,6 @@
     "tokenizers_test.py::test_sentencepiece_model_detokenizer": 0.5458333333333334,
     "tokenizers_test.py::test_hf_bpe_tokenizers_outputs": 0.846875,
     "tokenizers_test.py::test_bpe_detokenizer": 0.93125,
-    "tokenizers_test.py::test_": 0.7512332628611699,
+    "tokenizers_test.py::test_": 0.7580534612748457,
     "user_ie_extensions/tokenizer/python/tests/tokenizers_test.py::test_": 0.7512332628611699
 }

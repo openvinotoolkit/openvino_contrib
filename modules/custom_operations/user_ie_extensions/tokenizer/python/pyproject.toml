@@ -18,10 +18,13 @@ dev = [
     "pytest",
 ]
 transformers = [
-    "transformers[sentencepiece]"
+    "transformers[sentencepiece,tiktoken]"
+]
+tiktoken = [
+    "tiktoken"
 ]
 all = [
-    "ov_tokenizer[dev,transformers]"
+    "ov_tokenizer[dev,transformers,tiktoken]"
 ]
 
 [tool.ruff]
