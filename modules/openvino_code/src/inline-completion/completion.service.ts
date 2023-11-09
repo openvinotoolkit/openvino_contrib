@@ -31,6 +31,15 @@ class CompletionService {
     if (fillInTheMiddleMode && textAfterCursor.trim()) {
       return `${startToken}${textBeforeCursor}${middleToken}${textAfterCursor}${endToken}`;
     }
+    
+    let editor = window.activeTextEditor;
+    if (!editor) {
+      return ``; // No open text editor
+    }
+    if (!editor.selection.isEmpty) {
+      return editor.document.getText(editor.selection)
+    }
+    
     return textBeforeCursor;
   }
 
