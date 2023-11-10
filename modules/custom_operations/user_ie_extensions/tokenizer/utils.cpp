@@ -222,23 +222,3 @@ std::shared_ptr<Node> string_attribute_to_constant (const ov::frontend::NodeCont
     return std::make_shared<Constant>(element::u8, Shape{value.length()}, (const void*)value.data());
     #endif
 }
-
-std::vector<std::string> unpack_strings (const ov::Tensor& source) {
-    auto strings = source.data<const uint8_t>();
-    auto length = source.get_byte_size();
-    // check the format of the input bitstream representing the string tensor
-    OPENVINO_ASSERT(length >= 4, "Incorrect packed string tensor format: no batch size in the packed string tensor");
-    auto batch_size = *reinterpret_cast<const int32_t*>(strings + 0);
-    OPENVINO_ASSERT(length >= 4 + 4 + 4 * batch_size,
-        "Incorrect packed string tensor format: the packed string tensor must contain first string offset and end indices");
-    auto begin_ids = reinterpret_cast<const int32_t*>(strings + 4);
-    auto end_ids = begin_ids + 1;
-    auto symbols = strings + 4 + 4 + 4 * batch_size;
-
-    std::vector<std::string> result;
-    result.reserve(batch_size);
-    for(size_t i = 0; i < batch_size; ++i) {
-        result.push_back(std::string(symbols + begin_ids[i], symbols + end_ids[i]));
-    }
-    return result;
-}

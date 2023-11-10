@@ -134,7 +134,7 @@ target_include_directories(${TARGET_NAME} PRIVATE
   # fast_tokenizer
   ${FAST_TOKENIZER_INCS})
 
-target_include_directories(${TARGET_NAME} PUBLIC .)
+target_include_directories(${TARGET_NAME} PUBLIC ./include/)
 
 if(CMAKE_CL_64)
     target_compile_definitions(sentencepiece-static PRIVATE _CRT_SECURE_NO_WARNINGS _SCL_SECURE_NO_WARNINGS)
