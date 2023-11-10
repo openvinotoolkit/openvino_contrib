@@ -55,6 +55,12 @@ else()
         URL      https://bj.bcebos.com/paddlenlp/fast_tokenizer/fast_tokenizer-win-x64-1.0.2.zip
         URL_HASH SHA256=56470954014bdd3c8c8ad702d20f5f6aa5ab913bff92fd9c3c49ec6da31ff11d
       )
+      FetchContent_Declare(
+        re2
+        URL      https://github.com/google/re2/archive/refs/tags/2022-04-01.tar.gz
+        URL_HASH SHA256=1ae8ccfdb1066a731bba6ee0881baad5efd2cd661acd9569b689f2586e1a50e9
+      )
+      FetchContent_MakeAvailable(re2)
   elseif(LINUX AND X86_64)
       FetchContent_Declare(
         fast_tokenizer
@@ -86,9 +92,10 @@ else()
   FetchContent_MakeAvailable(fast_tokenizer)
   include("${fast_tokenizer_SOURCE_DIR}/FastTokenizer.cmake")
 
-  # we use re2 library in regex_normalization operation, so have to add to this list
   if(WIN32 AND X86_64)
-      list(APPEND FAST_TOKENIZER_LIBS "${CMAKE_BINARY_DIR}/third_party/install/re2/lib/re2.lib")
+      # we use re2 library in regex_normalization operation, so have to add to this list
+      # because prebuilt fast_tokenizers package does not provide this library
+      list(APPEND FAST_TOKENIZER_LIBS re2)
   endif()
 endif()
 
