@@ -12,7 +12,7 @@
 
 namespace LayerTestsDefinitions {
 
-using ngraph::helpers::InputLayerType;
+using ov::test::utils::InputLayerType;
 
 class CUDNNGRUSequenceTest : public UnsymmetricalComparer<GRUSequenceTest> {
 public:
@@ -66,7 +66,6 @@ public:
     }
 
     void updatedGRUSequenceTest_SetUp() {
-        using namespace ngraph::helpers;
         size_t seq_lengths;
         size_t batch;
         size_t hidden_size;
@@ -151,7 +150,8 @@ TEST_P(LPCNetCUDNNGRUSequenceTest, CompareWithRefs) {
 using namespace LayerTestsDefinitions;
 
 namespace {
-ngraph::helpers::SequenceTestsMode mode{ngraph::helpers::SequenceTestsMode::PURE_SEQ};
+using ov::test::utils::SequenceTestsMode
+SequenceTestsMode mode{SequenceTestsMode::PURE_SEQ};
 // output values increase rapidly without clip, so use only seq_lengths = 2
 std::vector<size_t> seq_lengths{1, 2, 5, 10};
 std::vector<size_t> batch{1};
