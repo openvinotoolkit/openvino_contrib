@@ -46,7 +46,7 @@ class TestParamsProvider (TestParamsProviderBase):
 
     @property
     def cpp_secondary_input_types(self):
-        return ('std::vector<ngraph::helpers::InputLayerType> {'
-                'ngraph::helpers::InputLayerType::CONSTANT, '
-                'ngraph::helpers::InputLayerType::PARAMETER'
+        return ('std::vector<InputLayerType> {'
+                'InputLayerType::CONSTANT, '
+                'InputLayerType::PARAMETER'
                 '}')
