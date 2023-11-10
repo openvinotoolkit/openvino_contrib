@@ -21,6 +21,7 @@
 #include "average_finder.hpp"
 
 namespace LayerTestsDefinitions {
+usign ov::test::utils::ActivationTypes;
 
 constexpr uint32_t RANGE = 10;
 constexpr int32_t START_FROM = -5;
@@ -85,9 +86,9 @@ const std::vector<InferenceEngine::Precision> netPrecisions = {
     InferenceEngine::Precision::FP32,
 };
 
-const std::vector<ngraph::helpers::ActivationTypes> netActivations = {
-    ngraph::helpers::ActivationTypes::None,
-    ngraph::helpers::ActivationTypes::Relu,
+const std::vector<ActivationTypes> netActivations = {
+    ActivationTypes::None,
+    ActivationTypes::Relu,
 };
 
 /* ============= 2D Convolution ============= */
@@ -225,7 +226,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 88, 10, 10})),               // Input shape
                            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::Values(ngraph::helpers::ActivationTypes::None)),
+        ::testing::Values(ActivationTypes::None)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 /* ============= resnet50/vgg16 Convolutions ============= */
