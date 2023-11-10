@@ -2,11 +2,21 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+if(POLICY CMP0079)
+  cmake_policy(SET CMP0079 NEW)
+endif()
+
+if(POLICY CMP0057)
+  cmake_policy(SET CMP0057 NEW)
+endif()
+
 set(TARGET_NAME "user_ov_extensions")
 
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 11)
 endif()
+
+include(cmake/platforms.cmake)
 
 find_package(OpenVINO REQUIRED COMPONENTS Runtime)
 find_package(TBB COMPONENTS tbb tbbmalloc)
@@ -21,6 +31,7 @@ set(OP_REQ_TBB "complex_mul" "fft")
 if(NOT CUSTOM_OPERATIONS)
   file(GLOB op_src "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
   file(GLOB op_dirs LIST_DIRECTORIES true "${CMAKE_CURRENT_SOURCE_DIR}/*")
+  list(REMOVE_ITEM op_dirs "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
   foreach(op IN LISTS op_src)
     get_filename_component(op_name ${op} NAME_WE)

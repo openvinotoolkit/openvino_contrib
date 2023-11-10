@@ -406,3 +406,32 @@ def get_sp_decoder(sp_model_node: Node, streaming_decoder: bool = False) -> Mode
     tokenizer_decoder = Model(string_output, [token_ids], TOKENIZER_DECODER_NAME)
     tokenizer_decoder.validate_nodes_and_infer_types()
     return tokenizer_decoder
+
+
+def is_tiktoken_model(hf_tokenizer: "PreTrainedTokenizerBase") -> bool:
+    return getattr(hf_tokenizer, "vocab_files_names", {}).get("vocab_file", "").endswith(".tiktoken")
+
+
+def convert_tiktoken_model_tokenizer(
+    hf_tokenizer: "PreTrainedTokenizerBase",
+    add_attention_mask: bool = True,
+    with_decoder: bool = False,
+    streaming_decoder: bool = False,
+) -> Union[Model, Tuple[Model, Model]]:
+    encoding = hf_tokenizer.tokenizer
+    split_pattern = encoding._pat_str
+
+    pipeline = TokenizerPipeline()
+    pipeline.add_steps(
+        [
+            NormalizeUnicode("NFC"),
+            RegexSplitStep(split_pattern),
+            BPETokenizationStep.from_tiktoken_encoding(encoding),
+            TruncationStep(
+                max_length=hf_tokenizer.model_max_length, truncate_right=(hf_tokenizer.truncation_side == "right")
+            ),
+            PaddingStep(pad_right=(hf_tokenizer.padding_side == "right")),
+        ]
+    )
+
+    return pipeline.get_encoder_ov_subgraph()

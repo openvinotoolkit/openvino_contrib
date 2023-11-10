@@ -338,6 +338,20 @@ class BPETokenizationStep(TokenizationModelStep):
             merges=tokenizer_json["model"]["merges"],
         )
 
+    @classmethod
+    def from_tiktoken_encoding(cls, encoding: "Encoding") -> "BPETokenizationStep":  # noqa
+        from .tiktoken_parser import generate_vocab_and_merges
+
+        vocab, merges = generate_vocab_and_merges(encoding)
+        return cls(
+            unk_token="",
+            fuse_unk=False,
+            suffix_indicator="",
+            end_suffix="",
+            vocab=[token for token, idx in sorted(vocab.items(), key=lambda x: x[1])],
+            merges=merges,
+        )
+
     def get_ov_subgraph(self, input_nodes: List[Output]) -> List[Output]:
         pipeline = self.get_pipeline()
         pipeline.vocab_node_outputs = self.create_string_constant_node(self.vocab).outputs()

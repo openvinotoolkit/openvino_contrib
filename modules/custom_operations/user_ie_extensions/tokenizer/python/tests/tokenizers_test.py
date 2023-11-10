@@ -93,17 +93,22 @@ sentencepiece_models = [
     "xlnet-base-cased",
     # "t5-base",  # crashes tests
 ]
+tiktiken_models = ["Qwen/Qwen-14B-Chat"]
 
 
-def get_tokenizer(request, fast_tokenizer=True):
-    hf_tokenizer = AutoTokenizer.from_pretrained(request.param, use_fast=fast_tokenizer)
+def get_tokenizer(request, fast_tokenizer=True, trust_remote_code=False):
+    hf_tokenizer = AutoTokenizer.from_pretrained(
+        request.param, use_fast=fast_tokenizer, trust_remote_code=trust_remote_code
+    )
     ov_tokenizer = convert_tokenizer(hf_tokenizer, with_decoder=False)
     compiled_tokenizer = core.compile_model(ov_tokenizer)
     return hf_tokenizer, compiled_tokenizer
 
 
-def get_tokenizer_detokenizer(request, fast_tokenizer=True):
-    hf_tokenizer = AutoTokenizer.from_pretrained(request.param, use_fast=fast_tokenizer)
+def get_tokenizer_detokenizer(request, fast_tokenizer=True, trust_remote_code=False):
+    hf_tokenizer = AutoTokenizer.from_pretrained(
+        request.param, use_fast=fast_tokenizer, trust_remote_code=trust_remote_code
+    )
     ov_tokenizer, ov_detokenizer = convert_tokenizer(hf_tokenizer, with_decoder=True)
     compiled_tokenizer = core.compile_model(ov_tokenizer)
     compiled_detokenizer = core.compile_model(ov_detokenizer)
@@ -133,6 +138,11 @@ def fast_tokenizer(request):
 @pytest.fixture(scope="session", params=sentencepiece_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
 def sentencepice_model_tokenizers(request, fast_tokenizer):
     return get_tokenizer_detokenizer(request, fast_tokenizer)
+
+
+@pytest.fixture(scope="session", params=tiktiken_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
+def tiktoken_model_tokenizers(request, fast_tokenizer):
+    return get_tokenizer(request, trust_remote_code=True)
 
 
 @pytest.mark.parametrize(
@@ -247,3 +257,22 @@ def test_bpe_detokenizer(hf_and_ov_bpe_detokenizer, test_string):
     ov_output = unpack_strings(ov_detokenizer(token_ids.astype("int32"))["string_output"])
 
     assert ov_output == hf_output
+
+
+@pytest.mark.skip(reason="tiktoken tokenizer is WIP")
+@pytest.mark.parametrize(
+    "test_string",
+    [
+        *eng_test_strings,
+        *multilingual_test_strings,
+        *emoji_test_strings,
+    ],
+)
+def test_tiktoken_tokenizers_output(tiktoken_model_tokenizers, test_string):
+    hf_tokenizer, ov_tokenizer = tiktoken_model_tokenizers
+
+    hf_tokenized = hf_tokenizer(test_string, return_tensors="np")
+    ov_tokenized = ov_tokenizer(pack_strings([test_string]))
+
+    for output_name, hf_result in hf_tokenized.items():
+        assert np.all((ov_result := ov_tokenized[output_name]) == hf_result), f"{hf_result}\n{ov_result}"
