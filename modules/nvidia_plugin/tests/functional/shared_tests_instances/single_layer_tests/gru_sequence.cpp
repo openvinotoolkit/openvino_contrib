@@ -107,7 +107,7 @@ public:
         ASSERT_EQ(InputLayerType::CONSTANT, WRBType);
         std::vector<ov::Shape> WRB = {inputShapes[3], inputShapes[4], inputShapes[5], inputShapes[2]};
         auto gru_sequence =
-            ngraph::builder::makeGRU(ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes(params)),
+            ngraph::builder::makeGRU(ov::OutputVector{params[0], params[1]},
                                      WRB,
                                      hidden_size,
                                      activations,

@@ -93,10 +93,8 @@ protected:
             secondaryInput = std::make_shared<ov::op::v0::Constant>(ngPrc, shapeRelatedParams.input2.first);
         }
         auto thirdInput = std::make_shared<ov::op::v0::Constant>(ngPrc, shapeRelatedParams.input3);
-        auto paramOuts =
-            ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
         auto MatMul = std::make_shared<ov::op::v0::MatMul>(
-            paramOuts[0], secondaryInput, shapeRelatedParams.input1.second, shapeRelatedParams.input2.second);
+            params[0], secondaryInput, shapeRelatedParams.input1.second, shapeRelatedParams.input2.second);
         auto Add = std::make_shared<ov::op::v1::Add>(MatMul, thirdInput);
         ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(Add)};
         function = std::make_shared<ngraph::Function>(results, params, "FullyConnected");
@@ -215,13 +213,11 @@ protected:
                 std::make_shared<ov::op::v0::Constant>(ngPrc, shapeRelatedParams.matmul2_input2.first);
         }
 
-        auto paramOuts =
-            ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
-        auto matMul0 = std::make_shared<ov::op::v0::MatMul>(paramOuts[0],
+        auto matMul0 = std::make_shared<ov::op::v0::MatMul>(params[0],
                                                             matmul0SecondaryInput,
                                                             shapeRelatedParams.matmul1_input1.second,
                                                             shapeRelatedParams.matmul1_input2.second);
-        auto matMul1 = std::make_shared<ov::op::v0::MatMul>(paramOuts[1],
+        auto matMul1 = std::make_shared<ov::op::v0::MatMul>(params[1],
                                                             matmul1SecondaryInput,
                                                             shapeRelatedParams.matmul2_input1.second,
                                                             shapeRelatedParams.matmul2_input2.second);
