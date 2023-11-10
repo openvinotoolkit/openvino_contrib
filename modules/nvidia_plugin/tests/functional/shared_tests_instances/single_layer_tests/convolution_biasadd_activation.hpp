@@ -164,14 +164,11 @@ protected:
 
         auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
         ov::ParameterVector params{std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(inputShape))};
-
-        auto paramOuts =
-            ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
         std::vector<float> filter_weights;
 
         std::shared_ptr<ov::Node> convNode = nullptr;
         if constexpr (!isGroup) {
-            convNode = ngraph::builder::makeConvolution(paramOuts[0],
+            convNode = ngraph::builder::makeConvolution(params[0],
                                                         ngPrc,
                                                         kernel,
                                                         stride,
@@ -183,7 +180,7 @@ protected:
                                                         false,
                                                         filter_weights);
         } else {
-            convNode = ngraph::builder::makeGroupConvolution(paramOuts[0],
+            convNode = ngraph::builder::makeGroupConvolution(params[0],
                                                              ngPrc,
                                                              kernel,
                                                              stride,

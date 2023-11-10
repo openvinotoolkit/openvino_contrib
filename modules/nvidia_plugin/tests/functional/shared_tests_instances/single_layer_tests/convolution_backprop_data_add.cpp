@@ -156,10 +156,8 @@ protected:
 
         auto outputShapeNode = std::make_shared<ov::op::v0::Constant>(
             ov::element::Type_t::i64, ov::Shape{outputShapeData.size()}, outputShapeData);
-        auto paramOuts =
-            ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
         auto convBackpropData = std::dynamic_pointer_cast<ngraph::opset1::ConvolutionBackpropData>(
-            makeConvolutionBackpropData(paramOuts[0],
+            makeConvolutionBackpropData(params[0],
                                         outputShapeNode,
                                         ngPrc,
                                         kernel,

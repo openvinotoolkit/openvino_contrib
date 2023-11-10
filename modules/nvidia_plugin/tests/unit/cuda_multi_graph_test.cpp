@@ -113,7 +113,7 @@ public:
 
         constexpr int64_t axis = CONCAT_AXIS;
         const auto concat =
-            std::make_shared<ngraph::opset1::Concat>(ngraph::helpers::convert2OutputVector({add0, add1}), axis);
+            std::make_shared<ngraph::opset1::Concat>(ov::OutputVector{add0, add1}, axis);
         const auto result = std::make_shared<ngraph::opset1::Result>(concat);
         return std::make_shared<ov::Model>(result, params, "AddConcat");
     }
