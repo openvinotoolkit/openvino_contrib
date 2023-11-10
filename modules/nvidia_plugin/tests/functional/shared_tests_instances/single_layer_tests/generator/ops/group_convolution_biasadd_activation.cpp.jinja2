@@ -21,7 +21,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({{op.cpp_list_input}})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{{op.cpp_activations}})),
+        ::testing::ValuesIn(std::vector<ActivationTypes>{{op.cpp_activations}})),
     {{op.cpp_test_class_name}}::getTestCaseName);
 
 {% endfor -%}
