@@ -1,7 +1,7 @@
 {
   "publisher": "OpenVINO",
   "name": "openvino-code-completion",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "displayName": "OpenVINO Code Completion",
   "description": "VSCode extension for AI code completion with OpenVINO",
   "icon": "media/logo.png",
@@ -171,7 +171,8 @@
             "default": "codet5p-220m-py",
             "enum": [
               "codet5p-220m-py",
-              "decicoder-1b-openvino-int8"
+              "decicoder-1b-openvino-int8",
+              "stablecode-completion-3b-int8"
             ],
             "description": "Which model to use for code generation."
           },
