@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <cuda_operation_base.hpp>
+#include <cuda/graph.hpp>
 #include <kernels/insert.hpp>
 #include <kernels/slice.hpp>
 #include <openvino/op/tensor_iterator.hpp>
@@ -26,6 +27,11 @@ public:
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
+
+    void ExecuteGraph(const InferenceRequestContext& context,
+                      Inputs inputTensors,
+                      Outputs outputTensors,
+                      const Workbuffers& workbuffers);
 
     bool IsCudaGraphCompatible() const override;
 
@@ -55,6 +61,22 @@ private:
             auto* dst = memory_manager_.outputTensorPointers(param_, mutableBuffer)[0].get();
             slice_(stream.get(), src, dst, start_ + iter * stride_);
         }
+
+        void add_kernel_node(TiCudaGraphInfo& info,
+                             const CUDA::Stream& stream,
+                             CUDA::DevicePointer<void*> mutableBuffer,
+                             const IOperationExec::Inputs& inputTensors);
+
+        void update_kernel_node(TiCudaGraphInfo& info,
+                                std::size_t index,
+                                CUDA::DevicePointer<void*> mutableBuffer,
+                                const IOperationExec::Inputs& inputTensors,
+                                int64_t iter) {
+            const auto* src = inputTensors[input_idx_].get();
+            auto* dst = memory_manager_.outputTensorPointers(param_, mutableBuffer)[0].get();
+            info.update_kernel(index, slice_.getPropsPtr(), start_ + iter * stride_, slice_.getSize(), src, dst);
+        }
+
     private:
         uint64_t input_idx_;
         const OperationBase& param_;
@@ -63,6 +85,7 @@ private:
         size_t start_;
         int64_t stride_;
     };
+
     class TransferLauncher {
     public:
         TransferLauncher(const TensorIteratorOp& ti, uint64_t resultIdx, uint64_t paramIdx);
@@ -72,10 +95,12 @@ private:
             const auto& resultTensors = memory_manager_.inputTensorPointers(result_, mutableBuffer);
             auto* dst = paramTensors[0].get();
             const auto* src = resultTensors[0].get();
-
             throwIfError(cudaMemcpyAsync(dst, src, param_size_, cudaMemcpyDeviceToDevice, stream.get()));
         }
 
+        void add_transfer_node(TiCudaGraphInfo& info,
+                               const CUDA::Stream& stream,
+                               CUDA::DevicePointer<void*> mutableBuffer);
 
     private:
         const OperationBase& param_;
@@ -96,6 +121,22 @@ private:
             auto* dst = outputTensors[output_idx_].get();
             insert_(stream.get(), src, dst, start_ + iter * stride_);
         }
+
+        void add_kernel_node(TiCudaGraphInfo& info,
+                             const CUDA::Stream& stream,
+                             CUDA::DevicePointer<void*> mutableBuffer,
+                             const IOperationExec::Outputs& outputTensors);
+
+        void update_kernel_node(TiCudaGraphInfo& info,
+                                std::size_t index,
+                                CUDA::DevicePointer<void*> mutableBuffer,
+                                const IOperationExec::Outputs& outputTensors,
+                                int64_t iter) {
+            const auto* src = memory_manager_.inputTensorPointers(result_, mutableBuffer)[0].get();
+            auto* dst = outputTensors[output_idx_].get();
+            info.update_kernel(index, insert_.getPropsPtr(), start_ + iter * stride_, insert_.getSize(), src, dst);
+        }
+
     private:
         uint64_t output_idx_;
         const OperationBase& result_;
