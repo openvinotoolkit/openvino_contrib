@@ -7,7 +7,7 @@
 #include <openvino/op/op.hpp>
 
 // Takes a ragged tensor with one ragged right-most dimension and produces a normal tensor
-class OPENVINO_API RaggedToDense : public ov::op::Op {
+class RaggedToDense : public ov::op::Op {
 public:
     OPENVINO_OP("RaggedToDense");
 

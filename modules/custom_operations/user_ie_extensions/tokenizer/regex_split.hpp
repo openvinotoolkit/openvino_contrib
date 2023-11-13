@@ -12,7 +12,7 @@ using namespace ov;
 using namespace paddlenlp::fast_tokenizer;
 
 
-class OPENVINO_API RegexSplit : public ov::op::Op {
+class RegexSplit : public ov::op::Op {
 public:
     OPENVINO_OP("RegexSplit");
 

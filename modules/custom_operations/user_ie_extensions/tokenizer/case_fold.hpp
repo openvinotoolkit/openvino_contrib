@@ -6,7 +6,7 @@
 
 #include <openvino/op/op.hpp>
 
-class OPENVINO_API CaseFold  : public ov::op::Op {
+class CaseFold : public ov::op::Op {
 public:
     OPENVINO_OP("CaseFold");
 
