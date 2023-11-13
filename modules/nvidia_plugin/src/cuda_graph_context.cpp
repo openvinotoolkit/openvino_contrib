@@ -7,6 +7,41 @@
 namespace ov {
 namespace nvidia_gpu {
 
+void TiCudaGraphInfo::add_transfer(const CUDA::Stream& stream,
+                                   CUDA::DevicePointer<void*> dst,
+                                   CUDA::DevicePointer<const void*> src,
+                                   std::size_t size) {
+    CUDA::CaptureInfo captureInfo{stream};
+    transferNodes_.emplace_back(captureInfo.addTransferNode(dst, src, size));
+}
+
+void TiCudaGraphInfo::set_params_graph(const CUDA::Graph& graph) {
+    paramsGraph_.emplace(graph);
+    paramsGraphExec_.emplace(graph);
+}
+
+void TiCudaGraphInfo::set_body_graph(const CUDA::Graph& graph) {
+    bodyGraph_.emplace(graph);
+    bodyGraphExec_.emplace(graph);
+}
+
+void TiCudaGraphInfo::set_results_graph(const CUDA::Graph& graph) {
+    resultsGraph_.emplace(graph);
+    resultsGraphExec_.emplace(graph);
+}
+
+void TiCudaGraphInfo::launch_params_graph(const CUDA::Stream& stream) const { paramsGraphExec_.value().launch(stream); }
+
+void TiCudaGraphInfo::launch_body_graph(const CUDA::Stream& stream) const { bodyGraphExec_.value().launch(stream); }
+
+void TiCudaGraphInfo::launch_results_graph(const CUDA::Stream& stream) const {
+    resultsGraphExec_.value().launch(stream);
+}
+
+std::size_t TiCudaGraphInfo::get_transfers_count() const { return transferNodes_.size(); }
+
+std::size_t TiCudaGraphInfo::get_kernels_count() const { return kernelNodes_.size(); }
+
 void CudaGraphContext::reset() {
     graphs_.clear();
     currentGraphIndex_ = 0;
@@ -39,6 +74,8 @@ void CudaGraphContext::add_graph(const CUDA::Graph& graph) {
     OPENVINO_ASSERT(currentGraphIndex_ < graphs_.size(), "Graph index/vector size incosistency");
     graphs_[currentGraphIndex_].set_graph(graph);
 }
+
+TiCudaGraphInfo& CudaGraphContext::get_ti_graph(const std::string& ti_op_name) const { return ti_graphs_[ti_op_name]; }
 
 bool CudaGraphContext::is_initialized() const {
     const auto size = graphs_.size();
