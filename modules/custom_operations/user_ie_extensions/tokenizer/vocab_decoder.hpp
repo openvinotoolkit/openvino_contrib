@@ -6,7 +6,7 @@
 
 #include <openvino/op/op.hpp>
 
-class OPENVINO_API VocabDecoder : public ov::op::Op {
+class VocabDecoder : public ov::op::Op {
 public:
     OPENVINO_OP("VocabDecoder");
 

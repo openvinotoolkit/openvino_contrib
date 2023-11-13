@@ -13,7 +13,7 @@
 using namespace ov;
 using namespace ov::opset10;
 
-class OPENVINO_API RegexNormalization : public ov::op::Op {
+class RegexNormalization : public ov::op::Op {
 public:
     OPENVINO_OP("RegexNormalization");
 

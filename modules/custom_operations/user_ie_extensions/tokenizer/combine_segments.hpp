@@ -6,7 +6,7 @@
 
 #include <openvino/op/op.hpp>
 
-class OPENVINO_API CombineSegments : public ov::op::Op {
+class CombineSegments : public ov::op::Op {
 public:
     OPENVINO_OP("CombineSegments");
 

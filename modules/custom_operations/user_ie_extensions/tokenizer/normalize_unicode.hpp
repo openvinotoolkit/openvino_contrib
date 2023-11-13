@@ -6,7 +6,7 @@
 
 #include <openvino/op/op.hpp>
 
-class OPENVINO_API NormalizeUnicode : public ov::op::Op {
+class NormalizeUnicode : public ov::op::Op {
 public:
     OPENVINO_OP("NormalizeUnicode");
 

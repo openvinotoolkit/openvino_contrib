@@ -6,7 +6,7 @@
 
 #include <openvino/op/op.hpp>
 
-class OPENVINO_API CharsToBytes : public ov::op::Op {
+class CharsToBytes : public ov::op::Op {
 public:
     OPENVINO_OP("CharsToBytes");
 

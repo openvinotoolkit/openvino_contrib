@@ -11,7 +11,7 @@ using namespace paddlenlp::fast_tokenizer;
 
 #undef tokenizer
 
-class OPENVINO_API WordpieceTokenizer : public ov::op::Op {
+class WordpieceTokenizer : public ov::op::Op {
 public:
     OPENVINO_OP("WordpieceTokenizer");
 

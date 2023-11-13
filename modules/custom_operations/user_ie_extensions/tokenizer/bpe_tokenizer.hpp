@@ -13,7 +13,7 @@ using namespace paddlenlp::fast_tokenizer;
 #undef tokenizer
 #undef m_tokenizer
 
-class OPENVINO_API BPETokenizer : public ov::op::Op {
+class BPETokenizer : public ov::op::Op {
 public:
     OPENVINO_OP("BPETokenizer");
 

@@ -9,7 +9,7 @@
 
 const std::array<std::vector<uint8_t>, 256> create_bytes_to_chars_map();
 
-class OPENVINO_API BytesToChars : public ov::op::Op {
+class BytesToChars : public ov::op::Op {
 public:
     OPENVINO_OP("BytesToChars");
 
