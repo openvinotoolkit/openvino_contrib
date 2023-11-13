@@ -10,9 +10,10 @@
 
 #include "unsymmetrical_comparer.hpp"
 
-namespace LayerTestsDefinitions {
-
 using ov::test::utils::InputLayerType;
+using ov::test::utils::SequenceTestsMode;
+
+namespace LayerTestsDefinitions {
 
 class CUDNNGRUSequenceTest : public UnsymmetricalComparer<GRUSequenceTest> {
 public:
@@ -120,7 +121,7 @@ public:
         ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(gru_sequence->output(0)),
                                  std::make_shared<ngraph::opset1::Result>(gru_sequence->output(1))};
         function = std::make_shared<ngraph::Function>(results, params, "gru_sequence");
-        bool ti_found = is_tensor_iterator_exist(function);
+        bool ti_found = ngraph::helpers::is_tensor_iterator_exist(function);
         EXPECT_EQ(ti_found, false);
     }
 
@@ -150,7 +151,6 @@ TEST_P(LPCNetCUDNNGRUSequenceTest, CompareWithRefs) {
 using namespace LayerTestsDefinitions;
 
 namespace {
-using ov::test::utils::SequenceTestsMode
 SequenceTestsMode mode{SequenceTestsMode::PURE_SEQ};
 // output values increase rapidly without clip, so use only seq_lengths = 2
 std::vector<size_t> seq_lengths{1, 2, 5, 10};

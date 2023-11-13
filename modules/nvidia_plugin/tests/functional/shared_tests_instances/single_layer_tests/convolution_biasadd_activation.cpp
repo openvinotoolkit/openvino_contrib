@@ -21,7 +21,7 @@
 #include "average_finder.hpp"
 
 namespace LayerTestsDefinitions {
-usign ov::test::utils::ActivationTypes;
+using ov::test::utils::ActivationTypes;
 
 constexpr uint32_t RANGE = 10;
 constexpr int32_t START_FROM = -5;

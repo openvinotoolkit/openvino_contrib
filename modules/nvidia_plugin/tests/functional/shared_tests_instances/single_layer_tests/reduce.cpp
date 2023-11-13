@@ -10,7 +10,7 @@
 
 namespace {
 using namespace LayerTestsDefinitions;
-using ov::test::utils::ReductionTypel
+using ov::test::utils::ReductionType;
 
 const std::vector<InferenceEngine::Precision> netPrecisions = {
     InferenceEngine::Precision::FP32,

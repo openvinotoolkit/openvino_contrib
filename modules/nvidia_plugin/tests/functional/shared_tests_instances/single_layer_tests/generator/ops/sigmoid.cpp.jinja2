@@ -4,7 +4,7 @@ INSTANTIATE_TEST_CASE_P(
     {{op.cpp_test_name}},
     {{op.cpp_test_class_name}},
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Sigmoid, 0}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Sigmoid, 0}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({{op.cpp_net_precisions}})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),

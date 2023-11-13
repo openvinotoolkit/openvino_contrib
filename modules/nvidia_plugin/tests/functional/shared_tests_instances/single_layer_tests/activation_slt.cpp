@@ -1634,7 +1634,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Sigmoid_2d_unet_graph_transform_cuda_opid82,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Sigmoid, 0}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Sigmoid, 0}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -1653,7 +1653,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Sigmoid_3d_unet_graph_transform_cuda_opid82,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Sigmoid, 0}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Sigmoid, 0}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -1672,7 +1672,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Sigmoid_ssd_mobilenet_v2_coco_opid420,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Sigmoid, 0}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Sigmoid, 0}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -1691,7 +1691,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Sigmoid_efficientdet_d1_tf_opid499,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Sigmoid, 0}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Sigmoid, 0}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -1710,7 +1710,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Sigmoid_efficientdet_d1_tf_opid103,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Sigmoid, 0}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Sigmoid, 0}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -1729,7 +1729,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Sigmoid_efficientdet_d1_tf_opid48,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Sigmoid, 0}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Sigmoid, 0}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -1748,7 +1748,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Sigmoid_efficientdet_d1_tf_opid638,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Sigmoid, 0}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Sigmoid, 0}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -1767,7 +1767,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Sigmoid_efficientdet_d1_tf_opid186,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Sigmoid, 0}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Sigmoid, 0}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -1786,7 +1786,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Sigmoid_yolov5_640x640_IR_opid516,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Sigmoid, 0}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Sigmoid, 0}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -1805,7 +1805,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Sigmoid_yolov5_640x640_IR_opid431,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Sigmoid, 0}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Sigmoid, 0}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -1824,7 +1824,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Sigmoid_yolov5_640x640_IR_opid346,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Sigmoid, 0}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Sigmoid, 0}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -1843,7 +1843,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Sigmoid_efficientdet_d1_tf_opid26,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Sigmoid, 0}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Sigmoid, 0}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -1862,7 +1862,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Sigmoid_efficientdet_d1_tf_opid273,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Sigmoid, 0}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Sigmoid, 0}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -1881,7 +1881,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Sigmoid_efficientdet_d1_tf_opid384,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Sigmoid, 0}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Sigmoid, 0}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -1900,7 +1900,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Sigmoid_efficientdet_d1_tf_opid1435,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Sigmoid, 0}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Sigmoid, 0}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -1919,7 +1919,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Sigmoid_efficientdet_d1_tf_opid76,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Sigmoid, 0}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Sigmoid, 0}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -1938,7 +1938,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Sigmoid_mask_rcnn_inception_v2_coco_opid581,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Sigmoid, 0}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Sigmoid, 0}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -1957,7 +1957,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Sigmoid_GAN_opid102,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Sigmoid, 0}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Sigmoid, 0}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -1991,7 +1991,7 @@ auto listToVectors(const std::initializer_list<std::initializer_list<std::size_t
 }
 
 const auto basicTanhCases =
-    ::testing::Combine(::testing::Values(std::pair<ActivationTypes, float>{Tanh, 0}),
+    ::testing::Combine(::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Tanh, 0}),
                        ::testing::Values(InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -2014,18 +2014,18 @@ using Precisions = std::initializer_list<InferenceEngine::Precision>;
 
 // ------------- Clamp Smoke -------------
 
-const std::initializer_list<ClampParams> clampParamsSmoke{{Clamp, {0.0, 10.1}},
-                                                          {Clamp, {0.0, 10.5}},
-                                                          {Clamp, {0.0, 20.4}},
-                                                          {Clamp, {0.0, 23.999}},
-                                                          {Clamp, {0.0, 100.0}},
-                                                          {Clamp, {-1.0, 0.0}},
-                                                          {Clamp, {-20.1, -10.5}},
-                                                          {Clamp, {-10.0, 10.0}},
-                                                          {Clamp, {10.3, 20.4}},
-                                                          {Clamp, {0.1, 10.1}},
-                                                          {Clamp, {10.0, 100.0}},
-                                                          {Clamp, {10.6, 20.6}}};
+const std::initializer_list<ClampParams> clampParamsSmoke{{ActivationTypes::Clamp, {0.0, 10.1}},
+                                                          {ActivationTypes::Clamp, {0.0, 10.5}},
+                                                          {ActivationTypes::Clamp, {0.0, 20.4}},
+                                                          {ActivationTypes::Clamp, {0.0, 23.999}},
+                                                          {ActivationTypes::Clamp, {0.0, 100.0}},
+                                                          {ActivationTypes::Clamp, {-1.0, 0.0}},
+                                                          {ActivationTypes::Clamp, {-20.1, -10.5}},
+                                                          {ActivationTypes::Clamp, {-10.0, 10.0}},
+                                                          {ActivationTypes::Clamp, {10.3, 20.4}},
+                                                          {ActivationTypes::Clamp, {0.1, 10.1}},
+                                                          {ActivationTypes::Clamp, {10.0, 100.0}},
+                                                          {ActivationTypes::Clamp, {10.6, 20.6}}};
 
 const Precisions clampNetPrcSmoke{InferenceEngine::Precision::FP32,
                                   InferenceEngine::Precision::FP16,
@@ -2086,7 +2086,7 @@ using AutogenClampParams = std::pair<
 // Out:    (1, 128, 1, 1)
 // Operators: 'ssd_mobilenet_v2_coco:opid357' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid357_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 128, 1, 1}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 128, 1, 1}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid357,
     ActivationLayerTest,
@@ -2107,7 +2107,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 128, 2, 2)
 // Operators: 'ssd_mobilenet_v2_coco:opid329' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid329_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 128, 2, 2}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 128, 2, 2}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid329,
     ActivationLayerTest,
@@ -2128,7 +2128,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 128, 3, 3)
 // Operators: 'ssd_mobilenet_v2_coco:opid306' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid324' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid306_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 128, 3, 3}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 128, 3, 3}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid306,
     ActivationLayerTest,
@@ -2149,7 +2149,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 128, 5, 5)
 // Operators: 'ssd_mobilenet_v2_coco:opid301' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid301_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 128, 5, 5}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 128, 5, 5}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid301,
     ActivationLayerTest,
@@ -2170,7 +2170,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 1280, 10, 10)
 // Operators: 'ssd_mobilenet_v2_coco:opid265' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid265_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 1280, 10, 10}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 1280, 10, 10}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid265,
     ActivationLayerTest,
@@ -2191,7 +2191,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 144, 38, 38)
 // Operators: 'ssd_mobilenet_v2_coco:opid57' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid57_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 144, 38, 38}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 144, 38, 38}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid57,
     ActivationLayerTest,
@@ -2212,7 +2212,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 144, 75, 75)
 // Operators: 'ssd_mobilenet_v2_coco:opid37' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid42' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid52' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid37_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 144, 75, 75}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 144, 75, 75}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid37,
     ActivationLayerTest,
@@ -2233,7 +2233,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 192, 19, 19)
 // Operators: 'ssd_mobilenet_v2_coco:opid101' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid101_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 192, 19, 19}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 192, 19, 19}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid101,
     ActivationLayerTest,
@@ -2254,7 +2254,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 192, 38, 38)
 // Operators: 'ssd_mobilenet_v2_coco:opid66' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid71' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid81' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid86' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid96' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid66_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 192, 38, 38}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 192, 38, 38}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid66,
     ActivationLayerTest,
@@ -2275,7 +2275,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 256, 10, 10)
 // Operators: 'ssd_mobilenet_v2_coco:opid278' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid278_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 256, 10, 10}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 256, 10, 10}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid278,
     ActivationLayerTest,
@@ -2296,7 +2296,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 256, 2, 2)
 // Operators: 'ssd_mobilenet_v2_coco:opid334' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid334_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 256, 2, 2}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 256, 2, 2}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid334,
     ActivationLayerTest,
@@ -2317,7 +2317,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 256, 3, 3)
 // Operators: 'ssd_mobilenet_v2_coco:opid311' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid311_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 256, 3, 3}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 256, 3, 3}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid311,
     ActivationLayerTest,
@@ -2338,7 +2338,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 256, 5, 5)
 // Operators: 'ssd_mobilenet_v2_coco:opid283' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid283_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 256, 5, 5}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 256, 5, 5}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid283,
     ActivationLayerTest,
@@ -2359,7 +2359,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 32, 150, 150)
 // Operators: 'ssd_mobilenet_v2_coco:opid14' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid9' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid14_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 32, 150, 150}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 32, 150, 150}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid14,
     ActivationLayerTest,
@@ -2380,7 +2380,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 384, 19, 19)
 // Operators: 'ssd_mobilenet_v2_coco:opid110' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid115' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid125' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid130' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid140' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid145' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid155' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid160' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid110_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 384, 19, 19}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 384, 19, 19}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid110,
     ActivationLayerTest,
@@ -2401,7 +2401,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 512, 5, 5)
 // Operators: 'ssd_mobilenet_v2_coco:opid288' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid288_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 512, 5, 5}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 512, 5, 5}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid288,
     ActivationLayerTest,
@@ -2422,7 +2422,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 512, 50, 86)
 // Operators: 'mask_rcnn_inception_v2_coco:opid277' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_mask_rcnn_inception_v2_coco_opid277_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 512, 50, 86}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 512, 50, 86}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_mask_rcnn_inception_v2_coco_opid277,
     ActivationLayerTest,
@@ -2443,7 +2443,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 576, 10, 10)
 // Operators: 'ssd_mobilenet_v2_coco:opid212' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid212_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 576, 10, 10}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 576, 10, 10}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid212,
     ActivationLayerTest,
@@ -2464,7 +2464,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 576, 19, 19)
 // Operators: 'ssd_mobilenet_v2_coco:opid169' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid174' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid184' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid189' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid199' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid169_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 576, 19, 19}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 576, 19, 19}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid169,
     ActivationLayerTest,
@@ -2485,7 +2485,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 64, 1, 1)
 // Operators: 'ssd_mobilenet_v2_coco:opid352' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid352_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 64, 1, 1}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 64, 1, 1}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid352,
     ActivationLayerTest,
@@ -2506,7 +2506,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 64, 2, 2)
 // Operators: 'ssd_mobilenet_v2_coco:opid347' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid347_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 64, 2, 2}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 64, 2, 2}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid347,
     ActivationLayerTest,
@@ -2527,7 +2527,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 96, 150, 150)
 // Operators: 'ssd_mobilenet_v2_coco:opid23' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid23_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 96, 150, 150}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 96, 150, 150}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid23,
     ActivationLayerTest,
@@ -2548,7 +2548,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 96, 75, 75)
 // Operators: 'ssd_mobilenet_v2_coco:opid28' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid28_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 96, 75, 75}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 96, 75, 75}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid28,
     ActivationLayerTest,
@@ -2569,7 +2569,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 960, 10, 10)
 // Operators: 'ssd_mobilenet_v2_coco:opid221' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid226' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid236' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid241' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid251' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid256' [FP16, FP32]
 const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid221_params =
-	{{Clamp, {0.0, 6.0}}, {{1, 960, 10, 10}, {}}};
+	{{ActivationTypes::Clamp, {0.0, 6.0}}, {{1, 960, 10, 10}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid221,
     ActivationLayerTest,
@@ -2618,7 +2618,7 @@ namespace benchmark {
 
 // ------------- Clamp Big shapes-------------
 
-const ClampParams clampParamsBig{Clamp, {0.0, 10.0}};
+const ClampParams clampParamsBig{ActivationTypes::Clamp, {0.0, 10.0}};
 
 const Precisions clampNetPrcBig{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16};
 
@@ -2753,7 +2753,7 @@ TEST_F(ClampBenchmark, DISABLED_benchmark) {
 
 // ------------- Swish -------------
 const std::initializer_list<std::pair<ActivationTypes, std::vector<float>>> smoke_SwishParams{
-    {Swish, {0.59}}, {Swish, {1.0}}, {Swish, {-3.277}}};
+    {ActivationTypes::Swish, {0.59}}, {ActivationTypes::Swish, {1.0}}, {ActivationTypes::Swish, {-3.277}}};
 
 const std::initializer_list<std::initializer_list<std::size_t>> smoke_SwishShapes{
     {1},
@@ -2786,7 +2786,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid181,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -2805,7 +2805,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid482,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -2824,7 +2824,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_yolov5_640x640_FP32_IR_opid134,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -2843,7 +2843,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_yolov5_640x640_FP32_IR_opid124,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -2862,7 +2862,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid114,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -2881,7 +2881,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid147,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -2900,7 +2900,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid36,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -2919,7 +2919,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid621,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -2938,7 +2938,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid268,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -2957,7 +2957,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid234,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -2976,7 +2976,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid169,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -2995,7 +2995,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_yolov5_640x640_FP32_IR_opid188,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3014,7 +3014,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_yolov5_640x640_FP32_IR_opid129,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3033,7 +3033,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid379,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3052,7 +3052,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_yolov5_640x640_FP32_IR_opid48,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3071,7 +3071,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid14,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3090,7 +3090,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid43,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3109,7 +3109,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid494,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3128,7 +3128,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid256,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3147,7 +3147,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_yolov5_640x640_FP32_IR_opid183,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3166,7 +3166,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid126,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3185,7 +3185,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_yolov5_640x640_FP32_IR_opid43,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3204,7 +3204,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_yolov5_640x640_FP32_IR_opid101,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3223,7 +3223,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid460,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3242,7 +3242,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid367,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3261,7 +3261,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid21,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3280,7 +3280,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid633,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3299,7 +3299,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid1017,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3318,7 +3318,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid1029,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3337,7 +3337,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid1041,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3356,7 +3356,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid1005,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3375,7 +3375,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid1053,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3394,7 +3394,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid64,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3413,7 +3413,7 @@ INSTANTIATE_TEST_CASE_P(
     autogen_Swish_efficientdet_d1_tf_opid59,
     ActivationLayerTest,
     ::testing::Combine(
-        ::testing::Values(std::pair<ActivationTypes, float>{Swish, {1.0}}),
+        ::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Swish, {1.0}}),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -3433,7 +3433,7 @@ const std::initializer_list<std::initializer_list<std::size_t>> Floor_shapes = {
 INSTANTIATE_TEST_CASE_P(
     Floor_Yolov5s,
     ActivationLayerTest,
-    ::testing::Combine(::testing::Values(std::pair<ActivationTypes, float>{Floor, 0}),
+    ::testing::Combine(::testing::Values(std::pair<ActivationTypes, float>{ActivationTypes::Floor, 0}),
                        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32,
                                                                                     InferenceEngine::Precision::FP16})),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
