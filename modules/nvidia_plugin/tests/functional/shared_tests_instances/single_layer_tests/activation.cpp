@@ -71,18 +71,18 @@ class CUDAActivationIntegerLayerTest : public ActivationLayerTest {
 
 // List of operations that should be tested also with integer precision
 const std::map<ActivationTypes, std::vector<std::vector<float>>> intActivationTypes = {
-    {Abs, {}},
-    {Negative, {}},
-    {Cos, {}},
-    {Cosh, {}},
-    {Sinh, {}},
-    {Sqrt, {}},
-    {Log, {}},
+    {ActivationTypes::Abs, {}},
+    {ActivationTypes::Negative, {}},
+    {ActivationTypes::Cos, {}},
+    {ActivationTypes::Cosh, {}},
+    {ActivationTypes::Sinh, {}},
+    {ActivationTypes::Sqrt, {}},
+    {ActivationTypes::Log, {}},
 };
 
 const std::map<ActivationTypes, std::vector<std::vector<float>>> preluActivationParamTypes = {
-    {PReLu, {{}}},  // Slope will be filled with increasing values from -10 to match slope input shape
-    {LeakyRelu, {{0.01f}}}};
+    {ActivationTypes::PReLu, {{}}},  // Slope will be filled with increasing values from -10 to match slope input shape
+    {ActivationTypes::LeakyRelu, {{0.01f}}}};
 
 std::map<std::vector<size_t>, std::vector<std::vector<size_t>>> basic = {
     {{1, 50}, {{}}},
