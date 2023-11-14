@@ -55,6 +55,7 @@ CudaGraphTopologyRunner::CudaGraphTopologyRunner(const CreationContext& context,
 
 void CudaGraphTopologyRunner::Run(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const {
     const auto& stream = context.getThreadContext().stream();
+    auto& graphContext = context.getCudaGraphContext();
     std::size_t graphIndex = 0;
     for (auto& subgraph : subgraphs_) {
         if (auto ti = getTI(subgraph)) {
@@ -63,9 +64,12 @@ void CudaGraphTopologyRunner::Run(InferenceRequestContext& context, const Device
             const auto& inputTensors = memoryManager.inputTensorPointers(*ti, mutableBuffer);
             const auto& outputTensors = memoryManager.outputTensorPointers(*ti, mutableBuffer);
             const auto& workBuffers = memoryManager.workBuffers(*ti, mutableBuffer);
+            graphContext.select_current_graph(graphIndex);
             ti->ExecuteGraph(context, inputTensors, outputTensors, workBuffers);
+            graphIndex++;
         } else if (subgraph.IsCudaGraphCompatible()) {
-            context.getCudaGraphContext().launch(graphIndex, stream);
+            graphContext.select_current_graph(graphIndex);
+            graphContext.get_current_graph_info().launch(stream);
             graphIndex++;
         } else {
             Workbuffers workbuffers{};
@@ -85,20 +89,19 @@ void CudaGraphTopologyRunner::Capture(InferenceRequestContext& context,
         Workbuffers workbuffers{};
         workbuffers.mutable_buffers.emplace_back(memoryBlock.view().data());
         if (getTI(subgraph)) {
+            graphContext.add_new_graph_info();
             subgraph.Capture(context, {}, {}, workbuffers);
         } else if (subgraph.IsCudaGraphCompatible()) {
-            graphContext.start_next_graph_addition();
+            graphContext.add_new_graph_info();
             CUDA::GraphCapture capture{stream};
             {
                 auto scope = capture.getScope();
                 subgraph.Capture(context, {}, {}, workbuffers);
             }
             const auto& graph = capture.getGraph();
-            graphContext.add_graph(graph);
+            graphContext.set_current_graph(graph);
         }
     }
-    // OPENVINO_ASSERT(graphContext.get_graphs_count() == GetCudaGraphsCount(),
-    //                 "CudaGraphTopologyRunner/CudaGraphContext graphs count mismatch");
 }
 
 const SubGraph& CudaGraphTopologyRunner::GetSubGraph() const {

@@ -207,7 +207,7 @@ void TensorIteratorOp::Execute(const InferenceRequestContext& context,
     }
 }
 
-void TensorIteratorOp::ExecuteGraph(const InferenceRequestContext& context,
+void TensorIteratorOp::ExecuteGraph(InferenceRequestContext& context,
                                     Inputs inputTensors,
                                     Outputs outputTensors,
                                     const Workbuffers& workbuffers) {
@@ -215,24 +215,24 @@ void TensorIteratorOp::ExecuteGraph(const InferenceRequestContext& context,
     const auto& memoryManager = *memory_manager_;
     const auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
 
-    auto& tiGraphInfo = context.getCudaGraphContext().get_ti_graph(GetName());
+    auto& graphInfo = context.getCudaGraphContext().get_current_graph_info();
 
-    tiGraphInfo.launch_params_graph(stream);
+    graphInfo.launch_params_graph(stream);
 
-    OPENVINO_ASSERT(tiGraphInfo.get_kernels_count() == slices_.size() + inserts_.size(),
+    OPENVINO_ASSERT(graphInfo.get_kernels_count() == slices_.size() + inserts_.size(),
                     "CudaGraphContext/TensorIteratorOp slices or inserts count incosistency");
 
     for (int64_t iter = 0; iter < num_iterations_; ++iter) {
         for (std::size_t i = 0; i < slices_.size(); ++i) {
-            slices_[i].update_kernel_node(tiGraphInfo, i, mutableBuffer, inputTensors, iter);
+            slices_[i].update_kernel_node(graphInfo, i, mutableBuffer, inputTensors, iter);
         }
         for (std::size_t i = 0; i < inserts_.size(); ++i) {
-            inserts_[i].update_kernel_node(tiGraphInfo, i + slices_.size(), mutableBuffer, outputTensors, iter);
+            inserts_[i].update_kernel_node(graphInfo, i + slices_.size(), mutableBuffer, outputTensors, iter);
         }
-        tiGraphInfo.launch_body_graph(stream);
+        graphInfo.launch(stream);
     }
 
-    tiGraphInfo.launch_results_graph(stream);
+    graphInfo.launch_results_graph(stream);
 }
 
 bool TensorIteratorOp::IsCudaGraphCompatible() const {
@@ -254,7 +254,7 @@ void TensorIteratorOp::Capture(InferenceRequestContext& context,
     auto& executionDelegator = context.getExecutionDelegator();
     executionDelegator.set_stream(stream);
 
-    auto& tiGraphInfo = context.getCudaGraphContext().get_ti_graph(GetName());
+    auto& graphInfo = context.getCudaGraphContext().get_current_graph_info();
     CUDA::GraphCapture capture{stream};
     {
         auto scope = capture.getScope();
@@ -269,12 +269,12 @@ void TensorIteratorOp::Capture(InferenceRequestContext& context,
             }
         }
     }
-    tiGraphInfo.set_params_graph(capture.getGraph());
+    graphInfo.set_params_graph(capture.getGraph());
     {
         auto scope = capture.getScope();
         // Input mapping of ports
         for (auto& slice : slices_) {
-            slice.add_kernel_node(tiGraphInfo, stream, mutableBuffer, inputTensors);
+            slice.add_kernel_node(graphInfo, stream, mutableBuffer, inputTensors);
         }
 
         // Inner loop
@@ -282,15 +282,15 @@ void TensorIteratorOp::Capture(InferenceRequestContext& context,
 
         // Back-edge mapping
         for (auto& transfer : transfers_) {
-            transfer.add_transfer_node(tiGraphInfo, stream, mutableBuffer);
+            transfer.add_transfer_node(graphInfo, stream, mutableBuffer);
         }
 
         // Output mapping of ports
         for (auto& insert : inserts_) {
-            insert.add_kernel_node(tiGraphInfo, stream, mutableBuffer, outputTensors);
+            insert.add_kernel_node(graphInfo, stream, mutableBuffer, outputTensors);
         }
     }
-    tiGraphInfo.set_body_graph(capture.getGraph());
+    graphInfo.set_graph(capture.getGraph());
     {
         auto scope = capture.getScope();
         // Copy data to output
@@ -301,7 +301,7 @@ void TensorIteratorOp::Capture(InferenceRequestContext& context,
             }
         }
     }
-    tiGraphInfo.set_results_graph(capture.getGraph());
+    graphInfo.set_results_graph(capture.getGraph());
 }
 
 TensorIteratorOp::SliceLauncher::SliceLauncher(const TensorIteratorOp& ti, uint64_t inputIdx, uint64_t paramIdx)
@@ -316,7 +316,7 @@ TensorIteratorOp::SliceLauncher::SliceLauncher(const TensorIteratorOp& ti, uint6
     stride_ = portMap.stride;
 }
 
-void TensorIteratorOp::SliceLauncher::add_kernel_node(TiCudaGraphInfo& info,
+void TensorIteratorOp::SliceLauncher::add_kernel_node(CudaGraphInfo& info,
                                                       const CUDA::Stream& stream,
                                                       CUDA::DevicePointer<void*> mutableBuffer,
                                                       const IOperationExec::Inputs& inputTensors) {
@@ -340,7 +340,7 @@ TensorIteratorOp::TransferLauncher::TransferLauncher(const TensorIteratorOp& ti,
     OPENVINO_ASSERT(param_size_ == resultSize, "Node name: ", ti.GetName());
 }
 
-void TensorIteratorOp::TransferLauncher::add_transfer_node(TiCudaGraphInfo& info,
+void TensorIteratorOp::TransferLauncher::add_transfer_node(CudaGraphInfo& info,
                                                            const CUDA::Stream& stream,
                                                            CUDA::DevicePointer<void*> mutableBuffer) {
     const auto& paramTensors = memory_manager_.outputTensorPointers(param_, mutableBuffer);
@@ -364,7 +364,7 @@ TensorIteratorOp::InsertLauncher::InsertLauncher(const TensorIteratorOp& ti,
     stride_ = portMap.stride;
 }
 
-void TensorIteratorOp::InsertLauncher::add_kernel_node(TiCudaGraphInfo& info,
+void TensorIteratorOp::InsertLauncher::add_kernel_node(CudaGraphInfo& info,
                                                        const CUDA::Stream& stream,
                                                        CUDA::DevicePointer<void*> mutableBuffer,
                                                        const IOperationExec::Outputs& outputTensors) {

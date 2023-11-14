@@ -28,7 +28,7 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
-    void ExecuteGraph(const InferenceRequestContext& context,
+    void ExecuteGraph(InferenceRequestContext& context,
                       Inputs inputTensors,
                       Outputs outputTensors,
                       const Workbuffers& workbuffers);
@@ -62,12 +62,12 @@ private:
             slice_(stream.get(), src, dst, start_ + iter * stride_);
         }
 
-        void add_kernel_node(TiCudaGraphInfo& info,
+        void add_kernel_node(CudaGraphInfo& info,
                              const CUDA::Stream& stream,
                              CUDA::DevicePointer<void*> mutableBuffer,
                              const IOperationExec::Inputs& inputTensors);
 
-        void update_kernel_node(TiCudaGraphInfo& info,
+        void update_kernel_node(CudaGraphInfo& info,
                                 std::size_t index,
                                 CUDA::DevicePointer<void*> mutableBuffer,
                                 const IOperationExec::Inputs& inputTensors,
@@ -98,7 +98,7 @@ private:
             throwIfError(cudaMemcpyAsync(dst, src, param_size_, cudaMemcpyDeviceToDevice, stream.get()));
         }
 
-        void add_transfer_node(TiCudaGraphInfo& info,
+        void add_transfer_node(CudaGraphInfo& info,
                                const CUDA::Stream& stream,
                                CUDA::DevicePointer<void*> mutableBuffer);
 
@@ -122,12 +122,12 @@ private:
             insert_(stream.get(), src, dst, start_ + iter * stride_);
         }
 
-        void add_kernel_node(TiCudaGraphInfo& info,
+        void add_kernel_node(CudaGraphInfo& info,
                              const CUDA::Stream& stream,
                              CUDA::DevicePointer<void*> mutableBuffer,
                              const IOperationExec::Outputs& outputTensors);
 
-        void update_kernel_node(TiCudaGraphInfo& info,
+        void update_kernel_node(CudaGraphInfo& info,
                                 std::size_t index,
                                 CUDA::DevicePointer<void*> mutableBuffer,
                                 const IOperationExec::Outputs& outputTensors,
