@@ -5,7 +5,7 @@
 import logging
 from typing import Dict, Optional, Sequence, Tuple, Union
 
-from openvino import Model
+from openvino import Model, Type
 from openvino.preprocess import PrePostProcessor
 from openvino.runtime import opset12 as opset
 
@@ -92,3 +92,10 @@ def add_greedy_decoding(text_generation_model: Model, logits_output: str = LOGIT
     model = ppp.build()
     model.output(logits_output).tensor.set_names({TOKEN_IDS_OUTPUT_NAME})
     return model
+
+
+def change_outputs_type(model: Model, output_type: Type) -> Model:
+    ppp = PrePostProcessor(model)
+    for idx, _ in enumerate(model.outputs):
+        ppp.output(idx).tensor().set_element_type(output_type)
+    return ppp.build()
