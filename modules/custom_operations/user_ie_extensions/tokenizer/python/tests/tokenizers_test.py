@@ -46,6 +46,13 @@ emoji_test_strings = [
     "🤷‍♂️",
     "🤦🏼‍♂️",
 ]
+misc_strings = [
+    "",
+    " ",
+    " " * 10,
+    "\n",
+    " \t\n",
+]
 
 wordpiece_models = [
     "bert-base-multilingual-cased",
@@ -93,7 +100,10 @@ sentencepiece_models = [
     "xlnet-base-cased",
     # "t5-base",  # crashes tests
 ]
-tiktiken_models = ["Qwen/Qwen-14B-Chat"]
+tiktiken_models = [
+    "Qwen/Qwen-14B-Chat",
+    "Salesforce/xgen-7b-8k-base",
+]
 
 
 def get_tokenizer(request, fast_tokenizer=True, trust_remote_code=False):
@@ -141,7 +151,7 @@ def sentencepice_model_tokenizers(request, fast_tokenizer):
 
 
 @pytest.fixture(scope="session", params=tiktiken_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
-def tiktoken_model_tokenizers(request, fast_tokenizer):
+def tiktoken_model_tokenizers(request):
     return get_tokenizer(request, trust_remote_code=True)
 
 
@@ -151,9 +161,10 @@ def tiktoken_model_tokenizers(request, fast_tokenizer):
         *eng_test_strings,
         *multilingual_test_strings,
         *emoji_test_strings,
+        *misc_strings,
     ],
 )
-def test_hf_wordpiece_tokenizers_outputs(hf_and_ov_wordpiece_tokenizers, test_string):
+def test_hf_wordpiece_tokenizers(hf_and_ov_wordpiece_tokenizers, test_string):
     hf_tokenizer, ov_tokenizer = hf_and_ov_wordpiece_tokenizers
     packed_strings = pack_strings([test_string])
 
@@ -170,6 +181,7 @@ def test_hf_wordpiece_tokenizers_outputs(hf_and_ov_wordpiece_tokenizers, test_st
         eng_test_strings,
         multilingual_test_strings,
         emoji_test_strings,
+        misc_strings,
     ],
 )
 def test_hf_wordpiece_tokenizers_multiple_strings(hf_and_ov_wordpiece_tokenizers, test_string):
@@ -189,6 +201,7 @@ def test_hf_wordpiece_tokenizers_multiple_strings(hf_and_ov_wordpiece_tokenizers
         *eng_test_strings,
         *multilingual_test_strings,
         *emoji_test_strings,
+        *misc_strings,
     ],
 )
 def test_sentencepiece_model_tokenizer(sentencepice_model_tokenizers, test_string):
@@ -207,6 +220,7 @@ def test_sentencepiece_model_tokenizer(sentencepice_model_tokenizers, test_strin
         *eng_test_strings,
         *multilingual_test_strings,
         *emoji_test_strings,
+        *misc_strings,
     ],
 )
 def test_sentencepiece_model_detokenizer(sentencepice_model_tokenizers, test_string):
@@ -225,6 +239,7 @@ def test_sentencepiece_model_detokenizer(sentencepice_model_tokenizers, test_str
         *eng_test_strings,
         *multilingual_test_strings,
         *emoji_test_strings,
+        *misc_strings,
     ],
 )
 def test_hf_bpe_tokenizers_outputs(hf_and_ov_bpe_tokenizers, test_string):
@@ -235,9 +250,8 @@ def test_hf_bpe_tokenizers_outputs(hf_and_ov_bpe_tokenizers, test_string):
     ov_tokenized = ov_tokenizer(packed_strings)
 
     for output_name, hf_result in hf_tokenized.items():
-        ov_result = ov_tokenized.get(output_name)
         # galactica tokenizer has 3 output, but model has 2 inputs
-        if ov_result is not None:
+        if (ov_result := ov_tokenized.get(output_name)) is not None:
             assert np.all(ov_result == hf_result), f"{hf_result}\n{ov_result}"
 
 
@@ -247,6 +261,7 @@ def test_hf_bpe_tokenizers_outputs(hf_and_ov_bpe_tokenizers, test_string):
         *eng_test_strings,
         *multilingual_test_strings,
         *emoji_test_strings,
+        *misc_strings,
     ],
 )
 def test_bpe_detokenizer(hf_and_ov_bpe_detokenizer, test_string):
@@ -259,20 +274,22 @@ def test_bpe_detokenizer(hf_and_ov_bpe_detokenizer, test_string):
     assert ov_output == hf_output
 
 
-@pytest.mark.skip(reason="tiktoken tokenizer is WIP")
+# @pytest.mark.skip(reason="tiktoken tokenizer is WIP")
 @pytest.mark.parametrize(
     "test_string",
     [
         *eng_test_strings,
         *multilingual_test_strings,
         *emoji_test_strings,
+        *misc_strings,
     ],
 )
-def test_tiktoken_tokenizers_output(tiktoken_model_tokenizers, test_string):
+def test_tiktoken_tokenizers(tiktoken_model_tokenizers, test_string):
     hf_tokenizer, ov_tokenizer = tiktoken_model_tokenizers
 
     hf_tokenized = hf_tokenizer(test_string, return_tensors="np")
     ov_tokenized = ov_tokenizer(pack_strings([test_string]))
 
     for output_name, hf_result in hf_tokenized.items():
-        assert np.all((ov_result := ov_tokenized[output_name]) == hf_result), f"{hf_result}\n{ov_result}"
+        if (ov_result := ov_tokenized.get(output_name)) is not None:
+            assert np.all(ov_result == hf_result), f"{hf_result}\n{ov_result}"

@@ -409,7 +409,14 @@ def get_sp_decoder(sp_model_node: Node, streaming_decoder: bool = False) -> Mode
 
 
 def is_tiktoken_model(hf_tokenizer: "PreTrainedTokenizerBase") -> bool:
-    return getattr(hf_tokenizer, "vocab_files_names", {}).get("vocab_file", "").endswith(".tiktoken")
+    try:
+        from tiktoken import Encoding
+    except ImportError:
+        return False
+
+    return getattr(hf_tokenizer, "vocab_files_names", {}).get("vocab_file", "").endswith(".tiktoken") or isinstance(
+        getattr(hf_tokenizer, "encoder", None), Encoding
+    )
 
 
 def convert_tiktoken_model_tokenizer(
@@ -418,7 +425,7 @@ def convert_tiktoken_model_tokenizer(
     with_decoder: bool = False,
     streaming_decoder: bool = False,
 ) -> Union[Model, Tuple[Model, Model]]:
-    encoding = hf_tokenizer.tokenizer
+    encoding = getattr(hf_tokenizer, "tokenizer", None) or hf_tokenizer.encoder
     split_pattern = encoding._pat_str
 
     pipeline = TokenizerPipeline()
@@ -426,6 +433,7 @@ def convert_tiktoken_model_tokenizer(
         [
             NormalizeUnicode("NFC"),
             RegexSplitStep(split_pattern),
+            BytesToCharsStep(),
             BPETokenizationStep.from_tiktoken_encoding(encoding),
             TruncationStep(
                 max_length=hf_tokenizer.model_max_length, truncate_right=(hf_tokenizer.truncation_side == "right")
@@ -433,5 +441,4 @@ def convert_tiktoken_model_tokenizer(
             PaddingStep(pad_right=(hf_tokenizer.padding_side == "right")),
         ]
     )
-
     return pipeline.get_encoder_ov_subgraph()
