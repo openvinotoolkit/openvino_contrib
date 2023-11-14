@@ -3,10 +3,10 @@ import org.intel.openvino.Core;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
-import java.util.logging.Logger;
 import java.util.logging.ConsoleHandler;
-import java.util.logging.SimpleFormatter;
 import java.util.logging.LogRecord;
+import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
 
 /*
 This sample queries all available OpenVINO Runtime Devices and prints
