@@ -6,6 +6,7 @@
 
 #include <cuda_runtime_api.h>
 
+#include <cuda/utils.hpp>
 #include <vector>
 
 namespace CUDA {
@@ -33,9 +34,17 @@ struct NodeParams {
 
     void reset_args() { ptrs_.clear(); }
 
+    friend bool operator==(const NodeParams& lhs, const NodeParams& rhs);
+
 private:
     std::vector<void*> ptrs_;
     cudaKernelNodeParams knp_;
 };
+
+inline bool operator==(const NodeParams& lhs, const NodeParams& rhs) {
+    return lhs.ptrs_ == rhs.ptrs_ && rhs.knp_.func == lhs.knp_.func && rhs.knp_.gridDim == lhs.knp_.gridDim &&
+           rhs.knp_.blockDim == lhs.knp_.blockDim && rhs.knp_.sharedMemBytes == lhs.knp_.sharedMemBytes &&
+           rhs.knp_.extra == lhs.knp_.extra;
+}
 
 }  // namespace CUDA

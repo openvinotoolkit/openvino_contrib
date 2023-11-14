@@ -189,4 +189,8 @@ bool CUDA::TransferNode::operator==(const TransferNode& rhs) const {
     return size_ == rhs.size_ && src_.get() == rhs.src_.get() && dst_.get() == rhs.dst_.get() && node_ == rhs.node_;
 }
 
+bool KernelNode::operator==(const KernelNode& rhs) const {
+    return node_ == rhs.node_ && node_params_ == rhs.node_params_;
+}
+
 }  // namespace CUDA
