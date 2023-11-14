@@ -16,7 +16,7 @@ public:
     EagerTopologyRunner(const CreationContext& context, const std::shared_ptr<const ov::Model>& model);
     ~EagerTopologyRunner() override = default;
 
-    void Run(const InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const override;
+    void Run(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const override;
     void UpdateContext(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const override{};
     const SubGraph& GetSubGraph() const override;
 };

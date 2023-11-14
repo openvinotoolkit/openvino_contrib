@@ -53,7 +53,7 @@ CudaGraphTopologyRunner::CudaGraphTopologyRunner(const CreationContext& context,
     }
 }
 
-void CudaGraphTopologyRunner::Run(const InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const {
+void CudaGraphTopologyRunner::Run(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const {
     const auto& stream = context.getThreadContext().stream();
     std::size_t graphIndex = 0;
     for (auto& subgraph : subgraphs_) {

@@ -10,7 +10,7 @@ namespace ov {
 namespace nvidia_gpu {
 
 struct ITopologyRunner {
-    virtual void Run(const InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const = 0;
+    virtual void Run(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const = 0;
     virtual void UpdateContext(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const = 0;
     virtual const SubGraph& GetSubGraph() const = 0;
     virtual ~ITopologyRunner() = default;

@@ -10,7 +10,7 @@ namespace nvidia_gpu {
 EagerTopologyRunner::EagerTopologyRunner(const CreationContext& context, const std::shared_ptr<const ov::Model>& model)
     : SubGraph(context, model) {}
 
-void EagerTopologyRunner::Run(const InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const {
+void EagerTopologyRunner::Run(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const {
     Workbuffers workbuffers{};
     workbuffers.mutable_buffers.emplace_back(memoryBlock.view().data());
     SubGraph::Execute(context, {}, {}, workbuffers);
