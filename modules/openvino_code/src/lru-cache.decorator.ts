@@ -1,5 +1,14 @@
 import { LRUCache } from 'lru-cache';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const CACHES = [] as LRUCache<any, any>[];
+
+export const clearLruCache = (): void => {
+  for (const cache of CACHES) {
+    cache.clear();
+  }
+};
+
 type AsyncMethodType<R> = (this: unknown, ...args: unknown[]) => Promise<R>;
 
 interface ILRUCacheConfig<R> {
@@ -13,6 +22,7 @@ export function lruCache<V extends object, K extends string = string>(
     const originalMethod = descriptor.value as AsyncMethodType<V>;
 
     const cache = new LRUCache<K, V>({ max: 100 });
+    CACHES.push(cache);
 
     descriptor.value = async function (data: object): Promise<V | null> {
       const key = JSON.stringify(data) as K;

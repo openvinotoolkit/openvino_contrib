@@ -77,7 +77,7 @@ public class PrePostProcessorTests extends OVTest {
         }
         assertTrue(
                 exceptionMessage.contains(
-                        "[ PARAMETER_MISMATCH ] Failed to set input blob with precision: FP32, if"
-                                + " CNNNetwork input blob precision is: U8"));
+                        "[ PARAMETER_MISMATCH ] Failed to set input tensor with precision: f32,"
+                                + " since the model input tensor precision is: u8"));
     }
 }

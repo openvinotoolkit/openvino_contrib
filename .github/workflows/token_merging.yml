@@ -2,9 +2,15 @@ name: Token Merging - Test
 
 on:
   push:
-    branches: [ master ]
+    branches:
+      - master
+    paths:
+      - 'modules/token_merging/**'
   pull_request:
-    branches: [ master ]
+    branches: 
+      - master
+    paths:
+      - 'modules/token_merging/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
