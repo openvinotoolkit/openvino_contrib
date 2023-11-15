@@ -158,7 +158,7 @@ jobs:
 
   - script: |
       call C:\tools\opencv\build\setup_vars_opencv4.cmd
-      call $(SETUPVARS) && ^
+      call $(SETUPVARS) -pyver 3.8 && ^
       $(PYTHON_EXE) -m pytest -k "not sparse_conv" tests\run_tests.py
     workingDirectory: $(REPO_DIR)\modules\custom_operations
     displayName: 'Custom user operation tests'
