@@ -141,18 +141,22 @@ def hf_and_ov_bpe_detokenizer(request):
 
 
 @pytest.fixture(scope="session", params=[True, False], ids=lambda is_fast: "Fast" if is_fast else "Slow")
-def fast_tokenizer(request):
+def is_fast_tokenizer(request):
     return request.param
 
 
 @pytest.fixture(scope="session", params=sentencepiece_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
-def sentencepice_model_tokenizers(request, fast_tokenizer):
-    return get_tokenizer_detokenizer(request, fast_tokenizer)
+def sentencepice_model_tokenizers(request, is_fast_tokenizer):
+    return get_tokenizer_detokenizer(request, is_fast_tokenizer)
 
 
 @pytest.fixture(scope="session", params=tiktiken_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
-def tiktoken_model_tokenizers(request):
+def tiktoken_tokenizers(request):
     return get_tokenizer(request, trust_remote_code=True)
+
+@pytest.fixture(scope="session", params=tiktiken_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
+def tiktoken_detokenizers(request):
+    return get_tokenizer_detokenizer(request, trust_remote_code=True)
 
 
 @pytest.mark.parametrize(
@@ -284,8 +288,8 @@ def test_bpe_detokenizer(hf_and_ov_bpe_detokenizer, test_string):
         *misc_strings,
     ],
 )
-def test_tiktoken_tokenizers(tiktoken_model_tokenizers, test_string):
-    hf_tokenizer, ov_tokenizer = tiktoken_model_tokenizers
+def test_tiktoken_tokenizers(tiktoken_tokenizers, test_string):
+    hf_tokenizer, ov_tokenizer = tiktoken_tokenizers
 
     hf_tokenized = hf_tokenizer(test_string, return_tensors="np")
     ov_tokenized = ov_tokenizer(pack_strings([test_string]))
@@ -293,3 +297,22 @@ def test_tiktoken_tokenizers(tiktoken_model_tokenizers, test_string):
     for output_name, hf_result in hf_tokenized.items():
         if (ov_result := ov_tokenized.get(output_name)) is not None:
             assert np.all(ov_result == hf_result), f"{hf_result}\n{ov_result}"
+
+
+@pytest.mark.parametrize(
+    "test_string",
+    [
+        *eng_test_strings,
+        *multilingual_test_strings,
+        *emoji_test_strings,
+        *misc_strings,
+    ],
+)
+def test_tiktoken_detokenizer(tiktoken_detokenizers, test_string):
+    hf_tokenizer, _, ov_detokenizer = tiktoken_detokenizers
+
+    token_ids = hf_tokenizer(test_string, return_tensors="np").input_ids
+    hf_output = hf_tokenizer.batch_decode(token_ids, skip_special_tokens=True)
+    ov_output = unpack_strings(ov_detokenizer(token_ids.astype("int32"))["string_output"])
+
+    assert ov_output == hf_output

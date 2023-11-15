@@ -297,7 +297,7 @@ def convert_fast_tokenizer(
             ov_tokenizer.output(i).tensor.add_names({output_name})
             filtered_outputs.append(ov_tokenizer.output(i))
 
-    tokenizer_model = Model(filtered_outputs, ov_tokenizer.get_parameters())
+    tokenizer_model = Model(filtered_outputs, ov_tokenizer.get_parameters(), TOKENIZER_ENCODER_NAME)
     if with_decoder:
         return tokenizer_model, pipeline.get_decoder_ov_subgraph()
 
@@ -439,6 +439,11 @@ def convert_tiktoken_model_tokenizer(
                 max_length=hf_tokenizer.model_max_length, truncate_right=(hf_tokenizer.truncation_side == "right")
             ),
             PaddingStep(pad_right=(hf_tokenizer.padding_side == "right")),
+            VocabDecoderStep(),
+            CharsToBytesStep(),
         ]
     )
-    return pipeline.get_encoder_ov_subgraph()
+    if not with_decoder:
+        return pipeline.get_encoder_ov_subgraph()
+
+    return pipeline.get_encoder_ov_subgraph(), pipeline.get_decoder_ov_subgraph()

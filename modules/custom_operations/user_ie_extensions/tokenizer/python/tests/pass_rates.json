@@ -5,9 +5,6 @@
     "tokenizers_test.py::test_sentencepiece_model_detokenizer": 0.5458333333333334,
     "tokenizers_test.py::test_hf_bpe_tokenizers_outputs": 0.846875,
     "tokenizers_test.py::test_bpe_detokenizer": 0.93125,
-    "tokenizers_test.py::test_": 0.746031746031746,
-    "user_ie_extensions/tokenizer/python/tests/tokenizers_test.py::test_": 0.746031746031746,
-    "tokenizers_test.py::test_tiktoken_tokenizers[Qwen-14B-Chat-": 0.9166666666666666,
-    "tokenizers_test.py::test_tiktoken_tokenizers": 0.9,
-    "tokenizers_test.py::test_tiktoken_tokenizers[xgen-7b-8k-base-": 0.9166666666666666
+    "tokenizers_test.py::test_": 0.7527970165157165,
+    "tokenizers_test.py::test_tiktoken_tokenizers": 0.9
 }
