@@ -44,11 +44,17 @@ public:
                          Inputs inputTensors,
                          Outputs outputTensors,
                          const Workbuffers& workbuffers) const = 0;
+
+    virtual CudaGraphCompatibility GetCudaGraphCompatibility() const = 0;
+
     virtual void Capture(InferenceRequestContext& context,
                          Inputs inputTensors,
                          Outputs outputTensors,
                          const Workbuffers& workbuffers) const = 0;
-    virtual CudaGraphCompatibility GetCudaGraphCompatibility() const = 0;
+    virtual void ExecuteGraph(InferenceRequestContext& context,
+                              Inputs inputTensors,
+                              Outputs outputTensors,
+                              const Workbuffers& workbuffers) const = 0;
     virtual void InitSharedImmutableWorkbuffers(const Buffers&) = 0;
     virtual WorkbufferRequest GetWorkBufferRequest() const = 0;
     virtual const WorkbufferIds& GetWorkbufferIds() const = 0;
@@ -85,6 +91,18 @@ public:
 
     CudaGraphCompatibility GetCudaGraphCompatibility() const override { return CudaGraphCompatibility::NONE; }
 
+    void Capture(InferenceRequestContext& context,
+                 Inputs inputTensors,
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) const override {
+        Execute(context, inputTensors, outputTensors, workbuffers);
+    }
+    // For operations with CudaGraphCompatibility::SPECIAL, e.g. TI; the vast majority or operations doesn't use this
+    void ExecuteGraph(InferenceRequestContext& context,
+                      Inputs inputTensors,
+                      Outputs outputTensors,
+                      const Workbuffers& workbuffers) const override {}
+
     WorkbufferRequest GetWorkBufferRequest() const override {
         return {};  // Most operators do not need workbuffers
     }
@@ -110,12 +128,6 @@ public:
     WorkbufferStatus SetWorkbufferIds(WorkbufferIds&& workbufferIds) override {
         workbuffer_ids_ = workbufferIds;
         return workbuffer_ids_.immutableIds.empty() ? WorkbufferStatus::NoInitNeeded : WorkbufferStatus::InitNeeded;
-    }
-    void Capture(InferenceRequestContext& context,
-                 Inputs inputTensors,
-                 Outputs outputTensors,
-                 const Workbuffers& workbuffers) const override {
-        Execute(context, inputTensors, outputTensors, workbuffers);
     }
 
 protected:

@@ -32,12 +32,17 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
+    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
+
     void Capture(InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
-    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
+    void ExecuteGraph(InferenceRequestContext& context,
+                      Inputs inputTensors,
+                      Outputs outputTensors,
+                      const Workbuffers& workbuffers) const override;
 
     inline std::shared_ptr<MemoryManager> memoryManager() const { return memory_manager_; }
 

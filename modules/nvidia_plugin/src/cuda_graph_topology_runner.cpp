@@ -10,18 +10,6 @@
 namespace ov {
 namespace nvidia_gpu {
 
-namespace {
-
-std::shared_ptr<TensorIteratorOp> getTI(const SubGraph& sg) {
-    auto& seq = sg.getExecSequence();
-    if (seq.size() != 1) {
-        return nullptr;
-    }
-    return std::dynamic_pointer_cast<TensorIteratorOp>(seq[0]);
-}
-
-}  // namespace
-
 CudaGraphTopologyRunner::CudaGraphTopologyRunner(const CreationContext& context,
                                                  const std::shared_ptr<const ov::Model>& model)
     : orig_subgraph_{context, model}, cuda_graphs_count_{0} {
@@ -64,15 +52,10 @@ void CudaGraphTopologyRunner::Run(InferenceRequestContext& context, const Device
             graphContext.get_current_graph_info().launch(stream);
             graphIndex++;
         } else if (compatibility == CudaGraphCompatibility::SPECIAL) {
-            // TODO: remove
-            auto ti = getTI(subgraph);
-            CUDA::DevicePointer<void*> mutableBuffer{memoryBlock.view().data()};
-            const auto& memoryManager = *subgraph.memoryManager();
-            const auto& inputTensors = memoryManager.inputTensorPointers(*ti, mutableBuffer);
-            const auto& outputTensors = memoryManager.outputTensorPointers(*ti, mutableBuffer);
-            const auto& workBuffers = memoryManager.workBuffers(*ti, mutableBuffer);
+            Workbuffers workbuffers{};
+            workbuffers.mutable_buffers.emplace_back(memoryBlock.view().data());
             graphContext.select_current_graph(graphIndex);
-            ti->ExecuteGraph(context, inputTensors, outputTensors, workBuffers);
+            subgraph.ExecuteGraph(context, {}, {}, workbuffers);
             graphIndex++;
         } else {
             Workbuffers workbuffers{};

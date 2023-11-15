@@ -207,34 +207,6 @@ void TensorIteratorOp::Execute(const InferenceRequestContext& context,
     }
 }
 
-void TensorIteratorOp::ExecuteGraph(InferenceRequestContext& context,
-                                    Inputs inputTensors,
-                                    Outputs outputTensors,
-                                    const Workbuffers& workbuffers) {
-    const auto& stream = context.getThreadContext().stream();
-    const auto& memoryManager = *memory_manager_;
-    const auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
-
-    auto& graphInfo = context.getCudaGraphContext().get_current_graph_info();
-
-    graphInfo.launch_params_graph(stream);
-
-    OPENVINO_ASSERT(graphInfo.get_kernels_count() == slices_.size() + inserts_.size(),
-                    "CudaGraphContext/TensorIteratorOp slices or inserts count incosistency");
-
-    for (int64_t iter = 0; iter < num_iterations_; ++iter) {
-        for (std::size_t i = 0; i < slices_.size(); ++i) {
-            slices_[i].update_kernel_node(graphInfo, i, mutableBuffer, inputTensors, iter);
-        }
-        for (std::size_t i = 0; i < inserts_.size(); ++i) {
-            inserts_[i].update_kernel_node(graphInfo, i + slices_.size(), mutableBuffer, outputTensors, iter);
-        }
-        graphInfo.launch(stream);
-    }
-
-    graphInfo.launch_results_graph(stream);
-}
-
 CudaGraphCompatibility TensorIteratorOp::GetCudaGraphCompatibility() const {
     // This implementation is CUDA graph compatible only if this is the standard TI with output only of the last
     // iteration (which is handled outside of the iterations loop)
@@ -303,6 +275,34 @@ void TensorIteratorOp::Capture(InferenceRequestContext& context,
         }
     }
     graphInfo.set_results_graph(capture.getGraph());
+}
+
+void TensorIteratorOp::ExecuteGraph(InferenceRequestContext& context,
+                                    Inputs inputTensors,
+                                    Outputs outputTensors,
+                                    const Workbuffers& workbuffers) const {
+    const auto& stream = context.getThreadContext().stream();
+    const auto& memoryManager = *memory_manager_;
+    const auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
+
+    auto& graphInfo = context.getCudaGraphContext().get_current_graph_info();
+
+    graphInfo.launch_params_graph(stream);
+
+    OPENVINO_ASSERT(graphInfo.get_kernels_count() == slices_.size() + inserts_.size(),
+                    "CudaGraphContext/TensorIteratorOp slices or inserts count incosistency");
+
+    for (int64_t iter = 0; iter < num_iterations_; ++iter) {
+        for (std::size_t i = 0; i < slices_.size(); ++i) {
+            slices_[i].update_kernel_node(graphInfo, i, mutableBuffer, inputTensors, iter);
+        }
+        for (std::size_t i = 0; i < inserts_.size(); ++i) {
+            inserts_[i].update_kernel_node(graphInfo, i + slices_.size(), mutableBuffer, outputTensors, iter);
+        }
+        graphInfo.launch(stream);
+    }
+
+    graphInfo.launch_results_graph(stream);
 }
 
 TensorIteratorOp::SliceLauncher::SliceLauncher(const TensorIteratorOp& ti, uint64_t inputIdx, uint64_t paramIdx)

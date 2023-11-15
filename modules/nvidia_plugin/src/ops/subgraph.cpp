@@ -128,22 +128,6 @@ std::vector<DevicePointer<void*>> SubGraph::getSharedWorkbuffers(const IOperatio
     return result;
 }
 
-void SubGraph::Capture(InferenceRequestContext &context, Inputs, Outputs,
-                       const Workbuffers &workbuffers) const {
-    const auto& stream = context.getThreadContext().stream();
-    const auto& memoryManager = *memory_manager_;
-    auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
-
-    auto& executionDelegator = context.getExecutionDelegator();
-    executionDelegator.set_stream(stream);
-    executionDelegator.capture_sequence(this, memoryManager, mutableBuffer, context);
-}
-
-WorkbufferRequest SubGraph::GetWorkBufferRequest() const {
-    const auto memoryBlockSize = memory_manager_->mutableTensorsMemoryModel()->deviceMemoryBlockSize();
-    return {{}, {memoryBlockSize}};
-}
-
 void SubGraph::Execute(const InferenceRequestContext& context, Inputs, Outputs, const Workbuffers& workbuffers) const {
     const auto& stream = context.getThreadContext().stream();
     const auto& memoryManager = *memory_manager_;
@@ -169,6 +153,34 @@ CudaGraphCompatibility SubGraph::GetCudaGraphCompatibility() const {
         is_compatibility_analyzed_ = true;
     }
     return graph_compatibility_;
+}
+
+void SubGraph::Capture(InferenceRequestContext& context, Inputs, Outputs, const Workbuffers& workbuffers) const {
+    const auto& stream = context.getThreadContext().stream();
+    const auto& memoryManager = *memory_manager_;
+    auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
+
+    auto& executionDelegator = context.getExecutionDelegator();
+    executionDelegator.set_stream(stream);
+    executionDelegator.capture_sequence(this, memoryManager, mutableBuffer, context);
+}
+
+void SubGraph::ExecuteGraph(InferenceRequestContext& context,
+                            Inputs inputTensors,
+                            Outputs outputTensors,
+                            const Workbuffers& workbuffers) const {
+    const auto& stream = context.getThreadContext().stream();
+    const auto& memoryManager = *memory_manager_;
+    auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
+
+    auto& executionDelegator = context.getExecutionDelegator();
+    executionDelegator.set_stream(stream);
+    executionDelegator.execute_graph_sequence(this, memoryManager, mutableBuffer, context);
+}
+
+WorkbufferRequest SubGraph::GetWorkBufferRequest() const {
+    const auto memoryBlockSize = memory_manager_->mutableTensorsMemoryModel()->deviceMemoryBlockSize();
+    return {{}, {memoryBlockSize}};
 }
 
 }  // namespace nvidia_gpu
