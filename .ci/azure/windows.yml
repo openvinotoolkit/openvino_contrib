@@ -54,14 +54,13 @@ jobs:
     SETUPVARS: $(INSTALL_DIR)\setupvars.bat
     CUSTOM_OP_LIB: $(BIN_DIR)\user_ov_extensions.dll
     GRADLE_VER: 7.1.1
+    PYTHON_EXE: C:\hostedtoolcache\windows\Python\3.8.2\x64\python.exe
 
   steps:
   - script: |
       powershell -command "Invoke-RestMethod -Headers @{\"Metadata\"=\"true\"} -Method GET -Uri http://169.254.169.254/metadata/instance/compute?api-version=2019-06-01 | format-custom"
-      where python3
-      python3 --version
-      where python
-      python --version
+      where $(PYTHON_EXE)
+      $(PYTHON_EXE) --version
       where java
       java -version
       wmic computersystem get TotalPhysicalMemory
@@ -99,11 +98,11 @@ jobs:
       powershell -command "Expand-Archive -Force ninja-win.zip"
       powershell -command "Invoke-WebRequest https://services.gradle.org/distributions/gradle-$(GRADLE_VER)-bin.zip -OutFile gradle-$(GRADLE_VER)-bin.zip"
       powershell -command "Expand-Archive -Force gradle-$(GRADLE_VER)-bin.zip"
-      python -m pip install --upgrade pip
-      python -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\src\compatibility\openvino\requirements-dev.txt
-      python -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\requirements.txt
-      python -m pip install -r $(REPO_DIR)\modules\custom_operations\tests\requirements.txt
-      python -m pip install $(OPENVINO_REPO_DIR)\tools\mo
+      $(PYTHON_EXE) -m pip install --upgrade pip
+      $(PYTHON_EXE) -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\src\compatibility\openvino\requirements-dev.txt
+      $(PYTHON_EXE) -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\requirements.txt
+      $(PYTHON_EXE) -m pip install -r $(REPO_DIR)\modules\custom_operations\tests\requirements.txt
+      $(PYTHON_EXE) -m pip install $(OPENVINO_REPO_DIR)\tools\mo
       powershell -command "Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))"
       choco install opencv -y
     workingDirectory: $(WORK_DIR)
@@ -160,6 +159,6 @@ jobs:
   - script: |
       call C:\tools\opencv\build\setup_vars_opencv4.cmd
       call $(SETUPVARS) && ^
-      python -m pytest -k "not sparse_conv" tests\run_tests.py
+      $(PYTHON_EXE) -m pytest -k "not sparse_conv" tests\run_tests.py
     workingDirectory: $(REPO_DIR)\modules\custom_operations
     displayName: 'Custom user operation tests'
