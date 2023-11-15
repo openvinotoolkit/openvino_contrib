@@ -1,3 +1,4 @@
+import logging
 from functools import lru_cache
 from typing import Dict, List, Optional, Tuple
 
@@ -57,9 +58,15 @@ def generate_vocab_and_merges(encoding: Encoding) -> Tuple[Dict[str, int], List[
         if len(token) == 1:
             continue
         merged = tuple(bpe(mergeable_ranks, token, max_rank=rank))
-        assert len(merged) == 2
 
-        merges.append(" ".join(map(token_bytes_to_string, merged)))
+        #  if special tokens added to the tokenizer and the bpe split might produce more than 2 tokens
+        #  if there are "\t" in the vocab and special token "\t\t\t" was added before "\t\t" it will
+        #  be tokenized into 3 tokens: bpe("\t\t\t") -> ["\t", "\t", "\t"] which is cannot be included
+        #  in merges
+        if len(merged) == 2:
+            merges.append(" ".join(map(token_bytes_to_string, merged)))
+        else:
+            logging.warning("Skip merges for added tokens. Tokenization results might be different.")
 
     # Also add special tokens
     vocab.update(encoding._special_tokens)
