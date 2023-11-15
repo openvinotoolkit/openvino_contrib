@@ -226,23 +226,9 @@ void TensorIteratorOp::Capture(InferenceRequestContext& context,
     auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
     auto& executionDelegator = context.getExecutionDelegator();
     executionDelegator.set_stream(stream);
-
     auto& graphInfo = context.getCudaGraphContext().get_current_graph_info();
+
     CUDA::GraphCapture capture{stream};
-    {
-        auto scope = capture.getScope();
-        // First iteration
-        for (const auto inputIdx : invariant_inputs_) {
-            const auto paramIdx = inputs_parameters_map_.at(inputIdx);
-            transferParam(stream, mutableBuffer, inputTensors, 0, inputIdx, paramIdx);
-        }
-        for (const auto& [inputIdx, paramIdx] : inputs_parameters_map_) {
-            if (portmap_inputs_.count(inputIdx) == 0) {
-                transferParam(stream, mutableBuffer, inputTensors, 0, inputIdx, paramIdx);
-            }
-        }
-    }
-    graphInfo.set_params_graph(capture.getGraph());
     {
         auto scope = capture.getScope();
         // Input mapping of ports
@@ -264,17 +250,6 @@ void TensorIteratorOp::Capture(InferenceRequestContext& context,
         }
     }
     graphInfo.set_graph(capture.getGraph());
-    {
-        auto scope = capture.getScope();
-        // Copy data to output
-        if (iterations_results_map_.count(num_iterations_ - 1) > 0) {
-            for (const auto& resultIdx : iterations_results_map_.at(num_iterations_ - 1)) {
-                const auto& outputIdx = results_outputs_map_.at(resultIdx);
-                transferResult(stream, mutableBuffer, outputTensors, num_iterations_ - 1, resultIdx, outputIdx);
-            }
-        }
-    }
-    graphInfo.set_results_graph(capture.getGraph());
 }
 
 void TensorIteratorOp::ExecuteGraph(InferenceRequestContext& context,
@@ -285,13 +260,22 @@ void TensorIteratorOp::ExecuteGraph(InferenceRequestContext& context,
     const auto& memoryManager = *memory_manager_;
     const auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
 
+    // First iteration; this part doesn't use CUDA graphs yet
+    for (const auto inputIdx : invariant_inputs_) {
+        const auto paramIdx = inputs_parameters_map_.at(inputIdx);
+        transferParam(stream, mutableBuffer, inputTensors, 0, inputIdx, paramIdx);
+    }
+    for (const auto& [inputIdx, paramIdx] : inputs_parameters_map_) {
+        if (portmap_inputs_.count(inputIdx) == 0) {
+            transferParam(stream, mutableBuffer, inputTensors, 0, inputIdx, paramIdx);
+        }
+    }
+
     auto& graphInfo = context.getCudaGraphContext().get_current_graph_info();
-
-    graphInfo.launch_params_graph(stream);
-
     OPENVINO_ASSERT(graphInfo.get_kernels_count() == slices_.size() + inserts_.size(),
                     "CudaGraphContext/TensorIteratorOp slices or inserts count incosistency");
 
+    // TI body loop
     for (int64_t iter = 0; iter < num_iterations_; ++iter) {
         for (std::size_t i = 0; i < slices_.size(); ++i) {
             slices_[i].update_kernel_node(graphInfo, i, mutableBuffer, inputTensors, iter);
@@ -302,7 +286,13 @@ void TensorIteratorOp::ExecuteGraph(InferenceRequestContext& context,
         graphInfo.launch(stream);
     }
 
-    graphInfo.launch_results_graph(stream);
+    // Copy data to output; this part doesn't use CUDA graphs yet
+    if (iterations_results_map_.count(num_iterations_ - 1) > 0) {
+        for (const auto& resultIdx : iterations_results_map_.at(num_iterations_ - 1)) {
+            const auto& outputIdx = results_outputs_map_.at(resultIdx);
+            transferResult(stream, mutableBuffer, outputTensors, num_iterations_ - 1, resultIdx, outputIdx);
+        }
+    }
 }
 
 TensorIteratorOp::SliceLauncher::SliceLauncher(const TensorIteratorOp& ti, uint64_t inputIdx, uint64_t paramIdx)

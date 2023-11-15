@@ -49,21 +49,7 @@ void CudaGraphInfo::set_graph(const CUDA::Graph& graph) {
     graphExec_.emplace(graph);
 }
 
-void CudaGraphInfo::set_params_graph(const CUDA::Graph& graph) {
-    paramsGraph_.emplace(graph);
-    paramsGraphExec_.emplace(graph);
-}
-
-void CudaGraphInfo::set_results_graph(const CUDA::Graph& graph) {
-    resultsGraph_.emplace(graph);
-    resultsGraphExec_.emplace(graph);
-}
-
 void CudaGraphInfo::launch(const CUDA::Stream& stream) const { graphExec_.value().launch(stream); }
-
-void CudaGraphInfo::launch_params_graph(const CUDA::Stream& stream) const { paramsGraphExec_.value().launch(stream); }
-
-void CudaGraphInfo::launch_results_graph(const CUDA::Stream& stream) const { resultsGraphExec_.value().launch(stream); }
 
 bool operator==(const CudaGraphInfo& lhs, const CudaGraphInfo& rhs) {
     return lhs.graph_ == rhs.graph_ && lhs.graphExec_ == rhs.graphExec_ && lhs.parameterNodes_ == rhs.parameterNodes_ &&

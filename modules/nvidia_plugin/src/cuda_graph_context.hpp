@@ -51,12 +51,8 @@ public:
     std::size_t get_kernels_count() const { return kernelNodes_.size(); }
 
     void set_graph(const CUDA::Graph& graph);
-    void set_params_graph(const CUDA::Graph& graph);
-    void set_results_graph(const CUDA::Graph& graph);
 
     void launch(const CUDA::Stream& stream) const;
-    void launch_params_graph(const CUDA::Stream& stream) const;
-    void launch_results_graph(const CUDA::Stream& stream) const;
 
     friend bool operator==(const CudaGraphInfo& lhs, const CudaGraphInfo& rhs);
     friend bool operator!=(const CudaGraphInfo& lhs, const CudaGraphInfo& rhs);
@@ -64,12 +60,6 @@ public:
 private:
     std::optional<CUDA::Graph> graph_{};
     std::optional<CUDA::GraphExec> graphExec_{};
-
-    std::optional<CUDA::Graph> paramsGraph_{};
-    std::optional<CUDA::GraphExec> paramsGraphExec_{};
-
-    std::optional<CUDA::Graph> resultsGraph_{};
-    std::optional<CUDA::GraphExec> resultsGraphExec_{};
 
     std::map<std::string, CUDA::UploadNode> parameterNodes_;
     std::map<std::string, CUDA::DownloadNode> resultNodes_;
