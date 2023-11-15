@@ -101,3 +101,4 @@ endif()
 target_link_libraries(${TARGET_NAME} PRIVATE openvino::runtime)
 
 target_compile_definitions(${TARGET_NAME} PRIVATE ${CUSTOM_OPERATIONS})
+target_include_directories(${TARGET_NAME} PUBLIC ./include/)

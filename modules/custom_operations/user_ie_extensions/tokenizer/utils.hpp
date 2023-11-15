@@ -68,8 +68,3 @@ bool evaluate_normalization_helper (
     std::function<std::string(const std::string&)> normalizer);
 
 std::shared_ptr<ov::Node> string_attribute_to_constant (const ov::frontend::NodeContext& node, const std::string& name);
-
-template <typename BatchOfStrings>
-void pack_strings (const BatchOfStrings& strings, ov::Tensor& destination);
-
-std::vector<std::string> unpack_strings(const ov::Tensor& source);
