@@ -24,7 +24,7 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
-    bool IsCudaGraphCompatible() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
 
     using Type_t = ov::element::Type_t;
     using convert_t = void (*)(

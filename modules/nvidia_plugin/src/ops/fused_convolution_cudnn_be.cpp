@@ -327,7 +327,9 @@ void FusedConvolutionCuDnnBE::Execute(const InferenceRequestContext& context,
     throwIfError(::cudnnBackendExecute(context.getThreadContext().dnnHandle().get(), plan->get(), variantPack->get()));
 }
 
-bool FusedConvolutionCuDnnBE::IsCudaGraphCompatible() const { return false; }
+CudaGraphCompatibility FusedConvolutionCuDnnBE::GetCudaGraphCompatibility() const {
+    return CudaGraphCompatibility::NONE;
+}
 
 std::shared_ptr<CUDA::DnnBETensorDescriptor> FusedConvolutionCuDnnBE::MakeTensorDescriptor(
     int64_t id,

@@ -29,7 +29,7 @@ public:
 
     WorkbufferRequest GetWorkBufferRequest() const override;
 
-    bool IsCudaGraphCompatible() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
 
 private:
     Convolution::Details::ConvolutionDescriptorsCuDnn descs_;

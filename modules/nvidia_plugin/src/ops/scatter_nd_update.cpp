@@ -100,7 +100,7 @@ void ScatterNDUpdateOp::Execute(const InferenceRequestContext& context,
                outputs[0].get());
 }
 
-bool ScatterNDUpdateOp::IsCudaGraphCompatible() const { return true; }
+CudaGraphCompatibility ScatterNDUpdateOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
 
 template <typename T>
 static auto size_in_bytes(const std::vector<T>& v) noexcept {

@@ -33,7 +33,7 @@ public:
                       Outputs outputTensors,
                       const Workbuffers& workbuffers);
 
-    bool IsCudaGraphCompatible() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
 
     void Capture(InferenceRequestContext& context,
                  Inputs inputTensors,

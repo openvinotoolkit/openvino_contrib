@@ -172,7 +172,7 @@ void TopKOp::Execute(const InferenceRequestContext& context,
                static_cast<const void*>(kernel_param.get()));
 }
 
-bool TopKOp::IsCudaGraphCompatible() const { return true; }
+CudaGraphCompatibility TopKOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
 
 void TopKOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
     OPENVINO_ASSERT(buffers.size() == 1, "Node name: ", GetName());

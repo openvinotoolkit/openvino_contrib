@@ -31,12 +31,12 @@ CudaGraphTopologyRunner::CudaGraphTopologyRunner(const CreationContext& context,
     const auto totalSize = origSequence.size();
     OPENVINO_ASSERT(totalSize != 0, "ExecSequence size is 0");
 
-    bool isLastOpCompatible = origSequence[0]->IsCudaGraphCompatible();
+    CudaGraphCompatibility lastOpCompatibility = origSequence[0]->GetCudaGraphCompatibility();
     currentSequence.push_back(origSequence[0]);
     for (size_t i = 1; i < totalSize; ++i) {
         const auto& op = origSequence[i];
-        if (std::dynamic_pointer_cast<const TensorIteratorOp>(op) || op->IsCudaGraphCompatible() != isLastOpCompatible) {
-            isLastOpCompatible = !isLastOpCompatible;
+        if (auto c = op->GetCudaGraphCompatibility(); c != lastOpCompatibility) {
+            lastOpCompatibility = c;
             sequences.emplace_back(std::move(currentSequence));
             currentSequence.clear();
         }
@@ -47,7 +47,7 @@ CudaGraphTopologyRunner::CudaGraphTopologyRunner(const CreationContext& context,
     const auto& memoryManager = orig_subgraph_.memoryManager();
     for (auto&& sequence : sequences) {
         subgraphs_.emplace_back(context, model, std::move(sequence), memoryManager);
-        if (subgraphs_[subgraphs_.size() - 1].IsCudaGraphCompatible()) {
+        if (subgraphs_.back().GetCudaGraphCompatibility() != CudaGraphCompatibility::NONE) {
             ++cuda_graphs_count_;
         }
     }
@@ -58,7 +58,14 @@ void CudaGraphTopologyRunner::Run(InferenceRequestContext& context, const Device
     auto& graphContext = context.getCudaGraphContext();
     std::size_t graphIndex = 0;
     for (auto& subgraph : subgraphs_) {
-        if (auto ti = getTI(subgraph)) {
+        auto compatibility = subgraph.GetCudaGraphCompatibility();
+        if (compatibility == CudaGraphCompatibility::FULL) {
+            graphContext.select_current_graph(graphIndex);
+            graphContext.get_current_graph_info().launch(stream);
+            graphIndex++;
+        } else if (compatibility == CudaGraphCompatibility::SPECIAL) {
+            // TODO: remove
+            auto ti = getTI(subgraph);
             CUDA::DevicePointer<void*> mutableBuffer{memoryBlock.view().data()};
             const auto& memoryManager = *subgraph.memoryManager();
             const auto& inputTensors = memoryManager.inputTensorPointers(*ti, mutableBuffer);
@@ -66,10 +73,6 @@ void CudaGraphTopologyRunner::Run(InferenceRequestContext& context, const Device
             const auto& workBuffers = memoryManager.workBuffers(*ti, mutableBuffer);
             graphContext.select_current_graph(graphIndex);
             ti->ExecuteGraph(context, inputTensors, outputTensors, workBuffers);
-            graphIndex++;
-        } else if (subgraph.IsCudaGraphCompatible()) {
-            graphContext.select_current_graph(graphIndex);
-            graphContext.get_current_graph_info().launch(stream);
             graphIndex++;
         } else {
             Workbuffers workbuffers{};
@@ -88,10 +91,8 @@ void CudaGraphTopologyRunner::Capture(InferenceRequestContext& context,
     for (const auto& subgraph : subgraphs_) {
         Workbuffers workbuffers{};
         workbuffers.mutable_buffers.emplace_back(memoryBlock.view().data());
-        if (getTI(subgraph)) {
-            graphContext.add_new_graph_info();
-            subgraph.Capture(context, {}, {}, workbuffers);
-        } else if (subgraph.IsCudaGraphCompatible()) {
+        auto compatibility = subgraph.GetCudaGraphCompatibility();
+        if (compatibility == CudaGraphCompatibility::FULL) {
             graphContext.add_new_graph_info();
             CUDA::GraphCapture capture{stream};
             {
@@ -100,6 +101,9 @@ void CudaGraphTopologyRunner::Capture(InferenceRequestContext& context,
             }
             const auto& graph = capture.getGraph();
             graphContext.set_current_graph(graph);
+        } else if (compatibility == CudaGraphCompatibility::SPECIAL) {
+            graphContext.add_new_graph_info();
+            subgraph.Capture(context, {}, {}, workbuffers);
         }
     }
 }

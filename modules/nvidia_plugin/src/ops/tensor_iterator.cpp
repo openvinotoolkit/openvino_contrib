@@ -235,13 +235,14 @@ void TensorIteratorOp::ExecuteGraph(InferenceRequestContext& context,
     graphInfo.launch_results_graph(stream);
 }
 
-bool TensorIteratorOp::IsCudaGraphCompatible() const {
+CudaGraphCompatibility TensorIteratorOp::GetCudaGraphCompatibility() const {
     // This implementation is CUDA graph compatible only if this is the standard TI with output only of the last
     // iteration (which is handled outside of the iterations loop)
     if (iterations_results_map_.size() != 1 || iterations_results_map_.count(num_iterations_ - 1) == 0) {
-        return false;
+        return CudaGraphCompatibility::NONE;
     }
-    return SubGraph::IsCudaGraphCompatible();
+    return SubGraph::GetCudaGraphCompatibility() == CudaGraphCompatibility::NONE ? CudaGraphCompatibility::NONE
+                                                                                 : CudaGraphCompatibility::SPECIAL;
 }
 
 void TensorIteratorOp::Capture(InferenceRequestContext& context,

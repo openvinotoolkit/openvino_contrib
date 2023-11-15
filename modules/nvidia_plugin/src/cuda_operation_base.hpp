@@ -30,6 +30,8 @@ namespace nvidia_gpu {
 template <typename T>
 using DevicePointer = CUDA::DevicePointer<T>;
 
+enum class CudaGraphCompatibility { NONE, FULL, SPECIAL };
+
 class IOperationExec {
 public:
     using Inputs = gsl::span<const CUDA::DevicePointer<const void*>>;
@@ -46,7 +48,7 @@ public:
                          Inputs inputTensors,
                          Outputs outputTensors,
                          const Workbuffers& workbuffers) const = 0;
-    virtual bool IsCudaGraphCompatible() const = 0;
+    virtual CudaGraphCompatibility GetCudaGraphCompatibility() const = 0;
     virtual void InitSharedImmutableWorkbuffers(const Buffers&) = 0;
     virtual WorkbufferRequest GetWorkBufferRequest() const = 0;
     virtual const WorkbufferIds& GetWorkbufferIds() const = 0;
@@ -81,7 +83,7 @@ public:
                   IndexCollection&& inputIds,
                   IndexCollection&& outputIds);
 
-    bool IsCudaGraphCompatible() const override { return false; }
+    CudaGraphCompatibility GetCudaGraphCompatibility() const override { return CudaGraphCompatibility::NONE; }
 
     WorkbufferRequest GetWorkBufferRequest() const override {
         return {};  // Most operators do not need workbuffers

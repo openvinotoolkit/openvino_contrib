@@ -58,7 +58,7 @@ void ReduceOp::Execute(const InferenceRequestContext& context,
                                                         outputTensors[0]);
 }
 
-bool ReduceOp::IsCudaGraphCompatible() const { return true; }
+CudaGraphCompatibility ReduceOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
 
 }  // namespace nvidia_gpu
 }  // namespace ov

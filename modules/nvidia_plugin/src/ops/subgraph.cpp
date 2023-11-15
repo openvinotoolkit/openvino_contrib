@@ -154,17 +154,21 @@ void SubGraph::Execute(const InferenceRequestContext& context, Inputs, Outputs, 
     executionDelegator.execute_sequence(this, memoryManager, mutableBuffer, context);
 }
 
-bool SubGraph::IsCudaGraphCompatible() const {
-    if (is_cuda_graph_compatible_ == CompatibleState::NOT_INITIALIZED) {
-        is_cuda_graph_compatible_ = CompatibleState::COMPATIBLE;
+CudaGraphCompatibility SubGraph::GetCudaGraphCompatibility() const {
+    if (!is_compatibility_analyzed_) {
+        graph_compatibility_ = CudaGraphCompatibility::FULL;
         for (const auto& op : exec_sequence_) {
-            if (!op->IsCudaGraphCompatible()) {
-                is_cuda_graph_compatible_ = CompatibleState::NOT_COMPATIBLE;
+            auto opCompatability = op->GetCudaGraphCompatibility();
+            if (opCompatability == CudaGraphCompatibility::SPECIAL) {
+                graph_compatibility_ = opCompatability;
+            } else if (opCompatability == CudaGraphCompatibility::NONE) {
+                graph_compatibility_ = opCompatability;
                 break;
             }
         }
+        is_compatibility_analyzed_ = true;
     }
-    return is_cuda_graph_compatible_ == CompatibleState::COMPATIBLE;
+    return graph_compatibility_;
 }
 
 }  // namespace nvidia_gpu
