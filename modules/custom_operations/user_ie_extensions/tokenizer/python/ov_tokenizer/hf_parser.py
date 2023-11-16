@@ -4,6 +4,7 @@
 
 import json
 import tempfile
+from copy import deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -14,6 +15,7 @@ from openvino import Model, PartialShape, Type
 from openvino.runtime import Node, op
 from openvino.runtime.exceptions import OVTypeError
 from openvino.runtime.utils.types import as_node, make_constant_node
+from transformers.convert_slow_tokenizer import import_protobuf
 
 from .constants import (
     ATTENTION_MASK_INPUT_NAME,
@@ -308,6 +310,22 @@ def is_sentencepiece_model(hf_tokenizer: "PreTrainedTokenizerBase") -> bool:
     return getattr(hf_tokenizer, "vocab_files_names", {}).get("vocab_file", "").endswith(".model")
 
 
+def add_tokens_to_sentencepiece_model(sp_model_path: Path, hf_tokenizer: "PreTrainedTokenizerBase") -> None:
+    model_pb = import_protobuf()
+    model = model_pb.ModelProto()
+    with open(sp_model_path, "rb") as model_file:
+        model.ParseFromString(model_file.read())
+
+    add_token_dict = hf_tokenizer.tokenizer.index_special_tokens
+    for idx, token in sorted(add_token_dict.items()):
+        new_piece = deepcopy(model.pieces[-1])
+        new_piece.piece = token
+        model.pieces.append(new_piece)
+
+    with open(sp_model_path, "wb") as model_file:
+        model_file.write(model.SerializeToString())
+
+
 def convert_sentencepiece_model_tokenizer(
     hf_tokenizer: "PreTrainedTokenizerBase",
     add_attention_mask: bool = True,
@@ -321,7 +339,12 @@ def convert_sentencepiece_model_tokenizer(
 
     with tempfile.TemporaryDirectory() as tmp:
         hf_tokenizer.save_pretrained(tmp)
-        sp_model = np.fromfile(Path(tmp) / hf_tokenizer.vocab_files_names["vocab_file"], dtype=np.uint8)
+        vocab_file = Path(tmp) / hf_tokenizer.vocab_files_names["vocab_file"]
+
+        if (is_chatglm := getattr(hf_tokenizer, "name", None) == "GLMTokenizer"):
+            add_tokens_to_sentencepiece_model(vocab_file, hf_tokenizer)
+
+        sp_model = np.fromfile(vocab_file, dtype=np.uint8)
         sp_model_node = as_node(sp_model)
 
         if hf_tokenizer.is_fast:
@@ -331,8 +354,7 @@ def convert_sentencepiece_model_tokenizer(
     input_node = op.Parameter(Type.u8, PartialShape(["?"]))
     input_node.set_friendly_name("string_input")
 
-    # for ChatGLM tokenizer support
-    if is_chatglm := getattr(hf_tokenizer, "name", None) == "GLMTokenizer":
+    if is_chatglm:
         add_eos_token = False
     elif hasattr(hf_tokenizer, "add_eos_token"):
         add_eos_token = hf_tokenizer.add_eos_token or False
@@ -435,9 +457,7 @@ def is_tiktoken_model(hf_tokenizer: "PreTrainedTokenizerBase") -> bool:
 
 def convert_tiktoken_model_tokenizer(
     hf_tokenizer: "PreTrainedTokenizerBase",
-    add_attention_mask: bool = True,
     with_decoder: bool = False,
-    streaming_decoder: bool = False,
 ) -> Union[Model, Tuple[Model, Model]]:
     encoding = getattr(hf_tokenizer, "tokenizer", None) or hf_tokenizer.encoder
     split_pattern = encoding._pat_str

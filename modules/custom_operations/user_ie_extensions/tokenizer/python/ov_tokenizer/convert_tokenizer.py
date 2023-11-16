@@ -52,9 +52,7 @@ def convert_tokenizer(
                 logger.info("Convert tiktoken-based tokenizer")
                 ov_tokenizers = convert_tiktoken_model_tokenizer(
                     tokenizer_object,
-                    add_attention_mask=True,
                     with_decoder=with_decoder,
-                    streaming_decoder=streaming_decoder,
                 )
             elif isinstance(tokenizer_object, PreTrainedTokenizerFast):
                 logger.info("Convert Huggingface Fast tokenizer pipeline.")

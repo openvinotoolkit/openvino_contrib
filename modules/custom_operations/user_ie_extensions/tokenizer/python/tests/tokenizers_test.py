@@ -98,6 +98,9 @@ sentencepiece_models = [
     "xlm-roberta-base",
     "microsoft/deberta-v3-base",
     "xlnet-base-cased",
+    # "THUDM/chatglm-6b",  # hf_tokenizer init error
+    "THUDM/chatglm2-6b",  # detokenizer cannot filter special tokens
+    "THUDM/chatglm3-6b",
     # "t5-base",  # crashes tests
 ]
 tiktiken_models = [
@@ -147,12 +150,13 @@ def is_fast_tokenizer(request):
 
 @pytest.fixture(scope="session", params=sentencepiece_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
 def sentencepice_model_tokenizers(request, is_fast_tokenizer):
-    return get_tokenizer_detokenizer(request, is_fast_tokenizer)
+    return get_tokenizer_detokenizer(request, is_fast_tokenizer, trust_remote_code=True)
 
 
 @pytest.fixture(scope="session", params=tiktiken_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
 def tiktoken_tokenizers(request):
     return get_tokenizer(request, trust_remote_code=True)
+
 
 @pytest.fixture(scope="session", params=tiktiken_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
 def tiktoken_detokenizers(request):
@@ -215,7 +219,9 @@ def test_sentencepiece_model_tokenizer(sentencepice_model_tokenizers, test_strin
     ov_tokenized = ov_tokenizer(pack_strings([test_string]))
 
     for output_name, hf_result in hf_tokenized.items():
-        assert np.all((ov_result := ov_tokenized[output_name]) == hf_result), f"{hf_result}\n{ov_result}"
+        #  chatglm has token_type_ids output that we omit
+        if (ov_result := ov_tokenized.get(output_name)) is not None:
+            assert np.all(ov_result == hf_result), f"{hf_result}\n{ov_result}"
 
 
 @pytest.mark.parametrize(
