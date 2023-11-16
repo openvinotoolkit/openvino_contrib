@@ -331,7 +331,10 @@ def convert_sentencepiece_model_tokenizer(
     input_node = op.Parameter(Type.u8, PartialShape(["?"]))
     input_node.set_friendly_name("string_input")
 
-    if hasattr(hf_tokenizer, "add_eos_token"):
+    # for ChatGLM tokenizer support
+    if is_chatglm := getattr(hf_tokenizer, "name", None) == "GLMTokenizer":
+        add_eos_token = False
+    elif hasattr(hf_tokenizer, "add_eos_token"):
         add_eos_token = hf_tokenizer.add_eos_token or False
     else:
         add_eos_token = (
@@ -362,6 +365,13 @@ def convert_sentencepiece_model_tokenizer(
         "ScatterNDUpdate",
         [broadcast, indices, values],  # FIXME: pad left side instead of right
     )
+
+    if is_chatglm:
+        prefix_tokens = make_constant_node(
+            np.array([hf_tokenizer.get_prefix_tokens()]), dtype=scatternd_input_ids.output(0).element_type
+        )
+        scatternd_input_ids = opset.concat([prefix_tokens, scatternd_input_ids], axis=-1)
+
     scatternd_input_ids.output(0).tensor.add_names({TOKEN_IDS_INPUT_NAME})
 
     outputs = scatternd_input_ids.outputs()
@@ -378,6 +388,13 @@ def convert_sentencepiece_model_tokenizer(
                 ),
             ],
         )
+
+        if is_chatglm:
+            attention_prefix = make_constant_node(
+                np.array([[1 for _ in hf_tokenizer.get_prefix_tokens()]]), dtype=attention_mask.output(0).element_type
+            )
+            attention_mask = opset.concat([attention_prefix, attention_mask], axis=-1)
+
         attention_mask.output(0).tensor.add_names({ATTENTION_MASK_INPUT_NAME})
         outputs.append(attention_mask.output(0))
 
@@ -397,9 +414,6 @@ def get_sp_decoder(sp_model_node: Node, streaming_decoder: bool = False) -> Mode
         "SentencepieceStreamDetokenizer" if streaming_decoder else "SentencepieceDetokenizer",
         [sp_model_node, token_ids],
     ).outputs()
-
-    if streaming_decoder:
-        decoder = RegexDecodingStep.replace_sp_spaces().get_ov_subgraph(decoder)
 
     string_output = factory.create("StringTensorPack", decoder).outputs()
     string_output[0].tensor.add_names({STRING_OUTPUT_NAME})
