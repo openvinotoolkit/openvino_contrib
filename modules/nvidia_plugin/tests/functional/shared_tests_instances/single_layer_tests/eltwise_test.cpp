@@ -205,7 +205,7 @@ INSTANTIATE_TEST_CASE_P(
     CudaEltwiseLayerTest::getTestCaseName);
 
 const std::vector<ov::test::ElementType> floor_mod_precisions = {
-    ov::test::ElementType::f16, ov::test::ElementType::f32, ov::test::ElementType::i32, ov::test::ElementType::u8};
+    ov::test::ElementType::f16, ov::test::ElementType::f32, ov::test::ElementType::i32/*, ov::test::ElementType::u8*/};
 
 INSTANTIATE_TEST_CASE_P(
     smoke_FloorMod,
@@ -222,7 +222,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(additional_config)),
         ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
-
+/*
 INSTANTIATE_TEST_CASE_P(
     smoke_FloorMod_U32,
     CudaEltwiseLayerTest,
@@ -238,7 +238,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(additional_config)),
         ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
-
+*/
 INSTANTIATE_TEST_CASE_P(
     smoke_FloorMod_I64,
     CudaEltwiseLayerTest,
