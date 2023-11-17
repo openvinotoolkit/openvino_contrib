@@ -1,5 +1,6 @@
 # Copyright (C) 2018-2022 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
+from pathlib import Path
 
 from openvino.runtime import Core
 from openvino.tools.mo import convert_model
@@ -7,6 +8,13 @@ from openvino.tools.mo import convert_model
 import pytest
 import numpy as np
 import os
+import sys
+
+
+ext_path_dir = Path(os.getenv('CUSTOM_OP_LIB')).parent
+if sys.platform == "win32":
+        # On Windows, with Python >= 3.8, DLLs are no longer imported from the PATH.
+    os.add_dll_directory(str(ext_path_dir.absolute()))
 
 
 def run_test(ref_inputs, ref_res, test_onnx=False, threshold=1e-5): 
