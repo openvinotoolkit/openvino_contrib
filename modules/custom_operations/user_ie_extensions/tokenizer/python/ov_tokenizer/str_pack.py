@@ -15,7 +15,7 @@ def to_bytes(number: int) -> bytes:
 
 
 def pack_string(string: str) -> NDArray:
-    return np.frombuffer(bytes(string + " ", "utf-8"), dtype=np.uint8)  # + ' ' is WA for CPU bug
+    return np.frombuffer(bytes(string, "utf-8"), dtype=np.uint8)
 
 
 def pack_strings(strings: List[str]) -> NDArray:

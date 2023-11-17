@@ -211,8 +211,7 @@ bool evaluate_normalization_helper (ov::TensorVector& outputs, const ov::TensorV
 }
 
 std::shared_ptr<Node> string_attribute_to_constant (const ov::frontend::NodeContext& node, const std::string& name) {
-    // FIXME: using space to pad the value to work-around CPU issue with empty constants
-    auto value = node.get_attribute<std::string>(name) + " ";
+    auto value = node.get_attribute<std::string>(name);
 
     // TODO: How to translate attribute `replace_global`?
 

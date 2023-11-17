@@ -26,8 +26,8 @@ RegexNormalization::RegexNormalization(
             auto replace_pattern_const = as_type_ptr<Constant>(arguments[4].get_node_shared_ptr());
             auto search_pattern_buf = static_cast<const char*>(search_pattern_const->get_data_ptr());
             auto replace_pattern_buf = static_cast<const char*>(replace_pattern_const->get_data_ptr());
-            auto search_pattern = absl::string_view((const char*)search_pattern_buf, search_pattern_const->get_byte_size() - 1);   // FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
-            m_replace_pattern = absl::string_view((const char*)replace_pattern_buf, replace_pattern_const->get_byte_size() - 1);   // FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
+            auto search_pattern = absl::string_view((const char*)search_pattern_buf, search_pattern_const->get_byte_size());
+            m_replace_pattern = absl::string_view((const char*)replace_pattern_buf, replace_pattern_const->get_byte_size());
             m_search_pattern_re = std::make_shared<re2::RE2>(search_pattern);
         };
         constructor_validate_and_infer_types();
