@@ -147,19 +147,16 @@ jobs:
 #    condition: eq(variables['CMAKE_OSX_ARCHITECTURES'], 'x86_64')
 
   - script: |
-      python3 -m pip install --user virtualenv
-      python3 -m virtualenv -p /usr/bin/python3.8 .env3
-      source .env3/bin/activate
+      python3 -m venv venv
+      source venv/bin/activate
       python -m pip install --upgrade pip
-      python -m pip install -r $(REPO_DIR)/modules/custom_operations/tests/requirements.txt
-      cd ${OPENVINO_REPO_DIR}/tools && python -m pip install mo/
-      python -m pip install $(REPO_DIR)/modules/custom_operations/user_ie_extensions/tokenizer/python/.[all]
+      python -m pip install $(REPO_DIR)/modules/custom_operations/user_ie_extensions/tokenizer/python/.[transformers]
     workingDirectory: $(WORK_DIR)
-    displayName: 'Create user custom operations env'
+    displayName: 'Create tokenizers env'
 
   - script: |
       . $(SETUPVARS)
-      source  $(WORK_DIR)/.env3/bin/activate
+      source  $(WORK_DIR)/venv/bin/activate
       python -m pytest --tb=no tokenizers_test.py
     workingDirectory: $(REPO_DIR)/modules/custom_operations/user_ie_extensions/tokenizer/python/tests/
     displayName: 'Tokenizers extension regression test'
