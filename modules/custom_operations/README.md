@@ -19,8 +19,8 @@ For more information about the format, check the code for `SentencepieceTokenize
 
 And other custom operations introduced by third-party frameworks:
 
-* [calculate_grid](/examples/calculate_grid) and [sparse_conv](/examples/sparse_conv) from [Open3D](https://github.com/isl-org/Open3D)
-* [complex_mul](/examples/complex_mul) from [DIRECT](https://github.com/NKI-AI/direct)
+* [calculate_grid](examples/calculate_grid) and [sparse_conv](examples/sparse_conv) from [Open3D](https://github.com/isl-org/Open3D)
+* [complex_mul](examples/complex_mul) from [DIRECT](https://github.com/NKI-AI/direct)
 
 You can find more information about how to create and use OpenVINO Extensions to facilitate mapping of custom operations from framework model representation to OpenVINO representation [here](https://docs.openvino.ai/latest/openvino_docs_Extensibility_UG_Frontend_Extensions.html).
 
