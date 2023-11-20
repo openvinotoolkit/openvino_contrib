@@ -28,6 +28,8 @@
 namespace LayerTestsDefinitions {
 
 namespace {
+using ov::test::utils::EltwiseTypes;
+using ov::test::utils::InputLayerType;
 
 template <InferenceEngine::Precision::ePrecision PRC>
 void replace(InferenceEngine::Blob::Ptr& blob, float old_value, float new_value, bool is_integer) {
@@ -166,18 +168,18 @@ InferenceEngine::Blob::Ptr CudaEltwiseLayerTest::GenerateInput(const InferenceEn
     const auto precision = info.getPrecision();
     const auto is_float = precision.is_float();
     switch (op_type) {
-        case ngraph::helpers::EltwiseTypes::POWER:
+        case EltwiseTypes::POWER:
             return is_float ? FuncTestUtils::createAndFillBlob(info.getTensorDesc(), 2, 2, 128)
                             : FuncTestUtils::createAndFillBlob(info.getTensorDesc(), 4, 2);
-        case ngraph::helpers::EltwiseTypes::DIVIDE:
-        case ngraph::helpers::EltwiseTypes::MOD: {
+        case EltwiseTypes::DIVIDE:
+        case EltwiseTypes::MOD: {
             auto blob = FuncTestUtils::createAndFillBlob(info.getTensorDesc(), range, start_from, resolution, seed);
             if (!is_float && info.name() == secondary_input_name) {
                 replace(blob, precision, 0, 1, true);
             }
             return blob;
         }
-        case ngraph::helpers::EltwiseTypes::ERF:
+        case EltwiseTypes::ERF:
             return FuncTestUtils::createAndFillBlob(info.getTensorDesc(), 6, -3);
         default:
             return FuncTestUtils::createAndFillBlob(info.getTensorDesc(), range, start_from, resolution, seed);
@@ -193,9 +195,9 @@ void CudaEltwiseLayerTest::SetUp() {
     ov::test::ElementType netType;
     ov::test::ElementType in_prc;
     ov::test::ElementType out_prc;
-    ngraph::helpers::InputLayerType secondaryInputType;
+    InputLayerType secondaryInputType;
     ov::test::utils::OpType opType;
-    ngraph::helpers::EltwiseTypes eltwiseType;
+    EltwiseTypes eltwiseType;
     ov::AnyMap additionalConfig;
     const ov::test::subgraph::EltwiseTestParams ew_params = std::get<0>(this->GetParam());
     const OperationMode mode = std::get<1>(this->GetParam());
@@ -223,12 +225,12 @@ void CudaEltwiseLayerTest::SetUp() {
             FAIL() << "Unsupported Secondary operation type";
     }
     // To propagate shape_input_secondary just in static case because all shapes are defined in dynamic scenarion
-    if (secondaryInputType == ngraph::helpers::InputLayerType::PARAMETER) {
+    if (secondaryInputType == InputLayerType::PARAMETER) {
         transformInputShapesAccordingEltwise(shape_input_secondary);
     }
 
     std::shared_ptr<ngraph::Node> secondaryInput;
-    if (secondaryInputType == ngraph::helpers::InputLayerType::PARAMETER) {
+    if (secondaryInputType == InputLayerType::PARAMETER) {
         auto input = std::make_shared<ov::op::v0::Parameter>(netType, shape_input_secondary);
         secondaryInput = input;
         parameters.push_back(input);
@@ -238,8 +240,8 @@ void CudaEltwiseLayerTest::SetUp() {
         auto data = NGraphFunctions::Utils::generateVector<ngraph::element::Type_t::f32>(
             ngraph::shape_size(shape), up_to, start_from, seed);
         switch (eltwiseType) {
-            case ngraph::helpers::EltwiseTypes::DIVIDE:
-            case ngraph::helpers::EltwiseTypes::MOD: {
+            case EltwiseTypes::DIVIDE:
+            case EltwiseTypes::MOD: {
                 if (ov::element::Type{netType}.is_integral()) {
                     std::replace_if(
                         data.begin(),
@@ -250,7 +252,7 @@ void CudaEltwiseLayerTest::SetUp() {
                 secondaryInput = std::make_shared<ov::op::v0::Constant>(netType, shape, data);
                 break;
             }
-            case ngraph::helpers::EltwiseTypes::POWER: {
+            case EltwiseTypes::POWER: {
                 ov::Tensor random_tensor(netType, shape);
                 ov::test::utils::fill_tensor_random(random_tensor, 3, -3);
                 secondaryInput = std::make_shared<ov::op::v0::Constant>(random_tensor);
@@ -268,7 +270,7 @@ void CudaEltwiseLayerTest::SetUp() {
     secondary_input_name = secondaryInput->get_friendly_name();
 
     const bool is_python_divide = mode == OperationMode::PYTHON_DIVIDE;
-    auto eltwise = eltwiseType == ngraph::helpers::EltwiseTypes::DIVIDE
+    auto eltwise = eltwiseType == EltwiseTypes::DIVIDE
                        ? std::make_shared<ngraph::op::v1::Divide>(parameters[0], secondaryInput, is_python_divide)
                        : ngraph::builder::makeEltwise(parameters[0], secondaryInput, eltwiseType);
     function = std::make_shared<ngraph::Function>(eltwise, parameters, "Eltwise");

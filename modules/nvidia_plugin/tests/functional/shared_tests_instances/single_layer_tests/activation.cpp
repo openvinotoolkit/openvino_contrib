@@ -11,7 +11,7 @@
 #include "cuda_test_constants.hpp"
 
 using namespace LayerTestsDefinitions;
-using namespace ngraph::helpers;
+using ov::test::utils::ActivationTypes;
 namespace {
 
 const std::vector<InferenceEngine::Precision> netPrecisions = {InferenceEngine::Precision::FP32,
@@ -27,40 +27,40 @@ const std::vector<InferenceEngine::Precision> intPrecisions = {
 // TODO commented tests don't work for CUDA now.
 // The reason there are missing correspondent operations or transformation
 const std::map<ActivationTypes, std::vector<std::vector<float>>> activationTypes = {
-    {Sigmoid, {}},
-    {Tanh, {}},
-    {Relu, {}},
-    {Exp, {}},
-    {Log, {}},
-    //            {Sign,                  {}},
-    {Abs, {}},
-    {Clamp, {{-2.0f, 2.0f}}},
-    {Negative, {}},
-    //            {Acos,                  {}},
-    //            {Asin,                  {}},
-    //            {Atan,                  {}},
-    {Cos, {}},
-    {Cosh, {}},
-    {Floor, {}},
-    {Sin, {}},
-    {Sinh, {}},
-    {Sqrt, {}},
-    //            {Tan,                   {}},
-    {Elu, {{0.1f}}},
-    //            {Erf,                   {}},
-    //            {HardSigmoid,           {{0.2f, 0.5f}}},
-    //            {Selu,                  {{1.6732f, 1.0507f}}},
-    //            {Ceiling,               {}},
-    {Mish, {}},
-    {Swish, {{0.5f}}},
-    {HSwish, {}},
-    //            {SoftPlus,              {}},
-    {HSigmoid, {}},
-    //            {RoundHalfToEven,       {}},
-    //            {RoundHalfAwayFromZero, {}},
-    {Gelu, {}},
-    {GeluErf, {}},
-    {GeluTanh, {}}};
+    {ActivationTypes::Sigmoid, {}},
+    {ActivationTypes::Tanh, {}},
+    {ActivationTypes::Relu, {}},
+    {ActivationTypes::Exp, {}},
+    {ActivationTypes::Log, {}},
+    //            {ActivationTypes::Sign,                  {}},
+    {ActivationTypes::Abs, {}},
+    {ActivationTypes::Clamp, {{-2.0f, 2.0f}}},
+    {ActivationTypes::Negative, {}},
+    //            {ActivationTypes::Acos,                  {}},
+    //            {ActivationTypes::Asin,                  {}},
+    //            {ActivationTypes::Atan,                  {}},
+    {ActivationTypes::Cos, {}},
+    {ActivationTypes::Cosh, {}},
+    {ActivationTypes::Floor, {}},
+    {ActivationTypes::Sin, {}},
+    {ActivationTypes::Sinh, {}},
+    {ActivationTypes::Sqrt, {}},
+    //            {ActivationTypes::Tan,                   {}},
+    {ActivationTypes::Elu, {{0.1f}}},
+    //            {ActivationTypes::Erf,                   {}},
+    //            {ActivationTypes::HardSigmoid,           {{0.2f, 0.5f}}},
+    //            {ActivationTypes::Selu,                  {{1.6732f, 1.0507f}}},
+    //            {ActivationTypes::Ceiling,               {}},
+    {ActivationTypes::Mish, {}},
+    {ActivationTypes::Swish, {{0.5f}}},
+    {ActivationTypes::HSwish, {}},
+    //            {ActivationTypes::SoftPlus,              {}},
+    {ActivationTypes::HSigmoid, {}},
+    //            {ActivationTypes::RoundHalfToEven,       {}},
+    //            {ActivationTypes::RoundHalfAwayFromZero, {}},
+    {ActivationTypes::Gelu, {}},
+    {ActivationTypes::GeluErf, {}},
+    {ActivationTypes::GeluTanh, {}}};
 
 class CUDAActivationIntegerLayerTest : public ActivationLayerTest {
     void SetUp() override {
@@ -71,18 +71,18 @@ class CUDAActivationIntegerLayerTest : public ActivationLayerTest {
 
 // List of operations that should be tested also with integer precision
 const std::map<ActivationTypes, std::vector<std::vector<float>>> intActivationTypes = {
-    {Abs, {}},
-    {Negative, {}},
-    {Cos, {}},
-    {Cosh, {}},
-    {Sinh, {}},
-    {Sqrt, {}},
-    {Log, {}},
+    {ActivationTypes::Abs, {}},
+    {ActivationTypes::Negative, {}},
+    {ActivationTypes::Cos, {}},
+    {ActivationTypes::Cosh, {}},
+    {ActivationTypes::Sinh, {}},
+    {ActivationTypes::Sqrt, {}},
+    {ActivationTypes::Log, {}},
 };
 
 const std::map<ActivationTypes, std::vector<std::vector<float>>> preluActivationParamTypes = {
-    {PReLu, {{}}},  // Slope will be filled with increasing values from -10 to match slope input shape
-    {LeakyRelu, {{0.01f}}}};
+    {ActivationTypes::PReLu, {{}}},  // Slope will be filled with increasing values from -10 to match slope input shape
+    {ActivationTypes::LeakyRelu, {{0.01f}}}};
 
 std::map<std::vector<size_t>, std::vector<std::vector<size_t>>> basic = {
     {{1, 50}, {{}}},

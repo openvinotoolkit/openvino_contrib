@@ -12,6 +12,7 @@
 #include "unsymmetrical_comparer.hpp"
 
 namespace LayerTestsDefinitions {
+using ov::test::utils::InputLayerType;
 
 constexpr int SEED_FIRST = 10;
 constexpr float THRESHOLD_FP16 = 0.05f;
@@ -66,7 +67,7 @@ const std::vector<bool> linear_before_reset{true};
 
 const std::vector<InferenceEngine::Precision> net_precisions = {InferenceEngine::Precision::FP32,
                                                                 InferenceEngine::Precision::FP16};
-const std::vector WRBLayerTypes = {ngraph::helpers::InputLayerType::CONSTANT};
+const std::vector WRBLayerTypes = {InputLayerType::CONSTANT};
 
 // ------------- Smoke shapes -------------
 const std::vector<size_t> smoke_batches_01{1, 2};

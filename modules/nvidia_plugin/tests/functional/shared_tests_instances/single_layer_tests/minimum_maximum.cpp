@@ -10,6 +10,8 @@
 using namespace LayerTestsDefinitions;
 
 namespace {
+using ov::test::utils::MinMaxOpType;
+using ov::test::utils::InputLayerType;
 
 const std::vector<std::vector<std::vector<size_t>>> inShapes = {
     {{2}, {1}},
@@ -26,14 +28,14 @@ const std::vector<InferenceEngine::Precision> netPrecisions = {
     InferenceEngine::Precision::FP16,
 };
 
-const std::vector<ngraph::helpers::MinMaxOpType> opType = {
-    ngraph::helpers::MinMaxOpType::MINIMUM,
-    ngraph::helpers::MinMaxOpType::MAXIMUM,
+const std::vector<MinMaxOpType> opType = {
+    MinMaxOpType::MINIMUM,
+    MinMaxOpType::MAXIMUM,
 };
 
-const std::vector<ngraph::helpers::InputLayerType> inputType = {
-    ngraph::helpers::InputLayerType::CONSTANT,
-    ngraph::helpers::InputLayerType::PARAMETER,
+const std::vector<InputLayerType> inputType = {
+    InputLayerType::CONSTANT,
+    InputLayerType::PARAMETER,
 };
 
 INSTANTIATE_TEST_CASE_P(smoke_MaxMin,
