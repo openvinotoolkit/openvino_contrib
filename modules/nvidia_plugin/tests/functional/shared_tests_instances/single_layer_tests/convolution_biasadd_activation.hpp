@@ -31,16 +31,17 @@
 #include <vector>
 
 namespace LayerTestsDefinitions {
+using ov::test::utils::ActivationTypes;
 
 // TODO: Consider to add bias shape in here too, instead of deriving it in test class.
 //       That would allow test generator to use bias shape from model
 typedef std::tuple<convLayerTestParamsSet,
-                   ngraph::helpers::ActivationTypes  // Activation
+                   ActivationTypes  // Activation
                    >
     convBAATestParamSet;
 
 typedef std::tuple<groupConvLayerTestParamsSet,
-                   ngraph::helpers::ActivationTypes  // Activation
+                   ActivationTypes  // Activation
                    >
     groupConvBAATestParamSet;
 
@@ -89,13 +90,13 @@ public:
 
     static std::string getTestCaseName(testing::TestParamInfo<typename Traits::ConvBAAParamSet> obj) {
         typename Traits::ConvParamSet convParamSet;
-        ngraph::helpers::ActivationTypes activation;
+        ActivationTypes activation;
         std::tie(convParamSet, activation) = obj.param;
 
         std::ostringstream result;
         result << TConvLayerTest::getTestCaseName({convParamSet, obj.index}) << "_";
         result << "Activation="
-               << (activation == ngraph::helpers::ActivationTypes::None
+               << (activation == ActivationTypes::None
                        ? "None"
                        : LayerTestsDefinitions::activationNames[activation]);
         return result.str();
@@ -104,7 +105,7 @@ public:
 protected:
     void SetUp() override {
         typename Traits::ConvParamSet convParamSet;
-        ngraph::helpers::ActivationTypes activation;
+        ActivationTypes activation;
         std::tie(convParamSet, activation) = this->GetParam();
 
         ov::element::Type ngNetPrc = ov::element::Type_t::undefined;
@@ -133,7 +134,7 @@ protected:
         } else {
             lastNode = biasAddLayer;
         }
-        if (activation != ngraph::helpers::ActivationTypes::None) {
+        if (activation != ActivationTypes::None) {
             lastNode = ngraph::builder::makeActivation(lastNode, ngNetPrc, activation);
         }
 
@@ -164,14 +165,11 @@ protected:
 
         auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
         ov::ParameterVector params{std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(inputShape))};
-
-        auto paramOuts =
-            ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
         std::vector<float> filter_weights;
 
         std::shared_ptr<ov::Node> convNode = nullptr;
         if constexpr (!isGroup) {
-            convNode = ngraph::builder::makeConvolution(paramOuts[0],
+            convNode = ngraph::builder::makeConvolution(params[0],
                                                         ngPrc,
                                                         kernel,
                                                         stride,
@@ -183,7 +181,7 @@ protected:
                                                         false,
                                                         filter_weights);
         } else {
-            convNode = ngraph::builder::makeGroupConvolution(paramOuts[0],
+            convNode = ngraph::builder::makeGroupConvolution(params[0],
                                                              ngPrc,
                                                              kernel,
                                                              stride,

@@ -15,14 +15,15 @@
 
 namespace LayerTestsDefinitions {
 namespace {
+using ov::test::utils::ActivationTypes;
 
 const std::vector<InferenceEngine::Precision> netPrecisions = {
     InferenceEngine::Precision::FP16,
     InferenceEngine::Precision::FP32,
 };
 
-const std::vector<ngraph::helpers::ActivationTypes> netActivations = {
-    ngraph::helpers::ActivationTypes::None,
+const std::vector<ActivationTypes> netActivations = {
+    ActivationTypes::None,
 };
 
 // =============================================================================

@@ -7,10 +7,9 @@
 #include <single_layer_tests/pooling.hpp>
 #include <vector>
 
-using namespace ngraph::helpers;
-using namespace LayerTestsDefinitions;
-
 namespace {
+using namespace LayerTestsDefinitions;
+using ov::test::utils::PoolingTypes;
 
 const std::vector<InferenceEngine::Precision> netPrecisions = {InferenceEngine::Precision::FP32,
                                                                InferenceEngine::Precision::FP16};

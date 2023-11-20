@@ -15,6 +15,7 @@
 #include "cuda_thread_context.hpp"
 
 namespace LayerTestsDefinitions {
+using ov::test::utils::InputLayerType;
 
 constexpr int SEED_FIRST = 10;
 constexpr float THRESHOLD_FP16 = 0.06f;
@@ -66,7 +67,7 @@ const bool should_decompose = false;
 const std::vector<std::string> activations{"sigmoid", "tanh", "tanh"};
 const std::vector<InferenceEngine::Precision> netPrecisions = {InferenceEngine::Precision::FP32,
                                                                InferenceEngine::Precision::FP16};
-const std::vector WRBLayerTypes = {ngraph::helpers::InputLayerType::CONSTANT};
+const std::vector WRBLayerTypes = {InputLayerType::CONSTANT};
 
 // ------------- Smoke shapes -------------
 const std::vector<size_t> smoke_batch{1, 5};
