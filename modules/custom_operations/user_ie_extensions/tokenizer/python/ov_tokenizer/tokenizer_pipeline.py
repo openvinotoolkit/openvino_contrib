@@ -326,20 +326,37 @@ class BPETokenizationStep(TokenizationModelStep):
     suffix_indicator: str = ""
     end_suffix: str = ""
     byte_fallback: bool = False
+    added_tokens: Optional[Dict[int, str]] = None
+
+    def __post_init__(self):
+        if self.added_tokens is not None:
+            self.extend_vocab_with_added_tokens()
+
+    def extend_vocab_with_added_tokens(self) -> None:
+        for idx, token in sorted(self.added_tokens.items()):
+            self.vocab.append(token)
 
     @classmethod
     def from_hf_json(cls, tokenizer_json: Dict[str, Any]) -> "BPETokenizationStep":
+        vocab = [token for token, index in sorted(tokenizer_json["model"]["vocab"].items(), key=lambda x: x[1])]
         return cls(
             unk_token=tokenizer_json["model"]["unk_token"] or "",
             fuse_unk=tokenizer_json["model"]["fuse_unk"] or False,
             suffix_indicator=tokenizer_json["model"]["continuing_subword_prefix"] or "",
             end_suffix=tokenizer_json["model"]["end_of_word_suffix"] or "",
-            vocab=[token for token, index in sorted(tokenizer_json["model"]["vocab"].items(), key=lambda x: x[1])],
+            vocab=vocab,
             merges=tokenizer_json["model"]["merges"],
+            added_tokens={
+                token["id"]: token["content"] for token in tokenizer_json["added_tokens"] if token["id"] >= len(vocab)
+            },
         )
 
     @classmethod
-    def from_tiktoken_encoding(cls, encoding: "Encoding") -> "BPETokenizationStep":  # noqa
+    def from_tiktoken_encoding(
+        cls,
+        encoding: "Encoding",  # noqa
+        added_tokens: Optional[Dict[int, str]] = None,
+    ) -> "BPETokenizationStep":
         from .tiktoken_parser import generate_vocab_and_merges
 
         vocab, merges = generate_vocab_and_merges(encoding)
@@ -350,6 +367,7 @@ class BPETokenizationStep(TokenizationModelStep):
             end_suffix="",
             vocab=[token for token, idx in sorted(vocab.items(), key=lambda x: x[1])],
             merges=merges,
+            added_tokens=added_tokens,
         )
 
     def get_ov_subgraph(self, input_nodes: List[Output]) -> List[Output]:

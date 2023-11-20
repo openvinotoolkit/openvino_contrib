@@ -341,7 +341,7 @@ def convert_sentencepiece_model_tokenizer(
         hf_tokenizer.save_pretrained(tmp)
         vocab_file = Path(tmp) / hf_tokenizer.vocab_files_names["vocab_file"]
 
-        if (is_chatglm := getattr(hf_tokenizer, "name", None) == "GLMTokenizer"):
+        if is_chatglm := getattr(hf_tokenizer, "name", None) == "GLMTokenizer":
             add_tokens_to_sentencepiece_model(vocab_file, hf_tokenizer)
 
         sp_model = np.fromfile(vocab_file, dtype=np.uint8)

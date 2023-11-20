@@ -86,7 +86,7 @@ bpe_models = [
     "microsoft/deberta-base",
     "bigscience/bloom",
     "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k",
-    # "Salesforce/codegen-16B-multi",  # Segfalts on ""A lot\t\tof whitespaces!""
+    "Salesforce/codegen-16B-multi",
     # "google/flan-t5-xxl",  # needs Precompiled/CharsMap
     # "jinmang2/textcnn-ko-dialect-classifier",  # Needs Metaspace Pretokenizer
     # "hyunwoongko/blenderbot-9B",  # hf script to get fast tokenizer doesn't work
@@ -284,7 +284,6 @@ def test_bpe_detokenizer(hf_and_ov_bpe_detokenizer, test_string):
     assert ov_output == hf_output
 
 
-# @pytest.mark.skip(reason="tiktoken tokenizer is WIP")
 @pytest.mark.parametrize(
     "test_string",
     [

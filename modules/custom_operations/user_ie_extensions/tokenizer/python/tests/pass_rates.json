@@ -3,8 +3,8 @@
     "tokenizers_test.py::test_hf_wordpiece_tokenizers_multiple_strings": 0.641025641025641,
     "tokenizers_test.py::test_sentencepiece_model_tokenizer": 0.6875,
     "tokenizers_test.py::test_sentencepiece_model_detokenizer": 0.5525,
-    "tokenizers_test.py::test_hf_bpe_tokenizers_outputs": 0.846875,
-    "tokenizers_test.py::test_bpe_detokenizer": 0.93125,
+    "tokenizers_test.py::test_hf_bpe_tokenizers_outputs": 0.88,
+    "tokenizers_test.py::test_bpe_detokenizer": 0.9529411764705882,
     "tokenizers_test.py::test_tiktoken_tokenizers": 0.9,
-    "tokenizers_test.py::test_": 0.8078960038517092
+    "tokenizers_test.py::test_": 0.8124118476727785
 }
