@@ -9,7 +9,7 @@ from typing import Any, Tuple, Union
 from openvino.runtime import Model, Type
 from openvino.runtime.exceptions import OVTypeError
 
-from .utils import change_outputs_type
+from .utils import change_inputs_type, change_outputs_type
 
 
 logger = logging.getLogger(__name__)
@@ -21,6 +21,7 @@ def convert_tokenizer(
     with_decoder: bool = False,
     streaming_decoder: bool = False,
     tokenizer_output_type: Type = Type.i64,
+    detokenizer_input_type: Type = Type.i64,
 ) -> Union[Model, Tuple[Model, Model]]:
     # todo: add support for more then 1 input
     if number_of_inputs > 1:
@@ -65,10 +66,10 @@ def convert_tokenizer(
     if ov_tokenizers is None:
         raise OVTypeError(f"Tokenizer type is not supported: {type(tokenizer_object)}")
 
-    if tokenizer_output_type == Type.i32:
-        return ov_tokenizers
-
     if isinstance(ov_tokenizers, tuple):
-        return change_outputs_type(ov_tokenizers[0], tokenizer_output_type), ov_tokenizers[1]
+        return (
+            change_outputs_type(ov_tokenizers[0], tokenizer_output_type),
+            change_inputs_type(ov_tokenizers[1], detokenizer_input_type),
+        )
 
     return change_outputs_type(ov_tokenizers, tokenizer_output_type)

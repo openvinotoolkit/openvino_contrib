@@ -94,6 +94,13 @@ def add_greedy_decoding(text_generation_model: Model, logits_output: str = LOGIT
     return model
 
 
+def change_inputs_type(model: Model, input_type: Type) -> Model:
+    ppp = PrePostProcessor(model)
+    for idx, _ in enumerate(model.inputs):
+        ppp.input(idx).tensor().set_element_type(input_type)
+    return ppp.build()
+
+
 def change_outputs_type(model: Model, output_type: Type) -> Model:
     ppp = PrePostProcessor(model)
     for idx, _ in enumerate(model.outputs):
