@@ -7,6 +7,7 @@
 # os.environ["OV_TOKENIZER_PREBUILD_EXTENSION_PATH"] = "path/to/libuser_ov_extensions.so"
 
 import numpy as np
+import openvino
 import pytest
 from openvino import Core
 from transformers import AutoTokenizer
@@ -321,3 +322,20 @@ def test_tiktoken_detokenizer(tiktoken_detokenizers, test_string):
     ov_output = unpack_strings(ov_detokenizer(token_ids.astype("int32"))["string_output"])
 
     assert ov_output == hf_output
+
+
+def test_streaming_detokenizer():
+    hf_tokenizer = AutoTokenizer.from_pretrained("openlm-research/open_llama_3b_v2")
+    _, ov_detokenizer = convert_tokenizer(hf_tokenizer, with_decoder=True, streaming_decoder=True)
+    ov_detokenizer = core.compile_model(ov_detokenizer)
+
+    test_string = "this is a test string"
+    tokenized_string = hf_tokenizer(test_string).input_ids
+    hf_detokenized = hf_tokenizer.decode(tokenized_string)
+
+    detokenized_string = ""
+    for token in tokenized_string:
+        ov_output = unpack_strings(ov_detokenizer(np.atleast_2d(token))["string_output"])[0]
+        detokenized_string += ov_output
+
+    assert detokenized_string == hf_detokenized

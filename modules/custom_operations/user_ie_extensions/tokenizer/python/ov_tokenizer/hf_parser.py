@@ -437,6 +437,9 @@ def get_sp_decoder(sp_model_node: Node, streaming_decoder: bool = False) -> Mode
         [sp_model_node, token_ids],
     ).outputs()
 
+    if streaming_decoder:
+        decoder = RegexDecodingStep.replace_sp_spaces().get_ov_subgraph(decoder)
+
     string_output = factory.create("StringTensorPack", decoder).outputs()
     string_output[0].tensor.add_names({STRING_OUTPUT_NAME})
     tokenizer_decoder = Model(string_output, [token_ids], TOKENIZER_DECODER_NAME)

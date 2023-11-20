@@ -692,6 +692,13 @@ class RegexDecodingStep(DecodingStep):
         )
         return factory.create("RegexNormalization", input_nodes).outputs()
 
+    @classmethod
+    def replace_sp_spaces(cls) -> "RegexDecodingStep":
+        return cls(
+            regex_search_pattern="▁",
+            replace_term=" ",
+        )
+
 
 @dataclass
 class TokenizerPipeline:
