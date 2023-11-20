@@ -150,6 +150,7 @@ jobs:
       python3 -m venv venv
       source venv/bin/activate
       python -m pip install --upgrade pip
+      . $(SETUPVARS)
       python -m pip install $(REPO_DIR)/modules/custom_operations/user_ie_extensions/tokenizer/python/.[transformers]
     workingDirectory: $(WORK_DIR)
     displayName: 'Create tokenizers env'
