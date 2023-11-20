@@ -12,6 +12,26 @@ option(BUILD_FAST_TOKENIZERS OFF)
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY EXCLUDE_FROM_ALL ON)
 
 #
+# Compile flags
+#
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "^(Apple)?Clang$")
+    set(cxx_flags "-Wno-undef")
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    # C4244: 'argument' : conversion from 'type1' to 'type2', possible loss of data
+    # C4267: 'var' : conversion from 'size_t' to 'type', possible loss of data
+    set(cxx_flags "/wd4244 /wd4267")
+endif()
+
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag("-Wsuggest-override" SUGGEST_OVERRIDE_SUPPORTED)
+if(SUGGEST_OVERRIDE_SUPPORTED)
+    set(cxx_flags "${cxx_flags} -Wno-suggest-override")
+endif()
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${cxx_flags}")
+
+#
 # Dependencies
 #
 
@@ -77,7 +97,7 @@ else()
       FetchContent_Declare(
         fast_tokenizer
         URL      https://bj.bcebos.com/paddlenlp/fast_tokenizer/fast_tokenizer-osx-x86_64-1.0.2.tgz
-        URL_HASH SHA256=5421e5fa5bab8690eaba9f74bbb055c855fb0be921492a47fb99a489fe1f6ef2
+        URL_HASH SHA256=4c8123ad941b3e4325ef72f328db545e34d5eec2de3e2545e1ab8ebeeb5146a9
       )
   elseif(APPLE AND AARCH64)
       FetchContent_Declare(
@@ -98,26 +118,6 @@ else()
       list(APPEND FAST_TOKENIZER_LIBS re2)
   endif()
 endif()
-
-#
-# Compile flags
-#
-
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "^(Apple)?Clang$")
-    set(cxx_flags "-Wno-undef")
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    # C4244: 'argument' : conversion from 'type1' to 'type2', possible loss of data
-    # C4267: 'var' : conversion from 'size_t' to 'type', possible loss of data
-    set(cxx_flags "/wd4244 /wd4267")
-endif()
-
-include(CheckCXXCompilerFlag)
-check_cxx_compiler_flag("-Wsuggest-override" SUGGEST_OVERRIDE_SUPPORTED)
-if(SUGGEST_OVERRIDE_SUPPORTED)
-    set(cxx_flags "${cxx_flags} -Wno-suggest-override")
-endif()
-
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${cxx_flags}")
 
 #
 # Target include dirs, link libraries and other properties
