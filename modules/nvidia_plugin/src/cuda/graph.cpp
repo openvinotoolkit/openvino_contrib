@@ -161,7 +161,7 @@ DownloadNode::DownloadNode(cudaGraphNode_t node, void* dst, DevicePointer<const 
 void CUDA::TransferNode::update_ptrs(const GraphExec& exec,
                                      CUDA::DevicePointer<void*> dst,
                                      CUDA::DevicePointer<const void*> src) {
-    if (dst_ != dst && src_ != src) {
+    if (dst_ != dst || src_ != src) {
         dst_ = dst;
         src_ = src;
         throwIfError(cudaGraphExecMemcpyNodeSetParams1D(

@@ -11,13 +11,7 @@
 namespace CUDA {
 
 struct NodeParams {
-    NodeParams(void* kernel, dim3 gridDim, dim3 blockDim) {
-        knp_.func = kernel;
-        knp_.gridDim = gridDim;
-        knp_.blockDim = blockDim;
-        knp_.sharedMemBytes = 0;
-        knp_.kernelParams = nullptr;
-        knp_.extra = nullptr;
+    NodeParams(void* kernel, dim3 gridDim, dim3 blockDim) : knp_{kernel, gridDim, blockDim, 0u, nullptr, nullptr} {
         ptrs_.reserve(20);
     }
 
