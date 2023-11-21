@@ -9,9 +9,9 @@
 #include <cuda_thread_context.hpp>
 #include <deque>
 #include <mutex>
+#include <openvino/runtime/threading/itask_executor.hpp>
 #include <queue>
 #include <thread>
-#include <threading/ie_itask_executor.hpp>
 
 #include "cuda_jthread.hpp"
 

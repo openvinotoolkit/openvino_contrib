@@ -13,8 +13,8 @@
 #include <gsl/span_ext>
 #include <map>
 #include <memory>
+#include <openvino/runtime/threading/executor_manager.hpp>
 #include <string>
-#include <threading/ie_executor_manager.hpp>
 #include <utility>
 
 #include "cuda_compiled_model.hpp"

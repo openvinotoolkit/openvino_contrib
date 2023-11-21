@@ -9,9 +9,9 @@
 #include <fmt/format.h>
 
 #include <memory_manager/cuda_memory_manager.hpp>
+#include <openvino/runtime/threading/executor_manager.hpp>
 #include <ops/nop_op.hpp>
 #include <ops/subgraph.hpp>
-#include <threading/ie_executor_manager.hpp>
 #include <utility>
 
 #include "cuda_compiled_model.hpp"
@@ -26,15 +26,13 @@
 #include "memory_manager/model/cuda_memory_model_builder.hpp"
 #include "nvidia/nvidia_config.hpp"
 #include "nvidia/properties.hpp"
-
+#include "openvino/runtime/exec_model_info.hpp"
+#include "openvino/runtime/internal_properties.hpp"
+#include "openvino/runtime/iplugin.hpp"
 #include "ops/parameter.hpp"
 #include "ops/result.hpp"
 #include "transformations/utils/utils.hpp"
 #include "transformer/cuda_graph_transformer.hpp"
-
-#include "openvino/runtime/exec_model_info.hpp"
-#include "openvino/runtime/internal_properties.hpp"
-#include "openvino/runtime/iplugin.hpp"
 
 namespace {
 static constexpr const char* nv_stream_executor_name = "NvidiaStreamExecutor";

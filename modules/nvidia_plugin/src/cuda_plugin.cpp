@@ -1,9 +1,9 @@
 // Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
-#include <fmt/format.h>
+#include "cuda_plugin.hpp"
 
-#include "ie_metric_helpers.hpp"
+#include <fmt/format.h>
 
 #include "cpp_interfaces/interface/ie_internal_plugin_config.hpp"
 #include "cuda/props.hpp"
@@ -11,13 +11,13 @@
 #include "cuda_infer_request.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_operation_registry.hpp"
-#include "cuda_plugin.hpp"
+#include "ie_metric_helpers.hpp"
 #include "nvidia/nvidia_config.hpp"
 #include "openvino/core/op_extension.hpp"
 #include "openvino/op/util/op_types.hpp"
 #include "openvino/runtime/core.hpp"
 #include "openvino/runtime/properties.hpp"
-#include "threading/ie_executor_manager.hpp"
+#include "openvino/runtime/threading/executor_manager.hpp"
 #include "transformations/rt_info/fused_names_attribute.hpp"
 
 using namespace ov::nvidia_gpu;
@@ -215,7 +215,9 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& properti
     } else if (METRIC_KEY(SUPPORTED_CONFIG_KEYS) == name) {
         std::vector<std::string> configKeys = {
             CONFIG_KEY(DEVICE_ID), CONFIG_KEY(PERF_COUNT), NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS)};
-        auto streamExecutorConfigKeys = InferenceEngine::IStreamsExecutor::Config{}.SupportedKeys();
+        auto streamExecutorConfigKeys = ov::threading::IStreamsExecutor::Config{}
+                                            .get_property(ov::supported_properties.name())
+                                            .as<std::vector<std::string>>();
         for (auto&& configKey : streamExecutorConfigKeys) {
             if (configKey != InferenceEngine::PluginConfigParams::KEY_CPU_THROUGHPUT_STREAMS) {
                 configKeys.emplace_back(configKey);

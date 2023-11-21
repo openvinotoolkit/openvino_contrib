@@ -10,7 +10,7 @@
 
 #include "nvidia/nvidia_config.hpp"
 #include "openvino/runtime/properties.hpp"
-#include "threading/ie_istreams_executor.hpp"
+#include "openvino/runtime/threading/istreams_executor.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
