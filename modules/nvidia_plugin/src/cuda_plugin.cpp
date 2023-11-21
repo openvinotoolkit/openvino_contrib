@@ -1,9 +1,9 @@
 // Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
-#include "cuda_plugin.hpp"
-
 #include <fmt/format.h>
+
+#include "ie_metric_helpers.hpp"
 
 #include "cpp_interfaces/interface/ie_internal_plugin_config.hpp"
 #include "cuda/props.hpp"
@@ -11,7 +11,7 @@
 #include "cuda_infer_request.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_operation_registry.hpp"
-#include "ie_metric_helpers.hpp"
+#include "cuda_plugin.hpp"
 #include "nvidia/nvidia_config.hpp"
 #include "openvino/core/op_extension.hpp"
 #include "openvino/op/util/op_types.hpp"
