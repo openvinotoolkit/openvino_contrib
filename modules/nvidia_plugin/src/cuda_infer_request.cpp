@@ -14,7 +14,6 @@
 #include <map>
 #include <memory>
 #include <string>
-#include <threading/ie_executor_manager.hpp>
 #include <utility>
 
 #include "cuda_compiled_model.hpp"
@@ -25,6 +24,7 @@
 #include "cuda_simple_execution_delegator.hpp"
 #include "nvidia/properties.hpp"
 #include "openvino/runtime/make_tensor.hpp"
+#include "openvino/runtime/threading/executor_manager.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

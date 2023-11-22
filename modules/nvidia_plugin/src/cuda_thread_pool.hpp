@@ -11,9 +11,9 @@
 #include <mutex>
 #include <queue>
 #include <thread>
-#include <threading/ie_itask_executor.hpp>
 
 #include "cuda_jthread.hpp"
+#include "openvino/runtime/threading/itask_executor.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
