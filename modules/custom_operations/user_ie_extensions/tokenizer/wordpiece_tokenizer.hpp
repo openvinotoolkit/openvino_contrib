@@ -4,6 +4,11 @@
 
 #pragma once
 
+#ifdef _MSC_VER
+#    pragma warning(disable : 4251)
+#    pragma warning(disable : 4275)
+#endif
+
 #include <openvino/op/op.hpp>
 #include "fast_tokenizer/models/models.h"
 

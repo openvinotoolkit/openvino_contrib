@@ -5,8 +5,13 @@
 #pragma once
 
 #include <openvino/op/op.hpp>
-#include "fast_tokenizer/models/models.h"
 
+#ifdef _MSC_VER
+#    pragma warning(disable : 4251)
+#    pragma warning(disable : 4275)
+#endif
+
+#include "fast_tokenizer/models/models.h"
 
 using namespace paddlenlp::fast_tokenizer;
 

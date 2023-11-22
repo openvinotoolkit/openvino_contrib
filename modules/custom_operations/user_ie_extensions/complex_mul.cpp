@@ -61,7 +61,7 @@ bool ComplexMultiplication::evaluate(ov::TensorVector& outputs, const ov::Tensor
             }
         });
     else
-        IE_THROW() << "Wrong number of channels for second input!";
+        OPENVINO_THROW("Wrong number of channels for second input!");
 
     return true;
 }
