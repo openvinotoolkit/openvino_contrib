@@ -9,7 +9,6 @@
 #include <fmt/format.h>
 
 #include <memory_manager/cuda_memory_manager.hpp>
-#include <openvino/runtime/threading/executor_manager.hpp>
 #include <ops/nop_op.hpp>
 #include <ops/subgraph.hpp>
 #include <utility>
@@ -29,6 +28,7 @@
 #include "openvino/runtime/exec_model_info.hpp"
 #include "openvino/runtime/internal_properties.hpp"
 #include "openvino/runtime/iplugin.hpp"
+#include "openvino/runtime/threading/executor_manager.hpp"
 #include "ops/parameter.hpp"
 #include "ops/result.hpp"
 #include "transformations/utils/utils.hpp"

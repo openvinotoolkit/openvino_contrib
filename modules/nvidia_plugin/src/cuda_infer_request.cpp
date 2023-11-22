@@ -13,7 +13,6 @@
 #include <gsl/span_ext>
 #include <map>
 #include <memory>
-#include <openvino/runtime/threading/executor_manager.hpp>
 #include <string>
 #include <utility>
 
@@ -25,6 +24,7 @@
 #include "cuda_simple_execution_delegator.hpp"
 #include "nvidia/properties.hpp"
 #include "openvino/runtime/make_tensor.hpp"
+#include "openvino/runtime/threading/executor_manager.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

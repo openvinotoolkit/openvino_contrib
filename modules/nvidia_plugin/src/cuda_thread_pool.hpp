@@ -9,11 +9,11 @@
 #include <cuda_thread_context.hpp>
 #include <deque>
 #include <mutex>
-#include <openvino/runtime/threading/itask_executor.hpp>
 #include <queue>
 #include <thread>
 
 #include "cuda_jthread.hpp"
+#include "openvino/runtime/threading/itask_executor.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
