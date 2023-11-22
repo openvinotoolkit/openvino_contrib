@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
+  message(FATAL_ERROR "Call cmake to point to modules/custom_operations as a source directory")
+endif()
+
 if(POLICY CMP0079)
   cmake_policy(SET CMP0079 NEW)
 endif()

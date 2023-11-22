@@ -150,14 +150,15 @@ jobs:
       python3 -m venv venv
       source venv/bin/activate
       python -m pip install --upgrade pip
-      . $(SETUPVARS)
+      python -m pip install -r $(REPO_DIR)/modules/custom_operations/tests/requirements.txt
+      python -m pip install $(OPENVINO_REPO_DIR)/tools/mo/
+      python -m pip install $(INSTALL_DIR)/tools/openvino-*.whl
       python -m pip install $(REPO_DIR)/modules/custom_operations/user_ie_extensions/tokenizer/python/.[transformers]
     workingDirectory: $(WORK_DIR)
-    displayName: 'Create tokenizers env'
+    displayName: 'Create virtual env'
 
   - script: |
-      . $(SETUPVARS)
-      source  $(WORK_DIR)/venv/bin/activate
+      source $(WORK_DIR)/venv/bin/activate
       python -m pytest --tb=no tokenizers_test.py
     workingDirectory: $(REPO_DIR)/modules/custom_operations/user_ie_extensions/tokenizer/python/tests/
     displayName: 'Tokenizers extension regression test'

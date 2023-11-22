@@ -97,7 +97,7 @@ else()
       FetchContent_Declare(
         fast_tokenizer
         URL      https://bj.bcebos.com/paddlenlp/fast_tokenizer/fast_tokenizer-osx-x86_64-1.0.2.tgz
-        URL_HASH SHA256=4c8123ad941b3e4325ef72f328db545e34d5eec2de3e2545e1ab8ebeeb5146a9
+        # URL_HASH SHA256=4c8123ad941b3e4325ef72f328db545e34d5eec2de3e2545e1ab8ebeeb5146a9
       )
   elseif(APPLE AND AARCH64)
       FetchContent_Declare(
