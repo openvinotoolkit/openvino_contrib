@@ -57,6 +57,7 @@ jobs:
     BIN_DIR: $(OPENVINO_REPO_DIR)/bin/intel64/$(BUILD_TYPE)
     INSTALL_DIR: $(WORK_DIR)/install_pkg
     SETUPVARS: $(INSTALL_DIR)/setupvars.sh
+    CUSTOM_OP_LIB: $(BIN_DIR)/libuser_ov_extensions.dylib
 
   steps:
   - script: |
@@ -137,14 +138,14 @@ jobs:
   - script: ls -alR $(INSTALL_DIR)
     displayName: 'List install files'
 
-#  - script: |
-#      . $(SETUPVARS) gradle clean build --info
-#      for d in CPU HETERO:CPU; do
-#        gradle test -Prun_tests -DMODELS_PATH=$(MODELS_PATH) -Ddevice=$d --info;
-#      done
-#    workingDirectory: $(REPO_DIR)/modules/java_api
-#    displayName: 'Java tests'
-#    condition: eq(variables['CMAKE_OSX_ARCHITECTURES'], 'x86_64')
+  - script: |
+      . $(SETUPVARS) gradle clean build --info
+      for d in CPU HETERO:CPU; do
+        gradle test -Prun_tests -DMODELS_PATH=$(MODELS_PATH) -Ddevice=$d --info;
+      done
+    workingDirectory: $(REPO_DIR)/modules/java_api
+    displayName: 'Java tests'
+    condition: eq(variables['CMAKE_OSX_ARCHITECTURES'], 'x86_64')
 
   - script: |
       python3 -m venv venv
