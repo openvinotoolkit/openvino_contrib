@@ -8,7 +8,7 @@ endif()
 
 option(BUILD_FAST_TOKENIZERS OFF)
 
-# to build only sentencepiece-static target
+# to build only direct dependencies
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY EXCLUDE_FROM_ALL ON)
 
 #
@@ -16,11 +16,13 @@ set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY EXCLUDE_FROM_ALL ON)
 #
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "^(Apple)?Clang$")
-    set(cxx_flags "-Wno-undef")
+    set(c_cxx_flags "-Wno-undef")
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     # C4244: 'argument' : conversion from 'type1' to 'type2', possible loss of data
     # C4267: 'var' : conversion from 'size_t' to 'type', possible loss of data
-    set(cxx_flags "/wd4244 /wd4267")
+    set(c_cxx_flags "/wd4244 /wd4267")
+    # for fast tokenizers
+    set(c_cxx_flags "${c_cxx_flags} /wd4146 /wd4700")
 endif()
 
 include(CheckCXXCompilerFlag)
@@ -29,7 +31,8 @@ if(SUGGEST_OVERRIDE_SUPPORTED)
     set(cxx_flags "${cxx_flags} -Wno-suggest-override")
 endif()
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${cxx_flags}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${cxx_flags} ${c_cxx_flags}")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${c_cxx_flags}")
 
 #
 # Dependencies
@@ -97,6 +100,7 @@ else()
       FetchContent_Declare(
         fast_tokenizer
         URL      https://bj.bcebos.com/paddlenlp/fast_tokenizer/fast_tokenizer-osx-x86_64-1.0.2.tgz
+        # TODO: restore once https://github.com/PaddlePaddle/PaddleNLP/issues/7505 is fixed
         # URL_HASH SHA256=4c8123ad941b3e4325ef72f328db545e34d5eec2de3e2545e1ab8ebeeb5146a9
       )
   elseif(APPLE AND AARCH64)
@@ -111,6 +115,8 @@ else()
   endif()
   FetchContent_MakeAvailable(fast_tokenizer)
   include("${fast_tokenizer_SOURCE_DIR}/FastTokenizer.cmake")
+
+  set(fast_tokenizer_SOURCE_DIR "${fast_tokenizer_SOURCE_DIR}" PARENT_SCOPE)
 
   if(WIN32 AND X86_64)
       # we use re2 library in regex_normalization operation, so have to add to this list
@@ -144,3 +150,17 @@ target_link_libraries(${TARGET_NAME} PRIVATE ${FAST_TOKENIZER_LIBS} sentencepiec
 string(REPLACE " " ";" cxx_flags "${cxx_flags}")
 set_target_properties(${TARGET_NAME} PROPERTIES CXX_STANDARD 17
                                                 COMPILE_OPTIONS "${cxx_flags}")
+
+#
+# Post build steps to copy core_tokenizers dependencies
+#
+
+if(WIN32 AND X86_64)
+  if(BUILD_FAST_TOKENIZERS)
+    # TODO
+  else()
+    set(extra_dlls "${fast_tokenizer_SOURCE_DIR}/lib/core_tokenizers.dll"
+                   "${fast_tokenizer_SOURCE_DIR}/third_party/lib/icudt70.dll"
+                   "${fast_tokenizer_SOURCE_DIR}/third_party/lib/icuuc70.dll" PARENT_SCOPE)
+  endif()
+endif()
