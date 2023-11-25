@@ -67,5 +67,5 @@ compiled_model = core.compile_model(model, 'CPU')
 You also can get OpenVINO IR model with Model Optimizer, just use extra `--extension` flag to specify a path to custom extensions:
 
 ```bash
-mo --input_model model.onnx --extension /path/to/libuser_ov_extensions.so
+ovc model.onnx --extension /path/to/libuser_ov_extensions.so
 ```

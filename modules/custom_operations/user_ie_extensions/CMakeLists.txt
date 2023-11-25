@@ -17,7 +17,7 @@ if(NOT CMAKE_CXX_STANDARD)
 endif()
 
 find_package(OpenVINO REQUIRED COMPONENTS Runtime)
-find_package(TBB COMPONENTS tbb tbbmalloc)
+find_package(TBB COMPONENTS tbb)
 find_package(OpenCV COMPONENTS core)
 
 set(OP_REQ_TBB "complex_mul" "fft")
@@ -88,7 +88,7 @@ if(OpenCV_FOUND)
 endif()
 
 if(TBB_FOUND)
-  target_link_libraries(${TARGET_NAME} PRIVATE TBB::tbb TBB::tbbmalloc)
+  target_link_libraries(${TARGET_NAME} PRIVATE TBB::tbb)
 endif()
 
 # Left sentence_piece for backward compatibility
