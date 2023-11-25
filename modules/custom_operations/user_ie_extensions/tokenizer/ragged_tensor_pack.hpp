@@ -30,9 +30,9 @@ public:
         return true;
     }
 
-    bool has_evaluate() const {
+    bool has_evaluate() const override {
         return true;
     }
 
-    bool evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const;
+    bool evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const override;
 };

@@ -30,7 +30,7 @@ public:
 
     bool evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const override;
 
-    bool has_evaluate() const {
+    bool has_evaluate() const override {
         return true;
     }
 };

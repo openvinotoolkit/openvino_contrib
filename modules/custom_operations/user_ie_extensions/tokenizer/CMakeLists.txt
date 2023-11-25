@@ -18,11 +18,11 @@ set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY EXCLUDE_FROM_ALL ON)
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "^(Apple)?Clang$")
     set(c_cxx_flags "-Wno-undef")
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    # C4146: unary minus operator applied to unsigned type, result still unsigned
     # C4244: 'argument' : conversion from 'type1' to 'type2', possible loss of data
     # C4267: 'var' : conversion from 'size_t' to 'type', possible loss of data
-    set(c_cxx_flags "/wd4244 /wd4267")
-    # for fast tokenizers
-    set(c_cxx_flags "${c_cxx_flags} /wd4146 /wd4700")
+    # C4700: uninitialized local variable 'var' used
+    set(c_cxx_flags "/wd4146 /wd4244 /wd4267 /wd4700")
 endif()
 
 include(CheckCXXCompilerFlag)
@@ -33,6 +33,10 @@ endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${cxx_flags} ${c_cxx_flags}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${c_cxx_flags}")
+
+# Apply for 'Release' explicitly for WA '/sdl' issues
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${cxx_flags} ${c_cxx_flags}")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${c_cxx_flags}")
 
 #
 # Dependencies
@@ -61,7 +65,10 @@ if(BUILD_FAST_TOKENIZERS)
       fast_tokenizer
     )
     set(WITH_PYTHON OFF CACHE BOOL "Disable Python API for fast_tokenizer")
-    add_subdirectory(${fast_tokenizer_SOURCE_DIR}/fast_tokenizer ${CMAKE_CURRENT_BINARY_DIR}/fast_tokenizer)
+    add_subdirectory(${fast_tokenizer_SOURCE_DIR}/fast_tokenizer
+                     ${CMAKE_CURRENT_BINARY_DIR}/fast_tokenizer
+                     EXCLUDE_FROM_ALL
+                    )
   endif()
 
   # variables used later
@@ -147,9 +154,10 @@ endif()
 target_link_libraries(${TARGET_NAME} PRIVATE ${FAST_TOKENIZER_LIBS} sentencepiece-static)
 
 # string_view is used from cxx17
-string(REPLACE " " ";" cxx_flags "${cxx_flags}")
-set_target_properties(${TARGET_NAME} PROPERTIES CXX_STANDARD 17
-                                                COMPILE_OPTIONS "${cxx_flags}")
+set_target_properties(${TARGET_NAME} PROPERTIES CXX_STANDARD 17)
+
+string(REPLACE " " ";" extra_flags "${c_cxx_flags} ${cxx_flags}")
+set_target_properties(${TARGET_NAME} PROPERTIES COMPILE_OPTIONS "${extra_flags}")
 
 #
 # Post build steps to copy core_tokenizers dependencies

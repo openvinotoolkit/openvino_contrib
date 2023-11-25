@@ -137,7 +137,7 @@ jobs:
     displayName: 'List temp SDKs'
 
   - script: |
-      call "$(MSVS_VARS_PATH)" && $(WORK_DIR)\ninja-win\ninja user_ov_extensions
+      call "$(MSVS_VARS_PATH)" && $(WORK_DIR)\ninja-win\ninja core_tokenizers
       call "$(MSVS_VARS_PATH)" && $(WORK_DIR)\ninja-win\ninja
     workingDirectory: $(BUILD_DIR)
     displayName: 'Build OpenVINO Contrib'
