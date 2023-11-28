@@ -47,12 +47,12 @@ jobs:
     MODELS_PATH: $(REPO_DIR)\..\testdata
     WORK_DIR: $(Pipeline.Workspace)\_w
     BUILD_DIR: D:\build
-    BIN_DIR: $(OPENVINO_REPO_DIR)\bin\intel64\$(BUILD_TYPE)
+    BUILD_DIR_CONTRIB: D:\build_contrib
     MSVS_VARS_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat
     MSVC_COMPILER_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.24.28314\bin\Hostx64\x64\cl.exe
     INSTALL_DIR: $(WORK_DIR)\install_pkg
     SETUPVARS: $(INSTALL_DIR)\setupvars.bat
-    CUSTOM_OP_LIB: $(BIN_DIR)\user_ov_extensions.dll
+    CUSTOM_OP_LIB: $(BUILD_DIR_CONTRIB)\user_ie_extensions\user_ov_extensions.dll
     GRADLE_VER: 7.1.1
     PYTHON_EXE: C:\hostedtoolcache\windows\Python\3.8.2\x64\python.exe
 
@@ -73,6 +73,7 @@ jobs:
   - script: |
       rd /Q /S $(WORK_DIR) & mkdir $(WORK_DIR)
       rd /Q /S $(BUILD_DIR) & mkdir $(BUILD_DIR)
+      rd /Q /S $(BUILD_DIR_CONTRIB) & mkdir $(BUILD_DIR_CONTRIB)
     displayName: 'Make dir'
 
   - checkout: self
@@ -110,7 +111,6 @@ jobs:
 
   - script: |
       set PATH=$(WORK_DIR)\ninja-win;%PATH%
-      set OpenCV_DIR=C:\tools\opencv\build
       call "$(MSVS_VARS_PATH)" && cmake -GNinja ^
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) ^
         -DBUILD_nvidia_plugin=OFF ^
@@ -125,30 +125,47 @@ jobs:
         -DENABLE_SAMPLES=OFF ^
         -DENABLE_OV_ONNX_FRONTEND=ON ^
         -DBUILD_FAST_TOKENIZERS=ON ^
-        -DOPENVINO_EXTRA_MODULES=$(REPO_DIR)/modules ^
         -DENABLE_PYTHON=ON ^
         -DCMAKE_C_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
         -DCMAKE_CXX_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
         $(OPENVINO_REPO_DIR)
     workingDirectory: $(BUILD_DIR)
-    displayName: 'CMake OpenVINO Contrib'
+    displayName: 'CMake OpenVINO'
 
   - script: dir $(OPENVINO_REPO_DIR)\temp\ /s
     displayName: 'List temp SDKs'
 
-  - script: call "$(MSVS_VARS_PATH)" && $(WORK_DIR)\ninja-win\ninja core_tokenizers
+  - script: call "$(MSVS_VARS_PATH)" && $(WORK_DIR)\ninja-win\ninja
     workingDirectory: $(BUILD_DIR)
-    displayName: 'Build OpenVINO Contrib'
+    displayName: 'Build OpenVINO'
 
   - script: dir $(OPENVINO_REPO_DIR)\bin\ /s
     displayName: 'List bin files'
 
   - script: cmake -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR) -P cmake_install.cmake
     workingDirectory: $(BUILD_DIR)
-    displayName: 'Install OpenVINO Contrib'
+    displayName: 'Install OpenVINO'
 
   - script: dir $(INSTALL_DIR) /s
     displayName: 'List install files'
+
+  - script: |
+      set PATH=$(WORK_DIR)\ninja-win;%PATH%
+      set OpenCV_DIR=C:\tools\opencv\build
+      call "$(MSVS_VARS_PATH)" && cmake -GNinja ^
+        -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) ^
+        -DOpenVINO_DIR=$(INSTALL_DIR)\runtime\cmake ^
+        -DBUILD_nvidia_plugin=OFF ^
+        -DBUILD_FAST_TOKENIZERS=ON ^
+        -DCMAKE_C_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
+        -DCMAKE_CXX_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
+        $(REPO_DIR)\modules
+    workingDirectory: $(BUILD_DIR_CONTRIB)
+    displayName: 'CMake OpenVINO Contrib'
+
+  - script: call "$(MSVS_VARS_PATH)" && $(WORK_DIR)\ninja-win\ninja core_tokenizers
+    workingDirectory: $(BUILD_DIR_CONTRIB)
+    displayName: 'Build OpenVINO Contrib'
 
   - script: |
       call $(SETUPVARS)

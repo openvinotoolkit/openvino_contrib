@@ -22,7 +22,7 @@ def run_test(ref_inputs, ref_res, test_onnx=False, threshold=1e-5):
     core = Core()
     core.add_extension(ext_path)
 
-    net = core.read_model('model.onnx') if test_onnx else convert_model('model.onnx', extensions=ext_path)
+    net = core.read_model('model.onnx') if test_onnx else convert_model('model.onnx', extension=ext_path)
 
     net.reshape(shapes)
     compiled_model = core.compile_model(net, 'CPU')
