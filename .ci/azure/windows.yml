@@ -159,7 +159,7 @@ jobs:
         -DBUILD_FAST_TOKENIZERS=ON ^
         -DCMAKE_C_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
         -DCMAKE_CXX_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
-        $(REPO_DIR)\modules
+        $(REPO_DIR)\modules\custom_operations
     workingDirectory: $(BUILD_DIR_CONTRIB)
     displayName: 'CMake OpenVINO Contrib'
 
