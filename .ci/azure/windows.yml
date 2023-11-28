@@ -163,7 +163,7 @@ jobs:
     workingDirectory: $(BUILD_DIR_CONTRIB)
     displayName: 'CMake OpenVINO Contrib'
 
-  - script: call "$(MSVS_VARS_PATH)" && $(WORK_DIR)\ninja-win\ninja core_tokenizers
+  - script: call "$(MSVS_VARS_PATH)" && $(WORK_DIR)\ninja-win\ninja
     workingDirectory: $(BUILD_DIR_CONTRIB)
     displayName: 'Build OpenVINO Contrib'
 
