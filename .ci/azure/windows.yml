@@ -155,7 +155,7 @@ jobs:
       call "$(MSVS_VARS_PATH)" && cmake -GNinja ^
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) ^
         -DOpenVINO_DIR=$(INSTALL_DIR)\runtime\cmake ^
-        -DBUILD_nvidia_plugin=OFF ^
+        -DCUSTOM_OPERATIONS="tokenizer" ^
         -DBUILD_FAST_TOKENIZERS=ON ^
         -DCMAKE_C_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
         -DCMAKE_CXX_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
