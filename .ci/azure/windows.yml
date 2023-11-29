@@ -23,8 +23,7 @@ resources:
   - repository: openvino
     type: github
     endpoint: openvinotoolkit
-    name: ilya-lavrenov/openvino
-    ref: fixed-extension-loading
+    name: openvinotoolkit/openvino
 
   - repository: testdata
     type: github
