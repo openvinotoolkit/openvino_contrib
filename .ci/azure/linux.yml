@@ -170,14 +170,21 @@ jobs:
       source .env3/bin/activate
       python -m pip install --upgrade pip
       python -m pip install -r $(REPO_DIR)/modules/custom_operations/tests/requirements.txt
-      cd ${OPENVINO_REPO_DIR}/tools && python -m pip install mo/
+      python -m pip install $(INSTALL_DIR)/tools/openvino-*.whl
+      python -m pip install $(OPENVINO_REPO_DIR)/tools/mo/
+      python -m pip install $(REPO_DIR)/modules/custom_operations/user_ie_extensions/tokenizer/python/.[all]
     workingDirectory: $(WORK_DIR)
-    displayName: 'Create user custom operations env'
+    displayName: 'Create virtual env'
 
   - script: |
-      . $(SETUPVARS)
       source  $(WORK_DIR)/.env3/bin/activate
       # need to enable sparse_conv tests with new Open3D release
       python -m pytest -k "not sparse_conv" tests/run_tests.py
     workingDirectory: $(REPO_DIR)/modules/custom_operations
     displayName: 'Custom user operation tests'
+
+  - script: |
+      source  $(WORK_DIR)/.env3/bin/activate
+      python -m pytest --tb=no tokenizers_test.py
+    workingDirectory: $(REPO_DIR)/modules/custom_operations/user_ie_extensions/tokenizer/python/tests/
+    displayName: 'Tokenizers extension regression test'

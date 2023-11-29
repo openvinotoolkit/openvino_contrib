@@ -39,7 +39,7 @@ jobs:
       # arm64:
       #   CMAKE_OSX_ARCHITECTURES: arm64
   # About 200% of total time (perfomace of Mac hosts is unstable)
-  timeoutInMinutes: 180
+  timeoutInMinutes: 240
 
   pool:
     vmImage: 'macOS-11'
@@ -57,8 +57,18 @@ jobs:
     BIN_DIR: $(OPENVINO_REPO_DIR)/bin/intel64/$(BUILD_TYPE)
     INSTALL_DIR: $(WORK_DIR)/install_pkg
     SETUPVARS: $(INSTALL_DIR)/setupvars.sh
+    CUSTOM_OP_LIB: $(BIN_DIR)/libuser_ov_extensions.dylib
 
   steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.10.13'
+      addToPath: true
+      architecture: 'x64'
+      githubToken: $(auth_token)
+    displayName: Setup Python 3.10
+    name: setupPython
+
   - script: |
       whoami
       uname -a
@@ -145,3 +155,21 @@ jobs:
     workingDirectory: $(REPO_DIR)/modules/java_api
     displayName: 'Java tests'
     condition: eq(variables['CMAKE_OSX_ARCHITECTURES'], 'x86_64')
+
+  - script: |
+      python3 -m venv venv
+      source venv/bin/activate
+      python -m pip install --upgrade pip
+      python -m pip install -r $(REPO_DIR)/modules/custom_operations/tests/requirements.txt
+      python -m pip install $(OPENVINO_REPO_DIR)/tools/mo/
+      python -m pip install $(INSTALL_DIR)/tools/openvino-*.whl
+      python -m pip install $(REPO_DIR)/modules/custom_operations/user_ie_extensions/tokenizer/python/.[transformers]
+    workingDirectory: $(WORK_DIR)
+    displayName: 'Create virtual env'
+
+  - script: |
+      source $(WORK_DIR)/venv/bin/activate
+      python -m pytest --tb=no tokenizers_test.py
+    workingDirectory: $(REPO_DIR)/modules/custom_operations/user_ie_extensions/tokenizer/python/tests/
+    displayName: 'Tokenizers extension regression test'
+    condition: False

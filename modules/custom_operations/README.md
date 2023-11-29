@@ -36,12 +36,12 @@ The C++ code implementing the custom operation is in the `user_ie_extensions` di
 ```bash
 cd openvino_contrib/modules/custom_operations
 mkdir build && cd build
-cmake ../user_ie_extensions -DCMAKE_BUILD_TYPE=Release && cmake --build . --parallel 4
+cmake ../ -DCMAKE_BUILD_TYPE=Release && cmake --build . --parallel 4
 ```
 
 If you need to build only some operations specify them with the `-DCUSTOM_OPERATIONS` option:
 ```bash
-cmake ../user_ie_extensions -DCMAKE_BUILD_TYPE=Release -DCUSTOM_OPERATIONS="complex_mul;fft"
+cmake ../ -DCMAKE_BUILD_TYPE=Release -DCUSTOM_OPERATIONS="complex_mul;fft"
 ```
 
 - Please note that [OpenCV](https://opencv.org/) installation is required to build an extension for the [fft](examples/fft) operation. Other extentions still can be built without OpenCV.
@@ -67,5 +67,5 @@ compiled_model = core.compile_model(model, 'CPU')
 You also can get OpenVINO IR model with Model Optimizer, just use extra `--extension` flag to specify a path to custom extensions:
 
 ```bash
-mo --input_model model.onnx --extension /path/to/libuser_ov_extensions.so
+ovc model.onnx --extension /path/to/libuser_ov_extensions.so
 ```
