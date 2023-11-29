@@ -155,7 +155,6 @@ jobs:
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) ^
         -DOpenVINO_DIR=$(INSTALL_DIR)\runtime\cmake ^
         -DCUSTOM_OPERATIONS="tokenizer" ^
-        -DBUILD_FAST_TOKENIZERS=ON ^
         -DCMAKE_C_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
         -DCMAKE_CXX_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
         $(REPO_DIR)\modules\custom_operations
