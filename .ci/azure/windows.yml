@@ -111,7 +111,8 @@ jobs:
 
   - script: |
       set PATH=$(WORK_DIR)\ninja-win;%PATH%
-      call "$(MSVS_VARS_PATH)" && cmake -GNinja ^
+      call "$(MSVS_VARS_PATH)"
+      cmake -GNinja ^
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) ^
         -DBUILD_nvidia_plugin=OFF ^
         -DENABLE_OV_TF_FRONTEND=OFF ^
@@ -151,10 +152,10 @@ jobs:
   - script: |
       set PATH=$(WORK_DIR)\ninja-win;%PATH%
       set OpenCV_DIR=C:\tools\opencv\build
-      call "$(MSVS_VARS_PATH)" && cmake -GNinja ^
+      call "$(SETUPVARS)"
+      call "$(MSVS_VARS_PATH)"
+      cmake -GNinja ^
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) ^
-        -DOpenVINO_DIR=$(INSTALL_DIR)\runtime\cmake ^
-        -DCUSTOM_OPERATIONS="tokenizer" ^
         -DCMAKE_C_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
         -DCMAKE_CXX_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
         $(REPO_DIR)\modules\custom_operations
