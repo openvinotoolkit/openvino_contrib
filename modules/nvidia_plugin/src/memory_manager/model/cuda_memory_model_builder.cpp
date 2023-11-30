@@ -14,13 +14,13 @@ void MemoryModelBuilder::addAllocation(BufferID id, int producerIndex, int lastC
     auto res = offsets_.emplace(id, 0);
     OPENVINO_ASSERT(res.second, "ID is not unique!");  // Verify that "id" is unique.
     const int64_t aligned_size = static_cast<int64_t>(applyAllignment(bsize));
-    boxes_.emplace_back(MemorySolver::Box{producerIndex, lastConsumerIndex, aligned_size, id});
+    boxes_.emplace_back(ov::MemorySolver::Box{producerIndex, lastConsumerIndex, aligned_size, id});
 }
 
 MemoryModel::Ptr MemoryModelBuilder::build() {
-    MemorySolver solver{boxes_};
+    ov::MemorySolver solver{boxes_};
     const size_t blob_size = solver.solve();
-    for (auto& pair : offsets_) pair.second = solver.getOffset(pair.first);
+    for (auto& pair : offsets_) pair.second = solver.get_offset(pair.first);
 
     return std::make_shared<MemoryModel>(blob_size, offsets_);
 }
