@@ -1,0 +1,58 @@
+[project]
+name = "ov_tokenizer"
+version = "0.0.1"
+description = "Convert tokenizers into OpenVINO models"
+requires-python = ">=3.8"
+authors = [
+    { name = "OpenVINO Developers", email = "openvino@intel.com" },
+]
+classifiers = [
+    'Programming Language :: Python :: 3.8',
+    'Programming Language :: Python :: 3.9',
+    'Programming Language :: Python :: 3.10',
+    'Programming Language :: Python :: 3.11',
+]
+
+dependencies = [
+    "openvino>=2023.1",
+    "numpy"
+]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "ruff",
+    "pytest",
+]
+transformers = [
+    "transformers[sentencepiece]"
+]
+all = [
+    "ov_tokenizer[dev,transformers]"
+]
+
+
+[tool.black]
+line-length = 119
+target-versions = ["py38", "py39", "py310", "py311", "py312"]
+
+
+[tool.ruff]
+ignore = ["C901", "E501", "E741", "W605"]
+select = ["C", "E", "F", "I", "W"]
+line-length = 119
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
+"ov_tokenizer/hf_parser.py" = ["F821"]
+
+[tool.ruff.isort]
+lines-after-imports = 2
+
+[build-system]
+requires = [
+    "setuptools>=42",
+    "scikit-build~=0.17.0",
+    "cmake>=3.14"
+]
+build-backend = "setuptools.build_meta"

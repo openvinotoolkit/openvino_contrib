@@ -163,7 +163,7 @@ jobs:
       python -m pip install -r $(REPO_DIR)/modules/custom_operations/tests/requirements.txt
       python -m pip install $(OPENVINO_REPO_DIR)/tools/mo/
       python -m pip install $(INSTALL_DIR)/tools/openvino-*.whl
-      python -m pip install $(REPO_DIR)/modules/custom_operations/user_ie_extensions/tokenizer/python/.[transformers]
+      python -m pip install $(REPO_DIR)/modules/custom_operations/.[transformers]
     workingDirectory: $(WORK_DIR)
     displayName: 'Create virtual env'
 

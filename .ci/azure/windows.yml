@@ -104,6 +104,7 @@ jobs:
       $(PYTHON_EXE) -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\requirements.txt
       $(PYTHON_EXE) -m pip install -r $(REPO_DIR)\modules\custom_operations\tests\requirements.txt
       $(PYTHON_EXE) -m pip install $(OPENVINO_REPO_DIR)\tools\mo
+      $(PYTHON_EXE) -m pip install $(REPO_DIR)\modules\custom_operations\.[all]
       powershell -command "Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))"
       choco install opencv -y
     workingDirectory: $(WORK_DIR)
@@ -180,3 +181,9 @@ jobs:
       $(PYTHON_EXE) -m pytest -k "not sparse_conv" tests\run_tests.py
     workingDirectory: $(REPO_DIR)\modules\custom_operations
     displayName: 'Custom user operation tests'
+
+  - script: |
+      call $(SETUPVARS) -pyver 3.8 && ^
+      $(PYTHON_EXE) -m pytest --tb=no tokenizers_test.py
+    workingDirectory: $(REPO_DIR)\modules\custom_operations\user_ie_extensions\tokenizer\python\tests
+    displayName: 'Tokenizers extension regression test'
