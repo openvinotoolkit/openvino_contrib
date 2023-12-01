@@ -167,7 +167,7 @@ jobs:
   - script: |
       python3 -m pip install --user virtualenv
       python3 -m virtualenv -p /usr/bin/python3.8 .env3
-      source .env3/bin/activate
+      source .env3/bin/activate && source $(SETUPVARS)
       python -m pip install --upgrade pip
       python -m pip install -r $(REPO_DIR)/modules/custom_operations/tests/requirements.txt
       python -m pip install $(INSTALL_DIR)/tools/openvino-*.whl

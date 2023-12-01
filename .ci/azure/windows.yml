@@ -99,6 +99,7 @@ jobs:
       powershell -command "Expand-Archive -Force ninja-win.zip"
       powershell -command "Invoke-WebRequest https://services.gradle.org/distributions/gradle-$(GRADLE_VER)-bin.zip -OutFile gradle-$(GRADLE_VER)-bin.zip"
       powershell -command "Expand-Archive -Force gradle-$(GRADLE_VER)-bin.zip"
+      call "$(SETUPVARS)"
       $(PYTHON_EXE) -m pip install --upgrade pip
       $(PYTHON_EXE) -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\src\compatibility\openvino\requirements-dev.txt
       $(PYTHON_EXE) -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\requirements.txt
