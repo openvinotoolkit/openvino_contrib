@@ -6,6 +6,7 @@ requires-python = ">=3.8"
 authors = [
     { name = "OpenVINO Developers", email = "openvino@intel.com" },
 ]
+
 classifiers = [
     'Programming Language :: Python :: 3.8',
     'Programming Language :: Python :: 3.9',
@@ -14,28 +15,24 @@ classifiers = [
 ]
 
 dependencies = [
-    "openvino>=2023.1",
+    "openvino",
     "numpy"
 ]
 
 [project.optional-dependencies]
 dev = [
-    "black",
     "ruff",
     "pytest",
 ]
 transformers = [
-    "transformers[sentencepiece]"
+    "transformers[sentencepiece,tiktoken]"
+]
+tiktoken = [
+    "tiktoken"
 ]
 all = [
-    "ov_tokenizer[dev,transformers]"
+    "ov_tokenizer[dev,transformers,tiktoken]"
 ]
-
-
-[tool.black]
-line-length = 119
-target-versions = ["py38", "py39", "py310", "py311", "py312"]
-
 
 [tool.ruff]
 ignore = ["C901", "E501", "E741", "W605"]
