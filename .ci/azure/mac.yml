@@ -170,6 +170,6 @@ jobs:
   - script: |
       source $(WORK_DIR)/venv/bin/activate
       python -m pytest --tb=no tokenizers_test.py
+    continue-on-error: true
     workingDirectory: $(REPO_DIR)/modules/custom_operations/user_ie_extensions/tokenizer/python/tests/
     displayName: 'Tokenizers extension regression test'
-    condition: False
