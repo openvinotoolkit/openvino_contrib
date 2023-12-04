@@ -48,6 +48,7 @@ jobs:
     MODELS_PATH: $(REPO_DIR)/../testdata
     WORK_DIR: $(Pipeline.Workspace)/_w
     BUILD_DIR: $(WORK_DIR)/build
+    BUILD_WHEEL_DIR: ${BUILD_DIR}/wheels
     BIN_DIR: $(OPENVINO_REPO_DIR)/bin/intel64/$(BUILD_TYPE)
     INSTALL_DIR: $(WORK_DIR)/install_pkg
     SETUPVARS: $(INSTALL_DIR)/setupvars.sh
@@ -172,9 +173,23 @@ jobs:
       python -m pip install -r $(REPO_DIR)/modules/custom_operations/tests/requirements.txt
       python -m pip install $(INSTALL_DIR)/tools/openvino-*.whl
       python -m pip install $(OPENVINO_REPO_DIR)/tools/mo/
-      python -m pip install $(REPO_DIR)/modules/custom_operations/.[all]
     workingDirectory: $(WORK_DIR)
     displayName: 'Create virtual env'
+
+  - script: |
+      source .env3/bin/activate && source $(SETUPVARS)
+      python -m  build --wheel --outdir $(BUILD_WHEEL_DIR)
+    workingDirectory: $(REPO_DIR)\modules\custom_operations
+    displayName: 'Build tokenizers wheel'
+
+  - script: |
+      source .env3/bin/activate
+      python -m pip install $(BUILD_WHEEL_DIR)/*.whl
+      workingDirectory: $(WORK_DIR)
+    displayName: 'Install tokenizers wheel'
+
+  - publish: $(BUILD_WHEEL_DIR)
+    artifact: Wheels
 
   - script: |
       source  $(WORK_DIR)/.env3/bin/activate

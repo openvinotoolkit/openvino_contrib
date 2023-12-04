@@ -48,6 +48,7 @@ jobs:
     WORK_DIR: $(Pipeline.Workspace)\_w
     BUILD_DIR: D:\build
     BUILD_DIR_CONTRIB: D:\build_contrib
+    BUILD_WHEEL_DIR_CONTRIB: $(BUILD_DIR_CONTRIB)\wheels
     MSVS_VARS_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat
     MSVC_COMPILER_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.24.28314\bin\Hostx64\x64\cl.exe
     INSTALL_DIR: $(WORK_DIR)\install_pkg
@@ -99,17 +100,30 @@ jobs:
       powershell -command "Expand-Archive -Force ninja-win.zip"
       powershell -command "Invoke-WebRequest https://services.gradle.org/distributions/gradle-$(GRADLE_VER)-bin.zip -OutFile gradle-$(GRADLE_VER)-bin.zip"
       powershell -command "Expand-Archive -Force gradle-$(GRADLE_VER)-bin.zip"
-      call $(SETUPVARS)
+      call $(SETUPVARS) -pyver 3.8
       $(PYTHON_EXE) -m pip install --upgrade pip
       $(PYTHON_EXE) -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\src\compatibility\openvino\requirements-dev.txt
       $(PYTHON_EXE) -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\requirements.txt
       $(PYTHON_EXE) -m pip install -r $(REPO_DIR)\modules\custom_operations\tests\requirements.txt
       $(PYTHON_EXE) -m pip install $(OPENVINO_REPO_DIR)\tools\mo
-      $(PYTHON_EXE) -m pip install $(REPO_DIR)\modules\custom_operations\.[all]
       powershell -command "Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))"
       choco install opencv -y
     workingDirectory: $(WORK_DIR)
     displayName: 'Install dependencies'
+
+  - script: |
+    call $(SETUPVARS) -pyver 3.8
+    $(PYTHON_EXE) -m  build --wheel --outdir $(BUILD_WHEEL_DIR_CONTRIB)
+    workingDirectory: $(REPO_DIR)\modules\custom_operations
+    displayName: 'Build tokenizers wheel'
+
+  - script: |
+    $(PYTHON_EXE) -m pip install $(BUILD_WHEEL_DIR_CONTRIB)/*.whl
+    workingDirectory: $(WORK_DIR)
+    displayName: 'Install tokenizers wheel'
+
+  - publish: $(BUILD_WHEEL_DIR_CONTRIB)
+    artifact: Wheels
 
   - script: |
       set PATH=$(WORK_DIR)\ninja-win;%PATH%
