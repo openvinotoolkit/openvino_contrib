@@ -186,6 +186,6 @@ jobs:
   - script: |
       call $(SETUPVARS) -pyver 3.8 && ^
       $(PYTHON_EXE) -m pytest --tb=no tokenizers_test.py
-    continue-on-error: true
+    continueOnError: true
     workingDirectory: $(REPO_DIR)\modules\custom_operations\user_ie_extensions\tokenizer\python\tests
     displayName: 'Tokenizers extension regression test'
