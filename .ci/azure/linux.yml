@@ -177,13 +177,13 @@ jobs:
     displayName: 'Create virtual env'
 
   - script: |
-      source .env3/bin/activate && source $(SETUPVARS)
-      python -m  build --wheel --outdir $(BUILD_WHEEL_DIR)
-    workingDirectory: $(REPO_DIR)/modules/custom_operations
+      source $(WORK_DIR)/.env3/bin/activate && source $(SETUPVARS)
+      python -m build --wheel --outdir $(BUILD_WHEEL_DIR) $(REPO_DIR)/modules/custom_operations
+    workingDirectory: $(WORK_DIR)
     displayName: 'Build tokenizers wheel'
 
   - script: |
-      source .env3/bin/activate
+      source $(WORK_DIR)/.env3/bin/activate
       python -m pip install $(BUILD_WHEEL_DIR)/*.whl
       workingDirectory: $(WORK_DIR)
     displayName: 'Install tokenizers wheel'
