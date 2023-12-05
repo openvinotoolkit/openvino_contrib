@@ -112,15 +112,15 @@ jobs:
     displayName: 'Install dependencies'
 
   - script: |
-    call $(SETUPVARS) -pyver 3.8
-    $(PYTHON_EXE) -m pip install build
-    $(PYTHON_EXE) -m  build --wheel --outdir $(BUILD_WHEEL_DIR_CONTRIB)
+      call $(SETUPVARS) -pyver 3.8
+      $(PYTHON_EXE) -m pip install build
+      $(PYTHON_EXE) -m  build --wheel --outdir $(BUILD_WHEEL_DIR_CONTRIB)
     workingDirectory: $(REPO_DIR)\modules\custom_operations
     displayName: 'Build tokenizers wheel'
 
   - script: |
-    $(PYTHON_EXE) -m pip install $(BUILD_WHEEL_DIR_CONTRIB)/*.whl
-    workingDirectory: $(WORK_DIR)
+      $(PYTHON_EXE) -m pip install $(BUILD_WHEEL_DIR_CONTRIB)/*.whl
+      workingDirectory: $(WORK_DIR)
     displayName: 'Install tokenizers wheel'
 
   - publish: $(BUILD_WHEEL_DIR_CONTRIB)

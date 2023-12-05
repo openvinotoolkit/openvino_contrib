@@ -177,7 +177,7 @@ jobs:
   - script: |
       source .env3/bin/activate
       python -m pip install $(BUILD_WHEEL_DIR)/*.whl
-      workingDirectory: $(WORK_DIR)
+    workingDirectory: $(WORK_DIR)
     displayName: 'Install tokenizers wheel'
 
   - publish: $(BUILD_WHEEL_DIR)
