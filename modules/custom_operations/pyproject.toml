@@ -24,6 +24,7 @@ dependencies = [
 dev = [
     "ruff",
     "pytest",
+    "pytest_harvest"
 ]
 transformers = [
     "transformers[sentencepiece,tiktoken]"

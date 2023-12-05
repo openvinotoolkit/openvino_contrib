@@ -130,17 +130,12 @@ def get_tokenizer_detokenizer(request, fast_tokenizer=True, trust_remote_code=Fa
 
 
 @pytest.fixture(scope="session", params=wordpiece_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
-def hf_and_ov_wordpiece_tokenizers(request):
+def wordpiece_tokenizers(request):
     return get_tokenizer(request)
 
 
 @pytest.fixture(scope="session", params=bpe_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
-def hf_and_ov_bpe_tokenizers(request):
-    return get_tokenizer_detokenizer(request)
-
-
-@pytest.fixture(scope="session", params=bpe_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
-def hf_and_ov_bpe_detokenizer(request):
+def bpe_tokenizers(request):
     return get_tokenizer_detokenizer(request)
 
 
@@ -150,17 +145,12 @@ def is_fast_tokenizer(request):
 
 
 @pytest.fixture(scope="session", params=sentencepiece_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
-def sentencepice_model_tokenizers(request, is_fast_tokenizer):
+def sentencepice_tokenizers(request, is_fast_tokenizer):
     return get_tokenizer_detokenizer(request, is_fast_tokenizer, trust_remote_code=True)
 
 
 @pytest.fixture(scope="session", params=tiktiken_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
 def tiktoken_tokenizers(request):
-    return get_tokenizer(request, trust_remote_code=True)
-
-
-@pytest.fixture(scope="session", params=tiktiken_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
-def tiktoken_detokenizers(request):
     return get_tokenizer_detokenizer(request, trust_remote_code=True)
 
 
@@ -173,8 +163,8 @@ def tiktoken_detokenizers(request):
         *misc_strings,
     ],
 )
-def test_hf_wordpiece_tokenizers(hf_and_ov_wordpiece_tokenizers, test_string):
-    hf_tokenizer, ov_tokenizer = hf_and_ov_wordpiece_tokenizers
+def test_hf_wordpiece_tokenizers(wordpiece_tokenizers, test_string):
+    hf_tokenizer, ov_tokenizer = wordpiece_tokenizers
     packed_strings = pack_strings([test_string])
 
     hf_tokenized = hf_tokenizer([test_string], return_tensors="np")
@@ -193,8 +183,8 @@ def test_hf_wordpiece_tokenizers(hf_and_ov_wordpiece_tokenizers, test_string):
         misc_strings,
     ],
 )
-def test_hf_wordpiece_tokenizers_multiple_strings(hf_and_ov_wordpiece_tokenizers, test_string):
-    hf_tokenizer, ov_tokenizer = hf_and_ov_wordpiece_tokenizers
+def test_hf_wordpiece_tokenizers_multiple_strings(wordpiece_tokenizers, test_string):
+    hf_tokenizer, ov_tokenizer = wordpiece_tokenizers
     packed_strings = pack_strings(test_string)
 
     hf_tokenized = hf_tokenizer(test_string, return_tensors="np", padding=True)
@@ -213,8 +203,8 @@ def test_hf_wordpiece_tokenizers_multiple_strings(hf_and_ov_wordpiece_tokenizers
         *misc_strings,
     ],
 )
-def test_sentencepiece_model_tokenizer(sentencepice_model_tokenizers, test_string):
-    hf_tokenizer, ov_tokenizer, _ = sentencepice_model_tokenizers
+def test_sentencepiece_model_tokenizer(sentencepice_tokenizers, test_string):
+    hf_tokenizer, ov_tokenizer, _ = sentencepice_tokenizers
 
     hf_tokenized = hf_tokenizer(test_string, return_tensors="np")
     ov_tokenized = ov_tokenizer(pack_strings([test_string]))
@@ -234,8 +224,8 @@ def test_sentencepiece_model_tokenizer(sentencepice_model_tokenizers, test_strin
         *misc_strings,
     ],
 )
-def test_sentencepiece_model_detokenizer(sentencepice_model_tokenizers, test_string):
-    hf_tokenizer, _, ov_detokenizer = sentencepice_model_tokenizers
+def test_sentencepiece_model_detokenizer(sentencepice_tokenizers, test_string):
+    hf_tokenizer, _, ov_detokenizer = sentencepice_tokenizers
 
     token_ids = hf_tokenizer(test_string, return_tensors="np").input_ids
     hf_output = hf_tokenizer.batch_decode(token_ids, skip_special_tokens=True)
@@ -253,8 +243,8 @@ def test_sentencepiece_model_detokenizer(sentencepice_model_tokenizers, test_str
         *misc_strings,
     ],
 )
-def test_hf_bpe_tokenizers_outputs(hf_and_ov_bpe_tokenizers, test_string):
-    hf_tokenizer, ov_tokenizer, _ = hf_and_ov_bpe_tokenizers
+def test_hf_bpe_tokenizers_outputs(bpe_tokenizers, test_string):
+    hf_tokenizer, ov_tokenizer, _ = bpe_tokenizers
     packed_strings = pack_strings([test_string])
 
     hf_tokenized = hf_tokenizer([test_string], return_tensors="np")
@@ -275,8 +265,8 @@ def test_hf_bpe_tokenizers_outputs(hf_and_ov_bpe_tokenizers, test_string):
         *misc_strings,
     ],
 )
-def test_bpe_detokenizer(hf_and_ov_bpe_detokenizer, test_string):
-    hf_tokenizer, _, ov_detokenizer = hf_and_ov_bpe_detokenizer
+def test_bpe_detokenizer(bpe_tokenizers, test_string):
+    hf_tokenizer, _, ov_detokenizer = bpe_tokenizers
 
     token_ids = hf_tokenizer(test_string, return_tensors="np").input_ids
     hf_output = hf_tokenizer.batch_decode(token_ids)
@@ -295,7 +285,7 @@ def test_bpe_detokenizer(hf_and_ov_bpe_detokenizer, test_string):
     ],
 )
 def test_tiktoken_tokenizers(tiktoken_tokenizers, test_string):
-    hf_tokenizer, ov_tokenizer = tiktoken_tokenizers
+    hf_tokenizer, ov_tokenizer, _ = tiktoken_tokenizers
 
     hf_tokenized = hf_tokenizer(test_string, return_tensors="np")
     ov_tokenized = ov_tokenizer(pack_strings([test_string]))
@@ -314,8 +304,8 @@ def test_tiktoken_tokenizers(tiktoken_tokenizers, test_string):
         *misc_strings,
     ],
 )
-def test_tiktoken_detokenizer(tiktoken_detokenizers, test_string):
-    hf_tokenizer, _, ov_detokenizer = tiktoken_detokenizers
+def test_tiktoken_detokenizer(tiktoken_tokenizers, test_string):
+    hf_tokenizer, _, ov_detokenizer = tiktoken_tokenizers
 
     token_ids = hf_tokenizer(test_string, return_tensors="np").input_ids
     hf_output = hf_tokenizer.batch_decode(token_ids, skip_special_tokens=True)
