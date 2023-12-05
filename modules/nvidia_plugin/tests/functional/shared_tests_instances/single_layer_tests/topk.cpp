@@ -23,14 +23,14 @@ const std::vector<int64_t> k = {
     10,
 };
 
-const std::vector<ngraph::opset4::TopK::Mode> modes = {
-    ngraph::opset4::TopK::Mode::MIN,
-    ngraph::opset4::TopK::Mode::MAX,
+const std::vector<ov::opset4::TopK::Mode> modes = {
+    ov::opset4::TopK::Mode::MIN,
+    ov::opset4::TopK::Mode::MAX,
 };
 
-const std::vector<ngraph::opset4::TopK::SortType> sortTypes = {
-    ngraph::opset4::TopK::SortType::SORT_INDICES,
-    ngraph::opset4::TopK::SortType::SORT_VALUES,
+const std::vector<ov::opset4::TopK::SortType> sortTypes = {
+    ov::opset4::TopK::SortType::SORT_INDICES,
+    ov::opset4::TopK::SortType::SORT_VALUES,
 };
 
 const std::vector<int64_t> axes3D = {

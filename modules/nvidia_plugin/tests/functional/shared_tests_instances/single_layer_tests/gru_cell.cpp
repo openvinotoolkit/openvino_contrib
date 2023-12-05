@@ -34,7 +34,7 @@ protected:
         const auto& ops = function->get_ordered_ops();
         int seed = SEED_FIRST;
         for (const auto& op : ops) {
-            if (std::dynamic_pointer_cast<ngraph::opset1::Constant>(op)) {
+            if (std::dynamic_pointer_cast<ov::opset1::Constant>(op)) {
                 ov::Tensor random_tensor(op->get_element_type(), op->get_shape());
                 ov::test::utils::fill_tensor_random(random_tensor, up_to - start_from, start_from, 1, seed++);
                 function->replace_node(op, std::make_shared<ov::op::v0::Constant>(random_tensor));

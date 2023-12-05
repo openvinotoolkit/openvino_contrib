@@ -128,7 +128,7 @@ protected:
                                                           const ov::op::PadType &autoPad,
                                                           bool addBiases = false,
                                                           const std::vector<float> &biasesWeights = {}) {
-        return std::make_shared<ngraph::opset1::ConvolutionBackpropData>(
+        return std::make_shared<ov::opset1::ConvolutionBackpropData>(
             in, weights, output, strides, padsBegin, padsEnd, dilations, autoPad);
     }
 
@@ -158,7 +158,7 @@ protected:
 
         auto outputShapeNode = std::make_shared<ov::op::v0::Constant>(
             ov::element::Type_t::i64, ov::Shape{outputShapeData.size()}, outputShapeData);
-        auto convBackpropData = std::dynamic_pointer_cast<ngraph::opset1::ConvolutionBackpropData>(
+        auto convBackpropData = std::dynamic_pointer_cast<ov::opset1::ConvolutionBackpropData>(
             makeConvolutionBackpropData(params[0],
                                         outputShapeNode,
                                         ngPrc,
@@ -169,7 +169,7 @@ protected:
                                         dilation,
                                         padType,
                                         convOutChannels));
-        ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(convBackpropData)};
+        ov::ResultVector results{std::make_shared<ov::opset1::Result>(convBackpropData)};
         function = std::make_shared<ngraph::Function>(results, params, "convolutionBackpropData");
     }
 };
