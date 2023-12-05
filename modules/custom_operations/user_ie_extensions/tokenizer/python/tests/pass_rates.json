@@ -6,6 +6,5 @@
     "tokenizers_test.py::test_hf_bpe_tokenizers_outputs": 0.88,
     "tokenizers_test.py::test_bpe_detokenizer": 0.9529411764705882,
     "tokenizers_test.py::test_tiktoken_tokenizers": 0.9,
-    "tokenizers_test.py::test_": 0.825187969924812,
-    "user_ie_extensions/tokenizer/python/tests/tokenizers_test.py::test_": 0.825187969924812
+    "tokenizers_test.py::test_": 0.825187969924812
 }

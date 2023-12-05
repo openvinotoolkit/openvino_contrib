@@ -1,1 +1,0 @@
-{"args": ["/tmp/build-env-jauj97c_/lib/python3.11/site-packages/cmake/data/bin/cmake", "-DCUSTOM_OPERATIONS:STRING=tokenizer", "-DBUILD_FAST_TOKENIZERS=OFF", "-DCMAKE_BUILD_TYPE:STRING=Release"], "version": "3.27.9", "environment": {"PYTHONNOUSERSITE": null, "PYTHONPATH": null}}

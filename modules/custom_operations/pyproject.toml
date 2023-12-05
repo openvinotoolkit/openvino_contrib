@@ -56,12 +56,6 @@ wheel.install-dir = "ov_tokenizer/libs"
 wheel.py-api = "py3"
 sdist.cmake = true
 
-[[tool.scikit-build.generate]]
-path = "package/_version.py"
-template = '''
-version = "${version}"
-'''
-
 [build-system]
 requires = ["scikit-build-core"]
 build-backend = "scikit_build_core.build"
