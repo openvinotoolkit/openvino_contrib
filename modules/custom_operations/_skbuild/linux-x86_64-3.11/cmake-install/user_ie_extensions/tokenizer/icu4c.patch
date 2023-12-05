@@ -1,0 +1,13 @@
+diff --git a/fast_tokenizer/cmake/external/icu.cmake b/fast_tokenizer/cmake/external/icu.cmake
+index cd604d38..6be44bdb 100644
+--- a/fast_tokenizer/cmake/external/icu.cmake
++++ b/fast_tokenizer/cmake/external/icu.cmake
+@@ -113,7 +113,7 @@ ExternalProject_Add(
+         GIT_PROGRESS      1
+         PREFIX            ${ICU_PREFIX_DIR}
+         UPDATE_COMMAND    ""
+-        CONFIGURE_COMMAND ${HOST_ENV_CMAKE} ../extern_icu/icu4c/source/runConfigureICU "Linux/gcc" --enable-static --disable-shared --enable-rpath
++        CONFIGURE_COMMAND ${HOST_ENV_CMAKE} ../extern_icu/icu4c/source/runConfigureICU "Linux/gcc" --enable-static --enable-rpath
+         BUILD_COMMAND make -j4
+         INSTALL_COMMAND make install prefix="" DESTDIR=${ICU_INSTALL_DIR} install
+         BUILD_BYPRODUCTS ${ICU_LIBRARIES}

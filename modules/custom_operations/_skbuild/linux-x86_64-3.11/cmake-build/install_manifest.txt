@@ -1,0 +1,2 @@
+/home/rmikhail/src/openvino_contrib/modules/custom_operations/_skbuild/linux-x86_64-3.11/cmake-install/user_ie_extensions/tokenizer/python/ov_tokenizer/libs/./libuser_ov_extensions.so
+/home/rmikhail/src/openvino_contrib/modules/custom_operations/_skbuild/linux-x86_64-3.11/cmake-install/user_ie_extensions/tokenizer/python/ov_tokenizer/libs/./libcore_tokenizers.so

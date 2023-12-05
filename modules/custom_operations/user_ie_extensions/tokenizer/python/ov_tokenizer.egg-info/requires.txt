@@ -1,0 +1,15 @@
+openvino
+numpy
+
+[all]
+ov_tokenizer[dev,tiktoken,transformers]
+
+[dev]
+ruff
+pytest
+
+[tiktoken]
+tiktoken
+
+[transformers]
+transformers[sentencepiece,tiktoken]

@@ -1,0 +1,3 @@
+/home/rmikhail/src/openvino_contrib/modules/custom_operations/_skbuild/linux-x86_64-3.11/cmake-build/_deps/sentencepiece-subbuild/CMakeFiles/sentencepiece-populate.dir
+/home/rmikhail/src/openvino_contrib/modules/custom_operations/_skbuild/linux-x86_64-3.11/cmake-build/_deps/sentencepiece-subbuild/CMakeFiles/edit_cache.dir
+/home/rmikhail/src/openvino_contrib/modules/custom_operations/_skbuild/linux-x86_64-3.11/cmake-build/_deps/sentencepiece-subbuild/CMakeFiles/rebuild_cache.dir

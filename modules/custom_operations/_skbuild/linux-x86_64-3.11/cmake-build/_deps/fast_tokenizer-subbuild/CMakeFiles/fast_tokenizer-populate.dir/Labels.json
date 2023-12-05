@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/rmikhail/src/openvino_contrib/modules/custom_operations/_skbuild/linux-x86_64-3.11/cmake-build/_deps/fast_tokenizer-subbuild/CMakeFiles/fast_tokenizer-populate"
+		},
+		{
+			"file" : "/home/rmikhail/src/openvino_contrib/modules/custom_operations/_skbuild/linux-x86_64-3.11/cmake-build/_deps/fast_tokenizer-subbuild/CMakeFiles/fast_tokenizer-populate.rule"
+		},
+		{
+			"file" : "/home/rmikhail/src/openvino_contrib/modules/custom_operations/_skbuild/linux-x86_64-3.11/cmake-build/_deps/fast_tokenizer-subbuild/CMakeFiles/fast_tokenizer-populate-complete.rule"
+		},
+		{
+			"file" : "/home/rmikhail/src/openvino_contrib/modules/custom_operations/_skbuild/linux-x86_64-3.11/cmake-build/_deps/fast_tokenizer-subbuild/fast_tokenizer-populate-prefix/src/fast_tokenizer-populate-stamp/fast_tokenizer-populate-build.rule"
+		},
+		{
+			"file" : "/home/rmikhail/src/openvino_contrib/modules/custom_operations/_skbuild/linux-x86_64-3.11/cmake-build/_deps/fast_tokenizer-subbuild/fast_tokenizer-populate-prefix/src/fast_tokenizer-populate-stamp/fast_tokenizer-populate-configure.rule"
+		},
+		{
+			"file" : "/home/rmikhail/src/openvino_contrib/modules/custom_operations/_skbuild/linux-x86_64-3.11/cmake-build/_deps/fast_tokenizer-subbuild/fast_tokenizer-populate-prefix/src/fast_tokenizer-populate-stamp/fast_tokenizer-populate-download.rule"
+		},
+		{
+			"file" : "/home/rmikhail/src/openvino_contrib/modules/custom_operations/_skbuild/linux-x86_64-3.11/cmake-build/_deps/fast_tokenizer-subbuild/fast_tokenizer-populate-prefix/src/fast_tokenizer-populate-stamp/fast_tokenizer-populate-install.rule"
+		},
+		{
+			"file" : "/home/rmikhail/src/openvino_contrib/modules/custom_operations/_skbuild/linux-x86_64-3.11/cmake-build/_deps/fast_tokenizer-subbuild/fast_tokenizer-populate-prefix/src/fast_tokenizer-populate-stamp/fast_tokenizer-populate-mkdir.rule"
+		},
+		{
+			"file" : "/home/rmikhail/src/openvino_contrib/modules/custom_operations/_skbuild/linux-x86_64-3.11/cmake-build/_deps/fast_tokenizer-subbuild/fast_tokenizer-populate-prefix/src/fast_tokenizer-populate-stamp/fast_tokenizer-populate-patch.rule"
+		},
+		{
+			"file" : "/home/rmikhail/src/openvino_contrib/modules/custom_operations/_skbuild/linux-x86_64-3.11/cmake-build/_deps/fast_tokenizer-subbuild/fast_tokenizer-populate-prefix/src/fast_tokenizer-populate-stamp/fast_tokenizer-populate-test.rule"
+		},
+		{
+			"file" : "/home/rmikhail/src/openvino_contrib/modules/custom_operations/_skbuild/linux-x86_64-3.11/cmake-build/_deps/fast_tokenizer-subbuild/fast_tokenizer-populate-prefix/src/fast_tokenizer-populate-stamp/fast_tokenizer-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"fast_tokenizer-populate"
+		],
+		"name" : "fast_tokenizer-populate"
+	}
+}
