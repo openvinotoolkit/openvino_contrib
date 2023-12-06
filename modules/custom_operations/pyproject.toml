@@ -1,10 +1,18 @@
 [project]
 name = "ov_tokenizer"
-version = "0.0.1"
+version = "2023.3.0"
 description = "Convert tokenizers into OpenVINO models"
 requires-python = ">=3.8"
+
 authors = [
     { name = "OpenVINO Developers", email = "openvino@intel.com" },
+]
+
+classifiers = [
+    'Programming Language :: Python :: 3.8',
+    'Programming Language :: Python :: 3.9',
+    'Programming Language :: Python :: 3.10',
+    'Programming Language :: Python :: 3.11',
 ]
 
 dependencies = [
@@ -38,3 +46,16 @@ line-length = 119
 
 [tool.ruff.isort]
 lines-after-imports = 2
+
+[tool.scikit-build]
+cmake.minimum-version = "3.15"
+cmake.build-type = "Release"
+cmake.args = ["-DCUSTOM_OPERATIONS:STRING=tokenizer", "-DBUILD_FAST_TOKENIZERS=OFF"]
+wheel.packages = ["user_ie_extensions/tokenizer/python/ov_tokenizer"]
+wheel.install-dir = "ov_tokenizer/libs"
+wheel.py-api = "py3"
+sdist.cmake = true
+
+[build-system]
+requires = ["scikit-build-core"]
+build-backend = "scikit_build_core.build"

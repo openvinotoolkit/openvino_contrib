@@ -48,6 +48,7 @@ jobs:
     WORK_DIR: $(Pipeline.Workspace)\_w
     BUILD_DIR: D:\build
     BUILD_DIR_CONTRIB: D:\build_contrib
+    BUILD_WHEEL_DIR: D:\wheels
     MSVS_VARS_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat
     MSVC_COMPILER_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.24.28314\bin\Hostx64\x64\cl.exe
     INSTALL_DIR: $(WORK_DIR)\install_pkg
@@ -99,6 +100,7 @@ jobs:
       powershell -command "Expand-Archive -Force ninja-win.zip"
       powershell -command "Invoke-WebRequest https://services.gradle.org/distributions/gradle-$(GRADLE_VER)-bin.zip -OutFile gradle-$(GRADLE_VER)-bin.zip"
       powershell -command "Expand-Archive -Force gradle-$(GRADLE_VER)-bin.zip"
+      call $(SETUPVARS) -pyver 3.8
       $(PYTHON_EXE) -m pip install --upgrade pip
       $(PYTHON_EXE) -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\src\compatibility\openvino\requirements-dev.txt
       $(PYTHON_EXE) -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\requirements.txt
@@ -152,7 +154,7 @@ jobs:
   - script: |
       set PATH=$(WORK_DIR)\ninja-win;%PATH%
       set OpenCV_DIR=C:\tools\opencv\build
-      call "$(SETUPVARS)"
+      call $(SETUPVARS) -pyver 3.8
       call "$(MSVS_VARS_PATH)"
       cmake -GNinja ^
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) ^
@@ -168,6 +170,23 @@ jobs:
 
   - script: |
       call $(SETUPVARS)
+      $(PYTHON_EXE) -m pip install build
+      $(PYTHON_EXE) -m build --wheel --outdir $(BUILD_WHEEL_DIR) $(REPO_DIR)\modules\custom_operations
+    workingDirectory: $(WORK_DIR)
+    displayName: 'Build tokenizers wheel'
+
+  - powershell: |
+      # Find and install the wheel
+      $wheelPath=Get-ChildItem -Path "$(BUILD_WHEEL_DIR)" -Filter ov_tokenizer*.whl | % { $_.FullName }
+      $(PYTHON_EXE) -m pip install "$wheelPath[all]"
+    workingDirectory: $(WORK_DIR)
+    displayName: 'Install tokenizers wheel'
+
+  - publish: $(BUILD_WHEEL_DIR)
+    artifact: Wheels
+
+  - script: |
+      call $(SETUPVARS)
       set PATH=$(WORK_DIR)\gradle-$(GRADLE_VER)-bin\gradle-$(GRADLE_VER)\bin;%PATH%
       gradle clean build --info
       gradle test -Prun_tests -DMODELS_PATH=$(MODELS_PATH) -Ddevice=CPU --info
@@ -180,3 +199,10 @@ jobs:
       $(PYTHON_EXE) -m pytest -k "not sparse_conv" tests\run_tests.py
     workingDirectory: $(REPO_DIR)\modules\custom_operations
     displayName: 'Custom user operation tests'
+
+  - script: |
+      call $(SETUPVARS) -pyver 3.8 && ^
+      $(PYTHON_EXE) -m pytest tokenizers_test.py
+    continueOnError: true
+    workingDirectory: $(REPO_DIR)\modules\custom_operations\user_ie_extensions\tokenizer\python\tests
+    displayName: 'Tokenizers extension regression test'
