@@ -48,7 +48,7 @@ jobs:
     WORK_DIR: $(Pipeline.Workspace)\_w
     BUILD_DIR: D:\build
     BUILD_DIR_CONTRIB: D:\build_contrib
-    BUILD_WHEEL_DIR_CONTRIB: $(BUILD_DIR_CONTRIB)\wheels
+    BUILD_WHEEL_DIR: D:\wheels
     MSVS_VARS_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat
     MSVC_COMPILER_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.24.28314\bin\Hostx64\x64\cl.exe
     INSTALL_DIR: $(WORK_DIR)\install_pkg
@@ -112,21 +112,6 @@ jobs:
     displayName: 'Install dependencies'
 
   - script: |
-      call $(SETUPVARS) && $(PYTHON_EXE) -m pip install build && $(PYTHON_EXE) -m build --wheel --outdir $(BUILD_WHEEL_DIR_CONTRIB) $(REPO_DIR)\modules\custom_operations
-    workingDirectory: $(WORK_DIR)
-    displayName: 'Build tokenizers wheel'
-
-  - script: |
-      # Find and install the wheel
-      $wheelPath=Get-ChildItem -Path "$(BUILD_WHEEL_DIR_CONTRIB)" -Filter ov_tokenizer*.whl | % { $_.FullName }
-      $(PYTHON_EXE) -m pip install "$wheelPath[all]"
-    workingDirectory: $(WORK_DIR)
-    displayName: 'Install tokenizers wheel'
-
-  - publish: $(BUILD_WHEEL_DIR_CONTRIB)
-    artifact: Wheels
-
-  - script: |
       set PATH=$(WORK_DIR)\ninja-win;%PATH%
       call "$(MSVS_VARS_PATH)"
       cmake -GNinja ^
@@ -182,6 +167,23 @@ jobs:
   - script: call "$(MSVS_VARS_PATH)" && $(WORK_DIR)\ninja-win\ninja
     workingDirectory: $(BUILD_DIR_CONTRIB)
     displayName: 'Build OpenVINO Contrib'
+
+  - script: |
+      call $(SETUPVARS)
+      $(PYTHON_EXE) -m pip install build
+      $(PYTHON_EXE) -m build --wheel --outdir $(BUILD_WHEEL_DIR) $(REPO_DIR)\modules\custom_operations
+    workingDirectory: $(WORK_DIR)
+    displayName: 'Build tokenizers wheel'
+
+  - script: |
+      # Find and install the wheel
+      $wheelPath=Get-ChildItem -Path "$(BUILD_WHEEL_DIR)" -Filter ov_tokenizer*.whl | % { $_.FullName }
+      $(PYTHON_EXE) -m pip install "$wheelPath[all]"
+    workingDirectory: $(WORK_DIR)
+    displayName: 'Install tokenizers wheel'
+
+  - publish: $(BUILD_WHEEL_DIR)
+    artifact: Wheels
 
   - script: |
       call $(SETUPVARS)
