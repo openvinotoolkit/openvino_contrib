@@ -175,7 +175,7 @@ jobs:
     workingDirectory: $(WORK_DIR)
     displayName: 'Build tokenizers wheel'
 
-  - script: |
+  - powershell: |
       # Find and install the wheel
       $wheelPath=Get-ChildItem -Path "$(BUILD_WHEEL_DIR)" -Filter ov_tokenizer*.whl | % { $_.FullName }
       $(PYTHON_EXE) -m pip install "$wheelPath[all]"
