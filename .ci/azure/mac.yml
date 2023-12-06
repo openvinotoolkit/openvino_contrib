@@ -176,7 +176,11 @@ jobs:
 
   - script: |
       source .venv/bin/activate
-      python -m pip install $(BUILD_WHEEL_DIR)/*.whl
+      # Find and install wheel
+      pushd $(BUILD_WHEEL_DIR)
+        wheel_name=$(find . -name 'ov_tokenizer*.whl')
+        python3 -m pip install $wheel_name[all]
+      popd
     workingDirectory: $(WORK_DIR)
     displayName: 'Install tokenizers wheel'
 
