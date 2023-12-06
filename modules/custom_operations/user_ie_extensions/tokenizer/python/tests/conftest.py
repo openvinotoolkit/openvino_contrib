@@ -6,12 +6,17 @@ from io import StringIO
 
 import pytest
 
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--update_readme", help="Update test coverage report in README.md"
+    )
+
 PASS_RATES_FILE = Path(__file__).parent / "pass_rates.json"
 
 
 def build_coverege_report(session: pytest.Session) -> None:
     import pandas as pd
-    import numpy as np
     from pytest_harvest import get_session_results_df
 
     def add_tokenizer_type(row):
@@ -37,21 +42,16 @@ def build_coverege_report(session: pytest.Session) -> None:
     grouped_by_model = final.groupby(["tokenizer_type", "models"]).agg("mean")
     grouped_by_type = final.groupby(["tokenizer_type"]).agg("mean")
 
-    styled = grouped_by_type.style.background_gradient(cmap="RdBu", axis=0)
-
     readme_path = Path("../README.md")
     with open(readme_path) as f:
         old_readme = f.read().split("## Test Coverage")[0]
 
     new_readme = StringIO()
     new_readme.write(old_readme)
-    new_readme.write("## Test Coverage\n\n")
-    new_readme.write("### Covarage by Tokenizer Type\n")
-    styled.to_html(new_readme)
-    new_readme.write("\n ### Covarage by Model Type\n")
-
-    styled = grouped_by_model.style.background_gradient(cmap="RdBu", axis=0)
-    styled.to_html(new_readme)
+    new_readme.write("\n## Test Coverage\n\n### Coverage by Tokenizer Type\n\n")
+    grouped_by_type.style.to_html(new_readme, exclude_styles=True)
+    new_readme.write("\n### Coverage by Model Type\n\n")
+    grouped_by_model.style.to_html(new_readme, exclude_styles=True)
 
     with open(readme_path, "w") as f:
         f.write(new_readme.getvalue())
@@ -62,7 +62,9 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: pytest.ExitCode) -
     """
     Tests fail if the test pass rate decreases
     """
-    build_coverege_report(session)
+    if session.config.getoption("update_readme", default=False):
+        build_coverege_report(session)
+
     if exitstatus != pytest.ExitCode.TESTS_FAILED:
         return
 
