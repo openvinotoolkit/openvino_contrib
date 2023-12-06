@@ -68,7 +68,7 @@ public:
         const auto add1 = ngraph::builder::makeEltwise(params[2], params[3], EltwiseTypes::ADD);
 
         const auto mul = ngraph::builder::makeEltwise(add0, add1, EltwiseTypes::MULTIPLY);
-        const auto result = std::make_shared<ov::opset1::Result>(mul);
+        const auto result = std::make_shared<ov::op::v0::Result>(mul);
         return std::make_shared<ov::Model>(result, params, "AddMul");
     }
 
@@ -114,8 +114,8 @@ public:
 
         constexpr int64_t axis = CONCAT_AXIS;
         const auto concat =
-            std::make_shared<ov::opset1::Concat>(ov::OutputVector{add0, add1}, axis);
-        const auto result = std::make_shared<ov::opset1::Result>(concat);
+            std::make_shared<ov::op::v0::Concat>(ov::OutputVector{add0, add1}, axis);
+        const auto result = std::make_shared<ov::op::v0::Result>(concat);
         return std::make_shared<ov::Model>(result, params, "AddConcat");
     }
 

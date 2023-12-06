@@ -98,7 +98,7 @@ protected:
         auto MatMul = std::make_shared<ov::op::v0::MatMul>(
             params[0], secondaryInput, shapeRelatedParams.input1.second, shapeRelatedParams.input2.second);
         auto Add = std::make_shared<ov::op::v1::Add>(MatMul, thirdInput);
-        ov::ResultVector results{std::make_shared<ov::opset1::Result>(Add)};
+        ov::ResultVector results{std::make_shared<ov::op::v0::Result>(Add)};
         function = std::make_shared<ngraph::Function>(results, params, "FullyConnected");
     }
 };
@@ -224,7 +224,7 @@ protected:
                                                             shapeRelatedParams.matmul2_input1.second,
                                                             shapeRelatedParams.matmul2_input2.second);
         auto Add = std::make_shared<ov::op::v1::Add>(matMul0, matMul1);
-        ov::ResultVector results{std::make_shared<ov::opset1::Result>(Add)};
+        ov::ResultVector results{std::make_shared<ov::op::v0::Result>(Add)};
         function = std::make_shared<ngraph::Function>(results, params, "FullyConnected");
     }
 };

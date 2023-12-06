@@ -26,7 +26,7 @@ class CUDALSTMSequenceTest : public UnsymmetricalComparer<LSTMSequenceTest> {
         int counter = 1;
         const auto& ops = function->get_ordered_ops();
         for (const auto& op : ops) {
-            if (std::dynamic_pointer_cast<ov::opset1::Constant>(op)) {
+            if (std::dynamic_pointer_cast<ov::op::v0::Constant>(op)) {
                 if (op->get_element_type() == ov::element::Type_t::f32) {
                     ov::Tensor random_tensor(op->get_element_type(), op->get_shape());
                     ov::test::utils::fill_tensor_random(random_tensor, up_to - start_from, start_from, 1, counter++);

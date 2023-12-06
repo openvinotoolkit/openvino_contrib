@@ -14,11 +14,11 @@
 #include <memory>
 #include <ngraph/function.hpp>
 #include <ngraph/node.hpp>
-#include <ngraph/opsets/opset1.hpp>
 #include <ngraph/shape.hpp>
 #include <ngraph/type/element_type.hpp>
 #include <ov_models/builders.hpp>
 #include <ov_models/utils/ov_helpers.hpp>
+#include "openvino/opsets/opset1.hpp"
 #include <openvino/op/util/attr_types.hpp>
 #include <shared_test_classes/base/layer_test_utils.hpp>
 #include <shared_test_classes/single_layer/activation.hpp>

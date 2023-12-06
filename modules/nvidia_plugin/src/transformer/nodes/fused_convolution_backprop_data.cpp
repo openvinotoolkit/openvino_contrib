@@ -200,7 +200,7 @@ void FusedConvBackpropData::validate_and_infer_types() {
             // If auto_pad has one of following mode we infer paddings. Otherwise in
             // EXPLICIT auto_pad mode we use what is provided.
             if (auto_pad_ == ov::op::PadType::SAME_UPPER || auto_pad_ == ov::op::PadType::SAME_LOWER) {
-                ov::opset1::infer_conv_backprop_auto_padding(
+                ngraph::opset1::infer_conv_backprop_auto_padding(
                     ov::Shape{std::next(data_shape.begin(), 2), std::end(data_shape)},
                     ov::Shape{std::next(filters_shape.begin(), 2), std::end(filters_shape)},
                     output_shape,

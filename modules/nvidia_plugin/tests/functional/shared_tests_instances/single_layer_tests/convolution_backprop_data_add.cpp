@@ -6,6 +6,7 @@
 
 #include <ie_precision.hpp>
 #include <ngraph/node.hpp>
+#include "openvino/opsets/opset1.hpp"
 #include <vector>
 
 #include "cuda_test_constants.hpp"

@@ -3,6 +3,7 @@
 //
 
 #include "single_layer_tests/topk.hpp"
+#include "openvino/opsets/opset4.hpp"
 
 #include <vector>
 
