@@ -112,8 +112,9 @@ jobs:
     displayName: 'Install dependencies'
 
   - script: |
+      call $(SETUPVARS) -pyver 3.8
       $(PYTHON_EXE) -m pip install build
-      call $(SETUPVARS) -pyver 3.8 && $(PYTHON_EXE) -m  build --wheel --outdir $(BUILD_WHEEL_DIR_CONTRIB) $(REPO_DIR)\modules\custom_operations
+      $(PYTHON_EXE) -m build --wheel --outdir $(BUILD_WHEEL_DIR_CONTRIB) $(REPO_DIR)\modules\custom_operations
     workingDirectory: $(WORK_DIR)
     displayName: 'Build tokenizers wheel'
 
@@ -199,7 +200,7 @@ jobs:
 
   - script: |
       call $(SETUPVARS) -pyver 3.8 && ^
-      $(PYTHON_EXE) -m pytest --tb=no tokenizers_test.py
+      $(PYTHON_EXE) -m pytest tokenizers_test.py
     continueOnError: true
     workingDirectory: $(REPO_DIR)\modules\custom_operations\user_ie_extensions\tokenizer\python\tests
     displayName: 'Tokenizers extension regression test'

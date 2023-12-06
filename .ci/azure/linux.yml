@@ -193,15 +193,15 @@ jobs:
     artifact: Wheels
 
   - script: |
-      source  $(WORK_DIR)/.env3/bin/activate
+      source $(WORK_DIR)/.env3/bin/activate
       # need to enable sparse_conv tests with new Open3D release
       python -m pytest -k "not sparse_conv" tests/run_tests.py
     workingDirectory: $(REPO_DIR)/modules/custom_operations
     displayName: 'Custom user operation tests'
 
   - script: |
-      source  $(WORK_DIR)/.env3/bin/activate
-      python -m pytest --tb=no tokenizers_test.py
+      source $(WORK_DIR)/.env3/bin/activate
+      python -m pytest tokenizers_test.py
     continueOnError: true
     workingDirectory: $(REPO_DIR)/modules/custom_operations/user_ie_extensions/tokenizer/python/tests/
     displayName: 'Tokenizers extension regression test'
