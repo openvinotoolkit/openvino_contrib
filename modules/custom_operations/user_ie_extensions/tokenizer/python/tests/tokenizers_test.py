@@ -7,7 +7,6 @@
 # os.environ["OV_TOKENIZER_PREBUILD_EXTENSION_PATH"] = "path/to/libuser_ov_extensions.so"
 
 import numpy as np
-import openvino
 import pytest
 from openvino import Core
 from transformers import AutoTokenizer
