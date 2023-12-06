@@ -6,6 +6,7 @@
 
 #include <ie_precision.hpp>
 #include <ngraph/node.hpp>
+#include "openvino/opsets/opset1.hpp"
 #include <vector>
 
 #include "cuda_test_constants.hpp"
@@ -126,7 +127,7 @@ protected:
                                                           const ov::op::PadType &autoPad,
                                                           bool addBiases = false,
                                                           const std::vector<float> &biasesWeights = {}) {
-        return std::make_shared<ngraph::opset1::ConvolutionBackpropData>(
+        return std::make_shared<ov::opset1::ConvolutionBackpropData>(
             in, weights, output, strides, padsBegin, padsEnd, dilations, autoPad);
     }
 
@@ -156,7 +157,7 @@ protected:
 
         auto outputShapeNode = std::make_shared<ov::op::v0::Constant>(
             ov::element::Type_t::i64, ov::Shape{outputShapeData.size()}, outputShapeData);
-        auto convBackpropData = std::dynamic_pointer_cast<ngraph::opset1::ConvolutionBackpropData>(
+        auto convBackpropData = std::dynamic_pointer_cast<ov::opset1::ConvolutionBackpropData>(
             makeConvolutionBackpropData(params[0],
                                         outputShapeNode,
                                         ngPrc,
@@ -172,7 +173,7 @@ protected:
         ov::test::utils::fill_tensor_random(random_tensor);
         auto addConstant = std::make_shared<ov::op::v0::Constant>(random_tensor);
         auto add = std::make_shared<ov::op::v1::Add>(convBackpropData, addConstant);
-        ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(add)};
+        ov::ResultVector results{std::make_shared<ov::opset1::Result>(add)};
         function = std::make_shared<ngraph::Function>(results, params, "convolutionBackpropData");
     }
 };
