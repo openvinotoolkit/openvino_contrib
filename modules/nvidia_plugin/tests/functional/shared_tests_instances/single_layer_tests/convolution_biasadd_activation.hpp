@@ -14,11 +14,11 @@
 #include <memory>
 #include <ngraph/function.hpp>
 #include <ngraph/node.hpp>
-#include <ngraph/opsets/opset1.hpp>
 #include <ngraph/shape.hpp>
 #include <ngraph/type/element_type.hpp>
 #include <ov_models/builders.hpp>
 #include <ov_models/utils/ov_helpers.hpp>
+#include "openvino/opsets/opset1.hpp"
 #include <openvino/op/util/attr_types.hpp>
 #include <shared_test_classes/base/layer_test_utils.hpp>
 #include <shared_test_classes/single_layer/activation.hpp>
@@ -50,7 +50,7 @@ struct ConvBAATraits {};
 
 template <>
 struct ConvBAATraits<ConvolutionLayerTest> {
-    using ConvNode = ngraph::opset1::Convolution;
+    using ConvNode = ov::opset1::Convolution;
     using ConvParamSet = convLayerTestParamsSet;
     using ConvSpecParamsSet = convSpecificParams;
     using ConvBAAParamSet = convBAATestParamSet;
@@ -59,7 +59,7 @@ struct ConvBAATraits<ConvolutionLayerTest> {
 
 template <>
 struct ConvBAATraits<GroupConvolutionLayerTest> {
-    using ConvNode = ngraph::opset1::GroupConvolution;
+    using ConvNode = ov::opset1::GroupConvolution;
     using ConvParamSet = groupConvLayerTestParamsSet;
     using ConvSpecParamsSet = groupConvSpecificParams;
     using ConvBAAParamSet = groupConvBAATestParamSet;
@@ -127,7 +127,7 @@ protected:
 
         std::shared_ptr<ov::Node> lastNode;
         if constexpr (HasAddNode) {
-            auto addParam = std::make_shared<ngraph::opset1::Parameter>(ngNetPrc, convLayer->get_output_shape(0));
+            auto addParam = std::make_shared<ov::opset1::Parameter>(ngNetPrc, convLayer->get_output_shape(0));
             params.push_back(addParam);
             auto addLayer = std::make_shared<ov::op::v1::Add>(biasAddLayer, addParam);
             lastNode = addLayer;
@@ -138,7 +138,7 @@ protected:
             lastNode = ngraph::builder::makeActivation(lastNode, ngNetPrc, activation);
         }
 
-        ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(lastNode)};
+        ov::ResultVector results{std::make_shared<ov::opset1::Result>(lastNode)};
         function = std::make_shared<ngraph::Function>(results, params, Traits::name);
     }
 
