@@ -189,29 +189,25 @@ print(f"HuggingFace output string: `{hf_output}`")
 <table>
   <thead>
     <tr>
-      <th >&nbsp;</th>
-      <th >status</th>
-    </tr>
-    <tr>
-      <th >tokenizer_type</th>
-      <th >&nbsp;</th>
+      <th >Tokenizer Type</th>
+      <th >Pass Rate</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <th >bpe</th>
+      <td >BPE</td>
       <td >0.929412</td>
     </tr>
     <tr>
-      <th >sentencepiece</th>
+      <td >SentencePiece</td>
       <td >0.620000</td>
     </tr>
     <tr>
-      <th >tiktoken</th>
+      <td >Tiktoken</td>
       <td >0.950000</td>
     </tr>
     <tr>
-      <th >wordpiece</th>
+      <td >WordPiece</td>
       <td >0.992042</td>
     </tr>
   </tbody>
@@ -222,211 +218,250 @@ print(f"HuggingFace output string: `{hf_output}`")
 <table>
   <thead>
     <tr>
-      <th >&nbsp;</th>
-      <th >&nbsp;</th>
-      <th >status</th>
-    </tr>
-    <tr>
-      <th >tokenizer_type</th>
-      <th >models</th>
-      <th >&nbsp;</th>
+      <th >Tokenizer Type</th>
+      <th >Models</th>
+      <th >Pass Rate</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <th rowspan="17">bpe</th>
-      <th >EleutherAI/gpt-j-6b</th>
+      <td >BPE</td>
+      <td >EleutherAI/gpt-j-6b</td>
       <td >0.960000</td>
     </tr>
     <tr>
-      <th >EleutherAI/gpt-neo-125m</th>
+      <td >BPE</td>
+      <td >EleutherAI/gpt-neo-125m</td>
       <td >0.960000</td>
     </tr>
     <tr>
-      <th >EleutherAI/gpt-neox-20b</th>
+      <td >BPE</td>
+      <td >EleutherAI/gpt-neox-20b</td>
       <td >0.920000</td>
     </tr>
     <tr>
-      <th >EleutherAI/pythia-12b-deduped</th>
+      <td >BPE</td>
+      <td >EleutherAI/pythia-12b-deduped</td>
       <td >0.920000</td>
     </tr>
     <tr>
-      <th >KoboldAI/fairseq-dense-13B</th>
+      <td >BPE</td>
+      <td >KoboldAI/fairseq-dense-13B</td>
       <td >0.960000</td>
     </tr>
     <tr>
-      <th >Salesforce/codegen-16B-multi</th>
+      <td >BPE</td>
+      <td >Salesforce/codegen-16B-multi</td>
       <td >0.920000</td>
     </tr>
     <tr>
-      <th >ai-forever/rugpt3large_based_on_gpt2</th>
+      <td >BPE</td>
+      <td >ai-forever/rugpt3large_based_on_gpt2</td>
       <td >0.940000</td>
     </tr>
     <tr>
-      <th >bigscience/bloom</th>
+      <td >BPE</td>
+      <td >bigscience/bloom</td>
       <td >0.980000</td>
     </tr>
     <tr>
-      <th >facebook/bart-large-mnli</th>
+      <td >BPE</td>
+      <td >facebook/bart-large-mnli</td>
       <td >0.960000</td>
     </tr>
     <tr>
-      <th >facebook/galactica-120b</th>
+      <td >BPE</td>
+      <td >facebook/galactica-120b</td>
       <td >0.940000</td>
     </tr>
     <tr>
-      <th >facebook/opt-66b</th>
+      <td >BPE</td>
+      <td >facebook/opt-66b</td>
       <td >0.960000</td>
     </tr>
     <tr>
-      <th >gpt2</th>
+      <td >BPE</td>
+      <td >gpt2</td>
       <td >0.960000</td>
     </tr>
     <tr>
-      <th >laion/CLIP-ViT-bigG-14-laion2B-39B-b160k</th>
+      <td >BPE</td>
+      <td >laion/CLIP-ViT-bigG-14-laion2B-39B-b160k</td>
       <td >0.600000</td>
     </tr>
     <tr>
-      <th >microsoft/deberta-base</th>
+      <td >BPE</td>
+      <td >microsoft/deberta-base</td>
       <td >0.960000</td>
     </tr>
     <tr>
-      <th >roberta-base</th>
+      <td >BPE</td>
+      <td >roberta-base</td>
       <td >0.960000</td>
     </tr>
     <tr>
-      <th >sentence-transformers/all-roberta-large-v1</th>
+      <td >BPE</td>
+      <td >sentence-transformers/all-roberta-large-v1</td>
       <td >0.960000</td>
     </tr>
     <tr>
-      <th >stabilityai/stablecode-completion-alpha-3b-4k</th>
+      <td >BPE</td>
+      <td >stabilityai/stablecode-completion-alpha-3b-4k</td>
       <td >0.940000</td>
     </tr>
     <tr>
-      <th rowspan="16">sentencepiece</th>
-      <th >NousResearch/Llama-2-13b-hf</th>
+      <td >SentencePiece</td>
+      <td >NousResearch/Llama-2-13b-hf</td>
       <td >1.000000</td>
     </tr>
     <tr>
-      <th >NousResearch/Llama-2-13b-hf_slow</th>
+      <td >SentencePiece</td>
+      <td >NousResearch/Llama-2-13b-hf_slow</td>
       <td >1.000000</td>
     </tr>
     <tr>
-      <th >THUDM/chatglm2-6b</th>
+      <td >SentencePiece</td>
+      <td >THUDM/chatglm2-6b</td>
       <td >0.500000</td>
     </tr>
     <tr>
-      <th >THUDM/chatglm2-6b_slow</th>
+      <td >SentencePiece</td>
+      <td >THUDM/chatglm2-6b_slow</td>
       <td >0.500000</td>
     </tr>
     <tr>
-      <th >THUDM/chatglm3-6b</th>
+      <td >SentencePiece</td>
+      <td >THUDM/chatglm3-6b</td>
       <td >1.000000</td>
     </tr>
     <tr>
-      <th >THUDM/chatglm3-6b_slow</th>
+      <td >SentencePiece</td>
+      <td >THUDM/chatglm3-6b_slow</td>
       <td >1.000000</td>
     </tr>
     <tr>
-      <th >camembert-base</th>
+      <td >SentencePiece</td>
+      <td >camembert-base</td>
       <td >0.260000</td>
     </tr>
     <tr>
-      <th >camembert-base_slow</th>
+      <td >SentencePiece</td>
+      <td >camembert-base_slow</td>
       <td >0.260000</td>
     </tr>
     <tr>
-      <th >codellama/CodeLlama-7b-hf</th>
+      <td >SentencePiece</td>
+      <td >codellama/CodeLlama-7b-hf</td>
       <td >1.000000</td>
     </tr>
     <tr>
-      <th >codellama/CodeLlama-7b-hf_slow</th>
+      <td >SentencePiece</td>
+      <td >codellama/CodeLlama-7b-hf_slow</td>
       <td >1.000000</td>
     </tr>
     <tr>
-      <th >microsoft/deberta-v3-base</th>
+      <td >SentencePiece</td>
+      <td >microsoft/deberta-v3-base</td>
       <td >0.940000</td>
     </tr>
     <tr>
-      <th >microsoft/deberta-v3-base_slow</th>
+      <td >SentencePiece</td>
+      <td >microsoft/deberta-v3-base_slow</td>
       <td >0.980000</td>
     </tr>
     <tr>
-      <th >xlm-roberta-base</th>
+      <td >SentencePiece</td>
+      <td >xlm-roberta-base</td>
       <td >0.000000</td>
     </tr>
     <tr>
-      <th >xlm-roberta-base_slow</th>
+      <td >SentencePiece</td>
+      <td >xlm-roberta-base_slow</td>
       <td >0.000000</td>
     </tr>
     <tr>
-      <th >xlnet-base-cased</th>
+      <td >SentencePiece</td>
+      <td >xlnet-base-cased</td>
       <td >0.240000</td>
     </tr>
     <tr>
-      <th >xlnet-base-cased_slow</th>
+      <td >SentencePiece</td>
+      <td >xlnet-base-cased_slow</td>
       <td >0.240000</td>
     </tr>
     <tr>
-      <th rowspan="2">tiktoken</th>
-      <th >Qwen/Qwen-14B-Chat</th>
+      <td >Tiktoken</td>
+      <td >Qwen/Qwen-14B-Chat</td>
       <td >0.960000</td>
     </tr>
     <tr>
-      <th >Salesforce/xgen-7b-8k-base</th>
+      <td >Tiktoken</td>
+      <td >Salesforce/xgen-7b-8k-base</td>
       <td >0.940000</td>
     </tr>
     <tr>
-      <th rowspan="13">wordpiece</th>
-      <th >ProsusAI/finbert</th>
+      <td >WordPiece</td>
+      <td >ProsusAI/finbert</td>
       <td >1.000000</td>
     </tr>
     <tr>
-      <th >bert-base-multilingual-cased</th>
+      <td >WordPiece</td>
+      <td >bert-base-multilingual-cased</td>
       <td >1.000000</td>
     </tr>
     <tr>
-      <th >bert-large-cased</th>
+      <td >WordPiece</td>
+      <td >bert-large-cased</td>
       <td >1.000000</td>
     </tr>
     <tr>
-      <th >cointegrated/rubert-tiny2</th>
+      <td >WordPiece</td>
+      <td >cointegrated/rubert-tiny2</td>
       <td >1.000000</td>
     </tr>
     <tr>
-      <th >distilbert-base-uncased-finetuned-sst-2-english</th>
+      <td >WordPiece</td>
+      <td >distilbert-base-uncased-finetuned-sst-2-english</td>
       <td >1.000000</td>
     </tr>
     <tr>
-      <th >google/electra-base-discriminator</th>
+      <td >WordPiece</td>
+      <td >google/electra-base-discriminator</td>
       <td >1.000000</td>
     </tr>
     <tr>
-      <th >google/mobilebert-uncased</th>
+      <td >WordPiece</td>
+      <td >google/mobilebert-uncased</td>
       <td >1.000000</td>
     </tr>
     <tr>
-      <th >jhgan/ko-sbert-sts</th>
+      <td >WordPiece</td>
+      <td >jhgan/ko-sbert-sts</td>
       <td >1.000000</td>
     </tr>
     <tr>
-      <th >prajjwal1/bert-mini</th>
+      <td >WordPiece</td>
+      <td >prajjwal1/bert-mini</td>
       <td >1.000000</td>
     </tr>
     <tr>
-      <th >rajiv003/ernie-finetuned-qqp</th>
+      <td >WordPiece</td>
+      <td >rajiv003/ernie-finetuned-qqp</td>
       <td >1.000000</td>
     </tr>
     <tr>
-      <th >rasa/LaBSE</th>
+      <td >WordPiece</td>
+      <td >rasa/LaBSE</td>
       <td >0.896552</td>
     </tr>
     <tr>
-      <th >sentence-transformers/all-MiniLM-L6-v2</th>
+      <td >WordPiece</td>
+      <td >sentence-transformers/all-MiniLM-L6-v2</td>
       <td >1.000000</td>
     </tr>
     <tr>
-      <th >squeezebert/squeezebert-uncased</th>
+      <td >WordPiece</td>
+      <td >squeezebert/squeezebert-uncased</td>
       <td >1.000000</td>
     </tr>
   </tbody>

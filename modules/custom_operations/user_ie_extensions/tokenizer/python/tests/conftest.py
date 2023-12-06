@@ -21,26 +21,28 @@ def build_coverege_report(session: pytest.Session) -> None:
 
     def add_tokenizer_type(row):
         if not pd.isnull(row["wordpiece_tokenizers_param"]):
-            return "wordpiece"
+            return "WordPiece"
         if not pd.isnull(row["bpe_tokenizers_param"]):
-            return "bpe"
+            return "BPE"
         if not pd.isnull(row["sentencepice_tokenizers_param"]):
-            return "sentencepiece"
+            return "SentencePiece"
         if not pd.isnull(row["tiktoken_tokenizers_param"]):
-            return "tiktoken"
+            return "Tiktoken"
 
     results_df = get_session_results_df(session)
-    results_df["tokenizer_type"] = results_df.apply(add_tokenizer_type, axis=1)
+    results_df["Tokenizer Type"] = results_df.apply(add_tokenizer_type, axis=1)
     results_df.wordpiece_tokenizers_param.fillna(results_df.bpe_tokenizers_param, inplace=True)
     results_df.wordpiece_tokenizers_param.fillna(results_df.sentencepice_tokenizers_param, inplace=True)
     results_df.wordpiece_tokenizers_param.fillna(results_df.tiktoken_tokenizers_param, inplace=True)
     results_df.is_fast_tokenizer_param.fillna(True, inplace=True)
     results_df.status = (results_df.status == "passed").astype(int)
-    results_df["models"] = results_df.wordpiece_tokenizers_param + results_df.is_fast_tokenizer_param.apply(lambda x: "" if x else "_slow")
+    results_df["Models"] = results_df.wordpiece_tokenizers_param + results_df.is_fast_tokenizer_param.apply(lambda x: "" if x else "_slow")
 
-    final = results_df[["tokenizer_type", "models", "test_string", "status"]]
-    grouped_by_model = final.groupby(["tokenizer_type", "models"]).agg("mean")
-    grouped_by_type = final.groupby(["tokenizer_type"]).agg("mean")
+    final = results_df[["Tokenizer Type", "Models", "test_string", "status"]].rename(
+        {"status": "Pass Rate"}, axis=1
+    )
+    grouped_by_model = final.groupby(["Tokenizer Type", "Models"]).agg("mean").reset_index()
+    grouped_by_type = final.groupby(["Tokenizer Type"]).agg("mean").reset_index()
 
     readme_path = Path("../README.md")
     with open(readme_path) as f:
@@ -48,10 +50,10 @@ def build_coverege_report(session: pytest.Session) -> None:
 
     new_readme = StringIO()
     new_readme.write(old_readme)
-    new_readme.write("\n## Test Coverage\n\n### Coverage by Tokenizer Type\n\n")
-    grouped_by_type.style.to_html(new_readme, exclude_styles=True)
+    new_readme.write("## Test Coverage\n\n### Coverage by Tokenizer Type\n\n")
+    grouped_by_type.style.hide_index().to_html(new_readme, exclude_styles=True)
     new_readme.write("\n### Coverage by Model Type\n\n")
-    grouped_by_model.style.to_html(new_readme, exclude_styles=True)
+    grouped_by_model.style.hide_index().to_html(new_readme, exclude_styles=True)
 
     with open(readme_path, "w") as f:
         f.write(new_readme.getvalue())
