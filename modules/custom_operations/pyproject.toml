@@ -27,7 +27,7 @@ dev = [
     "pytest_harvest"
 ]
 transformers = [
-    "transformers[sentencepiece,tiktoken]"
+    "transformers[sentencepiece]"
 ]
 tiktoken = [
     "tiktoken"

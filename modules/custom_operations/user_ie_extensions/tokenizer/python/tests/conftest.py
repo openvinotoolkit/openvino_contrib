@@ -10,6 +10,7 @@ import pytest
 def pytest_addoption(parser):
     parser.addoption("--update_readme", help="Update test coverage report in README.md")
 
+
 PASS_RATES_FILE = Path(__file__).parent / "pass_rates.json"
 
 
@@ -58,9 +59,9 @@ def build_coverege_report(session: pytest.Session) -> None:
         "To update it run pytest with `--update_readme` flag.\n\n"
         "### Coverage by Tokenizer Type\n\n"
     )
-    grouped_by_type.style.hide_index().to_html(new_readme, exclude_styles=True)
+    grouped_by_type.style.format(precision=2).hide_index().to_html(new_readme, exclude_styles=True)
     new_readme.write("\n### Coverage by Model Type\n\n")
-    grouped_by_model.style.hide_index().to_html(new_readme, exclude_styles=True)
+    grouped_by_model.style.format(precision=2).hide_index().to_html(new_readme, exclude_styles=True)
 
     with open(readme_path, "w") as f:
         f.write(new_readme.getvalue())
