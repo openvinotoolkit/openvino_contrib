@@ -5,20 +5,7 @@ from pathlib import Path
 
 import pytest
 
-
-def prebuild_extenson_path():
-    ext_path = os.getenv("CUSTOM_OP_LIB") or os.getenv("OV_TOKENIZER_PREBUILD_EXTENSION_PATH")
-    if not ext_path:
-        raise EnvironmentError(
-            "No extension path found in the environment. "
-            "Export path to libuser_ov_extensions.so to CUSTOM_OP_LIB or OV_TOKENIZER_PREBUILD_EXTENSION_PATH variable."
-        )
-    return ext_path
-
-
-os.environ["OV_TOKENIZER_PREBUILD_EXTENSION_PATH"] = prebuild_extenson_path()
 PASS_RATES_FILE = Path(__file__).parent / "pass_rates.json"
-
 
 @pytest.hookimpl(trylast=True)
 def pytest_sessionfinish(session, exitstatus) -> None:
