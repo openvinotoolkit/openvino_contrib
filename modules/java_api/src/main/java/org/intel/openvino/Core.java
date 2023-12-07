@@ -129,7 +129,8 @@ public class Core extends Wrapper {
      */
     public CompiledModel compile_model(
             Model model, final String device, final Map<String, String> properties) {
-        return new CompiledModel(CompileModel4(nativeObj, model.getNativeObjAddr(), device, properties));
+        return new CompiledModel(
+                CompileModel4(nativeObj, model.getNativeObjAddr(), device, properties));
     }
 
     /**

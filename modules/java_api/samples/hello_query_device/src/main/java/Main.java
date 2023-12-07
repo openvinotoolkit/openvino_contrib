@@ -24,19 +24,22 @@ public class Main {
         logger = Logger.getLogger(Main.class.getName());
         logger.setUseParentHandlers(false);
         ConsoleHandler handler = new ConsoleHandler();
-        handler.setFormatter(new SimpleFormatter() {
-            private static final String format = "[%1$s] %2$s%n";
+        handler.setFormatter(
+                new SimpleFormatter() {
+                    private static final String format = "[%1$s] %2$s%n";
 
-            @Override
-            public synchronized String format(LogRecord lr) {
-                return String.format(format, lr.getLevel().getLocalizedName(), lr.getMessage());
-            }
-        });
+                    @Override
+                    public synchronized String format(LogRecord lr) {
+                        return String.format(
+                                format, lr.getLevel().getLocalizedName(), lr.getMessage());
+                    }
+                });
         logger.addHandler(handler);
     }
 
     public static void main(String[] args) throws IOException {
-        List<String> excludedProperties = Arrays.asList("SUPPORTED_METRICS", "SUPPORTED_CONFIG_KEYS", "SUPPORTED_PROPERTIES");
+        List<String> excludedProperties =
+                Arrays.asList("SUPPORTED_METRICS", "SUPPORTED_CONFIG_KEYS", "SUPPORTED_PROPERTIES");
 
         Core core = new Core();
 
