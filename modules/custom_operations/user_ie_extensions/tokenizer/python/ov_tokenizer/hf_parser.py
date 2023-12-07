@@ -17,6 +17,7 @@ from openvino.runtime.exceptions import OVTypeError
 from openvino.runtime.utils.types import as_node, make_constant_node
 from transformers.convert_slow_tokenizer import import_protobuf
 
+from . import _factory
 from .constants import (
     ATTENTION_MASK_INPUT_NAME,
     STRING_OUTPUT_NAME,
@@ -25,7 +26,6 @@ from .constants import (
     TOKENIZER_DECODER_NAME,
     TOKENIZER_ENCODER_NAME,
 )
-from . import _factory
 from .tokenizer_pipeline import (
     BPETokenizationStep,
     BytesToCharsStep,
