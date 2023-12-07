@@ -15,6 +15,7 @@
 #include "cuda_thread_context.hpp"
 
 namespace LayerTestsDefinitions {
+using ov::test::utils::InputLayerType;
 
 constexpr int SEED_FIRST = 10;
 constexpr float THRESHOLD_FP16 = 0.06f;
@@ -36,7 +37,7 @@ public:
         const auto& ops = function->get_ordered_ops();
         int seed = SEED_FIRST;
         for (const auto& op : ops) {
-            if (std::dynamic_pointer_cast<ngraph::opset1::Constant>(op)) {
+            if (std::dynamic_pointer_cast<ov::op::v0::Constant>(op)) {
                 ov::Tensor random_tensor(op->get_element_type(), op->get_shape());
                 ov::test::utils::fill_tensor_random(random_tensor, up_to - start_from, start_from, 1, seed);
                 auto constant = std::make_shared<ov::op::v0::Constant>(random_tensor);
@@ -66,7 +67,7 @@ const bool should_decompose = false;
 const std::vector<std::string> activations{"sigmoid", "tanh", "tanh"};
 const std::vector<InferenceEngine::Precision> netPrecisions = {InferenceEngine::Precision::FP32,
                                                                InferenceEngine::Precision::FP16};
-const std::vector WRBLayerTypes = {ngraph::helpers::InputLayerType::CONSTANT};
+const std::vector WRBLayerTypes = {InputLayerType::CONSTANT};
 
 // ------------- Smoke shapes -------------
 const std::vector<size_t> smoke_batch{1, 5};

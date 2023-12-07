@@ -14,6 +14,8 @@
 #include "unsymmetrical_comparer.hpp"
 
 namespace LayerTestsDefinitions {
+using ov::test::utils::InputLayerType;
+using ov::test::utils::SequenceTestsMode;
 
 class CUDALSTMSequenceTest : public UnsymmetricalComparer<LSTMSequenceTest> {
     void SetUp() override {
@@ -24,7 +26,7 @@ class CUDALSTMSequenceTest : public UnsymmetricalComparer<LSTMSequenceTest> {
         int counter = 1;
         const auto& ops = function->get_ordered_ops();
         for (const auto& op : ops) {
-            if (std::dynamic_pointer_cast<ngraph::opset1::Constant>(op)) {
+            if (std::dynamic_pointer_cast<ov::op::v0::Constant>(op)) {
                 if (op->get_element_type() == ov::element::Type_t::f32) {
                     ov::Tensor random_tensor(op->get_element_type(), op->get_shape());
                     ov::test::utils::fill_tensor_random(random_tensor, up_to - start_from, start_from, 1, counter++);
@@ -36,7 +38,7 @@ class CUDALSTMSequenceTest : public UnsymmetricalComparer<LSTMSequenceTest> {
 };
 
 using LSTMSequenceOptimizedParams =
-    typename std::tuple<ngraph::helpers::SequenceTestsMode,  // pure Sequence or TensorIterator
+    typename std::tuple<SequenceTestsMode,  // pure Sequence or TensorIterator
                         size_t,                              // seq_lengths
                         size_t,                              // batch
                         size_t,                              // hidden size
@@ -44,7 +46,7 @@ using LSTMSequenceOptimizedParams =
                         std::vector<std::string>,            // activations
                         float,                               // clip
                         std::string,                         // major batch
-                        ngraph::helpers::InputLayerType,     // WRB input type (Constant or Parameter)
+                        InputLayerType,     // WRB input type (Constant or Parameter)
                         InferenceEngine::Precision,          // Network precision
                         std::string>;                        // Device name
 
@@ -52,7 +54,7 @@ class CUDALSTMSequenceOptimizedTest : public testing::WithParamInterface<LSTMSeq
                                       virtual public LayerTestsUtils::LayerTestsCommon {
 public:
     static std::string getTestCaseName(const testing::TestParamInfo<LSTMSequenceOptimizedParams>& obj) {
-        ngraph::helpers::SequenceTestsMode mode;
+        SequenceTestsMode mode;
         size_t seq_lengths;
         size_t batch;
         size_t hidden_size;
@@ -62,7 +64,7 @@ public:
         std::vector<float> activations_beta;
         float clip;
         std::string major_batch;
-        ngraph::helpers::InputLayerType WRBType;
+        InputLayerType WRBType;
         InferenceEngine::Precision netPrecision;
         std::string targetDevice;
         std::tie(mode,
@@ -113,8 +115,6 @@ protected:
         }
     }
     void SetUp() override {
-        using namespace ngraph::helpers;
-        using namespace ngraph::builder;
         threshold = 0.01;
         constexpr float up_to = -1.0f;
         constexpr float start_from = 1.0f;
@@ -129,7 +129,7 @@ protected:
         float clip;
         ov::op::RecurrentSequenceDirection direction = ov::op::RecurrentSequenceDirection::BIDIRECTIONAL;
         std::string major_batch;
-        ngraph::helpers::InputLayerType WRBType;
+        InputLayerType WRBType;
         InferenceEngine::Precision netPrecision;
         std::tie(m_mode,
                  seq_lengths,
@@ -179,7 +179,7 @@ protected:
             seq_lengths_node = param;
             seq_lengths_node->set_friendly_name("seq_lengths");
             params.push_back(param);
-        } else if (m_mode == ngraph::helpers::SequenceTestsMode::PURE_SEQ_RAND_SEQ_LEN_CONST) {
+        } else if (m_mode == SequenceTestsMode::PURE_SEQ_RAND_SEQ_LEN_CONST) {
             seq_lengths_node = ngraph::builder::makeConstant<int64_t>(
                 ov::element::i64, input_shapes[3], {}, true, static_cast<int64_t>(seq_lengths), 0.f);
         } else {
@@ -272,7 +272,7 @@ protected:
                                  std::make_shared<ov::op::v0::Result>(transpose_co)};
         function = std::make_shared<ov::Model>(results, params, "lstm_sequence_optimized");
     }
-    ngraph::helpers::SequenceTestsMode m_mode;
+    SequenceTestsMode m_mode;
     int64_t m_max_seq_len = 0;
 };
 
@@ -282,7 +282,7 @@ TEST_P(CUDALSTMSequenceOptimizedTest, CompareWithRefs) { Run(); }
 
 namespace {
 
-const auto testMode = ngraph::helpers::SequenceTestsMode::PURE_SEQ;
+const auto testMode = SequenceTestsMode::PURE_SEQ;
 const std::vector<std::string> activations{"sigmoid", "tanh", "tanh"};
 const std::vector<InferenceEngine::Precision> netPrecisions = {InferenceEngine::Precision::FP32,
                                                                InferenceEngine::Precision::FP16};
@@ -312,7 +312,7 @@ INSTANTIATE_TEST_CASE_P(smoke_LSTMSequence_01,
                                            ::testing::Values(activations),
                                            ::testing::Values(no_clip),
                                            ::testing::ValuesIn(sequenceDirections),
-                                           ::testing::Values(ngraph::helpers::InputLayerType::CONSTANT),
+                                           ::testing::Values(InputLayerType::CONSTANT),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDALSTMSequenceTest::getTestCaseName);
@@ -327,7 +327,7 @@ INSTANTIATE_TEST_CASE_P(smoke_LSTMSequence_02,
                                            ::testing::Values(activations),
                                            ::testing::Values(no_clip),
                                            ::testing::ValuesIn(sequenceDirections),
-                                           ::testing::Values(ngraph::helpers::InputLayerType::CONSTANT),
+                                           ::testing::Values(InputLayerType::CONSTANT),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDALSTMSequenceTest::getTestCaseName);
@@ -344,7 +344,7 @@ INSTANTIATE_TEST_CASE_P(LSTMSequence_Tacotron2_decoder_01,
                                            ::testing::Values(activations),
                                            ::testing::Values(no_clip),  // clip
                                            ::testing::Values(ov::op::RecurrentSequenceDirection::FORWARD),
-                                           ::testing::Values(ngraph::helpers::InputLayerType::CONSTANT),
+                                           ::testing::Values(InputLayerType::CONSTANT),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDALSTMSequenceTest::getTestCaseName);
@@ -359,7 +359,7 @@ INSTANTIATE_TEST_CASE_P(LSTMSequence_Tacotron2_decoder_02,
                                            ::testing::Values(activations),
                                            ::testing::Values(no_clip),  // clip
                                            ::testing::Values(ov::op::RecurrentSequenceDirection::FORWARD),
-                                           ::testing::Values(ngraph::helpers::InputLayerType::CONSTANT),
+                                           ::testing::Values(InputLayerType::CONSTANT),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDALSTMSequenceTest::getTestCaseName);
@@ -374,7 +374,7 @@ INSTANTIATE_TEST_CASE_P(LSTMSequence_Tacotron2_encoder_01,
                                            ::testing::Values(activations),
                                            ::testing::Values(no_clip),  // clip
                                            ::testing::Values(ov::op::RecurrentSequenceDirection::BIDIRECTIONAL),
-                                           ::testing::Values(ngraph::helpers::InputLayerType::CONSTANT),
+                                           ::testing::Values(InputLayerType::CONSTANT),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDALSTMSequenceTest::getTestCaseName);
@@ -393,7 +393,7 @@ INSTANTIATE_TEST_CASE_P(smoke_LSTMSequenceOptmized_01,
                                            ::testing::Values(activations),
                                            ::testing::Values(no_clip),
                                            ::testing::ValuesIn(majors),
-                                           ::testing::Values(ngraph::helpers::InputLayerType::CONSTANT),
+                                           ::testing::Values(InputLayerType::CONSTANT),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDALSTMSequenceOptimizedTest::getTestCaseName);
@@ -408,7 +408,7 @@ INSTANTIATE_TEST_CASE_P(smoke_LSTMSequenceOptmized_02,
                                            ::testing::Values(activations),
                                            ::testing::Values(no_clip),
                                            ::testing::ValuesIn(majors),
-                                           ::testing::Values(ngraph::helpers::InputLayerType::CONSTANT),
+                                           ::testing::Values(InputLayerType::CONSTANT),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDALSTMSequenceOptimizedTest::getTestCaseName);

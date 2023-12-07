@@ -8,9 +8,10 @@
 #include "cuda_test_constants.hpp"
 #include "single_layer_tests/reduce_ops.hpp"
 
-using namespace LayerTestsDefinitions;
-
 namespace {
+using namespace LayerTestsDefinitions;
+using ov::test::utils::ReductionType;
+
 const std::vector<InferenceEngine::Precision> netPrecisions = {
     InferenceEngine::Precision::FP32,
     InferenceEngine::Precision::FP16,
@@ -53,18 +54,18 @@ std::vector<ov::test::utils::OpType> opTypes = {
     ov::test::utils::OpType::VECTOR,
 };
 
-const std::vector<ngraph::helpers::ReductionType> reductionTypes = {
-    ngraph::helpers::ReductionType::Mean,
-    ngraph::helpers::ReductionType::Min,
-    ngraph::helpers::ReductionType::Max,
-    ngraph::helpers::ReductionType::Sum,
-    ngraph::helpers::ReductionType::Prod,
-    ngraph::helpers::ReductionType::L1,
-    ngraph::helpers::ReductionType::L2,
+const std::vector<ReductionType> reductionTypes = {
+    ReductionType::Mean,
+    ReductionType::Min,
+    ReductionType::Max,
+    ReductionType::Sum,
+    ReductionType::Prod,
+    ReductionType::L1,
+    ReductionType::L2,
 };
 
-const std::vector<ngraph::helpers::ReductionType> reductionLogicalTypes = {ngraph::helpers::ReductionType::LogicalOr,
-                                                                           ngraph::helpers::ReductionType::LogicalAnd};
+const std::vector<ReductionType> reductionLogicalTypes = {ReductionType::LogicalOr,
+                                                                           ReductionType::LogicalAnd};
 
 const auto paramsOneAxis = testing::Combine(testing::Values(std::vector<int>{0}),
                                             testing::ValuesIn(opTypes),
@@ -80,11 +81,11 @@ const auto paramsOneAxis = testing::Combine(testing::Values(std::vector<int>{0})
 const auto params_Precisions = testing::Combine(testing::Values(std::vector<int>{1, 3}),
                                                 testing::Values(opTypes[1]),
                                                 testing::ValuesIn(keepDims),
-                                                testing::Values(ngraph::helpers::ReductionType::Max,
-                                                                ngraph::helpers::ReductionType::Mean,
-                                                                ngraph::helpers::ReductionType::Min,
-                                                                ngraph::helpers::ReductionType::Sum,
-                                                                ngraph::helpers::ReductionType::Prod),
+                                                testing::Values(ReductionType::Max,
+                                                                ReductionType::Mean,
+                                                                ReductionType::Min,
+                                                                ReductionType::Sum,
+                                                                ReductionType::Prod),
                                                 testing::ValuesIn(netPrecisions),
                                                 testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                                 testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -95,7 +96,7 @@ const auto params_Precisions = testing::Combine(testing::Values(std::vector<int>
 const auto params_Precisions_ReduceL1 = testing::Combine(testing::Values(std::vector<int>{1, 3}),
                                                          testing::Values(opTypes[1]),
                                                          testing::ValuesIn(keepDims),
-                                                         testing::Values(ngraph::helpers::ReductionType::L1),
+                                                         testing::Values(ReductionType::L1),
                                                          testing::ValuesIn(netPrecisions),
                                                          testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                                          testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -107,7 +108,7 @@ const auto params_Precisions_ReduceL2 =
     testing::Combine(testing::Values(std::vector<int>{1, 3}),
                      testing::Values(opTypes[1]),
                      testing::ValuesIn(keepDims),
-                     testing::Values(ngraph::helpers::ReductionType::L2),
+                     testing::Values(ReductionType::L2),
                      testing::Values(InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16),
                      testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                      testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -118,7 +119,7 @@ const auto params_Precisions_ReduceL2 =
 const auto params_InputShapes = testing::Combine(testing::Values(std::vector<int>{0}),
                                                  testing::Values(opTypes[1]),
                                                  testing::ValuesIn(keepDims),
-                                                 testing::Values(ngraph::helpers::ReductionType::Sum),
+                                                 testing::Values(ReductionType::Sum),
                                                  testing::Values(netPrecisions[0]),
                                                  testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                                  testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -134,7 +135,7 @@ const auto params_InputShapes = testing::Combine(testing::Values(std::vector<int
 const auto params_Axes = testing::Combine(testing::ValuesIn(axes),
                                           testing::Values(opTypes[1]),
                                           testing::ValuesIn(keepDims),
-                                          testing::Values(ngraph::helpers::ReductionType::Sum),
+                                          testing::Values(ReductionType::Sum),
                                           testing::Values(netPrecisions[0]),
                                           testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                           testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -156,7 +157,7 @@ const auto params_ReductionTypes = testing::Combine(testing::Values(std::vector<
 const auto params_ReduceSum_accuracy = testing::Combine(testing::Values(std::vector<int>{0}),
                                                         testing::Values(opTypes[1]),
                                                         testing::Values(true),
-                                                        testing::Values(ngraph::helpers::ReductionType::Sum),
+                                                        testing::Values(ReductionType::Sum),
                                                         testing::Values(InferenceEngine::Precision::FP32),
                                                         testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                                         testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -203,7 +204,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_Reduce,
                          testing::Combine(testing::ValuesIn(decltype(axes){{0}, {1}}),
                                           testing::Values(opTypes[1]),
                                           testing::Values(true),
-                                          testing::Values(ngraph::helpers::ReductionType::Sum),
+                                          testing::Values(ReductionType::Sum),
                                           testing::ValuesIn(netPrecisions),
                                           testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                           testing::Values(InferenceEngine::Precision::UNSPECIFIED),

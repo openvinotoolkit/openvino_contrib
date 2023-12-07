@@ -10,8 +10,10 @@
 #include "common_test_utils/test_constants.hpp"
 
 using namespace LayerTestsDefinitions;
+using ov::test::utils::SqueezeOpType;
 
 namespace {
+
 std::map<std::vector<size_t>, std::vector<std::vector<int>>> axesVectors = {
     {{1, 1, 1, 1},
      {{-1}, {0}, {1}, {2}, {3}, {0, 1}, {0, 2}, {0, 3}, {1, 2}, {2, 3}, {0, 1, 2}, {0, 2, 3}, {1, 2, 3}, {0, 1, 2, 3}}},
@@ -25,8 +27,8 @@ std::map<std::vector<size_t>, std::vector<std::vector<int>>> axesVectors = {
 const std::vector<InferenceEngine::Precision> netPrecisions = {InferenceEngine::Precision::FP32,
                                                                InferenceEngine::Precision::FP16};
 
-const std::vector<ngraph::helpers::SqueezeOpType> opTypes = {ngraph::helpers::SqueezeOpType::SQUEEZE,
-                                                             ngraph::helpers::SqueezeOpType::UNSQUEEZE};
+const std::vector<SqueezeOpType> opTypes = {SqueezeOpType::SQUEEZE,
+                                                             SqueezeOpType::UNSQUEEZE};
 
 INSTANTIATE_TEST_CASE_P(smoke_Basic,
                         SqueezeUnsqueezeLayerTest,

@@ -10,9 +10,10 @@
 
 #include "unsymmetrical_comparer.hpp"
 
-namespace LayerTestsDefinitions {
+using ov::test::utils::InputLayerType;
+using ov::test::utils::SequenceTestsMode;
 
-using ngraph::helpers::InputLayerType;
+namespace LayerTestsDefinitions {
 
 class CUDNNGRUSequenceTest : public UnsymmetricalComparer<GRUSequenceTest> {
 public:
@@ -25,7 +26,7 @@ public:
         const auto& ops = function->get_ordered_ops();
         int seed = 1;
         for (const auto& op : ops) {
-            if (std::dynamic_pointer_cast<ngraph::opset1::Constant>(op)) {
+            if (std::dynamic_pointer_cast<ov::op::v0::Constant>(op)) {
                 if (op->get_element_type() == ov::element::Type_t::f32) {
                     ov::Tensor random_tensor(op->get_element_type(), op->get_shape());
                     ov::test::utils::fill_tensor_random(random_tensor, up_to - start_from, start_from, 1, seed++);
@@ -55,7 +56,7 @@ public:
         const auto& ops = function->get_ordered_ops();
         int seed = 1;
         for (const auto& op : ops) {
-            if (std::dynamic_pointer_cast<ngraph::opset1::Constant>(op)) {
+            if (std::dynamic_pointer_cast<ov::op::v0::Constant>(op)) {
                 if (op->get_element_type() == ov::element::Type_t::f32) {
                     ov::Tensor random_tensor(op->get_element_type(), op->get_shape());
                     ov::test::utils::fill_tensor_random(random_tensor, up_to - start_from, start_from, 1, seed++);
@@ -66,7 +67,6 @@ public:
     }
 
     void updatedGRUSequenceTest_SetUp() {
-        using namespace ngraph::helpers;
         size_t seq_lengths;
         size_t batch;
         size_t hidden_size;
@@ -107,7 +107,7 @@ public:
         ASSERT_EQ(InputLayerType::CONSTANT, WRBType);
         std::vector<ov::Shape> WRB = {inputShapes[3], inputShapes[4], inputShapes[5], inputShapes[2]};
         auto gru_sequence =
-            ngraph::builder::makeGRU(ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes(params)),
+            ngraph::builder::makeGRU(ov::OutputVector{params[0], params[1]},
                                      WRB,
                                      hidden_size,
                                      activations,
@@ -118,10 +118,10 @@ public:
                                      true,
                                      direction,
                                      mode);
-        ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(gru_sequence->output(0)),
-                                 std::make_shared<ngraph::opset1::Result>(gru_sequence->output(1))};
+        ov::ResultVector results{std::make_shared<ov::op::v0::Result>(gru_sequence->output(0)),
+                                 std::make_shared<ov::op::v0::Result>(gru_sequence->output(1))};
         function = std::make_shared<ngraph::Function>(results, params, "gru_sequence");
-        bool ti_found = is_tensor_iterator_exist(function);
+        bool ti_found = ngraph::helpers::is_tensor_iterator_exist(function);
         EXPECT_EQ(ti_found, false);
     }
 
@@ -151,7 +151,7 @@ TEST_P(LPCNetCUDNNGRUSequenceTest, CompareWithRefs) {
 using namespace LayerTestsDefinitions;
 
 namespace {
-ngraph::helpers::SequenceTestsMode mode{ngraph::helpers::SequenceTestsMode::PURE_SEQ};
+SequenceTestsMode mode{SequenceTestsMode::PURE_SEQ};
 // output values increase rapidly without clip, so use only seq_lengths = 2
 std::vector<size_t> seq_lengths{1, 2, 5, 10};
 std::vector<size_t> batch{1};

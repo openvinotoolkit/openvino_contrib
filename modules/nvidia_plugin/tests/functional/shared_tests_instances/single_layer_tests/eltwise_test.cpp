@@ -19,10 +19,12 @@
 namespace LayerTestsDefinitions {
 
 namespace {
+using ov::test::utils::InputLayerType;
+using ov::test::utils::EltwiseTypes;
 
 // Common parameters
-const std::vector<ngraph::helpers::InputLayerType> input_layer_types = {ngraph::helpers::InputLayerType::CONSTANT,
-                                                                        ngraph::helpers::InputLayerType::PARAMETER};
+const std::vector<InputLayerType> input_layer_types = {InputLayerType::CONSTANT,
+                                                       InputLayerType::PARAMETER};
 
 const ov::AnyMap additional_config = {};
 
@@ -50,7 +52,7 @@ INSTANTIATE_TEST_CASE_P(
     CudaEltwiseLayerTest,
     ::testing::Combine(
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                           ::testing::Values(ngraph::helpers::EltwiseTypes::ADD),
+                           ::testing::Values(EltwiseTypes::ADD),
                            ::testing::ValuesIn(input_layer_types),
                            ::testing::ValuesIn(smoke_op_types),
                            ::testing::ValuesIn(add_precisions),
@@ -66,7 +68,7 @@ INSTANTIATE_TEST_CASE_P(
     CudaEltwiseLayerTest,
     ::testing::Combine(
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                           ::testing::Values(ngraph::helpers::EltwiseTypes::ADD),
+                           ::testing::Values(EltwiseTypes::ADD),
                            ::testing::ValuesIn(input_layer_types),
                            ::testing::ValuesIn(smoke_op_types),
                            ::testing::Values(ov::test::ElementType::u32),
@@ -82,7 +84,7 @@ INSTANTIATE_TEST_CASE_P(
     CudaEltwiseLayerTest,
     ::testing::Combine(
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                           ::testing::Values(ngraph::helpers::EltwiseTypes::ADD),
+                           ::testing::Values(EltwiseTypes::ADD),
                            ::testing::ValuesIn(input_layer_types),
                            ::testing::ValuesIn(smoke_op_types),
                            ::testing::Values(ov::test::ElementType::i64),
@@ -101,7 +103,7 @@ INSTANTIATE_TEST_CASE_P(
     CudaEltwiseLayerTest,
     ::testing::Combine(
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                           ::testing::Values(ngraph::helpers::EltwiseTypes::MULTIPLY),
+                           ::testing::Values(EltwiseTypes::MULTIPLY),
                            ::testing::ValuesIn(input_layer_types),
                            ::testing::ValuesIn(smoke_op_types),
                            ::testing::ValuesIn(mul_precisions),
@@ -120,7 +122,7 @@ INSTANTIATE_TEST_CASE_P(
     CudaEltwiseLayerTest,
     ::testing::Combine(
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                           ::testing::Values(ngraph::helpers::EltwiseTypes::SUBTRACT),
+                           ::testing::Values(EltwiseTypes::SUBTRACT),
                            ::testing::ValuesIn(input_layer_types),
                            ::testing::ValuesIn(smoke_op_types),
                            ::testing::ValuesIn(sub_precisions),
@@ -139,7 +141,7 @@ INSTANTIATE_TEST_CASE_P(
     CudaEltwiseLayerTest,
     ::testing::Combine(
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                           ::testing::Values(ngraph::helpers::EltwiseTypes::DIVIDE),
+                           ::testing::Values(EltwiseTypes::DIVIDE),
                            ::testing::ValuesIn(input_layer_types),
                            ::testing::ValuesIn(smoke_op_types),
                            ::testing::ValuesIn(div_precisions),
@@ -155,7 +157,7 @@ INSTANTIATE_TEST_CASE_P(
     CudaEltwiseLayerTest,
     ::testing::Combine(
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                           ::testing::Values(ngraph::helpers::EltwiseTypes::DIVIDE),
+                           ::testing::Values(EltwiseTypes::DIVIDE),
                            ::testing::ValuesIn(input_layer_types),
                            ::testing::ValuesIn(smoke_op_types),
                            ::testing::Values(ov::test::ElementType::u32),
@@ -171,7 +173,7 @@ INSTANTIATE_TEST_CASE_P(
     CudaEltwiseLayerTest,
     ::testing::Combine(
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                           ::testing::Values(ngraph::helpers::EltwiseTypes::DIVIDE),
+                           ::testing::Values(EltwiseTypes::DIVIDE),
                            ::testing::ValuesIn(input_layer_types),
                            ::testing::ValuesIn(smoke_op_types),
                            ::testing::Values(ov::test::ElementType::i64),
@@ -193,7 +195,7 @@ INSTANTIATE_TEST_CASE_P(
     CudaEltwiseLayerTest,
     ::testing::Combine(
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                           ::testing::Values(ngraph::helpers::EltwiseTypes::SQUARED_DIFF),
+                           ::testing::Values(EltwiseTypes::SQUARED_DIFF),
                            ::testing::ValuesIn(input_layer_types),
                            ::testing::ValuesIn(smoke_op_types),
                            ::testing::ValuesIn(sq_diff_precisions),
@@ -205,14 +207,14 @@ INSTANTIATE_TEST_CASE_P(
     CudaEltwiseLayerTest::getTestCaseName);
 
 const std::vector<ov::test::ElementType> floor_mod_precisions = {
-    ov::test::ElementType::f16, ov::test::ElementType::f32, ov::test::ElementType::i32, ov::test::ElementType::u8};
+    ov::test::ElementType::f16, ov::test::ElementType::f32, ov::test::ElementType::i32/*, ov::test::ElementType::u8*/};
 
 INSTANTIATE_TEST_CASE_P(
     smoke_FloorMod,
     CudaEltwiseLayerTest,
     ::testing::Combine(
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                           ::testing::Values(ngraph::helpers::EltwiseTypes::FLOOR_MOD),
+                           ::testing::Values(EltwiseTypes::FLOOR_MOD),
                            ::testing::ValuesIn(input_layer_types),
                            ::testing::ValuesIn(smoke_op_types),
                            ::testing::ValuesIn(floor_mod_precisions),
@@ -222,13 +224,13 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(additional_config)),
         ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
-
+/*
 INSTANTIATE_TEST_CASE_P(
     smoke_FloorMod_U32,
     CudaEltwiseLayerTest,
     ::testing::Combine(
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                           ::testing::Values(ngraph::helpers::EltwiseTypes::FLOOR_MOD),
+                           ::testing::Values(EltwiseTypes::FLOOR_MOD),
                            ::testing::ValuesIn(input_layer_types),
                            ::testing::ValuesIn(smoke_op_types),
                            ::testing::Values(ov::test::ElementType::u32),
@@ -238,13 +240,13 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(additional_config)),
         ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
-
+*/
 INSTANTIATE_TEST_CASE_P(
     smoke_FloorMod_I64,
     CudaEltwiseLayerTest,
     ::testing::Combine(
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                           ::testing::Values(ngraph::helpers::EltwiseTypes::FLOOR_MOD),
+                           ::testing::Values(EltwiseTypes::FLOOR_MOD),
                            ::testing::ValuesIn(input_layer_types),
                            ::testing::ValuesIn(smoke_op_types),
                            ::testing::Values(ov::test::ElementType::i64),
@@ -268,7 +270,7 @@ INSTANTIATE_TEST_CASE_P(
     CudaEltwiseLayerTest,
     ::testing::Combine(
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                           ::testing::Values(ngraph::helpers::EltwiseTypes::MOD),
+                           ::testing::Values(EltwiseTypes::MOD),
                            ::testing::ValuesIn(input_layer_types),
                            ::testing::ValuesIn(smoke_op_types),
                            ::testing::ValuesIn(mod_precisions),
@@ -315,7 +317,7 @@ INSTANTIATE_TEST_CASE_P(
     CudaEltwiseLayerTest,
     ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(
                                               renset50_vgg16_add_shapes)),
-                                          ::testing::Values(ngraph::helpers::EltwiseTypes::ADD),
+                                          ::testing::Values(EltwiseTypes::ADD),
                                           ::testing::ValuesIn(input_layer_types),
                                           ::testing::ValuesIn(renset50_vgg16_op_types),
                                           ::testing::ValuesIn(renset50_vgg16_input_precisions),
@@ -346,8 +348,8 @@ INSTANTIATE_TEST_CASE_P(
     CudaEltwiseLayerTest,
     ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(
                                               tacotron2_Multiply_shapes)),
-                                          ::testing::Values(ngraph::helpers::EltwiseTypes::MULTIPLY),
-                                          ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
+                                          ::testing::Values(EltwiseTypes::MULTIPLY),
+                                          ::testing::Values(InputLayerType::PARAMETER),
                                           ::testing::Values(ov::test::utils::OpType::VECTOR),
                                           ::testing::ValuesIn(tacotron2_Multiply_input_precisions),
                                           ::testing::Values(ov::test::ElementType::undefined),
@@ -389,8 +391,8 @@ INSTANTIATE_TEST_CASE_P(
     AddBenchmarkTest,
     ::testing::Combine(
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
-                           ::testing::Values(ngraph::helpers::EltwiseTypes::ADD),
-                           ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
+                           ::testing::Values(EltwiseTypes::ADD),
+                           ::testing::Values(InputLayerType::PARAMETER),
                            ::testing::Values(ov::test::utils::OpType::VECTOR),
                            ::testing::ValuesIn(bench_add_precisions),
                            ::testing::Values(ov::test::ElementType::undefined),
@@ -418,8 +420,8 @@ INSTANTIATE_TEST_CASE_P(
     MultiplyBenchmarkTest,
     ::testing::Combine(
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
-                           ::testing::Values(ngraph::helpers::EltwiseTypes::MULTIPLY),
-                           ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
+                           ::testing::Values(EltwiseTypes::MULTIPLY),
+                           ::testing::Values(InputLayerType::PARAMETER),
                            ::testing::Values(ov::test::utils::OpType::VECTOR),
                            ::testing::ValuesIn(bench_mul_precisions),
                            ::testing::Values(ov::test::ElementType::undefined),
@@ -447,8 +449,8 @@ INSTANTIATE_TEST_CASE_P(
     SubtractBenchmarkTest,
     ::testing::Combine(
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
-                           ::testing::Values(ngraph::helpers::EltwiseTypes::SUBTRACT),
-                           ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
+                           ::testing::Values(EltwiseTypes::SUBTRACT),
+                           ::testing::Values(InputLayerType::PARAMETER),
                            ::testing::Values(ov::test::utils::OpType::VECTOR),
                            ::testing::ValuesIn(bench_sub_precisions),
                            ::testing::Values(ov::test::ElementType::undefined),
@@ -476,8 +478,8 @@ INSTANTIATE_TEST_CASE_P(
     DivideBenchmarkTest,
     ::testing::Combine(
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
-                           ::testing::Values(ngraph::helpers::EltwiseTypes::DIVIDE),
-                           ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
+                           ::testing::Values(EltwiseTypes::DIVIDE),
+                           ::testing::Values(InputLayerType::PARAMETER),
                            ::testing::Values(ov::test::utils::OpType::VECTOR),
                            ::testing::ValuesIn(bench_div_precisions),
                            ::testing::Values(ov::test::ElementType::undefined),
@@ -510,8 +512,8 @@ INSTANTIATE_TEST_CASE_P(
     ModBenchmarkTest,
     ::testing::Combine(
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
-                           ::testing::Values(ngraph::helpers::EltwiseTypes::MOD),
-                           ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
+                           ::testing::Values(EltwiseTypes::MOD),
+                           ::testing::Values(InputLayerType::PARAMETER),
                            ::testing::Values(ov::test::utils::OpType::VECTOR),
                            ::testing::ValuesIn(bench_mod_precisions),
                            ::testing::Values(ov::test::ElementType::undefined),

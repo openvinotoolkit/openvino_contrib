@@ -12,10 +12,12 @@ endif()
 
 set(TARGET_NAME "user_ov_extensions")
 
-set(CMAKE_CXX_STANDARD 11)
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 11)
+endif()
 
 find_package(OpenVINO REQUIRED COMPONENTS Runtime)
-find_package(TBB COMPONENTS tbb tbbmalloc)
+find_package(TBB COMPONENTS tbb)
 find_package(OpenCV COMPONENTS core)
 
 set(OP_REQ_TBB "complex_mul" "fft")
@@ -27,6 +29,7 @@ set(OP_REQ_TBB "complex_mul" "fft")
 if(NOT CUSTOM_OPERATIONS)
   file(GLOB op_src "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
   file(GLOB op_dirs LIST_DIRECTORIES true "${CMAKE_CURRENT_SOURCE_DIR}/*")
+  list(REMOVE_ITEM op_dirs "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
   foreach(op IN LISTS op_src)
     get_filename_component(op_name ${op} NAME_WE)
@@ -85,13 +88,44 @@ if(OpenCV_FOUND)
 endif()
 
 if(TBB_FOUND)
-  target_link_libraries(${TARGET_NAME} PRIVATE TBB::tbb TBB::tbbmalloc)
+  target_link_libraries(${TARGET_NAME} PRIVATE TBB::tbb)
 endif()
 
-if(sentence_piece IN_LIST CUSTOM_OPERATIONS)
-  add_subdirectory(sentence_piece)
+# Left sentence_piece for backward compatibility
+if(tokenizer IN_LIST CUSTOM_OPERATIONS)
+  add_subdirectory(tokenizer)
+
+  # post build steps
+  if(extra_libs)
+    add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy ${extra_libs} $<TARGET_FILE_DIR:${TARGET_NAME}>)
+  endif()
 endif()
 
 target_link_libraries(${TARGET_NAME} PRIVATE openvino::runtime)
 
-target_compile_definitions(${TARGET_NAME} PRIVATE ${CUSTOM_OPERATIONS})
+target_compile_definitions(${TARGET_NAME} PRIVATE IMPLEMENT_OPENVINO_EXTENSION_API ${CUSTOM_OPERATIONS})
+
+# TODO: remove
+target_include_directories(${TARGET_NAME} PUBLIC ./include/)
+
+# Wheel packaging using skbuild
+if(DEFINED SKBUILD)
+  # Installing the extension module to the root of the package
+  if(LINUX)
+    set_target_properties(${TARGET_NAME} PROPERTIES INSTALL_RPATH "$ORIGIN")
+    install(TARGETS ${TARGET_NAME} LIBRARY DESTINATION .)
+  elseif(APPLE)
+    set_target_properties(${TARGET_NAME} PROPERTIES INSTALL_RPATH "@loader_path")
+    install(TARGETS ${TARGET_NAME} LIBRARY DESTINATION .)
+  elseif(WIN32 AND X86_64)
+    install(TARGETS ${TARGET_NAME} RUNTIME DESTINATION .)
+  else()
+    message(FATAL "Unsupported build platform")
+  endif()
+
+  if(extra_libs)
+    install(FILES ${extra_libs} DESTINATION .)
+  endif()
+
+endif()

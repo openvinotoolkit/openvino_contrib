@@ -6,8 +6,10 @@
 #include <vector>
 
 #include "finite_comparer.hpp"
+#include "common_test_utils/test_enums.hpp"
 
 namespace LayerTestsDefinitions {
+using ov::test::utils::InputLayerType;
 
 struct FullyConnectedShapeRelatedParams {
     std::pair<InferenceEngine::SizeVector, bool> input1, input2;
@@ -19,7 +21,7 @@ typedef std::tuple<FullyConnectedShapeRelatedParams,
                    InferenceEngine::Precision,         // Input precision
                    InferenceEngine::Precision,         // Output precision
                    InferenceEngine::Layout,            // Input layout
-                   ngraph::helpers::InputLayerType,    // Secondary input type
+                   InputLayerType,    // Secondary input type
                    LayerTestsUtils::TargetDevice,      // Device name
                    std::map<std::string, std::string>  // Additional network configuration
                    >
@@ -33,7 +35,7 @@ public:
         InferenceEngine::Precision inPrc, outPrc;
         InferenceEngine::Layout inLayout;
         FullyConnectedShapeRelatedParams shapeRelatedParams;
-        ngraph::helpers::InputLayerType secondaryInputType;
+        InputLayerType secondaryInputType;
         std::string targetDevice;
         std::map<std::string, std::string> additionalConfig;
         std::tie(shapeRelatedParams,
@@ -67,7 +69,7 @@ public:
 protected:
     void SetUp() override {
         FullyConnectedShapeRelatedParams shapeRelatedParams;
-        ngraph::helpers::InputLayerType secondaryInputType;
+        InputLayerType secondaryInputType;
         auto netPrecision = InferenceEngine::Precision::UNSPECIFIED;
         std::map<std::string, std::string> additionalConfig;
         std::tie(shapeRelatedParams,
@@ -86,19 +88,17 @@ protected:
             std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape{shapeRelatedParams.input1.first})};
 
         std::shared_ptr<ov::Node> secondaryInput;
-        if (secondaryInputType == ngraph::helpers::InputLayerType::PARAMETER) {
+        if (secondaryInputType == InputLayerType::PARAMETER) {
             secondaryInput = std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(shapeRelatedParams.input2.first));
             params.push_back(std::static_pointer_cast<ov::op::v0::Parameter>(secondaryInput));
         } else {
             secondaryInput = std::make_shared<ov::op::v0::Constant>(ngPrc, shapeRelatedParams.input2.first);
         }
         auto thirdInput = std::make_shared<ov::op::v0::Constant>(ngPrc, shapeRelatedParams.input3);
-        auto paramOuts =
-            ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
         auto MatMul = std::make_shared<ov::op::v0::MatMul>(
-            paramOuts[0], secondaryInput, shapeRelatedParams.input1.second, shapeRelatedParams.input2.second);
+            params[0], secondaryInput, shapeRelatedParams.input1.second, shapeRelatedParams.input2.second);
         auto Add = std::make_shared<ov::op::v1::Add>(MatMul, thirdInput);
-        ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(Add)};
+        ov::ResultVector results{std::make_shared<ov::op::v0::Result>(Add)};
         function = std::make_shared<ngraph::Function>(results, params, "FullyConnected");
     }
 };
@@ -122,7 +122,7 @@ typedef std::tuple<FullyConnected2MatMulShapeRelatedParams,
                    InferenceEngine::Precision,         // Input precision
                    InferenceEngine::Precision,         // Output precision
                    InferenceEngine::Layout,            // Input layout
-                   ngraph::helpers::InputLayerType,    // Secondary input type
+                   InputLayerType,    // Secondary input type
                    LayerTestsUtils::TargetDevice,      // Device name
                    std::map<std::string, std::string>  // Additional network configuration
                    >
@@ -136,7 +136,7 @@ public:
         InferenceEngine::Precision inPrc, outPrc;
         InferenceEngine::Layout inLayout;
         FullyConnected2MatMulShapeRelatedParams shapeRelatedParams;
-        ngraph::helpers::InputLayerType secondaryInputType;
+        InputLayerType secondaryInputType;
         std::string targetDevice;
         std::map<std::string, std::string> additionalConfig;
         std::tie(shapeRelatedParams,
@@ -174,7 +174,7 @@ public:
 protected:
     void SetUp() override {
         FullyConnected2MatMulShapeRelatedParams shapeRelatedParams;
-        ngraph::helpers::InputLayerType secondaryInputType;
+        InputLayerType secondaryInputType;
         auto netPrecision = InferenceEngine::Precision::UNSPECIFIED;
         std::map<std::string, std::string> additionalConfig;
         std::tie(shapeRelatedParams,
@@ -196,7 +196,7 @@ protected:
             std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(shapeRelatedParams.matmul2_input1.first)));
 
         std::shared_ptr<ov::Node> matmul0SecondaryInput;
-        if (secondaryInputType == ngraph::helpers::InputLayerType::PARAMETER) {
+        if (secondaryInputType == InputLayerType::PARAMETER) {
             matmul0SecondaryInput =
                 std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(shapeRelatedParams.matmul1_input2.first));
             params.push_back(std::static_pointer_cast<ov::op::v0::Parameter>(matmul0SecondaryInput));
@@ -206,7 +206,7 @@ protected:
         }
 
         std::shared_ptr<ov::Node> matmul1SecondaryInput;
-        if (secondaryInputType == ngraph::helpers::InputLayerType::PARAMETER) {
+        if (secondaryInputType == InputLayerType::PARAMETER) {
             matmul1SecondaryInput =
                 std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(shapeRelatedParams.matmul2_input2.first));
             params.push_back(std::static_pointer_cast<ov::op::v0::Parameter>(matmul1SecondaryInput));
@@ -215,18 +215,16 @@ protected:
                 std::make_shared<ov::op::v0::Constant>(ngPrc, shapeRelatedParams.matmul2_input2.first);
         }
 
-        auto paramOuts =
-            ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
-        auto matMul0 = std::make_shared<ov::op::v0::MatMul>(paramOuts[0],
+        auto matMul0 = std::make_shared<ov::op::v0::MatMul>(params[0],
                                                             matmul0SecondaryInput,
                                                             shapeRelatedParams.matmul1_input1.second,
                                                             shapeRelatedParams.matmul1_input2.second);
-        auto matMul1 = std::make_shared<ov::op::v0::MatMul>(paramOuts[1],
+        auto matMul1 = std::make_shared<ov::op::v0::MatMul>(params[1],
                                                             matmul1SecondaryInput,
                                                             shapeRelatedParams.matmul2_input1.second,
                                                             shapeRelatedParams.matmul2_input2.second);
         auto Add = std::make_shared<ov::op::v1::Add>(matMul0, matMul1);
-        ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(Add)};
+        ov::ResultVector results{std::make_shared<ov::op::v0::Result>(Add)};
         function = std::make_shared<ngraph::Function>(results, params, "FullyConnected");
     }
 };
@@ -290,9 +288,9 @@ const std::vector<FullyConnected2MatMulShapeRelatedParams> tacatron2ShapeRelated
     {{{1, 1000, 32}, false}, {{128, 32}, true}, {{1, 1, 1024}, false}, {{128, 1024}, true}},
 };
 
-std::vector<ngraph::helpers::InputLayerType> secondaryInputTypes = {
-    ngraph::helpers::InputLayerType::CONSTANT,
-    ngraph::helpers::InputLayerType::PARAMETER,
+std::vector<InputLayerType> secondaryInputTypes = {
+    InputLayerType::CONSTANT,
+    InputLayerType::PARAMETER,
 };
 
 std::map<std::string, std::string> additional_config = {};

@@ -13,6 +13,7 @@
 
 using namespace ov::nvidia_gpu;
 using namespace testing;
+using ov::test::utils::EltwiseTypes;
 
 namespace {
 
@@ -63,11 +64,11 @@ public:
         for (std::size_t i = 0; i < INPUTS_COUNT; ++i) {
             params.emplace_back(std::make_shared<ov::op::v0::Parameter>(prc, shape));
         }
-        const auto add0 = ngraph::builder::makeEltwise(params[0], params[1], ngraph::helpers::EltwiseTypes::ADD);
-        const auto add1 = ngraph::builder::makeEltwise(params[2], params[3], ngraph::helpers::EltwiseTypes::ADD);
+        const auto add0 = ngraph::builder::makeEltwise(params[0], params[1], EltwiseTypes::ADD);
+        const auto add1 = ngraph::builder::makeEltwise(params[2], params[3], EltwiseTypes::ADD);
 
-        const auto mul = ngraph::builder::makeEltwise(add0, add1, ngraph::helpers::EltwiseTypes::MULTIPLY);
-        const auto result = std::make_shared<ngraph::opset1::Result>(mul);
+        const auto mul = ngraph::builder::makeEltwise(add0, add1, EltwiseTypes::MULTIPLY);
+        const auto result = std::make_shared<ov::op::v0::Result>(mul);
         return std::make_shared<ov::Model>(result, params, "AddMul");
     }
 
@@ -108,13 +109,13 @@ public:
         for (std::size_t i = 0; i < INPUTS_COUNT; ++i) {
             params.emplace_back(std::make_shared<ov::op::v0::Parameter>(prc, shape));
         }
-        const auto add0 = ngraph::builder::makeEltwise(params[0], params[1], ngraph::helpers::EltwiseTypes::ADD);
-        const auto add1 = ngraph::builder::makeEltwise(params[2], params[3], ngraph::helpers::EltwiseTypes::ADD);
+        const auto add0 = ngraph::builder::makeEltwise(params[0], params[1], EltwiseTypes::ADD);
+        const auto add1 = ngraph::builder::makeEltwise(params[2], params[3], EltwiseTypes::ADD);
 
         constexpr int64_t axis = CONCAT_AXIS;
         const auto concat =
-            std::make_shared<ngraph::opset1::Concat>(ngraph::helpers::convert2OutputVector({add0, add1}), axis);
-        const auto result = std::make_shared<ngraph::opset1::Result>(concat);
+            std::make_shared<ov::op::v0::Concat>(ov::OutputVector{add0, add1}, axis);
+        const auto result = std::make_shared<ov::op::v0::Result>(concat);
         return std::make_shared<ov::Model>(result, params, "AddConcat");
     }
 

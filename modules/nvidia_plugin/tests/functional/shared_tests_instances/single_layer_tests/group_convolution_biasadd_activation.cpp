@@ -17,6 +17,7 @@
 #include "convolution_biasadd_activation.hpp"
 
 namespace LayerTestsDefinitions {
+using ov::test::utils::ActivationTypes;
 
 TEST_P(GroupConvolutionBiasAddActivationLayerTest, CompareWithRefs) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED()
@@ -37,10 +38,10 @@ TEST_P(GroupConvolutionBiasAddAddActivationLayerTest, CompareWithRefs) {
 const std::vector<InferenceEngine::Precision> netPrecisions = {InferenceEngine::Precision::FP32,
                                                                InferenceEngine::Precision::FP16};
 
-const std::vector<ngraph::helpers::ActivationTypes> netActivations = {
-    ngraph::helpers::ActivationTypes::None,
+const std::vector<ActivationTypes> netActivations = {
+    ActivationTypes::None,
     // TODO: enable when ReLU fusing transformation is enabled for GroupConvolution
-    // ngraph::helpers::ActivationTypes::Relu
+    // ActivationTypes::Relu
 };
 
 /* ============= 1D Convolution ============= */
