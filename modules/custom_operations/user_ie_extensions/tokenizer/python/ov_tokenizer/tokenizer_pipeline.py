@@ -14,6 +14,7 @@ from openvino.runtime import opset12 as opset
 from openvino.runtime.exceptions import OVTypeError, UserInputError
 from openvino.runtime.utils.types import as_node, make_constant_node
 
+from . import _factory
 from .constants import (
     ATTENTION_MASK_INPUT_NAME,
     STRING_OUTPUT_NAME,
@@ -22,7 +23,6 @@ from .constants import (
     TOKENIZER_DECODER_NAME,
     TOKENIZER_ENCODER_NAME,
 )
-from . import _factory
 from .str_pack import pack_string, pack_strings
 
 
