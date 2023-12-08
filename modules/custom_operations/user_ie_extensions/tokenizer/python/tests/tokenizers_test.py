@@ -124,7 +124,7 @@ def get_tokenizer(request, fast_tokenizer=True, trust_remote_code=False):
     hf_tokenizer = AutoTokenizer.from_pretrained(
         request.param, use_fast=fast_tokenizer, trust_remote_code=trust_remote_code
     )
-    ov_tokenizer = convert_tokenizer(hf_tokenizer, with_decoder=False)
+    ov_tokenizer = convert_tokenizer(hf_tokenizer, with_detokenizer=False)
     compiled_tokenizer = core.compile_model(ov_tokenizer)
     return hf_tokenizer, compiled_tokenizer
 
@@ -133,7 +133,7 @@ def get_tokenizer_detokenizer(request, fast_tokenizer=True, trust_remote_code=Fa
     hf_tokenizer = AutoTokenizer.from_pretrained(
         request.param, use_fast=fast_tokenizer, trust_remote_code=trust_remote_code
     )
-    ov_tokenizer, ov_detokenizer = convert_tokenizer(hf_tokenizer, with_decoder=True)
+    ov_tokenizer, ov_detokenizer = convert_tokenizer(hf_tokenizer, with_detokenizer=True)
     compiled_tokenizer = core.compile_model(ov_tokenizer)
     compiled_detokenizer = core.compile_model(ov_detokenizer)
     return hf_tokenizer, compiled_tokenizer, compiled_detokenizer
@@ -326,7 +326,7 @@ def test_tiktoken_detokenizer(tiktoken_tokenizers, test_string):
 
 def test_streaming_detokenizer():
     hf_tokenizer = AutoTokenizer.from_pretrained("openlm-research/open_llama_3b_v2")
-    _, ov_detokenizer = convert_tokenizer(hf_tokenizer, with_decoder=True, streaming_decoder=True)
+    _, ov_detokenizer = convert_tokenizer(hf_tokenizer, with_detokenizer=True, streaming_decoder=True)
     ov_detokenizer = core.compile_model(ov_detokenizer)
 
     test_string = "this is a test string"
