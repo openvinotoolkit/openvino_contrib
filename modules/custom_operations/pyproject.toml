@@ -56,7 +56,10 @@ cmake.args = ["-DCUSTOM_OPERATIONS:STRING=tokenizer", "-DBUILD_FAST_TOKENIZERS=O
 wheel.packages = ["user_ie_extensions/tokenizer/python/ov_tokenizer"]
 wheel.install-dir = "ov_tokenizer/libs"
 wheel.py-api = "py3"
+wheel.license-files = ['../../LICENSE', '../../third-party-programs.txt']
 sdist.cmake = true
+sdist.include = ["cmake", "user_ie_extensions"]
+sdist.exclude = ["tests", "examples", "user_ie_extensions/tokenizer/python/tests"]
 
 [build-system]
 requires = ["scikit-build-core"]
