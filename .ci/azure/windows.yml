@@ -53,7 +53,6 @@ jobs:
     MSVC_COMPILER_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.24.28314\bin\Hostx64\x64\cl.exe
     INSTALL_DIR: $(WORK_DIR)\install_pkg
     SETUPVARS: $(INSTALL_DIR)\setupvars.bat
-    CUSTOM_OP_LIB: $(BUILD_DIR_CONTRIB)\user_ie_extensions\user_ov_extensions.dll
     GRADLE_VER: 7.1.1
     PYTHON_EXE: C:\hostedtoolcache\windows\Python\3.8.2\x64\python.exe
 

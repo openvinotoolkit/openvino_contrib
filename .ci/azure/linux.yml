@@ -52,7 +52,6 @@ jobs:
     BIN_DIR: $(OPENVINO_REPO_DIR)/bin/intel64/$(BUILD_TYPE)
     INSTALL_DIR: $(WORK_DIR)/install_pkg
     SETUPVARS: $(INSTALL_DIR)/setupvars.sh
-    CUSTOM_OP_LIB: $(BIN_DIR)/libuser_ov_extensions.so
     GRADLE_VER: 7.1.1
 
   steps:
