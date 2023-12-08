@@ -58,8 +58,7 @@ wheel.install-dir = "ov_tokenizer/libs"
 wheel.py-api = "py3"
 wheel.license-files = ['../../LICENSE', '../../third-party-programs.txt']
 sdist.cmake = true
-sdist.include = ["cmake", "user_ie_extensions"]
-sdist.exclude = ["tests", "examples", "user_ie_extensions/tokenizer/python/tests"]
+sdist.exclude = ["dist", "tests", "examples", "user_ie_extensions/tokenizer/python/tests"]
 
 [build-system]
 requires = ["scikit-build-core"]
