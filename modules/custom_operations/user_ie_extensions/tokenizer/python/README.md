@@ -6,40 +6,32 @@
   - Fast tokenizers based on Wordpiece and BPE models
   - Slow tokenizers based on SentencePiece model file
 - Combine OpenVINO models into a single model
-- Add greedy decoding pipeline to text generation model 
+- Add greedy decoding pipeline to text generation model
 
 ## Installation
 
-1. Build the extension with the `-DCUSTOM_OPERATIONS="tokenizer"` flag: [instruction](../../../README.md#build-custom-openvino-operation-extension-library)
+1. Install [OpenVINO Runtime for C++](https://docs.openvino.ai/latest/openvino_docs_install_guides_install_dev_tools.html#for-c-developers).
 2. (Recommended) Create and activate virtual env:
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 ```
-3. Go to `modules/custom_operations/user_ie_extensions/tokenizer/python` and run:
+3. Go to `modules/custom_operations` and run:
 ```bash
 # to use converted tokenizers or models combined with tokenizers
 pip install .
 # to convert tokenizers from transformers library
-pip install .[transformers] 
+pip install .[transformers]
 # for development and testing the library
-pip isntall -e .[all]
+pip istall -e .[all]
 ```
-
-## Usage
-
-Set `OV_TOKENIZER_PREBUILD_EXTENSION_PATH` environment variable to `libuser_ov_extensions.so` file path
-or use `init_extension` function.
 
 ### Convert HuggingFace tokenizer
 
 ```python
 from transformers import AutoTokenizer
 from openvino import compile_model
-from ov_tokenizer import init_extension, convert_tokenizer, pack_strings
-
-
-init_extension("path/to/libuser_ov_extensions.so")
+from ov_tokenizer import convert_tokenizer, pack_strings
 
 hf_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 ov_tokenizer = convert_tokenizer(hf_tokenizer)
@@ -66,10 +58,7 @@ for output_name in hf_output:
 ```python
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from openvino import compile_model, convert_model
-from ov_tokenizer import init_extension, convert_tokenizer, pack_strings, connect_models
-
-
-init_extension("path/to/libuser_ov_extensions.so")
+from ov_tokenizer import convert_tokenizer, pack_strings, connect_models
 
 checkpoint = "mrm8488/bert-tiny-finetuned-sms-spam-detection"
 hf_tokenizer = AutoTokenizer.from_pretrained(checkpoint)
@@ -94,16 +83,15 @@ print(f"HuggingFace logits {hf_output.logits}")
 
 ### Use Extension With Converted (De)Tokenizer or Model With (De)Tokenizer
 
-To work with converted tokenizer you need `pack_strings`/`unpack_strings` functions. 
+To work with converted tokenizer you need `pack_strings`/`unpack_strings` functions.
 
 ```python
 import numpy as np
 from openvino import Core
 from ov_tokenizer import unpack_strings
 
-
 core = Core()
-core.add_extension("path/to/libuser_ov_extensions.so")
+
 # detokenizer from codellama sentencepiece model
 compiled_detokenizer = core.compile_model("detokenizer.xml")
 
@@ -121,14 +109,11 @@ import numpy as np
 from openvino import compile_model, convert_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from ov_tokenizer import (
-  add_greedy_decoding,
-  convert_tokenizer,
-  init_extension,
-  pack_strings,
-  unpack_strings,
+    add_greedy_decoding,
+    convert_tokenizer,
+    pack_strings,
+    unpack_strings,
 )
-
-init_extension("path/to/libuser_ov_extensions.so")
 
 # Use different repo for the tokenizer because the original repo doesn't have .model file
 # Sentencepiece(Unigram) tokenizer supported only with .model file

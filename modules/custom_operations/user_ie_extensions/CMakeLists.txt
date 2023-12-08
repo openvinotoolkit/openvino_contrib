@@ -121,7 +121,7 @@ if(DEFINED SKBUILD)
   elseif(WIN32 AND X86_64)
     install(TARGETS ${TARGET_NAME} RUNTIME DESTINATION .)
   else()
-    message(FATAL "Unsupported build platform")
+    message(FATAL_ERROR "Unsupported build platform")
   endif()
 
   if(extra_libs)
