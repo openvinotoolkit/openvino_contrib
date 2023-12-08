@@ -226,7 +226,7 @@ protected:
         params[0]->set_friendly_name("start");
         params[1]->set_friendly_name("stop");
         params[2]->set_friendly_name("step");
-        auto node = std::make_shared<opset4::Range>(params[0], params[1], params[2], Type(out_type));
+        auto node = std::make_shared<ov::op::v4::Range>(params[0], params[1], params[2], Type(out_type));
         auto& registry = ov::nvidia_gpu::OperationRegistry::getInstance();
         assert(registry.hasOperation(node));
         auto op = registry.createOperation(ov::nvidia_gpu::CreationContext{device, optimizeOption},

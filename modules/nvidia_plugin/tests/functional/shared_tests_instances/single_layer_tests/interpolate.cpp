@@ -10,13 +10,14 @@
 #include "benchmark.hpp"
 #include "common_test_utils/test_constants.hpp"
 #include "unsymmetrical_comparer.hpp"
+#include "openvino/op/interpolate.hpp"
 
 using namespace LayerTestsDefinitions;
 
-using InterpolateMode = ngraph::op::v4::Interpolate::InterpolateMode;
-using ShapeCalcMode = ngraph::op::v4::Interpolate::ShapeCalcMode;
-using CoordinateTransformMode = ngraph::op::v4::Interpolate::CoordinateTransformMode;
-using NearestMode = ngraph::op::v4::Interpolate::NearestMode;
+using InterpolateMode = ov::op::v4::Interpolate::InterpolateMode;
+using ShapeCalcMode = ov::op::v4::Interpolate::ShapeCalcMode;
+using CoordinateTransformMode = ov::op::v4::Interpolate::CoordinateTransformMode;
+using NearestMode = ov::op::v4::Interpolate::NearestMode;
 
 namespace {
 
