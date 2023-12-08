@@ -23,7 +23,7 @@ pip install .
 # to convert tokenizers from transformers library
 pip install .[transformers]
 # for development and testing the library
-pip istall -e .[all]
+pip install -e .[all]
 ```
 
 ### Convert HuggingFace tokenizer
