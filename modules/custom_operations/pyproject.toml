@@ -34,7 +34,7 @@ tiktoken = [
     "tiktoken"
 ]
 all = [
-    "openvino_tokenizer[dev,transformers,tiktoken]"
+    "openvino_tokenizers[dev,transformers,tiktoken]"
 ]
 
 [tool.ruff]
@@ -44,7 +44,7 @@ line-length = 119
 
 [tool.ruff.per-file-ignores]
 "__init__.py" = ["F401"]
-"openvino_tokenizer/hf_parser.py" = ["F821"]
+"openvino_tokenizers/hf_parser.py" = ["F821"]
 
 [tool.ruff.isort]
 lines-after-imports = 2
@@ -53,8 +53,8 @@ lines-after-imports = 2
 cmake.minimum-version = "3.15"
 cmake.build-type = "Release"
 cmake.args = ["-DCUSTOM_OPERATIONS:STRING=tokenizer", "-DBUILD_FAST_TOKENIZERS=OFF"]
-wheel.packages = ["user_ie_extensions/tokenizer/python/openvino_tokenizer"]
-wheel.install-dir = "openvino_tokenizer/libs"
+wheel.packages = ["user_ie_extensions/tokenizer/python/openvino_tokenizers"]
+wheel.install-dir = "openvino_tokenizers/libs"
 wheel.py-api = "py3"
 wheel.license-files = ['../../LICENSE', '../../third-party-programs.txt']
 sdist.cmake = true
