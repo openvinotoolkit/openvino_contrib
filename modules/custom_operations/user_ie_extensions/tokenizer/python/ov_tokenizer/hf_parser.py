@@ -116,7 +116,8 @@ class TransformersTokenizerPipelineParser:
         self.original_tokenizer = tokenizer_object
         with TemporaryDirectory() as tmpdir:
             tokenizer_object.save_pretrained(tmpdir)
-            with open(Path(tmpdir) / "tokenizer.json") as tj:
+            # Windows uses cp1252 encoding by default, need to use utf-8 explicitly
+            with open(Path(tmpdir) / "tokenizer.json", encoding="utf-8") as tj:
                 self.tokenizer_json = json.load(tj)
         self.pipeline = TokenizerPipeline()
         self.number_of_inputs = number_of_inputs
@@ -267,7 +268,7 @@ class TransformersTokenizerPipelineParser:
             self.pipeline.add_steps(VocabDecoderStep())
             self.pipeline.add_steps(CharsToBytesStep())
 
-        if self.original_tokenizer.clean_up_tokenization_spaces:
+        if self.original_tokenizer.clean_up_tokenization_spaces and self.pipeline.decoding_steps:
             self.pipeline.add_steps(RegexDecodingStep.clean_up_tokenization_spaces())
         return
 
