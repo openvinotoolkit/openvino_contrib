@@ -774,7 +774,7 @@ class TokenizerPipeline:
         batch_size = opset.gather(shape, as_node(0), as_node(0))
         ragged_begins = opset.range(as_node(0), batch_size, as_node(1), output_type="i32").outputs()
         ragged_ends = opset.range(
-            as_node(1), opset.add(batch_size, as_node(1)), as_node(1), output_type="i32"
+            as_node(1), opset.add(batch_size, make_constant_node(1, Type.i64)), as_node(1), output_type="i32"
         ).outputs()
         return ragged_begins + ragged_ends + input_node
 
