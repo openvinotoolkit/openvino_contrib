@@ -130,6 +130,7 @@ jobs:
         -DENABLE_OV_PYTORCH_FRONTEND=OFF \
         -DENABLE_CPPLINT=OFF \
         -DPYTHON_EXECUTABLE=`which python3.10` \
+        -DPython3_EXECUTABLE=`which python3.10` \
         -S $(OPENVINO_REPO_DIR) \
         -B $(BUILD_DIR)
     displayName: 'CMake OpenVINO Contrib'
