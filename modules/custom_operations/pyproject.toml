@@ -56,7 +56,7 @@ cmake.args = ["-DCUSTOM_OPERATIONS:STRING=tokenizer", "-DBUILD_FAST_TOKENIZERS=O
 wheel.packages = ["user_ie_extensions/tokenizer/python/openvino_tokenizers"]
 wheel.install-dir = "openvino_tokenizers/libs"
 wheel.py-api = "py3"
-wheel.license-files = ['../../LICENSE', '../../third-party-programs.txt']
+wheel.license-files = ['../../LICENSE', '../../third-party-programs.txt', '../../SECURITY.md']
 sdist.cmake = true
 sdist.exclude = ["dist", "tests", "examples", "user_ie_extensions/tokenizer/python/tests"]
 
