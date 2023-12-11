@@ -90,7 +90,7 @@ void set_ragged_output(Node* node, size_t output_index, const PartialShape& shap
 }
 
 
-void unpack_strings_to_tensors (const std::string* strings, const Shape shape, ov::Tensor& begins, ov::Tensor& ends, ov::Tensor& chars) { // TODO: no need for a reference to a ov::Tensor?
+void unpack_strings_to_tensors (const std::string* strings, const Shape shape, ov::Tensor& begins, ov::Tensor& ends, ov::Tensor& chars) {
     auto nelements = shape_size(shape);
 
     size_t total = 0;
