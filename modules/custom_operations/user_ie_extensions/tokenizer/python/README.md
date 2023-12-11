@@ -31,7 +31,7 @@ pip install -e .[all]
 ```python
 from transformers import AutoTokenizer
 from openvino import compile_model
-from ov_tokenizer import convert_tokenizer, pack_strings
+from openvino_tokenizer import convert_tokenizer, pack_strings
 
 hf_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 ov_tokenizer = convert_tokenizer(hf_tokenizer)
@@ -58,7 +58,7 @@ for output_name in hf_output:
 ```python
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from openvino import compile_model, convert_model
-from ov_tokenizer import convert_tokenizer, pack_strings, connect_models
+from openvino_tokenizer import convert_tokenizer, pack_strings, connect_models
 
 checkpoint = "mrm8488/bert-tiny-finetuned-sms-spam-detection"
 hf_tokenizer = AutoTokenizer.from_pretrained(checkpoint)
@@ -88,7 +88,7 @@ To work with converted tokenizer you need `pack_strings`/`unpack_strings` functi
 ```python
 import numpy as np
 from openvino import Core
-from ov_tokenizer import unpack_strings
+from openvino_tokenizer import unpack_strings
 
 core = Core()
 
@@ -108,7 +108,7 @@ print(unpack_strings(openvino_output["string_output"]))
 import numpy as np
 from openvino import compile_model, convert_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from ov_tokenizer import (
+from openvino_tokenizer import (
     add_greedy_decoding,
     convert_tokenizer,
     pack_strings,
