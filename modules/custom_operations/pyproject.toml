@@ -52,9 +52,10 @@ lines-after-imports = 2
 [tool.scikit-build]
 cmake.minimum-version = "3.15"
 cmake.build-type = "Release"
-cmake.args = ["-DCUSTOM_OPERATIONS:STRING=tokenizer", "-DBUILD_FAST_TOKENIZERS=OFF"]
+cmake.args = ["-DCUSTOM_OPERATIONS=tokenizer", "-DBUILD_FAST_TOKENIZERS=OFF"]
+cmake.targets = ["user_ov_extensions"]
 wheel.packages = ["user_ie_extensions/tokenizer/python/openvino_tokenizers"]
-wheel.install-dir = "openvino_tokenizers/libs"
+wheel.install-dir = "openvino_tokenizers"
 wheel.py-api = "py3"
 wheel.license-files = ['../../LICENSE', '../../third-party-programs.txt', '../../SECURITY.md']
 sdist.cmake = true

@@ -109,23 +109,29 @@ target_compile_definitions(${TARGET_NAME} PRIVATE IMPLEMENT_OPENVINO_EXTENSION_A
 # TODO: remove
 target_include_directories(${TARGET_NAME} PUBLIC ./include/)
 
-# Wheel packaging using skbuild
-if(DEFINED SKBUILD)
-  # Installing the extension module to the root of the package
-  if(LINUX)
-    set_target_properties(${TARGET_NAME} PROPERTIES INSTALL_RPATH "$ORIGIN")
-    install(TARGETS ${TARGET_NAME} LIBRARY DESTINATION .)
-  elseif(APPLE)
-    set_target_properties(${TARGET_NAME} PROPERTIES INSTALL_RPATH "@loader_path")
-    install(TARGETS ${TARGET_NAME} LIBRARY DESTINATION .)
-  elseif(WIN32 AND X86_64)
-    install(TARGETS ${TARGET_NAME} RUNTIME DESTINATION .)
+#
+# Installation rules
+#
+
+include(GNUInstallDirs)
+
+# setting RPATH / LC_RPATH depending on platform
+if(LINUX)
+  set_target_properties(${TARGET_NAME} PROPERTIES INSTALL_RPATH "$ORIGIN")
+elseif(APPLE)
+  set_target_properties(${TARGET_NAME} PROPERTIES INSTALL_RPATH "@loader_path")
+endif()
+
+# Installing the extension module to the root of the package
+install(TARGETS ${TARGET_NAME}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT core
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT core)
+
+if(extra_libs)
+  if(WIN32)
+    set(extra_libs_location ${CMAKE_INSTALL_BINDIR})
   else()
-    message(FATAL_ERROR "Unsupported build platform")
+    set(extra_libs_location ${CMAKE_INSTALL_LIBDIR})
   endif()
-
-  if(extra_libs)
-    install(FILES ${extra_libs} DESTINATION .)
-  endif()
-
+  install(FILES ${extra_libs} DESTINATION ${extra_libs_location} COMPONENT core)
 endif()
