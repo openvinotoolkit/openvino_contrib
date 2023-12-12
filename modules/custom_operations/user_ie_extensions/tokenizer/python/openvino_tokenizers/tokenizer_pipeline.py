@@ -20,8 +20,8 @@ from .constants import (
     STRING_OUTPUT_NAME,
     TOKEN_IDS_INPUT_NAME,
     TOKEN_TYPE_IDS_INPUT_NAME,
-    TOKENIZER_DECODER_NAME,
-    TOKENIZER_ENCODER_NAME,
+    DETOKENIZER_NAME,
+    TOKENIZER_NAME,
 )
 from .str_pack import pack_string, pack_strings
 
@@ -728,7 +728,7 @@ class TokenizerPipeline:
     def __getitem__(self, item: int) -> BasePipelineStep:
         return self.steps[item]
 
-    def get_encoder_ov_subgraph(self) -> Model:
+    def get_tokenizer_ov_subgraph(self) -> Model:
         string_inputs = [op.Parameter(Type.u8, PartialShape(["?"])) for _ in range(self.number_of_inputs)]
 
         processing_outputs = []
@@ -746,7 +746,7 @@ class TokenizerPipeline:
         for step in self.post_tokenization_steps:
             processing_outputs = step.get_ov_subgraph(processing_outputs)
 
-        return Model(processing_outputs, string_inputs, name=TOKENIZER_ENCODER_NAME)
+        return Model(processing_outputs, string_inputs, name=TOKENIZER_NAME)
 
     @property
     def normalization_steps(self) -> List[NormalizationStep]:
@@ -785,10 +785,10 @@ class TokenizerPipeline:
 
         return _factory.create("StringTensorPack", input_nodes).outputs()
 
-    def get_decoder_ov_subgraph(self) -> Model:
+    def get_detokenizer_ov_subgraph(self) -> Model:
         input_node = op.Parameter(Type.i32, PartialShape(["?", "?"]))
         token_ids = input_node
         outputs = self.create_decoding_pipeline([token_ids])
-        model = Model(outputs, [input_node], name=TOKENIZER_DECODER_NAME)
+        model = Model(outputs, [input_node], name=DETOKENIZER_NAME)
         model.output().tensor.add_names({STRING_OUTPUT_NAME})
         return model

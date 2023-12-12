@@ -19,7 +19,7 @@ def convert_tokenizer(
     tokenizer_object: Any,
     number_of_inputs: int = 1,
     with_detokenizer: bool = False,
-    streaming_decoder: bool = False,
+    streaming_detokenizer: bool = False,
     tokenizer_output_type: Type = Type.i64,
     detokenizer_input_type: Type = Type.i64,
 ) -> Union[Model, Tuple[Model, Model]]:
@@ -47,7 +47,7 @@ def convert_tokenizer(
                     tokenizer_object,
                     add_attention_mask=True,
                     with_detokenizer=with_detokenizer,
-                    streaming_decoder=streaming_decoder,
+                    streaming_detokenizer=streaming_detokenizer,
                 )
             elif is_tiktoken_model(tokenizer_object):
                 logger.info("Convert tiktoken-based tokenizer")
