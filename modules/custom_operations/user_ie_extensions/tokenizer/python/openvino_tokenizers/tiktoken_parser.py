@@ -7,7 +7,7 @@ from tiktoken import Encoding
 
 # from transformers.models.gpt2.tokenization_gpt2
 @lru_cache()
-def bytes_to_unicode() -> Dict[bytes, str]:
+def bytes_to_unicode() -> Dict[int, str]:
     bs = (
         list(range(ord("!"), ord("~") + 1)) + list(range(ord("¡"), ord("¬") + 1)) + list(range(ord("®"), ord("ÿ") + 1))
     )
@@ -23,10 +23,8 @@ def bytes_to_unicode() -> Dict[bytes, str]:
 
 
 #  https://gist.github.com/xenova/a452a6474428de0182b17605a98631ee
-byte_encoder = bytes_to_unicode()
-
-
 def token_bytes_to_string(b: bytes) -> str:
+    byte_encoder = bytes_to_unicode()
     return "".join(byte_encoder[ord(char)] for char in b.decode("latin-1"))
 
 
@@ -42,7 +40,8 @@ def bpe(mergeable_ranks: Dict[bytes, int], token: bytes, max_rank: Optional[int]
                 min_rank = rank
         if min_rank is None or (max_rank is not None and min_rank >= max_rank):
             break
-        assert min_idx is not None
+        if min_idx is None:
+            raise ValueError(f"Tiktoken conversion error: cannot determine bpe for token {token}.")
         parts = parts[:min_idx] + [parts[min_idx] + parts[min_idx + 1]] + parts[min_idx + 2 :]
     return parts
 

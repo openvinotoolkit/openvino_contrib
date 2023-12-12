@@ -111,7 +111,8 @@ def parse_byte_level_pretokenization_step(
 
 class TransformersTokenizerPipelineParser:
     def __init__(self, tokenizer_object: Any, number_of_inputs: int = 1) -> None:
-        assert tokenizer_object.is_fast
+        if not tokenizer_object.is_fast:
+            raise OVTypeError("Tokenizer is not supported.")
 
         self.original_tokenizer = tokenizer_object
         with TemporaryDirectory() as tmpdir:
