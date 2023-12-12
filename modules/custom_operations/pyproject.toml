@@ -29,7 +29,8 @@ dev = [
     "bandit"
 ]
 transformers = [
-    "transformers[sentencepiece]"
+    "transformers[sentencepiece]",
+    "tiktoken"
 ]
 tiktoken = [
     "tiktoken"
@@ -66,7 +67,7 @@ cmake.targets = ["user_ov_extensions"]
 wheel.packages = ["user_ie_extensions/tokenizer/python/openvino_tokenizers"]
 wheel.install-dir = "openvino_tokenizers"
 wheel.py-api = "py3"
-wheel.license-files = ["../../LICENSE", "../../third-party-programs.txt", "../../SECURITY.md"]
+wheel.license-files = ["LICENSE", "third-party-programs.txt", "SECURITY.md"]
 sdist.cmake = true
 sdist.exclude = ["dist", "tests", "examples", "user_ie_extensions/tokenizer/python/tests"]
 
