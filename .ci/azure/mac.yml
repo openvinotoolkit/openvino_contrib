@@ -172,7 +172,7 @@ jobs:
     displayName: 'Create virtual env'
 
   - script: |
-      source $(WORK_DIR)venv/bin/activate && source $(SETUPVARS)
+      source $(WORK_DIR)/venv/bin/activate && source $(SETUPVARS)
       python -m pip install build
       python -m build --wheel --outdir $(BUILD_WHEEL_DIR) $(REPO_DIR)/modules/custom_operations
     workingDirectory: $(WORK_DIR)
