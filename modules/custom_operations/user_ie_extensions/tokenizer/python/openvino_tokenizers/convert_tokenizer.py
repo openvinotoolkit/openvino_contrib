@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 def convert_tokenizer(
     tokenizer_object: Any,
     number_of_inputs: int = 1,
-    with_decoder: bool = False,
+    with_detokenizer: bool = False,
     streaming_decoder: bool = False,
     tokenizer_output_type: Type = Type.i64,
     detokenizer_input_type: Type = Type.i64,
@@ -46,21 +46,21 @@ def convert_tokenizer(
                 ov_tokenizers = convert_sentencepiece_model_tokenizer(
                     tokenizer_object,
                     add_attention_mask=True,
-                    with_decoder=with_decoder,
+                    with_detokenizer=with_detokenizer,
                     streaming_decoder=streaming_decoder,
                 )
             elif is_tiktoken_model(tokenizer_object):
                 logger.info("Convert tiktoken-based tokenizer")
                 ov_tokenizers = convert_tiktoken_model_tokenizer(
                     tokenizer_object,
-                    with_decoder=with_decoder,
+                    with_detokenizer=with_detokenizer,
                 )
             elif isinstance(tokenizer_object, PreTrainedTokenizerFast):
                 logger.info("Convert Huggingface Fast tokenizer pipeline.")
                 ov_tokenizers = convert_fast_tokenizer(
                     tokenizer_object,
                     number_of_inputs=number_of_inputs,
-                    with_decoder=with_decoder,
+                    with_detokenizer=with_detokenizer,
                 )
 
     if ov_tokenizers is None:

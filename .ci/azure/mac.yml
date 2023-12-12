@@ -58,7 +58,6 @@ jobs:
     BIN_DIR: $(OPENVINO_REPO_DIR)/bin/intel64/$(BUILD_TYPE)
     INSTALL_DIR: $(WORK_DIR)/install_pkg
     SETUPVARS: $(INSTALL_DIR)/setupvars.sh
-    CUSTOM_OP_LIB: $(BIN_DIR)/libuser_ov_extensions.dylib
 
   steps:
   - task: UsePythonVersion@0
@@ -130,6 +129,7 @@ jobs:
         -DENABLE_OV_TF_LITE_FRONTEND=OFF \
         -DENABLE_OV_PYTORCH_FRONTEND=OFF \
         -DENABLE_CPPLINT=OFF \
+        -DPython3_EXECUTABLE=`which python3.10` \
         -S $(OPENVINO_REPO_DIR) \
         -B $(BUILD_DIR)
     displayName: 'CMake OpenVINO Contrib'
@@ -163,22 +163,26 @@ jobs:
       python -m pip install --upgrade pip
       python -m pip install -r $(REPO_DIR)/modules/custom_operations/tests/requirements.txt
       python -m pip install $(OPENVINO_REPO_DIR)/tools/mo/
-      python -m pip install $(INSTALL_DIR)/tools/openvino-*.whl
+      # Find and install wheel
+      pushd $(INSTALL_DIR)/tools
+        wheel_name=$(find . -name 'openvino-*.whl')
+        python -m pip install $wheel_name
+      popd
     workingDirectory: $(WORK_DIR)
     displayName: 'Create virtual env'
 
   - script: |
-      source .venv/bin/activate && source $(SETUPVARS)
+      source $(WORK_DIR)/venv/bin/activate && source $(SETUPVARS)
       python -m pip install build
-      python -m build --wheel --outdir $(BUILD_WHEEL_DIR) $(REPO_DIR)\modules\custom_operations
+      python -m build --wheel --outdir $(BUILD_WHEEL_DIR) $(REPO_DIR)/modules/custom_operations
     workingDirectory: $(WORK_DIR)
     displayName: 'Build tokenizers wheel'
 
   - script: |
-      source .venv/bin/activate
+      source $(WORK_DIR)/venv/bin/activate
       # Find and install wheel
       pushd $(BUILD_WHEEL_DIR)
-        wheel_name=$(find . -name 'ov_tokenizer*.whl')
+        wheel_name=$(find . -name 'openvino_tokenizers*.whl')
         python3 -m pip install $wheel_name[all]
       popd
     workingDirectory: $(WORK_DIR)

@@ -17,6 +17,7 @@ from openvino.runtime.exceptions import OVTypeError
 from openvino.runtime.utils.types import as_node, make_constant_node
 from transformers.convert_slow_tokenizer import import_protobuf
 
+from . import _factory
 from .constants import (
     ATTENTION_MASK_INPUT_NAME,
     STRING_OUTPUT_NAME,
@@ -25,7 +26,6 @@ from .constants import (
     TOKENIZER_DECODER_NAME,
     TOKENIZER_ENCODER_NAME,
 )
-from . import _factory
 from .tokenizer_pipeline import (
     BPETokenizationStep,
     BytesToCharsStep,
@@ -116,7 +116,8 @@ class TransformersTokenizerPipelineParser:
         self.original_tokenizer = tokenizer_object
         with TemporaryDirectory() as tmpdir:
             tokenizer_object.save_pretrained(tmpdir)
-            with open(Path(tmpdir) / "tokenizer.json") as tj:
+            # Windows uses cp1252 encoding by default, need to use utf-8 explicitly
+            with open(Path(tmpdir) / "tokenizer.json", encoding="utf-8") as tj:
                 self.tokenizer_json = json.load(tj)
         self.pipeline = TokenizerPipeline()
         self.number_of_inputs = number_of_inputs
@@ -267,7 +268,7 @@ class TransformersTokenizerPipelineParser:
             self.pipeline.add_steps(VocabDecoderStep())
             self.pipeline.add_steps(CharsToBytesStep())
 
-        if self.original_tokenizer.clean_up_tokenization_spaces:
+        if self.original_tokenizer.clean_up_tokenization_spaces and self.pipeline.decoding_steps:
             self.pipeline.add_steps(RegexDecodingStep.clean_up_tokenization_spaces())
         return
 
@@ -275,7 +276,7 @@ class TransformersTokenizerPipelineParser:
 def convert_fast_tokenizer(
     hf_tokenizer: "PreTrainedTokenizerBase",
     number_of_inputs: int = 1,
-    with_decoder: bool = False,
+    with_detokenizer: bool = False,
 ) -> Union[Model, Tuple[Model, Model]]:
     pipeline = TransformersTokenizerPipelineParser(hf_tokenizer).parse(number_of_inputs=number_of_inputs)
     ov_tokenizer = pipeline.get_encoder_ov_subgraph()
@@ -300,7 +301,7 @@ def convert_fast_tokenizer(
             filtered_outputs.append(ov_tokenizer.output(i))
 
     tokenizer_model = Model(filtered_outputs, ov_tokenizer.get_parameters(), TOKENIZER_ENCODER_NAME)
-    if with_decoder:
+    if with_detokenizer:
         return tokenizer_model, pipeline.get_decoder_ov_subgraph()
 
     return tokenizer_model
@@ -329,7 +330,7 @@ def add_tokens_to_sentencepiece_model(sp_model_path: Path, hf_tokenizer: "PreTra
 def convert_sentencepiece_model_tokenizer(
     hf_tokenizer: "PreTrainedTokenizerBase",
     add_attention_mask: bool = True,
-    with_decoder: bool = False,
+    with_detokenizer: bool = False,
     streaming_decoder: bool = False,
 ) -> Union[Model, Tuple[Model, Model]]:
     if not is_sentencepiece_model(hf_tokenizer):
@@ -423,7 +424,7 @@ def convert_sentencepiece_model_tokenizer(
     tokenizer_encoder = Model(outputs, [input_node], TOKENIZER_ENCODER_NAME)
     tokenizer_encoder.validate_nodes_and_infer_types()
 
-    if not with_decoder:
+    if not with_detokenizer:
         return tokenizer_encoder
 
     return tokenizer_encoder, get_sp_decoder(sp_model_node, streaming_decoder=streaming_decoder)
@@ -460,7 +461,7 @@ def is_tiktoken_model(hf_tokenizer: "PreTrainedTokenizerBase") -> bool:
 
 def convert_tiktoken_model_tokenizer(
     hf_tokenizer: "PreTrainedTokenizerBase",
-    with_decoder: bool = False,
+    with_detokenizer: bool = False,
 ) -> Union[Model, Tuple[Model, Model]]:
     encoding = getattr(hf_tokenizer, "tokenizer", None) or hf_tokenizer.encoder
     split_pattern = encoding._pat_str
@@ -480,7 +481,7 @@ def convert_tiktoken_model_tokenizer(
             CharsToBytesStep(),
         ]
     )
-    if not with_decoder:
+    if not with_detokenizer:
         return pipeline.get_encoder_ov_subgraph()
 
     return pipeline.get_encoder_ov_subgraph(), pipeline.get_decoder_ov_subgraph()
