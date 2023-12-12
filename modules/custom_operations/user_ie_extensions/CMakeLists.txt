@@ -117,9 +117,18 @@ include(GNUInstallDirs)
 
 # setting RPATH / LC_RPATH depending on platform
 if(LINUX)
-  set_target_properties(${TARGET_NAME} PROPERTIES INSTALL_RPATH "$ORIGIN")
+  # to find libcore_tokenizer.so in the same folder
+  set(rpaths "$ORIGIN")
 elseif(APPLE)
-  set_target_properties(${TARGET_NAME} PROPERTIES INSTALL_RPATH "@loader_path")
+  # to find libcore_tokenizer.dylib in the same folder
+  set(rpaths "@loader_path")
+  if(DEFINED SKBUILD)
+    # in case we build pip package, we need to refer to libopenvino.dylib from 'openvino' package
+    list(APPEND rpaths "@loader_path/../../openvino/libs")
+  endif()
+endif()
+if(rpaths)
+  set_target_properties(${TARGET_NAME} PROPERTIES INSTALL_RPATH "${rpaths}")
 endif()
 
 # Installing the extension module to the root of the package

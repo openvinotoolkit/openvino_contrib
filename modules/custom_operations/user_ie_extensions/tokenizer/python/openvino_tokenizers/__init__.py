@@ -33,16 +33,11 @@ elif sys.platform == "linux":
 else:
     sys.exit(f"Error: extension does not support the platform {sys.platform}")
 
-# conda-forge case
-conda_forge_lib_path = Path(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-if os.path.exists(conda_forge_lib_path / _ext_name):
-    _ext_path = conda_forge_lib_path / _ext_name
-else:
-    _ext_path = _ext_libs_path / _ext_name
+_ext_path = _ext_name if os.environ.get("CONDA_PREFIX") else (_ext_libs_path / _ext_name)
 
 del _ext_name
 del _ext_libs_path
-del conda_forge_lib_path
+del _extension_path
 
 # patching openvino
 old_core_init = openvino.runtime.Core.__init__
