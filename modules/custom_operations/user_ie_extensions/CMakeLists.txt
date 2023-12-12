@@ -124,8 +124,8 @@ endif()
 
 # Installing the extension module to the root of the package
 install(TARGETS ${TARGET_NAME}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT core
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT core)
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT tokenizers
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT tokenizers)
 
 if(extra_libs)
   if(WIN32)
@@ -133,5 +133,5 @@ if(extra_libs)
   else()
     set(extra_libs_location ${CMAKE_INSTALL_LIBDIR})
   endif()
-  install(FILES ${extra_libs} DESTINATION ${extra_libs_location} COMPONENT core)
+  install(FILES ${extra_libs} DESTINATION ${extra_libs_location} COMPONENT tokenizers)
 endif()

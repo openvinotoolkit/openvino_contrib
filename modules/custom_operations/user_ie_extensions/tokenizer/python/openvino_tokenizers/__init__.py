@@ -21,7 +21,7 @@ if _extension_path:
     _ext_libs_path = Path(_extension_path).parent
 else:
     # python installation case
-    _ext_libs_path = Path(sysconfig.get_paths()["purelib"]) / __name__ / "libs"
+    _ext_libs_path = Path(sysconfig.get_paths()["purelib"]) / __name__ / "lib"
 
 _ext_name = "user_ov_extensions"
 if sys.platform == "win32":
