@@ -23,8 +23,8 @@ from .constants import (
     STRING_OUTPUT_NAME,
     TOKEN_IDS_INPUT_NAME,
     TOKEN_TYPE_IDS_INPUT_NAME,
-    TOKENIZER_DECODER_NAME,
-    TOKENIZER_ENCODER_NAME,
+    DETOKENIZER_NAME,
+    TOKENIZER_NAME,
 )
 from .tokenizer_pipeline import (
     BPETokenizationStep,
@@ -111,7 +111,8 @@ def parse_byte_level_pretokenization_step(
 
 class TransformersTokenizerPipelineParser:
     def __init__(self, tokenizer_object: Any, number_of_inputs: int = 1) -> None:
-        assert tokenizer_object.is_fast
+        if not tokenizer_object.is_fast:
+            raise OVTypeError("Tokenizer is not supported.")
 
         self.original_tokenizer = tokenizer_object
         with TemporaryDirectory() as tmpdir:
@@ -279,7 +280,7 @@ def convert_fast_tokenizer(
     with_detokenizer: bool = False,
 ) -> Union[Model, Tuple[Model, Model]]:
     pipeline = TransformersTokenizerPipelineParser(hf_tokenizer).parse(number_of_inputs=number_of_inputs)
-    ov_tokenizer = pipeline.get_encoder_ov_subgraph()
+    ov_tokenizer = pipeline.get_tokenizer_ov_subgraph()
     output_names = hf_tokenizer.model_input_names
 
     ov_tokenizer_output_names = [TOKEN_IDS_INPUT_NAME, ATTENTION_MASK_INPUT_NAME]
@@ -300,9 +301,9 @@ def convert_fast_tokenizer(
             ov_tokenizer.output(i).tensor.add_names({output_name})
             filtered_outputs.append(ov_tokenizer.output(i))
 
-    tokenizer_model = Model(filtered_outputs, ov_tokenizer.get_parameters(), TOKENIZER_ENCODER_NAME)
+    tokenizer_model = Model(filtered_outputs, ov_tokenizer.get_parameters(), TOKENIZER_NAME)
     if with_detokenizer:
-        return tokenizer_model, pipeline.get_decoder_ov_subgraph()
+        return tokenizer_model, pipeline.get_detokenizer_ov_subgraph()
 
     return tokenizer_model
 
@@ -331,7 +332,7 @@ def convert_sentencepiece_model_tokenizer(
     hf_tokenizer: "PreTrainedTokenizerBase",
     add_attention_mask: bool = True,
     with_detokenizer: bool = False,
-    streaming_decoder: bool = False,
+    streaming_detokenizer: bool = False,
 ) -> Union[Model, Tuple[Model, Model]]:
     if not is_sentencepiece_model(hf_tokenizer):
         raise OVTypeError("Cannot convert tokenizer that does not have `.model` file.")
@@ -421,31 +422,31 @@ def convert_sentencepiece_model_tokenizer(
         attention_mask.output(0).tensor.add_names({ATTENTION_MASK_INPUT_NAME})
         outputs.append(attention_mask.output(0))
 
-    tokenizer_encoder = Model(outputs, [input_node], TOKENIZER_ENCODER_NAME)
-    tokenizer_encoder.validate_nodes_and_infer_types()
+    tokenizer = Model(outputs, [input_node], TOKENIZER_NAME)
+    tokenizer.validate_nodes_and_infer_types()
 
     if not with_detokenizer:
-        return tokenizer_encoder
+        return tokenizer
 
-    return tokenizer_encoder, get_sp_decoder(sp_model_node, streaming_decoder=streaming_decoder)
+    return tokenizer, get_sp_detokenizer(sp_model_node, streaming_detokenizer=streaming_detokenizer)
 
 
-def get_sp_decoder(sp_model_node: Node, streaming_decoder: bool = False) -> Model:
+def get_sp_detokenizer(sp_model_node: Node, streaming_detokenizer: bool = False) -> Model:
     token_ids = op.Parameter(Type.i32, PartialShape(["?", "?"]))  # (batch, sequence)
 
-    decoder = _factory.create(
-        "SentencepieceStreamDetokenizer" if streaming_decoder else "SentencepieceDetokenizer",
+    detokenizer = _factory.create(
+        "SentencepieceStreamDetokenizer" if streaming_detokenizer else "SentencepieceDetokenizer",
         [sp_model_node, token_ids],
     ).outputs()
 
-    if streaming_decoder:
-        decoder = RegexDecodingStep.replace_sp_spaces().get_ov_subgraph(decoder)
+    if streaming_detokenizer:
+        detokenizer = RegexDecodingStep.replace_sp_spaces().get_ov_subgraph(detokenizer)
 
-    string_output = _factory.create("StringTensorPack", decoder).outputs()
+    string_output = _factory.create("StringTensorPack", detokenizer).outputs()
     string_output[0].tensor.add_names({STRING_OUTPUT_NAME})
-    tokenizer_decoder = Model(string_output, [token_ids], TOKENIZER_DECODER_NAME)
-    tokenizer_decoder.validate_nodes_and_infer_types()
-    return tokenizer_decoder
+    tokenizer_detokenizer = Model(string_output, [token_ids], DETOKENIZER_NAME)
+    tokenizer_detokenizer.validate_nodes_and_infer_types()
+    return tokenizer_detokenizer
 
 
 def is_tiktoken_model(hf_tokenizer: "PreTrainedTokenizerBase") -> bool:
@@ -482,6 +483,6 @@ def convert_tiktoken_model_tokenizer(
         ]
     )
     if not with_detokenizer:
-        return pipeline.get_encoder_ov_subgraph()
+        return pipeline.get_tokenizer_ov_subgraph()
 
-    return pipeline.get_encoder_ov_subgraph(), pipeline.get_decoder_ov_subgraph()
+    return pipeline.get_tokenizer_ov_subgraph(), pipeline.get_detokenizer_ov_subgraph()

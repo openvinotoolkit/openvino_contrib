@@ -2,10 +2,6 @@
 # Copyright (C) 2018-2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-
-# import os
-# os.environ["OV_TOKENIZER_PREBUILD_EXTENSION_PATH"] = "path/to/libuser_ov_extensions.so"
-
 import numpy as np
 import pytest
 from openvino import Core
@@ -129,11 +125,13 @@ def get_tokenizer(request, fast_tokenizer=True, trust_remote_code=False):
     return hf_tokenizer, compiled_tokenizer
 
 
-def get_tokenizer_detokenizer(request, fast_tokenizer=True, trust_remote_code=False):
+def get_tokenizer_detokenizer(request, fast_tokenizer=True, trust_remote_code=False, streaming_detokenizer=False):
     hf_tokenizer = AutoTokenizer.from_pretrained(
         request.param, use_fast=fast_tokenizer, trust_remote_code=trust_remote_code
     )
-    ov_tokenizer, ov_detokenizer = convert_tokenizer(hf_tokenizer, with_detokenizer=True)
+    ov_tokenizer, ov_detokenizer = convert_tokenizer(
+        hf_tokenizer, with_detokenizer=True, streaming_detokenizer=streaming_detokenizer
+    )
     compiled_tokenizer = core.compile_model(ov_tokenizer)
     compiled_detokenizer = core.compile_model(ov_detokenizer)
     return hf_tokenizer, compiled_tokenizer, compiled_detokenizer
@@ -162,6 +160,13 @@ def sentencepice_tokenizers(request, is_fast_tokenizer):
 @pytest.fixture(scope="session", params=tiktiken_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
 def tiktoken_tokenizers(request):
     return get_tokenizer_detokenizer(request, trust_remote_code=True)
+
+
+@pytest.fixture(
+    scope="session", params=["openlm-research/open_llama_3b_v2"], ids=lambda checkpoint: checkpoint.split("/")[-1]
+)
+def sentencepiece_streaming_tokenizers(request):
+    return get_tokenizer_detokenizer(request, streaming_detokenizer=True)
 
 
 @pytest.mark.parametrize(
@@ -324,18 +329,36 @@ def test_tiktoken_detokenizer(tiktoken_tokenizers, test_string):
     assert ov_output == hf_output
 
 
-def test_streaming_detokenizer():
-    hf_tokenizer = AutoTokenizer.from_pretrained("openlm-research/open_llama_3b_v2")
-    _, ov_detokenizer = convert_tokenizer(hf_tokenizer, with_detokenizer=True, streaming_decoder=True)
-    ov_detokenizer = core.compile_model(ov_detokenizer)
+def test_streaming_detokenizer(sentencepiece_streaming_tokenizers):
+    hf_tokenizer, _, ov_detokenizer = sentencepiece_streaming_tokenizers
 
     test_string = "this is a test string"
     tokenized_string = hf_tokenizer(test_string).input_ids
     hf_detokenized = hf_tokenizer.decode(tokenized_string)
 
-    detokenized_string = ""
+    detokenized_stream = ""
     for token in tokenized_string:
         ov_output = unpack_strings(ov_detokenizer(np.atleast_2d(token))["string_output"])[0]
-        detokenized_string += ov_output
+        detokenized_stream += ov_output
 
-    assert detokenized_string == hf_detokenized
+    assert detokenized_stream == hf_detokenized
+
+
+def test_detokenizer_results_align_with_hf_on_multitoken_symbols_for_streaming():
+    hf_tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen-14B-Chat", trust_remote_code=True)
+    _, ov_detokenizer = convert_tokenizer(hf_tokenizer, with_detokenizer=True)
+    ov_detokenizer = core.compile_model(ov_detokenizer)
+
+    test_string = "🤷‍♂️"  # tokenized into 5 tokens
+    tokenized_string = hf_tokenizer(test_string).input_ids
+
+    detokenized_stream = ""
+    hf_detokenized_stream = ""
+    for token in tokenized_string:
+        ov_output = unpack_strings(ov_detokenizer(np.atleast_2d(token))["string_output"])[0]
+        detokenized_stream += ov_output
+
+        hf_output = hf_tokenizer.decode(token)
+        hf_detokenized_stream += hf_output
+
+    assert detokenized_stream == hf_detokenized_stream
