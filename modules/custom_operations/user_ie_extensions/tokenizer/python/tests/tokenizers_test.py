@@ -9,7 +9,7 @@
 import numpy as np
 import pytest
 from openvino import Core
-from ov_tokenizer import (
+from openvino_tokenizers import (
     convert_tokenizer,
     pack_strings,
     unpack_strings,
