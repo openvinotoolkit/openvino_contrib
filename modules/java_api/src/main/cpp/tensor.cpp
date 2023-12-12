@@ -55,6 +55,34 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorFloat(JNIEnv *env, 
     return 0;
 }
 
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorInt(JNIEnv *env, jobject, jintArray shape, jintArray data)
+{
+    JNI_METHOD(
+        "TensorInt",
+        Shape input_shape = jintArrayToVector(env, shape);
+        Tensor *ov_tensor = new Tensor(element::i32, input_shape);
+
+        env->GetIntArrayRegion(data, 0, ov_tensor->get_size(), (jint*)ov_tensor->data());
+
+        return (jlong)ov_tensor;
+    );
+    return 0;
+}
+
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorLong(JNIEnv *env, jobject, jintArray shape, jlongArray data)
+{
+    JNI_METHOD(
+        "TensorLong",
+        Shape input_shape = jintArrayToVector(env, shape);
+        Tensor *ov_tensor = new Tensor(element::i64, input_shape);
+
+        env->GetLongArrayRegion(data, 0, ov_tensor->get_size(), (jlong*)ov_tensor->data());
+
+        return (jlong)ov_tensor;
+    );
+    return 0;
+}
+
 JNIEXPORT jint JNICALL Java_org_intel_openvino_Tensor_GetSize(JNIEnv *env, jobject, jlong addr)
 {
     JNI_METHOD(
@@ -104,6 +132,29 @@ JNIEXPORT jfloatArray JNICALL Java_org_intel_openvino_Tensor_asFloat(JNIEnv *env
             arr[i] = data[i];
 
         env->ReleaseFloatArrayElements(result, arr, 0);
+        return result;
+    )
+    return 0;
+}
+
+JNIEXPORT jintArray JNICALL Java_org_intel_openvino_Tensor_asInt(JNIEnv *env, jobject, jlong addr)
+{
+    JNI_METHOD(
+        "asInt",
+        Tensor *ov_tensor = (Tensor *)addr;
+
+        size_t size = ov_tensor->get_size();
+        const int *data = ov_tensor->data<const int>();
+
+        jintArray result = env->NewIntArray(size);
+        if (!result) {
+            throw std::runtime_error("Out of memory!");
+        } jint *arr = env->GetIntArrayElements(result, nullptr);
+
+        for (size_t i = 0; i < size; ++i)
+            arr[i] = data[i];
+
+        env->ReleaseIntArrayElements(result, arr, 0);
         return result;
     )
     return 0;

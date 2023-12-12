@@ -3,6 +3,7 @@
 
 package org.intel.openvino;
 
+import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
 
@@ -56,6 +57,51 @@ public class Core extends Wrapper {
     }
 
     /**
+     * Reads and loads a compiled model from the IR/ONNX/PDPD file to the default OpenVINO device
+     * selected by the AUTO plugin.
+     *
+     * <p>This can be more efficient, especially when caching is enabled and a cached model is
+     * available, than using the read_model followed by compile_model flow.
+     *
+     * @param path Path to a model.
+     * @return A compiled model.
+     */
+    public CompiledModel compile_model(final String path) {
+        return new CompiledModel(CompileModel1(nativeObj, path));
+    }
+
+    /**
+     * Reads and loads a compiled model from the IR/ONNX/PDPD file.
+     *
+     * <p>This can be more efficient, especially when caching is enabled and a cached model is
+     * available, than using the read_model followed by compile_model flow.
+     *
+     * @param path Path to a model.
+     * @param device Name of a device to load a model to.
+     * @return A compiled model.
+     */
+    public CompiledModel compile_model(final String path, final String device) {
+        return new CompiledModel(CompileModel2(nativeObj, path, device));
+    }
+
+    /**
+     * Reads and loads a compiled model from the IR/ONNX/PDPD file.
+     *
+     * <p>This can be more efficient, especially when caching is enabled and a cached model is
+     * available, than using the read_model followed by compile_model flow.
+     *
+     * @param path Path to a model.
+     * @param device Name of a device to load a model to.
+     * @param properties Map of pairs: (property name, property value) relevant only for this load
+     *     operation.
+     * @return A compiled model.
+     */
+    public CompiledModel compile_model(
+            final String path, final String device, final Map<String, String> properties) {
+        return new CompiledModel(CompileModel3(nativeObj, path, device, properties));
+    }
+
+    /**
      * Creates a compiled model from a source model object.
      *
      * <p>Users can create as many compiled models as they need and use them simultaneously (up to
@@ -67,6 +113,24 @@ public class Core extends Wrapper {
      */
     public CompiledModel compile_model(Model model, final String device) {
         return new CompiledModel(CompileModel(nativeObj, model.getNativeObjAddr(), device));
+    }
+
+    /**
+     * Creates a compiled model from a source model object.
+     *
+     * <p>Users can create as many compiled models as they need and use them simultaneously (up to
+     * the limitation of the hardware resources).
+     *
+     * @param model Model object acquired from {@link Core#read_model}.
+     * @param device Name of a device to load a model to.
+     * @param properties properties – Map of pairs: (property name, property value) relevant only
+     *     for this load operation.
+     * @return A compiled model.
+     */
+    public CompiledModel compile_model(
+            Model model, final String device, final Map<String, String> properties) {
+        return new CompiledModel(
+                CompileModel4(nativeObj, model.getNativeObjAddr(), device, properties));
     }
 
     /**
@@ -93,6 +157,19 @@ public class Core extends Wrapper {
         SetProperty(nativeObj, device, prop);
     }
 
+    /**
+     * Returns the devices available for inference.
+     *
+     * @return List of devices.
+     *     <p>The devices are returned as { CPU, GPU.0, GPU.1, GNA }. If there is more than one
+     *     device of a specific type, they are enumerated with the .# suffix. Such enumerated device
+     *     can later be used as a device name in all Core methods like {@link Core#compile_model},
+     *     {@link Core#set_property} and so on.
+     */
+    public List<String> get_available_devices() {
+        return GetAvailableDevices(nativeObj);
+    }
+
     /*----------------------------------- native methods -----------------------------------*/
 
     private static native long GetCore();
@@ -106,10 +183,26 @@ public class Core extends Wrapper {
 
     private static native long CompileModel(long core, long net, final String device);
 
+    private static native long CompileModel1(long core, final String device);
+
+    private static native long CompileModel2(
+            long core, final String modelPath, final String device);
+
+    private static native long CompileModel4(
+            long core, long net, final String device, final Map<String, String> properties);
+
+    private static native long CompileModel3(
+            long core,
+            final String modelPath,
+            final String device,
+            final Map<String, String> props);
+
     private static native long GetProperty(long core, final String device, final String name);
 
     private static native void SetProperty(
             long core, final String device, final Map<String, String> prop);
+
+    private static native List<String> GetAvailableDevices(long core);
 
     @Override
     protected native void delete(long nativeObj);

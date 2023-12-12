@@ -9,3 +9,6 @@ if (build_java_samples.toBoolean()) {
 if (build_kotlin_samples.toBoolean()) {
     include 'samples:face_detection_kotlin_sample'
 }
+if (build_hello_query_device.toBoolean()) {
+    include 'samples:hello_query_device'
+}

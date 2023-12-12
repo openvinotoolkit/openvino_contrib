@@ -76,6 +76,74 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel(JNIEnv *env, j
     return 0;
 }
 
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel1(JNIEnv *env, jobject obj, jlong coreAddr, jstring path)
+{
+    JNI_METHOD("CompileModel1",
+        std::string n_path = jstringToString(env, path);
+
+        Core *core = (Core *)coreAddr;
+        CompiledModel *compiled_model = new CompiledModel();
+        *compiled_model = core->compile_model(n_path);
+
+        return (jlong)compiled_model;
+    )
+    return 0;
+}
+
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel2(JNIEnv *env, jobject obj, jlong coreAddr, jstring path, jstring device)
+{
+    JNI_METHOD("CompileModel2",
+        std::string n_device = jstringToString(env, device);
+        std::string n_path = jstringToString(env, path);
+
+        Core *core = (Core *)coreAddr;
+        CompiledModel *compiled_model = new CompiledModel();
+        *compiled_model = core->compile_model(n_path, n_device);
+
+        return (jlong)compiled_model;
+    )
+    return 0;
+}
+
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel3(JNIEnv *env, jobject obj, jlong coreAddr, jstring path, jstring device, jobject props)
+{
+    JNI_METHOD("CompileModel3",
+        std::string n_device = jstringToString(env, device);
+        std::string n_path = jstringToString(env, path);
+        AnyMap map;
+        for (const auto& it : javaMapToMap(env, props)) {
+            map[it.first] = it.second;
+        }
+
+        Core *core = (Core *)coreAddr;
+        // AnyMap will be copied inside compile_model, so we don't have to track the lifetime of this object
+        CompiledModel *compiled_model = new CompiledModel();
+        *compiled_model = core->compile_model(n_path, n_device, map);
+
+        return (jlong)compiled_model;
+    )
+    return 0;
+}
+
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel4(JNIEnv *env, jobject obj, jlong coreAddr, jlong modelAddr, jstring device, jobject props)
+{
+    JNI_METHOD("CompileModel4",
+        std::string n_device = jstringToString(env, device);
+        std::shared_ptr<Model> *model = reinterpret_cast<std::shared_ptr<Model> *>(modelAddr);
+        AnyMap map;
+        for (const auto& it : javaMapToMap(env, props)) {
+            map[it.first] = it.second;
+        }
+
+        Core *core = (Core *)coreAddr;
+        CompiledModel *compiled_model = new CompiledModel();
+        *compiled_model = core->compile_model(*model, n_device, map);
+
+        return (jlong)compiled_model;
+    )
+    return 0;
+}
+
 JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_GetProperty(JNIEnv *env, jobject obj, jlong coreAddr, jstring device, jstring name)
 {
     JNI_METHOD("GetProperty",
@@ -102,6 +170,26 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_Core_SetProperty(JNIEnv *env, job
         }
         core->set_property(n_device, map);
     )
+}
+
+JNIEXPORT jobject JNICALL Java_org_intel_openvino_Core_GetAvailableDevices(JNIEnv *env, jobject obj, jlong coreAddr) {
+    JNI_METHOD("GetAvailableDevices",
+        Core *core = (Core *)coreAddr;
+        const std::vector<std::string>& devices_vec = core->get_available_devices();
+
+        jclass arrayClass = env->FindClass("java/util/ArrayList");
+        jmethodID arrayInit = env->GetMethodID(arrayClass, "<init>", "()V");
+        jobject arrayObj = env->NewObject(arrayClass, arrayInit);
+        jmethodID arrayAdd = env->GetMethodID(arrayClass, "add", "(Ljava/lang/Object;)Z");
+
+        for (const std::string &item : devices_vec) {
+            jstring device = env->NewStringUTF(item.c_str());
+            env->CallObjectMethod(arrayObj, arrayAdd, device);
+        }
+
+        return arrayObj;
+    )
+    return 0;
 }
 
 JNIEXPORT void JNICALL Java_org_intel_openvino_Core_delete(JNIEnv *, jobject, jlong addr)
