@@ -111,7 +111,10 @@ jobs:
       brew install scons
       # Speed up build
       brew install ninja
-
+      # install python wheel dependencies
+      python3.10 -m pip install --upgrade pip
+      python3.10 -m pip install -r $(OPENVINO_REPO_DIR)/src/bindings/python/wheel/requirements-dev.txt
+      python3.10 -m pip install -r $(OPENVINO_REPO_DIR)/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
     workingDirectory: $(WORK_DIR)
     displayName: 'Install dependencies'
 
@@ -162,7 +165,6 @@ jobs:
       source venv/bin/activate && source $(SETUPVARS)
       python -m pip install --upgrade pip
       python -m pip install -r $(REPO_DIR)/modules/custom_operations/tests/requirements.txt
-      python -m pip install $(OPENVINO_REPO_DIR)/tools/mo/
       # Find and install wheel
       pushd $(INSTALL_DIR)/tools
         wheel_name=$(find . -name 'openvino-*.whl')
@@ -178,6 +180,9 @@ jobs:
     workingDirectory: $(WORK_DIR)
     displayName: 'Build tokenizers wheel'
 
+  - publish: $(BUILD_WHEEL_DIR)
+    artifact: Wheels
+
   - script: |
       source $(WORK_DIR)/venv/bin/activate
       # Find and install wheel
@@ -187,9 +192,6 @@ jobs:
       popd
     workingDirectory: $(WORK_DIR)
     displayName: 'Install tokenizers wheel'
-
-  - publish: $(BUILD_WHEEL_DIR)
-    artifact: Wheels
 
   - script: |
       source $(WORK_DIR)/venv/bin/activate
