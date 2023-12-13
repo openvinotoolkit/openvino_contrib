@@ -48,7 +48,7 @@ jobs:
     MODELS_PATH: $(REPO_DIR)/../testdata
     WORK_DIR: $(Pipeline.Workspace)/_w
     BUILD_DIR: $(WORK_DIR)/build
-    BUILD_WHEEL_DIR: $(BUILD_DIR)/wheels
+    BUILD_WHEEL_DIR: $(BUILD_DIR)/tokenizers_wheels
     BIN_DIR: $(OPENVINO_REPO_DIR)/bin/intel64/$(BUILD_TYPE)
     INSTALL_DIR: $(WORK_DIR)/install_pkg
     SETUPVARS: $(INSTALL_DIR)/setupvars.sh
@@ -121,7 +121,6 @@ jobs:
     inputs:
       cmakeArgs: >
         -GNinja
-        -DVERBOSE_BUILD=ON
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
         -DBUILD_nvidia_plugin=OFF
         -DENABLE_INTEL_GNA=OFF
@@ -139,15 +138,13 @@ jobs:
   - script: ls -alR $(OPENVINO_REPO_DIR)/temp/
     displayName: 'List temp SDKs'
 
-  - script: ninja
-    workingDirectory: $(BUILD_DIR)
+  - script: cmake --build $(BUILD_DIR) --parallel
     displayName: 'Build Lin'
 
   - script: ls -alR $(OPENVINO_REPO_DIR)/bin/
     displayName: 'List bin files'
 
-  - script: cmake -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR) -P cmake_install.cmake
-    workingDirectory: $(BUILD_DIR)
+  - script: cmake -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR) -P $(BUILD_DIR)/cmake_install.cmake
     displayName: 'Install'
 
   - script: ls -alR $(INSTALL_DIR)
@@ -164,6 +161,7 @@ jobs:
     displayName: 'Java tests'
 
   - script: |
+      set -e
       python3 -m pip install --user virtualenv
       python3 -m virtualenv -p /usr/bin/python3.8 .env3
       source .env3/bin/activate && source $(SETUPVARS)
@@ -174,6 +172,7 @@ jobs:
     displayName: 'Create virtual env'
 
   - script: |
+      set -e
       source $(WORK_DIR)/.env3/bin/activate
       # need to enable sparse_conv tests with new Open3D release
       python -m pytest -k "not sparse_conv" tests/run_tests.py
@@ -183,6 +182,7 @@ jobs:
     displayName: 'Custom user operation tests'
 
   - script: |
+      set -e
       source $(WORK_DIR)/.env3/bin/activate && source $(SETUPVARS)
       python -m pip install build
       python -m build --wheel --outdir $(BUILD_WHEEL_DIR) $(REPO_DIR)/modules/custom_operations
@@ -193,6 +193,7 @@ jobs:
     artifact: Wheels
 
   - script: |
+      set -e
       source $(WORK_DIR)/.env3/bin/activate
       # Find and install wheel
       pushd $(BUILD_WHEEL_DIR)
@@ -203,6 +204,7 @@ jobs:
     displayName: 'Install tokenizers wheel'
 
   - script: |
+      set -e
       source $(WORK_DIR)/.env3/bin/activate
       bandit -c pyproject.toml -r user_ie_extensions/tokenizer/python/
     workingDirectory: $(REPO_DIR)/modules/custom_operations
