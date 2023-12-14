@@ -20,6 +20,7 @@ def convert_tokenizer(
     number_of_inputs: int = 1,
     with_detokenizer: bool = False,
     streaming_detokenizer: bool = False,
+    skip_special_tokens: bool = False,
     tokenizer_output_type: Type = Type.i64,
     detokenizer_input_type: Type = Type.i64,
 ) -> Union[Model, Tuple[Model, Model]]:
@@ -48,12 +49,14 @@ def convert_tokenizer(
                     add_attention_mask=True,
                     with_detokenizer=with_detokenizer,
                     streaming_detokenizer=streaming_detokenizer,
+                    skip_special_tokens=skip_special_tokens,
                 )
             elif is_tiktoken_model(tokenizer_object):
                 logger.info("Convert tiktoken-based tokenizer")
                 ov_tokenizers = convert_tiktoken_model_tokenizer(
                     tokenizer_object,
                     with_detokenizer=with_detokenizer,
+                    skip_special_tokens=skip_special_tokens,
                 )
             elif isinstance(tokenizer_object, PreTrainedTokenizerFast):
                 logger.info("Convert Huggingface Fast tokenizer pipeline.")
@@ -61,6 +64,7 @@ def convert_tokenizer(
                     tokenizer_object,
                     number_of_inputs=number_of_inputs,
                     with_detokenizer=with_detokenizer,
+                    skip_special_tokens=skip_special_tokens,
                 )
 
     if ov_tokenizers is None:

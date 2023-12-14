@@ -5,6 +5,7 @@
 import json
 import tempfile
 from copy import deepcopy
+from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -124,7 +125,7 @@ class TransformersTokenizerPipelineParser:
         self.number_of_inputs = number_of_inputs
         self.num_of_added_tokens = 0
 
-    def parse(self, number_of_inputs: Optional[int] = None) -> TokenizerPipeline:
+    def parse(self, number_of_inputs: Optional[int] = None, skip_special_tokens: bool = False) -> TokenizerPipeline:
         self.number_of_inputs = self.number_of_inputs if number_of_inputs is None else number_of_inputs
         self.pipeline.number_of_inputs = self.number_of_inputs
         for add_steps in [
@@ -132,7 +133,7 @@ class TransformersTokenizerPipelineParser:
             self.pre_tokenization,
             self.tokenization_model,
             self.post_tokenization,
-            self.decoding,
+            partial(self.decoding, skip_special_tokens=skip_special_tokens),
         ]:
             add_steps()
 
@@ -261,12 +262,13 @@ class TransformersTokenizerPipelineParser:
         else:
             self.pipeline.add_steps(PaddingStep())
 
-    def decoding(self) -> None:
+    def decoding(self, skip_special_tokens: bool = False) -> None:
         if self.tokenizer_json["decoder"] is None:
             return
 
+        skip_tokens = parse_special_tokens(self.original_tokenizer) if skip_special_tokens else {}
         if self.tokenizer_json["decoder"]["type"] == "ByteLevel":
-            self.pipeline.add_steps(VocabDecoderStep())
+            self.pipeline.add_steps(VocabDecoderStep(list(skip_tokens)))
             self.pipeline.add_steps(CharsToBytesStep())
 
         if self.original_tokenizer.clean_up_tokenization_spaces and self.pipeline.decoding_steps:
@@ -274,12 +276,28 @@ class TransformersTokenizerPipelineParser:
         return
 
 
+
+def parse_special_tokens(hf_tokenizer: "PreTrainedTokenizerBase") -> Dict[int, str]:
+            # the order matters
+    if getattr(hf_tokenizer, "added_tokens_decoder", False):
+        return {idx: added_token.content for idx, added_token in hf_tokenizer.added_tokens_decoder.items()}
+    elif getattr(hf_tokenizer, "tokenizer", False) and getattr(hf_tokenizer.tokenizer, "index_special_tokens", False):
+        return  hf_tokenizer.tokenizer.index_special_tokens
+    elif getattr(hf_tokenizer, "special_tokens", False):
+        return {idx: token for token, idx in sorted(hf_tokenizer.special_tokens.items(), key=lambda x: x[1])}
+
+    return {}
+
+
 def convert_fast_tokenizer(
     hf_tokenizer: "PreTrainedTokenizerBase",
     number_of_inputs: int = 1,
     with_detokenizer: bool = False,
+    skip_special_tokens: bool = False,
 ) -> Union[Model, Tuple[Model, Model]]:
-    pipeline = TransformersTokenizerPipelineParser(hf_tokenizer).parse(number_of_inputs=number_of_inputs)
+    pipeline = TransformersTokenizerPipelineParser(hf_tokenizer).parse(
+        number_of_inputs=number_of_inputs, skip_special_tokens=skip_special_tokens
+    )
     ov_tokenizer = pipeline.get_tokenizer_ov_subgraph()
     output_names = hf_tokenizer.model_input_names
 
@@ -312,17 +330,27 @@ def is_sentencepiece_model(hf_tokenizer: "PreTrainedTokenizerBase") -> bool:
     return getattr(hf_tokenizer, "vocab_files_names", {}).get("vocab_file", "").endswith(".model")
 
 
-def add_tokens_to_sentencepiece_model(sp_model_path: Path, hf_tokenizer: "PreTrainedTokenizerBase") -> None:
+def modify_sentencepiece_model(
+        sp_model_path: Path, add_tokens: Dict[int, str], skip_special_tokens: bool = False
+) -> None:
     model_pb = import_protobuf()
     model = model_pb.ModelProto()
     with open(sp_model_path, "rb") as model_file:
         model.ParseFromString(model_file.read())
 
-    add_token_dict = hf_tokenizer.tokenizer.index_special_tokens
-    for idx, token in sorted(add_token_dict.items()):
-        new_piece = deepcopy(model.pieces[-1])
-        new_piece.piece = token
-        model.pieces.append(new_piece)
+    existing = {piece.piece: piece for piece in model.pieces}
+
+    for idx, token in sorted(add_tokens.items()):
+        if token not in existing:
+            new_piece = deepcopy(model.pieces[-1])
+            new_piece.piece = token
+            model.pieces.append(new_piece)
+        else:
+            new_piece = existing[token]
+
+        if skip_special_tokens and new_piece.type != 2:  # type 2 is for unk symbol
+            new_piece.type = 3   # make it control symbol so it will not decode during detokenization
+
 
     with open(sp_model_path, "wb") as model_file:
         model_file.write(model.SerializeToString())
@@ -333,6 +361,7 @@ def convert_sentencepiece_model_tokenizer(
     add_attention_mask: bool = True,
     with_detokenizer: bool = False,
     streaming_detokenizer: bool = False,
+                skip_special_tokens: bool = False,
 ) -> Union[Model, Tuple[Model, Model]]:
     if not is_sentencepiece_model(hf_tokenizer):
         raise OVTypeError("Cannot convert tokenizer that does not have `.model` file.")
@@ -343,8 +372,8 @@ def convert_sentencepiece_model_tokenizer(
         hf_tokenizer.save_pretrained(tmp)
         vocab_file = Path(tmp) / hf_tokenizer.vocab_files_names["vocab_file"]
 
-        if is_chatglm := getattr(hf_tokenizer, "name", None) == "GLMTokenizer":
-            add_tokens_to_sentencepiece_model(vocab_file, hf_tokenizer)
+        add_tokens = parse_special_tokens(hf_tokenizer)
+        modify_sentencepiece_model(vocab_file, add_tokens, skip_special_tokens)
 
         sp_model = np.fromfile(vocab_file, dtype=np.uint8)
         sp_model_node = as_node(sp_model)
@@ -356,6 +385,7 @@ def convert_sentencepiece_model_tokenizer(
     input_node = op.Parameter(Type.u8, PartialShape(["?"]))
     input_node.set_friendly_name("string_input")
 
+    is_chatglm = getattr(hf_tokenizer, "name", None) == "GLMTokenizer"
     if is_chatglm:
         add_eos_token = False
     elif hasattr(hf_tokenizer, "add_eos_token"):
@@ -463,11 +493,16 @@ def is_tiktoken_model(hf_tokenizer: "PreTrainedTokenizerBase") -> bool:
 def convert_tiktoken_model_tokenizer(
     hf_tokenizer: "PreTrainedTokenizerBase",
     with_detokenizer: bool = False,
+    skip_special_tokens: bool = False,
 ) -> Union[Model, Tuple[Model, Model]]:
     encoding = getattr(hf_tokenizer, "tokenizer", None) or hf_tokenizer.encoder
     split_pattern = encoding._pat_str
 
     pipeline = TokenizerPipeline()
+    skip_tokens = []
+    if skip_special_tokens:
+        skip_tokens = list(parse_special_tokens(hf_tokenizer))
+
     pipeline.add_steps(
         [
             NormalizeUnicode("NFC"),
@@ -478,7 +513,7 @@ def convert_tiktoken_model_tokenizer(
                 max_length=hf_tokenizer.model_max_length, truncate_right=(hf_tokenizer.truncation_side == "right")
             ),
             PaddingStep(pad_right=(hf_tokenizer.padding_side == "right")),
-            VocabDecoderStep(),
+            VocabDecoderStep(skip_tokens),
             CharsToBytesStep(),
         ]
     )

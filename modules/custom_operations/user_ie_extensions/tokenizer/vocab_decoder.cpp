@@ -7,6 +7,8 @@
 #    pragma warning(disable : 4275)
 #endif
 
+#include <algorithm>
+
 #include "fast_tokenizer/normalizers/normalizers.h"
 #include "fast_tokenizer/models/models.h"
 #include "fast_tokenizer/pretokenizers/pretokenizers.h"
@@ -62,13 +64,14 @@ bool VocabDecoder::evaluate(ov::TensorVector& outputs, const ov::TensorVector& i
 
         for(size_t seq = new_ragged_begins[batch]; seq < new_ragged_ends[batch]; ++seq) {
             auto token_id = input_data[seq];
-            auto token = vocab[token_id];
+            if (!(std::find(m_skip_tokens.begin(), m_skip_tokens.end(), token_id) != m_skip_tokens.end())) {
+                auto token = vocab[token_id];
+                std::copy(token.begin(), token.end(), &new_chars[char_offset]);
 
-            std::copy(token.begin(), token.end(), &new_chars[char_offset]);
-
-            new_begins[seq] = char_offset;
-            char_offset += token.size();
-            new_ends[seq] = char_offset;
+                new_begins[seq] = char_offset;
+                char_offset += token.size();
+                new_ends[seq] = char_offset;
+            }
         }
     }
     outputs[4].set_shape({char_offset});

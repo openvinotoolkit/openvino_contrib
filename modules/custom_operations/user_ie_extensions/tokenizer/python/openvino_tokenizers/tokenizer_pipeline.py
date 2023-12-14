@@ -657,12 +657,19 @@ class DecodingStep(BasePipelineStep):
 
 @dataclass
 class VocabDecoderStep(DecodingStep):
+    skip_tokens: Optional[List[int]] = None
+
+    def __post_init__(self):
+        if self.skip_tokens is None:
+            self.skip_tokens = self.get_pipeline().skip_tokens or {}
+
     def get_vocab_node_outputs(self) -> Optional[List[Output]]:
         return self.get_pipeline().vocab_node_outputs
 
     def get_ov_subgraph(self, input_nodes: List[Output]) -> List[Output]:
         input_nodes.extend(self.get_vocab_node_outputs())
-        return _factory.create("VocabDecoder", input_nodes, {}).outputs()
+        print(f"Skip Tokens Size: {len(self.skip_tokens)}")
+        return _factory.create("VocabDecoder", input_nodes, {"skip_tokens": self.skip_tokens}).outputs()
 
 
 @dataclass
@@ -704,6 +711,7 @@ class RegexDecodingStep(DecodingStep):
 class TokenizerPipeline:
     steps: List[BasePipelineStep] = field(default_factory=list)
     vocab: Optional[List[str]] = field(default=None, repr=False)
+    skip_tokens: Optional[List[int]] = field(default=None, repr=False)
     number_of_inputs: int = 1
     vocab_node_outputs: Optional[List[Output]] = field(default=None, repr=False)
 
