@@ -120,8 +120,13 @@ else()
     message(FATAL_ERROR "Platform ${CMAKE_SYSTEM_NAME} ${CMAKE_SYSTEM_PROCESSOR} does not have prebuilt Fast Tokenizer"
                         "Please, use -DBUILD_FAST_TOKENIZERS=ON cmake option to enable build from soures")
   endif()
+
   FetchContent_MakeAvailable(fast_tokenizer)
+  # to allow find_library to work with conda-forge env
+  set(_old_CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ${CMAKE_FIND_ROOT_PATH_MODE_LIBRARY})
+  set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY NEVER)
   include("${fast_tokenizer_SOURCE_DIR}/FastTokenizer.cmake")
+  set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ${_old_CMAKE_FIND_ROOT_PATH_MODE_LIBRARY})
 
   set(fast_tokenizer_SOURCE_DIR "${fast_tokenizer_SOURCE_DIR}" PARENT_SCOPE)
 
@@ -168,8 +173,8 @@ if(BUILD_FAST_TOKENIZERS)
 else()
   if(WIN32 AND X86_64)
     set(extra_libs "${fast_tokenizer_SOURCE_DIR}/lib/core_tokenizers.dll"
-                  "${fast_tokenizer_SOURCE_DIR}/third_party/lib/icudt70.dll"
-                  "${fast_tokenizer_SOURCE_DIR}/third_party/lib/icuuc70.dll" PARENT_SCOPE)
+                   "${fast_tokenizer_SOURCE_DIR}/third_party/lib/icudt70.dll"
+                   "${fast_tokenizer_SOURCE_DIR}/third_party/lib/icuuc70.dll" PARENT_SCOPE)
   elseif(LINUX)
     set(extra_libs "${fast_tokenizer_SOURCE_DIR}/lib/libcore_tokenizers.so" PARENT_SCOPE)
   elseif(APPLE)

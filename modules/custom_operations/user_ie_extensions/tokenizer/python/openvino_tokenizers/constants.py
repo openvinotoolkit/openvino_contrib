@@ -8,5 +8,5 @@ STRING_OUTPUT_NAME = "string_output"
 
 GREEDY_DECODER_NAME = "greedy_decoder"
 
-TOKENIZER_ENCODER_NAME = "tokenizer_encoder"
-TOKENIZER_DECODER_NAME = "tokenizer_decoder"
+TOKENIZER_NAME = "tokenizer"
+DETOKENIZER_NAME = "detokenizer"

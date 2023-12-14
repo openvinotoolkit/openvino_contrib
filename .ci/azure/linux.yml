@@ -52,7 +52,6 @@ jobs:
     BIN_DIR: $(OPENVINO_REPO_DIR)/bin/intel64/$(BUILD_TYPE)
     INSTALL_DIR: $(WORK_DIR)/install_pkg
     SETUPVARS: $(INSTALL_DIR)/setupvars.sh
-    CUSTOM_OP_LIB: $(BIN_DIR)/libuser_ov_extensions.so
     GRADLE_VER: 7.1.1
 
   steps:
@@ -104,8 +103,7 @@ jobs:
       unzip gradle-$(GRADLE_VER)-bin.zip
       # For opencv-python: python3-setuptools and pip upgrade
       python3 -m pip install --upgrade pip
-      python3 -m pip install -r $(OPENVINO_REPO_DIR)/src/bindings/python/requirements.txt
-      python3 -m pip install -r $(OPENVINO_REPO_DIR)/src/bindings/python/requirements_test.txt
+      python3 -m pip install -r $(OPENVINO_REPO_DIR)/src/bindings/python/wheel/requirements-dev.txt
       python3 -m pip install -r $(OPENVINO_REPO_DIR)/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
       # Speed up build
       wget https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-linux.zip
@@ -172,9 +170,17 @@ jobs:
       python -m pip install --upgrade pip
       python -m pip install -r $(REPO_DIR)/modules/custom_operations/tests/requirements.txt
       python -m pip install $(INSTALL_DIR)/tools/openvino-*.whl
-      python -m pip install $(OPENVINO_REPO_DIR)/tools/mo/
     workingDirectory: $(WORK_DIR)
     displayName: 'Create virtual env'
+
+  - script: |
+      source $(WORK_DIR)/.env3/bin/activate
+      # need to enable sparse_conv tests with new Open3D release
+      python -m pytest -k "not sparse_conv" tests/run_tests.py
+    env:
+      CUSTOM_OP_LIB: $(BIN_DIR)/libuser_ov_extensions.so
+    workingDirectory: $(REPO_DIR)/modules/custom_operations
+    displayName: 'Custom user operation tests'
 
   - script: |
       source $(WORK_DIR)/.env3/bin/activate && source $(SETUPVARS)
@@ -183,25 +189,24 @@ jobs:
     workingDirectory: $(WORK_DIR)
     displayName: 'Build tokenizers wheel'
 
-  - script: |
-      source $(WORK_DIR)/.env3/bin/activate
-      # Find and install wheel
-      pushd $(BUILD_WHEEL_DIR)
-        wheel_name=$(find . -name 'ov_tokenizer*.whl')
-        python3 -m pip install $wheel_name[all]
-      popd
-    workingDirectory: $(WORK_DIR)
-    displayName: 'Install tokenizers wheel'
-
   - publish: $(BUILD_WHEEL_DIR)
     artifact: Wheels
 
   - script: |
       source $(WORK_DIR)/.env3/bin/activate
-      # need to enable sparse_conv tests with new Open3D release
-      python -m pytest -k "not sparse_conv" tests/run_tests.py
+      # Find and install wheel
+      pushd $(BUILD_WHEEL_DIR)
+        wheel_name=$(find . -name 'openvino_tokenizers*.whl')
+        python3 -m pip install $wheel_name[all]
+      popd
+    workingDirectory: $(WORK_DIR)
+    displayName: 'Install tokenizers wheel'
+
+  - script: |
+      source $(WORK_DIR)/.env3/bin/activate
+      bandit -c pyproject.toml -r user_ie_extensions/tokenizer/python/
     workingDirectory: $(REPO_DIR)/modules/custom_operations
-    displayName: 'Custom user operation tests'
+    displayName: 'Tokenizers Bandit Check'
 
   - script: |
       source $(WORK_DIR)/.env3/bin/activate

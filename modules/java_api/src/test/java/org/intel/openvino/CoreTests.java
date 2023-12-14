@@ -5,6 +5,7 @@ import static org.junit.Assert.*;
 import org.junit.Test;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class CoreTests extends OVTest {
@@ -14,6 +15,26 @@ public class CoreTests extends OVTest {
     public void testReadModel() {
         Model net = core.read_model(modelXml, modelBin);
         assertTrue(!net.get_name().isEmpty());
+    }
+
+    @Test
+    public void testCompileModelFromFileDeviceAuto() {
+        CompiledModel model = core.compile_model(modelXml);
+        assertTrue(model instanceof CompiledModel);
+    }
+
+    @Test
+    public void testCompileModelFromFile() {
+        CompiledModel model = core.compile_model(modelXml, device);
+        assertTrue(model instanceof CompiledModel);
+    }
+
+    @Test
+    public void testCompileModelWithProps() {
+        Map<String, String> properties = new HashMap<>();
+        properties.put("INFERENCE_NUM_THREADS", "1");
+        CompiledModel model = core.compile_model(modelXml, device, properties);
+        assertTrue(model instanceof CompiledModel);
     }
 
     @Test
@@ -71,5 +92,11 @@ public class CoreTests extends OVTest {
 
         config.put("CPU_THROUGHPUT_STREAMS", "1");
         core.set_property("CPU", config); // Restore
+    }
+
+    @Test
+    public void testAvailableDevices() {
+        List<String> availableDevices = core.get_available_devices();
+        assertNotNull(availableDevices);
     }
 }

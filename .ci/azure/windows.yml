@@ -53,7 +53,6 @@ jobs:
     MSVC_COMPILER_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.24.28314\bin\Hostx64\x64\cl.exe
     INSTALL_DIR: $(WORK_DIR)\install_pkg
     SETUPVARS: $(INSTALL_DIR)\setupvars.bat
-    CUSTOM_OP_LIB: $(BUILD_DIR_CONTRIB)\user_ie_extensions\user_ov_extensions.dll
     GRADLE_VER: 7.1.1
     PYTHON_EXE: C:\hostedtoolcache\windows\Python\3.8.2\x64\python.exe
 
@@ -103,9 +102,7 @@ jobs:
       call $(SETUPVARS) -pyver 3.8
       $(PYTHON_EXE) -m pip install --upgrade pip
       $(PYTHON_EXE) -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\src\compatibility\openvino\requirements-dev.txt
-      $(PYTHON_EXE) -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\requirements.txt
-      $(PYTHON_EXE) -m pip install -r $(REPO_DIR)\modules\custom_operations\tests\requirements.txt
-      $(PYTHON_EXE) -m pip install $(OPENVINO_REPO_DIR)\tools\mo
+      $(PYTHON_EXE) -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\wheel\requirements-dev.txt
       powershell -command "Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))"
       choco install opencv -y
     workingDirectory: $(WORK_DIR)
@@ -170,23 +167,6 @@ jobs:
 
   - script: |
       call $(SETUPVARS)
-      $(PYTHON_EXE) -m pip install build
-      $(PYTHON_EXE) -m build --wheel --outdir $(BUILD_WHEEL_DIR) $(REPO_DIR)\modules\custom_operations
-    workingDirectory: $(WORK_DIR)
-    displayName: 'Build tokenizers wheel'
-
-  - powershell: |
-      # Find and install the wheel
-      $wheelPath=Get-ChildItem -Path "$(BUILD_WHEEL_DIR)" -Filter ov_tokenizer*.whl | % { $_.FullName }
-      $(PYTHON_EXE) -m pip install "$wheelPath[all]"
-    workingDirectory: $(WORK_DIR)
-    displayName: 'Install tokenizers wheel'
-
-  - publish: $(BUILD_WHEEL_DIR)
-    artifact: Wheels
-
-  - script: |
-      call $(SETUPVARS)
       set PATH=$(WORK_DIR)\gradle-$(GRADLE_VER)-bin\gradle-$(GRADLE_VER)\bin;%PATH%
       gradle clean build --info
       gradle test -Prun_tests -DMODELS_PATH=$(MODELS_PATH) -Ddevice=CPU --info
@@ -196,9 +176,29 @@ jobs:
   - script: |
       call C:\tools\opencv\build\setup_vars_opencv4.cmd
       call $(SETUPVARS) -pyver 3.8 && ^
+      $(PYTHON_EXE) -m pip install -r $(REPO_DIR)\modules\custom_operations\tests\requirements.txt
       $(PYTHON_EXE) -m pytest -k "not sparse_conv" tests\run_tests.py
+    env:
+        CUSTOM_OP_LIB: $(BUILD_DIR_CONTRIB)\user_ie_extensions\user_ov_extensions.dll
     workingDirectory: $(REPO_DIR)\modules\custom_operations
     displayName: 'Custom user operation tests'
+
+  - script: |
+      call $(SETUPVARS)
+      $(PYTHON_EXE) -m pip install build
+      $(PYTHON_EXE) -m build --wheel --outdir $(BUILD_WHEEL_DIR) $(REPO_DIR)\modules\custom_operations
+    workingDirectory: $(WORK_DIR)
+    displayName: 'Build tokenizers wheel'
+
+  - publish: $(BUILD_WHEEL_DIR)
+    artifact: Wheels
+
+  - powershell: |
+      # Find and install the wheel
+      $wheelPath=Get-ChildItem -Path "$(BUILD_WHEEL_DIR)" -Filter openvino_tokenizers*.whl | % { $_.FullName }
+      $(PYTHON_EXE) -m pip install "$wheelPath[all]"
+    workingDirectory: $(WORK_DIR)
+    displayName: 'Install tokenizers wheel'
 
   - script: |
       call $(SETUPVARS) -pyver 3.8 && ^

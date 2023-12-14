@@ -109,23 +109,38 @@ target_compile_definitions(${TARGET_NAME} PRIVATE IMPLEMENT_OPENVINO_EXTENSION_A
 # TODO: remove
 target_include_directories(${TARGET_NAME} PUBLIC ./include/)
 
-# Wheel packaging using skbuild
-if(DEFINED SKBUILD)
-  # Installing the extension module to the root of the package
-  if(LINUX)
-    set_target_properties(${TARGET_NAME} PROPERTIES INSTALL_RPATH "$ORIGIN")
-    install(TARGETS ${TARGET_NAME} LIBRARY DESTINATION .)
-  elseif(APPLE)
-    set_target_properties(${TARGET_NAME} PROPERTIES INSTALL_RPATH "@loader_path")
-    install(TARGETS ${TARGET_NAME} LIBRARY DESTINATION .)
-  elseif(WIN32 AND X86_64)
-    install(TARGETS ${TARGET_NAME} RUNTIME DESTINATION .)
+#
+# Installation rules
+#
+
+include(GNUInstallDirs)
+
+# setting RPATH / LC_RPATH depending on platform
+if(LINUX)
+  # to find libcore_tokenizer.so in the same folder
+  set(rpaths "$ORIGIN")
+elseif(APPLE)
+  # to find libcore_tokenizer.dylib in the same folder
+  set(rpaths "@loader_path")
+  if(DEFINED SKBUILD)
+    # in case we build pip package, we need to refer to libopenvino.dylib from 'openvino' package
+    list(APPEND rpaths "@loader_path/../../openvino/libs")
+  endif()
+endif()
+if(rpaths)
+  set_target_properties(${TARGET_NAME} PROPERTIES INSTALL_RPATH "${rpaths}")
+endif()
+
+# Installing the extension module to the root of the package
+install(TARGETS ${TARGET_NAME}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT tokenizers
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT tokenizers)
+
+if(extra_libs)
+  if(WIN32)
+    set(extra_libs_location ${CMAKE_INSTALL_BINDIR})
   else()
-    message(FATAL "Unsupported build platform")
+    set(extra_libs_location ${CMAKE_INSTALL_LIBDIR})
   endif()
-
-  if(extra_libs)
-    install(FILES ${extra_libs} DESTINATION .)
-  endif()
-
+  install(FILES ${extra_libs} DESTINATION ${extra_libs_location} COMPONENT tokenizers)
 endif()
