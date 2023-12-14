@@ -33,7 +33,10 @@ elif sys.platform == "linux":
 else:
     sys.exit(f"Error: extension does not support the platform {sys.platform}")
 
-_ext_path = _ext_name if os.environ.get("CONDA_PREFIX") else (_ext_libs_path / _ext_name)
+_ext_path = _ext_libs_path / _ext_name
+if not _ext_path.is_file():
+    # Case when the library can be found in the PATH/LD_LIBRAY_PATH
+    _ext_path = _ext_name
 
 del _ext_name
 del _ext_libs_path
