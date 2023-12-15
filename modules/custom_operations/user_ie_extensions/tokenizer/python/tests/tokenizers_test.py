@@ -5,11 +5,7 @@
 import numpy as np
 import pytest
 from openvino import Core
-from openvino_tokenizers import (
-    convert_tokenizer,
-    pack_strings,
-    unpack_strings,
-)
+from openvino_tokenizers import convert_tokenizer
 from transformers import AutoTokenizer
 
 
@@ -180,7 +176,7 @@ def sentencepiece_streaming_tokenizers(request):
 )
 def test_hf_wordpiece_tokenizers(wordpiece_tokenizers, test_string):
     hf_tokenizer, ov_tokenizer = wordpiece_tokenizers
-    packed_strings = pack_strings([test_string])
+    packed_strings = np.array([test_string])
 
     hf_tokenized = hf_tokenizer([test_string], return_tensors="np")
     ov_tokenized = ov_tokenizer(packed_strings)
@@ -200,7 +196,7 @@ def test_hf_wordpiece_tokenizers(wordpiece_tokenizers, test_string):
 )
 def test_hf_wordpiece_tokenizers_multiple_strings(wordpiece_tokenizers, test_string):
     hf_tokenizer, ov_tokenizer = wordpiece_tokenizers
-    packed_strings = pack_strings(test_string)
+    packed_strings = np.array(test_string)
 
     hf_tokenized = hf_tokenizer(test_string, return_tensors="np", padding=True)
     ov_tokenized = ov_tokenizer(packed_strings)
@@ -222,7 +218,7 @@ def test_sentencepiece_model_tokenizer(sentencepice_tokenizers, test_string):
     hf_tokenizer, ov_tokenizer, _ = sentencepice_tokenizers
 
     hf_tokenized = hf_tokenizer(test_string, return_tensors="np")
-    ov_tokenized = ov_tokenizer(pack_strings([test_string]))
+    ov_tokenized = ov_tokenizer(np.array([test_string]))
 
     for output_name, hf_result in hf_tokenized.items():
         #  chatglm has token_type_ids output that we omit
@@ -244,7 +240,7 @@ def test_sentencepiece_model_detokenizer(sentencepice_tokenizers, test_string):
 
     token_ids = hf_tokenizer(test_string, return_tensors="np").input_ids
     hf_output = hf_tokenizer.batch_decode(token_ids, skip_special_tokens=True)
-    ov_output = unpack_strings(ov_detokenizer(token_ids.astype("int32"))["string_output"])
+    ov_output = ov_detokenizer(token_ids.astype("int32"))["string_output"]
 
     assert ov_output == hf_output
 
@@ -260,7 +256,7 @@ def test_sentencepiece_model_detokenizer(sentencepice_tokenizers, test_string):
 )
 def test_hf_bpe_tokenizers_outputs(bpe_tokenizers, test_string):
     hf_tokenizer, ov_tokenizer, _ = bpe_tokenizers
-    packed_strings = pack_strings([test_string])
+    packed_strings = np.array([test_string])
 
     hf_tokenized = hf_tokenizer([test_string], return_tensors="np")
     ov_tokenized = ov_tokenizer(packed_strings)
@@ -285,7 +281,7 @@ def test_bpe_detokenizer(bpe_tokenizers, test_string):
 
     token_ids = hf_tokenizer(test_string, return_tensors="np").input_ids
     hf_output = hf_tokenizer.batch_decode(token_ids)
-    ov_output = unpack_strings(ov_detokenizer(token_ids.astype("int32"))["string_output"])
+    ov_output = ov_detokenizer(token_ids.astype("int32"))["string_output"]
 
     assert ov_output == hf_output
 
@@ -303,7 +299,7 @@ def test_tiktoken_tokenizers(tiktoken_tokenizers, test_string):
     hf_tokenizer, ov_tokenizer, _ = tiktoken_tokenizers
 
     hf_tokenized = hf_tokenizer(test_string, return_tensors="np")
-    ov_tokenized = ov_tokenizer(pack_strings([test_string]))
+    ov_tokenized = ov_tokenizer(np.array([test_string]))
 
     for output_name, hf_result in hf_tokenized.items():
         if (ov_result := ov_tokenized.get(output_name)) is not None:
@@ -324,7 +320,7 @@ def test_tiktoken_detokenizer(tiktoken_tokenizers, test_string):
 
     token_ids = hf_tokenizer(test_string, return_tensors="np").input_ids
     hf_output = hf_tokenizer.batch_decode(token_ids, skip_special_tokens=True)
-    ov_output = unpack_strings(ov_detokenizer(token_ids.astype("int32"))["string_output"])
+    ov_output = ov_detokenizer(token_ids.astype("int32"))["string_output"]
 
     assert ov_output == hf_output
 
@@ -338,7 +334,7 @@ def test_streaming_detokenizer(sentencepiece_streaming_tokenizers):
 
     detokenized_stream = ""
     for token in tokenized_string:
-        ov_output = unpack_strings(ov_detokenizer(np.atleast_2d(token))["string_output"])[0]
+        ov_output = ov_detokenizer(np.atleast_2d(token))["string_output"][0]
         detokenized_stream += ov_output
 
     assert detokenized_stream == hf_detokenized
@@ -355,7 +351,7 @@ def test_detokenizer_results_align_with_hf_on_multitoken_symbols_for_streaming()
     detokenized_stream = ""
     hf_detokenized_stream = ""
     for token in tokenized_string:
-        ov_output = unpack_strings(ov_detokenizer(np.atleast_2d(token))["string_output"])[0]
+        ov_output = ov_detokenizer(np.atleast_2d(token))["string_output"][0]
         detokenized_stream += ov_output
 
         hf_output = hf_tokenizer.decode(token)
