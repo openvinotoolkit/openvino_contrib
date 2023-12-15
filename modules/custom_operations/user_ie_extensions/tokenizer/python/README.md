@@ -32,7 +32,6 @@ pip install -e .[all]
 from transformers import AutoTokenizer
 from openvino import compile_model
 from openvino_tokenizers import convert_tokenizer
-import numpy as np  # TODO: Remove after OV PythonAPI will support list arguments
 
 hf_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 ov_tokenizer = convert_tokenizer(hf_tokenizer)
@@ -41,7 +40,7 @@ compiled_tokenzier = compile_model(ov_tokenizer)
 text_input = "Test string"
 
 hf_output = hf_tokenizer([text_input], return_tensors="np")
-ov_output = compiled_tokenzier(np.array([text_input]))  # TODO: Remove np.array after OV PythonAPI will support list arguments
+ov_output = compiled_tokenzier([[text_input]])  # TODO: Remove the second pair of square brackets when Python API is ready
 
 for output_name in hf_output:
     print(f"OpenVINO {output_name} = {ov_output[output_name]}")
@@ -60,7 +59,6 @@ for output_name in hf_output:
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from openvino import compile_model, convert_model
 from openvino_tokenizers import convert_tokenizer, connect_models
-import numpy as np  # TODO: Remove after OV PythonAPI will support list arguments
 
 checkpoint = "mrm8488/bert-tiny-finetuned-sms-spam-detection"
 hf_tokenizer = AutoTokenizer.from_pretrained(checkpoint)
@@ -75,7 +73,7 @@ ov_model = convert_model(hf_model, example_input=hf_input.data)
 combined_model = connect_models(ov_tokenizer, ov_model)
 compiled_combined_model = compile_model(combined_model)
 
-openvino_output = compiled_combined_model(np.array(text_input))  # TODO: Remove np.array after OV PythonAPI will support list arguments
+openvino_output = compiled_combined_model([text_input])  # TODO: Remove the second pair of square brackets when Python API is ready
 
 print(f"OpenVINO logits: {openvino_output['logits']}")
 # OpenVINO logits: [[ 1.2007061 -1.4698029]]
@@ -124,7 +122,7 @@ ov_tokenizer, ov_detokenizer = convert_tokenizer(hf_tokenizer, with_detokenizer=
 compiled_tokenizer = compile_model(ov_tokenizer)
 
 # transform input text into tokens
-ov_input = compiled_tokenizer(np.array(text_input))  # TODO: Remove np.array after OV PythonAPI will support list arguments
+ov_input = compiled_tokenizer([text_input])  # TODO: Remove the second pair of square brackets when Python API is ready
 hf_input = hf_tokenizer(text_input, return_tensors="pt")
 
 # convert Pytorch model to OpenVINO IR and add greedy decoding pipeline to it

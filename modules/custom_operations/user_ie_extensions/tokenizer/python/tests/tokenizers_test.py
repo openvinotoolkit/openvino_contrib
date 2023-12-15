@@ -12,7 +12,7 @@ from transformers import AutoTokenizer
 # Left these two methods for convenient transition from legay u8 representation to native string tensors
 # TODO: Remove the methods when transition is over
 def pack_strings(strings):
-    return Tensor(np.array(strings))  # Remove Tensor, and hopefuly np.array when Python API is ready
+    return [strings]
 
 def unpack_strings(strings):
     return list(strings)
