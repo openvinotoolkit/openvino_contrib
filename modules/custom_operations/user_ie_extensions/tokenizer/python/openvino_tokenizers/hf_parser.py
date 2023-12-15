@@ -344,12 +344,16 @@ def modify_sentencepiece_model(
         if token not in existing:
             new_piece = deepcopy(model.pieces[-1])
             new_piece.piece = token
-            model.pieces.append(new_piece)
         else:
             new_piece = existing[token]
 
         if skip_special_tokens and new_piece.type != 2:  # type 2 is for unk symbol
-            new_piece.type = 3   # make it control symbol so it will not decode during detokenization
+            new_piece.type = 3  # make it control symbol so it will not decode during detokenization
+        elif not skip_special_tokens and new_piece.type == 3:
+            new_piece.type = 4  # change control type to userdef type
+
+        if token not in existing:
+            model.pieces.append(new_piece)
 
 
     with open(sp_model_path, "wb") as model_file:

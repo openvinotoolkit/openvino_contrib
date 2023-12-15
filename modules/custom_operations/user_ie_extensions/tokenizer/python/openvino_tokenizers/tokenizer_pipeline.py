@@ -668,7 +668,6 @@ class VocabDecoderStep(DecodingStep):
 
     def get_ov_subgraph(self, input_nodes: List[Output]) -> List[Output]:
         input_nodes.extend(self.get_vocab_node_outputs())
-        print(f"Skip Tokens Size: {len(self.skip_tokens)}")
         return _factory.create("VocabDecoder", input_nodes, {"skip_tokens": self.skip_tokens}).outputs()
 
 

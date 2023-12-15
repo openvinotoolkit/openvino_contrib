@@ -11,13 +11,12 @@ public:
     OPENVINO_OP("VocabDecoder");
 
     VocabDecoder () = default;
-
     VocabDecoder(
         const ov::OutputVector& arguments,
         std::vector<int> skip_tokens
     ) :
         ov::op::Op(arguments) {
-        std::cerr << "[ VocabDecoderConstructor ] Size: " << skip_tokens.size() << "\n";
+        m_skip_tokens = skip_tokens;
         constructor_validate_and_infer_types();
     }
 
@@ -28,6 +27,7 @@ public:
     }
 
     bool visit_attributes(ov::AttributeVisitor& visitor) override {
+        visitor.on_attribute("skip_tokens", m_skip_tokens);
         return true;
     }
 
@@ -37,5 +37,6 @@ public:
         return true;
     }
 private:
+    // used std::unordered_set in the first draft, but there are no mapping and support for set attribute yet
     std::vector<int> m_skip_tokens;
 };

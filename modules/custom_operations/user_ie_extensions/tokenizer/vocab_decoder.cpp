@@ -37,6 +37,8 @@ bool VocabDecoder::evaluate(ov::TensorVector& outputs, const ov::TensorVector& i
     std::vector<std::vector<uint8_t>> vocab;
     vocab.resize(vocab_size);
 
+    std::vector<uint8_t> empty = {};
+
     OPENVINO_ASSERT(inputs.size() == 4, "Too few inputs passed to VocabDecoder, it means it is not converted properly or it is not used in the supported pattern");
 
     for(size_t id = 0; id < vocab_size; ++id) {
@@ -64,14 +66,18 @@ bool VocabDecoder::evaluate(ov::TensorVector& outputs, const ov::TensorVector& i
 
         for(size_t seq = new_ragged_begins[batch]; seq < new_ragged_ends[batch]; ++seq) {
             auto token_id = input_data[seq];
-            if (!(std::find(m_skip_tokens.begin(), m_skip_tokens.end(), token_id) != m_skip_tokens.end())) {
-                auto token = vocab[token_id];
-                std::copy(token.begin(), token.end(), &new_chars[char_offset]);
-
-                new_begins[seq] = char_offset;
-                char_offset += token.size();
-                new_ends[seq] = char_offset;
+            std::vector<uint8_t> token;
+            if (std::find(m_skip_tokens.begin(), m_skip_tokens.end(), token_id) == m_skip_tokens.end()) {
+                token = vocab[token_id];
+            } else {
+                token = empty;
             }
+
+            std::copy(token.begin(), token.end(), &new_chars[char_offset]);
+
+            new_begins[seq] = char_offset;
+            char_offset += token.size();
+            new_ends[seq] = char_offset;
         }
     }
     outputs[4].set_shape({char_offset});

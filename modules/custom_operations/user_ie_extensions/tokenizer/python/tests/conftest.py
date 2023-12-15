@@ -19,23 +19,23 @@ def build_coverege_report(session: pytest.Session) -> None:
     from pytest_harvest import get_session_results_df
 
     def add_tokenizer_type(row):
-        if not pd.isnull(row["wordpiece_tokenizers_param"]):
+        if not pd.isnull(row["hf_wordpiece_tokenizers_param"]):
             return "WordPiece"
-        if not pd.isnull(row["bpe_tokenizers_param"]):
+        if not pd.isnull(row["hf_bpe_tokenizers_param"]):
             return "BPE"
-        if not pd.isnull(row["sentencepice_tokenizers_param"]):
+        if not pd.isnull(row["hf_sentencepiece_tokenizers_param"]):
             return "SentencePiece"
-        if not pd.isnull(row["tiktoken_tokenizers_param"]):
+        if not pd.isnull(row["hf_tiktoken_tokenizers_param"]):
             return "Tiktoken"
 
     results_df = get_session_results_df(session)
     results_df["Tokenizer Type"] = results_df.apply(add_tokenizer_type, axis=1)
-    results_df.wordpiece_tokenizers_param.fillna(results_df.bpe_tokenizers_param, inplace=True)
-    results_df.wordpiece_tokenizers_param.fillna(results_df.sentencepice_tokenizers_param, inplace=True)
-    results_df.wordpiece_tokenizers_param.fillna(results_df.tiktoken_tokenizers_param, inplace=True)
+    results_df.hf_wordpiece_tokenizers_param.fillna(results_df.hf_bpe_tokenizers_param, inplace=True)
+    results_df.hf_wordpiece_tokenizers_param.fillna(results_df.hf_sentencepiece_tokenizers_param, inplace=True)
+    results_df.hf_wordpiece_tokenizers_param.fillna(results_df.hf_tiktoken_tokenizers_param, inplace=True)
     results_df.is_fast_tokenizer_param.fillna(True, inplace=True)
     results_df.status = (results_df.status == "passed").astype(int)
-    results_df["Model"] = results_df.wordpiece_tokenizers_param + results_df.is_fast_tokenizer_param.apply(
+    results_df["Model"] = results_df.hf_wordpiece_tokenizers_param + results_df.is_fast_tokenizer_param.apply(
         lambda x: "" if x else "_slow"
     )
 
