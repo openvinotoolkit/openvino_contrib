@@ -31,7 +31,8 @@ pip install -e .[all]
 ```python
 from transformers import AutoTokenizer
 from openvino import compile_model
-from openvino_tokenizers import convert_tokenizer, pack_strings
+from openvino_tokenizers import convert_tokenizer
+import numpy as np  # TODO: Remove after OV PythonAPI will support list arguments
 
 hf_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 ov_tokenizer = convert_tokenizer(hf_tokenizer)
@@ -40,7 +41,7 @@ compiled_tokenzier = compile_model(ov_tokenizer)
 text_input = "Test string"
 
 hf_output = hf_tokenizer([text_input], return_tensors="np")
-ov_output = compiled_tokenzier(pack_strings([text_input]))
+ov_output = compiled_tokenzier(np.array([text_input]))  # TODO: Remove np.array after OV PythonAPI will support list arguments
 
 for output_name in hf_output:
     print(f"OpenVINO {output_name} = {ov_output[output_name]}")
@@ -58,7 +59,8 @@ for output_name in hf_output:
 ```python
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from openvino import compile_model, convert_model
-from openvino_tokenizers import convert_tokenizer, pack_strings, connect_models
+from openvino_tokenizers import convert_tokenizer, connect_models
+import numpy as np  # TODO: Remove after OV PythonAPI will support list arguments
 
 checkpoint = "mrm8488/bert-tiny-finetuned-sms-spam-detection"
 hf_tokenizer = AutoTokenizer.from_pretrained(checkpoint)
@@ -73,7 +75,7 @@ ov_model = convert_model(hf_model, example_input=hf_input.data)
 combined_model = connect_models(ov_tokenizer, ov_model)
 compiled_combined_model = compile_model(combined_model)
 
-openvino_output = compiled_combined_model(pack_strings(text_input))
+openvino_output = compiled_combined_model(np.array(text_input))  # TODO: Remove np.array after OV PythonAPI will support list arguments
 
 print(f"OpenVINO logits: {openvino_output['logits']}")
 # OpenVINO logits: [[ 1.2007061 -1.4698029]]
@@ -83,12 +85,11 @@ print(f"HuggingFace logits {hf_output.logits}")
 
 ### Use Extension With Converted (De)Tokenizer or Model With (De)Tokenizer
 
-To work with converted tokenizer you need `pack_strings`/`unpack_strings` functions.
+To work with converted tokenizer and detokenizer, numpy string tensors are used.
 
 ```python
 import numpy as np
 from openvino import Core
-from openvino_tokenizers import unpack_strings
 
 core = Core()
 
@@ -98,7 +99,7 @@ compiled_detokenizer = core.compile_model("detokenizer.xml")
 token_ids = np.random.randint(100, 1000, size=(3, 5))
 openvino_output = compiled_detokenizer(token_ids)
 
-print(unpack_strings(openvino_output["string_output"]))
+print(openvino_output["string_output"])
 # ['sc�ouition�', 'intvenord hasient', 'g shouldwer M more']
 ```
 
@@ -108,12 +109,7 @@ print(unpack_strings(openvino_output["string_output"]))
 import numpy as np
 from openvino import compile_model, convert_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from openvino_tokenizers import (
-    add_greedy_decoding,
-    convert_tokenizer,
-    pack_strings,
-    unpack_strings,
-)
+from openvino_tokenizers import add_greedy_decoding, convert_tokenizer
 
 # Use different repo for the tokenizer because the original repo doesn't have .model file
 # Sentencepiece(Unigram) tokenizer supported only with .model file
@@ -128,7 +124,7 @@ ov_tokenizer, ov_detokenizer = convert_tokenizer(hf_tokenizer, with_detokenizer=
 compiled_tokenizer = compile_model(ov_tokenizer)
 
 # transform input text into tokens
-ov_input = compiled_tokenizer(pack_strings(text_input))
+ov_input = compiled_tokenizer(np.array(text_input))  # TODO: Remove np.array after OV PythonAPI will support list arguments
 hf_input = hf_tokenizer(text_input, return_tensors="pt")
 
 # convert Pytorch model to OpenVINO IR and add greedy decoding pipeline to it
@@ -158,7 +154,7 @@ hf_token_ids = hf_model.generate(
 
 # decode model output
 compiled_detokenizer = compile_model(ov_detokenizer)
-ov_output = unpack_strings(compiled_detokenizer(ov_token_ids)["string_output"])
+ov_output = compiled_detokenizer(ov_token_ids)["string_output"]
 hf_output = hf_tokenizer.batch_decode(hf_token_ids, skip_special_tokens=True)
 print(f"OpenVINO output string: `{ov_output}`")
 # OpenVINO output string: `['Quick brown fox was walking through the forest. He was looking for something']`
