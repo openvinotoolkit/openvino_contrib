@@ -62,7 +62,11 @@ exclude_dirs = ["tests"]
 [tool.scikit-build]
 cmake.minimum-version = "3.15"
 cmake.build-type = "Release"
-cmake.args = ["-DCUSTOM_OPERATIONS=tokenizer", "-DCMAKE_INSTALL_BINDIR=lib"]
+cmake.args = [
+    "-DCUSTOM_OPERATIONS=tokenizer",
+    "-DCMAKE_INSTALL_BINDIR=lib",
+    "-DCMAKE_INSTALL_LIBDIR=lib"
+]
 cmake.targets = ["user_ov_extensions"]
 wheel.packages = ["user_ie_extensions/tokenizer/python/openvino_tokenizers"]
 wheel.install-dir = "openvino_tokenizers"
