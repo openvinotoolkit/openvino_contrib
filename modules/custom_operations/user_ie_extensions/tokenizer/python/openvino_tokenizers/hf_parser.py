@@ -278,9 +278,9 @@ class TransformersTokenizerPipelineParser:
 
 
 def parse_special_tokens(hf_tokenizer: "PreTrainedTokenizerBase") -> Dict[int, str]:
-            # the order matters
+    # the order matters
     if getattr(hf_tokenizer, "added_tokens_decoder", False):
-        return {idx: added_token.content for idx, added_token in hf_tokenizer.added_tokens_decoder.items()}
+        return {idx: added_token.content for idx, added_token in hf_tokenizer.added_tokens_decoder.items() if added_token.special}
     elif getattr(hf_tokenizer, "tokenizer", False) and getattr(hf_tokenizer.tokenizer, "index_special_tokens", False):
         return  hf_tokenizer.tokenizer.index_special_tokens
     elif getattr(hf_tokenizer, "special_tokens", False):
