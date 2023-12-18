@@ -339,22 +339,25 @@ def modify_sentencepiece_model(
         model.ParseFromString(model_file.read())
 
     existing = {piece.piece: piece for piece in model.pieces}
-
     for idx, token in sorted(add_tokens.items()):
-        if token not in existing:
-            new_piece = deepcopy(model.pieces[-1])
-            new_piece.piece = token
+        if to_add := (idx >= len(model.pieces) or model.pieces[idx].piece != token):
+            if exists := existing.get(token):
+                new_piece = model.pieces.pop(next(idx for idx, piece in enumerate(model.pieces) if piece == exists))
+            else:
+                new_piece = deepcopy(model.pieces[-1])
+                new_piece.piece = token
         else:
-            new_piece = existing[token]
+            new_piece = model.pieces[idx]
 
         if skip_special_tokens and new_piece.type != 2:  # type 2 is for unk symbol
             new_piece.type = 3  # make it control symbol so it will not decode during detokenization
         elif not skip_special_tokens and new_piece.type == 3:
             new_piece.type = 4  # change control type to userdef type
+        elif new_piece.type == 2 and sum(1 for piece in model.pieces) == 1:
+            new_piece.type = 4  # don't add second <unk> token
 
-        if token not in existing:
-            model.pieces.append(new_piece)
-
+        if to_add:
+            model.pieces.insert(idx, new_piece)
 
     with open(sp_model_path, "wb") as model_file:
         model_file.write(model.SerializeToString())
@@ -414,8 +417,8 @@ def convert_sentencepiece_model_tokenizer(
 
     indices, values, dense_shape = tokenizer_node.outputs()
 
-    if fairseq_offset:
-        values = opset.add(values, make_constant_node(fairseq_offset, values.element_type)).output(0)
+    # if fairseq_offset:
+    #     values = opset.add(values, make_constant_node(fairseq_offset, values.element_type)).output(0)
 
     default_value = make_constant_node(hf_tokenizer.pad_token_id or 0, values.element_type)
     broadcast = opset.broadcast(default_value, dense_shape)
@@ -466,7 +469,7 @@ def convert_sentencepiece_model_tokenizer(
 
 
 def get_sp_detokenizer(sp_model_node: Node, streaming_detokenizer: bool = False) -> Model:
-    token_ids = op.Parameter(Type.i32, PartialShape(["?", "?"]))  # (batch, sequence)
+    model_input = token_ids = op.Parameter(Type.i32, PartialShape(["?", "?"]))  # (batch, sequence)
 
     detokenizer = _factory.create(
         "SentencepieceStreamDetokenizer" if streaming_detokenizer else "SentencepieceDetokenizer",
@@ -478,7 +481,7 @@ def get_sp_detokenizer(sp_model_node: Node, streaming_detokenizer: bool = False)
 
     string_output = _factory.create("StringTensorPack", detokenizer).outputs()
     string_output[0].tensor.add_names({STRING_OUTPUT_NAME})
-    tokenizer_detokenizer = Model(string_output, [token_ids], DETOKENIZER_NAME)
+    tokenizer_detokenizer = Model(string_output, [model_input], DETOKENIZER_NAME)
     tokenizer_detokenizer.validate_nodes_and_infer_types()
     return tokenizer_detokenizer
 

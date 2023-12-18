@@ -153,6 +153,11 @@ def is_fast_tokenizer(request):
     return request.param
 
 
+@pytest.fixture(scope="session", params=[True, False], ids=lambda do_skip: "skip_tokens" if do_skip else "no_skip_tokens")
+def do_skip_special_tokens(request):
+    return request.param
+
+
 @pytest.fixture(scope="session", params=sentencepiece_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
 def hf_sentencepiece_tokenizers(request, is_fast_tokenizer):
     return get_hf_tokenizer(request, fast_tokenizer=is_fast_tokenizer, trust_remote_code=True)
@@ -171,11 +176,6 @@ def hf_tiktoken_tokenizers(request):
 @pytest.fixture(scope="session")
 def wordpiece_tokenizers(hf_wordpiece_tokenizers):
     return get_tokenizer(hf_wordpiece_tokenizers)
-
-
-@pytest.fixture(scope="session", params=[True, False], ids=lambda do_skip: "skip_tokens" if do_skip else "no_skip_tokens")
-def do_skip_special_tokens(request):
-    return request.param
 
 
 @pytest.fixture(scope="session")
@@ -414,30 +414,3 @@ def test_detokenizer_results_align_with_hf_on_multitoken_symbols_for_streaming()
         hf_detokenized_stream += hf_output
 
     assert detokenized_stream == hf_detokenized_stream
-
-
-# @pytest.fixture(
-#     scope="session",
-#     params=[
-#         "stabilityai/stablecode-completion-alpha-3b-4k",
-#         # "THUDM/chatglm2-6b",
-#     ],
-#     ids=lambda checkpoint: checkpoint.split("/")[-1]
-# )
-# def special_tokens_tokenizers(request, do_skip_special):
-#     return get_tokenizer_detokenizer(request, skip_special_tokens=do_skip_special, trust_remote_code=True)
-#
-#
-# def test_skip_special_tokens(special_tokens_tokenizers, do_skip_special):
-#     hf_tokenizer, _, ov_detokenizer = special_tokens_tokenizers
-#
-#     test_string = "this is the test stirng <fim_middle>"
-#     tokenized = hf_tokenizer(test_string).input_ids
-#
-#     with_special_token = hf_tokenizer.decode(tokenized, skip_special_tokens=False)
-#     without_special_token = hf_tokenizer.decode(tokenized, skip_special_tokens=True)
-#
-#     ov_detokenized = unpack_strings(ov_detokenizer(np.atleast_2d(tokenized))["string_output"])[0]
-#
-#     assert (ov_detokenized == with_special_token) is not do_skip_special, ov_detokenized
-#     assert (ov_detokenized == without_special_token) is do_skip_special, ov_detokenized
