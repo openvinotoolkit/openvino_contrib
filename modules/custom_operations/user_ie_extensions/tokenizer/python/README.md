@@ -40,7 +40,7 @@ compiled_tokenzier = compile_model(ov_tokenizer)
 text_input = "Test string"
 
 hf_output = hf_tokenizer([text_input], return_tensors="np")
-ov_output = compiled_tokenzier([[text_input]])  # TODO: Remove the second pair of square brackets when Python API is ready
+ov_output = compiled_tokenzier([text_input])
 
 for output_name in hf_output:
     print(f"OpenVINO {output_name} = {ov_output[output_name]}")
@@ -73,7 +73,7 @@ ov_model = convert_model(hf_model, example_input=hf_input.data)
 combined_model = connect_models(ov_tokenizer, ov_model)
 compiled_combined_model = compile_model(combined_model)
 
-openvino_output = compiled_combined_model([text_input])  # TODO: Remove the second pair of square brackets when Python API is ready
+openvino_output = compiled_combined_model(text_input)
 
 print(f"OpenVINO logits: {openvino_output['logits']}")
 # OpenVINO logits: [[ 1.2007061 -1.4698029]]
@@ -122,7 +122,7 @@ ov_tokenizer, ov_detokenizer = convert_tokenizer(hf_tokenizer, with_detokenizer=
 compiled_tokenizer = compile_model(ov_tokenizer)
 
 # transform input text into tokens
-ov_input = compiled_tokenizer([text_input])  # TODO: Remove the second pair of square brackets when Python API is ready
+ov_input = compiled_tokenizer(text_input)
 hf_input = hf_tokenizer(text_input, return_tensors="pt")
 
 # convert Pytorch model to OpenVINO IR and add greedy decoding pipeline to it

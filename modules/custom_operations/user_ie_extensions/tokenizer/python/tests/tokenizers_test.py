@@ -12,7 +12,7 @@ from transformers import AutoTokenizer
 # Left these two methods for convenient transition from legay u8 representation to native string tensors
 # TODO: Remove the methods when transition is over
 def pack_strings(strings):
-    return [strings]
+    return strings
 
 def unpack_strings(strings):
     return list(strings)
@@ -249,6 +249,8 @@ def test_sentencepiece_model_detokenizer(sentencepice_tokenizers, test_string):
 
     token_ids = hf_tokenizer(test_string, return_tensors="np").input_ids
     hf_output = hf_tokenizer.batch_decode(token_ids, skip_special_tokens=True)
+    print('--- HERE 1 ---')
+    print(token_ids.shape)
     ov_output = unpack_strings(ov_detokenizer(token_ids.astype("int32"))["string_output"])
 
     assert ov_output == hf_output
