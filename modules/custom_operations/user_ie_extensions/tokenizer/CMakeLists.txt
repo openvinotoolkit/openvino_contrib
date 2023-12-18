@@ -181,3 +181,9 @@ else()
     set(extra_libs "${fast_tokenizer_SOURCE_DIR}/lib/libcore_tokenizers.dylib" PARENT_SCOPE)
   endif()
 endif()
+
+# cpack configuration
+set(CPACK_PACKAGE_VERSION "${CMAKE_PROJECT_VERSION}-${COMMIT_ID}")
+set(CPACK_SOURCE_GENERATOR "") # not used
+
+include (CPack)
