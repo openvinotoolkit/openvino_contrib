@@ -45,10 +45,12 @@ del _extension_path
 # patching openvino
 old_core_init = openvino.runtime.Core.__init__
 
+
 @functools.wraps(old_core_init)
 def new_core_init(self, *args, **kwargs):
     old_core_init(self, *args, **kwargs)
     self.add_extension(str(_ext_path))  # Core.add_extension doesn't support Path object
+
 
 openvino.runtime.Core.__init__ = new_core_init
 
