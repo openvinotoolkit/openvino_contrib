@@ -331,7 +331,7 @@ def is_sentencepiece_model(hf_tokenizer: "PreTrainedTokenizerBase") -> bool:
 
 
 def modify_sentencepiece_model(
-        sp_model_path: Path, add_tokens: Dict[int, str], skip_special_tokens: bool = False
+        sp_model_path: Path, add_tokens: Dict[int, str], skip_special_tokens: bool = False, reference_vocab: Optional[List[str]] = None
 ) -> None:
     model_pb = import_protobuf()
     model = model_pb.ModelProto()
@@ -340,7 +340,7 @@ def modify_sentencepiece_model(
 
     existing = {piece.piece: piece for piece in model.pieces}
     for idx, token in sorted(add_tokens.items()):
-        if to_add := (idx >= len(model.pieces) or model.pieces[idx].piece != token):
+        if to_add := ((idx >= len(model.pieces) or model.pieces[idx].piece != token)):
             if exists := existing.get(token):
                 new_piece = model.pieces.pop(next(idx for idx, piece in enumerate(model.pieces) if piece == exists))
             else:
@@ -353,11 +353,13 @@ def modify_sentencepiece_model(
             new_piece.type = 3  # make it control symbol so it will not decode during detokenization
         elif not skip_special_tokens and new_piece.type == 3:
             new_piece.type = 4  # change control type to userdef type
-        elif new_piece.type == 2 and sum(1 for piece in model.pieces) == 1:
-            new_piece.type = 4  # don't add second <unk> token
 
         if to_add:
             model.pieces.insert(idx, new_piece)
+
+    # change unk token representation from ⁇ to token string
+    unk_token = next(piece for piece in model.pieces if piece.type == 2)
+    model.trainer_spec.unk_surface = unk_token.piece
 
     with open(sp_model_path, "wb") as model_file:
         model_file.write(model.SerializeToString())
@@ -380,7 +382,12 @@ def convert_sentencepiece_model_tokenizer(
         vocab_file = Path(tmp) / hf_tokenizer.vocab_files_names["vocab_file"]
 
         add_tokens = parse_special_tokens(hf_tokenizer)
-        modify_sentencepiece_model(vocab_file, add_tokens, skip_special_tokens)
+        modify_sentencepiece_model(
+            sp_model_path=vocab_file,
+            add_tokens=add_tokens,
+            skip_special_tokens=skip_special_tokens,
+            # reference_vocab=[token for token, idx in sorted(hf_tokenizer.vocab.items(), key=lambda x: x[1])],
+        )
 
         sp_model = np.fromfile(vocab_file, dtype=np.uint8)
         sp_model_node = as_node(sp_model)
