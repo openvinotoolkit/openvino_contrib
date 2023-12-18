@@ -183,7 +183,7 @@ else()
 endif()
 
 # cpack configuration
-set(CPACK_PACKAGE_VERSION "${CMAKE_PROJECT_VERSION}-${COMMIT_ID}")
+set(CPACK_PACKAGE_VERSION "${CMAKE_PROJECT_VERSION}")
 set(CPACK_SOURCE_GENERATOR "") # not used
 
 include (CPack)
