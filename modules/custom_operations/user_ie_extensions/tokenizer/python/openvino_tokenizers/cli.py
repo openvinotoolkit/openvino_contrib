@@ -41,7 +41,7 @@ def get_parser() -> ArgumentParser:
         required=False,
         action="store_true",
         help=(
-            "Pass `trust_remote_code=True` to `AutoTokenizer.from_pretrained`. It will"
+            "Pass `trust_remote_code=True` to `AutoTokenizer.from_pretrained`. It will "
             "execute code present on the Hub on your local machine."
         ),
     )
