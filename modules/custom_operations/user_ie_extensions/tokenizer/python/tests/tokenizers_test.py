@@ -216,11 +216,14 @@ def tiktoken_tokenizers_detokenizers(hf_tiktoken_tokenizers, do_skip_special_tok
     return get_tokenizer_detokenizer(hf_tiktoken_tokenizers, skip_special_tokens=do_skip_special_tokens)
 
 
-@pytest.fixture(
-    scope="session", params=["openlm-research/open_llama_3b_v2"], ids=lambda checkpoint: checkpoint.split("/")[-1]
-)
-def sentencepiece_streaming_tokenizers(request):
-    return get_tokenizer_detokenizer(request, streaming_detokenizer=True)
+@pytest.fixture(scope="session", params=["openlm-research/open_llama_3b_v2"], ids=lambda checkpoint: checkpoint.split("/")[-1])
+def hf_tokenizers_for_streaming(request):
+    return get_hf_tokenizer(request)
+
+
+@pytest.fixture(scope="session")
+def sentencepiece_streaming_tokenizers(hf_tokenizers_for_streaming):
+    return get_tokenizer_detokenizer(hf_tokenizers_for_streaming, streaming_detokenizer=True)
 
 
 @pytest.mark.parametrize(
