@@ -78,6 +78,8 @@ wordpiece_models = [
 ]
 bpe_models = [
     "stabilityai/stablecode-completion-alpha-3b-4k",
+    "stabilityai/stablelm-tuned-alpha-7b",
+    "databricks/dolly-v2-3b",
     "EleutherAI/gpt-neo-125m",
     "EleutherAI/gpt-j-6b",
     "roberta-base",
