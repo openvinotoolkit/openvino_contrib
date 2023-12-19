@@ -271,6 +271,12 @@ class TransformersTokenizerPipelineParser:
             self.pipeline.add_steps(VocabDecoderStep(list(skip_tokens)))
             self.pipeline.add_steps(CharsToBytesStep())
 
+        if suffix := self.tokenizer_json["model"].get("end_of_word_suffix"):
+            self.pipeline.add_steps(RegexDecodingStep.replace_end_of_word_suffix(suffix))
+
+        if prefix := self.tokenizer_json["model"].get("continuing_subword_prefix"):
+            self.pipeline.add_steps(RegexDecodingStep.replace_continuing_subword_prefix(prefix))
+
         if self.original_tokenizer.clean_up_tokenization_spaces and self.pipeline.decoding_steps:
             self.pipeline.add_steps(RegexDecodingStep.clean_up_tokenization_spaces())
         return

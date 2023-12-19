@@ -689,6 +689,20 @@ class RegexDecodingStep(DecodingStep):
             replace_term=r"\1",
         )
 
+    @classmethod
+    def replace_end_of_word_suffix(cls, suffix: str = "</w>") -> "RegexDecodingStep":
+        return cls(
+            regex_search_pattern=suffix,
+            replace_term=" ",
+        )
+
+    @classmethod
+    def replace_continuing_subword_prefix(cls, prefix: str = "##") -> "RegexDecodingStep":
+        return cls(
+            regex_search_pattern=prefix,
+            replace_term="",
+        )
+
     def get_ov_subgraph(self, input_nodes: List[Output]) -> List[Output]:
         input_nodes.extend(
             (
