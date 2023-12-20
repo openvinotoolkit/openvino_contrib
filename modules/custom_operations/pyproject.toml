@@ -1,9 +1,10 @@
 [project]
 name = "openvino-tokenizers"
-version = "2023.3.0"
+version = "2023.3.0.0"
 description = "Convert tokenizers into OpenVINO models"
 requires-python = ">=3.8"
 readme = {file = "user_ie_extensions/tokenizer/python/README.md", content-type="text/markdown"}
+license = {text = "OSI Approved :: Apache Software License"}
 
 authors = [
     { name = "OpenVINO Developers", email = "openvino@intel.com" },
@@ -17,8 +18,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "openvino",
-    "numpy"
+    'openvino'
 ]
 
 [project.optional-dependencies]
