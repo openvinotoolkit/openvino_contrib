@@ -3,6 +3,7 @@ import os
 from io import StringIO
 from math import isclose
 from pathlib import Path
+from importlib.metadata import version
 
 import pytest
 
@@ -19,31 +20,31 @@ def build_coverege_report(session: pytest.Session) -> None:
     from pytest_harvest import get_session_results_df
 
     def add_tokenizer_type(row):
-        if not pd.isnull(row["wordpiece_tokenizers_param"]):
+        if not pd.isnull(row["hf_wordpiece_tokenizers_param"]):
             return "WordPiece"
-        if not pd.isnull(row["bpe_tokenizers_param"]):
+        if not pd.isnull(row["hf_bpe_tokenizers_param"]):
             return "BPE"
-        if not pd.isnull(row["sentencepice_tokenizers_param"]):
+        if not pd.isnull(row["hf_sentencepiece_tokenizers_param"]):
             return "SentencePiece"
-        if not pd.isnull(row["tiktoken_tokenizers_param"]):
+        if not pd.isnull(row["hf_tiktoken_tokenizers_param"]):
             return "Tiktoken"
 
     results_df = get_session_results_df(session)
     results_df["Tokenizer Type"] = results_df.apply(add_tokenizer_type, axis=1)
-    results_df.wordpiece_tokenizers_param.fillna(results_df.bpe_tokenizers_param, inplace=True)
-    results_df.wordpiece_tokenizers_param.fillna(results_df.sentencepice_tokenizers_param, inplace=True)
-    results_df.wordpiece_tokenizers_param.fillna(results_df.tiktoken_tokenizers_param, inplace=True)
+    results_df.hf_wordpiece_tokenizers_param.fillna(results_df.hf_bpe_tokenizers_param, inplace=True)
+    results_df.hf_wordpiece_tokenizers_param.fillna(results_df.hf_sentencepiece_tokenizers_param, inplace=True)
+    results_df.hf_wordpiece_tokenizers_param.fillna(results_df.hf_tiktoken_tokenizers_param, inplace=True)
     results_df.is_fast_tokenizer_param.fillna(True, inplace=True)
     results_df.status = (results_df.status == "passed").astype(int)
-    results_df["Model"] = results_df.wordpiece_tokenizers_param + results_df.is_fast_tokenizer_param.apply(
+    results_df["Model"] = results_df.hf_wordpiece_tokenizers_param + results_df.is_fast_tokenizer_param.apply(
         lambda x: "" if x else "_slow"
     )
 
     results_df = results_df[["Tokenizer Type", "Model", "test_string", "status"]]
-    grouped_by_model = results_df.groupby(["Tokenizer Type", "Model"]).agg(["mean", "count"]).reset_index()
+    grouped_by_model = results_df.groupby(["Tokenizer Type", "Model"]).agg({"status": ["mean", "count"]}).reset_index()
     grouped_by_model.columns = ["Tokenizer Type", "Model", "Pass Rate, %", "Number of Tests"]
     grouped_by_model["Pass Rate, %"] *= 100
-    grouped_by_type = results_df.groupby(["Tokenizer Type"]).agg(["mean", "count"]).reset_index()
+    grouped_by_type = results_df.groupby(["Tokenizer Type"]).agg({"status": ["mean", "count"]}).reset_index()
     grouped_by_type.columns = ["Tokenizer Type", "Pass Rate, %", "Number of Tests"]
     grouped_by_type["Pass Rate, %"] *= 100
 
@@ -59,10 +60,16 @@ def build_coverege_report(session: pytest.Session) -> None:
         "To update it run pytest with `--update_readme` flag.\n\n"
         "### Coverage by Tokenizer Type\n\n"
     )
-    grouped_by_type.style.format(precision=2).hide_index().to_html(new_readme, exclude_styles=True)
+    is_pandas_2 = tuple(map(int, version("pandas").split("."))) >= (2, 0, 0)
+    if is_pandas_2:
+        grouped_by_type.style.format(precision=2).hide(axis="index").to_html(new_readme, exclude_styles=True)
+    else:
+        grouped_by_type.style.format(precision=2).hide_index().to_html(new_readme, exclude_styles=True)
     new_readme.write("\n### Coverage by Model Type\n\n")
-    grouped_by_model.style.format(precision=2).hide_index().to_html(new_readme, exclude_styles=True)
-
+    if is_pandas_2:
+        grouped_by_model.style.format(precision=2).hide(axis="index").to_html(new_readme, exclude_styles=True)
+    else:
+        grouped_by_model.style.format(precision=2).hide_index().to_html(new_readme, exclude_styles=True)
     with open(readme_path, "w") as f:
         f.write(new_readme.getvalue())
 
