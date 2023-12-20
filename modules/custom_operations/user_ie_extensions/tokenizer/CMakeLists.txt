@@ -33,7 +33,7 @@ endif()
 
 if(WIN32 AND X86_64)
   # disable compiler warning C4703
-  set(cxx_flags "${cxx_flags} /wd44703")
+  set(cxx_flags "${cxx_flags} /wd4703")
 endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${cxx_flags} ${c_cxx_flags}")
