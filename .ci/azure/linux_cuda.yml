@@ -27,11 +27,13 @@ resources:
     type: github
     endpoint: openvinotoolkit
     name: openvinotoolkit/openvino
+    ref: master
 
   - repository: testdata
     type: github
     endpoint: openvinotoolkit
     name: openvinotoolkit/testdata
+    ref: master
 
 jobs:
 - job: NVIDIAPlugin_Lin
