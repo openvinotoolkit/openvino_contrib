@@ -39,6 +39,9 @@ all = [
     "openvino_tokenizers[dev,transformers,tiktoken]"
 ]
 
+[project.scripts]
+convert_tokenizer = "openvino_tokenizers.cli:convert_hf_tokenizer"
+
 [tool.ruff]
 ignore = ["C901", "E501", "E741", "W605"]
 select = ["C", "E", "F", "I", "W"]

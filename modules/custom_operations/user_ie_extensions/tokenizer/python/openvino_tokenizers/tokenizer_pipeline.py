@@ -17,10 +17,10 @@ from openvino.runtime.utils.types import as_node, make_constant_node
 from . import _factory
 from .constants import (
     ATTENTION_MASK_INPUT_NAME,
+    DETOKENIZER_NAME,
     STRING_OUTPUT_NAME,
     TOKEN_IDS_INPUT_NAME,
     TOKEN_TYPE_IDS_INPUT_NAME,
-    DETOKENIZER_NAME,
     TOKENIZER_NAME,
 )
 from .str_pack import pack_string, pack_strings
@@ -807,6 +807,9 @@ class TokenizerPipeline:
         return _factory.create("StringTensorPack", input_nodes).outputs()
 
     def get_detokenizer_ov_subgraph(self) -> Model:
+        if not any(isinstance(step, VocabDecoderStep) for step in self.decoding_steps):
+            raise NotImplementedError("Detokenizer is not supported for this model yet!")
+
         input_node = op.Parameter(Type.i32, PartialShape(["?", "?"]))
         token_ids = input_node
         outputs = self.create_decoding_pipeline([token_ids])
