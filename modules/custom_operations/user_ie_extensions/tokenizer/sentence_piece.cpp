@@ -105,28 +105,9 @@ void SentencepieceTokenizer::validate_and_infer_types() {
     FRONT_END_GENERAL_CHECK(get_input_size() == 2, "SentencepieceTokenizer expects two inputs: sp model and input sentences");
     FRONT_END_GENERAL_CHECK(get_input_element_type(0) == element::u8, "SentencepieceTokenizer accepts sp model as the first input and it should be of type u8 tensor");
 
-    #if USE_STRING_TENSORS
-
-        #if OPENVINO_USE_INPUT_OUTPUT_STRING_TENSOR_HACK
-        FRONT_END_GENERAL_CHECK(
-            get_input_element_type(1) == element::string || get_input_element_type(1) == element::u8,
-            "SentencepieceTokenizer accepts sentences as the second input and it should be of type u8 or string depending on the current stage of model preparation");
-        #else
-        FRONT_END_GENERAL_CHECK(
-            get_input_element_type(1) == element::string,
-            "SentencepieceTokenizer accepts sentences as the second input and it should be of type string tensor");
-        #endif
-
-    #else
-
-#if 0   // change to 0 when compiled with master and the bug with data propagation from within inline context is not solved
     FRONT_END_GENERAL_CHECK(
-        get_input_element_type(1) == element::u8,
-        "SentencepieceTokenizer accepts sentences as the second input and it should be of type u8 tensor, but got " +
-            get_input_element_type(1).get_type_name());
-#endif
-
-    #endif
+        get_input_element_type(1) == element::string || get_input_element_type(1) == element::u8,
+        "SentencepieceTokenizer accepts sentences as the second input and it should be of type string tensor");
 
     #endif
 
@@ -161,37 +142,37 @@ bool SentencepieceTokenizer::evaluate(TensorVector& outputs, const TensorVector&
 
 #else
 
-#if USE_STRING_TENSORS
-
-    #if OPENVINO_USE_INPUT_OUTPUT_STRING_TENSOR_HACK
-    const ov::Tensor& strings_tensor = **reinterpret_cast<ov::Tensor**>(inputs[1].data<uint8_t>());
-    #else
-    const ov::Tensor& strings_tensor = inputs[1];
-    #endif
-
-    const std::string* strings = strings_tensor.data<std::string>();
-    size_t batch_size = ov::shape_size(strings_tensor.get_shape());
-
-#else
-
+    auto input_element_type = get_input_element_type(1);
     int32_t batch_size;
+
+    // used in case of string tensors
+    const std::string* strings;
+
+    // used in case of u8 packed representation
     const int32_t* begin_ids;
     const int32_t* end_ids;
     const uint8_t* data;
-    parse_packed_strings(inputs[1], batch_size, begin_ids, end_ids, data);
+
+    if(input_element_type == ov::element::string) {
+        strings = inputs[1].data<const std::string>();
+        batch_size = static_cast<int32_t>(ov::shape_size(inputs[1].get_shape()));
+    } else if(input_element_type == ov::element::u8) {
+        parse_packed_strings(inputs[1], batch_size, begin_ids, end_ids, data);
+    }
 
 #endif
 
-#endif
     size_t max_token_id = 0;
     for (size_t batch_ind = 0; batch_ind < batch_size; ++batch_ind) {
-#if USE_STRING_TENSORS && !SENTENCE_PIECE_EXTENSION_DECOMPOSED_STRINGS
-        const std::string& sentence = strings[batch_ind];
-#else
-        auto begin_ind = begin_ids[batch_ind];
-        auto end_ind = end_ids[batch_ind];
-        absl::string_view sentence((const char*)data + begin_ind, end_ind - begin_ind);
-#endif
+        absl::string_view sentence;
+        if(input_element_type == ov::element::string) {
+            sentence = strings[batch_ind];
+        } else if(input_element_type == ov::element::u8) {
+            auto begin_ind = begin_ids[batch_ind];
+            auto end_ind = end_ids[batch_ind];
+            sentence = absl::string_view((const char*)data + begin_ind, end_ind - begin_ind);
+        }
+
         std::vector<int32_t> ids;
         CHECK_OK(m_sp->SampleEncode(sentence, m_nbest_size, m_alpha, &ids));
         // put into resulted vectors

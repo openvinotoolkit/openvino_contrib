@@ -402,7 +402,7 @@ def convert_sentencepiece_model_tokenizer(
             hf_slow_tokenizer = hf_tokenizer.slow_tokenizer_class.from_pretrained(tmp)
             fairseq_offset = getattr(hf_slow_tokenizer, "fairseq_offset", None)
 
-    input_node = op.Parameter(Type.u8, PartialShape(["?"]))
+    input_node = op.Parameter(Type.string, PartialShape(["?"]))
     input_node.set_friendly_name("string_input")
 
     is_chatglm = getattr(hf_tokenizer, "name", None) == "GLMTokenizer"

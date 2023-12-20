@@ -750,7 +750,7 @@ class TokenizerPipeline:
         return self.steps[item]
 
     def get_tokenizer_ov_subgraph(self) -> Model:
-        string_inputs = [op.Parameter(Type.u8, PartialShape(["?"])) for _ in range(self.number_of_inputs)]
+        string_inputs = [op.Parameter(Type.string, PartialShape(["?"])) for _ in range(self.number_of_inputs)]
 
         processing_outputs = []
         for input_node in string_inputs:

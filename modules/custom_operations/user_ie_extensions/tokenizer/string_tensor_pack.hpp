@@ -6,8 +6,7 @@
 
 #include <openvino/op/op.hpp>
 
-// Having a decomposed representation for a tensor, converts it to a single string tensor
-// (packed u8 or natively supported element::string depending on whether or not USE_STRING_TENSORS defined).
+// Having a decomposed representation for a tensor, converts it to a single string tensor with element::string element type.
 class StringTensorPack : public ov::op::Op {
 public:
     OPENVINO_OP("StringTensorPack");

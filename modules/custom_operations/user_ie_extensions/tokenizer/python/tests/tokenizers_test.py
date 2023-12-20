@@ -4,13 +4,18 @@
 
 import numpy as np
 import pytest
-from openvino import Core
-from openvino_tokenizers import (
-    convert_tokenizer,
-    pack_strings,
-    unpack_strings,
-)
+from openvino import Core, Tensor
+from openvino_tokenizers import convert_tokenizer
 from transformers import AutoTokenizer
+
+
+# Left these two methods for convenient transition from legay u8 representation to native string tensors
+# TODO: Remove the methods when transition is over
+def pack_strings(strings):
+    return strings
+
+def unpack_strings(strings):
+    return list(strings)
 
 
 core = Core()
