@@ -21,10 +21,10 @@ from transformers.convert_slow_tokenizer import import_protobuf
 from . import _factory
 from .constants import (
     ATTENTION_MASK_INPUT_NAME,
+    DETOKENIZER_NAME,
     STRING_OUTPUT_NAME,
     TOKEN_IDS_INPUT_NAME,
     TOKEN_TYPE_IDS_INPUT_NAME,
-    DETOKENIZER_NAME,
     TOKENIZER_NAME,
 )
 from .tokenizer_pipeline import (
