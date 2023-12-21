@@ -96,6 +96,7 @@ def get_parser() -> ArgumentParser:
     parser.add_argument(
         "--streaming-detokenizer",
         required=False,
+        action="store_true",
         help=(
             "[Experimental] Modify SentencePiece based detokenizer to keep spaces leading space. "
             "Can be used to stream a model output without TextStreamer buffer"
