@@ -8,8 +8,6 @@ endif()
 
 option(BUILD_FAST_TOKENIZERS OFF)
 
-# to build only direct dependencies
-set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY EXCLUDE_FROM_ALL ON)
 
 #
 # Compile flags
@@ -173,8 +171,12 @@ set_target_properties(${TARGET_NAME} PROPERTIES COMPILE_OPTIONS "${extra_flags}"
 # Post build steps to copy core_tokenizers dependencies
 #
 
+set_property(DIRECTORY ${sentencepiece_SOURCE_DIR} PROPERTY EXCLUDE_FROM_ALL ON)
+
 if(BUILD_FAST_TOKENIZERS)
-  # TODO
+  install(TARGETS core_tokenizers
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 else()
   if(WIN32 AND X86_64)
     set(extra_libs "${fast_tokenizer_SOURCE_DIR}/lib/core_tokenizers.dll"
