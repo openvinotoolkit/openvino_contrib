@@ -4,7 +4,7 @@
 import functools
 import os
 import sys
-import sysconfig
+from itertools import chain
 import site
 from pathlib import Path
 
@@ -26,20 +26,20 @@ else:
     sys.exit(f"Error: extension does not support the platform {sys.platform}")
 
 # when the path to the extension set manually
-_ext_path = os.environ.get("OV_TOKENIZER_PREBUILD_EXTENSION_PATH")
-if not _ext_path:
-    # Case when the library can be found in the PATH/LD_LIBRAY_PATH
-    _ext_path = _ext_name
-
-# python installation cases
-site_packages = [ Path(__file__).parent, site.getusersitepackages()] + site.getsitepackages()
-ext_pathes = [ Path(path) / __name__ / 'lib' / _ext_name for path in site_packages ]
-
-# looking for extention in the user and system site-packages
-for ext_path in ext_pathes:
-    if ext_path and ext_path.is_file():
-        _ext_path = ext_path
-        break
+_extension_path = os.environ.get("OV_TOKENIZER_PREBUILD_EXTENSION_PATH")
+if _extension_path and Path(_extension_path).is_file():
+    # when the path to the extension set manually
+    _ext_path = Path(_extension_path)
+else:
+    site_packages = chain((Path(__file__).parent.parent, ), site.getusersitepackages(), site.getsitepackages())
+    _ext_path = next(
+        (
+            ext
+            for site_package in map(Path, site_packages)
+            if (ext := site_package / __name__ / "lib" / _ext_name).is_file()
+        ),
+        _ext_name  # Case when the library can be found in the PATH/LD_LIBRAY_PATH
+    )
 
 del _ext_name
 
