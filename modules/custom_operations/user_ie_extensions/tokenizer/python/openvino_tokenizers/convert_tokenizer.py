@@ -61,6 +61,12 @@ def convert_tokenizer(
                     with_detokenizer=with_detokenizer,
                     skip_special_tokens=skip_special_tokens,
                 )
+    else:
+        raise EnvironmentError(
+            "No transformers library in the environment. Install required dependencies with one of two options:\n"
+            "1. pip install openvino-tokenizers[transformers]\n"
+            "2. pip install transformers[sentencepiece] tiktoken\n"
+        )
 
     if ov_tokenizers is None:
         raise OVTypeError(f"Tokenizer type is not supported: {type(tokenizer_object)}")

@@ -64,7 +64,7 @@ def get_parser() -> ArgumentParser:
             "Pass `use_fast=False` to `AutoTokenizer.from_pretrained`. It will initialize legacy HuggingFace "
             "tokenizer and then converts it to OpenVINO. Might result in slightly different tokenizer. "
             "See models with _slow suffix https://github.com/openvinotoolkit/openvino_contrib/tree/master/modules/"
-            "custom_operations/user_ie_extensions/tokenizer/python#coverage-by-model-type to check the potential "
+            "custom_operations/user_ie_extensions/tokenizer/python#output-match-by-model to check the potential "
             "difference between original and OpenVINO tokenizers"
         ),
     )
@@ -106,8 +106,14 @@ def get_parser() -> ArgumentParser:
 
 
 def convert_hf_tokenizer() -> None:
-    from transformers import AutoTokenizer
-
+    try:
+        from transformers import AutoTokenizer
+    except (ImportError, ModuleNotFoundError):
+        raise EnvironmentError(
+            "No transformers library in the environment. Install required dependencies with one of two options:\n"
+            "1. pip install openvino-tokenizers[transformers]\n"
+            "2. pip install transformers[sentencepiece] tiktoken\n"
+        )
 
     args = get_parser().parse_args()
 
