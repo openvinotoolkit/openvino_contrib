@@ -187,7 +187,7 @@ jobs:
       python -m pip install build
       python -m build --wheel --outdir $(BUILD_WHEEL_DIR) $(REPO_DIR)/modules/custom_operations
     env:
-      CMAKE_ARGS: '-DBUILD_FAST_TOKENIZERS=ON',
+      CMAKE_ARGS: '-DBUILD_FAST_TOKENIZERS=ON'
       CMAKE_GENERATOR: 'Unix Makefiles'
     workingDirectory: $(WORK_DIR)
     displayName: 'Build tokenizers wheel'
