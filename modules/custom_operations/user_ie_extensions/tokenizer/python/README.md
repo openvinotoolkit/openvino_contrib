@@ -218,12 +218,12 @@ print(f"HuggingFace output string: `{hf_output}`")
 ## Supported Tokenizer Types
 
 | Huggingface <br/>Tokenizer Type | Tokenizer Model Type | Tokenizer | Detokenizer |
-|---------------------------------|----------------------|-----------|-------------|
-| Fast                            | WordPiece            | ✔         | ✘           |
-|                                 | BPE                  | ✔         | ✔           |
-|                                 | Unigram              | ✘         | ✘           |
-| Legacy                          | SentencePiece .model | ✔         | ✔           |
-| Custom                          | tiktoken             | ✔         | ✔           |
+|---------------------------------|----------------------|----------|------------|
+| Fast                            | WordPiece            | ✅        | ❌          |
+|                                 | BPE                  | ✅        | ✅          |
+|                                 | Unigram              | ❌         | ❌          |
+| Legacy                          | SentencePiece .model | ✅        | ✅          |
+| Custom                          | tiktoken             | ✅        | ✅          |
 
 ## Test Results
 
