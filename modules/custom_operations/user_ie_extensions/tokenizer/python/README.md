@@ -1,46 +1,89 @@
 # OpenVINO Tokenizers
 
+OpenVINO Tokenizers adds text processing operations to OpenVINO.
+
 ## Features
 
-- Convert a HuggingFace tokenizer into OpenVINO model tokenizer and detokenizer:
-  - Fast tokenizers based on Wordpiece and BPE models
-  - Slow tokenizers based on SentencePiece model file
+- Perform tokenization and detokenization without third-party dependencies
+- Convert a HuggingFace tokenizer into OpenVINO model tokenizer and detokenizer
 - Combine OpenVINO models into a single model
 - Add greedy decoding pipeline to text generation model
 
 ## Installation
 
-1. Install [OpenVINO Runtime for C++](https://docs.openvino.ai/latest/openvino_docs_install_guides_install_dev_tools.html#for-c-developers).
-2. (Recommended) Create and activate virtual env:
+(Recommended) Create and activate virtual env:
 ```bash
 python3 -m venv venv
 source venv/bin/activate
+ # or
+conda create --name openvino_tokenizer 
+conda activate openvino_tokenizer
 ```
-3. Go to `modules/custom_operations` and run:
+
+### Minimal Installation
+
+Use minimal installation when you have a converted OpenVINO tokenizer:
 ```bash
-# to use converted tokenizers or models combined with tokenizers
-pip install .
-# to convert tokenizers from transformers library
-pip install .[transformers]
-# for development and testing the library
-pip install -e .[all]
+pip install openvino-tokenizers
+ # or
+conda install -c conda-forge openvino openvino-tokenizers
 ```
+
+### Convert Tokenizers Installation
+
+If you want to convert HuggingFace tokenizers into OpenVINO tokenizers:
+```bash
+pip install openvino-tokenizers[transformers]
+ # or
+conda install -c conda-forge openvino openvino-tokenizers && pip install transformers[sentencepiece] tiktoken
+```
+
+### Build and install from source after [OpenVINO installation](https://docs.openvino.ai/2023.2/openvino_docs_install_guides_overview.html)
+```bash
+source path/to/installed/openvino/setupvars.sh
+git clone https://github.com/openvinotoolkit/openvino_contrib.git
+cd openvino_contrib/modules/custom_operations/
+pip install -e .[transformers]
+```
+
+### Build and install for development
+```bash
+source path/to/installed/openvino/setupvars.sh
+git clone https://github.com/openvinotoolkit/openvino_contrib.git
+cd openvino_contrib/modules/custom_operations/
+pip install -e .[all]
+# verify installation by running tests
+cd user_ie_extensions/tokenizer/python/tests/
+pytest .
+```
+
+## Usage
 
 ### Convert HuggingFace tokenizer
 
+OpenVINO Tokenizers ships with CLI tool that can convert tokenizers from Huggingface Hub 
+or Huggingface tokenizers saved on disk:
+
+```shell
+convert_tokenizer codellama/CodeLlama-7b-hf --with-detokenizer -o output_dir
+```
+
+There is also `convert_tokenizer` function that can convert tokenizer python object.
+
 ```python
+import numpy as np
 from transformers import AutoTokenizer
-from openvino import compile_model
+from openvino import compile_model, save_model
 from openvino_tokenizers import convert_tokenizer
 
 hf_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 ov_tokenizer = convert_tokenizer(hf_tokenizer)
 
 compiled_tokenzier = compile_model(ov_tokenizer)
-text_input = "Test string"
+text_input = ["Test string"]
 
-hf_output = hf_tokenizer([text_input], return_tensors="np")
-ov_output = compiled_tokenzier([text_input])
+hf_output = hf_tokenizer(text_input, return_tensors="np")
+ov_output = compiled_tokenzier(text_input)
 
 for output_name in hf_output:
     print(f"OpenVINO {output_name} = {ov_output[output_name]}")
@@ -51,9 +94,19 @@ for output_name in hf_output:
 # HuggingFace token_type_ids = [[0 0 0 0]]
 # OpenVINO attention_mask = [[1 1 1 1]]
 # HuggingFace attention_mask = [[1 1 1 1]]
+
+# save tokenizer for later use
+save_model(ov_tokenizer, "openvino_tokenizer.xml")
+
+loaded_tokenizer = compile_model("openvino_tokenizer.xml")
+loaded_ov_output = loaded_tokenizer(text_input)
+for output_name in hf_output:
+    assert np.all(loaded_ov_output[output_name] == ov_output[output_name])
 ```
 
 ### Connect Tokenizer to a Model
+
+To infer and convert the original model, install torch or torch-cpu to the virtual environment.
 
 ```python
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
@@ -83,10 +136,12 @@ print(f"HuggingFace logits {hf_output.logits}")
 
 ### Use Extension With Converted (De)Tokenizer or Model With (De)Tokenizer
 
-To work with converted tokenizer and detokenizer, numpy string tensors are used.
+Import `openvino_tokenizers` will add all tokenizer-related operations to OpenVINO,
+after which you can work with saved tokenizers and detokenizers.
 
 ```python
 import numpy as np
+import openvino_tokenizers
 from openvino import Core
 
 core = Core()
@@ -160,17 +215,27 @@ print(f"HuggingFace output string: `{hf_output}`")
 # HuggingFace output string: `['Quick brown fox was walking through the forest. He was looking for something']`
 ```
 
-## Test Coverage
+## Supported Tokenizer Types
 
-This report is autogenerated and includes tokenizers and detokenizers tests. To update it run pytest with `--update_readme` flag.
+| Huggingface <br/>Tokenizer Type | Tokenizer Model Type | Tokenizer | Detokenizer |
+|---------------------------------|----------------------|----------|------------|
+| Fast                            | WordPiece            | ✅        | ❌          |
+|                                 | BPE                  | ✅        | ✅          |
+|                                 | Unigram              | ❌         | ❌          |
+| Legacy                          | SentencePiece .model | ✅        | ✅          |
+| Custom                          | tiktoken             | ✅        | ✅          |
 
-### Coverage by Tokenizer Type
+## Test Results
+
+This report is autogenerated and includes tokenizers and detokenizers tests. The `Output Matched, %` column shows the percent of test strings for which the results of OpenVINO and Hugingface Tokenizers are the same. To update the report run `pytest tokenizers_test.py --update_readme` in `modules/custom_operations/user_ie_extensions/tokenizer/python/tests` directory.
+
+### Output Match by Tokenizer Type
 
 <table>
   <thead>
     <tr>
       <th >Tokenizer Type</th>
-      <th >Pass Rate, %</th>
+      <th >Output Matched, %</th>
       <th >Number of Tests</th>
     </tr>
   </thead>
@@ -198,14 +263,14 @@ This report is autogenerated and includes tokenizers and detokenizers tests. To 
   </tbody>
 </table>
 
-### Coverage by Model Type
+### Output Match by Model
 
 <table>
   <thead>
     <tr>
       <th >Tokenizer Type</th>
       <th >Model</th>
-      <th >Pass Rate, %</th>
+      <th >Output Matched, %</th>
       <th >Number of Tests</th>
     </tr>
   </thead>
