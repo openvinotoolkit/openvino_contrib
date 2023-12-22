@@ -20,16 +20,6 @@ class StringToTypeAction(Action):
         setattr(namespace, self.dest, self.string_to_type_dict[values])
 
 
-class StringToBoolAction(Action):
-    string_to_type_dict = {
-        "True": True,
-        "False": False,
-    }
-
-    def __call__(self, parser, namespace, values, option_string=None) -> None:
-        setattr(namespace, self.dest, self.string_to_type_dict.get(values))
-
-
 def get_parser() -> ArgumentParser:
     parser = ArgumentParser(
         prog="convert_tokenizer",
@@ -72,8 +62,9 @@ def get_parser() -> ArgumentParser:
         "--clean-up-tokenization-spaces",
         "--clean_up_tokenization_spaces",
         required=False,
+        type=lambda x: {"True": True, "False": False}.get(x),
         default=None,
-        choices=["True", "False"],
+        choices=[True, False],
         help=(
             "Produce detokenizer that will clean up spaces before punctuation during decoding, similar to "
             "huggingface_tokenizer.decode(token_ids, clean_up_tokenization_spaces=True). This option is often set "
