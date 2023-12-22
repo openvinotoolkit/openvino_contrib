@@ -73,6 +73,18 @@ def build_coverege_report(session: pytest.Session) -> None:
         grouped_by_model.style.format(precision=2).hide(axis="index").to_html(new_readme, exclude_styles=True)
     else:
         grouped_by_model.style.format(precision=2).hide_index().to_html(new_readme, exclude_styles=True)
+
+    new_readme.write(
+        "\n### Recreating Tokenizers From Tests\n\n"
+        "In some tokenizers, you need to select certain settings so that their output is closer "
+        "to the Huggingface tokenizers:\n"
+        "- `THUDM/chatglm2-6b` detokenizer always skips special tokens. Use `skip_special_tokens=True` "
+        "during conversion\n"
+        "- `THUDM/chatglm3-6b` detokenizer don't skips special tokens. Use `skip_special_tokens=False` "
+        "during conversion\n"
+        "- All tested tiktoken based detokenizers leave extra spaces. Use `clean_up_tokenization_spaces=False` "
+        "during conversion\n"
+    )
     with open(readme_path, "w") as f:
         f.write(new_readme.getvalue())
 
