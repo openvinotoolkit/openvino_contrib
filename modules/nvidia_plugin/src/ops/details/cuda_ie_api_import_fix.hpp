@@ -4,7 +4,5 @@
 
 #pragma once
 
-#include <ie_api.h>
-
 #undef INFERENCE_ENGINE_DEPRECATED
 #define INFERENCE_ENGINE_DEPRECATED(msg) __attribute__((deprecated(msg)))

@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <ie_metric_helpers.hpp>
-// ^^ must come before ie_plugin_config.hpp, which is indirectly included by
-// cuda_executable_network.hpp
 
 #include <fmt/format.h>
 
@@ -309,19 +306,6 @@ ov::Any CompiledModel::get_property(const std::string& name) const {
         for (auto& rw_property : rw_properties)
             supported_properties.emplace_back(ov::PropertyName(rw_property, PropertyMutability::RO));
         return decltype(ov::supported_properties)::value_type{supported_properties};
-    } else if (EXEC_NETWORK_METRIC_KEY(SUPPORTED_METRICS) == name) {
-        IE_SET_METRIC_RETURN(SUPPORTED_METRICS,
-                             std::vector<std::string>{METRIC_KEY(NETWORK_NAME),
-                                                      METRIC_KEY(SUPPORTED_METRICS),
-                                                      METRIC_KEY(SUPPORTED_CONFIG_KEYS),
-                                                      METRIC_KEY(OPTIMAL_NUMBER_OF_INFER_REQUESTS)});
-    } else if (EXEC_NETWORK_METRIC_KEY(SUPPORTED_CONFIG_KEYS) == name) {
-        std::vector<std::string> configKeys = {};
-        auto config_properties = config_.get_rw_properties();
-        for (auto&& key : config_properties) {
-            configKeys.emplace_back(key);
-        }
-        IE_SET_METRIC_RETURN(SUPPORTED_CONFIG_KEYS, configKeys);
     } else if (ov::model_name == name) {
         auto model_name = model_->get_friendly_name();
         return decltype(ov::model_name)::value_type{model_name};
