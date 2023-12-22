@@ -478,10 +478,14 @@ def convert_sentencepiece_model_tokenizer(
     if not with_detokenizer:
         return tokenizer
 
-    return tokenizer, get_sp_detokenizer(sp_model_node, streaming_detokenizer=streaming_detokenizer)
+    return tokenizer, get_sp_detokenizer(
+        sp_model_node,
+        streaming_detokenizer=streaming_detokenizer,
+        clean_up_tokenization_spaces=hf_tokenizer.clean_up_tokenization_spaces
+    )
 
 
-def get_sp_detokenizer(sp_model_node: Node, streaming_detokenizer: bool = False) -> Model:
+def get_sp_detokenizer(sp_model_node: Node, streaming_detokenizer: bool = False, clean_up_tokenization_spaces: bool = False) -> Model:
     model_input = token_ids = op.Parameter(Type.i32, PartialShape(["?", "?"]))  # (batch, sequence)
 
     detokenizer = _factory.create(
@@ -491,6 +495,9 @@ def get_sp_detokenizer(sp_model_node: Node, streaming_detokenizer: bool = False)
 
     if streaming_detokenizer:
         detokenizer = RegexDecodingStep.replace_sp_spaces().get_ov_subgraph(detokenizer)
+
+    if clean_up_tokenization_spaces:
+        detokenizer = RegexDecodingStep.clean_up_tokenization_spaces().get_ov_subgraph(detokenizer)
 
     string_output = _factory.create("StringTensorPack", detokenizer).outputs()
     string_output[0].tensor.add_names({STRING_OUTPUT_NAME})
