@@ -1,9 +1,9 @@
 import json
 import os
+from importlib.metadata import version
 from io import StringIO
 from math import isclose
 from pathlib import Path
-from importlib.metadata import version
 
 import pytest
 

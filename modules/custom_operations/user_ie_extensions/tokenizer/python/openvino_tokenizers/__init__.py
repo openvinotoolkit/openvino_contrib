@@ -3,9 +3,9 @@
 # SPDX-License-Identifier: Apache-2.0
 import functools
 import os
+import site
 import sys
 from itertools import chain
-import site
 from pathlib import Path
 
 import openvino
@@ -14,6 +14,7 @@ from openvino.runtime.utils.node_factory import NodeFactory
 from .convert_tokenizer import convert_tokenizer
 from .str_pack import pack_strings, unpack_strings
 from .utils import add_greedy_decoding, connect_models
+
 
 _ext_name = "user_ov_extensions"
 if sys.platform == "win32":
@@ -31,14 +32,14 @@ if _extension_path and Path(_extension_path).is_file():
     # when the path to the extension set manually
     _ext_path = Path(_extension_path)
 else:
-    site_packages = chain((Path(__file__).parent.parent, ), site.getusersitepackages(), site.getsitepackages())
+    site_packages = chain((Path(__file__).parent.parent,), site.getusersitepackages(), site.getsitepackages())
     _ext_path = next(
         (
             ext
             for site_package in map(Path, site_packages)
             if (ext := site_package / __name__ / "lib" / _ext_name).is_file()
         ),
-        _ext_name  # Case when the library can be found in the PATH/LD_LIBRAY_PATH
+        _ext_name,  # Case when the library can be found in the PATH/LD_LIBRAY_PATH
     )
 
 del _ext_name
