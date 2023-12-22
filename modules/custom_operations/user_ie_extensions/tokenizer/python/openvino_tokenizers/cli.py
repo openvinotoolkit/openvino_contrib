@@ -151,7 +151,6 @@ def convert_hf_tokenizer() -> None:
     hf_tokenizer = AutoTokenizer.from_pretrained(args.name, trust_remote_code=args.trust_remote_code)
 
     print("Converting Huggingface Tokenizer to OpenVINO...")
-    print(args.clean_up_tokenization_spaces)
     converted = convert_tokenizer(
         hf_tokenizer,
         with_detokenizer=args.with_detokenizer,
