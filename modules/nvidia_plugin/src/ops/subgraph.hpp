@@ -6,6 +6,7 @@
 
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_base.hpp>
+#include <cuda_itopology_runner.hpp>
 #include <memory_manager/cuda_memory_manager.hpp>
 #include <memory_manager/cuda_memory_pool.hpp>
 
@@ -22,8 +23,8 @@ public:
 
     SubGraph(const CreationContext& context,
              const std::shared_ptr<const ov::Model>& model,
-             ExecSequence&& sequence,
-             std::shared_ptr<MemoryManager> memoryManager);
+             const ExecSequence& sequence,
+             const std::shared_ptr<MemoryManager>& memoryManager);
 
     virtual ~SubGraph() = default;
 
@@ -44,6 +45,8 @@ public:
                       Outputs outputTensors,
                       const Workbuffers& workbuffers) const override;
 
+    virtual void initializeRunner();
+
     inline std::shared_ptr<MemoryManager> memoryManager() const { return memory_manager_; }
 
     inline const std::vector<OperationBase::Ptr>& getExecSequence() const { return exec_sequence_; }
@@ -53,13 +56,35 @@ public:
     const std::vector<OperationBase::Ptr>& getParams() const;
     const std::vector<OperationBase::Ptr>& getResults() const;
 
+    bool hasTopologyRunners() const {
+        if (runners_status_ == NestedRunnersStatus::UNKNOWN) {
+            if (runner_ != nullptr) {
+                runners_status_ = NestedRunnersStatus::PRESENT;
+            } else {
+                runners_status_ = NestedRunnersStatus::ABSENT;
+                for (const auto& op : exec_sequence_) {
+                    const auto sg = std::dynamic_pointer_cast<SubGraph>(op);
+                    if (sg && sg->hasTopologyRunners()) {
+                        runners_status_ = NestedRunnersStatus::PRESENT;
+                        break;
+                    }
+                }
+            }
+        }
+        return runners_status_ == NestedRunnersStatus::PRESENT;
+    }
+
+    virtual std::size_t GetCudaGraphsCount() const;
+
 private:
     void initSharedImmutableWorkbuffers(const std::vector<OperationBase::Ptr>& init_sequence);
-    void initExecuteSequence(const CreationContext& context, bool isStableParams, bool isStableResults);
+    void initExecuteSequence(bool isStableParams, bool isStableResults);
     static std::unique_ptr<MemoryManager> createMemoryManager(const OperationBuffersExtractor& opBuffersExtractor);
     std::vector<DevicePointer<void*>> getSharedWorkbuffers(const IOperationExec& operation);
 
 protected:
+    enum class NestedRunnersStatus { UNKNOWN = -1, ABSENT, PRESENT };
+
     using SubGraphOp = ov::op::util::SubGraphOp;
 
     SubGraph(const CreationContext& context,
@@ -91,8 +116,12 @@ protected:
     std::vector<OperationInfo> results_info_;
     std::shared_ptr<const ov::Model> model_;
 
+    const CreationContext& creation_context_;
+    std::shared_ptr<ITopologyRunner> runner_ = nullptr;
+
     mutable CudaGraphCompatibility graph_compatibility_;
     mutable bool is_compatibility_analyzed_ = false;
+    mutable NestedRunnersStatus runners_status_{NestedRunnersStatus::UNKNOWN};
 };
 
 }  // namespace nvidia_gpu

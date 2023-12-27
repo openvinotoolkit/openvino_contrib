@@ -6,6 +6,7 @@
 
 #include <fmt/format.h>
 
+#include <cuda_graph_topology_runner.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
 #include <cuda_iexecution_delegator.hpp>
@@ -24,23 +25,29 @@ SubGraph::SubGraph(const CreationContext& context,
                    const SubGraphOp& op,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds)
-    : OperationBase(context, op, std::move(inputIds), std::move(outputIds)), model_{op.get_function()} {
+    : OperationBase(context, op, std::move(inputIds), std::move(outputIds)),
+      model_{op.get_function()},
+      creation_context_{context} {
     const bool isStableParamsAndResultsNeeded = nullptr != dynamic_cast<const ov::op::v0::TensorIterator*>(&op);
-    initExecuteSequence(context, isStableParamsAndResultsNeeded, isStableParamsAndResultsNeeded);
+    initExecuteSequence(isStableParamsAndResultsNeeded, isStableParamsAndResultsNeeded);
 }
 
 SubGraph::SubGraph(const CreationContext& context, const std::shared_ptr<const ov::Model>& model)
-    : OperationBase(context, nullptr), model_{model} {
-      initExecuteSequence(context, false, false);
+    : OperationBase(context, nullptr), model_{model}, creation_context_{context} {
+    initExecuteSequence(false, false);
 }
 
 SubGraph::SubGraph(const CreationContext& context,
                    const std::shared_ptr<const ov::Model>& model,
-                   ExecSequence&& sequence,
-                   std::shared_ptr<MemoryManager> memoryManager)
-    : OperationBase{context, nullptr}, model_{model}, exec_sequence_{sequence}, memory_manager_{memoryManager} {}
+                   const ExecSequence& sequence,
+                   const std::shared_ptr<MemoryManager>& memoryManager)
+    : OperationBase{context, nullptr},
+      memory_manager_{memoryManager},
+      exec_sequence_{sequence},
+      model_{model},
+      creation_context_{context} {}
 
-void SubGraph::initExecuteSequence(const CreationContext& context, bool isStableParams, bool isStableResults) {
+void SubGraph::initExecuteSequence(bool isStableParams, bool isStableResults) {
     static constexpr auto InitNeeded = IOperationExec::WorkbufferStatus::InitNeeded;
 
     if (!model_) {
@@ -65,7 +72,7 @@ void SubGraph::initExecuteSequence(const CreationContext& context, bool isStable
         }
         auto inIds = opBuffersExtractor.inputTensorIds(*node);
         auto outIds = opBuffersExtractor.outputTensorIds(*node);
-        auto operation = OperationRegistry::getInstance().createOperation(context, node, move(inIds), move(outIds));
+        auto operation = OperationRegistry::getInstance().createOperation(creation_context_, node, move(inIds), move(outIds));
         if (dynamic_cast<NopOp*>(operation.get())) {
             continue;
         }
@@ -108,6 +115,20 @@ std::unique_ptr<MemoryManager> SubGraph::createMemoryManager(const OperationBuff
     auto immutable_workbuffers = std::make_shared<DeviceMemBlock>(immutable_workbuffer_model);
     // Later on, for each infer request
     return std::make_unique<MemoryManager>(shared_constants_blob, memory_model, immutable_workbuffers);
+}
+
+std::size_t SubGraph::GetCudaGraphsCount() const {
+    if (!hasTopologyRunners()) {
+        return graph_compatibility_ == CudaGraphCompatibility::NONE ? 0 : 1;
+    }
+    auto count = runner_ ? runner_->GetCudaGraphsCount() : static_cast<std::size_t>(0);
+    for (const auto& op : exec_sequence_) {
+        const auto sg = std::dynamic_pointer_cast<SubGraph>(op);
+        if (sg) {
+            count += sg->GetCudaGraphsCount();
+        }
+    }
+    return count;
 }
 
 void SubGraph::initSharedImmutableWorkbuffers(const std::vector<OperationBase::Ptr>& init_sequence) {
@@ -176,6 +197,10 @@ void SubGraph::ExecuteGraph(InferenceRequestContext& context,
     auto& executionDelegator = context.getExecutionDelegator();
     executionDelegator.set_stream(stream);
     executionDelegator.execute_graph_sequence(this, memoryManager, mutableBuffer, context);
+}
+
+void SubGraph::initializeRunner() {
+    runner_ = std::make_shared<CudaGraphTopologyRunner>(creation_context_, model_, exec_sequence_, memory_manager_);
 }
 
 WorkbufferRequest SubGraph::GetWorkBufferRequest() const {

@@ -33,12 +33,33 @@ public:
     void Capture(InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
-                 const Workbuffers& workbuffers) const override;
+                 const Workbuffers& workbuffers) const override {
+        if (hasTopologyRunners()) {
+            CaptureMulti(context, inputTensors, outputTensors, workbuffers);
+        } else {
+            CaptureSingle(context, inputTensors, outputTensors, workbuffers);
+        }
+    }
 
     void ExecuteGraph(InferenceRequestContext& context,
                       Inputs inputTensors,
                       Outputs outputTensors,
-                      const Workbuffers& workbuffers) const override;
+                      const Workbuffers& workbuffers) const override {
+        if (hasTopologyRunners()) {
+            ExecuteGraphMulti(context, inputTensors, outputTensors, workbuffers);
+        } else {
+            ExecuteGraphSingle(context, inputTensors, outputTensors, workbuffers);
+        }
+    }
+
+    void initializeRunner() override;
+
+    std::size_t GetCudaGraphsCount() const override {
+        if (hasTopologyRunners()) {
+            return 3;
+        }
+        return 1;
+    }
 
 private:
     struct PortMap {
@@ -62,16 +83,16 @@ private:
             slice_(stream.get(), src, dst, start_ + iter * stride_);
         }
 
-        void add_kernel_node(CudaGraphInfo& info,
-                             const CUDA::Stream& stream,
-                             CUDA::DevicePointer<void*> mutableBuffer,
-                             const IOperationExec::Inputs& inputTensors);
+        void addKernelNode(ICudaGraphInfo& info,
+                           const CUDA::Stream& stream,
+                           CUDA::DevicePointer<void*> mutableBuffer,
+                           const IOperationExec::Inputs& inputTensors);
 
-        void update_kernel_node(CudaGraphInfo& info,
-                                std::size_t index,
-                                CUDA::DevicePointer<void*> mutableBuffer,
-                                const IOperationExec::Inputs& inputTensors,
-                                int64_t iter) {
+        void updateKernelNode(ICudaGraphInfo& info,
+                              std::size_t index,
+                              CUDA::DevicePointer<void*> mutableBuffer,
+                              const IOperationExec::Inputs& inputTensors,
+                              int64_t iter) {
             const auto* src = inputTensors[input_idx_].get();
             auto* dst = memory_manager_.outputTensorPointers(param_, mutableBuffer)[0].get();
             info.update_kernel(index, slice_.getPropsPtr(), start_ + iter * stride_, slice_.getSize(), src, dst);
@@ -98,9 +119,9 @@ private:
             throwIfError(cudaMemcpyAsync(dst, src, param_size_, cudaMemcpyDeviceToDevice, stream.get()));
         }
 
-        void add_transfer_node(CudaGraphInfo& info,
-                               const CUDA::Stream& stream,
-                               CUDA::DevicePointer<void*> mutableBuffer);
+        void addTransferNode(ICudaGraphInfo& info,
+                             const CUDA::Stream& stream,
+                             CUDA::DevicePointer<void*> mutableBuffer);
 
     private:
         const OperationBase& param_;
@@ -122,16 +143,16 @@ private:
             insert_(stream.get(), src, dst, start_ + iter * stride_);
         }
 
-        void add_kernel_node(CudaGraphInfo& info,
-                             const CUDA::Stream& stream,
-                             CUDA::DevicePointer<void*> mutableBuffer,
-                             const IOperationExec::Outputs& outputTensors);
+        void addKernelNode(ICudaGraphInfo& info,
+                           const CUDA::Stream& stream,
+                           CUDA::DevicePointer<void*> mutableBuffer,
+                           const IOperationExec::Outputs& outputTensors);
 
-        void update_kernel_node(CudaGraphInfo& info,
-                                std::size_t index,
-                                CUDA::DevicePointer<void*> mutableBuffer,
-                                const IOperationExec::Outputs& outputTensors,
-                                int64_t iter) {
+        void updateKernelNode(ICudaGraphInfo& info,
+                              std::size_t index,
+                              CUDA::DevicePointer<void*> mutableBuffer,
+                              const IOperationExec::Outputs& outputTensors,
+                              int64_t iter) {
             const auto* src = memory_manager_.inputTensorPointers(result_, mutableBuffer)[0].get();
             auto* dst = outputTensors[output_idx_].get();
             info.update_kernel(index, insert_.getPropsPtr(), start_ + iter * stride_, insert_.getSize(), src, dst);
@@ -148,6 +169,26 @@ private:
 
     WorkbufferRequest GetWorkBufferRequest() const override;
     void InitSharedImmutableWorkbuffers(const Buffers& buffers) override;
+
+    void CaptureSingle(InferenceRequestContext& context,
+                       Inputs inputTensors,
+                       Outputs outputTensors,
+                       const Workbuffers& workbuffers) const;
+
+    void ExecuteGraphSingle(InferenceRequestContext& context,
+                            Inputs inputTensors,
+                            Outputs outputTensors,
+                            const Workbuffers& workbuffers) const;
+
+    void CaptureMulti(InferenceRequestContext& context,
+                      Inputs inputTensors,
+                      Outputs outputTensors,
+                      const Workbuffers& workbuffers) const;
+
+    void ExecuteGraphMulti(InferenceRequestContext& context,
+                           Inputs inputTensors,
+                           Outputs outputTensors,
+                           const Workbuffers& workbuffers) const;
 
     void transferParam(const CUDA::Stream& stream,
                        CUDA::DevicePointer<void*> mutableBuffer,
