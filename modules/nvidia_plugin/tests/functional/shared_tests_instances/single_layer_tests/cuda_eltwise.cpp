@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "common_test_utils/node_builders/eltwise.hpp"
+#include "ov_models/utils/data_utils.hpp"
 
 namespace LayerTestsDefinitions {
 
