@@ -5,9 +5,9 @@ import functools
 import os
 import site
 import sys
-from collections.abc import Callable
 from itertools import chain
 from pathlib import Path
+from typing import Callable
 
 import openvino
 from openvino.runtime.utils.node_factory import NodeFactory
