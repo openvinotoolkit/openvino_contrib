@@ -6,8 +6,8 @@
 #include <vector>
 
 #include "behavior/plugin/hetero_synthetic.hpp"
-#include "ov_models/builders.hpp"
-#include "ov_models/subgraph_builders.hpp"
+#include "common_test_utils/subgraph_builders/conv_pool_relu.hpp"
+#include "common_test_utils/subgraph_builders/conv_pool_relu_non_zero.hpp"
 
 namespace {
 using namespace HeteroTests;
@@ -21,7 +21,7 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::Values(std::vector<PluginParameter>{{"NVIDIA", "openvino_nvidia_gpu_plugin"},
                                                                       {"NVIDIA", "openvino_nvidia_gpu_plugin"}}),
                        ::testing::ValuesIn(HeteroTests::HeteroSyntheticTest::withMajorNodesFunctions(
-                           [] { return ngraph::builder::subgraph::makeConvPool2Relu2(); }, {"Conv_1"}, true))),
+                           [] { return ov::test::utils::make_conv_pool2_relu2(); }, {"Conv_1"}, true))),
     HeteroSyntheticTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(
@@ -41,7 +41,7 @@ INSTANTIATE_TEST_SUITE_P(
     HeteroSyntheticTest::getTestCaseName);
 
 static std::vector<std::function<std::shared_ptr<ngraph::Function>()>> dynamicBuilders = {
-    [] { return ngraph::builder::subgraph::makeConvPoolReluNonZero(); },
+    [] { return ov::test::utils::make_conv_pool_relu_non_zero(); },
 };
 
 INSTANTIATE_TEST_SUITE_P(

@@ -13,7 +13,6 @@
 
 #include "cuda_test_constants.hpp"
 #include "finite_comparer.hpp"
-#include "ov_models/builders.hpp"
 
 using namespace LayerTestsDefinitions;
 

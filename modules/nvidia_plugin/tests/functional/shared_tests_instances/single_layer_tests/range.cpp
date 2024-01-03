@@ -16,7 +16,6 @@
 #include <ops/parameter.hpp>
 
 #include "kernels/details/cuda_type_traits.hpp"
-#include "ov_models/builders.hpp"
 
 namespace {
 
