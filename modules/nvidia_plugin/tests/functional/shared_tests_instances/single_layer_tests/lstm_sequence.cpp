@@ -8,11 +8,11 @@
 #include <functional>
 #include <vector>
 
+#include "common_test_utils/node_builders/constant.hpp"
 #include "cuda/device_pointers.hpp"
 #include "cuda_operation_registry.hpp"
 #include "cuda_thread_context.hpp"
 #include "unsymmetrical_comparer.hpp"
-#include "common_test_utils/node_builders/constant.hpp"
 
 namespace LayerTestsDefinitions {
 using ov::test::utils::InputLayerType;
@@ -38,18 +38,17 @@ class CUDALSTMSequenceTest : public UnsymmetricalComparer<LSTMSequenceTest> {
     }
 };
 
-using LSTMSequenceOptimizedParams =
-    typename std::tuple<SequenceTestsMode,  // pure Sequence or TensorIterator
-                        size_t,                              // seq_lengths
-                        size_t,                              // batch
-                        size_t,                              // hidden size
-                        size_t,                              // input size
-                        std::vector<std::string>,            // activations
-                        float,                               // clip
-                        std::string,                         // major batch
-                        InputLayerType,     // WRB input type (Constant or Parameter)
-                        InferenceEngine::Precision,          // Network precision
-                        std::string>;                        // Device name
+using LSTMSequenceOptimizedParams = typename std::tuple<SequenceTestsMode,         // pure Sequence or TensorIterator
+                                                        size_t,                    // seq_lengths
+                                                        size_t,                    // batch
+                                                        size_t,                    // hidden size
+                                                        size_t,                    // input size
+                                                        std::vector<std::string>,  // activations
+                                                        float,                     // clip
+                                                        std::string,               // major batch
+                                                        InputLayerType,  // WRB input type (Constant or Parameter)
+                                                        InferenceEngine::Precision,  // Network precision
+                                                        std::string>;                // Device name
 
 class CUDALSTMSequenceOptimizedTest : public testing::WithParamInterface<LSTMSequenceOptimizedParams>,
                                       virtual public LayerTestsUtils::LayerTestsCommon {

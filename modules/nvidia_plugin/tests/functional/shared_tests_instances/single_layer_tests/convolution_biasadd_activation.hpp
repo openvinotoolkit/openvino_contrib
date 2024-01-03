@@ -16,9 +16,8 @@
 #include <ngraph/node.hpp>
 #include <ngraph/shape.hpp>
 #include <ngraph/type/element_type.hpp>
-#include <ov_models/utils/ov_helpers.hpp>
-#include "openvino/opsets/opset1.hpp"
 #include <openvino/op/util/attr_types.hpp>
+#include <ov_models/utils/ov_helpers.hpp>
 #include <shared_test_classes/base/layer_test_utils.hpp>
 #include <shared_test_classes/single_layer/activation.hpp>
 #include <shared_test_classes/single_layer/convolution.hpp>
@@ -28,9 +27,11 @@
 #include <tuple>
 #include <type_traits>
 #include <vector>
+
 #include "common_test_utils/node_builders/activation.hpp"
 #include "common_test_utils/node_builders/convolution.hpp"
 #include "common_test_utils/node_builders/group_convolution.hpp"
+#include "openvino/opsets/opset1.hpp"
 
 namespace LayerTestsDefinitions {
 using ov::test::utils::ActivationTypes;
@@ -98,9 +99,7 @@ public:
         std::ostringstream result;
         result << TConvLayerTest::getTestCaseName({convParamSet, obj.index}) << "_";
         result << "Activation="
-               << (activation == ActivationTypes::None
-                       ? "None"
-                       : LayerTestsDefinitions::activationNames[activation]);
+               << (activation == ActivationTypes::None ? "None" : LayerTestsDefinitions::activationNames[activation]);
         return result.str();
     }
 
