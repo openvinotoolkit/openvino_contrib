@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <array>
+#include <vector>
 #include <openvino/op/op.hpp>
 
 
