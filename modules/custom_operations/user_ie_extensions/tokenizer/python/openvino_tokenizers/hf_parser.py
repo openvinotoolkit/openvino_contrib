@@ -18,7 +18,7 @@ from openvino.runtime.exceptions import OVTypeError
 from openvino.runtime.utils.types import as_node, make_constant_node
 from transformers.convert_slow_tokenizer import import_protobuf
 
-from . import _factory
+from . import _get_factory
 from .constants import (
     ATTENTION_MASK_INPUT_NAME,
     DETOKENIZER_NAME,
@@ -436,7 +436,7 @@ def convert_sentencepiece_model_tokenizer(
         )
     add_bos_token = getattr(hf_tokenizer, "add_bos_token", add_eos_token) or False
 
-    tokenizer_node = _factory.create(
+    tokenizer_node = _get_factory().create(
         "SentencepieceTokenizer",
         [sp_model_node, input_node],
         {
@@ -451,7 +451,7 @@ def convert_sentencepiece_model_tokenizer(
 
     default_value = make_constant_node(hf_tokenizer.pad_token_id or 0, values.element_type)
     broadcast = opset.broadcast(default_value, dense_shape)
-    scatternd_input_ids = _factory.create(
+    scatternd_input_ids = _get_factory().create(
         "ScatterNDUpdate",
         [broadcast, indices, values],  # FIXME: pad left side instead of right
     )
@@ -467,7 +467,7 @@ def convert_sentencepiece_model_tokenizer(
     outputs = scatternd_input_ids.outputs()
 
     if add_attention_mask:
-        attention_mask = _factory.create(
+        attention_mask = _get_factory().create(
             "ScatterNDUpdate",
             [
                 broadcast,
@@ -509,10 +509,14 @@ def get_sp_detokenizer(
 ) -> Model:
     model_input = token_ids = op.Parameter(Type.i32, PartialShape(["?", "?"]))  # (batch, sequence)
 
-    detokenizer = _factory.create(
-        "SentencepieceStreamDetokenizer" if streaming_detokenizer else "SentencepieceDetokenizer",
-        [sp_model_node, token_ids],
-    ).outputs()
+    detokenizer = (
+        _get_factory()
+        .create(
+            "SentencepieceStreamDetokenizer" if streaming_detokenizer else "SentencepieceDetokenizer",
+            [sp_model_node, token_ids],
+        )
+        .outputs()
+    )
 
     if streaming_detokenizer:
         detokenizer = RegexDecodingStep.replace_sp_spaces().get_ov_subgraph(detokenizer)
@@ -520,7 +524,7 @@ def get_sp_detokenizer(
     if clean_up_tokenization_spaces:
         detokenizer = RegexDecodingStep.clean_up_tokenization_spaces().get_ov_subgraph(detokenizer)
 
-    string_output = _factory.create("StringTensorPack", detokenizer).outputs()
+    string_output = _get_factory().create("StringTensorPack", detokenizer).outputs()
     string_output[0].tensor.add_names({STRING_OUTPUT_NAME})
     tokenizer_detokenizer = Model(string_output, [model_input], DETOKENIZER_NAME)
     tokenizer_detokenizer.validate_nodes_and_infer_types()
@@ -566,11 +570,11 @@ def convert_tiktoken_model_tokenizer(
             CharsToBytesStep(),
         ]
     )
-    # if clean_up_tokenization_spaces is None:
-    #     clean_up_tokenization_spaces = hf_tokenizer.clean_up_tokenization_spaces
-    #
-    # if clean_up_tokenization_spaces:
-    #     pipeline.add_steps(RegexDecodingStep.clean_up_tokenization_spaces())
+    if clean_up_tokenization_spaces is None:
+        clean_up_tokenization_spaces = getattr(hf_tokenizer, "clean_up_tokenization_spaces", None)
+
+    if clean_up_tokenization_spaces:
+        pipeline.add_steps(RegexDecodingStep.clean_up_tokenization_spaces())
 
     if not with_detokenizer:
         return pipeline.get_tokenizer_ov_subgraph()

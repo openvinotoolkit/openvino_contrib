@@ -5,6 +5,7 @@ import functools
 import os
 import site
 import sys
+from collections.abc import Callable
 from itertools import chain
 from pathlib import Path
 
@@ -46,6 +47,7 @@ del _ext_name
 
 # patching openvino
 old_core_init = openvino.runtime.Core.__init__
+old_factory_init = openvino.runtime.utils.node_factory.NodeFactory.__init__
 
 
 @functools.wraps(old_core_init)
@@ -54,7 +56,27 @@ def new_core_init(self, *args, **kwargs):
     self.add_extension(str(_ext_path))  # Core.add_extension doesn't support Path object
 
 
-openvino.runtime.Core.__init__ = new_core_init
+@functools.wraps(old_factory_init)
+def new_factory_init(self, *args, **kwargs):
+    old_factory_init(self, *args, **kwargs)
+    self.add_extension(_ext_path)
 
-_factory = NodeFactory()
-_factory.add_extension(_ext_path)
+
+openvino.runtime.Core.__init__ = new_core_init
+openvino.runtime.utils.node_factory.NodeFactory.__init__ = new_factory_init
+
+
+def _get_factory_callable() -> Callable[[], NodeFactory]:
+    factory = None
+
+    def inner() -> NodeFactory:
+        nonlocal factory
+        if factory is None:
+            factory = NodeFactory()
+
+        return factory
+
+    return inner
+
+
+_get_factory = _get_factory_callable()
