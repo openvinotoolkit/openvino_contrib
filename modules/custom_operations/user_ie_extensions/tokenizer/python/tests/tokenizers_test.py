@@ -61,6 +61,7 @@ emoji_test_strings = [
 ]
 misc_strings = [
     "",
+    b"\x06".decode(),  # control char
     " ",
     " " * 10,
     "\n",
