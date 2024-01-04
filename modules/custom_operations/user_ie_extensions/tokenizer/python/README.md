@@ -43,7 +43,7 @@ conda install -c conda-forge openvino openvino-tokenizers && pip install transfo
 source path/to/installed/openvino/setupvars.sh
 git clone https://github.com/openvinotoolkit/openvino_contrib.git
 cd openvino_contrib/modules/custom_operations/
-pip install -e .[transformers]
+pip install .[transformers]
 ```
 
 ### Build and install for development
@@ -58,6 +58,8 @@ pytest .
 ```
 
 ## Usage
+
+:warning: OpenVINO Tokenizers can be inferred on a `CPU` device only.
 
 ### Convert HuggingFace tokenizer
 
