@@ -26,7 +26,8 @@ dev = [
     "ruff",
     "pytest",
     "pytest_harvest",
-    "bandit"
+    "bandit",
+    "atheris"
 ]
 transformers = [
     "transformers[sentencepiece]",
