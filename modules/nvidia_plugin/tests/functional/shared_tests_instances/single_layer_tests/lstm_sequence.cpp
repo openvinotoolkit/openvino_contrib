@@ -8,9 +8,11 @@
 #include <functional>
 #include <vector>
 
+#include "common_test_utils/node_builders/constant.hpp"
 #include "cuda/device_pointers.hpp"
 #include "cuda_operation_registry.hpp"
 #include "cuda_thread_context.hpp"
+#include "openvino/op/constant.hpp"
 #include "unsymmetrical_comparer.hpp"
 
 namespace LayerTestsDefinitions {
@@ -37,18 +39,17 @@ class CUDALSTMSequenceTest : public UnsymmetricalComparer<LSTMSequenceTest> {
     }
 };
 
-using LSTMSequenceOptimizedParams =
-    typename std::tuple<SequenceTestsMode,  // pure Sequence or TensorIterator
-                        size_t,                              // seq_lengths
-                        size_t,                              // batch
-                        size_t,                              // hidden size
-                        size_t,                              // input size
-                        std::vector<std::string>,            // activations
-                        float,                               // clip
-                        std::string,                         // major batch
-                        InputLayerType,     // WRB input type (Constant or Parameter)
-                        InferenceEngine::Precision,          // Network precision
-                        std::string>;                        // Device name
+using LSTMSequenceOptimizedParams = typename std::tuple<SequenceTestsMode,         // pure Sequence or TensorIterator
+                                                        size_t,                    // seq_lengths
+                                                        size_t,                    // batch
+                                                        size_t,                    // hidden size
+                                                        size_t,                    // input size
+                                                        std::vector<std::string>,  // activations
+                                                        float,                     // clip
+                                                        std::string,               // major batch
+                                                        InputLayerType,  // WRB input type (Constant or Parameter)
+                                                        InferenceEngine::Precision,  // Network precision
+                                                        std::string>;                // Device name
 
 class CUDALSTMSequenceOptimizedTest : public testing::WithParamInterface<LSTMSequenceOptimizedParams>,
                                       virtual public LayerTestsUtils::LayerTestsCommon {
@@ -180,11 +181,11 @@ protected:
             seq_lengths_node->set_friendly_name("seq_lengths");
             params.push_back(param);
         } else if (m_mode == SequenceTestsMode::PURE_SEQ_RAND_SEQ_LEN_CONST) {
-            seq_lengths_node = ngraph::builder::makeConstant<int64_t>(
+            seq_lengths_node = ov::test::utils::deprecated::make_constant<int64_t>(
                 ov::element::i64, input_shapes[3], {}, true, static_cast<int64_t>(seq_lengths), 0.f);
         } else {
             std::vector<int64_t> lengths(input_shapes[3][0], seq_lengths);
-            seq_lengths_node = ngraph::builder::makeConstant(ov::element::i64, input_shapes[3], lengths, false);
+            seq_lengths_node = ov::op::v0::Constant::create(ov::element::i64, input_shapes[3], lengths);
         }
         std::shared_ptr<ov::Node> W, R, B;
         if (WRBType == InputLayerType::PARAMETER) {
@@ -198,9 +199,9 @@ protected:
             params.push_back(R_param);
             params.push_back(B_param);
         } else {
-            W = ngraph::builder::makeConstant(ngPrc, W_shape, {}, true, up_to, start_from, counter++);
-            R = ngraph::builder::makeConstant(ngPrc, R_shape, {}, true, up_to, start_from, counter++);
-            B = ngraph::builder::makeConstant(ngPrc, B_shape, {}, true, up_to, start_from, counter++);
+            W = ov::test::utils::deprecated::make_constant(ngPrc, W_shape, {}, true, up_to, start_from, counter++);
+            R = ov::test::utils::deprecated::make_constant(ngPrc, R_shape, {}, true, up_to, start_from, counter++);
+            B = ov::test::utils::deprecated::make_constant(ngPrc, B_shape, {}, true, up_to, start_from, counter++);
         }
 
         auto lstm_sequence = std::make_shared<ov::op::v5::LSTMSequence>(x_node,

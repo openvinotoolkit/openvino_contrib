@@ -16,10 +16,8 @@
 #include <ngraph/node.hpp>
 #include <ngraph/shape.hpp>
 #include <ngraph/type/element_type.hpp>
-#include <ov_models/builders.hpp>
-#include <ov_models/utils/ov_helpers.hpp>
-#include "openvino/opsets/opset1.hpp"
 #include <openvino/op/util/attr_types.hpp>
+#include <ov_models/utils/ov_helpers.hpp>
 #include <shared_test_classes/base/layer_test_utils.hpp>
 #include <shared_test_classes/single_layer/activation.hpp>
 #include <shared_test_classes/single_layer/convolution.hpp>
@@ -29,6 +27,11 @@
 #include <tuple>
 #include <type_traits>
 #include <vector>
+
+#include "common_test_utils/node_builders/activation.hpp"
+#include "common_test_utils/node_builders/convolution.hpp"
+#include "common_test_utils/node_builders/group_convolution.hpp"
+#include "openvino/opsets/opset1.hpp"
 
 namespace LayerTestsDefinitions {
 using ov::test::utils::ActivationTypes;
@@ -96,9 +99,7 @@ public:
         std::ostringstream result;
         result << TConvLayerTest::getTestCaseName({convParamSet, obj.index}) << "_";
         result << "Activation="
-               << (activation == ActivationTypes::None
-                       ? "None"
-                       : LayerTestsDefinitions::activationNames[activation]);
+               << (activation == ActivationTypes::None ? "None" : LayerTestsDefinitions::activationNames[activation]);
         return result.str();
     }
 
@@ -135,7 +136,7 @@ protected:
             lastNode = biasAddLayer;
         }
         if (activation != ActivationTypes::None) {
-            lastNode = ngraph::builder::makeActivation(lastNode, ngNetPrc, activation);
+            lastNode = ov::test::utils::make_activation(lastNode, ngNetPrc, activation);
         }
 
         ov::ResultVector results{std::make_shared<ov::opset1::Result>(lastNode)};
@@ -169,30 +170,30 @@ protected:
 
         std::shared_ptr<ov::Node> convNode = nullptr;
         if constexpr (!isGroup) {
-            convNode = ngraph::builder::makeConvolution(params[0],
-                                                        ngPrc,
-                                                        kernel,
-                                                        stride,
-                                                        padBegin,
-                                                        padEnd,
-                                                        dilation,
-                                                        padType,
-                                                        convOutChannels,
-                                                        false,
-                                                        filter_weights);
+            convNode = ov::test::utils::make_convolution(params[0],
+                                                         ngPrc,
+                                                         kernel,
+                                                         stride,
+                                                         padBegin,
+                                                         padEnd,
+                                                         dilation,
+                                                         padType,
+                                                         convOutChannels,
+                                                         false,
+                                                         filter_weights);
         } else {
-            convNode = ngraph::builder::makeGroupConvolution(params[0],
-                                                             ngPrc,
-                                                             kernel,
-                                                             stride,
-                                                             padBegin,
-                                                             padEnd,
-                                                             dilation,
-                                                             padType,
-                                                             convOutChannels,
-                                                             numGroups,
-                                                             false,
-                                                             filter_weights);
+            convNode = ov::test::utils::make_group_convolution(params[0],
+                                                               ngPrc,
+                                                               kernel,
+                                                               stride,
+                                                               padBegin,
+                                                               padEnd,
+                                                               dilation,
+                                                               padType,
+                                                               convOutChannels,
+                                                               numGroups,
+                                                               false,
+                                                               filter_weights);
         }
         return std::make_tuple(ngPrc, params, std::dynamic_pointer_cast<typename Traits::ConvNode>(convNode));
     }

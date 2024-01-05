@@ -8,6 +8,7 @@
 #include <openvino/op/util/attr_types.hpp>
 #include <vector>
 
+#include "common_test_utils/node_builders/gru_cell.hpp"
 #include "unsymmetrical_comparer.hpp"
 
 using ov::test::utils::InputLayerType;
@@ -106,18 +107,17 @@ public:
 
         ASSERT_EQ(InputLayerType::CONSTANT, WRBType);
         std::vector<ov::Shape> WRB = {inputShapes[3], inputShapes[4], inputShapes[5], inputShapes[2]};
-        auto gru_sequence =
-            ngraph::builder::makeGRU(ov::OutputVector{params[0], params[1]},
-                                     WRB,
-                                     hidden_size,
-                                     activations,
-                                     {},
-                                     {},
-                                     clip,
-                                     linear_before_reset,
-                                     true,
-                                     direction,
-                                     mode);
+        auto gru_sequence = ov::test::utils::make_gru(ov::OutputVector{params[0], params[1]},
+                                                      WRB,
+                                                      hidden_size,
+                                                      activations,
+                                                      {},
+                                                      {},
+                                                      clip,
+                                                      linear_before_reset,
+                                                      true,
+                                                      direction,
+                                                      mode);
         ov::ResultVector results{std::make_shared<ov::op::v0::Result>(gru_sequence->output(0)),
                                  std::make_shared<ov::op::v0::Result>(gru_sequence->output(1))};
         function = std::make_shared<ngraph::Function>(results, params, "gru_sequence");

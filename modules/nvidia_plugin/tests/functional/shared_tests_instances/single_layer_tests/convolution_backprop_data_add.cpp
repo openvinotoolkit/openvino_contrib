@@ -6,12 +6,11 @@
 
 #include <ie_precision.hpp>
 #include <ngraph/node.hpp>
-#include "openvino/opsets/opset1.hpp"
 #include <vector>
 
 #include "cuda_test_constants.hpp"
 #include "finite_comparer.hpp"
-#include "ov_models/builders.hpp"
+#include "openvino/opsets/opset1.hpp"
 #include "shared_test_classes/single_layer/convolution_backprop_data.hpp"
 
 using namespace LayerTestsDefinitions;
@@ -157,17 +156,9 @@ protected:
 
         auto outputShapeNode = std::make_shared<ov::op::v0::Constant>(
             ov::element::Type_t::i64, ov::Shape{outputShapeData.size()}, outputShapeData);
-        auto convBackpropData = std::dynamic_pointer_cast<ov::opset1::ConvolutionBackpropData>(
-            makeConvolutionBackpropData(params[0],
-                                        outputShapeNode,
-                                        ngPrc,
-                                        kernel,
-                                        stride,
-                                        padBegin,
-                                        padEnd,
-                                        dilation,
-                                        padType,
-                                        convOutChannels));
+        auto convBackpropData = std::dynamic_pointer_cast<
+            ov::opset1::ConvolutionBackpropData>(makeConvolutionBackpropData(
+            params[0], outputShapeNode, ngPrc, kernel, stride, padBegin, padEnd, dilation, padType, convOutChannels));
 
         ov::Tensor random_tensor(ngPrc, outputShapeData);
         ov::test::utils::fill_tensor_random(random_tensor);

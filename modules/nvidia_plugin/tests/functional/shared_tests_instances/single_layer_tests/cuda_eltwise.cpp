@@ -20,10 +20,12 @@
 #include <ngraph/op/parameter.hpp>
 #include <ngraph/type/bfloat16.hpp>
 #include <ngraph/type/float16.hpp>
-#include <ov_models/builders.hpp>
 #include <ov_models/utils/ov_helpers.hpp>
 #include <sstream>
 #include <vector>
+
+#include "common_test_utils/node_builders/eltwise.hpp"
+#include "ov_models/utils/data_utils.hpp"
 
 namespace LayerTestsDefinitions {
 
@@ -272,7 +274,7 @@ void CudaEltwiseLayerTest::SetUp() {
     const bool is_python_divide = mode == OperationMode::PYTHON_DIVIDE;
     auto eltwise = eltwiseType == EltwiseTypes::DIVIDE
                        ? std::make_shared<ngraph::op::v1::Divide>(parameters[0], secondaryInput, is_python_divide)
-                       : ngraph::builder::makeEltwise(parameters[0], secondaryInput, eltwiseType);
+                       : ov::test::utils::make_eltwise(parameters[0], secondaryInput, eltwiseType);
     function = std::make_shared<ngraph::Function>(eltwise, parameters, "Eltwise");
 }
 

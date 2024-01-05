@@ -11,12 +11,12 @@
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
 #include <cuda_simple_execution_delegator.hpp>
-#include <ngraph/node.hpp>
+#include <kernels/details/cuda_type_traits.hpp>
+#include <openvino/op/constant.hpp>
+#include <openvino/op/parameter.hpp>
 #include <openvino/op/range.hpp>
+#include <openvino/op/result.hpp>
 #include <ops/parameter.hpp>
-
-#include "kernels/details/cuda_type_traits.hpp"
-#include "ov_models/builders.hpp"
 
 namespace {
 
