@@ -4,7 +4,7 @@
 
 import logging
 import sys
-from typing import Any, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 from openvino.runtime import Model, Type
 from openvino.runtime.exceptions import OVTypeError
@@ -17,16 +17,13 @@ logger = logging.getLogger(__name__)
 
 def convert_tokenizer(
     tokenizer_object: Any,
-    number_of_inputs: int = 1,
     with_detokenizer: bool = False,
-    streaming_detokenizer: bool = False,
+    skip_special_tokens: bool = False,
+    clean_up_tokenization_spaces: Optional[bool] = None,
     tokenizer_output_type: Type = Type.i64,
     detokenizer_input_type: Type = Type.i64,
+    streaming_detokenizer: bool = False,
 ) -> Union[Model, Tuple[Model, Model]]:
-    # todo: add support for more then 1 input
-    if number_of_inputs > 1:
-        raise ValueError("Tokenizers with more then one input are not supported yet.")
-
     ov_tokenizers = None
 
     if "transformers" in sys.modules:
@@ -48,20 +45,32 @@ def convert_tokenizer(
                     add_attention_mask=True,
                     with_detokenizer=with_detokenizer,
                     streaming_detokenizer=streaming_detokenizer,
+                    skip_special_tokens=skip_special_tokens,
+                    clean_up_tokenization_spaces=clean_up_tokenization_spaces,
                 )
             elif is_tiktoken_model(tokenizer_object):
                 logger.info("Convert tiktoken-based tokenizer")
                 ov_tokenizers = convert_tiktoken_model_tokenizer(
                     tokenizer_object,
                     with_detokenizer=with_detokenizer,
+                    skip_special_tokens=skip_special_tokens,
+                    clean_up_tokenization_spaces=clean_up_tokenization_spaces,
                 )
             elif isinstance(tokenizer_object, PreTrainedTokenizerFast):
                 logger.info("Convert Huggingface Fast tokenizer pipeline.")
                 ov_tokenizers = convert_fast_tokenizer(
                     tokenizer_object,
-                    number_of_inputs=number_of_inputs,
+                    number_of_inputs=1,
                     with_detokenizer=with_detokenizer,
+                    skip_special_tokens=skip_special_tokens,
+                    clean_up_tokenization_spaces=clean_up_tokenization_spaces,
                 )
+    else:
+        raise EnvironmentError(
+            "No transformers library in the environment. Install required dependencies with one of two options:\n"
+            "1. pip install openvino-tokenizers[transformers]\n"
+            "2. pip install transformers[sentencepiece] tiktoken\n"
+        )
 
     if ov_tokenizers is None:
         raise OVTypeError(f"Tokenizer type is not supported: {type(tokenizer_object)}")

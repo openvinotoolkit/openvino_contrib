@@ -3,9 +3,11 @@
 # SPDX-License-Identifier: Apache-2.0
 import functools
 import os
+import site
 import sys
-import sysconfig
+from itertools import chain
 from pathlib import Path
+from typing import Callable
 
 import openvino
 from openvino.runtime.utils.node_factory import NodeFactory
@@ -14,14 +16,6 @@ from .convert_tokenizer import convert_tokenizer
 from .str_pack import pack_strings, unpack_strings
 from .utils import add_greedy_decoding, connect_models
 
-
-_extension_path = os.environ.get("OV_TOKENIZER_PREBUILD_EXTENSION_PATH")
-if _extension_path:
-    # when the path to the extension set manually
-    _ext_libs_path = Path(_extension_path).parent
-else:
-    # python installation case
-    _ext_libs_path = Path(sysconfig.get_paths()["purelib"]) / __name__ / "lib"
 
 _ext_name = "user_ov_extensions"
 if sys.platform == "win32":
@@ -33,26 +27,56 @@ elif sys.platform == "linux":
 else:
     sys.exit(f"Error: extension does not support the platform {sys.platform}")
 
-# conda-forge case
-conda_forge_lib_path = Path(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-if os.path.exists(conda_forge_lib_path / _ext_name):
-    _ext_path = conda_forge_lib_path / _ext_name
+# when the path to the extension set manually
+_extension_path = os.environ.get("OV_TOKENIZER_PREBUILD_EXTENSION_PATH")
+if _extension_path and Path(_extension_path).is_file():
+    # when the path to the extension set manually
+    _ext_path = Path(_extension_path)
 else:
-    _ext_path = _ext_libs_path / _ext_name
+    site_packages = chain((Path(__file__).parent.parent,), site.getusersitepackages(), site.getsitepackages())
+    _ext_path = next(
+        (
+            ext
+            for site_package in map(Path, site_packages)
+            if (ext := site_package / __name__ / "lib" / _ext_name).is_file()
+        ),
+        _ext_name,  # Case when the library can be found in the PATH/LD_LIBRAY_PATH
+    )
 
 del _ext_name
-del _ext_libs_path
-del conda_forge_lib_path
 
 # patching openvino
 old_core_init = openvino.runtime.Core.__init__
+old_factory_init = openvino.runtime.utils.node_factory.NodeFactory.__init__
+
 
 @functools.wraps(old_core_init)
 def new_core_init(self, *args, **kwargs):
     old_core_init(self, *args, **kwargs)
     self.add_extension(str(_ext_path))  # Core.add_extension doesn't support Path object
 
-openvino.runtime.Core.__init__ = new_core_init
 
-_factory = NodeFactory()
-_factory.add_extension(_ext_path)
+@functools.wraps(old_factory_init)
+def new_factory_init(self, *args, **kwargs):
+    old_factory_init(self, *args, **kwargs)
+    self.add_extension(_ext_path)
+
+
+openvino.runtime.Core.__init__ = new_core_init
+openvino.runtime.utils.node_factory.NodeFactory.__init__ = new_factory_init
+
+
+def _get_factory_callable() -> Callable[[], NodeFactory]:
+    factory = None
+
+    def inner() -> NodeFactory:
+        nonlocal factory
+        if factory is None:
+            factory = NodeFactory()
+
+        return factory
+
+    return inner
+
+
+_get_factory = _get_factory_callable()

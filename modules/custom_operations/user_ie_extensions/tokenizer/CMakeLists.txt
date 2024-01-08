@@ -8,8 +8,6 @@ endif()
 
 option(BUILD_FAST_TOKENIZERS OFF)
 
-# to build only direct dependencies
-set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY EXCLUDE_FROM_ALL ON)
 
 #
 # Compile flags
@@ -29,6 +27,11 @@ include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag("-Wsuggest-override" SUGGEST_OVERRIDE_SUPPORTED)
 if(SUGGEST_OVERRIDE_SUPPORTED)
     set(cxx_flags "${cxx_flags} -Wno-suggest-override")
+endif()
+
+if(WIN32 AND X86_64)
+  # disable compiler warning C4703
+  set(cxx_flags "${cxx_flags} /wd4703")
 endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${cxx_flags} ${c_cxx_flags}")
@@ -168,8 +171,13 @@ set_target_properties(${TARGET_NAME} PROPERTIES COMPILE_OPTIONS "${extra_flags}"
 # Post build steps to copy core_tokenizers dependencies
 #
 
+set_property(DIRECTORY ${sentencepiece_SOURCE_DIR} PROPERTY EXCLUDE_FROM_ALL ON)
+set_property(DIRECTORY ${re2_SOURCE_DIR} PROPERTY EXCLUDE_FROM_ALL ON)
+
 if(BUILD_FAST_TOKENIZERS)
-  # TODO
+  install(TARGETS core_tokenizers
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 else()
   if(WIN32 AND X86_64)
     set(extra_libs "${fast_tokenizer_SOURCE_DIR}/lib/core_tokenizers.dll"
@@ -181,3 +189,9 @@ else()
     set(extra_libs "${fast_tokenizer_SOURCE_DIR}/lib/libcore_tokenizers.dylib" PARENT_SCOPE)
   endif()
 endif()
+
+# cpack configuration
+set(CPACK_PACKAGE_VERSION "${CMAKE_PROJECT_VERSION}")
+set(CPACK_SOURCE_GENERATOR "") # not used
+
+include (CPack)
