@@ -5,7 +5,6 @@
 #include <cuda_test_constants.hpp>
 
 #include "behavior/ov_executable_network/exec_graph_info.hpp"
-#include "ie_plugin_config.hpp"
 
 using namespace ov::test::behavior;
 namespace {
