@@ -5,10 +5,15 @@ import atheris
 import numpy as np
 from openvino import compile_model
 from transformers import AutoTokenizer
+import unicodedata
 
 
 with atheris.instrument_imports():
     from openvino_tokenizers import convert_tokenizer
+
+
+def remove_control_characters(s):
+    return "".join(ch for ch in s if not unicodedata.category(ch).startswith("C"))
 
 
 @lru_cache()
@@ -25,17 +30,22 @@ def get_tokenizers(hub_id):
 @atheris.instrument_func
 def TestOneInput(input_bytes):
     fdp = atheris.FuzzedDataProvider(input_bytes)
-    input_text = fdp.ConsumeUnicodeNoSurrogates(sys.maxsize)
+    input_text = remove_control_characters(fdp.ConsumeUnicodeNoSurrogates(sys.maxsize))
+
+    if not input_text:
+        return
 
     hf, ovt = get_tokenizers("Qwen/Qwen-14B-Chat")
 
-    hf_tokenized = hf([input_text], return_tensors="np")
-    ov_tokenized = ovt([input_text])
+    hf_tokenized = hf([input_text], return_tensors="np").input_ids
+    ov_tokenized = ovt([input_text])["input_ids"]
 
-    if not np.all(ov_tokenized["input_ids"] == hf_tokenized["input_ids"]):
+    if not np.all(ov_tokenized == hf_tokenized):
         raise RuntimeError(
             f"Test failed! Test string: `{input_text}`, {input_text.encode()}\n"
-            f"{ov_tokenized['input_ids'], hf_tokenized['input_ids']}"
+            f"{ov_tokenized, hf_tokenized}\n"
+            # f"{hf.decode(ov_tokenized), hf.decode(hf_tokenized)}"
+            f"{type(ov_tokenized), type(hf_tokenized)}"
         )
 
 

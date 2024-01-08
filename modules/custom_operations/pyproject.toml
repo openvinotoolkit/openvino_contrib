@@ -22,22 +22,24 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+transformers = [
+    "transformers[sentencepiece]",
+    "tiktoken"
+]
 dev = [
     "ruff",
     "pytest",
     "pytest_harvest",
     "bandit",
-    "atheris"
+    "openvino_tokenizers[transformers]"
 ]
-transformers = [
-    "transformers[sentencepiece]",
-    "tiktoken"
+fuzzing = [
+    "atheris",
+    "openvino_tokenizers[transformers]"
 ]
-tiktoken = [
-    "tiktoken"
-]
+#  don't include fuzzing to avoid windows CI issues
 all = [
-    "openvino_tokenizers[dev,transformers,tiktoken]"
+    "openvino_tokenizers[dev, transformers]"
 ]
 
 [project.scripts]
