@@ -179,7 +179,6 @@ jobs:
       call C:\tools\opencv\build\setup_vars_opencv4.cmd
       call $(SETUPVARS) -pyver 3.8 && ^
       $(PYTHON_EXE) -m pip install -r $(REPO_DIR)\modules\custom_operations\tests\requirements.txt
-      $(PYTHON_EXE) -m pip install $(INSTALL_DIR)\tools\openvino-*.whl
       $(PYTHON_EXE) -m pytest -k "not sparse_conv" tests\run_tests.py
     env:
         CUSTOM_OP_LIB: $(BUILD_DIR_CONTRIB)\user_ie_extensions\user_ov_extensions.dll
