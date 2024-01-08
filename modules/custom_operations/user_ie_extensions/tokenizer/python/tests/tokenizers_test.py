@@ -4,7 +4,7 @@
 
 import numpy as np
 import pytest
-from openvino import Core, Tensor
+from openvino import Core
 from openvino_tokenizers import convert_tokenizer
 from transformers import AutoTokenizer
 
@@ -13,6 +13,7 @@ from transformers import AutoTokenizer
 # TODO: Remove the methods when transition is over
 def pack_strings(strings):
     return strings
+
 
 def unpack_strings(strings):
     return list(strings)
@@ -60,6 +61,7 @@ emoji_test_strings = [
 ]
 misc_strings = [
     "",
+    b"\x06".decode(),  # control char
     " ",
     " " * 10,
     "\n",
@@ -130,14 +132,14 @@ def get_tokenizer(hf_tokenizer):
 
 
 def get_tokenizer_detokenizer(
-        hf_tokenizer,
-        streaming_detokenizer=False,
-        skip_special_tokens=False,
+    hf_tokenizer, streaming_detokenizer=False, skip_special_tokens=False, clean_up_tokenization_spaces=None
 ):
     ov_tokenizer, ov_detokenizer = convert_tokenizer(
-        hf_tokenizer, with_detokenizer=True,
+        hf_tokenizer,
+        with_detokenizer=True,
         streaming_detokenizer=streaming_detokenizer,
-        skip_special_tokens=skip_special_tokens
+        skip_special_tokens=skip_special_tokens,
+        clean_up_tokenization_spaces=clean_up_tokenization_spaces,
     )
     compiled_tokenizer = core.compile_model(ov_tokenizer)
     compiled_detokenizer = core.compile_model(ov_detokenizer)
@@ -145,9 +147,7 @@ def get_tokenizer_detokenizer(
 
 
 def get_hf_tokenizer(request, fast_tokenizer=True, trust_remote_code=False):
-    return AutoTokenizer.from_pretrained(
-        request.param, use_fast=fast_tokenizer, trust_remote_code=trust_remote_code
-    )
+    return AutoTokenizer.from_pretrained(request.param, use_fast=fast_tokenizer, trust_remote_code=trust_remote_code)
 
 
 @pytest.fixture(scope="session", params=wordpiece_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
@@ -160,8 +160,17 @@ def is_fast_tokenizer(request):
     return request.param
 
 
-@pytest.fixture(scope="session", params=[True, False], ids=lambda do_skip: "skip_tokens" if do_skip else "no_skip_tokens")
+@pytest.fixture(
+    scope="session", params=[True, False], ids=lambda do_skip: "skip_tokens" if do_skip else "no_skip_tokens"
+)
 def do_skip_special_tokens(request):
+    return request.param
+
+
+@pytest.fixture(
+    scope="session", params=[True, False], ids=lambda do_clean: "clean_spaces" if do_clean else "no_clean_spaces"
+)
+def do_clean_up_tokenization_spaces(request):
     return request.param
 
 
@@ -191,8 +200,12 @@ def bpe_tokenizers(hf_bpe_tokenizers):
 
 
 @pytest.fixture(scope="session")
-def bpe_tokenizers_detokenizers(hf_bpe_tokenizers, do_skip_special_tokens):
-    return get_tokenizer_detokenizer(hf_bpe_tokenizers, skip_special_tokens=do_skip_special_tokens)
+def bpe_tokenizers_detokenizers(hf_bpe_tokenizers, do_skip_special_tokens, do_clean_up_tokenization_spaces):
+    return get_tokenizer_detokenizer(
+        hf_bpe_tokenizers,
+        skip_special_tokens=do_skip_special_tokens,
+        clean_up_tokenization_spaces=do_clean_up_tokenization_spaces,
+    )
 
 
 @pytest.fixture(scope="session")
@@ -201,14 +214,28 @@ def sentencepice_tokenizers(hf_sentencepiece_tokenizers):
 
 
 @pytest.fixture(scope="session")
-def sentencepice_tokenizers_detokenizers(hf_sentencepiece_tokenizers, do_skip_special_tokens):
+def sentencepice_tokenizers_detokenizers(
+    hf_sentencepiece_tokenizers, do_skip_special_tokens, do_clean_up_tokenization_spaces
+):
     # chatglm2 always skips special tokens, chatglam3 always not skip
     if hf_sentencepiece_tokenizers.name_or_path == "THUDM/chatglm2-6b":
-        return get_tokenizer_detokenizer(hf_sentencepiece_tokenizers, skip_special_tokens=True)
+        return get_tokenizer_detokenizer(
+            hf_sentencepiece_tokenizers,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=do_clean_up_tokenization_spaces,
+        )
     if hf_sentencepiece_tokenizers.name_or_path == "THUDM/chatglm3-6b":
-        return get_tokenizer_detokenizer(hf_sentencepiece_tokenizers, skip_special_tokens=False)
+        return get_tokenizer_detokenizer(
+            hf_sentencepiece_tokenizers,
+            skip_special_tokens=False,
+            clean_up_tokenization_spaces=do_clean_up_tokenization_spaces,
+        )
 
-    return get_tokenizer_detokenizer(hf_sentencepiece_tokenizers, skip_special_tokens=do_skip_special_tokens)
+    return get_tokenizer_detokenizer(
+        hf_sentencepiece_tokenizers,
+        skip_special_tokens=do_skip_special_tokens,
+        clean_up_tokenization_spaces=do_clean_up_tokenization_spaces,
+    )
 
 
 @pytest.fixture(scope="session")
@@ -218,10 +245,14 @@ def tiktoken_tokenizers(hf_tiktoken_tokenizers):
 
 @pytest.fixture(scope="session")
 def tiktoken_tokenizers_detokenizers(hf_tiktoken_tokenizers, do_skip_special_tokens):
-    return get_tokenizer_detokenizer(hf_tiktoken_tokenizers, skip_special_tokens=do_skip_special_tokens)
+    return get_tokenizer_detokenizer(
+        hf_tiktoken_tokenizers, skip_special_tokens=do_skip_special_tokens, clean_up_tokenization_spaces=False
+    )
 
 
-@pytest.fixture(scope="session", params=["openlm-research/open_llama_3b_v2"], ids=lambda checkpoint: checkpoint.split("/")[-1])
+@pytest.fixture(
+    scope="session", params=["openlm-research/open_llama_3b_v2"], ids=lambda checkpoint: checkpoint.split("/")[-1]
+)
 def hf_tokenizers_for_streaming(request):
     return get_hf_tokenizer(request)
 
@@ -301,11 +332,17 @@ def test_sentencepiece_model_tokenizer(sentencepice_tokenizers, test_string):
         *misc_strings,
     ],
 )
-def test_sentencepiece_model_detokenizer(sentencepice_tokenizers_detokenizers, test_string, do_skip_special_tokens):
+def test_sentencepiece_model_detokenizer(
+    sentencepice_tokenizers_detokenizers, test_string, do_skip_special_tokens, do_clean_up_tokenization_spaces
+):
     hf_tokenizer, _, ov_detokenizer = sentencepice_tokenizers_detokenizers
 
     token_ids = hf_tokenizer(test_string, return_tensors="np").input_ids
-    hf_output = hf_tokenizer.batch_decode(token_ids, skip_special_tokens=do_skip_special_tokens)
+    hf_output = hf_tokenizer.batch_decode(
+        token_ids,
+        skip_special_tokens=do_skip_special_tokens,
+        clean_up_tokenization_spaces=do_clean_up_tokenization_spaces,
+    )
     ov_output = unpack_strings(ov_detokenizer(token_ids.astype("int32"))["string_output"])
 
     assert ov_output == hf_output
@@ -342,11 +379,17 @@ def test_hf_bpe_tokenizers_outputs(bpe_tokenizers, test_string):
         *misc_strings,
     ],
 )
-def test_bpe_detokenizer(bpe_tokenizers_detokenizers, test_string, do_skip_special_tokens):
+def test_bpe_detokenizer(
+    bpe_tokenizers_detokenizers, test_string, do_skip_special_tokens, do_clean_up_tokenization_spaces
+):
     hf_tokenizer, _, ov_detokenizer = bpe_tokenizers_detokenizers
 
     token_ids = hf_tokenizer(test_string, return_tensors="np").input_ids
-    hf_output = hf_tokenizer.batch_decode(token_ids, skip_special_tokens=do_skip_special_tokens)
+    hf_output = hf_tokenizer.batch_decode(
+        token_ids,
+        skip_special_tokens=do_skip_special_tokens,
+        clean_up_tokenization_spaces=do_clean_up_tokenization_spaces,
+    )
     ov_output = unpack_strings(ov_detokenizer(token_ids.astype("int32"))["string_output"])
 
     assert ov_output == hf_output

@@ -18,7 +18,7 @@ from openvino.runtime.exceptions import OVTypeError
 from openvino.runtime.utils.types import as_node, make_constant_node
 from transformers.convert_slow_tokenizer import import_protobuf
 
-from . import _factory
+from . import _get_factory
 from .constants import (
     ATTENTION_MASK_INPUT_NAME,
     DETOKENIZER_NAME,
@@ -125,7 +125,12 @@ class TransformersTokenizerPipelineParser:
         self.number_of_inputs = number_of_inputs
         self.num_of_added_tokens = 0
 
-    def parse(self, number_of_inputs: Optional[int] = None, skip_special_tokens: bool = False) -> TokenizerPipeline:
+    def parse(
+        self,
+        number_of_inputs: Optional[int] = None,
+        skip_special_tokens: bool = False,
+        clean_up_tokenization_spaces: Optional[bool] = None,
+    ) -> TokenizerPipeline:
         self.number_of_inputs = self.number_of_inputs if number_of_inputs is None else number_of_inputs
         self.pipeline.number_of_inputs = self.number_of_inputs
         for add_steps in [
@@ -133,7 +138,11 @@ class TransformersTokenizerPipelineParser:
             self.pre_tokenization,
             self.tokenization_model,
             self.post_tokenization,
-            partial(self.decoding, skip_special_tokens=skip_special_tokens),
+            partial(
+                self.decoding,
+                skip_special_tokens=skip_special_tokens,
+                clean_up_tokenization_spaces=clean_up_tokenization_spaces,
+            ),
         ]:
             add_steps()
 
@@ -262,7 +271,11 @@ class TransformersTokenizerPipelineParser:
         else:
             self.pipeline.add_steps(PaddingStep())
 
-    def decoding(self, skip_special_tokens: bool = False) -> None:
+    def decoding(
+        self,
+        skip_special_tokens: bool = False,
+        clean_up_tokenization_spaces: Optional[bool] = None,
+    ) -> None:
         if self.tokenizer_json["decoder"] is None:
             return
 
@@ -277,18 +290,24 @@ class TransformersTokenizerPipelineParser:
         if prefix := self.tokenizer_json["model"].get("continuing_subword_prefix"):
             self.pipeline.add_steps(RegexDecodingStep.replace_continuing_subword_prefix(prefix))
 
-        if self.original_tokenizer.clean_up_tokenization_spaces and self.pipeline.decoding_steps:
+        if clean_up_tokenization_spaces is None:
+            clean_up_tokenization_spaces = self.original_tokenizer.clean_up_tokenization_spaces
+
+        if clean_up_tokenization_spaces and self.pipeline.decoding_steps:
             self.pipeline.add_steps(RegexDecodingStep.clean_up_tokenization_spaces())
         return
-
 
 
 def parse_special_tokens(hf_tokenizer: "PreTrainedTokenizerBase") -> Dict[int, str]:
     # the order matters
     if getattr(hf_tokenizer, "added_tokens_decoder", False):
-        return {idx: added_token.content for idx, added_token in hf_tokenizer.added_tokens_decoder.items() if added_token.special}
+        return {
+            idx: added_token.content
+            for idx, added_token in hf_tokenizer.added_tokens_decoder.items()
+            if added_token.special
+        }
     elif getattr(hf_tokenizer, "tokenizer", False) and getattr(hf_tokenizer.tokenizer, "index_special_tokens", False):
-        return  hf_tokenizer.tokenizer.index_special_tokens
+        return hf_tokenizer.tokenizer.index_special_tokens
     elif getattr(hf_tokenizer, "special_tokens", False):
         return {idx: token for token, idx in sorted(hf_tokenizer.special_tokens.items(), key=lambda x: x[1])}
 
@@ -300,9 +319,12 @@ def convert_fast_tokenizer(
     number_of_inputs: int = 1,
     with_detokenizer: bool = False,
     skip_special_tokens: bool = False,
+    clean_up_tokenization_spaces: Optional[bool] = None,
 ) -> Union[Model, Tuple[Model, Model]]:
     pipeline = TransformersTokenizerPipelineParser(hf_tokenizer).parse(
-        number_of_inputs=number_of_inputs, skip_special_tokens=skip_special_tokens
+        number_of_inputs=number_of_inputs,
+        skip_special_tokens=skip_special_tokens,
+        clean_up_tokenization_spaces=clean_up_tokenization_spaces,
     )
     ov_tokenizer = pipeline.get_tokenizer_ov_subgraph()
     output_names = hf_tokenizer.model_input_names
@@ -337,7 +359,10 @@ def is_sentencepiece_model(hf_tokenizer: "PreTrainedTokenizerBase") -> bool:
 
 
 def modify_sentencepiece_model(
-        sp_model_path: Path, add_tokens: Dict[int, str], skip_special_tokens: bool = False, reference_vocab: Optional[List[str]] = None
+    sp_model_path: Path,
+    add_tokens: Dict[int, str],
+    skip_special_tokens: bool = False,
+    reference_vocab: Optional[List[str]] = None,
 ) -> None:
     model_pb = import_protobuf()
     model = model_pb.ModelProto()
@@ -346,7 +371,7 @@ def modify_sentencepiece_model(
 
     existing = {piece.piece: piece for piece in model.pieces}
     for idx, token in sorted(add_tokens.items()):
-        if to_add := ((idx >= len(model.pieces) or model.pieces[idx].piece != token)):
+        if to_add := (idx >= len(model.pieces) or model.pieces[idx].piece != token):
             if exists := existing.get(token):
                 new_piece = model.pieces.pop(next(idx for idx, piece in enumerate(model.pieces) if piece == exists))
             else:
@@ -376,12 +401,11 @@ def convert_sentencepiece_model_tokenizer(
     add_attention_mask: bool = True,
     with_detokenizer: bool = False,
     streaming_detokenizer: bool = False,
-                skip_special_tokens: bool = False,
+    skip_special_tokens: bool = False,
+    clean_up_tokenization_spaces: Optional[bool] = False,
 ) -> Union[Model, Tuple[Model, Model]]:
     if not is_sentencepiece_model(hf_tokenizer):
         raise OVTypeError("Cannot convert tokenizer that does not have `.model` file.")
-
-    fairseq_offset = getattr(hf_tokenizer, "fairseq_offset", None)
 
     with tempfile.TemporaryDirectory() as tmp:
         hf_tokenizer.save_pretrained(tmp)
@@ -392,15 +416,10 @@ def convert_sentencepiece_model_tokenizer(
             sp_model_path=vocab_file,
             add_tokens=add_tokens,
             skip_special_tokens=skip_special_tokens,
-            # reference_vocab=[token for token, idx in sorted(hf_tokenizer.vocab.items(), key=lambda x: x[1])],
         )
 
         sp_model = np.fromfile(vocab_file, dtype=np.uint8)
         sp_model_node = as_node(sp_model)
-
-        if hf_tokenizer.is_fast:
-            hf_slow_tokenizer = hf_tokenizer.slow_tokenizer_class.from_pretrained(tmp)
-            fairseq_offset = getattr(hf_slow_tokenizer, "fairseq_offset", None)
 
     input_node = op.Parameter(Type.string, PartialShape(["?"]))
     input_node.set_friendly_name("string_input")
@@ -417,7 +436,7 @@ def convert_sentencepiece_model_tokenizer(
         )
     add_bos_token = getattr(hf_tokenizer, "add_bos_token", add_eos_token) or False
 
-    tokenizer_node = _factory.create(
+    tokenizer_node = _get_factory().create(
         "SentencepieceTokenizer",
         [sp_model_node, input_node],
         {
@@ -430,12 +449,9 @@ def convert_sentencepiece_model_tokenizer(
 
     indices, values, dense_shape = tokenizer_node.outputs()
 
-    # if fairseq_offset:
-    #     values = opset.add(values, make_constant_node(fairseq_offset, values.element_type)).output(0)
-
     default_value = make_constant_node(hf_tokenizer.pad_token_id or 0, values.element_type)
     broadcast = opset.broadcast(default_value, dense_shape)
-    scatternd_input_ids = _factory.create(
+    scatternd_input_ids = _get_factory().create(
         "ScatterNDUpdate",
         [broadcast, indices, values],  # FIXME: pad left side instead of right
     )
@@ -451,7 +467,7 @@ def convert_sentencepiece_model_tokenizer(
     outputs = scatternd_input_ids.outputs()
 
     if add_attention_mask:
-        attention_mask = _factory.create(
+        attention_mask = _get_factory().create(
             "ScatterNDUpdate",
             [
                 broadcast,
@@ -478,21 +494,37 @@ def convert_sentencepiece_model_tokenizer(
     if not with_detokenizer:
         return tokenizer
 
-    return tokenizer, get_sp_detokenizer(sp_model_node, streaming_detokenizer=streaming_detokenizer)
+    if clean_up_tokenization_spaces is None:
+        clean_up_tokenization_spaces = hf_tokenizer.clean_up_tokenization_spaces
+
+    return tokenizer, get_sp_detokenizer(
+        sp_model_node,
+        streaming_detokenizer=streaming_detokenizer,
+        clean_up_tokenization_spaces=clean_up_tokenization_spaces,
+    )
 
 
-def get_sp_detokenizer(sp_model_node: Node, streaming_detokenizer: bool = False) -> Model:
+def get_sp_detokenizer(
+    sp_model_node: Node, streaming_detokenizer: bool = False, clean_up_tokenization_spaces: bool = False
+) -> Model:
     model_input = token_ids = op.Parameter(Type.i32, PartialShape(["?", "?"]))  # (batch, sequence)
 
-    detokenizer = _factory.create(
-        "SentencepieceStreamDetokenizer" if streaming_detokenizer else "SentencepieceDetokenizer",
-        [sp_model_node, token_ids],
-    ).outputs()
+    detokenizer = (
+        _get_factory()
+        .create(
+            "SentencepieceStreamDetokenizer" if streaming_detokenizer else "SentencepieceDetokenizer",
+            [sp_model_node, token_ids],
+        )
+        .outputs()
+    )
 
     if streaming_detokenizer:
         detokenizer = RegexDecodingStep.replace_sp_spaces().get_ov_subgraph(detokenizer)
 
-    string_output = _factory.create("StringTensorPack", detokenizer).outputs()
+    if clean_up_tokenization_spaces:
+        detokenizer = RegexDecodingStep.clean_up_tokenization_spaces().get_ov_subgraph(detokenizer)
+
+    string_output = _get_factory().create("StringTensorPack", detokenizer).outputs()
     string_output[0].tensor.add_names({STRING_OUTPUT_NAME})
     tokenizer_detokenizer = Model(string_output, [model_input], DETOKENIZER_NAME)
     tokenizer_detokenizer.validate_nodes_and_infer_types()
@@ -514,6 +546,7 @@ def convert_tiktoken_model_tokenizer(
     hf_tokenizer: "PreTrainedTokenizerBase",
     with_detokenizer: bool = False,
     skip_special_tokens: bool = False,
+    clean_up_tokenization_spaces: Optional[bool] = None,
 ) -> Union[Model, Tuple[Model, Model]]:
     encoding = getattr(hf_tokenizer, "tokenizer", None) or hf_tokenizer.encoder
     split_pattern = encoding._pat_str
@@ -537,6 +570,12 @@ def convert_tiktoken_model_tokenizer(
             CharsToBytesStep(),
         ]
     )
+    if clean_up_tokenization_spaces is None:
+        clean_up_tokenization_spaces = getattr(hf_tokenizer, "clean_up_tokenization_spaces", None)
+
+    if clean_up_tokenization_spaces:
+        pipeline.add_steps(RegexDecodingStep.clean_up_tokenization_spaces())
+
     if not with_detokenizer:
         return pipeline.get_tokenizer_ov_subgraph()
 
