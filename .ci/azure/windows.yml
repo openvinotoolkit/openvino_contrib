@@ -196,6 +196,13 @@ jobs:
     artifact: Wheels
 
   - powershell: |
+      # Find and install the core OV wheel
+      $ovCoreWheelPath=Get-ChildItem -Path "$(INSTALL_DIR)\tools" -Filter openvino-*.whl | % { $_.FullName }
+      $(PYTHON_EXE) -m pip install "$ovCoreWheelPath"
+    workingDirectory: $(WORK_DIR)
+    displayName: 'Install OpenVINO Python wheels'
+
+  - powershell: |
       # Find and install the wheel
       $wheelPath=Get-ChildItem -Path "$(BUILD_WHEEL_DIR)" -Filter openvino_tokenizers*.whl | % { $_.FullName }
       $(PYTHON_EXE) -m pip install "$wheelPath[all]"
