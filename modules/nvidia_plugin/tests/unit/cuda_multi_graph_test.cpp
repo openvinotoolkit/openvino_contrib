@@ -4,12 +4,16 @@
 
 #include <gtest/gtest.h>
 
+#include "common_test_utils/node_builders/eltwise.hpp"
 #include "cuda_graph_topology_runner.hpp"
 #include "cuda_simple_execution_delegator.hpp"
-#include "ov_models/builders.hpp"
-#include "ov_models/utils/data_utils.hpp"
+#include "openvino/op/concat.hpp"
+#include "openvino/op/constant.hpp"
+#include "openvino/op/parameter.hpp"
+#include "openvino/op/result.hpp"
 #include "ops/parameter.hpp"
 #include "ops/result.hpp"
+#include "ov_models/utils/data_utils.hpp"
 
 using namespace ov::nvidia_gpu;
 using namespace testing;
@@ -64,10 +68,10 @@ public:
         for (std::size_t i = 0; i < INPUTS_COUNT; ++i) {
             params.emplace_back(std::make_shared<ov::op::v0::Parameter>(prc, shape));
         }
-        const auto add0 = ngraph::builder::makeEltwise(params[0], params[1], EltwiseTypes::ADD);
-        const auto add1 = ngraph::builder::makeEltwise(params[2], params[3], EltwiseTypes::ADD);
+        const auto add0 = ov::test::utils::make_eltwise(params[0], params[1], EltwiseTypes::ADD);
+        const auto add1 = ov::test::utils::make_eltwise(params[2], params[3], EltwiseTypes::ADD);
 
-        const auto mul = ngraph::builder::makeEltwise(add0, add1, EltwiseTypes::MULTIPLY);
+        const auto mul = ov::test::utils::make_eltwise(add0, add1, EltwiseTypes::MULTIPLY);
         const auto result = std::make_shared<ov::op::v0::Result>(mul);
         return std::make_shared<ov::Model>(result, params, "AddMul");
     }
@@ -109,12 +113,11 @@ public:
         for (std::size_t i = 0; i < INPUTS_COUNT; ++i) {
             params.emplace_back(std::make_shared<ov::op::v0::Parameter>(prc, shape));
         }
-        const auto add0 = ngraph::builder::makeEltwise(params[0], params[1], EltwiseTypes::ADD);
-        const auto add1 = ngraph::builder::makeEltwise(params[2], params[3], EltwiseTypes::ADD);
+        const auto add0 = ov::test::utils::make_eltwise(params[0], params[1], EltwiseTypes::ADD);
+        const auto add1 = ov::test::utils::make_eltwise(params[2], params[3], EltwiseTypes::ADD);
 
         constexpr int64_t axis = CONCAT_AXIS;
-        const auto concat =
-            std::make_shared<ov::op::v0::Concat>(ov::OutputVector{add0, add1}, axis);
+        const auto concat = std::make_shared<ov::op::v0::Concat>(ov::OutputVector{add0, add1}, axis);
         const auto result = std::make_shared<ov::op::v0::Result>(concat);
         return std::make_shared<ov::Model>(result, params, "AddConcat");
     }

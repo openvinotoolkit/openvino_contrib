@@ -8,8 +8,6 @@
 #endif
 
 #include "fast_tokenizer/normalizers/normalizers.h"
-#include "fast_tokenizer/models/models.h"
-#include "fast_tokenizer/pretokenizers/pretokenizers.h"
 
 #include "normalize_unicode.hpp"
 #include "utils.hpp"
