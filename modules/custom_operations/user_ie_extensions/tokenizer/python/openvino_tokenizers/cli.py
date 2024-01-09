@@ -2,10 +2,10 @@
 # Copyright (C) 2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-from argparse import ArgumentParser, Action
+from argparse import Action, ArgumentParser
 from pathlib import Path
 
-from openvino import save_model, Type
+from openvino import Type, save_model
 
 from openvino_tokenizers import convert_tokenizer
 
@@ -43,11 +43,13 @@ def get_parser() -> ArgumentParser:
     )
     parser.add_argument(
         "--with-detokenizer",
+        "--with_detokenizer",
         required=False,
         action="store_true",
         help="Add a detokenizer model to the output",
     )
     parser.add_argument(
+        "--skip-special-tokens",
         "--skip_special_tokens",
         required=False,
         action="store_true",
@@ -57,7 +59,22 @@ def get_parser() -> ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--clean-up-tokenization-spaces",
+        "--clean_up_tokenization_spaces",
+        required=False,
+        type=lambda x: {"True": True, "False": False}.get(x),
+        default=None,
+        choices=[True, False],
+        help=(
+            "Produce detokenizer that will clean up spaces before punctuation during decoding, similar to "
+            "huggingface_tokenizer.decode(token_ids, clean_up_tokenization_spaces=True). This option is often set "
+            "to False for code generation models. If the option is not set, a value from "
+            "huggingface_tokenizer.clean_up_tokenization_spaces will be used."
+        ),
+    )
+    parser.add_argument(
         "--use-fast-false",
+        "--use_fast_false",
         required=False,
         action="store_false",
         help=(
@@ -70,6 +87,7 @@ def get_parser() -> ArgumentParser:
     )
     parser.add_argument(
         "--trust-remote-code",
+        "--trust_remote_code",
         required=False,
         action="store_true",
         help=(
@@ -79,6 +97,7 @@ def get_parser() -> ArgumentParser:
     )
     parser.add_argument(
         "--tokenizer-output-type",
+        "--tokenizer_output_type",
         required=False,
         action=StringToTypeAction,
         default=Type.i64,
@@ -87,6 +106,7 @@ def get_parser() -> ArgumentParser:
     )
     parser.add_argument(
         "--detokenizer-input-type",
+        "--detokenizer_input_type",
         required=False,
         action=StringToTypeAction,
         default=Type.i64,
@@ -95,6 +115,7 @@ def get_parser() -> ArgumentParser:
     )
     parser.add_argument(
         "--streaming-detokenizer",
+        "--streaming_detokenizer",
         required=False,
         action="store_true",
         help=(
@@ -124,6 +145,8 @@ def convert_hf_tokenizer() -> None:
     converted = convert_tokenizer(
         hf_tokenizer,
         with_detokenizer=args.with_detokenizer,
+        skip_special_tokens=args.skip_special_tokens,
+        clean_up_tokenization_spaces=args.clean_up_tokenization_spaces,
         tokenizer_output_type=args.tokenizer_output_type,
         detokenizer_input_type=args.detokenizer_input_type,
         streaming_detokenizer=args.streaming_detokenizer,
