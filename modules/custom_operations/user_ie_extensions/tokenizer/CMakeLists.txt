@@ -94,6 +94,7 @@ else()
         URL_HASH SHA256=1ae8ccfdb1066a731bba6ee0881baad5efd2cd661acd9569b689f2586e1a50e9
       )
       FetchContent_MakeAvailable(re2)
+      set_property(DIRECTORY ${re2_SOURCE_DIR} PROPERTY EXCLUDE_FROM_ALL ON)
   elseif(LINUX AND X86_64)
       FetchContent_Declare(
         fast_tokenizer
@@ -172,7 +173,6 @@ set_target_properties(${TARGET_NAME} PROPERTIES COMPILE_OPTIONS "${extra_flags}"
 #
 
 set_property(DIRECTORY ${sentencepiece_SOURCE_DIR} PROPERTY EXCLUDE_FROM_ALL ON)
-set_property(DIRECTORY ${re2_SOURCE_DIR} PROPERTY EXCLUDE_FROM_ALL ON)
 
 if(BUILD_FAST_TOKENIZERS)
   install(TARGETS core_tokenizers
