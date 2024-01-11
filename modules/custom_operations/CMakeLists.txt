@@ -15,7 +15,17 @@ if(NOT OpenVINODeveloperPackage_FOUND)
 endif()
 
 # set the project version using OpenVINO major, minor and patch versions
-set(CMAKE_PROJECT_VERSION_TWEAK 0)
-set(CMAKE_PROJECT_VERSION "${OpenVINO_VERSION}.${CMAKE_PROJECT_VERSION_TWEAK}")
+# tweak version is used to release extension independently from openvino package
+if (${SKBUILD})
+    set(CMAKE_PROJECT_VERSION "${SKBUILD_PROJECT_VERSION}")
+else()
+    set(CMAKE_PROJECT_VERSION_TWEAK 0)
+    set(CMAKE_PROJECT_VERSION "${OpenVINO_VERSION}.${CMAKE_PROJECT_VERSION_TWEAK}")
+endif()
+
+# adding CI build number
+if (DEFINED ENV{CI_BUILD_NUMBER})
+    set(CMAKE_PROJECT_VERSION "${CMAKE_PROJECT_VERSION}-$ENV{CI_BUILD_NUMBER}")
+endif()
 
 add_subdirectory(user_ie_extensions)

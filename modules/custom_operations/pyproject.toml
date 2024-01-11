@@ -1,6 +1,6 @@
 [project]
 name = "openvino-tokenizers"
-version = "2023.3.0.0"
+dynamic = ["version"]
 description = "Convert tokenizers into OpenVINO models"
 requires-python = ">=3.8"
 readme = {file = "user_ie_extensions/tokenizer/python/README.md", content-type="text/markdown"}
@@ -80,6 +80,10 @@ wheel.py-api = "py3"
 wheel.license-files = ["LICENSE", "third-party-programs.txt", "SECURITY.md"]
 sdist.cmake = true
 sdist.exclude = ["dist", "tests", "examples", "user_ie_extensions/tokenizer/python/tests"]
+
+[tool.scikit-build.metadata.version]
+provider = "scikit_build_core.metadata.regex"
+input = "user_ie_extensions/tokenizer/python/openvino_tokenizers/version.py"
 
 [build-system]
 requires = ["scikit-build-core"]
