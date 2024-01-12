@@ -4,7 +4,6 @@
 
 #include "complex_mul.hpp"
 #include <openvino/core/parallel.hpp>
-#include <ie_common.h>
 
 using namespace TemplateExtension;
 
