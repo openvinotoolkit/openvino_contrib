@@ -106,7 +106,8 @@ void SentencepieceTokenizer::validate_and_infer_types() {
     FRONT_END_GENERAL_CHECK(get_input_element_type(0) == element::u8, "SentencepieceTokenizer accepts sp model as the first input and it should be of type u8 tensor");
 
     FRONT_END_GENERAL_CHECK(
-        get_input_element_type(1) == element::string || get_input_element_type(1) == element::u8,
+        // WA: sometimes f32 appeared as a placeholder for unknown type
+        get_input_element_type(1) == element::u8 || get_input_element_type(1) == element::string || get_input_element_type(1) == element::f32,
         "SentencepieceTokenizer accepts sentences as the second input and it should be of type string tensor");
 
     #endif

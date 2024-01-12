@@ -4,9 +4,7 @@
 
 #include "fft.hpp"
 
-#include <ie_common.h>
 #include <openvino/core/parallel.hpp>
-#include <details/ie_so_loader.h>
 #include <opencv2/core/core_c.h>
 
 using namespace TemplateExtension;
@@ -132,7 +130,7 @@ bool FFT::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) co
     float* inpData = reinterpret_cast<float*>(inputs[0].data());
 
     if (inputs[1].get_element_type() != ov::element::i32)
-        IE_THROW() << "Unexpected dims type: " << inputs[1].get_element_type();
+        OPENVINO_THROW("Unexpected dims type: " + inputs[1].get_element_type().to_string());
 
     int32_t* signalDimsData = reinterpret_cast<int32_t*>(inputs[1].data());
     float* outData = reinterpret_cast<float*>(outputs[0].data());
@@ -147,7 +145,7 @@ bool FFT::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) co
         std::ostringstream ss;
         for (size_t i = 0; i < numSignalDims; ++i)
             ss << signalDimsData[i] << " ";
-        IE_THROW() << "Unsupported configuration: Input dims " << dims.size() << " and signal dims " << ss.str();
+        OPENVINO_THROW("Unsupported configuration: Input dims " + std::to_string(dims.size()) + " and signal dims " + ss.str());
     }
 
     const int batch = dims[0];
