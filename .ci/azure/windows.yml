@@ -103,7 +103,6 @@ jobs:
       powershell -command "Expand-Archive -Force gradle-$(GRADLE_VER)-bin.zip"
       call $(SETUPVARS) -pyver 3.8
       $(PYTHON_EXE) -m pip install --upgrade pip
-      $(PYTHON_EXE) -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\src\compatibility\openvino\requirements-dev.txt
       $(PYTHON_EXE) -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\wheel\requirements-dev.txt
       powershell -command "Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))"
       choco install opencv -y
