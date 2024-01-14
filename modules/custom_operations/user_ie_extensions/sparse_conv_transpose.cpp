@@ -88,7 +88,7 @@ bool SparseConvTranspose::evaluate(ov::TensorVector& outputs, const ov::TensorVe
 
 bool SparseConvTranspose::has_evaluate() const {
     for (size_t i = 0; i < get_input_size(); ++i)
-        if (get_input_element_type(i) != ngraph::element::f32)
+        if (get_input_element_type(i) != ov::element::f32)
             return false;
     return true;
 }
