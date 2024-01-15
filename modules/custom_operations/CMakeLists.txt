@@ -16,7 +16,7 @@ endif()
 
 # set the project version using OpenVINO major, minor and patch versions
 # tweak version is used to release extension independently from openvino package
-if (${SKBUILD})
+if(DEFINED SKBUILD)
     set(CMAKE_PROJECT_VERSION "${SKBUILD_PROJECT_VERSION}")
 else()
     set(CMAKE_PROJECT_VERSION_TWEAK 0)
