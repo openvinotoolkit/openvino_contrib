@@ -298,7 +298,7 @@ bool FFT::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) co
 }
 
 bool FFT::has_evaluate() const {
-    if (get_input_element_type(0) == ngraph::element::f32 && get_input_element_type(1) == ngraph::element::i32)
+    if (get_input_element_type(0) == ov::element::f32 && get_input_element_type(1) == ov::element::i32)
         return true;
     return false;
 }

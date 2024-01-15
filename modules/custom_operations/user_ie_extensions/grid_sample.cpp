@@ -107,7 +107,7 @@ bool GridSample::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
 
 bool GridSample::has_evaluate() const {
     for (size_t i = 0; i < get_input_size(); ++i)
-        if (get_input_element_type(i) != ngraph::element::f32)
+        if (get_input_element_type(i) != ov::element::f32)
             return false;
     return true;
 }
