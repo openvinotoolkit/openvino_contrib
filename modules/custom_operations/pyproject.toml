@@ -7,40 +7,32 @@ readme = {file = "user_ie_extensions/tokenizer/python/README.md", content-type="
 license = {text = "OSI Approved :: Apache Software License"}
 
 authors = [
-    { name = "OpenVINO Developers", email = "openvino@intel.com" },
-]
+    { name = "OpenVINO Developers", email = "openvino@intel.com" },]
 
 classifiers = [
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-]
+    "Programming Language :: Python :: 3.11",]
 
 dependencies = [
-    'openvino==2023.3.0'
-]
+    'openvino==2023.3.0']
 
 [project.optional-dependencies]
 transformers = [
     "transformers[sentencepiece]",
-    "tiktoken"
-]
+    "tiktoken"]
 dev = [
     "ruff",
     "pytest",
     "pytest_harvest",
     "bandit",
-    "openvino_tokenizers[transformers]"
-]
+    "openvino_tokenizers[transformers]"]
 fuzzing = [
     "atheris",
-    "openvino_tokenizers[transformers]"
-]
+    "openvino_tokenizers[transformers]"]
 #  don't include fuzzing to avoid windows CI issues
-all = [
-    "openvino_tokenizers[dev, transformers]"
-]
+all = ["openvino_tokenizers[dev, transformers]"]
 
 [project.scripts]
 convert_tokenizer = "openvino_tokenizers.cli:convert_hf_tokenizer"
@@ -71,8 +63,7 @@ cmake.build-type = "Release"
 cmake.args = [
     "-DCUSTOM_OPERATIONS=tokenizer",
     "-DCMAKE_INSTALL_BINDIR=lib",
-    "-DCMAKE_INSTALL_LIBDIR=lib"
-]
+    "-DCMAKE_INSTALL_LIBDIR=lib"]
 cmake.targets = ["user_ov_extensions"]
 wheel.packages = ["user_ie_extensions/tokenizer/python/openvino_tokenizers"]
 wheel.install-dir = "openvino_tokenizers"
