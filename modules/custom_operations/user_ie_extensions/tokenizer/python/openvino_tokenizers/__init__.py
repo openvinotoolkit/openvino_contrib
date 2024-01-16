@@ -48,6 +48,7 @@ del _ext_name
 # patching openvino
 old_core_init = openvino.runtime.Core.__init__
 old_factory_init = openvino.runtime.utils.node_factory.NodeFactory.__init__
+old_fe_init = openvino.frontend.frontend.FrontEnd.__init__
 
 
 @functools.wraps(old_core_init)
@@ -62,8 +63,15 @@ def new_factory_init(self, *args, **kwargs):
     self.add_extension(_ext_path)
 
 
+@functools.wraps(old_fe_init)
+def new_fe_init(self, *args, **kwargs):
+    old_fe_init(self, *args, **kwargs)
+    self.add_extension(str(_ext_path))
+
+
 openvino.runtime.Core.__init__ = new_core_init
 openvino.runtime.utils.node_factory.NodeFactory.__init__ = new_factory_init
+openvino.frontend.frontend.FrontEnd.__init__ = new_fe_init
 
 
 def _get_factory_callable() -> Callable[[], NodeFactory]:
