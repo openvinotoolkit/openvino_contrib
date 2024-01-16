@@ -52,6 +52,15 @@ public:
                                                   const ov::CoordinateDiff& pads_end,
                                                   const ov::CoordinateDiff& output_padding,
                                                   std::vector<ov::Dimension>& output_spatial_shape);
+    void infer_conv_backprop_auto_padding(const ov::Shape& input_data_shape,
+                                          const ov::Shape& filters_shape,
+                                          const ov::Shape& output_shape,
+                                          const ov::Strides& strides,
+                                          const ov::Strides& dilations,
+                                          const ov::op::PadType auto_pad_type,
+                                          const ov::CoordinateDiff& output_padding,
+                                          ov::CoordinateDiff& pads_begin,
+                                          ov::CoordinateDiff& pads_end);
     ov::PartialShape get_output_shape() const;
 
     const auto& get_strides() const { return strides_; }
