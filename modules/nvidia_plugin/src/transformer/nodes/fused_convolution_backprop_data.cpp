@@ -130,22 +130,22 @@ void FusedConvBackpropData::infer_conv_backprop_output_spatial_shape(const std::
     }
 }
 
-void FusedConvBackpropData::infer_conv_backprop_auto_padding(const ov::Shape& input_data_shape,
-                                                             const ov::Shape& filters_shape,
-                                                             const ov::Shape& output_shape,
-                                                             const ov::Strides& strides,
-                                                             const ov::Strides& dilations,
-                                                             const ov::op::PadType auto_pad_type,
-                                                             const ov::CoordinateDiff& output_padding,
-                                                             ov::CoordinateDiff& pads_begin,
-                                                             ov::CoordinateDiff& pads_end) {
+namespace {
+void infer_conv_backprop_auto_padding(const ov::Shape& input_data_shape,
+                                      const ov::Shape& filters_shape,
+                                      const ov::Shape& output_shape,
+                                      const ov::Strides& strides,
+                                      const ov::Strides& dilations,
+                                      const ov::op::PadType auto_pad_type,
+                                      const ov::CoordinateDiff& output_padding,
+                                      ov::CoordinateDiff& pads_begin,
+                                      ov::CoordinateDiff& pads_end) {
     OPENVINO_ASSERT(auto_pad_type == ov::op::PadType::SAME_UPPER || auto_pad_type == ov::op::PadType::SAME_LOWER);
 
     size_t num_spatial_dims = input_data_shape.size();
-    NODE_VALIDATION_CHECK(this,
-                          filters_shape.size() == num_spatial_dims && strides.size() == num_spatial_dims &&
-                              dilations.size() == num_spatial_dims && pads_begin.size() == num_spatial_dims &&
-                              pads_end.size() == num_spatial_dims && output_padding.size() == num_spatial_dims);
+    OPENVINO_ASSERT(filters_shape.size() == num_spatial_dims && strides.size() == num_spatial_dims &&
+                    dilations.size() == num_spatial_dims && pads_begin.size() == num_spatial_dims &&
+                    pads_end.size() == num_spatial_dims && output_padding.size() == num_spatial_dims);
 
     pads_begin = ov::CoordinateDiff(num_spatial_dims);
     pads_end = ov::CoordinateDiff(num_spatial_dims);
@@ -164,6 +164,7 @@ void FusedConvBackpropData::infer_conv_backprop_auto_padding(const ov::Shape& in
         }
     }
 }
+}  // namespace
 
 void FusedConvBackpropData::validate_and_infer_types() {
     auto data_pshape = get_input_partial_shape(0);
