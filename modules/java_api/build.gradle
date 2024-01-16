@@ -76,7 +76,7 @@ sourceSets {
     test {
         java {
             srcDirs = ["src/test/java"]
-            include "org/intel/openvino/compatibility/*.java", "org/intel/openvino/*.java"
+            include "org/intel/openvino/*.java"
         }
     }
 }
