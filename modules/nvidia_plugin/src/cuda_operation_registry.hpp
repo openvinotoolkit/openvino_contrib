@@ -10,6 +10,7 @@
 #include <unordered_map>
 
 #include "cuda_operation_base.hpp"
+#include "openvino/core/node.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "logical_not.hpp"
+#include "openvino/core/except.hpp"
 
 #include <cuda_operation_registry.hpp>
 

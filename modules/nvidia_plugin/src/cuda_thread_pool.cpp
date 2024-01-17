@@ -6,8 +6,6 @@
 
 #include <fmt/format.h>
 
-#include <details/ie_exception.hpp>
-
 #include "cuda_latch.hpp"
 
 namespace ov {

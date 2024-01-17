@@ -19,7 +19,6 @@
 #include "memory_manager/cuda_immutable_memory_block_builder.hpp"
 #include "memory_manager/cuda_memory_manager.hpp"
 #include "memory_manager/model/cuda_memory_model_builder.hpp"
-#include "nvidia/nvidia_config.hpp"
 #include "nvidia/properties.hpp"
 #include "openvino/runtime/exec_model_info.hpp"
 #include "openvino/runtime/internal_properties.hpp"
