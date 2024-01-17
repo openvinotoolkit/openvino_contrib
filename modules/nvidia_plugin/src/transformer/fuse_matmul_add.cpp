@@ -5,7 +5,6 @@
 #include "openvino/cc/pass/itt.hpp"
 #include "fuse_matmul_add.hpp"
 
-#include <exec_graph_info.hpp>
 #include "openvino/core/rt_info.hpp"
 #include "openvino/pass/pattern/op/wrap_type.hpp"
 #include "openvino/pass/pattern/op/or.hpp"
