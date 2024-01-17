@@ -71,7 +71,8 @@ std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(const std::shared_ptr<
     auto compiled_model = std::make_shared<CompiledModel>(model->clone(),
                                                           full_config,
                                                           wait_executor,
-                                                          shared_from_this());
+                                                          shared_from_this(),
+                                                          false);
     return compiled_model;
 }
 
@@ -102,13 +103,22 @@ std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model_str
 
     auto model = get_core()->read_model(xml_string, weights);
 
-    auto full_config = get_full_config(properties);
+    // check ov::loaded_from_cache property and erase it due to not needed any more.
+    auto _properties = properties;
+    const auto& it = _properties.find(ov::loaded_from_cache.name());
+    bool loaded_from_cache = false;
+    if (it != _properties.end()) {
+        loaded_from_cache = it->second.as<bool>();
+        _properties.erase(it);
+    }
+
+    auto full_config = get_full_config(_properties);
     auto wait_executor = get_stream_executor(full_config);
     auto compiled_model= std::make_shared<CompiledModel>(model,
                                                          full_config,
                                                          wait_executor,
                                                          shared_from_this(),
-                                                         true);
+                                                         loaded_from_cache);
     return compiled_model;
 }
 
