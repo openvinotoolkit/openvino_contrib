@@ -51,6 +51,7 @@ target_include_directories(${OBJ_NAME}
 )
 target_include_directories(${OBJ_NAME}
                            PUBLIC
+                           "${CUDNN_INCLUDE_DIR}"
                            "${CUTENSOR_INCLUDE_DIR}"
                            "${CMAKE_CURRENT_SOURCE_DIR}"
                            "${OpenVINONVIDIAGpuPlugin_SOURCE_DIR}/include"
