@@ -61,9 +61,9 @@ pytest .
 
 You can use converted tokenizers in C++ pipelines with prebuild binaries.
 
-1. Load OpenVINO archive distribution for your OS from [here](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html) and extract the archive.
-2. Load OpenVINO Tokenizers prebuild libraries from [here](storage.openvinotoolkit.org/repositories/openvino_tokenizers/packages/). To ensure compatibility first three numbers of OpenVINO Tokenizers version should match OpenVINO version and OS. 
-3. Extract OpenVINO Tokenizers archive into OpenVINO directory:
+1. Download OpenVINO archive distribution for your OS from [here](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html) and extract the archive.
+2. Download OpenVINO Tokenizers prebuild libraries from [here](storage.openvinotoolkit.org/repositories/openvino_tokenizers/packages/). To ensure compatibility first three numbers of OpenVINO Tokenizers version should match OpenVINO version and OS. 
+3. Extract OpenVINO Tokenizers archive into OpenVINO installation directory:
     - Windows: `<openvino_dir>\runtime\bin\intel64\Release\`
     - MacOS_x86: `<openvino_dir>/runtime/lib/intel64/Release`
     - MacOS_arm64: `<openvino_dir>/runtime/lib/arm64/Release/`
