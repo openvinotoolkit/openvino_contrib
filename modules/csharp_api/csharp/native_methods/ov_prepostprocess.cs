@@ -63,7 +63,7 @@ namespace OpenVinoSharp
         /// <param name="tensor_index">The order of input.</param>
         /// <param name="preprocess_input_info">A pointer to the ov_preprocess_input_info_t.</param>
         /// <returns>Status code of the operation: OK(0) for success.</returns>
-        [DllImport(dll_extern, EntryPoint = "ov_preprocess_prepostprocessor_free", 
+        [DllImport(dll_extern, EntryPoint = "ov_preprocess_prepostprocessor_get_input_info_by_index", 
             CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
         public extern static ExceptionStatus ov_preprocess_prepostprocessor_get_input_info_by_index(
             IntPtr preprocess,
@@ -74,7 +74,7 @@ namespace OpenVinoSharp
         /// Release the memory allocated by ov_preprocess_input_info_t.
         /// </summary>
         /// <param name="preprocess_input_info">A pointer to the ov_preprocess_input_info_t to free memory.</param>
-        [DllImport(dll_extern, EntryPoint = "ov_preprocess_prepostprocessor_free", 
+        [DllImport(dll_extern, EntryPoint = "ov_preprocess_input_info_free", 
             CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
         public extern static void ov_preprocess_input_info_free(
             IntPtr preprocess_input_info);
@@ -242,8 +242,29 @@ namespace OpenVinoSharp
         public extern static ExceptionStatus ov_preprocess_input_tensor_info_set_color_format_with_subname(
             IntPtr preprocess_input_tensor_info,
             uint color_format,
-            ulong sub_names_size);
-
+            ulong sub_names_size,
+            IntPtr k1);
+        [DllImport(dll_extern, EntryPoint = "ov_preprocess_input_tensor_info_set_color_format_with_subname",
+            CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
+        public extern static ExceptionStatus ov_preprocess_input_tensor_info_set_color_format_with_subname(
+            IntPtr preprocess_input_tensor_info,
+            uint color_format,
+            ulong sub_names_size,
+            IntPtr k1, IntPtr k2);
+        [DllImport(dll_extern, EntryPoint = "ov_preprocess_input_tensor_info_set_color_format_with_subname",
+            CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
+        public extern static ExceptionStatus ov_preprocess_input_tensor_info_set_color_format_with_subname(
+            IntPtr preprocess_input_tensor_info,
+            uint color_format,
+            ulong sub_names_size,
+            IntPtr k1, IntPtr k2, IntPtr k3);
+        [DllImport(dll_extern, EntryPoint = "ov_preprocess_input_tensor_info_set_color_format_with_subname",
+            CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
+        public extern static ExceptionStatus ov_preprocess_input_tensor_info_set_color_format_with_subname(
+            IntPtr preprocess_input_tensor_info,
+            uint color_format,
+            ulong sub_names_size,
+            IntPtr k1, IntPtr k2, IntPtr k3, IntPtr k4);
 
         /// <summary>
         /// Set ov_preprocess_input_tensor_info_t spatial_static_shape.
