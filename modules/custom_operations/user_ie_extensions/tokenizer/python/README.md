@@ -64,11 +64,11 @@ You can use converted tokenizers in C++ pipelines with prebuild binaries.
 1. Load OpenVINO archive distribution for your OS from [here](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html) and extract the archive.
 2. Load OpenVINO Tokenizers prebuild libraries from [here](storage.openvinotoolkit.org/repositories/openvino_tokenizers/packages/). To ensure compatibility first three numbers of OpenVINO Tokenizers version should match OpenVINO version and OS. 
 3. Extract OpenVINO Tokenizers archive into OpenVINO directory:
-    - Windows: <openvino_dir>\runtime\bin\intel64\Release\
-    - MacOS_x86: <openvino_dir>/runtime/lib/intel64/Release
-    - MacOS_arm64: <openvino_dir>/runtime/lib/arm64/Release/
-    - Linux_x86: <openvino_dir>/runtime/lib/intel64/
-    - Linux_arm64: <openvino_dir>/runtime/lib/aarch64/
+    - Windows: `<openvino_dir>\runtime\bin\intel64\Release\`
+    - MacOS_x86: `<openvino_dir>/runtime/lib/intel64/Release`
+    - MacOS_arm64: `<openvino_dir>/runtime/lib/arm64/Release/`
+    - Linux_x86: `<openvino_dir>/runtime/lib/intel64/`
+    - Linux_arm64: `<openvino_dir>/runtime/lib/aarch64/`
 
 After that you can add binary extension with `core.add_extension("libopenvino_tokenizers.so")` and `read`/`compile` converted (de)tokenizers models.
 
