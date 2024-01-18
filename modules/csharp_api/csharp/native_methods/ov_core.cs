@@ -119,6 +119,14 @@ namespace OpenVinoSharp
             ref sbyte bin_path, 
             ref IntPtr model);
 
+        [DllImport(dll_extern, EntryPoint = "ov_core_read_model_from_memory_buffer",
+            CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
+        public extern static ExceptionStatus ov_core_read_model_from_memory_buffer(IntPtr core,
+            ref byte model_path,
+            ulong str_size,
+            IntPtr weights,
+            ref IntPtr model);
+
         /// <summary>
         /// Reads models from IR / ONNX / PDPD / TF / TFLite formats.
         /// </summary>
@@ -138,7 +146,7 @@ namespace OpenVinoSharp
         [DllImport(dll_extern, EntryPoint = "ov_core_read_model_from_memory", 
             CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
         public extern static ExceptionStatus ov_core_read_model_from_memory(IntPtr core,
-            ref sbyte model_path, 
+            ref byte model_path, 
             IntPtr weights, 
             ref IntPtr model);
 
@@ -163,6 +171,38 @@ namespace OpenVinoSharp
             ulong property_args_size, 
             ref IntPtr compiled_model);
 
+        [DllImport(dll_extern, EntryPoint = "ov_core_compile_model",
+            CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
+        public extern static ExceptionStatus ov_core_compile_model(
+            IntPtr core,
+            IntPtr model,
+            ref sbyte device_name,
+            ulong property_args_size,
+            ref IntPtr compiled_model, 
+            IntPtr varg1, IntPtr varg2);
+        [DllImport(dll_extern, EntryPoint = "ov_core_compile_model",
+            CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
+        public extern static ExceptionStatus ov_core_compile_model(
+            IntPtr core,
+            IntPtr model,
+            ref sbyte device_name,
+            ulong property_args_size,
+            ref IntPtr compiled_model,
+            IntPtr varg1, IntPtr varg2,
+            IntPtr varg3, IntPtr varg4);
+
+        [DllImport(dll_extern, EntryPoint = "ov_core_compile_model",
+            CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
+        public extern static ExceptionStatus ov_core_compile_model(
+            IntPtr core,
+            IntPtr model,
+            ref sbyte device_name,
+            ulong property_args_size,
+            ref IntPtr compiled_model,
+            IntPtr varg1, IntPtr varg2,
+            IntPtr varg3, IntPtr varg4,
+            IntPtr varg5, IntPtr varg6);
+
         /// <summary>
         /// Reads a model and creates a compiled model from the IR/ONNX/PDPD file. 
         /// This can be more efficient than using the ov_core_read_model_from_XXX + ov_core_compile_model flow, 
@@ -183,6 +223,37 @@ namespace OpenVinoSharp
             ref sbyte device_name,
             ulong property_args_size,
             ref IntPtr compiled_model);
+        [DllImport(dll_extern, EntryPoint = "ov_core_compile_model_from_file",
+            CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
+        public extern static ExceptionStatus ov_core_compile_model_from_file(
+            IntPtr core,
+            ref sbyte model_path,
+            ref sbyte device_name,
+            ulong property_args_size,
+            ref IntPtr compiled_model,
+            IntPtr varg1, IntPtr varg2);
+        [DllImport(dll_extern, EntryPoint = "ov_core_compile_model_from_file",
+            CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
+        public extern static ExceptionStatus ov_core_compile_model_from_file(
+            IntPtr core,
+            ref sbyte model_path,
+            ref sbyte device_name,
+            ulong property_args_size,
+            ref IntPtr compiled_model,
+            IntPtr varg1, IntPtr varg2,
+            IntPtr varg3, IntPtr varg4);
+        [DllImport(dll_extern, EntryPoint = "ov_core_compile_model_from_file",
+            CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
+        public extern static ExceptionStatus ov_core_compile_model_from_file(
+            IntPtr core,
+            ref sbyte model_path,
+            ref sbyte device_name,
+            ulong property_args_size,
+            ref IntPtr compiled_model,
+            IntPtr varg1, IntPtr varg2,
+            IntPtr varg3, IntPtr varg4,
+            IntPtr varg5, IntPtr varg6);
+
 
         /// <summary>
         /// Sets properties for a device, acceptable keys can be found in ov_property_key_xxx.
@@ -192,13 +263,16 @@ namespace OpenVinoSharp
         /// <returns>Status code of the operation: OK(0) for success.</returns>
         [DllImport(dll_extern, EntryPoint = "ov_core_set_property",
             CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
-        public extern static ExceptionStatus ov_core_set_property(
-            IntPtr core, 
-            ref sbyte device_name);
+        public static extern ExceptionStatus ov_core_set_property(IntPtr core,
+            ref sbyte device_name, IntPtr varg1, IntPtr varg2, IntPtr varg3, IntPtr varg4);
+        [DllImport(dll_extern, EntryPoint = "ov_core_set_property",
+            CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ExceptionStatus ov_core_set_property(IntPtr core, 
+            ref sbyte device_name, IntPtr varg1, IntPtr varg2);
         [DllImport(dll_extern, EntryPoint = "ov_core_set_property",
             CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
         public static extern ExceptionStatus ov_core_set_property(IntPtr core,
-            ref sbyte device_name, IntPtr varg1, IntPtr varg2);
+            ref sbyte device_name, IntPtr varg1, IntPtr varg2, IntPtr varg3, IntPtr varg4, IntPtr varg5, IntPtr varg6);
         /// <summary>
         /// Gets properties related to device behaviour.
         /// The method extracts information that can be set via the set_property method.
@@ -250,7 +324,7 @@ namespace OpenVinoSharp
             CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
         public extern static ExceptionStatus ov_core_import_model(
             IntPtr core,
-            ref sbyte content,
+            ref byte content,
             ulong content_size,
             ref sbyte device_name,
             ref IntPtr compiled_model);
@@ -323,13 +397,12 @@ namespace OpenVinoSharp
         /// </summary>
         /// <param name="core">A pointer to the ov_core_t instance.</param>
         /// <param name="device_name">Name of a device to get a default shared context from.</param>
-        /// <param name="context">A pointer to the referenced remote context.</param>
+        /// <param name="context"> A pointer to the referenced remote context.</param>
         /// <returns>Status code of the operation: OK(0) for success.</returns>
-        [DllImport(dll_extern, EntryPoint = "ov_core_compile_model_with_context",
-            CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
-        public extern static ExceptionStatus ov_core_compile_model_with_context(
-            IntPtr core, 
-            ref sbyte device_name, 
-            ref IntPtr context);
+        [DllImport(dll_extern, EntryPoint = "ov_core_get_default_context",
+                CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
+        public extern static ExceptionStatus ov_core_get_default_context(IntPtr core, ref sbyte device_name, ref IntPtr context);
+
     }
+
 }
