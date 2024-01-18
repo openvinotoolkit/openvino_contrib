@@ -2,12 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+set_target_properties(${TARGET_NAME} PROPERTIES OUTPUT_NAME "openvino_tokenizers")
+
 if(POLICY CMP0135)
   cmake_policy(SET CMP0135 NEW)
 endif()
 
 option(BUILD_FAST_TOKENIZERS OFF)
-
 
 #
 # Compile flags
