@@ -55,7 +55,6 @@ namespace OpenVinoSharp
         /// <param name="axis_lengths">Initialized list</param>
         public Shape(List<long> axis_lengths)
         {
-         
             for (int i = 0; i < axis_lengths.Count; ++i)
             {
                 this.Add(axis_lengths[i]);
@@ -73,10 +72,28 @@ namespace OpenVinoSharp
         /// <param name="axis_lengths">Initialized array</param>
         public Shape(long[] axis_lengths)
         {
-
             for (int i = 0; i < axis_lengths.Length; ++i)
             {
                 this.Add(axis_lengths[i]);
+            }
+            int l = Marshal.SizeOf(typeof(ov_shape));
+            m_ptr = Marshal.AllocHGlobal(l);
+            HandleException.handler(
+                NativeMethods.ov_shape_create((long)this.Count, ref axis_lengths[0], m_ptr));
+            var temp = Marshal.PtrToStructure(m_ptr, typeof(ov_shape));
+            shape = (ov_shape)temp;
+        }
+        /// <summary>
+        /// Constructs Shape from the initialized array.
+        /// </summary>
+        /// <param name="data">Any length parameter</param>
+        public Shape(params int[] data)
+        {
+            long[] axis_lengths = new long[data.Length];
+            for (int i = 0; i < data.Length; ++i)
+            {
+                this.Add(data[i]);
+                axis_lengths[i] = data[i];
             }
             int l = Marshal.SizeOf(typeof(ov_shape));
             m_ptr = Marshal.AllocHGlobal(l);
@@ -122,6 +139,19 @@ namespace OpenVinoSharp
             s = s.Substring(0, s.Length - 2);
             s += "}";
             return s;
+        }
+        /// <summary>
+        /// Obtain the product of all shape parameters
+        /// </summary>
+        /// <returns>The product of all shape parameters</returns>
+        public long data_size() 
+        {
+            long d = 1;
+            foreach (var i in this)
+            {
+                d *= i;
+            }
+            return d;
         }
     }
 }
