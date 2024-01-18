@@ -3,10 +3,10 @@
 //
 
 #include "cuda_config.hpp"
+#include "openvino/runtime/internal_properties.hpp"
 
 #include <fmt/format.h>
 
-#include <cpp_interfaces/interface/ie_internal_plugin_config.hpp>
 #include <error.hpp>
 #include <regex>
 
@@ -154,19 +154,6 @@ Configuration::Configuration(const ov::AnyMap& config, const Configuration& defa
 
         if (ov::num_streams == key) {
             num_streams = value.as<ov::streams::Num>();
-        } if (NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS) == key) {
-            if (value != NVIDIA_CONFIG_VALUE(THROUGHPUT_AUTO)) {
-                try {
-                    num_streams = value.as<ov::streams::Num>();
-                } catch (...) {
-                    throw_ov_exception(
-                        fmt::format("NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS) = {} "
-                                    "is not a number !!",
-                                    value.as<std::string>()));
-                }
-            } else {
-                num_streams = ov::streams::AUTO;
-            }
         } else if (ov::device::id == key) {
             // Device id is updated already
             continue;
@@ -215,11 +202,6 @@ ov::Any Configuration::get(const std::string& name) const {
     } else if (name == ov::num_streams) {
         return (num_streams == 0) ?
             ov::streams::Num(get_optimal_number_of_streams()) : num_streams;
-    } else if (name == NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS)) {
-        auto value = (num_streams == 0) ?
-            ov::streams::Num(get_optimal_number_of_streams()) : num_streams;
-        return (value ==  ov::streams::AUTO) ? NVIDIA_CONFIG_VALUE(THROUGHPUT_AUTO)
-                                             : ov::util::to_string(value);
     } else if (name == ov::hint::num_requests) {
         return hint_num_requests;
     } else if (name == ov::hint::inference_precision) {

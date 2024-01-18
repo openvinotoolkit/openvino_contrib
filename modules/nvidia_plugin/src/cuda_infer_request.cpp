@@ -8,7 +8,6 @@
 #include <fmt/format.h>
 
 #include <algorithm>
-#include <description_buffer.hpp>
 #include <gsl/span_ext>
 #include <map>
 #include <memory>
