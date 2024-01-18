@@ -70,7 +70,7 @@ You can use converted tokenizers in C++ pipelines with prebuild binaries.
     - Linux_x86: `<openvino_dir>/runtime/lib/intel64/`
     - Linux_arm64: `<openvino_dir>/runtime/lib/aarch64/`
 
-After that you can add binary extension with:
+After that you can add binary extension in the code with:
 - `core.add_extension("openvino_tokenizers.dll")` for Windows
 - `core.add_extension("libopenvino_tokenizers.dylib")` for MacOS
 - `core.add_extension("libopenvino_tokenizers.so")` for Linux
