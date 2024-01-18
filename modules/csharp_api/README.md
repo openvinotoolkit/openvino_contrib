@@ -5,13 +5,11 @@
         <img src="https://img.shields.io/github/license/guojin-yan/openvinosharp.svg">
     </a>    
     <a >
-        <img src="https://img.shields.io/badge/Framework-.NET5.0%2C%20.NET6.0%2C%20.NET48-pink.svg">
+        <img src="https://img.shields.io/badge/Framework-.NET 8.0%2C%20.NET 6.0%2C%20.NET 5.0%2C%20.NET Framework 4.8%2C%20.NET Framework 4.7.2%2C%20.NET Framework 4.6%2C%20.NET Core 3.1-pink.svg">
     </a>    
 </p>
 
 [简体中文](README_cn.md) | English
-
-## This is OpenVINO ™  C # API, this project is still under construction and its functions are not yet fully developed. If you have any problems using it, please feel free to communicate with me. If you are interested in this project, you can also join our development.🥰🥰🥰🥰🥰
 
 ## 📚 What is OpenVINO™ C# API ?
 
@@ -25,14 +23,16 @@
 
 ## <img title="NuGet" src="https://s2.loli.net/2023/08/08/jE6BHu59L4WXQFg.png" alt="" width="40">NuGet Package
 
-### Managed libraries
+### Core Managed Libraries
 
-| Package                     | Description                    | Link                                                         |
-| --------------------------- | ------------------------------ | ------------------------------------------------------------ |
-| **OpenVINO.CSharp.API**     | OpenVINO C# API core libraries | [![NuGet Gallery ](https://badge.fury.io/nu/OpenVINO.CSharp.API.svg)](https://www.nuget.org/packages/OpenVINO.CSharp.API/) |
-| **OpenVINO.CSharp.Windows** | All-in-one package for Windows | [![NuGet Gallery ](https://badge.fury.io/nu/OpenVINO.CSharp.Windows.svg)](https://www.nuget.org/packages/OpenVINO.CSharp.Windows/) |
+| Package                                        | Description                                               | Link                                                         |
+| ---------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------ |
+| **OpenVINO.CSharp.API**                        | OpenVINO C# API core libraries                            | [![NuGet Gallery ](https://badge.fury.io/nu/OpenVINO.CSharp.API.svg)](https://www.nuget.org/packages/OpenVINO.CSharp.API/) |
+| **OpenVINO.CSharp.API.Extensions**             | OpenVINO C# API core extensions libraries                 | [![NuGet Gallery ](https://badge.fury.io/nu/OpenVINO.CSharp.API.Extensions.svg)](https://www.nuget.org/packages/OpenVINO.CSharp.API.Extensions/) |
+| **OpenVINO.CSharp.API.Extensions.OpenCvSharp** | OpenVINO C# API core extensions libraries use OpenCvSharp | [![NuGet Gallery ](https://badge.fury.io/nu/OpenVINO.CSharp.API.Extensions.OpenCvSharp.svg)](https://www.nuget.org/packages/OpenVINO.CSharp.API.Extensions.OpenCvSharp/) |
+| **OpenVINO.CSharp.API.Extensions.EmguCV**      | OpenVINO C# API core extensions libraries use EmguCV      | [![NuGet Gallery ](https://badge.fury.io/nu/OpenVINO.CSharp.API.Extensions.EmguCV.svg)](https://www.nuget.org/packages/OpenVINO.CSharp.API.Extensions.EmguCV/) |
 
-### Native bindings
+### Native Runtime Libraries
 
 | Package                               | Description                          | Link                                                         |
 | ------------------------------------- | ------------------------------------ | ------------------------------------------------------------ |
@@ -41,7 +41,19 @@
 | **OpenVINO.runtime.ubuntu.20-x86_64** | Native bindings for ubuntu.20-x86_64 | [![NuGet Gallery ](https://badge.fury.io/nu/OpenVINO.runtime.ubuntu.20-x86_64.svg)](https://www.nuget.org/packages/OpenVINO.runtime.ubuntu.20-x86_64/) |
 | **OpenVINO.runtime.ubuntu.18-x86_64** | Native bindings for ubuntu.18-x86_64 | [![NuGet Gallery ](https://badge.fury.io/nu/OpenVINO.runtime.ubuntu.18-x86_64.svg)](https://www.nuget.org/packages/OpenVINO.runtime.ubuntu.18-x86_64/) |
 | **OpenVINO.runtime.debian9-arm64**    | Native bindings for debian9-arm64    | [![NuGet Gallery ](https://badge.fury.io/nu/OpenVINO.runtime.win.svg)](https://www.nuget.org/packages/OpenVINO.runtime.win/) |
+| **OpenVINO.runtime.debian9-armhf **   | Native bindings for debian9-armhf    | [![NuGet Gallery ](https://badge.fury.io/nu/OpenVINO.runtime.debian9-armhf.svg)](https://www.nuget.org/packages/OpenVINO.runtime.debian9-armhf/) |
 | **OpenVINO.runtime.centos7-x86_64**   | Native bindings for centos7-x86_64   | [![NuGet Gallery ](https://badge.fury.io/nu/OpenVINO.runtime.centos7-x86_64.svg)](https://www.nuget.org/packages/OpenVINO.runtime.centos7-x86_64/) |
+| **OpenVINO.runtime.rhel8-x86_64**     | Native bindings for rhel8-x86_64     | [![NuGet Gallery ](https://badge.fury.io/nu/OpenVINO.runtime.rhel8-x86_64.svg)](https://www.nuget.org/packages/OpenVINO.runtime.rhel8-x86_64/) |
+| **OpenVINO.runtime.macos-x86_64**     | Native bindings for macos-x86_64     | [![NuGet Gallery ](https://badge.fury.io/nu/OpenVINO.runtime.macos-x86_64.svg)](https://www.nuget.org/packages/OpenVINO.runtime.macos-x86_64/) |
+| **OpenVINO.runtime.macos-arm64**      | Native bindings for macos-arm64      | [![NuGet Gallery ](https://badge.fury.io/nu/OpenVINO.runtime.macos-arm64.svg)](https://www.nuget.org/packages/OpenVINO.runtime.macos-arm64/) |
+
+### Integration Library
+
+| Package                     | Description                    | Link                                                         |
+| --------------------------- | ------------------------------ | ------------------------------------------------------------ |
+| **OpenVINO.CSharp.Windows** | All-in-one package for Windows | [![NuGet Gallery ](https://badge.fury.io/nu/OpenVINO.CSharp.Windows.svg)](https://www.nuget.org/packages/OpenVINO.CSharp.Windows/) |
+
+
 
 ## ⚙ How to install OpenVINO™ C# API?
 
@@ -81,10 +93,19 @@ export LD_LIBRARY_PATH=/home/ygj/Program/sample1/bin/Debug/net6.0/runtimes/ubunt
 sudo -E ./install_openvino_dependencies.sh
 ```
 
+## Mac OS
+
+Install the following package using the ``dotnet add package``command
+
+```shell
+dotnet add package OpenVINO.CSharp.API
+dotnet add package OpenVINO.runtime.macos-arm64
+```
+
+## 🏷开始使用
+
 ## 🏷How to use OpenVINO™ C# API?
 
-- **Quick start**
-  - [Deploying the Yolov8 full series model using OpenVINO™ C# API](demos/yolov8/README.md)
 - **Simple usage**
 
 If you don't know how to use it, simply understand the usage method through the following code.
@@ -113,34 +134,11 @@ The classes and objects encapsulated in the project, such as Core, Model, Tensor
 
 ## 💻 Tutorial Examples
 
-- [Using OpenVINO™ C# API to Deploy the Yolov8 Model on the AIxBoard](tutorial_examples/AlxBoard_deploy_yolov8/README.md)
-- [Pedestrian fall detection - Deploying PP-Human based on OpenVINO C # API](tutorial_examples\PP-Human_Fall_Detection\README.md) 
-- [Deploying RT-DETR based on OpenVINO](https://github.com/guojin-yan/RT-DETR-OpenVINO)
+
 
 ## 🗂 API Reference
 
 If you want to learn more information, you can refer to: [OpenVINO™ C# API API Documented](https://guojin-yan.github.io/OpenVINO-CSharp-API.docs/index.html)
-
-## 🔃 Update log
-
-#### 🔥 **2023.10.22 ：Update OpenVINO™ C# API **
-
-- 🗳 **OpenVINO™ C# API ：**
-  - Modify OpenVINO™  errors in the C # API, and integration of code sections to add exception handling mechanisms.
-- 🛹**Application Cases：**
-  - Pedestrian fall detection - Deploying PP-Human based on OpenVINO C # API
-  - Deploying RT-DETR based on OpenVINO
-- 🔮 **NuGet：**
-  - Abolish the previously released NuGet package, release updated installation packages, and release three types of NuGet packages, including **OpenVINO. CSharp. API **: core code package, **OpenVINO. CSharp. Windows **: Windows platform integration package, and **OpenVINO. runtime. win **: Windows platform runtime package.
-
-####  **2023.6.19 ： release OpenVINO™ C# API 3.0**
-
-- 🗳OpenVINO™ C# API ：
-  - Upgrade OpenVINO™ C# API 2.0 to OpenVINO™ C# API 3.0, changing from refactoring the C++API to directly reading OpenVino ™ The official C API makes the application more flexible and supports a richer range of functions.
-- 🛹Application Cases：
-  - OpenVINO™ C# API Deployment Yolov8 Model Example。
-- 🔮NuGet：
-  - Create and publish NuGet package, release * * OpenVINO™ C# API. win 3.0.120 * *, including OpenVino 2023.0 dependencies.
 
 ## 🎖 Contribute
 
