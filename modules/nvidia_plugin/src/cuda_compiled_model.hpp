@@ -32,7 +32,7 @@ public:
                   const Configuration& cfg,
                   const std::shared_ptr<ov::threading::ITaskExecutor>& wait_executor,
                   const std::shared_ptr<const ov::IPlugin>& plugin,
-                  bool loaded_from_cache = false);
+                  bool loaded_from_cache);
 
     ~CompiledModel();
 

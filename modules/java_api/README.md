@@ -35,7 +35,7 @@ gradle build
 
 ## Import
 
-Use `import org.intel.openvino.*;` for OpenVINO Java API 2.0 or `import org.intel.openvino.compatibility.*;` for deprecated API.
+Use `import org.intel.openvino.*;` for OpenVINO Java API.
 
 ## Set up the development environment
 

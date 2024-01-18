@@ -7,7 +7,6 @@
 #include <cuda_runtime_api.h>
 
 #include <cuda/runtime.hpp>
-#include <details/ie_exception.hpp>
 #include <iostream>
 
 namespace ov {
