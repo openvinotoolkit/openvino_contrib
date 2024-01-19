@@ -17,7 +17,7 @@ from .str_pack import pack_strings, unpack_strings
 from .utils import add_greedy_decoding, connect_models
 
 
-_ext_name = "user_ov_extensions"
+_ext_name = "openvino_tokenizers"
 if sys.platform == "win32":
     _ext_name = f"{_ext_name}.dll"
 elif sys.platform == "darwin":
