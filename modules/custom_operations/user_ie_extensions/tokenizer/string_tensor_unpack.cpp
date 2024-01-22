@@ -37,7 +37,7 @@ void StringTensorUnpack::validate_and_infer_types() {
     if (m_mode == "begins_ends") {
         set_string_output(this, 0, output_shape);
     } else {
-        OPENVINO_THROW(m_mode == "begins_ends", "StringTensorUnpack supporst only 'begins_ends' mode, but get " + m_mode);
+        OPENVINO_ASSERT(m_mode == "begins_ends", "StringTensorUnpack supporst only 'begins_ends' mode, but get " + m_mode);
     }
 }
 

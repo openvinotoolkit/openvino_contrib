@@ -28,4 +28,16 @@ INSTANTIATE_TEST_SUITE_P(smoke_Hetero_BehaviorTests,
                                             ::testing::ValuesIn(HeteroConfigs)),
                          OVInferenceChaining::getTestCaseName);
 
+INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
+                         OVInferenceChainingStatic,
+                         ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_NVIDIA),
+                                            ::testing::ValuesIn(configs)),
+                         OVInferenceChainingStatic::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_Hetero_BehaviorTests,
+                         OVInferenceChainingStatic,
+                         ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_HETERO),
+                                            ::testing::ValuesIn(HeteroConfigs)),
+                         OVInferenceChainingStatic::getTestCaseName);
+
 }  // namespace

@@ -39,6 +39,8 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*InferRequestIOBBlobTest.*canProcessDeallocatedOutputBlobAfterGetAndSetBlob.*)",
         // 119703
         R"(.*smoke_GroupConvolutionBias(Add|AddAdd)_2D_ExplicitPaddingSymmetric2.*FP16*.*)",
+        // Issue: 128924
+        R"(.*smoke_OVClassNetworkTestP/OVClassModelTestP.ImportModelWithNullContextThrows.*)",
     };
 
 #ifdef _WIN32

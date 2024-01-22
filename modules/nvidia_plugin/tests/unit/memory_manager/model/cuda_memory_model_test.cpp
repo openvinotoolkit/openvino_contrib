@@ -6,8 +6,6 @@
 
 #include <gtest/gtest.h>
 
-#include <details/ie_exception.hpp>
-
 TEST(MemoryModel, Empty) {
     using namespace ov::nvidia_gpu;
 

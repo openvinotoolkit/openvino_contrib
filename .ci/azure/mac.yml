@@ -85,6 +85,7 @@ jobs:
     displayName: 'System info'
 
   - script: |
+      set -e
       rm -rf $(WORK_DIR) ; mkdir $(WORK_DIR)
       rm -rf $(BUILD_DIR) ; mkdir $(BUILD_DIR)
     displayName: 'Make dir'
@@ -107,6 +108,7 @@ jobs:
     path: testdata
 
   - script: |
+      set -e
       brew install cython
       brew install automake
       # for ARM compute
@@ -116,14 +118,14 @@ jobs:
       # install python wheel dependencies
       python3.10 -m pip install --upgrade pip
       python3.10 -m pip install -r $(OPENVINO_REPO_DIR)/src/bindings/python/wheel/requirements-dev.txt
-      python3.10 -m pip install -r $(OPENVINO_REPO_DIR)/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
     workingDirectory: $(WORK_DIR)
     displayName: 'Install dependencies'
 
   - script: |
+      set -e
       export PATH="/usr/local/opt/cython/bin:$PATH"
       cmake -GNinja \
-        -DVERBOSE_BUILD=ON \
+        -DCMAKE_VERBOSE_MAKEFILE=ON \
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
         -DBUILD_nvidia_plugin=OFF \
         -DOPENVINO_EXTRA_MODULES=$(REPO_DIR)/modules \
@@ -154,6 +156,7 @@ jobs:
     displayName: 'List install files'
 
   - script: |
+      set -e
       . $(SETUPVARS) gradle clean build --info
       for d in CPU HETERO:CPU; do
         gradle test -Prun_tests -DMODELS_PATH=$(MODELS_PATH) -Ddevice=$d --info;
@@ -163,6 +166,7 @@ jobs:
     condition: eq(variables['CMAKE_OSX_ARCHITECTURES'], 'x86_64')
 
   - script: |
+      set -e
       python3 -m venv venv
       source venv/bin/activate && source $(SETUPVARS)
       python -m pip install --upgrade pip
@@ -176,6 +180,7 @@ jobs:
     displayName: 'Create virtual env'
 
   - script: |
+      set -e
       source $(WORK_DIR)/venv/bin/activate && source $(SETUPVARS)
       python -m pip install build
       python -m build --wheel --outdir $(BUILD_WHEEL_DIR) $(REPO_DIR)/modules/custom_operations
@@ -186,6 +191,7 @@ jobs:
     artifact: Wheels
 
   - script: |
+      set -e
       source $(WORK_DIR)/venv/bin/activate
       # Find and install wheel
       pushd $(BUILD_WHEEL_DIR)
@@ -196,6 +202,7 @@ jobs:
     displayName: 'Install tokenizers wheel'
 
   - script: |
+      set -e
       source $(WORK_DIR)/venv/bin/activate
       python -m pytest tokenizers_test.py
     continueOnError: true

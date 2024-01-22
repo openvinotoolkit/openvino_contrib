@@ -61,5 +61,5 @@ bool CalculateGrid::evaluate(ov::TensorVector& outputs, const ov::TensorVector& 
 }
 
 bool CalculateGrid::has_evaluate() const {
-    return get_input_element_type(0) == ngraph::element::f32 ? true : false;
+    return get_input_element_type(0) == ov::element::f32 ? true : false;
 }
