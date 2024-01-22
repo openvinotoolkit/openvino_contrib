@@ -18,12 +18,12 @@ classifiers = [
 ]
 
 dependencies = [
-    'openvino'
+    "openvino"
 ]
 
 [project.optional-dependencies]
 transformers = [
-    "transformers[sentencepiece]",
+    "transformers[sentencepiece] >= 4.36.0",
     "tiktoken"
 ]
 dev = [
