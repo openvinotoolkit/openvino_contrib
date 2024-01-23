@@ -562,9 +562,7 @@ def convert_tiktoken_model_tokenizer(
             RegexSplitStep(split_pattern),
             BytesToCharsStep(),
             BPETokenizationStep.from_tiktoken_encoding(encoding),
-            TruncationStep(
-                max_length=hf_tokenizer.model_max_length, truncate_right=(hf_tokenizer.truncation_side == "right")
-            ),
+            TruncationStep.from_hf_object(hf_tokenizer),
             PaddingStep(pad_right=(hf_tokenizer.padding_side == "right")),
             VocabDecoderStep(skip_tokens),
             CharsToBytesStep(),

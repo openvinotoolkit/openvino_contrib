@@ -120,6 +120,7 @@ sentencepiece_models = [
     # "t5-base",  # crashes tests
 ]
 tiktiken_models = [
+    "stabilityai/stablelm-2-1_6b",
     "Qwen/Qwen-14B-Chat",
     "Salesforce/xgen-7b-8k-base",
 ]
