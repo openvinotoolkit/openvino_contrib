@@ -61,6 +61,11 @@ public:
         return 1;
     }
 
+    void ExecuteGraph(InferenceRequestContext& context,
+                      Inputs inputTensors,
+                      Outputs outputTensors,
+                      const Workbuffers& workbuffers) const override;
+
 private:
     struct PortMap {
         int64_t start{0};

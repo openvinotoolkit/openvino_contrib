@@ -116,12 +116,17 @@ protected:
     std::vector<OperationInfo> results_info_;
     std::shared_ptr<const ov::Model> model_;
 
+<<<<<<< HEAD
     const CreationContext& creation_context_;
     std::shared_ptr<ITopologyRunner> runner_ = nullptr;
 
     mutable CudaGraphCompatibility graph_compatibility_;
     mutable bool is_compatibility_analyzed_ = false;
     mutable NestedRunnersStatus runners_status_{NestedRunnersStatus::UNKNOWN};
+=======
+    mutable CudaGraphCompatibility graph_compatibility_;
+    mutable bool is_compatibility_analyzed_ = false;
+>>>>>>> 802ecf595b4f53ccdc2c971382b9f2e72c86d2d3
 };
 
 }  // namespace nvidia_gpu
