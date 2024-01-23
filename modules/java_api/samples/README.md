@@ -1,7 +1,6 @@
 # Samples
 
 The OpenVINO samples are simple console applications that show how to utilize specific OpenVINO API capabilities within an application. The following samples are available
-- [Benchmark Application](#benchmark-application)
 - [Face Detection Java samples](#face-detection-java-samples)
 - [Face Detection Kotlin sample](./face_detection_kotlin_sample/README.md)
 - [Hello Query Device](#hello-query-device-sample)
@@ -141,10 +140,6 @@ To run these samples, you need to specify a model and image. To perform inferenc
     ```bash
     :samples:face_detection_java_sample:run --args='-m <path-to-model> -i <path-to-image>' -Pbuild_java_samples=true
     ```
-  For **face_detection_sample_async**, use the following command:
-    ```bash
-    :samples:face_detection_sample_async:run --args='-m <path-to-model> -i <path-to-image>' -Pbuild_java_samples=true
-    ```
 - Under **Environment Variables**, select **Edit environment variables** and add the following environment variables: 
 
   `INTEL_OPENVINO_DIR=<path-to-openvino_install>`
@@ -158,9 +153,6 @@ To run these samples, you need to specify a model and image. To perform inferenc
 
 ### For ```face_detection_java_sample```
 The application will show the image with detected objects enclosed in rectangles in new window. It outputs the confidence value and the coordinates of the rectangle to the standard output stream.
-
-### For ```face_detection_sample_async```
-The application will show the video with detected objects enclosed in rectangles in new window.
 
 
 # Hello Query Device Sample

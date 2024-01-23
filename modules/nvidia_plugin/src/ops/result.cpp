@@ -7,7 +7,6 @@
 #include <cuda_runtime.h>
 
 #include <cuda_operation_registry.hpp>
-#include <exec_graph_info.hpp>
 #include <openvino/core/except.hpp>
 #include <transformations/rt_info/fused_names_attribute.hpp>
 #include <utility>

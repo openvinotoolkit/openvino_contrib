@@ -8,7 +8,6 @@
 
 #include <algorithm>
 #include <cuda/constant_factory.hpp>
-#include <details/ie_exception.hpp>
 #include <openvino/core/except.hpp>
 #include <ops/converters.hpp>
 

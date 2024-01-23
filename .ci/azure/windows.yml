@@ -103,7 +103,6 @@ jobs:
       powershell -command "Expand-Archive -Force gradle-$(GRADLE_VER)-bin.zip"
       call $(SETUPVARS) -pyver 3.8
       $(PYTHON_EXE) -m pip install --upgrade pip
-      $(PYTHON_EXE) -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\src\compatibility\openvino\requirements-dev.txt
       $(PYTHON_EXE) -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\wheel\requirements-dev.txt
       powershell -command "Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))"
       choco install opencv -y
@@ -117,15 +116,12 @@ jobs:
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) ^
         -DBUILD_nvidia_plugin=OFF ^
         -DENABLE_OV_TF_FRONTEND=OFF ^
-        -DENABLE_OV_ONNX_FRONTEND=OFF ^
         -DENABLE_OV_PADDLE_FRONTEND=OFF ^
         -DENABLE_OV_TF_LITE_FRONTEND=OFF ^
         -DENABLE_OV_PYTORCH_FRONTEND=OFF ^
         -DENABLE_INTEL_GPU=OFF ^
-        -DENABLE_INTEL_GNA=OFF ^
         -DENABLE_CPPLINT=OFF ^
         -DENABLE_SAMPLES=OFF ^
-        -DENABLE_OV_ONNX_FRONTEND=ON ^
         -DENABLE_PYTHON=ON ^
         -DCMAKE_C_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
         -DCMAKE_CXX_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
@@ -181,7 +177,7 @@ jobs:
       $(PYTHON_EXE) -m pip install -r $(REPO_DIR)\modules\custom_operations\tests\requirements.txt
       $(PYTHON_EXE) -m pytest -k "not sparse_conv" tests\run_tests.py
     env:
-        CUSTOM_OP_LIB: $(BUILD_DIR_CONTRIB)\user_ie_extensions\user_ov_extensions.dll
+        CUSTOM_OP_LIB: $(BUILD_DIR_CONTRIB)\user_ie_extensions\openvino_tokenizers.dll
     workingDirectory: $(REPO_DIR)\modules\custom_operations
     displayName: 'Custom user operation tests'
 
@@ -194,6 +190,13 @@ jobs:
 
   - publish: $(BUILD_WHEEL_DIR)
     artifact: Wheels
+
+  - powershell: |
+      # Find and install the core OV wheel
+      $ovCoreWheelPath=Get-ChildItem -Path "$(INSTALL_DIR)\tools" -Filter openvino-*.whl | % { $_.FullName }
+      $(PYTHON_EXE) -m pip install "$ovCoreWheelPath"
+    workingDirectory: $(WORK_DIR)
+    displayName: 'Install OpenVINO Python wheels'
 
   - powershell: |
       # Find and install the wheel

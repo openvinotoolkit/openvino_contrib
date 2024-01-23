@@ -8,7 +8,6 @@
 #include <memory>
 #include <string>
 
-#include "nvidia/nvidia_config.hpp"
 #include "openvino/runtime/properties.hpp"
 #include "openvino/runtime/threading/istreams_executor.hpp"
 

@@ -192,5 +192,4 @@ bool CUDA::TransferNode::operator==(const TransferNode& rhs) const {
 bool KernelNode::operator==(const KernelNode& rhs) const {
     return node_ == rhs.node_ && node_params_ == rhs.node_params_;
 }
-
 }  // namespace CUDA

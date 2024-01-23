@@ -102,8 +102,9 @@ const std::vector<ov::AnyMap> multi_properties = {
 };
 
 const std::vector<ov::AnyMap> auto_batch_properties = {
-    {{CONFIG_KEY(AUTO_BATCH_DEVICE_CONFIG), ov::test::utils::DEVICE_NVIDIA}},
-    {{CONFIG_KEY(AUTO_BATCH_DEVICE_CONFIG), ov::test::utils::DEVICE_NVIDIA}, {CONFIG_KEY(AUTO_BATCH_TIMEOUT), "1"}},
+    {ov::device::priorities(ov::test::utils::DEVICE_NVIDIA)},
+    {{ov::device::priorities(ov::test::utils::DEVICE_NVIDIA)},
+     {ov::auto_batch_timeout(1)}},
 };
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,

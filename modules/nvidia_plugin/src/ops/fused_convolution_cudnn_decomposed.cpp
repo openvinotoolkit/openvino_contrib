@@ -6,7 +6,6 @@
 
 #include <cudnn.h>
 
-#include <details/ie_exception.hpp>
 #include <openvino/core/except.hpp>
 #include <ops/converters.hpp>
 

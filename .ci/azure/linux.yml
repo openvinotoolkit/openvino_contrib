@@ -106,7 +106,6 @@ jobs:
       # For opencv-python: python3-setuptools and pip upgrade
       python3 -m pip install --upgrade pip
       python3 -m pip install -r $(OPENVINO_REPO_DIR)/src/bindings/python/wheel/requirements-dev.txt
-      python3 -m pip install -r $(OPENVINO_REPO_DIR)/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
       # Speed up build
       wget https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-linux.zip
       unzip ninja-linux.zip
@@ -123,10 +122,9 @@ jobs:
     inputs:
       cmakeArgs: >
         -GNinja
-        -DVERBOSE_BUILD=ON
+        -DCMAKE_VERBOSE_MAKEFILE=ON
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
         -DBUILD_nvidia_plugin=OFF
-        -DENABLE_INTEL_GNA=OFF
         -DENABLE_INTEL_GPU=OFF
         -DENABLE_OV_TF_FRONTEND=OFF
         -DENABLE_OV_PADDLE_FRONTEND=OFF
@@ -166,6 +164,7 @@ jobs:
     displayName: 'Java tests'
 
   - script: |
+      set -e
       python3 -m pip install --user virtualenv
       python3 -m virtualenv -p /usr/bin/python3.8 .env3
       source .env3/bin/activate && source $(SETUPVARS)
@@ -176,15 +175,17 @@ jobs:
     displayName: 'Create virtual env'
 
   - script: |
+      set -e
       source $(WORK_DIR)/.env3/bin/activate
       # need to enable sparse_conv tests with new Open3D release
       python -m pytest -k "not sparse_conv" tests/run_tests.py
     env:
-      CUSTOM_OP_LIB: $(BIN_DIR)/libuser_ov_extensions.so
+      CUSTOM_OP_LIB: $(BIN_DIR)/libopenvino_tokenizers.so
     workingDirectory: $(REPO_DIR)/modules/custom_operations
     displayName: 'Custom user operation tests'
 
   - script: |
+      set -e
       source $(WORK_DIR)/.env3/bin/activate && source $(SETUPVARS)
       python -m pip install build
       python -m build --wheel --outdir $(BUILD_WHEEL_DIR) $(REPO_DIR)/modules/custom_operations
@@ -198,6 +199,7 @@ jobs:
     artifact: Wheels
 
   - script: |
+      set -e
       source $(WORK_DIR)/.env3/bin/activate
       # Find and install wheel
       pushd $(BUILD_WHEEL_DIR)
@@ -208,12 +210,14 @@ jobs:
     displayName: 'Install tokenizers wheel'
 
   - script: |
+      set -e
       source $(WORK_DIR)/.env3/bin/activate
       bandit -c pyproject.toml -r user_ie_extensions/tokenizer/python/
     workingDirectory: $(REPO_DIR)/modules/custom_operations
     displayName: 'Tokenizers Bandit Check'
 
   - script: |
+      set -e
       source $(WORK_DIR)/.env3/bin/activate
       python -m pytest tokenizers_test.py
     continueOnError: true

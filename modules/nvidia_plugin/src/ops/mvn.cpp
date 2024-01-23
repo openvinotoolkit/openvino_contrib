@@ -4,10 +4,10 @@
 
 #include "mvn.hpp"
 
+#include "openvino/core/shape_util.hpp"
 #include "openvino/core/type.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/mvn.hpp"
-#include "ngraph/shape_util.hpp"
 
 #include <cuda/descriptor_utils.hpp>
 #include <cuda_operation_registry.hpp>
@@ -224,7 +224,7 @@ ov::Shape MvnOp::makeReducedShape(const ov::Node& node) {
             }
             axes.emplace(static_cast<size_t>((v + size) % size));
         }
-        reducedShape = ngraph::reduce(reducedShape, axes, true);
+        reducedShape = ov::util::reduce_keep_dims(reducedShape, axes);
         if (reducedShape == node.get_input_shape(0)) return {};
         return reducedShape;
     }

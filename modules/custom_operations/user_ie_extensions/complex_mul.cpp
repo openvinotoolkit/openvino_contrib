@@ -4,7 +4,6 @@
 
 #include "complex_mul.hpp"
 #include <openvino/core/parallel.hpp>
-#include <ie_common.h>
 
 using namespace TemplateExtension;
 
@@ -68,7 +67,7 @@ bool ComplexMultiplication::evaluate(ov::TensorVector& outputs, const ov::Tensor
 
 bool ComplexMultiplication::has_evaluate() const {
     for (size_t i = 0; i < get_input_size(); ++i)
-        if (get_input_element_type(i) != ngraph::element::f32)
+        if (get_input_element_type(i) != ov::element::f32)
             return false;
     return true;
 }

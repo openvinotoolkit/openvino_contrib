@@ -1,13 +1,14 @@
 # Copyright (C) 2018-2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
+set(EXTENSION_NAME "openvino_tokenizers")
+set_target_properties(${TARGET_NAME} PROPERTIES OUTPUT_NAME ${EXTENSION_NAME})
 
 if(POLICY CMP0135)
   cmake_policy(SET CMP0135 NEW)
 endif()
 
 option(BUILD_FAST_TOKENIZERS OFF)
-
 
 #
 # Compile flags
@@ -94,6 +95,7 @@ else()
         URL_HASH SHA256=1ae8ccfdb1066a731bba6ee0881baad5efd2cd661acd9569b689f2586e1a50e9
       )
       FetchContent_MakeAvailable(re2)
+      set_property(DIRECTORY ${re2_SOURCE_DIR} PROPERTY EXCLUDE_FROM_ALL ON)
   elseif(LINUX AND X86_64)
       FetchContent_Declare(
         fast_tokenizer
@@ -190,6 +192,7 @@ else()
 endif()
 
 # cpack configuration
+set(CPACK_PACKAGE_NAME ${EXTENSION_NAME})
 set(CPACK_PACKAGE_VERSION "${CMAKE_PROJECT_VERSION}")
 set(CPACK_SOURCE_GENERATOR "") # not used
 

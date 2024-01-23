@@ -3,18 +3,15 @@
 //
 #include <fmt/format.h>
 
-#include "ie_metric_helpers.hpp"
-
-#include "cpp_interfaces/interface/ie_internal_plugin_config.hpp"
 #include "cuda/props.hpp"
 #include "cuda_compiled_model.hpp"
 #include "cuda_infer_request.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_operation_registry.hpp"
 #include "cuda_plugin.hpp"
-#include "nvidia/nvidia_config.hpp"
 #include "openvino/core/op_extension.hpp"
 #include "openvino/op/util/op_types.hpp"
+#include "openvino/runtime/internal_properties.hpp"
 #include "openvino/runtime/core.hpp"
 #include "openvino/runtime/properties.hpp"
 #include "openvino/runtime/threading/executor_manager.hpp"
@@ -74,7 +71,8 @@ std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(const std::shared_ptr<
     auto compiled_model = std::make_shared<CompiledModel>(model->clone(),
                                                           full_config,
                                                           wait_executor,
-                                                          shared_from_this());
+                                                          shared_from_this(),
+                                                          false);
     return compiled_model;
 }
 
@@ -105,13 +103,22 @@ std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model_str
 
     auto model = get_core()->read_model(xml_string, weights);
 
-    auto full_config = get_full_config(properties);
+    // check ov::loaded_from_cache property and erase it due to not needed any more.
+    auto _properties = properties;
+    const auto& it = _properties.find(ov::loaded_from_cache.name());
+    bool loaded_from_cache = false;
+    if (it != _properties.end()) {
+        loaded_from_cache = it->second.as<bool>();
+        _properties.erase(it);
+    }
+
+    auto full_config = get_full_config(_properties);
     auto wait_executor = get_stream_executor(full_config);
     auto compiled_model= std::make_shared<CompiledModel>(model,
                                                          full_config,
                                                          wait_executor,
                                                          shared_from_this(),
-                                                         true);
+                                                         loaded_from_cache);
     return compiled_model;
 }
 
@@ -193,37 +200,12 @@ void Plugin::set_property(const ov::AnyMap& properties) {
 }
 
 ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& properties) const {
-    using namespace InferenceEngine::CUDAMetrics;
-
     auto full_config = get_full_config(properties);
 
     if (ov::supported_properties == name) {
         return decltype(ov::supported_properties)::value_type{Configuration::get_supported_properties()};
     } else if (ov::internal::supported_properties == name) {
         return decltype(ov::internal::supported_properties)::value_type{Configuration::get_supported_internal_properties()};
-    } else if (METRIC_KEY(SUPPORTED_METRICS) == name) {
-        std::vector<std::string> supportedMetrics = {METRIC_KEY(AVAILABLE_DEVICES),
-                                                     METRIC_KEY(SUPPORTED_METRICS),
-                                                     METRIC_KEY(SUPPORTED_CONFIG_KEYS),
-                                                     ov::device::uuid.name(),
-                                                     METRIC_KEY(FULL_DEVICE_NAME),
-                                                     METRIC_KEY(IMPORT_EXPORT_SUPPORT),
-                                                     METRIC_KEY(DEVICE_ARCHITECTURE),
-                                                     METRIC_KEY(OPTIMIZATION_CAPABILITIES),
-                                                     METRIC_KEY(RANGE_FOR_ASYNC_INFER_REQUESTS)};
-        IE_SET_METRIC_RETURN(SUPPORTED_METRICS, supportedMetrics);
-    } else if (METRIC_KEY(SUPPORTED_CONFIG_KEYS) == name) {
-        std::vector<std::string> configKeys = {
-            CONFIG_KEY(DEVICE_ID), CONFIG_KEY(PERF_COUNT), NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS)};
-        auto streamExecutorConfigKeys = ov::threading::IStreamsExecutor::Config{}
-                                            .get_property(ov::supported_properties.name())
-                                            .as<std::vector<std::string>>();
-        for (auto&& configKey : streamExecutorConfigKeys) {
-            if (configKey != InferenceEngine::PluginConfigParams::KEY_CPU_THROUGHPUT_STREAMS) {
-                configKeys.emplace_back(configKey);
-            }
-        }
-        IE_SET_METRIC_RETURN(SUPPORTED_CONFIG_KEYS, configKeys);
     } else if (ov::internal::caching_properties == name) {
         return decltype(ov::internal::caching_properties)::value_type{Configuration::get_caching_properties()};
     } else if (ov::available_devices == name) {
@@ -243,8 +225,6 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& properti
         const auto& props = device.props();
         const std::string name = props.name;
         return decltype(ov::device::full_name)::value_type{name};
-    } else if (METRIC_KEY(IMPORT_EXPORT_SUPPORT) == name) {
-        IE_SET_METRIC_RETURN(IMPORT_EXPORT_SUPPORT, true);
     } else if (ov::device::architecture == name) {
         CUDA::Device device{full_config.get_device_id()};
         const auto& props = device.props();
@@ -258,10 +238,7 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& properti
             ov::device::capability::EXPORT_IMPORT,
             ov::device::capability::FP32,
             ov::device::capability::FP16}};
-    } else if (METRIC_KEY(OPTIMIZATION_CAPABILITIES) == name) {
-        std::vector<std::string> capabilities = {METRIC_VALUE(FP32)};
-        IE_SET_METRIC_RETURN(OPTIMIZATION_CAPABILITIES, capabilities);
-     } else if (ov::range_for_streams == name) {
+    } else if (ov::range_for_streams == name) {
         return decltype(ov::range_for_streams)::value_type{1, Configuration::reasonable_limit_of_streams};
     } else if (ov::range_for_async_infer_requests == name) {
         return decltype(ov::range_for_async_infer_requests)::value_type{1, 1, 1};

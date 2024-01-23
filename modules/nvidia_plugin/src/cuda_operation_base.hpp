@@ -4,8 +4,6 @@
 
 #pragma once
 
-#include <ie_layouts.h>
-
 #include <cuda/device_pointers.hpp>
 #include <cuda_creation_context.hpp>
 #include <cuda_inference_request_context.hpp>
