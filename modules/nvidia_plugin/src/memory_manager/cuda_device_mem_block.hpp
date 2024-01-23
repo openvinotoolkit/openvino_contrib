@@ -13,8 +13,6 @@
 namespace ov {
 namespace nvidia_gpu {
 
-class CudaGraphContext;
-
 /**
  * @brief Allocates and owns continuous memory blob on CUDA device.
  * Uses MemoryModel to determine a size of memory to allocate and

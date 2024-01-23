@@ -148,6 +148,8 @@ public:
         throwIfError(cudaGraphExecKernelNodeSetParams(exec.get(), node_, &node_params_.get_knp()));
     }
 
+    bool operator==(const KernelNode& rhs) const;
+
 private:
     KernelNode(cudaGraphNode_t node, CUDA::NodeParams&& params);
 

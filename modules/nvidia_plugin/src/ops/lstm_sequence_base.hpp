@@ -30,7 +30,7 @@ public:
                  Outputs outputTensors,
                  const Workbuffers&) const override;
 
-    bool IsCudaGraphCompatible() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
     void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) override;
     WorkbufferRequest GetWorkBufferRequest() const override;
 
@@ -59,7 +59,7 @@ protected:
     OutputTensorAdapterPtr cy_adapter;
 
 private:
-    bool is_cuda_graph_compatible_;
+    CudaGraphCompatibility graph_compatibility_;
 };
 
 }  // namespace nvidia_gpu

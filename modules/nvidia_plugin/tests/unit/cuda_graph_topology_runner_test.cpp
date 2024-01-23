@@ -92,7 +92,14 @@ TEST_F(CudaGraphTopologyRunnerTest, CheckMemcpyNodesArePopulated) {
 
 TEST_F(CudaGraphTopologyRunnerTest, CheckMemcpyNodesAreUpdated) {
     runner_.UpdateContext(inferRequestContext_, deviceMemBlock_);
-    const auto oldCudaGraphContext = cudaGraphContext_;
+    cudaGraphContext_.select_current_graph(0);
+    const auto& oldCurrentGraph = cudaGraphContext_.get_current_graph();
+    ASSERT_FALSE(oldCurrentGraph.is_nested());
+
+    const auto& oldInfo = dynamic_cast<const CudaGraphInfo&>(oldCurrentGraph);
+    const auto oldParamNodes = std::map<std::string, CUDA::UploadNode>{oldInfo.get_parameter_nodes()};
+    const auto oldResultNodes = std::map<std::string, CUDA::DownloadNode>{oldInfo.get_result_nodes()};
+
     std::vector<std::shared_ptr<ov::Tensor>> inputTensors{PopulateTensors(model_->inputs())};
     std::vector<std::shared_ptr<ov::Tensor>> outputTensors{PopulateTensors(model_->outputs())};
     InferenceRequestContext inferRequestContext{inputTensors,
@@ -105,12 +112,29 @@ TEST_F(CudaGraphTopologyRunnerTest, CheckMemcpyNodesAreUpdated) {
                                                 cudaGraphContext_,
                                                 false};
     runner_.UpdateContext(inferRequestContext, deviceMemBlock_);
-    EXPECT_NE(cudaGraphContext_, oldCudaGraphContext);
+
+    cudaGraphContext_.select_current_graph(0);
+    const auto& newCurrentGraph = cudaGraphContext_.get_current_graph();
+    ASSERT_FALSE(newCurrentGraph.is_nested());
+
+    const auto& newInfo = dynamic_cast<const CudaGraphInfo&>(newCurrentGraph);
+    const auto& newParamNodes = newInfo.get_parameter_nodes();
+    const auto& newResultNodes = newInfo.get_result_nodes();
+
+    EXPECT_NE(newParamNodes, oldParamNodes);
+    EXPECT_NE(newResultNodes, oldResultNodes);
 }
 
 TEST_F(CudaGraphTopologyRunnerTest, CheckMemcpyNodesAreNotUpdatedIfPointersUnchanged) {
     runner_.UpdateContext(inferRequestContext_, deviceMemBlock_);
-    const auto oldCudaGraphContext = cudaGraphContext_;
+    cudaGraphContext_.select_current_graph(0);
+    const auto& oldCurrentGraph = cudaGraphContext_.get_current_graph();
+    ASSERT_FALSE(oldCurrentGraph.is_nested());
+
+    const auto& oldInfo = dynamic_cast<const CudaGraphInfo&>(oldCurrentGraph);
+    const auto oldParamNodes = std::map<std::string, CUDA::UploadNode>{oldInfo.get_parameter_nodes()};
+    const auto oldResultNodes = std::map<std::string, CUDA::DownloadNode>{oldInfo.get_result_nodes()};
+
     InferenceRequestContext inferRequestContext{inputTensors_,
                                                 inputIndeces_,
                                                 outputTensors_,
@@ -121,5 +145,14 @@ TEST_F(CudaGraphTopologyRunnerTest, CheckMemcpyNodesAreNotUpdatedIfPointersUncha
                                                 cudaGraphContext_,
                                                 false};
     runner_.UpdateContext(inferRequestContext, deviceMemBlock_);
-    EXPECT_EQ(cudaGraphContext_, oldCudaGraphContext);
+    cudaGraphContext_.select_current_graph(0);
+    const auto& newCurrentGraph = cudaGraphContext_.get_current_graph();
+    ASSERT_FALSE(newCurrentGraph.is_nested());
+
+    const auto& newInfo = dynamic_cast<const CudaGraphInfo&>(newCurrentGraph);
+    const auto& newParamNodes = newInfo.get_parameter_nodes();
+    const auto& newResultNodes = newInfo.get_result_nodes();
+
+    EXPECT_EQ(newParamNodes, oldParamNodes);
+    EXPECT_EQ(newResultNodes, oldResultNodes);
 }

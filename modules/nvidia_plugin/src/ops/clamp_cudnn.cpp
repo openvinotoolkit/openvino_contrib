@@ -97,7 +97,7 @@ void ClampCuDnnOp::Execute(const InferenceRequestContext& context,
                                                     outputTensors[0].get());
 }
 
-bool ClampCuDnnOp::IsCudaGraphCompatible() const { return true; }
+CudaGraphCompatibility ClampCuDnnOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
 
 void ClampCuDnnOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
     switch (data_type_) {

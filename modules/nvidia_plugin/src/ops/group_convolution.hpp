@@ -27,7 +27,7 @@ public:
                  Outputs outputTensors,
                  const Workbuffers&) const override final;
 
-    bool IsCudaGraphCompatible() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
     WorkbufferRequest GetWorkBufferRequest() const override final;
 
 private:
