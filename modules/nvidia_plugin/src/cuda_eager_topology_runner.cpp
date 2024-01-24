@@ -7,8 +7,6 @@
 namespace ov {
 namespace nvidia_gpu {
 
-EagerTopologyRunner::EagerTopologyRunner(const CreationContext& context, const std::shared_ptr<const ov::Model>& model)
-    : SubGraph(context, model) {}
 
 }  // namespace nvidia_gpu
 }  // namespace ov
