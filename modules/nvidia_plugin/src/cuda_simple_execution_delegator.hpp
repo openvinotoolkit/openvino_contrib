@@ -77,6 +77,25 @@ public:
     };
 
     /**
+     * Call ExecuteGraph for all operations from SubGraph class
+     * @param subGraphPtr Pointer to SubGraph
+     * @param memoryManager Reference to MemoryManager
+     * @param buffer Reference to orkbuffers::mutable_buffer
+     * @param context Reference to InferenceRequestContext
+     */
+    virtual void execute_graph_sequence(const SubGraph* subGraphPtr,
+                                        const MemoryManager& memoryManager,
+                                        const Workbuffers::mutable_buffer& buffer,
+                                        InferenceRequestContext& context) override {
+        for (auto& op : subGraphPtr->getExecSequence()) {
+            const auto& inputTensors = memoryManager.inputTensorPointers(*op, buffer);
+            const auto& outputTensors = memoryManager.outputTensorPointers(*op, buffer);
+            const auto& workBuffers = memoryManager.workBuffers(*op, buffer);
+            op->ExecuteGraph(context, inputTensors, outputTensors, workBuffers);
+        }
+    };
+
+    /**
      * Dummy get_performance_counts implementation
      */
     virtual const std::vector<ov::ProfilingInfo> get_performance_counts() const override {

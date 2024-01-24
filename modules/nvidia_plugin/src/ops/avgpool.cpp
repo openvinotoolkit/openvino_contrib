@@ -30,7 +30,7 @@ void AvgPoolOp::Execute(const InferenceRequestContext& context,
                   outputs[PoolingImpl::output_index].get());
 }
 
-bool AvgPoolOp::IsCudaGraphCompatible() const { return true; }
+CudaGraphCompatibility AvgPoolOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
 
 OPERATION_REGISTER(AvgPoolOp, AvgPool);
 

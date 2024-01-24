@@ -27,7 +27,7 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
-    bool IsCudaGraphCompatible() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
     static std::string GetInputTensorName(const ov::Node& node);
 
 private:

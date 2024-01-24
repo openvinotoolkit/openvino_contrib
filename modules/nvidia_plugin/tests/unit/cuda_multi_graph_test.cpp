@@ -83,7 +83,7 @@ public:
 
     static void checkSubGraph(const SubGraph& subGraph) {
         // Original SubGraph for AddMul network should be CUDA Graph compatible
-        EXPECT_TRUE(subGraph.IsCudaGraphCompatible());
+        EXPECT_EQ(subGraph.GetCudaGraphCompatibility(), CudaGraphCompatibility::FULL);
     }
 
     static std::vector<std::vector<ov::float16>> calcRefs(
@@ -129,7 +129,7 @@ public:
 
     static void checkSubGraph(const SubGraph& subGraph) {
         // Original SubGraph for AddConcat network should not be CUDA Graph compatible
-        EXPECT_FALSE(subGraph.IsCudaGraphCompatible());
+        EXPECT_EQ(subGraph.GetCudaGraphCompatibility(), CudaGraphCompatibility::NONE);
     }
 
     static std::vector<std::vector<ov::float16>> calcRefs(

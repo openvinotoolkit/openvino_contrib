@@ -147,6 +147,18 @@ void Profiler::capture_sequence(const SubGraph* subGraphPtr,
     }
 }
 
+void Profiler::execute_graph_sequence(const SubGraph* subGraphPtr,
+                                      const MemoryManager& memoryManager,
+                                      const Workbuffers::mutable_buffer& buffer,
+                                      InferenceRequestContext& context) {
+    for (const auto& op : create_exec_sequence(subGraphPtr)) {
+        const auto& inTensors = memoryManager.inputTensorPointers(*op, buffer);
+        const auto& outTensors = memoryManager.outputTensorPointers(*op, buffer);
+        const auto& workBuffers = memoryManager.workBuffers(*op, buffer);
+        op->execute_graph(context, inTensors, outTensors, workBuffers);
+    }
+}
+
 Profiler::ProfilerSequence Profiler::create_exec_sequence(const SubGraph* subGraphPtr) {
     OPENVINO_ASSERT(active_stream_);
     ++infer_count_;

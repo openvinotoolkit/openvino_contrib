@@ -22,7 +22,7 @@ using namespace ov::nvidia_gpu;
 using DevPtr = CUDA::DevicePointer<void*>;
 using CDevPtr = CUDA::DevicePointer<const void*>;
 
-struct IsCudaGraphCompatibleTest : testing::Test {
+struct CudaGraphCompatibilityTest : testing::Test {
     template <typename T, typename C>
     static void generate(C& c) {
         std::random_device randDevice;
@@ -40,7 +40,7 @@ struct IsCudaGraphCompatibleTest : testing::Test {
                             OperationBase::Outputs outputs,
                             const Workbuffers& workbuffers) {
         auto& stream = context.getThreadContext().stream();
-        if (operation->IsCudaGraphCompatible()) {
+        if (operation->GetCudaGraphCompatibility() == CudaGraphCompatibility::FULL) {
             stream.synchronize();
             CUDA::GraphCapture capture{stream};
             {
@@ -59,7 +59,7 @@ struct IsCudaGraphCompatibleTest : testing::Test {
     }
 };
 
-struct ReluIsCudaGraphCompatibleTest : IsCudaGraphCompatibleTest {
+struct ReluCudaGraphCompatibilityTest : CudaGraphCompatibilityTest {
     void run() {
         using ElementType = float;
 
@@ -130,9 +130,9 @@ struct ReluIsCudaGraphCompatibleTest : IsCudaGraphCompatibleTest {
     }
 };
 
-TEST_F(ReluIsCudaGraphCompatibleTest, Compatibile) { run(); }
+TEST_F(ReluCudaGraphCompatibilityTest, Compatibile) { run(); }
 
-struct ConcatIsCudaGraphCompatibleTest : IsCudaGraphCompatibleTest {
+struct ConcatCudaGraphCompatibilityTest : CudaGraphCompatibilityTest {
     void run() {
         using ElementType = float;
 
@@ -228,6 +228,6 @@ struct ConcatIsCudaGraphCompatibleTest : IsCudaGraphCompatibleTest {
     }
 };
 
-TEST_F(ConcatIsCudaGraphCompatibleTest, NotCompatible) { run(); }
+TEST_F(ConcatCudaGraphCompatibilityTest, NotCompatible) { run(); }
 
 }  // namespace

@@ -65,6 +65,18 @@ public:
                                   InferenceRequestContext& context) = 0;
 
     /**
+     * Execute CUDA graph sequence from SubGraph class
+     * @param subGraphPtr Pointer to SubGraph
+     * @param memoryManager Reference to MemoryManager
+     * @param buffer Reference to orkbuffers::mutable_buffer
+     * @param context Reference to InferenceRequestContext
+     */
+    virtual void execute_graph_sequence(const SubGraph* subGraphPtr,
+                                        const MemoryManager& memoryManager,
+                                        const Workbuffers::mutable_buffer& buffer,
+                                        InferenceRequestContext& context) = 0;
+
+    /**
      * Returns performance counters
      * @return Performance counters
      */

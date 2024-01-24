@@ -113,7 +113,7 @@ void TransposeOp::Execute(const InferenceRequestContext& context,
                                      context.getThreadContext().stream().get()));
 }
 
-bool TransposeOp::IsCudaGraphCompatible() const { return true; }
+CudaGraphCompatibility TransposeOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
 
 std::vector<std::int64_t> TransposeOp::extractInputExtents(const ov::Node& node) {
     std::vector<std::int64_t> result;
