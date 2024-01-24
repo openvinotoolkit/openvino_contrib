@@ -16,9 +16,5 @@ void EagerTopologyRunner::Run(InferenceRequestContext& context, const DeviceMemB
     SubGraph::Execute(context, {}, {}, workbuffers);
 }
 
-const SubGraph& EagerTopologyRunner::GetSubGraph() const {
-    return *this;
-}
-
 }  // namespace nvidia_gpu
 }  // namespace ov
