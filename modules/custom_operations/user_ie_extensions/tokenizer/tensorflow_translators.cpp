@@ -18,6 +18,9 @@
 
 #include "wordpiece_tokenizer.hpp"
 
+#include <fstream>
+#include <iterator>
+
 using namespace TemplateExtension;
 using namespace ov;
 using namespace ov::frontend;
@@ -36,11 +39,22 @@ namespace {
 
 OutputVector translate_sentencepiece_op(const NodeContext& node) {
     // extract model to configure SentencePieceTokenizer
-    auto sp_model_ov_any = node.get_attribute_as_any("model");
-    FRONT_END_GENERAL_CHECK(sp_model_ov_any.is<std::string>(),
-        "SentencePieceOp configuration model is in incorrect format");
-    auto str_spm_model = sp_model_ov_any.as<std::string>();
-    auto sp_model_const = std::make_shared<Constant>(element::u8, Shape{ str_spm_model.size() }, str_spm_model.data());
+//    std::cout << "[ Trace 1 ] Before" << std::endl;
+//    auto sp_model_ov_any = node.get_attribute_as_any("model");
+//    std::cout << "[ Trace 1 ] Get Model" << std::endl;
+//    FRONT_END_GENERAL_CHECK(sp_model_ov_any.is<std::string>(),
+//        "SentencePieceOp configuration model is in incorrect format");
+    std::ifstream input( "/home/apaniuko/.config/JetBrains/RemoteDev-PY/_home_apaniuko_python_openvino_contrib/scratches/bytes", std::ios::binary );
+    std::vector<unsigned char> str_spm_model(std::istreambuf_iterator<char>(input), {});
+    std::cout << "[ Trace 1 ] FE Check" << std::endl;
+
+//    auto str_spm_model = sp_model_ov_any.as<std::vector<uint32_t>>();
+    std::cout << "[ Trace 1 ] As string" << std::endl;
+//    str_spm_model = str_spm_model.substr(2);
+//    str_spm_model = str_spm_model.substr(0, str_spm_model.size() - 1);
+    auto sp_model_const = std::make_shared<Constant>(element::u8, Shape{ str_spm_model.size() }, str_spm_model);
+//    std::cout << "[ Trace 1 ] Successful size:"<< str_spm_model.size() << "\n" << str_spm_model.substr(0, 100) << std::endl;
+    std::cout << "[ Trace 1 ] Successful" << std::endl;
     return { sp_model_const };
 }
 
@@ -60,8 +74,10 @@ NamedOutputVector translate_sentencepiece_tokenizer(const NodeContext& node) {
     auto sp_model_const = as_type_ptr<Constant>(sp_tokenize_op->input_value(0).get_node_shared_ptr());
     FRONT_END_GENERAL_CHECK(sp_model_const, "Conversion expects SentencePiece model to be constant.");
 
-    // prepare input six inputs
+    // prepare input
     auto inputs = sp_tokenize_op->input_value(1);
+    std::cout << "[ Trace  222 ] Type: " << inputs.get_element_type() << std::endl;
+    inputs.set_partial_shape(PartialShape{ Dimension() });
 
     // extract values for nbest_size, alpha, add_bos, add_eos, reverse attributes
     auto nbest_size = extract_scalar_const_value<int32_t>(sp_tokenize_op->input_value(2).get_node_shared_ptr(), "nbest_size");
@@ -70,26 +86,7 @@ NamedOutputVector translate_sentencepiece_tokenizer(const NodeContext& node) {
     auto add_eos = extract_scalar_const_value<bool>(sp_tokenize_op->input_value(5).get_node_shared_ptr(), "add_eos");
     auto reverse = extract_scalar_const_value<bool>(sp_tokenize_op->input_value(6).get_node_shared_ptr(), "reverse");
 
-#if !USE_STRING_TENSORS
-    // Override type of input tensor if this is a Parameter
-    if (auto parameter = std::dynamic_pointer_cast<Parameter>(inputs.get_node_shared_ptr())) {
-        parameter->set_partial_shape(PartialShape{ Dimension() });
-        parameter->set_element_type(element::u8);
-        parameter->validate_and_infer_types();
-    }
-#endif
-
-#if SENTENCE_PIECE_EXTENSION_DECOMPOSED_STRINGS
-
-    OutputVector inputs_vector = OutputVector{ sp_model_const };
-    auto unpacked_outputs = std::make_shared<StringTensorUnpack>(OutputVector{inputs}, "begins_ends")->outputs();
-    inputs_vector.insert(inputs_vector.end(), unpacked_outputs.begin(), unpacked_outputs.end());
-
-#else
-
     OutputVector inputs_vector = OutputVector{ sp_model_const, inputs };
-
-#endif
 
     // create a node with custom operation
     auto sp_tokenizer_ext = std::make_shared<SentencepieceTokenizer>(inputs_vector, nbest_size, alpha, add_bos, add_eos, reverse);
