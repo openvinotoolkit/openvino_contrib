@@ -159,6 +159,8 @@ bool SentencepieceTokenizer::evaluate(TensorVector& outputs, const TensorVector&
         batch_size = static_cast<int32_t>(ov::shape_size(inputs[1].get_shape()));
     } else if(input_element_type == ov::element::u8) {
         parse_packed_strings(inputs[1], batch_size, begin_ids, end_ids, data);
+    } else {
+        OPENVINO_THROW("Unexpected input type during inference. SentencepieceTokenizer accepts element::u8 or element::string.");
     }
 
 #endif
