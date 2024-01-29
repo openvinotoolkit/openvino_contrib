@@ -18,6 +18,7 @@ export const COMMANDS = {
   FOCUS_SIDE_PANEL: `${SIDE_PANEL_VIEW_ID}.focus`,
   OPEN_SETTINGS: 'openvinoCode.openSettings',
   GENERATE_INLINE_COPMLETION: 'openvinoCode.generateInlineCompletion',
+  GENERATE_INLINE_COPMLETION_TAB: 'openvinoCode.generateInlineCompletionTab',
   ACCEPT_INLINE_COMPLETION: 'openvinoCode.acceptInlineCompletion',
   GENERATE_DOC_STRING: 'openvinoCode.generateDocstring',
   CHECK_CONNECTION: 'openvinoCode.checkConnection',
