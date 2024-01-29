@@ -25,6 +25,7 @@ public:
     void Run(InferenceRequestContext& context, const Workbuffers& workbuffers) const override{};
 
     void Capture(InferenceRequestContext& context, const Workbuffers& workbuffers) const override{};
+
     void UpdateContext(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const override{};
 
     const SubGraph& GetSubGraph() const override { return *this; }

@@ -12,6 +12,7 @@ namespace ov {
 namespace nvidia_gpu {
 
 class ICudaGraphInfo {
+
 public:
     virtual ~ICudaGraphInfo() = 0;
 
