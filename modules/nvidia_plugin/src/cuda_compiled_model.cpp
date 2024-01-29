@@ -69,7 +69,7 @@ void CompiledModel::init_executor() {
     // Default multi-threaded configuration is balanced for throughtput and latency cases and takes into account
     // real hardware cores and NUMA nodes.
     config_.streams_executor_config_ =
-        ov::threading::IStreamsExecutor::Config{nv_stream_executor_name, memory_pool_->Size()};
+        ov::threading::IStreamsExecutor::Config{nv_stream_executor_name, static_cast<int>(memory_pool_->Size())};
     auto streams_executor_config =
         ov::threading::IStreamsExecutor::Config::make_default_multi_threaded(config_.streams_executor_config_);
     // As OpenVINO CPU Streams Executor creates some additional threads
