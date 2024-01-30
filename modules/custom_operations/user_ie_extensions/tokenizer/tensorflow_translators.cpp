@@ -77,7 +77,8 @@ NamedOutputVector translate_sentencepiece_tokenizer(const NodeContext& node) {
     // prepare input
     auto inputs = sp_tokenize_op->input_value(1);
     std::cout << "[ Trace  222 ] Type: " << inputs.get_element_type() << std::endl;
-    inputs.set_partial_shape(PartialShape{ Dimension() });
+    auto parameter = std::dynamic_pointer_cast<Parameter>(inputs.get_node_shared_ptr())
+    parameter -> set_partial_shape(PartialShape{ Dimension() });
 
     // extract values for nbest_size, alpha, add_bos, add_eos, reverse attributes
     auto nbest_size = extract_scalar_const_value<int32_t>(sp_tokenize_op->input_value(2).get_node_shared_ptr(), "nbest_size");
