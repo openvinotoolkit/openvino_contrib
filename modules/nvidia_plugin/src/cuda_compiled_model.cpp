@@ -68,9 +68,10 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
 void CompiledModel::init_executor() {
     // Default multi-threaded configuration is balanced for throughtput and latency cases and takes into account
     // real hardware cores and NUMA nodes.
-    config_.streams_executor_config_.set_property({ ov::num_streams(ov::streams::Num(memory_pool_->Size())) });
-    auto streams_executor_config = ov::threading::IStreamsExecutor::Config::make_default_multi_threaded(config_.streams_executor_config_);
-    streams_executor_config._name = nv_stream_executor_name;
+    config_.streams_executor_config_ =
+        ov::threading::IStreamsExecutor::Config{nv_stream_executor_name, static_cast<int>(memory_pool_->Size())};
+    auto streams_executor_config =
+        ov::threading::IStreamsExecutor::Config::make_default_multi_threaded(config_.streams_executor_config_);
     // As OpenVINO CPU Streams Executor creates some additional threads
     // it is better to avoid threads recreateion as some OSs memory allocator can not manage such usage cases
     // and memory consumption can be larger than it is expected.

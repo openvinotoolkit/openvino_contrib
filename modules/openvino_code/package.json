@@ -125,6 +125,11 @@
         "title": "Generate Inline Code Completion"
       },
       {
+        "command": "openvinoCode.generateInlineCompletionTab",
+        "category": "OpenVINO Code",
+        "title": "Generate Inline Code Completion In New Tab"
+      },
+      {
         "command": "openvinoCode.generateDocstring",
         "category": "OpenVINO Code",
         "title": "Generate Docstring",
@@ -158,6 +163,23 @@
           "command": "openvinoCode.openSettings",
           "when": "view == openvino-code-side-panel",
           "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "openvino-code-completion.toggle",
+          "group": "openvino-code-completion",
+          "when": "editorTextFocus && config.openvino-code-completion.showCommandsInContextMenu"
+        },
+        {
+          "command": "openvinoCode.generateInlineCompletion",
+          "when": "editorFocus",
+          "group": "openvino-code-completion@1"
+        },
+        {
+          "command": "openvinoCode.generateInlineCompletionTab",
+          "when": "editorFocus",
+          "group": "openvino-code-completion@2"
         }
       ]
     },
@@ -262,6 +284,12 @@
         "command": "openvinoCode.generateInlineCompletion",
         "key": "ctrl+alt+space",
         "mac": "ctrl+alt+space",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "openvinoCode.generateInlineCompletionTab",
+        "key": "ctrl+alt+shift+1",
+        "mac": "ctrl+alt+shift+1",
         "when": "editorTextFocus"
       },
       {
