@@ -18,9 +18,6 @@
 
 #include "wordpiece_tokenizer.hpp"
 
-#include <fstream>
-#include <iterator>
-
 using namespace TemplateExtension;
 using namespace ov;
 using namespace ov::frontend;
