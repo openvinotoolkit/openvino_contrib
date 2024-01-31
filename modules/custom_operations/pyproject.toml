@@ -81,6 +81,12 @@ wheel.license-files = ["LICENSE", "third-party-programs.txt", "SECURITY.md"]
 sdist.cmake = true
 sdist.exclude = ["dist", "tests", "examples", "user_ie_extensions/tokenizer/python/tests"]
 
+[[tool.scikit-build.generate]]
+path = "__version__.py"
+template = '''
+__version__ = "${version}"
+'''
+
 [build-system]
 requires = ["scikit-build-core"]
 build-backend = "scikit_build_core.build"
