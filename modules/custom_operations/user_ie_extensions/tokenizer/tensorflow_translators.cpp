@@ -39,34 +39,13 @@ namespace {
 
 OutputVector translate_sentencepiece_op(const NodeContext& node) {
     // extract model to configure SentencePieceTokenizer
-//    std::cout << "[ Trace 1 ] Before" << std::endl;
-//    auto sp_model_ov_any = node.get_attribute_as_any("model");
-//    std::cout << "[ Trace 1 ] Get Model" << std::endl;
-//    FRONT_END_GENERAL_CHECK(sp_model_ov_any.is<std::string>(),
-//        "SentencePieceOp configuration model is in incorrect format");
-    std::ifstream input( "/home/apaniuko/.config/JetBrains/RemoteDev-PY/_home_apaniuko_python_openvino_contrib/scratches/bytes", std::ios::binary );
-    std::vector<unsigned char> str_spm_model(std::istreambuf_iterator<char>(input), {});
-    std::cout << "[ Trace 1 ] FE Check" << std::endl;
-
-//    auto str_spm_model = sp_model_ov_any.as<std::vector<uint32_t>>();
-    std::cout << "[ Trace 1 ] As string" << std::endl;
-//    str_spm_model = str_spm_model.substr(2);
-//    str_spm_model = str_spm_model.substr(0, str_spm_model.size() - 1);
+    auto sp_model_ov_any = node.get_attribute_as_any("model");
+    FRONT_END_GENERAL_CHECK(sp_model_ov_any.is<std::string>(),
+        "SentencePieceOp configuration model is in incorrect format");
+    auto str_spm_model = sp_model_ov_any.as<std::string>();
     auto sp_model_const = std::make_shared<Constant>(element::u8, Shape{ str_spm_model.size() }, str_spm_model.data());
-//    std::cout << "[ Trace 1 ] Successful size:"<< str_spm_model.size() << "\n" << str_spm_model.substr(0, 100) << std::endl;
-    std::cout << "[ Trace 1 ] Successful" << std::endl;
     return { sp_model_const };
 }
-
-//OutputVector translate_sentencepiece_op(const NodeContext& node) {
-//    // extract model to configure SentencePieceTokenizer
-//    auto sp_model_ov_any = node.get_attribute_as_any("model");
-//    FRONT_END_GENERAL_CHECK(sp_model_ov_any.is<std::string>(),
-//        "SentencePieceOp configuration model is in incorrect format");
-//    auto str_spm_model = sp_model_ov_any.as<std::string>();
-//    auto sp_model_const = std::make_shared<Constant>(element::u8, Shape{ str_spm_model.size() }, str_spm_model.data());
-//    return { sp_model_const };
-//}
 
 NamedOutputVector translate_sentencepiece_tokenizer(const NodeContext& node) {
     // this is custom translator that converts a sub-graph with SentencePieceOp, SentencePieceTokenizer,
@@ -86,8 +65,6 @@ NamedOutputVector translate_sentencepiece_tokenizer(const NodeContext& node) {
 
     // prepare input
     auto inputs = sp_tokenize_op->input_value(1);
-    auto parameter = std::dynamic_pointer_cast<Parameter>(inputs.get_node_shared_ptr());
-    parameter -> set_partial_shape(PartialShape{ Dimension() });
 
     // extract values for nbest_size, alpha, add_bos, add_eos, reverse attributes
     auto nbest_size = extract_scalar_const_value<int32_t>(sp_tokenize_op->input_value(2).get_node_shared_ptr(), "nbest_size");
