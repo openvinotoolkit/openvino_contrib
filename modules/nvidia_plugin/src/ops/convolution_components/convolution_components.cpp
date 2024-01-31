@@ -7,7 +7,6 @@
 #include "convolution_components.hpp"
 
 #include "openvino/core/except.hpp"
-#include "openvino/core/validation_util.hpp"
 #include "openvino/op/group_conv.hpp"
 
 namespace ov::nvidia_gpu::Convolution::Details {
