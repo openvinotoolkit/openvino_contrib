@@ -126,11 +126,6 @@ bool SentencepieceTokenizer::evaluate(TensorVector& outputs, const TensorVector&
     // used in case of string tensors
     const std::string* strings;
 
-    // used in case of u8 packed representation
-    const int32_t* begin_ids;
-    const int32_t* end_ids;
-    const uint8_t* data;
-
     if(input_element_type == ov::element::string) {
         strings = inputs[1].data<const std::string>();
         batch_size = static_cast<int32_t>(ov::shape_size(inputs[1].get_shape()));
