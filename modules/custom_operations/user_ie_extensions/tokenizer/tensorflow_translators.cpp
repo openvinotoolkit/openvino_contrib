@@ -163,7 +163,6 @@ ov::OutputVector translate_lookup_table_find_v2(const ov::frontend::NodeContext&
 
     auto wp_tokenizer_inputs = wp_tokenizer->input_values();
     wp_tokenizer_inputs.push_back(unk_token_id);
-    //std::cerr << "Added extra input, total number of inputs is " << wp_tokenizer_inputs.size() << "\n";
 
     auto new_wp_tokenizer = wp_tokenizer->clone_with_new_inputs(wp_tokenizer_inputs);
     return { post_translate_ragged_tensor_output(new_wp_tokenizer->outputs()) };
@@ -178,10 +177,18 @@ ov::OutputVector translate_reshape(const ov::frontend::NodeContext& node) {
     FRONT_END_GENERAL_CHECK(node.get_input_size() == 2, "Tensorflow Reshape op should have two inputs");
     auto tensor = node.get_input(0);
     auto shape = node.get_input(1);
-    auto reshape = std::make_shared<Reshape>(tensor, shape, false);
-    return {reshape};
-//    }
-    // set_node_name(node.get_name(), reshape); // TODO: requires dependencies from TF FE internals
+    if(auto pack = dynamic_cast<StringTensorPack*>(tensor.get_node())) {
+        // TODO: If it is a beginning of the graph, how to detect strings? It falls in 'else' branch in this case.
+        // FIXME: Needs extension for a Parameter to prepare it first
+        auto begins = std::make_shared<Reshape>(pack->input_value(0), shape, false);
+        auto ends = std::make_shared<Reshape>(pack->input_value(1), shape, false);
+        auto chars = pack->input_value(2);
+        auto reshape = post_translate_string_tensor_output({begins, ends, chars});
+        return {reshape};
+    } else {
+        auto reshape = std::make_shared<Reshape>(tensor, shape, false);
+        return {reshape};
+    }
 }
 
 // Copied and pasted from TF FE and adopted to not use internal TF FE operation classes
@@ -204,9 +211,7 @@ ov::OutputVector translate_const(const ov::frontend::NodeContext& node) {
             const_node = std::make_shared<ov::op::util::FrameworkNode>(OutputVector{});
         }
     } else {
-        //static std::vector<ov::Tensor> tensors;
         auto tensor = node.get_attribute<ov::Tensor>("value");
-        //tensors.push_back(tensor);
         const_node = std::make_shared<Constant>(tensor);
         #if OPENVINO_ELEMENT_STRING_SUPPORTED
         if (const_node->get_element_type() == element::string) {
@@ -218,6 +223,5 @@ ov::OutputVector translate_const(const ov::frontend::NodeContext& node) {
         }
         #endif
     }
-    //set_node_name(node.get_name(), const_node);   // TODO: Provide alternative to internal function set_node_name
     return {const_node};
 }
