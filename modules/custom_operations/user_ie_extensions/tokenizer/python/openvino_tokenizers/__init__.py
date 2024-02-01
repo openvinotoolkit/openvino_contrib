@@ -12,10 +12,10 @@ from typing import Callable
 import openvino
 from openvino.runtime.utils.node_factory import NodeFactory
 
+from .__version__ import __version__
 from .convert_tokenizer import convert_tokenizer
 from .str_pack import pack_strings, unpack_strings
 from .utils import add_greedy_decoding, connect_models
-
 
 _ext_name = "openvino_tokenizers"
 if sys.platform == "win32":
