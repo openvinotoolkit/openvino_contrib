@@ -105,6 +105,7 @@ void TemplateExtension::PagedAttention::validate_and_infer_types() {
 
     // block_tables: shape [batch_size, max_block_per_request]
     NODE_VALIDATION_CHECK(this,
+        get_input_element_type(9) == ov::element::i32 &&
         get_input_partial_shape(9).size() == 2,
         "block_tables validation failed");
 
@@ -132,14 +133,29 @@ void reshape_and_cache(ov::Tensor key, ov::Tensor value,
 // generate block diagonal attention mask for a prefill stage
 ov::Tensor generate_attention_mask(ov::Tensor context_lens);
 
+ov::Tensor view(ov::Tensor tensor, std::uint32_t num_heads, std::uint32_t head_size) {
+    const std::uint32_t num_seqs = tensor.get_size() / (num_heads * head_size);
+    return ov::Tensor(tensor.get_element_type(), ov::Shape({num_seqs, num_heads, head_size}), tensor.data());
+}
+
+std::shared_ptr<ov::Model> make_spda() {
+    
+}
+
 bool TemplateExtension::PagedAttention::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
     ov::Tensor query = inputs[0], key = inputs[1], value = inputs[2];
+    const std::int32_t batch_size = query.get_shape()[0], seq_len = query.get_shape()[1], hidden_size = query.get_shape()[2];
     ov::Tensor key_cache = inputs[3], value_cache = inputs[4];
     const bool is_prompt = inputs[5].data<bool>()[0];
     ov::Tensor slot_mapping = inputs[6];
     const std::int32_t max_context_len = inputs[7].data<std::int32_t>()[0];
     ov::Tensor context_lens = inputs[8];
     ov::Tensor block_tables = inputs[9];
+
+    // reshape to [num_seq, num_heads, head_size]
+    query = view(query, m_num_heads, m_head_size);
+    key = view(key, m_num_kv_heads, m_head_size);
+    value = view(value, m_num_kv_heads, m_head_size);
 
     // put current K, V values into key_cache and value_cache
     reshape_and_cache(key, value, key_cache, value_cache, slot_mapping);
@@ -148,7 +164,7 @@ bool TemplateExtension::PagedAttention::evaluate(ov::TensorVector& outputs, cons
         auto attention_mask = generate_attention_mask(context_lens);
 
         // create a model with OpenVINO SDPA to compute first token
-        // TODO
+
     } else {
         paged_attention_v1_cpu(outputs[0],
             query, key_cache, value_cache,
@@ -156,6 +172,9 @@ bool TemplateExtension::PagedAttention::evaluate(ov::TensorVector& outputs, cons
             block_tables, context_lens,
             m_block_size, max_context_len);
     }
+
+    // reshape
+    outputs[0] = view(outputs[0], batch_size, seq_len, hidden_size);
 
     return true;
 }

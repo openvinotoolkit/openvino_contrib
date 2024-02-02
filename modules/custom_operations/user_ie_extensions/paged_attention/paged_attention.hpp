@@ -55,7 +55,7 @@ public:
     bool has_evaluate() const override;
 
 private:
-    std::int32_t m_num_heads, m_num_kv_heads, m_head_size, m_block_size;
+    std::uuint32_t m_num_heads, m_num_kv_heads, m_head_size, m_block_size;
     float m_scale;
 };
 

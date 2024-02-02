@@ -15,7 +15,7 @@ void reshape_and_cache_cpu_impl(
     const int head_size, const int block_size, const int x) {
   const int block_elem_num = num_heads * head_size * block_size;
 
-// #pragma omp parallel for collapse(2)
+#pragma omp parallel for collapse(2)
   for (int token_idx = 0; token_idx < num_tokens; ++token_idx) {
     for (int head_idx = 0; head_idx < num_heads; ++head_idx) {
       const int64_t slot_idx = slot_mapping[token_idx];
@@ -59,12 +59,12 @@ void reshape_and_cache_cpu_impl(
 void reshape_and_cache(ov::Tensor key, ov::Tensor value,
                        ov::Tensor key_cache, ov::Tensor value_cache,
                        ov::Tensor slot_mapping) {
-  ov::Shape key_shape = key.get_shape();
+  ov::Shape key_shape = key.get_shape(), key_cache_shape = key_cache.get_shape();
   int num_tokens = key_shape[0];
   int num_heads = key_shape[1];
   int head_size = key_shape[2];
-  int block_size = key_shape[3];
-  int x = key_shape[4];
+  int block_size = key_cache_shape[3];
+  int x = key_cache_shape[4];
 
   ov::Strides key_strides = key.get_strides();
   int key_stride = key_strides[0];
