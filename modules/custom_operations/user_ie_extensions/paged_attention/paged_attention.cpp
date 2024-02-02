@@ -144,22 +144,18 @@ bool TemplateExtension::PagedAttention::evaluate(ov::TensorVector& outputs, cons
     // put current K, V values into key_cache and value_cache
     reshape_and_cache(key, value, key_cache, value_cache, slot_mapping);
 
-    // prefill stage
     if (is_prompt) {
         auto attention_mask = generate_attention_mask(context_lens);
 
         // create a model with OpenVINO SDPA to compute first token
         // TODO
     } else {
-        paged_attention_impl(query, key_cache, value_cache, block_tables, context_lens, max_context_len);
+        paged_attention_v1_cpu(outputs[0],
+            query, key_cache, value_cache,
+            m_num_kv_heads, m_scale,
+            block_tables, context_lens,
+            m_block_size, max_context_len);
     }
 
     return true;
-}
-
-ov::Tensor TemplateExtension::PagedAttention::paged_attention_impl(ov::Tensor query,
-    ov::Tensor key_cache, ov::Tensor value_cache,
-    ov::Tensor block_tables, ov::Tensor context_lens, std::int32_t max_context_len) const {
-
-    return {};
 }

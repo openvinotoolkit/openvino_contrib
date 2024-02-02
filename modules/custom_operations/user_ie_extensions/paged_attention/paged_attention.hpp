@@ -55,10 +55,6 @@ public:
     bool has_evaluate() const override;
 
 private:
-    ov::Tensor paged_attention_impl(ov::Tensor query,
-                                    ov::Tensor key_cache, ov::Tensor value_cache,
-                                    ov::Tensor block_tables, ov::Tensor context_lens, std::int32_t max_context_len) const;
-
     std::int32_t m_num_heads, m_num_kv_heads, m_head_size, m_block_size;
     float m_scale;
 };
