@@ -4,6 +4,8 @@
 
 #include "paged_attention.hpp"
 
+#include "cpu_ops.hpp"
+
 TemplateExtension::PagedAttention::PagedAttention(const ov::OutputVector& inputs,
                                                   const float scale)
     : ov::op::Op(inputs),
@@ -84,7 +86,7 @@ void TemplateExtension::PagedAttention::validate_and_infer_types() {
     // slot_mapping: shape [batch_size, max_context_len]
     auto slot_mapping_shape = get_input_partial_shape(6);
     NODE_VALIDATION_CHECK(this,
-        get_input_element_type(6) == ov::element::i32 &&
+        get_input_element_type(6) == ov::element::i64 &&
         slot_mapping_shape.size() == 2,
         "slot_mapping validation failed");
 
