@@ -7,7 +7,7 @@ const options: SelectOptionProps<ModelName>[] = [
   { value: ModelName.CODE_T5_220M },
   { value: ModelName.DECICODER_1B_OPENVINO_INT8 },
   { value: ModelName.STABLECODE_COMPLETION_ALPHA_3B_4K_OPENVINO_INT8 },
-  { value: ModelName.deepseek_coder_7b },
+  { value: ModelName.DEEPSEEK_CODER_1_3B },
 ];
 
 interface ModelSelectProps {
