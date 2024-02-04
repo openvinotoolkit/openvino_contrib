@@ -35,7 +35,7 @@ export const ModelSelect = ({
         disabled={disabled}
         onChange={(value) => onChange(value)}
       ></Select>
-      {isServerStopped && <span>Supported Featues: {supportedFeatures.join(', ')}</span>}
+      {isServerStopped && <span>Supported Features: {supportedFeatures.join(', ')}</span>}
     </>
   );
 };

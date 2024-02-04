@@ -240,21 +240,21 @@
           "openvinoCode.startToken": {
             "order": 7,
             "type": "string",
-            "default": "<fim_prefix>",
+            "default": "< |fim_begin| >",
             "description":
               "String that is sent to server is in format: `{startToken}{text above cursor}{middleToken}{text below cursor if fillInTheMiddleMode=true}{endToken}`. Leave `startToken`, `middleToken`, or `endToken` empty if there is no special token for those placements."
           },
           "openvinoCode.middleToken": {
             "order": 8,
             "type": "string",
-            "default": "<fim_middle>",
+            "default": "<｜fim▁hole｜>",
             "description":
               "String that is sent to server is in format: `{startToken}{text above cursor}{middleToken}{text below cursor if fillInTheMiddleMode=true}{endToken}`. Leave `startToken`, `middleToken`, or `endToken` empty if there is no special token for those placements."
           },
           "openvinoCode.endToken": {
             "order": 9,
             "type": "string",
-            "default": "<fim_suffix>",
+            "default": "<｜fim▁end｜>",
             "description":
               "String that is sent to server is in format: `{startToken}{text above cursor}{middleToken}{text below cursor if fillInTheMiddleMode=true}{endToken}`. Leave `startToken`, `middleToken`, or `endToken` empty if there is no special token for those placements."
           },
