@@ -86,6 +86,15 @@
 #    define TOKENIZER_EXT
 #endif
 
+#ifdef paged_attention
+#    include "paged_attention/paged_attention.hpp"
+#    define PAGED_ATTENTION_EXT \
+            std::make_shared<ov::OpExtension<TemplateExtension::PagedAttention>>(), \
+            std::make_shared<ov::frontend::OpExtension<TemplateExtension::PagedAttention>>(),
+#else
+#    define PAGED_ATTENTION_EXT
+#endif
+
 OPENVINO_CREATE_EXTENSIONS(std::vector<ov::Extension::Ptr>(
     {
         CALCULATE_GRID_EXT
@@ -94,4 +103,5 @@ OPENVINO_CREATE_EXTENSIONS(std::vector<ov::Extension::Ptr>(
         S_CONV_EXT
         COMPLEX_MUL_EXT
         TOKENIZER_EXT
+        PAGED_ATTENTION_EXT
     }));

@@ -100,6 +100,11 @@ if(tokenizer IN_LIST CUSTOM_OPERATIONS)
   endif()
 endif()
 
+if(paged_attention IN_LIST CUSTOM_OPERATIONS)
+  find_package(OpenVINO REQUIRED COMPONENTS PyTorch)
+  target_link_libraries(${TARGET_NAME} PRIVATE openvino::frontend::pytorch)
+endif()
+
 target_link_libraries(${TARGET_NAME} PRIVATE openvino::runtime)
 
 target_compile_definitions(${TARGET_NAME} PRIVATE IMPLEMENT_OPENVINO_EXTENSION_API ${CUSTOM_OPERATIONS})

@@ -6,6 +6,7 @@
 
 #include "openvino/op/op.hpp"
 #include "openvino/runtime/infer_request.hpp"
+#include "openvino/frontend/pytorch/extension/op.hpp"
 
 namespace TemplateExtension {
 
@@ -23,6 +24,7 @@ namespace TemplateExtension {
 class PagedAttention : public ov::op::Op {
 public:
     OPENVINO_OP("PagedAttention");
+    OPENVINO_FRAMEWORK_MAP(pytorch, "vllm.model_executor.layers.attention.PagedAttention");
 
     PagedAttention() = default;
 
