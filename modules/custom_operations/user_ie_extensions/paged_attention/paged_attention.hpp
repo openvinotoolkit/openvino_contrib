@@ -56,9 +56,11 @@ public:
     bool has_evaluate() const override;
 
 private:
-    std::uuint32_t m_num_heads, m_num_kv_heads, m_head_size, m_block_size;
+    std::shared_ptr<ov::Model> make_prefill_subgraph();
+
+    std::uint32_t m_num_heads, m_num_kv_heads, m_head_size, m_block_size;
     float m_scale;
-    ov::InferRequest m_prefill_request;
+    mutable ov::InferRequest m_prefill_request;
 };
 
 }  // namespace TemplateExtension
