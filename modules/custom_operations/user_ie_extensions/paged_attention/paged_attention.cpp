@@ -4,6 +4,11 @@
 
 #include "paged_attention.hpp"
 
+#include "openvino/op/scaled_dot_product_attention.hpp"
+#include "openvino/op/parameter.hpp"
+#include "openvino/op/constants.hpp"
+#include "openvino/op/result.hpp"
+
 #include "cpu_ops.hpp"
 
 TemplateExtension::PagedAttention::PagedAttention(const ov::OutputVector& inputs,
@@ -11,6 +16,11 @@ TemplateExtension::PagedAttention::PagedAttention(const ov::OutputVector& inputs
     : ov::op::Op(inputs),
       m_scale(scale) {
     constructor_validate_and_infer_types();
+
+    // compile model for prefill stage
+    auto model = make_spda(m_num_heads, m_num_kv_heads, m_head_size, m_scale);
+    auto compiled_model = ov::Core().compile_model(model, "CPU");
+    m_prefill_request = compiled_model.create_infer_request();
 }
 
 TemplateExtension::PagedAttention::PagedAttention(const ov::Output<ov::Node>& query,
@@ -138,8 +148,16 @@ ov::Tensor view(ov::Tensor tensor, std::uint32_t num_heads, std::uint32_t head_s
     return ov::Tensor(tensor.get_element_type(), ov::Shape({num_seqs, num_heads, head_size}), tensor.data());
 }
 
-std::shared_ptr<ov::Model> make_spda() {
-    
+std::shared_ptr<ov::Model> make_spda(std::int32_t num_heads, std::uint32_t num_kv_heads, std::uint32_t head_size, float scale) {
+    ov::element::Type_t type = ov::element::f32;
+    auto query = std::make_shared<ov::op::v0::Parameter>(type, ov::PartialShape({-1, -1, num_heads, head_size}));
+    auto key = std::make_shared<ov::op::v0::Parameter>(type, ov::PartialShape({-1, -1, num_kv_heads, head_size}));
+    auto value = std::make_shared<ov::op::v0::Parameter>(type, ov::PartialShape({-1, -1, num_kv_heads, head_size}));
+    auto attention_mask = generate_attention_mask({}); // TODO: fill in the shape
+    auto scale_const = std::make_shared<ov::op::v0::Constant>(type, ov::Shape({1}), scale);
+
+    auto spda = std::make_shared<ov::op::v13::ScaledDotProductAttention>(query, key, value, attention_mask, scale_const, false);
+    return std::make_shared<ov::Model>(spda, {query, key, value, attention_mask, scale_const});
 }
 
 bool TemplateExtension::PagedAttention::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
@@ -164,7 +182,12 @@ bool TemplateExtension::PagedAttention::evaluate(ov::TensorVector& outputs, cons
         auto attention_mask = generate_attention_mask(context_lens);
 
         // create a model with OpenVINO SDPA to compute first token
-
+        m_prefill_request.set_input_tensor(0, query);
+        m_prefill_request.set_input_tensor(1, key);
+        m_prefill_request.set_input_tensor(2, value);
+        m_prefill_request.set_input_tensor(3, attention_mask);
+        m_prefill_request.infer();
+        outputs[0] = m_prefill_request.get_output_tensor();
     } else {
         paged_attention_v1_cpu(outputs[0],
             query, key_cache, value_cache,
