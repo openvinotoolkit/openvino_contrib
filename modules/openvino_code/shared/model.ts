@@ -9,7 +9,7 @@ enum ModelId {
 
 export enum ModelName {
   CODE_T5_220M = 'code-t5',
-  DECICODER_1B_OPENVINO_INT8 = 'decicoder-1b-openvino-int8',
+  DECICODER_1B_OPENVINO_INT8 = 'decicoder-1b-openvino',
   STABLECODE_COMPLETION_ALPHA_3B_4K_OPENVINO_INT8 = 'stablecode-completion',
   DEEPSEEK_CODER_1_3B = 'deepseek-coder',
 }

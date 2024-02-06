@@ -193,7 +193,7 @@
             "default": "code-t5",
             "enum": [
               "code-t5",
-              "decicoder-1b-openvino-int8",
+              "decicoder-1b-openvino",
               "stablecode-completion",
               "deepseek-coder"
             ],
