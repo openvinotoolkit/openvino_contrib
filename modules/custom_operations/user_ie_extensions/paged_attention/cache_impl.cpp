@@ -10,15 +10,15 @@ template <typename scalar_t>
 void reshape_and_cache_cpu_impl(
     const scalar_t *__restrict__ key, const scalar_t *__restrict__ value,
     scalar_t *__restrict__ key_cache, scalar_t *__restrict__ value_cache,
-    const int64_t *__restrict__ slot_mapping, const int num_tokens,
+    const int32_t *__restrict__ slot_mapping, const int num_tokens,
     const int key_stride, const int value_stride, const int num_heads,
     const int head_size, const int block_size, const int x) {
   const int block_elem_num = num_heads * head_size * block_size;
 
-#pragma omp parallel for collapse(2)
+// #pragma omp parallel for collapse(2)
   for (int token_idx = 0; token_idx < num_tokens; ++token_idx) {
     for (int head_idx = 0; head_idx < num_heads; ++head_idx) {
-      const int64_t slot_idx = slot_mapping[token_idx];
+      const int32_t slot_idx = slot_mapping[token_idx];
       if (slot_idx >= 0) {
         int src_key_head_idx = token_idx * key_stride + head_idx * head_size;
         int src_value_head_idx =
@@ -33,6 +33,8 @@ void reshape_and_cache_cpu_impl(
         scalar_t *target_value_head_ptr = value_cache +
                                           block_elem_num * block_index +
                                           head_idx * block_size * head_size;
+                                          
+        // std::cout << (block_elem_num * block_index + head_idx * block_size * head_size) << " ";
 
         for (int src_key_idx = 0; src_key_idx < head_size; src_key_idx += x) {
           const int64_t target_offset =
@@ -67,9 +69,12 @@ void reshape_and_cache(ov::Tensor key, ov::Tensor value,
   int x = key_cache_shape[4];
 
   ov::Strides key_strides = key.get_strides();
-  int key_stride = key_strides[0];
+  int key_stride = key_strides[0] / key.get_element_type().size();
   ov::Strides value_strides = value.get_strides();
-  int value_stride = value_strides[0];
+  int value_stride = value_strides[0] / value.get_element_type().size();
+
+  OPENVINO_ASSERT(slot_mapping.get_element_type() == ov::element::i32,
+    "slot_mapping must be of type i64, given ", slot_mapping.get_element_type());
 
     switch (key.get_element_type()) {
         case ov::element::f32:
@@ -78,7 +83,7 @@ void reshape_and_cache(ov::Tensor key, ov::Tensor value,
             reshape_and_cache_cpu_impl<float>(
                     key.data<float>(), value.data<float>(),
                     key_cache.data<float>(), value_cache.data<float>(),
-                    slot_mapping.data<int64_t>(), num_tokens, key_stride,
+                    slot_mapping.data<int32_t>(), num_tokens, key_stride,
                     value_stride, num_heads, head_size, block_size, x);
             break;
         case ov::element::f16:
@@ -87,7 +92,7 @@ void reshape_and_cache(ov::Tensor key, ov::Tensor value,
             reshape_and_cache_cpu_impl<std::int16_t>(
                     key.data<std::int16_t>(), value.data<std::int16_t>(),
                     key_cache.data<std::int16_t>(), value_cache.data<std::int16_t>(),
-                    slot_mapping.data<int64_t>(), num_tokens, key_stride,
+                    slot_mapping.data<int32_t>(), num_tokens, key_stride,
                     value_stride, num_heads, head_size, block_size, x);
             break;
         default:

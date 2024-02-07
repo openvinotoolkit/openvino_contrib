@@ -13,12 +13,14 @@
 
 #include "cpu_ops.hpp"
 
-std::shared_ptr<ov::Model> TemplateExtension::PagedAttention::make_prefill_subgraph() {
-    ov::element::Type_t type = ov::element::f32, attention_mask_type = ov::element::boolean;
-    auto query = std::make_shared<ov::op::v0::Parameter>(type, ov::PartialShape({-1, -1, m_num_heads, m_head_size}));
-    auto key = std::make_shared<ov::op::v0::Parameter>(type, ov::PartialShape({-1, -1, m_num_kv_heads, m_head_size}));
-    auto value = std::make_shared<ov::op::v0::Parameter>(type, ov::PartialShape({-1, -1, m_num_kv_heads, m_head_size}));
-    auto attention_mask = std::make_shared<ov::op::v0::Parameter>(attention_mask_type, ov::PartialShape({-1, -1, -1}));
+namespace {
+
+std::shared_ptr<ov::Model> make_prefill_subgraph(std::size_t num_heads, std::size_t num_kv_heads, std::size_t head_size) {
+    ov::element::Type_t type = ov::element::f32, attention_mask_type = ov::element::f32;
+    auto query = std::make_shared<ov::op::v0::Parameter>(type, ov::PartialShape({-1, -1, num_heads, head_size}));
+    auto key = std::make_shared<ov::op::v0::Parameter>(type, ov::PartialShape({-1, -1, num_kv_heads, head_size}));
+    auto value = std::make_shared<ov::op::v0::Parameter>(type, ov::PartialShape({-1, -1, num_kv_heads, head_size}));
+    auto mask = std::make_shared<ov::op::v0::Parameter>(attention_mask_type, ov::PartialShape({-1, -1, -1, -1}));
     auto scale = std::make_shared<ov::op::v0::Parameter>(type, ov::Shape({1}));
 
     // transpose Q, K and V to swap num_heads and seq_len dimensions
@@ -27,23 +29,19 @@ std::shared_ptr<ov::Model> TemplateExtension::PagedAttention::make_prefill_subgr
     auto key_transposed = std::make_shared<ov::op::v1::Transpose>(key, permute_const);
     auto value_transposed = std::make_shared<ov::op::v1::Transpose>(value, permute_const);
 
-    auto spda = std::make_shared<ov::op::v13::ScaledDotProductAttention>(query_transposed, key_transposed, value_transposed, attention_mask, scale, false);
+    auto spda = std::make_shared<ov::op::v13::ScaledDotProductAttention>(query_transposed, key_transposed, value_transposed, mask, scale, false);
 
     // transpose SPDA output to [batch, seq_len, num_heads, head_size] back
     auto spda_transposed = std::make_shared<ov::op::v1::Transpose>(spda, permute_const);
 
-    return std::make_shared<ov::Model>(spda_transposed, ov::ParameterVector{query, key, value, attention_mask, scale}, "spda_prefill_model");
+    return std::make_shared<ov::Model>(spda_transposed, ov::ParameterVector{query, key, value, mask, scale}, "spda_prefill_model");
 }
 
-TemplateExtension::PagedAttention::PagedAttention(const ov::OutputVector& inputs,
-                                                  const float scale)
-    : ov::op::Op(inputs),
-      m_scale(scale) {
-    constructor_validate_and_infer_types();
+}
 
-    // compile model for prefill stage
-    auto compiled_model = ov::Core().compile_model(make_prefill_subgraph(), "CPU");
-    m_prefill_request = compiled_model.create_infer_request();
+TemplateExtension::PagedAttention::PagedAttention(const ov::OutputVector& inputs)
+    : ov::op::Op(inputs) {
+    constructor_validate_and_infer_types();
 }
 
 TemplateExtension::PagedAttention::PagedAttention(const ov::Output<ov::Node>& query,
@@ -63,95 +61,107 @@ TemplateExtension::PagedAttention::PagedAttention(const ov::Output<ov::Node>& qu
                                             //    const ov::Output<ov::Node>& use_cuda_graph,
                                             //    const ov::Output<ov::Node>& attn_bias
                                                   // end of arguments from InputMetadata
-                                                  const float scale)
-    : PagedAttention({query, key, value, key_cache, value_cache,
-                      is_prompt, slot_mapping, max_context_len, context_lens, block_tables
-    }, scale) {}
+                                                  const ov::Output<ov::Node>& scale)
+    : PagedAttention(ov::OutputVector{query, key, value, key_cache, value_cache,
+                      is_prompt, slot_mapping, max_context_len, context_lens, block_tables, scale
+    }) {}
 
 void TemplateExtension::PagedAttention::validate_and_infer_types() {
     // value_cache: shape = [num_blocks, num_kv_heads, head_size, block_size]
-    auto value_cache_shape = get_input_shape(4);
-    m_num_kv_heads = value_cache_shape[1];
-    m_head_size = value_cache_shape[2];
-    m_block_size = value_cache_shape[3];
+    auto value_cache_shape = get_input_partial_shape(4);
+    // m_num_kv_heads = value_cache_shape[1];
+    // m_head_size = value_cache_shape[2];
+    // m_block_size = value_cache_shape[3];
+    NODE_VALIDATION_CHECK(this,
+        value_cache_shape.size() == 4,
+        "Value cache shape must be 4 dims");
 
     // key_cache: shape [num_blocks, num_kv_heads, head_size/x, block_size, x]
-    auto key_cache_shape = get_input_shape(3);
+    auto key_cache_shape = get_input_partial_shape(3);
     NODE_VALIDATION_CHECK(this,
-        value_cache_shape[0] == key_cache_shape[0] && // num_blocks
-        key_cache_shape[1] == m_num_kv_heads &&
-        key_cache_shape[2] * key_cache_shape[4] == m_head_size &&
-        m_block_size == key_cache_shape[3], // block_size,
-        "Key cache validation failed");
+        value_cache_shape.size() == 4,
+        // value_cache_shape[0] == key_cache_shape[0] && // num_blocks
+        // key_cache_shape[1] == m_num_kv_heads &&
+        // key_cache_shape[2] * key_cache_shape[4] == m_head_size &&
+        // m_block_size == key_cache_shape[3], // block_size,
+        "Key cache shape must be 4 dims");
 
     // query: shape [batch_size, seq_len, num_heads * head_size]
     auto query_type = get_input_element_type(0);
     auto query_shape = get_input_partial_shape(0);
-    m_num_heads = query_shape[2].get_length();
     NODE_VALIDATION_CHECK(this,
-        query_type.is_real() &&
-        query_shape.size() == 3 &&
-        query_shape[2] == m_num_heads * m_head_size,
-        "Query type must be real, shape must be like [batch_size, seq_len, num_heads * head_size]");
+        // query_type.is_real() &&
+        query_shape.size() == 3,
+        // query_shape[2] == m_num_heads * m_head_size,
+        "Query type must be real, shape must be like [batch_size, seq_len, num_heads * head_size]. ",
+        "Got element type ", query_type, ", shape ", query_shape);
 
     // key: shape [batch_size, seq_len, num_kv_heads * head_size]
     auto key_type = get_input_element_type(1);
     auto key_shape = get_input_partial_shape(1);
     NODE_VALIDATION_CHECK(this,
         query_type == key_type &&
-        key_shape.size() == query_shape.size() &&
-        key_shape[2] == m_num_kv_heads * m_head_size,
-        "Key type must be the same as query, shape must be the same as query");
+        key_shape.size() == 3,
+        "Key type must be the same as query, shape must be the same as query. "
+        "Got element type ", key_type, ", shape ", key_shape);
 
     // value: shape [batch_size, seq_len, num_kv_heads * head_size]
     auto value_type = get_input_element_type(2);
     auto value_shape = get_input_partial_shape(2);
     NODE_VALIDATION_CHECK(this,
         key_type == value_type &&
-        key_shape == value_shape, "Value type must be the same as key, shape must be the same as key");
+        key_shape == value_shape, "Value type must be the same as key, shape must be the same as key."
+        "Got element type ", value_type, ", shape ", value_shape);
 
     // is_prompt: boolean scalar
     NODE_VALIDATION_CHECK(this,
-        get_input_element_type(5) == ov::element::boolean &&
-        get_input_shape(5) == ov::Shape({1}),
-        "is_prompt validation failed");
+        // get_input_element_type(5) == ov::element::boolean && 
+        get_input_shape(5) == ov::Shape({}),
+        "is_prompt validation failed. ",
+        "Got element type ", get_input_element_type(5), ", shape ", get_input_shape(5));
 
     // slot_mapping: shape [batch_size, max_context_len]
     auto slot_mapping_shape = get_input_partial_shape(6);
     NODE_VALIDATION_CHECK(this,
-        get_input_element_type(6) == ov::element::i64 &&
+        // get_input_element_type(6) == ov::element::i64 &&
         slot_mapping_shape.size() == 2,
-        "slot_mapping validation failed");
+        "slot_mapping validation failed. ",
+        "Got element type ", get_input_element_type(6), ", shape ", slot_mapping_shape);
 
     // max_context_len: integer scalar
     NODE_VALIDATION_CHECK(this,
-        get_input_element_type(7) == ov::element::i32 &&
-        get_input_shape(7) == ov::Shape({1}),
-        "max_context_len validation failed");
+        // get_input_element_type(7) == ov::element::i32 &&
+        get_input_shape(7) == ov::Shape({}),
+        "max_context_len validation failed. ",
+        "Got element type ", get_input_element_type(7), ", shape ", get_input_shape(7));
 
     // context_lens: shape [batch_size]
-    auto context_lens_shape = get_input_shape(8);
+    auto context_lens_shape = get_input_partial_shape(8);
     NODE_VALIDATION_CHECK(this,
-        get_input_element_type(8) == ov::element::i32 &&
+        // get_input_element_type(8) == ov::element::i32 &&
         context_lens_shape.size() == 1,
-        "context_lens validation failed");
+        "context_lens validation failed. ",
+        "Got element type ", get_input_element_type(8), ", shape ", context_lens_shape);
 
     // block_tables: shape [batch_size, max_block_per_request]
     NODE_VALIDATION_CHECK(this,
-        get_input_element_type(9) == ov::element::i32 &&
+        // get_input_element_type(9) == ov::element::i32 &&
         get_input_partial_shape(9).size() == 2,
-        "block_tables validation failed");
+        "block_tables validation failed. ",
+        "Got element type ", get_input_element_type(9), ", shape ", get_input_partial_shape(9));
+
+    // scale: float scalar
+    NODE_VALIDATION_CHECK(this,
+        // get_input_element_type(10) == ov::element::f32 &&
+        get_input_shape(10) == ov::Shape({}),
+        "block_tables validation failed. ",
+        "Got element type ", get_input_element_type(10), ", shape ", get_input_shape(10));
 
     set_output_type(0, query_type, query_shape);
 }
 
 std::shared_ptr<ov::Node> TemplateExtension::PagedAttention::clone_with_new_inputs(const ov::OutputVector& new_args) const {
-    return std::make_shared<PagedAttention>(new_args, m_scale);
-}
-
-bool TemplateExtension::PagedAttention::visit_attributes(ov::AttributeVisitor& visitor) {
-    visitor.on_attribute("scale", m_scale);
-    return true;
+    return std::make_shared<PagedAttention>(new_args);
 }
 
 bool TemplateExtension::PagedAttention::has_evaluate() const {
@@ -164,43 +174,72 @@ void reshape_and_cache(ov::Tensor key, ov::Tensor value,
                        ov::Tensor slot_mapping);
 
 // generate buttom diagonal boolean attention mask for a prefill stage
-ov::Tensor generate_attention_mask(const std::int32_t num_seqs, const std::int32_t max_context_len, ov::Tensor context_lens) {
-    OPENVINO_ASSERT(num_seqs == context_lens.get_size());
+ov::Tensor generate_attention_mask(const std::size_t batch_size, const std::size_t seq_len) {
+    ov::Shape attention_mask_shape({batch_size, 1, seq_len, seq_len});
+    ov::Tensor attention_mask(ov::element::f32, attention_mask_shape);
+    int attention_mask_stride = attention_mask.get_strides()[0] / sizeof(float);
 
-    ov::Shape attention_mask_shape({num_seqs, 1, max_context_len, max_context_len});
-    ov::Tensor attention_mask(ov::element::boolean, attention_mask_shape);
-    int attention_mask_stride = attention_mask.get_strides()[0];
+    static_assert(std::numeric_limits<float>::is_iec559, "IEEE 754 required");
+    float negative_inf = -std::numeric_limits<float>::infinity();
 
-    std::fill_n(attention_mask.data<bool>(), attention_mask.get_size(), false);
+    std::fill_n(attention_mask.data<float>(), attention_mask.get_size(), 0);
 
-    for (int current_seq = 0; current_seq < num_seqs; ++current_seq) {
-        std::int32_t context_len = context_lens.data<std::int32_t>()[current_seq];
-        OPENVINO_ASSERT(context_len <= max_context_len);
-
-        bool * attention_mask_data = attention_mask.data<bool>() + current_seq * attention_mask_stride;
-        for (int x = 0; x < context_len; ++x) {
-            for (int y = 0; y < context_len; ++y) {
-                attention_mask_data[x * max_context_len + y] = x >= y;
+    for (int batch_id = 0; batch_id < batch_size; ++batch_id) {
+        float * attention_mask_data = attention_mask.data<float>() + batch_id * attention_mask_stride;
+        for (int x = 0; x < seq_len; ++x) {
+            for (int y = 0; y < seq_len; ++y) {
+                attention_mask_data[x * seq_len + y] = x < y ? negative_inf : 0.0f;
             }
         }
     }
+
+    return attention_mask;
+}
+
+void print_tensor(const std::string& title, ov::Tensor tensor) {
+    std::cout << title << std::endl;
+    size_t size = std::min<std::size_t>(40, tensor.get_size());
+    for (int x = 0; x < size; ++x) {
+        if (tensor.get_element_type() == ov::element::f32)
+            std::cout << tensor.data<float>()[x] << " ";
+        else if (tensor.get_element_type() == ov::element::i32)
+            std::cout << tensor.data<int32_t>()[x] << " ";
+    }
+    std::cout << std::endl;
 }
 
 bool TemplateExtension::PagedAttention::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
     ov::Tensor query = inputs[0], key = inputs[1], value = inputs[2];
-    ov::Shape query_shape = query.get_shape();
-    const std::int32_t batch_size = query_shape[0], seq_len = query_shape[1], hidden_size = query_shape[2];
     ov::Tensor key_cache = inputs[3], value_cache = inputs[4];
     const bool is_prompt = inputs[5].data<bool>()[0];
     ov::Tensor slot_mapping = inputs[6];
     const std::int32_t max_context_len = inputs[7].data<std::int32_t>()[0];
     ov::Tensor context_lens = inputs[8];
     ov::Tensor block_tables = inputs[9];
+    float scale = inputs[10].data<float>()[0];
+
+    // Shapes
+    ov::Shape query_shape = query.get_shape();
+    const std::size_t batch_size = query_shape[0], seq_len = query_shape[1], hidden_size = query_shape[2];
+
+    ov::Shape value_cache_shape = value_cache.get_shape();
+    const std::size_t num_kv_heads = value_cache_shape[1], head_size = value_cache_shape[2],
+        num_heads = hidden_size / head_size, block_size = value_cache_shape[3];
+
+    if (!m_prefill_request) {
+        // compile model for prefill stage
+        auto compiled_model = ov::Core().compile_model(make_prefill_subgraph(num_heads, num_kv_heads, head_size), "CPU");
+        m_prefill_request = compiled_model.create_infer_request();
+    }
 
     // reshape to [batch_size * seq_len, m_num_kv_heads, head_size] from [batch_size, seq_len, num_heads/m_num_kv_heads * head_size]
-    query.set_shape({batch_size * seq_len, m_num_heads, m_head_size});
-    key.set_shape({batch_size * seq_len, m_num_kv_heads, m_head_size});
+    void * query_data = query.data(), * key_data = key.data(), * value_data = value.data();
+    query.set_shape({batch_size * seq_len, num_heads, head_size});
+    OPENVINO_ASSERT(query_data == query.data());
+    key.set_shape({batch_size * seq_len, num_kv_heads, head_size});
+    OPENVINO_ASSERT(key_data == key.data());
     value.set_shape(key.get_shape());
+    OPENVINO_ASSERT(value_data == value.data());
 
     // put current K, V values into key_cache and value_cache
     reshape_and_cache(key, value, key_cache, value_cache, slot_mapping);
@@ -208,16 +247,34 @@ bool TemplateExtension::PagedAttention::evaluate(ov::TensorVector& outputs, cons
     // set output shape
     OPENVINO_ASSERT(outputs.size() == 1);
     outputs[0].set_shape(query.get_shape());
+    void * output_data = outputs[0].data();
+
+    // std::cout << "key_cache shape " << key_cache.get_shape() << std::endl;
+    // std::cout << "value_cache shape " << value_cache.get_shape() << std::endl;
+    // std::cout << "num_kv_heads " << num_kv_heads << std::endl;
+    // std::cout << "block_tables shape " << block_tables.get_shape() << std::endl;
+    // std::cout << "context_lens shape " << context_lens.get_shape() << std::endl;
+    // std::cout << "block_size " << block_size << std::endl;
+    // std::cout << "max_context_len " << max_context_len << std::endl;
+    // std::cout << "outputs[0] shape " << outputs[0].get_shape() << std::endl;
+    // std::cout << "num_kv_heads " << num_kv_heads << std::endl;
+    // std::cout << "num_heads " << num_heads << std::endl;
+    // std::cout << "head_size " << head_size << std::endl;
 
     if (is_prompt) {
-        // reshape to [batch_size, seq_len, m_num_kv_heads, head_size]
-        query.set_shape({batch_size, seq_len, m_num_heads, m_head_size});
+        // reshape to [batch_size, seq_len, num_kv_heads, head_size]
+        query.set_shape({batch_size, seq_len, num_heads, head_size});
+        OPENVINO_ASSERT(query_data == query.data());
         outputs[0].set_shape(query.get_shape());
-        key.set_shape({batch_size, seq_len, m_num_kv_heads, m_head_size});
+        OPENVINO_ASSERT(output_data == outputs[0].data());
+        key.set_shape({batch_size, seq_len, num_kv_heads, head_size});
+        OPENVINO_ASSERT(key_data == key.data());
         value.set_shape(key.get_shape());
+        OPENVINO_ASSERT(value_data == value.data());
 
-        auto attention_mask = generate_attention_mask(batch_size, max_context_len, context_lens);
-        ov::Tensor scale(ov::element::f32, ov::Shape{1}, (void *)&m_scale);
+        auto attention_mask = generate_attention_mask(batch_size, seq_len);
+        scale = 1.0f; // TODO
+        ov::Tensor scale(ov::element::f32, ov::Shape{1}, (void *)&scale);
 
         m_prefill_request.set_input_tensor(0, query);
         m_prefill_request.set_input_tensor(1, key);
@@ -228,16 +285,25 @@ bool TemplateExtension::PagedAttention::evaluate(ov::TensorVector& outputs, cons
 
         m_prefill_request.infer();
     } else {
+        std::fill_n(outputs[0].data<float>(), outputs[0].get_size(), 0.0f);
+
         // 'query' and 'output' are expected to be [batch_size * seq_len, m_num_kv_heads, head_size]
         paged_attention_v1_cpu(outputs[0],
             query, key_cache, value_cache,
-            m_num_kv_heads, m_scale,
+            num_kv_heads, scale,
             block_tables, context_lens,
-            m_block_size, max_context_len);
+            block_size, max_context_len);
+
+        // print_tensor("query", query);
+        // print_tensor("block_tables", block_tables);
+        // print_tensor("context_lens", context_lens);
+        // print_tensor("output", outputs[0]);
+        // exit(1);
     }
 
     // reshape back to [batch_size, seq_len, num_heads * head_size]
     outputs[0].set_shape(query_shape); // works like reshape
+    OPENVINO_ASSERT(output_data == outputs[0].data());
 
     return true;
 }
