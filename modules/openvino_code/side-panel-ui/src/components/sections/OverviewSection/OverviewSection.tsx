@@ -7,7 +7,8 @@ export function OverviewSection(): JSX.Element {
         OpenVINO Code provides the following features:
         <ul>
           <li>Inline Code Completion</li>
-          <li>Summarization via docstring</li>
+          <li>Summarization via docstring</li>  
+          <li>Fill in the Middle Mode</li>
         </ul>
         To use OpenVINO Code please start the server.
       </span>
