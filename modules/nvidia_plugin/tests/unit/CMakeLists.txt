@@ -37,6 +37,10 @@ ov_add_test_target(
             openvino::gmock
             openvino::ov_models
             openvino::commonTestUtils
+            openvino::funcSharedTests
+        INCLUDES
+            PRIVATE
+                "${OpenVINO_SOURCE_DIR}/src/plugins/template/include"
         ADD_CPPLINT
         ADD_CLANG_FORMAT
         LABELS
