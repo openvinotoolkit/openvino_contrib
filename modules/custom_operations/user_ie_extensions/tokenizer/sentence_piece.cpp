@@ -91,26 +91,21 @@ SentencepieceTokenizer::SentencepieceTokenizer(const OutputVector& args, const s
 }
 
 void SentencepieceTokenizer::validate_and_infer_types() {
-
-    #if SENTENCE_PIECE_EXTENSION_DECOMPOSED_STRINGS
-
-    FRONT_END_GENERAL_CHECK(get_input_size() == 1 + 3, "SentencepieceTokenizer expects 4 inputs: sp model and input sentences represented as 3 decomposed tensors (begins, ends, sybols)");
-    FRONT_END_GENERAL_CHECK(get_input_element_type(0) == element::u8, "SentencepieceTokenizer accepts sp model as the first input and it should be of type u8 tensor");
-    FRONT_END_GENERAL_CHECK(get_input_element_type(1) == element::i32, "SentencepieceTokenizer accepts begins offsets as the second and it should be of type i32 tensor");
-    FRONT_END_GENERAL_CHECK(get_input_element_type(2) == element::i32, "SentencepieceTokenizer accepts ends offsets as the third and it should be of type i32 tensor");
-    FRONT_END_GENERAL_CHECK(get_input_element_type(3) == element::u8, "SentencepieceTokenizer accepts sentence symbols as the fourth input and it should be of type u8 tensor");
-
-    #else
-
-    FRONT_END_GENERAL_CHECK(get_input_size() == 2, "SentencepieceTokenizer expects two inputs: sp model and input sentences");
     FRONT_END_GENERAL_CHECK(get_input_element_type(0) == element::u8, "SentencepieceTokenizer accepts sp model as the first input and it should be of type u8 tensor");
 
-    FRONT_END_GENERAL_CHECK(
-        // WA: sometimes f32 appeared as a placeholder for unknown type
-        get_input_element_type(1) == element::u8 || get_input_element_type(1) == element::string || get_input_element_type(1) == element::f32,
-        "SentencepieceTokenizer accepts sentences as the second input and it should be of type string tensor");
-
-    #endif
+    auto input_size = get_input_size();
+    if(input_size == 2) {
+        FRONT_END_GENERAL_CHECK(
+            // WA: f32 appeared as a placeholder for unknown type during intermediate conversion steps
+            get_input_element_type(1) == element::string || get_input_element_type(1) == element::f32,
+            "SentencepieceTokenizer accepts sentences as the second input and it should be of type string tensor");
+    } else if (input_size == 4) {
+        FRONT_END_GENERAL_CHECK(get_input_element_type(1) == element::i32, "SentencepieceTokenizer accepts begins offsets as the second and it should be of type i32 tensor");
+        FRONT_END_GENERAL_CHECK(get_input_element_type(2) == element::i32, "SentencepieceTokenizer accepts ends offsets as the third and it should be of type i32 tensor");
+        FRONT_END_GENERAL_CHECK(get_input_element_type(3) == element::u8, "SentencepieceTokenizer accepts sentence symbols as the fourth input and it should be of type u8 tensor");
+    } else {
+        OPENVINO_THROW("Unexpected input format. SentencepieceTokenizer accepts one string input or three decomposed string inputs (begins, ends, symbols)");
+    };
 
     // The operation SentencepieceTokenizerExtensionOp has three outputs: sparse indices, sparse values
     // and dense shape
@@ -133,17 +128,7 @@ bool SentencepieceTokenizer::evaluate(TensorVector& outputs, const TensorVector&
     std::vector<int32_t> sparse_values;
     std::vector<int64_t> sparse_dense_shape;
 
-#if SENTENCE_PIECE_EXTENSION_DECOMPOSED_STRINGS
-
-    auto begin_ids = inputs[1].data<const int32_t>();
-    auto end_ids = inputs[2].data<const int32_t>();
-    auto data = inputs[3].data<const uint8_t>();
-
-    auto batch_size = shape_size(inputs[1].get_shape());
-
-#else
-
-    auto input_element_type = get_input_element_type(1);
+    auto input_size = get_input_size();
     int32_t batch_size;
 
     // used in case of string tensors
@@ -154,27 +139,31 @@ bool SentencepieceTokenizer::evaluate(TensorVector& outputs, const TensorVector&
     const int32_t* end_ids;
     const uint8_t* data;
 
-    if(input_element_type == ov::element::string) {
-        strings = inputs[1].data<const std::string>();
-        batch_size = static_cast<int32_t>(ov::shape_size(inputs[1].get_shape()));
-    } else if(input_element_type == ov::element::u8) {
-        parse_packed_strings(inputs[1], batch_size, begin_ids, end_ids, data);
+    if (input_size == 2) {
+        auto input_element_type = get_input_element_type(1);
+        if(input_element_type == ov::element::string) {
+            strings = inputs[1].data<const std::string>();
+            batch_size = static_cast<int32_t>(ov::shape_size(inputs[1].get_shape()));
+        } else {
+            OPENVINO_THROW("Unexpected input type during inference. SentencepieceTokenizer accepts element::u8 or element::string.");
+        }
     } else {
-        OPENVINO_THROW("Unexpected input type during inference. SentencepieceTokenizer accepts element::u8 or element::string.");
-    }
-
-#endif
+        auto begin_ids = inputs[1].data<const int32_t>();
+        auto end_ids = inputs[2].data<const int32_t>();
+        auto data = inputs[3].data<const uint8_t>();
+        batch_size = shape_size(inputs[1].get_shape());
+    };
 
     size_t max_token_id = 0;
     for (size_t batch_ind = 0; batch_ind < batch_size; ++batch_ind) {
         absl::string_view sentence;
-        if(input_element_type == ov::element::string) {
+        if (input_size == 2) {
             sentence = strings[batch_ind];
-        } else if(input_element_type == ov::element::u8) {
+        } else {
             auto begin_ind = begin_ids[batch_ind];
             auto end_ind = end_ids[batch_ind];
             sentence = absl::string_view((const char*)data + begin_ind, end_ind - begin_ind);
-        }
+        };
 
         std::vector<int32_t> ids;
         CHECK_OK(m_sp->SampleEncode(sentence, m_nbest_size, m_alpha, &ids));

@@ -60,7 +60,7 @@ NamedOutputVector translate_sentencepiece_tokenizer(const NodeContext& node) {
     auto sp_model_const = as_type_ptr<Constant>(sp_tokenize_op->input_value(0).get_node_shared_ptr());
     FRONT_END_GENERAL_CHECK(sp_model_const, "Conversion expects SentencePiece model to be constant.");
 
-    // prepare input six inputs
+    // prepare input
     auto inputs = sp_tokenize_op->input_value(1);
 
     // extract values for nbest_size, alpha, add_bos, add_eos, reverse attributes
@@ -70,26 +70,7 @@ NamedOutputVector translate_sentencepiece_tokenizer(const NodeContext& node) {
     auto add_eos = extract_scalar_const_value<bool>(sp_tokenize_op->input_value(5).get_node_shared_ptr(), "add_eos");
     auto reverse = extract_scalar_const_value<bool>(sp_tokenize_op->input_value(6).get_node_shared_ptr(), "reverse");
 
-#if !USE_STRING_TENSORS
-    // Override type of input tensor if this is a Parameter
-    if (auto parameter = std::dynamic_pointer_cast<Parameter>(inputs.get_node_shared_ptr())) {
-        parameter->set_partial_shape(PartialShape{ Dimension() });
-        parameter->set_element_type(element::u8);
-        parameter->validate_and_infer_types();
-    }
-#endif
-
-#if SENTENCE_PIECE_EXTENSION_DECOMPOSED_STRINGS
-
-    OutputVector inputs_vector = OutputVector{ sp_model_const };
-    auto unpacked_outputs = std::make_shared<StringTensorUnpack>(OutputVector{inputs}, "begins_ends")->outputs();
-    inputs_vector.insert(inputs_vector.end(), unpacked_outputs.begin(), unpacked_outputs.end());
-
-#else
-
     OutputVector inputs_vector = OutputVector{ sp_model_const, inputs };
-
-#endif
 
     // create a node with custom operation
     auto sp_tokenizer_ext = std::make_shared<SentencepieceTokenizer>(inputs_vector, nbest_size, alpha, add_bos, add_eos, reverse);
@@ -182,7 +163,6 @@ ov::OutputVector translate_lookup_table_find_v2(const ov::frontend::NodeContext&
 
     auto wp_tokenizer_inputs = wp_tokenizer->input_values();
     wp_tokenizer_inputs.push_back(unk_token_id);
-    //std::cerr << "Added extra input, total number of inputs is " << wp_tokenizer_inputs.size() << "\n";
 
     auto new_wp_tokenizer = wp_tokenizer->clone_with_new_inputs(wp_tokenizer_inputs);
     return { post_translate_ragged_tensor_output(new_wp_tokenizer->outputs()) };
@@ -209,7 +189,6 @@ ov::OutputVector translate_reshape(const ov::frontend::NodeContext& node) {
         auto reshape = std::make_shared<Reshape>(tensor, shape, false);
         return {reshape};
     }
-    // set_node_name(node.get_name(), reshape); // TODO: requires dependencies from TF FE internals
 }
 
 // Copied and pasted from TF FE and adopted to not use internal TF FE operation classes
@@ -232,9 +211,7 @@ ov::OutputVector translate_const(const ov::frontend::NodeContext& node) {
             const_node = std::make_shared<ov::op::util::FrameworkNode>(OutputVector{});
         }
     } else {
-        //static std::vector<ov::Tensor> tensors;
         auto tensor = node.get_attribute<ov::Tensor>("value");
-        //tensors.push_back(tensor);
         const_node = std::make_shared<Constant>(tensor);
         #if OPENVINO_ELEMENT_STRING_SUPPORTED
         if (const_node->get_element_type() == element::string) {
@@ -246,6 +223,5 @@ ov::OutputVector translate_const(const ov::frontend::NodeContext& node) {
         }
         #endif
     }
-    //set_node_name(node.get_name(), const_node);   // TODO: Provide alternative to internal function set_node_name
     return {const_node};
 }
