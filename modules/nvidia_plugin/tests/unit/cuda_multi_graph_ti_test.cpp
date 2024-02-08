@@ -11,6 +11,7 @@
 #include "ov_models/builders.hpp"
 #include "ov_models/utils/data_utils.hpp"
 #include "openvino/opsets/opset1.hpp"
+#include "common_test_utils/test_helpers.hpp"
 
 using namespace ov::nvidia_gpu;
 using namespace testing;
@@ -45,34 +46,21 @@ void generateInput(ov::Tensor& tensor, int to = TO, int from = FROM, int seed = 
 std::vector<std::vector<CalcType>> calcRefs(std::shared_ptr<ov::Model> model,
                                             const std::vector<std::shared_ptr<ov::Tensor>>& inputs) {
     auto refModel = model->clone();
+    auto refModelInputs = refModel->inputs();
+    ASSERT_EQ(refModelInputs.size(), inputs.size());
 
-    auto referenceInputs = std::vector<std::vector<uint8_t>>(inputs.size());
-    auto refInputsTypes = std::vector<ov::element::Type>(inputs.size());
-    for (std::size_t i = 0; i < inputs.size(); ++i) {
-        const auto& input = inputs[i];
-        const auto inputSize = input->get_byte_size();
-
-        auto& referenceInput = referenceInputs[i];
-        referenceInput.resize(inputSize);
-
-        const auto* buffer = static_cast<const uint8_t*>(input->data());
-        std::copy(buffer, buffer + inputSize, referenceInput.data());
-
-        refInputsTypes[i] = CALC_ELEMENT_TYPE;
+    std::map<std::shared_ptr<ov::Node>, ov::Tensor> referenceInputs;
+    for (size_t i = 0; i < refModelInputs.size(); ++i) {
+        referenceInputs[refModelInputs[i]] = inputs[i];
     }
 
-    const auto expectedOutputs = ngraph::helpers::interpreterFunction(refModel, referenceInputs, refInputsTypes);
+    const auto expectedOutputs = ov::test::utils::interpret_model(refModel, referenceInputs);
 
     std::vector<std::vector<CalcType>> res(expectedOutputs.size());
-    for (std::size_t i = 0; i < expectedOutputs.size(); ++i) {
-        EXPECT_EQ(expectedOutputs[i].first, CALC_ELEMENT_TYPE);
-        const auto& expOut = expectedOutputs[i].second;
-        auto& resOut = res[i];
-        const auto resOutSize = expOut.size() / sizeof(CalcType);
-        resOut.resize(resOutSize);
-
-        const auto* buffer = static_cast<const CalcType*>(static_cast<const void*>(expOut.data()));
-        std::copy(buffer, buffer + resOutSize, resOut.data());
+    for (size_t i = 0; i < expectedOutputs.size(); ++i) {
+        EXPECT_EQ(expectedOutputs[i].get_element_type(), CALC_ELEMENT_TYPE);
+        res[i].resize(expectedOutputs[i].get_size());
+        std::memcpy(res[i].data(), expectedOutputs[i].data(), expectedOutputs[i].get_byte_size());
     }
     return res;
 }
