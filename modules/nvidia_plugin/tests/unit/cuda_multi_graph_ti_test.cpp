@@ -10,6 +10,7 @@
 #include "ops/result.hpp"
 #include "ov_models/builders.hpp"
 #include "ov_models/utils/data_utils.hpp"
+#include "openvino/opsets/opset1.hpp"
 
 using namespace ov::nvidia_gpu;
 using namespace testing;
