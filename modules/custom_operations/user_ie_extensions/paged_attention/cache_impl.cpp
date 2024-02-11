@@ -58,9 +58,9 @@ void reshape_and_cache_cpu_impl(
 }
 }; // namespace
 
-void reshape_and_cache(ov::Tensor key, ov::Tensor value,
-                       ov::Tensor key_cache, ov::Tensor value_cache,
-                       ov::Tensor slot_mapping) {
+void reshape_and_cache_cpu(ov::Tensor key, ov::Tensor value,
+                           ov::Tensor key_cache, ov::Tensor value_cache,
+                           ov::Tensor slot_mapping) {
   ov::Shape key_shape = key.get_shape(), key_cache_shape = key_cache.get_shape();
   int num_tokens = key_shape[0];
   int num_heads = key_shape[1];

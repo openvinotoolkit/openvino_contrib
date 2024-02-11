@@ -49,8 +49,7 @@ TemplateExtension::PagedAttention::PagedAttention(const ov::OutputVector& inputs
     // compile model for prefill stage
     std::call_once(m_once, [_this=this] () {
         ov::Core core;
-        core.register_plugin("/mnt/data3_1878/ilya/Documents/Programming/git_repo/openvino/bin/intel64/Release/libopenvino_intel_cpu_plugin.so", "CPU2");
-        auto compiled_model = core.compile_model(make_prefill_subgraph(), "CPU2");
+        auto compiled_model = core.compile_model(make_prefill_subgraph(), "CPU");
         _this->m_prefill_request = compiled_model.create_infer_request();
     });
 }

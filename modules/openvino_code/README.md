@@ -8,6 +8,7 @@ OpenVINO Code provides the following features:
 
 - Inline Code Completion
 - Summarization via Docstring
+- Fill in the Middle Mode
 
 ## Working with Extension
 
@@ -47,6 +48,23 @@ You can select the desired type of quotes in the extension settings.
 
 The model can generate docstring in Code Completion mode, but in this case it is impossible to control the result. 
 In the docstring generation mode, various popular templates are available in the settings that will guide the model output.
+
+### Fill in the Middle Mode
+
+
+1. Create a new Python file or open an existing one.
+1. Type `def main():` or place the cursor where you'd like middle text to be generated.
+1. Press the keyboard shortcut `Ctrl+Alt+Space` (`Cmd+Alt+Space` for macOS) or click the `Generate Code Completion` button located in the side panel.
+1. You can select the text then generate the related code.
+1. You may also right-click on "Generate Inline Code Completion In New Tab" to generate code in a new tab.
+1. Use the `Tab` key to accept the entire suggestion or `Ctrl`+`Right Arrow` to accept it word by word. To decline the suggestion, press `Esc`.
+
+You can customize the length of the generated code by adjusting `Max New Tokens` and `Min New Tokens` parameters in the extension settings. 
+The number of generated tokens is also influenced by the `Server Request Timeout` setting.
+
+Fill in the middle mode brings in advanced code completion capabilities supporting fill-in-the-blank task, supporting project-level code completion and infilling tasks.
+
+To enable fill in the middle mode, check the `Fill In The Middle Mode` checkbox in the extension settings.
 
 ### Monitoring Extension Output
 
