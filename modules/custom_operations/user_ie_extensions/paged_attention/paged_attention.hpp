@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <atomic>
+
 #include "openvino/op/op.hpp"
 #include "openvino/runtime/infer_request.hpp"
 #include "openvino/frontend/pytorch/extension/op.hpp"
@@ -23,7 +25,7 @@ namespace TemplateExtension {
 
 class PagedAttention : public ov::op::Op {
 public:
-    OPENVINO_OP("PagedAttentionExtension");
+    OPENVINO_OP("PagedAttentionExtension", "extension");
     OPENVINO_FRAMEWORK_MAP(pytorch, "vllm.model_executor.layers.attention.PagedAttention");
 
     PagedAttention() = default;
@@ -56,7 +58,8 @@ public:
     bool has_evaluate() const override;
 
 private:
-    mutable ov::InferRequest m_prefill_request;
+    static ov::InferRequest m_prefill_request;
+    static std::once_flag m_once;
 };
 
 }  // namespace TemplateExtension
