@@ -25,8 +25,8 @@ namespace TemplateExtension {
 
 class PagedAttention : public ov::op::Op {
 public:
-    OPENVINO_OP("PagedAttentionExtension", "extension");
-    OPENVINO_FRAMEWORK_MAP(pytorch, "vllm.model_executor.layers.attention.PagedAttention");
+    OPENVINO_OP("PagedAttentionExtension");
+    OPENVINO_FRAMEWORK_MAP(pytorch);
 
     PagedAttention() = default;
 
