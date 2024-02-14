@@ -89,8 +89,7 @@
 #ifdef paged_attention
 #    include "paged_attention/paged_attention.hpp"
 #    define PAGED_ATTENTION_EXT \
-            std::make_shared<ov::OpExtension<TemplateExtension::PagedAttention>>(), \
-            std::make_shared<ov::frontend::OpExtension<TemplateExtension::PagedAttention>>(),
+            std::make_shared<ov::OpExtension<TemplateExtension::PagedAttention>>()
 #else
 #    define PAGED_ATTENTION_EXT
 #endif
