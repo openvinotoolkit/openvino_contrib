@@ -17,21 +17,21 @@ namespace {
 
 std::shared_ptr<ov::Model> make_prefill_subgraph(std::int64_t num_heads = -1, std::int64_t num_kv_heads = -1, std::int64_t head_size = -1) {
     ov::element::Type_t type = ov::element::f32, attention_mask_type = ov::element::f32;
-    auto query = std::make_shared<ov::op::v0::Parameter>(type, ov::PartialShape({-1, -1, num_heads, head_size}));
-    auto key = std::make_shared<ov::op::v0::Parameter>(type, ov::PartialShape({-1, -1, num_kv_heads, head_size}));
-    auto value = std::make_shared<ov::op::v0::Parameter>(type, ov::PartialShape({-1, -1, num_kv_heads, head_size}));
-    auto mask = std::make_shared<ov::op::v0::Parameter>(attention_mask_type, ov::PartialShape({-1, -1, -1, -1}));
+    auto query = std::make_shared<ov::op::v0::Parameter>(type, ov::PartialShape({-1 /* batch */, -1 /* seq_len */, -1 /* queries per kv */, num_kv_heads, head_size}));
+    auto key = std::make_shared<ov::op::v0::Parameter>(type, ov::PartialShape({-1 /* batch */, -1 /* seq_len */, 1, num_kv_heads, head_size}));
+    auto value = std::make_shared<ov::op::v0::Parameter>(type, ov::PartialShape({-1 /* batch */, -1 /* seq_len */, 1, num_kv_heads, head_size}));
+    auto mask = std::make_shared<ov::op::v0::Parameter>(attention_mask_type, ov::PartialShape({-1, -1, -1, -1, -1}));
     auto scale = std::make_shared<ov::op::v0::Parameter>(type, ov::Shape({1}));
 
     // transpose Q, K and V to swap num_heads and seq_len dimensions
-    auto permute_const = ov::op::v0::Constant::create(ov::element::i64, ov::Shape({4}), {0, 2, 1, 3});
+    auto permute_const = ov::op::v0::Constant::create(ov::element::i64, ov::Shape({5}), {0, 3, 2, 1, 4});
     auto query_transposed = std::make_shared<ov::op::v1::Transpose>(query, permute_const);
     auto key_transposed = std::make_shared<ov::op::v1::Transpose>(key, permute_const);
     auto value_transposed = std::make_shared<ov::op::v1::Transpose>(value, permute_const);
 
     auto spda = std::make_shared<ov::op::v13::ScaledDotProductAttention>(query_transposed, key_transposed, value_transposed, mask, scale, false);
 
-    // transpose SPDA output to [batch, seq_len, num_heads, head_size] back
+    // transpose SPDA output to [batch, seq_len, num_q_per_kv, num_kv_heads, head_size] back
     auto spda_transposed = std::make_shared<ov::op::v1::Transpose>(spda, permute_const);
 
     return std::make_shared<ov::Model>(spda_transposed, ov::ParameterVector{query, key, value, mask, scale}, "spda_prefill_model");
@@ -180,7 +180,7 @@ bool TemplateExtension::PagedAttention::has_evaluate() const {
 
 // generate buttom diagonal boolean attention mask for a prefill stage
 ov::Tensor generate_attention_mask(const std::size_t batch_size, const std::size_t seq_len) {
-    ov::Shape attention_mask_shape({batch_size, 1, seq_len, seq_len});
+    ov::Shape attention_mask_shape({batch_size, 1, 1, seq_len, seq_len});
     ov::Tensor attention_mask(ov::element::f32, attention_mask_shape);
     int attention_mask_stride = attention_mask.get_strides()[0] / sizeof(float);
 
@@ -230,8 +230,9 @@ bool TemplateExtension::PagedAttention::evaluate(ov::TensorVector& outputs, cons
 
     if (is_prompt) {
         // reshape to [batch_size, seq_len, num_kv_heads, head_size]
-        query.set_shape({batch_size, seq_len, num_heads, head_size});
-        key.set_shape({batch_size, seq_len, num_kv_heads, head_size});
+        auto num_queries_per_kv = num_heads / num_kv_heads;
+        query.set_shape({batch_size, seq_len, num_queries_per_kv, num_kv_heads, head_size});
+        key.set_shape({batch_size, seq_len, 1, num_kv_heads, head_size});
         value.set_shape(key.get_shape());
         outputs[0].set_shape(query.get_shape());
 
@@ -247,7 +248,7 @@ bool TemplateExtension::PagedAttention::evaluate(ov::TensorVector& outputs, cons
 
         m_prefill_request.infer();
     } else {
-        // 'query' and 'output' are expected to be [batch_size * seq_len, m_num_kv_heads, head_size]
+        // 'query' and 'output' are expected to be [batch_size * seq_len, num_heads, head_size]
         paged_attention_v1_cpu(outputs[0],
             query, key_cache, value_cache,
             num_kv_heads, scale,
