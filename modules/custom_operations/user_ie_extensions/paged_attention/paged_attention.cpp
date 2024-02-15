@@ -246,13 +246,6 @@ bool TemplateExtension::PagedAttention::evaluate(ov::TensorVector& outputs, cons
         m_prefill_request.set_output_tensor(outputs[0]);
 
         m_prefill_request.infer();
-
-        for (const auto& profile_info : m_prefill_request.get_profiling_info()) {
-            std::cout << "node_type " << profile_info.node_type
-                << ", exec_type = " << profile_info.exec_type
-                << ", cpu_time = " << profile_info.cpu_time.count()
-                << ", real_time = " << profile_info.real_time.count() << std::endl;
-        }
     } else {
         // 'query' and 'output' are expected to be [batch_size * seq_len, m_num_kv_heads, head_size]
         paged_attention_v1_cpu(outputs[0],
