@@ -180,7 +180,7 @@ bool TemplateExtension::PagedAttention::has_evaluate() const {
 }
 
 // generate buttom diagonal boolean attention bias for a prefill stage
-ov::Tensor generate_attention_bias(const std::size_t batch_size, const std::size_t seq_len, const ov::Tensor& context_lens) {
+ov::Tensor generate_attention_bias(const std::size_t batch_size, const std::size_t seq_len, const std::size_t sliding_window) {
     ov::Shape attention_mask_shape({batch_size, 1, 1, seq_len, seq_len});
     ov::Tensor attention_mask(ov::element::f32, attention_mask_shape);
     int attention_mask_stride = attention_mask.get_strides()[0] / sizeof(float);
@@ -190,7 +190,7 @@ ov::Tensor generate_attention_bias(const std::size_t batch_size, const std::size
 
     for (int batch_id = 0; batch_id < batch_size; ++batch_id) {
         float * attention_mask_data = attention_mask.data<float>() + batch_id * attention_mask_stride;
-        int left_window = context_lens.data<int>()[batch_id], right_window = 1;
+        int left_window = sliding_window, right_window = 1;
         for (int y = 0; y < seq_len; ++y) {
             for (int x = 0; x < seq_len; ++x) {
                 attention_mask_data[y * seq_len + x] = (x + right_window - 1) > y || (x + left_window - 1) < y ? negative_inf : 0.0f;
@@ -199,13 +199,6 @@ ov::Tensor generate_attention_bias(const std::size_t batch_size, const std::size
     }
 
     return attention_mask;
-}
-
-void print_tensor(ov::Tensor t) {
-    auto size = std::min<size_t>(30, t.get_size());
-    for (int i = 0; i < size; ++i)
-        std::cout << t.data<float>()[i] << " ";
-    std::cout << std::endl;
 }
 
 bool TemplateExtension::PagedAttention::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
@@ -225,12 +218,6 @@ bool TemplateExtension::PagedAttention::evaluate(ov::TensorVector& outputs, cons
     ov::Shape value_cache_shape = value_cache.get_shape();
     const std::size_t num_kv_heads = value_cache_shape[1], head_size = value_cache_shape[2],
         num_heads = hidden_size / head_size, block_size = value_cache_shape[3];
-
-    // print_tensor(query);
-    // print_tensor(key);
-    // print_tensor(value);
-
-    // exit(1);
 
     // reshape to [batch_size * seq_len, m_num_kv_heads, head_size] from [batch_size, seq_len, num_heads/m_num_kv_heads * head_size]
     void * query_data = query.data(), * key_data = key.data(), * value_data = value.data();
@@ -262,7 +249,8 @@ bool TemplateExtension::PagedAttention::evaluate(ov::TensorVector& outputs, cons
         OPENVINO_ASSERT(value_data == value.data());
         OPENVINO_ASSERT(output_data == outputs[0].data());
 
-        auto attention_bias = generate_attention_bias(batch_size, seq_len, context_lens);
+        const size_t sliding_window = 1000000; // TODO: for mistral / mixtral we need sliding_window from the model
+        auto attention_bias = generate_attention_bias(batch_size, seq_len, sliding_window);
         ov::Tensor scale_tensor(ov::element::f32, ov::Shape{1}, &scale);
 
         m_prefill_request.set_input_tensor(0, query);
