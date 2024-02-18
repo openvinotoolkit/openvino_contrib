@@ -179,8 +179,8 @@ bool TemplateExtension::PagedAttention::has_evaluate() const {
     return get_input_element_type(0) == ov::element::f32;
 }
 
-// generate buttom diagonal boolean attention mask for a prefill stage
-ov::Tensor generate_attention_mask(const std::size_t batch_size, const std::size_t seq_len) {
+// generate buttom diagonal boolean attention bias for a prefill stage
+ov::Tensor generate_attention_bias(const std::size_t batch_size, const std::size_t seq_len, const ov::Tensor& context_lens) {
     ov::Shape attention_mask_shape({batch_size, 1, 1, seq_len, seq_len});
     ov::Tensor attention_mask(ov::element::f32, attention_mask_shape);
     int attention_mask_stride = attention_mask.get_strides()[0] / sizeof(float);
@@ -190,9 +190,10 @@ ov::Tensor generate_attention_mask(const std::size_t batch_size, const std::size
 
     for (int batch_id = 0; batch_id < batch_size; ++batch_id) {
         float * attention_mask_data = attention_mask.data<float>() + batch_id * attention_mask_stride;
+        int left_window = context_lens.data<int>()[batch_id], right_window = 1;
         for (int y = 0; y < seq_len; ++y) {
             for (int x = 0; x < seq_len; ++x) {
-                attention_mask_data[y * seq_len + x] = x > y ? negative_inf : 0.0f;
+                attention_mask_data[y * seq_len + x] = (x + right_window - 1) > y || (x + left_window - 1) < y ? negative_inf : 0.0f;
             }
         }
     }
@@ -261,13 +262,13 @@ bool TemplateExtension::PagedAttention::evaluate(ov::TensorVector& outputs, cons
         OPENVINO_ASSERT(value_data == value.data());
         OPENVINO_ASSERT(output_data == outputs[0].data());
 
-        auto attention_mask = generate_attention_mask(batch_size, seq_len);
+        auto attention_bias = generate_attention_bias(batch_size, seq_len, context_lens);
         ov::Tensor scale_tensor(ov::element::f32, ov::Shape{1}, &scale);
 
         m_prefill_request.set_input_tensor(0, query);
         m_prefill_request.set_input_tensor(1, key);
         m_prefill_request.set_input_tensor(2, value);
-        m_prefill_request.set_input_tensor(3, attention_mask);
+        m_prefill_request.set_input_tensor(3, attention_bias);
         m_prefill_request.set_input_tensor(4, scale_tensor);
         m_prefill_request.set_output_tensor(outputs[0]);
 
