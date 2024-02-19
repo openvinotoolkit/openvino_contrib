@@ -49,7 +49,9 @@ public:
                 //    const ov::Output<ov::Node>& use_cuda_graph,
                 //    const ov::Output<ov::Node>& attn_bias
                    // end of arguments from InputMetadata
-                   const ov::Output<ov::Node>& scale);
+                   const ov::Output<ov::Node>& scale,
+                   const ov::Output<ov::Node>& alibi_slopes,
+                   const ov::Output<ov::Node>& sliding_window);
 
     std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& new_args) const override;
     void validate_and_infer_types() override;
