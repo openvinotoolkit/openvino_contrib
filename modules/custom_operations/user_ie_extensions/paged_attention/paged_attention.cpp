@@ -71,9 +71,11 @@ TemplateExtension::PagedAttention::PagedAttention(const ov::Output<ov::Node>& qu
                                             //    const ov::Output<ov::Node>& use_cuda_graph,
                                             //    const ov::Output<ov::Node>& attn_bias
                                                   // end of arguments from InputMetadata
-                                                  const ov::Output<ov::Node>& scale)
+                                                  const ov::Output<ov::Node>& scale,
+                                                  const ov::Output<ov::Node>& alibi_slopes,
+                                                  const ov::Output<ov::Node>& sliding_window)
     : PagedAttention(ov::OutputVector{query, key, value, key_cache, value_cache,
-                      is_prompt, slot_mapping, max_context_len, context_lens, block_tables, scale
+                      is_prompt, slot_mapping, max_context_len, context_lens, block_tables, scale, alibi_slopes, sliding_window
     }) {}
 
 void TemplateExtension::PagedAttention::validate_and_infer_types() {
@@ -126,7 +128,7 @@ void TemplateExtension::PagedAttention::validate_and_infer_types() {
 
     // is_prompt: boolean scalar
     NODE_VALIDATION_CHECK(this,
-        // get_input_element_type(5) == ov::element::boolean && 
+        // get_input_element_type(5) == ov::element::boolean &&
         get_input_shape(5) == ov::Shape({}),
         "is_prompt validation failed. ",
         "Got element type ", get_input_element_type(5), ", shape ", get_input_shape(5));
@@ -168,6 +170,20 @@ void TemplateExtension::PagedAttention::validate_and_infer_types() {
         "block_tables validation failed. ",
         "Got element type ", get_input_element_type(10), ", shape ", get_input_shape(10));
 
+    // alibi_slopes: 1D float tensor
+    NODE_VALIDATION_CHECK(this,
+        // get_input_element_type(11) == ov::element::f32 &&
+        get_input_partial_shape(11).rank().get_length() == 1,
+        "alibi_slopes should be a 1D float tensor. ",
+        "Got element type ", get_input_element_type(11), ", shape ", get_input_partial_shape(11));
+
+    // sliding_window: int scalar
+    NODE_VALIDATION_CHECK(this,
+        // get_input_element_type(12) == ov::element::i32 &&
+        get_input_partial_shape(12).rank().get_length() == 0,
+        "sliding_window argument should be an i32 scalar. ",
+        "Got element type ", get_input_element_type(12), ", shape ", get_input_partial_shape(12));
+
     set_output_type(0, query_type, query_shape);
 }
 
@@ -190,9 +206,9 @@ ov::Tensor generate_attention_bias(const std::size_t batch_size, const std::size
 
     for (int batch_id = 0; batch_id < batch_size; ++batch_id) {
         float * attention_mask_data = attention_mask.data<float>() + batch_id * attention_mask_stride;
-        int left_window = sliding_window, right_window = 1;
-        for (int y = 0; y < seq_len; ++y) {
-            for (int x = 0; x < seq_len; ++x) {
+        size_t left_window = sliding_window, right_window = 1;
+        for (size_t y = 0; y < seq_len; ++y) {
+            for (size_t x = 0; x < seq_len; ++x) {
                 attention_mask_data[y * seq_len + x] = (x + right_window - 1) > y || (x + left_window - 1) < y ? negative_inf : 0.0f;
             }
         }
@@ -210,6 +226,16 @@ bool TemplateExtension::PagedAttention::evaluate(ov::TensorVector& outputs, cons
     ov::Tensor context_lens = inputs[8];
     ov::Tensor block_tables = inputs[9];
     float scale = inputs[10].data<float>()[0];
+    float* alibi_slopes = inputs[11].get_shape()[0] > 0 ? inputs[11].data<float>() : nullptr;
+    std::int32_t sliding_window = inputs[12].data<std::int32_t>()[0];
+    if (sliding_window == 0) {
+        sliding_window = std::numeric_limits<std::int32_t>::max();
+    }
+
+    // std::cerr << "Alibi slopes: " << alibi_slopes << "\n";
+    // for(int i = 0; i < inputs[11].get_shape()[0]; ++i)
+    //     std::cerr << "  [" << i << "] = " << alibi_slopes[i] << "\n";
+    // std::cerr << "Sliding window: " << sliding_window << "\n";
 
     // Shapes
     ov::Shape query_shape = query.get_shape();
@@ -249,7 +275,6 @@ bool TemplateExtension::PagedAttention::evaluate(ov::TensorVector& outputs, cons
         OPENVINO_ASSERT(value_data == value.data());
         OPENVINO_ASSERT(output_data == outputs[0].data());
 
-        const size_t sliding_window = 1000000; // TODO: for mistral / mixtral we need sliding_window from the model
         auto attention_bias = generate_attention_bias(batch_size, seq_len, sliding_window);
         ov::Tensor scale_tensor(ov::element::f32, ov::Shape{1}, &scale);
 
