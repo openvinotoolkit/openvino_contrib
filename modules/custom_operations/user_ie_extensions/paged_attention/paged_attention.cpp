@@ -206,9 +206,9 @@ ov::Tensor generate_attention_bias(const std::size_t batch_size, const std::size
 
     for (int batch_id = 0; batch_id < batch_size; ++batch_id) {
         float * attention_mask_data = attention_mask.data<float>() + batch_id * attention_mask_stride;
-        int left_window = sliding_window, right_window = 1;
-        for (int y = 0; y < seq_len; ++y) {
-            for (int x = 0; x < seq_len; ++x) {
+        size_t left_window = sliding_window, right_window = 1;
+        for (size_t y = 0; y < seq_len; ++y) {
+            for (size_t x = 0; x < seq_len; ++x) {
                 attention_mask_data[y * seq_len + x] = (x + right_window - 1) > y || (x + left_window - 1) < y ? negative_inf : 0.0f;
             }
         }
