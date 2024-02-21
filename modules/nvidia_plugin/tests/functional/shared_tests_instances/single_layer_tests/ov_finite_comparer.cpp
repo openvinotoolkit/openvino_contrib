@@ -3,7 +3,6 @@
 //
 
 #include "ov_finite_comparer.hpp"
-#include "ov_models/utils/ov_helpers.hpp"
 
 using namespace ov::test;
 
