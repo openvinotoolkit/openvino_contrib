@@ -3,6 +3,11 @@
 #
 
 cmake_minimum_required(VERSION 3.13)
+if(WIN32)
+  set(CMAKE_COMPILE_WARNING_AS_ERROR OFF)
+endif()
+message(STATUS "nvidia plugin enter")
+message(STATUS "CMAKE_COMPILE_WARNING_AS_ERROR=" ${CMAKE_COMPILE_WARNING_AS_ERROR})
 project(OpenVINONVIDIAGpuPlugin CXX CUDA)
 
 # Initialize CMAKE_CUDA_ARCHITECTURES when CMAKE_CUDA_COMPILER_ID is NVIDIA.
@@ -28,6 +33,7 @@ endif()
 
 find_package(OpenVINODeveloperPackage REQUIRED
              PATHS "${InferenceEngineDeveloperPackage_DIR}")
+message(STATUS "finish find OpenVINODeveloperPackage")
 
 include(cmake/features.cmake)
 
@@ -84,7 +90,9 @@ if(CMAKE_VERSION VERSION_LESS 3.17.0)
     set_target_properties(cublas PROPERTIES IMPORTED_LOCATION "${CUBLAS_PATH}")
     add_library(CUDA::cublas ALIAS cublas)
 else()
+    message(STATUS "find CUDAToolkit before")
     find_package(CUDAToolkit REQUIRED)
+    message(STATUS "find CUDAToolkit after")
 endif()
 
 find_library(CUDNN_PATH
