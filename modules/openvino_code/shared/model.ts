@@ -4,7 +4,7 @@ enum ModelId {
   CODE_T5_220M = 'Salesforce/codet5p-220m-py',
   DECICODER_1B_OPENVINO_INT8 = 'chgk13/decicoder-1b-openvino-int8',
   STABLECODE_COMPLETION_ALPHA_3B_4K_OPENVINO_INT8 = 'chgk13/stablecode-completion-alpha-3b-4k-openvino-int8',
-  DEEPSEEK_CODER_1_3B = 'Intel/deepseek-coder-1_3b-instruct-openvino-int8',
+  DEEPSEEK_CODER_1_3B = 'kumarijy/deepseek-code-1.3b_base_ov_int8',
 }
 
 export enum ModelName {
