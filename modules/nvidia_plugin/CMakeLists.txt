@@ -3,6 +3,10 @@
 #
 
 cmake_minimum_required(VERSION 3.13)
+message(STATUS "nvidia plugin compiler flags:" ${CMAKE_CXX_FLAGS})
+message(STATUS "nvidia plugin exe linker flags:" ${CMAKE_EXE_LINKER_FLAGS})
+message(STATUS "nvidia plugin module linker flags:" ${CMAKE_MODULE_LINKER_FLAGS})
+message(STATUS "nvidia plugin shared linker flags:" ${CMAKE_SHARED_LINKER_FLAGS})
 if(WIN32)
   set(CMAKE_COMPILE_WARNING_AS_ERROR OFF)
 endif()
