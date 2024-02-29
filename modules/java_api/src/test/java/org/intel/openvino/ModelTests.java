@@ -45,6 +45,19 @@ public class ModelTests extends OVTest {
     }
 
     @Test
+    public void testGetPartialShape() {
+        ArrayList<Output> outputs = net.outputs();
+        int[] ref = new int[] {1, 10};
+
+        PartialShape partialShape = outputs.get(0).get_partial_shape();
+        for (int i = 0; i < ref.length; i++) {
+            assertEquals(ref[i], partialShape.get_dimension(i));
+        }
+        assertArrayEquals("MaxShape", ref, partialShape.get_max_shape());
+        assertArrayEquals("MinShape", ref, partialShape.get_min_shape());
+    }
+
+    @Test
     public void testReshape() {
         int[] inpDims = net.input().get_shape();
         assertEquals(32, inpDims[2]);

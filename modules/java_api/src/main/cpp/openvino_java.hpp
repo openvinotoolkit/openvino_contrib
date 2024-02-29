@@ -112,8 +112,14 @@ extern "C"
     // ov::Output<ov::Node>
     JNIEXPORT jstring JNICALL Java_org_intel_openvino_Output_GetAnyName(JNIEnv *, jobject, jlong);
     JNIEXPORT jintArray JNICALL Java_org_intel_openvino_Output_GetShape(JNIEnv *, jobject, jlong);
+    JNIEXPORT jlong JNICALL Java_org_intel_openvino_Output_GetPartialShape(JNIEnv *, jobject, jlong);
     JNIEXPORT int JNICALL Java_org_intel_openvino_Output_GetElementType(JNIEnv *, jobject, jlong);
     JNIEXPORT void JNICALL Java_org_intel_openvino_Output_delete(JNIEnv *, jobject, jlong);
+
+    // ov::PartialShape
+    JNIEXPORT jlong JNICALL Java_org_intel_openvino_PartialShape_GetDimension(JNIEnv *, jobject, jlong, jint);
+    JNIEXPORT jintArray JNICALL Java_org_intel_openvino_PartialShape_GetMaxShape(JNIEnv *, jobject, jlong);
+    JNIEXPORT jintArray JNICALL Java_org_intel_openvino_PartialShape_GetMinShape(JNIEnv *, jobject, jlong);
 
 #ifdef __cplusplus
 }
