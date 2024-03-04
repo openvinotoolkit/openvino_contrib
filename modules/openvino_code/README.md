@@ -53,7 +53,7 @@ In the docstring generation mode, various popular templates are available in the
 
 
 1. Create a new Python file or open an existing one.
-1. Type `def main():` or place the cursor where you'd like middle text to be generated.
+1. Place the cursor where you'd like middle text to be generated or a line of code to be generated.
 1. Press the keyboard shortcut `Ctrl+Alt+Space` (`Cmd+Alt+Space` for macOS) or click the `Generate Code Completion` button located in the side panel.
 1. You can select the text then generate the related code.
 1. You may also right-click on "Generate Inline Code Completion In New Tab" to generate code in a new tab.
