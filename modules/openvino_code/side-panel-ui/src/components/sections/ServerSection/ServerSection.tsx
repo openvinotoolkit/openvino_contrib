@@ -7,6 +7,9 @@ import { ServerStatus } from './ServerStatus/ServerStatus';
 import './ServerSection.css';
 import { ModelSelect } from './ModelSelect/ModelSelect';
 import { ModelName } from '@shared/model';
+import { DeviceSelect } from './DeviceSelect/DeviceSelect';
+import { DeviceName } from '@shared/device';
+
 
 interface ServerSectionProps {
   state: IExtensionState | null;
@@ -46,6 +49,15 @@ export function ServerSection({ state }: ServerSectionProps): JSX.Element {
     });
   };
 
+  const handleDeviceChange = (deviceName: DeviceName) => {
+    vscode.postMessage({
+      type: SidePanelMessageTypes.DEVICE_CHANGE,
+      payload: {
+        deviceName,
+      },
+    });
+  };
+
   if (!state) {
     return <>Extension state is not available</>;
   }
@@ -64,6 +76,13 @@ export function ServerSection({ state }: ServerSectionProps): JSX.Element {
         supportedFeatures={state.features.supportedList}
         serverStatus={state.server.status}
       ></ModelSelect>
+      <DeviceSelect
+        disabled={!isServerStopped}
+        onChange={handleDeviceChange}
+        selectedDeviceName={state.config.device}
+        supportedFeatures={state.features.supportedList}
+        serverStatus={state.server.status}
+      ></DeviceSelect>
       {isServerStarting && <StartingStages currentStage={state.server.stage}></StartingStages>}
       <div className="button-group">
         {isServerStopped && <button onClick={handleStartServerClick}>Start Server</button>}

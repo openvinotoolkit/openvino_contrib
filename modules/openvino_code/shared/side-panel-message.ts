@@ -10,6 +10,7 @@ export enum SidePanelMessageTypes {
   GENERATE_COMPLETION_CLICK = `${sidePanelMessagePrefix}.generateCompletionClick`,
   SETTINGS_CLICK = `${sidePanelMessagePrefix}.settingsClick`,
   MODEL_CHANGE = `${sidePanelMessagePrefix}.modelChange`,
+  DEVICE_CHANGE = `${sidePanelMessagePrefix}.deviceChange`,
 }
 
 export interface ISidePanelMessage<P = unknown> {
