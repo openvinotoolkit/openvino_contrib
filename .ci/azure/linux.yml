@@ -179,5 +179,7 @@ jobs:
       source $(WORK_DIR)/.env3/bin/activate
       # need to enable sparse_conv tests with new Open3D release
       python -m pytest -k "not sparse_conv" tests/run_tests.py
+    env:
+      CUSTOM_OP_LIB: $(BIN_DIR)/libuser_ov_extensions.so
     workingDirectory: $(REPO_DIR)/modules/custom_operations
     displayName: 'Custom user operation tests'
