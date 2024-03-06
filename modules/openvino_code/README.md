@@ -51,7 +51,7 @@ In the docstring generation mode, various popular templates are available in the
 
 ### Fill in the Middle Mode
 
-![Fill-in-the-middle](https://github.com/openvinotoolkit/openvino_contrib/assets/112030960/23279cda-185e-4da7-8a64-6c420001fbff)
+![fill-in-the-middle](https://github.com/openvinotoolkit/openvino_contrib/assets/112030960/15ef3cbf-913b-46a5-b565-f1676ff7a0b7)
 
 1. Create a new Python file or open an existing one.
 1. Place the cursor where you'd like middle text to be generated or a line of code to be generated.
