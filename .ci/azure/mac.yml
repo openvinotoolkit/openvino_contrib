@@ -179,32 +179,5 @@ jobs:
     workingDirectory: $(WORK_DIR)
     displayName: 'Create virtual env'
 
-  - script: |
-      set -e
-      source $(WORK_DIR)/venv/bin/activate && source $(SETUPVARS)
-      python -m pip install build
-      python -m build --wheel --outdir $(BUILD_WHEEL_DIR) $(REPO_DIR)/modules/custom_operations
-    workingDirectory: $(WORK_DIR)
-    displayName: 'Build tokenizers wheel'
-
   - publish: $(BUILD_WHEEL_DIR)
     artifact: Wheels
-
-  - script: |
-      set -e
-      source $(WORK_DIR)/venv/bin/activate
-      # Find and install wheel
-      pushd $(BUILD_WHEEL_DIR)
-        wheel_name=$(find . -name 'openvino_tokenizers*.whl')
-        python3 -m pip install $wheel_name[all]
-      popd
-    workingDirectory: $(WORK_DIR)
-    displayName: 'Install tokenizers wheel'
-
-  - script: |
-      set -e
-      source $(WORK_DIR)/venv/bin/activate
-      python -m pytest tokenizers_test.py
-    continueOnError: true
-    workingDirectory: $(REPO_DIR)/modules/custom_operations/user_ie_extensions/tokenizer/python/tests/
-    displayName: 'Tokenizers extension regression test'

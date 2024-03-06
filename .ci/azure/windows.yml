@@ -177,38 +177,5 @@ jobs:
       call $(SETUPVARS) -pyver 3.8 && ^
       $(PYTHON_EXE) -m pip install -r $(REPO_DIR)\modules\custom_operations\tests\requirements.txt
       $(PYTHON_EXE) -m pytest -k "not sparse_conv" tests\run_tests.py
-    env:
-        CUSTOM_OP_LIB: $(BUILD_DIR_CONTRIB)\user_ie_extensions\openvino_tokenizers.dll
     workingDirectory: $(REPO_DIR)\modules\custom_operations
     displayName: 'Custom user operation tests'
-
-  - script: |
-      call $(SETUPVARS)
-      $(PYTHON_EXE) -m pip install build
-      $(PYTHON_EXE) -m build --wheel --outdir $(BUILD_WHEEL_DIR) $(REPO_DIR)\modules\custom_operations
-    workingDirectory: $(WORK_DIR)
-    displayName: 'Build tokenizers wheel'
-
-  - publish: $(BUILD_WHEEL_DIR)
-    artifact: Wheels
-
-  - powershell: |
-      # Find and install the core OV wheel
-      $ovCoreWheelPath=Get-ChildItem -Path "$(INSTALL_DIR)\tools" -Filter openvino-*.whl | % { $_.FullName }
-      $(PYTHON_EXE) -m pip install "$ovCoreWheelPath"
-    workingDirectory: $(WORK_DIR)
-    displayName: 'Install OpenVINO Python wheels'
-
-  - powershell: |
-      # Find and install the wheel
-      $wheelPath=Get-ChildItem -Path "$(BUILD_WHEEL_DIR)" -Filter openvino_tokenizers*.whl | % { $_.FullName }
-      $(PYTHON_EXE) -m pip install "$wheelPath[all]"
-    workingDirectory: $(WORK_DIR)
-    displayName: 'Install tokenizers wheel'
-
-  - script: |
-      call $(SETUPVARS) -pyver 3.8 && ^
-      $(PYTHON_EXE) -m pytest tokenizers_test.py
-    continueOnError: true
-    workingDirectory: $(REPO_DIR)\modules\custom_operations\user_ie_extensions\tokenizer\python\tests
-    displayName: 'Tokenizers extension regression test'
