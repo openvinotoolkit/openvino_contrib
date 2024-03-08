@@ -1,0 +1,3 @@
+[submodule "modules/llama_cpp_plugin/third_party/llama.cpp"]
+	path = modules/llama_cpp_plugin/third_party/llama.cpp
+	url = https://github.com/vshampor/llama.cpp
