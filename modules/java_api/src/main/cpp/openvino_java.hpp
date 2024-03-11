@@ -107,7 +107,6 @@ extern "C"
 
     // ov::Dimension
     JNIEXPORT jint JNICALL Java_org_intel_openvino_Dimension_getLength(JNIEnv *, jobject, jlong);
-    JNIEXPORT void JNICALL Java_org_intel_openvino_Dimension_delete(JNIEnv *, jobject, jlong);
 
     // ov::Output<ov::Node>
     JNIEXPORT jstring JNICALL Java_org_intel_openvino_Output_GetAnyName(JNIEnv *, jobject, jlong);
