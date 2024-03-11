@@ -18,5 +18,4 @@ target_link_libraries(tensor_comparator PRIVATE ggml)
 add_executable(cache_embedder
                "${CMAKE_CURRENT_SOURCE_DIR}/cache_embedder.cpp"
               )
-
-target_compile_options(cache_embedder PUBLIC "--std=c++17")
+set_target_properties(cache_embedder PROPERTIES CXX_STANDARD 17)
