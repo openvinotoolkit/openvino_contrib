@@ -12,9 +12,7 @@ using namespace ov;
 JNIEXPORT jlong JNICALL Java_org_intel_openvino_PartialShape_GetDimension(JNIEnv *env, jobject obj, jlong addr, jint index) {
     JNI_METHOD("GetDimension",
         PartialShape* partial_shape = (PartialShape *)addr;
-        Dimension dimension = (*partial_shape)[index];
-
-        return (jlong) dimension.get_length();
+        return (jlong) &(*partial_shape)[index];
     )
     return 0;
 }

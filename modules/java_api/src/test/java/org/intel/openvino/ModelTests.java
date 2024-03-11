@@ -51,7 +51,8 @@ public class ModelTests extends OVTest {
 
         PartialShape partialShape = outputs.get(0).get_partial_shape();
         for (int i = 0; i < ref.length; i++) {
-            assertEquals(ref[i], partialShape.get_dimension(i));
+            Dimension dim = partialShape.get_dimension(i);
+            assertEquals(ref[i], dim.get_length());
         }
         assertArrayEquals("MaxShape", ref, partialShape.get_max_shape());
         assertArrayEquals("MinShape", ref, partialShape.get_min_shape());

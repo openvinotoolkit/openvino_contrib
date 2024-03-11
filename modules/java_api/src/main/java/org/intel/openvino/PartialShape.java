@@ -16,8 +16,8 @@ public class PartialShape extends Wrapper {
      * @param index The index of dimension.
      * @return The particular dimension of partial shape.
      */
-    public long get_dimension(int index) {
-        return GetDimension(nativeObj, index);
+    public Dimension get_dimension(int index) {
+        return new Dimension(GetDimension(nativeObj, index));
     }
 
     /** Returns the max bounding shape. */
