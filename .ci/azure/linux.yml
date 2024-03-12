@@ -180,46 +180,6 @@ jobs:
       # need to enable sparse_conv tests with new Open3D release
       python -m pytest -k "not sparse_conv" tests/run_tests.py
     env:
-      CUSTOM_OP_LIB: $(BIN_DIR)/libopenvino_tokenizers.so
+      CUSTOM_OP_LIB: $(BIN_DIR)/libuser_ov_extensions.so
     workingDirectory: $(REPO_DIR)/modules/custom_operations
     displayName: 'Custom user operation tests'
-
-  - script: |
-      set -e
-      source $(WORK_DIR)/.env3/bin/activate && source $(SETUPVARS)
-      python -m pip install build
-      python -m build --wheel --outdir $(BUILD_WHEEL_DIR) $(REPO_DIR)/modules/custom_operations
-    env:
-      CMAKE_ARGS: '-DBUILD_FAST_TOKENIZERS=ON'
-      CMAKE_GENERATOR: 'Unix Makefiles'
-    workingDirectory: $(WORK_DIR)
-    displayName: 'Build tokenizers wheel'
-
-  - publish: $(BUILD_WHEEL_DIR)
-    artifact: Wheels
-
-  - script: |
-      set -e
-      source $(WORK_DIR)/.env3/bin/activate
-      # Find and install wheel
-      pushd $(BUILD_WHEEL_DIR)
-        wheel_name=$(find . -name 'openvino_tokenizers*.whl')
-        python3 -m pip install $wheel_name[all]
-      popd
-    workingDirectory: $(WORK_DIR)
-    displayName: 'Install tokenizers wheel'
-
-  - script: |
-      set -e
-      source $(WORK_DIR)/.env3/bin/activate
-      bandit -c pyproject.toml -r user_ie_extensions/tokenizer/python/
-    workingDirectory: $(REPO_DIR)/modules/custom_operations
-    displayName: 'Tokenizers Bandit Check'
-
-  - script: |
-      set -e
-      source $(WORK_DIR)/.env3/bin/activate
-      python -m pytest tokenizers_test.py
-    continueOnError: true
-    workingDirectory: $(REPO_DIR)/modules/custom_operations/user_ie_extensions/tokenizer/python/tests/
-    displayName: 'Tokenizers extension regression test'
