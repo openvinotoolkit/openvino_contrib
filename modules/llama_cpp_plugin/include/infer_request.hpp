@@ -7,12 +7,10 @@
 namespace ov {
 namespace llama_cpp_plugin {
 
+
 class LlamaCppSyncInferRequest : public ISyncInferRequest {
 public:
     explicit LlamaCppSyncInferRequest(const std::shared_ptr<const LlamaCppModel>& compiled_model);
-    // explicit LlamaCppSyncInferRequest(const std::shared_ptr<const LlamaCppModel>& compiled_model): ov::ISyncInferRequest(compiled_model) {
-    //         std::cout << "VSHAMPOR: infer request ctor called\n";
-    //     }
     virtual ~LlamaCppSyncInferRequest() {};
 
     virtual void set_tensors_impl(const ov::Output<const ov::Node> port,

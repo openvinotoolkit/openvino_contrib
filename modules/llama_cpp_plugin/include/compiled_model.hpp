@@ -55,6 +55,7 @@ namespace ov {
             virtual ov::Any get_property(const std::string& name) const override;
             virtual const std::vector<ov::Output<const ov::Node>>& inputs() const override;
             virtual const std::vector<ov::Output<const ov::Node>>& outputs() const override;
+            virtual ~LlamaCppModel();
         protected:
             /**
              * @brief Method creates infer request implementation
@@ -64,14 +65,13 @@ namespace ov {
             virtual std::shared_ptr<ov::ISyncInferRequest> create_sync_infer_request() const override;
 
         private:
-            std::string get_current_gguf_file_path() const;
             gguf_context* m_gguf_ctx = nullptr;
-            std::string m_converted_gguf_file_name;
+            std::string m_gguf_fname;
 
             llama_model* m_llama_model_ptr = nullptr;
             llama_context* m_llama_ctx = nullptr;
-            size_t* num_tokens_processed_ptr = nullptr;  // TODO: (vshampor) find a better place for this kind of storage
             std::shared_ptr<ov::Model> m_model;
+            size_t* num_tokens_processed_ptr = nullptr;  // TODO: (vshampor) find a better place for this kind of storage
 
             std::vector<ov::Output<const ov::Node>> m_fake_inputs;
             std::vector<ov::Output<const ov::Node>> m_fake_outputs;

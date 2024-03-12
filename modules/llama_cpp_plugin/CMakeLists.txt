@@ -11,7 +11,6 @@ if(CMAKE_COMPILER_IS_GNUCXX)
 endif()
 
 add_subdirectory(src)
-add_subdirectory(tools)
 
 add_subdirectory(third_party/llama.cpp)
 

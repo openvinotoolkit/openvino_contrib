@@ -1,7 +1,9 @@
 #include "infer_request.hpp"
+#include <openvino/runtime/ivariable_state.hpp>
 
 #include "llama.h"
 #include "openvino/runtime/make_tensor.hpp"
+#include "openvino/util/log.hpp"
 
 namespace ov {
 namespace llama_cpp_plugin {
@@ -18,12 +20,10 @@ void allocate_tensor_impl(ov::SoPtr<ov::ITensor>& tensor,
 
 LlamaCppSyncInferRequest::LlamaCppSyncInferRequest(const std::shared_ptr<const LlamaCppModel>& compiled_model)
     : ov::ISyncInferRequest(compiled_model) {
-    std::cout << "VSHAMPOR: infer request ctor called\n";
+    OPENVINO_DEBUG << "llama_cpp_plugin: infer request ctor called\n";
     m_compiled_model_ptr = compiled_model;
-    // Allocate input/output tensors
     for (const auto& input : get_inputs()) {
         allocate_tensor(input, [input](ov::SoPtr<ov::ITensor>& tensor) {
-            // Can add a check to avoid double work in case of shared tensors
             allocate_tensor_impl(tensor,
                                  input.get_element_type(),
                                  input.get_partial_shape().is_dynamic() ? ov::Shape{0} : input.get_shape());
@@ -31,7 +31,6 @@ LlamaCppSyncInferRequest::LlamaCppSyncInferRequest(const std::shared_ptr<const L
     }
     for (const auto& output : get_outputs()) {
         allocate_tensor(output, [output](ov::SoPtr<ov::ITensor>& tensor) {
-            // Can add a check to avoid double work in case of shared tensors
             allocate_tensor_impl(tensor,
                                  output.get_element_type(),
                                  output.get_partial_shape().is_dynamic() ? ov::Shape{0} : output.get_shape());
@@ -40,7 +39,7 @@ LlamaCppSyncInferRequest::LlamaCppSyncInferRequest(const std::shared_ptr<const L
 }
 void LlamaCppSyncInferRequest::set_tensors_impl(const ov::Output<const ov::Node> port,
                                                 const std::vector<ov::SoPtr<ov::ITensor>>& tensors) {
-    std::cout << "VSHAMPOR: set_tensors_impl called\n";
+    OPENVINO_DEBUG << "llama_cpp_plugin: set_tensors_impl called\n";
 }
 
 void llama_batch_add_reimpl(struct llama_batch& batch,
@@ -64,7 +63,6 @@ void LlamaCppSyncInferRequest::infer() {
                                                               // all inputs without hardcode
     OPENVINO_ASSERT(input_ids_tensor_ptr->get_element_type() == ov::element::Type_t::i64);
     OPENVINO_ASSERT(input_ids_tensor_ptr->get_shape().size() == 2);
-    size_t batch_size = input_ids_tensor_ptr->get_shape()[0];
     size_t sequence_length = input_ids_tensor_ptr->get_shape()[1];
 
     // llama_batch actually contains one sequence
@@ -81,8 +79,7 @@ void LlamaCppSyncInferRequest::infer() {
                                {0},
                                true);  // the last `true` here is a marker that the logits for this
                                        // token should be computed and returned
-        size_t* ptr = m_compiled_model_ptr->num_tokens_processed_ptr;
-        (*ptr)++;
+       *(m_compiled_model_ptr->num_tokens_processed_ptr) += 1;
     }
 
     llama_context* ctx = m_compiled_model_ptr->m_llama_ctx;
@@ -109,12 +106,14 @@ void LlamaCppSyncInferRequest::infer() {
     });
 };
 std::vector<ov::ProfilingInfo> LlamaCppSyncInferRequest::get_profiling_info() const {
-    std::cout << "VSHAMPOR: get_profiling_info() called\n";
+    OPENVINO_DEBUG << "llama_cpp_plugin: get_profiling_info() called\n";
     return std::vector<ov::ProfilingInfo>{};
 };
+
+
 std::vector<ov::SoPtr<ov::IVariableState>> LlamaCppSyncInferRequest::query_state() const {
-    std::cout << "VSHAMPOR: get_profiling_info() called\n";
-    return std::vector<ov::SoPtr<ov::IVariableState>>{};
+    OPENVINO_DEBUG << "llama_cpp_plugin: query_state() called\n";
+    return {};
 }
 }  // namespace llama_cpp_plugin
 }  // namespace ov
