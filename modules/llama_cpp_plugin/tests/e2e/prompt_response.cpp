@@ -1,13 +1,16 @@
 #include <gtest/gtest.h>
-#include "openvino/openvino.hpp"
+
 #include "common_test_utils/file_utils.hpp"
+#include "openvino/openvino.hpp"
 
 const std::string TEST_FILES_DIR = "test_data";
 
 // "Why is the Sun yellow?"
 const std::vector<int64_t> GPT2_PROMPT_TOKEN_IDS = {5195, 318, 262, 3825, 7872, 30};
 // "The Sun is a bright red, which means it is a bright red. The Sun is a bright red because it is a bright red."
-const std::vector<int64_t> GPT2_REFERENCE_RESPONSE_TOKEN_IDS = {198, 464, 3825, 318, 257, 6016, 2266, 11, 543, 1724, 340, 318, 257, 6016, 2266, 13, 383, 3825, 318, 257, 6016, 2266, 780, 340, 318, 257, 6016, 2266, 13, 198, 198, 464};
+const std::vector<int64_t> GPT2_REFERENCE_RESPONSE_TOKEN_IDS = {
+    198, 464,  3825, 318, 257,  6016, 2266, 11,  543, 1724, 340,  318,  257, 6016, 2266, 13,
+    383, 3825, 318,  257, 6016, 2266, 780,  340, 318, 257,  6016, 2266, 13,  198,  198,  464};
 
 const auto SEP = ov::util::FileTraits<char>::file_separator;
 
@@ -16,7 +19,8 @@ TEST(PromptResponseTest, TestGPT2) {
     ov::Core core;
 
     const std::string model_file_name = "gpt2.gguf";
-    const std::string model_file = ov::test::utils::getCurrentWorkingDir() + SEP +  TEST_FILES_DIR + SEP + model_file_name;
+    const std::string model_file =
+        ov::test::utils::getCurrentWorkingDir() + SEP + TEST_FILES_DIR + SEP + model_file_name;
     ov::InferRequest lm = core.compile_model(model_file, plugin_name).create_infer_request();
     auto input_ids_tensor = ov::Tensor(ov::element::Type_t::i64, {1, GPT2_PROMPT_TOKEN_IDS.size()});
     std::copy(GPT2_PROMPT_TOKEN_IDS.begin(), GPT2_PROMPT_TOKEN_IDS.end(), input_ids_tensor.data<int64_t>());
@@ -59,5 +63,3 @@ TEST(PromptResponseTest, TestGPT2) {
 
     ASSERT_EQ(out_token_ids, GPT2_REFERENCE_RESPONSE_TOKEN_IDS);
 }
-
-

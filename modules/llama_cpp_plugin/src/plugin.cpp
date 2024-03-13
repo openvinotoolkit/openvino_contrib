@@ -4,8 +4,8 @@
 
 #include "compiled_model.hpp"
 #include "openvino/op/constant.hpp"
-#include "openvino/util/log.hpp"
 #include "openvino/runtime/internal_properties.hpp"
+#include "openvino/util/log.hpp"
 
 namespace {
 static constexpr const char* wait_executor_name = "LlamaCppWaitExecutor";
@@ -86,7 +86,6 @@ std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::import_model(std::istream& m
                                                                  const ov::AnyMap& properties) const {
     OPENVINO_THROW_NOT_IMPLEMENTED("llama_cpp_plugin: model importing not implemented");
 }
-
 
 std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::import_model(std::istream& model,
                                                                  const ov::SoPtr<ov::IRemoteContext>& context,

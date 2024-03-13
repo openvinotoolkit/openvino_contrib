@@ -5,30 +5,27 @@
 #include <openvino/op/constant.hpp>
 #include <openvino/opsets/opset13.hpp>
 #include <openvino/runtime/properties.hpp>
+#include <openvino/util/log.hpp>
 
 #include "infer_request.hpp"
 #include "plugin.hpp"
 
-#include <openvino/util/log.hpp>
-
 namespace ov {
 namespace llama_cpp_plugin {
-
 
 LlamaCppModel::LlamaCppModel(const std::shared_ptr<ov::Model>& model,
                              const std::shared_ptr<const ov::IPlugin>& plugin,
                              const ov::SoPtr<ov::IRemoteContext>& context,
                              const std::shared_ptr<ov::threading::ITaskExecutor>& task_executor)
     : ICompiledModel(model, plugin, context, task_executor) {
-        OPENVINO_THROW_NOT_IMPLEMENTED("Currently only direct GGUF file loading is supported for the LLAMA_CPP* plugins");
-    }
-
+    OPENVINO_THROW_NOT_IMPLEMENTED("Currently only direct GGUF file loading is supported for the LLAMA_CPP* plugins");
+}
 
 LlamaCppModel::LlamaCppModel(const std::shared_ptr<ov::Model>& ov_model,
                              std::istream& input_stream,
                              const std::shared_ptr<const IPlugin>& plugin)
     : ICompiledModel(ov_model, plugin) {
-        OPENVINO_THROW_NOT_IMPLEMENTED("Currently only direct GGUF file loading is supported for the LLAMA_CPP* plugins");
+    OPENVINO_THROW_NOT_IMPLEMENTED("Currently only direct GGUF file loading is supported for the LLAMA_CPP* plugins");
 }
 
 LlamaCppModel::~LlamaCppModel() {
@@ -39,7 +36,8 @@ LlamaCppModel::~LlamaCppModel() {
 }
 
 LlamaCppModel::LlamaCppModel(const std::string& gguf_fname, const std::shared_ptr<const IPlugin>& plugin)
-    : ICompiledModel(nullptr, plugin), m_gguf_fname(gguf_fname) {
+    : ICompiledModel(nullptr, plugin),
+      m_gguf_fname(gguf_fname) {
     num_tokens_processed_ptr = new size_t;  // TODO (vshampor): hack, remove
     *num_tokens_processed_ptr = 0;
     OPENVINO_DEBUG << "llama_cpp_plugin: loading llama model directly from GGUF... " << std::endl;
@@ -82,7 +80,6 @@ LlamaCppModel::LlamaCppModel(const std::string& gguf_fname, const std::shared_pt
     }
 }
 
-
 std::shared_ptr<const ov::Model> LlamaCppModel::get_runtime_model() const {
     OPENVINO_THROW_NOT_IMPLEMENTED("llama_cpp_plugin: Not Implemented");
 }
@@ -114,8 +111,6 @@ void LlamaCppModel::export_model(std::ostream& output_stream) const {
     std::ifstream in(m_gguf_fname, std::ios::binary);
     output_stream << in.rdbuf();
 }
-
-
 
 }  // namespace llama_cpp_plugin
 }  // namespace ov

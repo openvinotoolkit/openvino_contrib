@@ -1,4 +1,5 @@
 #include "infer_request.hpp"
+
 #include <openvino/runtime/ivariable_state.hpp>
 
 #include "llama.h"
@@ -79,7 +80,7 @@ void LlamaCppSyncInferRequest::infer() {
                                {0},
                                true);  // the last `true` here is a marker that the logits for this
                                        // token should be computed and returned
-       *(m_compiled_model_ptr->num_tokens_processed_ptr) += 1;
+        *(m_compiled_model_ptr->num_tokens_processed_ptr) += 1;
     }
 
     llama_context* ctx = m_compiled_model_ptr->m_llama_ctx;
@@ -109,7 +110,6 @@ std::vector<ov::ProfilingInfo> LlamaCppSyncInferRequest::get_profiling_info() co
     OPENVINO_DEBUG << "llama_cpp_plugin: get_profiling_info() called\n";
     return std::vector<ov::ProfilingInfo>{};
 };
-
 
 std::vector<ov::SoPtr<ov::IVariableState>> LlamaCppSyncInferRequest::query_state() const {
     OPENVINO_DEBUG << "llama_cpp_plugin: query_state() called\n";
