@@ -1,4 +1,4 @@
-name: precommit
+name: llama_cpp_plugin_build_and_test
 
 on:
   pull_request:
@@ -6,29 +6,33 @@ on:
       - opened
       - reopened
       - synchronize
-  paths:
-    - 'modules/llama_cpp_plugin/**'
+    paths:
+      - 'modules/llama_cpp_plugin/**'
 
 jobs:
   build_ubuntu20:
     runs-on: ubuntu-20.04
     steps:
-     - name: Setup cmake
-       uses: jwlawson/actions-setup-cmake@v1.14
-       with:
-         cmake-version: '3.24.x'
+      - name: Setup cmake
+        uses: jwlawson/actions-setup-cmake@v1.14
+        with:
+          cmake-version: '3.24.x'
 
       - name: Checkout openvino_contrib
         uses: actions/checkout@v3
-        submodules: recursive
+        with:
+          submodules: recursive
+          path: openvino_contrib
 
       - name: Checkout openvino
         uses: actions/checkout@v3
-        submodules: recursive
-        repository: https://github.com/vshampor/openvino
+        with:
+          submodules: recursive
+          repository: vshampor/openvino
+          path: openvino
 
       - name: CMake - configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DOPENVINO_EXTRA_MODULES=${{ github.workspace }}/openvino_contrib/modules -DBUILD_java_api=OFF -DBUILD_nvidia_plugin=OFF -DBUILD_custom_operations=OFF -DBUILD_openvino_code=OFF -DBUILD_token_merging=OFF -DENABLE_TESTS=ON -DENABLE_FUNCTIONAL_TESTS=ON -DENABLE_PLUGINS_XML=ON .
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DOPENVINO_EXTRA_MODULES=${{ github.workspace }}/openvino_contrib/modules -DBUILD_java_api=OFF -DBUILD_nvidia_plugin=OFF -DBUILD_custom_operations=OFF -DBUILD_openvino_code=OFF -DBUILD_token_merging=OFF -DENABLE_TESTS=ON -DENABLE_FUNCTIONAL_TESTS=ON -DENABLE_PLUGINS_XML=ON openvino
 
       - name: CMake - build
         run: cmake --build build -j`nproc` -- llama_cpp_plugin llama_cpp_e2e_tests
