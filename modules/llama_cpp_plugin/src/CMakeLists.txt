@@ -13,7 +13,7 @@ set(TARGET_NAME ${PLUGIN_LIBRARY_NAME})
 file(GLOB_RECURSE SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 file(GLOB_RECURSE HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp)
 
-if (NOT ENABLE_TEMPLATE_REGISTRATION)
+if (NOT ENABLE_LLAMA_CPP_PLUGIN_REGISTRATION)
     # Skip install and registration of template component
     set(skip_plugin SKIP_INSTALL SKIP_REGISTRATION)
 endif()
@@ -52,7 +52,7 @@ target_link_libraries(${TARGET_NAME} PRIVATE ggml)
 
 set_target_properties(${TARGET_NAME} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE ${ENABLE_LTO})
 
-if (ENABLE_TEMPLATE_REGISTRATION)
+if (ENABLE_LLAMA_CPP_PLUGIN_REGISTRATION)
     # Update the plugins.xml file
     ov_register_plugins(MAIN_TARGET ${TARGET_NAME})
 endif()

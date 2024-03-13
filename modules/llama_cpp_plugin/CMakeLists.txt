@@ -4,7 +4,7 @@ project(LlamaCppPlugin)
 
 find_package(OpenVINODeveloperPackage REQUIRED)
 
-ov_option(ENABLE_LLAMA_CPP_PLUGIN_REGISTRATION "Enables registration of LLAMA_CPP plugin" OFF)
+ov_option(ENABLE_LLAMA_CPP_PLUGIN_REGISTRATION "Enables registration of LLAMA_CPP plugin" ON)
 
 if(CMAKE_COMPILER_IS_GNUCXX)
     ov_add_compiler_flags(-Wall)
@@ -19,7 +19,6 @@ if(ENABLE_TESTS)
     enable_testing()
     add_subdirectory(tests/e2e)
 endif()
-
 
 # install
 
