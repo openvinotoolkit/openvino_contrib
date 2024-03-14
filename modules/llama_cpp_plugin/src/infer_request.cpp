@@ -1,3 +1,6 @@
+// Copyright (C) 2024 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 #include "infer_request.hpp"
 
 #include <openvino/runtime/ivariable_state.hpp>

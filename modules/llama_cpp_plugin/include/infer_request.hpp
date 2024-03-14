@@ -1,3 +1,6 @@
+// Copyright (C) 2024 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 #ifndef LLAMA_CPP_INFER_REQUEST_HPP
 #define LLAMA_CPP_INFER_REQUEST_HPP
 

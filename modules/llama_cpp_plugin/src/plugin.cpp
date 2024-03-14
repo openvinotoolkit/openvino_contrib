@@ -1,3 +1,6 @@
+// Copyright (C) 2024 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 #include "plugin.hpp"
 
 #include <openvino/runtime/properties.hpp>

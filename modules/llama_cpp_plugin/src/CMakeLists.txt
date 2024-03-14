@@ -1,3 +1,6 @@
+# Copyright (C) 2024 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 set( PLUGIN_LIBRARY_NAME CACHE STRING "Library name for the generated plugin" ${TARGET_NAME})
 if(NOT PLUGIN_LIBRARY_NAME)
     set( PLUGIN_LIBRARY_NAME "llama_cpp_plugin" )
