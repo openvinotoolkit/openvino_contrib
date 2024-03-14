@@ -38,8 +38,9 @@ jobs:
       - name: CMake - build
         run: cmake --build build -j`nproc` -- llama_cpp_plugin llama_cpp_e2e_tests
 
+
       - name: Upload build artifacts
-        uses: alehechka/upload-tartifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: build_artifacts
           path: ${{ github.workspace }}/openvino/bin/intel64/Release/
@@ -49,20 +50,23 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: Download build artifacts
-        uses: alehechka/download-tartifact@v2
+        uses: actions/download-artifact@v4
         with:
           name: build_artifacts
-          path: binaries
+          path: ${{ github.workspace }}/binaries
 
-      - name: Prepare test data
+      - name: Prepare test data - checkout llama.cpp repo
         uses: actions/checkout@v3
         with:
           repository: ggerganov/llama.cpp
           path: llama.cpp
-        run: pip install llama.cpp/requirements/requirements-convert-hf-to-gguf.txt
-        run: huggingface-cli huggingface-cli download gpt2 model.safetensors tokenizer.json tokenizer_config.json vocab.json config.json merges.txt --local-dir hf_gpt2
-        run: mkdir -p ${{ github.workspace }}/test_data
-        run: python3 llama.cpp/convert-hf-to-gguf.py hf_gpt2 --outtype f32 --outfile ${{ github.workspace }}/test_data/gpt2.gguf
+
+      - name: Prepare test data - convert test model files
+        run: |
+          pip install -r llama.cpp/requirements/requirements-convert-hf-to-gguf.txt
+          huggingface-cli download gpt2 model.safetensors tokenizer.json tokenizer_config.json vocab.json config.json merges.txt --local-dir hf_gpt2
+          mkdir -p ${{ github.workspace }}/test_data
+          python3 llama.cpp/convert-hf-to-gguf.py hf_gpt2 --outtype f32 --outfile ${{ github.workspace }}/test_data/gpt2.gguf
 
       - name: Run E2E tests
         run:  ${{ github.workspace }}/binaries/llama_cpp_e2e_tests
