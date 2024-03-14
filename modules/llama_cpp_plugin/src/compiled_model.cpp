@@ -54,28 +54,29 @@ LlamaCppModel::LlamaCppModel(const std::string& gguf_fname, const std::shared_pt
 
     ov::ParameterVector inputs{input_ids};
 
-    std::vector<std::pair<std::string, ov::element::Type_t>> unused_names_in_order = {
-        {"attention_mask", ov::element::Type_t::i64},
-        {"position_ids", ov::element::Type_t::i64},
-        {"beam_idx", ov::element::Type_t::i32}};
-    for (const auto& descr : unused_names_in_order) {
-        auto unused_inp = std::make_shared<ov::opset13::Parameter>(descr.second, ov::PartialShape({-1, -1}));
+    std::vector<std::tuple<std::string, ov::element::Type_t, ov::PartialShape>> additional_inputs_in_order = {
+        {"attention_mask", ov::element::Type_t::i64, {-1, -1}},
+        {"position_ids", ov::element::Type_t::i64, {-1, -1}},
+        {"beam_idx", ov::element::Type_t::i32, {-1, -1}}};
+
+    for (const auto& descr : additional_inputs_in_order) {
+        auto unused_inp = std::make_shared<ov::opset13::Parameter>(std::get<1>(descr), std::get<2>(descr));
         inputs.push_back(unused_inp);
     }
 
-    m_model = std::make_shared<ov::Model>(logits, inputs, "fake_ov_model_for_io_specification");
+    m_fake_model = std::make_shared<ov::Model>(logits, inputs, "fake_ov_model_for_io_specification");
 
-    m_model->inputs()[0].set_names({"input_ids"});
-    for (size_t i = 0; i < unused_names_in_order.size(); i++) {
-        m_model->inputs()[i + 1].set_names({unused_names_in_order[i].first});
+    m_fake_model->inputs()[0].set_names({"input_ids"});
+    for (size_t i = 0; i < additional_inputs_in_order.size(); i++) {
+        m_fake_model->inputs()[i + 1].set_names({std::get<0>(additional_inputs_in_order[i])});
     }
 
-    m_model->outputs()[0].set_names({"logits"});
+    m_fake_model->outputs()[0].set_names({"logits"});
 
-    for (auto input : m_model->inputs()) {
+    for (auto input : m_fake_model->inputs()) {
         m_fake_inputs.emplace_back(input);
     }
-    for (auto output : m_model->outputs()) {
+    for (auto output : m_fake_model->outputs()) {
         m_fake_outputs.emplace_back(output);
     }
 }

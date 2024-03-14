@@ -6,13 +6,15 @@ find_package(OpenVINODeveloperPackage REQUIRED)
 
 ov_option(ENABLE_LLAMA_CPP_PLUGIN_REGISTRATION "Enables registration of LLAMA_CPP plugin" ON)
 
-if(CMAKE_COMPILER_IS_GNUCXX)
-    ov_add_compiler_flags(-Wall)
-endif()
-
 add_subdirectory(src)
 
-add_subdirectory(third_party/llama.cpp)
+FetchContent_Declare(
+  llama_cpp
+  GIT_REPOSITORY https://github.com/ggerganov/llama.cpp
+  GIT_TAG        b2417
+)
+
+FetchContent_MakeAvailable(llama_cpp)
 
 if(ENABLE_TESTS)
     include(CTest)

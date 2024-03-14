@@ -35,11 +35,6 @@ target_include_directories(${TARGET_NAME} PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${LlamaCppPlugin_SOURCE_DIR}/include")
 
-# link common OpenVINO Runtime libraries
-target_link_libraries(${TARGET_NAME} PRIVATE
-    openvino::interpreter_backend
-    openvino::reference)
-
 set( LLAMA_TARGET_NAME CACHE STRING "Exact target exposed by llama.cpp to link against as the main llama.cpp library")
 if(NOT LLAMA_TARGET_NAME)
     set( LLAMA_TARGET_NAME "llama" )

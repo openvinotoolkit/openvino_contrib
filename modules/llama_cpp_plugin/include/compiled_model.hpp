@@ -70,7 +70,7 @@ namespace ov {
 
             llama_model* m_llama_model_ptr = nullptr;
             llama_context* m_llama_ctx = nullptr;
-            std::shared_ptr<ov::Model> m_model;
+            std::shared_ptr<ov::Model> m_fake_model;
             size_t* num_tokens_processed_ptr = nullptr;  // TODO: (vshampor) find a better place for this kind of storage
 
             std::vector<ov::Output<const ov::Node>> m_fake_inputs;
