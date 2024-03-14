@@ -37,14 +37,11 @@ LlamaCppModel::~LlamaCppModel() {
     llama_free(m_llama_ctx);
     llama_free_model(m_llama_model_ptr);
     llama_backend_free();
-    delete num_tokens_processed_ptr;
 }
 
 LlamaCppModel::LlamaCppModel(const std::string& gguf_fname, const std::shared_ptr<const IPlugin>& plugin)
     : ICompiledModel(nullptr, plugin),
       m_gguf_fname(gguf_fname) {
-    num_tokens_processed_ptr = new size_t;  // TODO (vshampor): hack, remove
-    *num_tokens_processed_ptr = 0;
     OPENVINO_DEBUG << "llama_cpp_plugin: loading llama model directly from GGUF... " << std::endl;
     llama_model_params mparams = llama_model_default_params();
     mparams.n_gpu_layers = 99;
