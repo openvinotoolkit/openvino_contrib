@@ -60,11 +60,11 @@ void llama_batch_add_reimpl(struct llama_batch& batch,
 }
 
 void LlamaCppSyncInferRequest::infer() {
-    auto input_ids_tensor_ptr = get_tensor(get_inputs()[0]);  // TODO (vshampor) correctly identify input_ids among
-                                                              // all inputs without hardcode
-                                                              //
+    auto input_ids_tensor_ptr = get_tensor(get_inputs()[0]);     // TODO (vshampor) correctly identify input_ids among
+                                                                 // all inputs without hardcode
+                                                                 //
     auto position_ids_tensor_ptr = get_tensor(get_inputs()[2]);  // TODO (vshampor) correctly identify input_ids among
-                                                              // all inputs without hardcode
+                                                                 // all inputs without hardcode
     OPENVINO_ASSERT(input_ids_tensor_ptr->get_element_type() == ov::element::Type_t::i64);
     OPENVINO_ASSERT(input_ids_tensor_ptr->get_shape().size() == 2);
     size_t sequence_length = input_ids_tensor_ptr->get_shape()[1];

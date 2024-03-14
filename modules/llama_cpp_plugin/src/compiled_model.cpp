@@ -18,14 +18,16 @@ LlamaCppModel::LlamaCppModel(const std::shared_ptr<ov::Model>& model,
                              const ov::SoPtr<ov::IRemoteContext>& context,
                              const std::shared_ptr<ov::threading::ITaskExecutor>& task_executor)
     : ICompiledModel(model, plugin, context, task_executor) {
-    OPENVINO_THROW_NOT_IMPLEMENTED("Currently only direct GGUF file loading is supported for the LLAMA_CPP* plugins");
+    OPENVINO_THROW_NOT_IMPLEMENTED("Currently only direct GGUF file loading is "
+                                   "supported for the LLAMA_CPP* plugins");
 }
 
 LlamaCppModel::LlamaCppModel(const std::shared_ptr<ov::Model>& ov_model,
                              std::istream& input_stream,
                              const std::shared_ptr<const IPlugin>& plugin)
     : ICompiledModel(ov_model, plugin) {
-    OPENVINO_THROW_NOT_IMPLEMENTED("Currently only direct GGUF file loading is supported for the LLAMA_CPP* plugins");
+    OPENVINO_THROW_NOT_IMPLEMENTED("Currently only direct GGUF file loading is "
+                                   "supported for the LLAMA_CPP* plugins");
 }
 
 LlamaCppModel::~LlamaCppModel() {

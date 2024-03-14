@@ -7,7 +7,8 @@ const std::string TEST_FILES_DIR = "test_data";
 
 // "Why is the Sun yellow?"
 const std::vector<int64_t> GPT2_PROMPT_TOKEN_IDS = {5195, 318, 262, 3825, 7872, 30};
-// "The Sun is a bright red, which means it is a bright red. The Sun is a bright red because it is a bright red."
+// "The Sun is a bright red, which means it is a bright red. The Sun is a bright
+// red because it is a bright red."
 const std::vector<int64_t> GPT2_REFERENCE_RESPONSE_TOKEN_IDS = {
     198, 464,  3825, 318, 257,  6016, 2266, 11,  543, 1724, 340,  318,  257, 6016, 2266, 13,
     383, 3825, 318,  257, 6016, 2266, 780,  340, 318, 257,  6016, 2266, 13,  198,  198,  464};
