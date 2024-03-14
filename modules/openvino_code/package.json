@@ -1,7 +1,7 @@
 {
   "publisher": "OpenVINO",
   "name": "openvino-code-completion",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "displayName": "OpenVINO Code Completion",
   "description": "VSCode extension for AI code completion with OpenVINO",
   "icon": "media/logo.png",
@@ -198,6 +198,17 @@
               "deepseek-coder"
             ],
             "description": "Which model to use for code generation."
+          },
+          "openvinoCode.device": {
+            "order": 0,
+            "type": "string",
+            "default": "GPU",
+            "enum": [
+              "CPU",
+              "GPU",
+              "NPU"
+            ],
+            "description": "Which device to use for code generation."
           },
           "openvinoCode.serverUrl": {
             "order": 1,

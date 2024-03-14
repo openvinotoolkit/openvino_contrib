@@ -1,4 +1,5 @@
 import { ModelName } from '@shared/model';
+import { DeviceName } from '@shared/device';
 import { WorkspaceConfiguration, workspace } from 'vscode';
 import { CONFIG_KEY } from './constants';
 
@@ -7,6 +8,7 @@ import { CONFIG_KEY } from './constants';
  */
 export type CustomConfiguration = {
   model: ModelName;
+  device: DeviceName;
   serverUrl: string;
   serverRequestTimeout: number;
   streamInlineCompletion: boolean;

@@ -86,7 +86,7 @@ class OVGenerator(GeneratorFunctor):
     def __init__(
         self,
         checkpoint: str,
-        device: str = "CPU",
+        device: str = "GPU",
         tokenizer_checkpoint: Optional[str] = None,
         assistant_checkpoint: Optional[str] = None,
         summarize_stop_tokens: Optional[Container[str]] = SUMMARIZE_STOP_TOKENS,
