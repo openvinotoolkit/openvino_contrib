@@ -12,6 +12,7 @@ namespace ov {
     namespace llama_cpp_plugin {
         class LlamaCppSyncInferRequest;
         class LlamaCppPlugin;
+        class LlamaCppState;
         class LlamaCppModel: public ICompiledModel {
         public:
             LlamaCppModel(const std::shared_ptr<ov::Model>& model,
@@ -79,6 +80,7 @@ namespace ov {
             std::vector<ov::Output<const ov::Node>> m_fake_outputs;
 
         friend class ov::llama_cpp_plugin::LlamaCppSyncInferRequest;
+        friend class ov::llama_cpp_plugin::LlamaCppState;
         };
     }
 }  // namespace ov

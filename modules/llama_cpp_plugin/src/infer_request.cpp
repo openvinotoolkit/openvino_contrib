@@ -3,11 +3,13 @@
 
 #include "infer_request.hpp"
 
+#include <memory>
 #include <openvino/runtime/ivariable_state.hpp>
 
 #include "llama.h"
 #include "openvino/runtime/make_tensor.hpp"
 #include "openvino/util/log.hpp"
+#include "state.hpp"
 
 namespace ov {
 namespace llama_cpp_plugin {
@@ -121,7 +123,7 @@ std::vector<ov::ProfilingInfo> LlamaCppSyncInferRequest::get_profiling_info() co
 
 std::vector<ov::SoPtr<ov::IVariableState>> LlamaCppSyncInferRequest::query_state() const {
     OPENVINO_DEBUG << "llama_cpp_plugin: query_state() called\n";
-    return {};
+    return {std::static_pointer_cast<ov::IVariableState>(std::make_shared<LlamaCppState>(m_compiled_model_ptr))};
 }
 }  // namespace llama_cpp_plugin
 }  // namespace ov
