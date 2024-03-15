@@ -14,7 +14,6 @@ namespace ov {
             LlamaCppState() = delete;
             LlamaCppState(const std::shared_ptr<const LlamaCppModel>& model_ptr) : m_model_ptr(model_ptr), IVariableState("llama_cpp_state") {}
             void reset() override {
-                std::cout << "VSHAMPOR: resetting state" << std::endl;
                 llama_kv_cache_clear(m_model_ptr->m_llama_ctx);
             }
         private:
