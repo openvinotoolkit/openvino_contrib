@@ -9,6 +9,7 @@
 #include <openvino/opsets/opset13.hpp>
 #include <openvino/runtime/properties.hpp>
 #include <openvino/util/log.hpp>
+#include <thread>
 
 #include "infer_request.hpp"
 #include "plugin.hpp"
@@ -47,6 +48,8 @@ LlamaCppModel::LlamaCppModel(const std::string& gguf_fname, const std::shared_pt
     mparams.n_gpu_layers = 99;
     m_llama_model_ptr = llama_load_model_from_file(gguf_fname.c_str(), mparams);
     llama_context_params cparams = llama_context_default_params();
+    cparams.n_threads =
+        std::thread::hardware_concurrency();  // TODO (vshampor): reuse equivalent setting defined by OV API
     m_llama_ctx = llama_new_context_with_model(m_llama_model_ptr, cparams);
     OPENVINO_DEBUG << "llama_cpp_plugin: llama model loaded successfully from GGUF..." << std::endl;
 
