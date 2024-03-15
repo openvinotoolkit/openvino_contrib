@@ -69,4 +69,6 @@ jobs:
           python3 llama.cpp/convert-hf-to-gguf.py hf_gpt2 --outtype f32 --outfile ${{ github.workspace }}/test_data/gpt2.gguf
 
       - name: Run E2E tests
-        run:  ${{ github.workspace }}/binaries/llama_cpp_e2e_tests
+        run: |
+          chmod +x ${{ github.workspace }}/binaries/llama_cpp_e2e_tests
+          ${{ github.workspace }}/binaries/llama_cpp_e2e_tests
