@@ -50,6 +50,7 @@ LlamaCppModel::LlamaCppModel(const std::string& gguf_fname, const std::shared_pt
     llama_context_params cparams = llama_context_default_params();
     cparams.n_threads =
         std::thread::hardware_concurrency();  // TODO (vshampor): reuse equivalent setting defined by OV API
+    cparams.n_ctx = 0;  // this means that the actual n_ctx will be taken equal to the model's train-time value
     m_llama_ctx = llama_new_context_with_model(m_llama_model_ptr, cparams);
     OPENVINO_DEBUG << "llama_cpp_plugin: llama model loaded successfully from GGUF..." << std::endl;
 
