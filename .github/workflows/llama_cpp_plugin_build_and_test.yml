@@ -68,6 +68,8 @@ jobs:
           mkdir -p ${{ github.workspace }}/test_data
           python3 llama.cpp/convert-hf-to-gguf.py hf_gpt2 --outtype f32 --outfile ${{ github.workspace }}/test_data/gpt2.gguf
 
+      - name: Install TBB
+        run: sudo apt install -y libtbb2
       - name: Run E2E tests
         run: |
           chmod +x ${{ github.workspace }}/binaries/llama_cpp_e2e_tests
