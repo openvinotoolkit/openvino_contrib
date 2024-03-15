@@ -68,10 +68,14 @@ jobs:
           mkdir -p ${{ github.workspace }}/test_data
           python3 llama.cpp/convert-hf-to-gguf.py hf_gpt2 --outtype f32 --outfile ${{ github.workspace }}/test_data/gpt2.gguf
 
-      - name: Install TBB
-        run: sudo apt install -y libtbb2
+      - name: Install libtbb2
+        run: |
+          wget https://storage.openvinotoolkit.org/dependencies/thirdparty/linux/oneapi-tbb-2021.2.4-lin.tgz
+          mkdir -p tbb
+          tar xvzf oneapi-tbb-2021.2.4-lin.tgz
+
       - name: Run E2E tests
         run: |
           chmod +x ${{ github.workspace }}/binaries/llama_cpp_e2e_tests
-          export LD_LIBRARY_PATH=${{ github.workspace }}/binaries
+          export LD_LIBRARY_PATH=${{ github.workspace }}/binaries:${{ github.workspace }}/tbb/lib
           ${{ github.workspace }}/binaries/llama_cpp_e2e_tests
