@@ -71,4 +71,5 @@ jobs:
       - name: Run E2E tests
         run: |
           chmod +x ${{ github.workspace }}/binaries/llama_cpp_e2e_tests
+          export LD_LIBRARY_PATH=${{ github.workspace }}/binaries
           ${{ github.workspace }}/binaries/llama_cpp_e2e_tests
