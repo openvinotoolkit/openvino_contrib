@@ -5,6 +5,7 @@ enum ModelId {
   DECICODER_1B_OPENVINO_INT8 = 'chgk13/decicoder-1b-openvino-int8',
   STABLECODE_COMPLETION_ALPHA_3B_4K_OPENVINO_INT8 = 'chgk13/stablecode-completion-alpha-3b-4k-openvino-int8',
   DEEPSEEK_CODER_1_3B = 'kumarijy/deepseek-code-1.3b_base_ov_int8',
+  PHI_2_2_7B = 'kumarijy/phi-2-2.7b_ov_int8',
 }
 
 export enum ModelName {
@@ -12,6 +13,7 @@ export enum ModelName {
   DECICODER_1B_OPENVINO_INT8 = 'decicoder-1b-openvino',
   STABLECODE_COMPLETION_ALPHA_3B_4K_OPENVINO_INT8 = 'stablecode-completion',
   DEEPSEEK_CODER_1_3B = 'deepseek-coder',
+  PHI_2_2_7B = 'phi-2',
 }
 
 export const MODEL_NAME_TO_ID_MAP: Record<ModelName, ModelId> = {
@@ -19,6 +21,7 @@ export const MODEL_NAME_TO_ID_MAP: Record<ModelName, ModelId> = {
   [ModelName.DECICODER_1B_OPENVINO_INT8]: ModelId.DECICODER_1B_OPENVINO_INT8,
   [ModelName.STABLECODE_COMPLETION_ALPHA_3B_4K_OPENVINO_INT8]: ModelId.STABLECODE_COMPLETION_ALPHA_3B_4K_OPENVINO_INT8,
   [ModelName.DEEPSEEK_CODER_1_3B]: ModelId.DEEPSEEK_CODER_1_3B,
+  [ModelName.PHI_2_2_7B]: ModelId.PHI_2_2_7B,
 };
 
 export const MODEL_SUPPORTED_FEATURES: Record<ModelName, Features[]> = {
@@ -26,4 +29,5 @@ export const MODEL_SUPPORTED_FEATURES: Record<ModelName, Features[]> = {
   [ModelName.DECICODER_1B_OPENVINO_INT8]: [Features.CODE_COMPLETION, Features.SUMMARIZATION],
   [ModelName.STABLECODE_COMPLETION_ALPHA_3B_4K_OPENVINO_INT8]: [Features.CODE_COMPLETION, Features.SUMMARIZATION],
   [ModelName.DEEPSEEK_CODER_1_3B]: [Features.CODE_COMPLETION, Features.SUMMARIZATION, Features.FIM],
+  [ModelName.PHI_2_2_7B]: [Features.CODE_COMPLETION],
 };
