@@ -1,7 +1,7 @@
 # Copyright (C) 2024 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-set(TARGET_NAME llama_cpp_e2e_tests)
+set(TARGET_NAME llama_cpp_func_tests)
 
 ov_add_test_target(
     NAME ${TARGET_NAME}

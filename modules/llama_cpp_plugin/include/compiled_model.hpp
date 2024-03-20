@@ -15,7 +15,7 @@ class LlamaCppPlugin;
 class LlamaCppState;
 class LlamaCppModel : public ICompiledModel {
 public:
-    LlamaCppModel(const std::string& gguf_fname, const std::shared_ptr<const IPlugin>& plugin);
+    LlamaCppModel(const std::string& gguf_fname, const std::shared_ptr<const IPlugin>& plugin, size_t num_threads = 0);
     /**
      * @brief Export compiled model to stream
      *

@@ -22,7 +22,9 @@ FetchContent_MakeAvailable(llama_cpp)
 if(ENABLE_TESTS)
     include(CTest)
     enable_testing()
+    add_subdirectory(tests/common)
     add_subdirectory(tests/e2e)
+    add_subdirectory(tests/functional)
 endif()
 
 # install
