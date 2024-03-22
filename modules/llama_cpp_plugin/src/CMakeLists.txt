@@ -25,14 +25,11 @@ endif()
 
 # adds a shared library with plugin
 ov_add_plugin(NAME ${TARGET_NAME}
-              DEVICE_NAME ${PLUGIN_DEVICE_NAME}
-              SOURCES ${SOURCES} ${HEADERS}
-              ${skip_plugin}
-              VERSION_DEFINES_FOR plugin.cpp
-              ADD_CLANG_FORMAT)
-
-# Enable support of CC for the plugin
-ov_mark_target_as_cc(${TARGET_NAME})
+    DEVICE_NAME ${PLUGIN_DEVICE_NAME}
+    SOURCES ${SOURCES} ${HEADERS}
+    ${skip_plugin}
+    VERSION_DEFINES_FOR plugin.cpp
+    ADD_CLANG_FORMAT)
 
 target_include_directories(${TARGET_NAME} PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"

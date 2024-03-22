@@ -23,38 +23,31 @@ LlamaCppPlugin::LlamaCppPlugin() : IPlugin() {
 }
 std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::compile_model(const std::shared_ptr<const ov::Model>& model,
                                                                   const ov::AnyMap& properties) const {
-    OPENVINO_DEBUG << "llama_cpp_plugin: LlamaCppPlugin::compile_model" << std::endl;
-    return compile_model(model, properties, {});
+    OPENVINO_THROW_NOT_IMPLEMENTED("Currently only direct GGUF file loading is "
+                                   "supported for the LLAMA_CPP* plugins");
 }
 
+std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::compile_model(const std::shared_ptr<const ov::Model>& model,
+                                                                  const ov::AnyMap& properties,
+                                                                  const ov::SoPtr<ov::IRemoteContext>& context) const {
+    OPENVINO_THROW_NOT_IMPLEMENTED("Currently only direct GGUF file loading is "
+                                   "supported for the LLAMA_CPP* plugins");
+}
 std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::compile_model(const std::string& fname,
                                                                   const ov::AnyMap& properties) const {
     return std::make_shared<LlamaCppModel>(fname, shared_from_this());
 }
-std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::compile_model(const std::shared_ptr<const ov::Model>& model,
-                                                                  const ov::AnyMap& properties,
-                                                                  const ov::SoPtr<ov::IRemoteContext>& context) const {
-    OPENVINO_DEBUG << "llama_cpp_plugin: compile_model called in C++" << std::endl;
-    return std::make_shared<LlamaCppModel>(model->clone(),
-                                           shared_from_this(),
-                                           context,
-                                           get_executor_manager()->get_executor(template_exclusive_executor));
-}
 
 void LlamaCppPlugin::set_property(const ov::AnyMap& properties) {
     for (const auto& map_entry : properties) {
-        if (map_entry.first == ov::cache_dir.name()) {
-            m_cache_dir = map_entry.second.as<std::string>();
-        } else {
-            OPENVINO_THROW_NOT_IMPLEMENTED("llama_cpp_plugin: setting property ", map_entry.first, "not implemented");
-        }
+        OPENVINO_THROW_NOT_IMPLEMENTED("llama_cpp_plugin: setting property ", map_entry.first, "not implemented");
     }
 }
 
 ov::Any LlamaCppPlugin::get_property(const std::string& name, const ov::AnyMap& arguments) const {
     if (ov::supported_properties == name) {
         return decltype(ov::supported_properties)::value_type(
-            std::vector<PropertyName>({ov::cache_dir, ov::device::capabilities, ov::device::full_name}));
+            std::vector<PropertyName>({ov::device::capabilities, ov::device::full_name}));
     }
     if (ov::device::capabilities == name) {
         return decltype(ov::device::capabilities)::value_type(
@@ -65,9 +58,6 @@ ov::Any LlamaCppPlugin::get_property(const std::string& name, const ov::AnyMap& 
             std::vector<PropertyName>({ov::internal::caching_properties}));
     }
 
-    if (ov::cache_dir == name) {
-        return m_cache_dir;
-    }
     if (ov::internal::caching_properties == name) {
         return std::vector<ov::PropertyName>{ov::device::full_name};
     }

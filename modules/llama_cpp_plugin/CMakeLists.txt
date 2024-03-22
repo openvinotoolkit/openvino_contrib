@@ -7,15 +7,15 @@ project(LlamaCppPlugin)
 
 find_package(OpenVINODeveloperPackage REQUIRED)
 
-ov_option(ENABLE_LLAMA_CPP_PLUGIN_REGISTRATION "Enables registration of LLAMA_CPP plugin" ON)
+ov_option(ENABLE_LLAMA_CPP_PLUGIN_REGISTRATION "Enables registration of LLAMA_CPP plugin" OFF)
 
 add_subdirectory(src)
 
 FetchContent_Declare(
-  llama_cpp
-  GIT_REPOSITORY https://github.com/ggerganov/llama.cpp
-  GIT_TAG        b2417
-)
+    llama_cpp
+    GIT_REPOSITORY https://github.com/ggerganov/llama.cpp
+    GIT_TAG        b2417
+    )
 
 FetchContent_MakeAvailable(llama_cpp)
 
