@@ -2,16 +2,12 @@ name: llama_cpp_plugin_build_and_test
 
 on:
   pull_request:
-    types:
-      - opened
-      - reopened
-      - synchronize
     paths:
       - 'modules/llama_cpp_plugin/**'
 
 jobs:
   build_ubuntu20:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-20.04-8-cores
     steps:
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v1.14
@@ -19,13 +15,13 @@ jobs:
           cmake-version: '3.24.x'
 
       - name: Checkout openvino_contrib
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
           path: openvino_contrib
 
       - name: Checkout openvino
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
           repository: openvinotoolkit/openvino
@@ -55,7 +51,7 @@ jobs:
           path: ${{ github.workspace }}/binaries
 
       - name: Prepare test data - checkout llama.cpp repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ggerganov/llama.cpp
           path: llama.cpp
