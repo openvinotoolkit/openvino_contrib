@@ -19,9 +19,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["black", "ruff"]
-  - 'ignore' -> 'lint.ignore'
-  - 'select' -> 'lint.select'
-  - 'isort' -> 'lint.isort'
+
 [build-system]
 requires = ["setuptools>=43.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -38,4 +36,4 @@ select = ["C", "E", "F", "I", "W"]
 line-length = 119
 
 [tool.ruff.isort]
-lines-after-imports = 2
+lines-after-imports = 2d
