@@ -13,6 +13,7 @@ import glob
 import errno
 import multiprocessing
 import typing
+import sysconfig
 import defusedxml.ElementTree as ET
 from defusedxml import defuse_stdlib
 
@@ -39,7 +40,7 @@ if not any(pl in sys.platform for pl in platforms):
 
 PACKAGE_NAME = config('WHEEL_PACKAGE_NAME', 'openvino-nvidia')
 OPENVINO_REPO_URI = config('OPENVINO_REPO_DOWNLOAD_URL', 'https://github.com/openvinotoolkit/openvino.git')
-WHEEL_VERSION = config('WHEEL_VERSION', '2022.3.0')
+WHEEL_VERSION = config('WHEEL_VERSION', "2023.1.0")
 OPENVINO_REPO_TAG = config('OPENVINO_REPO_TAG', WHEEL_VERSION)
 NVIDIA_PLUGIN_CMAKE_TARGET_NAME = 'openvino_nvidia_gpu_plugin'
 LIBS_RPATH = '$ORIGIN' if sys.platform == 'linux' else '@loader_path'
@@ -147,6 +148,7 @@ def create_pip_command(*options):
 
 def run_command(command, cwd: str = None, on_fail_msg: str = '', env=None):
     try:
+        print(f"run_command: {' '.join(command)}")
         subprocess.check_call(command, cwd=cwd, env=env) # nosec - disable B603:subprocess_without_shell_equals_true check
     except subprocess.CalledProcessError as e:
         raise RuntimeError(on_fail_msg) from e
@@ -226,8 +228,14 @@ class BuildCMakeLib(build_clib):
         if self.cmake_exec is None:
             raise FileNotFoundError("cmake path not located on path")
 
-        self.mkpath(self.deps_dir)
         self.clone_openvino_src()
+        # TODO: Uncomment when issue with conan dependecies will be resolved.
+        #       When uncomment this line, got the following error during
+        #       cmake configuration step:
+        #           CMake Error at build/protobuf-Target-release.cmake:74 (set_property):
+        #               set_property can not be used on an ALIAS target.
+        #               ...
+        # self.openvino_conan_install()
         self.configure_openvino_cmake()
         if self.force:
             self.build_openvino()
@@ -235,6 +243,8 @@ class BuildCMakeLib(build_clib):
         self.locate_built_lib()
 
     def clone_openvino_src(self):
+        self.mkpath(self.deps_dir)
+
         if os.path.isdir(self.openvino_src_dir):
             return
         self.announce("Cloning the OpenVINO sources", level=3)
@@ -246,16 +256,38 @@ class BuildCMakeLib(build_clib):
                     cwd=self.openvino_src_dir,
                     on_fail_msg='Failed to update the OpenVINO git submodules')
 
+    def openvino_conan_install(self):
+        if not os.path.isdir(self.openvino_build_dir):
+            self.mkpath(self.openvino_build_dir)
+
+        run_command(["conan",
+                     "install",
+                     f'-of={self.openvino_build_dir}',
+                     '--build=missing',
+                     self.openvino_src_dir],
+                     cwd=self.openvino_build_dir,
+                     on_fail_msg='Failed to install conan dependecies for OpenVINO CMake Project')
+
     def configure_openvino_cmake(self):
         if not os.path.isdir(self.openvino_build_dir):
             self.mkpath(self.openvino_build_dir)
 
-        configure_command = [self.cmake_exec, f'-S{self.openvino_src_dir}', f'-B{self.openvino_build_dir}',
-                             f'-DCMAKE_BUILD_TYPE={self.build_configuration_name}',
+        python_include_dir = sysconfig.get_path("include")
+
+        configure_command = [self.cmake_exec,
+                             '-G', 'Unix Makefiles',
+                             f'-S{self.openvino_src_dir}',
+                             f'-B{self.openvino_build_dir}',
+                             '-DVERBOSE_BUILD=ON',
+                             '-DENABLE_NVIDIA=ON',
                              '-DENABLE_PYTHON=ON',
                              f'-DPYTHON_EXECUTABLE={sys.executable}',
-                             f'-DWHEEL_VERSION={WHEEL_VERSION}',
-                             '-DENABLE_WHEEL=ON']
+                             f'-DPYTHON_INCLUDE_DIR={python_include_dir}',
+                             '-DNGRAPH_PYTHON_BUILD_ENABLE=ON',
+                             f'-DCMAKE_BUILD_TYPE={self.build_configuration_name}',
+                             f'-DOPENVINO_EXTRA_MODULES={self.openvino_contrib_src_dir}/modules/nvidia_plugin',
+                             '-DENABLE_WHEEL=ON',
+                             f'-DWHEEL_VERSION={WHEEL_VERSION}']
         self.announce("Configuring OpenVINO CMake Project", level=3)
         run_command(configure_command,
                     cwd=self.openvino_build_dir,
