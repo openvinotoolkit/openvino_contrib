@@ -1,10 +1,10 @@
 from src.utils import get_parser, setup_logger
-import logging
+#import logging
 
 
 # Logger should be set up before other imports to propagate logging config to other packages
 setup_logger()
-logger = logging.getLogger("")
+#logger = logging.getLogger("")
 
 import uvicorn  # noqa: E402
 
