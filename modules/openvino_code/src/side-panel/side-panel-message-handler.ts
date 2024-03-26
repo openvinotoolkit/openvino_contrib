@@ -4,6 +4,7 @@ import { Webview, commands } from 'vscode';
 import { settingsService } from '../settings/settings.service';
 import { COMMANDS } from '../constants';
 import { ModelName } from '@shared/model';
+import { DeviceName } from '@shared/device';
 
 type SidePanelMessageHandlerType = (webview: Webview, payload?: ISidePanelMessage['payload']) => void;
 
@@ -12,6 +13,8 @@ const sidePanelMessageHandlers: Record<SidePanelMessageTypes, SidePanelMessageHa
   [SidePanelMessageTypes.SETTINGS_CLICK]: () => settingsService.openSettings(),
   [SidePanelMessageTypes.MODEL_CHANGE]: (_, payload) =>
     settingsService.updateSetting('model', (payload as { modelName: ModelName }).modelName),
+  [SidePanelMessageTypes.DEVICE_CHANGE]: (_, payload) =>
+    settingsService.updateSetting('device', (payload as { deviceName: DeviceName }).deviceName),
   [SidePanelMessageTypes.START_SERVER_CLICK]: () => void commands.executeCommand(COMMANDS.START_SERVER_NATIVE),
   [SidePanelMessageTypes.STOP_SERVER_CLICK]: () => void commands.executeCommand(COMMANDS.STOP_SERVER_NATIVE),
   [SidePanelMessageTypes.SHOW_SERVER_LOG_CLICK]: () => void commands.executeCommand(COMMANDS.SHOW_SERVER_LOG),
