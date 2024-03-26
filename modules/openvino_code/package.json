@@ -48,6 +48,7 @@
     "build:side-panel": "npm run build --workspace side-panel-ui",
     "prettier": "prettier --write src/",
     "prettier:check": "prettier --check src/",
+    //"lint": "eslint . --max-warnings 0",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
     "lint:side-panel": "npm run lint -w side-panel-ui",
@@ -57,6 +58,7 @@
     "vsce:publish": "vsce publish",
     "ovsx:publish": "ovsx publish",
     "clear-out": "rimraf ./out"
+    
   },
   "devDependencies": {
     "@types/glob": "8.1.0",
