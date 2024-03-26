@@ -1,4 +1,4 @@
-from src.utils import get_parser, setup_logger
+from src.utils import setup_logger, get_parser
 #import logging
 
 
@@ -6,10 +6,10 @@ from src.utils import get_parser, setup_logger
 setup_logger()
 #logger = logging.getLogger("")
 
-import uvicorn  # noqa: E402
 
-from src.app import app, get_generator_dummy  # noqa: E402
 from src.generators import get_generator_dependency  # noqa: E402
+from src.app import app, get_generator_dummy  # noqa: E402
+import uvicorn  # noqa: E402
 
 
 def main():
