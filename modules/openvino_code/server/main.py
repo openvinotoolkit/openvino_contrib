@@ -17,8 +17,8 @@ def main():
 
     # temporary solution for cli args passing
 
-    logger.error(args.model)
-    logger.error(args.device)
+    #logger.error(args.model)
+    #logger.error(args.device)
     generator_dependency = get_generator_dependency(args.model, args.device, args.tokenizer_checkpoint, args.assistant)
     app.dependency_overrides[get_generator_dummy] = generator_dependency
 
