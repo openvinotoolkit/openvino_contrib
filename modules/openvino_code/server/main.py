@@ -8,8 +8,8 @@ setup_logger()
 
 import uvicorn  # noqa: E402
 
-from src.app import app, get_generator_dummy  # noqa: E402
 from src.generators import get_generator_dependency  # noqa: E402
+from src.app import app, get_generator_dummy  # noqa: E402
 
 
 def main():
