@@ -36,5 +36,4 @@ lint.select = ["C", "E", "F", "I", "W"]
 line-length = 119
 
 [tool.ruff.lint.isort]
-detect-same-package = false
 lines-after-imports = 2
