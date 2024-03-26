@@ -31,8 +31,8 @@ target-versions = ["py38", "py39", "py310", "py311"]
 
 
 [tool.ruff]
-ignore = ["C901", "E501", "E741", "W605"]
-select = ["C", "E", "F", "I", "W"]
+lint.ignore = ["C901", "E501", "E741", "W605"]
+lint.select = ["C", "E", "F", "I", "W"]
 line-length = 119
 
 [tool.ruff.isort]
