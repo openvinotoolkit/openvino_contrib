@@ -1,4 +1,4 @@
-import { ModelName } from '@shared/model';
+//import { ModelName } from '@shared/model';
 import { DeviceName } from '@shared/device';
 import { Select, SelectOptionProps } from '../../../shared/Select/Select';
 import { ServerStatus } from '@shared/server-state';
