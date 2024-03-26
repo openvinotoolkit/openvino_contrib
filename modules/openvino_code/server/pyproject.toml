@@ -36,4 +36,4 @@ select = ["C", "E", "F", "I", "W"]
 line-length = 119
 
 [tool.ruff.isort]
-lines-after-imports = 2d
+lines-after-imports = 2
