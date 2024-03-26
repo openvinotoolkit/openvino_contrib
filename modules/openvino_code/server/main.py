@@ -1,16 +1,13 @@
-import uvicorn  # noqa: E402
-
-from src.app import app, get_generator_dummy  # noqa: E402
-from src.generators import get_generator_dependency  # noqa: E402
 from src.utils import setup_logger, get_parser
-#import logging
 
 
 # Logger should be set up before other imports to propagate logging config to other packages
 setup_logger()
-#logger = logging.getLogger("")
 
+import uvicorn  # noqa: E402
 
+from src.app import app, get_generator_dummy  # noqa: E402
+from src.generators import get_generator_dependency  # noqa: E402
 
 
 def main():
