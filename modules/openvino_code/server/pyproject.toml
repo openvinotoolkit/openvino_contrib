@@ -31,9 +31,13 @@ target-versions = ["py38", "py39", "py310", "py311"]
 
 
 [tool.ruff]
-lint.ignore = ["C901", "E501", "E741", "W605"]
+lint.ignore = ["C901", "E501", "E741", "W605", "F401"]
 lint.select = ["C", "E", "F", "I", "W"]
+lint.extend-safe-fixes = ["F601"]
+lint.extend-unsafe-fixes = ["UP034"]
+lint.fixable = ["F401"]
 line-length = 119
+
 
 [tool.ruff.lint.isort]
 lines-after-imports = 2
