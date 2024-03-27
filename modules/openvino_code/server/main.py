@@ -1,4 +1,4 @@
-from src.utils import setup_logger, get_parser #noqa: I001
+from src.utils import setup_logger, get_parser 
 
 # Logger should be set up before other imports to propagate logging config to other packages
 setup_logger()
