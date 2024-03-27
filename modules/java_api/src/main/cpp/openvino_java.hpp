@@ -9,6 +9,7 @@ extern "C"
 #endif
     //ov
     JNIEXPORT void JNICALL Java_org_intel_openvino_Openvino_serialize(JNIEnv *, jobject, jlong, jstring, jstring);
+    JNIEXPORT void JNICALL Java_org_intel_openvino_Openvino_SaveModel(JNIEnv *, jobject, jlong, jstring, jboolean);
 
     // ov::Core
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_GetCore(JNIEnv *, jobject);

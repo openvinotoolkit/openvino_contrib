@@ -20,3 +20,12 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_Openvino_serialize(JNIEnv *env, j
         serialize(*model, xml_path, bin_path);
     )
 }
+
+JNIEXPORT void JNICALL Java_org_intel_openvino_Openvino_SaveModel(JNIEnv *env, jobject obj, jlong modelAddr, jstring outputModel, jboolean compressToFp16)
+{
+    JNI_METHOD("SaveModel",
+        std::string n_output_model = jstringToString(env, outputModel);
+        std::shared_ptr<const Model> *model = reinterpret_cast<std::shared_ptr<const Model> *>(modelAddr);
+        save_model(*model, n_output_model, (bool) compressToFp16);
+    )
+}
