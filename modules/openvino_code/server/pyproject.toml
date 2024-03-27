@@ -27,7 +27,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.black]
 line-length = 119
-target_versions = ['py38', 'py39', 'py310', 'py311']
+target-versions = ['py38', 'py39', 'py310', 'py311']
 include = '\.pyi?$'
 # 'extend-exclude' excludes files or directories in addition to the defaults
 extend-exclude = '''
