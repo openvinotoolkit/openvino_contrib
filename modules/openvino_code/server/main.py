@@ -1,4 +1,4 @@
-from src.utils import setup_logger, get_parser
+from src.utils import get_parser, setup_logger
 
 # Logger should be set up before other imports to propagate logging config to other packages
 setup_logger()
