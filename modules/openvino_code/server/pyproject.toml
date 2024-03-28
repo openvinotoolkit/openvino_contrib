@@ -40,7 +40,7 @@ extend-exclude = '''
 '''
 
 [tool.ruff]
-lint.ignore = ["C901", "E501", "E741", "W605", "F401"]
+lint.ignore = ["C901", "E501", "E741", "W605", "F401", "W292"]
 lint.select = ["C", "E", "F", "I", "W"]
 lint.extend-safe-fixes = ["F601"]
 lint.extend-unsafe-fixes = ["UP034"]
