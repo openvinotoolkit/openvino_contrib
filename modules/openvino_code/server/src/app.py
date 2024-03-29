@@ -54,7 +54,9 @@ class GenerationDocStringRequest(BaseModel):
         description="Doc string format passed from extension settings [google | numpy | sphinx | dockblockr | ...]",
         example="numpy",
     )
-    definition: str = Field("", description="Function signature", example="def fibonacci(n):")
+    definition: str = Field(
+        "", description="Function signature", example="def fibonacci(n):"
+    )
     parameters: GenerationParameters
 
 
@@ -111,10 +113,16 @@ async def generate_stream(
     request: Request,
     generator: GeneratorFunctor = Depends(get_generator_dummy),
 ) -> StreamingResponse:
-    generation_request = TypeAdapter(GenerationRequest).validate_python(await request.json())
+    generation_request = TypeAdapter(GenerationRequest).validate_python(
+        await request.json()
+    )
     logger.info(generation_request)
     return StreamingResponse(
-        generator.generate_stream(generation_request.inputs, generation_request.parameters.model_dump(), request)
+        generator.generate_stream(
+            generation_request.inputs,
+            generation_request.parameters.model_dump(),
+            request,
+        )
     )
 
 
@@ -127,7 +135,11 @@ async def summarize(
 
     start = perf_counter()
     generated_text: str = generator.summarize(
-        request.inputs, request.template, request.definition, request.format, request.parameters.model_dump()
+        request.inputs,
+        request.template,
+        request.definition,
+        request.format,
+        request.parameters.model_dump(),
     )
     stop = perf_counter()
 
@@ -148,6 +160,10 @@ async def summarize_stream(
     logger.info(request)
     return StreamingResponse(
         generator.summarize_stream(
-            request.inputs, request.template, request.definition, request.format, request.parameters.model_dump()
+            request.inputs,
+            request.template,
+            request.definition,
+            request.format,
+            request.parameters.model_dump(),
         )
     )

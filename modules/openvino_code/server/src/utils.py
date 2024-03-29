@@ -9,7 +9,9 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument("--port", type=int, default="8000")
 
     parser.add_argument("--model", type=str, required=True)
-    parser.add_argument("--tokenizer_checkpoint", type=str, required=False, default=None)
+    parser.add_argument(
+        "--tokenizer_checkpoint", type=str, required=False, default=None
+    )
     parser.add_argument("--device", type=str, required=False, default="CPU")
     parser.add_argument("--assistant", type=str, required=False, default=None)
     parser.add_argument("--summarization-endpoint", action="store_true")
@@ -34,7 +36,9 @@ def get_logger(
 class ServerLogger(logging.Logger):
     _server_log_prefix = "[OpenVINO Code Server Log]"
 
-    default_formatter = logging.Formatter(f"{_server_log_prefix} %(asctime)s %(levelname)s %(message)s")
+    default_formatter = logging.Formatter(
+        f"{_server_log_prefix} %(asctime)s %(levelname)s %(message)s"
+    )
 
     def __init__(self, name):
         super(ServerLogger, self).__init__(name)
