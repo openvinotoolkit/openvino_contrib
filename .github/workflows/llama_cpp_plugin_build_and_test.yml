@@ -31,7 +31,7 @@ jobs:
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DOPENVINO_EXTRA_MODULES=${{ github.workspace }}/openvino_contrib/modules/llama_cpp_plugin -DENABLE_TESTS=ON -DENABLE_FUNCTIONAL_TESTS=ON -DENABLE_PLUGINS_XML=ON -DENABLE_LLAMA_CPP_PLUGIN_REGISTRATION=ON openvino
 
       - name: CMake - build
-        run: cmake --build build -j`nproc` -- llama_cpp_plugin llama_cpp_e2e_tests
+        run: cmake --build build -j`nproc` -- llama_cpp_plugin llama_cpp_e2e_tests llama_cpp_func_tests
 
 
       - name: Upload build artifacts
@@ -68,6 +68,12 @@ jobs:
           wget https://storage.openvinotoolkit.org/dependencies/thirdparty/linux/oneapi-tbb-2021.2.4-lin.tgz
           mkdir -p tbb
           tar xvzf oneapi-tbb-2021.2.4-lin.tgz
+
+      - name: Run functional tests
+        run: |
+          chmod +x ${{ github.workspace }}/binaries/llama_cpp_func_tests
+          export LD_LIBRARY_PATH=${{ github.workspace }}/binaries:${{ github.workspace }}/tbb/lib
+          ${{ github.workspace }}/binaries/llama_cpp_func_tests
 
       - name: Run E2E tests
         run: |
