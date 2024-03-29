@@ -28,6 +28,8 @@ build-backend = "setuptools.build_meta"
 [tool.black]
 line-length = 119
 target-version = ['py38', 'py39', 'py310', 'py311']
+unstable = true
+preview = true
 
 [tool.ruff]
 lint.ignore = ["C901", "E501", "E741", "W605", "F401", "W292"]
