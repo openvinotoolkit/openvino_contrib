@@ -1,4 +1,7 @@
-from src.utils import get_parser, setup_logger
+from src.utils import (
+    get_parser, 
+    setup_logger,
+)
 
 
 # Logger should be set up before other imports to propagate logging config to other packages
@@ -6,7 +9,10 @@ setup_logger()
 
 import uvicorn  # noqa: E402
 
-from src.app import app, get_generator_dummy  # noqa: E402
+from src.app import (
+    app, 
+    get_generator_dummy,  # noqa: E402
+)
 from src.generators import get_generator_dependency  # noqa: E402
 
 
