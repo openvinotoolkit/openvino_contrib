@@ -54,9 +54,7 @@ class GenerationDocStringRequest(BaseModel):
         description="Doc string format passed from extension settings [google | numpy | sphinx | dockblockr | ...]",
         example="numpy",
     )
-    definition: str = Field(
-        "", description="Function signature", example="def fibonacci(n):"
-    )
+    definition: str = Field("", description="Function signature", example="def fibonacci(n):")
     parameters: GenerationParameters
 
 
@@ -113,9 +111,7 @@ async def generate_stream(
     request: Request,
     generator: GeneratorFunctor = Depends(get_generator_dummy),
 ) -> StreamingResponse:
-    generation_request = TypeAdapter(GenerationRequest).validate_python(
-        await request.json()
-    )
+    generation_request = TypeAdapter(GenerationRequest).validate_python(await request.json())
     logger.info(generation_request)
     return StreamingResponse(
         generator.generate_stream(

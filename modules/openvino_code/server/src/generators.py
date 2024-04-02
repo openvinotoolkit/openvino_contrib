@@ -40,18 +40,14 @@ OVModel = Union[OVModelForSeq2SeqLM, OVModelForCausalLM]
 model_dir = Path("models")
 model_dir.mkdir(exist_ok=True)
 
-SUMMARIZE_INSTRUCTION = (
-    "{function}\n\n# The function with {style} style docstring\n\n{signature}\n"
-)
+SUMMARIZE_INSTRUCTION = "{function}\n\n# The function with {style} style docstring\n\n{signature}\n"
 SUMMARIZE_STOP_TOKENS = ("\r\n", "\n")
 
 
 def get_model_class(checkpoint: Union[str, Path]) -> Type[OVModel]:
     config = AutoConfig.from_pretrained(checkpoint)
     architecture: str = config.architectures[0]
-    if architecture.endswith("ConditionalGeneration") or architecture.endswith(
-        "Seq2SeqLM"
-    ):
+    if architecture.endswith("ConditionalGeneration") or architecture.endswith("Seq2SeqLM"):
         return OVModelForSeq2SeqLM
 
     return OVModelForCausalLM
@@ -62,9 +58,7 @@ def get_model(checkpoint: str, device: str = "CPU") -> OVModel:
     model_path = model_dir / Path(checkpoint)
     if model_path.exists():
         model_class = get_model_class(model_path)
-        model = model_class.from_pretrained(
-            model_path, ov_config=ov_config, compile=False, device=device
-        )
+        model = model_class.from_pretrained(model_path, ov_config=ov_config, compile=False, device=device)
     else:
         model_class = get_model_class(checkpoint)
         try:
@@ -97,9 +91,7 @@ class GeneratorFunctor:
     def __call__(self, input_text: str, parameters: Dict[str, Any]) -> str:
         raise NotImplementedError
 
-    async def generate_stream(
-        self, input_text: str, parameters: Dict[str, Any], request: Request
-    ):
+    async def generate_stream(self, input_text: str, parameters: Dict[str, Any], request: Request):
         raise NotImplementedError
 
     def summarize(
@@ -154,14 +146,9 @@ class OVGenerator(GeneratorFunctor):
         if summarize_stop_tokens:
             stop_tokens = []
             for token_id in self.tokenizer.vocab.values():
-                if any(
-                    stop_word in self.tokenizer.decode(token_id)
-                    for stop_word in summarize_stop_tokens
-                ):
+                if any(stop_word in self.tokenizer.decode(token_id) for stop_word in summarize_stop_tokens):
                     stop_tokens.append(token_id)
-            self.summarize_stopping_criteria = StoppingCriteriaList(
-                [StopOnTokens(stop_tokens)]
-            )
+            self.summarize_stopping_criteria = StoppingCriteriaList([StopOnTokens(stop_tokens)])
 
     def __call__(self, input_text: str, parameters: Dict[str, Any]) -> str:
         input_ids = self.tokenizer.encode(input_text, return_tensors="pt")
@@ -172,21 +159,15 @@ class OVGenerator(GeneratorFunctor):
             stopping_criteria = StoppingCriteriaList([stop_on_time])
 
         prompt_len = input_ids.shape[-1]
-        config = GenerationConfig.from_dict(
-            {**self.generation_config.to_dict(), **parameters}
-        )
+        config = GenerationConfig.from_dict({**self.generation_config.to_dict(), **parameters})
         output_ids = self.model.generate(
             input_ids,
             generation_config=config,
             stopping_criteria=stopping_criteria,
             **self.assistant_model_config,
         )[0][prompt_len:]
-        logger.info(
-            f"Number of input tokens: {prompt_len}; generated {len(output_ids)} tokens"
-        )
-        return self.tokenizer.decode(
-            output_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
-        )
+        logger.info(f"Number of input tokens: {prompt_len}; generated {len(output_ids)} tokens")
+        return self.tokenizer.decode(output_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
 
     async def generate_stream(
         self,
@@ -195,13 +176,9 @@ class OVGenerator(GeneratorFunctor):
         request: Optional[Request] = None,
     ) -> Generator[str, None, None]:
         input_ids = self.tokenizer.encode(input_text, return_tensors="pt")
-        streamer = TextIteratorStreamer(
-            self.tokenizer, skip_prompt=True, skip_special_tokens=True
-        )
+        streamer = TextIteratorStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True)
         parameters["streamer"] = streamer
-        config = GenerationConfig.from_dict(
-            {**self.generation_config.to_dict(), **parameters}
-        )
+        config = GenerationConfig.from_dict({**self.generation_config.to_dict(), **parameters})
 
         stop_on_tokens = StopOnTokens([])
 
@@ -242,9 +219,7 @@ class OVGenerator(GeneratorFunctor):
         parameters: Dict[str, Any],
         stopping_criteria: Optional[StoppingCriteriaList] = None,
     ) -> str:
-        config = GenerationConfig.from_dict(
-            {**self.generation_config.to_dict(), **parameters}
-        )
+        config = GenerationConfig.from_dict({**self.generation_config.to_dict(), **parameters})
 
         prompt = torch.tensor([[]], dtype=torch.int64)
         buffer = StringIO()
@@ -264,12 +239,8 @@ class OVGenerator(GeneratorFunctor):
                 :, :-1
             ]  # skip the last token - stop token
 
-            decoded = self.tokenizer.decode(
-                prompt[0, prev_len:], skip_special_tokens=True
-            )
-            buffer.write(
-                decoded.lstrip(" ")
-            )  # hack to delete leadding spaces if there are any
+            decoded = self.tokenizer.decode(prompt[0, prev_len:], skip_special_tokens=True)
+            buffer.write(decoded.lstrip(" "))  # hack to delete leadding spaces if there are any
         buffer.write(input_parts[-1])
         return buffer.getvalue()
 
@@ -279,9 +250,7 @@ class OVGenerator(GeneratorFunctor):
         parameters: Dict[str, Any],
         stopping_criteria: Optional[StoppingCriteriaList] = None,
     ) -> Generator[str, None, None]:
-        config = GenerationConfig.from_dict(
-            {**self.generation_config.to_dict(), **parameters}
-        )
+        config = GenerationConfig.from_dict({**self.generation_config.to_dict(), **parameters})
 
         prompt = self.tokenizer.encode(input_parts[0], return_tensors="pt")
         for text_input in input_parts[1:-1]:
@@ -300,9 +269,7 @@ class OVGenerator(GeneratorFunctor):
                 :, :-1
             ]  # skip the last token - stop token
 
-            decoded = self.tokenizer.decode(
-                prompt[0, prev_len:], skip_special_tokens=True
-            )
+            decoded = self.tokenizer.decode(prompt[0, prev_len:], skip_special_tokens=True)
             yield decoded.lstrip(" ")  # hack to delete leadding spaces if there are any
 
         yield input_parts[-1]
@@ -373,9 +340,7 @@ class StopOnTokens(StoppingCriteria):
         self.cancelled = False
         self.token_ids = torch.tensor(token_ids, requires_grad=False)
 
-    def __call__(
-        self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
-    ) -> bool:
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
         if self.cancelled:
             return True
         return torch.any(torch.eq(input_ids[0, -1], self.token_ids)).item()
@@ -400,6 +365,4 @@ class StopOnTime(StoppingCriteria):
         self.time_for_prev_token = elapsed
         self.time = current_time
 
-        return (
-            self.stop_until < current_time + self.time_for_prev_token * self.grow_factor
-        )
+        return self.stop_until < current_time + self.time_for_prev_token * self.grow_factor
