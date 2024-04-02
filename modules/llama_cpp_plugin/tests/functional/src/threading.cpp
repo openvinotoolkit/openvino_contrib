@@ -82,7 +82,7 @@ TEST(LlamaCppConsecutiveThreadSettingTest, ConsecutiveThreadSettingUsesModelValu
     double ref_two_thread_iters_per_second = measure_inference_speed_for_thread_count(2, ThreadSettingType::MODEL);
 
     ov::Core core;
-    core.set_property("LLAMA_CPP", ov::AnyMap{{ov::inference_num_threads.name(), 1}});
+    core.set_property("LLAMA_CPP", ov::inference_num_threads(1));
     auto model = core.compile_model(MODEL_FILE, "LLAMA_CPP", ov::AnyMap{{ov::inference_num_threads.name(), 2}});
     auto infer_request = model.create_infer_request();
 
