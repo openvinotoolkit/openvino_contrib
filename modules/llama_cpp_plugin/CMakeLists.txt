@@ -11,6 +11,8 @@ ov_option(ENABLE_LLAMA_CPP_PLUGIN_REGISTRATION "Enables registration of LLAMA_CP
 
 add_subdirectory(src)
 
+include(FetchContent)
+
 FetchContent_Declare(
     llama_cpp
     GIT_REPOSITORY https://github.com/ggerganov/llama.cpp
