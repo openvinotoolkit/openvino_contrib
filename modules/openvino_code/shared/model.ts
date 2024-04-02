@@ -29,5 +29,5 @@ export const MODEL_SUPPORTED_FEATURES: Record<ModelName, Features[]> = {
   [ModelName.DECICODER_1B_OPENVINO_INT8]: [Features.CODE_COMPLETION, Features.SUMMARIZATION],
   [ModelName.STABLECODE_COMPLETION_ALPHA_3B_4K_OPENVINO_INT8]: [Features.CODE_COMPLETION, Features.SUMMARIZATION],
   [ModelName.DEEPSEEK_CODER_1_3B]: [Features.CODE_COMPLETION, Features.SUMMARIZATION, Features.FIM],
-  [ModelName.PHI_2_2_7B]: [Features.CODE_COMPLETION],
+  [ModelName.PHI_2_2_7B]: [Features.CODE_COMPLETION, Features.SUMMARIZATION, Features.QA_FORMAT, Features.CHAT_FORMAT],
 };
