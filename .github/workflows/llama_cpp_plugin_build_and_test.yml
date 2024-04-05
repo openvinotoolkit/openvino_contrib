@@ -26,6 +26,7 @@ jobs:
           submodules: recursive
           repository: openvinotoolkit/openvino
           path: openvino
+          ref: releases/2024/1
 
       - name: CMake - configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DOPENVINO_EXTRA_MODULES=${{ github.workspace }}/openvino_contrib/modules/llama_cpp_plugin -DENABLE_TESTS=ON -DENABLE_FUNCTIONAL_TESTS=ON -DENABLE_PLUGINS_XML=ON -DENABLE_LLAMA_CPP_PLUGIN_REGISTRATION=ON openvino
