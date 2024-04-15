@@ -62,7 +62,7 @@ jobs:
       - name: Install git
         run: |
           apt-get update
-          apt-get install --assume-yes --no-install-recommends git ca-certificates
+          apt-get install --assume-yes --no-install-recommends git git-lfs ca-certificates
 
       - name: Clone OpenVINO
         uses: actions/checkout@v4
