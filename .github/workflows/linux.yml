@@ -81,6 +81,7 @@ jobs:
       - name: Clone Testdata
         uses: actions/checkout@v4
         with:
+          repository: 'openvinotoolkit/testdata'
           path: ${{ env.TEST_DATA }}
           lfs: 'true'
           submodules: 'true'
