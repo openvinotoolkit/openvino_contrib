@@ -23,7 +23,8 @@ env:
   PYTHON_VERSION: '3.11'
 
 jobs:
-  Build:
+  Build_and_test:
+    name: Build and Test
     timeout-minutes: 150
     defaults:
       run:
@@ -93,13 +94,13 @@ jobs:
       - name: Install build dependencies
         run: |
           bash ${OPENVINO_REPO}/install_build_dependencies.sh
-          # default-jdk - Java API
-          apt install --assume-yes --no-install-recommends default-jdk libopencv-dev
+          # default-jdk - Java API; unzip for gradle installation
+          apt install --assume-yes --no-install-recommends default-jdk libopencv-dev unzip
       
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
-            gradle-version: ${{ env.GRADLE_VER }}
+          gradle-version: ${{ env.GRADLE_VER }}
 
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.4
