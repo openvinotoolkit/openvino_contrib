@@ -172,3 +172,11 @@ jobs:
         run: python3 -m pytest -k "not sparse_conv" tests/run_tests.py
         env:
           CUSTOM_OP_LIB: ${{ env.OPENVINO_REPO }}/bin/intel64/${{ env.CMAKE_BUILD_TYPE }}/libuser_ov_extensions.so
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: test-results-java
+          path: ${{ env.OPENVINO_CONTRIB_REPO }}/modules/java_api/build/test-results
+          if-no-files-found: 'warn'
