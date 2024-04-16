@@ -72,26 +72,29 @@ void LlamaCppSyncInferRequest::infer() {
                                                                  // all inputs without hardcode
     OPENVINO_ASSERT(input_ids_tensor_ptr->get_element_type() == ov::element::Type_t::i64);
     OPENVINO_ASSERT(input_ids_tensor_ptr->get_shape().size() == 2);
-    size_t num_sequences = input_ids_tensor_ptr->get_shape()[0];
+    size_t batch_size = input_ids_tensor_ptr->get_shape()[0];
     size_t sequence_length = input_ids_tensor_ptr->get_shape()[1];
 
-    // llama_batch actually contains one sequence
-    llama_batch batch = llama_batch_init(sequence_length, /* embd = */ 0, /* n_seq_max = */ 1);
+    llama_batch batch = llama_batch_init(sequence_length * batch_size, /* embd = */ 0, /* n_seq_max = */ batch_size);
     const int64_t* data_ptr = input_ids_tensor_ptr->data<int64_t>();
 
     const int64_t* sequence_start_ptr = data_ptr /* + seq_idx */;
 
     const int64_t* position_idx_ptr = position_ids_tensor_ptr->data<int64_t>();
 
-    for (size_t tok_idx = 0; tok_idx < sequence_length; ++tok_idx) {
-        const int64_t token_id = sequence_start_ptr[tok_idx];
-        const int64_t position_id = position_idx_ptr[tok_idx];
-        llama_batch_add_reimpl(batch,
-                               token_id,
-                               position_id,
-                               {0},
-                               true);  // the last `true` here is a marker that the logits for this
-                                       // token should be computed and returned
+    int num_sequences = batch_size;
+
+    for (int seq_idx = 0; seq_idx < num_sequences; seq_idx++) {
+        for (size_t tok_idx = 0; tok_idx < sequence_length; ++tok_idx) {
+            const int64_t token_id = sequence_start_ptr[seq_idx * sequence_length + tok_idx];
+            const int64_t position_id = position_idx_ptr[seq_idx * sequence_length + tok_idx];
+            llama_batch_add_reimpl(batch,
+                                   token_id,
+                                   position_id,
+                                   {seq_idx},
+                                   true);  // the last `true` here is a marker that the logits for this
+                                           // token should be computed and returned
+        }
     }
 
     llama_context* ctx = m_compiled_model_ptr->m_llama_ctx;
@@ -103,12 +106,15 @@ void LlamaCppSyncInferRequest::infer() {
 
     size_t n_vocab = llama_n_vocab(m_compiled_model_ptr->m_llama_model_ptr);
 
-    ov::Tensor output_tensor{ov::element::Type_t::f32, {num_sequences, sequence_length, n_vocab}};
+    ov::Tensor output_tensor{ov::element::Type_t::f32, {batch_size, sequence_length, n_vocab}};
     float* output_tensor_data_ptr = output_tensor.data<float>();
 
-    for (size_t pos = 0; pos < sequence_length; pos++) {
-        float* logits_from_llama = llama_get_logits_ith(ctx, pos);
-        std::copy(logits_from_llama, logits_from_llama + n_vocab, output_tensor_data_ptr + pos * n_vocab);
+    for (size_t batch_idx = 0; batch_idx < batch_size; batch_idx++) {
+        for (size_t seq_idx = 0; seq_idx < sequence_length; seq_idx++) {
+            size_t pos = batch_idx * sequence_length + seq_idx;
+            float* logits_from_llama = llama_get_logits_ith(ctx, pos);
+            std::copy(logits_from_llama, logits_from_llama + n_vocab, output_tensor_data_ptr + pos * n_vocab);
+        }
     }
 
     auto& logit_output = get_outputs()[0];
@@ -116,6 +122,8 @@ void LlamaCppSyncInferRequest::infer() {
         allocate_tensor_impl(tensor, output_tensor.get_element_type(), output_tensor.get_shape());
         output_tensor.copy_to(ov::make_tensor(tensor));
     });
+
+    llama_batch_free(batch);
 };
 std::vector<ov::ProfilingInfo> LlamaCppSyncInferRequest::get_profiling_info() const {
     OPENVINO_DEBUG << "llama_cpp_plugin: get_profiling_info() called\n";

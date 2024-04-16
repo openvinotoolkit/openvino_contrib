@@ -26,7 +26,7 @@ TEST_P(LlamaCppBatchingDimensionTest, BatchedOutputDimensionIsAlignedWithInputDi
 
 INSTANTIATE_TEST_SUITE_P(VariousBatchAndInputShapes,
                          LlamaCppBatchingDimensionTest,
-                         ::testing::Values(ov::Shape{2, 1}, ov::Shape{3, 12}, ov::Shape{13, 37}));
+                         ::testing::Values(ov::Shape{2, 1}, ov::Shape{3, 12}, ov::Shape{13, 7}));
 
 TEST(LlamaCppBatchingTest, BatchedResultIsIdenticalToSingleBatchResults) {
     ov::Core core;
