@@ -72,6 +72,7 @@ void LlamaCppSyncInferRequest::infer() {
                                                                  // all inputs without hardcode
     OPENVINO_ASSERT(input_ids_tensor_ptr->get_element_type() == ov::element::Type_t::i64);
     OPENVINO_ASSERT(input_ids_tensor_ptr->get_shape().size() == 2);
+    size_t num_sequences = input_ids_tensor_ptr->get_shape()[0];
     size_t sequence_length = input_ids_tensor_ptr->get_shape()[1];
 
     // llama_batch actually contains one sequence
@@ -102,7 +103,7 @@ void LlamaCppSyncInferRequest::infer() {
 
     size_t n_vocab = llama_n_vocab(m_compiled_model_ptr->m_llama_model_ptr);
 
-    ov::Tensor output_tensor{ov::element::Type_t::f32, {1, sequence_length, n_vocab}};
+    ov::Tensor output_tensor{ov::element::Type_t::f32, {num_sequences, sequence_length, n_vocab}};
     float* output_tensor_data_ptr = output_tensor.data<float>();
 
     for (size_t pos = 0; pos < sequence_length; pos++) {

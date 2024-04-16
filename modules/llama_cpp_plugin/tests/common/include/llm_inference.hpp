@@ -7,9 +7,12 @@
 #include "model_fixture.hpp"
 #include "openvino/openvino.hpp"
 
-std::vector<float> infer_logits_for_tokens_with_positions(ov::InferRequest& lm,
-                                                          const std::vector<int64_t>& tokens,
-                                                          int64_t position_ids_start_value);
+ov::InferRequest& infer_logits_for_tokens_with_positions(ov::InferRequest& infer_request,
+                                                         const std::vector<int64_t>& tokens,
+                                                         int64_t position_ids_start_value);
+std::vector<float> infer_and_get_last_logits(ov::InferRequest& lm,
+                                             const std::vector<int64_t>& tokens,
+                                             int64_t position_ids_start_value);
 
 std::vector<int64_t> generate_n_tokens_with_positions(ov::InferRequest& lm,
                                                       int64_t last_token,
