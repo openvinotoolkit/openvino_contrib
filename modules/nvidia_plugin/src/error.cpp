@@ -11,6 +11,11 @@
 namespace ov {
 namespace nvidia_gpu {
 namespace {
+class OVExceptionWrapper : public ov::Exception {
+public:
+    OVExceptionWrapper(const std::string& what) : ov::Exception(what) {}
+};
+
 template <typename T>
 [[gnu::cold, noreturn]] void throw_exception(const std::string& msg,
                                              const std::experimental::source_location& location) {
@@ -20,7 +25,7 @@ template <typename T>
 
 [[gnu::cold, noreturn]] void throw_ov_exception(const std::string& msg,
                                                 const std::experimental::source_location& location) {
-    throw_exception<ov::Exception>(msg, location);
+    throw_exception<OVExceptionWrapper>(msg, location);
 }
 
 [[gnu::cold]] void logError(const std::string& /*msg*/, const std::experimental::source_location& /*location*/) {

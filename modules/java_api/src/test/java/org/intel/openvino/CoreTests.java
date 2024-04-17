@@ -82,7 +82,7 @@ public class CoreTests extends OVTest {
         Map<String, String> config =
                 new HashMap<String, String>() {
                     {
-                        put("CPU_THROUGHPUT_STREAMS", "4");
+                        put("NUM_STREAMS", "4");
                     }
                 };
         core.set_property("CPU", config);
@@ -90,7 +90,7 @@ public class CoreTests extends OVTest {
 
         assertEquals("Final number of requests", 4, nireq2);
 
-        config.put("CPU_THROUGHPUT_STREAMS", "1");
+        config.put("NUM_STREAMS", "1");
         core.set_property("CPU", config); // Restore
     }
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <random>
 #include <gtest/gtest.h>
 
 #include "common_test_utils/node_builders/eltwise.hpp"
@@ -13,7 +14,6 @@
 #include "openvino/op/result.hpp"
 #include "ops/parameter.hpp"
 #include "ops/result.hpp"
-#include "ov_models/utils/data_utils.hpp"
 
 using namespace ov::nvidia_gpu;
 using namespace testing;

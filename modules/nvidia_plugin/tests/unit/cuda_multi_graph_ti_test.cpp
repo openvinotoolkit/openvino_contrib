@@ -1,15 +1,21 @@
 // Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+#include <random>
 
-#include <gtest/gtest.h>
-
+#include "common_test_utils/node_builders/eltwise.hpp"
+#include "common_test_utils/node_builders/gru_cell.hpp"
+#include "common_test_utils/ov_test_utils.hpp"
 #include "cuda_graph_topology_runner.hpp"
 #include "cuda_simple_execution_delegator.hpp"
-#include "ops/parameter.hpp"
-#include "ops/result.hpp"
-#include "ov_models/builders.hpp"
-#include "ov_models/utils/data_utils.hpp"
+#include "gtest/gtest.h"
+#include "openvino/op/concat.hpp"
+#include "openvino/op/constant.hpp"
+#include "openvino/op/parameter.hpp"
+#include "openvino/op/result.hpp"
+#include "openvino/op/split.hpp"
+#include "openvino/op/squeeze.hpp"
+#include "openvino/op/unsqueeze.hpp"
 
 using namespace ov::nvidia_gpu;
 using namespace testing;
@@ -41,52 +47,28 @@ void generateInput(ov::Tensor& tensor, int to = TO, int from = FROM, int seed = 
     std::generate(ptr, ptr + tensor.get_size(), [&dist, &engine]() { return CalcType{dist(engine)}; });
 }
 
-std::vector<std::vector<CalcType>> calcRefs(std::shared_ptr<ov::Model> model,
-                                            const std::vector<std::shared_ptr<ov::Tensor>>& inputs) {
-    auto refModel = model->clone();
+ov::TensorVector calcRefs(std::shared_ptr<ov::Model> model, const std::vector<std::shared_ptr<ov::Tensor>>& inputs) {
+    auto ref_model = model->clone();
 
-    auto referenceInputs = std::vector<std::vector<uint8_t>>(inputs.size());
-    auto refInputsTypes = std::vector<ov::element::Type>(inputs.size());
-    for (std::size_t i = 0; i < inputs.size(); ++i) {
-        const auto& input = inputs[i];
-        const auto inputSize = input->get_byte_size();
-
-        auto& referenceInput = referenceInputs[i];
-        referenceInput.resize(inputSize);
-
-        const auto* buffer = static_cast<const uint8_t*>(input->data());
-        std::copy(buffer, buffer + inputSize, referenceInput.data());
-
-        refInputsTypes[i] = CALC_ELEMENT_TYPE;
+    ov::TensorVector inputs_ref;
+    for (auto& input : inputs) {
+        inputs_ref.push_back(*input);
     }
 
-    const auto expectedOutputs = ngraph::helpers::interpreterFunction(refModel, referenceInputs, refInputsTypes);
-
-    std::vector<std::vector<CalcType>> res(expectedOutputs.size());
-    for (std::size_t i = 0; i < expectedOutputs.size(); ++i) {
-        EXPECT_EQ(expectedOutputs[i].first, CALC_ELEMENT_TYPE);
-        const auto& expOut = expectedOutputs[i].second;
-        auto& resOut = res[i];
-        const auto resOutSize = expOut.size() / sizeof(CalcType);
-        resOut.resize(resOutSize);
-
-        const auto* buffer = static_cast<const CalcType*>(static_cast<const void*>(expOut.data()));
-        std::copy(buffer, buffer + resOutSize, resOut.data());
-    }
-    return res;
+    return ov::test::utils::infer_on_template(ref_model, inputs_ref);
 }
 
-void validateOutput(const ov::Tensor& tensor, const std::vector<CalcType>& refVector, float threshold) {
+void validateOutput(const ov::Tensor& tensor, const ov::Tensor& ref_tensor, float threshold) {
     EXPECT_EQ(tensor.get_element_type(), CALC_ELEMENT_TYPE);
+    EXPECT_EQ(ref_tensor.get_element_type(), CALC_ELEMENT_TYPE);
     const auto size = tensor.get_size();
-    EXPECT_EQ(size, refVector.size());
+    EXPECT_EQ(size, ref_tensor.get_size());
     const auto* ptr = getConstPtr(tensor);
-    bool areEqual = std::equal(ptr, ptr + size, refVector.cbegin(), [threshold](auto val1, auto val2) {
-        return std::abs(val1 - val2) < threshold;
-    });
+    const auto* ref_ptr = getConstPtr(ref_tensor);
+    bool areEqual = std::equal(
+        ptr, ptr + size, ptr, [threshold](auto val1, auto val2) { return std::abs(val1 - val2) < threshold; });
     EXPECT_TRUE(areEqual);
 }
-
 }  // namespace
 
 class GRUTI {
@@ -121,7 +103,7 @@ public:
         auto squeeze = std::make_shared<ov::op::v0::Squeeze>(bodyParams[0], axis);
         ov::OutputVector out_vector = {squeeze, bodyParams[1]};
         auto gru_cell =
-            ngraph::builder::makeGRU(out_vector, WRB, hidden_size, {"sigmoid", "tanh"}, {}, {}, clip, false);
+            ov::test::utils::make_gru(out_vector, WRB, hidden_size, {"sigmoid", "tanh"}, {}, {}, clip, false);
         auto unsqueeze = std::make_shared<ov::op::v0::Unsqueeze>(gru_cell->output(0), axis);
         ov::ResultVector results{std::make_shared<ov::op::v0::Result>(gru_cell->output(0)),
                                  std::make_shared<ov::op::v0::Result>(unsqueeze)};
@@ -202,10 +184,12 @@ public:
         }
 
         auto squeeze = std::make_shared<ov::op::v0::Squeeze>(bodyParams[0], axisConstant);
-        const auto split = ngraph::builder::makeSplit(squeeze, CALC_ELEMENT_TYPE, 2, 1);
+        const auto split_axis_op =
+            std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{}, std::vector<int64_t>{1});
+        const auto split = std::make_shared<ov::op::v1::Split>(squeeze, split_axis_op, 2);
         const auto concat =
             std::make_shared<ov::op::v0::Concat>(ov::OutputVector{split->output(0), split->output(1)}, 1);
-        const auto add0 = ngraph::builder::makeEltwise(concat->output(0), bodyParams[1], EltwiseTypes::ADD);
+        const auto add0 = ov::test::utils::make_eltwise(concat->output(0), bodyParams[1], EltwiseTypes::ADD);
 
         auto unsqueeze = std::make_shared<ov::op::v0::Unsqueeze>(add0->output(0), axisConstant);
         ov::ResultVector results{std::make_shared<ov::op::v0::Result>(add0->output(0)),
@@ -299,13 +283,13 @@ protected:
 
     void run() { runner_.Run(*inferRequestContext_, deviceMemBlock_); }
 
-    void calcRefs() { refOutputs_ = ::calcRefs(model_, inputTensors_); }
+    void calcRefs() { refOutputTensors_ = ::calcRefs(model_, inputTensors_); }
 
     void validate(float threshold = THRESHOLD) {
         const auto size = outputTensors_.size();
-        EXPECT_EQ(size, refOutputs_.size());
+        EXPECT_EQ(size, refOutputTensors_.size());
         for (std::size_t i = 0; i < size; ++i) {
-            validateOutput(*outputTensors_[i], refOutputs_[i], THRESHOLD);
+            validateOutput(*outputTensors_[i], refOutputTensors_[i], THRESHOLD);
         }
     }
 
@@ -349,6 +333,7 @@ protected:
     SimpleExecutionDelegator simpleExecutionDelegator_{};
     std::vector<std::shared_ptr<ov::Tensor>> inputTensors_{populateTensors(model_->inputs())};
     std::vector<std::shared_ptr<ov::Tensor>> outputTensors_{populateTensors(model_->outputs())};
+    ov::TensorVector refOutputTensors_;
     std::map<std::string, std::size_t> inputIndices_{populateInputIndices(model_)};
     std::map<std::string, std::size_t> outputIndices_{populateOutputIndices(model_)};
     std::unique_ptr<InferenceRequestContext> inferRequestContext_ =
@@ -363,7 +348,6 @@ protected:
                                                   false);
     DeviceMemBlock deviceMemBlock_{runner_.GetSubGraph().memoryManager()->mutableTensorsMemoryModel()};
 
-    std::vector<std::vector<CalcType>> refOutputs_;
     int currentSeed_ = SEED;
 };
 

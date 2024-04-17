@@ -20,6 +20,11 @@ public class Output extends Wrapper {
         return GetShape(nativeObj);
     }
 
+    /** Returns the partial shape of the output referred to by this output handle. */
+    public PartialShape get_partial_shape() {
+        return new PartialShape(GetPartialShape(nativeObj));
+    }
+
     /** Returns the element type of the output referred to by this output handle. */
     public ElementType get_element_type() {
         return ElementType.valueOf(GetElementType(nativeObj));
@@ -29,6 +34,8 @@ public class Output extends Wrapper {
     private static native String GetAnyName(long addr);
 
     private static native int[] GetShape(long addr);
+
+    private static native long GetPartialShape(long addr);
 
     private static native int GetElementType(long addr);
 
