@@ -19,7 +19,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PIP_CACHE_PATH: /mount/caches/pip/linux
   PYTHON_VERSION: '3.11'
 
 jobs:
@@ -29,21 +28,14 @@ jobs:
     defaults:
       run:
         shell: bash
-    runs-on: aks-linux-16-cores-32gb
+    runs-on: ubuntu-20.04-16-cores
     container:
-      image: openvinogithubactions.azurecr.io/dockerhub/ubuntu:20.04
-      volumes:
-        - /mount:/mount
-      options: -e SCCACHE_AZURE_BLOB_CONTAINER -e SCCACHE_AZURE_CONNECTION_STRING
+      image: ubuntu:20.04
     env:
       DEBIAN_FRONTEND: noninteractive # to prevent apt-get from waiting user input
       CMAKE_BUILD_TYPE: 'Release'
-      CMAKE_CXX_COMPILER_LAUNCHER: sccache
-      CMAKE_C_COMPILER_LAUNCHER: sccache
-      SCCACHE_IGNORE_SERVER_IO_ERROR: 1
-      SCCACHE_SERVER_PORT: 35555
-      SCCACHE_ERROR_LOG: /__w/openvino_contrib/sccache_log.txt
-      SCCACHE_LOG: warn
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CMAKE_C_COMPILER_LAUNCHER: ccache
       GITHUB_WORKSPACE: /__w/openvino_contrib/openvino_contrib
       OPENVINO_REPO: /__w/openvino_contrib/openvino_contrib/openvino
       OPENVINO_CONTRIB_REPO: /__w/openvino_contrib/openvino_contrib/openvino_contrib
@@ -53,7 +45,6 @@ jobs:
       INSTALL_TEST_DIR: /__w/openvino_contrib/openvino_contrib/tests_install
       DEVELOPER_PACKAGE_DIR: /__w/openvino_contrib/openvino_contrib/developer_package_install
       BUILD_DIR: /__w/openvino_contrib/openvino_contrib/openvino_build
-      SCCACHE_AZURE_KEY_PREFIX: ubuntu20_x86_64_Release_Contrib
       GRADLE_VER: '7.1.1'
 
     steps:
@@ -62,8 +53,8 @@ jobs:
 
       - name: Install git
         run: |
-          apt-get update
-          apt-get install --assume-yes --no-install-recommends git git-lfs ca-certificates
+          sudo apt-get update
+          sudo apt-get install --assume-yes --no-install-recommends git git-lfs ca-certificates
 
       - name: Clone OpenVINO
         uses: actions/checkout@v4
@@ -93,19 +84,14 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          bash ${OPENVINO_REPO}/install_build_dependencies.sh
+          sudo -E ${OPENVINO_REPO}/install_build_dependencies.sh
           # default-jdk - Java API; unzip for gradle installation
-          apt install --assume-yes --no-install-recommends default-jdk libopencv-dev unzip
+          sudo apt install --assume-yes --no-install-recommends default-jdk libopencv-dev unzip
       
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: ${{ env.GRADLE_VER }}
-
-      - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.4
-        with:
-          version: "v0.7.5"
     
       - name: Setup Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
@@ -115,6 +101,17 @@ jobs:
       - name: Install python dependencies
         run: python3 -m pip install -r ${OPENVINO_REPO}/src/bindings/python/wheel/requirements-dev.txt
           
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          max-size: "2000M"
+          # Should save cache only if run in the master branch of the base repo
+          # github.ref_name is 'ref/PR_#' in case of the PR, and 'branch_name' when executed on push
+          save: ${{ github.ref_name == 'master' && 'true' || 'false'  }}
+          verbose: 2
+          key: linux-ubuntu
+          restore-keys: |
+            linux-ubuntu
 
       #
       # Build
@@ -140,14 +137,14 @@ jobs:
             -S ${OPENVINO_REPO} \
             -B ${BUILD_DIR}
 
-      - name: Clean sccache stats
-        run: ${SCCACHE_PATH} --zero-stats
+      - name: Clean ccache stats
+        run: ccache --zero-stats --show-config
 
       - name: Cmake build
         run: cmake --build ${BUILD_DIR} --parallel
 
-      - name: Show sccache stats
-        run: ${SCCACHE_PATH} --show-stats
+      - name: Show ccache stats
+        run: ccache --show-stats
 
       - name: Cmake install
         run: cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} -P ${BUILD_DIR}/cmake_install.cmake
