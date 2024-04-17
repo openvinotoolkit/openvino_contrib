@@ -53,8 +53,8 @@ jobs:
 
       - name: Install git
         run: |
-          sudo apt-get update
-          sudo apt-get install --assume-yes --no-install-recommends git git-lfs ca-certificates
+          apt-get update
+          apt-get install --assume-yes --no-install-recommends git git-lfs ca-certificates
 
       - name: Clone OpenVINO
         uses: actions/checkout@v4
@@ -84,9 +84,9 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          sudo -E ${OPENVINO_REPO}/install_build_dependencies.sh
+          bash ${OPENVINO_REPO}/install_build_dependencies.sh
           # default-jdk - Java API; unzip for gradle installation
-          sudo apt install --assume-yes --no-install-recommends default-jdk libopencv-dev unzip
+          apt install --assume-yes --no-install-recommends default-jdk libopencv-dev unzip
       
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
