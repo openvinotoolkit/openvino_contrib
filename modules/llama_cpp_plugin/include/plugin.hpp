@@ -39,6 +39,9 @@ public:
 
     virtual ov::SupportedOpsMap query_model(const std::shared_ptr<const ov::Model>& model,
                                             const ov::AnyMap& properties) const override;
+
+private:
+    size_t m_num_threads = 0;
 };
 }  // namespace llama_cpp_plugin
 }  // namespace ov
