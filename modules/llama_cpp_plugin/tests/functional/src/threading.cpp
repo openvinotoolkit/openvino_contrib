@@ -1,6 +1,5 @@
 // Copyright (C) 2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
-//
 
 #include <gtest/gtest.h>
 
@@ -33,7 +32,7 @@ ov::CompiledModel get_model_with_thread_setting(int num_threads, ThreadSettingTy
 }
 
 void infer_one_token_fn(ov::InferRequest& infer_request) {
-    infer_logits_for_tokens_with_positions(infer_request, {1337}, 0);
+    infer_and_get_last_logits(infer_request, {1337}, 0);
 }
 
 double measure_inference_speed_for_thread_count(int num_threads, ThreadSettingType thread_setting_type) {
@@ -55,7 +54,7 @@ TEST_P(LlamaCppThreadSettingTypeTest, NumThreadSettingDoesntFail) {
 
     auto infer_request = model.create_infer_request();
     std::vector<int64_t> mock_input_ids{1337, NUM_THREADS_TO_SET * 10};
-    infer_logits_for_tokens_with_positions(infer_request, mock_input_ids, 0);
+    infer_and_get_last_logits(infer_request, mock_input_ids, 0);
 }
 
 TEST_P(LlamaCppThreadSettingTypeTest, ThreadedExecutionIsFaster) {

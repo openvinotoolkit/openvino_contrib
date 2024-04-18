@@ -39,9 +39,7 @@ std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::compile_model(const std::str
     auto it = properties.find(ov::inference_num_threads.name());
     if (it != properties.end()) {
         num_threads = it->second.as<int>();
-        if (num_threads < 0) {
-            OPENVINO_THROW("INFERENCE_NUM_THREADS cannot be negative");
-        }
+        OPENVINO_ASSERT(num_threads >= 0, "INFERENCE_NUM_THREADS cannot be negative");
     } else {
         num_threads = m_num_threads;
     }
@@ -52,9 +50,7 @@ void LlamaCppPlugin::set_property(const ov::AnyMap& properties) {
     for (const auto& map_entry : properties) {
         if (ov::inference_num_threads == map_entry.first) {
             int num_threads = map_entry.second.as<int>();
-            if (num_threads < 0) {
-                OPENVINO_THROW("INFERENCE_NUM_THREADS cannot be negative");
-            }
+            OPENVINO_ASSERT(num_threads >= 0, "INFERENCE_NUM_THREADS cannot be negative");
             m_num_threads = num_threads;
         }
         OPENVINO_THROW_NOT_IMPLEMENTED("llama_cpp_plugin: setting property ", map_entry.first, "not implemented");
