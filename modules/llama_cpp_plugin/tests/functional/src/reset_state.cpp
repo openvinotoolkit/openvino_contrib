@@ -42,16 +42,17 @@ TEST_F(CompiledModelTest, ResetStateGPT2) {
     SetUp();
 
     ov::InferRequest lm_bad = model.create_infer_request();
-    std::vector<float> logits_lennon_bad = infer_and_get_last_logits(lm, GPT2_LENNON_PROMPT_TOKEN_IDS, 0);
+    std::vector<float> logits_lennon_bad = infer_and_get_last_logits(lm_bad, GPT2_LENNON_PROMPT_TOKEN_IDS, 0);
 
     // no reset_state on purpose
 
-    std::vector<float> logits_sun_bad = infer_and_get_last_logits(lm_reset,
+    std::vector<float> logits_sun_bad = infer_and_get_last_logits(lm_bad,
                                                                   GPT2_SUN_PROMPT_TOKEN_IDS,
                                                                   0);  // GPT2_LENNON_PROMPT_TOKEN_IDS.size());
 
-    std::vector<int64_t> out_token_ids_bad = generate_n_tokens_with_positions(lm_reset,
+    std::vector<int64_t> out_token_ids_bad = generate_n_tokens_with_positions(lm_bad,
                                                                               get_token_from_logits(logits_sun_reset),
                                                                               NUM_TOKENS_TO_GENERATE,
                                                                               GPT2_SUN_PROMPT_TOKEN_IDS.size());
+    ASSERT_NE(out_token_ids_bad, out_token_ids_ref);
 }
