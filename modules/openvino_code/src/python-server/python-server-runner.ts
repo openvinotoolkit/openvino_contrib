@@ -13,6 +13,7 @@ import { join } from 'path';
 import { MODEL_NAME_TO_ID_MAP, ModelName } from '@shared/model';
 import { extensionState } from '../state';
 import { clearLruCache } from '../lru-cache.decorator';
+import { DEVICE_NAME_TO_ID_MAP, DeviceName } from '@shared/device';
 
 const SERVER_STARTED_STDOUT_ANCHOR = 'OpenVINO Code Server started';
 
@@ -20,7 +21,7 @@ interface ServerHooks {
   onStarted: () => void;
 }
 
-async function runServer(modelName: ModelName, config: PythonServerConfiguration, hooks?: ServerHooks) {
+async function runServer(modelName: ModelName, deviceName: DeviceName, config: PythonServerConfiguration, hooks?: ServerHooks) {
   const { serverDir, proxyEnv, abortSignal, logger } = config;
   logger.info('Starting server...');
 
@@ -40,8 +41,9 @@ async function runServer(modelName: ModelName, config: PythonServerConfiguration
   }
 
   const model = MODEL_NAME_TO_ID_MAP[modelName];
+  const device = DEVICE_NAME_TO_ID_MAP[deviceName];
 
-  await spawnCommand(venvPython, ['main.py', '--model', model], {
+  await spawnCommand(venvPython, ['main.py', '--model', model, '--device', device], {
     logger,
     cwd: serverDir,
     abortSignal,
@@ -149,8 +151,9 @@ export class NativePythonServerRunner {
     this._stateController.setStage(ServerStartingStage.START_SERVER);
 
     const modelName = extensionState.config.model;
+    const deviceName = extensionState.config.device;
 
-    await runServer(modelName, config, {
+    await runServer(modelName, deviceName, config, {
       onStarted: () => {
         this._stateController.setStatus(ServerStatus.STARTED);
         this._stateController.setStage(null);

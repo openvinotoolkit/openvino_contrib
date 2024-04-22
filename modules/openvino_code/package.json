@@ -1,7 +1,7 @@
 {
   "publisher": "OpenVINO",
   "name": "openvino-code-completion",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "displayName": "OpenVINO Code Completion",
   "description": "VSCode extension for AI code completion with OpenVINO",
   "icon": "media/logo.png",
@@ -57,6 +57,7 @@
     "vsce:publish": "vsce publish",
     "ovsx:publish": "ovsx publish",
     "clear-out": "rimraf ./out"
+    
   },
   "devDependencies": {
     "@types/glob": "8.1.0",
@@ -199,6 +200,17 @@
               "phi-2"
             ],
             "description": "Which model to use for code generation."
+          },
+          "openvinoCode.device": {
+            "order": 1,
+            "type": "string",
+            "default": "CPU",
+            "enum":[
+              "CPU",
+              "GPU",
+              "NPU"
+            ],
+            "description": "Which device to use for code generation"
           },
           "openvinoCode.serverUrl": {
             "order": 1,

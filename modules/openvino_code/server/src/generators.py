@@ -5,7 +5,17 @@ from io import StringIO
 from pathlib import Path
 from threading import Thread
 from time import time
-from typing import Any, Callable, Container, Dict, Generator, List, Optional, Type, Union
+from typing import (
+    Any,
+    Callable,
+    Container,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Type,
+    Union,
+)
 
 import torch
 from fastapi import Request
@@ -53,11 +63,20 @@ def get_model(checkpoint: str, device: str = "CPU") -> OVModel:
         model_class = get_model_class(checkpoint)
         try:
             model = model_class.from_pretrained(
-                checkpoint, ov_config=ov_config, compile=False, device=device, trust_remote_code=True
+                checkpoint,
+                ov_config=ov_config,
+                compile=False,
+                device=device,
+                trust_remote_code=True,
             )
         except EntryNotFoundError:
             model = model_class.from_pretrained(
-                checkpoint, ov_config=ov_config, export=True, compile=False, device=device, trust_remote_code=True
+                checkpoint,
+                ov_config=ov_config,
+                export=True,
+                compile=False,
+                device=device,
+                trust_remote_code=True,
             )
         model.save_pretrained(model_path)
     model.compile()
@@ -75,10 +94,24 @@ class GeneratorFunctor:
     async def generate_stream(self, input_text: str, parameters: Dict[str, Any], request: Request):
         raise NotImplementedError
 
-    def summarize(self, input_text: str, template: str, signature: str, style: str, parameters: Dict[str, Any]):
+    def summarize(
+        self,
+        input_text: str,
+        template: str,
+        signature: str,
+        style: str,
+        parameters: Dict[str, Any],
+    ):
         raise NotImplementedError
 
-    def summarize_stream(self, input_text: str, template: str, signature: str, style: str, parameters: Dict[str, Any]):
+    def summarize_stream(
+        self,
+        input_text: str,
+        template: str,
+        signature: str,
+        style: str,
+        parameters: Dict[str, Any],
+    ):
         raise NotImplementedError
 
 
@@ -128,13 +161,19 @@ class OVGenerator(GeneratorFunctor):
         prompt_len = input_ids.shape[-1]
         config = GenerationConfig.from_dict({**self.generation_config.to_dict(), **parameters})
         output_ids = self.model.generate(
-            input_ids, generation_config=config, stopping_criteria=stopping_criteria, **self.assistant_model_config
+            input_ids,
+            generation_config=config,
+            stopping_criteria=stopping_criteria,
+            **self.assistant_model_config,
         )[0][prompt_len:]
         logger.info(f"Number of input tokens: {prompt_len}; generated {len(output_ids)} tokens")
         return self.tokenizer.decode(output_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
 
     async def generate_stream(
-        self, input_text: str, parameters: Dict[str, Any], request: Optional[Request] = None
+        self,
+        input_text: str,
+        parameters: Dict[str, Any],
+        request: Optional[Request] = None,
     ) -> Generator[str, None, None]:
         input_ids = self.tokenizer.encode(input_text, return_tensors="pt")
         streamer = TextIteratorStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True)
@@ -192,7 +231,10 @@ class OVGenerator(GeneratorFunctor):
             prev_len = prompt.shape[-1]
 
             prompt = self.model.generate(
-                prompt, generation_config=config, stopping_criteria=stopping_criteria, **self.assistant_model_config
+                prompt,
+                generation_config=config,
+                stopping_criteria=stopping_criteria,
+                **self.assistant_model_config,
             )[
                 :, :-1
             ]  # skip the last token - stop token
@@ -219,7 +261,10 @@ class OVGenerator(GeneratorFunctor):
             prev_len = prompt.shape[-1]
 
             prompt = self.model.generate(
-                prompt, generation_config=config, stopping_criteria=stopping_criteria, **self.assistant_model_config
+                prompt,
+                generation_config=config,
+                stopping_criteria=stopping_criteria,
+                **self.assistant_model_config,
             )[
                 :, :-1
             ]  # skip the last token - stop token
@@ -237,24 +282,40 @@ class OVGenerator(GeneratorFunctor):
             signature=signature,
         )
 
-    def summarize(self, input_text: str, template: str, signature: str, style: str, parameters: Dict[str, Any]) -> str:
+    def summarize(
+        self,
+        input_text: str,
+        template: str,
+        signature: str,
+        style: str,
+        parameters: Dict[str, Any],
+    ) -> str:
         prompt = self.summarization_input(input_text, signature, style)
         splited_template = re.split(r"\$\{.*\}", template)
         splited_template[0] = prompt + splited_template[0]
 
-        return self.generate_between(splited_template, parameters, stopping_criteria=self.summarize_stopping_criteria)[
-            len(prompt) :
-        ]
+        return self.generate_between(
+            splited_template,
+            parameters,
+            stopping_criteria=self.summarize_stopping_criteria,
+        )[len(prompt) :]
 
     async def summarize_stream(
-        self, input_text: str, template: str, signature: str, style: str, parameters: Dict[str, Any]
+        self,
+        input_text: str,
+        template: str,
+        signature: str,
+        style: str,
+        parameters: Dict[str, Any],
     ):
         prompt = self.summarization_input(input_text, signature, style)
         splited_template = re.split(r"\$\{.*\}", template)
         splited_template = [prompt] + splited_template
 
         async for token in self.generate_between_stream(
-            splited_template, parameters, stopping_criteria=self.summarize_stopping_criteria
+            splited_template,
+            parameters,
+            stopping_criteria=self.summarize_stopping_criteria,
         ):
             yield token
 

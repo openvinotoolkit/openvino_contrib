@@ -11,7 +11,7 @@ dependencies = [
     'torch @ https://download.pytorch.org/whl/cpu-cxx11-abi/torch-2.0.1%2Bcpu.cxx11.abi-cp310-cp310-linux_x86_64.whl ; sys_platform=="linux" and python_version == "3.10"',
     'torch @ https://download.pytorch.org/whl/cpu-cxx11-abi/torch-2.0.1%2Bcpu.cxx11.abi-cp311-cp311-linux_x86_64.whl ; sys_platform=="linux" and python_version == "3.11"',
     'torch ; sys_platform != "linux"',
-    'openvino==2023.3.0',
+    'openvino==2024.0.0',
     'transformers==4.36.0',
     'optimum==1.17.1',
     'optimum-intel[openvino]==1.15.0',
@@ -27,13 +27,18 @@ build-backend = "setuptools.build_meta"
 
 [tool.black]
 line-length = 119
-target-versions = ["py38", "py39", "py310", "py311"]
-
+target-version = ['py38', 'py39', 'py310', 'py311']
+unstable = true
+preview = true
 
 [tool.ruff]
-ignore = ["C901", "E501", "E741", "W605"]
-select = ["C", "E", "F", "I", "W"]
+lint.ignore = ["C901", "E501", "E741", "W605", "F401", "W292"]
+lint.select = ["C", "E", "F", "I", "W"]
+lint.extend-safe-fixes = ["F601"]
+lint.extend-unsafe-fixes = ["UP034"]
+lint.fixable = ["F401"]
 line-length = 119
 
-[tool.ruff.isort]
+
+[tool.ruff.lint.isort]
 lines-after-imports = 2
