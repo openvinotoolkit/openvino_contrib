@@ -56,3 +56,41 @@ TEST_F(CompiledModelTest, ResetStateGPT2) {
                                                                               GPT2_SUN_PROMPT_TOKEN_IDS.size());
     ASSERT_NE(out_token_ids_bad, out_token_ids_ref);
 }
+
+TEST_F(CompiledModelTest, StatesForDifferentInferRequestsAreIndependentGPT2) {
+    // Take two infer requests, process two different prompts with same position IDs, but for one of them, do
+    // .reset_state() in-between the inferences - check that the state is reset independently.
+
+    // the "new" sequence should have the same number of tokens as the previous one for this to work
+    std::vector<int64_t> MODIFIED_PROMPT_TOKEN_IDS = GPT2_LENNON_PROMPT_TOKEN_IDS;
+    MODIFIED_PROMPT_TOKEN_IDS.push_back(30);  // extra newline
+    ASSERT_EQ(GPT2_SUN_PROMPT_TOKEN_IDS.size(), MODIFIED_PROMPT_TOKEN_IDS.size());
+
+    ov::InferRequest first_infer_request = model.create_infer_request();
+    std::vector<float> logits_first_ref = infer_and_get_last_logits(first_infer_request, GPT2_SUN_PROMPT_TOKEN_IDS, 0);
+
+    ov::InferRequest another_infer_request = model.create_infer_request();
+    std::vector<float> logits_another_ref =
+        infer_and_get_last_logits(another_infer_request, GPT2_SUN_PROMPT_TOKEN_IDS, 0);
+
+    first_infer_request.reset_state();
+
+    std::vector<float> logits_first_new_tokens_old_positions =
+        infer_and_get_last_logits(first_infer_request, MODIFIED_PROMPT_TOKEN_IDS, 0);
+    std::vector<int64_t> out_tokens_first =
+        generate_n_tokens_with_positions(first_infer_request,
+                                         get_token_from_logits(logits_first_new_tokens_old_positions),
+                                         NUM_TOKENS_TO_GENERATE,
+                                         MODIFIED_PROMPT_TOKEN_IDS.size());
+
+    // not resetting another_infer_request state on purpose
+    std::vector<float> logits_another_new_tokens_old_positions =
+        infer_and_get_last_logits(another_infer_request, MODIFIED_PROMPT_TOKEN_IDS, 0);
+    std::vector<int64_t> out_tokens_another =
+        generate_n_tokens_with_positions(another_infer_request,
+                                         get_token_from_logits(logits_another_new_tokens_old_positions),
+                                         NUM_TOKENS_TO_GENERATE,
+                                         MODIFIED_PROMPT_TOKEN_IDS.size());
+
+    EXPECT_NE(out_tokens_another, out_tokens_first);
+}
