@@ -143,6 +143,8 @@ jobs:
 
       - name: CMake configure - OpenVINO Contrib
         run: |
+          $env:OpenCV_DIR=C:/tools/opencv/build
+          . "${{ env.INSTALL_DIR }}/setupvars.ps1"
           cmake -GNinja `
             -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }} `
             -S ${{ env.OPENVINO_CONTRIB_REPO }}/modules/custom_operations `
@@ -161,7 +163,6 @@ jobs:
       - name: Custom user operation tests
         working-directory: ${{ env.OPENVINO_CONTRIB_REPO }}/modules/custom_operations
         run: |
-          ls ${{ env.OPENVINO_REPO }}/bin/intel64/${{ env.CMAKE_BUILD_TYPE }}
           . "${{ env.INSTALL_DIR }}/setupvars.ps1"
           python3 -m pip install -r ${{ env.OPENVINO_CONTRIB_REPO }}/modules/custom_operations/tests/requirements.txt
           
