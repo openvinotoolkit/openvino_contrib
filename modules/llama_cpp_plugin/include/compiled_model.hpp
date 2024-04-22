@@ -61,6 +61,7 @@ protected:
 private:
     gguf_context* m_gguf_ctx = nullptr;
     std::string m_gguf_fname;
+    size_t m_num_threads;
 
     llama_model* m_llama_model_ptr = nullptr;
     llama_context* m_llama_ctx = nullptr;

@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <openvino/runtime/ivariable_state.hpp>
+#include <thread>
 
 #include "llama.h"
 #include "openvino/runtime/make_tensor.hpp"
@@ -24,9 +25,14 @@ void allocate_tensor_impl(ov::SoPtr<ov::ITensor>& tensor,
     }
 }
 
-LlamaCppSyncInferRequest::LlamaCppSyncInferRequest(const std::shared_ptr<const LlamaCppModel>& compiled_model)
+LlamaCppSyncInferRequest::LlamaCppSyncInferRequest(const std::shared_ptr<const LlamaCppModel>& compiled_model,
+                                                   size_t num_threads)
     : ov::ISyncInferRequest(compiled_model) {
     OPENVINO_DEBUG << "llama_cpp_plugin: infer request ctor called\n";
+    llama_context_params cparams = llama_context_default_params();
+    cparams.n_threads = num_threads ? num_threads : std::thread::hardware_concurrency();
+    cparams.n_ctx = 0;  // this means that the actual n_ctx will be taken equal to the model's train-time value
+    m_llama_ctx = llama_new_context_with_model(compiled_model->m_llama_model_ptr, cparams);
     m_compiled_model_ptr = compiled_model;
     for (const auto& input : get_inputs()) {
         allocate_tensor(input, [input](ov::SoPtr<ov::ITensor>& tensor) {
@@ -97,8 +103,7 @@ void LlamaCppSyncInferRequest::infer() {
         }
     }
 
-    llama_context* ctx = m_compiled_model_ptr->m_llama_ctx;
-    int32_t sts = llama_decode(ctx, batch);
+    int32_t sts = llama_decode(m_llama_ctx, batch);
 
     if (sts != 0) {
         OPENVINO_THROW("llama_decode failed with code ", sts);
@@ -112,7 +117,7 @@ void LlamaCppSyncInferRequest::infer() {
     for (size_t batch_idx = 0; batch_idx < batch_size; batch_idx++) {
         for (size_t seq_idx = 0; seq_idx < sequence_length; seq_idx++) {
             size_t pos = batch_idx * sequence_length + seq_idx;
-            float* logits_from_llama = llama_get_logits_ith(ctx, pos);
+            float* logits_from_llama = llama_get_logits_ith(m_llama_ctx, pos);
             std::copy(logits_from_llama, logits_from_llama + n_vocab, output_tensor_data_ptr + pos * n_vocab);
         }
     }
@@ -132,7 +137,13 @@ std::vector<ov::ProfilingInfo> LlamaCppSyncInferRequest::get_profiling_info() co
 
 std::vector<ov::SoPtr<ov::IVariableState>> LlamaCppSyncInferRequest::query_state() const {
     OPENVINO_DEBUG << "llama_cpp_plugin: query_state() called\n";
-    return {std::static_pointer_cast<ov::IVariableState>(std::make_shared<LlamaCppState>(m_compiled_model_ptr))};
+    return {std::static_pointer_cast<ov::IVariableState>(std::make_shared<LlamaCppState>(m_llama_ctx))};
+}
+
+LlamaCppSyncInferRequest::~LlamaCppSyncInferRequest() {
+    if (m_llama_ctx != nullptr) {
+        llama_free(m_llama_ctx);
+    }
 }
 }  // namespace llama_cpp_plugin
 }  // namespace ov
