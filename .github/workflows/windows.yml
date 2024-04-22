@@ -26,7 +26,6 @@ jobs:
     runs-on: windows-2019-16-core
     env:
       CMAKE_BUILD_TYPE: 'Release'
-      CMAKE_GENERATOR: 'Ninja Multi-Config'
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
       CMAKE_C_COMPILER_LAUNCHER: ccache
       OPENVINO_REPO: ${{ github.workspace }}\\openvino
@@ -34,6 +33,7 @@ jobs:
       TEST_DATA: ${{ github.workspace }}\\testdata
       INSTALL_DIR: ${{ github.workspace }}\\openvino\\install
       BUILD_DIR: ${{ github.workspace }}\\openvino\\build
+      BUILD_DIR_CONTRIB: ${{ github.workspace }}\\openvino\\build_contrib
       GRADLE_VER: '7.1.1'
 
     steps:
@@ -88,6 +88,7 @@ jobs:
           Expand-Archive -Force ninja-win.zip
           # Add it to the GitHub Path so it would be available in the subsequent steps
           Add-Content -Path $env:GITHUB_PATH -Value "${{ github.workspace }}/ninja-win"
+          choco install opencv -y
 
       #
       # Build
@@ -110,7 +111,7 @@ jobs:
 
       - name: CMake configure - OpenVINO
         run: |
-          cmake -G "${{ env.CMAKE_GENERATOR }}" `
+          cmake -GNinja `
             -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }} `
             -DBUILD_nvidia_plugin=OFF `
             -DENABLE_OV_TF_FRONTEND=OFF `
@@ -140,6 +141,16 @@ jobs:
       - name: Cmake install - OpenVINO
         run: cmake -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/cmake_install.cmake
 
+      - name: CMake configure - OpenVINO Contrib
+        run: |
+          cmake -GNinja `
+            -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }} `
+            -S ${{ env.OPENVINO_CONTRIB_REPO }}/modules/custom_operations `
+            -B ${{ env.BUILD_DIR_CONTRIB }}
+
+      - name: Cmake build - OpenVINO Contrib
+        run: cmake --build ${{ env.BUILD_DIR_CONTRIB }} --parallel --config ${{ env.CMAKE_BUILD_TYPE }} --verbose
+
       - name: Java tests
         working-directory: ${{ env.OPENVINO_CONTRIB_REPO }}/modules/java_api
         run: |
@@ -152,11 +163,11 @@ jobs:
         run: |
           ls ${{ env.OPENVINO_REPO }}/bin/intel64/${{ env.CMAKE_BUILD_TYPE }}
           . "${{ env.INSTALL_DIR }}/setupvars.ps1"
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/modules/custom_operations/tests/requirements.txt
+          python3 -m pip install -r ${{ env.OPENVINO_CONTRIB_REPO }}/modules/custom_operations/tests/requirements.txt
           
           python3 -m pytest -k "not sparse_conv" tests/run_tests.py
         env:
-          CUSTOM_OP_LIB: ${{ env.OPENVINO_REPO }}/bin/intel64/${{ env.CMAKE_BUILD_TYPE }}/user_ie_extensions.dll
+          CUSTOM_OP_LIB: ${{ env.BUILD_DIR_CONTRIB }}/user_ie_extensions/user_ov_extensions.dll
 
       - name: Upload Test Results
         uses: actions/upload-artifact@v4
