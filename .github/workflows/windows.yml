@@ -160,15 +160,27 @@ jobs:
           gradle clean build --info
           gradle test -Prun_tests -DMODELS_PATH=${{ env.TEST_DATA }} -Ddevice=CPU --info
 
-      - name: Custom user operation tests
+      - name: Custom user operation tests (CMD)
         working-directory: ${{ env.OPENVINO_CONTRIB_REPO }}/modules/custom_operations
+        shell: cmd
         run: |
-          . "${{ env.INSTALL_DIR }}/setupvars.ps1"
-          python3 -m pip install -r ${{ env.OPENVINO_CONTRIB_REPO }}/modules/custom_operations/tests/requirements.txt
+          call C:\tools\opencv\build\setup_vars_opencv4.cmd
+          call ${{ env.INSTALL_DIR }}\setupvars.bat
+          python3 -m pip install -r ${{ env.OPENVINO_CONTRIB_REPO }}\modules\custom_operations\tests\requirements.txt
           
-          python3 -m pytest -k "not sparse_conv" tests/run_tests.py
+          python3 -m pytest -k "not sparse_conv" tests\run_tests.py
         env:
           CUSTOM_OP_LIB: ${{ env.OPENVINO_REPO }}/bin/intel64/${{ env.CMAKE_BUILD_TYPE }}/user_ov_extensions.dll
+
+#      - name: Custom user operation tests
+#        working-directory: ${{ env.OPENVINO_CONTRIB_REPO }}/modules/custom_operations
+#        run: |
+#          . "${{ env.INSTALL_DIR }}/setupvars.ps1"
+#          python3 -m pip install -r ${{ env.OPENVINO_CONTRIB_REPO }}/modules/custom_operations/tests/requirements.txt
+#
+#          python3 -m pytest -k "not sparse_conv" tests/run_tests.py
+#        env:
+#          CUSTOM_OP_LIB: ${{ env.OPENVINO_REPO }}/bin/intel64/${{ env.CMAKE_BUILD_TYPE }}/user_ov_extensions.dll
 
       - name: Upload Test Results
         uses: actions/upload-artifact@v4
