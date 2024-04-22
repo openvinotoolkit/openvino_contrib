@@ -41,9 +41,6 @@ jobs:
       OPENVINO_CONTRIB_REPO: /__w/openvino_contrib/openvino_contrib/openvino_contrib
       TEST_DATA: /__w/openvino_contrib/openvino_contrib/testdata
       INSTALL_DIR: /__w/openvino_contrib/openvino_contrib/openvino_install
-      INSTALL_DIR_JS: /__w/openvino_contrib/openvino_contrib/openvino_install/js
-      INSTALL_TEST_DIR: /__w/openvino_contrib/openvino_contrib/tests_install
-      DEVELOPER_PACKAGE_DIR: /__w/openvino_contrib/openvino_contrib/developer_package_install
       BUILD_DIR: /__w/openvino_contrib/openvino_contrib/openvino_build
       GRADLE_VER: '7.1.1'
 
