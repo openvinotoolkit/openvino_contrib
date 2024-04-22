@@ -93,6 +93,9 @@ jobs:
       # Build
       #
 
+      - name: Configure Developer Command Prompt for Microsoft Visual C++
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
