@@ -143,7 +143,7 @@ jobs:
 
       - name: CMake configure - OpenVINO Contrib
         run: |
-          $env:OpenCV_DIR=C:/tools/opencv/build
+          $env:OpenCV_DIR="C:/tools/opencv/build"
           . "${{ env.INSTALL_DIR }}/setupvars.ps1"
           cmake -GNinja `
             -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }} `
