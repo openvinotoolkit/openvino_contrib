@@ -111,6 +111,8 @@ jobs:
 
       - name: CMake configure - OpenVINO
         run: |
+          $env:OpenCV_DIR="C:/tools/opencv/build"
+          & "C:\tools\opencv\build\setup_vars_opencv4.cmd"
           cmake -GNinja `
             -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }} `
             -DBUILD_nvidia_plugin=OFF `
