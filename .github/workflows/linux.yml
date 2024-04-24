@@ -42,6 +42,7 @@ jobs:
       TEST_DATA: /__w/openvino_contrib/openvino_contrib/testdata
       INSTALL_DIR: /__w/openvino_contrib/openvino_contrib/openvino_install
       BUILD_DIR: /__w/openvino_contrib/openvino_contrib/openvino_build
+      DEVELOPER_PACKAGE_DIR: /__w/openvino_contrib/openvino_contrib/developer_package_install
       GRADLE_VER: '7.1.1'
 
     steps:
@@ -144,7 +145,9 @@ jobs:
         run: ccache --show-stats
 
       - name: Cmake install
-        run: cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} -P ${BUILD_DIR}/cmake_install.cmake
+        run: |
+          cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} -P ${BUILD_DIR}/cmake_install.cmake
+          cmake -DCMAKE_INSTALL_PREFIX=${DEVELOPER_PACKAGE_DIR} -DCOMPONENT=developer_package -P ${BUILD_DIR}/cmake_install.cmake
 
       - name: Java tests
         working-directory: ${{ env.OPENVINO_CONTRIB_REPO }}/modules/java_api
@@ -167,6 +170,16 @@ jobs:
         env:
           CUSTOM_OP_LIB: ${{ env.OPENVINO_REPO }}/bin/intel64/${{ env.CMAKE_BUILD_TYPE }}/libuser_ov_extensions.so
 
+      - name: Pack Artifacts
+        run: |
+          pushd ${INSTALL_DIR}
+            tar -czvf ${BUILD_DIR}/openvino_package.tar.gz *
+          popd
+
+          pushd ${DEVELOPER_PACKAGE_DIR}
+            tar -czvf ${BUILD_DIR}/openvino_developer_package.tar.gz *
+          popd
+
       - name: Upload Test Results
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
@@ -174,3 +187,140 @@ jobs:
           name: test-results-java
           path: ${{ env.OPENVINO_CONTRIB_REPO }}/modules/java_api/build/test-results
           if-no-files-found: 'warn'
+
+      - name: Upload openvino package
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: openvino_package
+          path: ${{ env.BUILD_DIR }}/openvino_package.tar.gz
+          if-no-files-found: 'error'
+
+      - name: Upload openvino developer package
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: openvino_developer_package
+          path: ${{ env.BUILD_DIR }}/openvino_developer_package.tar.gz
+          if-no-files-found: 'error'
+
+  NVIDIA_Plugin:
+    name: NVIDIA plugin
+    needs: Build_and_test
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    runs-on: ubuntu-20.04-16-cores
+    container:
+      image: nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu20.04
+    env:
+      CMAKE_BUILD_TYPE: 'Release'
+      CMAKE_GENERATOR: 'Ninja Multi-Config'
+      CMAKE_CUDA_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      INSTALL_DIR: /__w/openvino_contrib/openvino_contrib/install
+      OPENVINO_DEVELOPER_PACKAGE: /__w/openvino_contrib/openvino_contrib/install/developer_package
+      OPENVINO_REPO: /__w/openvino_contrib/openvino_contrib/openvino
+      OPENVINO_CONTRIB_REPO: /__w/openvino_contrib/openvino_contrib/openvino_contrib
+      NVIDIA_BUILD_DIR: /__w/openvino_contrib/openvino_contrib/nvidia_plugin_build
+      DEBIAN_FRONTEND: 'noninteractive'
+
+    steps:
+      - name: Set apt retries
+        run: echo 'Acquire::Retries "10";' > /etc/apt/apt.conf.d/80-retries
+
+      - name: Fetch install_build_dependencies.sh
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            install_build_dependencies.sh
+          sparse-checkout-cone-mode: false
+          path: ${{ env.OPENVINO_REPO }}
+
+      - name: Install Prerequisites
+        run: apt update && apt install -y git ca-certificates
+
+      - name: Download OpenVINO package
+        uses: actions/download-artifact@v4
+        with:
+          name: openvino_package
+          path: ${{ env.INSTALL_DIR }}
+
+      - name: Download OpenVINO Developer package
+        uses: actions/download-artifact@v4
+        with:
+          name: openvino_developer_package
+          path: ${{ env.INSTALL_DIR }}
+
+      - name: Extract OpenVINO packages
+        run: |
+          pushd ${INSTALL_DIR}
+            tar -xzf openvino_package.tar.gz -C ${INSTALL_DIR}
+          popd
+
+          pushd ${INSTALL_DIR}
+            tar -xzf openvino_developer_package.tar.gz -C ${INSTALL_DIR}
+          popd
+
+      - name: Clone OpenVINO Contrib
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.OPENVINO_CONTRIB_REPO }}
+
+      #
+      # Dependencies
+      #
+
+      - name: Install build dependencies
+        run: |
+          ${OPENVINO_REPO}/install_build_dependencies.sh
+          apt -y --no-install-recommends install software-properties-common curl
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          max-size: "2000M"
+          # Should save cache only if run in the master branch of the base repo
+          # github.ref_name is 'ref/PR_#' in case of the PR, and 'branch_name' when executed on push
+          save: ${{ github.ref_name == 'master' && 'true' || 'false'  }}
+          verbose: 2
+          key: linux-ubuntu-nvidia
+          restore-keys: |
+            linux-ubuntu-nvidia
+
+      - name: Install CUDA
+        run: |
+          wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
+          mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
+
+          apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub
+          add-apt-repository "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/ /"
+          apt update
+          apt install -y \
+            libcudnn8=8.9.4.*-1+cuda11.8 \
+            libcudnn8-dev=8.9.4.*-1+cuda11.8 \
+            libcudnn8-samples=8.9.4.*-1+cuda11.8 \
+            cuda-runtime-11-8 \
+            cuda-11-8 \
+            libcutensor1=1.6.1.5-1 \
+            libcutensor-dev=1.6.1.5-1 \
+            cuda-drivers=520.61.05-1
+
+      #
+      # Build
+      #
+
+      - name: Cmake & Build - NVIDIA Plugin
+        run: |
+          source ${INSTALL_DIR}/setupvars.sh
+          cmake \
+            -DOpenVINODeveloperPackage_DIR=${OPENVINO_DEVELOPER_PACKAGE}/cmake \
+            -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF \
+            -S ${OPENVINO_CONTRIB_REPO}/modules/nvidia_plugin \
+            -B ${NVIDIA_BUILD_DIR}
+          cmake --build ${NVIDIA_BUILD_DIR} --parallel --config ${{ env.CMAKE_BUILD_TYPE }} --verbose -- ov_nvidia_func_tests ov_nvidia_unit_tests
+
+      - name: Show ccache stats
+        run: ccache --show-stats
