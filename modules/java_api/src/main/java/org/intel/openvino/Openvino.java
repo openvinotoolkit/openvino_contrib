@@ -24,8 +24,27 @@ public class Openvino extends Wrapper {
         serialize(model.nativeObj, xmlPath, binPath);
     }
 
+    /**
+     * Save model into IR files (xml and bin).
+     *
+     * <p>This method saves a model to IR applying all necessary transformations that are usually
+     * applied in model conversion flow provided by mo tool. Particularly, floating point weights
+     * are compressed to FP16, debug information in model nodes are cleaned up, etc.
+     *
+     * @param model Model which will be converted to IR representation.
+     * @param outputModel Path to output model file.
+     * @param compressToFp16 Whether to compress floating point weights to FP16.
+     */
+    public static void save_model(
+            Model model, final String outputModel, final boolean compressToFp16) {
+        SaveModel(model.nativeObj, outputModel, compressToFp16);
+    }
+
     /*----------------------------------- native methods -----------------------------------*/
 
     private static native void serialize(
             long modelAddr, final String xmlPath, final String binPath);
+
+    private static native void SaveModel(
+            long modelAddr, final String outputModel, final boolean compressToFp16);
 }
