@@ -276,7 +276,7 @@ jobs:
           apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub
           add-apt-repository "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/ /"
           apt update
-          apt install -y --allow-downgrades \
+          apt install -y --allow-downgrades --allow-change-held-packages \
             libcudnn8=8.9.4.*-1+cuda11.8 \
             libcudnn8-dev=8.9.4.*-1+cuda11.8 \
             libcudnn8-samples=8.9.4.*-1+cuda11.8 \
