@@ -223,6 +223,8 @@ jobs:
           sparse-checkout: |
             install_build_dependencies.sh
           sparse-checkout-cone-mode: false
+          repository: 'openvinotoolkit/openvino'
+          ref: 'master'
           path: ${{ env.OPENVINO_REPO }}
 
       - name: Install Prerequisites
