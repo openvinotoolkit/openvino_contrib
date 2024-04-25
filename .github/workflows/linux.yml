@@ -132,6 +132,7 @@ jobs:
             -DENABLE_PYTHON=ON \
             -DCPACK_GENERATOR=TGZ \
             -DENABLE_WHEEL=ON \
+            -DENABLE_TESTS=ON \
             -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.CMAKE_CXX_COMPILER_LAUNCHER }} \
             -DCMAKE_C_COMPILER_LAUNCHER=${{ env.CMAKE_C_COMPILER_LAUNCHER }} \
             -S ${OPENVINO_REPO} \
