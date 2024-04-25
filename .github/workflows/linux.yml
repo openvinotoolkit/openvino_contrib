@@ -42,6 +42,7 @@ jobs:
       TEST_DATA: /__w/openvino_contrib/openvino_contrib/testdata
       INSTALL_DIR: /__w/openvino_contrib/openvino_contrib/openvino_install
       BUILD_DIR: /__w/openvino_contrib/openvino_contrib/openvino_build
+      DEVELOPER_PACKAGE_DIR: /__w/openvino_contrib/openvino_contrib/developer_package_install
       GRADLE_VER: '7.1.1'
 
     steps:
@@ -145,7 +146,9 @@ jobs:
         run: ccache --show-stats
 
       - name: Cmake install
-        run: cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} -P ${BUILD_DIR}/cmake_install.cmake
+        run: |
+          cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} -P ${BUILD_DIR}/cmake_install.cmake
+          cmake -DCMAKE_INSTALL_PREFIX=${DEVELOPER_PACKAGE_DIR} -DCOMPONENT=developer_package -P ${BUILD_DIR}/cmake_install.cmake
 
       - name: Java tests
         working-directory: ${{ env.OPENVINO_CONTRIB_REPO }}/modules/java_api
@@ -173,6 +176,10 @@ jobs:
           pushd ${INSTALL_DIR}
             tar -czvf ${BUILD_DIR}/openvino_package.tar.gz *
           popd
+          
+          pushd ${DEVELOPER_PACKAGE_DIR}
+            tar -czvf ${BUILD_DIR}/openvino_developer_package.tar.gz *
+          popd
 
       - name: Upload Test Results
         uses: actions/upload-artifact@v4
@@ -188,6 +195,14 @@ jobs:
         with:
           name: openvino_package
           path: ${{ env.BUILD_DIR }}/openvino_package.tar.gz
+          if-no-files-found: 'error'
+
+      - name: Upload openvino developer package
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: openvino_developer_package
+          path: ${{ env.BUILD_DIR }}/openvino_developer_package.tar.gz
           if-no-files-found: 'error'
 
   NVIDIA_Plugin:
@@ -236,10 +251,20 @@ jobs:
           name: openvino_package
           path: ${{ env.INSTALL_DIR }}
 
+      - name: Download OpenVINO Developer package
+        uses: actions/download-artifact@v4
+        with:
+          name: openvino_developer_package
+          path: ${{ env.INSTALL_DIR }}
+
       - name: Extract OpenVINO packages
         run: |
           pushd ${INSTALL_DIR}
             tar -xzf openvino_package.tar.gz -C ${INSTALL_DIR}
+          popd
+          
+          pushd ${INSTALL_DIR}
+            tar -xzf openvino_developer_package.tar.gz -C ${INSTALL_DIR}
           popd
 
       - name: Clone OpenVINO Contrib
@@ -294,6 +319,7 @@ jobs:
         run: |
           source ${INSTALL_DIR}/setupvars.sh
           cmake \
+            -DOpenVINODeveloperPackage_DIR=${OPENVINO_DEVELOPER_PACKAGE}/cmake \
             -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF \
             -S ${OPENVINO_CONTRIB_REPO}/modules/nvidia_plugin \
             -B ${NVIDIA_BUILD_DIR}
