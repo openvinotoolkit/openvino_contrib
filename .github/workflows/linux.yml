@@ -61,7 +61,7 @@ jobs:
           repository: 'akashchi/openvino'
           path: ${{ env.OPENVINO_REPO }}
           submodules: 'true'
-          ref: 'a1dc4d6f58622e71a58b277ef248220ad1780982'
+          ref: '3317cdbcf2ef73e23a98affd78a6c2f96137280d'
 
       - name: Clone OpenVINO Contrib
         uses: actions/checkout@v4
