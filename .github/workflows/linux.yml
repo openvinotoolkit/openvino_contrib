@@ -132,7 +132,7 @@ jobs:
             -DENABLE_PYTHON=ON \
             -DCPACK_GENERATOR=TGZ \
             -DENABLE_WHEEL=ON \
-            -DENABLE_TESTS=ON \
+            -DENABLE_TESTS=OFF \
             -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.CMAKE_CXX_COMPILER_LAUNCHER }} \
             -DCMAKE_C_COMPILER_LAUNCHER=${{ env.CMAKE_C_COMPILER_LAUNCHER }} \
             -S ${OPENVINO_REPO} \
@@ -143,6 +143,9 @@ jobs:
 
       - name: Cmake build
         run: cmake --build ${BUILD_DIR} --parallel
+
+      - name: Cmake build - dev targets
+        run: cmake --build ${BUILD_DIR} --parallel --target ov_dev_targets
 
       - name: Show ccache stats
         run: ccache --show-stats
