@@ -57,11 +57,10 @@ jobs:
       - name: Clone OpenVINO
         uses: actions/checkout@v4
         with:
-          # repository: 'openvinotoolkit/openvino'
-          repository: 'akashchi/openvino'
+          repository: 'openvinotoolkit/openvino'
           path: ${{ env.OPENVINO_REPO }}
           submodules: 'true'
-          ref: '3317cdbcf2ef73e23a98affd78a6c2f96137280d'
+          ref: 'master'
 
       - name: Clone OpenVINO Contrib
         uses: actions/checkout@v4
