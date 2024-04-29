@@ -71,11 +71,6 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-#      - name: Setup Gradle
-#        uses: gradle/actions/setup-gradle@v3
-#        with:
-#          gradle-version: ${{ env.GRADLE_VER }}
-
       - name: Install python dependencies
         run: python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/wheel/requirements-dev.txt
 
@@ -142,3 +137,11 @@ jobs:
             wheel_name=$(find . -name 'openvino-*.whl')
             python3 -m pip install $wheel_name
           popd
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: test-results-java
+          path: ${{ env.OPENVINO_CONTRIB_REPO }}/modules/java_api/build/test-results
+          if-no-files-found: 'warn'
