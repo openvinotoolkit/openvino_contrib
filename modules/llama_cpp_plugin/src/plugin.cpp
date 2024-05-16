@@ -35,11 +35,24 @@ std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::compile_model(const std::sha
 }
 std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::compile_model(const std::string& fname,
                                                                   const ov::AnyMap& properties) const {
-    return std::make_shared<LlamaCppModel>(fname, shared_from_this());
+    size_t num_threads = 0;
+    auto it = properties.find(ov::inference_num_threads.name());
+    if (it != properties.end()) {
+        num_threads = it->second.as<int>();
+        OPENVINO_ASSERT(num_threads >= 0, "INFERENCE_NUM_THREADS cannot be negative");
+    } else {
+        num_threads = m_num_threads;
+    }
+    return std::make_shared<LlamaCppModel>(fname, shared_from_this(), num_threads);
 }
 
 void LlamaCppPlugin::set_property(const ov::AnyMap& properties) {
     for (const auto& map_entry : properties) {
+        if (ov::inference_num_threads == map_entry.first) {
+            int num_threads = map_entry.second.as<int>();
+            OPENVINO_ASSERT(num_threads >= 0, "INFERENCE_NUM_THREADS cannot be negative");
+            m_num_threads = num_threads;
+        }
         OPENVINO_THROW_NOT_IMPLEMENTED("llama_cpp_plugin: setting property ", map_entry.first, "not implemented");
     }
 }
@@ -47,7 +60,7 @@ void LlamaCppPlugin::set_property(const ov::AnyMap& properties) {
 ov::Any LlamaCppPlugin::get_property(const std::string& name, const ov::AnyMap& arguments) const {
     if (ov::supported_properties == name) {
         return decltype(ov::supported_properties)::value_type(
-            std::vector<PropertyName>({ov::device::capabilities, ov::device::full_name}));
+            std::vector<PropertyName>({ov::device::capabilities, ov::device::full_name, ov::inference_num_threads}));
     }
     if (ov::device::capabilities == name) {
         return decltype(ov::device::capabilities)::value_type(
@@ -64,6 +77,10 @@ ov::Any LlamaCppPlugin::get_property(const std::string& name, const ov::AnyMap& 
 
     if (ov::device::full_name == name) {
         return std::string("LLAMA_CPP");
+    }
+
+    if (ov::inference_num_threads == name) {
+        return m_num_threads;
     }
 
     OPENVINO_THROW_NOT_IMPLEMENTED("llama_cpp_plugin: getting property ", name, "not implemented");

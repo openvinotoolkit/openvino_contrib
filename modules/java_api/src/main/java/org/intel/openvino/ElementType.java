@@ -20,11 +20,18 @@ public enum ElementType {
     i32(10),
     i64(11),
     u1(12),
-    u4(13),
-    u8(14),
-    u16(15),
-    u32(16),
-    u64(17);
+    u2(13),
+    u3(14),
+    u4(15),
+    u6(16),
+    u8(17),
+    u16(18),
+    u32(19),
+    u64(20),
+    nf4(21),
+    f8e4m3(22),
+    f8e5m2(23),
+    string(24);
 
     private int value;
     private static Map<Integer, ElementType> map = new HashMap<Integer, ElementType>();

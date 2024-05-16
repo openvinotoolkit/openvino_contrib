@@ -231,3 +231,37 @@ static jobject vectorToJavaList(JNIEnv *env, std::vector<std::string> items)
 
     return nullptr;
 }
+
+static const ov::element::Type_t& get_ov_type(int type)
+{
+    static const std::vector<ov::element::Type_t> java_type_to_ov_type
+    {
+        ov::element::Type_t::undefined,
+        ov::element::Type_t::dynamic,
+        ov::element::Type_t::boolean,
+        ov::element::Type_t::bf16,
+        ov::element::Type_t::f16,
+        ov::element::Type_t::f32,
+        ov::element::Type_t::f64,
+        ov::element::Type_t::i4,
+        ov::element::Type_t::i8,
+        ov::element::Type_t::i16,
+        ov::element::Type_t::i32,
+        ov::element::Type_t::i64,
+        ov::element::Type_t::u1,
+        ov::element::Type_t::u2,
+        ov::element::Type_t::u3,
+        ov::element::Type_t::u4,
+        ov::element::Type_t::u6,
+        ov::element::Type_t::u8,
+        ov::element::Type_t::u16,
+        ov::element::Type_t::u32,
+        ov::element::Type_t::u64,
+        ov::element::Type_t::nf4,
+        ov::element::Type_t::f8e4m3,
+        ov::element::Type_t::f8e5m2,
+        ov::element::Type_t::string
+    };
+
+    return java_type_to_ov_type.at(type);
+}

@@ -9,7 +9,6 @@
 #include <openvino/opsets/opset13.hpp>
 #include <openvino/runtime/properties.hpp>
 #include <openvino/util/log.hpp>
-#include <thread>
 
 #include "infer_request.hpp"
 #include "plugin.hpp"
@@ -18,23 +17,20 @@ namespace ov {
 namespace llama_cpp_plugin {
 
 LlamaCppModel::~LlamaCppModel() {
-    llama_free(m_llama_ctx);
     llama_free_model(m_llama_model_ptr);
     llama_backend_free();
 }
 
-LlamaCppModel::LlamaCppModel(const std::string& gguf_fname, const std::shared_ptr<const IPlugin>& plugin)
+LlamaCppModel::LlamaCppModel(const std::string& gguf_fname,
+                             const std::shared_ptr<const IPlugin>& plugin,
+                             size_t num_threads)
     : ICompiledModel(nullptr, plugin),
-      m_gguf_fname(gguf_fname) {
+      m_gguf_fname(gguf_fname),
+      m_num_threads(num_threads) {
     OPENVINO_DEBUG << "llama_cpp_plugin: loading llama model directly from GGUF... " << std::endl;
     llama_model_params mparams = llama_model_default_params();
     mparams.n_gpu_layers = 99;
     m_llama_model_ptr = llama_load_model_from_file(gguf_fname.c_str(), mparams);
-    llama_context_params cparams = llama_context_default_params();
-    cparams.n_threads =
-        std::thread::hardware_concurrency();  // TODO (vshampor): reuse equivalent setting defined by OV API
-    cparams.n_ctx = 0;  // this means that the actual n_ctx will be taken equal to the model's train-time value
-    m_llama_ctx = llama_new_context_with_model(m_llama_model_ptr, cparams);
     OPENVINO_DEBUG << "llama_cpp_plugin: llama model loaded successfully from GGUF..." << std::endl;
 
     auto input_ids = std::make_shared<ov::opset13::Parameter>(ov::element::Type_t::i64, ov::PartialShape({-1, -1}));
@@ -86,8 +82,8 @@ ov::Any LlamaCppModel::get_property(const std::string& name) const {
 }
 
 std::shared_ptr<ov::ISyncInferRequest> LlamaCppModel::create_sync_infer_request() const {
-    return std::make_shared<LlamaCppSyncInferRequest>(
-        std::static_pointer_cast<const LlamaCppModel>(shared_from_this()));
+    return std::make_shared<LlamaCppSyncInferRequest>(std::static_pointer_cast<const LlamaCppModel>(shared_from_this()),
+                                                      m_num_threads);
 }
 
 const std::vector<ov::Output<const ov::Node>>& LlamaCppModel::inputs() const {
