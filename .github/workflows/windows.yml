@@ -34,6 +34,8 @@ jobs:
       INSTALL_DIR: ${{ github.workspace }}\\openvino\\install
       BUILD_DIR: ${{ github.workspace }}\\openvino\\build
       BUILD_DIR_CONTRIB: ${{ github.workspace }}\\openvino\\build_contrib
+      CCACHE_DIR: ${{ github.workspace }}\\ccache
+      CCACHE_MAXSIZE: "2G"
       GRADLE_VER: '7.1.1'
 
     steps:
@@ -97,17 +99,23 @@ jobs:
       - name: Configure Developer Command Prompt for Microsoft Visual C++
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Download and install ccache
+        run: |
+          Invoke-WebRequest -Uri 'https://github.com/ccache/ccache/releases/download/v4.9.1/ccache-4.9.1-windows-x86_64.zip' -OutFile 'ccache.zip'
+          Expand-Archive -Path 'ccache.zip' -DestinationPath 'C:\temp\ccache'
+          Move-Item -Path 'C:\temp\ccache\*' -Destination 'C:\ccache'
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\ccache"
+
       - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
+        uses: actions/cache@v4
         with:
-          max-size: "2000M"
           # Should save cache only if run in the master branch of the base repo
           # github.ref_name is 'ref/PR_#' in case of the PR, and 'branch_name' when executed on push
-          save: ${{ github.ref_name == 'master' && 'true' || 'false'  }}
-          verbose: 2
-          key: ccache-windows
+          save-always: ${{ github.ref_name == 'master' && 'true' || 'false'  }}
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ runner.os }}-${{ runner.arch }}-ccache-${{ github.sha }}
           restore-keys: |
-            ccache-windows
+            ${{ runner.os }}-${{ runner.arch }}-ccache
 
       - name: CMake configure - OpenVINO
         run: |
@@ -162,7 +170,7 @@ jobs:
           gradle clean build --info
           gradle test -Prun_tests -DMODELS_PATH=${{ env.TEST_DATA }} -Ddevice=CPU --info
 
-      - name: Custom user operation tests (CMD)
+      - name: Custom user operation tests
         working-directory: ${{ env.OPENVINO_CONTRIB_REPO }}/modules/custom_operations
         shell: cmd
         run: |
@@ -173,16 +181,6 @@ jobs:
           python3 -m pytest -k "not sparse_conv" tests\run_tests.py
         env:
           CUSTOM_OP_LIB: ${{ env.OPENVINO_REPO }}/bin/intel64/${{ env.CMAKE_BUILD_TYPE }}/user_ov_extensions.dll
-
-#      - name: Custom user operation tests
-#        working-directory: ${{ env.OPENVINO_CONTRIB_REPO }}/modules/custom_operations
-#        run: |
-#          . "${{ env.INSTALL_DIR }}/setupvars.ps1"
-#          python3 -m pip install -r ${{ env.OPENVINO_CONTRIB_REPO }}/modules/custom_operations/tests/requirements.txt
-#
-#          python3 -m pytest -k "not sparse_conv" tests/run_tests.py
-#        env:
-#          CUSTOM_OP_LIB: ${{ env.OPENVINO_REPO }}/bin/intel64/${{ env.CMAKE_BUILD_TYPE }}/user_ov_extensions.dll
 
       - name: Upload Test Results
         uses: actions/upload-artifact@v4

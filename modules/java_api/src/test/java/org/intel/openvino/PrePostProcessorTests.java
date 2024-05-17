@@ -52,7 +52,6 @@ public class PrePostProcessorTests extends OVTest {
                                 + " input"));
     }
 
-    @Ignore // Ticket: 138994
     @Test
     public void testWrongElementType() {
         String exceptionMessage = "";
