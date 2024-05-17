@@ -42,6 +42,7 @@ jobs:
       TEST_DATA: /__w/openvino_contrib/openvino_contrib/testdata
       INSTALL_DIR: /__w/openvino_contrib/openvino_contrib/openvino_install
       BUILD_DIR: /__w/openvino_contrib/openvino_contrib/openvino_build
+      DEVELOPER_PACKAGE_DIR: /__w/openvino_contrib/openvino_contrib/developer_package_install
       CCACHE_DIR: /__w/openvino_contrib/openvino_contrib/ccache
       CCACHE_MAXSIZE: "2G"
       GRADLE_VER: '7.1.1'
