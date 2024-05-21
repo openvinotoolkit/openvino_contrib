@@ -1,0 +1,191 @@
+name: Windows (VS 2019, Python 3.11)
+on:
+  workflow_dispatch:
+  pull_request:
+  merge_group:
+  push:
+    branches:
+      - master
+      - 'releases/**'
+
+concurrency:
+  # github.ref is not unique in post-commit
+  group: ${{ github.event_name == 'push' && github.run_id || github.ref }}-windows
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  Build_and_test:
+    name: Build and Test
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: pwsh
+    runs-on: windows-2019-16-core
+    env:
+      CMAKE_BUILD_TYPE: 'Release'
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      OPENVINO_REPO: ${{ github.workspace }}\\openvino
+      OPENVINO_CONTRIB_REPO: ${{ github.workspace }}\\openvino_contrib
+      TEST_DATA: ${{ github.workspace }}\\testdata
+      INSTALL_DIR: ${{ github.workspace }}\\openvino\\install
+      BUILD_DIR: ${{ github.workspace }}\\openvino\\build
+      BUILD_DIR_CONTRIB: ${{ github.workspace }}\\openvino\\build_contrib
+      CCACHE_DIR: ${{ github.workspace }}\\ccache
+      CCACHE_MAXSIZE: "2G"
+      GRADLE_VER: '7.1.1'
+
+    steps:
+      - name: git configuration
+        run: git config --system core.longpaths true
+
+      - name: Clone OpenVINO
+        uses: actions/checkout@v4
+        with:
+          repository: 'openvinotoolkit/openvino'
+          path: ${{ env.OPENVINO_REPO }}
+          submodules: 'true'
+          ref: 'master'
+
+      - name: Clone OpenVINO Contrib
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.OPENVINO_CONTRIB_REPO }}
+          submodules: 'true'
+
+      - name: Clone Testdata
+        uses: actions/checkout@v4
+        with:
+          repository: 'openvinotoolkit/testdata'
+          path: ${{ env.TEST_DATA }}
+          lfs: 'true'
+          submodules: 'true'
+
+      #
+      # Dependencies
+      #
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: ${{ env.GRADLE_VER }}
+
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install python dependencies
+        run: |
+          # For Python API: build and wheel packaging
+          python3 -m pip install -r ${env:OPENVINO_REPO}/src/bindings/python/wheel/requirements-dev.txt
+
+      - name: Install build dependencies
+        run: |
+          Invoke-WebRequest https://github.com/ninja-build/ninja/releases/download/v1.11.1/ninja-win.zip -OutFile ninja-win.zip -MaximumRetryCount 10
+          Expand-Archive -Force ninja-win.zip
+          # Add it to the GitHub Path so it would be available in the subsequent steps
+          Add-Content -Path $env:GITHUB_PATH -Value "${{ github.workspace }}/ninja-win"
+          choco install opencv -y
+
+      #
+      # Build
+      #
+
+      - name: Configure Developer Command Prompt for Microsoft Visual C++
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Download and install ccache
+        run: |
+          Invoke-WebRequest -Uri 'https://github.com/ccache/ccache/releases/download/v4.9.1/ccache-4.9.1-windows-x86_64.zip' -OutFile 'ccache.zip'
+          Expand-Archive -Path 'ccache.zip' -DestinationPath 'C:\temp\ccache'
+          Move-Item -Path 'C:\temp\ccache\*' -Destination 'C:\ccache'
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\ccache"
+
+      - name: Setup ccache
+        uses: actions/cache@v4
+        with:
+          # Should save cache only if run in the master branch of the base repo
+          # github.ref_name is 'ref/PR_#' in case of the PR, and 'branch_name' when executed on push
+          save-always: ${{ github.ref_name == 'master' && 'true' || 'false'  }}
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ runner.os }}-${{ runner.arch }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-ccache
+
+      - name: CMake configure - OpenVINO
+        run: |
+          $env:OpenCV_DIR="C:/tools/opencv/build"
+          & "C:\tools\opencv\build\setup_vars_opencv4.cmd"
+          cmake -GNinja `
+            -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }} `
+            -DBUILD_nvidia_plugin=OFF `
+            -DENABLE_OV_TF_FRONTEND=OFF `
+            -DENABLE_OV_PADDLE_FRONTEND=OFF `
+            -DENABLE_OV_TF_LITE_FRONTEND=OFF `
+            -DENABLE_OV_PYTORCH_FRONTEND=OFF `
+            -DENABLE_INTEL_GPU=OFF `
+            -DENABLE_CPPLINT=OFF `
+            -DENABLE_SAMPLES=OFF `
+            -DENABLE_PYTHON=ON `
+            -DENABLE_JS=OFF `
+            -DOPENVINO_EXTRA_MODULES=${{ env.OPENVINO_CONTRIB_REPO }}/modules `
+            -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.CMAKE_CXX_COMPILER_LAUNCHER }} `
+            -DCMAKE_C_COMPILER_LAUNCHER=${{ env.CMAKE_C_COMPILER_LAUNCHER }} `
+            -S ${{ env.OPENVINO_REPO }} `
+            -B ${{ env.BUILD_DIR }}
+
+      - name: Clean ccache stats
+        run: ccache --zero-stats --show-config
+
+      - name: Cmake build - OpenVINO
+        run: cmake --build ${{ env.BUILD_DIR }} --parallel --config ${{ env.CMAKE_BUILD_TYPE }} --verbose
+
+      - name: Show ccache stats
+        run: ccache --show-stats
+
+      - name: Cmake install - OpenVINO
+        run: cmake -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/cmake_install.cmake
+
+      - name: CMake configure - OpenVINO Contrib
+        run: |
+          $env:OpenCV_DIR="C:/tools/opencv/build"
+          . "${{ env.INSTALL_DIR }}/setupvars.ps1"
+          cmake -GNinja `
+            -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }} `
+            -S ${{ env.OPENVINO_CONTRIB_REPO }}/modules/custom_operations `
+            -B ${{ env.BUILD_DIR_CONTRIB }}
+
+      - name: Cmake build - OpenVINO Contrib
+        run: cmake --build ${{ env.BUILD_DIR_CONTRIB }} --parallel --config ${{ env.CMAKE_BUILD_TYPE }} --verbose
+
+      - name: Java tests
+        working-directory: ${{ env.OPENVINO_CONTRIB_REPO }}/modules/java_api
+        run: |
+          . "${{ env.INSTALL_DIR }}/setupvars.ps1"
+          gradle clean build --info
+          gradle test -Prun_tests -DMODELS_PATH=${{ env.TEST_DATA }} -Ddevice=CPU --info
+
+      - name: Custom user operation tests
+        working-directory: ${{ env.OPENVINO_CONTRIB_REPO }}/modules/custom_operations
+        shell: cmd
+        run: |
+          call C:\tools\opencv\build\setup_vars_opencv4.cmd
+          call ${{ env.INSTALL_DIR }}\setupvars.bat
+          python3 -m pip install -r ${{ env.OPENVINO_CONTRIB_REPO }}\modules\custom_operations\tests\requirements.txt
+          
+          python3 -m pytest -k "not sparse_conv" tests\run_tests.py
+        env:
+          CUSTOM_OP_LIB: ${{ env.OPENVINO_REPO }}/bin/intel64/${{ env.CMAKE_BUILD_TYPE }}/user_ov_extensions.dll
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: test-results-java
+          path: ${{ env.OPENVINO_CONTRIB_REPO }}/modules/java_api/build/test-results
+          if-no-files-found: 'warn'
