@@ -13,7 +13,7 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorCArray(JNIEnv *env,
 {
     JNI_METHOD(
         "TensorCArray",
-        auto input_type = element::Type_t(type);
+        auto input_type = get_ov_type(type);
         Shape input_shape = jintArrayToVector(env, shape);
         Tensor *ov_tensor = new Tensor();
 

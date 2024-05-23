@@ -12,15 +12,16 @@ namespace llama_cpp_plugin {
 class LlamaCppState : public IVariableState {
 public:
     LlamaCppState() = delete;
-    LlamaCppState(const std::shared_ptr<const LlamaCppModel>& model_ptr)
-        : m_model_ptr(model_ptr),
+    LlamaCppState(llama_context* llama_context_ptr)
+        : m_llama_ctx_ptr(llama_context_ptr),
           IVariableState("llama_cpp_state") {}
     void reset() override {
-        llama_kv_cache_clear(m_model_ptr->m_llama_ctx);
+        OPENVINO_ASSERT(m_llama_ctx_ptr != nullptr);
+        llama_kv_cache_clear(m_llama_ctx_ptr);
     }
 
 private:
-    const std::shared_ptr<const LlamaCppModel>& m_model_ptr;
+    llama_context* m_llama_ctx_ptr;
 };
 }  // namespace llama_cpp_plugin
 }  // namespace ov

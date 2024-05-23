@@ -12,8 +12,8 @@ namespace llama_cpp_plugin {
 
 class LlamaCppSyncInferRequest : public ISyncInferRequest {
 public:
-    explicit LlamaCppSyncInferRequest(const std::shared_ptr<const LlamaCppModel>& compiled_model);
-    virtual ~LlamaCppSyncInferRequest(){};
+    explicit LlamaCppSyncInferRequest(const std::shared_ptr<const LlamaCppModel>& compiled_model, size_t num_threads);
+    virtual ~LlamaCppSyncInferRequest() override;
 
     virtual void set_tensors_impl(const ov::Output<const ov::Node> port,
                                   const std::vector<ov::SoPtr<ov::ITensor>>& tensors) override;
@@ -24,6 +24,7 @@ public:
 
 private:
     std::shared_ptr<const LlamaCppModel> m_compiled_model_ptr;
+    llama_context* m_llama_ctx;
 };
 
 }  // namespace llama_cpp_plugin
