@@ -36,6 +36,8 @@ jobs:
       INSTALL_DIR_JS: ${{ github.workspace }}/openvino_install/js
       INSTALL_TEST_DIR: ${{ github.workspace }}/tests_install
       BUILD_DIR: ${{ github.workspace }}/build
+      CCACHE_DIR: ${{ github.workspace }}/ccache
+      CCACHE_MAXSIZE: '2G'
       GRADLE_VER: '7.1.1'
     steps:
       - name: Clone OpenVINO
@@ -64,7 +66,7 @@ jobs:
       #
 
       - name: Install build dependencies
-        run: brew install coreutils ninja scons automake gradle
+        run: brew install coreutils ninja scons automake gradle ccache
 
       - name: Setup Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
@@ -79,16 +81,15 @@ jobs:
       #
 
       - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
+        uses: actions/cache@v4
         with:
-          max-size: "2000M"
           # Should save cache only if run in the master branch of the base repo
           # github.ref_name is 'ref/PR_#' in case of the PR, and 'branch_name' when executed on push
-          save: ${{ github.ref_name == 'master' && 'true' || 'false'  }}
-          verbose: 2
-          key: ${{ runner.os }}-${{ runner.arch }}-main
+          save-always: ${{ github.ref_name == 'master' && 'true' || 'false'  }}
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ runner.os }}-${{ runner.arch }}-ccache-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-main
+            ${{ runner.os }}-${{ runner.arch }}-ccache
 
       - name: CMake configure
         run: |
@@ -107,6 +108,7 @@ jobs:
             -DENABLE_OV_TF_LITE_FRONTEND=OFF \
             -DENABLE_OV_PYTORCH_FRONTEND=OFF \
             -DENABLE_CPPLINT=OFF \
+            -DENABLE_INTEL_NPU=OFF \
             -S ${{ env.OPENVINO_REPO }} \
             -B ${{ env.BUILD_DIR }}
 
