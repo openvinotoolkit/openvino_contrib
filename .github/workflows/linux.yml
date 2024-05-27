@@ -2,16 +2,10 @@ name: Linux (Ubuntu 20.04, Python 3.11)
 on:
   workflow_dispatch:
   pull_request:
-    paths-ignore:
-        - 'modules/nvidia_plugin'
-        - 'modules/openvino_code'
   push:
     branches:
       - master
       - 'releases/**'
-    paths-ignore:
-      - 'modules/nvidia_plugin'
-      - 'modules/openvino_code'
 
 concurrency:
   # github.ref is not unique in post-commit
@@ -331,3 +325,17 @@ jobs:
 
       - name: Show ccache stats
         run: ccache --show-stats
+
+  Overall_Status:
+    name: ci/gha_overall_status_linux
+    needs: [ Build_and_test, NVIDIA_Plugin ]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check status of all jobs
+        if: >-
+          ${{
+            contains(needs.*.result, 'failure') ||
+            contains(needs.*.result, 'cancelled')
+          }}
+        run: exit 1
