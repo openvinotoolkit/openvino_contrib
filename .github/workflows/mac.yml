@@ -147,17 +147,3 @@ jobs:
           name: test-results-java
           path: ${{ env.OPENVINO_CONTRIB_REPO }}/modules/java_api/build/test-results
           if-no-files-found: 'warn'
-
-  Overall_Status:
-    name: ci/gha_overall_status_mac
-    needs: [ Build_and_test ]
-    if: ${{ always() }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check status of all jobs
-        if: >-
-          ${{
-            contains(needs.*.result, 'failure') ||
-            contains(needs.*.result, 'cancelled')
-          }}
-        run: exit 1
