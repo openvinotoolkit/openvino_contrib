@@ -260,7 +260,8 @@ static const ov::element::Type_t& get_ov_type(int type)
         ov::element::Type_t::nf4,
         ov::element::Type_t::f8e4m3,
         ov::element::Type_t::f8e5m2,
-        ov::element::Type_t::string
+        ov::element::Type_t::string,
+        ov::element::Type_t::f4e2m1
     };
 
     return java_type_to_ov_type.at(type);
