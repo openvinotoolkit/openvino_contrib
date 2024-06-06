@@ -7,12 +7,15 @@ on:
     paths:
       - 'modules/nvidia_plugin/**'
       - '.github/workflows/history_cuda.yml'
+
+permissions: read-all
+
 jobs:
   history:
     runs-on: ubuntu-22.04
     steps:
     - name: checkout master branch
-      uses: actions/checkout@v3
+      uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
       with:
         ref: master
         fetch-depth: 0
