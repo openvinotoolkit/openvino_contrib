@@ -13,6 +13,7 @@ After successful completion, you can move on to the next step.
 
 ### Re-build the OpenVINO libraries for Java API
 _Please save the state of the environment variables_ 
+
 For more information, please refer to [these instructions](../../java_api/README.md)
   ```sh
   # Clone OpenVINO™ contrib repository 
@@ -28,15 +29,20 @@ For more information, please refer to [these instructions](../../java_api/README
   # Re-install OpenVINO™ project 
   cmake --install $OPV_HOME_DIR/openvino-build
   ```
+
 ### Build the OpenVINO JAVA library for Android
 For more information, please refer to [these instructions](../../java_api/README.md)
   ```sh
-  gradlew $OPV_HOME_DIR/openvino_contrib/modules/java_api
+  gradle --project-dir $OPV_HOME_DIR/openvino_contrib/modules/java_api
+  gradle --project-dir ~/CLionProjects/openvino_contrib/modules/android_demos/coco_detection_android_demo
   ```
 
 ### Preparing a demo to run it
   ```sh
-  mkdir 
+  export ANDROID_DEMO_PATH=$OPV_HOME_DIR/openvino_contrib/modules/android_demos/coco_detection_android_demo
+  export ANDROID_DEMO_PATH=~/CLionProjects/openvino_contrib/modules/android_demos/coco_detection_android_demo
+  mkdir $ANDROID_DEMO_PATH/app/libs
+  gradle --project-dir $ANDROID_DEMO_PATH
   ```
 
 ### Import demo project on Android Studio
