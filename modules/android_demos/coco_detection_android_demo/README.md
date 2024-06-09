@@ -2,8 +2,7 @@
 
 ![Running result](https://user-images.githubusercontent.com/47499836/189129594-2634e176-5a5b-4051-b713-ae9574a8c3da.png)
 
-This is a demo for ARM processors Android devices. 
-Using object detection model to reach the coco datasets' information. 
+This is a demo for Android ARM devices. Using object detection model to reach the coco datasets' information. 
 
 ## How to run it
 
@@ -12,9 +11,33 @@ Using object detection model to reach the coco datasets' information.
 To build the OpenVINO library for an Android system, please follow these step-by-step [instruction](https://github.com/openvinotoolkit/openvino/blob/master/docs/dev/build_android.md) in full. 
 After successful completion, you can move on to the next step.
 
-### Build OpenVINO Java API for Android
+### Re-build the OpenVINO libraries for Java API
+_Please save the state of the environment variables_ 
+For more information, please refer to [these instructions](../../java_api/README.md)
+  ```sh
+  # Clone OpenVINO™ contrib repository 
+  git clone --recursive https://github.com/openvinotoolkit/openvino_contrib $OPV_HOME_DIR/openvino_contrib
+  # Re-configure, created in the previous step, the OpenVINO™ CMake project for Java API
+  cmake -S $OPV_HOME_DIR/openvino \
+        -B $OPV_HOME_DIR/openvino-build \
+        -DCMAKE_INSTALL_PREFIX=$OPV_HOME_DIR/openvino-install \
+        -DBUILD_java_api=ON \
+        -DOPENVINO_EXTRA_MODULES=$OPV_HOME_DIR/openvino_contrib/modules/java_api
+  # Re-build OpenVINO™ project 
+  cmake --build $OPV_HOME_DIR/openvino-build --parallel
+  # Re-install OpenVINO™ project 
+  cmake --install $OPV_HOME_DIR/openvino-build
+  ```
+### Build the OpenVINO JAVA library for Android
+For more information, please refer to [these instructions](../../java_api/README.md)
+  ```sh
+  gradlew $OPV_HOME_DIR/openvino_contrib/modules/java_api
+  ```
 
----------
+### Preparing a demo to run it
+  ```sh
+  mkdir 
+  ```
 
 ### Import demo project on Android Studio
 
