@@ -33,16 +33,25 @@ For more information, please refer to [these instructions](../../java_api/README
 ### Build the OpenVINO JAVA library for Android
 For more information, please refer to [these instructions](../../java_api/README.md)
   ```sh
-  gradle --project-dir $OPV_HOME_DIR/openvino_contrib/modules/java_api
-  gradle --project-dir ~/CLionProjects/openvino_contrib/modules/android_demos/coco_detection_android_demo
+  gradle build --project-dir $OPV_HOME_DIR/openvino_contrib/modules/java_api
   ```
 
 ### Preparing a demo to run it
   ```sh
   export ANDROID_DEMO_PATH=$OPV_HOME_DIR/openvino_contrib/modules/android_demos/coco_detection_android_demo
-  export ANDROID_DEMO_PATH=~/CLionProjects/openvino_contrib/modules/android_demos/coco_detection_android_demo
-  mkdir $ANDROID_DEMO_PATH/app/libs
-  gradle --project-dir $ANDROID_DEMO_PATH
+  # export ANDROID_DEMO_PATH=~/CLionProjects/openvino_contrib/modules/android_demos/coco_detection_android_demo
+  mkdir -p $ANDROID_DEMO_PATH/app/libs
+  cp $OPV_HOME_DIR/openvino_contrib/modules/java_api/build/libs/* $ANDROID_DEMO_PATH/app/libs/
+  
+  mkdir -p $ANDROID_DEMO_PATH/app/src/main/jniLibs/arm64-v8a
+  cp -r $OPV_HOME_DIR/openvino-install/runtime/lib/aarch64/* $ANDROID_DEMO_PATH/app/src/main/jniLibs/arm64-v8a/
+  cp -r $OPV_HOME_DIR/one-tbb-install/lib/* $ANDROID_DEMO_PATH/app/src/main/jniLibs/arm64-v8a/
+  cp -r $ANDROID_NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so $ANDROID_DEMO_PATH/app/src/main/jniLibs/arm64-v8a/
+  cp -r $OPV_HOME_DIR/mobelinet-v3-tf/* $ANDROID_DEMO_PATH/app/src/main/assets/
+  
+  wget https://github.com/opencv/opencv/releases/download/4.5.0/opencv-4.5.0-android-sdk.zip --directory-prefix $OPV_HOME_DIR
+  unzip $OPV_HOME_DIR/opencv-4.5.0-android-sdk.zip -d $OPV_HOME_DIR
+  export ANDROID_OCV_SDK_PATH=$OPV_HOME_DIR/OpenCV-android-sdk
   ```
 
 ### Import demo project on Android Studio
