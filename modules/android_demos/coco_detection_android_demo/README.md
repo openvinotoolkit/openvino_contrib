@@ -47,6 +47,8 @@ For more information, please refer to [these instructions](../../java_api/README
   cp -r $OPV_HOME_DIR/openvino-install/runtime/lib/aarch64/* $ANDROID_DEMO_PATH/app/src/main/jniLibs/arm64-v8a/
   cp -r $OPV_HOME_DIR/one-tbb-install/lib/* $ANDROID_DEMO_PATH/app/src/main/jniLibs/arm64-v8a/
   cp -r $ANDROID_NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so $ANDROID_DEMO_PATH/app/src/main/jniLibs/arm64-v8a/
+
+  mkdir -p $ANDROID_DEMO_PATH/app/src/main/assets/
   cp -r $OPV_HOME_DIR/mobelinet-v3-tf/* $ANDROID_DEMO_PATH/app/src/main/assets/
   
   wget https://github.com/opencv/opencv/releases/download/4.5.0/opencv-4.5.0-android-sdk.zip --directory-prefix $OPV_HOME_DIR
