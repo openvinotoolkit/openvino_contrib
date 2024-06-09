@@ -38,8 +38,8 @@ For more information, please refer to [these instructions](../../java_api/README
 
 ### Preparing a demo to run it
   ```sh
-  export ANDROID_DEMO_PATH=$OPV_HOME_DIR/openvino_contrib/modules/android_demos/coco_detection_android_demo
-  # export ANDROID_DEMO_PATH=~/CLionProjects/openvino_contrib/modules/android_demos/coco_detection_android_demo
+  # export ANDROID_DEMO_PATH=$OPV_HOME_DIR/openvino_contrib/modules/android_demos/coco_detection_android_demo
+  export ANDROID_DEMO_PATH=~/CLionProjects/openvino_contrib/modules/android_demos/coco_detection_android_demo
   mkdir -p $ANDROID_DEMO_PATH/app/libs
   cp $OPV_HOME_DIR/openvino_contrib/modules/java_api/build/libs/* $ANDROID_DEMO_PATH/app/libs/
   
@@ -82,7 +82,8 @@ git clone https://github.com/openvinotoolkit/openvino_contrib.git "$WORK_DIR/dem
   1. Download [OpenCV SDK for Android](https://github.com/opencv/opencv/releases/download/4.5.0/opencv-4.5.0-android-sdk.zip) and unpack it.
   2. Import OpenCV module: select "File -> New -> ImportModule", and sepcify a path to unpacked SDK and set module name to "ocv".
   3. Replace `compileSdkVersion 26`, `targetSdkVersion 26` to `compileSdkVersion 32`, `targetSdkVersion 32` in `"$WORK_DIR/coco_detection_android_demo/ocv/build.gradle"`
-
+     sourceCompatibility JavaVersion.VERSION_1_7
+     targetCompatibility JavaVersion.VERSION_1_7 from 1_6
 - Start a ARM-based Android Emulator.
 
   1. Using `AVD Manager -> Create Virtual Device`, and choose one virtual device.
