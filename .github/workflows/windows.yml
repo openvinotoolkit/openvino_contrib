@@ -16,6 +16,8 @@ concurrency:
 env:
   PYTHON_VERSION: '3.11'
 
+permissions: read-all
+
 jobs:
   Build_and_test:
     name: Build and Test
@@ -43,7 +45,7 @@ jobs:
         run: git config --system core.longpaths true
 
       - name: Clone OpenVINO
-        uses: actions/checkout@v4
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
         with:
           repository: 'openvinotoolkit/openvino'
           path: ${{ env.OPENVINO_REPO }}
@@ -51,13 +53,13 @@ jobs:
           ref: 'master'
 
       - name: Clone OpenVINO Contrib
-        uses: actions/checkout@v4
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
         with:
           path: ${{ env.OPENVINO_CONTRIB_REPO }}
           submodules: 'true'
 
       - name: Clone Testdata
-        uses: actions/checkout@v4
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
         with:
           repository: 'openvinotoolkit/testdata'
           path: ${{ env.TEST_DATA }}
@@ -69,12 +71,12 @@ jobs:
       #
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@db19848a5fa7950289d3668fb053140cf3028d43 # v3.3.2
         with:
           gradle-version: ${{ env.GRADLE_VER }}
 
       - name: Setup Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d # v5.1.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -97,7 +99,7 @@ jobs:
       #
 
       - name: Configure Developer Command Prompt for Microsoft Visual C++
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
 
       - name: Download and install ccache
         run: |
@@ -107,7 +109,7 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value "C:\ccache"
 
       - name: Setup ccache
-        uses: actions/cache@v4
+        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
         with:
           # Should save cache only if run in the master branch of the base repo
           # github.ref_name is 'ref/PR_#' in case of the PR, and 'branch_name' when executed on push
@@ -184,7 +186,7 @@ jobs:
           CUSTOM_OP_LIB: ${{ env.OPENVINO_REPO }}/bin/intel64/${{ env.CMAKE_BUILD_TYPE }}/user_ov_extensions.dll
 
       - name: Upload Test Results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         if: ${{ !cancelled() }}
         with:
           name: test-results-java

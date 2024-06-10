@@ -7,6 +7,8 @@ on:
       - 'modules/nvidia_plugin/**'
   workflow_dispatch:
 
+permissions: read-all
+
 jobs:
   cuda-compute-sanitizer:
     runs-on: lohika-ci

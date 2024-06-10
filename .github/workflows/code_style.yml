@@ -8,14 +8,16 @@ on:
       - '.github/workflows/code_style.yml'
       - 'modules/java_api/**'
 
+permissions: read-all
+
 jobs:
   Java:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
 
       - name: Fix code java style
-        uses: axel-op/googlejavaformat-action@v3
+        uses: axel-op/googlejavaformat-action@dbff853fb823671ec5781365233bf86543b13215 # v3
         with:
           args: "--set-exit-if-changed -a -i"
           commit-message: "[github actions] Apply google-java-format code style fixes"
