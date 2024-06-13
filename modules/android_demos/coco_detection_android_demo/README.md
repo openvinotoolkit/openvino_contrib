@@ -70,4 +70,5 @@ To get a `ssd_mobilenet_v2_coco` model for this demo you should use the Open Mod
 - Build and run demo
 
 > The first time when you run the demo application on your device, your need to grant camera permission. Then run it again.
+
 > To build the project correctly, you should write in OpenCV `build.gradle` file `kotlinOptions` parameter same as current project's `build.gradle` file
