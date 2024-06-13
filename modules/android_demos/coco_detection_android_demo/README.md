@@ -51,6 +51,7 @@ For more information, please refer to [these instructions](../../java_api/README
   
   wget https://github.com/opencv/opencv/releases/download/4.10.0/opencv-4.10.0-android-sdk.zip --directory-prefix $OPV_HOME_DIR
   unzip $OPV_HOME_DIR/opencv-4.10.0-android-sdk.zip -d $OPV_HOME_DIR
+  mv $OPV_HOME_DIR/OpenCV-android-sdk/sdk $ANDROID_DEMO_PATH/OpenCV
   ```
 
 Please rename jar library that project works correct , e.g.
