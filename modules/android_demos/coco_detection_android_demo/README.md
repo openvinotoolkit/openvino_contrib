@@ -73,3 +73,7 @@ To get a `ssd_mobilenet_v2_coco` model for this demo you should use the Open Mod
 > The first time when you run the demo application on your device, your need to grant camera permission. Then run it again.
 
 > To build the project correctly, you should write in OpenCV `build.gradle` file `kotlinOptions` parameter same as current project's `build.gradle` file
+
+### Application Output
+
+The demonstration is expected to include real-time inferencing from the camera stream. This means that the system will continuously analyze and process video data from the camera in real-time, providing immediate insights and responses based on the live feed. 
