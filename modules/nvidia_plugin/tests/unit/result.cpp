@@ -28,7 +28,7 @@ public:
             ov::element::Type{},
             ov::PartialShape{1},
             std::unordered_set<std::string>{ParameterStubNode::get_type_info_static().name});
-        node->m_outputs.emplace_back(node.get(), 0, tensor);
+        node->get_output_descriptor(0).set_tensor_ptr(tensor);
     }
 };
 
