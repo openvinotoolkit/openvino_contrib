@@ -2,7 +2,7 @@
 
 ![Running result](https://user-images.githubusercontent.com/47499836/189129594-2634e176-5a5b-4051-b713-ae9574a8c3da.png)
 
-This is a object detection demo for Android ARM devices. 
+This demo showcases inference of Object Detection network on Android ARM devices using [OpenVINO Java API](https://github.com/openvinotoolkit/openvino_contrib/tree/7239f8201bf18d953298966afd9161cff50b2d38/modules/java_api).
 For inference is used `ssd_mobilenet_v2_coco` object detection model.
 
 ## How to run it
