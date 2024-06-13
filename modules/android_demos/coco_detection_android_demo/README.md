@@ -2,7 +2,8 @@
 
 ![Running result](https://user-images.githubusercontent.com/47499836/189129594-2634e176-5a5b-4051-b713-ae9574a8c3da.png)
 
-This is a demo for Android ARM devices. Using object detection model to reach the coco datasets' information. 
+This is a object detection demo for Android ARM devices. 
+For inference is used `ssd_mobilenet_v2_coco` object detection model.
 
 ## How to run it
 
