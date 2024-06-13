@@ -32,7 +32,7 @@ public enum ElementType {
     f8e4m3(22),
     f8e5m2(23),
     string(24),
-    f8e5m2(25);
+    f4e2m1(25);
 
     private int value;
     private static Map<Integer, ElementType> map = new HashMap<Integer, ElementType>();
