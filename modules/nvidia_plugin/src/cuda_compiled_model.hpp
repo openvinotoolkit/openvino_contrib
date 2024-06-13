@@ -66,6 +66,7 @@ private:
     std::shared_ptr<MemoryPool> create_memory_pool();
     void benchmark_optimal_number_of_requests();
     unsigned int run_benchmark_for(int numInfers, std::mutex& mtx, std::condition_variable& cond_var);
+    void instantiate_cuda_graphs();
 
     mutable std::atomic<std::size_t> request_id_ = {0};
     Configuration config_;
