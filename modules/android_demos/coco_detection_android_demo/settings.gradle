@@ -21,3 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "coco_detection_android_demo"
 include ':app'
+include ':OpenCV'

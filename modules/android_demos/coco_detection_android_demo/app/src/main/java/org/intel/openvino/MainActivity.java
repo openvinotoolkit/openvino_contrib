@@ -23,8 +23,12 @@ import org.opencv.core.TickMeter;
 import org.opencv.dnn.Dnn;
 import org.opencv.imgproc.Imgproc;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
@@ -48,107 +52,14 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
     public static final float CONFIDENCE_THRESHOLD = 0.6F;
     public static final float NMS_THRESHOLD = 0.6F;
     public static final String OPENCV_LIBRARY_NAME = "opencv_java4";
-    public static final String PLUGINS_XML = "plugins.xml";
-    public static final String MODEL_XML = "ssdlite_mobilenet_v2.xml";
-    public static final String MODEL_BIN = "ssdlite_mobilenet_v2.bin";
+    public static final String MODEL_XML = "ssd_mobilenet_v2_coco.xml";
+    public static final String COCO_LABELS = "labels.txt";
+    public static final String MODEL_BIN = "ssd_mobilenet_v2_coco.bin";
     public static final String DEVICE_NAME = "CPU";
-    public static final String[] COCO_CLASSES_91 = {
-        "background",
-        "person",
-        "bicycle",
-        "car",
-        "motorcycle",
-        "airplane",
-        "bus",
-        "train",
-        "truck",
-        "boat",
-        "traffic light",
-        "fire hydrant",
-        "street sign",
-        "stop sign",
-        "parking meter",
-        "bench",
-        "bird",
-        "cat",
-        "dog",
-        "horse",
-        "sheep",
-        "cow",
-        "elephant",
-        "bear",
-        "zebra",
-        "giraffe",
-        "hat",
-        "backpack",
-        "umbrella",
-        "shoe",
-        "eye glasses",
-        "handbag",
-        "tie",
-        "suitcase",
-        "frisbee",
-        "skis",
-        "snowboard",
-        "sports ball",
-        "kite",
-        "baseball bat",
-        "baseball glove",
-        "skateboard",
-        "surfboard",
-        "tennis racket",
-        "bottle",
-        "plate",
-        "wine glass",
-        "cup",
-        "fork",
-        "knife",
-        "spoon",
-        "bowl",
-        "banana",
-        "apple",
-        "sandwich",
-        "orange",
-        "broccoli",
-        "carrot",
-        "hot dog",
-        "pizza",
-        "donut",
-        "cake",
-        "chair",
-        "couch",
-        "potted plant",
-        "bed",
-        "mirror",
-        "dining table",
-        "window",
-        "desk",
-        "toilet",
-        "door",
-        "tv",
-        "laptop",
-        "mouse",
-        "remote",
-        "keyboard",
-        "cell phone",
-        "microwave",
-        "oven",
-        "toaster",
-        "sink",
-        "refrigerator",
-        "blender",
-        "book",
-        "clock",
-        "vase",
-        "scissors",
-        "teddy bear",
-        "hair drier",
-        "toothbrush",
-        "hair brush"
-    };
+    public static String[] COCO_CLASSES_91;
 
     private void copyFiles() {
-        String[] fileNames = {MODEL_BIN, MODEL_XML, PLUGINS_XML};
+        String[] fileNames = {MODEL_BIN, MODEL_XML, COCO_LABELS};
         for (String fileName : fileNames) {
             String outputFilePath = modelDir + "/" + fileName;
             File outputFile = new File(outputFilePath);
@@ -194,13 +105,29 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
 
         // Initialize model
         copyFiles();
-        Core core = new Core(modelDir + "/" + PLUGINS_XML);
+
+        List<String> listOfStrings = new ArrayList<String>();
+        try {
+            BufferedReader bf = null;
+            bf = new BufferedReader(new FileReader(modelDir + "/" + COCO_LABELS));
+            String line = bf.readLine();
+            while (line != null) {
+                listOfStrings.add(line);
+                line = bf.readLine();
+            }
+            bf.close();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        COCO_CLASSES_91 = listOfStrings.toArray(new String[0]);
+
+        Core core = new Core();
         Model net = core.read_model(modelDir + "/" + MODEL_XML);
         Log.i(APPTAG, "load ok...");
 
         // Set config of the network
         PrePostProcessor p = new PrePostProcessor(net);
-        p.input().tensor().set_element_type(ElementType.u8).set_layout(new Layout("NHWC"));
+        p.input().tensor().set_element_type(ElementType.u8).set_layout(new Layout("NCHW"));
 
         p.input().preprocess().resize(ResizeAlgorithm.RESIZE_LINEAR);
         p.input().model().set_layout(new Layout("NCHW"));
@@ -225,11 +152,10 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
         setContentView(R.layout.activity_main);
         try {
             System.loadLibrary(OPENCV_LIBRARY_NAME);
-            System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
         } catch (UnsatisfiedLinkError e) {
             Log.e(
                     "UnsatisfiedLinkError",
-                    "Failed to load native OpenVINO libraries\n" + e.toString());
+                    "Failed to load native OpenCV libraries\n" + e.toString());
             System.exit(1);
         }
         modelDir = this.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS).getAbsolutePath();
