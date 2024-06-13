@@ -127,7 +127,7 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
 
         // Set config of the network
         PrePostProcessor p = new PrePostProcessor(net);
-        p.input().tensor().set_element_type(ElementType.u8).set_layout(new Layout("NHWC"));
+        p.input().tensor().set_element_type(ElementType.u8).set_layout(new Layout("NCHW"));
 
         p.input().preprocess().resize(ResizeAlgorithm.RESIZE_LINEAR);
         p.input().model().set_layout(new Layout("NCHW"));

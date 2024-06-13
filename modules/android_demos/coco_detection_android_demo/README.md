@@ -47,11 +47,9 @@ For more information, please refer to [these instructions](../../java_api/README
   cp -r $OPV_HOME_DIR/one-tbb-install/lib/* $ANDROID_DEMO_PATH/app/src/main/jniLibs/arm64-v8a/
   cp -r $ANDROID_NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so $ANDROID_DEMO_PATH/app/src/main/jniLibs/arm64-v8a/
 
-  cp -r $OPV_HOME_DIR/mobelinet-v3-tf/* $ANDROID_DEMO_PATH/app/src/main/assets/
-  
   wget https://github.com/opencv/opencv/releases/download/4.10.0/opencv-4.10.0-android-sdk.zip --directory-prefix $OPV_HOME_DIR
   unzip $OPV_HOME_DIR/opencv-4.10.0-android-sdk.zip -d $OPV_HOME_DIR
-  mv $OPV_HOME_DIR/OpenCV-android-sdk/sdk $ANDROID_DEMO_PATH/OpenCV
+  cp -r $OPV_HOME_DIR/OpenCV-android-sdk/sdk $ANDROID_DEMO_PATH/OpenCV
   ```
 
 Please rename jar library that project works correct , e.g.
@@ -60,14 +58,16 @@ Please rename jar library that project works correct , e.g.
   mv $ANDROID_DEMO_PATH/app/libs/openvino-2024.2-linux-x86_64.jar $ANDROID_DEMO_PATH/app/libs/openvino-java-api.jar
   ```
 
+### Download and convert model
+To get a `ssd_mobilenet_v2_coco` model for this demo you should use the Open Model Zoo tools in [these instructions](https://docs.openvino.ai/2024/omz_tools_downloader.html).
+
 ### Import demo project on Android Studio
 
 - Choose and download [Android Studio](https://developer.android.com/studio) on your PC.
 
 - Select "File -> Open", and import demo project in `$OPV_HOME_DIR/openvino_contrib/modules/android_demos/coco_detection_android_demo`.
 
-- Integrate the OpenCV library from `$OPV_HOME_DIR/OpenCV-android-sdk` into the project according to the following [instructions](https://docs.opencv.org/4.x/d5/df8/tutorial_dev_with_OCV_on_Android.html). _Please do not change the name of the SDK to be integrated_
-
 - Build and run demo
 
 > The first time when you run the demo application on your device, your need to grant camera permission. Then run it again.
+> To build the project correctly, you should write in OpenCV `build.gradle` file `kotlinOptions` parameter same as current project's `build.gradle` file
