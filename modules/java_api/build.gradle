@@ -34,7 +34,7 @@ if (arch == "x86_64" || arch == "amd64" || arch == "x64" || arch == "x86-64") {
     ov_arch = "armhf";
 }
 
-def openVinoDir = System.getenv('INTEL_OPENVINO_DIR') ?: "/openvino-android/openvino_install"
+def openVinoDir = System.getenv('INTEL_OPENVINO_DIR') ?: System.getenv('OPV_HOME_DIR') + "/openvino_install"
 println ">>> INTEL_OPENVINO_DIR -> ${openVinoDir}"
 
 if (OperatingSystem.current().isMacOsX()) {
