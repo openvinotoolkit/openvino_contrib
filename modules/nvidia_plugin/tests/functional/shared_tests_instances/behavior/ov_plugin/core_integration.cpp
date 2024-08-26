@@ -15,14 +15,6 @@ using namespace ov::test::behavior;
 namespace {
 
 //
-// OV Class Common tests with <pluginName, device_name params>
-//
-
-INSTANTIATE_TEST_SUITE_P(smoke_OVClassNetworkTestP,
-                         OVClassModelTestP,
-                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
-
-//
 // OV Class GetMetric
 //
 
