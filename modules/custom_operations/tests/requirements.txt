@@ -2,4 +2,6 @@ torch
 onnx
 tensorboard
 pytest
+# WA CVS-150813
+numpy<2.0.0
 # open3d==0.16.0 - need to update with new release
