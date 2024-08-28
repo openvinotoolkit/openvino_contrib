@@ -71,7 +71,7 @@ std::shared_ptr<const ov::Model> LlamaCppModel::get_runtime_model() const {
 }
 
 void LlamaCppModel::set_property(const ov::AnyMap& properties) {
-    OPENVINO_DEBUG("llama_cpp_plugin: attempted to set_property (did nothing)";
+    OPENVINO_DEBUG("llama_cpp_plugin: attempted to set_property (did nothing)");
 }
 
 ov::Any LlamaCppModel::get_property(const std::string& name) const {
