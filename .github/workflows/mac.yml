@@ -48,7 +48,7 @@ jobs:
           repository: 'openvinotoolkit/openvino'
           path: 'openvino'
           submodules: 'true'
-          ref: 'master'
+          ref: 'releases/2024/4'
 
       - name: Clone OpenVINO Contrib
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
