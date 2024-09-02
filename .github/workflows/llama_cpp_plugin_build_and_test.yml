@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: Set up Python 3.9
-        uses: actions/setup-python@39cd149  # v5.1.1
+        uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f  # v5.1.1
         with:
           python-version: "3.9"
 
