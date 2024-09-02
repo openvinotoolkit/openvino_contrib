@@ -69,7 +69,7 @@ jobs:
           pip install -r llama.cpp/requirements/requirements-convert_hf_to_gguf.txt
           huggingface-cli download gpt2 model.safetensors tokenizer.json tokenizer_config.json vocab.json config.json merges.txt --local-dir hf_gpt2
           mkdir -p ${{ github.workspace }}/test_data
-          python3 llama.cpp/convert-hf-to-gguf.py hf_gpt2 --outtype f32 --outfile ${{ github.workspace }}/test_data/gpt2.gguf
+          python3 llama.cpp/convert_hf_to_gguf.py hf_gpt2 --outtype f32 --outfile ${{ github.workspace }}/test_data/gpt2.gguf
 
       - name: Install libtbb2
         run: |
