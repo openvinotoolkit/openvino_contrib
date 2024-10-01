@@ -27,11 +27,11 @@ LlamaCppModel::LlamaCppModel(const std::string& gguf_fname,
     : ICompiledModel(nullptr, plugin),
       m_gguf_fname(gguf_fname),
       m_num_threads(num_threads) {
-    OPENVINO_DEBUG("llama_cpp_plugin: loading llama model directly from GGUF... ")
+    OPENVINO_DEBUG("llama_cpp_plugin: loading llama model directly from GGUF... ");
     llama_model_params mparams = llama_model_default_params();
     mparams.n_gpu_layers = 99;
     m_llama_model_ptr = llama_load_model_from_file(gguf_fname.c_str(), mparams);
-    OPENVINO_DEBUG("llama_cpp_plugin: llama model loaded successfully from GGUF...")
+    OPENVINO_DEBUG("llama_cpp_plugin: llama model loaded successfully from GGUF...");
 
     auto input_ids = std::make_shared<ov::opset13::Parameter>(ov::element::Type_t::i64, ov::PartialShape({-1, -1}));
     auto fake_convert = std::make_shared<ov::opset13::Convert>(input_ids->output(0), ov::element::Type_t::f32);
