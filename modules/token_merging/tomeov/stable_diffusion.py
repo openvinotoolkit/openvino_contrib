@@ -93,6 +93,7 @@ def make_diffusers_tome_block(block_class: Type[torch.nn.Module]) -> Type[torch.
             class_labels=None,
         ) -> torch.Tensor:
             # (1) ToMe
+            #print(self._tome_info)
             m_a, m_c, m_m, u_a, u_c, u_m = compute_merge(hidden_states, self._tome_info)
 
             if self.use_ada_layer_norm:
@@ -168,6 +169,49 @@ def hook_tome_model(model: torch.nn.Module):
     model._tome_info["hooks"].append(model.register_forward_pre_hook(hook))
 
 
+def optimize_model(
+        model: torch.nn.Module,
+        is_diffusers,
+        ratio: float = 0.5,
+        max_downsample: int = 1,
+        sx: int = 2, sy: int = 2,
+        use_rand: bool = True,
+        merge_attn: bool = True,
+        merge_crossattn: bool = False,
+        merge_mlp: bool = False,
+        ):
+    remove_patch(model)
+
+    model._tome_info = {
+        "size": None,
+        "hooks": [],
+        "args": {
+            "ratio": ratio,
+            "max_downsample": max_downsample,
+            "sx": sx, "sy": sy,
+            "use_rand": use_rand,
+            "generator": None,
+            "merge_attn": merge_attn,
+            "merge_crossattn": merge_crossattn,
+            "merge_mlp": merge_mlp
+        }
+    }
+    hook_tome_model(model)
+
+    for _, module in model.named_modules():
+        # If for some reason this has a different name, create an issue and I'll fix it
+        if isinstance_str(module, "BasicTransformerBlock"):
+            print("Patch module")
+            make_tome_block_fn = make_diffusers_tome_block if is_diffusers else make_tome_block
+            module.__class__ = make_tome_block_fn(module.__class__)
+            module._tome_info = model._tome_info
+
+            # Something introduced in SD 2.0 (LDM only)
+            if not hasattr(module, "disable_self_attn") and not is_diffusers:
+                module.disable_self_attn = False
+
+    return model
+
 
 def patch_stable_diffusion(
         model: torch.nn.Module,
@@ -177,7 +221,9 @@ def patch_stable_diffusion(
         use_rand: bool = True,
         merge_attn: bool = True,
         merge_crossattn: bool = False,
-        merge_mlp: bool = False):
+        merge_mlp: bool = False,
+        optimize_image_encoder: bool = True,
+        ):
     """
     Patches a stable diffusion model with ToMe.
     Apply this to the highest level stable diffusion object (i.e., it should have a .model.diffusion_model).
@@ -201,9 +247,6 @@ def patch_stable_diffusion(
      - merge_mlp: Whether or not to merge tokens for the mlp layers (very not recommended).
     """
 
-    # Make sure the module is not currently patched
-    remove_patch(model)
-
     is_diffusers = isinstance_str(model, "DiffusionPipeline") or isinstance_str(model, "ModelMixin")
 
     if not is_diffusers:
@@ -215,32 +258,35 @@ def patch_stable_diffusion(
         # Supports "pipe.unet" and "unet"
         diffusion_model = model.unet if hasattr(model, "unet") else model
 
-    diffusion_model._tome_info = {
-        "size": None,
-        "hooks": [],
-        "args": {
-            "ratio": ratio,
-            "max_downsample": max_downsample,
-            "sx": sx, "sy": sy,
-            "use_rand": use_rand,
-            "generator": None,
-            "merge_attn": merge_attn,
-            "merge_crossattn": merge_crossattn,
-            "merge_mlp": merge_mlp
-        }
-    }
-    hook_tome_model(diffusion_model)
+    # Make sure the module is not currently patched
+    diffusion_model = optimize_model(
+        diffusion_model,
+        is_diffusers,
+        ratio=ratio,
+        max_downsample=max_downsample,
+        sx=sx,
+        sy=sy,
+        use_rand=use_rand,
+        merge_attn=merge_attn,
+        merge_crossattn=merge_crossattn,
+        merge_mlp=merge_mlp
+    )
 
-    for _, module in diffusion_model.named_modules():
-        # If for some reason this has a different name, create an issue and I'll fix it
-        if isinstance_str(module, "BasicTransformerBlock"):
-            make_tome_block_fn = make_diffusers_tome_block if is_diffusers else make_tome_block
-            module.__class__ = make_tome_block_fn(module.__class__)
-            module._tome_info = diffusion_model._tome_info
+    if optimize_image_encoder and hasattr(model, "image_encoder") and hasattr(model, "vae_encoder"):
+        image_encoder = model.vae_encoder
 
-            # Something introduced in SD 2.0 (LDM only)
-            if not hasattr(module, "disable_self_attn") and not is_diffusers:
-                module.disable_self_attn = False
+        image_encoder = optimize_model(
+            image_encoder,
+            is_diffusers,
+            ratio=ratio,
+            max_downsample=max_downsample,
+            sx=sx,
+            sy=sy,
+            use_rand=use_rand,
+            merge_attn=merge_attn,
+            merge_crossattn=merge_crossattn,
+            merge_mlp=merge_mlp
+        )
 
     return model
 

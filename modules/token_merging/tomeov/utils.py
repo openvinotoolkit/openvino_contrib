@@ -10,7 +10,8 @@ import torch
 
 from openvino._offline_transformations import apply_moc_transformations, compress_quantize_weights_transformation
 
-from optimum.exporters.onnx import export_models, get_stable_diffusion_models_for_export
+from optimum.exporters.onnx import export_models
+from optimum.exporters.utils import get_diffusion_models_for_export 
 from optimum.intel import OVStableDiffusionPipeline
 from optimum.utils import (
     DIFFUSION_MODEL_TEXT_ENCODER_SUBFOLDER,
@@ -91,7 +92,7 @@ def _export_to_onnx(pipeline, save_dir):
     ]
 
     with torch.no_grad():
-        models_and_onnx_configs = get_stable_diffusion_models_for_export(pipeline)
+        models_and_onnx_configs = get_diffusion_models_for_export(pipeline)
         pipeline.save_config(save_dir)
         export_models(
             models_and_onnx_configs=models_and_onnx_configs, output_dir=Path(save_dir), output_names=output_names
