@@ -93,7 +93,6 @@ def make_diffusers_tome_block(block_class: Type[torch.nn.Module]) -> Type[torch.
             class_labels=None,
         ) -> torch.Tensor:
             # (1) ToMe
-            #print(self._tome_info)
             m_a, m_c, m_m, u_a, u_c, u_m = compute_merge(hidden_states, self._tome_info)
 
             if self.use_ada_layer_norm:
@@ -237,7 +236,6 @@ def patch_stable_diffusion(
     for _, module in diffusion_model.named_modules():
         # If for some reason this has a different name, create an issue and I'll fix it
         if isinstance_str(module, "BasicTransformerBlock"):
-            print("Patch module")
             make_tome_block_fn = make_diffusers_tome_block if is_diffusers else make_tome_block
             module.__class__ = make_tome_block_fn(module.__class__)
             module._tome_info = diffusion_model._tome_info
@@ -246,7 +244,7 @@ def patch_stable_diffusion(
             if not hasattr(module, "disable_self_attn") and not is_diffusers:
                 module.disable_self_attn = False
 
-    if optimize_image_encoder and hasattr(model, "image_encoder") and hasattr(model, "vae_encoder"):
+    if optimize_image_encoder and hasattr(model, "vae_encoder"):
         image_encoder = model.vae_encoder
 
         image_encoder._tome_info = {
@@ -265,11 +263,9 @@ def patch_stable_diffusion(
         }
         hook_tome_model(image_encoder)
 
-        for name, module in image_encoder.named_modules():
-            print(name, module.__class__)
+        for _, module in image_encoder.named_modules():
             # If for some reason this has a different name, create an issue and I'll fix it
             if isinstance_str(module, "BasicTransformerBlock"):
-                print("Patch module")
                 make_tome_block_fn = make_diffusers_tome_block if is_diffusers else make_tome_block
                 module.__class__ = make_tome_block_fn(module.__class__)
                 module._tome_info = image_encoder._tome_info
