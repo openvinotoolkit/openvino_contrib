@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.8]
+        python-version: [3.11]
 
     runs-on: ubuntu-latest
     steps:
