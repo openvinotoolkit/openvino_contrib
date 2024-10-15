@@ -160,6 +160,29 @@ JNIEXPORT jintArray JNICALL Java_org_intel_openvino_Tensor_asInt(JNIEnv *env, jo
     return 0;
 }
 
+JNIEXPORT jlongArray JNICALL Java_org_intel_openvino_Tensor_asLong(JNIEnv *env, jobject, jlong addr)
+{
+    JNI_METHOD(
+        "asLong",
+        Tensor *ov_tensor = (Tensor *)addr;
+
+        size_t size = ov_tensor->get_size();
+        const long *data = ov_tensor->data<const long>();
+
+        jlongArray result = env->NewLongArray(size);
+        if (!result) {
+            throw std::runtime_error("Out of memory!");
+        } jlong *arr = env->GetLongArrayElements(result, nullptr);
+
+        for (size_t i = 0; i < size; ++i)
+            arr[i] = data[i];
+
+        env->ReleaseLongArrayElements(result, arr, 0);
+        return result;
+    )
+    return 0;
+}
+
 JNIEXPORT void JNICALL Java_org_intel_openvino_Tensor_delete(JNIEnv *, jobject, jlong addr)
 {
     Tensor *tensor = (Tensor *)addr;
