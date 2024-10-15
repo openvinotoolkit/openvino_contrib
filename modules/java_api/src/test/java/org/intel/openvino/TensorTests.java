@@ -42,6 +42,7 @@ public class TensorTests extends OVTest {
         Tensor tensor = new Tensor(dimsArr, inputData);
 
         assertArrayEquals(dimsArr, tensor.get_shape());
+        assertArrayEquals(inputData, tensor.as_long());
         assertEquals(size, tensor.get_size());
         assertEquals(ElementType.i64, tensor.get_element_type());
     }

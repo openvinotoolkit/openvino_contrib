@@ -67,6 +67,7 @@ extern "C"
     JNIEXPORT jint JNICALL Java_org_intel_openvino_Tensor_GetElementType(JNIEnv *, jobject, jlong);
     JNIEXPORT jfloatArray JNICALL Java_org_intel_openvino_Tensor_asFloat(JNIEnv *, jobject, jlong);
     JNIEXPORT jintArray JNICALL Java_org_intel_openvino_Tensor_asInt(JNIEnv *, jobject, jlong);
+    JNIEXPORT jlongArray JNICALL Java_org_intel_openvino_Tensor_asLong(JNIEnv *, jobject, jlong);
     JNIEXPORT void JNICALL Java_org_intel_openvino_Tensor_delete(JNIEnv *, jobject, jlong);
 
     // ov::PrePostProcessor
