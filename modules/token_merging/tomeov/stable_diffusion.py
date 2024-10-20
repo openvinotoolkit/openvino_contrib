@@ -177,7 +177,9 @@ def patch_stable_diffusion(
         use_rand: bool = True,
         merge_attn: bool = True,
         merge_crossattn: bool = False,
-        merge_mlp: bool = False):
+        merge_mlp: bool = False,
+        optimize_image_encoder: bool = True,
+        ):
     """
     Patches a stable diffusion model with ToMe.
     Apply this to the highest level stable diffusion object (i.e., it should have a .model.diffusion_model).
@@ -241,6 +243,36 @@ def patch_stable_diffusion(
             # Something introduced in SD 2.0 (LDM only)
             if not hasattr(module, "disable_self_attn") and not is_diffusers:
                 module.disable_self_attn = False
+
+    if optimize_image_encoder and hasattr(model, "vae_encoder"):
+        image_encoder = model.vae_encoder
+
+        image_encoder._tome_info = {
+            "size": None,
+            "hooks": [],
+            "args": {
+                "ratio": ratio,
+                "max_downsample": max_downsample,
+                "sx": sx, "sy": sy,
+                "use_rand": use_rand,
+                "generator": None,
+                "merge_attn": merge_attn,
+                "merge_crossattn": merge_crossattn,
+                "merge_mlp": merge_mlp
+            }
+        }
+        hook_tome_model(image_encoder)
+
+        for _, module in image_encoder.named_modules():
+            # If for some reason this has a different name, create an issue and I'll fix it
+            if isinstance_str(module, "BasicTransformerBlock"):
+                make_tome_block_fn = make_diffusers_tome_block if is_diffusers else make_tome_block
+                module.__class__ = make_tome_block_fn(module.__class__)
+                module._tome_info = image_encoder._tome_info
+
+                # Something introduced in SD 2.0 (LDM only)
+                if not hasattr(module, "disable_self_attn") and not is_diffusers:
+                    module.disable_self_attn = False
 
     return model
 

@@ -119,7 +119,7 @@ def make_tome_class(transformer_class):
             self._tome_info["source"] = None
 
             # to patches - whether to use dual patchnorm - https://arxiv.org/abs/2302.01327v1
-            if self.input_patchnorm:
+            if hasattr(self, "input_patchnorm") and self.input_patchnorm:
                 # einops - rearrange(x, 'b c (h p1) (w p2) -> b (h w) (c p1 p2)')
                 x = x.reshape(x.shape[0], x.shape[1], self.grid_size[0], self.patch_size[0], self.grid_size[1], self.patch_size[1])
                 x = x.permute(0, 2, 4, 1, 3, 5)

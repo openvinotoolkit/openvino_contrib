@@ -9,10 +9,12 @@ import numpy as np
 from PIL import Image
 import torch
 import openvino.runtime as ov
+from openvino import convert_model
 
 import tomeov
 from diffusers import StableDiffusionPipeline, DDPMScheduler
 from optimum.intel.openvino import OVStableDiffusionPipeline
+from optimum.exporters.openvino import export_from_model
 import open_clip
 import timm
 
@@ -33,7 +35,7 @@ class TokenMergingIntegrationTest(unittest.TestCase):
         tomeov.patch_stable_diffusion(loaded_pipeline, ratio=0.3)
         
         with tempfile.TemporaryDirectory() as tmpdirname:
-            tomeov.export_diffusion_pipeline(loaded_pipeline, tmpdirname)
+            export_from_model(loaded_pipeline, tmpdirname)
             ov_pipe = OVStableDiffusionPipeline.from_pretrained(tmpdirname, compile=False)
             ov_pipe.reshape(batch_size=1, height=height, width=width, num_images_per_prompt=1)
             ov_pipe.compile()
@@ -42,26 +44,16 @@ class TokenMergingIntegrationTest(unittest.TestCase):
     def test_openclip(self):
         model, _, transform = open_clip.create_model_and_transforms(self.OPENCLIP_MODEL[0], pretrained=self.OPENCLIP_MODEL[1])
         tomeov.patch_openclip(model, 8)
-        dummy_image = np.random.rand(100, 100, 3) * 255
+        dummy_image = np.random.rand(224, 224, 3) * 255
         dummy_image = Image.fromarray(dummy_image.astype("uint8"))
         dummy_image = transform(dummy_image).unsqueeze(0)
         
-        with tempfile.TemporaryDirectory(suffix = ".onnx") as tmpdirname:
-            model_file = os.path.join(tmpdirname, "image_encoder.onnx")
-            torch.onnx.export(
-                model.visual,
-                dummy_image,
-                model_file,
-                opset_version=14,
-                input_names=["image"],
-                output_names=["image_embedding"], 
-                dynamic_axes={ 
-                    "image": {0: "batch"},
-                    "image_embedding": {0: "batch"},
-                }
-            )
-            compiled_model = ov.compile_model(model_file)
-            self.assertTrue(compiled_model)
+        ov_model = convert_model(
+            model.visual,
+            example_input=dummy_image
+        )
+        compiled_model = ov.compile_model(ov_model)
+        self.assertTrue(compiled_model)
             
     def test_timm(self):
         model = timm.create_model(self.TIMM_MODEL, pretrained=False)
