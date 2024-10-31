@@ -14,6 +14,7 @@ concurrency:
 
 env:
   PYTHON_VERSION: '3.11'
+  OV_BRANCH: ${{ github.base_ref || github.event.merge_group.base_ref || github.ref }}
 
 permissions: read-all
 
@@ -58,7 +59,7 @@ jobs:
           repository: 'openvinotoolkit/openvino'
           path: ${{ env.OPENVINO_REPO }}
           submodules: 'true'
-          ref: 'master'
+          ref: ${{ env.OV_BRANCH}}
 
       - name: Clone OpenVINO Contrib
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
@@ -240,7 +241,7 @@ jobs:
             install_build_dependencies.sh
           sparse-checkout-cone-mode: false
           repository: 'openvinotoolkit/openvino'
-          ref: 'master'
+          ref: ${{ env.OV_BRANCH}}
           path: ${{ env.OPENVINO_REPO }}
 
       - name: Install Prerequisites
