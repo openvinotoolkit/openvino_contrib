@@ -48,6 +48,8 @@ LIBS_RPATH = '$ORIGIN' if sys.platform == 'linux' else '@loader_path'
 OPENVINO_INSTALL_BUILD_DEPS_SCRIPT = "install_build_dependencies.sh"
 
 openvino_src_dir: Optional[str] = None
+build_configuration_name: Optional[str] = None
+package_data: typing.Dict[str, list] = {}
 
 
 def is_tool(name):
@@ -206,9 +208,11 @@ class BuildCMakeLib(build_clib):
         super().finalize_options()
 
         global openvino_src_dir
+        global build_configuration_name
+        
         self.git_exec = shutil.which("git")
         self.cmake_exec = shutil.which("cmake")
-        self.build_configuration_name = 'Debug' if self.debug else 'Release'
+        build_configuration_name = 'Debug' if self.debug else 'Release'
         self.nvidia_plugin_src_dir = os.path.abspath(os.path.dirname(__file__))
         self.build_lib_dir = os.path.join(self.nvidia_plugin_src_dir, "../build/lib")
         self.openvino_contrib_src_dir = os.path.normpath(os.path.join(self.nvidia_plugin_src_dir, "../../.."))
@@ -286,7 +290,7 @@ class BuildCMakeLib(build_clib):
                              f'-DPYTHON_EXECUTABLE={sys.executable}',
                              f'-DPYTHON_INCLUDE_DIR={python_include_dir}',
                              '-DNGRAPH_PYTHON_BUILD_ENABLE=ON',
-                             f'-DCMAKE_BUILD_TYPE={self.build_configuration_name}',
+                             f'-DCMAKE_BUILD_TYPE={build_configuration_name}',
                              f'-DOPENVINO_EXTRA_MODULES={self.openvino_contrib_src_dir}/modules/nvidia_plugin',
                              '-DENABLE_WHEEL=ON',
                              f'-DWHEEL_VERSION={WHEEL_VERSION}']
@@ -306,7 +310,7 @@ class BuildCMakeLib(build_clib):
 
     def get_build_env(self):
         build_env = os.environ.copy()
-        build_env['BUILD_TYPE'] = self.build_configuration_name
+        build_env['BUILD_TYPE'] = build_configuration_name
         build_env['BUILD_TARGETS'] = NVIDIA_PLUGIN_CMAKE_TARGET_NAME
         build_env['OPENVINO_HOME'] = self.openvino_src_dir
         build_env['OPENVINO_CONTRIB'] = self.openvino_contrib_src_dir
@@ -367,52 +371,66 @@ class BuildCMakeLib(build_clib):
                     set_rpath(LIBS_RPATH, os.path.realpath(path))
 
 
-class InstallCMakeLib(install_lib, build_clib):
-    def initialize_options(self):
-        install_lib.initialize_options(self)
-        build_clib.initialize_options(self)
-    
+class InstallLib(install_lib):
     def finalize_options(self):
         install_lib.finalize_options(self)
-        build_clib.finalize_options(self)
         
         self.git_exec = shutil.which("git")
         self.force = None
-        self.deps_dir = os.path.abspath(os.path.join(self.build_temp, "deps"))
         self.set_undefined_options('install', ('force', 'force'))
+        print(f"self.force = {self.force}")
 
     def run(self):
+        openvino_nvidia_gpu_library = f'{openvino_src_dir}/bin/intel64/{build_configuration_name}/lib/libopenvino_nvidia_gpu_plugin.{platform_specifics.get_lib_file_extension()}'
+        package_data.update({
+            '': [openvino_nvidia_gpu_library]
+        })
+        
+        self.build()
+        self.install()
+        
         try:
-            self.build()
-            self.install()
-            self.install_openvino_package_and_other_dependencies()
+            if self.force:
+                self.install_openvino_package()
+            self.install_python_dependencies()
             self.register_nvidia_plugin()
             self.test_nvidia_plugin()
-            openvino_nvidia_gpu_library = f'{openvino_src_dir}/bin/intel64/Release/lib/libopenvino_nvidia_gpu_plugin.{platform_specifics.get_lib_file_extension()}'
-            package_data.update({
-                '': [openvino_nvidia_gpu_library]
-            })
-        finally:
+        except Exception as ex:
             self.unregister_nvidia_plugin()
 
-    def install_openvino_package_and_other_dependencies(self):
-        if self.force:
-            py_tag=tags.interpreter_name() + tags.interpreter_version()
-            abi_tag=wheel.bdist_wheel.get_abi_tag()
-            platform_tag=next(tags.platform_tags())
-            git_commits=get_command_output([self.git_exec, 'rev-list', '--count', '--first-parent', 'HEAD'],
-                    cwd=openvino_src_dir, on_fail_msg='Failed to count OpenVINO commits').strip()
-            openvino_wheel_name="-".join(["openvino", WHEEL_VERSION, git_commits, py_tag, abi_tag, platform_tag]) + ".whl"
-            wheels_path = os.path.abspath(os.path.join(openvino_src_dir, "build/wheels", openvino_wheel_name))
-            self.announce(f"Installing OpenVINO package with {wheels_path}", level=3)
-            openvino_install_py = create_pip_command(wheels_path)
-            run_command(openvino_install_py,
-                        on_fail_msg=f'Failed to install OpenVINO wheel package with {wheels_path}')
+    def install_openvino_package(self):
+        py_tag=tags.interpreter_name() + tags.interpreter_version()
+        abi_tag=wheel.bdist_wheel.get_abi_tag()
+        platform_tag=next(tags.platform_tags())
+        git_commits=get_command_output([self.git_exec, 'rev-list', '--count', '--first-parent', 'HEAD'],
+                                        cwd=openvino_src_dir,
+                                        on_fail_msg='Failed to count OpenVINO commits').strip()
+        openvino_wheel_name="-".join(["openvino", WHEEL_VERSION, git_commits, py_tag, abi_tag, platform_tag]) + ".whl"
+        wheels_path = os.path.abspath(os.path.join(openvino_src_dir, "build/wheels", openvino_wheel_name))
+        self.announce(f"Installing OpenVINO package with {wheels_path}", level=3)
+        openvino_install_py = create_pip_command(wheels_path)
+        run_command(openvino_install_py,
+                    on_fail_msg=f'Failed to install OpenVINO wheel package with {wheels_path}')
 
+    def install_python_dependencies(self):
         path_to_requirements_txt = os.path.join(os.path.abspath(os.path.dirname(__file__)), "requirements.txt")
         requirements_py = create_pip_command('-r', path_to_requirements_txt)
         run_command(requirements_py,
                     on_fail_msg=f'Failed to install dependencies from {path_to_requirements_txt}')
+
+    def check_plugins_xml_if_exists(self):
+        openvino_package_libs_dir = self.get_openvino_package_dir()
+        xml_file = os.path.join(openvino_package_libs_dir, "plugins.xml")
+        if not os.path.exists(xml_file):
+            plugins_xml_src = dedent('''\
+                <ie>
+                    <plugins>
+                    </plugins>
+                </ie>
+                ''')
+            tree = ET.fromstring(plugins_xml_src)
+            with open(xml_file, "w") as f:
+                f.write(ET.tostring(tree).decode('utf8'))
 
     def update_plugins_xml(self, xml_file, openvino_nvidia_gpu_library):
         if not os.path.exists(xml_file):
@@ -438,14 +456,17 @@ class InstallCMakeLib(install_lib, build_clib):
         openvino_package_libs_dir = os.path.join(openvino_package_dir, "libs")
         return openvino_package_libs_dir
 
-    def register_nvidia_plugin(self):
-        openvino_package_libs_dir = self.get_openvino_package_dir()
-        self.copy_tree(self.build_dir, openvino_package_libs_dir)
-        openvino_nvidia_gpu_library = os.path.join(openvino_package_libs_dir,
-                                                   f"libopenvino_nvidia_gpu_plugin.{platform_specifics.get_lib_file_extension()}")
+    def get_openvino_nvidia_lib_path(self):
+        import openvino_nvidia
+        openvino_nvidia_package_dir = os.path.dirname(os.path.abspath(openvino_nvidia.__file__))
+        openvino_nvidia_gpu_library = f'{openvino_nvidia_package_dir}/libopenvino_nvidia_gpu_plugin.{platform_specifics.get_lib_file_extension()}'
+        return openvino_nvidia_gpu_library
 
+    def register_nvidia_plugin(self):
+        self.check_plugins_xml_if_exists()
+        openvino_package_libs_dir = self.get_openvino_package_dir()
+        openvino_nvidia_gpu_library = self.get_openvino_nvidia_lib_path()
         xml_file = os.path.join(openvino_package_libs_dir, "plugins.xml")
-        
         self.update_plugins_xml(xml_file, openvino_nvidia_gpu_library)
 
     def unregister_nvidia_plugin(self):
@@ -508,8 +529,6 @@ class InstallCMakeLib(install_lib, build_clib):
                                f'Possible ABI version mismatch. {recommendations_msg}') from e
 
 
-package_data: typing.Dict[str, list] = {}
-
 setup(
     version=config('WHEEL_VERSION', WHEEL_VERSION),
     author_email=config('WHEEL_AUTHOR_EMAIL', 'openvino_pushbot@intel.com'),
@@ -525,12 +544,12 @@ setup(
     libraries=[(PACKAGE_NAME, {'sources': []})],
     packages=["openvino_nvidia"],
     package_dir={
-        "openvino_nvidia": f"{os.path.abspath(os.path.dirname(__file__))}/openvino_nvidia",
+        "openvino_nvidia": f"{os.path.abspath(os.path.dirname(__file__))}/packages/openvino_nvidia",
     },
     package_data=package_data,
     cmdclass={
         'build_clib': BuildCMakeLib,
-        'install_lib': InstallCMakeLib,
+        'install_lib': InstallLib,
     },
     zip_safe=False,
 )
