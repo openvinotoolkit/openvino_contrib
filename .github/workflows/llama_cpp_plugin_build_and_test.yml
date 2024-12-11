@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'modules/llama_cpp_plugin/**'
+      - '.github/workflows/llama_cpp_plugin_build_and_test.yml'
 
 permissions: read-all
 
@@ -46,6 +47,11 @@ jobs:
     needs: build_ubuntu20
     runs-on: ubuntu-20.04
     steps:
+      - name: Set up Python 3.9
+        uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f  # v5.1.1
+        with:
+          python-version: "3.9"
+
       - name: Download build artifacts
         uses: actions/download-artifact@65a9edc5881444af0b9093a5e628f2fe47ea3b2e # v4.1.7
         with:
@@ -60,10 +66,10 @@ jobs:
 
       - name: Prepare test data - convert test model files
         run: |
-          pip install -r llama.cpp/requirements/requirements-convert-hf-to-gguf.txt
+          pip install -r llama.cpp/requirements/requirements-convert_hf_to_gguf.txt
           huggingface-cli download gpt2 model.safetensors tokenizer.json tokenizer_config.json vocab.json config.json merges.txt --local-dir hf_gpt2
           mkdir -p ${{ github.workspace }}/test_data
-          python3 llama.cpp/convert-hf-to-gguf.py hf_gpt2 --outtype f32 --outfile ${{ github.workspace }}/test_data/gpt2.gguf
+          python3 llama.cpp/convert_hf_to_gguf.py hf_gpt2 --outtype f32 --outfile ${{ github.workspace }}/test_data/gpt2.gguf
 
       - name: Install libtbb2
         run: |
