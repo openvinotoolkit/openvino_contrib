@@ -16,6 +16,7 @@ public class TensorTests extends OVTest {
 
         assertArrayEquals(tensor.get_shape(), dimsArr);
         assertArrayEquals(tensor.data(), data, 0.0f);
+        assertEquals(ElementType.f32, tensor.get_element_type());
     }
 
     @Test
@@ -29,6 +30,7 @@ public class TensorTests extends OVTest {
         assertArrayEquals(dimsArr, tensor.get_shape());
         assertArrayEquals(inputData, tensor.as_int());
         assertEquals(size, tensor.get_size());
+        assertEquals(ElementType.i32, tensor.get_element_type());
     }
 
     @Test
@@ -41,5 +43,6 @@ public class TensorTests extends OVTest {
 
         assertArrayEquals(dimsArr, tensor.get_shape());
         assertEquals(size, tensor.get_size());
+        assertEquals(ElementType.i64, tensor.get_element_type());
     }
 }
