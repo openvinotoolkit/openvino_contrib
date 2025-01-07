@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'modules/llama_cpp_plugin/**'
+      - '.github/workflows/llama_cpp_plugin_build_and_test.yml'
 
 permissions: read-all
 
@@ -46,6 +47,11 @@ jobs:
     needs: build_ubuntu20
     runs-on: ubuntu-20.04
     steps:
+      - name: Set up Python 3.9
+        uses: actions/setup-python@39cd149  # v5.1.1
+        with:
+          python-version: "3.9"
+
       - name: Download build artifacts
         uses: actions/download-artifact@65a9edc5881444af0b9093a5e628f2fe47ea3b2e # v4.1.7
         with:
