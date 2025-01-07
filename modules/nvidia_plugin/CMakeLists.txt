@@ -92,6 +92,8 @@ find_library(CUDNN_PATH
              ${HAS_REQUIRED}
              HINTS "$ENV{CUDNN_PATH}" "${CUDA_TOOLKIT_ROOT_DIR}" "${CUDA_PATH}" "$ENV{CUDA_PATH}"
              PATH_SUFFIXES nvidia/current lib64 lib/x64 lib)
+get_filename_component(CUDNN_INCLUDE_DIR "${CUDNN_PATH}" DIRECTORY)
+get_filename_component(CUDNN_INCLUDE_DIR "${CUDNN_INCLUDE_DIR}/../../include" REALPATH)
 
 if(CUDAToolkit_VERSION_MAJOR LESS_EQUAL 10)
     set(CUTENSOR_LIB_DIRS lib/10.2 libcutensor/10.2)
@@ -118,14 +120,18 @@ endif()
 message("-- [nvidia_gpu] CUTENSOR_PATH ${CUTENSOR_PATH}")
 message("-- [nvidia_gpu] CUTENSOR_INCLUDE_DIR ${CUTENSOR_INCLUDE_DIR}")
 message("-- [nvidia_gpu] CUDNN_PATH ${CUDNN_PATH}")
+message("-- [nvidia_gpu] CUDNN_INCLUDE_DIR ${CUDNN_INCLUDE_DIR}")
 message("-- [nvidia_gpu] CUBLAS_PATH ${CUBLAS_PATH}")
 
 add_library(CUDA::cudnn SHARED IMPORTED)
-set_target_properties(CUDA::cudnn PROPERTIES IMPORTED_LOCATION "${CUDNN_PATH}")
-set_target_properties(CUDA::cudnn PROPERTIES IMPORTED_IMPLIB "${CUDNN_PATH}")
+set_target_properties(CUDA::cudnn PROPERTIES IMPORTED_LOCATION "${CUDNN_PATH}"
+                                             IMPORTED_IMPLIB "${CUDNN_PATH}"
+                                             INTERFACE_INCLUDE_DIRECTORIES "${CUDNN_INCLUDE_DIR}")
+
 add_library(CUDA::cutensor SHARED IMPORTED)
-set_target_properties(CUDA::cutensor PROPERTIES IMPORTED_LOCATION "${CUTENSOR_PATH}")
-set_target_properties(CUDA::cutensor PROPERTIES IMPORTED_IMPLIB "${CUTENSOR_PATH}")
+set_target_properties(CUDA::cutensor PROPERTIES IMPORTED_LOCATION "${CUTENSOR_PATH}"
+                                                IMPORTED_IMPLIB "${CUTENSOR_PATH}"
+                                                INTERFACE_INCLUDE_DIRECTORIES "${CUTENSOR_INCLUDE_DIR}")
 
 if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
     if(CUDAToolkit_VERSION_MAJOR LESS_EQUAL 10)
