@@ -62,21 +62,8 @@ std::optional<std::size_t> ResultOp::GetOutputTensorSubIndex(const ov::Output<ov
 }
 
 std::vector<std::string> ResultOp::GetOutputTensorName(const ov::op::v0::Result& node) {
-    std::vector<std::string> outputNames;
-
     const auto& input = node.input_value(0);
-    auto name = ov::op::util::get_ie_output_name(input);
-    outputNames.push_back(name);
-
-    auto resultName = node.get_friendly_name();
-
-    // NOTE: New way of getting the fused names for OpenVINO 2.0 API
-    // TODO: When support for old OpenVINO API will be stopped, consider using only this approach.
-    //       Also see any issues with Tacatron2 network
-    const auto& fusedResults = ov::getFusedNamesVector(input.get_node()->shared_from_this());
-    outputNames.insert(outputNames.end(), fusedResults.begin(), fusedResults.end());
-
-    return outputNames;
+    return ov::getFusedNamesVector(input.get_node()->shared_from_this());
 }
 
 void ResultOp::Capture(InferenceRequestContext& context,
