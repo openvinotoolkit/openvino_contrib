@@ -11,11 +11,14 @@
 
 #include "cuda_compiled_model.hpp"
 #include "cuda_eager_topology_runner.hpp"
+#include "cuda_simple_execution_delegator.hpp"
 #include "cuda_graph_topology_runner.hpp"
 #include "cuda_itt.hpp"
+#include "cuda_inference_request_context.hpp"
 #include "cuda_operation_registry.hpp"
 #include "cuda_perf_counts.hpp"
 #include "cuda_plugin.hpp"
+#include "cuda_thread_pool.hpp"
 #include "memory_manager/cuda_immutable_memory_block_builder.hpp"
 #include "memory_manager/cuda_memory_manager.hpp"
 #include "memory_manager/model/cuda_memory_model_builder.hpp"
@@ -134,6 +137,9 @@ void CompiledModel::compile_model(const std::shared_ptr<const ov::Model>& model)
     }
 
     memory_pool_ = create_memory_pool();
+
+    if (use_cuda_graph_)
+        instantiate_cuda_graphs();
 }
 
 void CompiledModel::benchmark_optimal_number_of_requests() {
@@ -270,6 +276,65 @@ std::shared_ptr<ov::IAsyncInferRequest> CompiledModel::create_benchmark_infer_re
         get_task_executor(),
         cuda_stream_executor_,
         get_callback_executor());
+}
+
+#include <condition_variable>
+#include <mutex>
+
+void CompiledModel::instantiate_cuda_graphs() {
+    std::vector<std::shared_ptr<ov::Tensor>> input_tensors;
+    std::vector<std::shared_ptr<ov::Tensor>> output_tensors;
+    for (const auto& input : model_->inputs()) {
+        input_tensors.push_back(std::make_shared<ov::Tensor>(input));
+    }
+    for (const auto& output : model_->outputs()) {
+        input_tensors.push_back(std::make_shared<ov::Tensor>(output));
+    }
+    CancellationToken cancellation_token;
+    std::vector<MemoryPool::Proxy> memory_proxies;
+    for (int i = 0; i < memory_pool_->Size(); i++) {
+        auto memory_proxy = memory_pool_->WaitAndGet(cancellation_token);
+        if (!memory_proxy.Get().cudaGraphContext().is_initialized())
+            memory_proxies.push_back(std::move(memory_proxy));
+    }
+    auto cuda_thread_pool = std::dynamic_pointer_cast<CudaThreadPool>(cuda_stream_executor_);
+    auto& topology_runner = get_topology_runner();
+    int active_threads_num{memory_proxies.size()};
+    std::mutex m;
+    std::condition_variable cv;
+    for (auto& memory_proxy : memory_proxies) {
+        cuda_stream_executor_->run([this, &topology_runner, cuda_thread_pool, &memory_proxy, &cancellation_token, &input_tensors, &output_tensors, &active_threads_num, &cv, &m]() {
+            try {
+                std::unique_lock l{m, std::defer_lock};
+                auto& threadContext = cuda_thread_pool->get_thread_context();
+                SimpleExecutionDelegator executionDelegator_;
+                auto& memory = memory_proxy.Get();
+                auto& cudaGraphContext = memory.cudaGraphContext();
+                InferenceRequestContext inferRequestContext{input_tensors,
+                    input_index_,
+                    output_tensors,
+                    output_index_,
+                    threadContext,
+                    cancellation_token,
+                    executionDelegator_,
+                    cudaGraphContext,
+                    false};
+                topology_runner.Run(inferRequestContext, memory);
+                threadContext.stream().synchronize();
+                l.lock();
+                active_threads_num--;
+                l.unlock();
+                cv.notify_one();
+            } catch (...) {
+                std::unique_lock l{m};
+                active_threads_num = 0;
+                l.unlock();
+                cv.notify_one();
+            }
+        });
+    }
+    std::unique_lock<std::mutex> lk(m);
+    cv.wait(lk, [&active_threads_num]{ return active_threads_num <= 0; });
 }
 
 std::shared_ptr<ov::ISyncInferRequest> CompiledModel::create_sync_infer_request() const {
