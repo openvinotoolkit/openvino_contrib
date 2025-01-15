@@ -117,6 +117,16 @@ inline __device__ T sinh(T a) {
 }
 
 template <typename T>
+inline __device__ T asin(T a) {
+    return static_cast<T>(::asinf(static_cast<float>(a)));
+}
+
+template <typename T>
+inline __device__ T asinh(T a) {
+    return static_cast<T>(::asinhf(static_cast<float>(a)));
+}
+
+template <typename T>
 inline __device__ T cos(T a) {
     return static_cast<T>(::cosf(static_cast<float>(a)));
 }
@@ -124,6 +134,16 @@ inline __device__ T cos(T a) {
 template <typename T>
 inline __device__ T cosh(T a) {
     return static_cast<T>(::coshf(static_cast<float>(a)));
+}
+
+template <typename T>
+inline __device__ T acos(T a) {
+    return static_cast<T>(::acosf(static_cast<float>(a)));
+}
+
+template <typename T>
+inline __device__ T acosh(T a) {
+    return static_cast<T>(::acoshf(static_cast<float>(a)));
 }
 
 template <typename T>
