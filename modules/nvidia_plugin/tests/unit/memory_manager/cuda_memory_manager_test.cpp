@@ -60,7 +60,7 @@ public:  // ov::nvidia_gpu::IOperationMeta
         static constexpr std::string_view empty{""};
         return empty;
     }
-    const ov::element::Type& GetRuntimePrecision() const override { return ov::element::undefined; }
+    const ov::element::Type& GetRuntimePrecision() const override { return ov::element::dynamic; }
     gsl::span<const ov::nvidia_gpu::TensorID> GetInputIds() const override { return inputIds_; }
     gsl::span<const ov::nvidia_gpu::TensorID> GetOutputIds() const override { return outputIds_; }
 };
