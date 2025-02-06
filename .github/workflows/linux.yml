@@ -148,6 +148,7 @@ jobs:
       - name: Cmake install
         run: |
           cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} -P ${BUILD_DIR}/cmake_install.cmake
+          cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} -DCOMPONENT=python_wheels -P ${BUILD_DIR}/cmake_install.cmake
           cmake -DCMAKE_INSTALL_PREFIX=${DEVELOPER_PACKAGE_DIR} -DCOMPONENT=developer_package -P ${BUILD_DIR}/cmake_install.cmake
 
       - name: Java tests
@@ -163,7 +164,7 @@ jobs:
       - name: Install requirements for custom operations tests
         run: |
           python3 -m pip install -r ${OPENVINO_CONTRIB_REPO}/modules/custom_operations/tests/requirements.txt
-          python3 -m pip install ${INSTALL_DIR}/tools/openvino-*.whl
+          python3 -m pip install ${INSTALL_DIR}/wheels/openvino-*.whl
 
       - name: Custom user operation tests
         working-directory: ${{ env.OPENVINO_CONTRIB_REPO }}/modules/custom_operations
