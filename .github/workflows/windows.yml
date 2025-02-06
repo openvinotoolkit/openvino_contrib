@@ -181,7 +181,7 @@ jobs:
           call C:\tools\opencv\build\setup_vars_opencv4.cmd
           call ${{ env.INSTALL_DIR }}\setupvars.bat
           python3 -m pip install -r ${{ env.OPENVINO_CONTRIB_REPO }}\modules\custom_operations\tests\requirements.txt
-          
+
           python3 -m pytest -k "not sparse_conv" tests\run_tests.py
         env:
           CUSTOM_OP_LIB: ${{ env.OPENVINO_REPO }}/bin/intel64/${{ env.CMAKE_BUILD_TYPE }}/user_ov_extensions.dll
