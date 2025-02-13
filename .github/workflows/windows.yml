@@ -15,6 +15,7 @@ concurrency:
 
 env:
   PYTHON_VERSION: '3.11'
+  OV_BRANCH: ${{ github.base_ref || github.event.merge_group.base_ref || github.ref }}
 
 permissions: read-all
 
@@ -50,7 +51,7 @@ jobs:
           repository: 'openvinotoolkit/openvino'
           path: ${{ env.OPENVINO_REPO }}
           submodules: 'true'
-          ref: 'master'
+          ref: ${{ env.OV_BRANCH}}
 
       - name: Clone OpenVINO Contrib
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
@@ -180,7 +181,7 @@ jobs:
           call C:\tools\opencv\build\setup_vars_opencv4.cmd
           call ${{ env.INSTALL_DIR }}\setupvars.bat
           python3 -m pip install -r ${{ env.OPENVINO_CONTRIB_REPO }}\modules\custom_operations\tests\requirements.txt
-          
+
           python3 -m pytest -k "not sparse_conv" tests\run_tests.py
         env:
           CUSTOM_OP_LIB: ${{ env.OPENVINO_REPO }}/bin/intel64/${{ env.CMAKE_BUILD_TYPE }}/user_ov_extensions.dll

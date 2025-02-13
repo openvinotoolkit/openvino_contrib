@@ -57,7 +57,7 @@ private:
     ov::streams::Num num_streams = 0;
     ov::hint::PerformanceMode performance_mode = ov::hint::PerformanceMode::LATENCY;
     ov::hint::ExecutionMode execution_mode = ov::hint::ExecutionMode::PERFORMANCE;
-    ov::element::Type inference_precision = ov::element::undefined;
+    ov::element::Type inference_precision = ov::element::dynamic;
 };
 
 }  // namespace nvidia_gpu

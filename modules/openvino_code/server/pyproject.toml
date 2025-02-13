@@ -11,9 +11,9 @@ dependencies = [
     'torch @ https://download.pytorch.org/whl/cpu-cxx11-abi/torch-2.0.1%2Bcpu.cxx11.abi-cp310-cp310-linux_x86_64.whl ; sys_platform=="linux" and python_version == "3.10"',
     'torch @ https://download.pytorch.org/whl/cpu-cxx11-abi/torch-2.0.1%2Bcpu.cxx11.abi-cp311-cp311-linux_x86_64.whl ; sys_platform=="linux" and python_version == "3.11"',
     'torch ; sys_platform != "linux"',
-    'openvino==2024.1.0',
-    'transformers==4.36.0',
-    'optimum==1.19.1',
+    'openvino==2024.6.0',
+    'transformers==4.48.0',
+    'optimum==1.23.3',
     'optimum-intel[openvino]==1.15.0',
 ]
 

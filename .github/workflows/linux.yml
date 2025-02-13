@@ -14,6 +14,7 @@ concurrency:
 
 env:
   PYTHON_VERSION: '3.11'
+  OV_BRANCH: ${{ github.base_ref || github.event.merge_group.base_ref || github.ref }}
 
 permissions: read-all
 
@@ -58,7 +59,7 @@ jobs:
           repository: 'openvinotoolkit/openvino'
           path: ${{ env.OPENVINO_REPO }}
           submodules: 'true'
-          ref: 'master'
+          ref: ${{ env.OV_BRANCH}}
 
       - name: Clone OpenVINO Contrib
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
@@ -147,6 +148,7 @@ jobs:
       - name: Cmake install
         run: |
           cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} -P ${BUILD_DIR}/cmake_install.cmake
+          cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} -DCOMPONENT=python_wheels -P ${BUILD_DIR}/cmake_install.cmake
           cmake -DCMAKE_INSTALL_PREFIX=${DEVELOPER_PACKAGE_DIR} -DCOMPONENT=developer_package -P ${BUILD_DIR}/cmake_install.cmake
 
       - name: Java tests
@@ -162,7 +164,7 @@ jobs:
       - name: Install requirements for custom operations tests
         run: |
           python3 -m pip install -r ${OPENVINO_CONTRIB_REPO}/modules/custom_operations/tests/requirements.txt
-          python3 -m pip install ${INSTALL_DIR}/tools/openvino-*.whl
+          python3 -m pip install ${INSTALL_DIR}/wheels/openvino-*.whl
 
       - name: Custom user operation tests
         working-directory: ${{ env.OPENVINO_CONTRIB_REPO }}/modules/custom_operations
@@ -240,7 +242,7 @@ jobs:
             install_build_dependencies.sh
           sparse-checkout-cone-mode: false
           repository: 'openvinotoolkit/openvino'
-          ref: 'master'
+          ref: ${{ env.OV_BRANCH}}
           path: ${{ env.OPENVINO_REPO }}
 
       - name: Install Prerequisites

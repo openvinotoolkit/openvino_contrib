@@ -1,7 +1,7 @@
 {
   "publisher": "OpenVINO",
   "name": "openvino-code-completion",
-  "version": "0.1.0",
+  "version": "0.2.2",
   "displayName": "OpenVINO Code Completion",
   "description": "VSCode extension for AI code completion with OpenVINO",
   "icon": "media/logo.png",
@@ -57,7 +57,6 @@
     "vsce:publish": "vsce publish",
     "ovsx:publish": "ovsx publish",
     "clear-out": "rimraf ./out"
-    
   },
   "devDependencies": {
     "@types/glob": "8.1.0",
@@ -84,7 +83,7 @@
     "terser-webpack-plugin": "5.3.9",
     "ts-loader": "9.4.4",
     "typescript": "5.1.6",
-    "webpack": "5.88.2",
+    "webpack": "^5.96.1",
     "webpack-bundle-analyzer": "4.9.0",
     "webpack-cli": "5.1.4"
   },
@@ -205,7 +204,7 @@
             "order": 1,
             "type": "string",
             "default": "CPU",
-            "enum":[
+            "enum": [
               "CPU",
               "GPU",
               "NPU"
@@ -247,29 +246,25 @@
             "order": 4,
             "type": "boolean",
             "default": "false",
-            "description":
-              "When checked, text before (above) and after (below) the cursor will be used for completion generation. When unckecked, only text before (above) the cursor will be used."
+            "description": "When checked, text before (above) and after (below) the cursor will be used for completion generation. When unckecked, only text before (above) the cursor will be used."
           },
           "openvinoCode.startToken": {
             "order": 7,
             "type": "string",
             "default": "< |fim_begin| >",
-            "description":
-              "String that is sent to server is in format: `{startToken}{text above cursor}{middleToken}{text below cursor if fillInTheMiddleMode=true}{endToken}`. Leave `startToken`, `middleToken`, or `endToken` empty if there is no special token for those placements."
+            "description": "String that is sent to server is in format: `{startToken}{text above cursor}{middleToken}{text below cursor if fillInTheMiddleMode=true}{endToken}`. Leave `startToken`, `middleToken`, or `endToken` empty if there is no special token for those placements."
           },
           "openvinoCode.middleToken": {
             "order": 8,
             "type": "string",
             "default": "<｜fim▁hole｜>",
-            "description":
-              "String that is sent to server is in format: `{startToken}{text above cursor}{middleToken}{text below cursor if fillInTheMiddleMode=true}{endToken}`. Leave `startToken`, `middleToken`, or `endToken` empty if there is no special token for those placements."
+            "description": "String that is sent to server is in format: `{startToken}{text above cursor}{middleToken}{text below cursor if fillInTheMiddleMode=true}{endToken}`. Leave `startToken`, `middleToken`, or `endToken` empty if there is no special token for those placements."
           },
           "openvinoCode.endToken": {
             "order": 9,
             "type": "string",
             "default": "<｜fim▁end｜>",
-            "description":
-              "String that is sent to server is in format: `{startToken}{text above cursor}{middleToken}{text below cursor if fillInTheMiddleMode=true}{endToken}`. Leave `startToken`, `middleToken`, or `endToken` empty if there is no special token for those placements."
+            "description": "String that is sent to server is in format: `{startToken}{text above cursor}{middleToken}{text below cursor if fillInTheMiddleMode=true}{endToken}`. Leave `startToken`, `middleToken`, or `endToken` empty if there is no special token for those placements."
           },
           "openvinoCode.stopToken": {
             "order": 10,

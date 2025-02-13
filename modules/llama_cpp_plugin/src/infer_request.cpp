@@ -28,7 +28,7 @@ void allocate_tensor_impl(ov::SoPtr<ov::ITensor>& tensor,
 LlamaCppSyncInferRequest::LlamaCppSyncInferRequest(const std::shared_ptr<const LlamaCppModel>& compiled_model,
                                                    size_t num_threads)
     : ov::ISyncInferRequest(compiled_model) {
-    OPENVINO_DEBUG("llama_cpp_plugin: infer request ctor called");
+    OPENVINO_DEBUG("llama_cpp_plugin: infer request ctor called\n");
     llama_context_params cparams = llama_context_default_params();
     cparams.n_threads = num_threads ? num_threads : std::thread::hardware_concurrency();
     cparams.n_ctx = 0;  // this means that the actual n_ctx will be taken equal to the model's train-time value
@@ -51,7 +51,7 @@ LlamaCppSyncInferRequest::LlamaCppSyncInferRequest(const std::shared_ptr<const L
 }
 void LlamaCppSyncInferRequest::set_tensors_impl(const ov::Output<const ov::Node> port,
                                                 const std::vector<ov::SoPtr<ov::ITensor>>& tensors) {
-    OPENVINO_DEBUG("llama_cpp_plugin: set_tensors_impl called");
+    OPENVINO_DEBUG("llama_cpp_plugin: set_tensors_impl called\n");
 }
 
 void llama_batch_add_reimpl(struct llama_batch& batch,
@@ -131,12 +131,12 @@ void LlamaCppSyncInferRequest::infer() {
     llama_batch_free(batch);
 };
 std::vector<ov::ProfilingInfo> LlamaCppSyncInferRequest::get_profiling_info() const {
-    OPENVINO_DEBUG("llama_cpp_plugin: get_profiling_info() called");
+    OPENVINO_DEBUG("llama_cpp_plugin: get_profiling_info() called\n");
     return std::vector<ov::ProfilingInfo>{};
 };
 
 std::vector<ov::SoPtr<ov::IVariableState>> LlamaCppSyncInferRequest::query_state() const {
-    OPENVINO_DEBUG("llama_cpp_plugin: query_state() called");
+    OPENVINO_DEBUG("llama_cpp_plugin: query_state() called\n");
     return {std::static_pointer_cast<ov::IVariableState>(std::make_shared<LlamaCppState>(m_llama_ctx))};
 }
 

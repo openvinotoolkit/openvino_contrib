@@ -14,6 +14,7 @@ concurrency:
 
 env:
   PYTHON_VERSION: '3.11'
+  OV_BRANCH: ${{ github.base_ref || github.event.merge_group.base_ref || github.ref }}
 
 permissions: read-all
 
@@ -48,7 +49,7 @@ jobs:
           repository: 'openvinotoolkit/openvino'
           path: 'openvino'
           submodules: 'true'
-          ref: 'master'
+          ref: ${{ env.OV_BRANCH}}
 
       - name: Clone OpenVINO Contrib
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
@@ -121,13 +122,15 @@ jobs:
         run: ccache --show-stats
 
       - name: Cmake install
-        run: cmake -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/cmake_install.cmake
+        run: |
+          cmake -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/cmake_install.cmake
+          cmake -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -DCOMPONENT=python_wheels -P ${{ env.BUILD_DIR }}/cmake_install.cmake
 
       - name: Java tests
         working-directory: ${{ env.OPENVINO_CONTRIB_REPO }}/modules/java_api
         run: |
           . ${{ env.INSTALL_DIR }}/setupvars.sh gradle clean build --info
-          
+
           for d in CPU HETERO:CPU; do
             gradle test -Prun_tests -DMODELS_PATH=${{ env.TEST_DATA }} -Ddevice=$d --info;
           done
@@ -136,8 +139,8 @@ jobs:
         run: |
           source ${{ env.INSTALL_DIR }}/setupvars.sh
           python3 -m pip install -r ${{ env.OPENVINO_CONTRIB_REPO }}/modules/custom_operations/tests/requirements.txt
-          
-          pushd ${{ env.INSTALL_DIR }}/tools
+
+          pushd ${{ env.INSTALL_DIR }}/wheels
             wheel_name=$(find . -name 'openvino-*.whl')
             python3 -m pip install $wheel_name
           popd
