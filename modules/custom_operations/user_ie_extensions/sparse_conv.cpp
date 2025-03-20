@@ -23,11 +23,11 @@ std::shared_ptr<ov::Node> SparseConv::clone_with_new_inputs(const ov::OutputVect
 }
 
 bool SparseConv::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
-    const float* features = reinterpret_cast<float*>(inputs[0].data());
-    const float* inpPos = reinterpret_cast<float*>(inputs[1].data());
-    const float* outPos = reinterpret_cast<float*>(inputs[2].data());
-    const float* kernel = reinterpret_cast<float*>(inputs[3].data());
-    const float* offset = reinterpret_cast<float*>(inputs[4].data());
+    const float *features = reinterpret_cast<const float *>(inputs[0].data());
+    const float *inpPos = reinterpret_cast<const float *>(inputs[1].data());
+    const float *outPos = reinterpret_cast<const float *>(inputs[2].data());
+    const float *kernel = reinterpret_cast<const float *>(inputs[3].data());
+    const float *offset = reinterpret_cast<const float *>(inputs[4].data());
     float* out = reinterpret_cast<float*>(outputs[0].data());
     memset(out, 0, outputs[0].get_byte_size());
 
