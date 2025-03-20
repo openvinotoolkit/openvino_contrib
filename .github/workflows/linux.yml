@@ -99,7 +99,7 @@ jobs:
         run: python3 -m pip install -r ${OPENVINO_REPO}/src/bindings/python/wheel/requirements-dev.txt
 
       - name: Setup ccache
-        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
+        uses: actions/cache@v4 # v4.0.2
         with:
           # Should save cache only if run in the master branch of the base repo
           # github.ref_name is 'ref/PR_#' in case of the PR, and 'branch_name' when executed on push
@@ -156,7 +156,7 @@ jobs:
         run: |
           source ${INSTALL_DIR}/setupvars.sh
           gradle clean build --info
-          
+
           for d in CPU HETERO:CPU; do
             gradle test -Prun_tests -DMODELS_PATH=${TEST_DATA} -Ddevice=$d --info;
           done
@@ -177,7 +177,7 @@ jobs:
           pushd ${INSTALL_DIR}
             tar -czvf ${BUILD_DIR}/openvino_package.tar.gz *
           popd
-          
+
           pushd ${DEVELOPER_PACKAGE_DIR}
             tar -czvf ${BUILD_DIR}/openvino_developer_package.tar.gz *
           popd
@@ -265,7 +265,7 @@ jobs:
           pushd ${INSTALL_DIR}
             tar -xzf openvino_package.tar.gz -C ${INSTALL_DIR}
           popd
-          
+
           pushd ${INSTALL_DIR}
             tar -xzf openvino_developer_package.tar.gz -C ${INSTALL_DIR}
           popd
@@ -285,7 +285,7 @@ jobs:
           apt -y --no-install-recommends install software-properties-common curl
 
       - name: Setup ccache
-        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
+        uses: actions/cache@v4
         with:
           # Should save cache only if run in the master branch of the base repo
           # github.ref_name is 'ref/PR_#' in case of the PR, and 'branch_name' when executed on push
