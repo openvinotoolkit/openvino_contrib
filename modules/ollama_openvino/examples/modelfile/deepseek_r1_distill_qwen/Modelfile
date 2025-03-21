@@ -1,0 +1,15 @@
+FROM  DeepSeek-R1-Distill-Qwen-7B-int4-ov.tar.gz
+ModelType "OpenVINO"
+InferDevice "GPU"
+PARAMETER stop "<｜end▁of▁sentence｜>"
+PARAMETER stop "<｜User｜>"
+PARAMETER stop "</User|>"
+PARAMETER stop "<|end_of_sentence|>"
+PARAMETER stop "</｜"
+PARAMETER max_new_token 4096
+PARAMETER stop_id 151643
+PARAMETER stop_id 151647
+PARAMETER repeat_penalty 1.5
+PARAMETER top_p 0.95
+PARAMETER top_k 50
+PARAMETER temperature 0.8
