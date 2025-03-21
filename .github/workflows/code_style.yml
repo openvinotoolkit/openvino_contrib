@@ -20,4 +20,6 @@ jobs:
         uses: axel-op/googlejavaformat-action@v4
         with:
           args: "--set-exit-if-changed -a -i"
-          commit-message: "[github actions] Apply google-java-format code style fixes"
+          skip-commit: true
+      - name: Print diffs
+        run: git --no-pager diff --exit-code
