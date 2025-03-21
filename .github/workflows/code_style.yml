@@ -17,9 +17,7 @@ jobs:
       - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
 
       - name: Fix code java style
-        uses: axel-op/googlejavaformat-action@v4
+        uses: axel-op/googlejavaformat-action@dbff853fb823671ec5781365233bf86543b13215 # v3
         with:
           args: "--set-exit-if-changed -a -i"
-          skip-commit: true
-      - name: Print diffs
-        run: git --no-pager diff --exit-code
+          commit-message: "[github actions] Apply google-java-format code style fixes"
