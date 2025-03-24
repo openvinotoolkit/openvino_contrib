@@ -17,54 +17,11 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/genai"
 	"golang.org/x/sync/semaphore"
 )
-
-// input is an element of the prompt to process, either
-// a token or an image embedding (generated from a vision projector)
-type input struct {
-	prompt string
-}
-
-type Sequence struct {
-	// batch index
-	iBatch int
-
-	// prompt inputs left to evaluate
-	inputs []input
-
-	// tokens that have been generated but not returned yet (e.g. for stop sequences)
-	pendingResponses []string
-
-	// channel to send responses over
-	responses chan string
-
-	// channel to stop decoding (such as if the remote connection is closed)
-	quit chan bool
-
-	// number of tokens to predict
-	numPredict int
-
-	// stop sequences
-	stop []string
-
-	samplingparameters *genai.SamplingParams
-
-	// number of inputs to keep at the beginning when shifting context window
-	numKeep int
-
-	doneReason string
-
-	// Metrics
-	startProcessingTime time.Time
-	startGenerationTime time.Time
-	numDecoded          int
-	numPromptInputs     int
-}
 
 type NewSequenceParams struct {
 	numPredict     int
@@ -101,7 +58,7 @@ type Server struct {
 	cond *sync.Cond
 
 	// the list of simultaneous sequences being evaluated
-	seqs []*Sequence
+	seqs []*(genai.Sequence)
 
 	// seqs can have a maximum of parallel entries, which
 	// is enfoced by seqSem
@@ -120,34 +77,8 @@ func (s *Server) allNil() bool {
 	return true
 }
 
-func flushPending(seq *Sequence) bool {
-	joined := strings.Join(seq.pendingResponses, "")
-	seq.pendingResponses = []string{}
-
-	// Check if there are any partial UTF-8 characters remaining.
-	// We already check and queue as we are generating but some may
-	// still make it here:
-	// - Sequence is ending, e.g. generation limit has been hit
-	// - Invalid characters in the middle of a string
-	// This is a stricter check to ensure we never output invalid Unicode.
-	for !utf8.ValidString(joined) {
-		joined = joined[:len(joined)-1]
-	}
-
-	if len(joined) == 0 {
-		return true
-	}
-
-	select {
-	case seq.responses <- joined:
-		return true
-	case <-seq.quit:
-		return false
-	}
-}
-
-func (s *Server) inputs(prompt string, images []ImageData) ([]input, error) {
-	var inputs []input
+func (s *Server) inputs(prompt string, images []ImageData) ([]genai.Input, error) {
+	var inputs []genai.Input
 	var parts []string
 
 	parts = []string{prompt}
@@ -157,13 +88,13 @@ func (s *Server) inputs(prompt string, images []ImageData) ([]input, error) {
 		// for _, t := range part {
 		// 	inputs = append(inputs, input{prompt: string(t)})
 		// }
-		inputs = append(inputs, input{prompt: string(part)})
+		inputs = append(inputs, genai.Input{Prompt: string(part)})
 	}
 
 	return inputs, nil
 }
 
-func (s *Server) NewSequence(prompt string, images []ImageData, params NewSequenceParams) (*Sequence, error) {
+func (s *Server) NewSequence(prompt string, images []ImageData, params NewSequenceParams) (*(genai.Sequence), error) {
 	s.ready.Wait()
 
 	startTime := time.Now()
@@ -175,24 +106,15 @@ func (s *Server) NewSequence(prompt string, images []ImageData, params NewSequen
 		return nil, errors.New("no input provided")
 	}
 
-	return &Sequence{
-		inputs:              inputs,
-		numPromptInputs:     len(inputs),
-		startProcessingTime: startTime,
-		samplingparameters:  params.samplingParams,
-		numPredict:          params.numPredict,
-		pendingResponses:    make([]string, 0),
-		responses:           make(chan string, 100),
-		quit:                make(chan bool, 1),
-	}, nil
+	return genai.NewSequence(inputs, len(inputs), startTime, params.samplingParams, params.numPredict), nil
 }
 
 func (s *Server) removeSequence(seqIndex int, reason string) {
 	seq := s.seqs[seqIndex]
 
-	flushPending(seq)
-	seq.doneReason = reason
-	close(seq.responses)
+	genai.FlushPending(seq)
+	seq.SetDoneReason(reason)
+	seq.CloseResponses()
 	s.seqs[seqIndex] = nil
 }
 
@@ -223,13 +145,10 @@ func (s *Server) processBatch() error {
 			continue
 		}
 
-		seq.startGenerationTime = time.Now()
-		for _, input := range seq.inputs {
-			// result := genai.GenerateText(s.model, input.prompt)
-			result := genai.GenerateTextWithMetrics(s.model, input.prompt, seq.samplingparameters)
-			fmt.Println("result: ", result)
-			seq.pendingResponses = append(seq.pendingResponses, result)
-			// seq.pendingResponses := result
+		seq.SetStartGenerationTime(time.Now())
+		for _, input := range seq.GetInputs() {
+			genai.GenerateTextWithMetrics(s.model, input.GetPrompt(), seq.GetSamplingParameters(), seq)
+			// log.Printf("gen result: ", seq.GetpendingResponses())
 		}
 		s.removeSequence(i, "")
 	}
@@ -379,15 +298,15 @@ func (s *Server) completion(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-r.Context().Done():
-			close(seq.quit)
+			seq.CloseQuit()
 			return
-		case content, ok := <-seq.responses:
+		case content, ok := <-seq.GetResponses():
 			if ok {
 				if err := json.NewEncoder(w).Encode(&CompletionResponse{
 					Content: content,
 				}); err != nil {
 					http.Error(w, fmt.Sprintf("failed to encode response: %v", err), http.StatusInternalServerError)
-					close(seq.quit)
+					seq.CloseQuit()
 					return
 				}
 
@@ -396,12 +315,12 @@ func (s *Server) completion(w http.ResponseWriter, r *http.Request) {
 				// Send the final response
 				if err := json.NewEncoder(w).Encode(&CompletionResponse{
 					Stop:         true,
-					StoppedLimit: seq.doneReason == "limit",
+					StoppedLimit: seq.GetDoneReason() == "limit",
 					Timings: Timings{
-						PromptN:     seq.numPromptInputs,
-						PromptMS:    float64(seq.startGenerationTime.Sub(seq.startProcessingTime).Milliseconds()),
-						PredictedN:  seq.numDecoded,
-						PredictedMS: float64(time.Since(seq.startGenerationTime).Milliseconds()),
+						PromptN:     seq.GetNumPromptInputs(),
+						PromptMS:    float64(seq.GetStartGenerationTime().Sub(seq.GetStartProcessingTime()).Milliseconds()),
+						PredictedN:  seq.GetNumDecoded(),
+						PredictedMS: float64(time.Since(seq.GetStartGenerationTime()).Milliseconds()),
 					},
 				}); err != nil {
 					http.Error(w, fmt.Sprintf("failed to encode final response: %v", err), http.StatusInternalServerError)
@@ -522,7 +441,7 @@ func Execute(args []string) error {
 	slog.Info("starting go genairunner")
 
 	server := &Server{
-		seqs:   make([]*Sequence, *parallel),
+		seqs:   make([]*genai.Sequence, *parallel),
 		status: ServerStatusLoadingModel,
 	}
 

@@ -578,13 +578,13 @@ See the [API documentation](./docs/api.md) for all endpoints.
 Getting started with large language models and using the [GenAI](https://github.com/openvinotoolkit/openvino.genai) backend.
 
 ### Windows
-[Download exe](https://github.com/zhaohb/ollama_ov/raw/refs/heads/main/dist/windows/ollama.exe?download=) + [Download OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/pre-release/2025.1.0.0rc1/openvino_genai_windows_2025.1.0.0rc1_x86_64.zip)
+[Download exe](https://drive.google.com/file/d/1iizO9iLhSJGFUu6BgY3EwOchrCyzImUN/view?usp=drive_link) + [Download OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/pre-release/2025.1.0.0rc1/openvino_genai_windows_2025.1.0.0rc1_x86_64.zip)
 
 ### Linux(Ubuntu 22.04)
-[Download](https://github.com/zhaohb/ollama_ov/raw/refs/heads/main/dist/linux/ollama?download=) + [Donwload OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/pre-release/2025.1.0.0rc1/openvino_genai_ubuntu22_2025.1.0.0rc1_x86_64.tar.gz)
+[Download](https://drive.google.com/file/d/1HEyZNNCbWSidKNQl4MRsD8FuwEZtdyew/view?usp=drive_link) + [Donwload OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/pre-release/2025.1.0.0rc1/openvino_genai_ubuntu22_2025.1.0.0rc1_x86_64.tar.gz)
 
 <div style="text-align:center;">
-  <img src="./images/ollama_ov_math.gif" alt="Ollama-OV" width="800" height="500">
+  <img src="./images/ollama_ov_streaming.gif" alt="Ollama-OV" width="900" height="400">
 </div>
 
 ## Model library
@@ -755,6 +755,8 @@ Then build and run Ollama from the root directory of the repository:
    ```shell
    cd openvino_genai_windows_2025.1.0.0rc1_x86_64
    setupvars.bat
+
+   set GODEBUG=cgocheck=0
    ```
   
 4. Setting cgo environment variables
@@ -793,6 +795,8 @@ Then build and run Ollama from the root directory of the repository:
    ```shell
    cd openvino_genai_ubuntu22_2025.1.0.0rc1_x86_64 
    source setupvars.sh
+
+   export GODEBUG=cgocheck=0
    ```
   
 4. Setting cgo environment variables
@@ -827,7 +831,5 @@ ollama run DeepSeek-R1-Distill-Qwen-7B-int4-ov:v1
 
 ## Future Development Plan
 Here are some features and improvements planned for future releases:
-
-1. **streaming mode**: Support for streaming mode to improve the user experience and reduce latency.
    
-2. **Multimodal models**: Support for multimodal models that can process both text and image data.
+1. **Multimodal models**: Support for multimodal models that can process both text and image data.

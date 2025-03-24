@@ -13,11 +13,15 @@ package genai
 #include <stdlib.h>
 #include <string.h>
 #include "openvino/genai/c/llm_pipeline.h"
+#include "openvino/genai/c/visibility.h"
 
 #include "openvino/c/openvino.h"
+#include "openvino/c/ov_common.h"
 #include <stdbool.h>
 
-extern int goCallbackBridge(char* input);
+typedef int (*callback_function)(const char*, void*);
+
+extern int goCallbackBridge(char* input, void* ptr);
 */
 import "C"
 
@@ -198,7 +202,7 @@ func SetSamplingParams(samplingparameters *SamplingParams) *C.ov_genai_generatio
 	return cConfig
 }
 
-func GenerateTextWithMetrics(pipeline *C.ov_genai_llm_pipeline, input string, samplingparameters *SamplingParams) string {
+func GenerateTextWithMetrics(pipeline *C.ov_genai_llm_pipeline, input string, samplingparameters *SamplingParams, seq *Sequence) string {
 	cInput := C.CString(input)
 	defer C.free(unsafe.Pointer(cInput))
 
@@ -207,8 +211,14 @@ func GenerateTextWithMetrics(pipeline *C.ov_genai_llm_pipeline, input string, sa
 
 	output_size := C.size_t(0)
 
+	// 创建 streamer_callback
+	var streamer_callback C.streamer_callback
+	streamer_callback.callback_func = (C.callback_function)(unsafe.Pointer(C.goCallbackBridge))
+
+	streamer_callback.args = unsafe.Pointer(seq)
+
 	C.ov_genai_llm_pipeline_start_chat(pipeline)
-	C.ov_genai_llm_pipeline_generate(pipeline, cInput, (*C.ov_genai_generation_config)(cConfig), (*C.stream_callback)(nil), &result)
+	C.ov_genai_llm_pipeline_generate(pipeline, cInput, (*C.ov_genai_generation_config)(cConfig), &streamer_callback, &result)
 	C.ov_genai_llm_pipeline_finish_chat(pipeline)
 
 	C.ov_genai_decoded_results_get_string(result, (*C.char)(nil), &output_size)
@@ -225,7 +235,7 @@ func GenerateTextWithMetrics(pipeline *C.ov_genai_llm_pipeline, input string, sa
 	return C.GoString((*C.char)(cOutput))
 }
 
-func GenerateText(pipeline *C.ov_genai_llm_pipeline, input string, stream_callback C.stream_callback) string {
+func GenerateText(pipeline *C.ov_genai_llm_pipeline, input string, streamer_callback C.streamer_callback) string {
 	cInput := C.CString(input)
 	defer C.free(unsafe.Pointer(cInput))
 
@@ -234,7 +244,7 @@ func GenerateText(pipeline *C.ov_genai_llm_pipeline, input string, stream_callba
 	var result *C.ov_genai_decoded_results
 
 	C.ov_genai_llm_pipeline_start_chat(pipeline)
-	C.ov_genai_llm_pipeline_generate(pipeline, cInput, (*C.ov_genai_generation_config)(nil), &stream_callback, &result)
+	C.ov_genai_llm_pipeline_generate(pipeline, cInput, (*C.ov_genai_generation_config)(nil), &streamer_callback, &result)
 	C.ov_genai_llm_pipeline_finish_chat(pipeline)
 
 	C.ov_genai_decoded_results_get_string(result, (*C.char)(nil), &output_size)
@@ -297,10 +307,18 @@ func GetOvVersion() {
 }
 
 //export goCallbackBridge
-func goCallbackBridge(args *C.char) C.int {
+func goCallbackBridge(args *C.char, gen_result unsafe.Pointer) C.int {
 	if args != nil {
-		fmt.Printf("%s", C.GoString(args))
-		os.Stdout.Sync()
+		// 将 unsafe.Pointer 转换回结构体指针
+		result := (*Sequence)(gen_result)
+
+		// 将 C 字符串转换为 Go 字符串并追加到切片中
+		goStr := C.GoString(args)
+		result.AppendPendingResponse(goStr)
+
+		// fmt.Printf("%s", goStr)
+		// os.Stdout.Sync()
+		FlushPending((*Sequence)(result))
 		return C.OV_GENAI_STREAMMING_STATUS_RUNNING
 	} else {
 		fmt.Println("Callback executed with NULL message!")
@@ -312,17 +330,37 @@ func goCallbackBridge(args *C.char) C.int {
 // 	// 使用 createPipeline 函数创建 pipeline
 // 	// log.Printf(GetGenaiAvailableDevices()[0]["device_name"])
 // 	GetOvVersion()
-// 	pipeline := CreatePipeline("C:/hongbo/models/tiny-llama-1.1b-chat_OV_FP16-INT8_ASYM", "GPU")
+// 	pipeline := CreatePipeline("/home/hongbo/ollama_model/TinyLlama-1.1B-Chat-v1.0-int4-ov", "CPU")
 // 	if pipeline == nil {
 // 		fmt.Println("创建 pipeline 失败")
 // 		return
 // 	}
 // 	fmt.Println("成功创建 pipeline")
 
-// 	// 调用 generateText 获取生成结果
-// 	result := GenerateText(pipeline, "who you are?", C.stream_callback(C.goCallbackBridge))
-// 	fmt.Println("生成的结果:", result)
+// 	// 创建 streamer_callback
+// 	var streamer_callback C.streamer_callback
+// 	streamer_callback.callback_func = (C.callback_function)(unsafe.Pointer(C.goCallbackBridge))
 
+// 	// 初始化 gena_result 结构体
+// 	gena_result := &gen_result_struct{
+// 		pendingResponses: make([]string, 0),
+// 	}
+
+// 	// 使用 runtime.Pinner 固定指针
+// 	var pinner runtime.Pinner
+// 	pinner.Pin(gena_result)
+// 	defer pinner.Unpin()
+
+// 	streamer_callback.args = unsafe.Pointer(gena_result)
+
+// 	result := GenerateText(pipeline, "who you are?", streamer_callback)
+// 	fmt.Println("生成的结果 result:", result)
+
+// 	if gena_result != nil && len(gena_result.pendingResponses) > 0 {
+// 		fmt.Println("生成的结果 gen_result:", gena_result.pendingResponses)
+// 	} else {
+// 		fmt.Println("生成的结果 gen_result: 无响应")
+// 	}
 // 	// 释放 pipeline 资源
 // 	FreeModel(pipeline)
 // }
