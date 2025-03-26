@@ -61,14 +61,10 @@ jobs:
           export GODEBUG=cgocheck=0
           echo -e 'FROM TinyLlama-1.1B-Chat-v1.0-int4-ov.tar.gz\nModelType "OpenVINO"\nInferDevice "GPU"' > Modelfile
           ollama serve &
-          sleep 30
+          sleep 10
           tmux new-session -d -s createsession 'ollama create TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 -f Modelfile'
           sleep 20
-          tmux new-session -d -s runsession 'ollama run TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 "Who are you? Please give a brief answer" > output.txt'
-          sleep 20
-          cat output.txt
-
-
+          tmux new-session -d -s runsession 'ollama run TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 "Who are you? Please give a brief answer"'
 
 
 
