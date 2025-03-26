@@ -48,6 +48,8 @@ jobs:
         run: | 
           echo $PWD
           cd ${{ github.workspace }}/ollama_ov
+          export CGO_LDFLAGS
+          export CGO_CFLAGS
           go build -o ollama
           
       - name: Download model
