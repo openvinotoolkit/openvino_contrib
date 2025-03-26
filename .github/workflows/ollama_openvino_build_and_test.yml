@@ -22,11 +22,10 @@ jobs:
     needs: build_ubuntu20
     runs-on: ubuntu-20.04
     steps:
-      - name: Prepare test data - checkout ollama_openvino repo
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+      - name: Setup python env
+        uses: actions/setup-python@v4
         with:
-          repository: zhaohb/ollama_ov
-          path: ollama_ov
+          python-version: '3.10'
 
       - name: Install go
         run: |
@@ -51,9 +50,22 @@ jobs:
 
       - name: Build ollama-ov
         run: | 
-          cd ${{ github.workspace }}/openvino_contrib/modules/ollama_openvino
+          echo $PWD
+          cd ${{ github.workspace }}/ollama_ov
           go build -o ollama
           
+      - name: Download model
+        run: |
+          python3 -m pip install modelscope
+          modelscope download --model zhaohb/DeepSeek-R1-Distill-Qwen-7B-int4-ov --local_dir ./DeepSeek-R1-Distill-Qwen-7B-int4-ov
+          tar -zcvf DeepSeek-R1-Distill-Qwen-7B-int4-ov.tar.gz DeepSeek-R1-Distill-Qwen-7B-int4-ov
+
+      - name: Create ollama model
+        run: |
+          ollama serve && ollama create DeepSeek-R1-Distill-Qwen-7B-int4-ov:v1 -f examples/modelfile/deepseek_r1_distill_qwen/Modelfile
+          ollama run DeepSeek-R1-Distill-Qwen-7B-int4-ov:v1
+
+
 
 
 
