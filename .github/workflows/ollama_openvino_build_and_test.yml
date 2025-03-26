@@ -29,7 +29,7 @@ jobs:
           mkdir -p go
           tar xvzf go1.24.1.linux-amd64.tar.gz
       
-      - name: Install openvino_genai and init go env
+      - name: Install openvino_genai and init go env and build ollama_ov
         run: |
           wget https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64.tar.gz
           tar -xzf openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64.tar.gz
@@ -38,9 +38,6 @@ jobs:
           chmod +x ./
           export LD_LIBRARY_PATH=${{ github.workspace }}/go/bin:$LD_LIBRARY_PATH
           go env -w CGO_ENABLED=1
-
-      - name: Build ollama-ov
-        run: | 
           echo $PWD
           ls $PWD
           cd ${{ github.workspace }}/ollama_ov
