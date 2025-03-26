@@ -53,15 +53,12 @@ jobs:
           go build -o ollama
           mkdir bin
           cp ollama ./bin
-          
-
 
       - name: Create ollama model and test generate
         run: |
-          printenv PATH
-          ls ${{ github.workspace }}/ollama_ov/bin
           export PATH=$PATH:${{ github.workspace }}/ollama_ov/bin
-          printenv PATH
+          source openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64/setupvars.sh
+          export GODEBUG=cgocheck=0
           echo -e 'FROM TinyLlama-1.1B-Chat-v1.0-int4-ov.tar.gz\nModelType "OpenVINO"\nInferDevice "GPU"' > Modelfile
           ollama serve &
           ollama create TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 -f Modelfile
