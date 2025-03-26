@@ -45,9 +45,7 @@ jobs:
           printenv CGO_LDFLAGS
           printenv CGO_CFLAGS
           go build -o ollama
-          mkdir bin
-          mv ollama bin
-          export PATH=$PATH:$PWD/bin
+          cp ollama /usr/local/sbin
           printenv PATH
           
       - name: Download model
@@ -59,6 +57,7 @@ jobs:
       - name: Create ollama model
         run: |
           printenv PATH
+          ls /usr/local/sbin
           echo -e 'FROM TinyLlama-1.1B-Chat-v1.0-int4-ov.tar.gz\nModelType "OpenVINO"\nInferDevice "GPU"' > Modelfile
           ollama serve &
           ollama create TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 -f Modelfile
