@@ -1,0 +1,56 @@
+name: ollama_openvino_build_and_test
+
+on:
+  pull_request:
+    paths:
+      - 'modules/ollama_openvino/**'
+      - '.github/workflows/ollama_openvino_build_and_test'
+
+permissions: read-all
+
+jobs:
+  build_ubuntu20:
+    runs-on: ubuntu-20.04-8-cores
+    steps:
+      - name: Checkout openvino_contrib
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+        with:
+          submodules: recursive
+          path: openvino_contrib
+
+  test_ubuntu20:
+    needs: build_ubuntu20
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Prepare test data - checkout ollama_openvino repo
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+        with:
+          repository: zhaohb/ollama_ov
+          path: ollama_ov
+
+      - name: Install go
+        run: |
+          wget https://go.dev/dl/go1.24.1.linux-amd64.tar.gz
+          rm -rf /usr/local/go && tar -C /usr/local -xzf go1.24.1.linux-amd64.tar.gz
+          export PATH=$PATH:/usr/local/go/bin
+      
+      - name: Install openvino_genai
+        run: |
+          wget https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64.tar.gz
+          tar -xzf openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64.tar.gz
+          cd openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64/
+          source setupvars.sh
+
+      - name: Run functional tests
+        run: |
+          go env -w CGO_ENABLED=1
+          export GODEBUG=cgocheck=0
+          export CGO_LDFLAGS=-L$OpenVINO_DIR/../lib/intel64/
+          export CGO_CFLAGS=-I$OpenVINO_DIR/../include
+          go build -o ollama
+
+
+
+
+
+
