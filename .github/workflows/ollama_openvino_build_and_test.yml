@@ -29,6 +29,12 @@ jobs:
           mkdir -p go
           tar xvzf go1.24.1.linux-amd64.tar.gz
       
+      - name: Download model
+        run: |
+          pip install -U huggingface_hub
+          huggingface-cli download --resume-download OpenVINO/TinyLlama-1.1B-Chat-v1.0-int4-ov  --local-dir  TinyLlama-1.1B-Chat-v1.0-int4-ov --local-dir-use-symlinks False
+          tar -zcvf TinyLlama-1.1B-Chat-v1.0-int4-ov.tar.gz TinyLlama-1.1B-Chat-v1.0-int4-ov
+
       - name: Install openvino_genai and init go env and build ollama_ov
         run: |
           wget https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64.tar.gz
@@ -45,19 +51,17 @@ jobs:
           printenv CGO_LDFLAGS
           printenv CGO_CFLAGS
           go build -o ollama
-          cp ollama /usr/local/sbin
-          printenv PATH
+          mkdir bin
+          cp ollama ./bin
           
-      - name: Download model
-        run: |
-          pip install -U huggingface_hub
-          huggingface-cli download --resume-download OpenVINO/TinyLlama-1.1B-Chat-v1.0-int4-ov  --local-dir  TinyLlama-1.1B-Chat-v1.0-int4-ov --local-dir-use-symlinks False
-          tar -zcvf TinyLlama-1.1B-Chat-v1.0-int4-ov.tar.gz TinyLlama-1.1B-Chat-v1.0-int4-ov
 
-      - name: Create ollama model
+
+      - name: Create ollama model and test generate
         run: |
           printenv PATH
-          ls /usr/local/sbin
+          ls ${{ github.workspace }}/ollama_ov/bin
+          export PATH=$PATH:${{ github.workspace }}/ollama_ov/bin
+          printenv PATH
           echo -e 'FROM TinyLlama-1.1B-Chat-v1.0-int4-ov.tar.gz\nModelType "OpenVINO"\nInferDevice "GPU"' > Modelfile
           ollama serve &
           ollama create TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 -f Modelfile
