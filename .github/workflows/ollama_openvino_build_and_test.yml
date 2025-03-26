@@ -39,12 +39,12 @@ jobs:
           wget https://go.dev/dl/go1.24.1.linux-amd64.tar.gz
           mkdir -p go
           tar xvzf go1.24.1.linux-amd64.tar.gz
-          export PATH=$PATH:${PWD}/go/bin
-          go/bin/go env -w CGO_ENABLED=1
+          export LD_LIBRARY_PATH=${{ github.workspace }}/go/bin:$LD_LIBRARY_PATH
+          go env -w CGO_ENABLED=1
           export GODEBUG=cgocheck=0
           export CGO_LDFLAGS=-L$OpenVINO_DIR/../lib/intel64/
           export CGO_CFLAGS=-I$OpenVINO_DIR/../include
-          go/bin/go build -o ollama
+          go build -o ollama
 
 
 
