@@ -51,7 +51,7 @@ jobs:
       - name: Build ollama-ov
         run: | 
           echo $PWD
-          cd ${{ github.workspace }}/ollama_ov
+          cd ${{ github.workspace }}/openvino_contrib/modules/ollama_openvino
           go build -o ollama
           
       - name: Download model
