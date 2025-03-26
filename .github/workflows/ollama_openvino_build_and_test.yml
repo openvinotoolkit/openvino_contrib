@@ -52,7 +52,6 @@ jobs:
       - name: Build ollama-ov
         run: | 
           cd ${{ github.workspace }}/openvino_contrib/modules/ollama_openvino
-          go mod init ${{ github.workspace }}/openvino_contrib/modules/ollama_openvino
           go build -o ollama
           
 
