@@ -48,6 +48,12 @@ jobs:
           export GODEBUG=cgocheck=0
           export CGO_LDFLAGS=-L$OpenVINO_DIR/../lib/intel64/
           export CGO_CFLAGS=-I$OpenVINO_DIR/../include
+
+      - name: Build ollama-ov
+        run: | 
+          cd ${{ github.workspace }}/openvino_contrib/modules/ollama_openvino
+          go mod init ${{ github.workspace }}/openvino_contrib/modules/ollama_openvino
+          go build -o ollama
           
 
 
