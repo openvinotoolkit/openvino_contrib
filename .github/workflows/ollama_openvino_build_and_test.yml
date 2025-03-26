@@ -60,10 +60,10 @@ jobs:
           source openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64/setupvars.sh
           export GODEBUG=cgocheck=0
           echo -e 'FROM TinyLlama-1.1B-Chat-v1.0-int4-ov.tar.gz\nModelType "OpenVINO"\nInferDevice "GPU"' > Modelfile
-          tmux new-session -d -s mysession 'ollama serve &'
+          ollama serve &
           sleep 60
-          ollama create TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 -f Modelfile
-          ollama run TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 "Who are you? Please give a brief answer"
+          tmux new-session -d -s mysession 'ollama create TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 -f Modelfile'
+          tmux send-keys -t mysession 'ollama run TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 "Who are you? Please give a brief answer"' Enter
 
 
 
