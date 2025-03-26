@@ -29,9 +29,10 @@ jobs:
           path: ollama_ov
 
       - name: Install go
-        wget https://go.dev/dl/go1.24.1.linux-amd64.tar.gz
-        mkdir -p go
-        tar xvzf go1.24.1.linux-amd64.tar.gz
+        run: |
+          wget https://go.dev/dl/go1.24.1.linux-amd64.tar.gz
+          mkdir -p go
+          tar xvzf go1.24.1.linux-amd64.tar.gz
       
       - name: Install openvino_genai
         run: |
