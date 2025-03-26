@@ -9,19 +9,15 @@ on:
 permissions: read-all
 
 jobs:
-  build_ubuntu20:
-    runs-on: ubuntu-20.04-8-cores
-    steps:
-      - name: Checkout openvino_contrib
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
-        with:
-          submodules: recursive
-          path: openvino_contrib
-
   test_ubuntu20:
-    needs: build_ubuntu20
     runs-on: ubuntu-20.04
     steps:
+      - name: Download repo
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+        with:
+          repository: FionaZZ92/openvino_contrib
+          path: openvino_contrib
+
       - name: Setup python env
         uses: actions/setup-python@v4
         with:
@@ -41,7 +37,7 @@ jobs:
 
       - name: Prepare compile
         run: |
-          chmod +x ${{ github.workspace }}
+          chmod +x ./
           export LD_LIBRARY_PATH=${{ github.workspace }}/go/bin:$LD_LIBRARY_PATH
           go env -w CGO_ENABLED=1
           export GODEBUG=cgocheck=0
@@ -51,6 +47,8 @@ jobs:
       - name: Build ollama-ov
         run: | 
           echo $PWD
+          cd ${{ github.workspace }}/openvino_contrib
+          git checkout -b ollama_openvino
           cd ${{ github.workspace }}/openvino_contrib/modules/ollama_openvino
           go build -o ollama
           
