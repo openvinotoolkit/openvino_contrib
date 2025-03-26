@@ -28,23 +28,26 @@ jobs:
           repository: zhaohb/ollama_ov
           path: ollama_ov
 
+      - name: Install go
+        wget https://go.dev/dl/go1.24.1.linux-amd64.tar.gz
+        mkdir -p go
+        tar xvzf go1.24.1.linux-amd64.tar.gz
+      
       - name: Install openvino_genai
         run: |
           wget https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64.tar.gz
           tar -xzf openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64.tar.gz
           source openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64/setupvars.sh
 
-      - name: Install go and compile
+      - name: Prepare compile
         run: |
-          wget https://go.dev/dl/go1.24.1.linux-amd64.tar.gz
-          mkdir -p go
-          tar xvzf go1.24.1.linux-amd64.tar.gz
+          chmod +x ${{ github.workspace }}
           export LD_LIBRARY_PATH=${{ github.workspace }}/go/bin:$LD_LIBRARY_PATH
           go env -w CGO_ENABLED=1
           export GODEBUG=cgocheck=0
           export CGO_LDFLAGS=-L$OpenVINO_DIR/../lib/intel64/
           export CGO_CFLAGS=-I$OpenVINO_DIR/../include
-          go build -o ollama
+          
 
 
 
