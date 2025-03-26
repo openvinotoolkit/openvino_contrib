@@ -52,16 +52,17 @@ jobs:
           
       - name: Download model
         run: |
-          python3 -m pip install modelscope
-          modelscope download --model zhaohb/DeepSeek-R1-Distill-Qwen-7B-int4-ov --local_dir ./DeepSeek-R1-Distill-Qwen-7B-int4-ov
-          tar -zcvf DeepSeek-R1-Distill-Qwen-7B-int4-ov.tar.gz DeepSeek-R1-Distill-Qwen-7B-int4-ov
+          pip install -U huggingface_hub
+          huggingface-cli download --resume-download OpenVINO/TinyLlama-1.1B-Chat-v1.0-int4-ov  --local-dir  TinyLlama-1.1B-Chat-v1.0-int4-ov --local-dir-use-symlinks False
+          tar -zcvf TinyLlama-1.1B-Chat-v1.0-int4-ov.tar.gz TinyLlama-1.1B-Chat-v1.0-int4-ov
 
       - name: Create ollama model
         run: |
           printenv PATH
+          echo -e 'FROM TinyLlama-1.1B-Chat-v1.0-int4-ov.tar.gz\nModelType "OpenVINO"\nInferDevice "GPU"' > Modelfile
           ollama serve &
-          ollama create DeepSeek-R1-Distill-Qwen-7B-int4-ov:v1 -f examples/modelfile/deepseek_r1_distill_qwen/Modelfile
-          ollama run DeepSeek-R1-Distill-Qwen-7B-int4-ov:v1 "Who are you? Please give a brief answer"
+          ollama create TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 -f Modelfile
+          ollama run TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 "Who are you? Please give a brief answer"
 
 
 
