@@ -48,7 +48,7 @@ jobs:
         run: | 
           echo $PWD
           cd ${{ github.workspace }}/openvino_contrib
-          git checkout -b ollama_openvino
+          git checkout ollama_openvino
           cd ${{ github.workspace }}/openvino_contrib/modules/ollama_openvino
           go build -o ollama
           
