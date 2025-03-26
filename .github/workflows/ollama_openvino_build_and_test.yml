@@ -65,8 +65,8 @@ jobs:
           tmux new-session -d -s mysession 'ollama create TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 -f Modelfile'
           sleep 20
           tmux send-keys -t mysession 'ollama run TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 "Who are you? Please give a brief answer" > output.txt' Enter
-          tmux attach-session -t mysession
-
+          sleep 20
+          cat output.txt
 
 
 
