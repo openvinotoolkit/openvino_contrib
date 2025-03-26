@@ -64,7 +64,11 @@ jobs:
           sleep 10
           tmux new-session -d -s createsession 'ollama create TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 -f Modelfile'
           sleep 20
-          tmux new-session -d -s runsession 'ollama run TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 "Who are you? Please give a brief answer"'
+          tmux new-session -d -s runsession 'ollama run TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 "Who are you? Please give a brief answer" > output.txt'
+          sleep 60
+          cat output.txt
+
+
 
 
 
