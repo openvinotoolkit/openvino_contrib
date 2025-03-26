@@ -40,16 +40,16 @@ jobs:
           chmod +x ./
           export LD_LIBRARY_PATH=${{ github.workspace }}/go/bin:$LD_LIBRARY_PATH
           go env -w CGO_ENABLED=1
-          export GODEBUG=cgocheck=0
-          export CGO_LDFLAGS=-L$OpenVINO_DIR/../lib/intel64/
-          export CGO_CFLAGS=-I$OpenVINO_DIR/../include
 
       - name: Build ollama-ov
         run: | 
           echo $PWD
           cd ${{ github.workspace }}/ollama_ov
-          export CGO_LDFLAGS
-          export CGO_CFLAGS
+          export GODEBUG=cgocheck=0
+          export CGO_LDFLAGS=-L$OpenVINO_DIR/../lib/intel64/
+          export CGO_CFLAGS=-I$OpenVINO_DIR/../include
+          printenv CGO_LDFLAGS
+          printenv CGO_CFLAGS
           go build -o ollama
           
       - name: Download model
