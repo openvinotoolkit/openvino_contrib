@@ -15,8 +15,8 @@ jobs:
       - name: Download repo
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
         with:
-          repository: FionaZZ92/openvino_contrib
-          path: openvino_contrib
+          repository: zhaohb/ollama_ov
+          path: ollama_ov
 
       - name: Setup python env
         uses: actions/setup-python@v4
@@ -47,9 +47,7 @@ jobs:
       - name: Build ollama-ov
         run: | 
           echo $PWD
-          cd ${{ github.workspace }}/openvino_contrib
-          git checkout ollama_openvino
-          cd ${{ github.workspace }}/openvino_contrib/modules/ollama_openvino
+          cd ${{ github.workspace }}/ollama_ov
           go build -o ollama
           
       - name: Download model
