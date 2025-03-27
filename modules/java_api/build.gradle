@@ -5,7 +5,7 @@ plugins {
 import org.gradle.internal.os.OperatingSystem
 
 println 'Operating system: ' + OperatingSystem.current()
-def arch = System.getProperty("os.arch")
+def arch = System.getenv('CURRENT_ANDROID_PLATFORM_TYPE') ?: "arm-v8"
 def ov_arch = arch;
 println 'CPU architecture: ' + arch
 
@@ -14,7 +14,7 @@ def nativesCPP;
 def openvinoVersion = "2024.2"
 
 def native_resources = []
-def tbb_dir = System.getenv('TBB_DIR')
+def tbb_dir = System.getenv('TBB_DIR') ?: System.getenv('OPV_HOME_DIR') + "/one-tbb-install/lib/cmake/TBB"
 if (tbb_dir) {
     if (new File(tbb_dir + "/../lib/").exists()) {
         native_resources.add(tbb_dir + "/../lib/");
@@ -34,15 +34,18 @@ if (arch == "x86_64" || arch == "amd64" || arch == "x64" || arch == "x86-64") {
     ov_arch = "armhf";
 }
 
+def openVinoDir = System.getenv('INTEL_OPENVINO_DIR') ?: System.getenv('OPV_HOME_DIR') + "/openvino_install"
+println ">>> INTEL_OPENVINO_DIR -> ${openVinoDir}"
+
 if (OperatingSystem.current().isMacOsX()) {
     nativesCPP = 'macosx-'
-    native_resources.add(System.getenv('INTEL_OPENVINO_DIR') + "/runtime/lib/" + ov_arch + "/Release");
+    native_resources.add(openVinoDir + "/runtime/lib/" + ov_arch + "/Release");
 } else if (OperatingSystem.current().isLinux()) {
     nativesCPP = 'linux-'
-    native_resources.add(System.getenv('INTEL_OPENVINO_DIR') + "/runtime/lib/" + ov_arch);
+    native_resources.add(openVinoDir + "/runtime/lib/" + ov_arch);
 } else if (OperatingSystem.current().isWindows()) {
     nativesCPP = 'windows-'
-    native_resources.add(System.getenv('INTEL_OPENVINO_DIR') + "/runtime/bin/" + ov_arch + "/Release");
+    native_resources.add(openVinoDir + "/runtime/bin/" + ov_arch + "/Release");
 } else {
     logger.warn('Unknown operating system!')
 }
@@ -58,6 +61,7 @@ native_resources.each {
     tree.visit { FileVisitDetails details ->
         if (!details.file.isDirectory()) {
             resources_list += details.file.name + "\n"
+            println ">>> Adding ${details.file.name} to native_resources"
         }
     }
 }
