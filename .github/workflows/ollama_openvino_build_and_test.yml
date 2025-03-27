@@ -1,0 +1,76 @@
+name: ollama_openvino_build_and_test
+
+on:
+  pull_request:
+    paths:
+      - 'modules/ollama_openvino/**'
+      - '.github/workflows/ollama_openvino_build_and_test'
+
+permissions: read-all
+
+jobs:
+  test_ubuntu20:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Download repo
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+        with:
+          repository: zhaohb/ollama_ov
+          path: ollama_ov
+
+      - name: Setup python env
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install go
+        run: |
+          wget https://go.dev/dl/go1.24.1.linux-amd64.tar.gz
+          mkdir -p go
+          tar xvzf go1.24.1.linux-amd64.tar.gz
+      
+      - name: Download model
+        run: |
+          pip install -U huggingface_hub
+          huggingface-cli download --resume-download OpenVINO/TinyLlama-1.1B-Chat-v1.0-int4-ov  --local-dir  TinyLlama-1.1B-Chat-v1.0-int4-ov --local-dir-use-symlinks False
+          tar -zcvf TinyLlama-1.1B-Chat-v1.0-int4-ov.tar.gz TinyLlama-1.1B-Chat-v1.0-int4-ov
+
+      - name: Install openvino_genai and init go env and build ollama_ov
+        run: |
+          wget https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64.tar.gz
+          tar -xzf openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64.tar.gz
+          source openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64/setupvars.sh
+          printenv OpenVINO_DIR
+          chmod +x ./
+          export LD_LIBRARY_PATH=${{ github.workspace }}/go/bin:$LD_LIBRARY_PATH
+          go env -w CGO_ENABLED=1
+          cd ${{ github.workspace }}/ollama_ov
+          export GODEBUG=cgocheck=0
+          export CGO_LDFLAGS=-L$OpenVINO_DIR/../lib/intel64/
+          export CGO_CFLAGS=-I$OpenVINO_DIR/../include
+          printenv CGO_LDFLAGS
+          printenv CGO_CFLAGS
+          go build -o ollama
+          mkdir bin
+          cp ollama ./bin
+
+      - name: Create ollama model and test generate
+        run: |
+          export PATH=$PATH:${{ github.workspace }}/ollama_ov/bin
+          source openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64/setupvars.sh
+          export GODEBUG=cgocheck=0
+          echo -e 'FROM TinyLlama-1.1B-Chat-v1.0-int4-ov.tar.gz\nModelType "OpenVINO"\nInferDevice "GPU"' > Modelfile
+          ollama serve &
+          sleep 10
+          tmux new-session -d -s createsession 'ollama create TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 -f Modelfile'
+          sleep 20
+          tmux new-session -d -s runsession 'ollama run TinyLlama-1.1B-Chat-v1.0-int4-ov:v1 "Who are you? Please give a brief answer" > output.txt'
+          sleep 60
+          cat output.txt
+
+
+
+
+
+
+

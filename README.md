@@ -14,6 +14,7 @@ This list gives an overview of all modules available inside the contrib reposito
 * [**custom_operations**](./modules/custom_operations/): Collection of Custom Operations -- implement Custom Operations with OpenVINO Extensibility Mechanism.
 * [**Token Merging**](./modules/token_merging/): adaptation of [Token Merging method](https://arxiv.org/abs/2210.09461) for OpenVINO.
 * [**OpenVINO Code**](./modules/openvino_code): VSCode extension for AI code completion with OpenVINO.
+* [**Ollama-OpenVINO**](./modules/ollama_openvino): OpenVINO GenAI empowered Ollama which accelerate LLM on Intel platforms(including CPU, iGPU/dGPU, NPU).
 
 ## How to build OpenVINO with extra modules
 You can build OpenVINO, so it will include the modules from this repository. Contrib modules are under constant development and it is recommended to use them alongside the master branch or latest releases of OpenVINO.
@@ -36,7 +37,7 @@ Additional build instructions are available for the following modules:
 
 * [**nvidia_plugin**](./modules/nvidia_plugin/README.md)
 * [**custom_operations**](./modules/custom_operations/README.md)
-
+* [**ollama_OpenVINO**](./modules/ollama_openvino)
 ## Update the repository documentation
 In order to keep a clean overview containing all contributed modules, the following files need to be created/adapted:
 

@@ -112,6 +112,7 @@ jobs:
             -DENABLE_OV_PYTORCH_FRONTEND=OFF \
             -DENABLE_CPPLINT=OFF \
             -DENABLE_INTEL_NPU=OFF \
+            -DBUILD_ollama_openvino=OFF \
             -S ${{ env.OPENVINO_REPO }} \
             -B ${{ env.BUILD_DIR }}
 
