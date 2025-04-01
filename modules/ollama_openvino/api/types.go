@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"log/slog"
 	"math"
 	"os"
@@ -691,7 +690,7 @@ func FormatParams(params map[string][]string) (map[string]interface{}, error) {
 	out := make(map[string]interface{})
 	// iterate params and set values based on json struct tags
 	for key, vals := range params {
-		log.Printf("-----%s: %s", key, vals)
+		// log.Printf("-----%s: %s", key, vals)
 		if opt, ok := jsonOpts[key]; !ok {
 			return nil, fmt.Errorf("unknown parameter '%s'", key)
 		} else {

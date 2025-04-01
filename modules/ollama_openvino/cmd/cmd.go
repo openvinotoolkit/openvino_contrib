@@ -96,13 +96,13 @@ func CreateHandler(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	log.Printf(modelfile.String())
+	// log.Printf(modelfile.String())
 
 	status := "gathering model components"
 	spinner := progress.NewSpinner(status)
 	p.Add(status, spinner)
 
-	log.Printf("filepath.Dir(filename): %s", filepath.Dir(filename))
+	// log.Printf("filepath.Dir(filename): %s", filepath.Dir(filename))
 	req, err := modelfile.CreateRequest(filepath.Dir(filename))
 	if err != nil {
 		return err

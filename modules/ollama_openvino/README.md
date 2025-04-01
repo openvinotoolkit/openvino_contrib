@@ -591,10 +591,10 @@ We provide two ways to download the executable file of Ollama, one is to downloa
 
 ## 百度云盘
 ### Windows
-[Download exe](https://pan.baidu.com/s/1jwolOPTnt48hX_C0f3oUlQ?pwd=awy4) + [Download OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_windows_2025.2.0.0.dev20250320_x86_64.zip)
+[Download exe](https://pan.baidu.com/s/10SQLKaGOYIR3NrIhig1xgQ?pwd=8v8w) + [Download OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_windows_2025.2.0.0.dev20250320_x86_64.zip)
 
 ### Linux(Ubuntu 22.04)
-[Download](https://pan.baidu.com/s/11oTt0UIuuNGNffcC0NLk5g?pwd=1pa3) + [Donwload OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_ubuntu22_2025.2.0.0.dev20250320_x86_64.tar.gz)
+[Download](https://pan.baidu.com/s/1WhzcKRQY_KVLZhy5oa0UIA?pwd=zxgx) + [Donwload OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_ubuntu22_2025.2.0.0.dev20250320_x86_64.tar.gz)
 
 ## Docker
 ### Linux
@@ -729,6 +729,17 @@ Let's take [deepseek-ai/DeepSeek-R1-Distill-Qwen-7B](https://hf-mirror.com/deeps
 
    ```shell
    ollama create DeepSeek-R1-Distill-Qwen-7B-int4-ov:v1 -f Modelfile
+   ```
+   You will see output similar to the following:
+   ```shell
+      gathering model components 
+      copying file sha256:77acf6474e4cafb67e57fe899264e9ca39a215ad7bb8f5e6b877dcfa0fabf919 100% 
+      using existing layer sha256:77acf6474e4cafb67e57fe899264e9ca39a215ad7bb8f5e6b877dcfa0fabf919 
+      creating new layer sha256:9b345e4ef9f87ebc77c918a4a0cee4a83e8ea78049c0ee2dc1ddd2a337cf7179 
+      creating new layer sha256:ea49523d744c40bc900b4462c43132d1c8a8de5216fa8436cc0e8b3e89dddbe3 
+      creating new layer sha256:b6bf5bcca7a15f0a06e22dcf5f41c6c0925caaab85ec837067ea98b843bf917a 
+      writing manifest 
+      success 
    ```
 
 6. Run the model                     
