@@ -670,7 +670,7 @@ We added two new parameters to Modelfile based on the original parameters:
    set GODEBUG=cgocheck=0
    ```
 
-2. Next, `ollama serve` is used when you want to start ollama without running the desktop application:
+2. Next, `ollama serve` is used when you want to start ollama (You must use the Ollama compiled by ollama_ov to start the serve):
 
    ```shell
    ollama serve
