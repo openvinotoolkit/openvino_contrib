@@ -96,13 +96,13 @@ func CreateHandler(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	log.Printf(modelfile.String())
+	// log.Printf(modelfile.String())
 
 	status := "gathering model components"
 	spinner := progress.NewSpinner(status)
 	p.Add(status, spinner)
 
-	log.Printf("filepath.Dir(filename): %s", filepath.Dir(filename))
+	// log.Printf("filepath.Dir(filename): %s", filepath.Dir(filename))
 	req, err := modelfile.CreateRequest(filepath.Dir(filename))
 	if err != nil {
 		return err
@@ -667,9 +667,11 @@ func showInfo(resp *api.ShowResponse, w io.Writer) error {
 		if resp.ModelInfo != nil {
 			arch := resp.ModelInfo["general.architecture"].(string)
 			rows = append(rows, []string{"", "architecture", arch})
-			rows = append(rows, []string{"", "parameters", format.HumanNumber(uint64(resp.ModelInfo["general.parameter_count"].(float64)))})
-			rows = append(rows, []string{"", "context length", strconv.FormatFloat(resp.ModelInfo[fmt.Sprintf("%s.context_length", arch)].(float64), 'f', -1, 64)})
-			rows = append(rows, []string{"", "embedding length", strconv.FormatFloat(resp.ModelInfo[fmt.Sprintf("%s.embedding_length", arch)].(float64), 'f', -1, 64)})
+			if arch != "OpenVINO" {
+				rows = append(rows, []string{"", "parameters", format.HumanNumber(uint64(resp.ModelInfo["general.parameter_count"].(float64)))})
+				rows = append(rows, []string{"", "context length", strconv.FormatFloat(resp.ModelInfo[fmt.Sprintf("%s.context_length", arch)].(float64), 'f', -1, 64)})
+				rows = append(rows, []string{"", "embedding length", strconv.FormatFloat(resp.ModelInfo[fmt.Sprintf("%s.embedding_length", arch)].(float64), 'f', -1, 64)})
+			}
 		} else {
 			rows = append(rows, []string{"", "architecture", resp.Details.Family})
 			rows = append(rows, []string{"", "parameters", resp.Details.ParameterSize})

@@ -1040,6 +1040,9 @@ func GetModelInfo(req api.ShowRequest) (*api.ShowResponse, error) {
 	if m.Type == "OpenVINO" {
 		resp.ModelType = m.Type
 		resp.InferDevice = m.InferDevice
+		modelinfo_map := make(map[string]any)
+		modelinfo_map["general.architecture"] = m.Type
+		resp.ModelInfo = modelinfo_map
 		return resp, nil
 	} else {
 		kvData, err := getKVData(m.ModelPath, req.Verbose)

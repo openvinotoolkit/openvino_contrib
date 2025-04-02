@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"os/user"
@@ -48,7 +47,7 @@ func (f Modelfile) CreateRequest(relativeDir string) (*api.CreateRequest, error)
 	params := make(map[string]any)
 
 	for _, c := range f.Commands {
-		log.Printf("c.Name: %s", c.Name)
+		// log.Printf("c.Name: %s", c.Name)
 		switch c.Name {
 		case "model":
 			path, err := expandPath(c.Args, relativeDir)
