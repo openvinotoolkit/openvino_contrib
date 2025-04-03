@@ -615,6 +615,7 @@ The native Ollama only supports models in the GGUF format, the Ollama-OV invoke 
 | DeepSeek-R1-Distill-Qwen-1.5B-int4-ov-npu | 1.5B    | 1.1GB | INT4_SYM_CW  | [ModelScope](https://modelscope.cn/models/zhaohb/DeepSeek-R1-Distill-Qwen-1.5B-int4-ov-npu/summary)    | NPU(best) |
 | DeepSeek-R1-Distill-Qwen-7B-int4-ov       | 7B      | 4.3GB | INT4_SYM_128 | [ModelScope](https://modelscope.cn/models/zhaohb/DeepSeek-R1-Distill-Qwen-7B-int4-ov)    | CPU, GPU, NPU(base) |
 | DeepSeek-R1-Distill-Qwen-7B-int4-ov-npu   | 7B      | 4.1GB | INT4_SYM_CW  | [ModelScope](https://modelscope.cn/models/zhaohb/DeepSeek-R1-Distill-Qwen-7B-int4-ov-npu)    | NPU(best) |
+| DeepSeek-R1-Distill-Qwen-14B-int4-ov      | 14B     | 8.0GB | INT4_SYM_128 | [ModelScope](https://modelscope.cn/models/zhaohb/DeepSeek-R1-Distill-Qwen-14B-int4-ov)    | CPU, GPU, NPU(base) |
 | DeepSeek-R1-Distill-llama-8B-int4-ov      | 8B      | 4.5GB | INT4_SYM_128 | [ModelScope](https://modelscope.cn/models/zhaohb/DeepSeek-R1-Distill-Llama-8B-int4-ov)    | CPU, GPU, NPU(base) |
 | DeepSeek-R1-Distill-llama-8B-int4-ov-npu  | 8B      | 4.2GB | INT4_SYM_CW  | [ModelScope](https://modelscope.cn/models/zhaohb/DeepSeek-R1-Distill-Llama-8B-int4-ov-npu)    | NPU(best) |
 | llama-3.2-1b-instruct-int4-ov             | 1B      | 0.8GB | INT4_SYM_128 | [ModelScope](https://modelscope.cn/models/FionaZhao/llama-3.2-1b-instruct-int4-ov/files)    | CPU, GPU, NPU(base) |
