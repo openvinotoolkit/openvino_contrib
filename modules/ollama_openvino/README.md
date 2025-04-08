@@ -584,17 +584,17 @@ Getting started with large language models and using the [GenAI](https://github.
 We provide two ways to download the executable file of Ollama, one is to download it from Google Drive, and the other is to download it from Baidu Drive:
 ## Google Driver
 ### Windows
-[Download exe](https://drive.google.com/file/d/1iizO9iLhSJGFUu6BgY3EwOchrCyzImUN/view?usp=drive_link) + [Download OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_windows_2025.2.0.0.dev20250320_x86_64.zip)
+[Download exe](https://drive.google.com/file/d/1Sep1IdGn7mJaE8PCXKYxp_aj1ljiPvpN/view?usp=sharing) + [Download OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_windows_2025.2.0.0.dev20250320_x86_64.zip)
 
 ### Linux(Ubuntu 22.04)
-[Download](https://drive.google.com/file/d/1HEyZNNCbWSidKNQl4MRsD8FuwEZtdyew/view?usp=drive_link) + [Donwload OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_ubuntu22_2025.2.0.0.dev20250320_x86_64.tar.gz)
+[Download](https://drive.google.com/file/d/1DdBoEGp_eoyJPbpMGVbEivihYSKrCMGt/view?usp=sharing) + [Donwload OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_ubuntu22_2025.2.0.0.dev20250320_x86_64.tar.gz)
 
 ## 百度云盘
 ### Windows
-[Download exe](https://pan.baidu.com/s/10SQLKaGOYIR3NrIhig1xgQ?pwd=8v8w) + [Download OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_windows_2025.2.0.0.dev20250320_x86_64.zip)
+[Download exe](https://pan.baidu.com/s/1TCH7rYSPr8jQDHLvCeXdLw?pwd=6bk9) + [Download OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_windows_2025.2.0.0.dev20250320_x86_64.zip)
 
 ### Linux(Ubuntu 22.04)
-[Download](https://pan.baidu.com/s/1WhzcKRQY_KVLZhy5oa0UIA?pwd=zxgx) + [Donwload OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_ubuntu22_2025.2.0.0.dev20250320_x86_64.tar.gz)
+[Download](https://pan.baidu.com/s/1UVO0ZK4DFTjTwfarQ8LUIw?pwd=pxkd) + [Donwload OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_ubuntu22_2025.2.0.0.dev20250320_x86_64.tar.gz)
 
 ## Docker
 ### Linux
@@ -659,11 +659,11 @@ We added two new parameters to Modelfile based on the original parameters:
 
 ### Start Ollama
 
-1. First, set GODEGUG=cgocheck=0 env:
+1. First, set GODEBUG=cgocheck=0 env:
 
    #### Linux
    ```shell
-   export GODEGUG=cgocheck=0
+   export GODEBUG=cgocheck=0
    ```
 
    #### Windows 
@@ -671,7 +671,7 @@ We added two new parameters to Modelfile based on the original parameters:
    set GODEBUG=cgocheck=0
    ```
 
-2. Next, `ollama serve` is used when you want to start ollama (You must use the Ollama compiled by ollama_ov to start the serve):
+2. Next, `ollama serve` is used when you want to start ollama (you must use the Ollama compiled by ollama_ov to start the serve):
 
    ```shell
    ollama serve
@@ -861,11 +861,11 @@ Then build and run Ollama from the root directory of the repository:
 
 ### Running local builds
 
-1. First, set GODEGUG=cgocheck=0 env:
+1. First, set GODEBUG=cgocheck=0 env:
 
    #### Linux
    ```shell
-   export GODEGUG=cgocheck=0
+   export GODEBUG=cgocheck=0
    ```
 
    #### Windows 

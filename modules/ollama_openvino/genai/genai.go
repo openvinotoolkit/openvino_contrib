@@ -167,7 +167,7 @@ func SetSamplingParams(samplingparameters *SamplingParams) *C.ov_genai_generatio
 	C.ov_genai_generation_config_set_max_new_tokens(cConfig, C.size_t(samplingparameters.MaxNewToken))
 	C.ov_genai_generation_config_set_temperature(cConfig, C.float(samplingparameters.Temp))
 	C.ov_genai_generation_config_set_top_p(cConfig, C.float(samplingparameters.TopP))
-	C.ov_genai_generation_config_set_top_k(cConfig, C.size_t(samplingparameters.TopK))
+	// C.ov_genai_generation_config_set_top_k(cConfig, C.size_t(samplingparameters.TopK))
 
 	if samplingparameters.StopIds != nil {
 		cStopArray := C.malloc(C.size_t(len(samplingparameters.StopIds)) * C.size_t(unsafe.Sizeof(C.int64_t(0))))
