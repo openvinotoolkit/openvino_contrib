@@ -2,11 +2,6 @@ FROM ubuntu:20.04
 
 SHELL ["/bin/bash", "-c"]
 
-ENV no_proxy=http://Child-mu.intel.com:912
-ENV ftp_proxy=http://Child-mu.intel.com:912
-ENV http_proxy=http://Child-mu.intel.com:912
-ENV https_proxy=http://Child-mu.intel.com:912
-
 RUN apt-get update && apt install -y software-properties-common
 RUN add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update \
