@@ -611,6 +611,9 @@ docker run --rm -it ollama_openvino:v1
 The native Ollama only supports models in the GGUF format, the Ollama-OV invoke OpenVINO GenAI which requires models in the OpenVINO format. Therefore, we have enabled support for OpenVINO model files in Ollama. For public LLMs, you can access and download OpenVINO IR model from HuggingFace or ModelScope:
 | Model              | Parameters | Size  |Compression | Download                         | Device   |
 | ------------------ | ---------- | ----- | -----------|-------------------- |----------|
+| Qwen3-0.6B-int4-ov | 0.6B | 0.4GB | INT4_ASYM_128  ratio 0.8 | [ModelScope](https://www.modelscope.cn/models/OpenVINO/Qwen3-1.7B-int4-ov/summary) | CPU, GPU, NPU(base) |
+| Qwen3-1.7B-int4-ov | 1.7B | 1.2GB | INT4_ASYM_128  ratio 0.8 | [ModelScope](https://www.modelscope.cn/models/OpenVINO/Qwen3-1.7B-int4-ov/) | CPU, GPU, NPU(base) |
+| Qwen3-4B-int4-ov   | 4B   | 2.6GB | INT4_ASYM_128  ratio 0.8 | [ModelScope](https://www.modelscope.cn/models/OpenVINO/Qwen3-4B-int4-ov) | CPU, GPU, NPU(base) |
 | DeepSeek-R1-Distill-Qwen-1.5B-int4-ov     | 1.5B    | 1.4GB | INT4_ASYM_32 | [ModelScope](https://modelscope.cn/models/zhaohb/DeepSeek-R1-Distill-Qwen-1.5B-int4-gs-32-ov)    | CPU, GPU, NPU(base) |
 | DeepSeek-R1-Distill-Qwen-1.5B-int4-ov-npu | 1.5B    | 1.1GB | INT4_SYM_CW  | [ModelScope](https://modelscope.cn/models/zhaohb/DeepSeek-R1-Distill-Qwen-1.5B-int4-ov-npu/summary)    | NPU(best) |
 | DeepSeek-R1-Distill-Qwen-7B-int4-ov       | 7B      | 4.3GB | INT4_SYM_128 | [ModelScope](https://modelscope.cn/models/zhaohb/DeepSeek-R1-Distill-Qwen-7B-int4-ov)    | CPU, GPU, NPU(base) |
@@ -626,7 +629,7 @@ The native Ollama only supports models in the GGUF format, the Ollama-OV invoke 
 | Phi-3-mini-4k-instruct-int4-ov            | 3.8B    | 2.2GB | INT4_ASYM    | [HF](https://hf-mirror.com/OpenVINO/Phi-3-mini-4k-instruct-int4-ov), [ModelScope](https://modelscope.cn/models/OpenVINO/Phi-3-mini-4k-instruct-int4-ov)       | CPU, GPU |
 | Phi-3-medium-4k-instruct-int4-ov          | 14B     | 7.4GB | INT4_ASYM    | [HF](https://hf-mirror.com/OpenVINO/Phi-3-medium-4k-instruct-int4-ov), [ModelScope](https://modelscope.cn/models/OpenVINO/Phi-3-medium-4k-instruct-int4-ov)     | CPU, GPU |
 | Qwen2.5-0.5B-Instruct-openvino-ovms-int4  | 0.5B    | 0.3GB | INT4_SYM_128 | [ModelScope](https://modelscope.cn/models/kafufa/Qwen2.5-0.5B-Instruct-openvino-ovms-int4/summary) | CPU, GPU, NPU(base) |
-| Qwen2.5-1.5B-Instruct-openvino-ovms-int4  | 1.5B    | 0.9GB | INT4_SYM_128 | [ModelScope](https://modelscope.cn/models/kafufa/Qwen2.5-1.5B-Instruct-openvino-ovms-int4/summary) | CPU, GPU, NPU(base) |
+| Qwen2.5-1.5B-Instruct-int4-ov  | 1.5B    | 0.9GB | INT4_SYM_128 | [ModelScope](https://www.modelscope.cn/models/OpenVINO/Qwen2.5-1.5B-Instruct-int4-ov/) | CPU, GPU, NPU(base) |
 | Qwen2.5-3B-Instruct-gptq-ov               | 3B      | 2.7GB | INT4_GPTQ    | [ModelScope](https://modelscope.cn/models/FionaZhao/Qwen2.5-3B-Instruct-gptq-ov/files) | CPU, GPU |
 | Qwen2.5-7B-Instruct-int4-ov               | 7B      | 4.3GB | INT4_ASYM    | [ModelScope](https://modelscope.cn/models/FionaZhao/Qwen2.5-7B-Instruct-int4-ov/files) | CPU, GPU |
 | minicpm-1b-sft-int4-ov                    | 1B      | 0.7GB | INT4_SYM     | [ModelScope](https://modelscope.cn/models/FionaZhao/minicpm-1b-sft-int4-ov/files) | CPU, GPU, NPU(base) |
