@@ -39,6 +39,7 @@ fi
 cd "${OPENVINO_BUILD_PATH}"
 cmake "${OPENVINO_HOME}" \
       -DENABLE_NVIDIA=ON \
+      -DENABLE_PLUGINS_XML=ON \
       -DENABLE_TESTS="${ENABLE_TESTS}" \
       -DBUILD_arm_plugin=OFF \
       -DBUILD_java_api=OFF \

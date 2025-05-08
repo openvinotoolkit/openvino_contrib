@@ -48,7 +48,7 @@ Afterwards plugin build procedure is as following:
 
 1. Clone `openvino_contrib` repository:
 ```bash
-git clone --recurse-submodules --single-branch --branch=2022.3.0 https://github.com/openvinotoolkit/openvino_contrib.git
+git clone --recurse-submodules --single-branch --branch=2024.1.0 https://github.com/openvinotoolkit/openvino_contrib.git
 ```
 2. Go to plugin directory:
 ```bash
@@ -60,7 +60,7 @@ mkdir build && cd build
 ```
 4. Build plugin
 
-    First of all, switch OpenVINO™ to tag _2022.3.0_ and then build it according the instruction [How to build](https://github.com/openvinotoolkit/openvino/wiki#how-to-build)
+    First of all, switch OpenVINO™ to tag _2024.1.0_ and then build it according the instruction [How to build](https://github.com/openvinotoolkit/openvino/wiki#how-to-build)
 
     Then build CUDA Plugin with one of 2 options:
 - Using `build.sh`
@@ -97,7 +97,7 @@ If python available the CUDA Plugin could be compiled with setup.py script as fo
 
 1. Clone `openvino_contrib` repository:
 ```bash
-git clone --recurse-submodules --single-branch --branch=2022.3.0 https://github.com/openvinotoolkit/openvino_contrib.git
+git clone --recurse-submodules --single-branch --branch=2024.1.0 https://github.com/openvinotoolkit/openvino_contrib.git
 ```
 2. Go to plugin directory:
 ```bash
