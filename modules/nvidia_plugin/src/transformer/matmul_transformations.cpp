@@ -7,6 +7,7 @@
 
 #include <cuda_op_buffers_extractor.hpp>
 #include <gsl/span_ext>
+#include "openvino/core/graph_util.hpp"
 #include "openvino/core/rt_info.hpp"
 #include "openvino/pass/pattern/op/wrap_type.hpp"
 #include "openvino/op/matmul.hpp"
