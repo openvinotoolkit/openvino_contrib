@@ -127,12 +127,13 @@ bool FFT::visit_attributes(ov::AttributeVisitor& visitor) {
 }
 
 bool FFT::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
-    float* inpData = reinterpret_cast<float*>(inputs[0].data());
+    //const_cast because the cvSetData use user pointer as non-const, should be ok as it looks like input data
+    float *inpData = reinterpret_cast<float *>(const_cast<void*>(inputs[0].data()));
 
     if (inputs[1].get_element_type() != ov::element::i32)
         OPENVINO_THROW("Unexpected dims type: " + inputs[1].get_element_type().to_string());
 
-    int32_t* signalDimsData = reinterpret_cast<int32_t*>(inputs[1].data());
+    const int32_t *signalDimsData = reinterpret_cast<const int32_t *>(inputs[1].data());
     float* outData = reinterpret_cast<float*>(outputs[0].data());
     std::vector<size_t> dims = inputs[0].get_shape();
     const size_t numSignalDims = inputs[1].get_shape()[0];

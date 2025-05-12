@@ -23,7 +23,7 @@ public class CompiledModelTests extends OVTest {
         List<Output> inputs = model.inputs();
 
         assertEquals("data", inputs.get(0).get_any_name());
-        assertEquals(ElementType.f32, inputs.get(0).get_element_type());
+        assertEquals(ElementType.f16, inputs.get(0).get_element_type());
 
         int[] shape = new int[] {1, 3, 32, 32};
         assertArrayEquals("Shape", shape, inputs.get(0).get_shape());
@@ -34,7 +34,7 @@ public class CompiledModelTests extends OVTest {
         List<Output> outputs = model.outputs();
 
         assertEquals("fc_out", outputs.get(0).get_any_name());
-        assertEquals(ElementType.f32, outputs.get(0).get_element_type());
+        assertEquals(ElementType.f16, outputs.get(0).get_element_type());
 
         int[] shape = new int[] {1, 10};
         assertArrayEquals("Shape", shape, outputs.get(0).get_shape());

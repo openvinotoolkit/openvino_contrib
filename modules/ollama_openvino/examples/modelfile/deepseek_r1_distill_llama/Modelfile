@@ -1,0 +1,6 @@
+FROM  DeepSeek-R1-Distill-Llama-8B-int4-ov.tar.gz
+ModelType "OpenVINO"
+InferDevice "GPU"
+PARAMETER repeat_penalty 1.0
+PARAMETER top_p 1.0
+PARAMETER temperature 1.0

@@ -5,6 +5,7 @@
 #include "detection_output_fix_input_types_transformation.hpp"
 
 #include "openvino/cc/pass/itt.hpp"
+#include "openvino/core/graph_util.hpp"
 #include "openvino/core/rt_info.hpp"
 #include "openvino/op/convert.hpp"
 #include "openvino/op/detection_output.hpp"
