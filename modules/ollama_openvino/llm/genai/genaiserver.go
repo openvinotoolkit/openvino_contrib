@@ -108,6 +108,36 @@ func SelectDevice(device string, supportedDevices []string) string {
 	return device
 }
 
+func addIndexToDuplicates(input []string) []string {
+	// output := make([]string, 0, len(input))
+	var output []string
+	counters := make(map[string]int)    // 用于记录每个值的出现次数
+	duplicates := make(map[string]bool) // 用于标记哪些值是重复的
+
+	// 第一次遍历：统计每个值的出现次数，并标记重复值
+	for _, item := range input {
+		counters[item]++
+		if counters[item] > 1 {
+			duplicates[item] = true
+		}
+	}
+
+	// 第二次遍历：为重复值添加索引
+	for _, item := range input {
+		if duplicates[item] { // 如果是重复值
+			output = append(output, fmt.Sprintf("%s:%d", item, counters[item]-1))
+			counters[item]-- // 更新计数器
+		} else { // 如果不是重复值
+			output = append(output, item)
+		}
+	}
+	if ContainsInSlice(input, "GPU") {
+		output = append(output, "GPU")
+	}
+
+	return output
+}
+
 // NewGenaiServer will run a server
 func NewGenaiServer(gpus discover.GpuInfoList, model string, modelname string, inferdevice string, f *ggml.GGML, adapters, projectors []string, opts api.Options, numParallel int) (GenaiServer, error) {
 	systemInfo := discover.GetSystemInfo()
@@ -121,6 +151,7 @@ func NewGenaiServer(gpus discover.GpuInfoList, model string, modelname string, i
 	for i := 0; i < int(len(genai_device)); i++ {
 		genai_device_list = append(genai_device_list, genai_device[i]["device_name"])
 	}
+	genai_device_list = addIndexToDuplicates(genai_device_list)
 	inferdevice = SelectDevice(inferdevice, genai_device_list)
 
 	params := []string{
