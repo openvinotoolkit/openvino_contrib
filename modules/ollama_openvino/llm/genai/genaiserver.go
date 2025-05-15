@@ -111,10 +111,10 @@ func SelectDevice(device string, supportedDevices []string) string {
 func addIndexToDuplicates(input []string) []string {
 	// output := make([]string, 0, len(input))
 	var output []string
-	counters := make(map[string]int)    // 用于记录每个值的出现次数
-	duplicates := make(map[string]bool) // 用于标记哪些值是重复的
+	counters := make(map[string]int)    // Used to record the occurrence count of each value
+	duplicates := make(map[string]bool) // Used to mark which values are duplicates
 
-	// 第一次遍历：统计每个值的出现次数，并标记重复值
+	// First pass: Count the occurrences of each value and mark duplicates
 	for _, item := range input {
 		counters[item]++
 		if counters[item] > 1 {
@@ -122,12 +122,12 @@ func addIndexToDuplicates(input []string) []string {
 		}
 	}
 
-	// 第二次遍历：为重复值添加索引
+	// Second pass: Add an index to duplicate values
 	for _, item := range input {
-		if duplicates[item] { // 如果是重复值
+		if duplicates[item] { // If it's a duplicate
 			output = append(output, fmt.Sprintf("%s:%d", item, counters[item]-1))
-			counters[item]-- // 更新计数器
-		} else { // 如果不是重复值
+			counters[item]-- // Update the counter
+		} else { // If it's not a duplicate
 			output = append(output, item)
 		}
 	}
