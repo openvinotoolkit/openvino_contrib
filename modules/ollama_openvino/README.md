@@ -715,7 +715,7 @@ Let's take [deepseek-ai/DeepSeek-R1-Distill-Qwen-7B](https://hf-mirror.com/deeps
     ```
 
 3. Create a file named `Modelfile`, with a `FROM` instruction with the local filepath to the model you want to import.
-   For convenience, we have put the model file of DeepSeek-R1-Distill-Qwen-7B-int4-ov model under example dir: [Modelfile for DeepSeek](https://github.com/zhaohb/ollama_ov/blob/main/examples/modelfile/deepseek_r1_distill_qwen/Modelfile), we can use it directly.
+   For convenience, we have put the model file of DeepSeek-R1-Distill-Qwen-7B-int4-ov model under example dir: [Modelfile for DeepSeek](https://github.com/openvinotoolkit/openvino_contrib/blob/master/modules/ollama_openvino/examples/modelfile/deepseek_r1_distill_qwen/Modelfile), we can use it directly.
 
    Note:
 
@@ -792,7 +792,8 @@ Then build and run Ollama from the root directory of the repository:
 1. clone repo
    ```shell
    git lfs install
-   git lfs clone https://github.com/zhaohb/ollama_ov.git
+   git clone https://github.com/openvinotoolkit/openvino_contrib.git
+   cd openvino_contrib/modules/ollama_openvino
    ```
 
 2. Enable CGO:
@@ -830,7 +831,8 @@ Then build and run Ollama from the root directory of the repository:
 1. clone repo
    ```shell
    git lfs install
-   git lfs clone https://github.com/zhaohb/ollama_ov.git
+   git clone https://github.com/openvinotoolkit/openvino_contrib.git
+   cd openvino_contrib/modules/ollama_openvino
    ```
 
 2. Enable CGO:
