@@ -305,7 +305,7 @@ jobs:
           add-apt-repository "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/ /"
           apt update
           apt install -y --allow-downgrades --allow-change-held-packages \
-            linux-headers-5.15.0-25-generic
+            linux-headers-5.15.0-25-generic \
             libcudnn8=8.9.4.*-1+cuda11.8 \
             libcudnn8-dev=8.9.4.*-1+cuda11.8 \
             libcudnn8-samples=8.9.4.*-1+cuda11.8 \
