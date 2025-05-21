@@ -310,8 +310,8 @@ jobs:
             libcudnn8-samples=8.9.4.*-1+cuda11.8 \
             cuda-runtime-11-8 \
             cuda-11-8 \
-            libcutensor1=1.6.1.5-1 \
-            libcutensor-dev=1.6.1.5-1 \
+            libcutensor1=1.7.0.1-1 \
+            libcutensor-dev=1.7.0.1-1 \
             cuda-drivers=520.61.05-1
 
       #
