@@ -9,8 +9,8 @@ on:
 permissions: read-all
 
 jobs:
-  test_ubuntu20:
-    runs-on: ubuntu-20.04
+  test_ubuntu22:
+    runs-on: ubuntu-22.04
     steps:
       - name: Download repo
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
@@ -37,7 +37,7 @@ jobs:
 
       - name: Install openvino_genai and init go env and build ollama_ov
         run: |
-          wget https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64.tar.gz
+          wget https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_ubuntu22_2025.2.0.0.dev20250320_x86_64.tar.gz
           tar -xzf openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64.tar.gz
           source openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64/setupvars.sh
           printenv OpenVINO_DIR
@@ -57,7 +57,7 @@ jobs:
       - name: Create ollama model and test generate
         run: |
           export PATH=$PATH:${{ github.workspace }}/ollama_ov/bin
-          source openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64/setupvars.sh
+          source openvino_genai_ubuntu22_2025.2.0.0.dev20250320_x86_64/setupvars.sh
           export GODEBUG=cgocheck=0
           echo -e 'FROM TinyLlama-1.1B-Chat-v1.0-int4-ov.tar.gz\nModelType "OpenVINO"\nInferDevice "GPU"' > Modelfile
           ollama serve &
