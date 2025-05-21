@@ -22,8 +22,8 @@ std::shared_ptr<ov::Node> ComplexMultiplication::clone_with_new_inputs(const ov:
 }
 
 bool ComplexMultiplication::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
-    const float* inp0 = reinterpret_cast<float*>(inputs[0].data());
-    const float* inp1 = reinterpret_cast<float*>(inputs[1].data());
+    const float *inp0 = reinterpret_cast<const float *>(inputs[0].data());
+    const float *inp1 = reinterpret_cast<const float *>(inputs[1].data());
     float* out = reinterpret_cast<float*>(outputs[0].data());
 
     size_t channels0 = inputs[0].get_shape()[1];
