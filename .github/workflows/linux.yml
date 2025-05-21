@@ -312,7 +312,7 @@ jobs:
             cuda-11-8 \
             libcutensor1=1.7.0.1-1 \
             libcutensor-dev=1.7.0.1-1 \
-            cuda-drivers=525.60.13-1
+            cuda-drivers=525.147.05-1
 
       #
       # Build
