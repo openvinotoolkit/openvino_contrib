@@ -9,8 +9,8 @@ on:
 permissions: read-all
 
 jobs:
-  test_ubuntu20:
-    runs-on: ubuntu-20.04
+  test_ubuntu22:
+    runs-on: ubuntu-22.04
     steps:
       - name: Download repo
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6

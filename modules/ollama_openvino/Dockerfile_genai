@@ -22,9 +22,9 @@ ARG GOVERSION=1.24.1
 RUN curl -fsSL https://golang.org/dl/go${GOVERSION}.linux-$(case $(uname -m) in x86_64) echo amd64 ;; aarch64) echo arm64 ;; esac).tar.gz | tar xz -C /usr/local
 ENV PATH=/usr/local/go/bin:$PATH
 
-RUN wget https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64.tar.gz
-RUN tar -xzf openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64.tar.gz
-ENV GENAI_DIR=/home/ollama_ov_server/openvino_genai_ubuntu20_2025.2.0.0.dev20250320_x86_64
+RUN wget https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250513/openvino_genai_ubuntu22_2025.2.0.0.dev20250513_x86_64.tar.gz
+RUN tar -xzf openvino_genai_ubuntu20_2025.2.0.0.dev20250513_x86_64.tar.gz
+ENV GENAI_DIR=/home/ollama_ov_server/openvino_genai_ubuntu20_2025.2.0.0.dev20250513_x86_64
 
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$GENAI_DIR/runtime/3rdparty/tbb/lib:$GENAI_DIR/runtime/lib/intel64
 
@@ -35,8 +35,8 @@ ENV CGO_LDFLAGS=-L$GENAI_DIR/runtime/lib/intel64
 ENV CGO_CFLAGS=-I$GENAI_DIR/runtime/include
 
 WORKDIR /home/ollama_ov_server
-RUN git clone https://github.com/zhaohb/ollama_ov.git
-WORKDIR /home/ollama_ov_server/ollama_ov
+RUN git clone https://github.com/openvinotoolkit/openvino_contrib.git
+WORKDIR /home/ollama_ov_server/openvino_contrib/modules/ollama_openvino
 
 RUN go build -o /bin/ollama .
 
