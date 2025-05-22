@@ -1,9 +1,0 @@
-**
-!media/logo.png
-!media/sidebar-icon.png
-!out/
-!out/extension.js
-!side-panel-ui/dist/
-!package.json
-!LICENSE
-!README.md
