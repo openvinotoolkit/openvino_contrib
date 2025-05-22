@@ -36,4 +36,4 @@ def _register_nvidia_plugin():
 
 _register_nvidia_plugin()
 
-__version__ = "2022.3.0"
+__version__ = "2024.1.0"
