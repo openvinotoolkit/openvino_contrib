@@ -22,6 +22,19 @@ package genai
 typedef int (*callback_function)(const char*, void*);
 
 extern int goCallbackBridge(char* input, void* ptr);
+
+static ov_status_e ov_genai_llm_pipeline_create_npu_output_2048(const char* models_path,
+																  const char* device,
+                                                                  ov_genai_llm_pipeline** pipe) {
+	return 	ov_genai_llm_pipeline_create(models_path, "NPU", 4, pipe, "MAX_PROMPT_LEN", "2048", "MIN_RESPONSE_LEN", "256");
+}
+
+static ov_status_e ov_genai_llm_pipeline_create_cgo(const char* models_path,
+																  const char* device,
+                                                                  ov_genai_llm_pipeline** pipe) {
+	return 	ov_genai_llm_pipeline_create(models_path, device, 0, pipe);
+}
+
 */
 import "C"
 
@@ -111,7 +124,12 @@ func CreatePipeline(modelsPath string, device string) *C.ov_genai_llm_pipeline {
 	defer C.free(unsafe.Pointer(cModelsPath))
 	defer C.free(unsafe.Pointer(cDevice))
 
-	C.ov_genai_llm_pipeline_create(cModelsPath, cDevice, &pipeline)
+	// C.ov_genai_llm_pipeline_create(cModelsPath, cDevice, &pipeline)
+	if device == "NPU" {
+		C.ov_genai_llm_pipeline_create_npu_output_2048(cModelsPath, cDevice, &pipeline)
+	} else {
+		C.ov_genai_llm_pipeline_create_cgo(cModelsPath, cDevice, &pipeline)
+	}
 	return pipeline
 }
 

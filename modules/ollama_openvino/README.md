@@ -584,27 +584,32 @@ Getting started with large language models and using the [GenAI](https://github.
 We provide two ways to download the executable file of Ollama, one is to download it from Google Drive, and the other is to download it from Baidu Drive:
 ## Google Driver
 ### Windows
-[Download exe](https://drive.google.com/file/d/1Sep1IdGn7mJaE8PCXKYxp_aj1ljiPvpN/view?usp=sharing) + [Download OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_windows_2025.2.0.0.dev20250320_x86_64.zip)
+[Download exe](https://drive.google.com/file/d/1Xo3ohbfC852KtJy_4xtn_YrYaH4Y_507/view?usp=sharing) + [Download OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250513/openvino_genai_windows_2025.2.0.0.dev20250513_x86_64.zip)
 
 ### Linux(Ubuntu 22.04)
-[Download](https://drive.google.com/file/d/1DdBoEGp_eoyJPbpMGVbEivihYSKrCMGt/view?usp=sharing) + [Donwload OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_ubuntu22_2025.2.0.0.dev20250320_x86_64.tar.gz)
+[Download](https://drive.google.com/file/d/1_P7CQqFUqeyx4q5y5bQ-xQsb10T9gzJD/view?usp=sharing) + [Donwload OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250513/openvino_genai_ubuntu22_2025.2.0.0.dev20250513_x86_64.tar.gz)
 
 ## 百度云盘
 ### Windows
-[Download exe](https://pan.baidu.com/s/1TCH7rYSPr8jQDHLvCeXdLw?pwd=6bk9) + [Download OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_windows_2025.2.0.0.dev20250320_x86_64.zip)
+[Download exe](https://pan.baidu.com/s/1uIUjji7Mxf594CJy1vbrVw?pwd=36mq) + [Download OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250513/openvino_genai_windows_2025.2.0.0.dev20250513_x86_64.zip)
 
 ### Linux(Ubuntu 22.04)
-[Download](https://pan.baidu.com/s/1UVO0ZK4DFTjTwfarQ8LUIw?pwd=pxkd) + [Donwload OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_ubuntu22_2025.2.0.0.dev20250320_x86_64.tar.gz)
+[Download](https://pan.baidu.com/s/1OCq3aKJBiCrtjLKa7kXbMw?pwd=exhz) + [Donwload OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250513/openvino_genai_ubuntu22_2025.2.0.0.dev20250513_x86_64.tar.gz)
 
 ## Docker
 ### Linux
-We also prepared a Dockerfile to help developers quickly build Docker images: [Dockerfile](./Dockerfile_genai)
+We also prepared a Dockerfile to help developers quickly build Docker images: [Dockerfile](./Dockerfile_genai_ubuntu24)
 ```shell
-docker build -t ollama_openvino:v1 -f Dockerfile_genai .
+docker build -t ollama_openvino_ubuntu24:v1 -f Dockerfile_genai_ubuntu24 .
 ```
-then
+Then, start and enter the Docker container.
 ```shell
-docker run --rm -it ollama_openvino:v1
+docker run -it --rm --entrypoint /bin/bash ollama_openvino_ubuntu24:v1
+```
+Execute the following inside the container:
+```shell
+source /home/ollama_ov_server/openvino_genai_ubuntu24_2025.2.0.0.dev20250513_x86_64/setupvars.sh
+ollama serve
 ```
 
 ## Model library
@@ -715,7 +720,7 @@ Let's take [deepseek-ai/DeepSeek-R1-Distill-Qwen-7B](https://hf-mirror.com/deeps
     ```
 
 3. Create a file named `Modelfile`, with a `FROM` instruction with the local filepath to the model you want to import.
-   For convenience, we have put the model file of DeepSeek-R1-Distill-Qwen-7B-int4-ov model under example dir: [Modelfile for DeepSeek](https://github.com/zhaohb/ollama_ov/blob/main/examples/modelfile/deepseek_r1_distill_qwen/Modelfile), we can use it directly.
+   For convenience, we have put the model file of DeepSeek-R1-Distill-Qwen-7B-int4-ov model under example dir: [Modelfile for DeepSeek](https://github.com/openvinotoolkit/openvino_contrib/blob/master/modules/ollama_openvino/examples/modelfile/deepseek_r1_distill_qwen/Modelfile), we can use it directly.
 
    Note:
 
@@ -725,7 +730,7 @@ Let's take [deepseek-ai/DeepSeek-R1-Distill-Qwen-7B](https://hf-mirror.com/deeps
       
 4. Unzip OpenVINO GenAI package and set environment
    ```shell
-   cd openvino_genai_windows_2025.2.0.0.dev20250320_x86_64
+   cd openvino_genai_windows_2025.2.0.0.dev20250513_x86_64
    setupvars.bat
    ```
 
@@ -792,7 +797,8 @@ Then build and run Ollama from the root directory of the repository:
 1. clone repo
    ```shell
    git lfs install
-   git lfs clone https://github.com/zhaohb/ollama_ov.git
+   git clone https://github.com/openvinotoolkit/openvino_contrib.git
+   cd openvino_contrib/modules/ollama_openvino
    ```
 
 2. Enable CGO:
@@ -802,9 +808,9 @@ Then build and run Ollama from the root directory of the repository:
 
 3. Initialize the GenAI environment
 
-   Download GenAI runtime from [GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_windows_2025.2.0.0.dev20250320_x86_64.zip), then extract it to a directory openvino_genai_windows_2025.2.0.0.dev20250320_x86_64 .
+   Download GenAI runtime from [GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250513/openvino_genai_windows_2025.2.0.0.dev20250513_x86_64.zip), then extract it to a directory openvino_genai_windows_2025.2.0.0.dev20250513_x86_64.
    ```shell
-   cd openvino_genai_windows_2025.2.0.0.dev20250320_x86_64
+   cd openvino_genai_windows_2025.2.0.0.dev20250513_x86_64
    setupvars.bat
    ```
   
@@ -819,7 +825,7 @@ Then build and run Ollama from the root directory of the repository:
    go build -o ollama.exe
    ```
 
-6. If you don't want to recompile ollama, you can choose to directly use the compiled executable file, and then initialize the genai environment in `step 3` to run ollama directly [ollama](https://drive.google.com/file/d/1iizO9iLhSJGFUu6BgY3EwOchrCyzImUN/view?usp=drive_link).
+6. If you don't want to recompile ollama, you can choose to directly use the compiled executable file, and then initialize the genai environment in `step 3` to run ollama directly.
    
    But if you encounter the error when executing ollama.exe, it is recommended that you recompile from source code.
    ```shell
@@ -830,7 +836,8 @@ Then build and run Ollama from the root directory of the repository:
 1. clone repo
    ```shell
    git lfs install
-   git lfs clone https://github.com/zhaohb/ollama_ov.git
+   git clone https://github.com/openvinotoolkit/openvino_contrib.git
+   cd openvino_contrib/modules/ollama_openvino
    ```
 
 2. Enable CGO:
@@ -840,9 +847,9 @@ Then build and run Ollama from the root directory of the repository:
 
 3. Initialize the GenAI environment
 
-   Download GenAI runtime from [GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250320/openvino_genai_ubuntu22_2025.2.0.0.dev20250320_x86_64.tar.gz), then extract it to a directory openvino_genai_ubuntu22_2025.2.0.0.dev20250320_x86_64.
+   Download GenAI runtime from [GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250513/openvino_genai_ubuntu22_2025.2.0.0.dev20250513_x86_64.tar.gz), then extract it to a directory openvino_genai_ubuntu22_2025.2.0.0.dev20250513_x86_64.
    ```shell
-   cd openvino_genai_ubuntu22_2025.2.0.0.dev20250320_x86_64 
+   cd openvino_genai_ubuntu22_2025.2.0.0.dev20250513_x86_64
    source setupvars.sh
    ```
   
