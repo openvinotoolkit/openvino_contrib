@@ -598,13 +598,18 @@ We provide two ways to download the executable file of Ollama, one is to downloa
 
 ## Docker
 ### Linux
-We also prepared a Dockerfile to help developers quickly build Docker images: [Dockerfile](./Dockerfile_genai)
+We also prepared a Dockerfile to help developers quickly build Docker images: [Dockerfile](./Dockerfile_genai_ubuntu24)
 ```shell
-docker build -t ollama_openvino:v1 -f Dockerfile_genai .
+docker build -t ollama_openvino_ubuntu24:v1 -f Dockerfile_genai_ubuntu24 .
 ```
-then
+Then, start and enter the Docker container.
 ```shell
-docker run --rm -it ollama_openvino:v1
+docker run -it --rm --entrypoint /bin/bash ollama_openvino_ubuntu24:v1
+```
+Execute the following inside the container:
+```shell
+source /home/ollama_ov_server/openvino_genai_ubuntu24_2025.2.0.0.dev20250513_x86_64/setupvars.sh
+ollama serve
 ```
 
 ## Model library
