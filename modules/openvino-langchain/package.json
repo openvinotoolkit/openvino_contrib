@@ -11,7 +11,7 @@
   "repository": {
     "type": "git",
     "directory": "modules/openvino-langchain",
-    "url": "git@github.com:openvinotoolkit/openvino_contrib.git"
+    "url": "git+ssh://git@github.com/openvinotoolkit/openvino_contrib.git"
   },
   "homepage": "https://github.com/openvinotoolkit/openvino_contrib/tree/master/modules/openvino-langchain/",
   "scripts": {
