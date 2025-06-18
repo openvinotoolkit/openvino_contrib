@@ -10,10 +10,10 @@
   "types": "dist/index.d.ts",
   "repository": {
     "type": "git",
-    "directory": "adapters/openvino-langchain",
+    "directory": "modules/openvino-langchain",
     "url": "git@github.com:openvinotoolkit/openvino_contrib.git"
   },
-  "homepage": "https://github.com/openvinotoolkit/openvino_contrib/tree/master/adapters/openvino-langchain/",
+  "homepage": "https://github.com/openvinotoolkit/openvino_contrib/tree/master/modules/openvino-langchain/",
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist/",

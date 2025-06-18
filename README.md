@@ -38,11 +38,7 @@ Additional build instructions are available for the following modules:
 * [**nvidia_plugin**](./modules/nvidia_plugin/README.md)
 * [**custom_operations**](./modules/custom_operations/README.md)
 * [**ollama_OpenVINO**](./modules/ollama_openvino)
-## An overview of the openvino_contrib adapters
-
-This list gives an overview of all adapters available inside the contrib repository.
-
-* [**openvino-langchain**](./adapters/openvino-langchain): LangChain.js integrations for OpenVINO™
+* [**openvino-langchain**](./modules/openvino-langchain): LangChain.js integrations for OpenVINO™
 
 ## Update the repository documentation
 In order to keep a clean overview containing all contributed modules, the following files need to be created/adapted:
