@@ -3,6 +3,9 @@ import { addon as ov } from 'openvino-node';
 // CVS-146344
 type CompiledModel = {
   createInferRequest: () => InferRequest;
+  output: (index: number) => any;
+  outputs: any[];
+  inputs: any[];
 };
 type InferRequest = {
   inferAsync: (inputs: any) => Promise<{ [outputName: string]: Tensor }>;
@@ -100,30 +103,25 @@ export class OpenVINOEmbeddings extends Embeddings {
 
     const inputTensor = new ov.Tensor([text]);
     const tokenizedInput = await irTokenizer.inferAsync([inputTensor]);
-    const inputShape = tokenizedInput['input_ids'].getShape();
-
-    // The current openvino-node version does not officially support Int64Array
-    // TODO: Remove any after adding official Int64Array support
-    const positionArray : any = BigInt64Array.from(
-      {length: inputShape[1]},
-      (_x, i) => BigInt(i),
-    );
-    const positionIds = new ov.Tensor(
-      ov.element.i64,
-      [1, inputShape[1]],
-      positionArray,
-    );
-    const beamIdx = new ov.Tensor(ov.element.i32, [1], new Int32Array([0]));
 
     const modelCompiled = await this.modelCompiled;
-    const ir = modelCompiled.createInferRequest();
-    const embeddings = await ir.inferAsync({
-      'input_ids': tokenizedInput['input_ids'],
-      'attention_mask': tokenizedInput['attention_mask'],
-      'position_ids': positionIds,
-      'beam_idx': beamIdx,
-    });
 
-    return embeddings.logits.data;
+    const tokenizerOutputs = tokenizerModelCompiled.outputs
+      .map(o => o.getAnyName())
+      .sort();
+    const embeddingInputs = modelCompiled.inputs
+      .map(i => i.getAnyName())
+      .sort();
+    if (!tokenizerOutputs.every(
+      (value, index) => value === embeddingInputs[index],
+    )) {
+      throw Error('Embedding model is incorrect.');
+    }
+    const ir = modelCompiled.createInferRequest();
+    const embeddings = await ir.inferAsync(tokenizedInput);
+
+    const outputName = modelCompiled.output(0);
+
+    return embeddings[outputName].data;
   }
 }
