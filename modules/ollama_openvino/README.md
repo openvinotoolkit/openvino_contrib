@@ -619,6 +619,9 @@ The native Ollama only supports models in the GGUF format, the Ollama-OV invoke 
 | Qwen3-0.6B-int4-ov | 0.6B | 0.4GB | INT4_ASYM_128  ratio 0.8 | [ModelScope](https://www.modelscope.cn/models/OpenVINO/Qwen3-1.7B-int4-ov/summary) | CPU, GPU, NPU(base) |
 | Qwen3-1.7B-int4-ov | 1.7B | 1.2GB | INT4_ASYM_128  ratio 0.8 | [ModelScope](https://www.modelscope.cn/models/OpenVINO/Qwen3-1.7B-int4-ov/) | CPU, GPU, NPU(base) |
 | Qwen3-4B-int4-ov   | 4B   | 2.6GB | INT4_ASYM_128  ratio 0.8 | [ModelScope](https://www.modelscope.cn/models/OpenVINO/Qwen3-4B-int4-ov) | CPU, GPU, NPU(base) |
+| Qwen3-1.7B-int4-sym-ov-npu | 1.7B | 1.0GB | INT4_SYM_CW | [ModelScope](https://modelscope.cn/models/zhaohb/Qwen3-1.7B-int4-sym-ov-npu) | NPU(best) |
+| Qwen3-4B-int4-sym-ov-npu | 4B | 2.0GB | INT4_SYM_CW | [ModelScope](https://modelscope.cn/models/zhaohb/Qwen3-4B-int4-sym-ov-npu) | NPU(best) |
+| Qwen3-8B-int4-sym-ov-npu   | 8B   | 4.5GB | INT4_SYM_CW | [ModelScope](https://modelscope.cn/models/zhaohb/Qwen3-8B-int4-sym-ov-npu) | NPU(best) |
 | DeepSeek-R1-Distill-Qwen-1.5B-int4-ov     | 1.5B    | 1.4GB | INT4_ASYM_32 | [ModelScope](https://modelscope.cn/models/zhaohb/DeepSeek-R1-Distill-Qwen-1.5B-int4-gs-32-ov)    | CPU, GPU, NPU(base) |
 | DeepSeek-R1-Distill-Qwen-1.5B-int4-ov-npu | 1.5B    | 1.1GB | INT4_SYM_CW  | [ModelScope](https://modelscope.cn/models/zhaohb/DeepSeek-R1-Distill-Qwen-1.5B-int4-ov-npu/summary)    | NPU(best) |
 | DeepSeek-R1-Distill-Qwen-7B-int4-ov       | 7B      | 4.3GB | INT4_SYM_128 | [ModelScope](https://modelscope.cn/models/zhaohb/DeepSeek-R1-Distill-Qwen-7B-int4-ov)    | CPU, GPU, NPU(base) |
@@ -725,7 +728,9 @@ Let's take [deepseek-ai/DeepSeek-R1-Distill-Qwen-7B](https://hf-mirror.com/deeps
    Note:
 
    1. The `ModelType "OpenVINO"` parameter is mandatory and must be explicitly set.
-   2. The `InferDevice` parameter is optional. If not specified, the system will prioritize using the GPU by default. If no GPU is available, it will automatically fall back to using the CPU. If InferDevice is explicitly set, the system will strictly use the specified device. If the specified device is unavailable, the system will follow the same fallback strategy as when InferDevice is not set (i.e., GPU first, then CPU).
+   2. The `InferDevice` parameter is optional:
+      - If not specified, the system will prioritize using the GPU by default. If no GPU is available, it will automatically fall back to using the CPU. If InferDevice is explicitly set, the system will strictly use the specified device. If the specified device is unavailable, the system will follow the same fallback strategy as when InferDevice is not set (i.e., GPU first, then CPU).
+      - If there are multiple GPUs in the environment, you can specify which GPU device to use by indicating GPU:<id>. For example, GPU:0 or GPU:1.
    3. For more information on working with a Modelfile, see the [Modelfile](./docs/modelfile.md) documentation.
       
 4. Unzip OpenVINO GenAI package and set environment
