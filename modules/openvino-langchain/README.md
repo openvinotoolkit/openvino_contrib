@@ -21,11 +21,17 @@ npm install openvino-langchain
 
 In order to use OpenVINO, you need to convert and compress the text generation model into the [OpenVINO IR format](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html).
 
-Tested compatibility with:
-  - BAAI/bge-small-en-v1.5 (Embeddings model)
-  - openlm-research/open_llama_7b_v2
-  - meta-llama/Llama-2-13b-chat-hf
-  - microsoft/Phi-3.5-mini-instruct
+The following models are tested:
+  * Embeddings models:
+    - BAAI/bge-small-en-v1.5
+    - intfloat/multilingual-e5-large
+    - sentence-transformers/all-MiniLM-L12-v2
+    - sentence-transformers/all-mpnet-base-v2
+  * Large language models:  
+    - openlm-research/open_llama_7b_v2
+    - meta-llama/Llama-2-13b-chat-hf
+    - microsoft/Phi-3.5-mini-instruct
+    - deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
 
 #### Use HuggingFace Hub
 
