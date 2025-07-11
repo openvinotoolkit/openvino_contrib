@@ -19,5 +19,3 @@ cd sample/
 npm install
 node index.js *path_to_llm_model_dir* *path_to_embeddings_model_dir*
 ```
-
-The sample model `Phi-3.5-mini-instruct` should include both LLM and embeddings models.
