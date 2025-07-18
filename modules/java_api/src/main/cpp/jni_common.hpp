@@ -237,7 +237,6 @@ static const ov::element::Type_t& get_ov_type(int type)
     static const std::vector<ov::element::Type_t> java_type_to_ov_type
     {
         ov::element::Type_t::dynamic,
-        ov::element::Type_t::dynamic,
         ov::element::Type_t::boolean,
         ov::element::Type_t::bf16,
         ov::element::Type_t::f16,
@@ -261,7 +260,8 @@ static const ov::element::Type_t& get_ov_type(int type)
         ov::element::Type_t::f8e4m3,
         ov::element::Type_t::f8e5m2,
         ov::element::Type_t::string,
-        ov::element::Type_t::f4e2m1
+        ov::element::Type_t::f4e2m1,
+        ov::element::Type_t::f8e8m0
     };
 
     return java_type_to_ov_type.at(type);
