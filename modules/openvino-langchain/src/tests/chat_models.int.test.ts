@@ -168,7 +168,7 @@ describe('Test ChatOpenVINO', () => {
       }).rejects.toThrow();
     });
 
-    // It will be fixed in the nexr release of openvino-genai-node
+    // It will be fixed in the next release of openvino-genai-node
     test.skip('stream() is interrupted by early break', async () => {
       const tokens: string[] = [];
       const streamer = await modelWithBaseConfig.stream(

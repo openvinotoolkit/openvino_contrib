@@ -13,7 +13,7 @@ import {
   StreamingStatus,
 } from 'openvino-genai-node';
 
-interface ChatOpenVINOParams extends BaseLanguageModelCallOptions {
+export interface ChatOpenVINOParams extends BaseLanguageModelCallOptions {
   generationConfig?: GenerationConfig,
   modelPath: string,
   device?: string,
