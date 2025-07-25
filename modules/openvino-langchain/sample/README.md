@@ -33,19 +33,23 @@ npm install
 
 ### 1. Chat Sample (`chat_sample`)
 - **Description:** Interactive chat interface powered by OpenVINO.
-- **Recommended models:** meta-llama/Llama-2-7b-chat-hf, TinyLlama/TinyLlama-1.1B-Chat-v1.0, etc
+- **Recommended Models:** 
+  - `meta-llama/Llama-2-7b-chat-hf`
+  - `TinyLlama/TinyLlama-1.1B-Chat-v1.0`
 - **Main Feature:** Real-time chat-like text generation.
 - **Run Command:**
   ```bash
-  node chat_sample.js model_dir
+  node chat_sample.js <model_dir>
   ```
 
 ### 2. RAG Sample (`rag_sample`)
-- **Description:** This sample retrieves relevant documents from a knowledge base (./data/document_sample.txt) using a retriever model
+- **Description:** This sample retrieves relevant documents from a simple [knowledge base](./data/document_sample.txt) using a retriever model
 and generates a response using a generative model, conditioned on both the user query and the retrieved documents.
-- **Recommended models:** meta-llama/Llama-2-7b-chat-hf for LLM, BAAI/bge-small-en-v1.5 for embedding model
+- **Recommended Models:**
+  - **LLM:** `meta-llama/Llama-2-7b-chat-hf`
+  - **Embedding:** `BAAI/bge-small-en-v1.5`
 - **Main Feature:** RAG pipeline implementation.
 - **Run Command:**
   ```bash
-  node rag_sample.js llm_dir embedding_model_dir
+  node rag_sample.js <llm_dir> <embedding_model_dir>
   ```
