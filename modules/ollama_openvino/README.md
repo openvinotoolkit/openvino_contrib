@@ -584,17 +584,17 @@ Getting started with large language models and using the [GenAI](https://github.
 We provide two ways to download the executable file of Ollama, one is to download it from Google Drive, and the other is to download it from Baidu Drive:
 ## Google Driver
 ### Windows
-[Download exe](https://drive.google.com/file/d/1Xo3ohbfC852KtJy_4xtn_YrYaH4Y_507/view?usp=sharing) + [Download OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250513/openvino_genai_windows_2025.2.0.0.dev20250513_x86_64.zip)
+[Download exe](https://drive.google.com/file/d/12eXPdCSSNx53fmK7KnEZ3WFMSiaX2M-Y/view?usp=sharing) + [Download OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.3.0.0.dev20250630/openvino_genai_windows_2025.3.0.0.dev20250630_x86_64.zip)
 
 ### Linux(Ubuntu 22.04)
-[Download](https://drive.google.com/file/d/1_P7CQqFUqeyx4q5y5bQ-xQsb10T9gzJD/view?usp=sharing) + [Donwload OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250513/openvino_genai_ubuntu22_2025.2.0.0.dev20250513_x86_64.tar.gz)
+[Download](https://drive.google.com/file/d/11-Gmk9nEMsr7lrUV2E_gFOAhxXErLsoh/view?usp=sharing) + [Donwload OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.3.0.0.dev20250630/openvino_genai_ubuntu22_2025.3.0.0.dev20250630_x86_64.tar.gz)
 
 ## 百度云盘
 ### Windows
-[Download exe](https://pan.baidu.com/s/1uIUjji7Mxf594CJy1vbrVw?pwd=36mq) + [Download OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250513/openvino_genai_windows_2025.2.0.0.dev20250513_x86_64.zip)
+[Download exe](https://pan.baidu.com/s/1nFok-DqBy-VoiXIwghE71Q?pwd=3m2m) + [Download OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.3.0.0.dev20250630/openvino_genai_windows_2025.3.0.0.dev20250630_x86_64.zip)
 
 ### Linux(Ubuntu 22.04)
-[Download](https://pan.baidu.com/s/1OCq3aKJBiCrtjLKa7kXbMw?pwd=exhz) + [Donwload OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250513/openvino_genai_ubuntu22_2025.2.0.0.dev20250513_x86_64.tar.gz)
+[Download](https://pan.baidu.com/s/16roqb9JVN_k1H_fk2JFXHg?pwd=t5q7) + [Donwload OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.3.0.0.dev20250630/openvino_genai_ubuntu22_2025.3.0.0.dev20250630_x86_64.tar.gz)
 
 ## Docker
 ### Linux
@@ -608,7 +608,7 @@ docker run -it --rm --entrypoint /bin/bash ollama_openvino_ubuntu24:v1
 ```
 Execute the following inside the container:
 ```shell
-source /home/ollama_ov_server/openvino_genai_ubuntu24_2025.2.0.0.dev20250513_x86_64/setupvars.sh
+source /home/ollama_ov_server/openvino_genai_ubuntu22_2025.3.0.0.dev20250630_x86_64/setupvars.sh
 ollama serve
 ```
 
@@ -619,6 +619,9 @@ The native Ollama only supports models in the GGUF format, the Ollama-OV invoke 
 | Qwen3-0.6B-int4-ov | 0.6B | 0.4GB | INT4_ASYM_128  ratio 0.8 | [ModelScope](https://www.modelscope.cn/models/OpenVINO/Qwen3-1.7B-int4-ov/summary) | CPU, GPU, NPU(base) |
 | Qwen3-1.7B-int4-ov | 1.7B | 1.2GB | INT4_ASYM_128  ratio 0.8 | [ModelScope](https://www.modelscope.cn/models/OpenVINO/Qwen3-1.7B-int4-ov/) | CPU, GPU, NPU(base) |
 | Qwen3-4B-int4-ov   | 4B   | 2.6GB | INT4_ASYM_128  ratio 0.8 | [ModelScope](https://www.modelscope.cn/models/OpenVINO/Qwen3-4B-int4-ov) | CPU, GPU, NPU(base) |
+| Qwen3-1.7B-int4-sym-ov-npu | 1.7B | 1.0GB | INT4_SYM_CW | [ModelScope](https://modelscope.cn/models/zhaohb/Qwen3-1.7B-int4-sym-ov-npu) | NPU(best) |
+| Qwen3-4B-int4-sym-ov-npu | 4B | 2.0GB | INT4_SYM_CW | [ModelScope](https://modelscope.cn/models/zhaohb/Qwen3-4B-int4-sym-ov-npu) | NPU(best) |
+| Qwen3-8B-int4-sym-ov-npu   | 8B   | 4.5GB | INT4_SYM_CW | [ModelScope](https://modelscope.cn/models/zhaohb/Qwen3-8B-int4-sym-ov-npu) | NPU(best) |
 | DeepSeek-R1-Distill-Qwen-1.5B-int4-ov     | 1.5B    | 1.4GB | INT4_ASYM_32 | [ModelScope](https://modelscope.cn/models/zhaohb/DeepSeek-R1-Distill-Qwen-1.5B-int4-gs-32-ov)    | CPU, GPU, NPU(base) |
 | DeepSeek-R1-Distill-Qwen-1.5B-int4-ov-npu | 1.5B    | 1.1GB | INT4_SYM_CW  | [ModelScope](https://modelscope.cn/models/zhaohb/DeepSeek-R1-Distill-Qwen-1.5B-int4-ov-npu/summary)    | NPU(best) |
 | DeepSeek-R1-Distill-Qwen-7B-int4-ov       | 7B      | 4.3GB | INT4_SYM_128 | [ModelScope](https://modelscope.cn/models/zhaohb/DeepSeek-R1-Distill-Qwen-7B-int4-ov)    | CPU, GPU, NPU(base) |
@@ -725,12 +728,14 @@ Let's take [deepseek-ai/DeepSeek-R1-Distill-Qwen-7B](https://hf-mirror.com/deeps
    Note:
 
    1. The `ModelType "OpenVINO"` parameter is mandatory and must be explicitly set.
-   2. The `InferDevice` parameter is optional. If not specified, the system will prioritize using the GPU by default. If no GPU is available, it will automatically fall back to using the CPU. If InferDevice is explicitly set, the system will strictly use the specified device. If the specified device is unavailable, the system will follow the same fallback strategy as when InferDevice is not set (i.e., GPU first, then CPU).
+   2. The `InferDevice` parameter is optional:
+      - If not specified, the system will prioritize using the GPU by default. If no GPU is available, it will automatically fall back to using the CPU. If InferDevice is explicitly set, the system will strictly use the specified device. If the specified device is unavailable, the system will follow the same fallback strategy as when InferDevice is not set (i.e., GPU first, then CPU).
+      - If there are multiple GPUs in the environment, you can specify which GPU device to use by indicating GPU:<id>. For example, GPU:0 or GPU:1.
    3. For more information on working with a Modelfile, see the [Modelfile](./docs/modelfile.md) documentation.
       
 4. Unzip OpenVINO GenAI package and set environment
    ```shell
-   cd openvino_genai_windows_2025.2.0.0.dev20250513_x86_64
+   cd openvino_genai_ubuntu22_2025.3.0.0.dev20250630_x86_64
    setupvars.bat
    ```
 
@@ -756,6 +761,44 @@ Let's take [deepseek-ai/DeepSeek-R1-Distill-Qwen-7B](https://hf-mirror.com/deeps
    ```shell
    ollama run DeepSeek-R1-Distill-Qwen-7B-int4-ov:v1
    ```
+
+### Import from GGUF file（Experimental feature, not recommended for production use.）
+
+| GGUF              | Model Link | GGUF Size  |Precision | Status   | Device   |
+| ------------------ | ---------- | ----- | -----------|-------------------- |----------|
+| DeepSeek-R1-Distill-Qwen-1.5B-GGUF | [HuggingFace](https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF), [ModelScope](https://modelscope.cn/models/unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF) | 1.12GB | Q4_K_M | ✔️ | CPU, GPU |
+| DeepSeek-R1-Distill-Qwen-7B-GGUF | [HuggingFace](https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-7B-GGUF), [ModelScope](https://modelscope.cn/models/unsloth/DeepSeek-R1-Distill-Qwen-7B-GGUF) | 4.68GB | Q4_K_M | ✔️ | CPU, GPU |
+| Qwen2.5-1.5B-Instruct-GGUF | [HuggingFace](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF), [ModelScope](https://modelscope.cn/models/Qwen/Qwen2.5-1.5B-Instruct-GGUF) | 1.12GB | Q4_K_M | ✔️ | CPU, GPU |
+| Qwen2.5-3B-Instruct-GGUF | [HuggingFace](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF), [ModelScope](https://modelscope.cn/models/Qwen/Qwen2.5-3B-Instruct-GGUF) | 2.1GB | Q4_K_M | ✔️ | CPU, GPU |
+| Qwen2.5-7B-Instruct-GGUF | [HuggingFace](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF), [ModelScope](https://modelscope.cn/models/Qwen/Qwen2.5-7B-Instruct-GGUF) | 4.68GB | Q4_K_M | ✔️ | CPU, GPU |
+| llama-3.2-1b-instruct-GGUF | [HuggingFace](https://huggingface.co/unsloth/Llama-3.2-1B-Instruct-GGUF), [ModelScope](https://modelscope.cn/models/unsloth/Llama-3.2-1B-Instruct-GGUF) | 0.75GB | Q4_K_M | ✔️ | CPU, GPU |
+| llama-3.2-3b-instruct-GGUF | [HuggingFace](https://huggingface.co/unsloth/Llama-3.2-3B-Instruct-GGUF), [ModelScope](https://modelscope.cn/models/unsloth/Llama-3.2-3B-Instruct-GGUF) | 2.02GB | Q4_K_M | ✔️ | CPU, GPU |
+| llama-3.1-8b-instruct-GGUF | [HuggingFace](https://huggingface.co/modularai/Llama-3.1-8B-Instruct-GGUF) | 4.92GB | Q4_K_M | ✔️ | CPU, GPU |
+
+#### Example
+Using the qwen2.5-3b-instruct-q4_k_m.gguf model as an example：
+1. the corresponding Modelfile is as follows
+   ```shell
+   FROM  qwen2.5-3b-instruct-q4_k_m.gguf
+   ModelType "OpenVINO"
+   InferDevice "GPU"
+   PARAMETER stop "<|im_end|>"
+   PARAMETER repeat_penalty 1.0
+   PARAMETER top_p 1.0
+   PARAMETER temperature 1.0
+   ```
+2. Create the model in Ollama
+
+   ```shell
+   ollama create qwen2.5-3b-gguf-ov-gpu:v1 -f Modelfile
+   ```
+
+3. Run the model                     
+
+   ```shell
+   ollama run qwen2.5-3b-gguf-ov-gpu:v1
+   ```
+Reference link: [openvino-genai-supports-gguf-models](https://blog.openvino.ai/blog-posts/openvino-genai-supports-gguf-models)
 
 ## CLI Reference
 
@@ -808,9 +851,9 @@ Then build and run Ollama from the root directory of the repository:
 
 3. Initialize the GenAI environment
 
-   Download GenAI runtime from [GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250513/openvino_genai_windows_2025.2.0.0.dev20250513_x86_64.zip), then extract it to a directory openvino_genai_windows_2025.2.0.0.dev20250513_x86_64.
+   Download GenAI runtime from [GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.3.0.0.dev20250630/openvino_genai_windows_2025.3.0.0.dev20250630_x86_64.zip), then extract it to a directory openvino_genai_windows_2025.3.0.0.dev20250630_x86_64.
    ```shell
-   cd openvino_genai_windows_2025.2.0.0.dev20250513_x86_64
+   cd openvino_genai_windows_2025.3.0.0.dev20250630_x86_64
    setupvars.bat
    ```
   
@@ -847,9 +890,9 @@ Then build and run Ollama from the root directory of the repository:
 
 3. Initialize the GenAI environment
 
-   Download GenAI runtime from [GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.2.0.0.dev20250513/openvino_genai_ubuntu22_2025.2.0.0.dev20250513_x86_64.tar.gz), then extract it to a directory openvino_genai_ubuntu22_2025.2.0.0.dev20250513_x86_64.
+   Download GenAI runtime from [GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.3.0.0.dev20250630/openvino_genai_ubuntu22_2025.3.0.0.dev20250630_x86_64.tar.gz), then extract it to a directory openvino_genai_ubuntu22_2025.3.0.0.dev20250630_x86_64.
    ```shell
-   cd openvino_genai_ubuntu22_2025.2.0.0.dev20250513_x86_64
+   cd openvino_genai_ubuntu22_2025.3.0.0.dev20250630_x86_64
    source setupvars.sh
    ```
   

@@ -21,11 +21,17 @@ npm install openvino-langchain
 
 In order to use OpenVINO, you need to convert and compress the text generation model into the [OpenVINO IR format](https://docs.openvino.ai/2025/documentation/openvino-ir-format.html).
 
-Tested compatibility with:
-  - BAAI/bge-small-en-v1.5 (Embeddings model)
-  - openlm-research/open_llama_7b_v2
-  - meta-llama/Llama-2-13b-chat-hf
-  - microsoft/Phi-3.5-mini-instruct
+The following models are tested:
+  * Embeddings models:
+    - BAAI/bge-small-en-v1.5
+    - intfloat/multilingual-e5-large
+    - sentence-transformers/all-MiniLM-L12-v2
+    - sentence-transformers/all-mpnet-base-v2
+  * Large language models:  
+    - openlm-research/open_llama_7b_v2
+    - meta-llama/Llama-2-13b-chat-hf
+    - microsoft/Phi-3.5-mini-instruct
+    - deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
 
 #### Use HuggingFace Hub
 
@@ -58,9 +64,9 @@ optimum-cli export openvino --model "TinyLlama/TinyLlama-1.1B-Chat-v1.0" --weigh
 
 ## LLM
 
-This package contains the `GenAI` class, which is the recommended way to interact with models optimized for the OpenVINO toolkit.
+This package contains the `OpenVINO` class, which is the recommended way to interact with models optimized for the OpenVINO toolkit.
 
-**GenAI Parameters**
+**OpenVINO Parameters**
 
 | Name  | Type | Required | Description |
 | ----- | ---- |--------- | ----------- |
@@ -69,9 +75,9 @@ This package contains the `GenAI` class, which is the recommended way to interac
 | generationConfig | [GenerationConfig](https://github.com/openvinotoolkit/openvino.genai/blob/master/src/js/lib/utils.ts#L107-L110) | ❌ | Structure to keep generation config parameters. |
 
 ```typescript
-import { GenAI } from "openvino-langchain";
+import { OpenVINO } from "openvino-langchain";
 
-const model = new GenAI({
+const model = new OpenVINO({
     modelPath: "path-to-model",
     device: "CPU",
     generationConfig: {
@@ -79,6 +85,38 @@ const model = new GenAI({
     },
   });
 const response = await model.invoke("Hello, world!");
+```
+
+## ChatModel
+
+This package contains the `ChatOpenVINO` class, which allow use the OpenVINO for chat pipelines.
+
+**ChatOpenVINO Parameters**
+
+| Name  | Type | Required | Description |
+| ----- | ---- |--------- | ----------- |
+| modelPath | string | ✅ | Path to the directory containing model xml/bin files and tokenizer |
+| device | string | ❌ | Device to run the model on (e.g., CPU, GPU). |
+| generationConfig | [GenerationConfig](https://github.com/openvinotoolkit/openvino.genai/blob/master/src/js/lib/utils.ts#L107-L110) | ❌ | Structure to keep generation config parameters. |
+
+```js
+import { ChatOpenVINO } from "openvino-langchain";
+import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+
+const model = new ChatOpenVINO({
+    modelPath: "path-to-model",
+    device: "CPU",
+    generationConfig: {
+        "max_new_tokens": 100,
+    },
+  });
+
+const messages = [
+  new SystemMessage('Translate the following from English into German'),
+  new HumanMessage('Thank you!'),
+];
+const response = await model.invoke(messages);
+console.log(response.content);
 ```
 
 ## Text Embedding Model

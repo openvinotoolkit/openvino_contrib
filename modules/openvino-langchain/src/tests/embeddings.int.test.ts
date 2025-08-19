@@ -1,8 +1,8 @@
 import { test, expect } from '@jest/globals';
 import { OpenVINOEmbeddings } from '../embeddings.js';
 
-const modelPath = process.env.MODEL_PATH;
-if (modelPath === undefined) throw new Error('MODEL_PATH doest not defined');
+const modelPath = process.env.EMBEDDING_MODEL_PATH;
+if (modelPath === undefined) throw new Error('EMBEDDING_MODEL_PATH doest not defined');
 
 test('Test embedQuery', async () => {
   const embeddings = new OpenVINOEmbeddings({

@@ -8,7 +8,7 @@ import { TextLoader } from 'langchain/document_loaders/fs/text';
 import { OpenVINO, OpenVINOEmbeddings } from 'openvino-langchain';
 
 // Paths to document and models
-const TEXT_DOCUMENT_PATH = './document_sample.txt';
+const TEXT_DOCUMENT_PATH = './data/document_sample.txt';
 const LLM_MODEL_PATH = process.argv[2];
 const EMBEDDINGS_MODEL_PATH = process.argv[3];
 
