@@ -64,7 +64,7 @@ pip install skl2onnx openvino joblib numpy
 ## ⚖️ Example Usage
 
 ```python
-from training_kit.sklearn import LogisticRegression
+from ov_training_kit.sklearn import LogisticRegression
 
 # Train
 model = LogisticRegression()

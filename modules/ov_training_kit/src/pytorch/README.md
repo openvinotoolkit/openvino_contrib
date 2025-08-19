@@ -19,7 +19,7 @@ pip install torch torchvision openvino nncf
 
 ```python
 from torchvision.models import resnet18
-from training_kit.pytorch import BaseWrapper
+from ov_training_kit.pytorch import BaseWrapper
 
 model = resnet18(pretrained=True)
 wrapper = BaseWrapper(model)
@@ -44,28 +44,28 @@ print("Accuracy:", score)
 
 **Classification**
 ```python
-from training_kit.pytorch import ClassificationWrapper
+from ov_training_kit.pytorch import ClassificationWrapper
 classifier = ClassificationWrapper(model)
 acc = classifier.evaluate_accuracy(test_loader, device="cuda")
 ```
 
 **Regression**
 ```python
-from training_kit.pytorch import RegressionWrapper
+from ov_training_kit.pytorch import RegressionWrapper
 regressor = RegressionWrapper(model)
 mse = regressor.evaluate_mse(test_loader, device="cuda")
 ```
 
 **Segmentation**
 ```python
-from training_kit.pytorch import SegmentationWrapper
+from ov_training_kit.pytorch import SegmentationWrapper
 segmenter = SegmentationWrapper(model)
 iou = segmenter.evaluate_iou(test_loader, num_classes=21, device="cuda")
 ```
 
 **Detection**
 ```python
-from training_kit.pytorch import DetectionWrapper
+from ov_training_kit.pytorch import DetectionWrapper
 detector = DetectionWrapper(model)
 map_score = detector.evaluate_map(test_loader, metric_fn, device="cuda")
 ```
@@ -74,7 +74,7 @@ map_score = detector.evaluate_map(test_loader, metric_fn, device="cuda")
 
 ```python
 import torch
-from training_kit.pytorch import export_model
+from ov_training_kit.pytorch import export_model
 export_model(wrapper.model, input_sample=torch.randn(1, 3, 224, 224), export_path="model.onnx")
 ```
 
