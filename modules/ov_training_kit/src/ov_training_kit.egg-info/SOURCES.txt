@@ -1,0 +1,15 @@
+README.md
+setup.py
+src/ov_training_kit.egg-info/PKG-INFO
+src/ov_training_kit.egg-info/SOURCES.txt
+src/ov_training_kit.egg-info/dependency_links.txt
+src/ov_training_kit.egg-info/requires.txt
+src/ov_training_kit.egg-info/top_level.txt
+src/pytorch/__init__.py
+src/pytorch/base_wrapper.py
+src/pytorch/classification_wrapper.py
+src/pytorch/compiler.py
+src/pytorch/detection_wrapper.py
+src/pytorch/regression_wrapper.py
+src/pytorch/segmentation_wrapper.py
+src/sklearn/__init__.py

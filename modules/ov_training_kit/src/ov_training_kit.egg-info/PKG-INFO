@@ -1,0 +1,74 @@
+Metadata-Version: 2.4
+Name: ov_training_kit
+Version: 0.1.1
+Summary: Wrappers for scikit-learn and PyTorch models with OpenVINO optimization
+Home-page: https://github.com/openvinotoolkit/openvino_contrib
+License: Apache-2.0
+Keywords: openvino scikit-learn pytorch machine-learning edge-ai
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Operating System :: OS Independent
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: scikit-learn>=1.2.0
+Requires-Dist: scikit-learn-intelex>=2023.1.0
+Requires-Dist: torch>=1.12.0
+Requires-Dist: openvino>=2023.0
+Requires-Dist: nncf>=2.7.0
+Requires-Dist: intel_extension_for_pytorch>=2.1.0
+Requires-Dist: joblib>=1.2.0
+Requires-Dist: numpy>=1.21.0
+Requires-Dist: psutil>=5.9.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: flake8>=6.0.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: isort>=5.10.0; extra == "dev"
+Provides-Extra: docs
+Requires-Dist: sphinx>=5.0.0; extra == "docs"
+Requires-Dist: sphinx_rtd_theme>=1.0.0; extra == "docs"
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: keywords
+Dynamic: license
+Dynamic: provides-extra
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# OpenVino training kit
+
+Wrappers for scikit-learn and PyTorch models with OpenVINO optimization.
+
+## About
+
+This module provides easy-to-use wrappers for training, evaluating, and exporting classical (scikit-learn) and deep learning (PyTorch) models optimized for OpenVINO, targeting local AI PCs and edge deployment.
+
+## Installation
+
+```bash
+pip install ov_training_kit
+```
+
+## Usage
+
+For detailed usage instructions and examples, please refer to the README files inside the `src/sklearn` and `src/pytorch` folders.
+
+---
+
+For questions, suggestions, or contributions, feel free to open an issue or pull
+
+## 🎓 Credits & License
+
+Developed as part of a GSoC
+
+### Authors
+
+- Leonardo Heim 
+- Shivam Basia 
