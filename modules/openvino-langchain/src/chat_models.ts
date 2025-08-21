@@ -77,7 +77,7 @@ export class ChatOpenVINO extends SimpleChatModel {
 
     // generation option setup
     const generateOptions: GenerationConfig = { ...this.generateOptions };
-    // to avoid a waring about result type
+    // to avoid a warning about result type
     generateOptions['return_decoded_results'] = true;
     if (options.stop) {
       const set = new Set(options.stop);
