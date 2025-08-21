@@ -6,10 +6,20 @@ Wrappers for scikit-learn and PyTorch models with OpenVINO optimization.
 
 This module provides easy-to-use wrappers for training, evaluating, and exporting classical (scikit-learn) and deep learning (PyTorch) models optimized for OpenVINO, targeting local AI PCs and edge deployment.
 
+
+## System Requirements
+
+- **Operating System:** Linux (Ubuntu 18.04+), Windows 10/11, Windows Server 2019+
+- **CPU:** x86-64 (Intel or AMD)
+- **Python:** 3.8, 3.9, 3.10, 3.11
+- **RAM:** 8GB+ recommended
+- **GPU:** Optional (not required)
+- **Note:** Intel Extension for PyTorch (IPEX) is only supported on Linux/Windows with x86-64 CPUs. On MacOS, some features may not be available.
+
 ## Installation
 
 ```bash
-pip install ov_training_kit
+pip install ov-training-kit
 ```
 
 ## Usage

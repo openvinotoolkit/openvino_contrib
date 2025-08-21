@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as f:
 
 setup(
     name="ov_training_kit",
-    version="0.1.1",
+    version="0.1.6",
     description="Wrappers for scikit-learn and PyTorch models with OpenVINO optimization",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -19,12 +19,14 @@ setup(
         "torch>=1.12.0",
         "openvino>=2023.0",
         "nncf>=2.7.0",
-        "intel_extension_for_pytorch>=2.1.0",
         "joblib>=1.2.0",
-        "numpy>=1.21.0",
+        "numpy>=1.21.0,<2.0.0",  # Limite para evitar incompatibilidade!
         "psutil>=5.9.0",
     ],
     extras_require={
+        "ipex": [
+            "intel_extension_for_pytorch>=2.1.0"
+        ],
         "dev": [
             "pytest>=7.0.0",
             "pytest-cov>=4.0.0",
@@ -37,7 +39,7 @@ setup(
             "sphinx_rtd_theme>=1.0.0",
         ],
     },
-    python_requires=">=3.8",
+    python_requires=">=3.8, <3.12",  # Limite para evitar problemas com daal4py e numpy!
     license="Apache-2.0",
     classifiers=[
         "Programming Language :: Python :: 3",
@@ -47,5 +49,5 @@ setup(
         "Intended Audience :: Science/Research",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
-    keywords="openvino scikit-learn pytorch machine-learning edge-ai",
+     keywords="openvino scikit-learn pytorch machine-learning edge-ai",
 )
