@@ -38,10 +38,19 @@ export class ChatOpenVINO extends SimpleChatModel {
   _llmType() {
     return 'OpenVINO';
   }
-  private convertMessages(messages: BaseMessage[]): string {
-    return messages
-      .map((msg) => `${msg.getType().toUpperCase()}: "${msg.content}"`)
-      .join('\n');
+  private async convertMessages(messages: BaseMessage[]): Promise<string> {
+    const pipeline = await this.pipeline;
+    if (messages.length === 0) {
+      throw new Error('No messages provided.');
+    }
+
+    return pipeline.getTokenizer().applyChatTemplate(
+      messages.map(m => ({
+        role: m.getType(),
+        content: m.text,
+      })),
+      false,
+      '');
   }
   async _call(
     messages: BaseMessage[],
@@ -68,6 +77,8 @@ export class ChatOpenVINO extends SimpleChatModel {
 
     // generation option setup
     const generateOptions: GenerationConfig = { ...this.generateOptions };
+    // to avoid a waring about result type
+    generateOptions['return_decoded_results'] = true;
     if (options.stop) {
       const set = new Set(options.stop);
       generateOptions['stop_strings'] = set;
@@ -81,7 +92,7 @@ export class ChatOpenVINO extends SimpleChatModel {
       return signal.aborted ? StreamingStatus.CANCEL : StreamingStatus.RUNNING;
     };
 
-    const prompt = this.convertMessages(messages);
+    const prompt = await this.convertMessages(messages);
 
     const result = await pipeline.generate(
       prompt,
@@ -91,7 +102,7 @@ export class ChatOpenVINO extends SimpleChatModel {
     // We need to throw an exception if the generation was canceled by a signal
     signal.throwIfAborted();
 
-    return result;
+    return result.toString();
   }
 
   async *_streamResponseChunks(
@@ -100,7 +111,7 @@ export class ChatOpenVINO extends SimpleChatModel {
     runManager?: CallbackManagerForLLMRun,
   ): AsyncGenerator<ChatGenerationChunk> {
     const pipeline = await this.pipeline;
-    const prompt = this.convertMessages(messages);
+    const prompt = await this.convertMessages(messages);
     const generator = pipeline.stream(
       prompt,
       this.generateOptions,

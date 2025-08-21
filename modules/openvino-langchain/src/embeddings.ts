@@ -115,7 +115,8 @@ export class OpenVINOEmbeddings extends Embeddings {
     if (!tokenizerOutputs.every(
       (value, index) => value === embeddingInputs[index],
     )) {
-      throw Error('Embedding model is incorrect. Tokenizer outputs should be the same as embedding model inputs.');
+      throw Error('Embedding model is incorrect. '
+        + 'Tokenizer outputs should be the same as embedding model inputs.');
     }
     const ir = modelCompiled.createInferRequest();
     const embeddings = await ir.inferAsync(tokenizedInput);
