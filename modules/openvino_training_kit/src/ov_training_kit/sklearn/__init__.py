@@ -36,13 +36,11 @@ __all__ = [
     "RandomForestRegressor",
     "SVR",
     "NuSVR",
-    "KNeighborsRegressor",
     # Clustering
     "KMeans",
     "DBSCAN",
     # Decomposition
     "PCA",
-    "IncrementalPCA",
     "TSNE",
     # Neighbors
     "NearestNeighbors",
