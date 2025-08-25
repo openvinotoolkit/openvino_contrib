@@ -34,7 +34,7 @@ std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::compile_model(const std::sha
                                    "supported for the LLAMA_CPP* plugins");
 }
 
-std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::import_model(const ov::Tensor& model, const ov::AnyMap& properties) const override {
+std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::import_model(const ov::Tensor& model, const ov::AnyMap& properties) const {
     OPENVINO_THROW("This method may not be used with LLAMA_CPP* plugins");
 }
 
