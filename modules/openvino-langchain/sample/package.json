@@ -7,7 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "langchain": "^0.3.24",
+    "langchain": "^0.3.31",
     "openvino-langchain": "file:.."
   },
   "author": "",
