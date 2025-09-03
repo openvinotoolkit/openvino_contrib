@@ -23,9 +23,9 @@
   },
   "license": "Apache-2.0",
   "dependencies": {
-    "openvino-genai-node": "2025.2.0",
-    "openvino-node": "2025.2.0",
-    "openvino-tokenizers-node": "2025.2.0"
+    "openvino-genai-node": "^2025.3.0",
+    "openvino-node": "^2025.3.0",
+    "openvino-tokenizers-node": "^2025.3.0"
   },
   "peerDependencies": {
     "@langchain/core": ">=0.3.17 <0.4.0"
