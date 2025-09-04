@@ -1,10 +1,10 @@
 # OpenVino training kit
 
-Wrappers for scikit-learn and PyTorch models with OpenVINO optimization.
+Wrappers for scikit-learn, PyTorch and Tensorflow models with OpenVINO optimization.
 
 ## About
 
-This module provides easy-to-use wrappers for training, evaluating, and exporting classical (scikit-learn) and deep learning (PyTorch) models optimized for OpenVINO, targeting local AI PCs and edge deployment.
+This module provides easy-to-use wrappers for training, evaluating, and exporting classical (scikit-learn) and deep learning (PyTorch, TensorFlow) models optimized for OpenVINO, targeting local AI PCs and edge deployment.
 
 
 ## System Requirements
@@ -24,7 +24,7 @@ pip install ov-training-kit
 
 ## Usage
 
-For detailed usage instructions and examples, please refer to the README files inside the `src/sklearn` and `src/pytorch` folders.
+For detailed usage instructions and examples, please refer to the README files inside the `src/sklearn`, `src/pytorch` and `src/tensorflow` folders.
 
 ---
 

@@ -10,7 +10,7 @@ This module provides custom wrappers for popular `scikit-learn` models, enabling
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Installation
 
