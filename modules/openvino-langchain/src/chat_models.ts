@@ -49,7 +49,7 @@ export class ChatOpenVINO extends SimpleChatModel {
         role: m.getType(),
         content: m.text,
       })),
-      false,
+      true,
       '');
   }
   async _call(

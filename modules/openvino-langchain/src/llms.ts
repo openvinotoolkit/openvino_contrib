@@ -82,7 +82,7 @@ export class OpenVINO extends LLM {
     // We need to throw an exception if the generation was canceled by a signal
     signal.throwIfAborted();
 
-    return result;
+    return result.toString();
   }
 
   async *_streamResponseChunks(
