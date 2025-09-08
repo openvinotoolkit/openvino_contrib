@@ -120,6 +120,8 @@ jobs:
             -DCMAKE_VERBOSE_MAKEFILE=ON \
             -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }} \
             -DBUILD_nvidia_plugin=OFF \
+            -DBUILD_ollama_openvino=OFF \
+            -DBUILD_llama_cpp_plugin=OFF \
             -DENABLE_INTEL_GPU=OFF \
             -DENABLE_OV_TF_FRONTEND=OFF \
             -DENABLE_OV_PADDLE_FRONTEND=OFF \
@@ -131,7 +133,6 @@ jobs:
             -DENABLE_WHEEL=ON \
             -DENABLE_TESTS=ON \
             -DENABLE_INTEL_NPU=OFF \
-            -DBUILD_ollama_openvino=OFF \
             -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.CMAKE_CXX_COMPILER_LAUNCHER }} \
             -DCMAKE_C_COMPILER_LAUNCHER=${{ env.CMAKE_C_COMPILER_LAUNCHER }} \
             -S ${OPENVINO_REPO} \
