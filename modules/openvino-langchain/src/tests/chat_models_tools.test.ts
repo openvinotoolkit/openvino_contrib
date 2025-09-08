@@ -17,7 +17,7 @@ import {
 
 const modelPath = process.env.INSTRUCT_MODEL_PATH;
 if (modelPath === undefined)
-  throw new Error('export doest not defined');
+  throw new Error('export does not defined');
 
 describe('ChatOpenVINO tools', () => {
   let modelWithBaseConfig: ChatOpenVINO;
@@ -66,11 +66,11 @@ describe('ChatOpenVINO tools', () => {
     console.log(res);
     expect(res.tool_calls?.length).toEqual(3);
     expect(res.tool_calls?.[0].name).toEqual('get_current_weather');
-    expect(res.tool_calls?.every(tooCall =>
-      tooCall.args.location.match(/[San Francisco,Tokyo,Paris]+/)),
+    expect(res.tool_calls?.every(toolCall =>
+      toolCall.args.location.match(/[San Francisco,Tokyo,Paris]+/)),
     ).toBe(true);
-    expect(res.tool_calls?.every(tooCall =>
-      tooCall.args.unit.match(/^[celsius,fahrenheit]+$/)),
+    expect(res.tool_calls?.every(toolCall =>
+      toolCall.args.unit.match(/^[celsius,fahrenheit]+$/)),
     ).toBe(true);
   }, 150000);
 
@@ -225,7 +225,7 @@ describe('ChatOpenVINO tools', () => {
       },
       {
         name: 'calculator',
-        description: 'Preform calculations',
+        description: 'Perform calculations',
         schema: z.object({
           expression: z.string(),
         }),

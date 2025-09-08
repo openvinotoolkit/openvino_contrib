@@ -71,7 +71,7 @@ and generates a response using a generative model, conditioned on both the user 
 - **Main Feature:** Create and use the React Agent.
 - **Run Command:**
   ```bash
-  node tool_call_sample.js <llm_dir>
+  node langgraph_agent_sample.js <llm_dir>
   ```
 
 ### 5. Legacy React agent Sample (`langgraph_agent_sample`)
@@ -81,5 +81,5 @@ and generates a response using a generative model, conditioned on both the user 
 - **Main Feature:** Deprecated approach to execute the React Agent.
 - **Run Command:**
   ```bash
-  node tool_call_sample.js <llm_dir>
+  node legacy_agent_sample.js <llm_dir>
   ```

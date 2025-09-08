@@ -3,7 +3,7 @@ import { OpenVINOEmbeddings } from '../embeddings.js';
 
 const modelPath = process.env.EMBEDDING_MODEL_PATH;
 if (modelPath === undefined)
-  throw new Error('EMBEDDING_MODEL_PATH doest not defined');
+  throw new Error('EMBEDDING_MODEL_PATH does not defined');
 
 test('Test embedQuery', async () => {
   const embeddings = new OpenVINOEmbeddings({
