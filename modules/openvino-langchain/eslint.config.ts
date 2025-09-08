@@ -19,7 +19,6 @@ export default [
       'max-len': ['error', { 'ignoreUrls': true }],
       'eol-last': ['error'],
       'indent': ['error', 2],
-      'camelcase': ['error'],
       'semi-spacing': ['error'],
       'arrow-spacing': ['error'],
       'comma-spacing': ['error'],

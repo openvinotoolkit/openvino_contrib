@@ -111,7 +111,8 @@ describe('Test ChatOpenVINO', () => {
         chunks.push(streamItem.text);
       }
       expect(chunks.length).toBeGreaterThan(0);
-      expect(chunks[chunks.length - 1].includes('2') || chunks[chunks.length - 1].includes('two')).toBe(true);
+      expect(chunks[chunks.length - 1].includes('2')
+        || chunks[chunks.length - 1].includes('two')).toBe(true);
     });
 
     test('stream() with handleLLMNewToken callback', async () => {

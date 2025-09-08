@@ -53,3 +53,33 @@ and generates a response using a generative model, conditioned on both the user 
   ```bash
   node rag_sample.js <llm_dir> <embedding_model_dir>
   ```
+
+### 3. Tool Sample (`tool_call_sample`)
+- **Description:** This sample demonstrates how to use the ChatOpenVINO model with a custom tool, get_weather_tool, to fetch and process weather data for a given city connecting tools to models. The .bindTools() method can be used to specify which tools are available for a model to call.
+- **Recommended Models:**
+  - **LLM:** `Qwen/Qwen2.5-7B-Instruct`
+- **Main Feature:** Bind tools to LLM.
+- **Run Command:**
+  ```bash
+  node tool_call_sample.js <llm_dir>
+  ```
+
+### 4. Langgraph React agent Sample (`langgraph_agent_sample`)
+- **Description:** This sample demonstrates how to use the React Agent with LangGraph. It allows for both streaming and non-streaming modes.
+- **Recommended Models:**
+  - **LLM:** `Qwen/Qwen2.5-7B-Instruct`
+- **Main Feature:** Create and use the React Agent.
+- **Run Command:**
+  ```bash
+  node tool_call_sample.js <llm_dir>
+  ```
+
+### 5. Legacy React agent Sample (`langgraph_agent_sample`)
+- **Description:** This sample shows how to use the React Agent with AgentExecutor. Although this approach is deprecated, it can still be used in legacy projects.
+- **Recommended Models:**
+  - **LLM:** `Qwen/Qwen2.5-7B-Instruct`
+- **Main Feature:** Deprecated approach to execute the React Agent.
+- **Run Command:**
+  ```bash
+  node tool_call_sample.js <llm_dir>
+  ```
