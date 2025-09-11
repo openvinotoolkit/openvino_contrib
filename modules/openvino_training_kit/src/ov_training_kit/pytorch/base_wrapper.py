@@ -96,27 +96,50 @@ class BaseWrapper:
         - criterion: Loss function (e.g., nn.CrossEntropyLoss())
         - optimizer: Optimizer (e.g., optim.Adam())
         - num_epochs: Number of training epochs
-        - device: Device to train on ("cpu", "cuda", etc). Auto-detected if None
+        - device: Device to train on ("cpu", "cuda", "xpu", etc). Auto-detected if None
         - validation_loader: Optional validation DataLoader
         - validation_fn: Function to compute validation metric (e.g., accuracy)
         - scheduler: Optional learning rate scheduler
         - early_stopping: Dict with 'patience' and 'metric' keys for early stopping
-        - use_ipex: Use Intel Extension for PyTorch for CPU acceleration (only on Intel CPUs)
+        - use_ipex: Use Intel Extension for PyTorch (CPU on Linux/Windows, XPU on Windows with Intel GPU)
         """
+        import platform
+        
         if device is None:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            # Auto-detect best device
+            if torch.cuda.is_available():
+                device = "cuda"
+            elif hasattr(torch, 'xpu') and torch.xpu.is_available():
+                device = "xpu"  # Intel GPU on Windows
+            else:
+                device = "cpu"
         
         self.model.to(device)
-        if use_ipex and device == "cpu":
+        
+        # IPEX optimization based on platform and device
+        if use_ipex:
             try:
                 import intel_extension_for_pytorch as ipex
-                self.model, optimizer = ipex.optimize(self.model, optimizer=optimizer)
-                print("[OpenVINO] Intel Extension for PyTorch (IPEX) enabled for training.")
+                system_os = platform.system().lower()
+                
+                if device == "xpu" and system_os == "windows":
+                    # Intel GPU (XPU) on Windows
+                    self.model, optimizer = ipex.optimize(self.model, optimizer=optimizer)
+                    print("[OpenVINO] Intel Extension for PyTorch (IPEX) enabled for XPU training on Windows.")
+                elif device == "cpu" and system_os in ["linux", "windows"]:
+                    # CPU optimization on Linux/Windows
+                    self.model, optimizer = ipex.optimize(self.model, optimizer=optimizer)
+                    print(f"[OpenVINO] Intel Extension for PyTorch (IPEX) enabled for CPU training on {system_os.title()}.")
+                else:
+                    print(f"[OpenVINO] IPEX not supported for device={device} on {system_os.title()}. Training without IPEX acceleration.")
             except ImportError:
                 print("[OpenVINO] IPEX not installed. Training without IPEX acceleration.")
+            except Exception as e:
+                print(f"[OpenVINO] IPEX initialization failed: {e}. Training without IPEX acceleration.")
 
         self.model.train()
         
+        # resto do código permanece igual...
         best_val_metric = float('-inf') if early_stopping else None
         patience_counter = 0
         
@@ -612,40 +635,40 @@ class BaseWrapper:
         self.core.set_property(device, config)
         print(f"[OpenVINO] Set {device} execution_mode={execution_mode}, performance_mode={performance_mode}, inference_precision={inference_precision}, num_requests={num_requests}")
 
-        def compile(self, model_path=None, backend=None, mode="default", dynamic=True, device="CPU",config=None, **kwargs):
-            """
-            Compile the model for inference.
+    def compile(self, model_path=None, backend=None, mode="default", dynamic=True, device="CPU",config=None, **kwargs):
+        """
+        Compile the model for inference.
 
-            - backend: None (default, uses OpenVINO IR), or "openvino" (uses torch.compile with OpenVINO backend, PyTorch >=2.0)
-            - device: "CPU", "GPU", etc. (for OpenVINO IR)
-            - config: additional config dict (overrides Core settings, for OpenVINO IR)
-            - model_path: path to IR (.xml) file, if you want to load from disk instead of self.ov_model (for OpenVINO IR)
-            - mode, dynamic, **kwargs: passed to torch.compile if backend="openvino"
+        - backend: None (default, uses OpenVINO IR), or "openvino" (uses torch.compile with OpenVINO backend, PyTorch >=2.0)
+        - device: "CPU", "GPU", etc. (for OpenVINO IR)
+        - config: additional config dict (overrides Core settings, for OpenVINO IR)
+        - model_path: path to IR (.xml) file, if you want to load from disk instead of self.ov_model (for OpenVINO IR)
+        - mode, dynamic, **kwargs: passed to torch.compile if backend="openvino"
 
-            Requirements:
-                - For OpenVINO IR: Call setup_core() and set_precision_and_performance() for advanced configs.
-                - For PyTorch backend: PyTorch >=2.0 and backend support.
-            """
-            if backend == "openvino":
-                try:
-                    import torch
-                    self.compiled_model = torch.compile(self.model, backend="openvino", dynamic=dynamic, mode=mode, **kwargs)
-                    print("[OpenVINO] PyTorch model compiled with OpenVINO backend (experimental).")
-                except Exception as e:
-                    print(f"[OpenVINO] Failed to compile with OpenVINO backend: {e}")
-                    self.compiled_model = None
+        Requirements:
+            - For OpenVINO IR: Call setup_core() and set_precision_and_performance() for advanced configs.
+            - For PyTorch backend: PyTorch >=2.0 and backend support.
+        """
+        if backend == "openvino":
+            try:
+                import torch
+                self.compiled_model = torch.compile(self.model, backend="openvino", dynamic=dynamic, mode=mode, **kwargs)
+                print("[OpenVINO] PyTorch model compiled with OpenVINO backend (experimental).")
+            except Exception as e:
+                print(f"[OpenVINO] Failed to compile with OpenVINO backend: {e}")
+                self.compiled_model = None
+        else:
+            import openvino as ov
+            if self.core is None:
+                self.core = ov.Core()
+            if model_path:
+                model = self.core.read_model(model_path)
             else:
-                import openvino as ov
-                if self.core is None:
-                    self.core = ov.Core()
-                if model_path:
-                    model = self.core.read_model(model_path)
-                else:
-                    if self.ov_model is None:
-                        raise RuntimeError("No OpenVINO model to compile. Run convert_to_ov first.")
-                    model = self.ov_model
-                self.compiled_model = self.core.compile_model(model, device_name=device, config=config or {})
-                print(f"[OpenVINO] Model compiled for device: {device}")
+                if self.ov_model is None:
+                    raise RuntimeError("No OpenVINO model to compile. Run convert_to_ov first.")
+                model = self.ov_model
+            self.compiled_model = self.core.compile_model(model, device_name=device, config=config or {})
+            print(f"[OpenVINO] Model compiled for device: {device}")
 
     # =========================
     # Inference & Benchmark

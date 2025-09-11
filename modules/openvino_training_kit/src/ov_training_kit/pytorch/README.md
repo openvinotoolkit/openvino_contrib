@@ -9,11 +9,13 @@ Wrappers for PyTorch models with OpenVINO for inference, quantization, and deplo
 - OpenVINO IR export and compilation
 - Built-in metrics for classification, regression, segmentation, and detection
 
-## Installation
+## Available Wrappers
 
-```bash
-pip install torch torchvision openvino nncf
-```
+- **BaseWrapper**: Core functionality for all TensorFlow models
+- **ClassificationWrapper**: Built-in metrics for image/text classification
+- **RegressionWrapper**: Specialized for regression tasks (MSE, MAE, R²)
+- **SegmentationWrapper**: Semantic segmentation with IoU, Dice metrics
+- **DetectionWrapper**: Object detection with custom metric support
 
 ## Basic Usage
 

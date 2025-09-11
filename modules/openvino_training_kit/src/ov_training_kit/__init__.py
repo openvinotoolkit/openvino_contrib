@@ -5,5 +5,6 @@
 
 from .sklearn import *
 from .pytorch import *
+from .tensorflow import *
 
-__all__ = ["sklearn", "pytorch"]
+__all__ = ["sklearn", "pytorch", "tensorflow"]
