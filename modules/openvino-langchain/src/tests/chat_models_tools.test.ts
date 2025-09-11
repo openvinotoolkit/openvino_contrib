@@ -17,7 +17,7 @@ import {
 
 const modelPath = process.env.INSTRUCT_MODEL_PATH;
 if (modelPath === undefined)
-  throw new Error('export does not defined');
+  throw new Error('INSTRUCT_MODEL_PATH is not defined');
 
 describe('ChatOpenVINO tools', () => {
   let modelWithBaseConfig: ChatOpenVINO;
@@ -58,12 +58,11 @@ describe('ChatOpenVINO tools', () => {
     });
   });
 
-  test.skip('Test ChatOpenVINO tool calling', async () => {
+  test('Test ChatOpenVINO tool calling', async () => {
     const chat = modelWithBaseConfig.bindTools([weatherTool]);
     const res = await chat.invoke([
       ['human', 'What\'s the weather like in San Francisco, Tokyo, and Paris?'],
     ]);
-    console.log(res);
     expect(res.tool_calls?.length).toEqual(3);
     expect(res.tool_calls?.[0].name).toEqual('get_current_weather');
     expect(res.tool_calls?.every(toolCall =>
@@ -74,7 +73,7 @@ describe('ChatOpenVINO tools', () => {
     ).toBe(true);
   }, 150000);
 
-  test.skip('Test ChatOpenVINO tool calling with ToolMessages', async () => {
+  test('Test ChatOpenVINO tool calling with ToolMessages', async () => {
     const chat = modelWithBaseConfig.bindTools([weatherTool]);
     const res = await chat.invoke([
       ['human', 'What\'s the weather in San Francisco?'],
@@ -95,11 +94,10 @@ describe('ChatOpenVINO tools', () => {
       res,
       ...toolMessages,
     ]);
-    console.log(finalResponse);
     expect(finalResponse.text).toContain('72');
   }, 50000);
 
-  test.skip('Test ChatOpenVINO tool calling with streaming', async () => {
+  test('Test ChatOpenVINO tool calling with streaming', async () => {
     const chat = modelWithBaseConfig.bindTools(
       [
         {
@@ -138,7 +136,6 @@ describe('ChatOpenVINO tools', () => {
         finalChunk = finalChunk.concat(chunk);
       }
     }
-    console.log(finalChunk);
     expect(chunks.length).toBeGreaterThan(1);
     expect(finalChunk?.tool_calls?.length).toBeGreaterThan(1);
     expect(finalChunk?.tool_calls?.[0].name).toBe('get_current_weather');
@@ -146,7 +143,7 @@ describe('ChatOpenVINO tools', () => {
     expect(finalChunk?.tool_calls?.[0].id).toBeDefined();
   }, 50000);
 
-  test.skip('Few shotting with tool calls', async () => {
+  test('Few shotting with tool calls', async () => {
     const chat = modelWithBaseConfig.bindTools([weatherTool]);
     const res = await chat.invoke([
       new HumanMessage('What is the weather in SF?'),
@@ -172,7 +169,7 @@ describe('ChatOpenVINO tools', () => {
     expect(res.content).toContain('24');
   }, 50000);
 
-  test.skip('Test tool calling with empty schema in streaming vs non-streaming',
+  test('Test tool calling with empty schema in streaming vs non-streaming',
     async () => {
     // Tool with empty schema (no parameters)
       const getCurrentTime = tool(
@@ -238,7 +235,6 @@ describe('ChatOpenVINO tools', () => {
     const response = await modelWithTools.invoke(
       'What is 27725327 times 283683? Also whats the weather in New York?',
     );
-    console.log(response);
     expect(response.tool_calls?.length).toBe(1);
   }, 100000);
 

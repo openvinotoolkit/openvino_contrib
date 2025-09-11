@@ -6,7 +6,7 @@ import { describe } from 'node:test';
 import { z } from 'zod';
 
 const modelPath = process.env.MODEL_PATH;
-if (modelPath === undefined) throw new Error('MODEL_PATH doest not defined');
+if (modelPath === undefined) throw new Error('MODEL_PATH is not defined');
 
 describe('Test ChatOpenVINO', () => {
   let modelWithBaseConfig: ChatOpenVINO;

@@ -74,8 +74,10 @@ and generates a response using a generative model, conditioned on both the user 
   node langgraph_agent_sample.js <llm_dir>
   ```
 
-### 5. Legacy React agent Sample (`langgraph_agent_sample`)
-- **Description:** This sample shows how to use the React Agent with AgentExecutor. Although this approach is deprecated, it can still be used in legacy projects.
+### 5. Legacy React agent Sample (`legacy_agent_sample`)
+- **Description:** This sample shows how to use the React Agent with AgentExecutor. 
+Although this approach is [deprecated](https://js.langchain.com/docs/concepts/agents/#legacy-agent-concept-agentexecutor), 
+it can still be used in legacy projects.
 - **Recommended Models:**
   - **LLM:** `Qwen/Qwen2.5-7B-Instruct`
 - **Main Feature:** Deprecated approach to execute the React Agent.
