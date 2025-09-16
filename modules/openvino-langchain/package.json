@@ -1,6 +1,6 @@
 {
   "name": "openvino-langchain",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "OpenVINO Generative AI integration for LangChain.js",
   "type": "module",
   "engines": {
