@@ -11,10 +11,26 @@ namespace kernel {
 namespace cumath = CUDA::math;
 
 template <typename T>
+__device__ constexpr T one = static_cast<T>(1);
+
+template <typename T>
 struct SoftSignOpImpl {
-    
     __device__ static inline T op(T x) {
-        return x / (static_cast<T>(static_cast<float>(1)) + cumath::abs(x));
+        return x / (one<T> + cumath::abs(x));
+    }
+};
+
+template <>
+struct SoftSignOpImpl<__nv_bfloat16> {
+    __device__ static inline __nv_bfloat16 op(__nv_bfloat16 x) {
+        return x / (__nv_bfloat16(1.0f) + cumath::abs(x));
+    }
+};
+
+template <>
+struct SoftSignOpImpl<__half> {
+    __device__ static inline __half op(__half x) {
+        return x / (__half(1.0f) + cumath::abs(x));
     }
 };
 
