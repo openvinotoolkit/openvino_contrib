@@ -12,6 +12,7 @@ BUILD_TYPE=${BUILD_TYPE:-Release}
 BUILD_TARGETS=${BUILD_TARGETS:-"ov_nvidia_func_tests ov_nvidia_unit_tests openvino_nvidia_gpu_plugin benchmark_app"}
 WHEEL_VERSION=${WHEEL_VERSION:-"2022.3.0"}
 ENABLE_TESTS=${ENABLE_TESTS:-"ON"}
+ENABLE_FUNCTIONAL_TESTS=${ENABLE_FUNCTIONAL_TESTS:-"OFF"}
 
 [[ -n "${OPENVINO_HOME}" ]] || { echo "OPENVINO_HOME environment variable is expected"; exit 1; }
 [[ -n "${OPENVINO_CONTRIB}" ]] || { echo "OPENVINO_CONTRIB environment variable is expected"; exit 1; }
@@ -41,8 +42,10 @@ cmake "${OPENVINO_HOME}" \
       -DENABLE_NVIDIA=ON \
       -DENABLE_PLUGINS_XML=ON \
       -DENABLE_TESTS="${ENABLE_TESTS}" \
+      -DENABLE_FUNCTIONAL_TESTS="${ENABLE_FUNCTIONAL_TESTS}" \
       -DBUILD_arm_plugin=OFF \
       -DBUILD_java_api=OFF \
+      -DBUILD_llama_cpp_plugin=OFF \
       -DOPENVINO_EXTRA_MODULES="${OPENVINO_CONTRIB}/modules" \
       -DWHEEL_VERSION="${WHEEL_VERSION}" \
       -DVERBOSE_BUILD=ON \

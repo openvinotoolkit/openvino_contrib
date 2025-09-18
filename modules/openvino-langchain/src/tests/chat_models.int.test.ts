@@ -6,7 +6,7 @@ import { describe } from 'node:test';
 import { z } from 'zod';
 
 const modelPath = process.env.MODEL_PATH;
-if (modelPath === undefined) throw new Error('MODEL_PATH doest not defined');
+if (modelPath === undefined) throw new Error('MODEL_PATH is not defined');
 
 describe('Test ChatOpenVINO', () => {
   let modelWithBaseConfig: ChatOpenVINO;
@@ -111,7 +111,8 @@ describe('Test ChatOpenVINO', () => {
         chunks.push(streamItem.text);
       }
       expect(chunks.length).toBeGreaterThan(0);
-      expect(chunks[chunks.length - 1].includes('2') || chunks[chunks.length - 1].includes('two')).toBe(true);
+      expect(chunks[chunks.length - 1].includes('2')
+        || chunks[chunks.length - 1].includes('two')).toBe(true);
     });
 
     test('stream() with handleLLMNewToken callback', async () => {
