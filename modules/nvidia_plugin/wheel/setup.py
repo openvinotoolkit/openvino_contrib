@@ -160,9 +160,6 @@ WHEEL_DOWNLOAD_URL=config('WHEEL_DOWNLOAD_URL', 'https://github.com/openvinotool
 WHEEL_URL=config('WHEEL_URL', 'https://docs.openvinotoolkit.org/latest/index.html')
 
 
-openvino_src_dir: Optional[str] = OPENVINO_SRC_DIR
-
-
 def is_tool(name):
     """
     Check if the command-line tool is available
@@ -309,16 +306,15 @@ class BuildCLib(build_clib):
         """
         super().finalize_options()
 
-        global openvino_src_dir
-        
+        global OPENVINO_SRC_DIR
+
         self.git_exec = shutil.which("git")
         self.cmake_exec = shutil.which("cmake")
         self.build_configuration_name = 'Debug' if self.debug else 'Release'
         self.deps_dir = os.path.abspath(os.path.join(self.build_temp, "deps"))
-        if openvino_src_dir is None:
-            openvino_src_dir = os.path.join(self.deps_dir, "openvino")
-        self.openvino_src_dir = openvino_src_dir
-        self.openvino_build_dir = os.path.join(self.openvino_src_dir, "build")
+        if OPENVINO_SRC_DIR is None:
+            OPENVINO_SRC_DIR = os.path.join(self.deps_dir, "openvino")
+        self.openvino_build_dir = os.path.join(OPENVINO_SRC_DIR, "build")
         self.openvino_dist_dir = os.path.join(self.deps_dir, "openvino_dist")
         for cmd in ['install', 'build']:
             self.set_undefined_options(cmd, ('force', 'force'))
@@ -348,7 +344,7 @@ class BuildCLib(build_clib):
     def clone_openvino_src(self):
         self.mkpath(self.deps_dir)
 
-        if os.path.isdir(self.openvino_src_dir):
+        if os.path.isdir(OPENVINO_SRC_DIR):
             return
         self.announce("Cloning the OpenVINO sources", level=3)
         run_command([self.git_exec,
@@ -367,7 +363,7 @@ class BuildCLib(build_clib):
                      '--init',
                      '--recursive'
                     ],
-                    cwd=self.openvino_src_dir,
+                    cwd=OPENVINO_SRC_DIR,
                     on_fail_msg='Failed to update the OpenVINO git submodules')
 
     def openvino_conan_install(self):
@@ -378,7 +374,7 @@ class BuildCLib(build_clib):
                      "install",
                      f'-of={self.openvino_build_dir}',
                      '--build=missing',
-                     self.openvino_src_dir],
+                     OPENVINO_SRC_DIR],
                      cwd=self.openvino_build_dir,
                      on_fail_msg='Failed to install conan dependecies for OpenVINO CMake Project')
 
@@ -389,7 +385,7 @@ class BuildCLib(build_clib):
         python_include_dir = sysconfig.get_path("include")
         configure_command = [self.cmake_exec,
                              '-G', 'Unix Makefiles',
-                             f'-S{self.openvino_src_dir}',
+                             f'-S{OPENVINO_SRC_DIR}',
                              f'-B{self.openvino_build_dir}',
                              '-DENABLE_PLUGINS_XML=ON',
                              '-DCMAKE_VERBOSE_MAKEFILE=ON',
@@ -409,7 +405,7 @@ class BuildCLib(build_clib):
                     cwd=self.openvino_build_dir,
                     on_fail_msg='Failed to configure OpenVINO CMake Project. Ensure you have all build dependencies '
                                 'installed, by running '
-                                f'{os.path.join(self.openvino_src_dir, OPENVINO_INSTALL_BUILD_DEPS_SCRIPT)} '
+                                f'{os.path.join(OPENVINO_SRC_DIR, OPENVINO_INSTALL_BUILD_DEPS_SCRIPT)} '
                                 'script with admin rights.')
 
     def build_openvino(self):
@@ -426,7 +422,7 @@ class BuildCLib(build_clib):
         build_env = os.environ.copy()
         build_env['BUILD_TYPE'] = self.build_configuration_name
         build_env['BUILD_TARGETS'] = OPENVINO_NVIDIA_PLUGIN_CMAKE_TARGET_NAME
-        build_env['OPENVINO_HOME'] = self.openvino_src_dir
+        build_env['OPENVINO_HOME'] = OPENVINO_SRC_DIR
         build_env['OPENVINO_CONTRIB'] = OPENVINO_CONTRIB_SRC_DIR
         build_env['OPENVINO_BUILD_PATH'] = self.openvino_build_dir
         build_env['ENABLE_TESTS'] = "OFF"
@@ -468,7 +464,7 @@ class BuildCLib(build_clib):
     def locate_built_lib(self):
         libs = []
         lib_ext = platform_specifics.get_lib_file_extension()
-        bin_dir = os.path.join(self.openvino_src_dir, "bin")
+        bin_dir = os.path.join(OPENVINO_SRC_DIR, "bin")
         for name in [OPENVINO_NVIDIA_PLUGIN_CMAKE_TARGET_NAME]:
             libs.extend(list(glob.iglob(f"{bin_dir}/**/{self.build_configuration_name}/*{name}*{lib_ext}", recursive=True)))
         if not libs:
@@ -512,10 +508,10 @@ class InstallLib(install_lib):
         abi_tag=bdist_wheel.get_abi_tag()
         platform_tag=get_platform_tag()
         git_commits=get_command_output([self.git_exec, 'rev-list', '--count', '--first-parent', 'HEAD'],
-                                        cwd=openvino_src_dir,
+                                        cwd=OPENVINO_SRC_DIR,
                                         on_fail_msg='Failed to count OpenVINO commits').strip()
         openvino_wheel_name="-".join(["openvino", WHEEL_VERSION, git_commits, py_tag, abi_tag, platform_tag]) + ".whl"
-        wheels_path = os.path.abspath(os.path.join(openvino_src_dir, "build/wheels", openvino_wheel_name))
+        wheels_path = os.path.abspath(os.path.join(OPENVINO_SRC_DIR, "build/wheels", openvino_wheel_name))
         self.announce(f"Installing OpenVINO package with {wheels_path}", level=3)
         openvino_install_py = create_pip_command(wheels_path)
         run_command(openvino_install_py,
