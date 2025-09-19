@@ -135,7 +135,7 @@ def get_dependencies(requirements_file_path):
 
 LIBS_RPATH = '$ORIGIN' if sys.platform == 'linux' else '@loader_path'
 
-OPENVINO_SRC_DIR = config('OPENVINO_SRC_DIR', None)
+OPENVINO_SRC_DIR = config('OPENVINO_HOME', None)
 OPENVINO_REPO_URL = config('OPENVINO_REPO_DOWNLOAD_URL', 'git@github.com:openvinotoolkit/openvino.git')
 OPENVINO_REPO_TAG = config('OPENVINO_REPO_TAG', "2025.3.0")
 OPENVINO_INSTALL_BUILD_DEPS_SCRIPT = "install_build_dependencies.sh"
@@ -564,7 +564,7 @@ class InstallLib(install_lib):
     def get_openvino_nvidia_lib_path(self):
         import openvino_nvidia
         openvino_nvidia_package_dir = os.path.dirname(os.path.abspath(openvino_nvidia.__file__))
-        openvino_nvidia_gpu_library = f'{openvino_nvidia_package_dir}/libopenvino_nvidia_gpu_plugin.{platform_specifics.get_lib_file_extension()}'
+        openvino_nvidia_gpu_library = f'{openvino_nvidia_package_dir}/lib/libopenvino_nvidia_gpu_plugin.{platform_specifics.get_lib_file_extension()}'
         return openvino_nvidia_gpu_library
 
     def register_nvidia_plugin(self):
@@ -628,7 +628,8 @@ class InstallLib(install_lib):
             recommendations_msg = ''
             if not self.force:
                 recommendations_msg = 'Try to uninstall the openvino package and run "setup.py install --force" ' \
-                                      'to build OpenVINO libraries also.'
+                                      'to build OpenVINO libraries also. ' \
+                                      'NVIDIA plugin requires OpenVINO to be built with C++17 compatible compiler'
             raise RuntimeError('The NVIDIA GPU plugin loading test was failed. '
                                'The NVIDIA GPU plugin library is not compatible with OpenVINO libraries. '
                                f'Possible ABI version mismatch. {recommendations_msg}') from e
