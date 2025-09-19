@@ -90,7 +90,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [Mod](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Mod_1.md)                                                    | Supported     |
 | [MVN](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/MVN_6.md)                                                 | Supported     |
 | [Multiply](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Multiply_1.md)                                          | Supported*    |
-| [Negative](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Negative_1.md)                                          | Not Supported |
+| [Negative](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Negative_1.md)                                          | Supported |
 | [NonMaxSuppression](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sort/NonMaxSuppression_5.md)                              | Not Supported |
 | [NonZero](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/condition/NonZero_3.md)                                             | Not Supported |
 | [NormalizeL2](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/NormalizeL2_1.md)                                 | Not Supported |
@@ -134,11 +134,12 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [ShapeOf](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/shape/ShapeOf_3.md)                                                 | Not Supported |
 | [ShuffleChannels](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ShuffleChannels_1.md)                              | Not Supported |
 | [Sigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Sigmoid_1.md)                                            | Supported     |
-| [Sign](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sign_1.md)                                                  | Not Supported |
+| [Sign](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sign_1.md)                                                  | Supported |
 | [Sin](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sin_1.md)                                                    | Supported     |
 | [Sinh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sinh_1.md)                                                  | Supported     |
 | [SoftMax](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/SoftMax_1.md)                                            | Supported     |
 | [SoftPlus](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/SoftPlus_4.md)                                          | Not Supported |
+| [SoftSign](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/SoftSign_1.md)                                          | Supported |
 | [SpaceToBatch](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/SpaceToBatch_2.md)                                    | Not Supported |
 | [SpaceToDepth](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/SpaceToDepth_1.md)                                    | Not Supported |
 | [Split](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Split_1.md)                                                  | Supported*    |

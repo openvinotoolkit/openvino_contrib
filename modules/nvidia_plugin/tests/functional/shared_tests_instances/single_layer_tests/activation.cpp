@@ -28,11 +28,11 @@ const std::map<ActivationTypes, std::vector<std::vector<float>>> activationTypes
         {ActivationTypes::Relu,                  {}},
         {ActivationTypes::Exp,                   {}},
         {ActivationTypes::Log,                   {}},
-        // {ActivationTypes::Sign,                  {}},
+        {ActivationTypes::Sign,                  {}},
         {ActivationTypes::Abs,                   {}},
         {ActivationTypes::Gelu,                  {}},
         {ActivationTypes::Clamp,                 {{-2.0f, 2.0f}}},
-        // {ActivationTypes::Negative,              {}},
+        {ActivationTypes::Negative,              {}},
         {ActivationTypes::Acos,                  {}},
         {ActivationTypes::Acosh,                 {}},
         {ActivationTypes::Asin,                  {}},
@@ -52,7 +52,7 @@ const std::map<ActivationTypes, std::vector<std::vector<float>>> activationTypes
         // {ActivationTypes::Selu,                  {{1.6732f, 1.0507f}}},
         // {ActivationTypes::Ceiling,               {}},
         {ActivationTypes::Mish,                  {}},
-        // {ActivationTypes::HSwish,                {}},
+        {ActivationTypes::HSwish,                {}},
         // {ActivationTypes::SoftPlus,              {}},
         // {ActivationTypes::HSigmoid,              {}},
         {ActivationTypes::Swish,                 {{0.5f}}},
@@ -60,7 +60,7 @@ const std::map<ActivationTypes, std::vector<std::vector<float>>> activationTypes
         // {ActivationTypes::RoundHalfAwayFromZero, {}},
         {ActivationTypes::GeluErf,               {}},
         {ActivationTypes::GeluTanh,              {}},
-        // {ActivationTypes::SoftSign,              {}},
+        {ActivationTypes::SoftSign,              {}},
 };
 
 const std::map<ActivationTypes, std::vector<std::vector<float>>> bigRankActivationTypes = {
