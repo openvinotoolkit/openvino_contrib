@@ -8,3 +8,4 @@ dist/
 
 report_api.xml
 report_op.xml
+wheel/packages/openvino_nvidia/lib/
