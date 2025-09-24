@@ -27,8 +27,8 @@ Before running algorithms, ensure you have **Python 3.10+** installed and set up
 ### 1. Create and activate a virtual environment
 
 ```bash
-python3 -m venv genai_env
-source genai_env/bin/activate      # On Windows: genai_env\Scripts\activate.bat
+python3 -m venv env
+source env/bin/activate      # On Windows: env\Scripts\activate.bat
 ```
 
 ### 2. Installation
