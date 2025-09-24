@@ -207,13 +207,13 @@ def get_inputs_embeds(model, inputs, num_keep_tokens=None, theta=0.5):
     """
     kwargs = get_model_kwargs(model, inputs)
     inputs_embeds = model.get_input_embeddings()(inputs.input_ids)
+    device = inputs_embeds.device
     B, _, emb_dim = inputs_embeds.shape
     assert B == 1
 
-    special_image_mask = inputs_embeds == model.get_input_embeddings()(
-        torch.tensor(model.config.image_token_id, dtype=torch.long, device=inputs_embeds.device)
-    )  # (B, seq_len, emb_dim)
-    special_image_mask = special_image_mask.all(-1)
+    image_token_id = torch.tensor(model.config.image_token_id, dtype=torch.long, device=device)
+    special_image_emb = model.get_input_embeddings()(image_token_id)
+    special_image_mask = (inputs_embeds == special_image_emb).all(-1)
 
     # Get mapped image features into the language embedding space
     image_embeds = model.get_image_features(
@@ -221,8 +221,8 @@ def get_inputs_embeds(model, inputs, num_keep_tokens=None, theta=0.5):
         **kwargs,
     )
 
-    flat_image_embeds = torch.cat(image_embeds, dim=0).to(inputs_embeds.device, inputs_embeds.dtype)
-    exp_special_image_mask = special_image_mask.unsqueeze(-1).expand_as(inputs_embeds).to(inputs_embeds.device)
+    flat_image_embeds = torch.cat(image_embeds, dim=0).to(device, inputs_embeds.dtype)
+    exp_special_image_mask = special_image_mask.unsqueeze(-1).expand_as(inputs_embeds)
     inputs_embeds_with_images = inputs_embeds.masked_scatter(exp_special_image_mask, flat_image_embeds)
 
     if num_keep_tokens is None:
@@ -230,10 +230,10 @@ def get_inputs_embeds(model, inputs, num_keep_tokens=None, theta=0.5):
 
     # Prune image tokens
     text_embeds = inputs_embeds[~special_image_mask].view(-1, emb_dim)
-    image_features = get_image_features(model, inputs, **kwargs)
+    image_features = [feat.to(device) for feat in get_image_features(model, inputs, **kwargs)]
     kept_mask = get_cdpruner_mask(image_embeds, image_features, text_embeds, special_image_mask, num_keep_tokens, theta)
 
     # Apply mask to inputs_embeds directly
-    kept_mask = kept_mask.unsqueeze(-1).expand_as(inputs_embeds).to(inputs_embeds.device)
+    kept_mask = kept_mask.unsqueeze(-1).expand_as(inputs_embeds)
     pruned_embeds = inputs_embeds_with_images[kept_mask].view(B, -1, emb_dim)
-    return pruned_embeds
+    return pruned_embeds.to(model.device)
