@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 from argparse import ArgumentParser
+from contextlib import ExitStack
 
 import numpy as np
 import requests
@@ -19,8 +20,8 @@ from tqdm import tqdm
 from transformers import AutoProcessor
 
 from logging import getLogger
-from genai_opt import get_inputs_embeds
-from utils import add_visual_pruning_args
+from genai_opt import get_inputs_embeds, SparseAttention
+from utils import add_attention_args, add_visual_pruning_args
 
 
 logger = getLogger(__name__)
@@ -375,9 +376,13 @@ class Eval:
             error_msg = "Dataset not supported"
             raise ValueError(error_msg)
 
+@torch.no_grad()
+def evaluate(dataset, processor, model, num_keep_tokens, theta, contexts=()):
+    with ExitStack() as stack:
+        for ctx in contexts:
+            if ctx is not None:
+                stack.enter_context(ctx(model))
 
-def evaluate(dataset, processor, model, num_keep_tokens, theta):
-    with torch.no_grad():
         answers = []
         for data_sample in tqdm(dataset):
             prompt = data_sample["prompt"]
@@ -395,6 +400,7 @@ def evaluate(dataset, processor, model, num_keep_tokens, theta):
                 do_sample=False,
                 **kwargs,
             )
+
             response = processor.batch_decode(
                 generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
             )[0]
@@ -447,6 +453,7 @@ if __name__ == "__main__":
     parser.add_argument("--data_dir", type=str, default="MileBench", help="Data directory")
 
     add_visual_pruning_args(parser)
+    add_attention_args(parser)
     args = parser.parse_args()
 
     dataset = MileBenchDataset(data_dir=args.data_dir, subset=args.subset)
@@ -472,4 +479,15 @@ if __name__ == "__main__":
     else:
         num_keep_tokens = None
         theta = None
-    evaluate(dataset, processor, model, num_keep_tokens=num_keep_tokens, theta=theta)
+
+    contexts = []
+    if args.use_custom_attention:
+        sparse_prefill = SparseAttention(
+            algorithm=args.prefill_impl,
+            threshold=args.threshold,
+            recent_size=args.recent_size,
+            last_query_size=args.last_query_size,
+        )
+        contexts.append(sparse_prefill)
+
+    evaluate(dataset, processor, model, num_keep_tokens=num_keep_tokens, theta=theta, contexts=contexts)
