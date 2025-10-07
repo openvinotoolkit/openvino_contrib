@@ -5,6 +5,7 @@
 import os
 import string
 from argparse import ArgumentParser
+from contextlib import ExitStack
 
 import torch
 from datasets import load_dataset
@@ -16,8 +17,8 @@ from tqdm import tqdm
 from transformers import AutoProcessor
 from transformers import set_seed
 
-from genai_opt import get_inputs_embeds
-from utils import add_visual_pruning_args
+from genai_opt import get_inputs_embeds, SparseAttention
+from utils import add_attention_args, add_visual_pruning_args
 
 
 class MetricCalculator:
@@ -78,6 +79,7 @@ class MetricCalculator:
         }
 
 
+@torch.no_grad()
 def evaluate(args):
     model_name = args.model
     category = args.subset
@@ -107,8 +109,23 @@ def evaluate(args):
         num_keep_tokens = None
         theta = None
 
+    contexts = []
+    if args.use_custom_attention:
+        print(f"Enable custom attention kernel with {args.prefill_impl} implementation")
+        sparse_prefill = SparseAttention(
+            algorithm=args.prefill_impl,
+            threshold=args.threshold,
+            recent_size=args.recent_size,
+            last_query_size=args.last_query_size,
+        )
+        contexts.append(sparse_prefill)
+
     all_items = []
-    with torch.no_grad():
+    with ExitStack() as stack:
+        for ctx in contexts:
+            if ctx is not None:
+                stack.enter_context(ctx(model))
+
         for example in tqdm(dataset):
             prompt = example["question"]
             answer = example["answer"].strip().lower()
@@ -212,6 +229,7 @@ if __name__ == "__main__":
     parser.add_argument("--subset", choices=eval_type_dict, required=True, help="MME category name")
 
     add_visual_pruning_args(parser)
+    add_attention_args(parser)
     args = parser.parse_args()
 
     evaluate(args)
