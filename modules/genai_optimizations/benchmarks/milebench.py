@@ -20,8 +20,9 @@ from tqdm import tqdm
 from transformers import AutoProcessor
 
 from logging import getLogger
-from genai_opt import get_inputs_embeds, SparseAttention
-from utils import add_attention_args, add_visual_pruning_args
+from genai_opt import get_inputs_embeds
+from utils import add_attention_args, add_visual_pruning_args, add_token_eviction_args
+from utils import get_eviction_patcher, get_sparse_attention_patcher
 
 
 logger = getLogger(__name__)
@@ -454,6 +455,7 @@ if __name__ == "__main__":
 
     add_visual_pruning_args(parser)
     add_attention_args(parser)
+    add_token_eviction_args(parser)
     args = parser.parse_args()
 
     dataset = MileBenchDataset(data_dir=args.data_dir, subset=args.subset)
@@ -482,12 +484,11 @@ if __name__ == "__main__":
 
     contexts = []
     if args.use_custom_attention:
-        sparse_prefill = SparseAttention(
-            algorithm=args.prefill_impl,
-            threshold=args.threshold,
-            recent_size=args.recent_size,
-            last_query_size=args.last_query_size,
-        )
-        contexts.append(sparse_prefill)
+        sparse_attn = get_sparse_attention_patcher(args)
+        contexts.append(sparse_attn)
+
+    if args.enable_eviction:
+        token_eviction = get_eviction_patcher(args)
+        contexts.append(token_eviction)
 
     evaluate(dataset, processor, model, num_keep_tokens=num_keep_tokens, theta=theta, contexts=contexts)
