@@ -48,7 +48,7 @@ Afterwards plugin build procedure is as following:
 
 1. Clone `openvino_contrib` repository:
 ```bash
-git clone --recurse-submodules --single-branch --branch=2022.3.0 https://github.com/openvinotoolkit/openvino_contrib.git
+git clone --recurse-submodules --single-branch --branch=2024.1.0 https://github.com/openvinotoolkit/openvino_contrib.git
 ```
 2. Go to plugin directory:
 ```bash
@@ -60,7 +60,7 @@ mkdir build && cd build
 ```
 4. Build plugin
 
-    First of all, switch OpenVINO™ to tag _2022.3.0_ and then build it according the instruction [How to build](https://github.com/openvinotoolkit/openvino/wiki#how-to-build)
+    First of all, switch OpenVINO™ to tag _2024.1.0_ and then build it according the instruction [How to build](https://github.com/openvinotoolkit/openvino/wiki#how-to-build)
 
     Then build CUDA Plugin with one of 2 options:
 - Using `build.sh`
@@ -97,7 +97,7 @@ If python available the CUDA Plugin could be compiled with setup.py script as fo
 
 1. Clone `openvino_contrib` repository:
 ```bash
-git clone --recurse-submodules --single-branch --branch=2022.3.0 https://github.com/openvinotoolkit/openvino_contrib.git
+git clone --recurse-submodules --single-branch --branch=2024.1.0 https://github.com/openvinotoolkit/openvino_contrib.git
 ```
 2. Go to plugin directory:
 ```bash
@@ -190,6 +190,60 @@ During compilation of the openvino_nvidia_gpu_plugin, user could specify the fol
 3) `-DCMAKE_CUDA_ARCHITECTURES=<arch_set>` e.g. `-DCMAKE_CUDA_ARCHITECTURES=75`, ([CMake documentation](https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html)). This option overrides the default architectures (CUDA Compute Capabitities) listed in `openvino_contrib/modules/nvidia_plugin/CMakeLists.txt`. This option allows to build the plugin for specific architecture or architecture set. Building for the lesser amount of architectures can significally decrease the size of `libopenvino_nvidia_gpu_plugin.so`. To find out the compute capabitity of nVidia devices in your system, you may use the following command:
 ```bash
 nvidia-smi --query-gpu=compute_cap --format=csv
+```
+
+## Python package
+
+Python package could be built using `wheel/setup.py` file provided in nvidia_plugin folder.
+
+### Prerequisites
+Run the following commands as prerequisites to `setup.py`:
+```bash
+export OPENVINO_HOME=<OPENVINO_HOME_DIR> # If not provided, setup.py will download openvino automatically
+python3 -m pip install wheel
+```
+
+### Building the package
+To build it, use simply the following command:
+```bash
+python3 ./wheel/setup.py bdist_wheel
+```
+
+### Installing the package
+To install:
+```bash
+python3 ./wheel/setup.py install
+```
+
+### Usage
+Now you can use `openvino-nvidia` package, here is example:
+```python
+import openvino_nvidia
+import openvino as ov
+
+core = ov.Core()
+model = core.read_model(model=...)
+core.compile_model(model=model, device_name="NVIDIA")
+```
+During the import of package `openvino_nvidia` it tries to register itself in `openvino` package.
+Registration happens in "lightweight" manner, it means if "NVIDIA" plugin already registered than it does nothing.
+If you want forcely overwrite a path to plugin library you can do it by importing from `openvino_nvidia` package attribute `force_install`:
+```python
+from openvino_nvidia import force_install # will overwrite a path to plugin library
+import openvino as ov
+
+core = ov.Core()
+model = core.read_model(model=...)
+core.compile_model(model=model, device_name="NVIDIA")
+```
+For symmetry there is also `install` attribute:
+```python
+from openvino_nvidia import install # will register plugin if it does not yet
+import openvino as ov
+
+core = ov.Core()
+model = core.read_model(model=...)
+core.compile_model(model=model, device_name="NVIDIA")
 ```
 
 ## Supported Layers and Limitations

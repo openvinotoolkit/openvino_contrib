@@ -47,7 +47,7 @@ __global__ void elementwise_binary_broadcasting(const T* in0,
 
 #endif  // __CUDACC__
 
-template <typename ElementTypes, template <typename> typename OP>
+template <typename ElementTypes, template <typename... TArgs> typename OP>
 class ElementwiseBinary {
 public:
     ElementwiseBinary(Type_t element_type, size_t out_num_elements, size_t max_threads_per_block)

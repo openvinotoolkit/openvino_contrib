@@ -381,24 +381,56 @@ func (s *Server) loadModel(mpath string, mname string, device string) {
 	var err error
 	ov_ir_dir := strings.ReplaceAll(mname, ":", "_")
 	tempDir := filepath.Join("/tmp", ov_ir_dir)
+	ov_model_path := ""
 
-	_, err = os.Stat(tempDir)
-	if os.IsNotExist(err) {
-		err = genai.UnpackTarGz(mpath, tempDir)
-		if err != nil {
-			panic(err)
+	isGGUF, err := genai.IsGGUF(mpath)
+	if err != nil {
+		fmt.Printf("Error checking file: %v\n", err)
+		panic(err)
+	}
+	if isGGUF {
+		log.Printf("The model is a GGUF file.")
+		ov_model_path = filepath.Join(tempDir, "tmp.gguf")
+		// for GGUF reader
+		if _, err := os.Stat(tempDir); os.IsNotExist(err) {
+			err := os.MkdirAll(tempDir, 0755)
+			if err != nil {
+				fmt.Errorf("Error creating dir: %v", err)
+				panic(err)
+			}
+			err = genai.CopyFile(mpath, ov_model_path)
+			if err != nil {
+				panic(err)
+			}
 		}
 	}
 
-	entries, err := os.ReadDir(tempDir)
-	var subdirs []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			subdirs = append(subdirs, entry.Name())
+	isGzip, err := genai.IsGzipByMagicBytes(mpath)
+	if err != nil {
+		fmt.Printf("Error checking file: %v\n", err)
+	}
+	if isGzip {
+		log.Printf("The model is a OpenVINO IR file.")
+		// for OpenVINO IR
+		_, err = os.Stat(tempDir)
+		if os.IsNotExist(err) {
+			err = genai.UnpackTarGz(mpath, tempDir)
+			if err != nil {
+				panic(err)
+			}
 		}
+
+		entries, _ := os.ReadDir(tempDir)
+		var subdirs []string
+		for _, entry := range entries {
+			if entry.IsDir() {
+				subdirs = append(subdirs, entry.Name())
+			}
+		}
+
+		ov_model_path = filepath.Join(tempDir, subdirs[0])
 	}
 
-	ov_model_path := filepath.Join(tempDir, subdirs[0])
 	s.model = genai.CreatePipeline(ov_model_path, device)
 	log.Printf("The model had been load by GenAI, ov_model_path: %s , %s", ov_model_path, device)
 	s.status = ServerStatusReady

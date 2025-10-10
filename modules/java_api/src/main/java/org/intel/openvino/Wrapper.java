@@ -3,8 +3,9 @@
 
 package org.intel.openvino;
 
-public class Wrapper {
+import java.util.concurrent.atomic.AtomicBoolean;
 
+public class Wrapper implements AutoCloseable {
     static {
         try {
             Class.forName("org.intel.openvino.NativeLibrary");
@@ -14,6 +15,7 @@ public class Wrapper {
     }
 
     protected final long nativeObj;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     protected Wrapper(long addr) {
         nativeObj = addr;
@@ -24,9 +26,10 @@ public class Wrapper {
     }
 
     @Override
-    protected void finalize() throws Throwable {
-        delete(nativeObj);
-        super.finalize();
+    public void close() {
+        if (!closed.compareAndSet(false, true)) {
+            delete(nativeObj);
+        }
     }
 
     /*----------------------------------- native methods -----------------------------------*/

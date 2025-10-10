@@ -35,7 +35,10 @@ sourceSets {
         }
     }
 }
-mainClassName = 'Main'
+
+application {
+    mainClass = 'Main'
+}
 
 dependencies {  
     implementation rootProject
