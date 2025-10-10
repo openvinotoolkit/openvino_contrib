@@ -17,12 +17,18 @@ python longbench.py \
     --subset samsum \
     --model meta-llama/Llama-3.2-1B-Instruct \
     --use_custom_attention \
-    --prefill_impl tri-shape
+    --prefill_impl tri-shape \
+    --enable_eviction \
+    --algorithm h2o \
+    --granularity per_group \
+    --normalize_scores \
+    --intermediate_tokens 1024
 ```
 This will automatically:
 
 - Download the selected model and dataset
 - Apply sparse attention computation during the prefill stage
+- Apply token eviction during the decoding stage
 - Evaluate the model and report the score
 
 </details>
@@ -46,13 +52,18 @@ python mmebench.py \
     --num_keep_tokens 128 \
     --theta 0.5 \
     --use_custom_attention \
-    --prefill_impl x-attention
+    --prefill_impl x-attention \
+    --enable_eviction \
+    --algorithm snapkv \
+    --granularity per_group \
+    --window_size 8
 ```
 This will automatically:
 
 - Download the selected model and dataset
 - Apply the visual token pruning algorithm
 - Apply sparse attention computation during the prefill stage
+- Apply token eviction during the decoding stage
 - Evaluate the model and report the score
 
 </details>
@@ -73,7 +84,11 @@ python milebench.py \
     --num_keep_tokens 64 \
     --theta 0.5 \
     --use_custom_attention \
-    --prefill_impl tri-shape
+    --prefill_impl tri-shape \
+    --enable_eviction \
+    --algorithm snapkv \
+    --granularity per_group \
+    --window_size 8
 ```
 
 This will automatically:
@@ -81,6 +96,7 @@ This will automatically:
 - Download the selected model and dataset
 - Apply the visual token pruning algorithm
 - Apply sparse attention computation during the prefill stage
+- Apply token eviction during the decoding stage
 - Evaluate the model and report the score
 
 </details>

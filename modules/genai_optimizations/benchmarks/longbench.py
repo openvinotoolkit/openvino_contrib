@@ -19,8 +19,8 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM
 from transformers import AutoTokenizer
 
-from genai_opt import SparseAttention
-from utils import add_attention_args
+from utils import add_attention_args, add_token_eviction_args
+from utils import get_eviction_patcher, get_sparse_attention_patcher
 
 # (Phi3 and DeepSeek issue)
 # AttributeError: 'DynamicCache' object has no attribute 'get_max_length'. Did you mean: 'get_seq_length'?
@@ -315,27 +315,28 @@ def evaluate(args):
         args.model, trust_remote_code=True, token=os.environ.get("HF_TOKEN", None)
     )
 
+    kwargs = {"temperature": None, "top_p": None, "top_k": None}
+    # force attn_implementation="eager" when using token eviction without custom attention
+    if args.enable_eviction and not args.use_custom_attention:
+        kwargs["attn_implementation"] = "eager"
+
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
-        # attn_implementation="eager",
         trust_remote_code=True,
         dtype=torch.float16,
         device_map="auto",
         token=os.environ.get("HF_TOKEN", None),
-        temperature=None,
-        top_p=None,
-        top_k=None,
+        **kwargs,
     ).eval()
 
     patchers = []
     if args.use_custom_attention:
-        sparse_attn = SparseAttention(
-            algorithm=args.prefill_impl,
-            threshold=args.threshold,
-            recent_size=args.recent_size,
-            last_query_size=args.last_query_size,
-        )
+        sparse_attn = get_sparse_attention_patcher(args)
         patchers.append(sparse_attn)
+
+    if args.enable_eviction:
+        token_eviction = get_eviction_patcher(args)
+        patchers.append(token_eviction)
 
     max_new_tokens = dataset.get_max_new_tokens()
     answers = []
@@ -391,6 +392,7 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, required=True, help="Model name")
 
     add_attention_args(parser)
+    add_token_eviction_args(parser)
     args = parser.parse_args()
 
     evaluate(args)
