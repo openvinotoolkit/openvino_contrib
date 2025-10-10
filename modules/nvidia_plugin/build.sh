@@ -9,9 +9,17 @@ fi
 
 BUILD_JOBS=${BUILD_JOBS:-$(nproc)}
 BUILD_TYPE=${BUILD_TYPE:-Release}
-BUILD_TARGETS=${BUILD_TARGETS:-"ov_nvidia_func_tests ov_nvidia_unit_tests openvino_nvidia_gpu_plugin benchmark_app"}
-WHEEL_VERSION=${WHEEL_VERSION:-"2022.3.0"}
+
+ENABLE_WHEEL=${ENABLE_WHEEL:-"OFF"}
+WHEEL_VERSION=${WHEEL_VERSION:-"2025.3.0"}
+WHEEL_TARGET=""
+if [ "$ENABLE_WHEEL" = "ON" ]; then
+    WHEEL_TARGET="ie_wheel"
+fi
+
+BUILD_TARGETS=${BUILD_TARGETS:-"${WHEEL_TARGET} ov_nvidia_func_tests ov_nvidia_unit_tests openvino_nvidia_gpu_plugin benchmark_app"}
 ENABLE_TESTS=${ENABLE_TESTS:-"ON"}
+ENABLE_FUNCTIONAL_TESTS=${ENABLE_FUNCTIONAL_TESTS:-"ON"}
 
 [[ -n "${OPENVINO_HOME}" ]] || { echo "OPENVINO_HOME environment variable is expected"; exit 1; }
 [[ -n "${OPENVINO_CONTRIB}" ]] || { echo "OPENVINO_CONTRIB environment variable is expected"; exit 1; }
@@ -39,9 +47,13 @@ fi
 cd "${OPENVINO_BUILD_PATH}"
 cmake "${OPENVINO_HOME}" \
       -DENABLE_NVIDIA=ON \
+      -DENABLE_PLUGINS_XML=ON \
       -DENABLE_TESTS="${ENABLE_TESTS}" \
+      -DENABLE_FUNCTIONAL_TESTS="${ENABLE_FUNCTIONAL_TESTS}" \
+      -DENABLE_WHEEL="${ENABLE_WHEEL}" \
       -DBUILD_arm_plugin=OFF \
       -DBUILD_java_api=OFF \
+      -DBUILD_llama_cpp_plugin=OFF \
       -DOPENVINO_EXTRA_MODULES="${OPENVINO_CONTRIB}/modules" \
       -DWHEEL_VERSION="${WHEEL_VERSION}" \
       -DVERBOSE_BUILD=ON \

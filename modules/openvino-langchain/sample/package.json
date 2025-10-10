@@ -1,0 +1,19 @@
+{
+  "name": "openvino-langchain-sample",
+  "type": "module",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@langchain/langgraph": "^0.4.6",
+    "https-proxy-agent": "^7.0.6",
+    "langchain": "^0.3.31",
+    "openvino-langchain": "file:..",
+    "zod": "^3.25.76"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}
