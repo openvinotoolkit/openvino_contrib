@@ -1,0 +1,50 @@
+{
+  "name": "openvino-langchain",
+  "version": "0.0.2",
+  "description": "OpenVINO Generative AI integration for LangChain.js",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "directory": "modules/openvino-langchain",
+    "url": "git+ssh://git@github.com/openvinotoolkit/openvino_contrib.git"
+  },
+  "homepage": "https://github.com/openvinotoolkit/openvino_contrib/tree/master/modules/openvino-langchain/",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist/",
+    "lint": "eslint .",
+    "prepare": "npm run build",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "openvino-genai-node": "^2025.3.0",
+    "openvino-node": "^2025.3.0",
+    "openvino-tokenizers-node": "^2025.3.0"
+  },
+  "peerDependencies": {
+    "@langchain/core": ">=0.3.17 <0.4.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.22.0",
+    "@jest/globals": "^29.5.0",
+    "@swc/jest": "^0.2.29",
+    "@tsconfig/recommended": "^1.0.8",
+    "@types/node": "^22.15.21",
+    "dotenv": "^16.3.1",
+    "eslint": "^9.33.0",
+    "jest": "^29.5.0",
+    "jiti": "^2.4.2",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.26.1"
+  },
+  "files": [
+    "dist"
+  ]
+}
