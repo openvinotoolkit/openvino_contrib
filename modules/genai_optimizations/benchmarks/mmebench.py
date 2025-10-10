@@ -90,16 +90,19 @@ def evaluate(args):
 
     processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
     model_cls = get_model_class(model_name)
+
+    kwargs = {"temperature": None, "top_p": None, "top_k": None}
+    # force attn_implementation="eager" when using token eviction without custom attention
+    if args.enable_eviction and not args.use_custom_attention:
+        kwargs["attn_implementation"] = "eager"
+
     model = model_cls.from_pretrained(
         model_name,
         trust_remote_code=True,
-        # attn_implementation="eager",
         dtype=torch.bfloat16,
         device_map="auto",
         token=os.environ.get("HF_TOKEN", None),
-        temperature=None,
-        top_p=None,
-        top_k=None,
+        **kwargs
     ).eval()
 
     if args.enable_visual_pruning:

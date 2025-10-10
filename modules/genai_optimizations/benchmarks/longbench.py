@@ -315,16 +315,18 @@ def evaluate(args):
         args.model, trust_remote_code=True, token=os.environ.get("HF_TOKEN", None)
     )
 
+    kwargs = {"temperature": None, "top_p": None, "top_k": None}
+    # force attn_implementation="eager" when using token eviction without custom attention
+    if args.enable_eviction and not args.use_custom_attention:
+        kwargs["attn_implementation"] = "eager"
+
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
-        # attn_implementation="eager",
         trust_remote_code=True,
         dtype=torch.float16,
         device_map="auto",
         token=os.environ.get("HF_TOKEN", None),
-        temperature=None,
-        top_p=None,
-        top_k=None,
+        **kwargs,
     ).eval()
 
     patchers = []

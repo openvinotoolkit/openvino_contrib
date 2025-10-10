@@ -461,16 +461,19 @@ if __name__ == "__main__":
     dataset = MileBenchDataset(data_dir=args.data_dir, subset=args.subset)
     processor = AutoProcessor.from_pretrained(args.model, trust_remote_code=True)
     model_cls = get_model_class(args.model)
+
+    kwargs = {"temperature": None, "top_p": None, "top_k": None}
+    # force attn_implementation="eager" when using token eviction without custom attention
+    if args.enable_eviction and not args.use_custom_attention:
+        kwargs["attn_implementation"] = "eager"
+
     model = model_cls.from_pretrained(
         args.model,
-        # attn_implementation="eager",
         trust_remote_code=True,
         dtype=torch.bfloat16,
         device_map="auto",
         token=os.environ.get("HF_TOKEN", None),
-        temperature=None,
-        top_p=None,
-        top_k=None,
+        **kwargs
     )
     model = model.eval()
 

@@ -114,74 +114,63 @@ class KVCacheCompressor:
         self._scores = []
         self._cache_counter = [] if self.normalize_scores else None
 
-    def _update_scores(self, layer_idx, attn_w):
+    def aggregate_scores(self, layer_idx, attn_w):
         """
         Updates the scores based on the attention weights.
         """
         layer_scores = self._scores[layer_idx] if len(self._scores) > layer_idx else None
-        layer_counter = self._cache_counter[layer_idx] if self.normalize_scores and len(self._cache_counter) > layer_idx else None
 
         if self.window_size is not None:
-            hh_score = attn_w[..., -self.window_size :, :].sum(0).sum(1)  # sum over batch and query length
+            hh_score = attn_w[..., -self.window_size :, :].sum(dim=(0, 2))  # sum over batch and query length
             if layer_scores is None:
                 hh_score = torch.max_pool1d(hh_score, kernel_size=7, padding=7 // 2, stride=1)
         else:
-            hh_score = attn_w.sum(0).sum(1)  # Sum over batch and query length, shape: (H, seq_len)
+            hh_score = attn_w.sum(dim=(0, 2))  # Sum over batch and query length, shape: (H, seq_len)
 
         hh_score = hh_score.sum(0, keepdim=True)  # Sum over all heads, shape: (1, seq_len)
 
         # Skip frozen start tokens in cache
-        # TODO: What if prompt size is smaller than start_tokens? - Remove slicing
-        hh_score = hh_score[:, self.start_tokens :]
+        if hh_score.shape[1] > self.start_tokens:
+            hh_score = hh_score[:, self.start_tokens :]
 
-        if layer_scores is None:
-            layer_scores = hh_score
-            if self.normalize_scores:
-                seq_len = layer_scores.shape[-1]  # seq_len without start_tokens
-                if self.window_size is not None:
-                    if seq_len > self.window_size:
-                        full_window = torch.full(
-                            (seq_len - self.window_size,),
-                            self.window_size,
-                            dtype=layer_scores.dtype,
-                            device=layer_scores.device,
-                        )
-                        tail = torch.arange(
-                            self.window_size, 0, -1, dtype=layer_scores.dtype, device=layer_scores.device
-                        )
-                        layer_counter = torch.cat((full_window, tail), dim=0)
-                    else:
-                        layer_counter = torch.arange(
-                            seq_len, 0, -1, dtype=layer_scores.dtype, device=layer_scores.device
-                        )
-                else:
-                    layer_counter = torch.arange(seq_len, 0, -1, dtype=layer_scores.dtype, device=layer_scores.device)
-        else:
-            num_new_tokens = hh_score.shape[-1] - layer_scores.shape[-1]
+        num_new_tokens = hh_score.shape[-1] - (layer_scores.shape[-1] if layer_scores is not None else 0)
+        if layer_scores is not None:
             hh_score[:, :-num_new_tokens] += layer_scores
-            layer_scores = hh_score
 
-            if self.normalize_scores:
-                if self.window_size is not None:
-                    w_size = min(self.window_size, num_new_tokens)
-                    new_tail = torch.arange(w_size, 0, -1, dtype=layer_scores.dtype, device=layer_scores.device)
-                    layer_counter += w_size
-                    layer_counter = torch.cat((layer_counter, new_tail), dim=-1)
-                else:
-                    layer_counter += num_new_tokens
-                    new_counters = torch.arange(
-                        num_new_tokens, 0, -1, dtype=layer_scores.dtype, device=layer_scores.device
-                    )
-                    layer_counter = torch.cat((layer_counter, new_counters), dim=-1)
+        layer_scores = hh_score
+        layer_counter = self._calculate_layer_counter(layer_idx, num_new_tokens)
+        self._update_layer_scores(layer_idx, layer_scores, layer_counter)
 
-        if len(self._scores) <= layer_idx:
-            self._scores.append(layer_scores.squeeze(0))
-            if self.normalize_scores:
-                self._cache_counter.append(layer_counter)
+    def _calculate_layer_counter(self, layer_idx, num_new_tokens):
+        if not self.normalize_scores:
+            return None
+
+        new_count_size = num_new_tokens
+        if self.window_size is not None:
+            new_count_size = min(self.window_size, num_new_tokens)
+        new_counters = torch.arange(new_count_size, 0, -1)
+
+        if len(self._cache_counter) > layer_idx:
+            layer_counter = self._cache_counter[layer_idx]
+            layer_counter += new_count_size
+            layer_counter = torch.cat((layer_counter, new_counters), dim=-1)
         else:
-            self._scores[layer_idx] = layer_scores.squeeze(0)
+            if self.window_size is not None and num_new_tokens > self.window_size:
+                full_window = torch.full((num_new_tokens - self.window_size,), self.window_size)
+                layer_counter = torch.cat((full_window, new_counters), dim=0)
+            else:
+                layer_counter = new_counters
+        return layer_counter
+
+    def _update_layer_scores(self, layer_idx, layer_scores, layer_counter=None):
+        if len(self._scores) <= layer_idx:
+            self._scores.append(layer_scores)
             if self.normalize_scores:
-                self._cache_counter[layer_idx] = layer_counter
+                self._cache_counter.append(layer_counter.to(layer_scores.device))
+        else:
+            self._scores[layer_idx] = layer_scores
+            if self.normalize_scores:
+                self._cache_counter[layer_idx] = layer_counter.to(layer_scores.device)
 
     def get_scores(self, layer_idx):
         return (
@@ -320,7 +309,7 @@ class KVCacheCompressor:
         if layer_idx == 0 and attn_weights.shape[-2] != 1:
             self.clean()
 
-        self._update_scores(layer_idx, attn_weights)
+        self.aggregate_scores(layer_idx, attn_weights)
 
         seq_len = keys.shape[-2]
         if seq_len > self.max_cache_size:
