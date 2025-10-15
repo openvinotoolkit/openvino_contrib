@@ -1,11 +1,10 @@
-// Copyright (C) 2018-2023 Intel Corporation
+// Copyright (C) 2018-2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include <common_test_utils/test_constants.hpp>
 #include <cuda_test_constants.hpp>
 
-#include "behavior/ov_executable_network/exec_graph_info.hpp"
-#include "ie_plugin_config.hpp"
+#include "behavior/compiled_model/import_export.hpp"
 
 using namespace ov::test::behavior;
 namespace {
@@ -21,24 +20,24 @@ const std::vector<ov::AnyMap> multiConfigs = {{ov::device::priorities(ov::test::
 const std::vector<ov::AnyMap> heteroConfigs = {{ov::device::priorities(ov::test::utils::DEVICE_NVIDIA)}};
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
-                         OVExecGraphImportExportTest,
+                         OVCompiledGraphImportExportTest,
                          ::testing::Combine(::testing::ValuesIn(netPrecisions),
                                             ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(configs)),
-                         OVExecGraphImportExportTest::getTestCaseName);
+                         OVCompiledGraphImportExportTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_Auto_BehaviorTests,
-                         OVExecGraphImportExportTest,
+                         OVCompiledGraphImportExportTest,
                          ::testing::Combine(::testing::ValuesIn(netPrecisions),
                                             ::testing::Values(ov::test::utils::DEVICE_AUTO),
                                             ::testing::ValuesIn(multiConfigs)),
-                         OVExecGraphImportExportTest::getTestCaseName);
+                         OVCompiledGraphImportExportTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_Hetero_BehaviorTests,
-                         OVExecGraphImportExportTest,
+                         OVCompiledGraphImportExportTest,
                          ::testing::Combine(::testing::ValuesIn(netPrecisions),
                                             ::testing::Values(ov::test::utils::DEVICE_HETERO),
                                             ::testing::ValuesIn(heteroConfigs)),
-                         OVExecGraphImportExportTest::getTestCaseName);
+                         OVCompiledGraphImportExportTest::getTestCaseName);
 
 }  // namespace

@@ -50,8 +50,6 @@ struct ConvolutionParams {
     size_t NumberOfSpatialDims() const { return input_shape_.size() - NON_SPATIAL_DIMS_NUMBER; }
 
 private:
-    template <typename TConvNode>
-    void InferPadding(const TConvNode& node);
     void ConvertConv1DToConv2D();
 };
 

@@ -32,10 +32,30 @@ public class ModelTests extends OVTest {
     }
 
     @Test
+    public void testOutputType() {
+        Output output = net.output();
+        assertEquals("Output element type", ElementType.f32, output.get_element_type());
+    }
+
+    @Test
     public void testGetShape() {
         ArrayList<Output> outputs = net.outputs();
         int[] ref = new int[] {1, 10};
         assertArrayEquals("Shape", ref, outputs.get(0).get_shape());
+    }
+
+    @Test
+    public void testGetPartialShape() {
+        ArrayList<Output> outputs = net.outputs();
+        int[] ref = new int[] {1, 10};
+
+        PartialShape partialShape = outputs.get(0).get_partial_shape();
+        for (int i = 0; i < ref.length; i++) {
+            Dimension dim = partialShape.get_dimension(i);
+            assertEquals(ref[i], dim.get_length());
+        }
+        assertArrayEquals("MaxShape", ref, partialShape.get_max_shape());
+        assertArrayEquals("MinShape", ref, partialShape.get_min_shape());
     }
 
     @Test

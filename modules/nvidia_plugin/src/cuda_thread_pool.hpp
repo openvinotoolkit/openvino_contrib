@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2023 Intel Corporation
+// Copyright (C) 2018-2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,9 +11,9 @@
 #include <mutex>
 #include <queue>
 #include <thread>
-#include <threading/ie_itask_executor.hpp>
 
 #include "cuda_jthread.hpp"
+#include "openvino/runtime/threading/itask_executor.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

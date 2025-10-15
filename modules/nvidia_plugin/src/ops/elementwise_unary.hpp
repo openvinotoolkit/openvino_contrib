@@ -46,7 +46,7 @@ public:
         (*kernel_)(stream.get(), inputTensors[0].get(), outputTensors[0].get());
     }
 
-    bool IsCudaGraphCompatible() const override { return true; }
+    CudaGraphCompatibility GetCudaGraphCompatibility() const override { return CudaGraphCompatibility::FULL; }
 
 private:
     std::optional<Kernel> kernel_;

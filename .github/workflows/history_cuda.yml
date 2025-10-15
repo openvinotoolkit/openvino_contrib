@@ -7,14 +7,20 @@ on:
     paths:
       - 'modules/nvidia_plugin/**'
       - '.github/workflows/history_cuda.yml'
+
+permissions: read-all
+
+env:
+  OV_BRANCH: ${{ github.base_ref || github.event.merge_group.base_ref || github.ref }}
+
 jobs:
   history:
     runs-on: ubuntu-22.04
     steps:
     - name: checkout master branch
-      uses: actions/checkout@v3
+      uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
       with:
-        ref: master
+        ref: ${{ env.OV_BRANCH}}
         fetch-depth: 0
     - name: delete temporary branch
       run: git branch -D temporary-ci-branch | echo 1

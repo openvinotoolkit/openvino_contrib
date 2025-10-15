@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2023 Intel Corporation
+// Copyright (C) 2018-2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,7 +8,6 @@
 
 #include <algorithm>
 #include <cuda/constant_factory.hpp>
-#include <details/ie_exception.hpp>
 #include <openvino/core/except.hpp>
 #include <ops/converters.hpp>
 
@@ -327,7 +326,9 @@ void FusedConvolutionCuDnnBE::Execute(const InferenceRequestContext& context,
     throwIfError(::cudnnBackendExecute(context.getThreadContext().dnnHandle().get(), plan->get(), variantPack->get()));
 }
 
-bool FusedConvolutionCuDnnBE::IsCudaGraphCompatible() const { return false; }
+CudaGraphCompatibility FusedConvolutionCuDnnBE::GetCudaGraphCompatibility() const {
+    return CudaGraphCompatibility::NONE;
+}
 
 std::shared_ptr<CUDA::DnnBETensorDescriptor> FusedConvolutionCuDnnBE::MakeTensorDescriptor(
     int64_t id,

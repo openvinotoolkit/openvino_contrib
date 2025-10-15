@@ -176,8 +176,11 @@ public:
             double diff = static_cast<float>(absolute_difference) / max;
             if (max == 0 || (diff > static_cast<float>(threshold)) || std::isnan(static_cast<float>(res)) ||
                 std::isnan(static_cast<float>(ref))) {
-                IE_THROW() << "Relative comparison of values expected: " << ref << " and actual: " << res
-                           << " at index " << i << " with threshold " << threshold << " failed";
+                OPENVINO_THROW("Relative comparison of values expected: " + std::to_string(ref) +
+                               " and actual: " + std::to_string(res) +
+                               " at index " + std::to_string(i) +
+                               " with threshold " + std::to_string(threshold) +
+                               " failed");
             }
         }
     }

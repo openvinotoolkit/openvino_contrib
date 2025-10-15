@@ -1,0 +1,89 @@
+name: llama_cpp_plugin_build_and_test
+
+on:
+  pull_request:
+    paths:
+      - 'modules/llama_cpp_plugin/**'
+      - '.github/workflows/llama_cpp_plugin_build_and_test.yml'
+
+permissions: read-all
+
+jobs:
+  build_ubuntu20:
+    runs-on: ubuntu-20.04-8-cores
+    steps:
+      - name: Setup cmake
+        uses: jwlawson/actions-setup-cmake@d06b37b47cfd043ec794ffa3e40e0b6b5858a7ec # v1.14.2
+        with:
+          cmake-version: '3.24.x'
+
+      - name: Checkout openvino_contrib
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+        with:
+          submodules: recursive
+          path: openvino_contrib
+
+      - name: Checkout openvino
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+        with:
+          submodules: recursive
+          repository: openvinotoolkit/openvino
+          path: openvino
+
+      - name: CMake - configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DOPENVINO_EXTRA_MODULES=${{ github.workspace }}/openvino_contrib/modules/llama_cpp_plugin -DENABLE_TESTS=ON -DENABLE_FUNCTIONAL_TESTS=ON -DENABLE_PLUGINS_XML=ON -DENABLE_LLAMA_CPP_PLUGIN_REGISTRATION=ON openvino
+
+      - name: CMake - build
+        run: cmake --build build -j`nproc` -- llama_cpp_plugin llama_cpp_e2e_tests llama_cpp_func_tests
+
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: build_artifacts
+          path: ${{ github.workspace }}/openvino/bin/intel64/Release/
+
+  test_ubuntu20:
+    needs: build_ubuntu20
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@65a9edc5881444af0b9093a5e628f2fe47ea3b2e # v4.1.7
+        with:
+          name: build_artifacts
+          path: ${{ github.workspace }}/binaries
+
+      - name: Prepare test data - checkout llama.cpp repo
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+        with:
+          repository: ggerganov/llama.cpp
+          path: llama.cpp
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Prepare test data - convert test model files
+        run: |
+          python3 -m pip install -r llama.cpp/requirements/requirements-convert_hf_to_gguf.txt
+          huggingface-cli download gpt2 model.safetensors tokenizer.json tokenizer_config.json vocab.json config.json merges.txt --local-dir hf_gpt2
+          mkdir -p ${{ github.workspace }}/test_data
+          python3 llama.cpp/convert_hf_to_gguf.py hf_gpt2 --outtype f32 --outfile ${{ github.workspace }}/test_data/gpt2.gguf
+
+      - name: Install libtbb2
+        run: |
+          wget https://storage.openvinotoolkit.org/dependencies/thirdparty/linux/oneapi-tbb-2021.2.4-lin.tgz
+          mkdir -p tbb
+          tar xvzf oneapi-tbb-2021.2.4-lin.tgz
+
+      - name: Run functional tests
+        run: |
+          chmod +x ${{ github.workspace }}/binaries/llama_cpp_func_tests
+          export LD_LIBRARY_PATH=${{ github.workspace }}/binaries:${{ github.workspace }}/tbb/lib
+          ${{ github.workspace }}/binaries/llama_cpp_func_tests
+
+      - name: Run E2E tests
+        run: |
+          chmod +x ${{ github.workspace }}/binaries/llama_cpp_e2e_tests
+          export LD_LIBRARY_PATH=${{ github.workspace }}/binaries:${{ github.workspace }}/tbb/lib
+          ${{ github.workspace }}/binaries/llama_cpp_e2e_tests

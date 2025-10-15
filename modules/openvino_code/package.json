@@ -1,7 +1,7 @@
 {
   "publisher": "OpenVINO",
   "name": "openvino-code-completion",
-  "version": "0.0.6",
+  "version": "0.2.2",
   "displayName": "OpenVINO Code Completion",
   "description": "VSCode extension for AI code completion with OpenVINO",
   "icon": "media/logo.png",
@@ -83,7 +83,7 @@
     "terser-webpack-plugin": "5.3.9",
     "ts-loader": "9.4.4",
     "typescript": "5.1.6",
-    "webpack": "5.88.2",
+    "webpack": "^5.96.1",
     "webpack-bundle-analyzer": "4.9.0",
     "webpack-cli": "5.1.4"
   },
@@ -125,6 +125,11 @@
         "title": "Generate Inline Code Completion"
       },
       {
+        "command": "openvinoCode.generateInlineCompletionTab",
+        "category": "OpenVINO Code",
+        "title": "Generate Inline Code Completion In New Tab"
+      },
+      {
         "command": "openvinoCode.generateDocstring",
         "category": "OpenVINO Code",
         "title": "Generate Docstring",
@@ -159,6 +164,23 @@
           "when": "view == openvino-code-side-panel",
           "group": "navigation"
         }
+      ],
+      "editor/context": [
+        {
+          "command": "openvino-code-completion.toggle",
+          "group": "openvino-code-completion",
+          "when": "editorTextFocus && config.openvino-code-completion.showCommandsInContextMenu"
+        },
+        {
+          "command": "openvinoCode.generateInlineCompletion",
+          "when": "editorFocus",
+          "group": "openvino-code-completion@1"
+        },
+        {
+          "command": "openvinoCode.generateInlineCompletionTab",
+          "when": "editorFocus",
+          "group": "openvino-code-completion@2"
+        }
       ]
     },
     "configuration": [
@@ -168,13 +190,26 @@
           "openvinoCode.model": {
             "order": 0,
             "type": "string",
-            "default": "codet5p-220m-py",
+            "default": "code-t5",
             "enum": [
-              "codet5p-220m-py",
-              "decicoder-1b-openvino-int8",
-              "stablecode-completion-3b-int8"
+              "code-t5",
+              "decicoder-1b-openvino",
+              "stablecode-completion",
+              "deepseek-coder",
+              "phi-2"
             ],
             "description": "Which model to use for code generation."
+          },
+          "openvinoCode.device": {
+            "order": 1,
+            "type": "string",
+            "default": "CPU",
+            "enum": [
+              "CPU",
+              "GPU",
+              "NPU"
+            ],
+            "description": "Which device to use for code generation"
           },
           "openvinoCode.serverUrl": {
             "order": 1,
@@ -206,6 +241,36 @@
             "type": "boolean",
             "default": "false",
             "description": "When checked inline complention will be generated in streaming mode"
+          },
+          "openvinoCode.fillInTheMiddleMode": {
+            "order": 4,
+            "type": "boolean",
+            "default": "false",
+            "description": "When checked, text before (above) and after (below) the cursor will be used for completion generation. When unckecked, only text before (above) the cursor will be used."
+          },
+          "openvinoCode.startToken": {
+            "order": 7,
+            "type": "string",
+            "default": "< |fim_begin| >",
+            "description": "String that is sent to server is in format: `{startToken}{text above cursor}{middleToken}{text below cursor if fillInTheMiddleMode=true}{endToken}`. Leave `startToken`, `middleToken`, or `endToken` empty if there is no special token for those placements."
+          },
+          "openvinoCode.middleToken": {
+            "order": 8,
+            "type": "string",
+            "default": "<｜fim▁hole｜>",
+            "description": "String that is sent to server is in format: `{startToken}{text above cursor}{middleToken}{text below cursor if fillInTheMiddleMode=true}{endToken}`. Leave `startToken`, `middleToken`, or `endToken` empty if there is no special token for those placements."
+          },
+          "openvinoCode.endToken": {
+            "order": 9,
+            "type": "string",
+            "default": "<｜fim▁end｜>",
+            "description": "String that is sent to server is in format: `{startToken}{text above cursor}{middleToken}{text below cursor if fillInTheMiddleMode=true}{endToken}`. Leave `startToken`, `middleToken`, or `endToken` empty if there is no special token for those placements."
+          },
+          "openvinoCode.stopToken": {
+            "order": 10,
+            "type": "string",
+            "default": "<|endoftext|>",
+            "description": "(Optional) Stop token."
           },
           "openvinoCode.temperature": {
             "order": 4,
@@ -262,6 +327,12 @@
         "command": "openvinoCode.generateInlineCompletion",
         "key": "ctrl+alt+space",
         "mac": "ctrl+alt+space",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "openvinoCode.generateInlineCompletionTab",
+        "key": "ctrl+alt+shift+1",
+        "mac": "ctrl+alt+shift+1",
         "when": "editorTextFocus"
       },
       {

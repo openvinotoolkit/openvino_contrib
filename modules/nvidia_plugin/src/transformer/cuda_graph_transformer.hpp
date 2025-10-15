@@ -6,7 +6,6 @@
 
 #include <cuda/runtime.hpp>
 
-#include "cpp/ie_cnn_network.h"
 #include "cuda_config.hpp"
 #include "openvino/core/model.hpp"
 

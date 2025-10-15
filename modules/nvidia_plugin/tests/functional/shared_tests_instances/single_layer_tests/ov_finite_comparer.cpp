@@ -3,7 +3,6 @@
 //
 
 #include "ov_finite_comparer.hpp"
-#include "ov_models/utils/ov_helpers.hpp"
 
 using namespace ov::test;
 
@@ -78,7 +77,6 @@ inline void call_compare(const ov::Tensor& expected,
                 expected.data<ov::bfloat16>(), actual_buffer, size, threshold, to_check_nans, infinity_value);
             break;
         case ov::element::Type_t::dynamic:
-        case ov::element::Type_t::undefined:
             FiniteLayerComparer::compare<T_IE, T_IE>(
                 expected.data<T_IE>(), actual_buffer, size, threshold, to_check_nans, infinity_value);
             break;
@@ -99,8 +97,7 @@ void FiniteLayerComparer::compare(const ov::Tensor& expected,
     if (expected.get_element_type() == ov::element::Type_t::u4 ||
         expected.get_element_type() == ov::element::Type_t::i4) {
         k /= 2;
-    } else if (expected.get_element_type() == ov::element::Type_t::undefined ||
-               expected.get_element_type() == ov::element::Type_t::dynamic) {
+    } else if (expected.get_element_type() == ov::element::Type_t::dynamic) {
         k = 1;
     }
     ASSERT_EQ(expected.get_byte_size(), actual.get_byte_size() * k);

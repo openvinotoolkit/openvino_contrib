@@ -49,7 +49,7 @@ class TestParamsProvider (TestParamsProviderBase):
 
     @property
     def cpp_params_decl(self):
-        return 'const {type} {name} = \n\t{{{{ngraph::helpers::Clamp, {{{min}, {max}}}}}, {{{shape}, {{}}}}}};'.format(
+        return 'const {type} {name} = \n\t{{{{ActivationTypes::Clamp, {{{min}, {max}}}}}, {{{shape}, {{}}}}}};'.format(
             type = self.test_traits.cpp_alias_name,
             name = self.cpp_params_name,
             min = self.op.data['min'].as_float(),

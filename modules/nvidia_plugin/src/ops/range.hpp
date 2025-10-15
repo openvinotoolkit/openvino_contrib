@@ -26,7 +26,7 @@ public:
                  Outputs outputs,
                  const Workbuffers& workbuffers) const override;
 
-    bool IsCudaGraphCompatible() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
 
 private:
     size_t output_size_;

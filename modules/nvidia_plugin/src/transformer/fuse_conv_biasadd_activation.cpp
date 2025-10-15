@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2023 Intel Corporation
+// Copyright (C) 2018-2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include <type_traits>
@@ -8,7 +8,6 @@
 #include "openvino/cc/pass/itt.hpp"
 #include "fuse_conv_biasadd_activation.hpp"
 
-#include "exec_graph_info.hpp"
 #include "openvino/core/graph_util.hpp"
 #include "openvino/core/node.hpp"
 #include "openvino/core/node_output.hpp"

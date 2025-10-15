@@ -2,17 +2,22 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <random>
 #include <gtest/gtest.h>
 
+#include "common_test_utils/node_builders/eltwise.hpp"
 #include "cuda_graph_topology_runner.hpp"
 #include "cuda_simple_execution_delegator.hpp"
-#include "ov_models/builders.hpp"
-#include "ov_models/utils/data_utils.hpp"
+#include "openvino/op/concat.hpp"
+#include "openvino/op/constant.hpp"
+#include "openvino/op/parameter.hpp"
+#include "openvino/op/result.hpp"
 #include "ops/parameter.hpp"
 #include "ops/result.hpp"
 
 using namespace ov::nvidia_gpu;
 using namespace testing;
+using ov::test::utils::EltwiseTypes;
 
 namespace {
 
@@ -63,11 +68,11 @@ public:
         for (std::size_t i = 0; i < INPUTS_COUNT; ++i) {
             params.emplace_back(std::make_shared<ov::op::v0::Parameter>(prc, shape));
         }
-        const auto add0 = ngraph::builder::makeEltwise(params[0], params[1], ngraph::helpers::EltwiseTypes::ADD);
-        const auto add1 = ngraph::builder::makeEltwise(params[2], params[3], ngraph::helpers::EltwiseTypes::ADD);
+        const auto add0 = ov::test::utils::make_eltwise(params[0], params[1], EltwiseTypes::ADD);
+        const auto add1 = ov::test::utils::make_eltwise(params[2], params[3], EltwiseTypes::ADD);
 
-        const auto mul = ngraph::builder::makeEltwise(add0, add1, ngraph::helpers::EltwiseTypes::MULTIPLY);
-        const auto result = std::make_shared<ngraph::opset1::Result>(mul);
+        const auto mul = ov::test::utils::make_eltwise(add0, add1, EltwiseTypes::MULTIPLY);
+        const auto result = std::make_shared<ov::op::v0::Result>(mul);
         return std::make_shared<ov::Model>(result, params, "AddMul");
     }
 
@@ -78,7 +83,7 @@ public:
 
     static void checkSubGraph(const SubGraph& subGraph) {
         // Original SubGraph for AddMul network should be CUDA Graph compatible
-        EXPECT_TRUE(subGraph.IsCudaGraphCompatible());
+        EXPECT_EQ(subGraph.GetCudaGraphCompatibility(), CudaGraphCompatibility::FULL);
     }
 
     static std::vector<std::vector<ov::float16>> calcRefs(
@@ -108,13 +113,12 @@ public:
         for (std::size_t i = 0; i < INPUTS_COUNT; ++i) {
             params.emplace_back(std::make_shared<ov::op::v0::Parameter>(prc, shape));
         }
-        const auto add0 = ngraph::builder::makeEltwise(params[0], params[1], ngraph::helpers::EltwiseTypes::ADD);
-        const auto add1 = ngraph::builder::makeEltwise(params[2], params[3], ngraph::helpers::EltwiseTypes::ADD);
+        const auto add0 = ov::test::utils::make_eltwise(params[0], params[1], EltwiseTypes::ADD);
+        const auto add1 = ov::test::utils::make_eltwise(params[2], params[3], EltwiseTypes::ADD);
 
         constexpr int64_t axis = CONCAT_AXIS;
-        const auto concat =
-            std::make_shared<ngraph::opset1::Concat>(ngraph::helpers::convert2OutputVector({add0, add1}), axis);
-        const auto result = std::make_shared<ngraph::opset1::Result>(concat);
+        const auto concat = std::make_shared<ov::op::v0::Concat>(ov::OutputVector{add0, add1}, axis);
+        const auto result = std::make_shared<ov::op::v0::Result>(concat);
         return std::make_shared<ov::Model>(result, params, "AddConcat");
     }
 
@@ -125,7 +129,7 @@ public:
 
     static void checkSubGraph(const SubGraph& subGraph) {
         // Original SubGraph for AddConcat network should not be CUDA Graph compatible
-        EXPECT_FALSE(subGraph.IsCudaGraphCompatible());
+        EXPECT_EQ(subGraph.GetCudaGraphCompatibility(), CudaGraphCompatibility::NONE);
     }
 
     static std::vector<std::vector<ov::float16>> calcRefs(

@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2023 Intel Corporation
+// Copyright (C) 2018-2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,9 +8,8 @@
 #include <memory>
 #include <string>
 
-#include "nvidia/nvidia_config.hpp"
 #include "openvino/runtime/properties.hpp"
-#include "threading/ie_istreams_executor.hpp"
+#include "openvino/runtime/threading/istreams_executor.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -58,7 +57,7 @@ private:
     ov::streams::Num num_streams = 0;
     ov::hint::PerformanceMode performance_mode = ov::hint::PerformanceMode::LATENCY;
     ov::hint::ExecutionMode execution_mode = ov::hint::ExecutionMode::PERFORMANCE;
-    ov::element::Type inference_precision = ov::element::undefined;
+    ov::element::Type inference_precision = ov::element::dynamic;
 };
 
 }  // namespace nvidia_gpu

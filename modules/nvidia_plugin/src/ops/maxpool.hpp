@@ -23,7 +23,7 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
-    bool IsCudaGraphCompatible() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
 
 private:
     PoolingImpl impl_;

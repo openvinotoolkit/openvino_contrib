@@ -78,7 +78,7 @@ ov::PartialShape validate_matmul_output_shape(const ov::PartialShape& arg0_shape
     auto arg0_rank = arg0_shape.rank().get_length();
     auto arg1_rank = arg1_shape.rank().get_length();
 
-    NGRAPH_CHECK((arg0_rank != 0 && arg1_rank != 0), "Scalars are not supported as MatMul inputs.");
+    OPENVINO_ASSERT((arg0_rank != 0 && arg1_rank != 0), "Scalars are not supported as MatMul inputs.");
 
     // Temporary Dimension vectors to calculate output shape
     std::vector<ov::Dimension> arg0_shape_tmp(arg0_shape);
@@ -117,17 +117,17 @@ ov::PartialShape validate_matmul_output_shape(const ov::PartialShape& arg0_shape
     auto merged_dimension = ov::Dimension::dynamic();
     auto arg0_col_dim = arg0_shape_tmp[arg0_rank - 1];
     auto arg1_row_dim = arg1_shape_tmp[arg1_rank - 2];
-    NGRAPH_CHECK(ov::Dimension::merge(merged_dimension, arg0_col_dim, arg1_row_dim) || arg0_col_dim.is_dynamic() ||
-                     arg1_row_dim.is_dynamic(),
-                 "Incompatible MatMul matrix dimension. ",
-                 "First input dimension=",
-                 arg0_col_dim,
-                 " at COL_INDEX_DIM=",
-                 (arg0_rank - 1),
-                 " doesn't match the second input dimension=",
-                 arg1_row_dim,
-                 " at ROW_INDEX_DIM=",
-                 (arg1_rank - 2));
+    OPENVINO_ASSERT(ov::Dimension::merge(merged_dimension, arg0_col_dim, arg1_row_dim) || arg0_col_dim.is_dynamic() ||
+                        arg1_row_dim.is_dynamic(),
+                    "Incompatible MatMul matrix dimension. ",
+                    "First input dimension=",
+                    arg0_col_dim,
+                    " at COL_INDEX_DIM=",
+                    (arg0_rank - 1),
+                    " doesn't match the second input dimension=",
+                    arg1_row_dim,
+                    " at ROW_INDEX_DIM=",
+                    (arg1_rank - 2));
 
     // 3. If ranks of input arguments are different after steps 1 and 2,
     // the smaller tensor is unsqueezed from the left side of the shape
@@ -152,15 +152,15 @@ ov::PartialShape validate_matmul_output_shape(const ov::PartialShape& arg0_shape
             // to ensure MatMul backward compatibility.
             // Instead fully dynamic dimension is set as default for such a case.
             auto merged_dimension = ov::Dimension::dynamic();
-            NGRAPH_CHECK(ov::Dimension::merge(merged_dimension, arg0_shape_tmp[i], arg1_shape_tmp[i]) ||
-                             arg0_shape_tmp[i].is_dynamic() || arg1_shape_tmp[i].is_dynamic(),
-                         "Incompatible MatMul batch dimension. ",
-                         "Can't merge first input dimension=",
-                         arg0_shape_tmp[i],
-                         " with second input dimension=",
-                         arg1_shape_tmp[i],
-                         " at index=",
-                         i);
+            OPENVINO_ASSERT(ov::Dimension::merge(merged_dimension, arg0_shape_tmp[i], arg1_shape_tmp[i]) ||
+                                arg0_shape_tmp[i].is_dynamic() || arg1_shape_tmp[i].is_dynamic(),
+                            "Incompatible MatMul batch dimension. ",
+                            "Can't merge first input dimension=",
+                            arg0_shape_tmp[i],
+                            " with second input dimension=",
+                            arg1_shape_tmp[i],
+                            " at index=",
+                            i);
 
             output_shape[i] = merged_dimension;
         } else {

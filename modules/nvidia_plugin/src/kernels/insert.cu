@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -70,8 +70,44 @@ void Insert::operator()(const cudaStream_t stream, const void* src, void* dst, c
         case Type_t::u64:
             return call<uint64_t>(stream, src, dst, start);
         default:
-            throw_ov_exception(fmt::format("Input element type = {} is not supported by Split operation !!",
+            throw_ov_exception(fmt::format("Input element type = {} is not supported by Insert operation !!",
                                          static_cast<Type_t>(element_type_)));
+    }
+}
+
+void* Insert::getKernel() const {
+    switch (element_type_) {
+        case Type_t::boolean:
+            return reinterpret_cast<void*>(&insert_part<bool>);
+#ifdef CUDA_HAS_BF16_TYPE
+        case Type_t::bf16:
+            return reinterpret_cast<void*>(&insert_part<__nv_bfloat16>);
+#endif
+        case Type_t::f16:
+            return reinterpret_cast<void*>(&insert_part<__half>);
+        case Type_t::f32:
+            return reinterpret_cast<void*>(&insert_part<float>);
+        case Type_t::f64:
+            return reinterpret_cast<void*>(&insert_part<double>);
+        case Type_t::i8:
+            return reinterpret_cast<void*>(&insert_part<int8_t>);
+        case Type_t::i16:
+            return reinterpret_cast<void*>(&insert_part<int16_t>);
+        case Type_t::i32:
+            return reinterpret_cast<void*>(&insert_part<int32_t>);
+        case Type_t::i64:
+            return reinterpret_cast<void*>(&insert_part<int64_t>);
+        case Type_t::u8:
+            return reinterpret_cast<void*>(&insert_part<uint8_t>);
+        case Type_t::u16:
+            return reinterpret_cast<void*>(&insert_part<uint16_t>);
+        case Type_t::u32:
+            return reinterpret_cast<void*>(&insert_part<uint32_t>);
+        case Type_t::u64:
+            return reinterpret_cast<void*>(&insert_part<uint64_t>);
+        default:
+            throw_ov_exception(fmt::format("Input element type = {} is not supported by Insert operation !!",
+                                           static_cast<Type_t>(element_type_)));
     }
 }
 

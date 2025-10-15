@@ -20,7 +20,9 @@ LSTMSequenceOpBase::LSTMSequenceOpBase(const CreationContext& context,
     : OperationCuDnn(context, node, std::move(inputIds), std::move(outputIds)),
       params_{params},
       descs_{context, params_, config},
-      is_cuda_graph_compatible_{RNN::Details::isRNNSequenceCudaGraphCompatible(context.device())} {
+      graph_compatibility_{RNN::Details::isRNNSequenceCudaGraphCompatible(context.device())
+                               ? CudaGraphCompatibility::FULL
+                               : CudaGraphCompatibility::NONE} {
     ib_seq_lengths_.addRequest(immut_sizes_, descs_.seqLengthArraySizeBytes());
     ib_weight_space_.addRequest(immut_sizes_, descs_.weightSpaceSize());
 
@@ -76,7 +78,7 @@ void LSTMSequenceOpBase::Execute(const InferenceRequestContext& context,
     if (cy_adapter) cy_adapter->execute(context, mb, outputs[ArgIndices::cell_output]);
 }
 
-bool LSTMSequenceOpBase::IsCudaGraphCompatible() const { return is_cuda_graph_compatible_; }
+CudaGraphCompatibility LSTMSequenceOpBase::GetCudaGraphCompatibility() const { return graph_compatibility_; }
 
 void LSTMSequenceOpBase::InitSharedImmutableWorkbuffers(const IOperationExec::Buffers& buffers) {
     descs_.initDevSeqLengthArray(CUDA::DevicePointer<void*>{ib_seq_lengths_.requiredPtr(buffers)});

@@ -4,7 +4,6 @@
 
 #include "complex_mul.hpp"
 #include <openvino/core/parallel.hpp>
-#include <ie_common.h>
 
 using namespace TemplateExtension;
 
@@ -23,8 +22,8 @@ std::shared_ptr<ov::Node> ComplexMultiplication::clone_with_new_inputs(const ov:
 }
 
 bool ComplexMultiplication::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
-    const float* inp0 = reinterpret_cast<float*>(inputs[0].data());
-    const float* inp1 = reinterpret_cast<float*>(inputs[1].data());
+    const float *inp0 = reinterpret_cast<const float *>(inputs[0].data());
+    const float *inp1 = reinterpret_cast<const float *>(inputs[1].data());
     float* out = reinterpret_cast<float*>(outputs[0].data());
 
     size_t channels0 = inputs[0].get_shape()[1];
@@ -61,14 +60,14 @@ bool ComplexMultiplication::evaluate(ov::TensorVector& outputs, const ov::Tensor
             }
         });
     else
-        IE_THROW() << "Wrong number of channels for second input!";
+        OPENVINO_THROW("Wrong number of channels for second input!");
 
     return true;
 }
 
 bool ComplexMultiplication::has_evaluate() const {
     for (size_t i = 0; i < get_input_size(); ++i)
-        if (get_input_element_type(i) != ngraph::element::f32)
+        if (get_input_element_type(i) != ov::element::f32)
             return false;
     return true;
 }

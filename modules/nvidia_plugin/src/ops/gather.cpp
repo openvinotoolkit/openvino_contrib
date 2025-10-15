@@ -48,7 +48,6 @@ GatherOp::GatherOp(const CreationContext& context,
 
     const ov::element::Type_t element_type = node.get_input_element_type(0);
     switch (element_type) {
-        case ov::element::Type_t::undefined:
         case ov::element::Type_t::dynamic:
         case ov::element::Type_t::u1:
             throw_ov_exception(fmt::format("Params element type = {} is not supported by Gather operation!",
@@ -178,7 +177,7 @@ void GatherOp::Execute(const InferenceRequestContext& context,
     (*gather_kernel_)(context.getThreadContext().stream().get(), inputs[0].get(), inputs[1].get(), outputs[0].get());
 }
 
-bool GatherOp::IsCudaGraphCompatible() const { return true; }
+CudaGraphCompatibility GatherOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
 
 OPERATION_REGISTER(GatherOp, Gather);
 }  // namespace nvidia_gpu

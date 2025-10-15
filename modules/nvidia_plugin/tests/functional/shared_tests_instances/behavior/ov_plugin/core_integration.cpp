@@ -1,8 +1,9 @@
-// Copyright (C) 2018-2023 Intel Corporation
+// Copyright (C) 2018-2024 Intel Corporation
 // SPDX-License-Identifcorer: Apache-2.0
 //
 
-#include "behavior/ov_plugin/core_integration.hpp"
+#include "behavior/ov_plugin/properties_tests.hpp"
+#include "behavior/ov_plugin/query_model.hpp"
 
 #include <cuda_test_constants.hpp>
 #include <string>
@@ -17,13 +18,8 @@ namespace {
 // OV Class Common tests with <pluginName, device_name params>
 //
 
-INSTANTIATE_TEST_SUITE_P(smoke_OVClassBasicTestP,
-                         OVClassBasicTestP,
-                         ::testing::Values(std::make_pair("openvino_nvidia_gpu_plugin",
-                                                          ov::test::utils::DEVICE_NVIDIA)));
-
 INSTANTIATE_TEST_SUITE_P(smoke_OVClassNetworkTestP,
-                         OVClassNetworkTestP,
+                         OVClassModelTestP,
                          ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 //
@@ -31,48 +27,21 @@ INSTANTIATE_TEST_SUITE_P(smoke_OVClassNetworkTestP,
 //
 
 INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetMetricTest,
-                         OVClassGetMetricTest_SUPPORTED_CONFIG_KEYS,
+                         OVGetMetricPropsTest,
                          ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
-INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetMetricTest,
-                         OVClassGetMetricTest_SUPPORTED_METRICS,
-                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
-
-INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetMetricTest,
-                         OVClassGetMetricTest_DEVICE_UUID,
-                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
-
-INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetMetricTest,
-                         OVClassGetMetricTest_AVAILABLE_DEVICES,
-                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
-
-INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetMetricTest,
-                         OVClassGetMetricTest_FULL_DEVICE_NAME,
-                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
-
-INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetMetricTest,
-                         OVClassGetMetricTest_OPTIMIZATION_CAPABILITIES,
-                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
-
-INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetMetricTest,
-                         OVClassGetMetricTest_RANGE_FOR_ASYNC_INFER_REQUESTS,
-                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
-
-INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetMetricTest,
-                         OVClassGetMetricTest_ThrowUnsupported,
-                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
-
-INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetConfigTest,
-                         OVClassGetConfigTest_ThrowUnsupported,
-                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
+INSTANTIATE_TEST_SUITE_P(smoke_OVBasicPropertiesTestsP,
+                         OVBasicPropertiesTestsP,
+                         ::testing::Values(std::make_pair("openvino_nvidia_gpu_plugin",
+                                                          ov::test::utils::DEVICE_NVIDIA)));
 
 #ifdef PROXY_PLUGIN_ENABLED
 INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetAvailableDevices,
-                         OVClassGetAvailableDevices,
+                         OVGetAvailableDevicesPropsTest,
                          ::testing::Values(ov::test::utils::DEVICE_GPU));
 #else
 INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetAvailableDevices,
-                         OVClassGetAvailableDevices,
+                         OVGetAvailableDevicesPropsTest,
                          ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 #endif
 
@@ -81,10 +50,10 @@ INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetAvailableDevices,
 //
 
 INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetConfigTest,
-                         OVClassGetConfigTest,
+                         OVPropertiesDefaultSupportedTests,
                          ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
-TEST(OVClassBasicTest, smoke_CUDAGetSetConfigNoThrow) {
+TEST(OVClassBasicPropsTestP, smoke_CUDAGetSetConfigNoThrow) {
     ov::Core core = createCoreWithTemplate();
 
     auto device_name = ov::test::utils::DEVICE_NVIDIA;
@@ -106,14 +75,8 @@ TEST(OVClassBasicTest, smoke_CUDAGetSetConfigNoThrow) {
 }
 
 // OV Class Query network
-
-INSTANTIATE_TEST_SUITE_P(smoke_OVClassQueryNetworkTest,
-                         OVClassQueryNetworkTest,
+INSTANTIATE_TEST_SUITE_P(smoke_OVClassQueryModelTest,
+                         OVClassQueryModelTest,
                          ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
-// OV Class Load network
-
-INSTANTIATE_TEST_SUITE_P(smoke_OVClassLoadNetworkTest,
-                         OVClassLoadNetworkTest,
-                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 }  // namespace

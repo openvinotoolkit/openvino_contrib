@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "cuda_op_buffers_extractor.hpp"
+#include "openvino/core/model.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/multiply.hpp"

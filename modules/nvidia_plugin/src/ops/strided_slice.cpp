@@ -103,7 +103,9 @@ void StridedSliceOp<T>::Execute(const InferenceRequestContext& context,
 }
 
 template <typename T>
-bool StridedSliceOp<T>::IsCudaGraphCompatible() const { return true; }
+CudaGraphCompatibility StridedSliceOp<T>::GetCudaGraphCompatibility() const {
+    return CudaGraphCompatibility::FULL;
+}
 
 template <typename T>
 WorkbufferRequest StridedSliceOp<T>::GetWorkBufferRequest() const {

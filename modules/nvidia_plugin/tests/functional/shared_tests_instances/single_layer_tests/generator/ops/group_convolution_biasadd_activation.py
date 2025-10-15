@@ -69,4 +69,4 @@ class TestParamsProvider (TestParamsProviderBase):
 
     @property
     def cpp_activations(self):
-        return '{ngraph::helpers::ActivationTypes::None}'
+        return '{ActivationTypes::None}'

@@ -6,7 +6,6 @@
 
 #include <cudnn.h>
 
-#include <details/ie_exception.hpp>
 #include <openvino/core/except.hpp>
 
 #include "cuda/constant_factory.hpp"
@@ -44,7 +43,7 @@ void ConvolutionCuDnn::Execute(const InferenceRequestContext& context,
     throwIfError(status);
 }
 
-bool ConvolutionCuDnn::IsCudaGraphCompatible() const { return true; }
+CudaGraphCompatibility ConvolutionCuDnn::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
 
 WorkbufferRequest ConvolutionCuDnn::GetWorkBufferRequest() const {
     if (descs_.Algo().memory != 0)

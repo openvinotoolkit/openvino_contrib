@@ -12,7 +12,6 @@
 namespace {
 using namespace ov::test;
 using namespace ov::test::utils;
-using namespace ngraph::helpers;
 
 class UnsymmetricalComparisonLayerTest : public UnsymmetricalComparer<ComparisonLayerTest> {};
 

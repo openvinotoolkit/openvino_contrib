@@ -86,8 +86,13 @@ public final class NativeLibrary {
 
             // Load native libraries.
             for (String lib : nativeLibs) {
-                // On Linux, TBB and GNA libraries has .so.2 soname
-                String version = lib.startsWith("tbb") || lib.equals("gna") ? "2" : null;
+                // On Linux, tbb library has .so.12 and tbbmalloc library has .so.2 soname
+                String version = null;
+                if (lib.equals("tbb")) {
+                    version = "12";
+                } else if (lib.equals("tbbmalloc")) {
+                    version = "2";
+                }
                 lib = getLibraryName(lib, version);
                 File nativeLibTmpFile = new File(tmpDir, lib);
                 try {

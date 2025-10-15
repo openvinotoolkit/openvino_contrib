@@ -18,7 +18,7 @@ public:
                IndexCollection&& outputIds,
                kernel::Comparison::Op_t operation_type);
 
-    bool IsCudaGraphCompatible() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
 
 private:
     void calculateOffsets();

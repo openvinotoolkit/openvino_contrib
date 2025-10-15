@@ -15,15 +15,17 @@ defaults:
   run:
     working-directory: ./modules/openvino_code
 
+permissions: read-all
+
 jobs:
   check_extension:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
 
       - name: Use Node.js 16.x
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@1a4442cacd436585916779262731d5b162bc6ec7 # v3.8.2
         with:
           node-version: '16.x'
           cache: 'npm'
@@ -34,15 +36,15 @@ jobs:
 
       - name: Run Lint
         run: npm run lint:all
-  
+
   check_server:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-    
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+
       - name: Set up Python 3.8
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@65d7f2d534ac1bc67fcd62888c5f4f3d2cb2b236 # v4.7.1
         with:
           python-version: '3.8'
           cache: 'pip'

@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -16,7 +16,7 @@ namespace nvidia_gpu {
 namespace kernel {
 
 template <typename T>
-static __global__ void slice_part(const Slice::Props *props, const size_t start, const size_t size, const T *x, T *y) {
+static __global__ void slice_part(const Slice::Props* props, const size_t start, const size_t size, const T* x, T* y) {
     const unsigned i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < size) {
         const size_t old_rank = rank(props->old_shape);
@@ -32,13 +32,13 @@ static __global__ void slice_part(const Slice::Props *props, const size_t start,
     }
 }
 
-Slice::Slice(const Type_t element_type, const Props &props, const size_t max_threads_per_block)
+Slice::Slice(const Type_t element_type, const Props& props, const size_t max_threads_per_block)
     : element_type_{element_type}, props_{props}, size_{shape_size(props.new_shape)} {
     TypeValidator<AllElementTypesSwitch>::check(element_type_);
     std::tie(num_blocks_, threads_per_block_) = calculateElementwiseGrid(size_, max_threads_per_block);
 }
 
-void Slice::operator()(cudaStream_t stream, const void *src, void *dst, const size_t start) const {
+void Slice::operator()(cudaStream_t stream, const void* src, void* dst, const size_t start) const {
     switch (element_type_) {
         case Type_t::boolean:
             return call<bool>(stream, src, dst, start);
@@ -76,11 +76,47 @@ void Slice::operator()(cudaStream_t stream, const void *src, void *dst, const si
     }
 }
 
+void* Slice::getKernel() const {
+    switch (element_type_) {
+        case Type_t::boolean:
+            return reinterpret_cast<void*>(&slice_part<bool>);
+#ifdef CUDA_HAS_BF16_TYPE
+        case Type_t::bf16:
+            return reinterpret_cast<void*>(&slice_part<__nv_bfloat16>);
+#endif
+        case Type_t::f16:
+            return reinterpret_cast<void*>(&slice_part<__half>);
+        case Type_t::f32:
+            return reinterpret_cast<void*>(&slice_part<float>);
+        case Type_t::f64:
+            return reinterpret_cast<void*>(&slice_part<double>);
+        case Type_t::i8:
+            return reinterpret_cast<void*>(&slice_part<int8_t>);
+        case Type_t::i16:
+            return reinterpret_cast<void*>(&slice_part<int16_t>);
+        case Type_t::i32:
+            return reinterpret_cast<void*>(&slice_part<int32_t>);
+        case Type_t::i64:
+            return reinterpret_cast<void*>(&slice_part<int64_t>);
+        case Type_t::u8:
+            return reinterpret_cast<void*>(&slice_part<uint8_t>);
+        case Type_t::u16:
+            return reinterpret_cast<void*>(&slice_part<uint16_t>);
+        case Type_t::u32:
+            return reinterpret_cast<void*>(&slice_part<uint32_t>);
+        case Type_t::u64:
+            return reinterpret_cast<void*>(&slice_part<uint64_t>);
+        default:
+            throw_ov_exception(fmt::format("Input element type = {} is not supported by Split operation !!",
+                                           static_cast<Type_t>(element_type_)));
+    }
+}
+
 template <typename T>
-void Slice::call(cudaStream_t stream, const void *src, void *dst, size_t start) const {
+void Slice::call(cudaStream_t stream, const void* src, void* dst, size_t start) const {
     assertThrow(props_ptr_, "props_ptr_ == nullptr");
     slice_part<T><<<num_blocks_, threads_per_block_, 0, stream>>>(
-        static_cast<const Props *>(props_ptr_), start, size_, static_cast<const T *>(src), static_cast<T *>(dst));
+        static_cast<const Props*>(props_ptr_), start, size_, static_cast<const T*>(src), static_cast<T*>(dst));
 }
 
 }  // namespace kernel

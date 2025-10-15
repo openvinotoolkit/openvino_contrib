@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2023 Intel Corporation
+// Copyright (C) 2018-2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -144,6 +144,18 @@ void Profiler::capture_sequence(const SubGraph* subGraphPtr,
         const auto& outputTensors = memoryManager.outputTensorPointers(*op, buffer);
         const auto& workBuffers = memoryManager.workBuffers(*op, buffer);
         op->capture(context, inputTensors, outputTensors, workBuffers);
+    }
+}
+
+void Profiler::execute_graph_sequence(const SubGraph* subGraphPtr,
+                                      const MemoryManager& memoryManager,
+                                      const Workbuffers::mutable_buffer& buffer,
+                                      InferenceRequestContext& context) {
+    for (const auto& op : create_exec_sequence(subGraphPtr)) {
+        const auto& inTensors = memoryManager.inputTensorPointers(*op, buffer);
+        const auto& outTensors = memoryManager.outputTensorPointers(*op, buffer);
+        const auto& workBuffers = memoryManager.workBuffers(*op, buffer);
+        op->execute_graph(context, inTensors, outTensors, workBuffers);
     }
 }
 

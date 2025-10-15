@@ -84,7 +84,7 @@ Comparison::Comparison(const CreationContext& context,
                                  threads_per_block};
 }
 
-bool Comparison::IsCudaGraphCompatible() const { return true; }
+CudaGraphCompatibility Comparison::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
 
 void Comparison::Execute(const InferenceRequestContext& context,
                          Inputs inputs,

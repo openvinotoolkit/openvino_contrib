@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2023 Intel Corporation
+// Copyright (C) 2018-2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "cuda_operation_registry.hpp"
 #include "openvino/core/model.hpp"
 #include "openvino/op/convert.hpp"
+#include "openvino/op/parameter.hpp"
 #include "openvino/op/detection_output.hpp"
 #include "openvino/pass/manager.hpp"
 #include "transformations/init_node_info.hpp"

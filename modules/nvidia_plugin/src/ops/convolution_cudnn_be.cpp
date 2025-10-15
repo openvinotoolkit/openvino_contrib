@@ -7,7 +7,6 @@
 #include <fmt/format.h>
 
 #include <algorithm>
-#include <details/ie_exception.hpp>
 #include <openvino/core/except.hpp>
 #include <ops/converters.hpp>
 
@@ -148,7 +147,7 @@ void ConvolutionCuDnnBE::Execute(const InferenceRequestContext& context,
     throwIfError(::cudnnBackendExecute(context.getThreadContext().dnnHandle().get(), plan->get(), variantPack->get()));
 }
 
-bool ConvolutionCuDnnBE::IsCudaGraphCompatible() const { return false; }
+CudaGraphCompatibility ConvolutionCuDnnBE::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::NONE; }
 
 std::shared_ptr<CUDA::DnnBETensorDescriptor> ConvolutionCuDnnBE::MakeTensorDescriptor(int64_t id,
                                                                                       cudnnDataType_t element_type,

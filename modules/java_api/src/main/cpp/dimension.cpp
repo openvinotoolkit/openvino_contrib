@@ -17,9 +17,3 @@ JNIEXPORT jint JNICALL Java_org_intel_openvino_Dimension_getLength(JNIEnv *env, 
     )
     return 0;
 }
-
-JNIEXPORT void JNICALL Java_org_intel_openvino_Dimension_delete(JNIEnv *, jobject, jlong addr)
-{
-    Dimension *dim = (Dimension *)addr;
-    delete dim;
-}

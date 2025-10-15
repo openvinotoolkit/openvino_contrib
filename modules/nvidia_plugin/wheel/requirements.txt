@@ -1,1 +1,1 @@
-openvino==2022.3.0
+openvino==2025.3.0

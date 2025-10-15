@@ -52,6 +52,16 @@ auto operator-(DevicePointer<T*> l, DevicePointer<T*> r) noexcept {
     return static_cast<const char*>(l.get()) - static_cast<const char*>(r);
 }
 
+template <typename T, typename U>
+bool operator==(const DevicePointer<T*>& lhs, const DevicePointer<U*>& rhs) {
+    return lhs.get() == rhs.get();
+}
+
+template <typename T, typename U>
+bool operator!=(const DevicePointer<T*>& lhs, const DevicePointer<U*>& rhs) {
+    return lhs.get() != rhs.get();
+}
+
 template <typename T, std::size_t Extent = gsl::dynamic_extent>
 class DeviceBuffer : private gsl::span<T, Extent> {
 public:

@@ -1,15 +1,15 @@
 # Copyright (C) 2018-2022 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-from openvino.runtime import Core
-from openvino.tools.mo import convert_model
+from openvino import Core
+from openvino import convert_model
 
 import pytest
 import numpy as np
 import os
 
 
-def run_test(ref_inputs, ref_res, test_onnx=False, threshold=1e-5): 
+def run_test(ref_inputs, ref_res, test_onnx=False, threshold=1e-5):
     inputs = {}
     shapes = {}
     for i in range(len(ref_inputs)):
@@ -22,12 +22,12 @@ def run_test(ref_inputs, ref_res, test_onnx=False, threshold=1e-5):
     core = Core()
     core.add_extension(ext_path)
 
-    net = core.read_model('model.onnx') if test_onnx else convert_model('model.onnx', extensions=ext_path)
+    net = core.read_model('model.onnx') if test_onnx else convert_model('model.onnx', extension=ext_path)
 
     net.reshape(shapes)
-    exec_net = core.compile_model(net, 'CPU')
+    compiled_model = core.compile_model(net, 'CPU')
 
-    out = exec_net.infer_new_request(inputs)
+    out = compiled_model(inputs)
     out = next(iter(out.values()))
 
     assert ref_res.shape == out.shape
@@ -70,7 +70,7 @@ def test_sparse_conv(in_channels, filters, kernel_size, out_pos):
     from examples.sparse_conv.export_model import export
 
     inp, ref = export(num_inp_points=1000, num_out_points=out_pos, max_grid_extent=4, in_channels=in_channels,
-                    filters=filters, kernel_size=kernel_size, transpose=False)
+                      filters=filters, kernel_size=kernel_size, transpose=False)
     run_test(inp, ref, test_onnx=True, threshold=1e-4)
 
 
@@ -82,7 +82,7 @@ def test_sparse_conv_transpose(in_channels, filters, kernel_size, out_pos):
     from examples.sparse_conv.export_model import export
 
     inp, ref = export(num_inp_points=1000, num_out_points=out_pos, max_grid_extent=4, in_channels=in_channels,
-                    filters=filters, kernel_size=kernel_size, transpose=True)
+                      filters=filters, kernel_size=kernel_size, transpose=True)
     run_test(inp, ref, test_onnx=True, threshold=1e-4)
 
 

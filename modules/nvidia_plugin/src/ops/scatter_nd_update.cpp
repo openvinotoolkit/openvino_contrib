@@ -23,7 +23,6 @@ ScatterNDUpdateOp::ScatterNDUpdateOp(const CreationContext& context,
 
     const ov::element::Type_t input_type = node.get_input_element_type(0);
     switch (input_type) {
-        case ov::element::Type_t::undefined:
         case ov::element::Type_t::dynamic:
         case ov::element::Type_t::u1:
             throw_ov_exception(fmt::format("Params element type = {} is not supported by ScatterNDUpdate operation!",
@@ -100,7 +99,7 @@ void ScatterNDUpdateOp::Execute(const InferenceRequestContext& context,
                outputs[0].get());
 }
 
-bool ScatterNDUpdateOp::IsCudaGraphCompatible() const { return true; }
+CudaGraphCompatibility ScatterNDUpdateOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
 
 template <typename T>
 static auto size_in_bytes(const std::vector<T>& v) noexcept {

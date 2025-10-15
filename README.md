@@ -9,11 +9,13 @@ So, all the new modules should be developed separately, and published in the `op
 This list gives an overview of all modules available inside the contrib repository.
 
 * [**nvidia_plugin**](./modules/nvidia_plugin): NVIDIA GPU Plugin -- allows to perform deep neural networks inference on NVIDIA GPUs using CUDA, using OpenVINO API.
-* [**java_api**](./modules/java_api): Inference Engine Java API -- provides Java wrappers for Inference Engine public API.
-* [**rust_api**](./modules/rust_api): Inference Engine Rust API -- explains how to use the OpenVINO APIs from Rust.
+* [**java_api**](./modules/java_api): OpenVINO Java API -- provides Java wrappers for OpenVINO Runtime public API.
+* [**rust_api**](https://github.com/intel/openvino-rs): Inference Engine Rust API -- explains how to use the OpenVINO APIs from Rust.
 * [**custom_operations**](./modules/custom_operations/): Collection of Custom Operations -- implement Custom Operations with OpenVINO Extensibility Mechanism.
 * [**Token Merging**](./modules/token_merging/): adaptation of [Token Merging method](https://arxiv.org/abs/2210.09461) for OpenVINO.
 * [**OpenVINO Code**](./modules/openvino_code): VSCode extension for AI code completion with OpenVINO.
+* [**Ollama-OpenVINO**](./modules/ollama_openvino): OpenVINO GenAI empowered Ollama which accelerate LLM on Intel platforms(including CPU, iGPU/dGPU, NPU).
+* [**ov_training_kit**](./modules/ov_training_kit): Training Kit Python library -- provides scikit-learn, PyTorch and Tensorflow wrappers for training, optimization, and deployment with OpenVINO on AI PCs.
 
 ## How to build OpenVINO with extra modules
 You can build OpenVINO, so it will include the modules from this repository. Contrib modules are under constant development and it is recommended to use them alongside the master branch or latest releases of OpenVINO.
@@ -36,6 +38,8 @@ Additional build instructions are available for the following modules:
 
 * [**nvidia_plugin**](./modules/nvidia_plugin/README.md)
 * [**custom_operations**](./modules/custom_operations/README.md)
+* [**ollama_OpenVINO**](./modules/ollama_openvino)
+* [**openvino-langchain**](./modules/openvino-langchain): LangChain.js integrations for OpenVINO™
 
 ## Update the repository documentation
 In order to keep a clean overview containing all contributed modules, the following files need to be created/adapted:

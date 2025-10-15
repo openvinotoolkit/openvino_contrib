@@ -31,9 +31,9 @@ public:
         constexpr const size_t N_DIM = 0;
         constexpr const size_t H_DIM = 1;
         constexpr const size_t W_DIM = 2;
-        NGRAPH_CHECK(node.get_input_size() == 1 || node.get_input_size() == 2,
-                     "NV12 conversion shall have one or 2 inputs, but it is ",
-                     node.get_input_size());
+        OPENVINO_ASSERT(node.get_input_size() == 1 || node.get_input_size() == 2,
+                        "NV12 conversion shall have one or 2 inputs, but it is ",
+                        node.get_input_size());
         const bool single_plane = node.get_input_size() == 1;
 
         const auto& in_tensor_shape = node.get_input_shape(0);
@@ -90,7 +90,7 @@ public:
         }
     }
 
-    bool IsCudaGraphCompatible() const override { return true; }
+    CudaGraphCompatibility GetCudaGraphCompatibility() const override { return CudaGraphCompatibility::FULL; }
 
 private:
     std::optional<TKernel> kernel_;

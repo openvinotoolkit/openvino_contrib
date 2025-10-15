@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2023 Intel Corporation
+// Copyright (C) 2018-2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -71,6 +71,18 @@ public:
                           InferenceRequestContext& context) override;
 
     /**
+     * Execute CUDA graph sequence from SubGraph class
+     * @param subGraphPtr Pointer to SubGraph
+     * @param memoryManager Reference to MemoryManager
+     * @param buffer Reference to orkbuffers::mutable_buffer
+     * @param context Reference to InferenceRequestContext
+     */
+    virtual void execute_graph_sequence(const SubGraph* subGraphPtr,
+                                        const MemoryManager& memoryManager,
+                                        const Workbuffers::mutable_buffer& buffer,
+                                        InferenceRequestContext& context) override;
+
+    /**
      * Returns performance counters
      * @return Performance counters
      */
@@ -137,6 +149,13 @@ public:
     void capture(TArgs&&... args) const {
         timing_.setStart(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
         exec_step_.Capture(std::forward<TArgs>(args)...);
+        timing_.setStop(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
+    }
+
+    template <typename... TArgs>
+    void execute_graph(TArgs&&... args) const {
+        timing_.setStart(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
+        exec_step_.ExecuteGraph(std::forward<TArgs>(args)...);
         timing_.setStop(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
     }
 

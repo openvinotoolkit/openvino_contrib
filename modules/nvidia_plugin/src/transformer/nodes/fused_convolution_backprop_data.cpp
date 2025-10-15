@@ -3,7 +3,7 @@
 //
 
 #include "fused_convolution_backprop_data.hpp"
-#include "ngraph/validation_util.hpp"
+
 #include "openvino/core/except.hpp"
 #include "openvino/op/constant.hpp"
 
@@ -130,6 +130,42 @@ void FusedConvBackpropData::infer_conv_backprop_output_spatial_shape(const std::
     }
 }
 
+namespace {
+void infer_conv_backprop_auto_padding(const ov::Shape& input_data_shape,
+                                      const ov::Shape& filters_shape,
+                                      const ov::Shape& output_shape,
+                                      const ov::Strides& strides,
+                                      const ov::Strides& dilations,
+                                      const ov::op::PadType auto_pad_type,
+                                      const ov::CoordinateDiff& output_padding,
+                                      ov::CoordinateDiff& pads_begin,
+                                      ov::CoordinateDiff& pads_end) {
+    OPENVINO_ASSERT(auto_pad_type == ov::op::PadType::SAME_UPPER || auto_pad_type == ov::op::PadType::SAME_LOWER);
+
+    size_t num_spatial_dims = input_data_shape.size();
+    OPENVINO_ASSERT(filters_shape.size() == num_spatial_dims && strides.size() == num_spatial_dims &&
+                    dilations.size() == num_spatial_dims && pads_begin.size() == num_spatial_dims &&
+                    pads_end.size() == num_spatial_dims && output_padding.size() == num_spatial_dims);
+
+    pads_begin = ov::CoordinateDiff(num_spatial_dims);
+    pads_end = ov::CoordinateDiff(num_spatial_dims);
+
+    for (uint64_t i = 0; i < num_spatial_dims; ++i) {
+        int total_padding = std::max<int>(
+            static_cast<int>(strides[i] * (input_data_shape[i] - 1) + dilations[i] * (filters_shape[i] - 1) + 1 -
+                             output_shape[i] + output_padding[i]),
+            0);
+        if (auto_pad_type != ov::op::PadType::SAME_UPPER) {
+            pads_begin[i] = total_padding / 2;
+            pads_end[i] = total_padding - pads_begin[i];
+        } else {
+            pads_end[i] = total_padding / 2;
+            pads_begin[i] = total_padding - pads_end[i];
+        }
+    }
+}
+}  // namespace
+
 void FusedConvBackpropData::validate_and_infer_types() {
     auto data_pshape = get_input_partial_shape(0);
     ov::element::Type delta_et = get_input_element_type(0);
@@ -184,7 +220,6 @@ void FusedConvBackpropData::validate_and_infer_types() {
                               "spatial features.");
     }
 
-    ov::PartialShape result_shape;
     if (is_output_shape_present) {
         if (output_pshape.is_static() && filters_pshape.is_static() && data_pshape.is_static()) {
             ov::Shape output_shape = output_pshape.to_shape();
@@ -200,7 +235,7 @@ void FusedConvBackpropData::validate_and_infer_types() {
             // If auto_pad has one of following mode we infer paddings. Otherwise in
             // EXPLICIT auto_pad mode we use what is provided.
             if (auto_pad_ == ov::op::PadType::SAME_UPPER || auto_pad_ == ov::op::PadType::SAME_LOWER) {
-                ngraph::opset1::infer_conv_backprop_auto_padding(
+                infer_conv_backprop_auto_padding(
                     ov::Shape{std::next(data_shape.begin(), 2), std::end(data_shape)},
                     ov::Shape{std::next(filters_shape.begin(), 2), std::end(filters_shape)},
                     output_shape,

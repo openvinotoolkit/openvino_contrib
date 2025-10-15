@@ -19,7 +19,9 @@ GRUSequenceOp::GRUSequenceOp(const CreationContext& context,
     : OperationCuDnn(context, node, std::move(inputIds), std::move(outputIds)),
       params_{node},
       descs_{context, params_, config()},
-      is_cuda_graph_compatible_{RNN::Details::isRNNSequenceCudaGraphCompatible(context.device())} {
+      graph_compatibility_{RNN::Details::isRNNSequenceCudaGraphCompatible(context.device())
+                               ? CudaGraphCompatibility::FULL
+                               : CudaGraphCompatibility::NONE} {
     ib_seq_lengths_.addRequest(immut_sizes_, descs_.seqLengthArraySizeBytes());
     ib_weight_space_.addRequest(immut_sizes_, descs_.weightSpaceSize());
 
@@ -71,7 +73,7 @@ void GRUSequenceOp::Execute(const InferenceRequestContext& context,
                          nullptr);
 }
 
-bool GRUSequenceOp::IsCudaGraphCompatible() const { return is_cuda_graph_compatible_; }
+CudaGraphCompatibility GRUSequenceOp::GetCudaGraphCompatibility() const { return graph_compatibility_; }
 
 void GRUSequenceOp::InitSharedImmutableWorkbuffers(const IOperationExec::Buffers& buffers) {
     descs_.initDevSeqLengthArray(CUDA::DevicePointer<void*>{ib_seq_lengths_.requiredPtr(buffers)});

@@ -1,0 +1,20 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ["src/main/java"]
+        }
+    }
+}
+
+application {
+    mainClass = 'Main'
+}
+
+dependencies {  
+    implementation rootProject
+}

@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2023 Intel Corporation
+// Copyright (C) 2018-2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,7 +7,6 @@
 #include <cuda_runtime.h>
 
 #include <cuda_operation_registry.hpp>
-#include <exec_graph_info.hpp>
 #include <openvino/core/except.hpp>
 #include <transformations/rt_info/fused_names_attribute.hpp>
 #include <utility>
@@ -43,7 +42,7 @@ void ResultOp::Execute(const InferenceRequestContext& context,
     context.getThreadContext().stream().download(tensor->data(), inputs[0], tensor->get_byte_size());
 }
 
-bool ResultOp::IsCudaGraphCompatible() const { return true; }
+CudaGraphCompatibility ResultOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
 
 std::optional<std::size_t> ResultOp::GetOutputTensorSubIndex(const ov::Output<ov::Node>& node) {
     const auto& opRegistry = OperationRegistry::getInstance();

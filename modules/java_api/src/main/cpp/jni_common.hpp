@@ -202,3 +202,67 @@ static std::vector<size_t> jintArrayToVector(JNIEnv *env, jintArray dims)
 
     return std::vector<size_t>();
 }
+
+static jobject vectorToJavaList(JNIEnv *env, std::vector<std::string> items)
+{
+    static const char method_name[] = "vectorToJavaList";
+    try
+    {
+        jclass arrayClass = env->FindClass("java/util/ArrayList");
+        jmethodID arrayInit = env->GetMethodID(arrayClass, "<init>", "()V");
+        jobject arrayObj = env->NewObject(arrayClass, arrayInit);
+        jmethodID arrayAdd = env->GetMethodID(arrayClass, "add", "(Ljava/lang/Object;)Z");
+
+        for (const auto& item : items) {
+            jstring string = env->NewStringUTF(item.c_str());
+            env->CallObjectMethod(arrayObj, arrayAdd, string);
+        }
+
+        return arrayObj;
+    }
+    catch (const std::exception &e)
+    {
+        throwJavaException(env, &e, method_name);
+    }
+    catch (...)
+    {
+        throwJavaException(env, 0, method_name);
+    }
+
+    return nullptr;
+}
+
+static const ov::element::Type_t& get_ov_type(int type)
+{
+    static const std::vector<ov::element::Type_t> java_type_to_ov_type
+    {
+        ov::element::Type_t::dynamic,
+        ov::element::Type_t::boolean,
+        ov::element::Type_t::bf16,
+        ov::element::Type_t::f16,
+        ov::element::Type_t::f32,
+        ov::element::Type_t::f64,
+        ov::element::Type_t::i4,
+        ov::element::Type_t::i8,
+        ov::element::Type_t::i16,
+        ov::element::Type_t::i32,
+        ov::element::Type_t::i64,
+        ov::element::Type_t::u1,
+        ov::element::Type_t::u2,
+        ov::element::Type_t::u3,
+        ov::element::Type_t::u4,
+        ov::element::Type_t::u6,
+        ov::element::Type_t::u8,
+        ov::element::Type_t::u16,
+        ov::element::Type_t::u32,
+        ov::element::Type_t::u64,
+        ov::element::Type_t::nf4,
+        ov::element::Type_t::f8e4m3,
+        ov::element::Type_t::f8e5m2,
+        ov::element::Type_t::string,
+        ov::element::Type_t::f4e2m1,
+        ov::element::Type_t::f8e8m0
+    };
+
+    return java_type_to_ov_type.at(type);
+}

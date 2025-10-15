@@ -13,7 +13,7 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_InputTensorInfo_SetElementType(JN
 {
     JNI_METHOD("SetElementType",
         preprocess::InputTensorInfo *info = (preprocess::InputTensorInfo *)addr;
-        auto t_type = element::Type_t(type);
+        auto t_type = get_ov_type(type);
 
         info->set_element_type(t_type);
     )

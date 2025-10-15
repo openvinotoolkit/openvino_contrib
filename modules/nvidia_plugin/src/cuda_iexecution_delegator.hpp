@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2023 Intel Corporation
+// Copyright (C) 2018-2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -63,6 +63,18 @@ public:
                                   const MemoryManager& memoryManager,
                                   const Workbuffers::mutable_buffer& buffer,
                                   InferenceRequestContext& context) = 0;
+
+    /**
+     * Execute CUDA graph sequence from SubGraph class
+     * @param subGraphPtr Pointer to SubGraph
+     * @param memoryManager Reference to MemoryManager
+     * @param buffer Reference to orkbuffers::mutable_buffer
+     * @param context Reference to InferenceRequestContext
+     */
+    virtual void execute_graph_sequence(const SubGraph* subGraphPtr,
+                                        const MemoryManager& memoryManager,
+                                        const Workbuffers::mutable_buffer& buffer,
+                                        InferenceRequestContext& context) = 0;
 
     /**
      * Returns performance counters

@@ -9,7 +9,6 @@
 
 #include <cuda_config.hpp>
 #include <openvino/core/except.hpp>
-#include <nvidia/nvidia_config.hpp>
 #include <ops/converters.hpp>
 
 namespace ov::nvidia_gpu::Convolution::Details {

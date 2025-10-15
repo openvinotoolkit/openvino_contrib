@@ -114,7 +114,11 @@ async def generate_stream(
     generation_request = TypeAdapter(GenerationRequest).validate_python(await request.json())
     logger.info(generation_request)
     return StreamingResponse(
-        generator.generate_stream(generation_request.inputs, generation_request.parameters.model_dump(), request)
+        generator.generate_stream(
+            generation_request.inputs,
+            generation_request.parameters.model_dump(),
+            request,
+        )
     )
 
 
@@ -127,7 +131,11 @@ async def summarize(
 
     start = perf_counter()
     generated_text: str = generator.summarize(
-        request.inputs, request.template, request.definition, request.format, request.parameters.model_dump()
+        request.inputs,
+        request.template,
+        request.definition,
+        request.format,
+        request.parameters.model_dump(),
     )
     stop = perf_counter()
 
@@ -148,6 +156,10 @@ async def summarize_stream(
     logger.info(request)
     return StreamingResponse(
         generator.summarize_stream(
-            request.inputs, request.template, request.definition, request.format, request.parameters.model_dump()
+            request.inputs,
+            request.template,
+            request.definition,
+            request.format,
+            request.parameters.model_dump(),
         )
     )

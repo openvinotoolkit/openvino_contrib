@@ -1,11 +1,11 @@
 rootProject.name = 'openvino'
 
-if (build_benchmark_app.toBoolean()) {
-    include 'samples:benchmark_app'
-}
 if (build_java_samples.toBoolean()) {
-    include 'samples:face_detection_java_sample', 'samples:face_detection_sample_async'
+    include 'samples:face_detection_java_sample'
 }
 if (build_kotlin_samples.toBoolean()) {
     include 'samples:face_detection_kotlin_sample'
+}
+if (build_hello_query_device.toBoolean()) {
+    include 'samples:hello_query_device'
 }

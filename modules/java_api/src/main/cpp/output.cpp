@@ -36,6 +36,27 @@ JNIEXPORT jintArray JNICALL Java_org_intel_openvino_Output_GetShape(JNIEnv *env,
     return 0;
 }
 
+JNIEXPORT int JNICALL Java_org_intel_openvino_Output_GetElementType(JNIEnv *env, jobject obj, jlong addr) {
+    JNI_METHOD("GetElementType",
+        Output<Node> *output = (Output<Node> *)addr;
+
+        element::Type_t t_type = output->get_element_type();
+        jint type = static_cast<jint>(t_type);
+        return type;
+    )
+    return 0;
+}
+
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Output_GetPartialShape(JNIEnv *env, jobject obj, jlong addr) {
+    JNI_METHOD("GetPartialShape",
+        Output<Node> *output = (Output<Node> *)addr;
+        const PartialShape& partialShape = output->get_partial_shape();
+
+        return (jlong) &partialShape;
+    )
+    return 0;
+}
+
 JNIEXPORT void JNICALL Java_org_intel_openvino_Output_delete(JNIEnv *, jobject, jlong addr)
 {
     Output<Node> *obj = (Output<Node> *)addr;

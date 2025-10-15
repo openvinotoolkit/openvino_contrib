@@ -5,7 +5,6 @@
 #include <gtest/gtest.h>
 
 #include <memory>
-#include <nvidia/nvidia_config.hpp>
 #include <ops/matmul.hpp>
 #include <typeinfo>
 
@@ -96,10 +95,6 @@ INSTANTIATE_TEST_SUITE_P(CompileModelTest,
 
 std::vector<PropertiesParams> num_streams_1_properties = {
     {
-        {CONFIG_KEY(DEVICE_ID), "0"},
-        {NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS), "1"},
-    },
-    {
         {ov::device::id.name(), "0"},
         {ov::num_streams.name(), "1"},
     },
@@ -139,10 +134,6 @@ INSTANTIATE_TEST_SUITE_P(CompileModelTest,
 
 std::vector<PropertiesParams> num_streams_8_properties = {
     {
-        {CONFIG_KEY(DEVICE_ID), "0"},
-        {NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS), "8"},
-    },
-    {
         {ov::device::id.name(), "0"},
         {ov::num_streams.name(), "8"},
     },
@@ -177,11 +168,6 @@ INSTANTIATE_TEST_SUITE_P(CompileModelTest,
                          CompileModelTest::getTestCaseName);
 
 std::vector<PropertiesParams> num_streams_8_properties_exclusive = {
-    {
-        {CONFIG_KEY(DEVICE_ID), "0"},
-        {NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS), "8"},
-        {CONFIG_KEY(EXCLUSIVE_ASYNC_REQUESTS), CONFIG_VALUE(YES)},
-    },
     {
         {ov::device::id.name(), "0"},
         {ov::num_streams.name(), "8"},
@@ -220,10 +206,6 @@ INSTANTIATE_TEST_SUITE_P(CompileModelTest,
                          CompileModelTest::getTestCaseName);
 
 std::vector<PropertiesParams> num_streams_auto_properties = {
-    {
-        {CONFIG_KEY(DEVICE_ID), "0"},
-        {NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS), NVIDIA_CONFIG_VALUE(THROUGHPUT_AUTO)},
-    },
     {
         {ov::device::id.name(), "0"},
         {ov::num_streams.name(), ov::util::to_string(ov::streams::AUTO)},

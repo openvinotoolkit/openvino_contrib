@@ -1,171 +1,137 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
-// TODO, this file is copied from cpu tests. Not checked tests are commented for now.
 
-#include "shared_test_classes/single_layer/activation.hpp"
-
-#include <vector>
-
+#include "single_op_tests/activation.hpp"
 #include "common_test_utils/test_constants.hpp"
-#include "cuda_test_constants.hpp"
 
-using namespace LayerTestsDefinitions;
-using namespace ngraph::helpers;
+#include <cuda_test_constants.hpp>
+
 namespace {
 
-const std::vector<InferenceEngine::Precision> netPrecisions = {InferenceEngine::Precision::FP32,
-                                                               InferenceEngine::Precision::FP16};
+using ov::test::ActivationLayerTest;
+using ov::test::ActivationParamLayerTest;
+using ov::test::utils::ActivationTypes;
 
-// TODO now for const parameter tests a slope node always is created with f32 precision
-const std::vector<InferenceEngine::Precision> preluConstParamNetPrecisions = {InferenceEngine::Precision::FP32};
+using namespace ov::test;
+using namespace ov::test::utils;
 
-const std::vector<InferenceEngine::Precision> intPrecisions = {
-    InferenceEngine::Precision::I32,
+// Common params
+const std::vector<ov::element::Type> netPrecisions = {
+        ov::element::f32,
+        ov::element::f16
 };
 
-// TODO commented tests don't work for CUDA now.
-// The reason there are missing correspondent operations or transformation
 const std::map<ActivationTypes, std::vector<std::vector<float>>> activationTypes = {
-    {Sigmoid, {}},
-    {Tanh, {}},
-    {Relu, {}},
-    {Exp, {}},
-    {Log, {}},
-    //            {Sign,                  {}},
-    {Abs, {}},
-    {Clamp, {{-2.0f, 2.0f}}},
-    {Negative, {}},
-    //            {Acos,                  {}},
-    //            {Asin,                  {}},
-    //            {Atan,                  {}},
-    {Cos, {}},
-    {Cosh, {}},
-    {Floor, {}},
-    {Sin, {}},
-    {Sinh, {}},
-    {Sqrt, {}},
-    //            {Tan,                   {}},
-    {Elu, {{0.1f}}},
-    //            {Erf,                   {}},
-    //            {HardSigmoid,           {{0.2f, 0.5f}}},
-    //            {Selu,                  {{1.6732f, 1.0507f}}},
-    //            {Ceiling,               {}},
-    {Mish, {}},
-    {Swish, {{0.5f}}},
-    {HSwish, {}},
-    //            {SoftPlus,              {}},
-    {HSigmoid, {}},
-    //            {RoundHalfToEven,       {}},
-    //            {RoundHalfAwayFromZero, {}},
-    {Gelu, {}},
-    {GeluErf, {}},
-    {GeluTanh, {}}};
+        {ActivationTypes::Sigmoid,               {}},
+        {ActivationTypes::Tanh,                  {}},
+        {ActivationTypes::Relu,                  {}},
+        {ActivationTypes::Exp,                   {}},
+        {ActivationTypes::Log,                   {}},
+        {ActivationTypes::Sign,                  {}},
+        {ActivationTypes::Abs,                   {}},
+        {ActivationTypes::Gelu,                  {}},
+        {ActivationTypes::Clamp,                 {{-2.0f, 2.0f}}},
+        {ActivationTypes::Negative,              {}},
+        {ActivationTypes::Acos,                  {}},
+        {ActivationTypes::Acosh,                 {}},
+        {ActivationTypes::Asin,                  {}},
+        {ActivationTypes::Asinh,                 {}},
+        {ActivationTypes::Atan,                  {}},
+        {ActivationTypes::Atanh,                 {}},
+        {ActivationTypes::Cos,                   {}},
+        {ActivationTypes::Cosh,                  {}},
+        {ActivationTypes::Floor,                 {}},
+        {ActivationTypes::Sin,                   {}},
+        {ActivationTypes::Sinh,                  {}},
+        {ActivationTypes::Sqrt,                  {}},
+        {ActivationTypes::Tan,                   {}},
+        {ActivationTypes::Elu,                   {{0.1f}}},
+        // {ActivationTypes::Erf,                   {}},
+        // {ActivationTypes::HardSigmoid,           {{0.2f, 0.5f}}},
+        // {ActivationTypes::Selu,                  {{1.6732f, 1.0507f}}},
+        // {ActivationTypes::Ceiling,               {}},
+        {ActivationTypes::Mish,                  {}},
+        {ActivationTypes::HSwish,                {}},
+        // {ActivationTypes::SoftPlus,              {}},
+        // {ActivationTypes::HSigmoid,              {}},
+        {ActivationTypes::Swish,                 {{0.5f}}},
+        // {ActivationTypes::RoundHalfToEven,       {}},
+        // {ActivationTypes::RoundHalfAwayFromZero, {}},
+        {ActivationTypes::GeluErf,               {}},
+        {ActivationTypes::GeluTanh,              {}},
+        {ActivationTypes::SoftSign,              {}},
+};
 
-class CUDAActivationIntegerLayerTest : public ActivationLayerTest {
-    void SetUp() override {
-        ActivationLayerTest::SetUp();
-        threshold = 1;
+const std::map<ActivationTypes, std::vector<std::vector<float>>> bigRankActivationTypes = {
+        {ActivationTypes::Relu,                  {}},
+        {ActivationTypes::Exp,                   {}},
+        {ActivationTypes::Log,                   {}},
+        {ActivationTypes::Abs,                   {}},
+        {ActivationTypes::Clamp,                 {{-2.0f, 2.0f}}},
+        // {ActivationTypes::Ceiling,               {}},
+        {ActivationTypes::Swish,                 {{0.5f}}},
+};
+
+const std::map<ActivationTypes, std::vector<std::vector<float>>> activationParamTypes = {
+        {ActivationTypes::PReLu, {{-0.01f}}},
+        {ActivationTypes::LeakyRelu, {{0.01f}}}
+};
+
+std::map<std::vector<ov::Shape>, std::vector<ov::Shape>> basic = {
+        {{{1, 50}}, {{}}},
+        {{{1, 128}}, {{}}},
+};
+
+std::map<std::vector<ov::Shape>, std::vector<ov::Shape>> bigRank = {
+        {{{1, 2, 3, 4, 5, 3}}, {{}}},
+        {{{1, 2, 3, 4, 1, 3, 2}}, {{}}},
+        {{{1, 2, 3, 4, 3, 2, 1, 2}}, {{}}},
+};
+
+std::map<std::vector<ov::Shape>, std::vector<ov::Shape>> preluBasic = {
+        {{{1, 10, 20}}, {{10}, {20}, {10, 20}}},
+        {{{1, 128}}, {{1}, {128}}},
+};
+
+auto static_shapes_param_transform = [](const std::vector<std::pair<std::vector<ov::Shape>, ov::Shape>>& original_shapes) {
+    std::vector<std::pair<std::vector<ov::test::InputShape>, ov::Shape>> new_shapes;
+    for (const auto& shape_element : original_shapes) {
+        new_shapes.emplace_back(ov::test::static_shapes_to_test_representation(shape_element.first), shape_element.second);
     }
+    return new_shapes;
 };
 
-// List of operations that should be tested also with integer precision
-const std::map<ActivationTypes, std::vector<std::vector<float>>> intActivationTypes = {
-    {Abs, {}},
-    {Negative, {}},
-    {Cos, {}},
-    {Cosh, {}},
-    {Sinh, {}},
-    {Sqrt, {}},
-    {Log, {}},
+const auto basicCases = []() {
+    return ::testing::Combine(
+        ::testing::ValuesIn(ov::test::utils::combineParams(activationTypes)),
+        ::testing::ValuesIn(netPrecisions),
+        ::testing::ValuesIn(static_shapes_param_transform(ov::test::utils::combineParams(basic))),
+        ::testing::Values(DEVICE_NVIDIA));
 };
 
-const std::map<ActivationTypes, std::vector<std::vector<float>>> preluActivationParamTypes = {
-    {PReLu, {{}}},  // Slope will be filled with increasing values from -10 to match slope input shape
-    {LeakyRelu, {{0.01f}}}};
-
-std::map<std::vector<size_t>, std::vector<std::vector<size_t>>> basic = {
-    {{1, 50}, {{}}},
-    {{1, 128}, {{}}},
+const auto basicPreluCases = []() {
+    return ::testing::Combine(
+        ::testing::ValuesIn(ov::test::utils::combineParams(activationParamTypes)),
+        ::testing::ValuesIn(netPrecisions),
+        ::testing::ValuesIn(static_shapes_param_transform(ov::test::utils::combineParams(preluBasic))),
+        ::testing::Values(DEVICE_NVIDIA));
 };
 
-std::map<std::vector<size_t>, std::vector<std::vector<size_t>>> preluBasic = {
-    {{1, 50}, {{1}, {50}}},
-    {{1, 128}, {{1}, {128}}},
-
-    // Broadcast check
-    {{3, 2}, {{1}, {2}, {3, 2}}},
-    {{3, 2, 5}, {{1}, {2}, {5}, {2, 5}, {3, 1, 5}, {1, 2, 1}, {1, 1, 5}, {3, 1, 1}, {3, 2, 5}}},
-    {{2, 1, 2}, {{2}, {2, 1, 1}}},
-    {{3, 2, 5, 7}, {{1}, {7}, {2}, {5, 7}, {2, 5, 7}, {2, 1, 1}, {1, 2, 1, 1}, {3, 2, 1, 1}, {3, 2, 5, 7}}},
+const auto bigRankCases = []() {
+    return ::testing::Combine(
+        ::testing::ValuesIn(ov::test::utils::combineParams(bigRankActivationTypes)),
+        ::testing::ValuesIn(netPrecisions),
+        ::testing::ValuesIn(static_shapes_param_transform(ov::test::utils::combineParams(bigRank))),
+        ::testing::Values(DEVICE_NVIDIA));
 };
 
-const auto basicCases = ::testing::Combine(::testing::ValuesIn(ov::test::utils::combineParams(activationTypes)),
-                                           ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::ValuesIn(ov::test::utils::combineParams(basic)),
-                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
+INSTANTIATE_TEST_SUITE_P(smoke_Activation_Basic, ActivationLayerTest, basicCases(), ActivationLayerTest::getTestCaseName);
 
-const auto basicPreluCases =
-    ::testing::Combine(::testing::ValuesIn(ov::test::utils::combineParams(preluActivationParamTypes)),
-                       ::testing::ValuesIn(netPrecisions),
-                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                       ::testing::Values(InferenceEngine::Layout::ANY),
-                       ::testing::Values(InferenceEngine::Layout::ANY),
-                       ::testing::ValuesIn(ov::test::utils::combineParams(preluBasic)),
-                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
+INSTANTIATE_TEST_SUITE_P(Activation_BigRanks, ActivationLayerTest, bigRankCases(), ActivationLayerTest::getTestCaseName);
 
-const auto basicPReluConstParamCases =
-    ::testing::Combine(::testing::ValuesIn(ov::test::utils::combineParams(preluActivationParamTypes)),
-                       ::testing::ValuesIn(preluConstParamNetPrecisions),
-                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                       ::testing::Values(InferenceEngine::Layout::ANY),
-                       ::testing::Values(InferenceEngine::Layout::ANY),
-                       ::testing::ValuesIn(ov::test::utils::combineParams(preluBasic)),
-                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
+INSTANTIATE_TEST_SUITE_P(smoke_Activation_Basic_Prelu, ActivationLayerTest, basicPreluCases(), ActivationLayerTest::getTestCaseName);
 
-const auto basicIntegerOperations =
-    ::testing::Combine(::testing::ValuesIn(ov::test::utils::combineParams(intActivationTypes)),
-                       ::testing::ValuesIn(intPrecisions),
-                       ::testing::ValuesIn(intPrecisions),
-                       ::testing::ValuesIn(intPrecisions),
-                       ::testing::Values(InferenceEngine::Layout::ANY),
-                       ::testing::Values(InferenceEngine::Layout::ANY),
-                       ::testing::ValuesIn(ov::test::utils::combineParams(basic)),
-                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
-
-TEST_P(ActivationLayerTest, CompareWithRefs) { Run(); }
-
-TEST_P(ActivationParamLayerTest, CompareWithRefs) { Run(); }
-
-TEST_P(ActivationDynamicLayerTest, CompareWithRefs) { Run(); }
-
-TEST_P(CUDAActivationIntegerLayerTest, CompareWithRefs) { Run(); }
-
-INSTANTIATE_TEST_CASE_P(smoke_Cuda_Activation_Basic,
-                        ActivationLayerTest,
-                        basicCases,
-                        ActivationLayerTest::getTestCaseName);
-INSTANTIATE_TEST_CASE_P(smoke_Cuda_Activation_Basic,
-                        ActivationDynamicLayerTest,
-                        basicCases,
-                        ActivationLayerTest::getTestCaseName);
-INSTANTIATE_TEST_CASE_P(smoke_Cuda_Activation_Prelu_Param,
-                        ActivationParamLayerTest,
-                        basicPreluCases,
-                        ActivationLayerTest::getTestCaseName);
-INSTANTIATE_TEST_CASE_P(smoke_Cuda_Activation_PRelu_Const,
-                        ActivationLayerTest,
-                        basicPReluConstParamCases,
-                        ActivationLayerTest::getTestCaseName);
-INSTANTIATE_TEST_CASE_P(smoke_Cuda_Integer_Activation_Basic,
-                        CUDAActivationIntegerLayerTest,
-                        basicIntegerOperations,
-                        CUDAActivationIntegerLayerTest::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_Activation_Basic, ActivationParamLayerTest, basicPreluCases(), ActivationLayerTest::getTestCaseName);
 
 }  // namespace

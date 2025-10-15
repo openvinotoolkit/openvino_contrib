@@ -90,7 +90,7 @@ void SelectOp::Execute(const InferenceRequestContext& context,
         outputs[0].get());
 }
 
-bool SelectOp::IsCudaGraphCompatible() const { return true; }
+CudaGraphCompatibility SelectOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
 
 WorkbufferRequest SelectOp::GetWorkBufferRequest() const {
     return {std::vector<WorkbufferRequest::size_in_bytes_t>(SIZES + 1, kOffsetBufferSize), {}};

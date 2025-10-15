@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2023 Intel Corporation
+// Copyright (C) 2018-2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -37,6 +37,13 @@ public:
                                                      const ov::AnyMap& properties) const override;
 
     std::shared_ptr<ov::ICompiledModel> import_model(std::istream& model_stream,
+                                                     const ov::SoPtr<ov::IRemoteContext>& context,
+                                                     const ov::AnyMap& properties) const override;
+
+    std::shared_ptr<ov::ICompiledModel> import_model(const ov::Tensor& model_stream,
+                                                     const ov::AnyMap& properties) const override;
+
+    std::shared_ptr<ov::ICompiledModel> import_model(const ov::Tensor& model_stream,
                                                      const ov::SoPtr<ov::IRemoteContext>& context,
                                                      const ov::AnyMap& properties) const override;
 

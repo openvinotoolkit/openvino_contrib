@@ -5,7 +5,6 @@
 #pragma once
 
 #include <cublas_v2.h>
-#include <ie_extension.h>
 
 #include "runtime.hpp"
 

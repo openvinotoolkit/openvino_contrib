@@ -192,7 +192,7 @@ void SoftmaxOp::Execute(const InferenceRequestContext& context,
                                      outputs[0].get()));
 }
 
-bool SoftmaxOp::IsCudaGraphCompatible() const { return true; }
+CudaGraphCompatibility SoftmaxOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
 
 OPERATION_REGISTER(SoftmaxOp, Softmax);
 }  // namespace nvidia_gpu

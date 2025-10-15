@@ -52,16 +52,6 @@
 #    define S_CONV_EXT
 #endif
 
-#ifdef sentence_piece
-#    include "sentence_piece/sentence_piece.hpp"
-#    define SENTENSE_PIECE_EXT                                                                                              \
-            std::make_shared<ov::OpExtension<TemplateExtension::SentencepieceTokenizer>>(),                                 \
-            std::make_shared<ov::frontend::ConversionExtension>("SentencepieceOp", translate_sentencepiece_op),             \
-            std::make_shared<ov::frontend::ConversionExtension>("RaggedTensorToSparse", translate_sentencepiece_tokenizer),
-#else
-#    define SENTENSE_PIECE_EXT
-#endif
-
 OPENVINO_CREATE_EXTENSIONS(std::vector<ov::Extension::Ptr>(
     {
         CALCULATE_GRID_EXT
@@ -69,5 +59,4 @@ OPENVINO_CREATE_EXTENSIONS(std::vector<ov::Extension::Ptr>(
         S_CONV_TRANSPOSE_EXT
         S_CONV_EXT
         COMPLEX_MUL_EXT
-        SENTENSE_PIECE_EXT
     }));

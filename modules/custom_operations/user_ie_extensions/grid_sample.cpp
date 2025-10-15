@@ -26,8 +26,8 @@ std::shared_ptr<ov::Node> GridSample::clone_with_new_inputs(const ov::OutputVect
 }
 
 bool GridSample::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
-    const float* inpData  = reinterpret_cast<float*>(inputs[0].data());
-    const float* gridData = reinterpret_cast<float*>(inputs[1].data());
+    const float *inpData = reinterpret_cast<const float *>(inputs[0].data());
+    const float *gridData = reinterpret_cast<const float *>(inputs[1].data());
     float* outData = reinterpret_cast<float*>(outputs[0].data());
 
     std::vector<size_t> inpDims = inputs[0].get_shape();
@@ -107,7 +107,7 @@ bool GridSample::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
 
 bool GridSample::has_evaluate() const {
     for (size_t i = 0; i < get_input_size(); ++i)
-        if (get_input_element_type(i) != ngraph::element::f32)
+        if (get_input_element_type(i) != ov::element::f32)
             return false;
     return true;
 }

@@ -13,7 +13,6 @@
 #include <cuda/float16.hpp>
 #include <cuda/runtime.hpp>
 #include <cuda_operation_registry.hpp>
-#include <ngraph/util.hpp>
 #include <type_traits>
 
 #include "converters.hpp"
@@ -97,7 +96,7 @@ void ClampCuDnnOp::Execute(const InferenceRequestContext& context,
                                                     outputTensors[0].get());
 }
 
-bool ClampCuDnnOp::IsCudaGraphCompatible() const { return true; }
+CudaGraphCompatibility ClampCuDnnOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
 
 void ClampCuDnnOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
     switch (data_type_) {
@@ -128,13 +127,36 @@ WorkbufferRequest ClampCuDnnOp::GetWorkBufferRequest() const {
     return {{el_size, el_size}, {}};
 }
 
+namespace {
+template <typename T>
+T double_to_int(double x, double float_to_int_converter(double)) {
+    if (!std::is_integral<T>()) {
+        OPENVINO_THROW("Function double_to_int template parameter must be an integral type.");
+    }
+
+    x = float_to_int_converter(x);
+
+    double min_t = static_cast<double>(std::numeric_limits<T>::min());
+    if (x < min_t) {
+        return std::numeric_limits<T>::min();
+    }
+
+    double max_t = static_cast<double>(std::numeric_limits<T>::max());
+    if (x > max_t) {
+        return std::numeric_limits<T>::max();
+    }
+
+    return static_cast<T>(x);
+}
+}
+
 template <typename T>
 void ClampCuDnnOp::initBuffers(const Buffers& buffers) const {
     T max{};
     T min{};
     if constexpr (std::is_integral<T>()) {
-        max = ngraph::double_to_int<T>(max_, std::floor);
-        min = ngraph::double_to_int<T>(min_, std::ceil);
+        max = double_to_int<T>(max_, std::floor);
+        min = double_to_int<T>(min_, std::ceil);
     } else {
         max = static_cast<T>(max_);
         min = static_cast<T>(min_);

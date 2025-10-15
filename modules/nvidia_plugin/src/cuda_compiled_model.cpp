@@ -1,17 +1,12 @@
-// Copyright (C) 2018-2023 Intel Corporation
+// Copyright (C) 2018-2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
-
-#include <ie_metric_helpers.hpp>
-// ^^ must come before ie_plugin_config.hpp, which is indirectly included by
-// cuda_executable_network.hpp
 
 #include <fmt/format.h>
 
 #include <memory_manager/cuda_memory_manager.hpp>
 #include <ops/nop_op.hpp>
 #include <ops/subgraph.hpp>
-#include <threading/ie_executor_manager.hpp>
 #include <utility>
 
 #include "cuda_compiled_model.hpp"
@@ -27,17 +22,16 @@
 #include "memory_manager/cuda_immutable_memory_block_builder.hpp"
 #include "memory_manager/cuda_memory_manager.hpp"
 #include "memory_manager/model/cuda_memory_model_builder.hpp"
-#include "nvidia/nvidia_config.hpp"
 #include "nvidia/properties.hpp"
-
+#include "openvino/pass/serialize.hpp"
+#include "openvino/runtime/exec_model_info.hpp"
+#include "openvino/runtime/internal_properties.hpp"
+#include "openvino/runtime/iplugin.hpp"
+#include "openvino/runtime/threading/executor_manager.hpp"
 #include "ops/parameter.hpp"
 #include "ops/result.hpp"
 #include "transformations/utils/utils.hpp"
 #include "transformer/cuda_graph_transformer.hpp"
-
-#include "openvino/runtime/exec_model_info.hpp"
-#include "openvino/runtime/internal_properties.hpp"
-#include "openvino/runtime/iplugin.hpp"
 
 namespace {
 static constexpr const char* nv_stream_executor_name = "NvidiaStreamExecutor";
@@ -78,9 +72,10 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
 void CompiledModel::init_executor() {
     // Default multi-threaded configuration is balanced for throughtput and latency cases and takes into account
     // real hardware cores and NUMA nodes.
-    config_.streams_executor_config_.set_property({ ov::num_streams(ov::streams::Num(memory_pool_->Size())) });
-    auto streams_executor_config = ov::threading::IStreamsExecutor::Config::make_default_multi_threaded(config_.streams_executor_config_);
-    streams_executor_config._name = nv_stream_executor_name;
+    config_.streams_executor_config_ =
+        ov::threading::IStreamsExecutor::Config{nv_stream_executor_name, static_cast<int>(memory_pool_->Size())};
+    auto streams_executor_config =
+        ov::threading::IStreamsExecutor::Config::make_default_multi_threaded(config_.streams_executor_config_);
     // As OpenVINO CPU Streams Executor creates some additional threads
     // it is better to avoid threads recreateion as some OSs memory allocator can not manage such usage cases
     // and memory consumption can be larger than it is expected.
@@ -376,19 +371,6 @@ ov::Any CompiledModel::get_property(const std::string& name) const {
         for (auto& rw_property : rw_properties)
             supported_properties.emplace_back(ov::PropertyName(rw_property, PropertyMutability::RO));
         return decltype(ov::supported_properties)::value_type{supported_properties};
-    } else if (EXEC_NETWORK_METRIC_KEY(SUPPORTED_METRICS) == name) {
-        IE_SET_METRIC_RETURN(SUPPORTED_METRICS,
-                             std::vector<std::string>{METRIC_KEY(NETWORK_NAME),
-                                                      METRIC_KEY(SUPPORTED_METRICS),
-                                                      METRIC_KEY(SUPPORTED_CONFIG_KEYS),
-                                                      METRIC_KEY(OPTIMAL_NUMBER_OF_INFER_REQUESTS)});
-    } else if (EXEC_NETWORK_METRIC_KEY(SUPPORTED_CONFIG_KEYS) == name) {
-        std::vector<std::string> configKeys = {};
-        auto config_properties = config_.get_rw_properties();
-        for (auto&& key : config_properties) {
-            configKeys.emplace_back(key);
-        }
-        IE_SET_METRIC_RETURN(SUPPORTED_CONFIG_KEYS, configKeys);
     } else if (ov::model_name == name) {
         auto model_name = model_->get_friendly_name();
         return decltype(ov::model_name)::value_type{model_name};

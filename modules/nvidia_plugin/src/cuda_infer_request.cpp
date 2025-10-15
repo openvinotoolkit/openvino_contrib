@@ -5,16 +5,13 @@
 #include "cuda_infer_request.hpp"
 
 #include <cuda_fp16.h>
-#include <debug.h>
 #include <fmt/format.h>
 
 #include <algorithm>
-#include <description_buffer.hpp>
 #include <gsl/span_ext>
 #include <map>
 #include <memory>
 #include <string>
-#include <threading/ie_executor_manager.hpp>
 #include <utility>
 
 #include "cuda_compiled_model.hpp"
@@ -25,6 +22,7 @@
 #include "cuda_simple_execution_delegator.hpp"
 #include "nvidia/properties.hpp"
 #include "openvino/runtime/make_tensor.hpp"
+#include "openvino/runtime/threading/executor_manager.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

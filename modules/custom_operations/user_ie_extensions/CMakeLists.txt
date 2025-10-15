@@ -1,4 +1,4 @@
-# Copyright (C) 2018-2023 Intel Corporation
+# Copyright (C) 2018-2024 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -12,10 +12,12 @@ endif()
 
 set(TARGET_NAME "user_ov_extensions")
 
-set(CMAKE_CXX_STANDARD 11)
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 11)
+endif()
 
 find_package(OpenVINO REQUIRED COMPONENTS Runtime)
-find_package(TBB COMPONENTS tbb tbbmalloc)
+find_package(TBB COMPONENTS tbb)
 find_package(OpenCV COMPONENTS core)
 
 set(OP_REQ_TBB "complex_mul" "fft")
@@ -27,6 +29,7 @@ set(OP_REQ_TBB "complex_mul" "fft")
 if(NOT CUSTOM_OPERATIONS)
   file(GLOB op_src "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
   file(GLOB op_dirs LIST_DIRECTORIES true "${CMAKE_CURRENT_SOURCE_DIR}/*")
+  list(REMOVE_ITEM op_dirs "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
   foreach(op IN LISTS op_src)
     get_filename_component(op_name ${op} NAME_WE)
@@ -85,13 +88,12 @@ if(OpenCV_FOUND)
 endif()
 
 if(TBB_FOUND)
-  target_link_libraries(${TARGET_NAME} PRIVATE TBB::tbb TBB::tbbmalloc)
-endif()
-
-if(sentence_piece IN_LIST CUSTOM_OPERATIONS)
-  add_subdirectory(sentence_piece)
+  target_link_libraries(${TARGET_NAME} PRIVATE TBB::tbb)
 endif()
 
 target_link_libraries(${TARGET_NAME} PRIVATE openvino::runtime)
 
-target_compile_definitions(${TARGET_NAME} PRIVATE ${CUSTOM_OPERATIONS})
+target_compile_definitions(${TARGET_NAME} PRIVATE IMPLEMENT_OPENVINO_EXTENSION_API ${CUSTOM_OPERATIONS})
+
+# TODO: remove
+target_include_directories(${TARGET_NAME} PUBLIC ./include/)

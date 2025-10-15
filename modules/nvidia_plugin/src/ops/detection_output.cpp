@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2023 Intel Corporation
+// Copyright (C) 2018-2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -107,7 +107,7 @@ void DetectionOutputOp::Execute(const InferenceRequestContext& context,
     }
 }
 
-bool DetectionOutputOp::IsCudaGraphCompatible() const { return true; }
+CudaGraphCompatibility DetectionOutputOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
 
 void DetectionOutputOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
     kernel_.value().initSharedImmutableWorkbuffers(buffers);

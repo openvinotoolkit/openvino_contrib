@@ -36,7 +36,6 @@ SplitOp::SplitOp(const CreationContext& context,
     OPENVINO_ASSERT(splitOp->get_output_size() == num_splits_, "Node name: ", GetName());
     OPENVINO_ASSERT(input_element_type == output_element_type, "Node name: ", GetName());
     switch (input_element_type) {
-        case ov::element::Type_t::undefined:
         case ov::element::Type_t::dynamic:
         case ov::element::Type_t::u1:
             throw_ov_exception(
@@ -89,7 +88,7 @@ void SplitOp::Execute(const InferenceRequestContext& context,
     (*split_kernel_)(stream.get(), reinterpret_cast<const void*>(in.get()), reinterpret_cast<void**>(outputPtrs.get()));
 }
 
-bool SplitOp::IsCudaGraphCompatible() const { return false; }
+CudaGraphCompatibility SplitOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::NONE; }
 
 OPERATION_REGISTER(SplitOp, Split);
 }  // namespace nvidia_gpu

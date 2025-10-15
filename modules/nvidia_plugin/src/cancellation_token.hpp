@@ -4,8 +4,6 @@
 
 #pragma once
 
-#include <ie_extension.h>
-
 #include <atomic>
 #include <error.hpp>
 #include <functional>

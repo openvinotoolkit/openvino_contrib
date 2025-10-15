@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -30,6 +30,12 @@ public:
 
     size_t getImmutableWorkbufferSize() const;
     void setImmutableWorkbuffer(void* immutableBuffer);
+
+    void* getKernel() const;
+    size_t getSize() const { return size_; }
+    size_t getNumBlocks() const { return num_blocks_; }
+    size_t getThreadsPerBlock() const { return threads_per_block_; }
+    const Props* getPropsPtr() const { return static_cast<const Props*>(props_ptr_); }
 
 private:
     template <typename T>

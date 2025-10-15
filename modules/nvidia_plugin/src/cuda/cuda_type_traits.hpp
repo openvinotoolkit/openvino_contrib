@@ -5,6 +5,7 @@
 #pragma once
 
 #include "openvino/core/type/element_type.hpp"
+#include "openvino/core/type/element_type_traits.hpp"
 
 #ifdef __CUDACC__
 #include <cuda/float16.hpp>

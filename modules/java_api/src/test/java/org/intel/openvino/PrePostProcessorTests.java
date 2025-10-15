@@ -77,7 +77,7 @@ public class PrePostProcessorTests extends OVTest {
         }
         assertTrue(
                 exceptionMessage.contains(
-                        "[ PARAMETER_MISMATCH ] Failed to set input tensor with precision: f32,"
+                        "ParameterMismatch: Failed to set tensor for input with precision: f32,"
                                 + " since the model input tensor precision is: u8"));
     }
 }

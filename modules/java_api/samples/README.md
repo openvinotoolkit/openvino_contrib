@@ -1,3 +1,10 @@
+# Samples
+
+The OpenVINO samples are simple console applications that show how to utilize specific OpenVINO API capabilities within an application. The following samples are available
+- [Face Detection Java samples](#face-detection-java-samples)
+- [Face Detection Kotlin sample](./face_detection_kotlin_sample/README.md)
+- [Hello Query Device](#hello-query-device-sample)
+
 # Benchmark Application
 
 This guide describes how to run the benchmark applications.
@@ -133,10 +140,6 @@ To run these samples, you need to specify a model and image. To perform inferenc
     ```bash
     :samples:face_detection_java_sample:run --args='-m <path-to-model> -i <path-to-image>' -Pbuild_java_samples=true
     ```
-  For **face_detection_sample_async**, use the following command:
-    ```bash
-    :samples:face_detection_sample_async:run --args='-m <path-to-model> -i <path-to-image>' -Pbuild_java_samples=true
-    ```
 - Under **Environment Variables**, select **Edit environment variables** and add the following environment variables: 
 
   `INTEL_OPENVINO_DIR=<path-to-openvino_install>`
@@ -151,5 +154,66 @@ To run these samples, you need to specify a model and image. To perform inferenc
 ### For ```face_detection_java_sample```
 The application will show the image with detected objects enclosed in rectangles in new window. It outputs the confidence value and the coordinates of the rectangle to the standard output stream.
 
-### For ```face_detection_sample_async```
-The application will show the video with detected objects enclosed in rectangles in new window.
+
+# Hello Query Device Sample
+
+## How It Works
+
+This sample demonstrates how to show OpenVINO Runtime devices and print their metrics and default configuration values using the Query Device API feature.
+
+## Build
+
+Use Gradle to build **openvino-x-x-x.jar** with OpenVINO Java bindings in `java_api/build/libs` and **hello_query_device.jar** in `java_api/samples/hello_query_device/build/libs`:
+```bash
+cd openvino_contrib/modules/java_api
+gradle build -Pbuild_hello_query_device=true
+```
+
+## Running
+
+To run the sample use:
+```bash
+java -cp ".:${OV_JAVA_DIR}/openvino-x-x-x.jar:samples/hello_query_device/build/libs/hello_query_device.jar" Main
+```
+
+## Running in Idea IntelliJ
+- Import the project in IntelliJ IDEA. See [here](../README.md#import-to-intellij-idea) for instructions.
+- In **Run/Debug Configurations** dropdown, click on **Edit Configurations**.
+- Click on **Add New Configuration** and select **Gradle** from the dropdown menu.
+- Give the configuration an appropriate name: "HelloQueryDeviceSample", and enter the following command in the **Tasks and arguments** input box.
+    ```bash
+    :samples:hello_query_device:run -Pbuild_hello_query_device=true
+    ```
+- Under **Environment Variables**, select **Edit environment variables** and add the following environment variables:
+
+  `INTEL_OPENVINO_DIR=<path-to-openvino_install>`
+- Click on **OK** to save the configuration.
+- Select the saved configuration from the **Run/Debug Configurations**. Click on the **Run** button to run or the **Debug** button to run in debug mode.
+
+## Sample Output
+
+Below is a sample output for CPU device:
+
+```
+[INFO] Available devices:
+[INFO] CPU:
+[INFO]  SUPPORTED_PROPERTIES:
+[INFO]          AVAILABLE_DEVICES:
+[INFO]          RANGE_FOR_ASYNC_INFER_REQUESTS: 1 1 1
+[INFO]          RANGE_FOR_STREAMS: 1 20
+[INFO]          FULL_DEVICE_NAME: 12th Gen Intel(R) Core(TM) i7-12700H
+[INFO]          OPTIMIZATION_CAPABILITIES: FP32 FP16 INT8 BIN EXPORT_IMPORT
+[INFO]          CACHING_PROPERTIES: FULL_DEVICE_NAME
+[INFO]          NUM_STREAMS: 1
+[INFO]          AFFINITY: HYBRID_AWARE
+[INFO]          INFERENCE_NUM_THREADS: 0
+[INFO]          PERF_COUNT: NO
+[INFO]          INFERENCE_PRECISION_HINT: f32
+[INFO]          PERFORMANCE_HINT: LATENCY
+[INFO]          EXECUTION_MODE_HINT: PERFORMANCE
+[INFO]          PERFORMANCE_HINT_NUM_REQUESTS: 0
+[INFO]          ENABLE_CPU_PINNING: YES
+[INFO]          SCHEDULING_CORE_TYPE: ANY_CORE
+[INFO]          ENABLE_HYPER_THREADING: YES
+[INFO]          DEVICE_ID:
+```

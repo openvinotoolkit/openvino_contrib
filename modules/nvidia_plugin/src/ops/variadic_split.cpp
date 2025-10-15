@@ -81,7 +81,6 @@ VariadicSplitOp::VariadicSplitOp(const CreationContext& context,
     OPENVINO_ASSERT(variadic_split_node->get_input_size() == 3, "Node name: ", GetName());
     OPENVINO_ASSERT(input_element_type == output_element_type, "Node name: ", GetName());
     switch (input_element_type) {
-        case ov::element::Type_t::undefined:
         case ov::element::Type_t::dynamic:
         case ov::element::Type_t::u1:
             throw_ov_exception(
@@ -199,7 +198,7 @@ void VariadicSplitOp::Execute(const InferenceRequestContext& context,
                               static_cast<const void*>(axis_offset_sizes.get()));
 }
 
-bool VariadicSplitOp::IsCudaGraphCompatible() const { return false; }
+CudaGraphCompatibility VariadicSplitOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::NONE; }
 
 OPERATION_REGISTER(VariadicSplitOp, VariadicSplit);
 }  // namespace nvidia_gpu

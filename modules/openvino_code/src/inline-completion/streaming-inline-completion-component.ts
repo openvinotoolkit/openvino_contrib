@@ -12,6 +12,7 @@ import { IExtensionComponent } from '../extension-component.interface';
 import { extensionState } from '../state';
 import { StreamingCommandInlineCompletionItemProvider } from './streaming-command-inline-completion-provider';
 import { notificationService } from '../services/notification.service';
+import { setIsGeneralTabActive } from './tab';
 
 class StreamingInlineCompletion implements IExtensionComponent {
   private _disposables: Disposable[] = [];
@@ -29,7 +30,7 @@ class StreamingInlineCompletion implements IExtensionComponent {
       generationDisposables = [];
     }
 
-    const generateCommandDisposable = commands.registerCommand(COMMANDS.GENERATE_INLINE_COPMLETION, () => {
+    function generateFunction(): void {
       if (!extensionState.get('isServerAvailable')) {
         notificationService.showServerNotAvailableMessage(extensionState.state);
         return;
@@ -69,14 +70,26 @@ class StreamingInlineCompletion implements IExtensionComponent {
         // TODO: handle unsetting context on error thrown from triggerCompletion
         void commands.executeCommand('setContext', EXTENSION_CONTEXT_STATE.GENERATING, false);
       });
-    });
+    }
 
     const acceptCommandDisposable = commands.registerCommand(COMMANDS.ACCEPT_INLINE_COMPLETION, () => {
       void commands.executeCommand('editor.action.inlineSuggest.commit');
     });
-
+    
+    const generateCommandDisposable = commands.registerCommand(COMMANDS.GENERATE_INLINE_COPMLETION, () => {
+      // Update the boolean variable
+      setIsGeneralTabActive(false);
+      generateFunction();
+    });
     context.subscriptions.push(generateCommandDisposable, acceptCommandDisposable);
     this._disposables.push(generateCommandDisposable, acceptCommandDisposable);
+
+    const generateTabCommandDisposable = commands.registerCommand(COMMANDS.GENERATE_INLINE_COPMLETION_TAB, () => {
+        setIsGeneralTabActive(true);
+        generateFunction();
+    });
+    context.subscriptions.push(generateTabCommandDisposable, acceptCommandDisposable);
+    this._disposables.push(generateTabCommandDisposable, acceptCommandDisposable);
   }
 
   deactivate(): void {

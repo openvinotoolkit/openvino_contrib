@@ -7,7 +7,6 @@
 #include "convolution_components.hpp"
 
 #include "openvino/core/except.hpp"
-#include "openvino/core/validation_util.hpp"
 #include "openvino/op/group_conv.hpp"
 
 namespace ov::nvidia_gpu::Convolution::Details {
@@ -38,8 +37,6 @@ ConvolutionParams::ConvolutionParams(const TConvNode& node)
     OPENVINO_ASSERT(groups_ >= 1U);
     filter_shape_[0] *= groups_;
 
-    InferPadding(node);
-
     if (input_shape_.size() == CONV_1D_DIMS_NUMBER) ConvertConv1DToConv2D();
 
     const size_t dims_number = NumberOfDims();
@@ -60,31 +57,6 @@ template ConvolutionParams::ConvolutionParams(const ov::op::v1::GroupConvolution
 template ConvolutionParams::ConvolutionParams(const ov::op::v1::Convolution& node);
 template ConvolutionParams::ConvolutionParams(const nodes::FusedConvolution& node);
 template ConvolutionParams::ConvolutionParams(const nodes::FusedGroupConvolution& node);
-
-template <typename TConvNode>
-void ConvolutionParams::InferPadding(const TConvNode& node) {
-    const ov::op::PadType pad_type = node.get_auto_pad();
-    switch (pad_type) {
-        case ov::op::PadType::EXPLICIT:
-            break;
-        // TODO: potentially it can be removed, because paddings are assigned in ngraph operation
-        case ov::op::PadType::SAME_LOWER:
-        case ov::op::PadType::SAME_UPPER: {
-            const ov::Shape filter_spatial_shape{filter_shape_.begin() + NON_SPATIAL_DIMS_NUMBER, filter_shape_.end()};
-            padding_before_.clear();
-            padding_after_.clear();
-            ov::infer_auto_padding(
-                input_shape_, filter_spatial_shape, strides_, dilations_, pad_type, padding_after_, padding_before_);
-        } break;
-        case ov::op::PadType::VALID: {
-            size_t spatial_dims_number = NumberOfSpatialDims();
-            padding_before_ = ov::CoordinateDiff(spatial_dims_number, 0);
-            padding_after_ = ov::CoordinateDiff(spatial_dims_number, 0);
-        } break;
-        default:
-            OPENVINO_ASSERT(false);
-    }
-}
 
 void ConvolutionParams::ConvertConv1DToConv2D() {
     if (input_shape_.size() != CONV_1D_DIMS_NUMBER) return;

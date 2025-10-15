@@ -5,7 +5,7 @@
 #pragma once
 
 #include "memory_manager/model/cuda_memory_model.hpp"
-#include "memory_solver.hpp"
+#include "openvino/runtime/memory_solver.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -37,7 +37,7 @@ public:
     MemoryModel::Ptr build();
 
 private:
-    std::vector<MemorySolver::Box> boxes_;
+    std::vector<ov::MemorySolver::Box> boxes_;
     std::unordered_map<BufferID, ptrdiff_t> offsets_;
 };
 

@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2023 Intel Corporation
+// Copyright (C) 2018-2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -6,7 +6,6 @@
 
 #include <cudnn.h>
 
-#include <details/ie_exception.hpp>
 #include <openvino/core/except.hpp>
 #include <ops/converters.hpp>
 
@@ -96,7 +95,7 @@ void FusedConvolutionCuDnn::Execute(const InferenceRequestContext& context,
                                                 outputs[ArgIndices::output].get()));
 }
 
-bool FusedConvolutionCuDnn::IsCudaGraphCompatible() const { return true; }
+CudaGraphCompatibility FusedConvolutionCuDnn::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
 
 WorkbufferRequest FusedConvolutionCuDnn::GetWorkBufferRequest() const {
     if (conv_descs_->Algo().memory != 0)

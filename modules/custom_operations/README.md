@@ -19,8 +19,8 @@ For more information about the format, check the code for `SentencepieceTokenize
 
 And other custom operations introduced by third-party frameworks:
 
-* [calculate_grid](/examples/calculate_grid) and [sparse_conv](/examples/sparse_conv) from [Open3D](https://github.com/isl-org/Open3D)
-* [complex_mul](/examples/complex_mul) from [DIRECT](https://github.com/NKI-AI/direct)
+* [calculate_grid](examples/calculate_grid) and [sparse_conv](examples/sparse_conv) from [Open3D](https://github.com/isl-org/Open3D)
+* [complex_mul](examples/complex_mul) from [DIRECT](https://github.com/NKI-AI/direct)
 
 You can find more information about how to create and use OpenVINO Extensions to facilitate mapping of custom operations from framework model representation to OpenVINO representation [here](https://docs.openvino.ai/latest/openvino_docs_Extensibility_UG_Frontend_Extensions.html).
 
@@ -36,12 +36,12 @@ The C++ code implementing the custom operation is in the `user_ie_extensions` di
 ```bash
 cd openvino_contrib/modules/custom_operations
 mkdir build && cd build
-cmake ../user_ie_extensions -DCMAKE_BUILD_TYPE=Release && cmake --build . --parallel 4
+cmake ../ -DCMAKE_BUILD_TYPE=Release && cmake --build . --parallel 4
 ```
 
 If you need to build only some operations specify them with the `-DCUSTOM_OPERATIONS` option:
 ```bash
-cmake ../user_ie_extensions -DCMAKE_BUILD_TYPE=Release -DCUSTOM_OPERATIONS="complex_mul;fft"
+cmake ../ -DCMAKE_BUILD_TYPE=Release -DCUSTOM_OPERATIONS="complex_mul;fft"
 ```
 
 - Please note that [OpenCV](https://opencv.org/) installation is required to build an extension for the [fft](examples/fft) operation. Other extentions still can be built without OpenCV.
@@ -67,5 +67,5 @@ compiled_model = core.compile_model(model, 'CPU')
 You also can get OpenVINO IR model with Model Optimizer, just use extra `--extension` flag to specify a path to custom extensions:
 
 ```bash
-mo --input_model model.onnx --extension /path/to/libuser_ov_extensions.so
+ovc model.onnx --extension /path/to/libuser_ov_extensions.so
 ```

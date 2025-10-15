@@ -21,7 +21,7 @@ std::shared_ptr<ov::Node> CalculateGrid::clone_with_new_inputs(const ov::OutputV
 }
 
 bool CalculateGrid::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
-    const float* inpPos = reinterpret_cast<float*>(inputs[0].data());
+    const float *inpPos = reinterpret_cast<const float *>(inputs[0].data());
     float* out = reinterpret_cast<float*>(outputs[0].data());
 
     std::set<std::tuple<int, int, int> > outPos;
@@ -61,5 +61,5 @@ bool CalculateGrid::evaluate(ov::TensorVector& outputs, const ov::TensorVector& 
 }
 
 bool CalculateGrid::has_evaluate() const {
-    return get_input_element_type(0) == ngraph::element::f32 ? true : false;
+    return get_input_element_type(0) == ov::element::f32 ? true : false;
 }

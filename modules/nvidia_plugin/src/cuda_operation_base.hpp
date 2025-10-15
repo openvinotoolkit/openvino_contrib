@@ -4,8 +4,6 @@
 
 #pragma once
 
-#include <ie_layouts.h>
-
 #include <cuda/device_pointers.hpp>
 #include <cuda_creation_context.hpp>
 #include <cuda_inference_request_context.hpp>
@@ -30,6 +28,8 @@ namespace nvidia_gpu {
 template <typename T>
 using DevicePointer = CUDA::DevicePointer<T>;
 
+enum class CudaGraphCompatibility { NONE, FULL, SPECIAL };
+
 class IOperationExec {
 public:
     using Inputs = gsl::span<const CUDA::DevicePointer<const void*>>;
@@ -42,11 +42,17 @@ public:
                          Inputs inputTensors,
                          Outputs outputTensors,
                          const Workbuffers& workbuffers) const = 0;
+
+    virtual CudaGraphCompatibility GetCudaGraphCompatibility() const = 0;
+
     virtual void Capture(InferenceRequestContext& context,
                          Inputs inputTensors,
                          Outputs outputTensors,
                          const Workbuffers& workbuffers) const = 0;
-    virtual bool IsCudaGraphCompatible() const = 0;
+    virtual void ExecuteGraph(InferenceRequestContext& context,
+                              Inputs inputTensors,
+                              Outputs outputTensors,
+                              const Workbuffers& workbuffers) const = 0;
     virtual void InitSharedImmutableWorkbuffers(const Buffers&) = 0;
     virtual WorkbufferRequest GetWorkBufferRequest() const = 0;
     virtual const WorkbufferIds& GetWorkbufferIds() const = 0;
@@ -81,7 +87,19 @@ public:
                   IndexCollection&& inputIds,
                   IndexCollection&& outputIds);
 
-    bool IsCudaGraphCompatible() const override { return false; }
+    CudaGraphCompatibility GetCudaGraphCompatibility() const override { return CudaGraphCompatibility::NONE; }
+
+    void Capture(InferenceRequestContext& context,
+                 Inputs inputTensors,
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) const override {
+        Execute(context, inputTensors, outputTensors, workbuffers);
+    }
+    // For operations with CudaGraphCompatibility::SPECIAL, e.g. TI; the vast majority or operations doesn't use this
+    void ExecuteGraph(InferenceRequestContext& context,
+                      Inputs inputTensors,
+                      Outputs outputTensors,
+                      const Workbuffers& workbuffers) const override {}
 
     WorkbufferRequest GetWorkBufferRequest() const override {
         return {};  // Most operators do not need workbuffers
@@ -109,17 +127,11 @@ public:
         workbuffer_ids_ = workbufferIds;
         return workbuffer_ids_.immutableIds.empty() ? WorkbufferStatus::NoInitNeeded : WorkbufferStatus::InitNeeded;
     }
-    void Capture(InferenceRequestContext& context,
-                 Inputs inputTensors,
-                 Outputs outputTensors,
-                 const Workbuffers& workbuffers) const override {
-        Execute(context, inputTensors, outputTensors, workbuffers);
-    }
 
 protected:
     std::string node_name_;
     std::string type_name_;
-    ov::element::Type runtime_precision_ = ov::element::undefined;
+    ov::element::Type runtime_precision_ = ov::element::dynamic;
     const IndexCollection input_ids_;
     const IndexCollection output_ids_;
     WorkbufferIds workbuffer_ids_;

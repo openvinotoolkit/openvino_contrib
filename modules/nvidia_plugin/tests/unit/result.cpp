@@ -25,8 +25,10 @@ class ov::Output<ParameterStubNode> : public ov::Output<ov::Node> {
 public:
     explicit Output<ParameterStubNode>(std::shared_ptr<ParameterStubNode> node) : ov::Output<ov::Node>(node, 0) {
         auto tensor = std::make_shared<ov::descriptor::Tensor>(
-            ov::element::Type{}, ov::PartialShape{1}, ParameterStubNode::get_type_info_static().name);
-        node->m_outputs.emplace_back(node.get(), 0, tensor);
+            ov::element::Type{},
+            ov::PartialShape{1},
+            std::unordered_set<std::string>{ParameterStubNode::get_type_info_static().name});
+        node->get_output_descriptor(0).set_tensor_ptr(tensor);
     }
 };
 

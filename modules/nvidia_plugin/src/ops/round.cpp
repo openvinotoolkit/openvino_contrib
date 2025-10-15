@@ -48,7 +48,7 @@ void RoundOp::Execute(const InferenceRequestContext& context,
     (*kernel_)(context.getThreadContext().stream().get(), inputTensors[0].get(), outputTensors[0].get());
 }
 
-bool RoundOp::IsCudaGraphCompatible() const { return true; }
+CudaGraphCompatibility RoundOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
 
 OPERATION_REGISTER(RoundOp, Round);
 

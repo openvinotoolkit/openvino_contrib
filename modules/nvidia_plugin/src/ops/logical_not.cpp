@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "logical_not.hpp"
+#include "openvino/core/except.hpp"
 
 #include <cuda_operation_registry.hpp>
 
@@ -35,7 +36,7 @@ void LogicalNotOp::Execute(const InferenceRequestContext& context,
     throwIfError(cudaPeekAtLastError());
 }
 
-bool LogicalNotOp::IsCudaGraphCompatible() const { return true; }
+CudaGraphCompatibility LogicalNotOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
 
 OPERATION_REGISTER(LogicalNotOp, LogicalNot);
 
