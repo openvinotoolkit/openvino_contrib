@@ -8,6 +8,8 @@
 #include <ops/nop_op.hpp>
 #include <ops/subgraph.hpp>
 #include <utility>
+#include <condition_variable>
+#include <mutex>
 
 #include "cuda_compiled_model.hpp"
 #include "cuda_eager_topology_runner.hpp"
@@ -278,9 +280,6 @@ std::shared_ptr<ov::IAsyncInferRequest> CompiledModel::create_benchmark_infer_re
         cuda_stream_executor_,
         get_callback_executor());
 }
-
-#include <condition_variable>
-#include <mutex>
 
 void CompiledModel::instantiate_cuda_graphs() {
     std::vector<std::shared_ptr<ov::Tensor>> input_tensors;
