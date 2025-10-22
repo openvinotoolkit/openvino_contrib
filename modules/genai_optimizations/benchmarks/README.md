@@ -115,12 +115,14 @@ GSM8K (Grade School Math 8K) is a dataset of 8,500 high-quality, linguistically 
 
 ```bash
 python math500_gsm_bench.py \
-    --subset gsm \
+    --dataset MATH500 \
     --model deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B \
+    --max_tokens 5000 \
+    --max_examples 100 \
     --enable_eviction \
     --algorithm rkv \
     --granularity per_group \
-    --intermediate_tokens 1024
+    --intermediate_tokens 512
 ```
 This will automatically:
 

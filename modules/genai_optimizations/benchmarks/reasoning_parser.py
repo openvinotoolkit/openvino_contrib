@@ -317,7 +317,7 @@ def strip_string(string, skip_unit=False):
     string = string.replace("infinity", "\\infty")
     if "\\infty" not in string:
         string = string.replace("inf", "\\infty")
-    string = string.replace("+\\inity", "\\infty")
+    string = string.replace("\\inity", "\\infty")
 
     # and
     string = string.replace("and", "")

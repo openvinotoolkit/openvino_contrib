@@ -141,7 +141,17 @@ def prepare_dataset(dataset, max_samples=None):
                 }
             )
     elif dataset == "GSM":
-        data_path = "data/gsm/test.jsonl"
+        data_path = "gsm.jsonl"
+
+        if not os.path.exists(data_path):
+            import requests
+            url = "https://raw.githubusercontent.com/VITA-Group/SEAL/main/data/gsm/test.jsonl"
+            response = requests.get(url)
+            response.raise_for_status()
+            with open(data_path, "w", encoding="utf-8") as f:
+                f.write(response.text)
+            print(f"Downloaded and saved to '{data_path}'.")
+
         with open(data_path) as fin:
             for line in fin:
                 example = json.loads(line)
@@ -187,7 +197,7 @@ def main(args):
     prompts = []
     for example in test_data:
         prompt = prefix + "Question: " + example["question"].strip() + "\nAnswer: "
-        if args.use_chat_format:
+        if not args.omit_chat_template:
             if "deepseek" in args.model:
                 messages = [{"role": "user", "content": prefix + "Question: " + example["question"].strip()}]
             else:
@@ -196,7 +206,7 @@ def main(args):
                     {"role": "user", "content": "Question: " + example["question"].strip()},
                 ]
             prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            if args.remove_bos and tokenizer.bos_token is not None and prompt.startswith(tokenizer.bos_token):
+            if not args.keep_bos and tokenizer.bos_token is not None and prompt.startswith(tokenizer.bos_token):
                 prompt = prompt[len(tokenizer.bos_token) :]
         prompts.append(prompt)
 
@@ -224,35 +234,31 @@ def main(args):
         contexts.append(token_eviction)
 
     outputs = []
-    prompts_with_eviction = 0
     avg_prompt_len = []
     with ExitStack() as stack:
         for ctx in contexts:
             if ctx is not None:
                 stack.enter_context(ctx(model))
 
-            for prompt in prompts:
-                tokenized_batch = tokenizer(prompt, return_tensors="pt", padding=True)
-                tokenized_batch = {k: v.to(model.device) for k, v in tokenized_batch.items()}
-                avg_prompt_len.append(tokenized_batch["input_ids"].shape[1])
+        for prompt in tqdm(prompts):
+            tokenized_batch = tokenizer(prompt, return_tensors="pt", padding=True)
+            tokenized_batch = {k: v.to(model.device) for k, v in tokenized_batch.items()}
+            avg_prompt_len.append(tokenized_batch["input_ids"].shape[1])
 
-                output = model.generate(
-                    **tokenized_batch,
-                    do_sample=False,
-                    max_new_tokens=args.max_tokens,
-                    use_cache=True,
-                    pad_token_id=tokenizer.eos_token_id,
-                )
-                OUTPUT_LENGTHS.append(output.shape[1])
-                if output.shape[1] > token_eviction.max_cache_size:
-                    prompts_with_eviction += 1
-                output = [tokenizer.decode(o[avg_prompt_len[-1]:], skip_special_tokens=True) for o in output]
-                outputs.extend(output)
+            output = model.generate(
+                **tokenized_batch,
+                do_sample=False,
+                max_new_tokens=args.max_tokens,
+                use_cache=True,
+                pad_token_id=tokenizer.eos_token_id,
+            )
+            OUTPUT_LENGTHS.append(output.shape[1])
+            output = [tokenizer.decode(o[avg_prompt_len[-1]:], skip_special_tokens=True) for o in output]
+            outputs.extend(output)
 
     outputs = [[trim_output(o)] for o in outputs]
     print(f"Average prompt length: {sum(avg_prompt_len) / len(avg_prompt_len):.2f}")
     print(f"Average length: {sum(OUTPUT_LENGTHS) / len(OUTPUT_LENGTHS):.2f}")
-    print(f"Prompts with eviction: {prompts_with_eviction}/{len(OUTPUT_LENGTHS)}")
 
     predictions = [
         {
@@ -277,17 +283,17 @@ if __name__ == "__main__":
     parser.add_argument("--max_examples", type=int, default=None)
     parser.add_argument("--start", type=int, default=None)
     parser.add_argument("--save_dir", type=str, default="results")
-    parser.add_argument("--use_chat_format", action="store_true")
-    parser.add_argument("--max_tokens", type=int, default=512)
-    parser.add_argument("--remove_bos", action="store_true", default=True)
+    parser.add_argument("--max_tokens", type=int, default=5000)
+    parser.add_argument("--omit_chat_template", action="store_true")
+    parser.add_argument("--keep_bos", action="store_true")
 
     add_attention_args(parser)
     add_token_eviction_args(parser)
     args = parser.parse_args()
 
     args.save_dir = os.path.join(args.save_dir, args.dataset)
-    if args.remove_bos:
-        args.save_dir = args.save_dir + "_remove_bos"
+    if args.keep_bos:
+        args.save_dir = args.save_dir + "_keep_bos"
 
     if args.max_examples or args.start:
         start = 0 if args.start is None else args.start

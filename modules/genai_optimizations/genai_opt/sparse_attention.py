@@ -16,6 +16,7 @@ from transformers import PreTrainedModel
 from transformers.cache_utils import Cache
 from transformers.models.llama.modeling_llama import repeat_kv
 from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
+from transformers.models.phi3.modeling_phi3 import apply_rotary_pos_emb as phi3_apply_rotary_pos_emb
 from transformers.models.qwen2_vl.modeling_qwen2_vl import apply_multimodal_rotary_pos_emb
 
 from block_sparse_attn import block_sparse_attn_func
@@ -619,7 +620,7 @@ def qwen2_vl_forward(
         value_states=value_states,
         attention_mask=attention_mask,
         scaling=module.scaling,
-        dropout_p=module.attention_dropout if module.training else 0.0,
+        dropout=module.attention_dropout if module.training else 0.0,
     )
 
     attn_output = attn_output.reshape(bsz, q_len, -1).contiguous()
@@ -657,7 +658,91 @@ def llama_forward(
         key_states=key_states,
         value_states=value_states,
         attention_mask=attention_mask,
-        dropout_p=module.attention_dropout if module.training else 0.0,
+        dropout=module.attention_dropout if module.training else 0.0,
+        scaling=module.scaling,
+    )
+
+    attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+    attn_output = module.o_proj(attn_output)
+    return attn_output, attn_weights
+
+
+def qwen3_forward(
+    module,
+    hidden_states: torch.Tensor,
+    position_embeddings: tuple[torch.Tensor, torch.Tensor],
+    attention_mask: Optional[torch.Tensor],
+    past_key_values: Optional[Cache] = None,
+    cache_position: Optional[torch.LongTensor] = None,
+    **kwargs,
+) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+    input_shape = hidden_states.shape[:-1]
+    hidden_shape = (*input_shape, -1, module.head_dim)
+
+    query_states = module.q_norm(module.q_proj(hidden_states).view(hidden_shape)).transpose(1, 2)
+    key_states = module.k_norm(module.k_proj(hidden_states).view(hidden_shape)).transpose(1, 2)
+    value_states = module.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+
+    cos, sin = position_embeddings
+    query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+    if past_key_values is not None:
+        # sin and cos are specific to RoPE models; cache_position needed for the static cache
+        cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
+        key_states, value_states = past_key_values.update(key_states, value_states, module.layer_idx, cache_kwargs)
+
+    attn_output, attn_weights = module.attn_interface(
+        module,
+        query_states=query_states,
+        key_states=key_states,
+        value_states=value_states,
+        attention_mask=attention_mask,
+        dropout=module.attention_dropout if module.training else 0.0,
+        scaling=module.scaling,
+    )
+
+    attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+    attn_output = module.o_proj(attn_output)
+    return attn_output, attn_weights
+
+
+def phi_forward(
+    module,
+    hidden_states: torch.Tensor,
+    position_embeddings: tuple[torch.Tensor, torch.Tensor],
+    attention_mask: Optional[torch.Tensor],
+    past_key_values: Optional[Cache] = None,
+    cache_position: Optional[torch.LongTensor] = None,
+    **kwargs,
+) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
+    input_shape = hidden_states.shape[:-1]
+    hidden_shape = (*input_shape, -1, module.head_dim)
+
+    qkv = module.qkv_proj(hidden_states)
+    query_pos = module.config.num_attention_heads * module.head_dim
+    query_states = qkv[..., :query_pos]
+    key_states = qkv[..., query_pos : query_pos + module.num_key_value_heads * module.head_dim]
+    value_states = qkv[..., query_pos + module.num_key_value_heads * module.head_dim :]
+
+    query_states = query_states.view(hidden_shape).transpose(1, 2)
+    key_states = key_states.view(hidden_shape).transpose(1, 2)
+    value_states = value_states.view(hidden_shape).transpose(1, 2)
+
+    cos, sin = position_embeddings
+    query_states, key_states = phi3_apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+    if past_key_values is not None:
+        # sin and cos are specific to RoPE models; cache_position needed for the static cache
+        cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
+        key_states, value_states = past_key_values.update(key_states, value_states, module.layer_idx, cache_kwargs)
+
+    attn_output, attn_weights = module.attn_interface(
+        module,
+        query_states=query_states,
+        key_states=key_states,
+        value_states=value_states,
+        attention_mask=attention_mask,
+        dropout=module.attention_dropout if module.training else 0.0,
         scaling=module.scaling,
     )
 
@@ -672,6 +757,8 @@ CUSTOM_ATTENTION_FORWARDS = {
     "LlamaForCausalLM": llama_forward,
     "MistralForCausalLM": llama_forward,
     "Qwen2ForCausalLM": llama_forward,
+    "Qwen3ForCausalLM": qwen3_forward,
+    "Phi3ForCausalLM": phi_forward,
 }
 
 def get_custom_attn_forward(model: PreTrainedModel):

@@ -46,7 +46,7 @@ class KVCacheCompressionParameters:
     :param intermediate_tokens: The number of tokens between the "start" and "recent" areas of KV cache that
         will be considered for eviction.
     :type intermediate_tokens: int
-    :param refined_algorithm: The refined scoring strategy for selecting tokens within the intermediate region,
+    :param refined_algorithm: The refined scoring strategy for selecting tokens within the intermediate region.
     :type refined_algorithm: KVCacheRefinedSelection
     :param refined_tokens: The number of tokens within the intermediate region that will be selected
         using a secondary - refined scoring strategy (e.g., KVCrush, DiverseKV algo).
@@ -86,6 +86,7 @@ class KVCacheCompressor:
         self.algorithm = eviction_parameters.algorithm
         self.window_size = eviction_parameters.window_size
         if self.algorithm != KVCacheCompressionMode.H2O and self.window_size is None:
+            logger.info(f"Set window size for {self.algorithm} to 8")
             self.window_size = 8  # Default window size for SnapKV and RKV
 
         self.refined_algorithm = eviction_parameters.refined_algorithm
@@ -94,8 +95,8 @@ class KVCacheCompressor:
         self.kvcrush_anchor = eviction_parameters.kvcrush_anchor
         self.attn_mass_threshold = 0.9
 
-        self._scores = []
-        self._cache_counter = [] if self.normalize_scores else None
+        self._scores = {}
+        self._cache_counter = {} if self.normalize_scores else None
 
         self._validate_arguments()
 
@@ -147,8 +148,8 @@ class KVCacheCompressor:
         """
         Resets the scores and cache counter.
         """
-        self._scores = []
-        self._cache_counter = [] if self.normalize_scores else None
+        self._scores = {}
+        self._cache_counter = {} if self.normalize_scores else None
 
     def aggregate_scores(self, layer_idx, attn_w):
         """
@@ -157,7 +158,7 @@ class KVCacheCompressor:
         if self.algorithm == KVCacheCompressionMode.RKV:
             return self._update_rkv_scores(layer_idx, attn_w)
 
-        layer_scores = self._scores[layer_idx] if len(self._scores) > layer_idx else None
+        layer_scores = self._scores.get(layer_idx, None)
 
         if self.window_size is not None:
             hh_score = attn_w[..., -self.window_size :, :].sum(dim=(0, 2))  # sum over batch and query length
@@ -178,7 +179,10 @@ class KVCacheCompressor:
 
         layer_scores = hh_score
         layer_counter = self._calculate_layer_counter(layer_idx, num_new_tokens, device=attn_w.device)
-        self._update_layer_scores(layer_idx, layer_scores, layer_counter)
+
+        self._scores[layer_idx] = layer_scores
+        if self.normalize_scores:
+            self._cache_counter[layer_idx] = layer_counter
 
     def _calculate_layer_counter(self, layer_idx, num_new_tokens, device):
         if not self.normalize_scores:
@@ -201,26 +205,14 @@ class KVCacheCompressor:
                 layer_counter = new_counters
         return layer_counter
 
-    def _update_layer_scores(self, layer_idx, layer_scores, layer_counter=None):
-        if len(self._scores) <= layer_idx:
-            self._scores.append(layer_scores)
-            if self.normalize_scores:
-                self._cache_counter.append(layer_counter)
-        else:
-            self._scores[layer_idx] = layer_scores
-            if self.normalize_scores:
-                self._cache_counter[layer_idx] = layer_counter
-
     def _update_rkv_scores(self, layer_idx: int, attn_w: torch.Tensor) -> None:
         """
         Updates the scores for the decoding phase like in R-KV and RPC papers.
         """
         hh_score = attn_w.sum(0)  # Sum over batch, shape: (H, q_len, k_len)
 
-        layer_scores = self._scores[layer_idx] if len(self._scores) > layer_idx else None
-        if len(self._scores) <= layer_idx:
-            self._scores.append(hh_score)
-        elif layer_scores is None:
+        layer_scores = self._scores.get(layer_idx, None)
+        if layer_scores is None:
             self._scores[layer_idx] = hh_score
         else:
             layer_scores = self._scores[layer_idx]
@@ -253,7 +245,7 @@ class KVCacheCompressor:
             padding=7 // 2,
             stride=1,
         )
-        self._scores[layer_idx] = None  # Clear scores after retrieval
+        del self._scores[layer_idx]  # Clear scores after retrieval
         return scores.mean(0, keepdim=True)[:, self.start_tokens :]  # Average over heads, shape: (1, k_len)
 
     def _get_keys_similarity(self, key_states):
@@ -287,7 +279,6 @@ class KVCacheCompressor:
             scores_flat = scores.view(-1)
             refined_mask = scores_flat != float("-inf")
             keepable_scores = scores_flat[refined_mask]
-            # print("refined scores len", scores.shape, keepable_scores.shape)
 
             # Binary vector: top 50% → 1, bottom 50% → 0
             num_zeros = keepable_scores.numel() // 2
@@ -386,7 +377,7 @@ class KVCacheCompressor:
             diversity[scores.view(-1) == float("-inf")] = float("-inf")
             _, refined_topk = torch.topk(diversity, refined_size, dim=-1)
 
-        return refined_topk.squeeze(0)
+        return refined_topk
 
     def get_intermediate_page_scores(self):
         scores = self.get_scores()
@@ -431,10 +422,7 @@ class KVCacheCompressor:
         cutoff = (cumsum >= target_mass).nonzero(as_tuple=False)
         # Minimum number of groups to cover the target mass
         k_min = cutoff[0].item() + 1  # +1 because indices are 0-based
-        if k_min >= self.intermediate_tokens // self.group_size:
-            self.refined_size = 0
-        else:
-            self.refined_size = self.intermediate_tokens - k_min * self.group_size
+        self.refined_tokens = max(0, self.intermediate_tokens - k_min * self.group_size)
 
     def get_remaining_indices(self, scores: torch.Tensor, kwargs: dict) -> torch.Tensor:
         """
@@ -444,20 +432,20 @@ class KVCacheCompressor:
         start_size = self.start_tokens // self.group_size
         intermediate_size = self.intermediate_tokens // self.group_size
         recent_size = self.recent_tokens // self.group_size
-        refined_size = self.refined_tokens // self.group_size
-        coarse_size = intermediate_size - refined_size
 
         if self.granularity == "per_group":
             pad = scores.shape[-1] % self.group_size
             if pad:
-                padded_scores = F.pad(scores, (0, self.group_size - pad), mode="constant", value=0)
-            padded_scores = padded_scores.view(-1, self.group_size).sum(-1)  # Sum token scores inside group
+                scores = F.pad(scores, (0, self.group_size - pad), mode="constant", value=0)
+            padded_scores = scores.view(-1, self.group_size).sum(-1)  # Sum token scores inside group
         else:
             padded_scores = scores.squeeze(0)
-        intermediate_scores = padded_scores[:-recent_size]
+        intermediate_scores = padded_scores[:-recent_size] if recent_size > 0 else padded_scores
 
         if self.adaptive_refined_size:
             self._set_balanced_refined_size(intermediate_scores)
+        refined_size = self.refined_tokens // self.group_size
+        coarse_size = intermediate_size - refined_size
 
         keep_groups = []
         if start_size > 0:
