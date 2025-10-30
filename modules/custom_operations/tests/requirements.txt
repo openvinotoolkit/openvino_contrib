@@ -3,3 +3,4 @@ onnx
 tensorboard
 pytest
 # open3d==0.16.0 - need to update with new release
+onnxscript
