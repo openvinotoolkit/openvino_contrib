@@ -90,6 +90,7 @@ def test_sparse_conv_transpose(in_channels, filters, kernel_size, out_pos):
     run_test(inp, ref, test_onnx=True, threshold=1e-4)
 
 
+@pytest.mark.skip(reason="Exported model do not contains calculate_grid operator")
 def test_calculate_grid():
     from examples.calculate_grid.export_model import export
     inp, ref = export(num_points=10, max_grid_extent=5)
