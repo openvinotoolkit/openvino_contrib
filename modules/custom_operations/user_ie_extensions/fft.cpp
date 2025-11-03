@@ -112,7 +112,7 @@ void FFT::validate_and_infer_types() {
 }
 
 std::shared_ptr<ov::Node> FFT::clone_with_new_inputs(const ov::OutputVector& new_args) const {
-    const ov::Dimension exp_no_inputs{2,3};
+    const ov::Dimension exp_no_inputs{2};
     OPENVINO_ASSERT(exp_no_inputs.compatible(new_args.size()),
                     "Incorrect number of new arguments, provided: ",
                     new_args.size());
