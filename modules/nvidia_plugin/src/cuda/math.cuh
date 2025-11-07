@@ -166,6 +166,46 @@ inline __device__ T log(T a) {
     return static_cast<T>(::logf(static_cast<float>(a)));
 }
 
+template <typename T>
+inline __device__ T sign_float(T x) {
+    static_assert(std::is_floating_point<T>::value, "T should be floating_point type");
+    if (x < 0.0f) return -1.0f;
+    if (x > 0.0f) return 1.0f;
+    return 0.0f;
+}
+
+template <>
+inline __device__ __half sign_float<__half>(__half x) {
+    const __half zero = __float2half(0.0f);
+    if (x < zero) return __half(-1.0f);
+    if (x > zero) return __half(1.0f);
+    return zero;
+}
+
+#ifdef CUDA_HAS_BF16_TYPE
+template <>
+inline __device__ __nv_bfloat16 sign_float<__nv_bfloat16>(__nv_bfloat16 x) {
+    const __nv_bfloat16 zero = __float2bfloat16(0.0f);
+    if (x < zero) return __nv_bfloat16(-1.0f);
+    if (x > zero) return __nv_bfloat16(1.0f);
+    return zero;
+}
+#endif
+
+template <typename T>
+inline __device__ T sign_int(T x) {
+    static_assert(std::is_integral<T>::value && !std::is_unsigned<T>::value,
+                  "T should be integer type");
+    return static_cast<T>((x > 0) - (x < 0));
+}
+
+template <typename T>
+inline __device__ T sign_uint(T x) {
+    static_assert(std::is_integral<T>::value && std::is_unsigned<T>::value,
+                  "T should be unsigned integer type");
+    return static_cast<T>(x > 0);
+}
+
 #ifdef __CUDACC__
 /* ==================== __half ===================== */
 template <>
