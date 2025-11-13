@@ -29,7 +29,9 @@
 #    include "fft.hpp"
 #    define FFT_EXT                                                                                    \
             std::make_shared<ov::OpExtension<TemplateExtension::FFT>>(),                               \
-            std::make_shared<ov::frontend::OpExtension<TemplateExtension::FFT>>(),
+            std::make_shared<ov::frontend::OpExtension<TemplateExtension::FFT>>(                       \
+                "DFT",                                                                                 \
+                std::map<std::string, std::string>{ {"centered", "onesided"}, {"inverse", "inverse"} }),
 #else
 #    define FFT_EXT
 #endif
