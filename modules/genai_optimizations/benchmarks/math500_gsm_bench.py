@@ -182,15 +182,6 @@ def main(args):
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
-    contexts = []
-    if args.use_custom_attention:
-        sparse_attn = get_sparse_attention_patcher(args)
-        contexts.append(sparse_attn)
-
-    if args.enable_eviction:
-        token_eviction = get_eviction_patcher(args)
-        contexts.append(token_eviction)
-
     prefix = (
         "Answer the following questions. You should think step-by-step and put your final answer within \\boxed{}.\n"
     )

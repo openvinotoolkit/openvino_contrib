@@ -104,10 +104,10 @@ class SparseAttention:
 
     @staticmethod
     def _prepare_kv(
-            module: nn.Module,
-            query_states: torch.Tensor,
-            key_states: torch.Tensor,
-            value_states: torch.Tensor
+        module: nn.Module,
+        query_states: torch.Tensor,
+        key_states: torch.Tensor,
+        value_states: torch.Tensor
     ):
         if key_states.shape[1] != query_states.shape[1]:
             key_states = repeat_kv(key_states, module.num_key_value_groups)
