@@ -19,6 +19,12 @@ logger = getLogger(__name__)
 class KVCacheCompressionMode(Enum):
     H2O = "h2o"
     SNAPKV = "snapkv"
+    RKV = "rkv"
+
+
+class KVCacheRefinedSelection(Enum):
+    KVCRUSH = "kvcrush"
+    DIVERSEKV = "diversekv"
 
 
 @dataclass
@@ -40,6 +46,15 @@ class KVCacheCompressionParameters:
     :param intermediate_tokens: The number of tokens between the "start" and "recent" areas of KV cache that
         will be considered for eviction.
     :type intermediate_tokens: int
+    :param refined_algorithm: The refined scoring strategy for selecting tokens within the intermediate region.
+    :type refined_algorithm: KVCacheRefinedSelection
+    :param refined_tokens: The number of tokens within the intermediate region that will be selected
+        using a secondary - refined scoring strategy (e.g., KVCrush, DiverseKV algo).
+        If set to 0 (default), the entire intermediate region is processed using the primary selection method.
+    :type refined_tokens: int
+    :param kvcrush_anchor: The anchor point for the KVCrush algorithm,
+        which can be "alternate", "random", "zeros", "ones", or "mean". Defaults to "alternate".
+    :type kvcrush_anchor: str
     :param normalize_scores: Whether to normalize the attention scores by the number of times each token was attended to.
     :type normalize_scores: bool
     :param window_size: The size of the importance score aggregation window
@@ -52,6 +67,9 @@ class KVCacheCompressionParameters:
     start_tokens: int = 32
     recent_tokens: int = 128
     intermediate_tokens: int = 512
+    refined_algorithm: Optional[KVCacheRefinedSelection] = None
+    refined_tokens: int = 64
+    kvcrush_anchor: str = "alternate"
     normalize_scores: bool = False
     window_size: Optional[int] = None
 
@@ -67,11 +85,18 @@ class KVCacheCompressor:
 
         self.algorithm = eviction_parameters.algorithm
         self.window_size = eviction_parameters.window_size
-        if self.algorithm == KVCacheCompressionMode.SNAPKV and self.window_size is None:
-            self.window_size = 8  # Default window size for SnapKV
+        if self.algorithm != KVCacheCompressionMode.H2O and self.window_size is None:
+            logger.info(f"Set window size for {self.algorithm} to 8")
+            self.window_size = 8  # Default window size for SnapKV and RKV
 
-        self._scores = []
-        self._cache_counter = [] if self.normalize_scores else None
+        self.refined_algorithm = eviction_parameters.refined_algorithm
+        self.refined_tokens = eviction_parameters.refined_tokens
+        self.adaptive_refined_size = self.refined_algorithm is not None and self.refined_tokens == 0
+        self.kvcrush_anchor = eviction_parameters.kvcrush_anchor
+        self.attn_mass_threshold = 0.9
+
+        self._scores = {}
+        self._cache_counter = {} if self.normalize_scores else None
 
         self._validate_arguments()
 
@@ -81,13 +106,20 @@ class KVCacheCompressor:
         Raises a ValueError at the end if any condition fails.
         """
         error_msg = None
-        if self.start_tokens < 0 or self.recent_tokens < 0 or self.intermediate_tokens < 0:
+        if any(x < 0 for x in (
+            self.start_tokens,
+            self.recent_tokens,
+            self.intermediate_tokens,
+            self.refined_tokens,
+        )):
             error_msg = "KV cache sizes must be non-negative integers."
+        elif self.refined_tokens > self.intermediate_tokens:
+            error_msg = "refined_tokens cannot be greater than intermediate_tokens."
         elif self.start_tokens + self.recent_tokens + self.intermediate_tokens <= 0:
             error_msg = "At least one of the KV cache sizes must be greater than zero."
         elif any(
             size % self.group_size != 0
-            for size in (self.start_tokens, self.recent_tokens, self.intermediate_tokens)
+            for size in (self.start_tokens, self.recent_tokens, self.intermediate_tokens, self.refined_tokens)
         ):
             error_msg = "KV cache part sizes must be divisible by the group size."
         elif self.window_size is not None and self.algorithm == KVCacheCompressionMode.H2O:
@@ -96,6 +128,11 @@ class KVCacheCompressor:
             error_msg = "Window size must be a positive integer if specified."
         elif self.granularity not in {"per_token", "per_group"}:
             error_msg = f"Granularity {self.granularity} is not supported. Supported granularities: 'per_token', 'per_group'."
+        elif self.kvcrush_anchor not in {"random", "zeros", "ones", "mean", "alternate"}:
+            error_msg = (
+                f"Unknown KVCrush anchor: {self.kvcrush_anchor}. "
+                "Supported anchors: 'random', 'zeros', 'ones', 'mean', 'alternate'."
+            )
 
         if error_msg:
             raise ValueError(error_msg)
@@ -111,14 +148,17 @@ class KVCacheCompressor:
         """
         Resets the scores and cache counter.
         """
-        self._scores = []
-        self._cache_counter = [] if self.normalize_scores else None
+        self._scores = {}
+        self._cache_counter = {} if self.normalize_scores else None
 
     def aggregate_scores(self, layer_idx, attn_w):
         """
         Updates the scores based on the attention weights.
         """
-        layer_scores = self._scores[layer_idx] if len(self._scores) > layer_idx else None
+        if self.algorithm == KVCacheCompressionMode.RKV:
+            return self._update_rkv_scores(layer_idx, attn_w)
+
+        layer_scores = self._scores.get(layer_idx, None)
 
         if self.window_size is not None:
             hh_score = attn_w[..., -self.window_size :, :].sum(dim=(0, 2))  # sum over batch and query length
@@ -138,17 +178,20 @@ class KVCacheCompressor:
             hh_score[:, :-num_new_tokens] += layer_scores
 
         layer_scores = hh_score
-        layer_counter = self._calculate_layer_counter(layer_idx, num_new_tokens)
-        self._update_layer_scores(layer_idx, layer_scores, layer_counter)
+        layer_counter = self._calculate_layer_counter(layer_idx, num_new_tokens, device=attn_w.device)
 
-    def _calculate_layer_counter(self, layer_idx, num_new_tokens):
+        self._scores[layer_idx] = layer_scores
+        if self.normalize_scores:
+            self._cache_counter[layer_idx] = layer_counter
+
+    def _calculate_layer_counter(self, layer_idx, num_new_tokens, device):
         if not self.normalize_scores:
             return None
 
         new_count_size = num_new_tokens
         if self.window_size is not None:
             new_count_size = min(self.window_size, num_new_tokens)
-        new_counters = torch.arange(new_count_size, 0, -1)
+        new_counters = torch.arange(new_count_size, 0, -1, device=device)
 
         if len(self._cache_counter) > layer_idx:
             layer_counter = self._cache_counter[layer_idx]
@@ -156,28 +199,185 @@ class KVCacheCompressor:
             layer_counter = torch.cat((layer_counter, new_counters), dim=-1)
         else:
             if self.window_size is not None and num_new_tokens > self.window_size:
-                full_window = torch.full((num_new_tokens - self.window_size,), self.window_size)
+                full_window = torch.full((num_new_tokens - self.window_size,), self.window_size, device=device)
                 layer_counter = torch.cat((full_window, new_counters), dim=0)
             else:
                 layer_counter = new_counters
         return layer_counter
 
-    def _update_layer_scores(self, layer_idx, layer_scores, layer_counter=None):
-        if len(self._scores) <= layer_idx:
-            self._scores.append(layer_scores)
-            if self.normalize_scores:
-                self._cache_counter.append(layer_counter.to(layer_scores.device))
+    def _update_rkv_scores(self, layer_idx: int, attn_w: torch.Tensor) -> None:
+        """
+        Updates the scores for the decoding phase like in R-KV and RPC papers.
+        """
+        hh_score = attn_w.sum(0)  # Sum over batch, shape: (H, q_len, k_len)
+
+        layer_scores = self._scores.get(layer_idx, None)
+        if layer_scores is None:
+            self._scores[layer_idx] = hh_score
         else:
-            self._scores[layer_idx] = layer_scores
-            if self.normalize_scores:
-                self._cache_counter[layer_idx] = layer_counter.to(layer_scores.device)
+            layer_scores = self._scores[layer_idx]
+            new_tokens = hh_score.shape[-1] - layer_scores.shape[-1]
+            self._scores[layer_idx] = torch.cat(
+                (
+                    F.pad(layer_scores, (0, new_tokens), mode="constant", value=0),
+                    hh_score,
+                ),
+                dim=-2,
+            )
+
+        # Keep only the last `window_size` scores
+        if self._scores[layer_idx].shape[1] > self.window_size:
+            self._scores[layer_idx] = self._scores[layer_idx][:, -self.window_size :, :]
 
     def get_scores(self, layer_idx):
-        return (
-            self._scores[layer_idx]
-            if not self.normalize_scores
-            else self._scores[layer_idx] / self._cache_counter[layer_idx]
+        if self._scores[layer_idx].dim() == 2:
+            return (
+                self._scores[layer_idx]
+                if not self.normalize_scores
+                else self._scores[layer_idx] / self._cache_counter[layer_idx]
+            )
+
+        # Average over query length, shape: (H, k_len)
+        scores = self._scores[layer_idx].mean(dim=-2)
+        scores = F.max_pool1d(
+            scores,
+            kernel_size=7,
+            padding=7 // 2,
+            stride=1,
         )
+        del self._scores[layer_idx]  # Clear scores after retrieval
+        return scores.mean(0, keepdim=True)[:, self.start_tokens :]  # Average over heads, shape: (1, k_len)
+
+    def _get_keys_similarity(self, key_states):
+        keys_normalized = key_states / key_states.norm(dim=-1, keepdim=True)
+        similarity = torch.matmul(keys_normalized, keys_normalized.transpose(-1, -2))
+        similarity = similarity[:, :, self.start_tokens :, self.start_tokens :]
+        # Aggregate over batch
+        similarity = similarity.mean(dim=0)
+
+        for h in range(similarity.shape[0]):
+            similarity[h].fill_diagonal_(0.0)
+
+        # Zero out values below mean similarity for each head
+        head_means = similarity.view(similarity.shape[0], -1).mean(dim=-1, keepdim=True)
+        thr = head_means.unsqueeze(-1)
+        similarity = torch.where(similarity >= thr, similarity, torch.zeros_like(similarity))
+
+        # Aggregate over heads
+        similarity = similarity.mean(dim=0)
+        return similarity
+
+    def get_refined_indices(self, scores: torch.Tensor, kwargs: dict) -> torch.Tensor:
+        device = scores.device
+        refined_size = self.refined_tokens // self.group_size
+        if self.refined_algorithm == KVCacheRefinedSelection.KVCRUSH:
+            B, _ = scores.shape
+            if B != 1:
+                error_msg = "KVCacheCompressor with KVCrush algorithm supports only batch size of 1."
+                raise ValueError(error_msg)
+
+            scores_flat = scores.view(-1)
+            refined_mask = scores_flat != float("-inf")
+            keepable_scores = scores_flat[refined_mask]
+
+            # Binary vector: top 50% → 1, bottom 50% → 0
+            num_zeros = keepable_scores.numel() // 2
+            _, low_idx = torch.topk(keepable_scores, num_zeros, largest=False)
+            binary_vector = torch.ones_like(keepable_scores, dtype=torch.int)
+            binary_vector[low_idx] = 0
+
+            # Place binary_vector back into full-length binary tensor
+            full_binary = torch.zeros_like(scores_flat, dtype=torch.int, device=device)
+            full_binary[refined_mask] = binary_vector
+
+            if self.granularity == "per_group":
+                full_binary = full_binary.view(-1, self.group_size)
+                num_groups = full_binary.shape[0]
+
+                if self.kvcrush_anchor == "random":
+                    anchor_point = torch.randint(0, 2, (num_groups,), device=device)
+                elif self.kvcrush_anchor == "zeros":
+                    anchor_point = torch.zeros(num_groups, device=device)
+                elif self.kvcrush_anchor == "ones":
+                    anchor_point = torch.ones(num_groups, device=device)
+                elif self.kvcrush_anchor == "mean":
+                    mean_point = full_binary.float().mean(dim=1)
+                    anchor_point = (mean_point > 0.5).int()
+                elif self.kvcrush_anchor == "alternate":
+                    anchor_point = torch.zeros(num_groups, device=device)
+                    anchor_point[1::2] = 1
+
+                hamming_distance = torch.sum(
+                    full_binary != anchor_point.unsqueeze(1), dim=1
+                ).float()  # shape: [num_groups]
+                refined_group_mask = refined_mask.view(-1, self.group_size)[:, 0]
+                hamming_distance[~refined_group_mask] = float("-inf")  # Set invalid indices to -inf
+
+                sorted_dist_idx = torch.argsort(hamming_distance, descending=True)
+
+                # Select evenly spaced indices using linspace (representative)
+                num_valid = keepable_scores.numel() // self.group_size
+                rep_indices = torch.linspace(
+                    0, num_valid - 1, steps=refined_size, dtype=torch.long, device=device
+                )
+                assert rep_indices.numel() == refined_size
+                refined_topk = sorted_dist_idx[rep_indices]  # shape: [refined_groups]
+
+                return refined_topk
+
+            # Anchor: shape [L]
+            if self.kvcrush_anchor == "random":
+                anchor = torch.randint_like(keepable_scores, low=0, high=2, device=device)
+            elif self.kvcrush_anchor == "zeros":
+                anchor = torch.zeros_like(keepable_scores, dtype=torch.int, device=device)
+            elif self.kvcrush_anchor == "ones":
+                anchor = torch.ones_like(keepable_scores, dtype=torch.int, device=device)
+            elif self.kvcrush_anchor == "mean":  # equal to binary_vector in per-token case
+                error_msg = (
+                    "Mean anchor is not supported for KVCrush in per-token mode. "
+                    "Please use 'random', 'zeros', 'ones' or 'alternate' anchors."
+                )
+                raise ValueError(error_msg)
+            elif self.kvcrush_anchor == "alternate":
+                anchor = torch.zeros_like(keepable_scores, dtype=torch.int, device=device)
+                anchor[1::2] = 1
+
+            full_anchor = torch.zeros_like(scores_flat, dtype=torch.int)
+            full_anchor[refined_mask] = anchor
+
+            # Hamming distance (1D): count bits different from anchor
+            hamming_distance = (full_binary != full_anchor).float()
+            hamming_distance[~refined_mask] = float("-inf")  # Set invalid indices to -inf
+
+            # Sort valid indices by distance to anchor (more diverse first)
+            sorted_dist_idx = torch.argsort(hamming_distance, descending=True)
+
+            # Select evenly spaced indices using linspace (representative)
+            num_valid = keepable_scores.numel()
+            rep_indices = torch.linspace(
+                0, num_valid - 1, steps=refined_size, dtype=torch.long, device=device
+            )
+            assert rep_indices.numel() == refined_size
+            refined_topk = sorted_dist_idx[rep_indices].unsqueeze(0)  # shape: [1, refined_tokens]
+
+        elif self.refined_algorithm == KVCacheRefinedSelection.DIVERSEKV:
+            keys = kwargs.get("keys")
+            similarity = self._get_keys_similarity(keys)
+            n = scores.shape[-1]
+            similarity = similarity[:n, :n]  # Only intermediate part
+
+            selected_mask = scores[0] == float("-inf")
+            similarity_to_selected = similarity[:, selected_mask]
+            diversity = -similarity_to_selected.mean(dim=-1)  # diverse = low sim to selected
+
+            if self.granularity == "per_group":
+                diversity = diversity.view(-1, self.group_size).sum(dim=-1)
+                scores = scores.view(-1, self.group_size).sum(dim=-1)  # Sum token scores inside group
+                # mask for already selected tokens (scores == -inf)
+            diversity[scores.view(-1) == float("-inf")] = float("-inf")
+            _, refined_topk = torch.topk(diversity, refined_size, dim=-1)
+
+        return refined_topk
 
     def get_intermediate_page_scores(self):
         scores = self.get_scores()
@@ -215,41 +415,71 @@ class KVCacheCompressor:
 
         return indices
 
+    def _set_balanced_refined_size(self, intermediate_scores):
+        target_mass = self.attn_mass_threshold * intermediate_scores.sum(dim=-1)
+        vals, _ = torch.sort(intermediate_scores, descending=True, dim=-1)
+        cumsum = vals.cumsum(dim=-1)
+        cutoff = (cumsum >= target_mass).nonzero(as_tuple=False)
+        # Minimum number of groups to cover the target mass
+        k_min = cutoff[0].item() + 1  # +1 because indices are 0-based
+        self.refined_tokens = max(0, self.intermediate_tokens - k_min * self.group_size)
+
     def get_remaining_indices(self, scores: torch.Tensor, kwargs: dict) -> torch.Tensor:
         """
         Computes the indices of the keep tokens in the KV cache after compression.
         """
         seq_len = self.start_tokens + scores.shape[-1]
-        if self.granularity == "per_token":
-            start_size = self.start_tokens
-            intermediate_size = self.intermediate_tokens
-            recent_size = self.recent_tokens
-        elif self.granularity == "per_group":
-            start_size = self.start_tokens // self.group_size
-            intermediate_size = self.intermediate_tokens // self.group_size
-            recent_size = self.recent_tokens // self.group_size
+        start_size = self.start_tokens // self.group_size
+        intermediate_size = self.intermediate_tokens // self.group_size
+        recent_size = self.recent_tokens // self.group_size
 
+        if self.granularity == "per_group":
             pad = scores.shape[-1] % self.group_size
             if pad:
                 scores = F.pad(scores, (0, self.group_size - pad), mode="constant", value=0)
-            scores = scores.view(-1, self.group_size).sum(-1)  # Sum token scores inside group
+            padded_scores = scores.view(-1, self.group_size).sum(-1)  # Sum token scores inside group
+        else:
+            padded_scores = scores.squeeze(0)
+        intermediate_scores = padded_scores[:-recent_size] if recent_size > 0 else padded_scores
+
+        if self.adaptive_refined_size:
+            self._set_balanced_refined_size(intermediate_scores)
+        refined_size = self.refined_tokens // self.group_size
+        coarse_size = intermediate_size - refined_size
 
         keep_groups = []
-        size = scores.shape[0]
         if start_size > 0:
             keep_past = torch.arange(0, start_size, device=scores.device)
             keep_groups.append(keep_past)
 
         if intermediate_size > 0:
-            intermediate_scores = scores[:size - recent_size]
+            if coarse_size > 0:
+                _, keep_coarse = torch.topk(intermediate_scores, coarse_size, dim=-1)
+                keep_coarse = keep_coarse.sort().values + start_size
+                keep_groups.append(keep_coarse)
 
-            _, keep_coarse = torch.topk(intermediate_scores, intermediate_size, dim=-1)
-            keep_coarse = keep_coarse.sort().values + start_size
-            keep_groups.append(keep_coarse)
+            if refined_size > 0:
+                refined_scores = scores[:, :len(intermediate_scores) * self.group_size]
+
+                if coarse_size > 0:
+                    coarse_idx = keep_coarse.unsqueeze(0) - start_size
+                    mask = torch.zeros_like(refined_scores, dtype=torch.bool)
+
+                    if self.granularity == "per_group":
+                        coarse_idx = self._convert_group_indices(
+                            coarse_idx, coarse_idx.shape[-1] * self.group_size
+                        )
+
+                    mask.scatter_(1, coarse_idx, True)  # Ensure no OOB here
+                    refined_scores = refined_scores.masked_fill(mask, float("-inf"))
+
+                refined_topk = self.get_refined_indices(refined_scores, kwargs) + start_size
+                keep_groups.append(refined_topk)
 
         if recent_size > 0:
+            padded_len = padded_scores.shape[0]
             keep_recent = (
-                torch.arange(size - recent_size, size, device=scores.device) + start_size
+                torch.arange(padded_len - recent_size, padded_len, device=scores.device) + start_size
             )
             keep_groups.append(keep_recent)
 
@@ -313,6 +543,9 @@ class KVCacheCompressor:
 
         seq_len = keys.shape[-2]
         if seq_len > self.max_cache_size:
+            if self.refined_algorithm == KVCacheRefinedSelection.DIVERSEKV:
+                kwargs["keys"] = keys
+
             keys, values = self.compress(layer_idx, keys, values, kwargs)
 
         cache.layers[layer_idx].keys = keys

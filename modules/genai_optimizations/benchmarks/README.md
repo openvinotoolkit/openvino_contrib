@@ -10,6 +10,8 @@ This [example](./longbench.py) demonstrates how to evaluate and optimize LLMs us
 
 Sparse attention speeds up the prefill stage in LLMs by attending only to the most relevant query-key blocks. Static patterns like Tri-Shape and dynamic mechanisms like XAttention reduce memory and computation without significant accuracy loss, enabling efficient handling of long prompts.
 
+KV-Cache Token Eviction accelerates the decoding stage in LLMs by removing less important cached tokens while preserving those essential for contextual understanding, allowing efficient long-sequence inference under constrained memory.
+
 ### Run Example
 
 ```bash
@@ -96,6 +98,35 @@ This will automatically:
 - Download the selected model and dataset
 - Apply the visual token pruning algorithm
 - Apply sparse attention computation during the prefill stage
+- Apply token eviction during the decoding stage
+- Evaluate the model and report the score
+
+</details>
+
+<details>
+<summary><b>Large Reasoning Models Optimization Example: MATH500 and GSM8K Benchmarks</b></summary>
+
+This [example](./math500_gsm_bench.py) demonstrates how to evaluate and optimize LRMs using the KV-Cache Token Eviction algorithm. The example leverages [MATH500](https://huggingface.co/datasets/HuggingFaceH4/MATH-500) and [GSM8K](https://huggingface.co/datasets/openai/gsm8k) datasets.
+MATH500 contains a subset of 500 problems from the [MATH](https://github.com/hendrycks/math) benchmark, originally introduced in OpenAI’s Let’s Verify Step by Step paper. The subset covers six domains: algebra, geometry, intermediate algebra, number theory, precalculus, and probability.
+GSM8K (Grade School Math 8K) is a dataset of 8,500 high-quality, linguistically diverse grade-school math word problems. While the problems are conceptually simple, they often require multi-step reasoning, making them challenging for state-of-the-art language models due to the high diversity of problems.
+
+
+### Run Example
+
+```bash
+python math500_gsm_bench.py \
+    --dataset MATH500 \
+    --model deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B \
+    --max_tokens 5000 \
+    --max_examples 100 \
+    --enable_eviction \
+    --algorithm rkv \
+    --granularity per_group \
+    --intermediate_tokens 512
+```
+This will automatically:
+
+- Download the selected model and dataset
 - Apply token eviction during the decoding stage
 - Evaluate the model and report the score
 

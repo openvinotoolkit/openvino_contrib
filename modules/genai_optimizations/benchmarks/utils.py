@@ -1,7 +1,7 @@
 # Copyright (C) 2018-2025 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 from genai_opt import SparseAttention
-from genai_opt import KVCacheCompressionMode, KVCacheCompressionParameters, KVCacheCompressor
+from genai_opt import KVCacheCompressionMode, KVCacheCompressionParameters, KVCacheCompressor, KVCacheRefinedSelection
 
 def add_visual_pruning_args(parser):
     group = parser.add_argument_group("Visual Token Pruning Arguments")
@@ -34,7 +34,7 @@ def add_attention_args(parser):
 def add_token_eviction_args(parser):
     group = parser.add_argument_group("Token Eviction Arguments")
     group.add_argument("--enable_eviction", action="store_true", help="Enable token eviction")
-    group.add_argument("--algorithm", default="snapkv", choices=["snapkv", "h2o"], help="The KV cache eviction algorithm")
+    group.add_argument("--algorithm", default="snapkv", choices=["snapkv", "h2o", "rkv"], help="The KV cache eviction algorithm")
     group.add_argument("--granularity", default="per_group", choices=["per_token", "per_group"], help="Eviction granularity")
     group.add_argument(
         "--normalize_scores",
@@ -51,6 +51,26 @@ def add_token_eviction_args(parser):
     group.add_argument("--recent_tokens", type=int, default=128, help="The number of most recent tokens to be retained")
     group.add_argument("--group_size", type=int, default=32, help="Group size for per-group eviction strategy")
     group.add_argument("--window_size", type=int, default=None, help="The size of the importance score aggregation window")
+    group.add_argument(
+        "--refined_algorithm",
+        type=str,
+        default=None,
+        choices=["kvcrush", "diversekv"],
+        help="The refined scoring strategy for selecting tokens within the intermediate region"
+    )
+    group.add_argument(
+        "--refined_tokens",
+        type=int,
+        default=0,
+        help="The number of tokens within the intermediate region that will be selected using a refined scoring strategy"
+    )
+    group.add_argument(
+        "--kvcrush_anchor",
+        type=str,
+        default="alternate",
+        choices=["random", "zeros", "ones", "mean", "alternate"],
+        help="The anchor point for the KVCrush algorithm"
+    )
     return parser
 
 
@@ -77,5 +97,8 @@ def get_eviction_patcher(args):
         intermediate_tokens=args.intermediate_tokens,
         normalize_scores=args.normalize_scores,
         window_size=args.window_size,
+        refined_algorithm=KVCacheRefinedSelection(args.refined_algorithm) if args.refined_algorithm else None,
+        refined_tokens=args.refined_tokens,
+        kvcrush_anchor=args.kvcrush_anchor,
     )
     return KVCacheCompressor(eviction_parameters=params)
