@@ -112,7 +112,6 @@ jobs:
             -DENABLE_OV_TF_FRONTEND=OFF \
             -DENABLE_OV_TF_LITE_FRONTEND=OFF \
             -DENABLE_OV_PYTORCH_FRONTEND=OFF \
-            -DENABLE_CPPLINT=OFF \
             -DENABLE_INTEL_NPU=OFF \
             -S ${{ env.OPENVINO_REPO }} \
             -B ${{ env.BUILD_DIR }}
