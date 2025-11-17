@@ -13,6 +13,8 @@ EXTRAS_REQUIRE = {
         "bitsandbytes==0.47.0",
         "protobuf",
         "sentencepiece==0.2.1",
+        "latex2sympy2",
+        "word2number",
     ],
 }
 
