@@ -9,13 +9,15 @@
 #include <vector>
 
 #include "compiled_model.hpp"
-#include "mps_graph_builder.hpp"
+#include "graph/mps_graph_builder.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/validation_util.hpp"
 #include "openvino/op/add.hpp"
+#include "openvino/op/avg_pool.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/convolution.hpp"
 #include "openvino/op/matmul.hpp"
+#include "openvino/op/max_pool.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
 #include "openvino/op/result.hpp"
@@ -36,14 +38,17 @@ bool is_supported_node(const std::shared_ptr<const ov::Node>& node) {
            ov::as_type_ptr<const ov::op::v0::Relu>(node) ||
            ov::as_type_ptr<const ov::op::v1::Add>(node) ||
            ov::as_type_ptr<const ov::op::v0::MatMul>(node) ||
-           ov::as_type_ptr<const ov::op::v1::Convolution>(node);
+           ov::as_type_ptr<const ov::op::v1::Convolution>(node) ||
+           ov::as_type_ptr<const ov::op::v1::MaxPool>(node) ||
+           ov::as_type_ptr<const ov::op::v1::AvgPool>(node);
 }
 
 }  // namespace
 
 Plugin::Plugin() {
     // Set device name exposed to Core
-    set_device_name("METAL");
+    m_device_name = "METAL";
+    set_device_name(m_device_name);
 }
 
 std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(

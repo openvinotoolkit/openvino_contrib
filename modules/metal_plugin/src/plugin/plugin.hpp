@@ -4,12 +4,9 @@
 #pragma once
 
 #include <memory>
-#include <string>
-#include <vector>
+#include <unordered_map>
 
 #include "openvino/runtime/iplugin.hpp"
-#include "openvino/runtime/properties.hpp"
-#include "openvino/runtime/iremote_context.hpp"
 
 namespace ov {
 namespace metal_plugin {
@@ -26,16 +23,12 @@ public:
                                                       const ov::AnyMap& properties,
                                                       const ov::SoPtr<ov::IRemoteContext>& context) const override;
 
-    std::shared_ptr<ov::ICompiledModel> import_model(std::istream& model,
-                                                     const ov::AnyMap& properties) const override;
-
+    std::shared_ptr<ov::ICompiledModel> import_model(std::istream& model, const ov::AnyMap& properties) const override;
     std::shared_ptr<ov::ICompiledModel> import_model(std::istream& model,
                                                      const ov::SoPtr<ov::IRemoteContext>& context,
                                                      const ov::AnyMap& properties) const override;
-
     std::shared_ptr<ov::ICompiledModel> import_model(const ov::Tensor& model,
                                                      const ov::AnyMap& properties) const override;
-
     std::shared_ptr<ov::ICompiledModel> import_model(const ov::Tensor& model,
                                                      const ov::SoPtr<ov::IRemoteContext>& context,
                                                      const ov::AnyMap& properties) const override;
@@ -44,18 +37,17 @@ public:
                                     const ov::AnyMap& properties) const override;
 
     void set_property(const ov::AnyMap& properties) override;
-
     ov::Any get_property(const std::string& name, const ov::AnyMap& arguments) const override;
 
     ov::SoPtr<ov::IRemoteContext> create_context(const ov::AnyMap& remote_properties) const override;
-
     ov::SoPtr<ov::IRemoteContext> get_default_context(const ov::AnyMap& remote_properties) const override;
 
+    const std::string& get_device_name() const { return m_device_name; }
+
 private:
-    ov::AnyMap m_config;
-    // Stored value of ov::hint::PerformanceMode for the METAL backend; currently kept for API correctness,
-    // may not yet affect actual scheduling/execution policy.
+    std::string m_device_name;
     ov::hint::PerformanceMode m_performance_mode = ov::hint::PerformanceMode::LATENCY;
+    ov::AnyMap m_config;
 };
 
 }  // namespace metal_plugin

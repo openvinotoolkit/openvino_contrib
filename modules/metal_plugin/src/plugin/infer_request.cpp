@@ -5,6 +5,7 @@
 #include "infer_request.hpp"
 
 #include "compiled_model.hpp"
+#include "runtime/mps_executor.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/runtime/make_tensor.hpp"
 #include "openvino/runtime/tensor.hpp"

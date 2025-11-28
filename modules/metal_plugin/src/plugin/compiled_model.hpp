@@ -7,7 +7,7 @@
 
 #include "openvino/runtime/icompiled_model.hpp"
 
-#include "mps_graph_builder.hpp"
+#include "graph/mps_graph_builder.hpp"
 
 namespace ov {
 namespace metal_plugin {

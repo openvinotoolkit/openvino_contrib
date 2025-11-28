@@ -15,13 +15,18 @@ ov_add_plugin(NAME ${TARGET_NAME}
               DEVICE_NAME "METAL"
               SOURCES ${SOURCES} ${HEADERS}
               ${skip_plugin}
-              VERSION_DEFINES_FOR plugin.cpp
+              VERSION_DEFINES_FOR plugin/plugin.cpp
               ADD_CLANG_FORMAT)
 
 ov_mark_target_as_cc(${TARGET_NAME})
 
 target_include_directories(${TARGET_NAME} PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}")
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/plugin"
+    "${CMAKE_CURRENT_SOURCE_DIR}/graph"
+    "${CMAKE_CURRENT_SOURCE_DIR}/runtime"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ops"
+    "${CMAKE_CURRENT_SOURCE_DIR}/transforms")
 
 # Link reference implementations for early bring-up
 # TODO: replace with Metal/MPSGraph execution backend once available

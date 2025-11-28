@@ -13,6 +13,8 @@
 #include "openvino/op/constant.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/convolution.hpp"
+#include "openvino/op/max_pool.hpp"
+#include "openvino/op/avg_pool.hpp"
 #include "openvino/op/matmul.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
@@ -220,6 +222,87 @@ TEST(MetalBasicOps, Conv2D) {
     auto metal_out = metal_req.get_output_tensor();
 
     expect_allclose(cpu_out, metal_out, /*tol=*/1e-4f);
+}
+
+TEST(MetalBasicOps, MaxPool2D) {
+    ov::Core core;
+    register_metal_plugin(core);
+
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 1, 4, 4});  // NCHW
+    ov::Strides strides{2, 2};
+    ov::Shape kernel{2, 2};
+    ov::Shape pads_begin{0, 0};
+    ov::Shape pads_end{0, 0};
+
+    auto pool = std::make_shared<ov::op::v1::MaxPool>(param,
+                                                      strides,
+                                                      pads_begin,
+                                                      pads_end,
+                                                      kernel,
+                                                      ov::op::RoundingType::FLOOR);
+    auto res = std::make_shared<ov::op::v0::Result>(pool);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "maxpool2d");
+
+    auto cpu_cm = core.compile_model(model, "CPU");
+    auto metal_cm = core.compile_model(model, "METAL");
+
+    ov::Tensor input{ov::element::f32, {1, 1, 4, 4}};
+    for (size_t i = 0; i < 16; ++i) {
+        input.data<float>()[i] = static_cast<float>(i);
+    }
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    cpu_req.set_input_tensor(input);
+    cpu_req.infer();
+    auto cpu_out = cpu_req.get_output_tensor();
+
+    auto metal_req = metal_cm.create_infer_request();
+    metal_req.set_input_tensor(input);
+    metal_req.infer();
+    auto metal_out = metal_req.get_output_tensor();
+
+    expect_allclose(cpu_out, metal_out, /*tol=*/1e-5f);
+}
+
+TEST(MetalBasicOps, AvgPool2D) {
+    ov::Core core;
+    register_metal_plugin(core);
+
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 1, 4, 4});  // NCHW
+    ov::Strides strides{2, 2};
+    ov::Shape kernel{2, 2};
+    ov::Shape pads_begin{0, 0};
+    ov::Shape pads_end{0, 0};
+
+    auto pool = std::make_shared<ov::op::v1::AvgPool>(param,
+                                                      strides,
+                                                      pads_begin,
+                                                      pads_end,
+                                                      kernel,
+                                                      true,   // exclude_pad
+                                                      ov::op::RoundingType::FLOOR);
+    auto res = std::make_shared<ov::op::v0::Result>(pool);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "avgpool2d");
+
+    auto cpu_cm = core.compile_model(model, "CPU");
+    auto metal_cm = core.compile_model(model, "METAL");
+
+    ov::Tensor input{ov::element::f32, {1, 1, 4, 4}};
+    for (size_t i = 0; i < 16; ++i) {
+        input.data<float>()[i] = static_cast<float>(i);
+    }
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    cpu_req.set_input_tensor(input);
+    cpu_req.infer();
+    auto cpu_out = cpu_req.get_output_tensor();
+
+    auto metal_req = metal_cm.create_infer_request();
+    metal_req.set_input_tensor(input);
+    metal_req.infer();
+    auto metal_out = metal_req.get_output_tensor();
+
+    expect_allclose(cpu_out, metal_out, /*tol=*/1e-5f);
 }
 
 // AUTO should split: Relu/Add on METAL, Sigmoid (unsupported) on CPU; final result must match pure CPU.
