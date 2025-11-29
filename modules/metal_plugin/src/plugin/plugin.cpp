@@ -18,6 +18,8 @@
 #include "openvino/op/convolution.hpp"
 #include "openvino/op/matmul.hpp"
 #include "openvino/op/max_pool.hpp"
+#include "openvino/op/softmax.hpp"
+#include "openvino/op/batch_norm.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
 #include "openvino/op/result.hpp"
@@ -40,7 +42,11 @@ bool is_supported_node(const std::shared_ptr<const ov::Node>& node) {
            ov::as_type_ptr<const ov::op::v0::MatMul>(node) ||
            ov::as_type_ptr<const ov::op::v1::Convolution>(node) ||
            ov::as_type_ptr<const ov::op::v1::MaxPool>(node) ||
-           ov::as_type_ptr<const ov::op::v1::AvgPool>(node);
+           ov::as_type_ptr<const ov::op::v1::AvgPool>(node) ||
+           ov::as_type_ptr<const ov::op::v1::Softmax>(node) ||
+           ov::as_type_ptr<const ov::op::v8::Softmax>(node) ||
+           ov::as_type_ptr<const ov::op::v5::BatchNormInference>(node) ||
+           ov::as_type_ptr<const ov::op::v0::BatchNormInference>(node);
 }
 
 }  // namespace

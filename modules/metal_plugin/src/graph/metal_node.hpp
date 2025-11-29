@@ -28,6 +28,8 @@ enum class MetalOpType {
     Convolution,
     MaxPool,
     AvgPool,
+    Softmax,
+    BatchNorm,
 };
 
 enum class Layout { NCHW, NHWC };

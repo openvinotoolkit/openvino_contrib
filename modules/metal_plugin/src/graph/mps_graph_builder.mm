@@ -25,6 +25,8 @@
 #include "ops/elementwise.hpp"
 #include "ops/matmul.hpp"
 #include "ops/pooling.hpp"
+#include "ops/softmax.hpp"
+#include "ops/batchnorm.hpp"
 #include "transforms/pipeline.hpp"
 
 namespace ov {
@@ -57,7 +59,11 @@ MPSGraphBuildResult build_mps_graph(const std::shared_ptr<const ov::Model>& mode
 
             inputs.push_back(placeholder);
         } else if (auto c = ov::as_type_ptr<const ov::op::v0::Constant>(node)) {
-            auto shape = NodeContext::to_mps_shape(c->get_shape());
+            ov::Shape const_shape = c->get_shape();
+            if (const_shape.empty()) {
+                const_shape = {1};  // MPSGraph requires ranked shape
+            }
+            auto shape = NodeContext::to_mps_shape(const_shape);
             auto dtype = to_mps_type(c->get_element_type());
             NSData* data = [NSData dataWithBytes:c->get_data_ptr() length:c->get_byte_size()];
             auto tensor = [graph constantWithData:data shape:shape dataType:dtype];
@@ -79,8 +85,14 @@ MPSGraphBuildResult build_mps_graph(const std::shared_ptr<const ov::Model>& mode
             ops::build_max_pool(ctx, *maxp);
         } else if (auto avgp = ov::as_type_ptr<const ov::op::v1::AvgPool>(node)) {
             ops::build_avg_pool(ctx, *avgp);
+        } else if (auto sm = ov::as_type_ptr<const ov::op::v1::Softmax>(node)) {
+            ops::build_softmax(ctx, *sm);
         } else if (ov::as_type_ptr<const ov::op::v0::Result>(node)) {
             continue;
+        } else if (auto bn5 = ov::as_type_ptr<const ov::op::v5::BatchNormInference>(node)) {
+            ops::build_batch_norm(ctx, *bn5);
+        } else if (auto bn0 = ov::as_type_ptr<const ov::op::v0::BatchNormInference>(node)) {
+            ops::build_batch_norm(ctx, *bn0);
         } else {
             OPENVINO_THROW("METAL plugin: lowering for op is not implemented: ", node->get_friendly_name());
         }

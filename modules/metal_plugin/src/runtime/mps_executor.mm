@@ -55,6 +55,9 @@ void mps_execute(const std::shared_ptr<void>& graph_sp,
     OPENVINO_ASSERT(queue, "Failed to create Metal command queue");
 
     NSMutableDictionary<MPSGraphTensor*, MPSGraphTensorData*>* feeds = [NSMutableDictionary dictionary];
+    // Keep input buffers alive until the graph execution completes; MPSGraphTensorData
+    // may not retain the underlying MTLBuffer on all OS versions.
+    NSMutableArray<id<MTLBuffer>>* input_buffers = [NSMutableArray arrayWithCapacity:inputs.size()];
 
     for (size_t i = 0; i < inputs.size(); ++i) {
         const auto& tin = inputs[i];
@@ -65,9 +68,9 @@ void mps_execute(const std::shared_ptr<void>& graph_sp,
         auto shape = to_mps_shape(tin.get_shape());
         auto dtype = to_mps_type(tin.get_element_type());
         MPSGraphTensorData* td = [[MPSGraphTensorData alloc] initWithMTLBuffer:buf shape:shape dataType:dtype];
+        [input_buffers addObject:buf];
         [feeds setObject:td forKey:(__bridge MPSGraphTensor*)input_tensors[i]];
         [td release];
-        [buf release];
     }
 
     NSMutableArray<MPSGraphTensor*>* targets = [NSMutableArray arrayWithCapacity:output_tensors.size()];
@@ -75,10 +78,29 @@ void mps_execute(const std::shared_ptr<void>& graph_sp,
         [targets addObject:(__bridge MPSGraphTensor*)t];
     }
 
-    MPSGraphTensorDataDictionary* results = [graph runWithMTLCommandQueue:queue
-                                                                    feeds:feeds
-                                                            targetTensors:targets
-                                                         targetOperations:nil];
+    MPSGraphTensorDataDictionary* results = nil;
+    if (@available(macOS 15.0, *)) {
+        // Force full-precision math by disabling reduced-precision fast paths in the compilation descriptor.
+        MPSGraphExecutionDescriptor* exec_desc = [[MPSGraphExecutionDescriptor alloc] init];
+        exec_desc.waitUntilCompleted = YES;
+        MPSGraphCompilationDescriptor* comp_desc = [[MPSGraphCompilationDescriptor alloc] init];
+        comp_desc.reducedPrecisionFastMath = MPSGraphReducedPrecisionFastMathNone;
+        exec_desc.compilationDescriptor = comp_desc;
+
+        results = [graph runAsyncWithMTLCommandQueue:queue
+                                               feeds:feeds
+                                       targetTensors:targets
+                                    targetOperations:nil
+                                 executionDescriptor:exec_desc];
+        [comp_desc release];
+        [exec_desc release];
+    }
+    if (!results) {
+        results = [graph runWithMTLCommandQueue:queue
+                                          feeds:feeds
+                                  targetTensors:targets
+                               targetOperations:nil];
+    }
 
     for (size_t i = 0; i < outputs.size(); ++i) {
         auto* t = (__bridge MPSGraphTensor*)output_tensors[i];
@@ -96,6 +118,9 @@ void mps_execute(const std::shared_ptr<void>& graph_sp,
     }
 
     [queue release];
+    for (id<MTLBuffer> buf in input_buffers) {
+        [buf release];
+    }
 }
 
 }  // namespace metal_plugin
