@@ -32,6 +32,9 @@ public:
     Value get_input_value(const ov::Output<ov::Node>& out) const;
     Value get_input_value(const ov::Node& node, size_t idx) const;
 
+    // Map an OpenVINO node to an existing MetalNode (used for fused patterns).
+    void map_node(const std::shared_ptr<const ov::Node>& ov_node, MetalNode* target);
+
     void require_rank(const Value& v, size_t rank, const std::string& what) const;
     void require_same_shape(const Value& a, const Value& b, const std::string& what) const;
 

@@ -6,7 +6,7 @@
 
 #include "infer_request.hpp"
 #include "plugin.hpp"
-#include "runtime/mps_executor.hpp"
+#include "runtime/mlir_backend.hpp"
 
 #include "openvino/core/except.hpp"
 #include "openvino/core/validation_util.hpp"
@@ -17,11 +17,9 @@ namespace ov {
 namespace metal_plugin {
 
 CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
-                             const std::shared_ptr<const ov::IPlugin>& plugin,
-                             const MPSGraphBuildResult& graph_info)
-    : ov::ICompiledModel(model, plugin), m_graph_info(graph_info) {
-    // Stored copy of model for runtime usage; no transformations applied here
-    m_runtime_model = model;
+                             const std::shared_ptr<const ov::IPlugin>& plugin)
+    : ov::ICompiledModel(model, plugin), m_runtime_model(model) {
+    m_backend = std::make_unique<MlirBackend>(model);
 }
 
 std::shared_ptr<ov::ISyncInferRequest> CompiledModel::create_sync_infer_request() const {

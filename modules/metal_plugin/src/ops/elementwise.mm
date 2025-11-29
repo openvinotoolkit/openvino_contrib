@@ -5,6 +5,8 @@
 #import <MetalPerformanceShadersGraph/MetalPerformanceShadersGraph.h>
 
 #include "ops/elementwise.hpp"
+#include "openvino/core/rt_info.hpp"
+#include "transforms/conv_relu_fusion.hpp"
 
 namespace ov::metal_plugin::ops {
 
@@ -66,12 +68,30 @@ MetalNode* build_add(NodeContext& ctx, const ov::op::v1::Add& node) {
 
 MetalNode* build_relu(NodeContext& ctx, const ov::op::v0::Relu& node) {
     auto* in_node = ctx.get_node(node.input_value(0).get_node());
-    std::vector<MetalNode*> deps{in_node};
+    Value v = ctx.get_input_value(node, 0);
 
+    bool fuse_with_prev_conv = false;
+    const auto& rt_info = node.get_rt_info();
+    if (auto it = rt_info.find(transforms::kMetalFusePrevConvAttr); it != rt_info.end()) {
+        try {
+            fuse_with_prev_conv = it->second.as<bool>();
+        } catch (const ov::Exception&) {
+            fuse_with_prev_conv = false;
+        }
+    }
+
+    if (fuse_with_prev_conv && in_node->op.type == MetalOpType::Convolution) {
+        // Reuse the convolution MetalNode; no new node is created.
+        in_node->op.fused_relu = true;
+        MPSGraphTensor* res = [ctx.graph() reLUWithTensor:v.tensor name:nil];
+        in_node->mps_tensor = res;
+        ctx.map_node(node.shared_from_this(), in_node);
+        return in_node;
+    }
+
+    std::vector<MetalNode*> deps{in_node};
     auto ov_ptr = node.shared_from_this();
     MetalNode* out = ctx.create_node(MetalOpType::Relu, ov_ptr, deps);
-
-    Value v = ctx.get_input_value(node, 0);
 
     MPSGraphTensor* res = [ctx.graph() reLUWithTensor:v.tensor name:nil];
 

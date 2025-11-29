@@ -3,8 +3,6 @@
 //
 #pragma once
 
-#import <MetalPerformanceShadersGraph/MetalPerformanceShadersGraph.h>
-
 #include <memory>
 #include <string>
 #include <vector>
@@ -18,6 +16,8 @@
 namespace ov {
 namespace metal_plugin {
 
+class MPSGraphTensor;
+
 enum class MetalOpType {
     Parameter,
     Constant,
@@ -30,6 +30,12 @@ enum class MetalOpType {
     AvgPool,
     Softmax,
     BatchNorm,
+    Tanh,
+    Sigmoid,
+    Elu,
+    LeakyRelu,
+    Gelu,
+    LayerNorm,
 };
 
 enum class Layout { NCHW, NHWC };
@@ -51,12 +57,14 @@ struct MetalOpDesc {
     std::shared_ptr<const ov::Node> ov_node;
     std::vector<size_t> input_indices;
 
+    // Convolution-specific
     ov::Strides strides;
     ov::Strides dilations;
     ov::CoordinateDiff pads_begin;
     ov::CoordinateDiff pads_end;
     size_t groups = 1;
     bool exclude_pad = false;
+    bool fused_relu = false;
 };
 
 struct MetalNode {

@@ -7,6 +7,11 @@ set(TARGET_NAME "openvino_metal_plugin")
 file(GLOB_RECURSE SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/*.mm)
 file(GLOB_RECURSE HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp)
 
+# MLIR-only backend: exclude legacy MPSGraph-based sources
+list(FILTER SOURCES EXCLUDE REGEX ".*/ops/.*")
+list(FILTER SOURCES EXCLUDE REGEX ".*/graph/mps_node_context.mm")
+list(FILTER SOURCES EXCLUDE REGEX ".*/graph/mps_graph_builder.mm")
+
 if (NOT ENABLE_METAL_REGISTRATION)
     set(skip_plugin SKIP_INSTALL SKIP_REGISTRATION)
 endif()
@@ -25,8 +30,11 @@ target_include_directories(${TARGET_NAME} PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/plugin"
     "${CMAKE_CURRENT_SOURCE_DIR}/graph"
     "${CMAKE_CURRENT_SOURCE_DIR}/runtime"
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen"
     "${CMAKE_CURRENT_SOURCE_DIR}/ops"
     "${CMAKE_CURRENT_SOURCE_DIR}/transforms")
+
+target_compile_definitions(${TARGET_NAME} PRIVATE ENABLE_METAL_MLIR)
 
 # Link reference implementations for early bring-up
 # TODO: replace with Metal/MPSGraph execution backend once available

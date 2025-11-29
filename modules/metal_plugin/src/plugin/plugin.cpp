@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "compiled_model.hpp"
-#include "graph/mps_graph_builder.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/validation_util.hpp"
 #include "openvino/op/add.hpp"
@@ -22,14 +21,27 @@
 #include "openvino/op/batch_norm.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
+#include "openvino/op/tanh.hpp"
+#include "openvino/op/sigmoid.hpp"
+#include "openvino/op/elu.hpp"
+#include "openvino/op/prelu.hpp"
+#include "openvino/op/gelu.hpp"
+#if __has_include("openvino/op/layer_norm.hpp")
+#include "openvino/op/layer_norm.hpp"
+#endif
 #include "openvino/op/result.hpp"
 #include "openvino/runtime/internal_properties.hpp"
 #include "openvino/runtime/properties.hpp"
 #include "openvino/runtime/shared_buffer.hpp"
+#include "openvino/util/common_util.hpp"
+#include "runtime/backend.hpp"
+#include "transforms/pipeline.hpp"
 
 namespace ov {
 namespace metal_plugin {
 namespace {
+
+constexpr const char* kBackendProperty = "METAL_BACKEND";
 
 // Helper that enumerates ops currently supported by the MPSGraph-backed METAL plugin;
 // used by query_model (and can be reused to validate compile_model paths).
@@ -38,6 +50,10 @@ bool is_supported_node(const std::shared_ptr<const ov::Node>& node) {
            ov::as_type_ptr<const ov::op::v0::Constant>(node) ||
            ov::as_type_ptr<const ov::op::v0::Result>(node) ||
            ov::as_type_ptr<const ov::op::v0::Relu>(node) ||
+           ov::as_type_ptr<const ov::op::v0::Tanh>(node) ||
+           ov::as_type_ptr<const ov::op::v0::Sigmoid>(node) ||
+           ov::as_type_ptr<const ov::op::v0::Elu>(node) ||
+           ov::as_type_ptr<const ov::op::v0::PRelu>(node) ||
            ov::as_type_ptr<const ov::op::v1::Add>(node) ||
            ov::as_type_ptr<const ov::op::v0::MatMul>(node) ||
            ov::as_type_ptr<const ov::op::v1::Convolution>(node) ||
@@ -46,7 +62,13 @@ bool is_supported_node(const std::shared_ptr<const ov::Node>& node) {
            ov::as_type_ptr<const ov::op::v1::Softmax>(node) ||
            ov::as_type_ptr<const ov::op::v8::Softmax>(node) ||
            ov::as_type_ptr<const ov::op::v5::BatchNormInference>(node) ||
-           ov::as_type_ptr<const ov::op::v0::BatchNormInference>(node);
+           ov::as_type_ptr<const ov::op::v0::BatchNormInference>(node) ||
+           ov::as_type_ptr<const ov::op::v7::Gelu>(node) ||
+           ov::as_type_ptr<const ov::op::v0::Gelu>(node)
+#if __has_include("openvino/op/layer_norm.hpp")
+           || ov::as_type_ptr<const ov::op::v12::LayerNorm>(node)
+#endif
+        ;
 }
 
 }  // namespace
@@ -60,18 +82,25 @@ Plugin::Plugin() {
 std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(
     const std::shared_ptr<const ov::Model>& model,
     const ov::AnyMap& properties) const {
-    auto lowered = build_mps_graph(model, GraphLayout::NHWC);
-    (void)properties;  // properties are not yet processed
-    return std::make_shared<CompiledModel>(model, shared_from_this(), lowered);
+    OPENVINO_ASSERT(model, "Model is null");
+
+    auto transformed = ov::metal_plugin::transforms::run_pipeline(model);
+
+    if (auto it = properties.find(kBackendProperty); it != properties.end()) {
+        const auto backend_name = ov::util::to_lower(it->second.as<std::string>());
+        if (backend_name != "mlir") {
+            OPENVINO_THROW("Only MLIR backend is supported; received: ", backend_name);
+        }
+    }
+
+    return std::make_shared<CompiledModel>(transformed, shared_from_this());
 }
 
 std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(
     const std::shared_ptr<const ov::Model>& model,
     const ov::AnyMap& properties,
     const ov::SoPtr<ov::IRemoteContext>& /*context*/) const {
-    auto lowered = build_mps_graph(model, GraphLayout::NHWC);
-    (void)properties;
-    return std::make_shared<CompiledModel>(model, shared_from_this(), lowered);
+    return compile_model(model, properties);
 }
 
 std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& /*model*/,
@@ -117,6 +146,8 @@ void Plugin::set_property(const ov::AnyMap& properties) {
         if (kv.first == ov::hint::performance_mode.name()) {
             m_performance_mode = kv.second.as<ov::hint::PerformanceMode>();
             m_config[kv.first] = kv.second;
+        } else if (kv.first == kBackendProperty) {
+            m_config[kv.first] = kv.second;
         } else {
             m_config[kv.first] = kv.second;  // store unknown for now
         }
@@ -149,6 +180,7 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& /*argume
     if (ov::supported_properties == name) {
         auto ro = ro_props();
         auto rw = rw_props();
+        rw.push_back(ov::PropertyName{kBackendProperty, ov::PropertyMutability::RW});
         std::vector<ov::PropertyName> supported;
         supported.reserve(ro.size() + rw.size());
         supported.insert(supported.end(), ro.begin(), ro.end());
@@ -180,6 +212,11 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& /*argume
         return m_performance_mode;
     } else if (ov::execution_devices == name) {
         return decltype(ov::execution_devices)::value_type{get_device_name()};
+    } else if (name == kBackendProperty) {
+    if (auto it = m_config.find(kBackendProperty); it != m_config.end()) {
+        return it->second;
+    }
+    return std::string("MLIR");
     } else if (ov::range_for_async_infer_requests == name) {
         // min, max, step
         return decltype(ov::range_for_async_infer_requests)::value_type{1, 1, 1};

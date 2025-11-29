@@ -53,6 +53,11 @@ Value NodeContext::get_input_value(const ov::Output<ov::Node>& out) const {
     return Value{n->output_desc, n->mps_tensor};
 }
 
+void NodeContext::map_node(const std::shared_ptr<const ov::Node>& ov_node, MetalNode* target) {
+    OPENVINO_ASSERT(ov_node && target, "map_node: invalid arguments");
+    m_node_map[ov_node.get()] = target;
+}
+
 Value NodeContext::get_input_value(const ov::Node& node, size_t idx) const {
     return get_input_value(node.input(idx).get_source_output());
 }

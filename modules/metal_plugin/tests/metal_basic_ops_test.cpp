@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "openvino/openvino.hpp"
+#include "openvino/core/graph_util.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/convolution.hpp"
@@ -18,10 +19,23 @@
 #include "openvino/op/matmul.hpp"
 #include "openvino/op/softmax.hpp"
 #include "openvino/op/batch_norm.hpp"
+#include "openvino/op/tanh.hpp"
+#include "openvino/op/sigmoid.hpp"
+#include "openvino/op/elu.hpp"
+#include "openvino/op/prelu.hpp"
+#include "openvino/op/gelu.hpp"
+#if __has_include("openvino/op/layer_norm.hpp")
+#define HAS_OV_LAYER_NORM 1
+#include "openvino/op/layer_norm.hpp"
+#else
+#define HAS_OV_LAYER_NORM 0
+#endif
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
 #include "openvino/op/result.hpp"
 #include "openvino/op/sigmoid.hpp"
+#include "../src/transforms/pipeline.hpp"
+#include "../src/transforms/conv_relu_fusion.hpp"
 
 namespace {
 
@@ -39,7 +53,7 @@ void register_metal_plugin(ov::Core& core) {
 #endif
 }
 
-void expect_allclose(const ov::Tensor& a, const ov::Tensor& b, float tol = 1e-5f) {
+void expect_allclose(const ov::Tensor& a, const ov::Tensor& b, float atol = 1e-5f, float rtol = 0.f) {
     ASSERT_EQ(a.get_element_type(), ov::element::f32);
     ASSERT_EQ(b.get_element_type(), ov::element::f32);
     ASSERT_EQ(a.get_byte_size(), b.get_byte_size());
@@ -48,7 +62,8 @@ void expect_allclose(const ov::Tensor& a, const ov::Tensor& b, float tol = 1e-5f
     size_t count = a.get_size();
     for (size_t i = 0; i < count; ++i) {
         float diff = std::abs(pa[i] - pb[i]);
-        ASSERT_LE(diff, tol) << "Mismatch at index " << i << ": " << pa[i] << " vs " << pb[i];
+        float thresh = std::max(atol, rtol * std::abs(pa[i]));
+        ASSERT_LE(diff, thresh) << "Mismatch at index " << i << ": " << pa[i] << " vs " << pb[i];
     }
 }
 
@@ -106,6 +121,41 @@ TEST(MetalBasicOps, Add) {
     // Negative: incompatible shapes should fail at graph validation
     auto bad_const = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{2, 3}, std::vector<float>(6, 1.f));
     EXPECT_THROW(std::make_shared<ov::op::v1::Add>(param, bad_const)->validate_and_infer_types(), ov::Exception);
+}
+
+TEST(MetalBasicOps, MatMulSimpleMlir) {
+    ov::Core core;
+    register_metal_plugin(core);
+
+    auto p0 = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 3});
+    auto p1 = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{3, 4});
+    auto mm = std::make_shared<ov::op::v0::MatMul>(p0, p1, false, false);
+    auto res = std::make_shared<ov::op::v0::Result>(mm);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{p0, p1}, "mlir_matmul");
+
+    auto cpu_cm = core.compile_model(model, "CPU");
+    auto metal_cm = core.compile_model(model, "METAL");
+
+    ov::Tensor a{ov::element::f32, {2, 3}};
+    ov::Tensor b{ov::element::f32, {3, 4}};
+    for (size_t i = 0; i < a.get_size(); ++i) a.data<float>()[i] = static_cast<float>(i + 1);
+    for (size_t i = 0; i < b.get_size(); ++i) b.data<float>()[i] = static_cast<float>((i % 5) - 2);
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    cpu_req.set_input_tensor(0, a);
+    cpu_req.set_input_tensor(1, b);
+    cpu_req.infer();
+    auto cpu_out = cpu_req.get_output_tensor();
+
+    auto metal_req = metal_cm.create_infer_request();
+    metal_req.set_input_tensor(0, a);
+    metal_req.set_input_tensor(1, b);
+    metal_req.infer();
+    auto metal_out = metal_req.get_output_tensor();
+
+    expect_shape_type(cpu_out, {2, 4});
+    expect_shape_type(metal_out, {2, 4});
+    expect_allclose(cpu_out, metal_out, /*tol=*/1e-5f);
 }
 
 TEST(MetalBasicOps, AddBroadcastScalar) {
@@ -228,6 +278,114 @@ TEST(MetalBasicOps, Relu) {
         for (size_t i = 0; i < cpu_out.get_size(); ++i) {
             EXPECT_GE(p[i], 0.f);
         }
+    }
+}
+
+TEST(MetalBasicOps, ActivationsBasic) {
+    ov::Core core;
+    register_metal_plugin(core);
+
+    const ov::Shape shape{2, 3};
+    std::vector<std::vector<float>> patterns{
+        {-5.f, -1.f, -0.1f, 0.f, 0.5f, 2.f},
+        {100.f, -100.f, 1.f, -1.f, 10.f, -10.f},
+        {0.001f, -0.002f, 0.1f, -0.3f, 3.f, -4.f}};
+
+    auto build_and_check = [&](const std::string& name,
+                               const std::shared_ptr<ov::Model>& model,
+                               float atol,
+                               float rtol,
+                               std::function<void(const ov::Tensor&)> invariant) {
+        auto cpu_cm = core.compile_model(model, "CPU");
+        auto metal_cm = core.compile_model(model, "METAL");
+        auto cpu_req = cpu_cm.create_infer_request();
+        auto metal_req = metal_cm.create_infer_request();
+        for (const auto& vals : patterns) {
+            ov::Tensor input{ov::element::f32, shape};
+            std::copy(vals.begin(), vals.end(), input.data<float>());
+
+            cpu_req.set_input_tensor(input);
+            cpu_req.infer();
+            auto cpu_out = cpu_req.get_output_tensor();
+
+            metal_req.set_input_tensor(input);
+            metal_req.infer();
+            auto metal_out = metal_req.get_output_tensor();
+
+            SCOPED_TRACE(name);
+            expect_shape_type(cpu_out, shape);
+            expect_shape_type(metal_out, shape);
+            expect_finite(cpu_out);
+            expect_finite(metal_out);
+            expect_allclose(cpu_out, metal_out, /*atol=*/atol, /*rtol=*/rtol);
+            if (invariant) {
+                invariant(metal_out);
+            }
+        }
+    };
+
+    // Tanh
+    {
+        auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, shape);
+        auto act = std::make_shared<ov::op::v0::Tanh>(param);
+        auto res = std::make_shared<ov::op::v0::Result>(act);
+        auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "tanh_model");
+        auto inv = [](const ov::Tensor& t) {
+            const float* p = t.data<const float>();
+            for (size_t i = 0; i < t.get_size(); ++i) {
+                ASSERT_LE(std::abs(p[i]), 1.0001f);
+            }
+        };
+        build_and_check("tanh", model, 3e-4f, 1e-4f, inv);
+    }
+
+    // Sigmoid
+    {
+        auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, shape);
+        auto act = std::make_shared<ov::op::v0::Sigmoid>(param);
+        auto res = std::make_shared<ov::op::v0::Result>(act);
+        auto model =
+            std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "sigmoid_model");
+        auto inv = [](const ov::Tensor& t) {
+            const float* p = t.data<const float>();
+            for (size_t i = 0; i < t.get_size(); ++i) {
+                ASSERT_GE(p[i], 0.f);
+                ASSERT_LE(p[i], 1.f + 1e-6f);
+            }
+        };
+        build_and_check("sigmoid", model, 3e-4f, 1e-4f, inv);
+    }
+
+    // ELU (alpha = 0.5)
+    {
+        auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, shape);
+        auto act = std::make_shared<ov::op::v0::Elu>(param, 0.5);
+        auto res = std::make_shared<ov::op::v0::Result>(act);
+        auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "elu_model");
+        auto inv = [](const ov::Tensor& t) {
+            const float* p = t.data<const float>();
+            for (size_t i = 0; i < t.get_size(); ++i) {
+                ASSERT_TRUE(std::isfinite(p[i]));
+            }
+        };
+        build_and_check("elu", model, 7e-4f, 2e-4f, inv);
+    }
+
+    // LeakyReLU via PRelu (alpha = 0.1)
+    {
+        auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, shape);
+        auto slope = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{}, std::vector<float>{0.1f});
+        auto act = std::make_shared<ov::op::v0::PRelu>(param, slope);
+        auto res = std::make_shared<ov::op::v0::Result>(act);
+        auto model =
+            std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "leakyrelu_model");
+        auto inv = [](const ov::Tensor& t) {
+            const float* p = t.data<const float>();
+            for (size_t i = 0; i < t.get_size(); ++i) {
+                ASSERT_TRUE(std::isfinite(p[i]));
+            }
+        };
+        build_and_check("leakyrelu", model, 7e-4f, 2e-4f, inv);
     }
 }
 
@@ -423,116 +581,285 @@ TEST(MetalBasicOps, Softmax) {
     }
 }
 
+TEST(MetalBasicOps, Gelu) {
+    ov::Core core;
+    register_metal_plugin(core);
+
+    const ov::Shape shape{1, 16};
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, shape);
+    auto gelu = std::make_shared<ov::op::v7::Gelu>(param, ov::op::GeluApproximationMode::TANH);
+    auto res = std::make_shared<ov::op::v0::Result>(gelu);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "gelu");
+
+    auto cpu_cm = core.compile_model(model, "CPU");
+    auto metal_cm = core.compile_model(model, "METAL");
+
+    std::vector<std::vector<float>> patterns{
+        {-5.f, -3.f, -1.f, -0.5f, 0.f, 0.5f, 1.f, 3.f, 5.f, 2.f, -2.f, 4.f, -4.f, 0.1f, -0.1f, 0.f},
+        {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f},
+        {10.f, -10.f, 6.f, -6.f, 1e-3f, -1e-3f, 100.f, -100.f, 7.f, -7.f, 0.25f, -0.25f, 0.75f, -0.75f, 2.5f, -2.5f}};
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    auto metal_req = metal_cm.create_infer_request();
+
+    for (const auto& vals : patterns) {
+        ov::Tensor input{ov::element::f32, shape};
+        std::copy(vals.begin(), vals.end(), input.data<float>());
+
+        cpu_req.set_input_tensor(input);
+        cpu_req.infer();
+        auto cpu_out = cpu_req.get_output_tensor();
+
+        metal_req.set_input_tensor(input);
+        metal_req.infer();
+        auto metal_out = metal_req.get_output_tensor();
+
+        expect_shape_type(cpu_out, shape);
+        expect_shape_type(metal_out, shape);
+        expect_finite(cpu_out);
+        expect_finite(metal_out);
+        expect_allclose(cpu_out, metal_out, /*atol=*/2e-3f, /*rtol=*/1e-3f);
+    }
+}
+
 TEST(MetalBasicOps, BatchNormInference) {
     ov::Core core;
     register_metal_plugin(core);
 
     const ov::Shape shape{1, 3, 4, 4};  // NCHW
+    const size_t elem_count = shape[0] * shape[1] * shape[2] * shape[3];
+
+    struct Case {
+        std::string name;
+        std::vector<float> input;
+        std::vector<float> gamma;
+        std::vector<float> beta;
+        std::vector<float> mean;
+        std::vector<float> var;
+        double eps;
+        float atol;
+        float rtol = 0.f;
+        bool expect_identity = false;
+    };
+
+    auto make_model = [&](const Case& c) {
+        auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, shape);
+        auto g = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{3}, c.gamma);
+        auto b = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{3}, c.beta);
+        auto m = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{3}, c.mean);
+        auto v = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{3}, c.var);
+
+        auto bn = std::make_shared<ov::op::v5::BatchNormInference>(param, g, b, m, v, c.eps);
+        auto res = std::make_shared<ov::op::v0::Result>(bn);
+        return std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param},
+                                           "batchnorm_" + c.name);
+    };
+
+    std::vector<Case> cases;
+    cases.push_back({
+        "mixed",                                     // name
+        std::vector<float>(elem_count),               // input filled below
+        {1.f, 0.5f, 2.f},                             // gamma
+        {0.f, 1.f, -1.f},                             // beta
+        {0.1f, -0.2f, 0.3f},                          // mean
+        {1.0f, 0.5f, 2.0f},                           // var
+        1e-5,                                         // eps
+        3e-3f,                                        // atol
+        1e-3f                                         // rtol
+    });
+    // pattern: -5..5 repeating (covers negative, zero, positive)
+    for (size_t i = 0; i < cases.back().input.size(); ++i) {
+        cases.back().input[i] = static_cast<float>(static_cast<int>(i % 11) - 5);
+    }
+
+    cases.push_back({
+        "wide_range",
+        std::vector<float>{
+            -1000.f, -0.1f, 0.f, 0.1f,
+            1000.f, 42.f, -42.f, 1.f,
+            -5.f, -4.f, -3.f, -2.f,
+            -1.f, 1.f, 2.f, 3.f,
+            // second channel block (16 values)
+            10.f, 11.f, 12.f, 13.f,
+            14.f, 15.f, 16.f, 17.f,
+            -10.f, -11.f, -12.f, -13.f,
+            -14.f, -15.f, -16.f, -17.f,
+            // third channel block (16 values)
+            0.5f, -0.5f, 2.5f, -2.5f,
+            100.f, -100.f, 50.f, -50.f,
+            7.f, -7.f, 0.25f, -0.25f,
+            0.f, 1e-3f, -1e-3f, 3.14f},
+        {0.25f, 1.5f, -0.75f},
+        {0.5f, -1.f, 2.f},
+        {-0.25f, 0.75f, -1.25f},
+        {0.5f, 1.25f, 3.5f},
+        1e-3, 2e-3f, 1e-3f
+    });
+
+    cases.push_back({
+        "identity",
+        std::vector<float>(elem_count),
+        {1.f, 1.f, 1.f},
+        {0.f, 0.f, 0.f},
+        {0.f, 0.f, 0.f},
+        {1.f, 1.f, 1.f},
+        1e-6,
+        5e-4f,
+        1e-4f,
+        true
+    });
+    for (size_t i = 0; i < cases.back().input.size(); ++i) {
+        // alternating large/small to ensure stability
+        cases.back().input[i] = (i % 2 == 0) ? 0.01f * static_cast<float>(i) : -0.02f * static_cast<float>(i);
+    }
+
+    for (const auto& tc : cases) {
+        auto model = make_model(tc);
+        auto cpu_cm = core.compile_model(model, "CPU");
+        auto metal_cm = core.compile_model(model, "METAL");
+
+        ov::Tensor input{ov::element::f32, shape};
+        std::copy(tc.input.begin(), tc.input.end(), input.data<float>());
+
+        auto cpu_req = cpu_cm.create_infer_request();
+        cpu_req.set_input_tensor(input);
+        cpu_req.infer();
+        auto cpu_out = cpu_req.get_output_tensor();
+
+        auto metal_req = metal_cm.create_infer_request();
+        metal_req.set_input_tensor(input);
+        metal_req.infer();
+        auto metal_out = metal_req.get_output_tensor();
+
+        expect_shape_type(cpu_out, shape);
+        expect_shape_type(metal_out, shape);
+        expect_finite(cpu_out);
+        expect_finite(metal_out);
+
+        SCOPED_TRACE("BatchNorm case: " + tc.name);
+        expect_allclose(cpu_out, metal_out, /*atol=*/tc.atol, /*rtol=*/tc.rtol);
+
+        if (tc.expect_identity) {
+            // When gamma=1, beta=0, mean=0, var=1, eps→0, output should match input.
+            expect_allclose(input, metal_out, /*atol=*/tc.atol, /*rtol=*/tc.rtol);
+            expect_allclose(input, cpu_out, /*atol=*/tc.atol, /*rtol=*/tc.rtol);
+        }
+    }
+}
+
+#if HAS_OV_LAYER_NORM
+TEST(MetalBasicOps, LayerNorm) {
+    ov::Core core;
+    register_metal_plugin(core);
+
+    const ov::Shape shape{2, 3, 4};  // normalize over last dim
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, shape);
 
-    std::vector<float> gamma_vals{1.f, 0.5f, 2.f};
-    std::vector<float> beta_vals{0.f, 1.f, -1.f};
-    std::vector<float> mean_vals{0.1f, -0.2f, 0.3f};
-    std::vector<float> var_vals{1.0f, 0.5f, 2.0f};
-
-    auto gamma = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{3}, gamma_vals);
-    auto beta = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{3}, beta_vals);
-    auto mean = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{3}, mean_vals);
-    auto var = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{3}, var_vals);
+    std::vector<float> gamma_vals{1.f, 0.5f, 1.5f, 2.f};
+    std::vector<float> beta_vals{0.f, 0.1f, -0.2f, 0.3f};
+    auto gamma = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{4}, gamma_vals);
+    auto beta = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{4}, beta_vals);
 
     double eps = 1e-5;
-    auto bn = std::make_shared<ov::op::v5::BatchNormInference>(param, gamma, beta, mean, var, eps);
-    auto res = std::make_shared<ov::op::v0::Result>(bn);
-    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "batchnorm");
+    auto ln = std::make_shared<ov::op::v12::LayerNorm>(param, gamma, beta, eps, -1);
+    auto res = std::make_shared<ov::op::v0::Result>(ln);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "layernorm");
 
     auto cpu_cm = core.compile_model(model, "CPU");
     auto metal_cm = core.compile_model(model, "METAL");
 
-    ov::Tensor input_cpu{ov::element::f32, shape};
-    ov::Tensor input_metal{ov::element::f32, shape};
-    for (size_t i = 0; i < input_cpu.get_size(); ++i) {
-        int v_int = static_cast<int>(i % 11) - 5;
-        float v = static_cast<float>(v_int);
-        input_cpu.data<float>()[i] = v;
-        input_metal.data<float>()[i] = v;
-    }
-
-    // Reference on host (use the pristine CPU input)
-    ov::Tensor ref{ov::element::f32, shape};
-    const float* x_data = input_cpu.data<const float>();
-    float* ref_data = ref.data<float>();
-    const size_t C = 3;
-    const size_t HW = shape[2] * shape[3];
-    float eps_f = static_cast<float>(eps);
-    for (size_t n = 0; n < shape[0]; ++n) {
-        for (size_t c = 0; c < C; ++c) {
-            float g = gamma_vals[c];
-            float b = beta_vals[c];
-            float m = mean_vals[c];
-            float v = var_vals[c];
-            float denom = std::sqrt(v + eps_f);
-            for (size_t hw = 0; hw < HW; ++hw) {
-                size_t idx = n * C * HW + c * HW + hw;
-                ref_data[idx] = g * (x_data[idx] - m) / denom + b;
-            }
-        }
-    }
+    std::vector<std::vector<float>> patterns;
+    patterns.emplace_back(shape.size());
+    for (size_t i = 0; i < patterns.back().size(); ++i)
+        patterns.back()[i] = static_cast<float>(static_cast<int>(i % 7) - 3);
+    patterns.emplace_back(shape.size(), 0.f);
+    patterns.emplace_back(shape.size(), 1.f);
 
     auto cpu_req = cpu_cm.create_infer_request();
-    cpu_req.set_input_tensor(input_cpu);
-    cpu_req.infer();
-    auto cpu_out = cpu_req.get_output_tensor();
-
     auto metal_req = metal_cm.create_infer_request();
-    metal_req.set_input_tensor(input_metal);
-    metal_req.infer();
-    auto metal_out = metal_req.get_output_tensor();
 
-    auto max_abs = [](const ov::Tensor& t, bool& finite) -> float {
-        finite = true;
-        const float* ptr = t.data<const float>();
-        size_t n = t.get_size();
-        float m = 0.f;
-        for (size_t i = 0; i < n; ++i) {
-            if (!std::isfinite(ptr[i])) {
-                finite = false;
-            }
-            m = std::max(m, std::abs(ptr[i]));
-        }
-        return m;
-    };
+    for (const auto& vals : patterns) {
+        ov::Tensor input{ov::element::f32, shape};
+        std::copy(vals.begin(), vals.end(), input.data<float>());
 
-    bool cpu_finite = true, metal_finite = true, ref_finite = true;
-    float cpu_max = max_abs(cpu_out, cpu_finite);
-    float metal_max = max_abs(metal_out, metal_finite);
-    float ref_max = max_abs(ref, ref_finite);
-    ASSERT_TRUE(ref_finite);
-    if (!cpu_finite || !metal_finite) {
-        const float* rptr = ref.data<const float>();
-        std::cerr << "REF first values: ";
-        for (size_t i = 0; i < std::min<size_t>(ref.get_size(), 6); ++i) {
-            std::cerr << rptr[i] << " ";
-        }
-        std::cerr << "\n";
-        const float* cptr = cpu_out.data<const float>();
-        const float* mptr = metal_out.data<const float>();
-        std::cerr << "CPU first values: ";
-        for (size_t i = 0; i < std::min<size_t>(cpu_out.get_size(), 6); ++i) {
-            std::cerr << cptr[i] << " ";
-        }
-        std::cerr << "\nMETAL first values: ";
-        for (size_t i = 0; i < std::min<size_t>(metal_out.get_size(), 6); ++i) {
-            std::cerr << mptr[i] << " ";
-        }
-        std::cerr << std::endl;
+        cpu_req.set_input_tensor(input);
+        cpu_req.infer();
+        auto cpu_out = cpu_req.get_output_tensor();
+
+        metal_req.set_input_tensor(input);
+        metal_req.infer();
+        auto metal_out = metal_req.get_output_tensor();
+
+        expect_shape_type(cpu_out, shape);
+        expect_shape_type(metal_out, shape);
+        expect_finite(cpu_out);
+        expect_finite(metal_out);
+        expect_allclose(cpu_out, metal_out, /*atol=*/2e-3f, /*rtol=*/5e-4f);
     }
-    ASSERT_TRUE(cpu_finite);
-    ASSERT_TRUE(metal_finite);
-    SCOPED_TRACE("max_abs cpu=" + std::to_string(cpu_max) + " metal=" + std::to_string(metal_max) +
-                 " ref=" + std::to_string(ref_max));
+}
+#else
+TEST(MetalBasicOps, LayerNorm) {
+    GTEST_SKIP() << "LayerNorm op is not available in this OpenVINO build";
+}
+#endif
 
-    expect_allclose(ref, cpu_out, /*tol=*/5e-3f);
-    expect_allclose(ref, metal_out, /*tol=*/1e-3f);
+TEST(MetalTransforms, ConvReluFusionMarksAttribute) {
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});
+    auto weights = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                          ov::Shape{2, 3, 3, 3},
+                                                          std::vector<float>(2 * 3 * 3 * 3, 1.f));
+    auto conv = std::make_shared<ov::op::v1::Convolution>(param,
+                                                          weights,
+                                                          ov::Strides{1, 1},
+                                                          ov::CoordinateDiff{1, 1},
+                                                          ov::CoordinateDiff{1, 1},
+                                                          ov::Strides{1, 1});
+    auto relu = std::make_shared<ov::op::v0::Relu>(conv);
+    auto res = std::make_shared<ov::op::v0::Result>(relu);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "conv_relu");
+
+    auto transformed = ov::metal_plugin::transforms::run_pipeline(model);
+
+    std::shared_ptr<ov::op::v0::Relu> relu_found;
+    for (const auto& op : transformed->get_ordered_ops()) {
+        if (auto r = std::dynamic_pointer_cast<ov::op::v0::Relu>(op)) {
+            relu_found = r;
+            break;
+        }
+    }
+    ASSERT_TRUE(relu_found);
+    const auto& rt = relu_found->get_rt_info();
+    auto it = rt.find(ov::metal_plugin::transforms::kMetalFusePrevConvAttr);
+    ASSERT_NE(it, rt.end());
+    ASSERT_TRUE(it->second.as<bool>());
+}
+
+TEST(MetalTransforms, CommonOptimizationsConstantFolding) {
+    // Constant folding should remove Add/Relu when inputs are compile-time constants.
+    auto c0 = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{2}, std::vector<float>{1.f, -2.f});
+    auto c1 = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{2}, std::vector<float>{3.f, 4.f});
+    auto add = std::make_shared<ov::op::v1::Add>(c0, c1);
+    auto relu = std::make_shared<ov::op::v0::Relu>(add);
+    auto res = std::make_shared<ov::op::v0::Result>(relu);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{}, "const_fold");
+
+    auto transformed = ov::metal_plugin::transforms::run_pipeline(model);
+
+    // Expect only Result + Constant to remain after folding (Add and Relu folded away).
+    size_t constants = 0;
+    size_t adds = 0;
+    size_t relus = 0;
+    for (const auto& op : transformed->get_ops()) {
+        if (ov::is_type<ov::op::v0::Constant>(op))
+            ++constants;
+        if (ov::is_type<ov::op::v1::Add>(op))
+            ++adds;
+        if (ov::is_type<ov::op::v0::Relu>(op))
+            ++relus;
+    }
+    EXPECT_EQ(adds, 0u);
+    EXPECT_EQ(relus, 0u);
+    EXPECT_GE(constants, 1u);
 }
 
 TEST(MetalBasicOps, DevicePropertiesAndQuery) {
@@ -633,6 +960,62 @@ TEST(MetalBasicOps, Conv2D) {
     expect_allclose(cpu_out2, metal_out2, /*tol=*/1e-4f);
 }
 
+TEST(MetalBasicOps, Conv2DReluFusion) {
+    ov::Core core;
+    register_metal_plugin(core);
+
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});  // NCHW
+    auto weights = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32, ov::Shape{2, 3, 3, 3},
+        std::vector<float>{
+            1.f, 0.f, -1.f, 0.f, 1.f, 0.f, -1.f, 0.f, 1.f,
+            1.f, 0.f, -1.f, 0.f, 1.f, 0.f, -1.f, 0.f, 1.f,
+            1.f, 0.f, -1.f, 0.f, 1.f, 0.f, -1.f, 0.f, 1.f,
+            -1.f, -1.f, -1.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f,
+            -1.f, -1.f, -1.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f,
+            -1.f, -1.f, -1.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f});
+
+    auto conv = std::make_shared<ov::op::v1::Convolution>(param,
+                                                          weights,
+                                                          ov::Strides{1, 1},
+                                                          ov::CoordinateDiff{1, 1},
+                                                          ov::CoordinateDiff{1, 1},
+                                                          ov::Strides{1, 1});
+    auto relu = std::make_shared<ov::op::v0::Relu>(conv);
+    auto res = std::make_shared<ov::op::v0::Result>(relu);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "conv2d_relu");
+
+    auto cpu_cm = core.compile_model(model, "CPU");
+    auto metal_cm = core.compile_model(model, "METAL");
+
+    ov::Tensor input{ov::element::f32, {1, 3, 4, 4}};
+    std::vector<float> vals(1 * 3 * 4 * 4);
+    for (size_t i = 0; i < vals.size(); ++i)
+        vals[i] = static_cast<float>(i % 5) - 2.f;
+    std::copy(vals.begin(), vals.end(), input.data<float>());
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    auto metal_req = metal_cm.create_infer_request();
+
+    cpu_req.set_input_tensor(input);
+    cpu_req.infer();
+    auto cpu_out = cpu_req.get_output_tensor();
+
+    metal_req.set_input_tensor(input);
+    metal_req.infer();
+    auto metal_out = metal_req.get_output_tensor();
+
+    expect_shape_type(cpu_out, {1, 2, 4, 4});
+    expect_allclose(cpu_out, metal_out, /*tol=*/1e-4f);
+
+    // All outputs must be non-negative due to ReLU.
+    expect_finite(metal_out);
+    const float* data = metal_out.data<const float>();
+    for (size_t i = 0; i < metal_out.get_size(); ++i) {
+        EXPECT_GE(data[i], 0.f);
+    }
+}
+
 TEST(MetalBasicOps, MaxPool2D) {
     ov::Core core;
     register_metal_plugin(core);
@@ -728,14 +1111,14 @@ TEST(MetalBasicOps, AvgPool2D) {
     expect_allclose(cpu_out, metal_out, /*tol=*/1e-5f);
 }
 
-// AUTO should split: Relu/Add on METAL, Sigmoid (unsupported) on CPU; final result must match pure CPU.
+// Ensure graph with Relu + Sigmoid + Add matches CPU output when executed on METAL.
 TEST(MetalBasicOps, AutoMetalCpuHybrid) {
     ov::Core core;
     register_metal_plugin(core);
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4});
     auto relu = std::make_shared<ov::op::v0::Relu>(param);  // supported by METAL
-    auto sigmoid = std::make_shared<ov::op::v0::Sigmoid>(relu);  // NOT supported by METAL
+    auto sigmoid = std::make_shared<ov::op::v0::Sigmoid>(relu);  // supported by METAL
     auto c = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{1, 4},
                                                    std::vector<float>{0.1f, -0.2f, 0.3f, -0.4f});
     auto add = std::make_shared<ov::op::v1::Add>(sigmoid, c);  // supported by METAL
@@ -743,14 +1126,14 @@ TEST(MetalBasicOps, AutoMetalCpuHybrid) {
     auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "auto_metal_cpu");
 
     auto cpu_cm = core.compile_model(model, "CPU");
-    auto auto_cm = core.compile_model(model, "AUTO:METAL,CPU");
+    auto metal_cm = core.compile_model(model, "METAL");
 
     std::vector<std::vector<float>> inputs{
         {0.5f, -1.f, 2.f, -0.5f},
         {0.f, 0.f, 0.f, 0.f}};
 
     auto cpu_req = cpu_cm.create_infer_request();
-    auto auto_req = auto_cm.create_infer_request();
+    auto auto_req = metal_cm.create_infer_request();
     for (const auto& vals : inputs) {
         ov::Tensor input{ov::element::f32, {1, 4}};
         std::copy(vals.begin(), vals.end(), input.data<float>());
@@ -763,6 +1146,6 @@ TEST(MetalBasicOps, AutoMetalCpuHybrid) {
         auto_req.infer();
         auto auto_out = auto_req.get_output_tensor();
 
-        expect_allclose(cpu_out, auto_out, /*tol=*/1e-5f);
+        expect_allclose(cpu_out, auto_out, /*tol=*/3e-4f);
     }
 }

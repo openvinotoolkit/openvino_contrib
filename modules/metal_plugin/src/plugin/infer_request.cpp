@@ -5,7 +5,6 @@
 #include "infer_request.hpp"
 
 #include "compiled_model.hpp"
-#include "runtime/mps_executor.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/runtime/make_tensor.hpp"
 #include "openvino/runtime/tensor.hpp"
@@ -49,7 +48,8 @@ void InferRequest::infer() {
         output_wrapped.emplace_back(ov::make_tensor(so));
     }
 
-    mps_execute(cm->graph(), cm->input_tensors(), cm->output_tensors(), input_wrapped, output_wrapped);
+    OPENVINO_ASSERT(cm->backend(), "Backend is null");
+    cm->backend()->run(input_wrapped, output_wrapped);
 }
 
 const std::shared_ptr<const CompiledModel> InferRequest::get_compiled_model_typed() const {

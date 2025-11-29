@@ -26,3 +26,6 @@ target_sources(${TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/metal_precision_study_test.cpp)
 
 target_compile_definitions(${TARGET_NAME} PRIVATE METAL_PLUGIN_PATH="$<TARGET_FILE:openvino_metal_plugin>")
+
+target_include_directories(${TARGET_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
