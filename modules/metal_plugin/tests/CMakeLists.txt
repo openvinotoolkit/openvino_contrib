@@ -1,31 +1,22 @@
 set(TARGET_NAME ov_metal_basic_tests)
 
-set(GTEST_ROOT "/Users/anesterov/repos/openvino_contrib/cmake-build-artifacts/openvino/thirdparty/gtest/gtest/googletest")
-add_library(ov_metal_gtest STATIC
-    ${GTEST_ROOT}/src/gtest-all.cc
-    ${GTEST_ROOT}/src/gtest_main.cc)
-target_include_directories(ov_metal_gtest PUBLIC
-    ${GTEST_ROOT}/include
-    ${GTEST_ROOT})
-
+# Align with CPU functional tests: single target built via ov_add_test_target,
+# no custom archives or force-load.
 ov_add_test_target(
     NAME ${TARGET_NAME}
     ROOT ${CMAKE_CURRENT_SOURCE_DIR}
     DEPENDENCIES
         openvino_metal_plugin
     LINK_LIBRARIES
+        openvino::funcSharedTests
         openvino::runtime::dev
-        ov_metal_gtest
-    ADD_CLANG_FORMAT
+        gmock
+        gtest_main
+        gtest
     LABELS
-        OV UNIT METAL
+        OV METAL
 )
 
-target_sources(${TARGET_NAME} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/metal_basic_ops_test.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/metal_precision_study_test.cpp)
-
+# Device-specific bits: path to the built plugin and access to local src headers.
 target_compile_definitions(${TARGET_NAME} PRIVATE METAL_PLUGIN_PATH="$<TARGET_FILE:openvino_metal_plugin>")
-
-target_include_directories(${TARGET_NAME} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+target_include_directories(${TARGET_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)

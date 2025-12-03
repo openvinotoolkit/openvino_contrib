@@ -44,6 +44,13 @@ You should see GPU power/load spikes while the tests are running.
 - MatMul (v0) — only rank‑2 or rank‑3 (batched) inputs; transpose flags not supported
 - Convolution (v1) — 2D, rank‑4 NCHW input and OIHW weights, `groups == 1`, basic strides/pads/dilations
 
+### MLIR/Metal path (experimental, active)
+- MatMul (rank‑2/3, f32, simple batch broadcast)
+- Add (equal-shape + scalar/channel broadcast)
+- Unary activations: Relu / Sigmoid / Tanh / Elu / PRelu (scalar) / Gelu
+- Softmax (last axis, rank ≥ 2)
+- MaxPool2D / AvgPool2D (NCHW, rank‑4, standard strides/pads, exclude_pad honored for AvgPool)
+
 **Known limitations**
 - No dynamic shapes.
 - No grouped or depthwise convolutions yet.

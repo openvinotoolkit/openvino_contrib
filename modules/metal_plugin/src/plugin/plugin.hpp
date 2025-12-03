@@ -45,8 +45,12 @@ public:
     const std::string& get_device_name() const { return m_device_name; }
 
 private:
+    bool is_hetero_subgraph(const std::shared_ptr<const ov::Model>& model) const;
+    bool model_supported_by_metal(const std::shared_ptr<const ov::Model>& model,
+                                  const ov::AnyMap& properties) const;
     std::string m_device_name;
     ov::hint::PerformanceMode m_performance_mode = ov::hint::PerformanceMode::LATENCY;
+    bool m_enable_profiling = false;
     ov::AnyMap m_config;
 };
 

@@ -5,13 +5,13 @@
 
 #include <string>
 
-#include "kernel_codegen/kernel_ir.hpp"
+#include "kernel_ir/kernel_ir_common.hpp"
 
 namespace ov {
 namespace metal_plugin {
 
-std::string generate_msl_for_elementwise_add(const KernelOp& op);
-std::string generate_msl_for_matmul(const KernelOp& op);
+std::string generate_msl_for_maxpool2d(const KernelOp& op);
 
 }  // namespace metal_plugin
 }  // namespace ov
+

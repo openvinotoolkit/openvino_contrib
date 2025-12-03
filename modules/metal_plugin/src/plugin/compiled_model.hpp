@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "openvino/runtime/icompiled_model.hpp"
+#include "openvino/core/type/element_type.hpp"
 
 #include "runtime/backend.hpp"
 #include "runtime/mlir_backend.hpp"
@@ -19,7 +20,9 @@ class InferRequest;
 class CompiledModel : public ov::ICompiledModel {
 public:
     CompiledModel(const std::shared_ptr<const ov::Model>& model,
-                  const std::shared_ptr<const ov::IPlugin>& plugin);
+                  const std::shared_ptr<const ov::IPlugin>& plugin,
+                  const std::shared_ptr<const ov::Model>& original_model = nullptr,
+                  const ov::AnyMap& properties = {});
 
     std::shared_ptr<const ov::Model> get_runtime_model() const override { return m_runtime_model; }
     void export_model(std::ostream& model) const override;
@@ -28,6 +31,7 @@ public:
     ov::Any get_property(const std::string& name) const override;
 
     MetalBackend* backend() const { return m_backend.get(); }
+    ov::element::Type get_inference_precision() const { return m_inference_precision; }
 
 protected:
     std::shared_ptr<ov::ISyncInferRequest> create_sync_infer_request() const override;
@@ -35,7 +39,9 @@ protected:
 private:
     MetalBackendPtr m_backend;
     std::shared_ptr<const ov::Model> m_runtime_model;
+    std::shared_ptr<const ov::Model> m_original_model;
     ov::AnyMap m_config;
+    ov::element::Type m_inference_precision{ov::element::f32};
 };
 
 }  // namespace metal_plugin
