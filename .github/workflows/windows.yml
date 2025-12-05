@@ -134,7 +134,6 @@ jobs:
             -DENABLE_OV_TF_LITE_FRONTEND=OFF `
             -DENABLE_OV_PYTORCH_FRONTEND=OFF `
             -DENABLE_INTEL_GPU=OFF `
-            -DENABLE_CPPLINT=OFF `
             -DENABLE_SAMPLES=OFF `
             -DENABLE_PYTHON=ON `
             -DENABLE_INTEL_NPU=OFF `
