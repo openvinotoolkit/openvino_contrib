@@ -9,6 +9,8 @@
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
@@ -281,112 +283,6 @@ mlir::ModuleOp build_mlir_broadcast_add_from_model(const std::shared_ptr<const o
         });
 
     b.create<mlir::func::ReturnOp>(mlir::UnknownLoc::get(&ctx), generic.getResults());
-    return module;
-}
-
-mlir::ModuleOp build_mlir_softmax_from_model(const std::shared_ptr<const ov::Model>& model,
-                                             mlir::MLIRContext& ctx) {
-    // For now emit a trivial identity function to satisfy MLIR pipeline; computation is handled by kernel IR.
-    ctx.loadDialect<mlir::func::FuncDialect>();
-    auto sm = find_single_softmax(model);
-    const auto shape = sm->get_input_shape(0);
-    auto f32 = mlir::Float32Type::get(&ctx);
-    mlir::SmallVector<int64_t> dims(shape.begin(), shape.end());
-    auto ty = mlir::RankedTensorType::get(dims, f32);
-
-    mlir::OpBuilder mb(&ctx);
-    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
-    mb.setInsertionPointToStart(module.getBody());
-    auto func_type = mb.getFunctionType({ty}, {ty});
-    auto func = mb.create<mlir::func::FuncOp>(mlir::UnknownLoc::get(&ctx), "softmax_main", func_type);
-    func.addEntryBlock();
-    mlir::OpBuilder b(func.getBody());
-    b.setInsertionPointToStart(&func.getBody().front());
-    b.create<mlir::func::ReturnOp>(mlir::UnknownLoc::get(&ctx), func.getArguments());
-    return module;
-}
-
-mlir::ModuleOp build_mlir_maxpool_from_model(const std::shared_ptr<const ov::Model>& model,
-                                             mlir::MLIRContext& ctx) {
-    ctx.loadDialect<mlir::func::FuncDialect>();
-    std::shared_ptr<const ov::op::v1::MaxPool> pool;
-    for (const auto& node : model->get_ordered_ops()) {
-        if (auto p = ov::as_type_ptr<const ov::op::v1::MaxPool>(node)) {
-            pool = p;
-            break;
-        }
-    }
-    OPENVINO_ASSERT(pool, "MaxPool builder: MaxPool op not found");
-    auto shape = pool->get_input_shape(0);
-    auto f32 = mlir::Float32Type::get(&ctx);
-    mlir::SmallVector<int64_t> dims(shape.begin(), shape.end());
-    auto ty = mlir::RankedTensorType::get(dims, f32);
-
-    mlir::OpBuilder mb(&ctx);
-    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
-    mb.setInsertionPointToStart(module.getBody());
-    auto func_type = mb.getFunctionType({ty}, {ty});
-    auto func = mb.create<mlir::func::FuncOp>(mlir::UnknownLoc::get(&ctx), "maxpool_main", func_type);
-    func.addEntryBlock();
-    mlir::OpBuilder b(func.getBody());
-    b.setInsertionPointToStart(&func.getBody().front());
-    b.create<mlir::func::ReturnOp>(mlir::UnknownLoc::get(&ctx), func.getArguments());
-    return module;
-}
-
-mlir::ModuleOp build_mlir_avgpool_from_model(const std::shared_ptr<const ov::Model>& model,
-                                             mlir::MLIRContext& ctx) {
-    ctx.loadDialect<mlir::func::FuncDialect>();
-    std::shared_ptr<const ov::op::v1::AvgPool> pool;
-    for (const auto& node : model->get_ordered_ops()) {
-        if (auto p = ov::as_type_ptr<const ov::op::v1::AvgPool>(node)) {
-            pool = p;
-            break;
-        }
-    }
-    OPENVINO_ASSERT(pool, "AvgPool builder: AvgPool op not found");
-    auto shape = pool->get_input_shape(0);
-    auto f32 = mlir::Float32Type::get(&ctx);
-    mlir::SmallVector<int64_t> dims(shape.begin(), shape.end());
-    auto ty = mlir::RankedTensorType::get(dims, f32);
-
-    mlir::OpBuilder mb(&ctx);
-    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
-    mb.setInsertionPointToStart(module.getBody());
-    auto func_type = mb.getFunctionType({ty}, {ty});
-    auto func = mb.create<mlir::func::FuncOp>(mlir::UnknownLoc::get(&ctx), "avgpool_main", func_type);
-    func.addEntryBlock();
-    mlir::OpBuilder b(func.getBody());
-    b.setInsertionPointToStart(&func.getBody().front());
-    b.create<mlir::func::ReturnOp>(mlir::UnknownLoc::get(&ctx), func.getArguments());
-    return module;
-}
-
-mlir::ModuleOp build_mlir_conv2d_from_model(const std::shared_ptr<const ov::Model>& model,
-                                            mlir::MLIRContext& ctx) {
-    ctx.loadDialect<mlir::func::FuncDialect>();
-    std::shared_ptr<const ov::op::v1::Convolution> conv;
-    for (const auto& node : model->get_ordered_ops()) {
-        if (auto c = ov::as_type_ptr<const ov::op::v1::Convolution>(node)) {
-            conv = c;
-            break;
-        }
-    }
-    OPENVINO_ASSERT(conv, "Conv2D builder: Convolution op not found");
-    auto shape = conv->get_input_shape(0);
-    auto f32 = mlir::Float32Type::get(&ctx);
-    mlir::SmallVector<int64_t> dims(shape.begin(), shape.end());
-    auto ty = mlir::RankedTensorType::get(dims, f32);
-
-    mlir::OpBuilder mb(&ctx);
-    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
-    mb.setInsertionPointToStart(module.getBody());
-    auto func_type = mb.getFunctionType({ty}, {ty});
-    auto func = mb.create<mlir::func::FuncOp>(mlir::UnknownLoc::get(&ctx), "conv2d_main", func_type);
-    func.addEntryBlock();
-    mlir::OpBuilder b(func.getBody());
-    b.setInsertionPointToStart(&func.getBody().front());
-    b.create<mlir::func::ReturnOp>(mlir::UnknownLoc::get(&ctx), func.getArguments());
     return module;
 }
 

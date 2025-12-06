@@ -36,6 +36,8 @@ mlir::ModuleOp build_mlir_avgpool_from_model(const std::shared_ptr<const ov::Mod
                                              mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_conv2d_from_model(const std::shared_ptr<const ov::Model>& model,
                                             mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_conv3d_from_model(const std::shared_ptr<const ov::Model>& model,
+                                            mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_batchnorm_from_model(const std::shared_ptr<const ov::Model>& model,
                                                mlir::MLIRContext& ctx);
 

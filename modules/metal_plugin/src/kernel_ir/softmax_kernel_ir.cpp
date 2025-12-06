@@ -40,6 +40,7 @@ MetalKernelIR build_kernel_ir_for_softmax(const std::shared_ptr<const ov::Model>
     }
     const auto et = sm_node->get_input_element_type(0);
     OPENVINO_ASSERT(et == ov::element::f32 || et == ov::element::f16, "Softmax supports only f16/f32");
+    const auto dtype = resolve_metal_dtype(et);
 
     if (axis < 0) axis += static_cast<int64_t>(shape.size());
     OPENVINO_ASSERT(axis >= 0 && axis < static_cast<int64_t>(shape.size()), "Softmax: invalid axis");
@@ -55,6 +56,8 @@ MetalKernelIR build_kernel_ir_for_softmax(const std::shared_ptr<const ov::Model>
 
     KernelTensor in{"in", {shape.begin(), shape.end()}};
     KernelTensor out{"out", {shape.begin(), shape.end()}};
+    in.dtype = dtype;
+    out.dtype = resolve_metal_dtype(sm_node->get_output_element_type(0));
     ir.tensors.push_back(in);
     ir.tensors.push_back(out);
 
@@ -64,6 +67,7 @@ MetalKernelIR build_kernel_ir_for_softmax(const std::shared_ptr<const ov::Model>
     op.cols = cols;
     op.inner = inner;
     op.softmax_axis = axis;
+    op.dtype = dtype;
     op.element_type = static_cast<uint32_t>(static_cast<ov::element::Type_t>(et));
     op.input0 = &ir.tensors[0];
     op.output = &ir.tensors[1];

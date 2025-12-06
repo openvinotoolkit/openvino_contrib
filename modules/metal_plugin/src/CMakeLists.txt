@@ -10,24 +10,28 @@ file(GLOB_RECURSE HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp)
 # Ensure newly added per-op files are included even if glob caching misses them
 list(APPEND SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/conv_kernel_ir.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/conv3d_kernel_ir.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/batchnorm_kernel_ir.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/mul_kernel_ir.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/sub_kernel_ir.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/slice_kernel_ir.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/msl/conv_msl.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/conv3d_msl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/msl/batchnorm_msl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/msl/mul_msl.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/msl/sub_msl.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/msl/slice_msl.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/msl/split_msl.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_dtype.cpp
 )
 # Exclude LayerNorm sources when the op is not available in this build.
 list(FILTER SOURCES EXCLUDE REGEX "layernorm_kernel_ir.cpp")
 list(FILTER SOURCES EXCLUDE REGEX "layernorm_msl.cpp")
-# MLIR-only backend: exclude legacy MPSGraph-based sources
-list(FILTER SOURCES EXCLUDE REGEX ".*/ops/.*")
-list(FILTER SOURCES EXCLUDE REGEX ".*/graph/mps_node_context.mm")
-list(FILTER SOURCES EXCLUDE REGEX ".*/graph/mps_graph_builder.mm")
-list(FILTER SOURCES EXCLUDE REGEX ".*/mlir/.*")
-list(FILTER HEADERS EXCLUDE REGEX ".*/mlir/.*")
+# MLIR-only backend: source lists already limited to existing files; legacy ops/graph were removed.
 
 if(ENABLE_METAL_MLIR)
     add_subdirectory(mlir)
+    add_subdirectory(mlir_codegen)
 endif()
 
 # Build METAL plugin as SHARED (not MODULE) to allow normal linking/registration in OpenVINO
@@ -41,12 +45,10 @@ ov_add_vs_version_file(NAME ${TARGET_NAME}
 target_include_directories(${TARGET_NAME} PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/plugin"
-    "${CMAKE_CURRENT_SOURCE_DIR}/graph"
     "${CMAKE_CURRENT_SOURCE_DIR}/runtime"
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen"
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir"
     "${CMAKE_CURRENT_SOURCE_DIR}/msl"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ops"
     "${CMAKE_CURRENT_SOURCE_DIR}/transforms"
     "${CMAKE_CURRENT_SOURCE_DIR}/mlir"
     $<$<BOOL:${ENABLE_METAL_MLIR}>:${MLIR_INCLUDE_DIRS}>)
@@ -54,15 +56,13 @@ target_include_directories(${TARGET_NAME} PRIVATE
 target_compile_definitions(${TARGET_NAME} PRIVATE ENABLE_METAL_MLIR)
 
 # Link reference implementations for early bring-up
-# TODO: replace with Metal/MPSGraph execution backend once available
 target_link_libraries(${TARGET_NAME} PRIVATE
     openvino::runtime
     openvino::runtime::dev
     openvino::interpreter_backend
     openvino::reference
     $<$<BOOL:${ENABLE_METAL_MLIR}>:metal_mlir>
-    "-framework MetalPerformanceShadersGraph"
-    "-framework MetalPerformanceShaders"
+    $<$<BOOL:${ENABLE_METAL_MLIR}>:metal_mlir_codegen>
     "-framework Metal"
     "-framework Foundation")
 

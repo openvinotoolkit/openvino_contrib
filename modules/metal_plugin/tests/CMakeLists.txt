@@ -1,4 +1,4 @@
-set(TARGET_NAME ov_metal_basic_tests)
+set(TARGET_NAME ov_metal_func_tests)
 
 # Align with CPU functional tests: single target built via ov_add_test_target,
 # no custom archives or force-load.
@@ -7,9 +7,11 @@ ov_add_test_target(
     ROOT ${CMAKE_CURRENT_SOURCE_DIR}
     DEPENDENCIES
         openvino_metal_plugin
+        openvino_template_plugin
     LINK_LIBRARIES
         openvino::funcSharedTests
         openvino::runtime::dev
+        openvino_metal_plugin
         gmock
         gtest_main
         gtest
@@ -19,4 +21,9 @@ ov_add_test_target(
 
 # Device-specific bits: path to the built plugin and access to local src headers.
 target_compile_definitions(${TARGET_NAME} PRIVATE METAL_PLUGIN_PATH="$<TARGET_FILE:openvino_metal_plugin>")
-target_include_directories(${TARGET_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+target_compile_definitions(${TARGET_NAME} PRIVATE TEMPLATE_PLUGIN_PATH="$<TARGET_FILE:openvino_template_plugin>")
+target_include_directories(${TARGET_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    ${OpenVINO_SOURCE_DIR}/src
+    ${OpenVINO_SOURCE_DIR}/src/plugins/template/include
+)

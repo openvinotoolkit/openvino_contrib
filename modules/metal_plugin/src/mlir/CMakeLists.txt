@@ -3,6 +3,10 @@
 
 set(METAL_MLIR_SOURCES
     mlir_builder.cpp
+    mlir_builder_conv2d.cpp
+    mlir_builder_conv3d.cpp
+    mlir_builder_pool2d.cpp
+    mlir_builder_softmax.cpp
     mlir_passes.cpp
     mlir_utils.cpp)
 
@@ -21,10 +25,16 @@ target_link_libraries(metal_mlir
         MLIRSupport
         MLIRPass
         MLIRTransforms
+        MLIRBufferizationDialect
+        MLIRBufferizationTransforms
+        MLIRFuncTransforms
+        MLIRMemRefTransforms
         MLIRFuncDialect
         MLIRLinalgDialect
+        MLIRLinalgTransforms
         MLIRTensorDialect
         MLIRArithDialect
+        MLIRSCFDialect
         LLVMSupport)
 
 set_target_properties(metal_mlir PROPERTIES POSITION_INDEPENDENT_CODE ON)

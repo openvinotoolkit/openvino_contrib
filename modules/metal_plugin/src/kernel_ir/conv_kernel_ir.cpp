@@ -50,6 +50,9 @@ MetalKernelIR build_kernel_ir_for_conv2d(const std::shared_ptr<const ov::Model>&
     KernelTensor in{"in", {in_shape.begin(), in_shape.end()}};
     KernelTensor w{"w", {w_shape.begin(), w_shape.end()}};
     KernelTensor out{"out", {out_shape.begin(), out_shape.end()}};
+    in.dtype = resolve_metal_dtype(in_et);
+    w.dtype = resolve_metal_dtype(w_et);
+    out.dtype = resolve_metal_dtype(conv_node_base->get_output_element_type(0));
     ir.tensors.push_back(in);
     ir.tensors.push_back(w);
     ir.tensors.push_back(out);
@@ -112,6 +115,8 @@ MetalKernelIR build_kernel_ir_for_conv2d(const std::shared_ptr<const ov::Model>&
     } else if (auto gconv = ov::as_type_ptr<const ov::op::v1::GroupConvolution>(conv_node_base)) {
         op.conv2d.padType = static_cast<uint32_t>(gconv->get_auto_pad());
     }
+    op.dtype = resolve_metal_dtype(in_et);
+    op.conv2d.dtype = op.dtype;
     op.conv2d.element_type = static_cast<uint32_t>(static_cast<ov::element::Type_t>(in_et));
 
     // Detect constant weights

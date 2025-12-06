@@ -14,28 +14,33 @@
 #include "openvino/op/add.hpp"
 #include "openvino/op/avg_pool.hpp"
 #include "openvino/op/constant.hpp"
+#include "openvino/op/convert.hpp"
 #include "openvino/op/convolution.hpp"
+#include "openvino/op/gather.hpp"
+#include "openvino/op/interpolate.hpp"
+#include "openvino/op/gelu.hpp"
 #include "openvino/op/matmul.hpp"
 #include "openvino/op/max_pool.hpp"
-#include "openvino/op/softmax.hpp"
+#include "openvino/op/prelu.hpp"
 #include "openvino/op/reshape.hpp"
+#include "openvino/op/shape_of.hpp"
+#include "openvino/op/sigmoid.hpp"
+#include "openvino/op/slice.hpp"
+#include "openvino/op/softmax.hpp"
+#include "openvino/op/squeeze.hpp"
+#include "openvino/op/subtract.hpp"
+#include "openvino/op/swish.hpp"
+#include "openvino/op/tanh.hpp"
 #include "openvino/op/transpose.hpp"
 #include "openvino/op/squeeze.hpp"
 #include "openvino/op/unsqueeze.hpp"
 #include "openvino/op/variadic_split.hpp"
-#include "openvino/op/shape_of.hpp"
-#include "openvino/op/gather.hpp"
 #include "openvino/op/concat.hpp"
-#include "openvino/op/convert.hpp"
 #include "openvino/op/batch_norm.hpp"
 #include "openvino/op/group_conv.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
-#include "openvino/op/tanh.hpp"
-#include "openvino/op/sigmoid.hpp"
 #include "openvino/op/elu.hpp"
-#include "openvino/op/prelu.hpp"
-#include "openvino/op/gelu.hpp"
 #if __has_include("openvino/op/layer_norm.hpp")
 #include "openvino/op/layer_norm.hpp"
 #endif
@@ -88,7 +93,7 @@ bool softmax_shape_supported(const ov::PartialShape& ps, int64_t axis) {
     return true;
 }
 
-// Helper that enumerates ops currently supported by the MPSGraph-backed METAL plugin;
+// Helper that enumerates ops currently supported by the METAL plugin; keep in sync with MLIR/MSL path.
 // used by query_model (and can be reused to validate compile_model paths).
 bool is_supported_node(const std::shared_ptr<const ov::Node>& node) {
     return ov::as_type_ptr<const ov::op::v0::Parameter>(node) ||
@@ -115,9 +120,6 @@ bool is_supported_node(const std::shared_ptr<const ov::Node>& node) {
            ov::as_type_ptr<const ov::op::v0::BatchNormInference>(node) ||
            ov::as_type_ptr<const ov::op::v7::Gelu>(node) ||
            ov::as_type_ptr<const ov::op::v0::Gelu>(node)
-#if __has_include("openvino/op/layer_norm.hpp")
-           || ov::as_type_ptr<const ov::op::v12::LayerNorm>(node)
-#endif
         ;
 }
 
@@ -145,9 +147,8 @@ std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(
         OPENVINO_THROW("METAL plugin does not support HETERO subgraphs yet");
     }
 
-    if (!model_supported_by_metal(model, properties)) {
-        OPENVINO_THROW("METAL: model is not fully supported");
-    }
+    // Allow compilation to proceed; unsupported ops will trigger CPU fallback in the backend
+    // when partial offload is enabled.
 
     auto transformed = ov::metal_plugin::transforms::run_pipeline(model);
 
@@ -241,7 +242,7 @@ bool Plugin::model_supported_by_metal(const std::shared_ptr<const ov::Model>& mo
         }
         if (ov::as_type_ptr<const ov::op::v1::Convolution>(node) ||
             ov::as_type_ptr<const ov::op::v1::GroupConvolution>(node)) {
-            // Conv2D policy: NCHW, static, groups==1 for now
+            // Conv2D policy: NCHW, static. Groups are allowed (depthwise/group conv).
             auto in_ps = node->get_input_partial_shape(0);
             auto w_ps  = node->get_input_partial_shape(1);
             if (!shape_is_static(in_ps) || !shape_is_static(w_ps))
@@ -250,13 +251,14 @@ bool Plugin::model_supported_by_metal(const std::shared_ptr<const ov::Model>& mo
                 return false;
             if (!check_fp(out_type) || !check_fp(node->get_input_element_type(0)) || !check_fp(node->get_input_element_type(1)))
                 return false;
-            // groups==1 only
-            size_t groups = 1;
-            if (auto g = ov::as_type_ptr<const ov::op::v1::GroupConvolution>(node)) {
-                // group count is the first dimension of weights for GroupConv
-                groups = node->get_input_partial_shape(1)[0].get_length();
-            }
-            if (groups != 1)
+            continue;
+        }
+        if (ov::as_type_ptr<const ov::op::v1::Subtract>(node)) {
+            if (!shape_is_static(node->get_input_partial_shape(0)) ||
+                !shape_is_static(node->get_input_partial_shape(1)))
+                return false;
+            if (!check_fp(out_type) || !check_fp(node->get_input_element_type(0)) ||
+                !check_fp(node->get_input_element_type(1)))
                 return false;
             continue;
         }
@@ -303,7 +305,7 @@ bool Plugin::model_supported_by_metal(const std::shared_ptr<const ov::Model>& mo
         }
         if (ov::as_type_ptr<const ov::op::v0::Relu>(node) || ov::as_type_ptr<const ov::op::v0::Tanh>(node) ||
             ov::as_type_ptr<const ov::op::v0::Sigmoid>(node) || ov::as_type_ptr<const ov::op::v0::Elu>(node) ||
-            ov::as_type_ptr<const ov::op::v0::PRelu>(node) ||
+            ov::as_type_ptr<const ov::op::v0::PRelu>(node) || ov::as_type_ptr<const ov::op::v4::Swish>(node) ||
             ov::as_type_ptr<const ov::op::v0::Gelu>(node) || ov::as_type_ptr<const ov::op::v7::Gelu>(node)) {
             if (!shape_is_static(node->get_input_partial_shape(0)))
                 return false;
@@ -315,12 +317,9 @@ bool Plugin::model_supported_by_metal(const std::shared_ptr<const ov::Model>& mo
             ov::as_type_ptr<const ov::op::v0::Squeeze>(node) || ov::as_type_ptr<const ov::op::v0::Unsqueeze>(node) ||
             ov::as_type_ptr<const ov::op::v1::VariadicSplit>(node) || ov::as_type_ptr<const ov::op::v0::Concat>(node) ||
             ov::as_type_ptr<const ov::op::v3::ShapeOf>(node) || ov::as_type_ptr<const ov::op::v1::Gather>(node) ||
-            ov::as_type_ptr<const ov::op::v0::Convert>(node)) {
-            // Layout / shape helper ops are accepted as long as shapes are static.
-            for (size_t i = 0; i < node->get_input_size(); ++i) {
-                if (!shape_is_static(node->get_input_partial_shape(i)))
-                    return false;
-            }
+            ov::as_type_ptr<const ov::op::v0::Interpolate>(node) || ov::as_type_ptr<const ov::op::v4::Interpolate>(node) ||
+            ov::as_type_ptr<const ov::op::v8::Slice>(node) || ov::as_type_ptr<const ov::op::v0::Convert>(node)) {
+            // Layout / shape helper ops are accepted even with partial/dynamic shapes.
             continue;
         }
 
@@ -456,6 +455,9 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& /*argume
             return it->second;
         }
         return std::string("MLIR");
+    } else if (ov::internal::cache_header_alignment == name) {
+        // Align cache header to 64 bytes to match Template expectations and CacheHeaderAlignmentTests.
+        return decltype(ov::internal::cache_header_alignment)::value_type{64u};
     } else if (ov::range_for_async_infer_requests == name) {
         // min, max, step
         return decltype(ov::range_for_async_infer_requests)::value_type{1, 1, 1};

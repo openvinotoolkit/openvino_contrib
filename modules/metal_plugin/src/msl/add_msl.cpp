@@ -12,23 +12,38 @@ namespace ov {
 namespace metal_plugin {
 
 std::string generate_msl_for_elementwise_add(const KernelOp& op) {
-    OPENVINO_ASSERT(op.kind == KernelOpKind::ElementwiseAdd, "MSL generator supports only ElementwiseAdd");
+    OPENVINO_ASSERT(op.kind == KernelOpKind::ElementwiseAdd || op.kind == KernelOpKind::ElementwiseSub,
+                    "MSL generator supports only ElementwiseAdd/Sub");
     OPENVINO_ASSERT(op.input0 && op.input1 && op.output, "Invalid KernelOp wiring for Add");
+
+    auto tensor_elems = [](const KernelTensor* t) -> size_t {
+        size_t elems = 1;
+        for (auto d : t->shape) elems *= static_cast<size_t>(d);
+        return elems;
+    };
+    const size_t out_elems = tensor_elems(op.output);
 
     std::ostringstream ss;
     ss << "using namespace metal;\n";
 
     if (!op.is_broadcast) {
+        ss << "constant uint TOTAL = " << out_elems << ";\n";
         ss << "kernel void add_kernel(\n";
         ss << "  device const float* in0 [[buffer(0)]],\n";
         ss << "  device const float* in1 [[buffer(1)]],\n";
         ss << "  device float* out [[buffer(2)]],\n";
         ss << "  uint gid [[thread_position_in_grid]]) {\n";
-        ss << "    out[gid] = in0[gid] + in1[gid];\n";
+        ss << "    if (gid >= TOTAL) return;\n";
+        ss << "    out[gid] = ";
+        if (op.kind == KernelOpKind::ElementwiseAdd)
+            ss << "in0[gid] + in1[gid];\n";
+        else
+            ss << "in0[gid] - in1[gid];\n";
         ss << "}\n";
         return ss.str();
     }
 
+    ss << "constant uint TOTAL = " << out_elems << ";\n";
     ss << "constant uint RANK = " << op.out_shape.size() << ";\n";
     ss << "constant int out_dims[" << op.out_shape.size() << "] = {";
     for (size_t i = 0; i < op.out_shape.size(); ++i) {
@@ -53,6 +68,7 @@ std::string generate_msl_for_elementwise_add(const KernelOp& op) {
     ss << "  device const float* in1 [[buffer(1)]],\n";
     ss << "  device float* out [[buffer(2)]],\n";
     ss << "  uint gid [[thread_position_in_grid]]) {\n";
+    ss << "    if (gid >= TOTAL) return;\n";
     ss << "    uint idx = gid;\n";
     ss << "    int offsets0[" << op.out_shape.size() << "];\n";
     ss << "    int offsets1[" << op.out_shape.size() << "];\n";
@@ -69,7 +85,11 @@ std::string generate_msl_for_elementwise_add(const KernelOp& op) {
     ss << "        off0 += offsets0[d];\n";
     ss << "        off1 += offsets1[d];\n";
     ss << "    }\n";
-    ss << "    out[gid] = in0[off0] + in1[off1];\n";
+    ss << "    out[gid] = ";
+    if (op.kind == KernelOpKind::ElementwiseAdd)
+        ss << "in0[off0] + in1[off1];\n";
+    else
+        ss << "in0[off0] - in1[off1];\n";
     ss << "}\n";
     return ss.str();
 }

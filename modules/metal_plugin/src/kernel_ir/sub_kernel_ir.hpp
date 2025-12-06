@@ -1,0 +1,16 @@
+// Copyright (C) 2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+#pragma once
+
+#include "kernel_ir_common.hpp"
+
+namespace ov {
+namespace metal_plugin {
+
+MetalKernelIR build_kernel_ir_for_subtract(const std::shared_ptr<const ov::Model>& model);
+MetalKernelIR build_kernel_ir_for_broadcast_subtract(const std::shared_ptr<const ov::Model>& model);
+
+}  // namespace metal_plugin
+}  // namespace ov
+

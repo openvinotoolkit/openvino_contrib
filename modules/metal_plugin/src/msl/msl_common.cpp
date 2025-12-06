@@ -15,15 +15,23 @@ std::string activation_expr(ActivationKind kind, float alpha) {
         case ActivationKind::Sigmoid:
             return "1.0f / (1.0f + exp(-x))";
         case ActivationKind::Tanh:
-            return "tanh(x)";
+            return "tanh(clamp(x, -10.0f, 10.0f))";
         case ActivationKind::Elu:
             return "(x > 0.0f ? x : " + std::to_string(alpha) + "f * (exp(x) - 1.0f))";
         case ActivationKind::Prelu:
             return "(x > 0.0f ? x : " + std::to_string(alpha) + "f * x)";
         case ActivationKind::Gelu:
-            return "(0.5f * x * (1.0f + tanh(0.79788456f * (x + 0.044715f * x * x * x))))";
+            return "({ float v = 0.79788456f * (x + 0.044715f * x * x * x);"
+                   " float t = tanh(clamp(v, -10.0f, 10.0f));"
+                   " 0.5f * x * (1.0f + t); })";
         case ActivationKind::Swish:
             return "(x * (1.0f / (1.0f + exp(-x))))";
+        case ActivationKind::Abs:
+            return "fabs(x)";
+        case ActivationKind::Sign:
+            return "(x > 0.0f ? 1.0f : (x < 0.0f ? -1.0f : 0.0f))";
+        case ActivationKind::Identity:
+            return "x";
     }
     return "x";
 }

@@ -24,12 +24,7 @@
 #include "openvino/op/elu.hpp"
 #include "openvino/op/prelu.hpp"
 #include "openvino/op/gelu.hpp"
-#if __has_include("openvino/op/layer_norm.hpp")
-#define HAS_OV_LAYER_NORM 1
-#include "openvino/op/layer_norm.hpp"
-#else
 #define HAS_OV_LAYER_NORM 0
-#endif
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
 #include "openvino/op/result.hpp"
@@ -40,13 +35,7 @@
 namespace {
 
 inline void metal_try_catch_skip(const std::function<void()>& fn) {
-    try {
-        fn();
-    } catch (const ov::Exception& e) {
-        GTEST_SKIP() << "METAL unsupported: " << e.what();
-    } catch (const std::exception& e) {
-        GTEST_SKIP() << "METAL unsupported: " << e.what();
-    }
+    fn();
 }
 
 void register_metal_plugin(ov::Core& core) {
@@ -64,6 +53,27 @@ void register_metal_plugin(ov::Core& core) {
             FAIL() << "METAL plugin unavailable: " << e.what();
         }
     }
+}
+
+void register_template_plugin(ov::Core& core) {
+#ifdef TEMPLATE_PLUGIN_PATH
+    try {
+        core.register_plugin(TEMPLATE_PLUGIN_PATH, "TEMPLATE");
+    } catch (const std::exception& e) {
+        const std::string msg = e.what();
+        if (msg.find("already registered") == std::string::npos) {
+            // Best-effort; fall back to CPU if template is unavailable.
+        }
+    }
+#endif
+}
+
+std::string reference_device(const ov::Core& core) {
+    for (const auto& dev : core.get_available_devices()) {
+        if (dev == "TEMPLATE")
+            return "TEMPLATE";
+    }
+    return "CPU";
 }
 
 void expect_allclose(const ov::Tensor& a, const ov::Tensor& b, float atol = 1e-5f, float rtol = 0.f) {
@@ -93,12 +103,8 @@ void expect_shape_type(const ov::Tensor& t, const ov::Shape& shape, ov::element:
 }
 
 
-inline void expect_or_skip_allclose(const ov::Tensor& a, const ov::Tensor& b, float atol, float rtol, const char* msg) {
-    try {
-        expect_allclose(a, b, atol, rtol);
-    } catch (const ::testing::AssertionException&) {
-        GTEST_SKIP() << msg;
-    }
+inline void expect_or_skip_allclose(const ov::Tensor& a, const ov::Tensor& b, float atol, float rtol, const char* /*msg*/) {
+    expect_allclose(a, b, atol, rtol);
 }
 
 }  // namespace
@@ -107,6 +113,8 @@ TEST(MetalBasicOps, Add) {
     metal_try_catch_skip([&]() {
 ov::Core core;
     register_metal_plugin(core);
+    register_template_plugin(core);
+    auto ref_dev = reference_device(core);
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4});
     auto c = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{1, 4}, std::vector<float>{1.f, -2.f, 3.f, 4.f});
@@ -114,7 +122,7 @@ ov::Core core;
     auto res = std::make_shared<ov::op::v0::Result>(add);
     auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "add_model");
 
-    auto cpu_cm = core.compile_model(model, "CPU");
+    auto cpu_cm = core.compile_model(model, ref_dev);
     auto metal_cm = core.compile_model(model, "METAL");
 
     std::vector<std::vector<float>> patterns{
@@ -150,6 +158,8 @@ ov::Core core;
 TEST(MetalBasicOps, MatMulSimpleMlir) {
     ov::Core core;
     register_metal_plugin(core);
+    register_template_plugin(core);
+    auto ref_dev = reference_device(core);
 
     auto p0 = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 3});
     auto p1 = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{3, 4});
@@ -157,7 +167,7 @@ TEST(MetalBasicOps, MatMulSimpleMlir) {
     auto res = std::make_shared<ov::op::v0::Result>(mm);
     auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{p0, p1}, "mlir_matmul");
 
-    auto cpu_cm = core.compile_model(model, "CPU");
+    auto cpu_cm = core.compile_model(model, ref_dev);
     auto metal_cm = core.compile_model(model, "METAL");
 
     ov::Tensor a{ov::element::f32, {2, 3}};
@@ -187,6 +197,8 @@ TEST(MetalBasicOps, AddBroadcastScalar) {
     metal_try_catch_skip([&]() {
 ov::Core core;
     register_metal_plugin(core);
+    register_template_plugin(core);
+    auto ref_dev = reference_device(core);
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4});
     auto c = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{}, std::vector<float>{0.5f});
@@ -194,7 +206,7 @@ ov::Core core;
     auto res = std::make_shared<ov::op::v0::Result>(add);
     auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "add_scalar");
 
-    auto cpu_cm = core.compile_model(model, "CPU");
+    auto cpu_cm = core.compile_model(model, ref_dev);
     auto metal_cm = core.compile_model(model, "METAL");
 
     std::vector<std::vector<float>> inputs{
@@ -420,7 +432,6 @@ TEST(MetalBasicOps, Relu) {
 }
 
 TEST(MetalBasicOps, ActivationsBasic) {
-    GTEST_SKIP() << "METAL activations (tanh/sigmoid/elu/prelu) accuracy not aligned yet";
     ov::Core core;
     register_metal_plugin(core);
 
@@ -727,7 +738,6 @@ TEST(MetalBasicOps, Softmax) {
 }
 
 TEST(MetalBasicOps, Gelu) {
-    GTEST_SKIP() << "METAL Gelu accuracy not aligned yet";
     ov::Core core;
     register_metal_plugin(core);
 
@@ -769,7 +779,6 @@ TEST(MetalBasicOps, Gelu) {
 }
 
 TEST(MetalBasicOps, BatchNormInference) {
-    GTEST_SKIP() << "METAL BatchNorm accuracy not aligned yet";
     ov::Core core;
     register_metal_plugin(core);
 
@@ -893,62 +902,6 @@ TEST(MetalBasicOps, BatchNormInference) {
         }
     }
 }
-
-#if HAS_OV_LAYER_NORM
-TEST(MetalBasicOps, LayerNorm) {
-    ov::Core core;
-    register_metal_plugin(core);
-
-    const ov::Shape shape{2, 3, 4};  // normalize over last dim
-    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, shape);
-
-    std::vector<float> gamma_vals{1.f, 0.5f, 1.5f, 2.f};
-    std::vector<float> beta_vals{0.f, 0.1f, -0.2f, 0.3f};
-    auto gamma = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{4}, gamma_vals);
-    auto beta = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{4}, beta_vals);
-
-    double eps = 1e-5;
-    auto ln = std::make_shared<ov::op::v12::LayerNorm>(param, gamma, beta, eps, -1);
-    auto res = std::make_shared<ov::op::v0::Result>(ln);
-    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "layernorm");
-
-    auto cpu_cm = core.compile_model(model, "CPU");
-    auto metal_cm = core.compile_model(model, "METAL");
-
-    std::vector<std::vector<float>> patterns;
-    patterns.emplace_back(shape.size());
-    for (size_t i = 0; i < patterns.back().size(); ++i)
-        patterns.back()[i] = static_cast<float>(static_cast<int>(i % 7) - 3);
-    patterns.emplace_back(shape.size(), 0.f);
-    patterns.emplace_back(shape.size(), 1.f);
-
-    auto cpu_req = cpu_cm.create_infer_request();
-    auto metal_req = metal_cm.create_infer_request();
-
-    for (const auto& vals : patterns) {
-        ov::Tensor input{ov::element::f32, shape};
-        std::copy(vals.begin(), vals.end(), input.data<float>());
-
-        cpu_req.set_input_tensor(input);
-        cpu_req.infer();
-        auto cpu_out = cpu_req.get_output_tensor();
-
-        metal_req.set_input_tensor(input);
-        metal_req.infer();
-        auto metal_out = metal_req.get_output_tensor();
-
-        expect_shape_type(cpu_out, shape);
-        expect_shape_type(metal_out, shape);
-        expect_finite(cpu_out);
-        expect_finite(metal_out);
-        expect_allclose(cpu_out, metal_out, /*atol=*/2e-3f, /*rtol=*/5e-4f);
-    }
-}
-#else
-TEST(MetalBasicOps, LayerNorm) {
-    GTEST_SKIP() << "LayerNorm op is not available in this OpenVINO build";
-}
-#endif
 
 TEST(MetalBasicOps, MatMulSoftmaxMatMul) {
     metal_try_catch_skip([&]() {

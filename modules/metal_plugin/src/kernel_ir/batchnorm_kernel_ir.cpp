@@ -31,10 +31,14 @@ MetalKernelIR build_kernel_ir_for_batchnorm(const std::shared_ptr<const ov::Mode
 
     const auto& in_shape = use_v5 ? bn_v5->get_input_shape(0) : bn_v0->get_input_shape(0);  // NCHW
     OPENVINO_ASSERT(in_shape.size() == 4, "BatchNorm expects rank-4 NCHW input");
-    OPENVINO_ASSERT(bn_node->get_input_element_type(0) == ov::element::f32, "BatchNorm only supports f32");
+    const auto in_et = bn_node->get_input_element_type(0);
+    OPENVINO_ASSERT(in_et == ov::element::f32 || in_et == ov::element::f16, "BatchNorm supports f32/f16");
+    const auto dtype = resolve_metal_dtype(in_et);
 
     KernelTensor in{"in", {in_shape.begin(), in_shape.end()}};
     KernelTensor out{"out", {bn_node->get_output_shape(0).begin(), bn_node->get_output_shape(0).end()}};
+    in.dtype = dtype;
+    out.dtype = resolve_metal_dtype(bn_node->get_output_element_type(0));
     ir.tensors.push_back(in);
     ir.tensors.push_back(out);
 
@@ -42,6 +46,8 @@ MetalKernelIR build_kernel_ir_for_batchnorm(const std::shared_ptr<const ov::Mode
     op.kind = KernelOpKind::BatchNorm2D;
     op.input0 = &ir.tensors[0];
     op.output = &ir.tensors[1];
+    op.dtype = dtype;
+    op.batchnorm.dtype = dtype;
     op.batchnorm.N = static_cast<uint32_t>(in_shape[0]);
     op.batchnorm.C = static_cast<uint32_t>(in_shape[1]);
     op.batchnorm.H = static_cast<uint32_t>(in_shape[2]);

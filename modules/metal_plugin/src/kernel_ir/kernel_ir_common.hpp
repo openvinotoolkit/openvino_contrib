@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "runtime/metal_dtype.hpp"
 #include "openvino/core/type/element_type.hpp"
 
 namespace ov {
@@ -16,23 +17,36 @@ class Node;
 
 namespace metal_plugin {
 
-enum class ActivationKind { Relu, Sigmoid, Tanh, Elu, Prelu, Gelu, Swish };
+enum class ActivationKind { Relu, Sigmoid, Tanh, Elu, Prelu, Gelu, Swish, Abs, Sign, Identity };
 
 enum class KernelOpKind {
     ElementwiseAdd,
     ElementwiseMul,
+    ElementwiseSub,
+    ElementwiseDiv,
+    ElementwisePow,
+    ElementwiseMod,
+    ElementwiseFloorMod,
     MatMul,
+    Split,
+    Slice,
     Unary,
     Softmax,
     MaxPool2D,
     AvgPool2D,
     Conv2D,
+    Conv3D,
     BatchNorm2D
 };
 
 struct KernelTensor {
     std::string name;
     std::vector<int64_t> shape;
+    MetalDType dtype;
+    bool from_parameter = false;  // true if originated from ov::Parameter
+    bool from_constant = false;   // true if originated from ov::Constant
+    std::vector<float> const_data;  // only valid when from_constant == true (stored as f32)
+    const void* source_node = nullptr;  // raw pointer to originating ov::Node for mapping
 };
 
 struct KernelOp {
@@ -40,6 +54,8 @@ struct KernelOp {
     KernelTensor* input0 = nullptr;
     KernelTensor* input1 = nullptr;
     KernelTensor* output = nullptr;
+    std::vector<KernelTensor*> outputs;  // for multi-output ops like Split
+    MetalDType dtype;
     // Element type of tensors (ov::element::Type_t). For ops with a single dtype (softmax/unary/etc.).
     uint32_t element_type = static_cast<uint32_t>(ov::element::Type_t::dynamic);
     // Unary-specific
@@ -84,6 +100,7 @@ struct KernelOp {
         bool exclude_pad = false;
     } pool;
     struct Conv2DDesc {
+        MetalDType dtype;
         uint32_t N = 0;
         uint32_t C_in = 0;
         uint32_t H = 0;
@@ -107,13 +124,58 @@ struct KernelOp {
         uint32_t outH = 0;
         uint32_t outW = 0;
     } conv2d;
+    struct Conv3DDesc {
+        MetalDType dtype;
+        uint32_t N = 0;
+        uint32_t C_in = 0;
+        uint32_t D = 0;
+        uint32_t H = 0;
+        uint32_t W = 0;
+        uint32_t C_out = 0;
+        uint32_t kernelD = 0;
+        uint32_t kernelH = 0;
+        uint32_t kernelW = 0;
+        uint32_t strideD = 1;
+        uint32_t strideH = 1;
+        uint32_t strideW = 1;
+        uint32_t dilationD = 1;
+        uint32_t dilationH = 1;
+        uint32_t dilationW = 1;
+        uint32_t padFront = 0;
+        uint32_t padTop = 0;
+        uint32_t padLeft = 0;
+        uint32_t padBack = 0;
+        uint32_t padBottom = 0;
+        uint32_t padRight = 0;
+        uint32_t outD = 0;
+        uint32_t outH = 0;
+        uint32_t outW = 0;
+        uint32_t element_type = 0;
+    } conv3d;
     struct BatchNormDesc {
+        MetalDType dtype;
         uint32_t N = 0;
         uint32_t C = 0;
         uint32_t H = 0;
         uint32_t W = 0;
         float eps = 0.f;
     } batchnorm;
+    struct SliceDesc {
+        MetalDType dtype;
+        std::vector<int64_t> starts;
+        std::vector<int64_t> steps;
+        std::vector<int64_t> axes;
+        std::vector<int64_t> in_shape;
+        std::vector<int64_t> out_shape;
+        std::vector<int64_t> in_strides;
+    } slice;
+    struct SplitDesc {
+        MetalDType dtype;
+        std::vector<int64_t> input_shape;
+        int64_t axis = 0;
+        std::vector<size_t> split_sizes;
+        uint32_t element_type = static_cast<uint32_t>(ov::element::Type_t::dynamic);
+    } split;
     // Parameters for BatchNorm (gamma, beta, mean, var) flattened; length = 4*C + 1 (eps sentinel).
     std::vector<float> bn_params;
 };

@@ -139,14 +139,13 @@ void log_stats(const std::string& name, const std::vector<double>& maxima) {
 }  // namespace
 
 TEST(MetalPrecisionStudy, AddBroadcastScalarRandom) {
-    try {
-        ov::Core core;
-        register_metal_plugin(core);
+    ov::Core core;
+    register_metal_plugin(core);
 
-        const ov::Shape shape{1, 4};
-        auto model = make_add_scalar_model(shape);
-        ov::CompiledModel cpu_cm = core.compile_model(model, "CPU");
-        ov::CompiledModel metal_cm = core.compile_model(model, "METAL");
+    const ov::Shape shape{1, 4};
+    auto model = make_add_scalar_model(shape);
+    ov::CompiledModel cpu_cm = core.compile_model(model, "CPU");
+    ov::CompiledModel metal_cm = core.compile_model(model, "METAL");
 
         std::mt19937 gen(12345);
         std::vector<double> run_max_errors;
@@ -164,25 +163,19 @@ TEST(MetalPrecisionStudy, AddBroadcastScalarRandom) {
             run_max_errors.push_back(stats.max_abs);
             run_mean_errors.push_back(stats.mean_abs);
         }
-        log_stats("AddBroadcastScalar", run_max_errors);
-        EXPECT_LT(*std::max_element(run_max_errors.begin(), run_max_errors.end()), 1e-2);  // sanity guard
-        EXPECT_LT(*std::max_element(run_mean_errors.begin(), run_mean_errors.end()), 1e-2);
-    } catch (const ov::Exception& e) {
-        GTEST_SKIP() << "METAL unsupported: " << e.what();
-    } catch (const std::exception& e) {
-        GTEST_SKIP() << "METAL unsupported: " << e.what();
-    }
+    log_stats("AddBroadcastScalar", run_max_errors);
+    EXPECT_LT(*std::max_element(run_max_errors.begin(), run_max_errors.end()), 1e-2);  // sanity guard
+    EXPECT_LT(*std::max_element(run_mean_errors.begin(), run_mean_errors.end()), 1e-2);
 }
 
 TEST(MetalPrecisionStudy, AddBroadcastChannelRandom) {
-    try {
-        ov::Core core;
-        register_metal_plugin(core);
+    ov::Core core;
+    register_metal_plugin(core);
 
-        const ov::Shape shape{1, 3, 4, 4};
-        auto model = make_add_channel_model(shape, /*channels=*/3);
-        ov::CompiledModel cpu_cm = core.compile_model(model, "CPU");
-        ov::CompiledModel metal_cm = core.compile_model(model, "METAL");
+    const ov::Shape shape{1, 3, 4, 4};
+    auto model = make_add_channel_model(shape, /*channels=*/3);
+    ov::CompiledModel cpu_cm = core.compile_model(model, "CPU");
+    ov::CompiledModel metal_cm = core.compile_model(model, "METAL");
 
         std::mt19937 gen(23456);
         std::vector<double> run_max_errors;
@@ -200,14 +193,9 @@ TEST(MetalPrecisionStudy, AddBroadcastChannelRandom) {
             run_max_errors.push_back(stats.max_abs);
             run_mean_errors.push_back(stats.mean_abs);
         }
-        log_stats("AddBroadcastChannel", run_max_errors);
-        EXPECT_LT(*std::max_element(run_max_errors.begin(), run_max_errors.end()), 2.0);  // diagnostic guard only
-        EXPECT_LT(*std::max_element(run_mean_errors.begin(), run_mean_errors.end()), 1e-2);
-    } catch (const ov::Exception& e) {
-        GTEST_SKIP() << "METAL unsupported: " << e.what();
-    } catch (const std::exception& e) {
-        GTEST_SKIP() << "METAL unsupported: " << e.what();
-    }
+    log_stats("AddBroadcastChannel", run_max_errors);
+    EXPECT_LT(*std::max_element(run_max_errors.begin(), run_max_errors.end()), 2.0);  // diagnostic guard only
+    EXPECT_LT(*std::max_element(run_mean_errors.begin(), run_mean_errors.end()), 1e-2);
 }
 
 TEST(MetalPrecisionStudy, SoftmaxRandom) {
