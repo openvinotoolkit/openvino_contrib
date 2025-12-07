@@ -22,7 +22,10 @@ list(APPEND SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/msl/sub_msl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/msl/slice_msl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/msl/split_msl.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/msl/concat_msl.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/msl/interpolate_msl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_dtype.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_logger.cpp
 )
 # Exclude LayerNorm sources when the op is not available in this build.
 list(FILTER SOURCES EXCLUDE REGEX "layernorm_kernel_ir.cpp")

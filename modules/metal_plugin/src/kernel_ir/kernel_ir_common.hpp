@@ -27,6 +27,8 @@ enum class KernelOpKind {
     ElementwisePow,
     ElementwiseMod,
     ElementwiseFloorMod,
+    Concat,
+    Interpolate,
     MatMul,
     Split,
     Slice,
@@ -176,8 +178,31 @@ struct KernelOp {
         std::vector<size_t> split_sizes;
         uint32_t element_type = static_cast<uint32_t>(ov::element::Type_t::dynamic);
     } split;
+    struct ConcatDesc {
+        MetalDType dtype;
+        int64_t axis = 0;
+        uint64_t outer = 0;
+        uint64_t inner = 0;
+        std::vector<uint64_t> axis_sizes;
+        std::vector<uint64_t> axis_offsets;
+    } concat;
+    struct InterpolateDesc {
+        MetalDType dtype;
+        uint32_t N = 0;
+        uint32_t C = 0;
+        uint32_t H_in = 0;
+        uint32_t W_in = 0;
+        uint32_t H_out = 0;
+        uint32_t W_out = 0;
+        float scale_h = 1.f;
+        float scale_w = 1.f;
+        bool nearest = true;   // nearest or linear
+        bool align_corners = false;
+    } interpolate;
     // Parameters for BatchNorm (gamma, beta, mean, var) flattened; length = 4*C + 1 (eps sentinel).
     std::vector<float> bn_params;
+    // Variadic inputs (used by ops like Concat)
+    std::vector<KernelTensor*> inputs;
 };
 
 struct MetalKernelIR {

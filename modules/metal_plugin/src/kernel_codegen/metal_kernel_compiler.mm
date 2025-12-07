@@ -20,9 +20,12 @@
 #include "msl/batchnorm_msl.hpp"
 #include "msl/slice_msl.hpp"
 #include "msl/split_msl.hpp"
+#include "msl/interpolate_msl.hpp"
 #include "msl/sub_msl.hpp"
+#include "msl/concat_msl.hpp"
 #include "mlir_codegen/codegen_common.hpp"
 #include "runtime/metal_dtype.hpp"
+#include "runtime/metal_logger.hpp"
 #include <numeric>
 #include "openvino/core/except.hpp"
 
@@ -34,16 +37,13 @@ id<MTLComputePipelineState> MetalKernelCompiler::compile_msl_from_source(const s
                                                                          std::string& log) {
     NSError* error = nil;
     MTLCompileOptions* opts = [[MTLCompileOptions alloc] init];
-    const char* dbg = std::getenv("OV_METAL_DEBUG");
-    if (dbg && std::string(dbg) != "0") {
-        std::cerr << "[METAL MSL] source dump (" << (entry_point ? entry_point : "") << "):\n"
-                  << source << "\n";
+    if (metal_log_config().level >= MetalLogLevel::Trace) {
+        METAL_LOG_TRACE("msl", "[METAL MSL] source dump (" << (entry_point ? entry_point : "") << "):\n" << source);
     }
     opts.fastMathEnabled = NO;
     const char* dump_env = std::getenv("OV_METAL_DEBUG_MSL");
     if (dump_env && std::string(dump_env) != "0") {
-        std::cerr << "[METAL MSL] source dump (" << (entry_point ? entry_point : "") << "):\n"
-                  << source << "\n";
+        METAL_LOG_TRACE("msl", "[METAL MSL] source dump (" << (entry_point ? entry_point : "") << "):\n" << source);
     }
     id<MTLLibrary> lib = [m_device newLibraryWithSource:[NSString stringWithUTF8String:source.c_str()]
                                                  options:opts
@@ -189,7 +189,7 @@ id<MTLComputePipelineState> MetalKernelCompiler::compile_floor_mod_kernel(const 
     auto source = generate_msl_for_eltwise(desc, nullptr);
     const char* dump_env = std::getenv("OV_METAL_DEBUG_MSL");
     if (dump_env && std::string(dump_env) != "0") {
-        std::cerr << "[METAL MSL] FloorMod source:\n" << source << "\n";
+        METAL_LOG_TRACE("msl", "[METAL MSL] FloorMod source:\n" << source);
     }
     return compile_msl_from_source(source, "eltwise_kernel", log);
 }
@@ -282,6 +282,16 @@ id<MTLComputePipelineState> MetalKernelCompiler::compile_split_kernel(const Kern
     }
 
     return pso;
+}
+
+id<MTLComputePipelineState> MetalKernelCompiler::compile_concat_kernel(const KernelOp& op, std::string& log) {
+    auto source = generate_msl_for_concat(op);
+    return compile_msl_from_source(source, "concat_kernel", log);
+}
+
+id<MTLComputePipelineState> MetalKernelCompiler::compile_interpolate_kernel(const KernelOp& op, std::string& log) {
+    auto source = generate_msl_for_interpolate(op);
+    return compile_msl_from_source(source, "interpolate_kernel", log);
 }
 
 id<MTLComputePipelineState> MetalKernelCompiler::compile_mul_kernel(const KernelOp& op, std::string& log) {

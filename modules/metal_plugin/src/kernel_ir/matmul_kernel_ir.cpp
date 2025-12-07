@@ -9,6 +9,7 @@
 #include "openvino/core/except.hpp"
 #include "openvino/core/model.hpp"
 #include "openvino/op/matmul.hpp"
+#include "runtime/metal_logger.hpp"
 
 namespace ov {
 namespace metal_plugin {
@@ -74,8 +75,9 @@ MetalKernelIR build_kernel_ir_for_matmul(const std::shared_ptr<const ov::Model>&
     }
 
     if (K_a != K_b) {
-        std::cerr << "MatMul builder K mismatch: A=" << shape_to_string(shape_a)
-                  << " B=" << shape_to_string(shape_b) << " (Ka=" << K_a << " Kb=" << K_b << ")" << std::endl;
+        METAL_LOG_WARN("matmul",
+                       "MatMul builder K mismatch: A=" << shape_to_string(shape_a)
+                       << " B=" << shape_to_string(shape_b) << " (Ka=" << K_a << " Kb=" << K_b << ")");
     }
     OPENVINO_ASSERT(K_a == K_b, "MatMul: K mismatch: A last dim = ", K_a, " B penultimate dim = ", K_b);
     const int64_t K = K_a;
