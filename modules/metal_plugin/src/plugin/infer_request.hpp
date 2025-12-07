@@ -20,7 +20,7 @@ public:
     void set_input_tensor(const ov::Tensor& tensor);
     void set_input_tensor(size_t idx, const ov::Tensor& tensor);
     void set_tensor(const ov::Output<const ov::Node>& port, const ov::SoPtr<ov::ITensor>& tensor) override;
-    std::vector<ov::ProfilingInfo> get_profiling_info() const override { return {}; }
+    std::vector<ov::ProfilingInfo> get_profiling_info() const override;
     std::vector<ov::SoPtr<ov::IVariableState>> query_state() const override { return {}; }
 
 private:

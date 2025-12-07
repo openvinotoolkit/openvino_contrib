@@ -42,6 +42,7 @@ private:
     std::shared_ptr<const ov::Model> m_original_model;
     ov::AnyMap m_config;
     ov::element::Type m_inference_precision{ov::element::f32};
+    bool m_enable_profiling = false;
 };
 
 }  // namespace metal_plugin

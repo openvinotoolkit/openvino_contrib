@@ -28,17 +28,23 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
     if (auto it = properties.find(ov::hint::inference_precision.name()); it != properties.end()) {
         m_inference_precision = it->second.as<ov::element::Type>();
     }
+    if (auto it = properties.find(ov::enable_profiling.name()); it != properties.end()) {
+        m_enable_profiling = it->second.as<bool>();
+    }
 
     // Preserve user properties; store inference_precision as ov::element::Type.
     for (const auto& kv : properties) {
         if (kv.first == ov::hint::inference_precision.name()) {
             m_config[kv.first] = m_inference_precision;
+        } else if (kv.first == ov::enable_profiling.name()) {
+            m_config[kv.first] = m_enable_profiling;
         } else {
             m_config[kv.first] = kv.second;
         }
     }
 
     m_backend = std::make_unique<MlirBackend>(model, m_original_model, m_inference_precision);
+    m_backend->set_profiling(m_enable_profiling);
 }
 
 std::shared_ptr<ov::ISyncInferRequest> CompiledModel::create_sync_infer_request() const {
@@ -54,6 +60,10 @@ void CompiledModel::set_property(const ov::AnyMap& properties) {
         if (kv.first == ov::hint::inference_precision.name()) {
             m_inference_precision = kv.second.as<ov::element::Type>();
             m_config[kv.first] = m_inference_precision;
+        } else if (kv.first == ov::enable_profiling.name()) {
+            m_enable_profiling = kv.second.as<bool>();
+            m_config[kv.first] = m_enable_profiling;
+            if (m_backend) m_backend->set_profiling(m_enable_profiling);
         } else {
             m_config[kv.first] = kv.second;
         }
@@ -82,6 +92,7 @@ ov::Any CompiledModel::get_property(const std::string& name) const {
     } else if (ov::supported_properties == name) {
         auto props = default_ro_properties();
         props.push_back(ov::PropertyName{ov::hint::inference_precision.name(), ov::PropertyMutability::RW});
+        props.push_back(ov::PropertyName{ov::enable_profiling.name(), ov::PropertyMutability::RW});
         return decltype(ov::supported_properties)::value_type(props.begin(), props.end());
     }
 
@@ -91,6 +102,9 @@ ov::Any CompiledModel::get_property(const std::string& name) const {
 
     if (name == ov::hint::inference_precision.name()) {
         return m_inference_precision;
+    }
+    if (name == ov::enable_profiling.name()) {
+        return m_enable_profiling;
     }
 
     OPENVINO_THROW("CompiledModel unsupported property: ", name);

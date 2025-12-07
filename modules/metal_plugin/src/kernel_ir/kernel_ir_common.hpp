@@ -63,7 +63,7 @@ struct KernelOp {
     // Unary-specific
     ActivationKind activation = ActivationKind::Relu;
     float alpha = 0.0f;  // used for ELU/PReLU
-    // Elementwise Add broadcast metadata
+    // Elementwise broadcast metadata
     bool is_broadcast = false;
     std::vector<int64_t> out_shape;
     std::vector<int64_t> stride0;

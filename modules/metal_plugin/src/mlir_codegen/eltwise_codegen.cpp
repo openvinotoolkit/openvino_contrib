@@ -58,7 +58,6 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d) {
     std::ostringstream ss;
     ss << "#include <metal_stdlib>\n";
     ss << "using namespace metal;\n";
-    ss << "constant uint NUM_ELEMS = " << d.num_elements << ";\n";
     if (is_int && d.eltwise_kind == KernelOpKind::ElementwisePow) {
         ss << "inline " << scalar_ty << " ipow(" << scalar_ty << " base, " << scalar_ty
            << " exp) {\n";
@@ -113,13 +112,18 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d) {
         }
     };
 
+    ss << "kernel void eltwise_kernel(\n";
+    ss << "  device const " << scalar_ty << "* A [[buffer(0)]],\n";
+    ss << "  device const " << scalar_ty << "* B [[buffer(1)]],\n";
+    ss << "  device " << scalar_ty << "* C [[buffer(2)]],\n";
+    ss << "  constant uint& NUM_ELEMS [[buffer(3)]],\n";
+    ss << "  constant uint& RANK [[buffer(4)]],\n";
+    ss << "  constant int* out_dims [[buffer(5)]],\n";
+    ss << "  constant int* stride0 [[buffer(6)]],\n";
+    ss << "  constant int* stride1 [[buffer(7)]],\n";
+    ss << "  uint gid [[thread_position_in_grid]]) {\n";
+    ss << "    if (gid >= NUM_ELEMS) return;\n";
     if (!d.is_broadcast) {
-        ss << "kernel void eltwise_kernel(\n";
-        ss << "  device const " << scalar_ty << "* A [[buffer(0)]],\n";
-        ss << "  device const " << scalar_ty << "* B [[buffer(1)]],\n";
-        ss << "  device " << scalar_ty << "* C [[buffer(2)]],\n";
-        ss << "  uint gid [[thread_position_in_grid]]) {\n";
-        ss << "    if (gid >= NUM_ELEMS) return;\n";
         if (d.eltwise_kind == KernelOpKind::ElementwiseFloorMod) {
             emit_floor_mod_block("A[gid]", "B[gid]", "C[gid]");
         } else if (!is_int && use_half && d.eltwise_kind == KernelOpKind::ElementwiseDiv) {
@@ -135,27 +139,6 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d) {
         ss << "}\n";
         return ss.str();
     }
-
-    const auto rank = d.out_shape.size();
-    ss << "constant uint RANK = " << rank << ";\n";
-    auto dump_array = [&](const char* name, const std::vector<int64_t>& v) {
-        ss << "constant int " << name << "[" << v.size() << "] = {";
-        for (size_t i = 0; i < v.size(); ++i) {
-            if (i) ss << ",";
-            ss << v[i];
-        }
-        ss << "};\n";
-    };
-    dump_array("out_dims", d.out_shape);
-    dump_array("stride0", d.stride0);
-    dump_array("stride1", d.stride1);
-
-    ss << "kernel void eltwise_kernel(\n";
-    ss << "  device const " << scalar_ty << "* A [[buffer(0)]],\n";
-    ss << "  device const " << scalar_ty << "* B [[buffer(1)]],\n";
-    ss << "  device " << scalar_ty << "* C [[buffer(2)]],\n";
-    ss << "  uint gid [[thread_position_in_grid]]) {\n";
-    ss << "    if (gid >= NUM_ELEMS) return;\n";
     ss << "    uint idx = gid;\n";
     ss << "    int off0 = 0; int off1 = 0;\n";
     ss << "    for (int d = (int)RANK - 1; d >= 0; --d) {\n";
@@ -183,7 +166,6 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d) {
 }  // namespace
 
 std::string generate_msl_for_eltwise(const EltwiseCodegenDesc& d, mlir::ModuleOp module) {
-    OPENVINO_ASSERT(d.num_elements > 0, "Eltwise: num_elements must be positive");
     if (module) {
         auto func_it = module.getOps<mlir::func::FuncOp>().begin();
         if (func_it != module.getOps<mlir::func::FuncOp>().end()) {

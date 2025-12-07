@@ -135,8 +135,9 @@ std::string emit_pool2d_msl(const Pool2DCodegenDesc& d,
 
 }  // namespace
 
-std::string generate_msl_for_pool2d(const Pool2DCodegenDesc& d, mlir::ModuleOp module) {
+std::string generate_msl_for_avgpool2d(const Pool2DCodegenDesc& d, mlir::ModuleOp module) {
     OPENVINO_ASSERT(d.N && d.C && d.H && d.W && d.kH && d.kW && d.outH && d.outW, "Pool2D desc incomplete");
+    OPENVINO_ASSERT(d.is_avg, "AvgPool2D codegen expects is_avg=true");
     if (!module)
         return emit_pool2d_msl(d, {"n_i", "c_i", "oh_i", "ow_i"}, {"n_i", "c_i", "oh_i", "ow_i"});
 
@@ -182,7 +183,7 @@ std::string generate_msl_for_pool2d(const Pool2DCodegenDesc& d, mlir::ModuleOp m
         }
         return s;
     };
-    mlir_codegen_log("[METAL MLIR] Pool2D func=" + func.getName().str());
+    mlir_codegen_log("[METAL MLIR] AvgPool2D func=" + func.getName().str());
     mlir_codegen_log("  input idx:  [" + join(input_idx) + "]");
     mlir_codegen_log("  output idx: [" + join(output_idx) + "]");
 #endif
@@ -192,3 +193,4 @@ std::string generate_msl_for_pool2d(const Pool2DCodegenDesc& d, mlir::ModuleOp m
 
 }  // namespace metal_plugin
 }  // namespace ov
+

@@ -17,6 +17,20 @@ list(APPEND SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/slice_kernel_ir.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/msl/conv_msl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/conv3d_msl.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_common.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_eltwise.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_matmul.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_unary.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_softmax.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_maxpool2d.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_avgpool2d.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_conv2d.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_conv3d.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_batchnorm2d.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_slice.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_split.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_concat.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_interpolate.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/msl/batchnorm_msl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/msl/mul_msl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/msl/sub_msl.cpp

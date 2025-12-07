@@ -8,7 +8,8 @@ set(METAL_MLIR_CODEGEN_SOURCES
     conv2d_codegen.cpp
     conv3d_codegen.cpp
     eltwise_codegen.cpp
-    pool2d_codegen.cpp
+    pool_max_codegen.cpp
+    pool_avg_codegen.cpp
     softmax_codegen.cpp)
 
 add_library(metal_mlir_codegen STATIC ${METAL_MLIR_CODEGEN_SOURCES})

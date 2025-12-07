@@ -25,17 +25,17 @@ MetalKernelIR build_kernel_ir_for_add(const std::shared_ptr<const ov::Model>& mo
     OPENVINO_ASSERT(add_node, "Add builder: no Add node found in model");
     OPENVINO_ASSERT(add_node->get_input_size() == 2, "Add must have two inputs");
     OPENVINO_ASSERT(add_node->get_output_size() == 1, "Add must have one output");
-    OPENVINO_ASSERT(add_node->get_input_element_type(0) == ov::element::f32,
-                    "Add builder: only f32 Add is supported");
-    OPENVINO_ASSERT(add_node->get_input_element_type(1) == ov::element::f32,
-                    "Add builder: only f32 Add is supported");
+    auto et = add_node->get_output_element_type(0);
+    OPENVINO_ASSERT(et == ov::element::f32 || et == ov::element::f16 || et == ov::element::i32,
+                    "Add builder: only f32/f16/i32 are supported");
 
     const auto& shape0 = add_node->get_input_shape(0);
     const auto& shape1 = add_node->get_input_shape(1);
 
-    KernelTensor in0{"in0", {shape0.begin(), shape0.end()}};
-    KernelTensor in1{"in1", {shape1.begin(), shape1.end()}};
-    KernelTensor out{"out", {add_node->get_output_shape(0).begin(), add_node->get_output_shape(0).end()}};
+    KernelTensor in0{"in0", {shape0.begin(), shape0.end()}, resolve_metal_dtype(et)};
+    KernelTensor in1{"in1", {shape1.begin(), shape1.end()}, resolve_metal_dtype(et)};
+    KernelTensor out{"out", {add_node->get_output_shape(0).begin(), add_node->get_output_shape(0).end()},
+                     resolve_metal_dtype(et)};
 
     ir.tensors.push_back(in0);
     ir.tensors.push_back(in1);
@@ -46,6 +46,8 @@ MetalKernelIR build_kernel_ir_for_add(const std::shared_ptr<const ov::Model>& mo
     op.input0 = &ir.tensors[0];
     op.input1 = &ir.tensors[1];
     op.output = &ir.tensors[2];
+    op.dtype = resolve_metal_dtype(et);
+    op.element_type = static_cast<uint32_t>(static_cast<ov::element::Type_t>(et));
     ir.ops.push_back(op);
 
     return ir;
@@ -64,10 +66,9 @@ MetalKernelIR build_kernel_ir_for_broadcast_add(const std::shared_ptr<const ov::
     OPENVINO_ASSERT(add_node, "Broadcast Add builder: no Add node found in model");
     OPENVINO_ASSERT(add_node->get_input_size() == 2, "Add must have two inputs");
     OPENVINO_ASSERT(add_node->get_output_size() == 1, "Add must have one output");
-    OPENVINO_ASSERT(add_node->get_input_element_type(0) == ov::element::f32,
-                    "Add builder: only f32 Add is supported");
-    OPENVINO_ASSERT(add_node->get_input_element_type(1) == ov::element::f32,
-                    "Add builder: only f32 Add is supported");
+    auto et = add_node->get_output_element_type(0);
+    OPENVINO_ASSERT(et == ov::element::f32 || et == ov::element::f16 || et == ov::element::i32,
+                    "Add builder: only f32/f16/i32 are supported");
 
     auto shape0 = add_node->get_input_shape(0);
     auto shape1 = add_node->get_input_shape(1);
@@ -101,9 +102,9 @@ MetalKernelIR build_kernel_ir_for_broadcast_add(const std::shared_ptr<const ov::
         strides_b[i] = (b[i] == 1 ? 0 : strides_norm_b[i]);
     }
 
-    KernelTensor in0{"in0", {shape0.begin(), shape0.end()}};
-    KernelTensor in1{"in1", {shape1.begin(), shape1.end()}};
-    KernelTensor out{"out", {out_shape.begin(), out_shape.end()}};
+    KernelTensor in0{"in0", {shape0.begin(), shape0.end()}, resolve_metal_dtype(et)};
+    KernelTensor in1{"in1", {shape1.begin(), shape1.end()}, resolve_metal_dtype(et)};
+    KernelTensor out{"out", {out_shape.begin(), out_shape.end()}, resolve_metal_dtype(et)};
 
     ir.tensors.push_back(in0);
     ir.tensors.push_back(in1);
@@ -118,6 +119,8 @@ MetalKernelIR build_kernel_ir_for_broadcast_add(const std::shared_ptr<const ov::
     op.input0 = &ir.tensors[0];
     op.input1 = &ir.tensors[1];
     op.output = &ir.tensors[2];
+    op.dtype = resolve_metal_dtype(et);
+    op.element_type = static_cast<uint32_t>(static_cast<ov::element::Type_t>(et));
     ir.ops.push_back(op);
 
     return ir;
@@ -125,4 +128,3 @@ MetalKernelIR build_kernel_ir_for_broadcast_add(const std::shared_ptr<const ov::
 
 }  // namespace metal_plugin
 }  // namespace ov
-

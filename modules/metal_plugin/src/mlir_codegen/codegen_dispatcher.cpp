@@ -26,8 +26,9 @@ std::string generate_msl_from_mlir(mlir::ModuleOp module, const BaseCodegenDesc&
         case KernelOpKind::ElementwiseFloorMod:
             return generate_msl_for_eltwise(static_cast<const EltwiseCodegenDesc&>(desc), module);
         case KernelOpKind::MaxPool2D:
+            return generate_msl_for_maxpool2d(static_cast<const Pool2DCodegenDesc&>(desc), module);
         case KernelOpKind::AvgPool2D:
-            return generate_msl_for_pool2d(static_cast<const Pool2DCodegenDesc&>(desc), module);
+            return generate_msl_for_avgpool2d(static_cast<const Pool2DCodegenDesc&>(desc), module);
         case KernelOpKind::Softmax:
             return generate_msl_for_softmax(static_cast<const SoftmaxCodegenDesc&>(desc), module);
         default:

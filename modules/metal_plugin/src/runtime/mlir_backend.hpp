@@ -22,6 +22,8 @@ public:
                          ov::element::Type inference_precision);
     ~MlirBackend();
     void run(const std::vector<ov::Tensor>& inputs, std::vector<ov::Tensor>& outputs) override;
+    void set_profiling(bool enable) override;
+    std::vector<ov::ProfilingInfo> get_profiling_info() const override;
     bool has_segment() const;
     bool segment_io_is_model_io() const;
     const Segment& get_segment() const;

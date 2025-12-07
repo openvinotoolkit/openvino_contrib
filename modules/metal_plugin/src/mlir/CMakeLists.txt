@@ -2,10 +2,20 @@
 # SPDX-License-Identifier: Apache-2.0
 
 set(METAL_MLIR_SOURCES
-    mlir_builder.cpp
+    mlir_builder_matmul.cpp
+    mlir_builder_unary.cpp
+    mlir_builder_add.cpp
+    mlir_builder_sub.cpp
+    mlir_builder_mul.cpp
+    mlir_builder_div.cpp
+    mlir_builder_pow.cpp
+    mlir_builder_mod.cpp
+    mlir_builder_floor_mod.cpp
+    mlir_builder_batchnorm.cpp
     mlir_builder_conv2d.cpp
     mlir_builder_conv3d.cpp
-    mlir_builder_pool2d.cpp
+    mlir_builder_maxpool.cpp
+    mlir_builder_avgpool.cpp
     mlir_builder_softmax.cpp
     mlir_passes.cpp
     mlir_utils.cpp)

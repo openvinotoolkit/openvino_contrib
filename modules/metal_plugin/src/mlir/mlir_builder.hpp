@@ -23,9 +23,16 @@ mlir::ModuleOp build_mlir_unary_from_node(const std::shared_ptr<const ov::Node>&
                                           ActivationKind kind,
                                           float alpha);
 
-// Build MLIR module for Add (possibly with broadcast) using linalg.generic.
-mlir::ModuleOp build_mlir_broadcast_add_from_model(const std::shared_ptr<const ov::Model>& model,
-                                                   mlir::MLIRContext& ctx);
+// Build MLIR modules for binary eltwise ops with broadcast & dynamic shapes.
+mlir::ModuleOp build_mlir_add_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_sub_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_mul_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_div_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_pow_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_mod_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_floor_mod_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_squared_difference_from_model(const std::shared_ptr<const ov::Model>& model,
+                                                        mlir::MLIRContext& ctx);
 
 // Build MLIR module for Softmax (currently last-axis only).
 mlir::ModuleOp build_mlir_softmax_from_model(const std::shared_ptr<const ov::Model>& model,

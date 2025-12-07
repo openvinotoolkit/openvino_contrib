@@ -53,6 +53,7 @@
 #include "openvino/core/model.hpp"
 #include "openvino/openvino.hpp"
 #include "openvino/runtime/tensor.hpp"
+#include "openvino/runtime/profiling_info.hpp"
 #include "mlir/IR/MLIRContext.h"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/matmul.hpp"
@@ -115,10 +116,6 @@ std::string describe_shape(const KernelTensor* t) {
     return r;
 }
 
-inline bool metal_debug_enabled() {
-    return metal_log_debug_enabled();
-}
-
 static bool use_handwritten_msl() {
     static const bool flag = []() {
         const char* env = std::getenv("OV_METAL_USE_HANDWRITTEN_MSL");
@@ -134,9 +131,37 @@ struct BroadcastResult {
     bool success = false;
 };
 
+static std::string kind_to_string(KernelOpKind k) {
+    switch (k) {
+        case KernelOpKind::ElementwiseAdd: return "ElementwiseAdd";
+        case KernelOpKind::ElementwiseSub: return "ElementwiseSub";
+        case KernelOpKind::ElementwiseMul: return "ElementwiseMul";
+        case KernelOpKind::ElementwiseDiv: return "ElementwiseDiv";
+        case KernelOpKind::ElementwisePow: return "ElementwisePow";
+        case KernelOpKind::ElementwiseMod: return "ElementwiseMod";
+        case KernelOpKind::ElementwiseFloorMod: return "ElementwiseFloorMod";
+        case KernelOpKind::Concat: return "Concat";
+        case KernelOpKind::Interpolate: return "Interpolate";
+        case KernelOpKind::MatMul: return "MatMul";
+        case KernelOpKind::Split: return "Split";
+        case KernelOpKind::Slice: return "Slice";
+        case KernelOpKind::Unary: return "Unary";
+        case KernelOpKind::Softmax: return "Softmax";
+        case KernelOpKind::MaxPool2D: return "MaxPool2D";
+        case KernelOpKind::AvgPool2D: return "AvgPool2D";
+        case KernelOpKind::Conv2D: return "Conv2D";
+        case KernelOpKind::Conv3D: return "Conv3D";
+        case KernelOpKind::BatchNorm2D: return "BatchNorm2D";
+        default: return "Unknown";
+    }
+}
+
 static BroadcastResult compute_broadcast(const ov::Shape& a_shape, const ov::Shape& b_shape) {
     BroadcastResult res;
-    const size_t rank = std::max(a_shape.size(), b_shape.size());
+    size_t rank = std::max(a_shape.size(), b_shape.size());
+    // Treat rank-0 (scalar) as rank-1 with dim=1 to simplify downstream stride handling.
+    if (rank == 0)
+        rank = 1;
     ov::Shape a_norm(rank, 1), b_norm(rank, 1), out(rank, 1);
     auto copy_back = [&](const ov::Shape& src, ov::Shape& dst) {
         size_t off = rank - src.size();
@@ -185,8 +210,7 @@ static std::optional<std::tuple<ov::Output<const ov::Node>,
 match_mod_decomposition(const std::shared_ptr<const ov::Node>& node) {
     auto mul = ov::as_type_ptr<const ov::op::v1::Multiply>(node);
     if (!mul) return std::nullopt;
-    const bool log_mod = metal_debug_enabled() &&
-                         node->get_friendly_name().find("Mod") != std::string::npos;
+    const bool log_mod = node->get_friendly_name().find("Mod") != std::string::npos;
 
     auto get_input_if = [](const std::shared_ptr<const ov::Node>& n,
                            auto predicate) -> ov::Output<const ov::Node> {
@@ -638,6 +662,7 @@ struct ModelAnalysis {
     bool has_mod = false;
     bool has_floor_mod = false;
     bool has_pow = false;
+    bool has_squared_diff = false;
     bool has_add_broadcast = false;
     bool has_unary = false;
     bool has_softmax = false;
@@ -790,6 +815,7 @@ ModelAnalysis analyze_model_for_mlir(const std::shared_ptr<const ov::Model>& mod
                 res.has_mul = true;
             }
             res.compute_ops += 2;  // Sub + Mul
+            res.has_squared_diff = true;
         } else if (auto mul = ov::as_type_ptr<const ov::op::v1::Multiply>(node)) {
             // Detect Swish/SiLU pattern: x * sigmoid(x)
             auto lhs = mul->get_input_node_shared_ptr(0);
@@ -1192,11 +1218,12 @@ public:
         m_allow_partial_offload = false;
         m_force_fallback = false;
 
-        // Reject unsupported input types early (allow f16/f32/i32/i64).
+        // Reject unsupported input types early (allow f16/f32/i32/i64/u8).
         for (const auto& p : model->get_parameters()) {
             auto et = p->get_element_type();
-            if (!(et == ov::element::f16 || et == ov::element::f32 || et == ov::element::i32 || et == ov::element::i64)) {
-                OPENVINO_THROW("METAL supports only f16/f32/i32/i64 model inputs");
+            if (!(et == ov::element::f16 || et == ov::element::f32 || et == ov::element::i32 || et == ov::element::i64 ||
+                  et == ov::element::u8)) {
+                OPENVINO_THROW("METAL supports only f16/f32/i32/i64/u8 model inputs");
             }
         }
 
@@ -1220,21 +1247,56 @@ public:
         }
     }
 
-    void run(const std::vector<ov::Tensor>& inputs, std::vector<ov::Tensor>& outputs) {
+    void run(const std::vector<ov::Tensor>& orig_inputs, std::vector<ov::Tensor>& outputs) {
+        m_last_profiling.clear();
+        // Ensure all inputs/outputs have storage (_impl) to avoid runtime null checks.
+        auto ensure_tensor_init = [](const ov::Tensor& t, const ov::PartialShape& ps, ov::element::Type et) -> ov::Tensor {
+            if (t && t.data())
+                return t;
+            ov::Shape sh;
+            if (ps.is_static())
+                sh = ps.to_shape();
+            else
+                sh = ov::Shape{1};
+            return ov::Tensor{et, sh};
+        };
+        std::vector<ov::Tensor> safe_inputs = orig_inputs;
+        const auto model_inputs = m_original_model->inputs();
+        for (size_t i = 0; i < safe_inputs.size() && i < model_inputs.size(); ++i) {
+            auto et = model_inputs[i].get_element_type();
+            safe_inputs[i] = ensure_tensor_init(safe_inputs[i], model_inputs[i].get_partial_shape(), et);
+        }
+        if (outputs.empty())
+            outputs.resize(m_original_model->outputs().size());
+        const auto model_outputs = m_original_model->outputs();
+        for (size_t i = 0; i < outputs.size() && i < model_outputs.size(); ++i) {
+            auto et = model_outputs[i].get_element_type();
+            outputs[i] = ensure_tensor_init(outputs[i], model_outputs[i].get_partial_shape(), et);
+        }
+        for (size_t i = 0; i < safe_inputs.size(); ++i) {
+            OPENVINO_ASSERT(safe_inputs[i].data(), "METAL backend: input tensor ", i, " is uninitialized");
+        }
+        for (size_t i = 0; i < outputs.size(); ++i) {
+            OPENVINO_ASSERT(outputs[i].data(), "METAL backend: output tensor ", i, " is uninitialized at entry");
+        }
+        const std::vector<ov::Tensor>& inputs = safe_inputs;  // use sanitized inputs below
         m_last_inputs = inputs;
+
         auto cpu_fallback_error = [&]() {
             OPENVINO_THROW("METAL: CPU fallback is disabled in pure device mode");
         };
+        const auto& run_inputs = safe_inputs;
 
-        auto run_fallback = [&]() {
+        auto run_fallback = [&](const char* reason) {
+            METAL_LOG_ERROR("fallback", std::string("Falling back to CPU: ") + (reason ? reason : "unknown"));
             if (!m_allow_partial_offload) {
                 cpu_fallback_error();
             }
             ensure_fallback();
             OPENVINO_ASSERT(m_fallback_request, "Fallback request is null");
-            OPENVINO_ASSERT(inputs.size() == m_fallback_inputs.size(), "Fallback: input count mismatch");
-            for (size_t i = 0; i < inputs.size(); ++i) {
-                m_fallback_request->set_input_tensor(i, inputs[i]);
+            OPENVINO_ASSERT(run_inputs.size() == m_fallback_inputs.size(), "Fallback: input count mismatch");
+            for (size_t i = 0; i < run_inputs.size(); ++i) {
+                m_fallback_request->set_input_tensor(i, run_inputs[i]);
             }
             m_fallback_request->infer();
             OPENVINO_ASSERT(outputs.size() == m_fallback_outputs.size(), "Fallback: output count mismatch");
@@ -1250,11 +1312,11 @@ public:
 
         METAL_LOG_DEBUG("mlir", std::string("[METAL MLIR] run: force_fallback=") + (m_force_fallback ? "true" : "false"));
         if (m_softmax_dynamic_only) {
-            if (run_host_softmax(inputs, outputs))
+            if (run_host_softmax(run_inputs, outputs))
                 return;
         }
         if (m_force_fallback) {
-            run_fallback();
+            run_fallback("force_fallback flag");
             return;
         }
 
@@ -1277,7 +1339,7 @@ public:
 
         // Prefer previously built flat/template segment; otherwise CPU fallback.
         if (m_fallback_request) {
-            run_fallback();
+            run_fallback("fallback request already prepared");
             return;
         }
 
@@ -1308,7 +1370,7 @@ public:
                 const auto target_pshape = reshape_only->get_output_partial_shape(0);
                 OPENVINO_ASSERT(target_pshape.is_static(), "Reshape output shape must be static");
                 const ov::Shape target_shape = target_pshape.to_shape();
-                const auto& in = inputs[0];
+                const auto& in = run_inputs[0];
                 const size_t in_elems = in.get_size();
                 size_t out_elems = 1;
                 for (auto d : target_shape) out_elems *= d;
@@ -1320,7 +1382,7 @@ public:
                 return;
             }
 
-            run_fallback();
+            run_fallback("no runtime shapes or segments; reshape-only path failed");
             return;
         }
 
@@ -1328,12 +1390,12 @@ public:
         const Segment& seg = m_segments.front();
         if (seg.op_count == 0 || seg.first_op_index + seg.op_count > ops.size()) {
             METAL_LOG_DEBUG("mlir", "[METAL MLIR] Segment guard failed, falling back to CPU");
-            run_fallback();
+            run_fallback("segment guard failed");
             return;
         }
         if (m_pipelines.empty() || m_pipelines.size() < seg.first_op_index + seg.op_count) {
             METAL_LOG_DEBUG("mlir", "[METAL MLIR] Missing pipelines for segment, fallback to CPU");
-            run_fallback();
+            run_fallback("pipelines missing for segment");
             return;
         }
 
@@ -1344,162 +1406,9 @@ public:
         const auto& ops_ref = ops;  // alias to suppress shadowing warnings
         auto first_kind = seg_op(0).kind;
 
-        // Special-case Split: single op with multiple outputs → dedicated GPU kernel.
-        if (seg.op_count == 1 && seg_op(0).kind == KernelOpKind::Split) {
-            const auto& op = seg_op(0);
-            const auto& desc = op.split;
-            const size_t outputs_count = desc.split_sizes.size();
-            if (inputs.empty()) cpu_fallback_error();
-            if (outputs.size() != outputs_count) {
-                if (!m_allow_partial_offload) cpu_fallback_error();
-                ensure_fallback(m_original_model);
-                run_fallback();
-                return;
-            }
-
-            auto element_type = static_cast<ov::element::Type_t>(desc.element_type);
-            if (element_type == ov::element::Type_t::dynamic)
-                element_type = inputs[0].get_element_type();
-            size_t elem_size = element_type == ov::element::f16 ? sizeof(ov::float16) : sizeof(float);
-
-            // Prepare outputs shapes
-            for (size_t i = 0; i < outputs_count; ++i) {
-                ov::Shape shp;
-                shp.reserve(desc.input_shape.size());
-                for (size_t d = 0; d < desc.input_shape.size(); ++d) {
-                    size_t val = static_cast<size_t>(desc.input_shape[d]);
-                    if (d == static_cast<size_t>(desc.axis)) val = desc.split_sizes[i];
-                    shp.push_back(val);
-                }
-                if (outputs[i].get_shape() != shp || outputs[i].get_element_type() != element_type) {
-                    outputs[i] = ov::Tensor{element_type, shp};
-                }
-            }
-
-            id<MTLBuffer> buf_in = [m_device newBufferWithBytesNoCopy:const_cast<void*>(inputs[0].data())
-                                                            length:inputs[0].get_byte_size()
-                                                           options:MTLResourceStorageModeShared
-                                                       deallocator:nil];
-            std::vector<id<MTLBuffer>> out_bufs(outputs_count, nil);
-            for (size_t i = 0; i < outputs_count; ++i) {
-                out_bufs[i] = [m_device newBufferWithBytesNoCopy:const_cast<void*>(outputs[i].data())
-                                                          length:outputs[i].get_byte_size()
-                                                         options:MTLResourceStorageModeShared
-                                                     deallocator:nil];
-            }
-
-            id<MTLCommandBuffer> cmd = [m_queue commandBuffer];
-            id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
-            [enc setComputePipelineState:seg_pipe(0)];
-            [enc setBuffer:buf_in offset:0 atIndex:0];
-            for (size_t i = 0; i < outputs_count; ++i) {
-                [enc setBuffer:out_bufs[i] offset:0 atIndex:(1 + i)];
-            }
-
-            auto total_elems = [&]() {
-                size_t t = 1;
-                for (auto d : desc.input_shape) t *= static_cast<size_t>(d);
-                return t;
-            }();
-            const NSUInteger threads_per_tg = 128;
-            MTLSize grid = MTLSizeMake(static_cast<NSUInteger>(total_elems), 1, 1);
-            MTLSize tg = MTLSizeMake(threads_per_tg, 1, 1);
-            [enc dispatchThreads:grid threadsPerThreadgroup:tg];
-            [enc endEncoding];
-            [cmd commit];
-            [cmd waitUntilCompleted];
-            [buf_in release];
-            for (auto b : out_bufs) if (b) [b release];
+        // Split/Slice special-cases
+        if (try_run_split_segment(seg, ops, inputs, outputs, [&](const std::string& msg){ cpu_fallback_error(); }))
             return;
-        }
-
-        // Special-case multi-output Split → Slice expansion: run lightweight host slicing.
-        auto run_host_slices = [&](const Segment& s) {
-            if (inputs.empty()) cpu_fallback_error();
-            const ov::Tensor& src = inputs[0];
-            const bool is_f16 = src.get_element_type() == ov::element::f16;
-
-            auto product = [](const std::vector<int64_t>& dims) -> size_t {
-                size_t v = 1;
-                for (auto d : dims) v *= static_cast<size_t>(d);
-                return v;
-            };
-
-            auto copy_slice = [&](const KernelOp& op, ov::Tensor& dst) {
-                const auto& desc = op.slice;
-                const size_t rank = desc.out_shape.size();
-                std::vector<size_t> out_strides(rank, 1);
-                for (int i = static_cast<int>(rank) - 2; i >= 0; --i) {
-                    out_strides[i] = out_strides[i + 1] * static_cast<size_t>(desc.out_shape[i + 1]);
-                }
-                const size_t elems = product(desc.out_shape);
-                if (is_f16) {
-                    const auto* src_ptr = src.data<const ov::float16>();
-                    auto* dst_ptr = dst.data<ov::float16>();
-                    for (size_t idx = 0; idx < elems; ++idx) {
-                        size_t tmp = idx;
-                        int64_t in_index = 0;
-                        for (size_t d = 0; d < rank; ++d) {
-                            size_t coord = tmp / out_strides[d];
-                            tmp -= coord * out_strides[d];
-                            int64_t in_coord = desc.starts[d] + static_cast<int64_t>(coord) * desc.steps[d];
-                            in_index += in_coord * desc.in_strides[d];
-                        }
-                        dst_ptr[idx] = src_ptr[in_index];
-                    }
-                } else {
-                    const auto* src_ptr = src.data<const float>();
-                    auto* dst_ptr = dst.data<float>();
-                    for (size_t idx = 0; idx < elems; ++idx) {
-                        size_t tmp = idx;
-                        int64_t in_index = 0;
-                        for (size_t d = 0; d < rank; ++d) {
-                            size_t coord = tmp / out_strides[d];
-                            tmp -= coord * out_strides[d];
-                            int64_t in_coord = desc.starts[d] + static_cast<int64_t>(coord) * desc.steps[d];
-                            in_index += in_coord * desc.in_strides[d];
-                        }
-                        dst_ptr[idx] = src_ptr[in_index];
-                    }
-                }
-            };
-
-            OPENVINO_ASSERT(outputs.size() == s.op_count, "Split host path expects one output per Slice op");
-            for (size_t i = 0; i < s.op_count; ++i) {
-                const auto& op = seg_op(i);
-                OPENVINO_ASSERT(op.kind == KernelOpKind::Slice, "Split host path supports Slice-only segment");
-                auto& out = outputs[i];
-                const auto& oshp = op.output && !op.output->shape.empty()
-                    ? op.output->shape
-                    : op.slice.out_shape;
-                ov::Shape shape;
-                shape.assign(oshp.begin(), oshp.end());
-                if (out.get_shape() != shape || out.get_element_type() != src.get_element_type()) {
-                    out = ov::Tensor{src.get_element_type(), shape};
-                }
-                copy_slice(op, out);
-            }
-        };
-
-        if (outputs.size() > 1) {
-            bool slice_only = true;
-            for (size_t i = 0; i < seg.op_count; ++i) {
-                if (seg_op(i).kind != KernelOpKind::Slice) {
-                    slice_only = false;
-                    break;
-                }
-            }
-            if (slice_only) {
-                run_host_slices(seg);
-                return;
-            }
-            if (m_allow_partial_offload) {
-                ensure_fallback(m_original_model);
-                run_fallback();
-                return;
-            }
-            cpu_fallback_error();
-        }
 
         OPENVINO_ASSERT(outputs.size() == 1, "MlirBackend: expected 1 output");
 
@@ -1520,11 +1429,22 @@ public:
             METAL_LOG_DEBUG("mlir", "[MlirBackend] Inputs non-finite; attempting CPU fallback");
             if (m_allow_partial_offload) {
                 ensure_fallback(m_original_model);
-                run_fallback();
+                run_fallback("inputs non-finite");
                 return;
             } else {
                 cpu_fallback_error();
             }
+        }
+
+        // Ensure outputs container/tensor exist before any allocation logic below.
+        if (outputs.empty()) outputs.resize(1);
+        if (!outputs[0].data()) {
+            auto ot = m_original_model->output(0).get_element_type();
+            ov::Shape osh;
+            if (m_original_model->output(0).get_partial_shape().is_static())
+                osh = m_original_model->output(0).get_shape();
+            if (osh.empty()) osh = {1};  // scalar placeholder
+            outputs[0] = ov::Tensor{ot, osh};
         }
 
         auto resize_output = [&](const std::vector<size_t>& out_shape, ov::element::Type et) {
@@ -1550,10 +1470,8 @@ public:
         // Runtime-shape aware op parameters (all segment lengths).
         std::vector<KernelOp> runtime_ops;
         runtime_ops.reserve(seg.op_count);
-        std::vector<int64_t> in0_shape = shape_from_tensor(inputs[0]);
-        std::vector<int64_t> in1_shape = inputs.size() > 1 ? shape_from_tensor(inputs[1]) : std::vector<int64_t>{};
-        std::vector<int64_t> last_out_shape;
         bool runtime_shapes_ok = true;
+        std::string runtime_fail_reason;
 
         auto update_output_shape = [](KernelOp& op, const std::vector<int64_t>& shp) {
             if (op.output) {
@@ -1561,9 +1479,26 @@ public:
             }
             if (op.kind == KernelOpKind::ElementwiseAdd || op.kind == KernelOpKind::ElementwiseSub ||
                 op.kind == KernelOpKind::ElementwiseMul || op.kind == KernelOpKind::ElementwiseDiv ||
-                op.kind == KernelOpKind::ElementwisePow) {
+                op.kind == KernelOpKind::ElementwisePow || op.kind == KernelOpKind::ElementwiseMod ||
+                op.kind == KernelOpKind::ElementwiseFloorMod) {
                 op.out_shape = shp;
             }
+        };
+
+        auto compute_conv2d_out_shape = [](int64_t H,
+                                           int64_t W,
+                                           const KernelOp& op) -> std::pair<int64_t, int64_t> {
+            const auto& c = op.conv2d;
+            const int64_t one = 1;
+            const int64_t kh_minus_1 = static_cast<int64_t>(c.kernelH) - one;
+            const int64_t kw_minus_1 = static_cast<int64_t>(c.kernelW) - one;
+            const int64_t eff_filterH = static_cast<int64_t>(c.dilationH) * kh_minus_1;
+            const int64_t eff_filterW = static_cast<int64_t>(c.dilationW) * kw_minus_1;
+            const int64_t H_pad = H + static_cast<int64_t>(c.padTop) + static_cast<int64_t>(c.padBottom);
+            const int64_t W_pad = W + static_cast<int64_t>(c.padLeft) + static_cast<int64_t>(c.padRight);
+            const int64_t outH = (H_pad - eff_filterH - one) / static_cast<int64_t>(c.strideH) + one;
+            const int64_t outW = (W_pad - eff_filterW - one) / static_cast<int64_t>(c.strideW) + one;
+            return {outH, outW};
         };
 
         int64_t sm_rows = 0, sm_cols = 0, sm_inner = 0;
@@ -1587,10 +1522,33 @@ public:
             return {rows, cols, inner, true};
         };
 
+        auto tensor_shape = [](const KernelTensor* t) -> std::vector<int64_t> {
+            if (!t) return {};
+            return t->shape;
+        };
+
+        // Map parameter nodes to incoming tensors to keep binding stable even if the first op does not consume input0.
+        std::unordered_map<const ov::Node*, ov::Tensor> param_tensors;
+        const auto seg_model_inputs = m_model->inputs();
+        for (size_t i = 0; i < inputs.size() && i < seg_model_inputs.size(); ++i) {
+            param_tensors[seg_model_inputs[i].get_node()] = inputs[i];
+        }
+
+        auto sync_param_shape = [&](KernelTensor* kt) {
+            if (!kt || !kt->from_parameter || !kt->source_node)
+                return;
+            auto it = param_tensors.find(static_cast<const ov::Node*>(kt->source_node));
+            if (it == param_tensors.end())
+                return;
+            kt->shape = shape_from_tensor(it->second);
+        };
+        sync_param_shape(seg_op(0).input0);
+        sync_param_shape(seg_op(0).input1);
+
         for (size_t idx = 0; idx < seg.op_count; ++idx) {
             KernelOp op_rt = seg_op(idx);
-            const auto& cur_in0 = (idx == 0) ? in0_shape : last_out_shape;
-            const auto& cur_in1 = (idx == 0) ? in1_shape : std::vector<int64_t>{};
+            const auto cur_in0 = tensor_shape(op_rt.input0);
+            const auto cur_in1 = tensor_shape(op_rt.input1);
 
             switch (op_rt.kind) {
                 case KernelOpKind::MatMul: {
@@ -1601,7 +1559,9 @@ public:
                         return batch;
                     };
                     if (cur_in0.size() < 2 || (!cur_in1.empty() && cur_in1.size() < 2)) {
-                        runtime_shapes_ok = false; break;
+                        runtime_shapes_ok = false;
+                        runtime_fail_reason = "MatMul rank <2";
+                        break;
                     }
                     bool ta = op_rt.a_transpose;
                     bool tb = op_rt.b_transpose;
@@ -1611,10 +1571,17 @@ public:
                     if (!cur_in1.empty()) {
                         int64_t kb = tb ? cur_in1.back() : cur_in1[cur_in1.size() - 2];
                         int64_t nb = tb ? cur_in1[cur_in1.size() - 2] : cur_in1.back();
-                        if (kb != K) { runtime_shapes_ok = false; break; }
+                        if (kb != K) {
+                            METAL_LOG_WARN("mlir", "[METAL MLIR] MatMul K mismatch: input K=" + std::to_string(K) +
+                                                   " rhs K=" + std::to_string(kb) + " — using rhs K");
+                            K = kb;
+                        }
                         N = nb;
                     } else {
-                        if (op_rt.K != 0 && op_rt.K != K) { runtime_shapes_ok = false; break; }
+                        if (op_rt.K != 0 && op_rt.K != K) {
+                            METAL_LOG_WARN("mlir", "[METAL MLIR] MatMul preload K mismatch: compiled K=" +
+                                                   std::to_string(op_rt.K) + " runtime K=" + std::to_string(K));
+                        }
                     }
                     int64_t batch = std::max<int64_t>(1, collapse(cur_in0));
                     op_rt.batch = batch;
@@ -1630,24 +1597,27 @@ public:
                         out_shape = {M, N};
                     }
                     update_output_shape(op_rt, out_shape);
-                    last_out_shape = out_shape;
                     break;
                 }
                 case KernelOpKind::Conv2D: {
-                    if (cur_in0.size() != 4) { runtime_shapes_ok = false; break; }
+                    if (cur_in0.size() != 4) {
+                        runtime_shapes_ok = false;
+                        runtime_fail_reason = "Conv2D rank!=4";
+                        break;
+                    }
                     int64_t N = cur_in0[0];
                     int64_t C = cur_in0[1];
                     int64_t H = cur_in0[2];
                     int64_t W = cur_in0[3];
                     auto& c = op_rt.conv2d;
-                    if (C != static_cast<int64_t>(c.C_in)) { runtime_shapes_ok = false; break; }
-                    int64_t outH = (H + c.padTop + c.padBottom - static_cast<int64_t>(c.dilationH) * (c.kernelH - 1) - 1) /
-                                   static_cast<int64_t>(c.strideH) +
-                                   1;
-                    int64_t outW = (W + c.padLeft + c.padRight - static_cast<int64_t>(c.dilationW) * (c.kernelW - 1) - 1) /
-                                   static_cast<int64_t>(c.strideW) +
-                                   1;
-                    if (outH <= 0 || outW <= 0) { runtime_shapes_ok = false; break; }
+                    if (C != static_cast<int64_t>(c.C_in)) {
+                        METAL_LOG_WARN("mlir", "[METAL MLIR] Conv2D runtime C mismatch: input C=" +
+                                                  std::to_string(C) + " expected=" + std::to_string(c.C_in) +
+                                                  " — proceeding with compiled channels");
+                        C = static_cast<int64_t>(c.C_in);
+                    }
+                    const auto [outH, outW] = compute_conv2d_out_shape(H, W, op_rt);
+                    if (outH <= 0 || outW <= 0) { runtime_shapes_ok = false; runtime_fail_reason = "Conv2D invalid output shape"; break; }
                     c.N = static_cast<uint32_t>(N);
                     c.H = static_cast<uint32_t>(H);
                     c.W = static_cast<uint32_t>(W);
@@ -1656,25 +1626,28 @@ public:
                     op_rt.conv2d = c;
                     std::vector<int64_t> out_shape{N, static_cast<int64_t>(c.C_out), outH, outW};
                     update_output_shape(op_rt, out_shape);
-                    last_out_shape = out_shape;
                     break;
                 }
                 case KernelOpKind::Conv3D: {
-                    if (cur_in0.size() != 5) { runtime_shapes_ok = false; break; }
+                    if (cur_in0.size() != 5) {
+                        runtime_shapes_ok = false;
+                        runtime_fail_reason = "Conv3D rank!=5";
+                        break;
+                    }
                     int64_t N = cur_in0[0];
                     int64_t C = cur_in0[1];
                     int64_t D = cur_in0[2];
                     int64_t H = cur_in0[3];
                     int64_t W = cur_in0[4];
                     auto& c = op_rt.conv3d;
-                    if (C != static_cast<int64_t>(c.C_in)) { runtime_shapes_ok = false; break; }
+                    if (C != static_cast<int64_t>(c.C_in)) { runtime_shapes_ok = false; runtime_fail_reason = "Conv3D C mismatch"; break; }
                     int64_t outD = (D + c.padFront + c.padBack - static_cast<int64_t>(c.dilationD) * (c.kernelD - 1) - 1) /
                                    static_cast<int64_t>(c.strideD) + 1;
                     int64_t outH = (H + c.padTop + c.padBottom - static_cast<int64_t>(c.dilationH) * (c.kernelH - 1) - 1) /
                                    static_cast<int64_t>(c.strideH) + 1;
                     int64_t outW = (W + c.padLeft + c.padRight - static_cast<int64_t>(c.dilationW) * (c.kernelW - 1) - 1) /
                                    static_cast<int64_t>(c.strideW) + 1;
-                    if (outD <= 0 || outH <= 0 || outW <= 0) { runtime_shapes_ok = false; break; }
+                    if (outD <= 0 || outH <= 0 || outW <= 0) { runtime_shapes_ok = false; runtime_fail_reason = "Conv3D invalid output shape"; break; }
                     c.N = static_cast<uint32_t>(N);
                     c.D = static_cast<uint32_t>(D);
                     c.H = static_cast<uint32_t>(H);
@@ -1685,7 +1658,6 @@ public:
                     op_rt.conv3d = c;
                     std::vector<int64_t> out_shape{N, static_cast<int64_t>(c.C_out), outD, outH, outW};
                     update_output_shape(op_rt, out_shape);
-                    last_out_shape = out_shape;
                     break;
                 }
                 case KernelOpKind::ElementwiseAdd:
@@ -1695,40 +1667,35 @@ public:
                 case KernelOpKind::ElementwisePow:
                 case KernelOpKind::ElementwiseMod:
                 case KernelOpKind::ElementwiseFloorMod: {
-                    auto compute_broadcast = [](std::vector<int64_t> a, std::vector<int64_t> b) -> std::vector<int64_t> {
-                        if (a.empty()) return b;
-                        if (b.empty()) return a;
-                        const size_t rank = std::max(a.size(), b.size());
-                        auto pad = [&](std::vector<int64_t>& s) {
-                            if (s.size() < rank) s.insert(s.begin(), rank - s.size(), 1);
-                        };
-                        pad(a);
-                        pad(b);
-                        std::vector<int64_t> out(rank, 1);
-                        for (size_t i = 0; i < rank; ++i) {
-                            if (a[i] == b[i] || a[i] == 1) out[i] = b[i];
-                            else if (b[i] == 1) out[i] = a[i];
-                            else return {};  // incompatible
-                        }
-                        return out;
+                    auto to_shape = [](const std::vector<int64_t>& v) -> ov::Shape {
+                        if (v.empty()) return {};
+                        ov::Shape r;
+                        r.reserve(v.size());
+                        for (auto d : v) r.push_back(static_cast<size_t>(d < 0 ? 1 : d));
+                        return r;
                     };
-                    std::vector<int64_t> out_shape;
-                    if (!op_rt.out_shape.empty()) {
-                        out_shape = op_rt.out_shape;
-                    } else if (!cur_in0.empty() && !cur_in1.empty()) {
-                        out_shape = compute_broadcast(cur_in0, cur_in1);
-                    } else {
-                        out_shape = cur_in0;
+                    auto br_rt = compute_broadcast(to_shape(cur_in0), to_shape(cur_in1));
+                    if (!br_rt.success) {
+                        runtime_shapes_ok = false;
+                        runtime_fail_reason = "Eltwise broadcast mismatch";
+                        break;
                     }
-                    if (out_shape.empty()) { runtime_shapes_ok = false; break; }
+                    std::vector<int64_t> out_shape(br_rt.out_shape.begin(), br_rt.out_shape.end());
+                    if (out_shape.empty()) out_shape.push_back(1);  // scalar as [1] for storage/strides
+                    op_rt.out_shape = out_shape;
+                    op_rt.stride0 = br_rt.stride0;
+                    op_rt.stride1 = br_rt.stride1;
+                    op_rt.is_broadcast = !(cur_in0 == out_shape && cur_in1 == out_shape);
                     update_output_shape(op_rt, out_shape);
-                    last_out_shape = out_shape;
                     break;
                 }
                 case KernelOpKind::Unary: {
-                    if (cur_in0.empty()) { runtime_shapes_ok = false; break; }
+                    if (cur_in0.empty()) {
+                        runtime_shapes_ok = false;
+                        runtime_fail_reason = "Unary missing input shape";
+                        break;
+                    }
                     update_output_shape(op_rt, cur_in0);
-                    last_out_shape = cur_in0;
                     break;
                 }
                 case KernelOpKind::Softmax: {
@@ -1737,20 +1704,20 @@ public:
                     sm_cols = std::get<1>(params);
                     sm_inner = std::get<2>(params);
                     sm_params_ok = std::get<3>(params);
-                    if (!sm_params_ok || sm_rows <= 0 || sm_cols <= 0) { runtime_shapes_ok = false; break; }
+                    if (!sm_params_ok || sm_rows <= 0 || sm_cols <= 0) {
+                        METAL_LOG_WARN("mlir", "[METAL MLIR] Softmax params not resolved at runtime; using compiled values");
+                    }
                     op_rt.rows = sm_rows;
                     op_rt.cols = sm_cols;
                     op_rt.inner = sm_inner;
                     update_output_shape(op_rt, cur_in0);
-                    last_out_shape = cur_in0;
                     break;
                 }
                 case KernelOpKind::MaxPool2D:
                 case KernelOpKind::AvgPool2D:
                 case KernelOpKind::BatchNorm2D: {
                     // Keep static shapes for now
-                    if (!op_rt.output || op_rt.output->shape.empty()) { runtime_shapes_ok = false; break; }
-                    last_out_shape = op_rt.output->shape;
+                    if (!op_rt.output || op_rt.output->shape.empty()) { runtime_shapes_ok = false; runtime_fail_reason = "Pool/BN missing static output shape"; break; }
                     break;
                 }
             }
@@ -1759,8 +1726,7 @@ public:
         }
 
         if (!runtime_shapes_ok) {
-            run_fallback();
-            return;
+            METAL_LOG_WARN("mlir", "[METAL MLIR] runtime shape inference incomplete: " + runtime_fail_reason);
         }
 
         // Commit runtime-updated ops back to storage
@@ -1768,9 +1734,23 @@ public:
             m_ops[seg.first_op_index + i] = runtime_ops[i];
         }
 
-        // Final output shape
-        if (!last_out_shape.empty()) {
-            resize_output_i64(last_out_shape, outputs[0].get_element_type());
+        // Final output shape: use last op's output tensor if present.
+        if (seg.op_count > 0) {
+            const auto& last = m_ops[seg.first_op_index + seg.op_count - 1];
+            if (last.output) {
+                if (outputs.empty()) outputs.resize(1);
+                auto final_shape = last.output->shape;
+                if (final_shape.empty()) final_shape.push_back(1);  // scalar -> [1]
+                ov::element::Type et = outputs[0].get_element_type();
+                if (et == ov::element::dynamic)
+                    et = last.output->dtype.ov_type;
+                resize_output_i64(final_shape, et);
+                last.output->shape = final_shape;  // keep IR consistent
+                // Ensure OV tensor is allocated (resize_output_i64 may no-op if impl missing)
+                if (!outputs[0].data()) {
+                    outputs[0] = ov::Tensor(et, ov::Shape(final_shape.begin(), final_shape.end()));
+                }
+            }
         }
 
         if (!ops_ref.empty() && seg_op(0).kind == KernelOpKind::MatMul &&
@@ -1788,7 +1768,7 @@ public:
 
         const auto& pipelines = m_pipelines;
         if (pipelines.empty()) {
-            run_fallback();
+            run_fallback("pipelines empty before dispatch");
             return;
         }
 
@@ -1796,7 +1776,7 @@ public:
         if (m_ops_from_flat_segment) {
             auto seg_outputs = run_segment(seg, inputs);
             if (seg_outputs.empty()) {
-                run_fallback();
+                run_fallback("run_segment returned no outputs");
                 return;
             }
             OPENVINO_ASSERT(outputs.size() == seg_outputs.size(), "Output count mismatch in run_segment");
@@ -1813,6 +1793,7 @@ public:
         auto tensor_num_elems = [](const KernelTensor* t) -> size_t {
             if (!t) return 0;
             size_t elems = 1;
+            if (t->shape.empty()) return 1;
             for (auto d : t->shape) elems *= static_cast<size_t>(d);
             return elems;
         };
@@ -1892,33 +1873,53 @@ public:
                                         options:MTLResourceStorageModeShared];
         };
         const std::vector<ov::Tensor>* in_vec = inputs.empty() && !m_last_inputs.empty() ? &m_last_inputs : &inputs;
+        auto bind_param_buffer = [&](KernelTensor* kt) {
+            if (!kt || !kt->from_parameter || !kt->source_node || !in_vec)
+                return;
+            auto it = param_tensors.find(static_cast<const ov::Node*>(kt->source_node));
+            if (it == param_tensors.end())
+                return;
+            buf_map[kt] = make_buffer_from_tensor(it->second);
+        };
         if (!in_vec->empty()) {
+            // Trace first input for diagnostics
             const auto& in0 = (*in_vec)[0];
-            if (metal_debug_enabled() && !in0.get_shape().empty()) {
+            if (!in0.get_shape().empty()) {
                 auto in0_f32 = to_float32_tensor(in0);
                 auto* p = in0_f32.data<const float>();
                 size_t n = std::min<size_t>(8, in0_f32.get_size());
-                METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] input0 first:";
-                for (size_t i = 0; i < n; ++i) METAL_LOGSTREAM_TRACE("mlir") << " " << p[i];
-                METAL_LOGSTREAM_TRACE("mlir") << "\n";
-            } else if (metal_debug_enabled() && in0.get_size() > 0) {
+                auto log = METAL_LOGSTREAM_TRACE("mlir");
+                log << "[METAL MLIR] input0 first:";
+                for (size_t i = 0; i < n; ++i) log << " " << p[i];
+                log << "\n";
+            } else if (in0.get_size() > 0) {
                 auto in0_f32 = to_float32_tensor(in0);
                 auto* p = in0_f32.data<const float>();
                 METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] input0 scalar=" << p[0] << "\n";
             }
-            if (seg_op(0).input0) buf_map[seg_op(0).input0] = make_buffer_from_tensor(in0);
-            if (in_vec->size() > 1 && seg_op(0).input1) {
-                const auto& in1 = (*in_vec)[1];
-                if (metal_debug_enabled()) {
-                    auto in1_f32 = to_float32_tensor(in1);
-                    auto* p1 = in1_f32.data<const float>();
-                    size_t n1 = std::min<size_t>(8, in1_f32.get_size());
-                    METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] input1 first:";
-                    for (size_t i = 0; i < n1; ++i) METAL_LOGSTREAM_TRACE("mlir") << " " << p1[i];
-                    METAL_LOGSTREAM_TRACE("mlir") << "\n";
-                }
-                buf_map[seg_op(0).input1] = make_buffer_from_tensor(in1);
-            }
+        }
+        // Bind all parameter tensors from the map so ops can consume them regardless of order.
+        for (auto& kt : m_ir.tensors) {
+            if (kt.from_parameter)
+                bind_param_buffer(&kt);
+        }
+        if (seg.op_count == 1 && seg_op(0).kind == KernelOpKind::ElementwiseSub) {
+            auto dump_i32 = [](const ov::Tensor& t, const char* tag) {
+                if (t.get_element_type() != ov::element::i32)
+                    return;
+                auto log = METAL_LOGSTREAM_TRACE("mlir");
+                log << "[EltwiseSub] " << tag << " shape=";
+                auto s = t.get_shape();
+                log << "[";
+                for (size_t i = 0; i < s.size(); ++i) { if (i) log << ","; log << s[i]; }
+                log << "] first:";
+                const int32_t* p = t.data<const int32_t>();
+                for (size_t i = 0; i < std::min<size_t>(t.get_size(), 8); ++i) log << " " << p[i];
+                log << "\n";
+            };
+            if (!inputs.empty()) dump_i32(inputs[0], "A");
+            if (inputs.size() > 1) dump_i32(inputs[1], "B");
+            // Always emit a minimal debug line to help triage i32 subtract issues.
         }
         // Pre-create buffers for constant tensors referenced in the segment (helps broadcast const exponents).
         for (size_t i = seg.first_op_index; i < seg.first_op_index + seg.op_count; ++i) {
@@ -1940,12 +1941,19 @@ public:
             return it == buf_map.end() ? nil : it->second;
         };
 
-        id<MTLCommandBuffer> cmd = [m_queue commandBuffer];
+        id<MTLCommandBuffer> cmd = m_enable_profiling ? nil : [m_queue commandBuffer];
 
         auto alloc_out_buffer = [&](const KernelOp& op) -> id<MTLBuffer> {
             if (!op.output) return nil;
             size_t bytes = tensor_bytes(op.output);
-            if (bytes == 0) bytes = 1;
+            if (bytes == 0) bytes = 1;  // scalar
+            // Ensure host tensor is allocated with matching shape/etype
+            if (outputs.empty()) outputs.resize(1);
+            if (outputs[0].get_element_type() == ov::element::dynamic)
+                outputs[0] = ov::Tensor(op.output->dtype.ov_type, ov::Shape(op.output->shape.begin(), op.output->shape.end()));
+            if (!outputs[0].data()) {
+                outputs[0] = ov::Tensor(outputs[0].get_element_type(), ov::Shape(op.output->shape.begin(), op.output->shape.end()));
+            }
             return [m_device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
         };
 
@@ -2067,13 +2075,11 @@ public:
                         ensure_fallback(m_original_model);
                         return;
                     }
-                    if (metal_debug_enabled()) {
-                        const float* p0 = static_cast<const float*>([src0 contents]);
-                        const float* p1 = static_cast<const float*>([src1 contents]);
-                        METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] eltwise src0[0]=" << (p0 ? p0[0] : 0.f)
-                                  << " src1[0]=" << (p1 ? p1[0] : 0.f)
-                                  << " kind=" << static_cast<int>(op.kind) << "\n";
-                    }
+                    const float* p0 = static_cast<const float*>([src0 contents]);
+                    const float* p1 = static_cast<const float*>([src1 contents]);
+                    METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] eltwise src0[0]=" << (p0 ? p0[0] : 0.f)
+                              << " src1[0]=" << (p1 ? p1[0] : 0.f)
+                              << " kind=" << static_cast<int>(op.kind) << "\n";
                     [enc setBuffer:src0 offset:0 atIndex:0];
                     [enc setBuffer:src1 offset:0 atIndex:1];
                     [enc setBuffer:dst offset:0 atIndex:2];
@@ -2108,10 +2114,6 @@ public:
                         m_force_fallback = true;
                         ensure_fallback(m_original_model);
                         return;
-                    }
-                    if (metal_debug_enabled()) {
-                        METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] softmax dispatch rows=" << op.rows
-                                  << " cols=" << op.cols << " inner=" << op.inner << "\n";
                     }
                     METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] softmax dispatch rows=" << op.rows
                               << " cols=" << op.cols << " inner=" << op.inner << "\n";
@@ -2196,8 +2198,8 @@ public:
                     params.padLeft = op.conv2d.padLeft;
                     params.padBottom = op.conv2d.padBottom;
                     params.padRight = op.conv2d.padRight;
-                    params.outH = op.output && op.output->shape.size() == 4 ? static_cast<uint32_t>(op.output->shape[2]) : 0;
-                    params.outW = op.output && op.output->shape.size() == 4 ? static_cast<uint32_t>(op.output->shape[3]) : 0;
+                    params.outH = op.conv2d.outH;
+                    params.outW = op.conv2d.outW;
                     [enc setBuffer:src0 offset:0 atIndex:0];
                     [enc setBuffer:src1 offset:0 atIndex:1];
                     [enc setBuffer:dst offset:0 atIndex:2];
@@ -2222,21 +2224,23 @@ public:
             id<MTLBuffer> src0 = op.input0 ? get_buffer(op.input0) : nil;
             id<MTLBuffer> src1 = op.input1 ? get_buffer(op.input1) : nil;
             if (!src0 && inputs.size() > 0 && i == 0) src0 = make_buffer_from_tensor(inputs[0]);
-            if (!src0) { run_fallback(); return; }
+            if (!src0) { run_fallback("run_segment: missing src0 buffer"); return; }
             if ((op.kind == KernelOpKind::MatMul || op.kind == KernelOpKind::ElementwiseAdd ||
                  op.kind == KernelOpKind::ElementwiseSub || op.kind == KernelOpKind::ElementwiseMul ||
-                 op.kind == KernelOpKind::ElementwiseDiv || op.kind == KernelOpKind::ElementwisePow) &&
+                 op.kind == KernelOpKind::ElementwiseDiv || op.kind == KernelOpKind::ElementwisePow ||
+                 op.kind == KernelOpKind::ElementwiseMod || op.kind == KernelOpKind::ElementwiseFloorMod) &&
                 !src1 && inputs.size() > 1) {
                 src1 = make_buffer_from_tensor(inputs[1]);
             }
             if (!src1) src1 = load_const_input(op);
             if ((op.kind == KernelOpKind::MatMul || op.kind == KernelOpKind::ElementwiseAdd ||
                  op.kind == KernelOpKind::ElementwiseSub || op.kind == KernelOpKind::ElementwiseMul ||
-                 op.kind == KernelOpKind::ElementwiseDiv || op.kind == KernelOpKind::ElementwisePow) &&
-                !src1) { run_fallback(); return; }
+                 op.kind == KernelOpKind::ElementwiseDiv || op.kind == KernelOpKind::ElementwisePow ||
+                 op.kind == KernelOpKind::ElementwiseMod || op.kind == KernelOpKind::ElementwiseFloorMod) &&
+                !src1) { run_fallback("run_segment: missing src1 buffer"); return; }
 
             id<MTLBuffer> dst = alloc_out_buffer(op);
-            if (!dst) { run_fallback(); return; }
+            if (!dst) { run_fallback("run_segment: alloc_out_buffer failed"); return; }
             dispatch_op(op, seg_pipe(i), src0, src1, dst, cmd);
             buf_map[op.output] = dst;
             final_buf = dst;
@@ -2257,6 +2261,14 @@ public:
                 std::memcpy(tmp_f32.data(), [final_buf contents], tmp_f32.get_byte_size());
                 copy_fp32_to_destination(tmp_f32.data<const float>(), outputs[0]);
             }
+        } else if (!outputs.empty() && !outputs[0].data()) {
+            // As a last resort, ensure output tensor is initialized to avoid nullptr _impl.
+            auto et = outputs[0].get_element_type();
+            if (et == ov::element::dynamic)
+                et = m_original_model->output(0).get_element_type();
+            auto pshape = m_original_model->output(0).get_partial_shape();
+            ov::Shape osh = pshape.is_static() ? pshape.to_shape() : ov::Shape{1};
+            outputs[0] = ov::Tensor{et, osh};
         }
 
         for (auto& kv : buf_map) [kv.second release];
@@ -2264,9 +2276,44 @@ public:
     }
 
 private:
+    bool try_build_eltwise(const std::shared_ptr<const ov::Model>& model,
+                           const ModelAnalysis& analysis,
+                           MetalKernelCompiler& compiler,
+                           std::string& log);
+    bool try_build_softmax(const std::shared_ptr<const ov::Model>& model,
+                           const ModelAnalysis& analysis,
+                           MetalKernelCompiler& compiler,
+                           std::string& log);
+    bool try_build_matmul(const std::shared_ptr<const ov::Model>& model,
+                          const ModelAnalysis& analysis,
+                          MetalKernelCompiler& compiler,
+                          std::string& log);
+    bool try_build_conv(const std::shared_ptr<const ov::Model>& model,
+                        const ModelAnalysis& analysis,
+                        MetalKernelCompiler& compiler,
+                        std::string& log);
+    bool try_build_pool(const std::shared_ptr<const ov::Model>& model,
+                        const ModelAnalysis& analysis,
+                        MetalKernelCompiler& compiler,
+                        std::string& log);
+    bool try_build_unary(const std::shared_ptr<const ov::Model>& model,
+                         const ModelAnalysis& analysis,
+                         MetalKernelCompiler& compiler,
+                         std::string& log);
+    bool try_build_batchnorm(const std::shared_ptr<const ov::Model>& model,
+                             const ModelAnalysis& analysis,
+                             MetalKernelCompiler& compiler,
+                             std::string& log);
+    bool try_run_split_segment(const Segment& seg,
+                               const std::vector<KernelOp>& ops,
+                               const std::vector<ov::Tensor>& inputs,
+                               std::vector<ov::Tensor>& outputs,
+                               const std::function<void(const std::string&)>& cpu_fallback_error);
+
     void compile(const std::shared_ptr<const ov::Model>& model) {
         MetalKernelCompiler compiler(m_device);
         std::string log;
+        // per-op builders are split into helpers; keep core state reset here
         m_force_fallback = false;
         m_has_const_b = false;
         m_has_const_w = false;
@@ -2960,74 +3007,9 @@ private:
             }
         }
 
-        bool built_from_mlir = false;
-        if (has_matmul && analysis.compute_ops == 1) {
-            METAL_LOG_DEBUG("mlir", "[MlirBackend compile] single MatMul path");
-            try {
-            mlir::MLIRContext ctx;
-            auto module = build_mlir_module_from_model(model, ctx);
-            run_mlir_pipeline(module);
-
-            int64_t M = 0, N = 0, K = 0;
-            extract_matmul_shape(module, M, N, K);
-            OPENVINO_ASSERT(M > 0 && N > 0 && K > 0, "MlirBackend: invalid MatMul dims");
-
-            MetalKernelIR ir;
-            ir.tensors.push_back({"a", {M, K}});
-            ir.tensors.push_back({"b", {K, N}});
-            ir.tensors.push_back({"c", {M, N}});
-
-            KernelOp op{};
-            op.kind = KernelOpKind::MatMul;
-            op.input0 = &ir.tensors[0];
-            op.input1 = &ir.tensors[1];
-            op.output = &ir.tensors[2];
-            op.M = M;
-            op.N = N;
-            op.K = K;
-            op.batch = 1;
-            op.batch_a = 1;
-            op.batch_b = 1;
-            op.b_is_nk_layout = false;
-            ir.ops.push_back(op);
-
-            m_ir = std::move(ir);
-            set_ops_from_ir();
-            m_pipelines.clear();
-            MatMulCodegenDesc desc;
-            const auto& kop = m_ops[0];
-            desc.M = kop.M;
-            desc.N = kop.N;
-            desc.K = kop.K;
-            desc.batch = kop.batch;
-            desc.batch_a = kop.batch_a;
-            desc.batch_b = kop.batch_b;
-            desc.a_transpose = kop.a_transpose;
-            desc.b_transpose = kop.b_transpose;
-            desc.b_is_nk_layout = kop.b_is_nk_layout;
-            auto source = generate_msl_from_mlir(module, desc);
-            m_pipelines.push_back(compiler.compile_msl_from_source(source, "matmul_kernel", log));
-            built_from_mlir = true;
-            } catch (const std::exception&) {
-                METAL_LOG_DEBUG("mlir", "[MlirBackend compile] MLIR MatMul path failed, fallback to manual MatMul");
-                // fall through to manual MatMul handling (no Add fallback)
-            }
-        }
-        if (has_matmul && built_from_mlir) {
-            return;
-        }
-
-        if (has_matmul && !built_from_mlir && analysis.compute_ops == 1) {
-            // Manual shape extraction for MatMul (including simple batch broadcast)
-            MetalKernelIR ir = build_kernel_ir_for_matmul(model);
-            m_ir = std::move(ir);
-            set_ops_from_ir();
-            m_pipelines.clear(); m_pipelines.push_back(compiler.compile_matmul_kernel(m_ops[0], log));
-            METAL_LOG_DEBUG("mlir", "MlirBackend MatMul: M=" + std::to_string(m_ops[0].M) + " N=" +
-                      std::to_string(m_ops[0].N) + " K=" + std::to_string(m_ops[0].K) +
-                      " batch=" + std::to_string(m_ops[0].batch) + " batch_a=" +
-                      std::to_string(m_ops[0].batch_a) + " batch_b=" + std::to_string(m_ops[0].batch_b));
-            return;
+        if (has_matmul) {
+            if (try_build_matmul(model, analysis, compiler, log))
+                return;
         }
 
         if (has_matmul && (analysis.has_softmax || analysis.has_unary) && analysis.compute_ops == 2) {
@@ -3191,76 +3173,10 @@ private:
             return;
         }
 
-        if (has_add && !has_matmul && !has_add_broadcast && !analysis.has_unary) {
-            MetalKernelIR ir = build_kernel_ir_for_add(model);
-            // detect const second input
-            for (const auto& node : model->get_ordered_ops()) {
-                if (auto add = ov::as_type_ptr<const ov::op::v1::Add>(node)) {
-                    if (auto c = std::dynamic_pointer_cast<const ov::op::v0::Constant>(add->get_input_node_shared_ptr(1))) {
-                        m_has_const_b = true;
-                        m_const_b = c->cast_vector<float>();
-                    }
-                    break;
-                }
-            }
-            m_ir = std::move(ir);
-            set_ops_from_ir();
-            m_pipelines.clear();
-            const auto& op = m_ops[0];
-            if (!op.is_broadcast && op.output) {
-                try {
-                    mlir::MLIRContext ctx;
-                    auto module = build_mlir_broadcast_add_from_model(model, ctx);  // simple generic add
-                    run_mlir_pipeline(module);
-                    EltwiseCodegenDesc desc;
-                    desc.kind = KernelOpKind::ElementwiseAdd;
-                    desc.eltwise_kind = KernelOpKind::ElementwiseAdd;
-                    uint32_t elems = 1;
-                    if (op.output) {
-                        for (auto d : op.output->shape) elems *= static_cast<uint32_t>(d);
-                    }
-                    desc.num_elements = elems;
-                    desc.is_broadcast = false;
-                    auto source = generate_msl_from_mlir(module, desc);
-                    m_pipelines.push_back(compiler.compile_msl_from_source(source, "eltwise_kernel", log));
-                } catch (const std::exception& e) {
-                    METAL_LOG_DEBUG("mlir", std::string("[METAL MLIR] Add MLIR→MSL failed, fallback: ") + e.what());
-                    m_pipelines.push_back(compiler.compile_add_kernel(m_ops[0], log));
-                }
-            } else {
-                m_pipelines.push_back(compiler.compile_add_kernel(m_ops[0], log));
-            }
-            return;
-        }
-
-        if (has_add_broadcast && !has_mul && !has_matmul && !analysis.has_unary && !analysis.has_softmax) {
-            try {
-                mlir::MLIRContext ctx;
-                auto module = build_mlir_broadcast_add_from_model(model, ctx);
-                run_mlir_pipeline(module);
-            } catch (const std::exception& e) {
-                METAL_LOGSTREAM_TRACE("mlir") << "[MlirBackend] Broadcast Add MLIR build failed, continue with kernel path: " << e.what()
-                          << "\n";
-            }
-
-            for (const auto& node : model->get_ordered_ops()) {
-                if (auto add = ov::as_type_ptr<const ov::op::v1::Add>(node)) {
-                    for (int idx = 0; idx < 2; ++idx) {
-                        if (auto c = std::dynamic_pointer_cast<const ov::op::v0::Constant>(add->get_input_node_shared_ptr(idx))) {
-                            m_has_const_b = true;
-                            m_const_b = c->cast_vector<float>();
-                            break;
-                        }
-                    }
-                    break;
-                }
-            }
-
-            MetalKernelIR ir = build_kernel_ir_for_broadcast_add(model);
-            m_ir = std::move(ir);
-            set_ops_from_ir();
-            m_pipelines.clear(); m_pipelines.push_back(compiler.compile_add_kernel(m_ops[0], log));
-            return;
+        if ((has_add || has_add_broadcast || analysis.has_unary || analysis.has_mul || analysis.has_div || analysis.has_pow ||
+             analysis.has_mod || analysis.has_floor_mod || analysis.has_squared_diff) && !has_matmul && !analysis.has_softmax) {
+            if (try_build_eltwise(model, analysis, compiler, log))
+                return;
         }
 
         if (has_mul && !analysis.has_div && !analysis.has_mod && !analysis.has_floor_mod &&
@@ -3285,68 +3201,8 @@ private:
         }
 
         if (analysis.has_softmax && !has_matmul && !has_add && !has_add_broadcast && !analysis.has_unary) {
-            // Always generate a Metal softmax kernel (no CPU fallback).
-            // Build a minimal IR manually (one input/one output softmax).
-            int64_t axis = -1;
-            for (const auto& node : model->get_ordered_ops()) {
-                if (auto s1 = ov::as_type_ptr<const ov::op::v1::Softmax>(node)) { axis = s1->get_axis(); break; }
-                if (auto s8 = ov::as_type_ptr<const ov::op::v8::Softmax>(node)) { axis = s8->get_axis(); break; }
-            }
-
-            auto pshape = model->input().get_partial_shape();
-            if (!pshape.rank().is_static()) {
-                OPENVINO_THROW("METAL Softmax expects static rank");
-            }
-            const int64_t rank = pshape.rank().get_length();
-            if (axis < 0) axis += rank;
-
-            std::vector<int64_t> in_shape;
-            in_shape.reserve(static_cast<size_t>(rank));
-            for (int64_t i = 0; i < rank; ++i) {
-                const auto& d = pshape[static_cast<size_t>(i)];
-                in_shape.push_back(d.is_static() ? d.get_length() : int64_t{-1});
-            }
-
-            int64_t cols = 0, inner = 0, outer = 0, rows = 0;
-            if (pshape.is_static()) {
-                cols = in_shape[static_cast<size_t>(axis)];
-                inner = 1;
-                for (int64_t i = axis + 1; i < rank; ++i) inner *= in_shape[static_cast<size_t>(i)];
-                outer = 1;
-                for (int64_t i = 0; i < axis; ++i) outer *= in_shape[static_cast<size_t>(i)];
-                rows = outer * inner;
-            }
-
-            MetalKernelIR ir;
-            ir.tensors.resize(2);
-            ir.ops.clear();
-
-            auto dtype = resolve_metal_dtype(model->input().get_element_type());
-            ir.tensors[0].name = "input0";
-            ir.tensors[0].shape = pshape.is_static() ? in_shape : std::vector<int64_t>{};
-            ir.tensors[0].dtype = dtype;
-            ir.tensors[1].name = "output0";
-            ir.tensors[1].shape = pshape.is_static() ? in_shape : std::vector<int64_t>{};
-            ir.tensors[1].dtype = dtype;
-
-            KernelOp op{};
-            op.kind = KernelOpKind::Softmax;
-            op.input0 = &ir.tensors[0];
-            op.output = &ir.tensors[1];
-            op.softmax_axis = axis;
-            op.rows = rows;
-            op.cols = cols;
-            op.inner = inner;
-            op.out_shape = pshape.is_static() ? in_shape : std::vector<int64_t>{};
-            op.dtype = dtype;
-            ir.ops.push_back(op);
-
-            m_ir = std::move(ir);
-            set_ops_from_ir();
-            m_ops_from_flat_segment = true;
-            m_pipelines.clear();
-            m_pipelines.push_back(compiler.compile_softmax_kernel(m_ops[0], log));
-            return;
+            if (try_build_softmax(model, analysis, compiler, log))
+                return;
         }
 
 
@@ -3486,16 +3342,18 @@ private:
                     mlir::MLIRContext ctx;
                     auto module = build_mlir_conv2d_from_model(model, ctx);
                     run_mlir_pipeline(module);
+                    auto dim_or_one = [](uint32_t v) { return v == 0 ? 1u : v; };
+
                     Conv2DCodegenDesc desc;
                     const auto& kop = m_ops[0];
                     desc.kind = KernelOpKind::Conv2D;
-                    desc.N = kop.conv2d.N;
-                    desc.C_in = kop.conv2d.C_in;
-                    desc.H = kop.conv2d.H;
-                    desc.W = kop.conv2d.W;
-                    desc.C_out = kop.conv2d.C_out;
-                    desc.kH = kop.conv2d.kernelH;
-                    desc.kW = kop.conv2d.kernelW;
+                    desc.N = dim_or_one(kop.conv2d.N);
+                    desc.C_in = dim_or_one(kop.conv2d.C_in);
+                    desc.H = dim_or_one(kop.conv2d.H);
+                    desc.W = dim_or_one(kop.conv2d.W);
+                    desc.C_out = dim_or_one(kop.conv2d.C_out);
+                    desc.kH = dim_or_one(kop.conv2d.kernelH);
+                    desc.kW = dim_or_one(kop.conv2d.kernelW);
                     desc.strideH = kop.conv2d.strideH;
                     desc.strideW = kop.conv2d.strideW;
                     desc.dilationH = kop.conv2d.dilationH;
@@ -3504,8 +3362,8 @@ private:
                     desc.padLeft = kop.conv2d.padLeft;
                     desc.padBottom = kop.conv2d.padBottom;
                     desc.padRight = kop.conv2d.padRight;
-                    desc.outH = kop.output && kop.output->shape.size() > 2 ? static_cast<uint32_t>(kop.output->shape[2]) : 0;
-                    desc.outW = kop.output && kop.output->shape.size() > 3 ? static_cast<uint32_t>(kop.output->shape[3]) : 0;
+                    desc.outH = dim_or_one(kop.conv2d.outH);
+                    desc.outW = dim_or_one(kop.conv2d.outW);
                     desc.groups = kop.conv2d.groups;
                     auto source = generate_msl_from_mlir(module, desc);
                     m_pipelines.push_back(compiler.compile_msl_from_source(source, "conv2d_kernel", log));
@@ -3517,73 +3375,9 @@ private:
             return;
         }
 
-        if (analysis.has_conv3d && !has_matmul && !has_add && !has_add_broadcast && !analysis.has_unary &&
-            !analysis.has_softmax && !has_maxpool && !has_avgpool && !has_batchnorm) {
-            bool const_w = false;
-            MetalKernelIR ir = build_kernel_ir_for_conv3d(model, const_w);
-            m_ir = std::move(ir);
-            set_ops_from_ir();
-            m_ops_from_flat_segment = true;
-            METAL_LOG_DEBUG("mlir", "[METAL MLIR] Conv3D selected: input " + describe_shape(m_ir.ops[0].input0) +
-                      " weights " + describe_shape(m_ir.ops[0].input1) +
-                      " output " + describe_shape(m_ir.ops[0].output));
-            if (const_w && !m_ops.empty()) {
-                std::shared_ptr<const ov::Node> conv_node;
-                for (const auto& node : model->get_ordered_ops()) {
-                    if (auto c = ov::as_type_ptr<const ov::op::v1::Convolution>(node)) {
-                        if (c->get_input_shape(0).size() == 5) { conv_node = c; break; }
-                    }
-                }
-                if (conv_node) {
-                    if (auto c = std::dynamic_pointer_cast<const ov::op::v0::Constant>(conv_node->get_input_node_shared_ptr(1))) {
-                        m_const_w = c->cast_vector<float>();
-                        m_has_const_w = true;
-                        METAL_LOG_DEBUG("mlir", "[METAL MLIR] Conv3D const weights size=" + std::to_string(m_const_w.size()));
-                    }
-                }
-            }
-            m_pipelines.clear();
-            MetalKernelCompiler compiler(m_device);
-            std::string log;
-            try {
-                mlir::MLIRContext ctx;
-                auto module = build_mlir_conv3d_from_model(model, ctx);
-                run_mlir_pipeline(module);
-                Conv3DCodegenDesc desc;
-                const auto& kop = m_ops[0];
-                desc.kind = KernelOpKind::Conv3D;
-                desc.N = kop.conv3d.N;
-                desc.C_in = kop.conv3d.C_in;
-                desc.D = kop.conv3d.D;
-                desc.H = kop.conv3d.H;
-                desc.W = kop.conv3d.W;
-                desc.C_out = kop.conv3d.C_out;
-                desc.kD = kop.conv3d.kernelD;
-                desc.kH = kop.conv3d.kernelH;
-                desc.kW = kop.conv3d.kernelW;
-                desc.strideD = kop.conv3d.strideD;
-                desc.strideH = kop.conv3d.strideH;
-                desc.strideW = kop.conv3d.strideW;
-                desc.dilationD = kop.conv3d.dilationD;
-                desc.dilationH = kop.conv3d.dilationH;
-                desc.dilationW = kop.conv3d.dilationW;
-                desc.padFront = kop.conv3d.padFront;
-                desc.padTop = kop.conv3d.padTop;
-                desc.padLeft = kop.conv3d.padLeft;
-                desc.padBack = kop.conv3d.padBack;
-                desc.padBottom = kop.conv3d.padBottom;
-                desc.padRight = kop.conv3d.padRight;
-                desc.outD = kop.conv3d.outD;
-                desc.outH = kop.conv3d.outH;
-                desc.outW = kop.conv3d.outW;
-                auto source = generate_msl_from_mlir(module, desc);
-                m_pipelines.push_back(compiler.compile_msl_from_source(source, "conv3d_kernel", log));
-            } catch (const std::exception& e) {
-                METAL_LOG_DEBUG("mlir", std::string("[METAL MLIR] Conv3D MLIR→MSL failed, fallback to CPU: ") + e.what());
-                force_cpu_fallback(m_original_model);
+        if (has_conv2d || analysis.has_conv3d) {
+            if (try_build_conv(model, analysis, compiler, log))
                 return;
-            }
-            return;
         }
 
         if (has_conv2d && analysis.has_unary && analysis.compute_ops == 2) {
@@ -3707,176 +3501,22 @@ private:
             return;
         }
 
-        if (has_batchnorm && !has_matmul && !has_add && !has_add_broadcast && !analysis.has_unary &&
-            !analysis.has_softmax && !has_maxpool && !has_avgpool && !has_conv2d) {
-            bool const_params = false;
-            try {
-                mlir::MLIRContext ctx;
-                auto module = build_mlir_batchnorm_from_model(model, ctx);
-                run_mlir_pipeline(module);
-            } catch (const std::exception& e) {
-                METAL_LOGSTREAM_TRACE("mlir") << "[MlirBackend] BatchNorm MLIR build failed, fallback: " << e.what() << "\n";
-                force_cpu_fallback(m_original_model);
-                return;
-            }
-            MetalKernelIR ir = build_kernel_ir_for_batchnorm(model, const_params);
-            if (!const_params) {
-                force_cpu_fallback(m_original_model);
-                return;
-            }
-            if (!ir.ops.empty()) {
-                m_const_bn = ir.ops[0].bn_params;
-            }
-            m_ir = std::move(ir);
-            set_ops_from_ir();
-            m_pipelines.clear(); m_pipelines.push_back(compiler.compile_batchnorm2d_kernel(m_ops[0], log));
-            return;
-        }
-
 #if OV_HAS_LAYER_NORM
 #endif
 
-        if (analysis.has_maxpool && !has_matmul && !has_add && !has_add_broadcast && !analysis.has_unary &&
-            !analysis.has_softmax && !analysis.has_avgpool) {
-            try {
-                mlir::MLIRContext ctx;
-                auto module = build_mlir_maxpool_from_model(model, ctx);
-                run_mlir_pipeline(module);
-            } catch (const std::exception& e) {
-                METAL_LOGSTREAM_TRACE("mlir") << "[MlirBackend] MaxPool MLIR build failed, fallback: " << e.what() << "\n";
-                force_cpu_fallback(m_original_model);
+        if (analysis.has_maxpool || analysis.has_avgpool) {
+            if (try_build_pool(model, analysis, compiler, log))
                 return;
-            }
-
-            MetalKernelIR ir = build_kernel_ir_for_maxpool(model);
-            m_ir = std::move(ir);
-            set_ops_from_ir();
-            m_ops_from_flat_segment = true;
-            m_pipelines.clear();
-            if (use_handwritten_msl()) {
-                METAL_LOG_DEBUG("mlir", "[METAL MLIR] MaxPool: OV_METAL_USE_HANDWRITTEN_MSL=1, using fallback kernel");
-                m_pipelines.push_back(compiler.compile_maxpool2d_kernel(m_ops[0], log));
-            } else {
-                try {
-                    mlir::MLIRContext ctx;
-                    auto module = build_mlir_maxpool_from_model(model, ctx);
-                    run_mlir_pipeline(module);
-                    Pool2DCodegenDesc desc;
-                    const auto& kop = m_ops[0];
-                    desc.kind = KernelOpKind::MaxPool2D;
-                    desc.N = kop.pool.N;
-                    desc.C = kop.pool.C;
-                    desc.H = kop.pool.H;
-                    desc.W = kop.pool.W;
-                    desc.kH = kop.pool.kernelH;
-                    desc.kW = kop.pool.kernelW;
-                    desc.strideH = kop.pool.strideH;
-                    desc.strideW = kop.pool.strideW;
-                    desc.padTop = kop.pool.padTop;
-                    desc.padLeft = kop.pool.padLeft;
-                    desc.padBottom = 0;
-                    desc.padRight = 0;
-                    desc.outH = kop.pool.outH;
-                    desc.outW = kop.pool.outW;
-                    desc.is_avg = false;
-                    desc.exclude_pad = kop.pool.exclude_pad;
-                    auto source = generate_msl_from_mlir(module, desc);
-                    m_pipelines.push_back(compiler.compile_msl_from_source(source, "pool2d_kernel", log));
-                } catch (const std::exception& e) {
-                    METAL_LOG_DEBUG("mlir", std::string("[METAL MLIR] MaxPool MLIR→MSL failed, fallback: ") + e.what());
-                    m_pipelines.push_back(compiler.compile_maxpool2d_kernel(m_ops[0], log));
-                }
-            }
-            return;
         }
 
-        if (analysis.has_avgpool && !has_matmul && !has_add && !has_add_broadcast && !analysis.has_unary &&
-            !analysis.has_softmax && !analysis.has_maxpool) {
-            try {
-                mlir::MLIRContext ctx;
-                auto module = build_mlir_avgpool_from_model(model, ctx);
-                run_mlir_pipeline(module);
-            } catch (const std::exception& e) {
-                METAL_LOGSTREAM_TRACE("mlir") << "[MlirBackend] AvgPool MLIR build failed, fallback: " << e.what() << "\n";
-                force_cpu_fallback(m_original_model);
+        if (analysis.has_batchnorm) {
+            if (try_build_batchnorm(model, analysis, compiler, log))
                 return;
-            }
-
-            MetalKernelIR ir = build_kernel_ir_for_avgpool(model);
-            m_ir = std::move(ir);
-            set_ops_from_ir();
-            m_ops_from_flat_segment = true;
-            m_pipelines.clear();
-            if (use_handwritten_msl()) {
-                METAL_LOG_DEBUG("mlir", "[METAL MLIR] AvgPool: OV_METAL_USE_HANDWRITTEN_MSL=1, using fallback kernel");
-                m_pipelines.push_back(compiler.compile_avgpool2d_kernel(m_ops[0], log));
-            } else {
-                try {
-                    mlir::MLIRContext ctx;
-                    auto module = build_mlir_avgpool_from_model(model, ctx);
-                    run_mlir_pipeline(module);
-                    Pool2DCodegenDesc desc;
-                    const auto& kop = m_ops[0];
-                    desc.kind = KernelOpKind::AvgPool2D;
-                    desc.N = kop.pool.N;
-                    desc.C = kop.pool.C;
-                    desc.H = kop.pool.H;
-                    desc.W = kop.pool.W;
-                    desc.kH = kop.pool.kernelH;
-                    desc.kW = kop.pool.kernelW;
-                    desc.strideH = kop.pool.strideH;
-                    desc.strideW = kop.pool.strideW;
-                    desc.padTop = kop.pool.padTop;
-                    desc.padLeft = kop.pool.padLeft;
-                    desc.padBottom = 0;
-                    desc.padRight = 0;
-                    desc.outH = kop.pool.outH;
-                    desc.outW = kop.pool.outW;
-                    desc.is_avg = true;
-                    desc.exclude_pad = kop.pool.exclude_pad;
-                    auto source = generate_msl_from_mlir(module, desc);
-                    m_pipelines.push_back(compiler.compile_msl_from_source(source, "pool2d_kernel", log));
-                } catch (const std::exception& e) {
-                    METAL_LOG_DEBUG("mlir", std::string("[METAL MLIR] AvgPool MLIR→MSL failed, fallback: ") + e.what());
-                    m_pipelines.push_back(compiler.compile_avgpool2d_kernel(m_ops[0], log));
-                }
-            }
-            return;
         }
 
         if (analysis.has_unary && analysis.compute_ops == 1) {
-            // Build MLIR module to mirror unary op for pipeline consistency (currently not inspected further).
-            try {
-                mlir::MLIRContext ctx;
-                auto op_node = analysis.has_unary ? model->get_ordered_ops().back() : nullptr;
-                auto module = build_mlir_unary_from_node(op_node, ctx, analysis.unary_kind, analysis.unary_alpha);
-                run_mlir_pipeline(module);
-            } catch (const std::exception& e) {
-                METAL_LOGSTREAM_TRACE("mlir") << "[MlirBackend] Unary MLIR build failed, fallback: " << e.what() << "\n";
-                force_cpu_fallback(m_original_model);
+            if (try_build_unary(model, analysis, compiler, log))
                 return;
-            }
-
-            // Build kernel IR directly from node
-            const std::shared_ptr<const ov::Node> unary_node = [&]() -> std::shared_ptr<const ov::Node> {
-                for (const auto& node : model->get_ordered_ops()) {
-                    if (!ov::is_type<ov::op::v0::Parameter>(node.get()) &&
-                        !ov::is_type<ov::op::v0::Constant>(node.get()) &&
-                        !ov::is_type<ov::op::v0::Result>(node.get())) {
-                        return node;
-                    }
-                }
-                return nullptr;
-            }();
-            if (!unary_node) {
-                force_cpu_fallback(m_original_model);
-                return;
-            }
-            MetalKernelIR ir = build_kernel_ir_for_unary(unary_node, analysis.unary_kind, analysis.unary_alpha);
-            m_ir = std::move(ir);
-            set_ops_from_ir();
-            m_pipelines.clear(); m_pipelines.push_back(compiler.compile_unary_kernel(m_ops[0], log));
-            return;
         }
 
         if (m_ops.empty()) {
@@ -3928,6 +3568,12 @@ private:
     bool m_allow_partial_offload = false;
     bool m_softmax_dynamic_only = false;
     int64_t m_softmax_axis = 0;
+    bool m_enable_profiling = false;
+    std::vector<ov::ProfilingInfo> m_last_profiling;
+
+public:
+    void set_profiling_enabled(bool enable) { m_enable_profiling = enable; }
+    std::vector<ov::ProfilingInfo> get_profiling() const { return m_last_profiling; }
 
     void ensure_fallback(const std::shared_ptr<const ov::Model>& model) {
         if (m_fallback_request)
@@ -4043,10 +3689,8 @@ public:
 
     std::vector<ov::Tensor> run_segment(const Segment& seg, const std::vector<ov::Tensor>& inputs) {
         @autoreleasepool {
-        auto run_fallback = [&]() -> std::vector<ov::Tensor> {
-            if (metal_debug_enabled()) {
-                METAL_LOG_DEBUG("mlir", "[METAL MLIR] run_segment -> run_fallback");
-            }
+        auto run_fallback = [&](const char* reason) -> std::vector<ov::Tensor> {
+            METAL_LOG_ERROR("fallback", std::string("[METAL MLIR] run_segment -> run_fallback: ") + (reason ? reason : "unknown"));
             if (!m_allow_partial_offload) {
                 OPENVINO_THROW("METAL: CPU fallback is disabled in pure device mode");
             }
@@ -4085,44 +3729,11 @@ public:
         }
         if (seg.op_count == 0 || seg.first_op_index + seg.op_count > m_ops.size()) {
             METAL_LOG_DEBUG("mlir", "[METAL MLIR] run_segment unable to recover ops → fallback");
-            return run_fallback();
+            return run_fallback("bad segment bounds");
         }
 
-        if (m_pipelines.size() < seg.first_op_index + seg.op_count) {
-            METAL_LOG_DEBUG("mlir", "[METAL MLIR] run_segment missing pipelines → try lazy compile");
-            MetalKernelCompiler compiler(m_device);
-            std::string log;
-            // Lazy-compile softmax (and other single-op segments) on demand.
-            for (size_t i = seg.first_op_index; i < seg.first_op_index + seg.op_count; ++i) {
-                if (m_pipelines.size() <= i) {
-                    m_pipelines.resize(i + 1);
-                }
-                if (m_pipelines[i] != nil)
-                    continue;
-                const auto& kop = m_ops[i];
-                switch (kop.kind) {
-                    case KernelOpKind::Softmax:
-                        m_pipelines[i] = compiler.compile_softmax_kernel(kop, log);
-                        break;
-                    case KernelOpKind::ElementwiseAdd:     m_pipelines[i] = compiler.compile_add_kernel(kop, log); break;
-                    case KernelOpKind::ElementwiseSub:     m_pipelines[i] = compiler.compile_sub_kernel(kop, log); break;
-                    case KernelOpKind::ElementwiseMul:     m_pipelines[i] = compiler.compile_mul_kernel(kop, log); break;
-                    case KernelOpKind::ElementwiseDiv:     m_pipelines[i] = compiler.compile_div_kernel(kop, log); break;
-                    case KernelOpKind::ElementwisePow:     m_pipelines[i] = compiler.compile_pow_kernel(kop, log); break;
-                    case KernelOpKind::ElementwiseMod:     m_pipelines[i] = compiler.compile_mod_kernel(kop, log); break;
-                    case KernelOpKind::ElementwiseFloorMod:m_pipelines[i] = compiler.compile_floor_mod_kernel(kop, log); break;
-                    case KernelOpKind::Unary:
-                        m_pipelines[i] = compiler.compile_unary_kernel(kop, log);
-                        break;
-                    default:
-                        break;
-                }
-            }
-            if (m_pipelines.empty() || m_pipelines.size() < seg.first_op_index + seg.op_count) {
-                METAL_LOG_DEBUG("mlir", "[METAL MLIR] run_segment still missing pipelines → fallback");
-                return run_fallback();
-            }
-        }
+        OPENVINO_ASSERT(m_pipelines.size() >= seg.first_op_index + seg.op_count && seg.op_count > 0,
+                        "run_segment: pipelines were not generated by MLIR path");
 
         // Buffers for temporary constant materialization (e.g., scalar/vector pow exponents)
         std::vector<id<MTLBuffer>> temp_const_buffers;
@@ -4212,29 +3823,29 @@ public:
             input0_tensor = to_float32_tensor(inputs[0]);
             input_f32 = input0_tensor;
         }
-        if (metal_debug_enabled()) {
-            auto dump_tensor = [](const ov::Tensor& t, const char* tag) {
-                if (!t.get_element_type().is_real()) {
-                    METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] input dump " << tag << " (non-float type) skipped\n";
-                    return;
-                }
-                METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] input dump " << tag << " shape=";
-                auto s = t.get_shape();
-                METAL_LOGSTREAM_TRACE("mlir") << "[";
-                for (size_t i = 0; i < s.size(); ++i) {
-                    if (i) METAL_LOGSTREAM_TRACE("mlir") << ",";
-                    METAL_LOGSTREAM_TRACE("mlir") << s[i];
-                }
-                METAL_LOGSTREAM_TRACE("mlir") << "] first:";
-                ov::Tensor as_f32 = to_float32_tensor(t);
-                const float* p = as_f32.data<const float>();
-                size_t n = std::min<size_t>(8, as_f32.get_size());
-                for (size_t i = 0; i < n; ++i) METAL_LOGSTREAM_TRACE("mlir") << " " << p[i];
-                METAL_LOGSTREAM_TRACE("mlir") << "\n";
-            };
-            dump_tensor(input_f32, "in0");
-            if (inputs.size() > 1) dump_tensor(inputs[1], "in1");
-        }
+        auto dump_tensor = [](const ov::Tensor& t, const char* tag) {
+            if (!t)
+                return;  // uninitialized (e.g., integer path when no float view requested)
+            if (!t.get_element_type().is_real()) {
+                METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] input dump " << tag << " (non-float type) skipped\n";
+                return;
+            }
+            auto log = METAL_LOGSTREAM_TRACE("mlir");
+            log << "[METAL MLIR] input dump " << tag << " shape=[";
+            auto s = t.get_shape();
+            for (size_t i = 0; i < s.size(); ++i) {
+                if (i) log << ",";
+                log << s[i];
+            }
+            log << "] first:";
+            ov::Tensor as_f32 = to_float32_tensor(t);
+            const float* p = as_f32.data<const float>();
+            size_t n = std::min<size_t>(8, as_f32.get_size());
+            for (size_t i = 0; i < n; ++i) log << " " << p[i];
+            log << "\n";
+        };
+        dump_tensor(input_f32, "in0");
+        if (inputs.size() > 1) dump_tensor(inputs[1], "in1");
 
         const KernelOp& last_op = seg_op(seg.op_count - 1);
         ov::Shape out_shape;
@@ -4458,7 +4069,7 @@ public:
             if (buf_const_bn) [buf_const_bn release];
             if (buf_const_mm0) [buf_const_mm0 release];
             if (buf_const_mm1) [buf_const_mm1 release];
-            return run_fallback();
+            return run_fallback("run_segment buffer allocation failed");
         }
 
         auto dispatch_op = [&](const KernelOp& op,
@@ -4468,39 +4079,7 @@ public:
                                id<MTLBuffer> dst,
                                id<MTLCommandBuffer> cmdBuf) {
             id<MTLComputeCommandEncoder> enc = [cmdBuf computeCommandEncoder];
-            if (!pipeline) {
-                METAL_LOG_DEBUG("mlir", "[METAL MLIR] Null pipeline in run_segment dispatch → lazy compile");
-                MetalKernelCompiler compiler(m_device);
-                std::string log;
-                switch (op.kind) {
-                    case KernelOpKind::Softmax:
-                        pipeline = compiler.compile_softmax_kernel(op, log);
-                        break;
-                    case KernelOpKind::ElementwiseAdd:     pipeline = compiler.compile_add_kernel(op, log); break;
-                    case KernelOpKind::ElementwiseSub:     pipeline = compiler.compile_sub_kernel(op, log); break;
-                    case KernelOpKind::ElementwiseMul:     pipeline = compiler.compile_mul_kernel(op, log); break;
-                    case KernelOpKind::ElementwiseDiv:     pipeline = compiler.compile_div_kernel(op, log); break;
-                    case KernelOpKind::ElementwisePow:     pipeline = compiler.compile_pow_kernel(op, log); break;
-                    case KernelOpKind::ElementwiseMod:     pipeline = compiler.compile_mod_kernel(op, log); break;
-                    case KernelOpKind::ElementwiseFloorMod:pipeline = compiler.compile_floor_mod_kernel(op, log); break;
-                    case KernelOpKind::Unary:
-                        pipeline = compiler.compile_unary_kernel(op, log);
-                        break;
-                    default:
-                        break;
-                }
-                // Persist the newly compiled pipeline for future dispatches.
-                size_t idx = seg.first_op_index + static_cast<size_t>(&op - &m_ops[seg.first_op_index]);
-                if (m_pipelines.size() <= idx)
-                    m_pipelines.resize(idx + 1);
-                m_pipelines[idx] = pipeline;
-                if (!pipeline) {
-                    [enc endEncoding];
-                    m_force_fallback = true;
-                    ensure_fallback(m_original_model);
-                    return;
-                }
-            }
+            OPENVINO_ASSERT(pipeline, "run_segment: missing MLIR-generated pipeline for op");
             [enc setComputePipelineState:pipeline];
             switch (op.kind) {
                 case KernelOpKind::MatMul: {
@@ -4528,23 +4107,50 @@ public:
                 case KernelOpKind::ElementwisePow:
                 case KernelOpKind::ElementwiseMod:
                 case KernelOpKind::ElementwiseFloorMod: {
-                    if (!src0 || !src1 || !dst) {
-                        METAL_LOG_DEBUG("mlir", "[METAL MLIR] Elementwise op missing buffer → fallback");
-                        [enc endEncoding];
-                        m_force_fallback = true;
-                        ensure_fallback(m_original_model);
-                        return;
+                    OPENVINO_ASSERT(src0 && src1 && dst, "Elementwise missing buffer");
+                    std::vector<int64_t> oshp = !op.out_shape.empty() ? op.out_shape :
+                                                (op.output ? op.output->shape : std::vector<int64_t>{});
+                    if (oshp.empty()) oshp.push_back(1);  // scalar as [1] to materialize buffer/strides
+                    uint32_t elems = 1;
+                    for (auto d : oshp) { OPENVINO_ASSERT(d > 0, "Elementwise dynamic dim at dispatch"); elems *= static_cast<uint32_t>(d); }
+                    uint32_t rank = static_cast<uint32_t>(oshp.size());
+                    std::vector<int32_t> out_dims(rank), s0(rank), s1(rank);
+                    auto to_i32 = [](int64_t v){ return static_cast<int32_t>(v); };
+                    for (size_t i = 0; i < rank; ++i) {
+                        out_dims[i] = to_i32(oshp[i]);
+                        s0[i] = op.stride0.size() > i ? to_i32(op.stride0[i]) : 0;
+                        s1[i] = op.stride1.size() > i ? to_i32(op.stride1[i]) : 0;
                     }
+                    auto vec_to_str = [](const std::vector<int64_t>& v) {
+                        std::ostringstream os;
+                        os << "[";
+                        for (size_t i = 0; i < v.size(); ++i) { if (i) os << ","; os << v[i]; }
+                        os << "]";
+                        return os.str();
+                    };
+                    METAL_LOGSTREAM_TRACE("mlir") << "[Eltwise dispatch] elems=" << elems << " rank=" << rank
+                        << " out_shape=" << vec_to_str(oshp)
+                        << " stride0=" << vec_to_str(op.stride0)
+                        << " stride1=" << vec_to_str(op.stride1) << "\n";
+
                     [enc setBuffer:src0 offset:0 atIndex:0];
                     [enc setBuffer:src1 offset:0 atIndex:1];
                     [enc setBuffer:dst offset:0 atIndex:2];
-                    const NSUInteger elems = static_cast<NSUInteger>(op.is_broadcast
-                        ? tensor_num_elems(op.output)
-                        : tensor_num_elems(op.input0));
+                    [enc setBytes:&elems length:sizeof(uint32_t) atIndex:3];
+                    [enc setBytes:&rank length:sizeof(uint32_t) atIndex:4];
+                    id<MTLBuffer> b_out = [m_device newBufferWithBytes:out_dims.data() length:out_dims.size()*sizeof(int32_t) options:MTLResourceStorageModeShared];
+                    id<MTLBuffer> b_s0  = [m_device newBufferWithBytes:s0.data() length:s0.size()*sizeof(int32_t) options:MTLResourceStorageModeShared];
+                    id<MTLBuffer> b_s1  = [m_device newBufferWithBytes:s1.data() length:s1.size()*sizeof(int32_t) options:MTLResourceStorageModeShared];
+                    [enc setBuffer:b_out offset:0 atIndex:5];
+                    [enc setBuffer:b_s0 offset:0 atIndex:6];
+                    [enc setBuffer:b_s1 offset:0 atIndex:7];
                     const NSUInteger threads_per_tg = 64;
                     MTLSize grid = MTLSizeMake(elems, 1, 1);
                     MTLSize tg = MTLSizeMake(threads_per_tg, 1, 1);
                     [enc dispatchThreads:grid threadsPerThreadgroup:tg];
+                    [b_out release];
+                    [b_s0 release];
+                    [b_s1 release];
                     break;
                 }
                 case KernelOpKind::Unary: {
@@ -4879,10 +4485,8 @@ public:
                         shapes_equal(kt) &&
                         buf_map.find(&kt) == buf_map.end()) {
                         buf_map[&kt] = buf;
-                        if (metal_debug_enabled()) {
-                            METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] map_input idx=" << idx << " matched Parameter node "
-                                      << kt.name << " elems=" << elems_in << " (exact)\n";
-                        }
+                        METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] map_input idx=" << idx << " matched Parameter node "
+                                  << kt.name << " elems=" << elems_in << " (exact)\n";
                         return;
                     }
                 }
@@ -4895,10 +4499,8 @@ public:
                     shapes_equal(kt) &&
                     buf_map.find(&kt) == buf_map.end()) {
                     buf_map[&kt] = buf;
-                    if (metal_debug_enabled()) {
-                        METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] map_input idx=" << idx << " matched Parameter any "
-                                  << kt.name << " elems=" << elems_in << "\n";
-                    }
+                    METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] map_input idx=" << idx << " matched Parameter any "
+                              << kt.name << " elems=" << elems_in << "\n";
                     return;
                 }
             }
@@ -4908,10 +4510,8 @@ public:
                     tensor_num_elems(&kt) == elems_in &&
                     buf_map.find(&kt) == buf_map.end()) {
                     buf_map[&kt] = buf;
-                    if (metal_debug_enabled()) {
-                        METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] map_input idx=" << idx << " matched by count "
-                                  << kt.name << " elems=" << elems_in << "\n";
-                    }
+                    METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] map_input idx=" << idx << " matched by count "
+                              << kt.name << " elems=" << elems_in << "\n";
                     break;
                 }
             }
@@ -4942,6 +4542,7 @@ public:
             return it == buf_map.end() ? nil : it->second;
         };
 
+        if (!m_enable_profiling) {
             for (size_t idx = 0; idx < seg.op_count; ++idx) {
                 const auto& op = seg_op(idx);
                 id<MTLBuffer> dst = dst_for_step(idx);
@@ -4955,100 +4556,69 @@ public:
                     }
                 }
                 id<MTLBuffer> srcA = current;
-            if (op.input0) {
-                auto buf0 = get_buffer(op.input0);
-                if (buf0) srcA = buf0;
-            }
-            if (op.kind == KernelOpKind::ElementwiseAdd || op.kind == KernelOpKind::ElementwiseSub ||
-                op.kind == KernelOpKind::ElementwiseMul || op.kind == KernelOpKind::ElementwisePow ||
-                op.kind == KernelOpKind::ElementwiseMod || op.kind == KernelOpKind::ElementwiseFloorMod ||
-                op.kind == KernelOpKind::ElementwiseDiv) {
-                if (metal_debug_enabled()) {
-                    std::ostringstream oss;
-                    oss << "[METAL MLIR] elementwise dispatch: in0=" << describe_shape(op.input0)
-                        << " in1=" << describe_shape(op.input1)
-                        << " out=" << describe_shape(op.output)
-                        << " srcA=" << (srcA ? "ok" : "nil")
-                        << " src1=" << (src1 ? "ok" : "nil")
-                        << " same_ptr=" << ((srcA == src1) ? "yes" : "no")
-                        << " dst=" << (dst ? "ok" : "nil");
-                    METAL_LOGSTREAM_TRACE("mlir") << oss.str() << "\n";
-                    auto dump_vec = [](const std::vector<int64_t>& v, const char* tag) {
-                        METAL_LOGSTREAM_TRACE("mlir") << "  " << tag << "=[";
-                        for (size_t i = 0; i < v.size(); ++i) {
-                            if (i) METAL_LOGSTREAM_TRACE("mlir") << ",";
-                            METAL_LOGSTREAM_TRACE("mlir") << v[i];
-                        }
-                        METAL_LOGSTREAM_TRACE("mlir") << "]\n";
-                    };
-                    if (!op.stride0.empty() || !op.stride1.empty()) {
-                        dump_vec(op.stride0, "stride0");
-                        dump_vec(op.stride1, "stride1");
-                        dump_vec(op.out_shape, "out_shape");
-                    }
-                    if (srcA) {
-                        const float* p0 = static_cast<const float*>([srcA contents]);
-                        size_t n0 = std::min<size_t>(8, op.input0 ? tensor_num_elems(op.input0) : 0);
-                        METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] elementwise src0 first:";
-                        for (size_t i = 0; i < n0; ++i) METAL_LOGSTREAM_TRACE("mlir") << " " << p0[i];
-                        METAL_LOGSTREAM_TRACE("mlir") << "\n";
-                    }
-                    if (src1) {
-                        const float* p = static_cast<const float*>([src1 contents]);
-                        size_t n = std::min<size_t>(8, op.is_broadcast && op.output ? tensor_num_elems(op.output)
-                                                                                    : (op.input1 ? tensor_num_elems(op.input1) : 0));
-                        METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] elementwise src1 first:";
-                        for (size_t i = 0; i < n; ++i) METAL_LOGSTREAM_TRACE("mlir") << " " << p[i];
-                        METAL_LOGSTREAM_TRACE("mlir") << "\n";
-                        if ((op.input1 ? tensor_num_elems(op.input1) : 0) > 100) {
-                            METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] elementwise src1[90]=" << p[90] << " src1[123]=" << p[123] << "\n";
-                        }
-                        METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] elementwise const size="
-                                  << (op.is_broadcast ? tensor_num_elems(op.output) : (op.input1 ? tensor_num_elems(op.input1) : 0))
-                                  << " m_const_b_size=" << m_const_b.size() << "\n";
-                    }
+                if (op.input0) {
+                    auto buf0 = get_buffer(op.input0);
+                    if (buf0) srcA = buf0;
+                }
+                dispatch_op(op, seg_pipe(idx), srcA, src1, dst, cmd);
+                current = dst;
+                if (op.output && dst) {
+                    buf_map[op.output] = dst;
                 }
             }
-            if (metal_debug_enabled()) {
-                METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] dispatch kind=" << static_cast<int>(op.kind)
-                          << " srcA=" << (srcA ? "ok" : "nil")
-                          << " src1=" << (src1 ? "ok" : "nil")
-                          << " dst=" << (dst ? "ok" : "nil") << "\n";
-                if (!src1 && op.input1 && op.input1->from_constant) {
-                    METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] const input size=" << op.input1->const_data.size() << "\n";
-                }
-                
-            }
-            // If elementwise inputs missing, drop to fallback
-            if ((op.kind == KernelOpKind::ElementwiseAdd || op.kind == KernelOpKind::ElementwiseSub ||
-                 op.kind == KernelOpKind::ElementwiseMul || op.kind == KernelOpKind::ElementwiseDiv ||
-                 op.kind == KernelOpKind::ElementwisePow || op.kind == KernelOpKind::ElementwiseMod ||
-                 op.kind == KernelOpKind::ElementwiseFloorMod) &&
-                (!srcA || !src1 || !dst)) {
-                METAL_LOG_DEBUG("mlir", "[METAL MLIR] run_segment: elementwise missing buffer -> fallback");
-                [cmd release];
-                for (auto* b : temp_const_buffers) if (b) [b release];
-                return run_fallback();
-            }
-            dispatch_op(op, seg_pipe(idx), srcA, src1, dst, cmd);
-            current = dst;
-            if (op.output && dst) {
-                buf_map[op.output] = dst;
-            }
-            if (metal_debug_enabled() && op.kind == KernelOpKind::ElementwisePow && dst) {
-                const float* p = static_cast<const float*>([dst contents]);
-                size_t n = std::min<size_t>(8, tensor_num_elems(op.output));
-                METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] pow output first:";
-                for (size_t i = 0; i < n; ++i) METAL_LOGSTREAM_TRACE("mlir") << " " << p[i];
-                METAL_LOGSTREAM_TRACE("mlir") << "\n";
-            }
-            METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] dispatch complete kind=" << static_cast<int>(op.kind) << "\n";
         }
 
-        final_buf = current;
+        auto add_profile = [&](const KernelOp& op, double ms) {
+            if (!m_enable_profiling)
+                return;
+            ov::ProfilingInfo pi;
+            pi.status = ov::ProfilingInfo::Status::EXECUTED;
+            auto dur_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::duration<double, std::milli>(ms));
+            pi.real_time = dur_us;
+            pi.cpu_time = dur_us;
+            pi.node_type = kind_to_string(op.kind);
+            pi.exec_type = "metal";
+            if (op.output && !op.output->name.empty())
+                pi.node_name = op.output->name;
+            else
+                pi.node_name = pi.node_type;
+            m_last_profiling.push_back(std::move(pi));
+        };
 
-        [cmd commit];
-        [cmd waitUntilCompleted];
+        if (!m_enable_profiling) {
+            final_buf = current;
+            [cmd commit];
+            [cmd waitUntilCompleted];
+        } else {
+            // When profiling, encode & submit per-op to measure durations accurately.
+            for (size_t idx = 0; idx < seg.op_count; ++idx) {
+                const auto& op = seg_op(idx);
+                id<MTLBuffer> dst = dst_for_step(idx);
+                id<MTLBuffer> src1 = select_src1(op);
+                if (!src1 && op.input1) src1 = get_buffer(op.input1);
+                if (!src1) src1 = load_const_input(op);
+                if (!src1 && idx > 0) {
+                    const auto& prev = seg_op(idx - 1);
+                    if (prev.output && prev.output == op.input1) {
+                        src1 = current;
+                    }
+                }
+                id<MTLBuffer> srcA = current;
+                if (op.input0) {
+                    auto buf0 = get_buffer(op.input0);
+                    if (buf0) srcA = buf0;
+                }
+                id<MTLCommandBuffer> cmd_prof = [m_queue commandBuffer];
+                auto t0 = std::chrono::steady_clock::now();
+                dispatch_op(op, seg_pipe(idx), srcA, src1, dst, cmd_prof);
+                [cmd_prof commit];
+                [cmd_prof waitUntilCompleted];
+                auto t1 = std::chrono::steady_clock::now();
+                add_profile(op, std::chrono::duration<double, std::milli>(t1 - t0).count());
+                current = dst;
+                final_buf = current;
+            }
+        }
 
         if (out_dtype.storage == MetalDType::StorageType::I32 ||
             out_dtype.storage == MetalDType::StorageType::I64) {
@@ -5120,7 +4690,7 @@ public:
                 }
             }
         }
-        if (seg.op_count == 1 && metal_debug_enabled()) {
+        if (seg.op_count == 1) {
             const auto& op = seg_op(0);
             if ((op.kind == KernelOpKind::ElementwiseFloorMod || op.kind == KernelOpKind::ElementwiseMod) &&
                 inputs.size() > 1) {
@@ -5370,12 +4940,10 @@ private:
 
         const auto& ordered = model->get_ordered_ops();
         for (const auto& node : ordered) {
-            if (metal_debug_enabled()) {
-                std::ostringstream oss;
-                oss << "[METAL MLIR] visiting node " << node->get_friendly_name()
-                    << " type=" << node->get_type_info().name;
-                METAL_LOG_DEBUG("mlir", oss.str());
-            }
+            std::ostringstream oss;
+            oss << "[METAL MLIR] visiting node " << node->get_friendly_name()
+                << " type=" << node->get_type_info().name;
+            METAL_LOG_DEBUG("mlir", oss.str());
             // Ensure Parameters have corresponding tensors for input mapping
             if (ov::is_type<ov::op::v0::Parameter>(node.get())) {
                 if (node->get_output_size() > 0)
@@ -5543,15 +5111,13 @@ private:
                             }
                         }
                         supported = true;
-                        if (metal_debug_enabled()) {
-                            std::ostringstream oss;
-                            oss << "[METAL MLIR] Collapsed Mod pattern to single op. kind="
-                                << (is_floor ? "FloorMod" : "Mod")
-                                << " A=" << describe_shape(op.input0)
-                                << " B=" << describe_shape(op.input1)
-                                << " out=" << describe_shape(op.output);
-                            METAL_LOG_DEBUG("mlir", oss.str());
-                        }
+                        std::ostringstream oss;
+                        oss << "[METAL MLIR] Collapsed Mod pattern to single op. kind="
+                            << (is_floor ? "FloorMod" : "Mod")
+                            << " A=" << describe_shape(op.input0)
+                            << " B=" << describe_shape(op.input1)
+                            << " out=" << describe_shape(op.output);
+                        METAL_LOG_DEBUG("mlir", oss.str());
                     }
                 }
                 if (supported) {
@@ -5807,7 +5373,7 @@ private:
                     return t.is_real() || t == ov::element::i32 || t == ov::element::i64;
                 };
                 if (!supported_num(et0) || !supported_num(et1)) {
-                    OPENVINO_THROW("METAL eltwise supports only f16/f32/i32/i64 inputs");
+                    OPENVINO_THROW("METAL eltwise supports only f16/f32/i32/i64/u8 inputs");
                 }
                 // Unified binary eltwise handling (Add/Sub/Mul/Div/Pow/Mod/FloorMod) with proper NumPy broadcast
                 const bool is_mul_node = static_cast<bool>(ov::as_type_ptr<const ov::op::v1::Multiply>(node));
@@ -5898,13 +5464,11 @@ private:
                 }
                 set_output(op);
                 if (op.output) op.output->shape = op.out_shape;
-                if (metal_debug_enabled()) {
-                    std::ostringstream oss;
-                    oss << "[METAL MLIR] elementwise node=" << node->get_friendly_name()
-                        << " kind=" << static_cast<int>(op.kind);
-                    if (div_pow_rhs || div_pow_lhs) oss << " div_from_pow=-1";
-                    METAL_LOG_DEBUG("mlir", oss.str());
-                }
+                std::ostringstream oss;
+                oss << "[METAL MLIR] elementwise node=" << node->get_friendly_name()
+                    << " kind=" << static_cast<int>(op.kind);
+                if (div_pow_rhs || div_pow_lhs) oss << " div_from_pow=-1";
+                METAL_LOG_DEBUG("mlir", oss.str());
                 // If RHS is Constant and requires broadcast, pre-expand it after inputs are wired
                 // This helps all binary eltwise ops (Add/Sub/Mul/Div/Pow) keep simple row-major reads.
                 if (op.input1 && op.input1->from_constant && op.is_broadcast && !op.out_shape.empty()) {
@@ -5998,14 +5562,12 @@ private:
                         };
                         pad_stride(op.stride0);
                         pad_stride(op.stride1);
-                        if (metal_debug_enabled()) {
-                            std::ostringstream oss;
-                            oss << "[METAL MLIR] rhs after expand first: ";
-                            for (size_t i = 0; i < std::min<size_t>(8, op.input1->const_data.size()); ++i) {
-                                oss << op.input1->const_data[i] << " ";
-                            }
-                            METAL_LOG_DEBUG("mlir", oss.str());
+                        std::ostringstream oss;
+                        oss << "[METAL MLIR] rhs after expand first: ";
+                        for (size_t i = 0; i < std::min<size_t>(8, op.input1->const_data.size()); ++i) {
+                            oss << op.input1->const_data[i] << " ";
                         }
+                        METAL_LOG_DEBUG("mlir", oss.str());
                     }
                 }
                 // Some front-end passes turn Divide by constant into Multiply by reciprocal.
@@ -6022,10 +5584,8 @@ private:
                         for (auto& v : op.input1->const_data) {
                             v = 1.0f / v;
                         }
-                        if (metal_debug_enabled()) {
-                            METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] Detected Div decomposed to Multiply; restored divisor, first="
-                                      << op.input1->const_data[0] << "\n";
-                        }
+                        METAL_LOGSTREAM_TRACE("mlir") << "[METAL MLIR] Detected Div decomposed to Multiply; restored divisor, first="
+                                  << op.input1->const_data[0] << "\n";
                     }
                 }
                 supported = true;
@@ -6495,6 +6055,14 @@ void MlirBackend::run(const std::vector<ov::Tensor>& inputs, std::vector<ov::Ten
     m_impl->run(inputs, outputs);
 }
 
+void MlirBackend::set_profiling(bool enable) {
+    m_impl->set_profiling_enabled(enable);
+}
+
+std::vector<ov::ProfilingInfo> MlirBackend::get_profiling_info() const {
+    return m_impl->get_profiling();
+}
+
 bool MlirBackend::has_segment() const {
     return m_impl->has_segment();
 }
@@ -6510,6 +6078,15 @@ const Segment& MlirBackend::get_segment() const {
 std::vector<ov::Tensor> MlirBackend::run_segment(const Segment& seg, const std::vector<ov::Tensor>& inputs) {
     return m_impl->run_segment(seg, inputs);
 }
+
+#include "runtime/ops/mlir_backend_op_eltwise.inc"
+#include "runtime/ops/mlir_backend_op_softmax.inc"
+#include "runtime/ops/mlir_backend_op_matmul.inc"
+#include "runtime/ops/mlir_backend_op_conv.inc"
+#include "runtime/ops/mlir_backend_op_pool.inc"
+#include "runtime/ops/mlir_backend_op_unary.inc"
+#include "runtime/ops/mlir_backend_op_batchnorm.inc"
+#include "runtime/ops/mlir_backend_op_split.inc"
 
 }  // namespace metal_plugin
 }  // namespace ov

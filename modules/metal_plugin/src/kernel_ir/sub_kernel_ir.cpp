@@ -30,17 +30,17 @@ MetalKernelIR build_kernel_ir_for_subtract(const std::shared_ptr<const ov::Model
     OPENVINO_ASSERT(sub_node, "Subtract builder: no Subtract node found in model");
     OPENVINO_ASSERT(sub_node->get_input_size() == 2, "Subtract must have two inputs");
     OPENVINO_ASSERT(sub_node->get_output_size() == 1, "Subtract must have one output");
-    OPENVINO_ASSERT(sub_node->get_input_element_type(0) == ov::element::f32,
-                    "Subtract builder: only f32 Subtract is supported");
-    OPENVINO_ASSERT(sub_node->get_input_element_type(1) == ov::element::f32,
-                    "Subtract builder: only f32 Subtract is supported");
+    auto et = sub_node->get_output_element_type(0);
+    OPENVINO_ASSERT(et == ov::element::f32 || et == ov::element::f16 || et == ov::element::i32,
+                    "Subtract builder: only f32/f16/i32 supported");
 
     const auto& shape0 = sub_node->get_input_shape(0);
     const auto& shape1 = sub_node->get_input_shape(1);
 
-    KernelTensor in0{"in0", {shape0.begin(), shape0.end()}};
-    KernelTensor in1{"in1", {shape1.begin(), shape1.end()}};
-    KernelTensor out{"out", {sub_node->get_output_shape(0).begin(), sub_node->get_output_shape(0).end()}};
+    KernelTensor in0{"in0", {shape0.begin(), shape0.end()}, resolve_metal_dtype(et)};
+    KernelTensor in1{"in1", {shape1.begin(), shape1.end()}, resolve_metal_dtype(et)};
+    KernelTensor out{"out", {sub_node->get_output_shape(0).begin(), sub_node->get_output_shape(0).end()},
+                     resolve_metal_dtype(et)};
 
     ir.tensors.push_back(in0);
     ir.tensors.push_back(in1);
@@ -51,6 +51,8 @@ MetalKernelIR build_kernel_ir_for_subtract(const std::shared_ptr<const ov::Model
     op.input0 = &ir.tensors[0];
     op.input1 = &ir.tensors[1];
     op.output = &ir.tensors[2];
+    op.dtype = resolve_metal_dtype(et);
+    op.element_type = static_cast<uint32_t>(static_cast<ov::element::Type_t>(et));
     ir.ops.push_back(op);
 
     return ir;
@@ -124,4 +126,3 @@ MetalKernelIR build_kernel_ir_for_broadcast_subtract(const std::shared_ptr<const
 
 }  // namespace metal_plugin
 }  // namespace ov
-

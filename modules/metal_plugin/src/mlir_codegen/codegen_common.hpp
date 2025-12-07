@@ -118,7 +118,8 @@ std::string generate_msl_for_matmul(const MatMulCodegenDesc& desc, mlir::ModuleO
 std::string generate_msl_for_conv2d(const Conv2DCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_conv3d(const Conv3DCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_eltwise(const EltwiseCodegenDesc& desc, mlir::ModuleOp module);
-std::string generate_msl_for_pool2d(const Pool2DCodegenDesc& desc, mlir::ModuleOp module);
+std::string generate_msl_for_maxpool2d(const Pool2DCodegenDesc& desc, mlir::ModuleOp module);
+std::string generate_msl_for_avgpool2d(const Pool2DCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_softmax(const SoftmaxCodegenDesc& desc, mlir::ModuleOp module);
 
 // Dispatcher by kind.

@@ -101,7 +101,24 @@ void InferRequest::infer() {
             src = m_bound_inputs[idx];
         } else {
             // Use the tensor owned by the base request (preallocated and filled by benchmark_app)
-            src = ov::make_tensor(get_tensor(get_inputs()[idx]));
+            auto impl = get_tensor(get_inputs()[idx]);
+            if (!impl._ptr) {
+                ov::Shape sh = get_inputs()[idx].get_partial_shape().is_static()
+                    ? get_inputs()[idx].get_shape()
+                    : ov::Shape{1};
+                ov::Tensor fallback{get_inputs()[idx].get_element_type(), sh};
+                ov::ISyncInferRequest::set_tensor(get_inputs()[idx], ov::get_tensor_impl(fallback));
+                src = fallback;
+            } else {
+                src = ov::make_tensor(impl);
+            }
+            if (!src.data()) {
+                ov::Shape sh = get_inputs()[idx].get_partial_shape().is_static()
+                    ? get_inputs()[idx].get_shape()
+                    : ov::Shape{1};
+                src = ov::Tensor{get_inputs()[idx].get_element_type(), sh};
+                ov::ISyncInferRequest::set_tensor(get_inputs()[idx], ov::get_tensor_impl(src));
+            }
         }
         input_wrapped.emplace_back(std::move(src));
     }
@@ -109,7 +126,24 @@ void InferRequest::infer() {
     std::vector<ov::Tensor> output_wrapped;
     output_wrapped.reserve(get_outputs().size());
     for (size_t idx = 0; idx < get_outputs().size(); ++idx) {
-        output_wrapped.emplace_back(ov::make_tensor(get_tensor(get_outputs()[idx])));
+        auto base_impl = get_tensor(get_outputs()[idx]);
+        if (!base_impl._ptr) {
+            ov::Shape osh = get_outputs()[idx].get_partial_shape().is_static()
+                ? get_outputs()[idx].get_shape()
+                : ov::Shape{1};
+            ov::Tensor fallback{get_outputs()[idx].get_element_type(), osh};
+            base_impl = ov::get_tensor_impl(fallback);
+            ov::ISyncInferRequest::set_tensor(get_outputs()[idx], base_impl);
+        }
+        ov::Tensor base = ov::make_tensor(base_impl);
+        if (!base.data()) {
+            ov::Shape osh = get_outputs()[idx].get_partial_shape().is_static()
+                ? get_outputs()[idx].get_shape()
+                : ov::Shape{1};
+            base = ov::Tensor{get_outputs()[idx].get_element_type(), osh};
+            ov::ISyncInferRequest::set_tensor(get_outputs()[idx], ov::get_tensor_impl(base));
+        }
+        output_wrapped.emplace_back(base);
     }
 
     OPENVINO_ASSERT(cm->backend(), "Backend is null");
@@ -138,6 +172,13 @@ void InferRequest::infer() {
     for (size_t idx = 0; idx < output_wrapped.size(); ++idx) {
         ov::ISyncInferRequest::set_tensor(get_outputs()[idx], ov::get_tensor_impl(output_wrapped[idx]));
     }
+}
+
+std::vector<ov::ProfilingInfo> InferRequest::get_profiling_info() const {
+    auto cm = get_compiled_model_typed();
+    if (!cm || !cm->backend())
+        return {};
+    return cm->backend()->get_profiling_info();
 }
 
 const std::shared_ptr<const CompiledModel> InferRequest::get_compiled_model_typed() const {
