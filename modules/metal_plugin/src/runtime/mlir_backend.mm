@@ -1472,6 +1472,7 @@ public:
         runtime_ops.reserve(seg.op_count);
         bool runtime_shapes_ok = true;
         std::string runtime_fail_reason;
+        std::unordered_map<const KernelTensor*, uint64_t> concat_axis_offset;
 
         auto update_output_shape = [](KernelOp& op, const std::vector<int64_t>& shp) {
             if (op.output) {
@@ -1713,11 +1714,59 @@ public:
                     update_output_shape(op_rt, cur_in0);
                     break;
                 }
+                case KernelOpKind::Concat: {
+                    if (cur_in0.empty() || !op_rt.output) {
+                        runtime_shapes_ok = false;
+                        runtime_fail_reason = "Concat missing shapes";
+                        break;
+                    }
+                    const auto axis = op_rt.concat.axis;
+                    if (axis < 0 || static_cast<size_t>(axis) >= cur_in0.size()) {
+                        runtime_shapes_ok = false;
+                        runtime_fail_reason = "Concat axis out of range";
+                        break;
+                    }
+                    uint64_t axis_len = static_cast<uint64_t>(cur_in0[static_cast<size_t>(axis)]);
+                    uint64_t axis_off = concat_axis_offset[op_rt.output];
+                    concat_axis_offset[op_rt.output] = axis_off + axis_len;
+
+                    uint64_t outer = 1, inner = 1;
+                    for (size_t i = 0; i < static_cast<size_t>(axis); ++i) outer *= static_cast<uint64_t>(cur_in0[i]);
+                    for (size_t i = static_cast<size_t>(axis) + 1; i < cur_in0.size(); ++i) inner *= static_cast<uint64_t>(cur_in0[i]);
+                    op_rt.concat.outer = outer;
+                    op_rt.concat.inner = inner;
+                    if (op_rt.concat.axis_sizes.empty()) op_rt.concat.axis_sizes.resize(1);
+                    if (op_rt.concat.axis_offsets.empty()) op_rt.concat.axis_offsets.resize(1);
+                    op_rt.concat.axis_sizes[0] = axis_len;
+                    op_rt.concat.axis_offsets[0] = axis_off;
+                    break;
+                }
                 case KernelOpKind::MaxPool2D:
                 case KernelOpKind::AvgPool2D:
                 case KernelOpKind::BatchNorm2D: {
                     // Keep static shapes for now
                     if (!op_rt.output || op_rt.output->shape.empty()) { runtime_shapes_ok = false; runtime_fail_reason = "Pool/BN missing static output shape"; break; }
+                    break;
+                }
+                case KernelOpKind::Interpolate: {
+                    if (cur_in0.size() != 4 || !op_rt.output) {
+                        runtime_shapes_ok = false;
+                        runtime_fail_reason = "Interpolate rank!=4";
+                        break;
+                    }
+                    op_rt.interpolate.N = static_cast<uint32_t>(cur_in0[0]);
+                    op_rt.interpolate.C = static_cast<uint32_t>(cur_in0[1]);
+                    op_rt.interpolate.H_in = static_cast<uint32_t>(cur_in0[2]);
+                    op_rt.interpolate.W_in = static_cast<uint32_t>(cur_in0[3]);
+                    if (!op_rt.output->shape.empty() && op_rt.output->shape.size() == 4) {
+                        op_rt.interpolate.H_out = static_cast<uint32_t>(op_rt.output->shape[2]);
+                        op_rt.interpolate.W_out = static_cast<uint32_t>(op_rt.output->shape[3]);
+                    }
+                    if (op_rt.interpolate.H_in > 0)
+                        op_rt.interpolate.scale_h = static_cast<float>(op_rt.interpolate.H_out) / op_rt.interpolate.H_in;
+                    if (op_rt.interpolate.W_in > 0)
+                        op_rt.interpolate.scale_w = static_cast<float>(op_rt.interpolate.W_out) / op_rt.interpolate.W_in;
+                    update_output_shape(op_rt, op_rt.output->shape);
                     break;
                 }
             }
@@ -1945,6 +1994,8 @@ public:
 
         auto alloc_out_buffer = [&](const KernelOp& op) -> id<MTLBuffer> {
             if (!op.output) return nil;
+            auto it_existing = buf_map.find(op.output);
+            if (it_existing != buf_map.end()) return it_existing->second;
             size_t bytes = tensor_bytes(op.output);
             if (bytes == 0) bytes = 1;  // scalar
             // Ensure host tensor is allocated with matching shape/etype
@@ -2939,6 +2990,12 @@ private:
                             break;
                         case KernelOpKind::AvgPool2D:
                             m_pipelines.push_back(compiler.compile_avgpool2d_kernel(op, log));
+                            break;
+                        case KernelOpKind::Interpolate:
+                            m_pipelines.push_back(compiler.compile_interpolate_kernel(op, log));
+                            break;
+                        case KernelOpKind::Concat:
+                            m_pipelines.push_back(compiler.compile_concat_kernel(op, log));
                             break;
                         case KernelOpKind::Slice:
                             m_pipelines.push_back(compiler.compile_slice_kernel(op, log));
@@ -4196,6 +4253,61 @@ public:
                     [enc dispatchThreads:grid threadsPerThreadgroup:tg];
                     break;
                 }
+                case KernelOpKind::Concat: {
+                    if (!src0 || !dst) {
+                        METAL_LOG_DEBUG("mlir", "[METAL MLIR] Concat missing buffer → fallback");
+                        [enc endEncoding];
+                        m_force_fallback = true;
+                        ensure_fallback(m_original_model);
+                        return;
+                    }
+                    struct ConcatParams { uint32_t outer; uint32_t inner; uint32_t axis_offset; uint32_t axis_len; } params;
+                    params.outer = static_cast<uint32_t>(op.concat.outer);
+                    params.inner = static_cast<uint32_t>(op.concat.inner);
+                    params.axis_offset = op.concat.axis_offsets.empty() ? 0 : static_cast<uint32_t>(op.concat.axis_offsets.front());
+                    params.axis_len = op.concat.axis_sizes.empty() ? 0 : static_cast<uint32_t>(op.concat.axis_sizes.front());
+                    [enc setBuffer:src0 offset:0 atIndex:0];
+                    [enc setBuffer:dst offset:0 atIndex:1];
+                    [enc setBytes:&params length:sizeof(params) atIndex:2];
+                    const uint64_t total = params.outer * params.inner * params.axis_len;
+                    const NSUInteger threads_per_tg = 128;
+                    MTLSize grid = MTLSizeMake(static_cast<NSUInteger>(total), 1, 1);
+                    MTLSize tg = MTLSizeMake(threads_per_tg, 1, 1);
+                    [enc dispatchThreads:grid threadsPerThreadgroup:tg];
+                    break;
+                }
+                case KernelOpKind::Interpolate: {
+                    if (!src0 || !dst) {
+                        METAL_LOG_DEBUG("mlir", "[METAL MLIR] Interpolate missing buffer → fallback");
+                        [enc endEncoding];
+                        m_force_fallback = true;
+                        ensure_fallback(m_original_model);
+                        return;
+                    }
+                    struct InterpolateParams {
+                        uint32_t N, C, H_in, W_in, H_out, W_out;
+                        float scale_h, scale_w;
+                        uint32_t align_corners;
+                    } params;
+                    params.N = op.interpolate.N;
+                    params.C = op.interpolate.C;
+                    params.H_in = op.interpolate.H_in;
+                    params.W_in = op.interpolate.W_in;
+                    params.H_out = op.interpolate.H_out;
+                    params.W_out = op.interpolate.W_out;
+                    params.scale_h = op.interpolate.scale_h;
+                    params.scale_w = op.interpolate.scale_w;
+                    params.align_corners = op.interpolate.align_corners ? 1u : 0u;
+                    [enc setBuffer:src0 offset:0 atIndex:0];
+                    [enc setBuffer:dst offset:0 atIndex:1];
+                    [enc setBytes:&params length:sizeof(params) atIndex:2];
+                    const uint64_t total = static_cast<uint64_t>(op.interpolate.N) * op.interpolate.C * op.interpolate.H_out * op.interpolate.W_out;
+                    const NSUInteger threads_per_tg = 128;
+                    MTLSize grid = MTLSizeMake(static_cast<NSUInteger>(total), 1, 1);
+                    MTLSize tg = MTLSizeMake(threads_per_tg, 1, 1);
+                    [enc dispatchThreads:grid threadsPerThreadgroup:tg];
+                    break;
+                }
                 case KernelOpKind::Conv3D: {
                     if (!src0 || !src1 || !dst) {
                         METAL_LOG_DEBUG("mlir", "[METAL MLIR] Conv3D missing buffer → fallback");
@@ -5154,6 +5266,11 @@ private:
                 op.split.axis = axis_norm;
                 op.split.input_shape.assign(in_shape.begin(), in_shape.end());
                 op.split.split_sizes.assign(parts, dim / parts);
+                op.split.axis_offsets.resize(parts, 0);
+                uint64_t inner = 1;
+                for (size_t k = static_cast<size_t>(axis_norm + 1); k < in_shape.size(); ++k) inner *= static_cast<uint64_t>(in_shape[k]);
+                op.split.inner = inner;
+                for (size_t i = 1; i < parts; ++i) op.split.axis_offsets[i] = op.split.axis_offsets[i - 1] + op.split.split_sizes[i - 1];
                 op.split.dtype = resolve_metal_dtype(node->get_output_element_type(0));
                 op.split.element_type = static_cast<uint32_t>(static_cast<ov::element::Type_t>(node->get_output_element_type(0)));
                 size_t in_idx = make_tensor(node->input_value(0));
@@ -5187,6 +5304,11 @@ private:
                 op.split.input_shape.assign(in_shape.begin(), in_shape.end());
                 op.split.split_sizes.clear();
                 for (auto v : lengths) op.split.split_sizes.push_back(static_cast<size_t>(v));
+                op.split.axis_offsets.resize(lengths.size(), 0);
+                uint64_t inner = 1;
+                for (size_t k = static_cast<size_t>(axis_norm + 1); k < in_shape.size(); ++k) inner *= static_cast<uint64_t>(in_shape[k]);
+                op.split.inner = inner;
+                for (size_t i = 1; i < lengths.size(); ++i) op.split.axis_offsets[i] = op.split.axis_offsets[i - 1] + op.split.split_sizes[i - 1];
                 op.split.dtype = resolve_metal_dtype(node->get_output_element_type(0));
                 op.split.element_type = static_cast<uint32_t>(static_cast<ov::element::Type_t>(node->get_output_element_type(0)));
                 size_t in_idx = make_tensor(node->input_value(0));
@@ -5919,13 +6041,80 @@ private:
                 const bool use_v5 = static_cast<bool>(bn_v5);
                 op.batchnorm.eps = static_cast<float>(use_v5 ? bn_v5->get_eps_value() : bn_v0->get_eps_value());
                 supported = true;
+            } else if (auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(node)) {
+                const auto axis = concat->get_axis();
+                const size_t inputs_count = concat->get_input_size();
+                if (inputs_count == 0) continue;
+                const auto out_shape = concat->get_output_shape(0);
+                if (axis < 0 || static_cast<size_t>(axis) >= out_shape.size()) continue;
+                uint64_t outer = 1;
+                for (size_t i = 0; i < static_cast<size_t>(axis); ++i) outer *= static_cast<uint64_t>(out_shape[i]);
+                uint64_t inner = 1;
+                for (size_t i = static_cast<size_t>(axis) + 1; i < out_shape.size(); ++i) inner *= static_cast<uint64_t>(out_shape[i]);
+
+                size_t out_idx = make_tensor(node->output(0));
+                KernelTensor* out_t = &m_flat_tensors[out_idx];
+                uint64_t axis_offset = 0;
+                for (size_t i = 0; i < inputs_count; ++i) {
+                    KernelOp cop{};
+                    cop.kind = KernelOpKind::Concat;
+                    size_t in_idx = make_tensor(node->input_value(i));
+                    cop.input0 = &m_flat_tensors[in_idx];
+                    cop.output = out_t;
+                    const auto in_shape = node->get_input_shape(i);
+                    uint64_t axis_len = static_cast<uint64_t>(in_shape[static_cast<size_t>(axis)]);
+                    cop.concat.dtype = resolve_metal_dtype(node->get_output_element_type(0));
+                    cop.concat.axis = axis;
+                    cop.concat.outer = outer;
+                    cop.concat.inner = inner;
+                    cop.concat.axis_sizes = {axis_len};
+                    cop.concat.axis_offsets = {axis_offset};
+                    axis_offset += axis_len;
+                    propagate_dtype(cop);
+                    m_flat_ops.push_back(cop);
+                }
+                continue;
+            } else if (auto interp0 = ov::as_type_ptr<const ov::op::v0::Interpolate>(node)) {
+                op.kind = KernelOpKind::Interpolate;
+                add_input_indices(op);
+                set_output(op);
+                const auto in_shape = node->get_input_shape(0);
+                const auto out_shape = node->get_output_shape(0);
+                if (in_shape.size() == 4 && out_shape.size() == 4) {
+                    op.interpolate.dtype = resolve_metal_dtype(node->get_output_element_type(0));
+                    op.interpolate.N = static_cast<uint32_t>(in_shape[0]);
+                    op.interpolate.C = static_cast<uint32_t>(in_shape[1]);
+                    op.interpolate.H_in = static_cast<uint32_t>(in_shape[2]);
+                    op.interpolate.W_in = static_cast<uint32_t>(in_shape[3]);
+                    op.interpolate.H_out = static_cast<uint32_t>(out_shape[2]);
+                    op.interpolate.W_out = static_cast<uint32_t>(out_shape[3]);
+                    op.interpolate.nearest = interp0->get_attrs().mode == "nearest";
+                    op.interpolate.align_corners = false;
+                }
+                supported = true;
+            } else if (auto interp4 = ov::as_type_ptr<const ov::op::v4::Interpolate>(node)) {
+                op.kind = KernelOpKind::Interpolate;
+                add_input_indices(op);
+                set_output(op);
+                const auto in_shape = node->get_input_shape(0);
+                const auto out_shape = node->get_output_shape(0);
+                if (in_shape.size() == 4 && out_shape.size() == 4) {
+                    op.interpolate.dtype = resolve_metal_dtype(node->get_output_element_type(0));
+                    op.interpolate.N = static_cast<uint32_t>(in_shape[0]);
+                    op.interpolate.C = static_cast<uint32_t>(in_shape[1]);
+                    op.interpolate.H_in = static_cast<uint32_t>(in_shape[2]);
+                    op.interpolate.W_in = static_cast<uint32_t>(in_shape[3]);
+                    op.interpolate.H_out = static_cast<uint32_t>(out_shape[2]);
+                    op.interpolate.W_out = static_cast<uint32_t>(out_shape[3]);
+                    const auto& attrs = interp4->get_attrs();
+                    op.interpolate.nearest = attrs.mode == ov::op::v4::Interpolate::InterpolateMode::NEAREST;
+                    op.interpolate.align_corners = attrs.coordinate_transformation_mode == ov::op::v4::Interpolate::CoordinateTransformMode::ALIGN_CORNERS;
+                }
+                supported = true;
             } else if (ov::as_type_ptr<const ov::op::v1::Reshape>(node) ||
                        ov::as_type_ptr<const ov::op::v1::Transpose>(node) ||
                        ov::as_type_ptr<const ov::op::v0::Squeeze>(node) ||
                        ov::as_type_ptr<const ov::op::v0::Unsqueeze>(node) ||
-                       ov::as_type_ptr<const ov::op::v0::Concat>(node) ||
-                       ov::as_type_ptr<const ov::op::v0::Interpolate>(node) ||
-                       ov::as_type_ptr<const ov::op::v4::Interpolate>(node) ||
                        ov::as_type_ptr<const ov::op::v0::Convert>(node)) {
                 // Shape/type only: ensure outputs recorded
                 set_output(op);
@@ -6001,8 +6190,10 @@ private:
                 case KernelOpKind::Softmax:
                 case KernelOpKind::MaxPool2D:
                 case KernelOpKind::AvgPool2D:
+                case KernelOpKind::Interpolate:
                 case KernelOpKind::Slice:
                 case KernelOpKind::Split:
+                case KernelOpKind::Concat:
                     return true;
                 default:
                     return false;

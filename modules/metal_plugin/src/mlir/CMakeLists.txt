@@ -14,6 +14,9 @@ set(METAL_MLIR_SOURCES
     mlir_builder_batchnorm.cpp
     mlir_builder_conv2d.cpp
     mlir_builder_conv3d.cpp
+    mlir_builder_concat.cpp
+    mlir_builder_split.cpp
+    mlir_builder_interpolate.cpp
     mlir_builder_maxpool.cpp
     mlir_builder_avgpool.cpp
     mlir_builder_softmax.cpp

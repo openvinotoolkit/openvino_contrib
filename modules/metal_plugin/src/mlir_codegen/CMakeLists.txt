@@ -10,7 +10,10 @@ set(METAL_MLIR_CODEGEN_SOURCES
     eltwise_codegen.cpp
     pool_max_codegen.cpp
     pool_avg_codegen.cpp
-    softmax_codegen.cpp)
+    softmax_codegen.cpp
+    concat_codegen.cpp
+    interpolate_codegen.cpp
+    split_codegen.cpp)
 
 add_library(metal_mlir_codegen STATIC ${METAL_MLIR_CODEGEN_SOURCES})
 

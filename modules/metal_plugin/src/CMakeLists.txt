@@ -34,10 +34,7 @@ list(APPEND SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/msl/batchnorm_msl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/msl/mul_msl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/msl/sub_msl.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/msl/slice_msl.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/msl/split_msl.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/msl/concat_msl.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/msl/interpolate_msl.cpp
+    # Handwritten MSL removed; MLIR->MSL used instead
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_dtype.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_logger.cpp
 )

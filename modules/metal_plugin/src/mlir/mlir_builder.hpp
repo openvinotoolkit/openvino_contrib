@@ -48,5 +48,14 @@ mlir::ModuleOp build_mlir_conv3d_from_model(const std::shared_ptr<const ov::Mode
 mlir::ModuleOp build_mlir_batchnorm_from_model(const std::shared_ptr<const ov::Model>& model,
                                                mlir::MLIRContext& ctx);
 
+// Build MLIR for a single flat Concat copy (one input -> output with axis_offset/axis_len/inner).
+mlir::ModuleOp build_mlir_concat_from_op(const KernelOp& op, mlir::MLIRContext& ctx);
+
+// Build MLIR for Interpolate (nearest/bilinear) on NHWC?; here assumes NCHW 2D.
+mlir::ModuleOp build_mlir_interpolate_from_op(const KernelOp& op, mlir::MLIRContext& ctx);
+
+// Build MLIR for a single Split slice copy (one output chunk).
+mlir::ModuleOp build_mlir_split_from_op(const KernelOp& op, mlir::MLIRContext& ctx);
+
 }  // namespace metal_plugin
 }  // namespace ov

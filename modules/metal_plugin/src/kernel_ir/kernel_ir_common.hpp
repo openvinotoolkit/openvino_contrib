@@ -176,6 +176,8 @@ struct KernelOp {
         std::vector<int64_t> input_shape;
         int64_t axis = 0;
         std::vector<size_t> split_sizes;
+        std::vector<uint64_t> axis_offsets;
+        uint64_t inner = 1;
         uint32_t element_type = static_cast<uint32_t>(ov::element::Type_t::dynamic);
     } split;
     struct ConcatDesc {

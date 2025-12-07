@@ -20,6 +20,7 @@
 #include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Arith/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Transforms/Passes.h"
+#include "mlir/IR/Verifier.h"
 
 #include <stdexcept>
 #include <cstdlib>
@@ -42,6 +43,12 @@ void run_mlir_pipeline(mlir::ModuleOp module) {
                     mlir::scf::SCFDialect,
                     mlir::func::FuncDialect,
                     mlir::linalg::LinalgDialect>();
+
+    if (mlir::failed(mlir::verify(module))) {
+        llvm::errs() << "[METAL][MLIR] Module verification failed before pipeline\n";
+        module.dump();
+        throw std::runtime_error("MLIR module verification failed");
+    }
 
     mlir::PassManager pm(ctx);
     if (std::getenv("METAL_MLIR_DEBUG")) {

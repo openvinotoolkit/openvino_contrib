@@ -5,11 +5,17 @@
 #include "mlir_codegen/codegen_common.hpp"
 
 #include "openvino/core/except.hpp"
+#include "llvm/Support/raw_ostream.h"
 
 namespace ov {
 namespace metal_plugin {
 
 std::string generate_msl_from_mlir(mlir::ModuleOp module, const BaseCodegenDesc& desc) {
+    static const bool dump_mlir = [](){ const char* v = std::getenv("OV_METAL_DUMP_MLIR"); return v && std::string(v) != "0"; }();
+    if (dump_mlir) {
+        llvm::errs() << "\n[META L MLIR DUMP] kind=" << static_cast<int>(desc.kind) << "\n";
+        module.dump();
+    }
     switch (desc.kind) {
         case KernelOpKind::MatMul:
             return generate_msl_for_matmul(static_cast<const MatMulCodegenDesc&>(desc), module);
@@ -31,6 +37,12 @@ std::string generate_msl_from_mlir(mlir::ModuleOp module, const BaseCodegenDesc&
             return generate_msl_for_avgpool2d(static_cast<const Pool2DCodegenDesc&>(desc), module);
         case KernelOpKind::Softmax:
             return generate_msl_for_softmax(static_cast<const SoftmaxCodegenDesc&>(desc), module);
+        case KernelOpKind::Concat:
+            return generate_msl_for_concat(static_cast<const ConcatCodegenDesc&>(desc), module);
+        case KernelOpKind::Interpolate:
+            return generate_msl_for_interpolate(static_cast<const InterpolateCodegenDesc&>(desc), module);
+        case KernelOpKind::Split:
+            return generate_msl_for_split(static_cast<const SplitCodegenDesc&>(desc), module);
         default:
             OPENVINO_THROW("MLIR->MSL codegen: unsupported op kind");
     }

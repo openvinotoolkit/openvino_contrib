@@ -113,6 +113,34 @@ struct SoftmaxCodegenDesc : BaseCodegenDesc {
     int64_t inner = 1;
 };
 
+struct InterpolateCodegenDesc : BaseCodegenDesc {
+    uint32_t N = 0;
+    uint32_t C = 0;
+    uint32_t H_in = 0;
+    uint32_t W_in = 0;
+    uint32_t H_out = 0;
+    uint32_t W_out = 0;
+    float scale_h = 1.f;
+    float scale_w = 1.f;
+    bool align_corners = false;
+    bool nearest = true;  // false → bilinear
+};
+
+struct SplitCodegenDesc : BaseCodegenDesc {
+    int64_t axis = 0;
+    uint64_t inner = 1;
+    uint64_t outer = 1;
+    std::vector<int64_t> input_shape;
+    std::vector<size_t> split_sizes;
+};
+
+struct ConcatCodegenDesc : BaseCodegenDesc {
+    uint64_t outer = 0;
+    uint64_t inner = 0;
+    uint64_t axis_offset = 0;
+    uint64_t axis_len = 0;
+};
+
 // Per-op emitters (msl generation only; MLIR module is currently unused for non-MatMul stubs).
 std::string generate_msl_for_matmul(const MatMulCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_conv2d(const Conv2DCodegenDesc& desc, mlir::ModuleOp module);
@@ -121,6 +149,9 @@ std::string generate_msl_for_eltwise(const EltwiseCodegenDesc& desc, mlir::Modul
 std::string generate_msl_for_maxpool2d(const Pool2DCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_avgpool2d(const Pool2DCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_softmax(const SoftmaxCodegenDesc& desc, mlir::ModuleOp module);
+std::string generate_msl_for_concat(const ConcatCodegenDesc& desc, mlir::ModuleOp module);
+std::string generate_msl_for_interpolate(const InterpolateCodegenDesc& desc, mlir::ModuleOp module);
+std::string generate_msl_for_split(const SplitCodegenDesc& desc, mlir::ModuleOp module);
 
 // Dispatcher by kind.
 std::string generate_msl_from_mlir(mlir::ModuleOp module, const BaseCodegenDesc& desc);

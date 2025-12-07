@@ -56,23 +56,42 @@ bool MlirBackend::Impl::try_run_split_segment(const Segment& seg,
         }
 
         id<MTLCommandBuffer> cmd = [m_queue commandBuffer];
-        id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
-        [enc setComputePipelineState:m_pipelines[seg.first_op_index + 0]];
-        [enc setBuffer:buf_in offset:0 atIndex:0];
-        for (size_t i = 0; i < outputs_count; ++i) {
-            [enc setBuffer:out_bufs[i] offset:0 atIndex:(1 + i)];
-        }
-
-        auto total_elems = [&]() {
-            size_t t = 1;
-            for (auto d : desc.input_shape) t *= static_cast<size_t>(d);
-            return t;
-        }();
         const NSUInteger threads_per_tg = 128;
-        MTLSize grid = MTLSizeMake(static_cast<NSUInteger>(total_elems), 1, 1);
-        MTLSize tg = MTLSizeMake(threads_per_tg, 1, 1);
-        [enc dispatchThreads:grid threadsPerThreadgroup:tg];
-        [enc endEncoding];
+        struct SplitParams {
+            uint32_t axis_offset;
+            uint32_t split_size;
+            uint32_t inner;
+            uint32_t outer;
+            uint32_t axis_len;
+        };
+        for (size_t i = 0; i < outputs_count; ++i) {
+            SplitParams p{};
+            p.axis_offset = static_cast<uint32_t>(desc.axis_offsets[i]);
+            p.split_size = static_cast<uint32_t>(desc.split_sizes[i]);
+            p.inner = static_cast<uint32_t>(desc.inner);
+            // outer = product of dims before axis
+            uint64_t outer = 1;
+            for (size_t k = 0; k < static_cast<size_t>(desc.axis); ++k)
+                outer *= static_cast<uint64_t>(desc.input_shape[k]);
+            p.outer = static_cast<uint32_t>(outer);
+            p.axis_len = static_cast<uint32_t>(desc.input_shape[static_cast<size_t>(desc.axis)]);
+            id<MTLBuffer> param_buf = [m_device newBufferWithBytes:&p
+                                                            length:sizeof(SplitParams)
+                                                           options:MTLResourceStorageModeShared];
+
+            id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
+            [enc setComputePipelineState:m_pipelines[seg.first_op_index + 0]];
+            [enc setBuffer:buf_in offset:0 atIndex:0];
+            [enc setBuffer:out_bufs[i] offset:0 atIndex:1];
+            [enc setBuffer:param_buf offset:0 atIndex:2];
+
+            NSUInteger threads = static_cast<NSUInteger>(p.outer * p.split_size * p.inner);
+            MTLSize grid = MTLSizeMake(threads, 1, 1);
+            MTLSize tg = MTLSizeMake(threads_per_tg, 1, 1);
+            [enc dispatchThreads:grid threadsPerThreadgroup:tg];
+            [enc endEncoding];
+            [param_buf release];
+        }
         [cmd commit];
         [cmd waitUntilCompleted];
         [buf_in release];
@@ -80,72 +99,10 @@ bool MlirBackend::Impl::try_run_split_segment(const Segment& seg,
         return true;
     }
 
-    // Host slicing path for Slice-only segments (multi-output Split expansion)
-    auto run_host_slices = [&](const Segment& s) {
-        if (inputs.empty()) cpu_fallback_error("no inputs");
-        const ov::Tensor& src = inputs[0];
-        const bool is_f16 = src.get_element_type() == ov::element::f16;
-
-        auto product = [](const std::vector<int64_t>& dims) -> size_t {
-            size_t v = 1;
-            for (auto d : dims) v *= static_cast<size_t>(d);
-            return v;
-        };
-
-        auto copy_slice = [&](const KernelOp& op, ov::Tensor& dst) {
-            const auto& desc = op.slice;
-            const size_t rank = desc.out_shape.size();
-            std::vector<size_t> out_strides(rank, 1);
-            for (int i = static_cast<int>(rank) - 2; i >= 0; --i) {
-                out_strides[i] = out_strides[i + 1] * static_cast<size_t>(desc.out_shape[i + 1]);
-            }
-            const size_t elems = product(desc.out_shape);
-            if (is_f16) {
-                const auto* src_ptr = src.data<const ov::float16>();
-                auto* dst_ptr = dst.data<ov::float16>();
-                for (size_t idx = 0; idx < elems; ++idx) {
-                    size_t tmp = idx;
-                    int64_t in_index = 0;
-                    for (size_t d = 0; d < rank; ++d) {
-                        size_t coord = tmp / out_strides[d];
-                        tmp -= coord * out_strides[d];
-                        int64_t in_coord = desc.starts[d] + static_cast<int64_t>(coord) * desc.steps[d];
-                        in_index += in_coord * desc.in_strides[d];
-                    }
-                    dst_ptr[idx] = src_ptr[in_index];
-                }
-            } else {
-                const auto* src_ptr = src.data<const float>();
-                auto* dst_ptr = dst.data<float>();
-                for (size_t idx = 0; idx < elems; ++idx) {
-                    size_t tmp = idx;
-                    int64_t in_index = 0;
-                    for (size_t d = 0; d < rank; ++d) {
-                        size_t coord = tmp / out_strides[d];
-                        tmp -= coord * out_strides[d];
-                        int64_t in_coord = desc.starts[d] + static_cast<int64_t>(coord) * desc.steps[d];
-                        in_index += in_coord * desc.in_strides[d];
-                    }
-                    dst_ptr[idx] = src_ptr[in_index];
-                }
-            }
-        };
-
-        OPENVINO_ASSERT(outputs.size() == s.op_count, "Split host path expects one output per Slice op");
-        for (size_t i = 0; i < s.op_count; ++i) {
-            const auto& op = seg_op(i);
-            OPENVINO_ASSERT(op.kind == KernelOpKind::Slice, "Split host path supports Slice-only segment");
-            auto& out = outputs[i];
-            const auto& oshp = op.output && !op.output->shape.empty()
-                                   ? op.output->shape
-                                   : op.slice.out_shape;
-            ov::Shape shape;
-            shape.assign(oshp.begin(), oshp.end());
-            if (out.get_shape() != shape || out.get_element_type() != src.get_element_type()) {
-                out = ov::Tensor{src.get_element_type(), shape};
-            }
-            copy_slice(op, out);
-        }
+    auto product = [](const std::vector<int64_t>& dims) -> size_t {
+        size_t v = 1;
+        for (auto d : dims) v *= static_cast<size_t>(d);
+        return v;
     };
 
     if (outputs.size() > 1) {
@@ -157,7 +114,40 @@ bool MlirBackend::Impl::try_run_split_segment(const Segment& seg,
             }
         }
         if (slice_only) {
-            run_host_slices(seg);
+            if (inputs.empty()) cpu_fallback_error("no inputs");
+            const ov::Tensor& src = inputs[0];
+            id<MTLBuffer> buf_in = [m_device newBufferWithBytesNoCopy:const_cast<void*>(src.data())
+                                                        length:src.get_byte_size()
+                                                       options:MTLResourceStorageModeShared
+                                                   deallocator:nil];
+            id<MTLCommandBuffer> cmd = [m_queue commandBuffer];
+            OPENVINO_ASSERT(outputs.size() == seg.op_count, "Slice segment outputs size mismatch");
+            for (size_t i = 0; i < seg.op_count; ++i) {
+                const auto& op = seg_op(i);
+                const auto& oshp = op.output && !op.output->shape.empty()
+                                       ? op.output->shape
+                                       : op.slice.out_shape;
+                ov::Shape shape(oshp.begin(), oshp.end());
+                if (outputs[i].get_shape() != shape || outputs[i].get_element_type() != src.get_element_type()) {
+                    outputs[i] = ov::Tensor{src.get_element_type(), shape};
+                }
+                id<MTLBuffer> buf_out = [m_device newBufferWithBytesNoCopy:const_cast<void*>(outputs[i].data())
+                                                              length:outputs[i].get_byte_size()
+                                                             options:MTLResourceStorageModeShared
+                                                         deallocator:nil];
+                id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
+                [enc setComputePipelineState:m_pipelines[seg.first_op_index + i]];
+                [enc setBuffer:buf_in offset:0 atIndex:0];
+                [enc setBuffer:buf_out offset:0 atIndex:1];
+                MTLSize grid = MTLSizeMake(static_cast<NSUInteger>(product(oshp)), 1, 1);
+                MTLSize tg = MTLSizeMake(128, 1, 1);
+                [enc dispatchThreads:grid threadsPerThreadgroup:tg];
+                [enc endEncoding];
+                [buf_out release];
+            }
+            [cmd commit];
+            [cmd waitUntilCompleted];
+            [buf_in release];
             return true;
         }
         if (m_allow_partial_offload) {
