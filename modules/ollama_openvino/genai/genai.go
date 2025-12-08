@@ -22,11 +22,26 @@ package genai
 typedef int (*callback_function)(const char*, void*);
 
 extern int goCallbackBridge(char* input, void* ptr);
+
+static ov_status_e ov_genai_llm_pipeline_create_npu_output_2048(const char* models_path,
+																  const char* device,
+                                                                  ov_genai_llm_pipeline** pipe) {
+	return 	ov_genai_llm_pipeline_create(models_path, "NPU", 4, pipe, "MAX_PROMPT_LEN", "2048", "MIN_RESPONSE_LEN", "256");
+}
+
+static ov_status_e ov_genai_llm_pipeline_create_cgo(const char* models_path,
+																  const char* device,
+                                                                  ov_genai_llm_pipeline** pipe) {
+	return 	ov_genai_llm_pipeline_create(models_path, device, 0, pipe);
+}
+
 */
 import "C"
 
 import (
 	"archive/tar"
+	"bufio"
+	"bytes"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -53,6 +68,74 @@ type SamplingParams struct {
 // }
 
 type Model *C.ov_genai_llm_pipeline
+
+func IsGGUF(filePath string) (bool, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return false, fmt.Errorf("failed to open file: %v", err)
+	}
+	defer file.Close()
+
+	// Read the first 4 bytes (magic number for GGUF)
+	reader := bufio.NewReader(file)
+	magicBytes := make([]byte, 4)
+	_, err = reader.Read(magicBytes)
+	if err != nil {
+		return false, fmt.Errorf("failed to read magic number: %v", err)
+	}
+
+	// Compare the magic number (GGUF in ASCII)
+	expectedMagic := []byte{0x47, 0x47, 0x55, 0x46} // "GGUF" in hex
+	for i := 0; i < 4; i++ {
+		if magicBytes[i] != expectedMagic[i] {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+func IsGzipByMagicBytes(filepath string) (bool, error) {
+	file, err := os.Open(filepath)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+
+	magicBytes := make([]byte, 2)
+	_, err = file.Read(magicBytes)
+	if err != nil {
+		return false, err
+	}
+
+	return bytes.Equal(magicBytes, []byte{0x1F, 0x8B}), nil
+}
+
+func CopyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	if err != nil {
+		return err
+	}
+
+	err = dstFile.Sync()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
 
 func UnpackTarGz(tarGzPath string, destDir string) error {
 	file, err := os.Open(tarGzPath)
@@ -111,7 +194,12 @@ func CreatePipeline(modelsPath string, device string) *C.ov_genai_llm_pipeline {
 	defer C.free(unsafe.Pointer(cModelsPath))
 	defer C.free(unsafe.Pointer(cDevice))
 
-	C.ov_genai_llm_pipeline_create(cModelsPath, cDevice, &pipeline)
+	// C.ov_genai_llm_pipeline_create(cModelsPath, cDevice, &pipeline)
+	if device == "NPU" {
+		C.ov_genai_llm_pipeline_create_npu_output_2048(cModelsPath, cDevice, &pipeline)
+	} else {
+		C.ov_genai_llm_pipeline_create_cgo(cModelsPath, cDevice, &pipeline)
+	}
 	return pipeline
 }
 
@@ -147,6 +235,10 @@ func PrintGenaiMetrics(metrics *C.ov_genai_perf_metrics) {
 	var tpot_std C.float
 	C.ov_genai_perf_metrics_get_tpot(metrics, &tpot_mean, &tpot_std)
 	log.Printf("TPOT: %.2f ± %.2f ms/token\n", tpot_mean, tpot_std)
+
+	var num_generation_tokens C.size_t
+	C.ov_genai_perf_metrics_get_num_generation_tokens(metrics, &num_generation_tokens)
+	log.Printf("Num of generation tokens: %d\n", num_generation_tokens)
 
 	var tput_mean C.float
 	var tput_std C.float

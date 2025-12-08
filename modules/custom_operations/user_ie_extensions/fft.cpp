@@ -112,7 +112,10 @@ void FFT::validate_and_infer_types() {
 }
 
 std::shared_ptr<ov::Node> FFT::clone_with_new_inputs(const ov::OutputVector& new_args) const {
-    OPENVINO_ASSERT(new_args.size() == 2, "Incorrect number of new arguments");
+    const ov::Dimension exp_no_inputs{2};
+    OPENVINO_ASSERT(exp_no_inputs.compatible(new_args.size()),
+                    "Incorrect number of new arguments, provided: ",
+                    new_args.size());
     return std::make_shared<FFT>(new_args, inverse, centered);
 }
 
@@ -128,15 +131,15 @@ bool FFT::visit_attributes(ov::AttributeVisitor& visitor) {
 
 bool FFT::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
     //const_cast because the cvSetData use user pointer as non-const, should be ok as it looks like input data
-    float *inpData = reinterpret_cast<float *>(const_cast<void*>(inputs[0].data()));
+    auto *inpData = const_cast<float*>(inputs[0].data<float>());
 
     if (inputs[1].get_element_type() != ov::element::i32)
         OPENVINO_THROW("Unexpected dims type: " + inputs[1].get_element_type().to_string());
 
-    const int32_t *signalDimsData = reinterpret_cast<const int32_t *>(inputs[1].data());
-    float* outData = reinterpret_cast<float*>(outputs[0].data());
+    auto *signalDimsData = inputs[1].data<int32_t>();
+    auto *outData = outputs[0].data<float>();
     std::vector<size_t> dims = inputs[0].get_shape();
-    const size_t numSignalDims = inputs[1].get_shape()[0];
+    const size_t numSignalDims = inputs[1].get_shape().empty() ? 1:  inputs[1].get_shape().size();
 
     if (!((dims.size() == 3 && numSignalDims == 1 && signalDimsData[0] == 1) ||
           (dims.size() == 4 && ((numSignalDims == 1 && signalDimsData[0] == 1) ||

@@ -36,7 +36,6 @@ ov_add_test_target(
             openvino::gtest_main
             openvino::gmock
             openvino::commonTestUtils
-        ADD_CPPLINT
         ADD_CLANG_FORMAT
         LABELS
             CUDA

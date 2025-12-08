@@ -108,6 +108,36 @@ func SelectDevice(device string, supportedDevices []string) string {
 	return device
 }
 
+func addIndexToDuplicates(input []string) []string {
+	// output := make([]string, 0, len(input))
+	var output []string
+	counters := make(map[string]int)    // Used to record the occurrence count of each value
+	duplicates := make(map[string]bool) // Used to mark which values are duplicates
+
+	// First pass: Count the occurrences of each value and mark duplicates
+	for _, item := range input {
+		counters[item]++
+		if counters[item] > 1 {
+			duplicates[item] = true
+		}
+	}
+
+	// Second pass: Add an index to duplicate values
+	for _, item := range input {
+		if duplicates[item] { // If it's a duplicate
+			output = append(output, fmt.Sprintf("%s:%d", item, counters[item]-1))
+			counters[item]-- // Update the counter
+		} else { // If it's not a duplicate
+			output = append(output, item)
+		}
+	}
+	if ContainsInSlice(input, "GPU") {
+		output = append(output, "GPU")
+	}
+
+	return output
+}
+
 // NewGenaiServer will run a server
 func NewGenaiServer(gpus discover.GpuInfoList, model string, modelname string, inferdevice string, f *ggml.GGML, adapters, projectors []string, opts api.Options, numParallel int) (GenaiServer, error) {
 	systemInfo := discover.GetSystemInfo()
@@ -121,6 +151,7 @@ func NewGenaiServer(gpus discover.GpuInfoList, model string, modelname string, i
 	for i := 0; i < int(len(genai_device)); i++ {
 		genai_device_list = append(genai_device_list, genai_device[i]["device_name"])
 	}
+	genai_device_list = addIndexToDuplicates(genai_device_list)
 	inferdevice = SelectDevice(inferdevice, genai_device_list)
 
 	params := []string{

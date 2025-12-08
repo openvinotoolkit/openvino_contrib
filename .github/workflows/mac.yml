@@ -101,6 +101,8 @@ jobs:
             -DCMAKE_VERBOSE_MAKEFILE=ON \
             -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }} \
             -DBUILD_nvidia_plugin=OFF \
+            -DBUILD_ollama_openvino=OFF \
+            -DBUILD_llama_cpp_plugin=OFF \
             -DOPENVINO_EXTRA_MODULES=${{ env.OPENVINO_CONTRIB_REPO }}/modules \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=${{ env.MACOSX_DEPLOYMENT_TARGET }} \
             -DCMAKE_OSX_ARCHITECTURES=${{ env.OSX_ARCHITECTURES }} \
@@ -110,9 +112,7 @@ jobs:
             -DENABLE_OV_TF_FRONTEND=OFF \
             -DENABLE_OV_TF_LITE_FRONTEND=OFF \
             -DENABLE_OV_PYTORCH_FRONTEND=OFF \
-            -DENABLE_CPPLINT=OFF \
             -DENABLE_INTEL_NPU=OFF \
-            -DBUILD_ollama_openvino=OFF \
             -S ${{ env.OPENVINO_REPO }} \
             -B ${{ env.BUILD_DIR }}
 

@@ -26,7 +26,7 @@ jobs:
     defaults:
       run:
         shell: pwsh
-    runs-on: windows-2019-16-core
+    runs-on: windows-2022-16-core
     env:
       CMAKE_BUILD_TYPE: 'Release'
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
@@ -127,17 +127,17 @@ jobs:
           cmake -GNinja `
             -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }} `
             -DBUILD_nvidia_plugin=OFF `
+            -DBUILD_ollama_openvino=OFF `
+            -DBUILD_llama_cpp_plugin=OFF `
             -DENABLE_OV_TF_FRONTEND=OFF `
             -DENABLE_OV_PADDLE_FRONTEND=OFF `
             -DENABLE_OV_TF_LITE_FRONTEND=OFF `
             -DENABLE_OV_PYTORCH_FRONTEND=OFF `
             -DENABLE_INTEL_GPU=OFF `
-            -DENABLE_CPPLINT=OFF `
             -DENABLE_SAMPLES=OFF `
             -DENABLE_PYTHON=ON `
             -DENABLE_INTEL_NPU=OFF `
             -DENABLE_JS=OFF `
-            -DBUILD_ollama_openvino=OFF `
             -DOPENVINO_EXTRA_MODULES=${{ env.OPENVINO_CONTRIB_REPO }}/modules `
             -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.CMAKE_CXX_COMPILER_LAUNCHER }} `
             -DCMAKE_C_COMPILER_LAUNCHER=${{ env.CMAKE_C_COMPILER_LAUNCHER }} `
