@@ -36,10 +36,18 @@ RUN apt-get update && \
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 && \
     update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1
 
-# Upgrade pip
+# Upgrade pip, setuptools, wheel, blinker
 RUN python -m pip install --no-cache-dir --upgrade --ignore-installed pip setuptools wheel blinker
 
+# intel GPU
+RUN cd /usr/lib/python3/dist-packages/ && \
+    ln -s apt_pkg.cpython-312-x86_64-linux-gnu.so apt_pkg.so
 
+RUN add-apt-repository -y ppa:kobuk-team/intel-graphics || true
+RUN apt update && \
+    apt install -y --no-install-recommends \
+    libze-intel-gpu1 \
+    intel-opencl-icd
 
 
 
@@ -66,4 +74,5 @@ RUN cd ov_extensions && rm -rf build && bash build.sh && cd ..
 # RUN python export_ov_e2e.py --checkpoint pretrained/epoch_160.pth --output pretrained/pointpillars_ov
 
 # # Test
-# RUN python test-e2eOV.py --device CPU --headless
+# RUN python test-e2eOV.py --device CPU
+# RUN python test-e2eOV.py --device GPU
