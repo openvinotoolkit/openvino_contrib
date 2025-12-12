@@ -7,16 +7,29 @@ Written by Shaoshuai Shi
 All Rights Reserved 2019-2020.
 */
 
+#ifdef WITH_CUDA
 #include <cuda.h>
 #include <cuda_runtime_api.h>
+#endif // WITH_CUDA
 #include <torch/extension.h>
 #include <torch/serialize/tensor.h>
 
 #include <cstdint>
 #include <vector>
 
+#ifndef WITH_CUDA
+#include <cstdio>
+#include <cassert>
+#endif // !WITH_CUDA
+
+#ifdef WITH_CUDA
 #define CHECK_CUDA(x) \
   TORCH_CHECK(x.device().is_cuda(), #x, " must be a CUDAtensor ")
+#else
+#define CHECK_CUDA(x) // No-op for CPU builds
+// #define CHECK_CUDA(x) \
+//   TORCH_CHECK(x.device().is_cpu(), #x, " must be a CPU tensor")
+#endif // WITH_CUDA
 #define CHECK_CONTIGUOUS(x) \
   TORCH_CHECK(x.is_contiguous(), #x, " must be contiguous ")
 #define CHECK_INPUT(x) \
@@ -25,6 +38,7 @@ All Rights Reserved 2019-2020.
 
 #define DIVUP(m, n) ((m) / (n) + ((m) % (n) > 0))
 
+#ifdef WITH_CUDA
 #define CHECK_ERROR(ans) \
   { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line,
@@ -35,6 +49,15 @@ inline void gpuAssert(cudaError_t code, const char *file, int line,
     if (abort) exit(code);
   }
 }
+#else  // CPU build
+#define CHECK_ERROR(ans) { cpuAssert((ans), __FILE__, __LINE__); }
+inline void cpuAssert(bool success, const char *file, int line, bool abort = true) {
+  if (!success) {
+    fprintf(stderr, "CPUassert: %s %d\n", file, line);
+    if (abort) exit(EXIT_FAILURE);
+  }
+}
+#endif
 
 const int THREADS_PER_BLOCK_NMS = sizeof(unsigned long long) * 8;
 
@@ -100,7 +123,6 @@ int nms_gpu(at::Tensor boxes, at::Tensor keep,
 
   CHECK_INPUT(boxes);
   CHECK_CONTIGUOUS(keep);
-  cudaSetDevice(device_id);
 
   int boxes_num = boxes.size(0);
   const float *boxes_data = boxes.data_ptr<float>();
@@ -108,6 +130,8 @@ int nms_gpu(at::Tensor boxes, at::Tensor keep,
 
   const int col_blocks = DIVUP(boxes_num, THREADS_PER_BLOCK_NMS);
 
+#ifdef WITH_CUDA
+  cudaSetDevice(device_id);
   unsigned long long *mask_data = NULL;
   CHECK_ERROR(cudaMalloc((void **)&mask_data,
                          boxes_num * col_blocks * sizeof(unsigned long long)));
@@ -143,6 +167,26 @@ int nms_gpu(at::Tensor boxes, at::Tensor keep,
   }
   delete[] remv_cpu;
   if (cudaSuccess != cudaGetLastError()) printf("Error!\n");
+#else
+  unsigned long long *mask_cpu = new unsigned long long[boxes_num * col_blocks];
+  nmsLauncher(boxes_data, mask_cpu, boxes_num, nms_overlap_thresh);
+
+  unsigned long long *remv_cpu = new unsigned long long[col_blocks]();
+  int num_to_keep = 0;
+  for (int i = 0; i < boxes_num; ++i) {
+    int nblock = i / THREADS_PER_BLOCK_NMS;
+    int inblock = i % THREADS_PER_BLOCK_NMS;
+    if (!(remv_cpu[nblock] & (1ULL << inblock))) {
+      keep_data[num_to_keep++] = i;
+      unsigned long long *p = mask_cpu + i * col_blocks;
+      for (int j = nblock; j < col_blocks; ++j) {
+        remv_cpu[j] |= p[j];
+      }
+    }
+  }
+  delete[] remv_cpu;
+  delete[] mask_cpu;
+#endif
 
   return num_to_keep;
 }
@@ -154,7 +198,6 @@ int nms_normal_gpu(at::Tensor boxes, at::Tensor keep,
 
   CHECK_INPUT(boxes);
   CHECK_CONTIGUOUS(keep);
-  cudaSetDevice(device_id);
 
   int boxes_num = boxes.size(0);
   const float *boxes_data = boxes.data_ptr<float>();
@@ -162,6 +205,8 @@ int nms_normal_gpu(at::Tensor boxes, at::Tensor keep,
 
   const int col_blocks = DIVUP(boxes_num, THREADS_PER_BLOCK_NMS);
 
+#ifdef WITH_CUDA
+  cudaSetDevice(device_id);
   unsigned long long *mask_data = NULL;
   CHECK_ERROR(cudaMalloc((void **)&mask_data,
                          boxes_num * col_blocks * sizeof(unsigned long long)));
@@ -197,6 +242,26 @@ int nms_normal_gpu(at::Tensor boxes, at::Tensor keep,
   }
   delete[] remv_cpu;
   if (cudaSuccess != cudaGetLastError()) printf("Error!\n");
+#else
+  unsigned long long *mask_cpu = new unsigned long long[boxes_num * col_blocks];
+  nmsNormalLauncher(boxes_data, mask_cpu, boxes_num, nms_overlap_thresh);
+
+  unsigned long long *remv_cpu = new unsigned long long[col_blocks]();
+  int num_to_keep = 0;
+  for (int i = 0; i < boxes_num; ++i) {
+    int nblock = i / THREADS_PER_BLOCK_NMS;
+    int inblock = i % THREADS_PER_BLOCK_NMS;
+    if (!(remv_cpu[nblock] & (1ULL << inblock))) {
+      keep_data[num_to_keep++] = i;
+      unsigned long long *p = mask_cpu + i * col_blocks;
+      for (int j = nblock; j < col_blocks; ++j) {
+        remv_cpu[j] |= p[j];
+      }
+    }
+  }
+  delete[] remv_cpu;
+  delete[] mask_cpu;
+#endif
 
   return num_to_keep;
 }
