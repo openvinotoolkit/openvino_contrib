@@ -2,6 +2,7 @@ import numpy as np
 import os
 import pickle
 
+_read_kitti_pcd = None
 
 def read_pickle(file_path, suffix='.pkl'):
     assert os.path.splitext(file_path)[1] == suffix
@@ -16,16 +17,26 @@ def write_pickle(results, file_path):
 
 
 def read_points(file_path, dim=4):
-    suffix = os.path.splitext(file_path)[1] 
-    assert suffix in ['.bin', '.ply']
+    suffix = os.path.splitext(file_path)[1]
+    assert suffix in ['.bin', '.ply', '.pcd']
     if suffix == '.bin':
         return np.fromfile(file_path, dtype=np.float32).reshape(-1, dim)
+    elif suffix == '.pcd':
+        # import here to avoid circular imports: pointpillars.utils <-> pointpillars.dataset
+        global _read_kitti_pcd
+        if _read_kitti_pcd is None:
+            from pointpillars.dataset.kitti_open3d.utils import read_kitti_pcd as _impl
+            _read_kitti_pcd = _impl
+        pts = _read_kitti_pcd(file_path)
+
+        return pts.astype(np.float32)
     else:
+        # .ply not implemented yet
         raise NotImplementedError
 
 
 def write_points(lidar_points, file_path):
-    suffix = os.path.splitext(file_path)[1] 
+    suffix = os.path.splitext(file_path)[1]
     assert suffix in ['.bin', '.ply']
     if suffix == '.bin':
         with open(file_path, 'w') as f:
@@ -85,7 +96,7 @@ def read_label(file_path):
     annotation['dimensions'] = np.array([line[8:11] for line in lines], dtype=np.float32)[:, [2, 0, 1]] # hwl -> camera coordinates (lhw)
     annotation['location'] = np.array([line[11:14] for line in lines], dtype=np.float32)
     annotation['rotation_y'] = np.array([line[14] for line in lines], dtype=np.float32)
-    
+
     return annotation
 
 
@@ -99,7 +110,7 @@ def write_label(result, file_path, suffix='.txt'):
         result['name'], result['truncated'], result['occluded'], result['alpha'], \
         result['bbox'], result['dimensions'], result['location'], result['rotation_y'], \
         result['score']
-    
+
     with open(file_path, 'w') as f:
         for i in range(len(name)):
             bbox_str = ' '.join(map(str, bbox[i]))
