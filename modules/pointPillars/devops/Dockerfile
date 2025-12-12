@@ -68,11 +68,17 @@ RUN CPU_BUILD=1 python setup.py build_ext --inplace
 COPY ov_extensions ./ov_extensions
 RUN cd ov_extensions && rm -rf build && bash build.sh && cd ..
 
-# # Exporting OpenVINO model
-# COPY export_ov_e2e.py .
-# COPY pretrained .
-# RUN python export_ov_e2e.py --checkpoint pretrained/epoch_160.pth --output pretrained/pointpillars_ov
+# Exporting OpenVINO model
+COPY export_ov_e2e.py .
+COPY pretrained ./pretrained
+# python export_ov_e2e.py --checkpoint pretrained/epoch_160.pth --output pretrained/pointpillars_ov
 
-# # Test
-# RUN python test-e2eOV.py --device CPU
-# RUN python test-e2eOV.py --device GPU
+# Test
+COPY e2eOVInference.py .
+COPY test-e2eOV.py .
+# python test-e2eOV.py --device CPU
+# python test-e2eOV.py --device GPU
+
+# Evaluation Kitti
+COPY evaluate-e2eOV.py .
+# python evaluate-e2eOV.py --data_root /Datasets --nsamples 10

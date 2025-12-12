@@ -1,6 +1,5 @@
 """
 End-to-End OpenVINO Inference for PointPillars
-Pure OpenVINO implementation - no PyTorch dependency
 Uses custom extensions for voxelization and post-processing
 """
 
@@ -12,7 +11,7 @@ from openvino import Core, Tensor
 class E2EOVInference:
     """
     End-to-End OpenVINO inference engine for PointPillars
-    Pure OpenVINO implementation with custom C++ extensions
+    Uses custom extensions for voxelization and post-processing
     """
 
     def __init__(self, config_path='pretrained/pointpillars_full_config.json', device='CPU'):

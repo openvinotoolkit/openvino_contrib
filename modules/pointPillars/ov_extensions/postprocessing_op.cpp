@@ -260,7 +260,7 @@ bool PostProcessingOp::evaluate(ov::TensorVector& outputs, const ov::TensorVecto
     std::vector<int64_t> final_labels;
     std::vector<float> final_scores;
 
-    const int THREADS_PER_BLOCK_NMS = 64;  // Same as PyTorch
+    const int THREADS_PER_BLOCK_NMS = 64;  // Similar to PyTorch
 
     for (int cls = 0; cls < m_nclasses; ++cls) {
         // Filter by score threshold
@@ -297,7 +297,7 @@ bool PostProcessingOp::evaluate(ov::TensorVector& outputs, const ov::TensorVecto
             sorted_boxes_2d[i * 5 + 4] = bbox[6];                   // theta
         }
 
-        // Apply mask-based NMS (exact same algorithm as PyTorch nms_kernel)
+        // Apply mask-based NMS (similar to PyTorch nms_kernel)
         const int col_blocks = (boxes_num + THREADS_PER_BLOCK_NMS - 1) / THREADS_PER_BLOCK_NMS;
         std::vector<unsigned long long> mask(boxes_num * col_blocks, 0);
 

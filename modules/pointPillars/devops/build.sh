@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build script for PointPillars Docker images
+# Build script for PointPillars Docker image
 # Usage: ./devops/build.sh
 
 set -e

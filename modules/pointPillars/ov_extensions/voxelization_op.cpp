@@ -1,5 +1,4 @@
 // OpenVINO custom operation for PointPillars voxelization
-// Wraps existing voxelization C++ implementation
 
 #include "voxelization_op.hpp"
 #include <openvino/core/except.hpp>

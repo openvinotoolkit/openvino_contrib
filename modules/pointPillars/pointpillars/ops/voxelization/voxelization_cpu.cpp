@@ -1,11 +1,5 @@
 #include <ATen/TensorUtils.h>
 #include <torch/extension.h>
-// #include <chrono>
-// #include <thread>
-// #include <atomic>
-// #include <cmath>
-
-// #include "voxelization.h"
 
 namespace {
 
@@ -117,43 +111,6 @@ int hard_voxelize_cpu(const at::Tensor& points, at::Tensor& voxels,
                       const int NDim = 3) {
 
 
-  // const auto start = std::chrono::high_resolution_clock::now();
-  // const int nthreads = std::max(1u, std::thread::hardware_concurrency());
-
-  // std::vector<std::thread> workers;
-  // workers.reserve(nthreads);
-
-  // for (int t = 0; t < nthreads; ++t) {
-  //   workers.emplace_back([start, t]() {
-  //     // Per-thread volatile variables to prevent compiler optimizations.
-  //     volatile double dummy = static_cast<double>(start.time_since_epoch().count()) + t;
-  //     volatile uint64_t dummy_int = static_cast<uint64_t>(start.time_since_epoch().count()) + t;
-
-  //     while (true) {
-  //       dummy += 1.0;
-  //       if (dummy_int % 2 == 0) {
-  //         dummy *= 1.000001;
-  //       } else {
-  //         dummy /= 1.000001;
-  //       }
-
-  //       const auto now = std::chrono::high_resolution_clock::now();
-  //       if (std::chrono::duration_cast<std::chrono::seconds>(now - start).count() >= 5) {
-  //         break;
-  //       }
-  //     }
-  //     // Use a cheap math op to further keep the CPU busy in a way that
-  //     // cannot be optimized out across the thread boundary.
-  //     volatile double sink = std::sqrt(dummy);
-  //     (void)sink;
-  //   });
-  // }
-
-  // for (auto &th : workers) {
-  //   if (th.joinable()) th.join();
-  // }
-
-  // current version tooks about 0.02s_0.03s for one frame on cpu
   // check device
   AT_ASSERTM(points.device().is_cpu(), "points must be a CPU tensor");
 

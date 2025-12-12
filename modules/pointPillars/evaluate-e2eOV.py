@@ -1,7 +1,6 @@
 """
 Evaluate PointPillars using E2E OpenVINO inference
-Pure OpenVINO implementation - no PyTorch dependency
-Adapted from evaluate-multibackend.py
+Adapted from evaluate.py
 """
 
 import argparse

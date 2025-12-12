@@ -1,12 +1,12 @@
 """
 Test PointPillars OpenVINO model with E2E inference
-Pure OpenVINO implementation - no PyTorch dependency
 Usage: python test_exported_model.py --device cpu --pc_path /workspace/pointpillars/dataset/demo_data/test/000002.bin
 """
 
 import argparse
 import numpy as np
 import os
+import sys
 from e2eOVInference import E2EOVInference
 
 
