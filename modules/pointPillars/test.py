@@ -25,13 +25,13 @@ def point_range_filter(pts, point_range=[0, -39.68, -3, 69.12, 39.68, 1]):
     flag_z_high = pts[:, 2] < point_range[5]
     keep_mask = flag_x_low & flag_y_low & flag_z_low & flag_x_high & flag_y_high & flag_z_high
     pts = pts[keep_mask]
-    return pts 
+    return pts
 
 
 def main(args):
     CLASSES = {
-        'Pedestrian': 0, 
-        'Cyclist': 1, 
+        'Pedestrian': 0,
+        'Cyclist': 1,
         'Car': 2
         }
     LABEL2CLASSES = {v:k for k, v in CLASSES.items()}
@@ -44,9 +44,9 @@ def main(args):
         model = PointPillars(nclasses=len(CLASSES))
         model.load_state_dict(
             torch.load(args.ckpt, map_location=torch.device('cpu')))
-    
+
     if not os.path.exists(args.pc_path):
-        raise FileNotFoundError 
+        raise FileNotFoundError
     pc = read_points(args.pc_path)
     pc = point_range_filter(pc)
     pc_torch = torch.from_numpy(pc)
@@ -54,7 +54,7 @@ def main(args):
         calib_info = read_calib(args.calib_path)
     else:
         calib_info = None
-    
+
     if os.path.exists(args.gt_path):
         gt_label = read_label(args.gt_path)
     else:
@@ -69,8 +69,8 @@ def main(args):
     with torch.no_grad():
         if not args.no_cuda:
             pc_torch = pc_torch.cuda()
-        
-        result_filter = model(batched_pts=[pc_torch], 
+
+        result_filter = model(batched_pts=[pc_torch],
                               mode='test')[0]
     if calib_info is not None and img is not None:
         tr_velo_to_cam = calib_info['Tr_velo_to_cam'].astype(np.float32)
@@ -84,10 +84,15 @@ def main(args):
     lidar_bboxes = result_filter['lidar_bboxes']
     labels, scores = result_filter['labels'], result_filter['scores']
 
-    vis_pc(pc, bboxes=lidar_bboxes, labels=labels)
+    if not args.headless:
+        vis_pc(pc, bboxes=lidar_bboxes, labels=labels)
+    else:
+        print(f"Detected {len(lidar_bboxes)} objects:")
+        for i, (bbox, label, score) in enumerate(zip(lidar_bboxes, labels, scores)):
+            print(f"  Object {i}: class={label}, score={score:.3f}")
 
     if calib_info is not None and img is not None:
-        bboxes2d, camera_bboxes = result_filter['bboxes2d'], result_filter['camera_bboxes'] 
+        bboxes2d, camera_bboxes = result_filter['bboxes2d'], result_filter['camera_bboxes']
         bboxes_corners = bbox3d2corners_camera(camera_bboxes)
         image_points = points_camera2image(bboxes_corners, P2)
         img = vis_img_3d(img, image_points, labels, rt=True)
@@ -108,22 +113,23 @@ def main(args):
         gt_lidar_bboxes = gt_lidar_bboxes[sel]
 
         gt_labels = [-1] * len(gt_label['name']) # to distinguish between the ground truth and the predictions
-        
+
         pred_gt_lidar_bboxes = np.concatenate([lidar_bboxes, gt_lidar_bboxes], axis=0)
         pred_gt_labels = np.concatenate([labels, gt_labels])
-        vis_pc(pc, pred_gt_lidar_bboxes, labels=pred_gt_labels)
+        if not args.headless:
+            vis_pc(pc, pred_gt_lidar_bboxes, labels=pred_gt_labels)
 
         if img is not None:
             bboxes_corners = bbox3d2corners_camera(bboxes_camera)
             image_points = points_camera2image(bboxes_corners, P2)
             gt_labels = [-1] * len(gt_label['name'])
             img = vis_img_3d(img, image_points, gt_labels, rt=True)
-    
-    if calib_info is not None and img is not None:
+
+    if calib_info is not None and img is not None and not args.headless:
         cv2.imshow(f'{os.path.basename(args.img_path)}-3d bbox', img)
         cv2.waitKey(0)
-            
-        
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Configuration Parameters')
     parser.add_argument('--ckpt', default='pretrained/epoch_160.pth', help='your checkpoint for kitti')
@@ -133,6 +139,12 @@ if __name__ == '__main__':
     parser.add_argument('--img_path', default='', help='your image path')
     parser.add_argument('--no_cuda', action='store_true',
                         help='whether to use cuda')
+    parser.add_argument('--headless', action='store_true',
+                        help='disable visualization (for Docker/headless environments)')
     args = parser.parse_args()
+
+    print("Arguments:")
+    for k, v in vars(args).items():
+        print(f"{k}: {v}")
 
     main(args)

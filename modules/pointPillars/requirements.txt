@@ -1,10 +1,11 @@
-numba==0.48.0
-numpy==1.19.5
-open3d==0.14.1
-opencv_python==4.5.5.62
-PyYAML==6.0
-setuptools==58.0.4
-tensorboard
---extra-index-url https://download.pytorch.org/whl/cu111
-torch==1.8.1+cu111
-tqdm==4.62.3
+numba==0.62.1
+numpy==2.2.6
+open3d==0.19.0
+opencv-python-headless==4.12.0.88
+PyYAML==6.0.3
+setuptools==80.9.0
+tensorboard==2.20.0
+torch==2.9.0
+openvino==2025.3.0
+tqdm==4.67.1
+onnx==1.19.1
