@@ -10,6 +10,7 @@
 
 #include "runtime/backend.hpp"
 #include "runtime/mlir_backend.hpp"
+#include "runtime/metal_memory.hpp"
 
 namespace ov {
 namespace metal_plugin {
@@ -32,17 +33,21 @@ public:
 
     MetalBackend* backend() const { return m_backend.get(); }
     ov::element::Type get_inference_precision() const { return m_inference_precision; }
+    std::shared_ptr<MetalBufferManager> buffer_manager() const { return m_buffer_manager; }
+    const MetalMemoryStats& memory_stats() const { return m_buffer_manager ? m_buffer_manager->stats() : m_dummy_stats; }
 
 protected:
     std::shared_ptr<ov::ISyncInferRequest> create_sync_infer_request() const override;
 
 private:
     MetalBackendPtr m_backend;
+    std::shared_ptr<MetalBufferManager> m_buffer_manager;
     std::shared_ptr<const ov::Model> m_runtime_model;
     std::shared_ptr<const ov::Model> m_original_model;
     ov::AnyMap m_config;
     ov::element::Type m_inference_precision{ov::element::f32};
     bool m_enable_profiling = false;
+    MetalMemoryStats m_dummy_stats{};
 };
 
 }  // namespace metal_plugin

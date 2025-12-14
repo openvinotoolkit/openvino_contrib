@@ -30,13 +30,18 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
     }
     if (auto it = properties.find(ov::enable_profiling.name()); it != properties.end()) {
         m_enable_profiling = it->second.as<bool>();
+    } else {
+        // Honour legacy PERF_COUNT=true if provided under a different key.
+        if (auto it2 = properties.find("PERF_COUNT"); it2 != properties.end()) {
+            m_enable_profiling = it2->second.as<bool>();
+        }
     }
 
     // Preserve user properties; store inference_precision as ov::element::Type.
     for (const auto& kv : properties) {
         if (kv.first == ov::hint::inference_precision.name()) {
             m_config[kv.first] = m_inference_precision;
-        } else if (kv.first == ov::enable_profiling.name()) {
+        } else if (kv.first == ov::enable_profiling.name() || kv.first == "PERF_COUNT") {
             m_config[kv.first] = m_enable_profiling;
         } else {
             m_config[kv.first] = kv.second;
@@ -45,6 +50,10 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
 
     m_backend = std::make_unique<MlirBackend>(model, m_original_model, m_inference_precision);
     m_backend->set_profiling(m_enable_profiling);
+    m_buffer_manager = m_backend->create_buffer_manager();
+    if (m_buffer_manager) {
+        m_backend->preload_constants(*m_buffer_manager);
+    }
 }
 
 std::shared_ptr<ov::ISyncInferRequest> CompiledModel::create_sync_infer_request() const {
@@ -93,11 +102,16 @@ ov::Any CompiledModel::get_property(const std::string& name) const {
         auto props = default_ro_properties();
         props.push_back(ov::PropertyName{ov::hint::inference_precision.name(), ov::PropertyMutability::RW});
         props.push_back(ov::PropertyName{ov::enable_profiling.name(), ov::PropertyMutability::RW});
+        props.push_back(ov::PropertyName{"METAL_MEM_STATS", ov::PropertyMutability::RO});
         return decltype(ov::supported_properties)::value_type(props.begin(), props.end());
     }
 
     if (auto it = m_config.find(name); it != m_config.end()) {
         return it->second;
+    }
+
+    if (name == "METAL_MEM_STATS") {
+        return m_buffer_manager ? ov::Any{m_buffer_manager->stats()} : ov::Any{MetalMemoryStats{}};
     }
 
     if (name == ov::hint::inference_precision.name()) {

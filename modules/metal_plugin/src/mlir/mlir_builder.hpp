@@ -43,6 +43,14 @@ mlir::ModuleOp build_mlir_avgpool_from_model(const std::shared_ptr<const ov::Mod
                                              mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_conv2d_from_model(const std::shared_ptr<const ov::Model>& model,
                                             mlir::MLIRContext& ctx);
+// Fused variant: applies unary activation (if any) inside the same tensor function.
+mlir::ModuleOp build_mlir_conv2d_from_model(const std::shared_ptr<const ov::Model>& model,
+                                            mlir::MLIRContext& ctx,
+                                            std::optional<std::pair<ActivationKind, float>> unary_kind);
+// Conv2D + bias (+optional unary) fused in one tensor function.
+mlir::ModuleOp build_mlir_conv2d_with_bias_from_model(const std::shared_ptr<const ov::Model>& model,
+                                                      mlir::MLIRContext& ctx,
+                                                      std::optional<std::pair<ActivationKind, float>> unary_kind);
 mlir::ModuleOp build_mlir_conv3d_from_model(const std::shared_ptr<const ov::Model>& model,
                                             mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_batchnorm_from_model(const std::shared_ptr<const ov::Model>& model,
@@ -56,6 +64,9 @@ mlir::ModuleOp build_mlir_interpolate_from_op(const KernelOp& op, mlir::MLIRCont
 
 // Build MLIR for a single Split slice copy (one output chunk).
 mlir::ModuleOp build_mlir_split_from_op(const KernelOp& op, mlir::MLIRContext& ctx);
+
+// Build MLIR for elementwise Convert (type cast).
+mlir::ModuleOp build_mlir_convert_from_op(const KernelOp& op, mlir::MLIRContext& ctx);
 
 }  // namespace metal_plugin
 }  // namespace ov

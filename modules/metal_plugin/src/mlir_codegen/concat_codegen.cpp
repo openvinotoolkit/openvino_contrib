@@ -31,6 +31,7 @@ std::string generate_msl_for_concat(const ConcatCodegenDesc& d, mlir::ModuleOp /
     ss << "  uint inner;\n";
     ss << "  uint axis_offset;\n";
     ss << "  uint axis_len;\n";
+    ss << "  uint axis_total;\n";
     ss << "};\n";
     ss << "kernel void concat_kernel(\n";
     ss << "  device const scalar_t* src [[buffer(0)]],\n";
@@ -44,7 +45,7 @@ std::string generate_msl_for_concat(const ConcatCodegenDesc& d, mlir::ModuleOp /
     ss << "  tmp -= outer * p.axis_len * p.inner;\n";
     ss << "  uint axis = tmp / p.inner;\n";
     ss << "  uint inner = tmp - axis * p.inner;\n";
-    ss << "  uint dst_idx = ((outer * (p.axis_len + p.axis_offset) + (p.axis_offset + axis)) * p.inner) + inner;\n";
+    ss << "  uint dst_idx = ((outer * p.axis_total + (p.axis_offset + axis)) * p.inner) + inner;\n";
     ss << "  uint src_idx = ((outer * p.axis_len + axis) * p.inner) + inner;\n";
     ss << "  dst[dst_idx] = src[src_idx];\n";
     ss << "}\n";

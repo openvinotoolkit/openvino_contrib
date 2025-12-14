@@ -15,8 +15,6 @@ list(APPEND SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/mul_kernel_ir.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/sub_kernel_ir.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/slice_kernel_ir.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/msl/conv_msl.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/conv3d_msl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_common.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_eltwise.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_matmul.mm
@@ -29,11 +27,10 @@ list(APPEND SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_batchnorm2d.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_slice.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_split.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_convert.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_concat.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_interpolate.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/msl/batchnorm_msl.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/msl/mul_msl.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/msl/sub_msl.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_reshape.mm
     # Handwritten MSL removed; MLIR->MSL used instead
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_dtype.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_logger.cpp
@@ -84,6 +81,10 @@ ov_mark_target_as_cc(${TARGET_NAME})
 ov_abi_free_target(${TARGET_NAME})
 
 set_target_properties(${TARGET_NAME} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE ${ENABLE_LTO})
+
+if(DEFINED METAL_LLVM_EXTERNAL_TARGET)
+    add_dependencies(${TARGET_NAME} ${METAL_LLVM_EXTERNAL_TARGET})
+endif()
 
 if (ENABLE_METAL_REGISTRATION)
     # Register plugin for plugins.xml/plugins.hpp generation

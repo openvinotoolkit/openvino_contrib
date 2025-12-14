@@ -7,6 +7,16 @@
 #include <iostream>
 #include <cstring>
 #include <algorithm>
+#include <cstdlib>
+#include <sstream>
+
+#import <Metal/Metal.h>
+#ifdef NO
+#undef NO
+#endif
+#ifdef YES
+#undef YES
+#endif
 
 #include "compiled_model.hpp"
 #include "openvino/core/except.hpp"
@@ -32,6 +42,9 @@ InferRequest::InferRequest(const std::shared_ptr<const ov::ICompiledModel>& comp
             tensor = ov::make_tensor(output.get_element_type(),
                                      output.get_partial_shape().is_dynamic() ? ov::Shape{0} : output.get_shape());
         });
+    }
+    if (auto cm = get_compiled_model_typed()) {
+        m_buffer_manager = cm->buffer_manager();
     }
 }
 
@@ -89,88 +102,140 @@ void InferRequest::set_tensor(const ov::Output<const ov::Node>& port, const ov::
     }
 }
 
+ov::SoPtr<ov::ITensor> InferRequest::get_tensor(const ov::Output<const ov::Node>& port) const {
+    auto found = find_port(port);
+    if (found.found() && found.is_output()) {
+        size_t idx = found.idx;
+        if (!m_buffer_manager) {
+            if (auto cm = get_compiled_model_typed())
+                m_buffer_manager = cm->buffer_manager();
+        }
+        if (m_buffer_manager && m_tensor_map.has_output_device(idx)) {
+            auto& host = m_tensor_map.get_or_create_host_for_output(idx, *m_buffer_manager);
+            return ov::get_tensor_impl(host);
+        }
+    }
+    return ov::ISyncInferRequest::get_tensor(port);
+}
+
+ov::Tensor InferRequest::get_output_tensor(size_t idx) const {
+    auto so = get_tensor(get_outputs().at(idx));
+    return ov::make_tensor(so);
+}
+
 void InferRequest::infer() {
     auto cm = get_compiled_model_typed();
     OPENVINO_ASSERT(cm, "CompiledModel is null");
 
-    std::vector<ov::Tensor> input_wrapped;
-    input_wrapped.reserve(get_inputs().size());
-    for (size_t idx = 0; idx < get_inputs().size(); ++idx) {
-        ov::Tensor src;
+    if (!m_buffer_manager) {
+        m_buffer_manager = cm->buffer_manager();
+    }
+    if (!m_buffer_manager) {
+        m_buffer_manager = cm->backend()->create_buffer_manager();
+    }
+    OPENVINO_ASSERT(m_buffer_manager, "MetalBufferManager is null");
+
+    m_tensor_map.reset_inference();
+    m_buffer_manager->reset_stats();
+    m_buffer_manager->reset_inference_pool();
+
+    auto ensure_input_tensor = [&](size_t idx) -> ov::Tensor {
         if (idx < m_bound_inputs.size() && m_bound_inputs[idx]) {
-            src = m_bound_inputs[idx];
-        } else {
-            // Use the tensor owned by the base request (preallocated and filled by benchmark_app)
-            auto impl = get_tensor(get_inputs()[idx]);
-            if (!impl._ptr) {
-                ov::Shape sh = get_inputs()[idx].get_partial_shape().is_static()
-                    ? get_inputs()[idx].get_shape()
-                    : ov::Shape{1};
-                ov::Tensor fallback{get_inputs()[idx].get_element_type(), sh};
-                ov::ISyncInferRequest::set_tensor(get_inputs()[idx], ov::get_tensor_impl(fallback));
-                src = fallback;
-            } else {
-                src = ov::make_tensor(impl);
-            }
-            if (!src.data()) {
-                ov::Shape sh = get_inputs()[idx].get_partial_shape().is_static()
-                    ? get_inputs()[idx].get_shape()
-                    : ov::Shape{1};
-                src = ov::Tensor{get_inputs()[idx].get_element_type(), sh};
-                ov::ISyncInferRequest::set_tensor(get_inputs()[idx], ov::get_tensor_impl(src));
-            }
+            return m_bound_inputs[idx];
         }
-        input_wrapped.emplace_back(std::move(src));
+        auto impl = get_tensor(get_inputs()[idx]);
+        ov::Tensor src;
+        if (!impl._ptr) {
+            ov::Shape sh = get_inputs()[idx].get_partial_shape().is_static()
+                               ? get_inputs()[idx].get_shape()
+                               : ov::Shape{1};
+            src = ov::Tensor{get_inputs()[idx].get_element_type(), sh};
+            ov::ISyncInferRequest::set_tensor(get_inputs()[idx], ov::get_tensor_impl(src));
+        } else {
+            src = ov::make_tensor(impl);
+        }
+        if (!src || !src.data()) {
+            ov::Shape sh = get_inputs()[idx].get_partial_shape().is_static()
+                               ? get_inputs()[idx].get_shape()
+                               : ov::Shape{1};
+            src = ov::Tensor{get_inputs()[idx].get_element_type(), sh};
+            ov::ISyncInferRequest::set_tensor(get_inputs()[idx], ov::get_tensor_impl(src));
+        }
+        return src;
+    };
+
+    std::vector<ov::Tensor> host_inputs;
+    host_inputs.reserve(get_inputs().size());
+    for (size_t idx = 0; idx < get_inputs().size(); ++idx) {
+        ov::Tensor src = ensure_input_tensor(idx);
+        if (!src) {
+            ov::Shape sh = get_inputs()[idx].get_partial_shape().is_static()
+                               ? get_inputs()[idx].get_shape()
+                               : ov::Shape{1};
+            src = ov::Tensor{get_inputs()[idx].get_element_type(), sh};
+        }
+        host_inputs.emplace_back(src);
+        // Bind host -> device (Shared buffer to allow memcpy).
+        m_tensor_map.bind_input(idx, src, *m_buffer_manager, /*shared=*/true);
     }
 
-    std::vector<ov::Tensor> output_wrapped;
-    output_wrapped.reserve(get_outputs().size());
-    for (size_t idx = 0; idx < get_outputs().size(); ++idx) {
+    auto prepare_output_host = [&](size_t idx) -> ov::Tensor {
         auto base_impl = get_tensor(get_outputs()[idx]);
         if (!base_impl._ptr) {
             ov::Shape osh = get_outputs()[idx].get_partial_shape().is_static()
-                ? get_outputs()[idx].get_shape()
-                : ov::Shape{1};
+                                ? get_outputs()[idx].get_shape()
+                                : ov::Shape{1};
             ov::Tensor fallback{get_outputs()[idx].get_element_type(), osh};
             base_impl = ov::get_tensor_impl(fallback);
             ov::ISyncInferRequest::set_tensor(get_outputs()[idx], base_impl);
+            return fallback;
         }
         ov::Tensor base = ov::make_tensor(base_impl);
         if (!base.data()) {
             ov::Shape osh = get_outputs()[idx].get_partial_shape().is_static()
-                ? get_outputs()[idx].get_shape()
-                : ov::Shape{1};
+                                ? get_outputs()[idx].get_shape()
+                                : ov::Shape{1};
             base = ov::Tensor{get_outputs()[idx].get_element_type(), osh};
             ov::ISyncInferRequest::set_tensor(get_outputs()[idx], ov::get_tensor_impl(base));
         }
-        output_wrapped.emplace_back(base);
-    }
+        return base;
+    };
 
+    bool device_ok = false;
     OPENVINO_ASSERT(cm->backend(), "Backend is null");
     if (auto mlir = dynamic_cast<MlirBackend*>(cm->backend())) {
-        if (mlir->has_segment() && mlir->segment_io_is_model_io()) {
-            std::vector<ov::Tensor> seg_inputs;
-            seg_inputs.reserve(1);
-            if (!input_wrapped.empty())
-                seg_inputs.push_back(input_wrapped[0]);
-            const auto& seg = mlir->get_segment();
-            auto seg_outputs = mlir->run_segment(seg, seg_inputs);
-            OPENVINO_ASSERT(!seg_outputs.empty(), "run_segment returned no outputs");
-            for (size_t i = 0; i < std::min(seg_outputs.size(), output_wrapped.size()); ++i) {
-                const auto& src = seg_outputs[i];
-                auto& dst = output_wrapped[i];
-                OPENVINO_ASSERT(src.get_byte_size() == dst.get_byte_size(),
-                                "run_segment output size mismatch");
-                std::memcpy(dst.data(), src.data(), src.get_byte_size());
+        device_ok = mlir->run_device(m_tensor_map, *m_buffer_manager);
+    }
+
+    OPENVINO_ASSERT(device_ok, "METAL: device execution failed and CPU fallback is disabled");
+
+    // Device path: ensure base outputs carry correct shapes but keep data on device.
+    for (size_t idx = 0; idx < get_outputs().size(); ++idx) {
+        if (!m_tensor_map.has_output_device(idx))
+            continue;
+        const auto& dev = m_tensor_map.get_output_device(idx);
+        ov::element::Type logical = dev.expected_type == ov::element::dynamic ? dev.buf.type : dev.expected_type;
+        ov::Tensor shadow{logical, dev.shape};
+        ov::ISyncInferRequest::set_tensor(get_outputs()[idx], ov::get_tensor_impl(shadow));
+        if (std::getenv("METAL_DEBUG_DUMP_OUTPUT")) {
+            ov::Tensor tmp = m_buffer_manager->copy_to_host(dev);
+            if (tmp && tmp.get_size() > 0) {
+                fprintf(stderr, "[METAL][dbg] out%zu first=%f (shape=%zu...)\n",
+                        idx, tmp.data<const float>()[0], tmp.get_size());
             }
-            return;
         }
     }
-    cm->backend()->run(input_wrapped, output_wrapped);
 
-    // Propagate potentially re-bound/reshaped outputs back to the base request storage.
-    for (size_t idx = 0; idx < output_wrapped.size(); ++idx) {
-        ov::ISyncInferRequest::set_tensor(get_outputs()[idx], ov::get_tensor_impl(output_wrapped[idx]));
+    if (const char* mem_flag = std::getenv("OV_METAL_MEM_STATS")) {
+        (void)mem_flag;
+        auto stats = m_buffer_manager->stats();
+        double mb = 1024.0 * 1024.0;
+        std::ostringstream oss;
+        oss << "[METAL][mem] H2D=" << (stats.h2d_bytes / mb) << "MB "
+            << "D2H=" << (stats.d2h_bytes / mb) << "MB "
+            << "alloc=" << (stats.alloc_bytes / mb) << "MB "
+            << "reused=" << (stats.reused_bytes / mb) << "MB";
+        std::cerr << oss.str() << std::endl;
     }
 }
 

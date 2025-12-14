@@ -1,17 +1,15 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 #pragma once
 
-#include <string>
-
-#include "kernel_ir/kernel_ir_common.hpp"
+#include "kernel_ir_common.hpp"
 
 namespace ov {
 namespace metal_plugin {
 
-std::string generate_msl_for_elementwise_add(const KernelOp& op);
+MetalKernelIR build_kernel_ir_for_reshape(const std::shared_ptr<const ov::Model>& model);
 
 }  // namespace metal_plugin
 }  // namespace ov
-

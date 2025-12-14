@@ -22,6 +22,9 @@ public:
                          ov::element::Type inference_precision);
     ~MlirBackend();
     void run(const std::vector<ov::Tensor>& inputs, std::vector<ov::Tensor>& outputs) override;
+    bool run_device(MetalTensorMap& tensors, MetalBufferManager& mgr) override;
+    std::shared_ptr<MetalBufferManager> create_buffer_manager() override;
+    void preload_constants(MetalBufferManager& mgr) override;
     void set_profiling(bool enable) override;
     std::vector<ov::ProfilingInfo> get_profiling_info() const override;
     bool has_segment() const;

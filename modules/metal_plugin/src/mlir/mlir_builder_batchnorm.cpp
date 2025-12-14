@@ -96,23 +96,30 @@ mlir::ModuleOp build_mlir_batchnorm_from_model(const std::shared_ptr<const ov::M
         mlir::ValueRange{func.getArgument(0), gamma_c, beta_c, mean_c, var_c},
         mlir::ValueRange{empty},
         mlir::ArrayRef<mlir::AffineMap>{idMap, cMap, cMap, cMap, cMap, idMap},
-        mlir::ArrayRef<mlir::utils::IteratorType>(iterators),
-        [&](mlir::OpBuilder& bodyBuilder, mlir::Location loc, mlir::ValueRange args) {
-            auto x = args[0];
-            auto gamma = args[1];
-            auto beta = args[2];
-            auto mean = args[3];
-            auto var = args[4];
+        mlir::ArrayRef<mlir::utils::IteratorType>(iterators));
+    {
+        // One block argument per input and per output tensor.
+        auto& region = generic.getRegion();
+        auto* block = new mlir::Block();
+        block->addArguments({f32, f32, f32, f32, f32, f32},
+                            {loc, loc, loc, loc, loc, loc});
+        region.push_back(block);
+        mlir::OpBuilder body(block, block->begin());
+        auto x = block->getArgument(0);
+        auto gamma = block->getArgument(1);
+        auto beta = block->getArgument(2);
+        auto mean = block->getArgument(3);
+        auto var = block->getArgument(4);
 
-            auto eps_c = bodyBuilder.create<mlir::arith::ConstantOp>(loc, bodyBuilder.getF32FloatAttr(eps));
-            auto x_centered = bodyBuilder.create<mlir::arith::SubFOp>(loc, x, mean);
-            auto var_eps = bodyBuilder.create<mlir::arith::AddFOp>(loc, var, eps_c);
-            auto stddev = bodyBuilder.create<mlir::math::SqrtOp>(loc, var_eps);
-            auto norm = bodyBuilder.create<mlir::arith::DivFOp>(loc, x_centered, stddev);
-            auto scaled = bodyBuilder.create<mlir::arith::MulFOp>(loc, gamma, norm);
-            auto y = bodyBuilder.create<mlir::arith::AddFOp>(loc, scaled, beta);
-            bodyBuilder.create<mlir::linalg::YieldOp>(loc, mlir::ValueRange{y.getResult()});
-        });
+        auto eps_c = body.create<mlir::arith::ConstantOp>(loc, body.getF32FloatAttr(eps));
+        auto x_centered = body.create<mlir::arith::SubFOp>(loc, x, mean);
+        auto var_eps = body.create<mlir::arith::AddFOp>(loc, var, eps_c);
+        auto stddev = body.create<mlir::math::SqrtOp>(loc, var_eps);
+        auto norm = body.create<mlir::arith::DivFOp>(loc, x_centered, stddev);
+        auto scaled = body.create<mlir::arith::MulFOp>(loc, gamma, norm);
+        auto y = body.create<mlir::arith::AddFOp>(loc, scaled, beta);
+        body.create<mlir::linalg::YieldOp>(loc, mlir::ValueRange{y.getResult()});
+    }
 
     b.create<mlir::func::ReturnOp>(loc, generic.getResults());
     return module;

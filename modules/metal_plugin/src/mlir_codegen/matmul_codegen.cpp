@@ -134,8 +134,10 @@ std::string emit_matmul_msl(const MatMulCodegenDesc& desc) {
 }  // namespace
 
 std::string generate_msl_for_matmul(const MatMulCodegenDesc& desc, mlir::ModuleOp module) {
-    OPENVINO_ASSERT(module, "generate_msl_for_matmul: module is null");
     OPENVINO_ASSERT(desc.M > 0 && desc.N > 0 && desc.K > 0, "MatMul dims must be positive");
+    if (!module) {
+        return emit_matmul_msl(desc);
+    }
 
     auto func = find_kernel_func(module);
     OPENVINO_ASSERT(func, "MatMul MLIR module does not contain a function");

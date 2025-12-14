@@ -5,13 +5,19 @@
 #import <Metal/Metal.h>
 
 #include "kernel_codegen/metal_kernel_compiler.hpp"
-#include "msl/softmax_msl.hpp"
+#include "mlir_codegen/codegen_common.hpp"
 
 namespace ov {
 namespace metal_plugin {
 
 id<MTLComputePipelineState> MetalKernelCompiler::compile_softmax_kernel(const KernelOp& op, std::string& log) {
-    auto source = generate_msl_for_softmax(op);
+    OPENVINO_ASSERT(op.kind == KernelOpKind::Softmax, "compile_softmax_kernel expects Softmax");
+    SoftmaxCodegenDesc desc;
+    desc.kind = KernelOpKind::Softmax;
+    desc.rows = op.rows;
+    desc.cols = op.cols;
+    desc.inner = op.inner;
+    auto source = generate_msl_for_softmax(desc, /*module*/ nullptr);
     return compile_msl_from_source(source, "softmax_kernel", log);
 }
 

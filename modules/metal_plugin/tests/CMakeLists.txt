@@ -19,6 +19,12 @@ ov_add_test_target(
         OV METAL
 )
 
+# Add ObjC++ runtime tests for memory manager.
+target_sources(${TARGET_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_memory_test.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/metal_memory.mm
+)
+
 # Device-specific bits: path to the built plugin and access to local src headers.
 target_compile_definitions(${TARGET_NAME} PRIVATE METAL_PLUGIN_PATH="$<TARGET_FILE:openvino_metal_plugin>")
 target_compile_definitions(${TARGET_NAME} PRIVATE TEMPLATE_PLUGIN_PATH="$<TARGET_FILE:openvino_template_plugin>")
@@ -27,3 +33,7 @@ target_include_directories(${TARGET_NAME} PRIVATE
     ${OpenVINO_SOURCE_DIR}/src
     ${OpenVINO_SOURCE_DIR}/src/plugins/template/include
 )
+
+if(APPLE)
+    target_link_libraries(${TARGET_NAME} PRIVATE "-framework Metal" "-framework Foundation")
+endif()

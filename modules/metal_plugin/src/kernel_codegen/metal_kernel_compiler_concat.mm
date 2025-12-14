@@ -26,6 +26,7 @@ id<MTLComputePipelineState> MetalKernelCompiler::compile_concat_kernel(const Ker
     desc.inner = op.concat.inner;
     desc.axis_offset = op.concat.axis_offsets.empty() ? 0 : op.concat.axis_offsets.front();
     desc.axis_len = op.concat.axis_sizes.empty() ? 0 : op.concat.axis_sizes.front();
+    desc.axis_total = op.concat.axis_total;
     auto source = generate_msl_from_mlir(module, desc);
     return compile_msl_from_source(source, "concat_kernel", log);
 }

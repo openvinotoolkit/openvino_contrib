@@ -4,28 +4,65 @@
 
 #include "kernel_ir/conv_kernel_ir.hpp"
 
+#include <utility>
+
 #include "openvino/core/except.hpp"
 #include "openvino/core/model.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/convolution.hpp"
 #include "openvino/op/group_conv.hpp"
+#include "openvino/op/add.hpp"
+#include "openvino/op/reshape.hpp"
+#include "openvino/op/transpose.hpp"
+#include "openvino/op/concat.hpp"
 
 namespace ov {
 namespace metal_plugin {
+
+namespace {
+
+std::pair<uint32_t, uint32_t> compute_auto_pad(int64_t in,
+                                                int64_t out,
+                                                uint32_t stride,
+                                                uint32_t kernel,
+                                                uint32_t dilation,
+                                                ov::op::PadType padType) {
+    if (padType == ov::op::PadType::EXPLICIT || out <= 0)
+        return {0, 0};
+    int64_t eff_kernel = static_cast<int64_t>(dilation) * (static_cast<int64_t>(kernel) - 1) + 1;
+    int64_t total = (out - 1) * static_cast<int64_t>(stride) + eff_kernel - in;
+    if (total < 0)
+        total = 0;
+    if (padType == ov::op::PadType::SAME_UPPER) {
+        int64_t begin = total / 2;
+        int64_t end = total - begin;
+        return {static_cast<uint32_t>(begin), static_cast<uint32_t>(end)};
+    } else if (padType == ov::op::PadType::SAME_LOWER) {
+        int64_t end = total / 2;
+        int64_t begin = total - end;
+        return {static_cast<uint32_t>(begin), static_cast<uint32_t>(end)};
+    }
+    return {0, 0};
+}
+
+}  // namespace
 
 MetalKernelIR build_kernel_ir_for_conv2d(const std::shared_ptr<const ov::Model>& model, bool& has_const_weights) {
     MetalKernelIR ir;
     has_const_weights = false;
 
     std::shared_ptr<const ov::Node> conv_node_base;
+    std::shared_ptr<const ov::Node> conv_output_node;
     bool is_group = false;
     for (const auto& node : model->get_ordered_ops()) {
         if (auto c = ov::as_type_ptr<const ov::op::v1::Convolution>(node)) {
             conv_node_base = c;
+            conv_output_node = node;
             break;
         }
         if (auto g = ov::as_type_ptr<const ov::op::v1::GroupConvolution>(node)) {
             conv_node_base = g;
+            conv_output_node = node;
             is_group = true;
             break;
         }
@@ -85,12 +122,19 @@ MetalKernelIR build_kernel_ir_for_conv2d(const std::shared_ptr<const ov::Model>&
     const auto& s = is_group
         ? ov::as_type_ptr<const ov::op::v1::GroupConvolution>(conv_node_base)->get_strides()
         : ov::as_type_ptr<const ov::op::v1::Convolution>(conv_node_base)->get_strides();
-    const auto& pb = is_group
+    const auto pads_begin = is_group
         ? ov::as_type_ptr<const ov::op::v1::GroupConvolution>(conv_node_base)->get_pads_begin()
         : ov::as_type_ptr<const ov::op::v1::Convolution>(conv_node_base)->get_pads_begin();
-    const auto& pe = is_group
+    const auto pads_end = is_group
         ? ov::as_type_ptr<const ov::op::v1::GroupConvolution>(conv_node_base)->get_pads_end()
         : ov::as_type_ptr<const ov::op::v1::Convolution>(conv_node_base)->get_pads_end();
+
+    auto padType = ov::op::PadType::EXPLICIT;
+    if (auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(conv_node_base))
+        padType = conv->get_auto_pad();
+    else if (auto gconv = ov::as_type_ptr<const ov::op::v1::GroupConvolution>(conv_node_base))
+        padType = gconv->get_auto_pad();
+
 
     KernelOp op;
     op.kind = KernelOpKind::Conv2D;
@@ -123,10 +167,33 @@ MetalKernelIR build_kernel_ir_for_conv2d(const std::shared_ptr<const ov::Model>&
     op.conv2d.W = dim_or_zero(in_shape[3]);
     op.conv2d.strideH = static_cast<uint32_t>(s[0]);
     op.conv2d.strideW = static_cast<uint32_t>(s[1]);
-    op.conv2d.padTop = static_cast<uint32_t>(pb[0]);
-    op.conv2d.padLeft = static_cast<uint32_t>(pb[1]);
-    op.conv2d.padBottom = static_cast<uint32_t>(pe[0]);
-    op.conv2d.padRight = static_cast<uint32_t>(pe[1]);
+    uint32_t pad_top = static_cast<uint32_t>(pads_begin[0]);
+    uint32_t pad_left = static_cast<uint32_t>(pads_begin[1]);
+    uint32_t pad_bottom = static_cast<uint32_t>(pads_end[0]);
+    uint32_t pad_right = static_cast<uint32_t>(pads_end[1]);
+    if (padType != ov::op::PadType::EXPLICIT && out_shape.size() == 4) {
+        auto adjust_pad = [&](int64_t in_len,
+                              int64_t out_len,
+                              uint32_t stride,
+                              uint32_t kernel,
+                              uint32_t dilation,
+                              uint32_t& begin,
+                              uint32_t& end) {
+            if (in_len <= 0 || out_len <= 0)
+                return;
+            auto vals = compute_auto_pad(in_len, out_len, stride, kernel, dilation, padType);
+            begin = vals.first;
+            end = vals.second;
+        };
+        adjust_pad(in_shape[2], out_shape[2], op.conv2d.strideH, op.conv2d.kernelH, op.conv2d.dilationH,
+                   pad_top, pad_bottom);
+        adjust_pad(in_shape[3], out_shape[3], op.conv2d.strideW, op.conv2d.kernelW, op.conv2d.dilationW,
+                   pad_left, pad_right);
+    }
+    op.conv2d.padTop = pad_top;
+    op.conv2d.padLeft = pad_left;
+    op.conv2d.padBottom = pad_bottom;
+    op.conv2d.padRight = pad_right;
     op.conv2d.dilationH = static_cast<uint32_t>(dil[0]);
     op.conv2d.dilationW = static_cast<uint32_t>(dil[1]);
     if (out_shape.size() == 4) {
@@ -149,7 +216,92 @@ MetalKernelIR build_kernel_ir_for_conv2d(const std::shared_ptr<const ov::Model>&
         has_const_weights = true;
     }
 
+    // Detect bias Add that consumes this Conv output (optionally through a trivial Reshape/Transpose/Concat chain).
+    KernelTensor* bias_tensor_ptr = nullptr;
+    for (const auto& node : model->get_ordered_ops()) {
+        std::shared_ptr<const ov::Node> bias_source;
+        ov::Output<ov::Node> bias_input;
+
+        auto add = ov::as_type_ptr<const ov::op::v1::Add>(node);
+        if (add) {
+            bool uses_conv = add->input_value(0).get_node() == conv_output_node.get() ||
+                             add->input_value(1).get_node() == conv_output_node.get();
+            if (!uses_conv)
+                continue;
+            bias_input = add->input_value(0).get_node() == conv_output_node.get()
+                             ? add->input_value(1)
+                             : add->input_value(0);
+            bias_source = bias_input.get_node_shared_ptr();
+        } else {
+            // Allow passthrough: Reshape/Transpose/Concat chain between Conv and Add.
+            std::vector<ov::Output<const ov::Node>> frontier;
+            auto push_if = [&](const ov::Output<const ov::Node>& out) {
+                frontier.push_back(out);
+            };
+            if (auto reshape = ov::as_type_ptr<const ov::op::v1::Reshape>(node)) {
+                if (reshape->input_value(0).get_node() == conv_output_node.get())
+                    push_if(reshape->output(0));
+            }
+            if (auto transpose = ov::as_type_ptr<const ov::op::v1::Transpose>(node)) {
+                if (transpose->input_value(0).get_node() == conv_output_node.get())
+                    push_if(transpose->output(0));
+            }
+            if (auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(node)) {
+                bool all_from_conv = true;
+                for (auto inp : concat->inputs()) {
+                    if (inp.get_node() != conv_output_node.get()) { all_from_conv = false; break; }
+                }
+                if (all_from_conv)
+                    push_if(concat->output(0));
+            }
+            if (frontier.empty())
+                continue;
+            for (auto pt : frontier) {
+                for (const auto& user : pt.get_target_inputs()) {
+                    auto add_user = ov::as_type_ptr<const ov::op::v1::Add>(user.get_node()->shared_from_this());
+                    if (!add_user)
+                        continue;
+                    bool uses_passthrough = add_user->input_value(0).get_node() == user.get_node() ||
+                                            add_user->input_value(1).get_node() == user.get_node();
+                    if (!uses_passthrough)
+                        continue;
+                    bias_input = add_user->input_value(0).get_node() == user.get_node()
+                                     ? add_user->input_value(1)
+                                     : add_user->input_value(0);
+                    bias_source = bias_input.get_node_shared_ptr();
+                    break;
+                }
+                if (bias_source)
+                    break;
+            }
+            if (!bias_source)
+                continue;
+        }
+
+        KernelTensor bias;
+        bias.name = "bias";
+        bias.shape.clear();
+        for (auto d : bias_input.get_shape())
+            bias.shape.push_back(static_cast<int64_t>(d));
+        bias.dtype = resolve_metal_dtype(bias_input.get_element_type());
+        bias.from_constant = false;
+        bias.from_parameter = ov::as_type_ptr<const ov::op::v0::Parameter>(bias_source) != nullptr;
+        bias.source_node = bias_source.get();
+        if (auto c = ov::as_type_ptr<const ov::op::v0::Constant>(bias_source)) {
+            bias.from_constant = true;
+            bias.const_data = c->cast_vector<float>();
+        }
+        ir.tensors.push_back(bias);
+        bias_tensor_ptr = &ir.tensors.back();
+        break;  // only first bias add
+    }
+
     ir.ops.push_back(op);
+    if (bias_tensor_ptr) {
+        ir.ops[0].conv2d.has_bias = true;
+        ir.ops[0].conv2d.bias = bias_tensor_ptr;
+        ir.ops[0].input2 = bias_tensor_ptr;
+    }
     return ir;
 }
 

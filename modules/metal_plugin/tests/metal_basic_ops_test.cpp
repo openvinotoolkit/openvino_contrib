@@ -31,6 +31,7 @@
 #include "openvino/op/sigmoid.hpp"
 #include "../src/transforms/pipeline.hpp"
 #include "../src/transforms/conv_relu_fusion.hpp"
+#include "../src/runtime/metal_memory.hpp"
 
 namespace {
 
@@ -101,6 +102,7 @@ void expect_shape_type(const ov::Tensor& t, const ov::Shape& shape, ov::element:
     ASSERT_EQ(t.get_element_type(), type);
     ASSERT_EQ(t.get_shape(), shape);
 }
+
 
 
 inline void expect_or_skip_allclose(const ov::Tensor& a, const ov::Tensor& b, float atol, float rtol, const char* /*msg*/) {
@@ -1319,3 +1321,5 @@ ov::Core core;
     }
     });
 }
+
+

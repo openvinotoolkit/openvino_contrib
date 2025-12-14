@@ -1,6 +1,7 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 #pragma once
 
 #include <string>
@@ -10,8 +11,7 @@
 namespace ov {
 namespace metal_plugin {
 
-std::string generate_msl_for_maxpool2d(const KernelOp& op);
+std::string generate_msl_for_reshape(const KernelOp& op);
 
 }  // namespace metal_plugin
 }  // namespace ov
-

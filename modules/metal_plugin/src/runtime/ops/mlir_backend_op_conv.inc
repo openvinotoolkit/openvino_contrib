@@ -285,6 +285,8 @@ bool MlirBackend::Impl::try_build_conv(const std::shared_ptr<const ov::Model>& m
                 desc.outH = dim_or_one(kop.conv2d.outH);
                 desc.outW = dim_or_one(kop.conv2d.outW);
                 desc.groups = kop.conv2d.groups;
+                if (kop.output && kop.output->dtype.ov_type != ov::element::dynamic)
+                    desc.element_type = kop.output->dtype.ov_type;
                 auto source = generate_msl_from_mlir(module, desc);
                 m_pipelines.push_back(compiler.compile_msl_from_source(source, "conv2d_kernel", log));
             } catch (const std::exception& e) {

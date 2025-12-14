@@ -36,6 +36,10 @@ struct Conv2DCodegenDesc : BaseCodegenDesc {
     uint32_t H = 0;
     uint32_t W = 0;
     uint32_t C_out = 0;
+    // Group convolution parameters. For non-group conv they mirror C_in/C_out.
+    uint32_t groups = 1;
+    uint32_t C_in_pg = 0;
+    uint32_t C_out_pg = 0;
     uint32_t kH = 0;
     uint32_t kW = 0;
     uint32_t strideH = 1;
@@ -48,7 +52,21 @@ struct Conv2DCodegenDesc : BaseCodegenDesc {
     uint32_t padRight = 0;
     uint32_t outH = 0;
     uint32_t outW = 0;
-    uint32_t groups = 1;
+    bool has_bias = false;
+    uint32_t bias_rank = 1;  // 1 or 4
+    bool has_activation = false;
+    ActivationKind activation = ActivationKind::Relu;
+    float alpha = 0.0f;
+    bool use_special_k3 = false;  // enable k=3 stride1/2 optimized kernel
+    // BatchNorm + clamp support for fused conv
+    bool has_bn = false;
+    float epsilon = 0.0f;
+    float clamp_min = 0.0f;
+    float clamp_max = 0.0f;
+    std::vector<float> gamma;
+    std::vector<float> beta;
+    std::vector<float> mean;
+    std::vector<float> var;
 };
 
 struct Conv3DCodegenDesc : BaseCodegenDesc {
@@ -113,6 +131,18 @@ struct SoftmaxCodegenDesc : BaseCodegenDesc {
     int64_t inner = 1;
 };
 
+struct BatchNorm2DCodegenDesc : BaseCodegenDesc {
+    uint32_t N = 0;
+    uint32_t C = 0;
+    uint32_t H = 0;
+    uint32_t W = 0;
+};
+
+struct UnaryCodegenDesc : BaseCodegenDesc {
+    ActivationKind activation = ActivationKind::Relu;
+    float alpha = 0.0f;
+};
+
 struct InterpolateCodegenDesc : BaseCodegenDesc {
     uint32_t N = 0;
     uint32_t C = 0;
@@ -134,11 +164,25 @@ struct SplitCodegenDesc : BaseCodegenDesc {
     std::vector<size_t> split_sizes;
 };
 
+struct TransposeCodegenDesc : BaseCodegenDesc {
+    std::vector<uint32_t> in_shape;
+    std::vector<uint32_t> out_shape;
+    std::vector<uint32_t> perm;
+    bool use_half = false;
+    bool use_int = false;
+};
+
 struct ConcatCodegenDesc : BaseCodegenDesc {
     uint64_t outer = 0;
     uint64_t inner = 0;
     uint64_t axis_offset = 0;
     uint64_t axis_len = 0;
+    uint64_t axis_total = 0;
+};
+
+struct ConvertCodegenDesc : BaseCodegenDesc {
+    ov::element::Type src_type{ov::element::dynamic};
+    ov::element::Type dst_type{ov::element::dynamic};
 };
 
 // Per-op emitters (msl generation only; MLIR module is currently unused for non-MatMul stubs).
@@ -152,6 +196,11 @@ std::string generate_msl_for_softmax(const SoftmaxCodegenDesc& desc, mlir::Modul
 std::string generate_msl_for_concat(const ConcatCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_interpolate(const InterpolateCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_split(const SplitCodegenDesc& desc, mlir::ModuleOp module);
+std::string generate_msl_for_transpose(const TransposeCodegenDesc& desc, mlir::ModuleOp module);
+std::string generate_msl_for_convert(const ConvertCodegenDesc& desc, mlir::ModuleOp module);
+std::string generate_msl_for_slice_generic(const ConvertCodegenDesc& desc, mlir::ModuleOp module); // reuse ConvertCodegenDesc for dtype only
+std::string generate_msl_for_batchnorm2d(const BatchNorm2DCodegenDesc& desc);
+std::string generate_msl_for_unary(const UnaryCodegenDesc& desc);
 
 // Dispatcher by kind.
 std::string generate_msl_from_mlir(mlir::ModuleOp module, const BaseCodegenDesc& desc);

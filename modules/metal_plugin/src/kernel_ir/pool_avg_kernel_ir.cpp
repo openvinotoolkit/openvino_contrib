@@ -34,6 +34,7 @@ MetalKernelIR build_kernel_ir_for_avgpool(const std::shared_ptr<const ov::Model>
     const auto& k = pool_node->get_kernel();
     const auto& s = pool_node->get_strides();
     const auto& pb = pool_node->get_pads_begin();
+    const auto& pe = pool_node->get_pads_end();
 
     KernelOp op;
     op.kind = KernelOpKind::AvgPool2D;
@@ -51,6 +52,8 @@ MetalKernelIR build_kernel_ir_for_avgpool(const std::shared_ptr<const ov::Model>
     op.pool.strideW = static_cast<uint32_t>(s[1]);
     op.pool.padTop = static_cast<uint32_t>(pb[0]);
     op.pool.padLeft = static_cast<uint32_t>(pb[1]);
+    op.pool.padBottom = static_cast<uint32_t>(pe[0]);
+    op.pool.padRight = static_cast<uint32_t>(pe[1]);
     op.pool.exclude_pad = pool_node->get_exclude_pad();
     ir.ops.push_back(op);
     return ir;
@@ -58,4 +61,3 @@ MetalKernelIR build_kernel_ir_for_avgpool(const std::shared_ptr<const ov::Model>
 
 }  // namespace metal_plugin
 }  // namespace ov
-

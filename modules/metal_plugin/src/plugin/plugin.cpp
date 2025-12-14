@@ -371,6 +371,10 @@ void Plugin::set_property(const ov::AnyMap& properties) {
         } else if (kv.first == ov::enable_profiling.name()) {
             m_enable_profiling = kv.second.as<bool>();
             m_config[kv.first] = kv.second;
+        } else if (kv.first == "PERF_COUNT") {  // legacy spelling accepted by benchmark_app
+            m_enable_profiling = kv.second.as<bool>();
+            m_config[ov::enable_profiling.name()] = m_enable_profiling;
+            m_config[kv.first] = kv.second;
         } else if (kv.first == kBackendProperty) {
             m_config[kv.first] = kv.second;
         } else if (kv.first == ov::hint::inference_precision.name()) {
@@ -414,6 +418,8 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& /*argume
         auto ro = ro_props();
         auto rw = rw_props();
         rw.push_back(ov::PropertyName{kBackendProperty, ov::PropertyMutability::RW});
+        // Accept legacy PERF_COUNT spelling as RW alias of enable_profiling
+        rw.push_back(ov::PropertyName{"PERF_COUNT", ov::PropertyMutability::RW});
         std::vector<ov::PropertyName> supported;
         supported.reserve(ro.size() + rw.size());
         supported.insert(supported.end(), ro.begin(), ro.end());

@@ -69,9 +69,7 @@ std::vector<std::string> render_indices(mlir::Operation::operand_range range,
     return out;
 }
 
-std::string emit_pool2d_msl(const Pool2DCodegenDesc& d,
-                            const std::vector<std::string>& input_idx,
-                            const std::vector<std::string>& output_idx) {
+std::string emit_pool2d_msl(const Pool2DCodegenDesc& d) {
     std::ostringstream ss;
     ss << "#include <metal_stdlib>\n";
     ss << "using namespace metal;\n";
@@ -79,6 +77,7 @@ std::string emit_pool2d_msl(const Pool2DCodegenDesc& d,
     ss << "  uint N, C, H, W;\n";
     ss << "  uint kH, kW;\n";
     ss << "  uint strideH, strideW;\n";
+    ss << "  uint dilationH, dilationW;\n";
     ss << "  uint padTop, padLeft, padBottom, padRight;\n";
     ss << "  uint outH, outW;\n";
     ss << "  bool is_avg;\n";
@@ -88,13 +87,11 @@ std::string emit_pool2d_msl(const Pool2DCodegenDesc& d,
     ss << "  device const float* input  [[buffer(0)]],\n";
     ss << "  device float*       output [[buffer(1)]],\n";
     ss << "  constant Pool2DParams& p   [[buffer(2)]],\n";
-    ss << "  uint gid_x [[thread_position_in_grid.x]],\n";
-    ss << "  uint gid_y [[thread_position_in_grid.y]]) {\n";
-    ss << "  uint n = gid_y;\n";
-    ss << "  uint c = gid_x;\n";
-    ss << "  if (n >= p.N || c >= p.C) return;\n";
-    ss << "  int n_i = int(n);\n";
-    ss << "  int c_i = int(c);\n";
+    ss << "  uint gid [[thread_position_in_grid]]) {\n";
+    ss << "  uint total = p.N * p.C;\n";
+    ss << "  if (gid >= total) return;\n";
+    ss << "  uint n = gid / p.C;\n";
+    ss << "  uint c = gid - n * p.C;\n";
     ss << "  for (uint oh = 0; oh < p.outH; ++oh) {\n";
     ss << "    int oh_i = int(oh);\n";
     ss << "    for (uint ow = 0; ow < p.outW; ++ow) {\n";
@@ -105,13 +102,13 @@ std::string emit_pool2d_msl(const Pool2DCodegenDesc& d,
     ss << "        int kh_i = int(kh);\n";
     ss << "        for (uint kw = 0; kw < p.kW; ++kw) {\n";
     ss << "          int kw_i = int(kw);\n";
-    ss << "          int ih = " << input_idx[2] << ";\n";
-    ss << "          int iw = " << input_idx[3] << ";\n";
+    ss << "          int ih = oh_i * int(p.strideH) - int(p.padTop) + kh_i * int(p.dilationH);\n";
+    ss << "          int iw = ow_i * int(p.strideW) - int(p.padLeft) + kw_i * int(p.dilationW);\n";
     ss << "          if (ih < 0 || iw < 0 || ih >= int(p.H) || iw >= int(p.W)) {\n";
     ss << "            if (p.is_avg && !p.exclude_pad) { count++; }\n";
     ss << "            continue;\n";
     ss << "          }\n";
-    ss << "          uint idx = " << flatten_indices(input_idx, {"p.C", "p.H", "p.W"}) << ";\n";
+    ss << "          uint idx = ((n * p.C + c) * p.H + uint(ih)) * p.W + uint(iw);\n";
     ss << "          float v = input[idx];\n";
     ss << "          if (p.is_avg) {\n";
     ss << "            acc += v;\n";
@@ -125,7 +122,7 @@ std::string emit_pool2d_msl(const Pool2DCodegenDesc& d,
     ss << "        if (count == 0) count = 1;\n";
     ss << "        acc = acc / float(count);\n";
     ss << "      }\n";
-    ss << "      uint out_idx = " << flatten_indices(output_idx, {"p.C", "p.outH", "p.outW"}) << ";\n";
+    ss << "      uint out_idx = ((n * p.C + c) * p.outH + oh) * p.outW + ow;\n";
     ss << "      output[out_idx] = acc;\n";
     ss << "    }\n";
     ss << "  }\n";
@@ -139,58 +136,11 @@ std::string generate_msl_for_avgpool2d(const Pool2DCodegenDesc& d, mlir::ModuleO
     OPENVINO_ASSERT(d.N && d.C && d.H && d.W && d.kH && d.kW && d.outH && d.outW, "Pool2D desc incomplete");
     OPENVINO_ASSERT(d.is_avg, "AvgPool2D codegen expects is_avg=true");
     if (!module)
-        return emit_pool2d_msl(d, {"n_i", "c_i", "oh_i", "ow_i"}, {"n_i", "c_i", "oh_i", "ow_i"});
+        return emit_pool2d_msl(d);
 
-    auto func = find_func(module);
-    OPENVINO_ASSERT(func, "Pool2D MLIR: function not found");
-
-    auto loops = collect_loop_chain(func);
-    OPENVINO_ASSERT(loops.size() >= 6, "Pool2D MLIR: expected 6-level loop nest n-c-oh-ow-kh-kw");
-
-    const std::vector<std::string> loop_names = {"n_i", "c_i", "oh_i", "ow_i", "kh_i", "kw_i"};
-    llvm::DenseMap<mlir::Value, std::string> names;
-    for (size_t i = 0; i < loop_names.size(); ++i)
-        names[loops[i].getInductionVar()] = loop_names[i];
-
-    mlir::memref::LoadOp input_load = nullptr;
-    mlir::memref::StoreOp output_store = nullptr;
-
-    func.walk([&](mlir::memref::LoadOp op) {
-        if (input_load)
-            return;
-        if (shape_matches(op.getMemRefType(), {d.N, d.C, d.H, d.W}))
-            input_load = op;
-    });
-    func.walk([&](mlir::memref::StoreOp op) {
-        if (output_store)
-            return;
-        if (shape_matches(op.getMemRefType(), {d.N, d.C, d.outH, d.outW}))
-            output_store = op;
-    });
-
-    OPENVINO_ASSERT(input_load && output_store, "Pool2D MLIR: failed to find load/store");
-
-    auto input_idx = render_indices(input_load.getIndices(), names);
-    auto output_idx = render_indices(output_store.getIndices(), names);
-    OPENVINO_ASSERT(input_idx.size() == 4 && output_idx.size() == 4, "Pool2D MLIR: unexpected index rank");
-
-#if METAL_MLIR_DEBUG
-    auto join = [](const std::vector<std::string>& v) {
-        std::string s;
-        for (size_t i = 0; i < v.size(); ++i) {
-            if (i) s += ", ";
-            s += v[i];
-        }
-        return s;
-    };
-    mlir_codegen_log("[METAL MLIR] AvgPool2D func=" + func.getName().str());
-    mlir_codegen_log("  input idx:  [" + join(input_idx) + "]");
-    mlir_codegen_log("  output idx: [" + join(output_idx) + "]");
-#endif
-
-    return emit_pool2d_msl(d, input_idx, output_idx);
+    (void)module;
+    return emit_pool2d_msl(d);
 }
 
 }  // namespace metal_plugin
 }  // namespace ov
-

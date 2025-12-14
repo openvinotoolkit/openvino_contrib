@@ -35,6 +35,9 @@ public:
     id<MTLComputePipelineState> compile_split_kernel(const KernelOp& op, std::string& log);
     id<MTLComputePipelineState> compile_concat_kernel(const KernelOp& op, std::string& log);
     id<MTLComputePipelineState> compile_interpolate_kernel(const KernelOp& op, std::string& log);
+    id<MTLComputePipelineState> compile_transpose_kernel(const KernelOp& op, std::string& log);
+    id<MTLComputePipelineState> compile_reshape_kernel(const KernelOp& op, std::string& log);
+    id<MTLComputePipelineState> compile_convert_kernel(const KernelOp& op, std::string& log);
     id<MTLComputePipelineState> compile_msl_from_source(const std::string& source,
                                                         const char* entry_point,
                                                         std::string& log);

@@ -17,7 +17,7 @@ class Node;
 
 namespace metal_plugin {
 
-enum class ActivationKind { Relu, Sigmoid, Tanh, Elu, Prelu, Gelu, Swish, Abs, Sign, Identity };
+enum class ActivationKind { Relu, Sigmoid, Tanh, Elu, Prelu, Gelu, Swish, Abs, Sign, Identity, Clamp };
 
 enum class KernelOpKind {
     ElementwiseAdd,
@@ -32,13 +32,16 @@ enum class KernelOpKind {
     MatMul,
     Split,
     Slice,
+    Convert,
     Unary,
     Softmax,
     MaxPool2D,
     AvgPool2D,
     Conv2D,
     Conv3D,
-    BatchNorm2D
+    BatchNorm2D,
+    Transpose,
+    Reshape
 };
 
 struct KernelTensor {
@@ -46,6 +49,7 @@ struct KernelTensor {
     std::vector<int64_t> shape;
     MetalDType dtype;
     bool from_parameter = false;  // true if originated from ov::Parameter
+    bool from_result = false;     // true if feeds model result
     bool from_constant = false;   // true if originated from ov::Constant
     std::vector<float> const_data;  // only valid when from_constant == true (stored as f32)
     const void* source_node = nullptr;  // raw pointer to originating ov::Node for mapping
@@ -55,6 +59,7 @@ struct KernelOp {
     KernelOpKind kind;
     KernelTensor* input0 = nullptr;
     KernelTensor* input1 = nullptr;
+    KernelTensor* input2 = nullptr;  // optional third input (e.g., bias for Conv2D)
     KernelTensor* output = nullptr;
     std::vector<KernelTensor*> outputs;  // for multi-output ops like Split
     MetalDType dtype;
@@ -85,6 +90,10 @@ struct KernelOp {
     bool b_is_nk_layout = false;
     bool a_transpose = false;  // logical transpose of A
     bool b_transpose = false;  // logical transpose of B
+    struct ReshapeDesc {
+        std::vector<int64_t> in_shape;
+        std::vector<int64_t> out_shape;
+    } reshape;
     // Pool2D-specific
     struct Pool2DDesc {
         uint32_t N = 0;
@@ -99,6 +108,10 @@ struct KernelOp {
         uint32_t strideW = 0;
         uint32_t padTop = 0;
         uint32_t padLeft = 0;
+        uint32_t padBottom = 0;
+        uint32_t padRight = 0;
+        uint32_t dilationH = 1;
+        uint32_t dilationW = 1;
         bool exclude_pad = false;
     } pool;
     struct Conv2DDesc {
@@ -125,6 +138,20 @@ struct KernelOp {
         uint32_t element_type = 0;  // ov::element::Type_t value
         uint32_t outH = 0;
         uint32_t outW = 0;
+        bool has_bias = false;
+        KernelTensor* bias = nullptr;
+        // Post-ops
+        bool has_bn = false;
+        float epsilon = 0.0f;
+        std::vector<float> gamma;
+        std::vector<float> beta;
+        std::vector<float> mean;
+        std::vector<float> var;
+        bool has_activation = false;
+        ActivationKind activation = ActivationKind::Relu;
+        float alpha = 0.0f;
+        float clamp_min = 0.0f;
+        float clamp_max = 0.0f;
     } conv2d;
     struct Conv3DDesc {
         MetalDType dtype;
@@ -185,9 +212,26 @@ struct KernelOp {
         int64_t axis = 0;
         uint64_t outer = 0;
         uint64_t inner = 0;
+        uint64_t axis_total = 0;
         std::vector<uint64_t> axis_sizes;
         std::vector<uint64_t> axis_offsets;
     } concat;
+    struct ConvertDesc {
+        MetalDType src_dtype;
+        MetalDType dst_dtype;
+    } convert;
+    struct TransposeDesc {
+        std::vector<int64_t> in_shape;
+        std::vector<int64_t> out_shape;
+        std::vector<int64_t> perm;
+    } transpose;
+    struct SliceGenericDesc {
+        MetalDType dtype;
+        std::vector<int64_t> in_shape;
+        std::vector<int64_t> out_shape;
+        std::vector<int64_t> starts;
+        std::vector<int64_t> steps;
+    } slice_generic;
     struct InterpolateDesc {
         MetalDType dtype;
         uint32_t N = 0;

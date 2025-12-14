@@ -25,6 +25,9 @@ bool MlirBackend::Impl::try_build_eltwise(const std::shared_ptr<const ov::Model>
     ov::element::Type elt_type = ov::element::f32;
     KernelOpKind detected_kind = KernelOpKind::ElementwiseAdd;
     bool is_squared_difference = false;
+    bool mod_from_pattern = false;
+    ov::Output<const ov::Node> mod_a, mod_b;
+    bool mod_is_floor = false;
     for (const auto& n : model->get_ordered_ops()) {
         if (auto p = std::dynamic_pointer_cast<const ov::op::v1::Add>(n)) { detected_kind = KernelOpKind::ElementwiseAdd; elt_type = p->get_output_element_type(0); break; }
         if (auto p = std::dynamic_pointer_cast<const ov::op::v1::Subtract>(n)) { detected_kind = KernelOpKind::ElementwiseSub; elt_type = p->get_output_element_type(0); break; }
@@ -34,27 +37,56 @@ bool MlirBackend::Impl::try_build_eltwise(const std::shared_ptr<const ov::Model>
         if (auto p = std::dynamic_pointer_cast<const ov::op::v1::Mod>(n)) { detected_kind = KernelOpKind::ElementwiseMod; elt_type = p->get_output_element_type(0); break; }
         if (auto p = std::dynamic_pointer_cast<const ov::op::v1::FloorMod>(n)) { detected_kind = KernelOpKind::ElementwiseFloorMod; elt_type = p->get_output_element_type(0); break; }
         if (auto p = std::dynamic_pointer_cast<const ov::op::v0::SquaredDifference>(n)) { detected_kind = KernelOpKind::ElementwiseSub; elt_type = p->get_output_element_type(0); is_squared_difference = true; break; }
+        if (auto pat = match_mod_decomposition(n)) {
+            auto [a_out, b_out, is_floor] = *pat;
+            detected_kind = is_floor ? KernelOpKind::ElementwiseFloorMod : KernelOpKind::ElementwiseMod;
+            elt_type = a_out.get_element_type();
+            mod_a = a_out;
+            mod_b = b_out;
+            mod_is_floor = is_floor;
+            mod_from_pattern = true;
+            break;
+        }
     }
 
     // shapes from detected node (allow dynamic via PartialShape)
     std::vector<int64_t> s0, s1, sout;
     std::shared_ptr<const ov::Node> elt_node;
-    for (const auto& n : model->get_ordered_ops()) {
-        if (n->get_output_element_type(0) == elt_type) {
-            auto p0 = n->get_input_partial_shape(0);
-            auto p1 = n->get_input_partial_shape(1);
-            auto pout = n->get_output_partial_shape(0);
-            auto to_vec = [](const ov::PartialShape& ps) {
-                std::vector<int64_t> v;
-                v.reserve(ps.rank().get_length());
-                for (const auto& d : ps) v.push_back(d.is_dynamic() ? -1 : static_cast<int64_t>(d.get_length()));
-                return v;
-            };
-            s0 = to_vec(p0);
-            s1 = to_vec(p1);
-            sout = to_vec(pout);
-            elt_node = n;
-            break;
+    auto to_vec = [](const ov::PartialShape& ps) {
+        std::vector<int64_t> v;
+        v.reserve(ps.rank().is_static() ? ps.rank().get_length() : 8);
+        for (const auto& d : ps) v.push_back(d.is_dynamic() ? -1 : static_cast<int64_t>(d.get_length()));
+        return v;
+    };
+    std::shared_ptr<const ov::Model> model_for_build = model;
+    if (mod_from_pattern) {
+        s0 = to_vec(mod_a.get_partial_shape());
+        s1 = to_vec(mod_b.get_partial_shape());
+        // result shape = broadcast(s0,s1); will be recomputed below
+        sout = {};
+        // fabricate a minimal model with a single Mod/FloorMod op to feed the MLIR builder
+        ov::ParameterVector params;
+        auto p0 = std::make_shared<ov::op::v0::Parameter>(elt_type, mod_a.get_partial_shape());
+        auto p1 = std::make_shared<ov::op::v0::Parameter>(elt_type, mod_b.get_partial_shape());
+        params = {p0, p1};
+        std::shared_ptr<ov::Node> mod_op;
+        if (mod_is_floor)
+            mod_op = std::make_shared<ov::op::v1::FloorMod>(p0, p1, ov::op::AutoBroadcastType::NUMPY);
+        else
+            mod_op = std::make_shared<ov::op::v1::Mod>(p0, p1, ov::op::AutoBroadcastType::NUMPY);
+        auto res = std::make_shared<ov::op::v0::Result>(mod_op);
+        auto mod_model = std::make_shared<ov::Model>(ov::ResultVector{res}, params);
+        model_for_build = mod_model;
+        elt_node = mod_op;
+    } else {
+        for (const auto& n : model->get_ordered_ops()) {
+            if (n->get_output_element_type(0) == elt_type) {
+                s0 = to_vec(n->get_input_partial_shape(0));
+                s1 = to_vec(n->get_input_partial_shape(1));
+                sout = to_vec(n->get_output_partial_shape(0));
+                elt_node = n;
+                break;
+            }
         }
     }
 
@@ -125,18 +157,18 @@ bool MlirBackend::Impl::try_build_eltwise(const std::shared_ptr<const ov::Model>
     mlir::MLIRContext ctx;
     mlir::ModuleOp module;
     switch (detected_kind) {
-        case KernelOpKind::ElementwiseAdd: module = build_mlir_add_from_model(model, ctx); break;
+        case KernelOpKind::ElementwiseAdd: module = build_mlir_add_from_model(model_for_build, ctx); break;
         case KernelOpKind::ElementwiseSub:
             if (is_squared_difference)
-                module = build_mlir_squared_difference_from_model(model, ctx);
+                module = build_mlir_squared_difference_from_model(model_for_build, ctx);
             else
-                module = build_mlir_sub_from_model(model, ctx);
+                module = build_mlir_sub_from_model(model_for_build, ctx);
             break;
-        case KernelOpKind::ElementwiseMul: module = build_mlir_mul_from_model(model, ctx); break;
-        case KernelOpKind::ElementwiseDiv: module = build_mlir_div_from_model(model, ctx); break;
-        case KernelOpKind::ElementwisePow: module = build_mlir_pow_from_model(model, ctx); break;
-        case KernelOpKind::ElementwiseMod: module = build_mlir_mod_from_model(model, ctx); break;
-        case KernelOpKind::ElementwiseFloorMod: module = build_mlir_floor_mod_from_model(model, ctx); break;
+        case KernelOpKind::ElementwiseMul: module = build_mlir_mul_from_model(model_for_build, ctx); break;
+        case KernelOpKind::ElementwiseDiv: module = build_mlir_div_from_model(model_for_build, ctx); break;
+        case KernelOpKind::ElementwisePow: module = build_mlir_pow_from_model(model_for_build, ctx); break;
+        case KernelOpKind::ElementwiseMod: module = build_mlir_mod_from_model(model_for_build, ctx); break;
+        case KernelOpKind::ElementwiseFloorMod: module = build_mlir_floor_mod_from_model(model_for_build, ctx); break;
         default: OPENVINO_THROW("Unexpected eltwise kind in MLIR builder");
     }
     run_mlir_pipeline(module);

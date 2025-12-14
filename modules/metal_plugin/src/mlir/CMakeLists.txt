@@ -16,6 +16,7 @@ set(METAL_MLIR_SOURCES
     mlir_builder_conv3d.cpp
     mlir_builder_concat.cpp
     mlir_builder_split.cpp
+    mlir_builder_convert.cpp
     mlir_builder_interpolate.cpp
     mlir_builder_maxpool.cpp
     mlir_builder_avgpool.cpp
@@ -49,5 +50,9 @@ target_link_libraries(metal_mlir
         MLIRArithDialect
         MLIRSCFDialect
         LLVMSupport)
+
+if(DEFINED METAL_LLVM_EXTERNAL_TARGET)
+    add_dependencies(metal_mlir ${METAL_LLVM_EXTERNAL_TARGET})
+endif()
 
 set_target_properties(metal_mlir PROPERTIES POSITION_INDEPENDENT_CODE ON)

@@ -14,7 +14,7 @@ namespace metal_plugin {
 // compute type inside Metal kernels, and storage type for buffers.
 struct MetalDType {
     enum class ComputeType { F32, I32, I64 };
-    enum class StorageType { F32, F16, I32, I64 };
+    enum class StorageType { F32, F16, I32, I64, U8, I8 };
 
     ov::element::Type ov_type{ov::element::dynamic};
     ComputeType compute{ComputeType::F32};

@@ -39,6 +39,10 @@ std::string generate_msl_from_mlir(mlir::ModuleOp module, const BaseCodegenDesc&
             return generate_msl_for_softmax(static_cast<const SoftmaxCodegenDesc&>(desc), module);
         case KernelOpKind::Concat:
             return generate_msl_for_concat(static_cast<const ConcatCodegenDesc&>(desc), module);
+        case KernelOpKind::Transpose:
+            return generate_msl_for_transpose(static_cast<const TransposeCodegenDesc&>(desc), module);
+        case KernelOpKind::Convert:
+            return generate_msl_for_convert(static_cast<const ConvertCodegenDesc&>(desc), module);
         case KernelOpKind::Interpolate:
             return generate_msl_for_interpolate(static_cast<const InterpolateCodegenDesc&>(desc), module);
         case KernelOpKind::Split:

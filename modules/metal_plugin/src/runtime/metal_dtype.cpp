@@ -33,6 +33,14 @@ MetalDType resolve_metal_dtype(const ov::element::Type& ov_type) {
             dtype.compute = MetalDType::ComputeType::I64;
             dtype.storage = MetalDType::StorageType::I64;
             break;
+        case ov::element::u8:
+            dtype.compute = MetalDType::ComputeType::I32;
+            dtype.storage = MetalDType::StorageType::U8;
+            break;
+        case ov::element::i8:
+            dtype.compute = MetalDType::ComputeType::I32;
+            dtype.storage = MetalDType::StorageType::I8;
+            break;
         default:
             OPENVINO_THROW("METAL: unsupported element type ", ov_type.get_type_name());
     }
@@ -45,6 +53,8 @@ size_t storage_size(const MetalDType& dtype) {
         case MetalDType::StorageType::F32: return sizeof(float);
         case MetalDType::StorageType::I32: return sizeof(int32_t);
         case MetalDType::StorageType::I64: return sizeof(int64_t);
+        case MetalDType::StorageType::U8:  return sizeof(uint8_t);
+        case MetalDType::StorageType::I8:  return sizeof(int8_t);
         default: return 0;
     }
 }

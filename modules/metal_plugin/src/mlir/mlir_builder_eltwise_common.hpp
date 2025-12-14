@@ -123,11 +123,17 @@ mlir::ModuleOp build_mlir_binary_eltwise_from_model(const std::shared_ptr<const 
         mlir::ValueRange{func.getArgument(0), func.getArgument(1)},
         mlir::ValueRange{empty},
         mlir::ArrayRef<mlir::AffineMap>{map0, map1, map_out},
-        mlir::ArrayRef<mlir::utils::IteratorType>(iters),
-        [&](mlir::OpBuilder& body, mlir::Location l, mlir::ValueRange args) {
-            mlir::Value res = emit(body, l, args, elem_ty, node);
-            body.create<mlir::linalg::YieldOp>(l, res);
-        });
+        mlir::ArrayRef<mlir::utils::IteratorType>(iters));
+    {
+        // linalg.generic requires one block argument per input and per output (for init tensor).
+        auto& region = generic.getRegion();
+        region.getBlocks().clear();
+        auto* block = &region.emplaceBlock();
+        block->addArguments({elem_ty, elem_ty, elem_ty}, {loc, loc, loc});
+        mlir::OpBuilder body(block, block->begin());
+        mlir::Value res = emit(body, loc, block->getArguments().take_front(2), elem_ty, node);
+        body.create<mlir::linalg::YieldOp>(loc, res);
+    }
 
     b.create<mlir::func::ReturnOp>(loc, generic.getResults());
     return module;
@@ -135,4 +141,3 @@ mlir::ModuleOp build_mlir_binary_eltwise_from_model(const std::shared_ptr<const 
 
 }  // namespace metal_plugin
 }  // namespace ov
-

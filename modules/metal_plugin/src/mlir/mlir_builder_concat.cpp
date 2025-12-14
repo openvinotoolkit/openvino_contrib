@@ -44,19 +44,42 @@ mlir::ModuleOp build_mlir_concat_from_op(const KernelOp& op, mlir::MLIRContext& 
     auto input = func.getArgument(0);
     auto output = func.getArgument(1);
 
-    auto total = b.create<mlir::memref::DimOp>(loc, input, 0);
-    auto axis_offset_c = b.create<mlir::arith::ConstantIndexOp>(loc, static_cast<int64_t>(op.concat.axis_offsets.empty() ? 0 : op.concat.axis_offsets[0]));
+    const int64_t axis_offset = static_cast<int64_t>(op.concat.axis_offsets.empty() ? 0 : op.concat.axis_offsets[0]);
+    auto axis_offset_c = b.create<mlir::arith::ConstantIndexOp>(loc, axis_offset);
     auto inner_c = b.create<mlir::arith::ConstantIndexOp>(loc, static_cast<int64_t>(op.concat.inner));
+    auto axis_len_c = b.create<mlir::arith::ConstantIndexOp>(loc, static_cast<int64_t>(op.concat.axis_sizes.empty() ? 0 : op.concat.axis_sizes[0]));
+    auto axis_total_c = b.create<mlir::arith::ConstantIndexOp>(loc, static_cast<int64_t>(op.concat.axis_total));
+    auto outer_c = b.create<mlir::arith::ConstantIndexOp>(loc, static_cast<int64_t>(op.concat.outer));
+
+    // total elements in this slice: outer * axis_len * inner
+    auto total = b.create<mlir::arith::MulIOp>(loc, outer_c,
+                   b.create<mlir::arith::MulIOp>(loc, axis_len_c, inner_c));
 
     auto c0 = b.create<mlir::arith::ConstantIndexOp>(loc, 0);
     auto c1 = b.create<mlir::arith::ConstantIndexOp>(loc, 1);
 
     auto for_i = b.create<mlir::scf::ForOp>(loc, c0, total, c1, std::nullopt,
         [&](mlir::OpBuilder& bb, mlir::Location loc, mlir::Value i, mlir::ValueRange) {
-            auto dst_base = bb.create<mlir::arith::MulIOp>(loc, axis_offset_c, inner_c);
-            auto dst_idx = bb.create<mlir::arith::AddIOp>(loc, dst_base, i);
-            auto val = bb.create<mlir::memref::LoadOp>(loc, input, mlir::ValueRange{i});
-            bb.create<mlir::memref::StoreOp>(loc, val, output, mlir::ValueRange{dst_idx});
+            // Decode flat index i -> (outer, axis, inner)
+            auto axis_stride = bb.create<mlir::arith::MulIOp>(loc, axis_len_c, inner_c);
+            auto outer = bb.create<mlir::arith::DivUIOp>(loc, i, axis_stride);
+            auto rem0 = bb.create<mlir::arith::SubIOp>(loc, i, bb.create<mlir::arith::MulIOp>(loc, outer, axis_stride));
+            auto axis = bb.create<mlir::arith::DivUIOp>(loc, rem0, inner_c);
+            auto inner = bb.create<mlir::arith::SubIOp>(loc, rem0, bb.create<mlir::arith::MulIOp>(loc, axis, inner_c));
+
+            auto dst_outer_stride = bb.create<mlir::arith::MulIOp>(loc, outer, axis_total_c);
+            auto dst_axis = bb.create<mlir::arith::AddIOp>(loc, axis_offset_c, axis);
+            auto dst_flat = bb.create<mlir::arith::AddIOp>(loc,
+                               bb.create<mlir::arith::MulIOp>(loc,
+                                   bb.create<mlir::arith::AddIOp>(loc, dst_outer_stride, dst_axis),
+                                   inner_c),
+                               inner);
+            auto src_outer_stride = bb.create<mlir::arith::MulIOp>(loc, outer, axis_stride);
+            auto src_flat = bb.create<mlir::arith::AddIOp>(loc, src_outer_stride,
+                              bb.create<mlir::arith::AddIOp>(loc, bb.create<mlir::arith::MulIOp>(loc, axis, inner_c), inner));
+
+            auto val = bb.create<mlir::memref::LoadOp>(loc, input, mlir::ValueRange{src_flat});
+            bb.create<mlir::memref::StoreOp>(loc, val, output, mlir::ValueRange{dst_flat});
             bb.create<mlir::scf::YieldOp>(loc);
         });
 

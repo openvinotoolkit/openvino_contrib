@@ -11,33 +11,97 @@ find_package(OpenVINODeveloperPackage REQUIRED)
 option(ENABLE_METAL_MLIR "Build MLIR-based METAL backend" ON)
 
 if(ENABLE_METAL_MLIR)
+    include(ExternalProject)
+
     set(METAL_LLVM_PROJECT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/llvm-project")
     set(METAL_LLVM_PROJECT_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/third_party/llvm-project")
+    set(METAL_LLVM_INSTALL_DIR "${METAL_LLVM_PROJECT_BINARY_DIR}/install")
 
-    # Build only what we need from llvm-project: host target + MLIR
-    set(_metal_saved_build_shared_libs ${BUILD_SHARED_LIBS})
-    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build shared libs" FORCE)
-    set(LLVM_TARGETS_TO_BUILD "Native" CACHE STRING "Targets for llvm-project" FORCE)
-    set(LLVM_ENABLE_PROJECTS "mlir" CACHE STRING "Enable MLIR project" FORCE)
-    set(LLVM_ENABLE_BINDINGS OFF CACHE BOOL "Disable unexpected bindings" FORCE)
-    set(LLVM_INCLUDE_EXAMPLES OFF CACHE BOOL "Skip LLVM examples" FORCE)
-    set(LLVM_INCLUDE_TESTS OFF CACHE BOOL "Skip LLVM tests" FORCE)
-    set(MLIR_ENABLE_BINDINGS_PYTHON OFF CACHE BOOL "Skip MLIR python bindings" FORCE)
-    set(LLVM_BUILD_LLVM_DYLIB OFF CACHE BOOL "Disable monolithic LLVM dylib" FORCE)
-    set(LLVM_BUILD_SHARED_LIBS OFF CACHE BOOL "Build llvm-project static libs for METAL" FORCE)
+    set(_metal_llvm_byproducts
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRIR.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRSupport.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRPass.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRTransforms.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRBufferizationDialect.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRBufferizationTransforms.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRFuncTransforms.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRMemRefTransforms.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRFuncDialect.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRLinalgDialect.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRLinalgTransforms.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRTensorDialect.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRArithDialect.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRSCFDialect.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libLLVMSupport.a)
 
-    add_subdirectory(${METAL_LLVM_PROJECT_SOURCE_DIR}/llvm
-                     ${METAL_LLVM_PROJECT_BINARY_DIR}/llvm
-                     EXCLUDE_FROM_ALL)
-    # restore parent BUILD_SHARED_LIBS state
-    set(BUILD_SHARED_LIBS ${_metal_saved_build_shared_libs} CACHE BOOL "Build shared libs" FORCE)
+    ExternalProject_Add(metal_llvm_external
+        SOURCE_DIR ${METAL_LLVM_PROJECT_SOURCE_DIR}/llvm
+        BINARY_DIR ${METAL_LLVM_PROJECT_BINARY_DIR}/llvm
+        CMAKE_ARGS
+            -G ${CMAKE_GENERATOR}
+            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+            -DCMAKE_OSX_ARCHITECTURES=${CMAKE_OSX_ARCHITECTURES}
+            -DCMAKE_INSTALL_PREFIX=${METAL_LLVM_INSTALL_DIR}
+            -DLLVM_ENABLE_PROJECTS=mlir
+            -DLLVM_TARGETS_TO_BUILD=Native
+            -DBUILD_SHARED_LIBS=OFF
+            -DLLVM_BUILD_LLVM_DYLIB=OFF
+            -DLLVM_ENABLE_BINDINGS=OFF
+            -DLLVM_INCLUDE_EXAMPLES=OFF
+            -DLLVM_INCLUDE_TESTS=OFF
+            -DMLIR_ENABLE_BINDINGS_PYTHON=OFF
+            -DLLVM_ENABLE_RTTI=ON
+        BUILD_BYPRODUCTS ${_metal_llvm_byproducts}
+        INSTALL_COMMAND ${CMAKE_COMMAND} --build . --target install)
 
-    set(MLIR_INCLUDE_DIRS
-        ${METAL_LLVM_PROJECT_SOURCE_DIR}/mlir/include
-        ${METAL_LLVM_PROJECT_SOURCE_DIR}/llvm/include
-        ${METAL_LLVM_PROJECT_BINARY_DIR}/llvm/include
-        ${METAL_LLVM_PROJECT_BINARY_DIR}/llvm/tools/mlir/include
-        CACHE INTERNAL "MLIR include directories for METAL plugin")
+    # Try to use installed config packages from the external build (if already present).
+    set(MLIR_DIR "${METAL_LLVM_INSTALL_DIR}/lib/cmake/mlir" CACHE PATH "MLIR config dir for METAL" FORCE)
+    set(LLVM_DIR "${METAL_LLVM_INSTALL_DIR}/lib/cmake/llvm" CACHE PATH "LLVM config dir for METAL" FORCE)
+
+    find_package(LLVM CONFIG PATHS ${LLVM_DIR} NO_DEFAULT_PATH QUIET)
+    find_package(MLIR CONFIG PATHS ${MLIR_DIR} NO_DEFAULT_PATH QUIET)
+
+    if(LLVM_FOUND AND MLIR_FOUND)
+        message(STATUS "Using external LLVM/MLIR from ${METAL_LLVM_INSTALL_DIR}")
+        set(MLIR_INCLUDE_DIRS
+            ${MLIR_INCLUDE_DIRS}
+            ${LLVM_INCLUDE_DIRS}
+            CACHE INTERNAL "MLIR include directories for METAL plugin")
+    else()
+        message(STATUS "LLVM/MLIR not found yet; will use ExternalProject outputs directly")
+        file(MAKE_DIRECTORY ${METAL_LLVM_INSTALL_DIR}/include)
+        file(MAKE_DIRECTORY ${METAL_LLVM_INSTALL_DIR}/lib)
+        set(MLIR_INCLUDE_DIRS
+            ${METAL_LLVM_INSTALL_DIR}/include
+            CACHE INTERNAL "MLIR include directories for METAL plugin")
+
+        function(_metal_import_lib name)
+            add_library(${name} STATIC IMPORTED GLOBAL)
+            set_target_properties(${name} PROPERTIES
+                IMPORTED_LOCATION "${METAL_LLVM_INSTALL_DIR}/lib/lib${name}.a"
+                INTERFACE_INCLUDE_DIRECTORIES "${MLIR_INCLUDE_DIRS}")
+            add_dependencies(${name} metal_llvm_external)
+        endfunction()
+
+        _metal_import_lib(MLIRIR)
+        _metal_import_lib(MLIRSupport)
+        _metal_import_lib(MLIRPass)
+        _metal_import_lib(MLIRTransforms)
+        _metal_import_lib(MLIRBufferizationDialect)
+        _metal_import_lib(MLIRBufferizationTransforms)
+        _metal_import_lib(MLIRFuncTransforms)
+        _metal_import_lib(MLIRMemRefTransforms)
+        _metal_import_lib(MLIRFuncDialect)
+        _metal_import_lib(MLIRLinalgDialect)
+        _metal_import_lib(MLIRLinalgTransforms)
+        _metal_import_lib(MLIRTensorDialect)
+        _metal_import_lib(MLIRArithDialect)
+        _metal_import_lib(MLIRSCFDialect)
+        _metal_import_lib(LLVMSupport)
+    endif()
+
+    # propagate dependency to subtargets
+    set(METAL_LLVM_EXTERNAL_TARGET metal_llvm_external CACHE INTERNAL "External llvm-project target for METAL plugin")
 endif()
 
 ov_option(ENABLE_METAL_REGISTRATION "Enables registration of METAL plugin" ON)
