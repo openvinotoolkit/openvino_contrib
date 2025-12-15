@@ -1,0 +1,97 @@
+<?xml version="1.0"?>
+<net name="postprocessing" version="11">
+    <layers>
+        <layer id="0" name="bbox_cls_pred" type="Parameter" version="opset1">
+            <data shape="-1,-1,-1" element_type="f32"/>
+            <output>
+                <port id="0" precision="FP32">
+                    <dim>-1</dim>
+                    <dim>-1</dim>
+                    <dim>-1</dim>
+                </port>
+            </output>
+        </layer>
+        <layer id="1" name="bbox_pred" type="Parameter" version="opset1">
+            <data shape="-1,-1,-1" element_type="f32"/>
+            <output>
+                <port id="0" precision="FP32">
+                    <dim>-1</dim>
+                    <dim>-1</dim>
+                    <dim>-1</dim>
+                </port>
+            </output>
+        </layer>
+        <layer id="2" name="bbox_dir_cls_pred" type="Parameter" version="opset1">
+            <data shape="-1,-1,-1" element_type="f32"/>
+            <output>
+                <port id="0" precision="FP32">
+                    <dim>-1</dim>
+                    <dim>-1</dim>
+                    <dim>-1</dim>
+                </port>
+            </output>
+        </layer>
+        <layer id="3" name="postprocessing" type="PostProcessingOp" version="custom_ops">
+            <data ranges="0,-39.68,-0.6,69.12,39.68,-0.6,0,-39.68,-0.6,69.12,39.68,-0.6,0,-39.68,-1.78,69.12,39.68,-1.78" sizes="0.6,0.8,1.73,0.6,1.76,1.73,1.6,3.9,1.56" rotations="0,1.57" nclasses="3" nms_pre="100" score_thr="0.1" nms_thr="0.01" max_num="50"/>
+            <input>
+                <port id="0">
+                    <dim>-1</dim>
+                    <dim>-1</dim>
+                    <dim>-1</dim>
+                </port>
+                <port id="1">
+                    <dim>-1</dim>
+                    <dim>-1</dim>
+                    <dim>-1</dim>
+                </port>
+                <port id="2">
+                    <dim>-1</dim>
+                    <dim>-1</dim>
+                    <dim>-1</dim>
+                </port>
+            </input>
+            <output>
+                <port id="3" precision="FP32">
+                    <dim>-1</dim>
+                    <dim>7</dim>
+                </port>
+                <port id="4" precision="I64">
+                    <dim>-1</dim>
+                </port>
+                <port id="5" precision="FP32">
+                    <dim>-1</dim>
+                </port>
+            </output>
+        </layer>
+        <layer id="4" name="bboxes" type="Result" version="opset1">
+            <input>
+                <port id="0">
+                    <dim>-1</dim>
+                    <dim>7</dim>
+                </port>
+            </input>
+        </layer>
+        <layer id="5" name="labels" type="Result" version="opset1">
+            <input>
+                <port id="0">
+                    <dim>-1</dim>
+                </port>
+            </input>
+        </layer>
+        <layer id="6" name="scores" type="Result" version="opset1">
+            <input>
+                <port id="0">
+                    <dim>-1</dim>
+                </port>
+            </input>
+        </layer>
+    </layers>
+    <edges>
+        <edge from-layer="0" from-port="0" to-layer="3" to-port="0"/>
+        <edge from-layer="1" from-port="0" to-layer="3" to-port="1"/>
+        <edge from-layer="2" from-port="0" to-layer="3" to-port="2"/>
+        <edge from-layer="3" from-port="3" to-layer="4" to-port="0"/>
+        <edge from-layer="3" from-port="4" to-layer="5" to-port="0"/>
+        <edge from-layer="3" from-port="5" to-layer="6" to-port="0"/>
+    </edges>
+</net>
