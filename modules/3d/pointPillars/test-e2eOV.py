@@ -44,7 +44,7 @@ def get_pc_from_bin(pc_path):
     pc = np.fromfile(pc_path, dtype=np.float32).reshape(-1, 4)
     pc = point_range_filter(pc)
 
-    print(f"\n✓ Point cloud loaded: {len(pc)} points (after ROI filtering)")
+    print(f"\n✓ Point cloud loaded: {len(pc)} points (after ROI filtering), shape: {pc.shape}")
     return pc
 
 def get_pc_from_pcd(pc_path):
@@ -55,7 +55,7 @@ def get_pc_from_pcd(pc_path):
 
     pts = read_kitti_pcd(pc_path)
     pc = point_range_filter(pts)
-    print(f"\n✓ Point cloud loaded from PCD: {len(pc)} points (after ROI filtering)")
+    print(f"\n✓ Point cloud loaded from PCD: {len(pc)} points (after ROI filtering), shape: {pc.shape}")
     return pc
 
 def main(args):
