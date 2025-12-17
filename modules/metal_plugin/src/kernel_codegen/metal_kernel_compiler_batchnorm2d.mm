@@ -21,6 +21,7 @@ id<MTLComputePipelineState> MetalKernelCompiler::compile_batchnorm2d_kernel(cons
     desc.C = op.batchnorm.C;
     desc.H = op.batchnorm.H;
     desc.W = op.batchnorm.W;
+    desc.element_type = op.output ? op.output->dtype.ov_type : ov::element::f32;
     auto source = generate_msl_for_batchnorm2d(desc);
     return compile_msl_from_source(source, "batchnorm2d_kernel", log);
 }

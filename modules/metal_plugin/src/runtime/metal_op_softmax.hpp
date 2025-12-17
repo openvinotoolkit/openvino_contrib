@@ -1,0 +1,34 @@
+// Copyright (C) 2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+#pragma once
+
+#include <memory>
+
+#include "kernel_ir/kernel_ir_common.hpp"
+#include "openvino/op/softmax.hpp"
+#include "runtime/metal_op.hpp"
+
+namespace ov {
+namespace metal_plugin {
+
+class METAL_OP_API MetalSoftmaxOp : public MetalOp {
+public:
+    MetalSoftmaxOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue);
+    ~MetalSoftmaxOp() override = default;
+
+    void init(MetalBufferManager* buffer_manager) override;
+    void execute() override;
+
+private:
+    int64_t m_axis = -1;
+    ov::element::Type m_element_type{ov::element::f32};
+    KernelOp m_desc{};
+
+    id<MTLDevice> m_device = nil;
+    id<MTLCommandQueue> m_queue = nil;
+    id<MTLComputePipelineState> m_pipeline = nil;
+};
+
+}  // namespace metal_plugin
+}  // namespace ov

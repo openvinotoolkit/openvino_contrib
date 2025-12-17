@@ -54,4 +54,3 @@ bool MlirBackend::Impl::try_build_unary(const std::shared_ptr<const ov::Model>& 
     m_pipelines.push_back(compiler.compile_unary_kernel(m_ops[0], log));
     return true;
 }
-

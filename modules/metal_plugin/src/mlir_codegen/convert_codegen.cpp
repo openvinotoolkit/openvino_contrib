@@ -31,7 +31,9 @@ std::string generate_msl_for_convert(const ConvertCodegenDesc& d, mlir::ModuleOp
     ss << "kernel void convert_kernel(\n";
     ss << "  device const src_t* src [[buffer(0)]],\n";
     ss << "  device dst_t* dst [[buffer(1)]],\n";
+    ss << "  constant uint& NUM_ELEMS [[buffer(2)]],\n";
     ss << "  uint gid [[thread_position_in_grid]]) {\n";
+    ss << "    if (gid >= NUM_ELEMS) return;\n";
     ss << "    dst[gid] = static_cast<dst_t>(src[gid]);\n";
     ss << "}\n";
     return ss.str();

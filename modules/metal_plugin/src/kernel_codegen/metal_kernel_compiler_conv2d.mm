@@ -38,9 +38,7 @@ id<MTLComputePipelineState> MetalKernelCompiler::compile_conv2d_kernel(const Ker
     desc.outH = op.conv2d.outH;
     desc.outW = op.conv2d.outW;
     if (op.output && op.output->dtype.ov_type != ov::element::dynamic) {
-        // Force fp16 models to run Conv2D kernel in fp32 for numerical stability.
-        desc.element_type = (op.output->dtype.ov_type == ov::element::f16) ? ov::element::f32
-                                                                           : op.output->dtype.ov_type;
+        desc.element_type = op.output->dtype.ov_type;
     }
     if (desc.outH == 0) {
         int64_t eff_kh = static_cast<int64_t>(desc.dilationH) * (static_cast<int64_t>(desc.kH) - 1) + 1;

@@ -48,6 +48,8 @@ struct KernelTensor {
     std::string name;
     std::vector<int64_t> shape;
     MetalDType dtype;
+    // Output index of the originating ov::Output (to disambiguate multi-output nodes like Split).
+    size_t source_index = 0;
     bool from_parameter = false;  // true if originated from ov::Parameter
     bool from_result = false;     // true if feeds model result
     bool from_constant = false;   // true if originated from ov::Constant

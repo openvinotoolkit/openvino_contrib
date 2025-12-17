@@ -19,6 +19,7 @@
 #include "openvino/pass/manager.hpp"
 
 #include "runtime/metal_dtype.hpp"
+#include "runtime/metal_memory.hpp"
 
 #include "test_constants.hpp"
 
@@ -55,6 +56,9 @@ protected:
     std::shared_ptr<ov::Core> core = ov::test::utils::PluginCache::get().core();
     std::string device_metal = ov::test::utils::DEVICE_METAL;
     std::string device_ref = ov::test::utils::DEVICE_REF;
+    // Keep compiled models / requests alive so METAL shared outputs remain valid (no CPU copies).
+    std::vector<ov::CompiledModel> keep_alive_models;
+    std::vector<ov::InferRequest> keep_alive_requests;
 
     void ensure_template_registered() {
         if (device_ref != ov::test::utils::DEVICE_TEMPLATE) {
@@ -97,6 +101,9 @@ protected:
         for (size_t i = 0; i < output_count; ++i) {
             outputs.emplace_back(req.get_output_tensor(i));
         }
+        // Preserve lifetimes for shared output buffers (METAL).
+        keep_alive_requests.emplace_back(req);
+        keep_alive_models.emplace_back(compiled);
         return outputs;
     }
 

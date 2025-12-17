@@ -20,6 +20,7 @@ if(ENABLE_METAL_MLIR)
     set(_metal_llvm_byproducts
         ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRIR.a
         ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRSupport.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libLLVMDemangle.a
         ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRPass.a
         ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRTransforms.a
         ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRBufferizationDialect.a
@@ -29,6 +30,16 @@ if(ENABLE_METAL_MLIR)
         ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRFuncDialect.a
         ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRLinalgDialect.a
         ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRLinalgTransforms.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRLinalgUtils.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRCallInterfaces.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRValueBoundsOpInterface.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRAnalysis.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRArithTransforms.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRComplexDialect.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRMathDialect.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRMathTransforms.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRSparseTensorDialect.a
+        ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRSparseTensorTransforms.a
         ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRTensorDialect.a
         ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRArithDialect.a
         ${METAL_LLVM_INSTALL_DIR}/lib/libMLIRSCFDialect.a
@@ -85,6 +96,7 @@ if(ENABLE_METAL_MLIR)
 
         _metal_import_lib(MLIRIR)
         _metal_import_lib(MLIRSupport)
+        _metal_import_lib(LLVMDemangle)
         _metal_import_lib(MLIRPass)
         _metal_import_lib(MLIRTransforms)
         _metal_import_lib(MLIRBufferizationDialect)
@@ -94,6 +106,16 @@ if(ENABLE_METAL_MLIR)
         _metal_import_lib(MLIRFuncDialect)
         _metal_import_lib(MLIRLinalgDialect)
         _metal_import_lib(MLIRLinalgTransforms)
+        _metal_import_lib(MLIRLinalgUtils)
+        _metal_import_lib(MLIRCallInterfaces)
+        _metal_import_lib(MLIRValueBoundsOpInterface)
+        _metal_import_lib(MLIRAnalysis)
+        _metal_import_lib(MLIRArithTransforms)
+        _metal_import_lib(MLIRComplexDialect)
+        _metal_import_lib(MLIRMathDialect)
+        _metal_import_lib(MLIRMathTransforms)
+        _metal_import_lib(MLIRSparseTensorDialect)
+        _metal_import_lib(MLIRSparseTensorTransforms)
         _metal_import_lib(MLIRTensorDialect)
         _metal_import_lib(MLIRArithDialect)
         _metal_import_lib(MLIRSCFDialect)

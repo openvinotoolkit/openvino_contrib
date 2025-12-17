@@ -92,6 +92,8 @@ void validate_against_desc(const std::vector<LoopInfo>& loops, const MatMulCodeg
 }
 
 std::string emit_matmul_msl(const MatMulCodegenDesc& desc) {
+    const bool use_half = (desc.element_type == ov::element::f16);
+    const char* scalar = use_half ? "half" : "float";
     std::ostringstream ss;
     ss << "#include <metal_stdlib>\n";
     ss << "using namespace metal;\n";
@@ -104,9 +106,9 @@ std::string emit_matmul_msl(const MatMulCodegenDesc& desc) {
     ss << "constant bool B_IS_NK = " << (desc.b_is_nk_layout ? "true" : "false") << ";\n";
     ss << "constant bool A_TRANSPOSE = " << (desc.a_transpose ? "true" : "false") << ";\n";
     ss << "kernel void matmul_kernel(\n";
-    ss << "  device const float* A [[buffer(0)]],\n";
-    ss << "  device const float* B [[buffer(1)]],\n";
-    ss << "  device float* C [[buffer(2)]],\n";
+    ss << "  device const " << scalar << "* A [[buffer(0)]],\n";
+    ss << "  device const " << scalar << "* B [[buffer(1)]],\n";
+    ss << "  device " << scalar << "* C [[buffer(2)]],\n";
     ss << "  uint gid [[thread_position_in_grid]]) {\n";
     ss << "    uint total = BATCH * M * N;\n";
     ss << "    if (gid >= total) return;\n";
@@ -117,15 +119,19 @@ std::string emit_matmul_msl(const MatMulCodegenDesc& desc) {
     ss << "    if (row < M && col < N) {\n";
     ss << "        uint batch_a = (BATCH_A == 1) ? 0 : batch;\n";
     ss << "        uint batch_b = (BATCH_B == 1) ? 0 : batch;\n";
-    ss << "        device const float* Ap = A + batch_a * M * K;\n";
-    ss << "        device const float* Bp = B + batch_b * K * N;\n";
+    ss << "        device const " << scalar << "* Ap = A + batch_a * M * K;\n";
+    ss << "        device const " << scalar << "* Bp = B + batch_b * K * N;\n";
     ss << "        float acc = 0.0f;\n";
     ss << "        for (uint k = 0; k < K; ++k) {\n";
-    ss << "            float a = A_TRANSPOSE ? Ap[k * M + row] : Ap[row * K + k];\n";
-    ss << "            float b = B_IS_NK ? Bp[col * K + k] : Bp[k * N + col];\n";
+    ss << "            float a = static_cast<float>(A_TRANSPOSE ? Ap[k * M + row] : Ap[row * K + k]);\n";
+    ss << "            float b = static_cast<float>(B_IS_NK ? Bp[col * K + k] : Bp[k * N + col]);\n";
     ss << "            acc += a * b;\n";
     ss << "        }\n";
-    ss << "        C[(batch * M + row) * N + col] = acc;\n";
+    if (use_half) {
+        ss << "        C[(batch * M + row) * N + col] = static_cast<" << scalar << ">(acc);\n";
+    } else {
+        ss << "        C[(batch * M + row) * N + col] = acc;\n";
+    }
     ss << "    }\n";
     ss << "}\n";
     return ss.str();

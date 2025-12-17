@@ -16,7 +16,11 @@ id<MTLComputePipelineState> MetalKernelCompiler::compile_softmax_kernel(const Ke
     desc.kind = KernelOpKind::Softmax;
     desc.rows = op.rows;
     desc.cols = op.cols;
-    desc.inner = op.inner;
+    // If inner is unknown at compile-time (dynamic shapes), prefer rank-3 kernel by using a non-zero value.
+    desc.inner = (op.inner == 0 ? 2 : op.inner);
+    if (op.output && op.output->dtype.ov_type != ov::element::dynamic) {
+        desc.element_type = op.output->dtype.ov_type;
+    }
     auto source = generate_msl_for_softmax(desc, /*module*/ nullptr);
     return compile_msl_from_source(source, "softmax_kernel", log);
 }

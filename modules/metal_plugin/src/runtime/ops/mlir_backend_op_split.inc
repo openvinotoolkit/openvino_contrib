@@ -9,6 +9,11 @@ bool MlirBackend::Impl::try_run_split_segment(const Segment& seg,
                                               std::vector<ov::Tensor>& outputs,
                                               MetalBufferManager& mgr,
                                               const std::function<void(const std::string&)>& cpu_fallback_error) {
+    if (m_active_tensor_map) {
+        // Device path should handle Split/Slice; host copies are запрещены.
+        METAL_LOG_DEBUG("mlir", "[Split dbg] active tensor map present; skip host split path");
+        return false;
+    }
     {
         std::ostringstream oss;
         oss << "[Split dbg] enter seg.op_count=" << seg.op_count;

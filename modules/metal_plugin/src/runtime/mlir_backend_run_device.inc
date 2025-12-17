@@ -109,7 +109,7 @@ bool MlirBackend::Impl::run_device(MetalTensorMap& tensors, MetalBufferManager& 
                     }
                 }
                 size_t bytes = ov::shape_size(out_shape) * in.buf.type.size();
-                MetalBuffer dst = mgr.allocate(bytes, in.buf.type, /*persistent=*/false, /*storageModePrivate=*/true);
+                MetalBuffer dst = mgr.allocate(bytes, in.buf.type, /*persistent=*/false, /*storageModePrivate=*/false);
 #ifdef __OBJC__
                 id<MTLBuffer> src_buf = static_cast<id<MTLBuffer>>(in.buf.buffer);
                 id<MTLBuffer> dst_buf = static_cast<id<MTLBuffer>>(dst.buffer);
@@ -145,7 +145,7 @@ bool MlirBackend::Impl::run_device(MetalTensorMap& tensors, MetalBufferManager& 
                 const auto& in = *in_opt;
                 ov::Shape out_shape = m_model->output(0).get_partial_shape().to_shape();
                 size_t bytes = ov::shape_size(out_shape) * in.buf.type.size();
-                MetalBuffer dst = mgr.allocate(bytes, in.buf.type, /*persistent=*/false, /*storageModePrivate=*/true);
+                MetalBuffer dst = mgr.allocate(bytes, in.buf.type, /*persistent=*/false, /*storageModePrivate=*/false);
 #ifdef __OBJC__
                 id<MTLBuffer> src_buf = static_cast<id<MTLBuffer>>(in.buf.buffer);
                 id<MTLBuffer> dst_buf = static_cast<id<MTLBuffer>>(dst.buffer);
@@ -217,7 +217,7 @@ bool MlirBackend::Impl::run_device(MetalTensorMap& tensors, MetalBufferManager& 
                 }
                 ov::Shape out_shape = src_shape;
                 size_t bytes = ov::shape_size(out_shape) * src_type.size();
-                MetalBuffer dst = mgr.allocate(bytes, src_type, /*persistent=*/false, /*storageModePrivate=*/true);
+                MetalBuffer dst = mgr.allocate(bytes, src_type, /*persistent=*/false, /*storageModePrivate=*/false);
 #ifdef __OBJC__
                 id<MTLBuffer> src = static_cast<id<MTLBuffer>>(src_buf.buffer);
                 id<MTLBuffer> dstb = static_cast<id<MTLBuffer>>(dst.buffer);
@@ -258,23 +258,14 @@ bool MlirBackend::Impl::run_device(MetalTensorMap& tensors, MetalBufferManager& 
             return false;
         }
 
-        // Prefer device-resident outputs if run() bound them; otherwise upload host results.
-        bool ok = true;
+        // Outputs must be device-resident; CPU uploads are запрещены.
         for (size_t o = 0; o < host_outputs.size(); ++o) {
-            if (tensors.has_output_device(o)) {
-                continue;
+            if (!tensors.has_output_device(o)) {
+                METAL_LOG_ERROR("mlir", "[METAL MLIR] run_device: output not bound to device");
+                OPENVINO_THROW("METAL: output device buffer missing (CPU copy disabled)");
             }
-            const auto& h = host_outputs[o];
-            if (!h) {
-                ok = false;
-                continue;
-            }
-            auto& dev =
-                tensors.ensure_output_device(o, h.get_shape(), h.get_element_type(), mgr, /*shared=*/false);
-            mgr.upload(dev.buf, h.data(), h.get_byte_size());
-            tensors.bind_host_for_output(o, h);
         }
-        return ok;
+        return true;
     }
 #else
     (void)tensors;

@@ -59,6 +59,19 @@ size_t storage_size(const MetalDType& dtype) {
     }
 }
 
+size_t compute_size(const MetalDType& dtype) {
+    switch (dtype.compute) {
+        case MetalDType::ComputeType::F32: return sizeof(float);
+        case MetalDType::ComputeType::I32: return sizeof(int32_t);
+        case MetalDType::ComputeType::I64: return sizeof(int64_t);
+        default: return sizeof(float);
+    }
+}
+
+size_t element_size(const MetalDType& dtype) {
+    return std::max(storage_size(dtype), compute_size(dtype));
+}
+
 ov::Tensor to_float32_tensor(const ov::Tensor& src) {
     const auto et = src.get_element_type();
     if (et == ov::element::f32) {

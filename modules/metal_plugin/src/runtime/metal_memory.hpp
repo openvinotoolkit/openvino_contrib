@@ -9,6 +9,7 @@
 #include <map>
 #include <unordered_map>
 #include <vector>
+#include <string>
 
 #ifdef __OBJC__
 #import <Metal/Metal.h>
@@ -33,6 +34,9 @@ using MetalBufferHandle = void*;
 using MetalHeapHandle = void*;
 using MetalCommandQueueHandle = void*;
 #endif
+
+// Returns true when OV_METAL_SAFE_DEBUG=1 is set in the environment.
+bool metal_safe_debug_enabled();
 
 struct MetalBuffer {
     MetalBufferHandle buffer = nullptr;

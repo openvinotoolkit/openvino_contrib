@@ -13,6 +13,7 @@
 
 #include "runtime/metal_logger.hpp"
 #include "runtime/metal_dtype.hpp"
+#include "runtime/metal_memory.hpp"
 
 #import <Metal/Metal.h>
 #ifdef NO
@@ -32,6 +33,7 @@
 #include <string>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 #include <array>
 
 #include "kernel_ir/kernel_ir_common.hpp"
@@ -118,11 +120,8 @@ std::string describe_shape(const KernelTensor* t) {
 }
 
 static bool use_handwritten_msl() {
-    static const bool flag = []() {
-        const char* env = std::getenv("OV_METAL_USE_HANDWRITTEN_MSL");
-        return env && std::string(env) != "0";
-    }();
-    return flag;
+    // Force MLIR-based codegen only.
+    return false;
 }
 
 struct TempBufferKey {
@@ -1327,6 +1326,8 @@ private:
     std::unordered_map<const KernelTensor*, MetalBuffer> m_const_buffer_cache;
     // Dynamic handles for temporaries keyed by logical op slot/kind/type.
     std::unordered_map<TempBufferKey, BufferHandle, TempBufferKeyHash> m_temp_buffer_handles;
+    // Owner of temp handles above to prevent reuse across different managers.
+    MetalBufferManager* m_temp_mgr = nullptr;
     // Persistent constants harvested during compile (host vectors) mirrored on device.
     MetalBuffer m_const_w_buf;
     MetalBuffer m_const_bn_buf;
@@ -1347,35 +1348,12 @@ MetalBuffer MlirBackend::Impl::ensure_const_buffer(const KernelTensor* t, MetalB
     if (it != m_const_buffer_cache.end())
         return it->second;
 
-    auto dtype_to_element = [&](const MetalDType& dt) -> ov::element::Type {
-        switch (dt.storage) {
-            case MetalDType::StorageType::I32: return ov::element::i32;
-            case MetalDType::StorageType::I64: return ov::element::i64;
-            case MetalDType::StorageType::F16: return ov::element::f16;
-            case MetalDType::StorageType::U8:  return ov::element::u8;
-            case MetalDType::StorageType::I8:  return ov::element::i8;
-            case MetalDType::StorageType::F32:
-            default: return ov::element::f32;
-        }
-    };
-    auto dtype_size = [&](const MetalDType& dt) -> size_t {
-        switch (dt.storage) {
-            case MetalDType::StorageType::I32: return sizeof(int32_t);
-            case MetalDType::StorageType::I64: return sizeof(int64_t);
-            case MetalDType::StorageType::F16: return sizeof(ov::float16);
-            case MetalDType::StorageType::U8:  return sizeof(uint8_t);
-            case MetalDType::StorageType::I8:  return sizeof(int8_t);
-            case MetalDType::StorageType::F32:
-            default: return sizeof(float);
-        }
-    };
-
-    ov::element::Type et = dtype_to_element(t->dtype);
-    size_t elem_sz = dtype_size(t->dtype);
+    // Use storage size to match the kernel pointer type (half buffers must be 2B per element).
+    const size_t elem_sz = storage_size(t->dtype);
     size_t bytes = t->const_data.size() * elem_sz;
     if (bytes == 0) bytes = elem_sz;
 
-    MetalBuffer buf = mgr.allocate(bytes, et, /*persistent=*/true, /*storageModePrivate=*/true);
+    MetalBuffer buf = mgr.allocate(bytes, t->dtype.ov_type, /*persistent=*/true, /*storageModePrivate=*/true);
     switch (t->dtype.storage) {
         case MetalDType::StorageType::I32: {
             std::vector<int32_t> tmp(t->const_data.size());
@@ -1405,7 +1383,13 @@ MetalBuffer MlirBackend::Impl::ensure_const_buffer(const KernelTensor* t, MetalB
             mgr.upload(buf, tmp.data(), tmp.size() * sizeof(int8_t));
             break;
         }
-        case MetalDType::StorageType::F16:
+        case MetalDType::StorageType::F16: {
+            std::vector<ov::float16> tmp(t->const_data.size());
+            for (size_t i = 0; i < t->const_data.size(); ++i)
+                tmp[i] = ov::float16{t->const_data[i]};
+            mgr.upload(buf, tmp.data(), tmp.size() * sizeof(ov::float16));
+            break;
+        }
         case MetalDType::StorageType::F32:
         default: {
             mgr.upload(buf, t->const_data.data(), bytes);

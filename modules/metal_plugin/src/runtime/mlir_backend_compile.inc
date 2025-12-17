@@ -453,43 +453,7 @@ void MlirBackend::Impl::compile(const std::shared_ptr<const ov::Model>& model) {
                         m_pipelines.push_back(compiler.compile_conv2d_kernel(op, log));
                         break;
                     case KernelOpKind::Conv3D: {
-                        try {
-                            mlir::MLIRContext ctx;
-                            auto module = build_mlir_conv3d_from_model(m_model, ctx);
-                            run_mlir_pipeline(module);
-                            Conv3DCodegenDesc desc;
-                            const auto& kop = op;
-                            desc.kind = KernelOpKind::Conv3D;
-                            desc.N = kop.conv3d.N;
-                            desc.C_in = kop.conv3d.C_in;
-                            desc.D = kop.conv3d.D;
-                            desc.H = kop.conv3d.H;
-                            desc.W = kop.conv3d.W;
-                            desc.C_out = kop.conv3d.C_out;
-                            desc.kD = kop.conv3d.kernelD;
-                            desc.kH = kop.conv3d.kernelH;
-                            desc.kW = kop.conv3d.kernelW;
-                            desc.strideD = kop.conv3d.strideD;
-                            desc.strideH = kop.conv3d.strideH;
-                            desc.strideW = kop.conv3d.strideW;
-                            desc.dilationD = kop.conv3d.dilationD;
-                            desc.dilationH = kop.conv3d.dilationH;
-                            desc.dilationW = kop.conv3d.dilationW;
-                            desc.padFront = kop.conv3d.padFront;
-                            desc.padTop = kop.conv3d.padTop;
-                            desc.padLeft = kop.conv3d.padLeft;
-                            desc.padBack = kop.conv3d.padBack;
-                            desc.padBottom = kop.conv3d.padBottom;
-                            desc.padRight = kop.conv3d.padRight;
-                            desc.outD = kop.conv3d.outD;
-                            desc.outH = kop.conv3d.outH;
-                            desc.outW = kop.conv3d.outW;
-                            auto source = generate_msl_from_mlir(module, desc);
-                            m_pipelines.push_back(compiler.compile_msl_from_source(source, "conv3d_kernel", log));
-                        } catch (const std::exception& e) {
-                            METAL_LOG_DEBUG("mlir", std::string("[METAL MLIR] Conv3D flat segment compile failed: ") + e.what());
-                            compile_ok = false;
-                        }
+                        m_pipelines.push_back(compiler.compile_conv3d_kernel(op, log));
                         break;
                     }
                     case KernelOpKind::BatchNorm2D:

@@ -16,6 +16,14 @@ id<MTLComputePipelineState> MetalKernelCompiler::compile_unary_kernel(const Kern
     desc.kind = KernelOpKind::Unary;
     desc.activation = op.activation;
     desc.alpha = op.alpha;
+    ov::element::Type et = op.dtype.ov_type;
+    if (op.output && op.output->dtype.ov_type != ov::element::dynamic)
+        et = op.output->dtype.ov_type;
+    else if (op.input0 && op.input0->dtype.ov_type != ov::element::dynamic)
+        et = op.input0->dtype.ov_type;
+    if (et == ov::element::dynamic)
+        et = ov::element::f32;
+    desc.element_type = et;
     auto source = generate_msl_for_unary(desc);
     return compile_msl_from_source(source, "unary_kernel", log);
 }

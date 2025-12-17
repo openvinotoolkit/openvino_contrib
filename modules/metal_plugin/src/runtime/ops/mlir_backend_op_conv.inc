@@ -48,11 +48,9 @@ bool MlirBackend::Impl::try_build_conv(const std::shared_ptr<const ov::Model>& m
             if (m_has_const_w)
                 METAL_LOG_DEBUG("mlir", "[METAL MLIR] Conv3D const weights size=" + std::to_string(m_const_w.size()));
         }
+        // Avoid MLIR pipeline for Conv3D for now to keep runtime stable; emit simple MSL directly.
         m_pipelines.clear();
         try {
-            mlir::MLIRContext ctx;
-            auto module = build_mlir_conv3d_from_model(model, ctx);
-            run_mlir_pipeline(module);
             Conv3DCodegenDesc desc;
             const auto& kop = m_ops[0];
             desc.kind = KernelOpKind::Conv3D;
@@ -80,10 +78,10 @@ bool MlirBackend::Impl::try_build_conv(const std::shared_ptr<const ov::Model>& m
             desc.outD = kop.conv3d.outD;
             desc.outH = kop.conv3d.outH;
             desc.outW = kop.conv3d.outW;
-            auto source = generate_msl_from_mlir(module, desc);
+            auto source = generate_msl_for_conv3d(desc, /*module*/ nullptr);
             m_pipelines.push_back(compiler.compile_msl_from_source(source, "conv3d_kernel", log));
         } catch (const std::exception& e) {
-            METAL_LOG_DEBUG("mlir", std::string("[METAL MLIR] Conv3D MLIR→MSL failed, fallback to CPU: ") + e.what());
+            METAL_LOG_DEBUG("mlir", std::string("[METAL MLIR] Conv3D codegen failed, fallback to CPU: ") + e.what());
             m_force_fallback = true;
             ensure_fallback(m_original_model);
             return true;

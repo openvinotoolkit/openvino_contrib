@@ -23,6 +23,7 @@
 #include "openvino/runtime/make_tensor.hpp"
 #include "openvino/runtime/iremote_tensor.hpp"
 #include "openvino/runtime/tensor.hpp"
+#include "runtime/metal_logger.hpp"
 
 namespace ov {
 namespace metal_plugin {
@@ -48,12 +49,6 @@ InferRequest::InferRequest(const std::shared_ptr<const ov::ICompiledModel>& comp
     }
 }
 
-static ov::Tensor deep_copy_tensor(const ov::Tensor& src) {
-    ov::Tensor dst{src.get_element_type(), src.get_shape()};
-    std::memcpy(dst.data(), src.data(), src.get_byte_size());
-    return dst;
-}
-
 void InferRequest::set_input_tensor(const ov::Tensor& tensor) {
     // Single-input convenience: index 0
     set_input_tensor(0, tensor);
@@ -71,8 +66,8 @@ void InferRequest::set_input_tensor(size_t idx, const ov::Tensor& tensor) {
         return;
     }
 
-    // Cache a host copy before delegating to base API
-    m_bound_inputs[idx] = deep_copy_tensor(tensor);
+    // Cache a host view (no CPU copy)
+    m_bound_inputs[idx] = tensor;
 }
 
 void InferRequest::set_tensor(const ov::Output<const ov::Node>& port, const ov::SoPtr<ov::ITensor>& tensor) {
@@ -95,7 +90,7 @@ void InferRequest::set_tensor(const ov::Output<const ov::Node>& port, const ov::
                 m_bound_inputs[i] = {};
             } else {
                 ov::Tensor stored_view = ov::make_tensor(ov::ISyncInferRequest::get_tensor(port));
-                m_bound_inputs[i] = deep_copy_tensor(stored_view);
+                m_bound_inputs[i] = stored_view;
             }
             break;
         }
@@ -111,8 +106,26 @@ ov::SoPtr<ov::ITensor> InferRequest::get_tensor(const ov::Output<const ov::Node>
                 m_buffer_manager = cm->buffer_manager();
         }
         if (m_buffer_manager && m_tensor_map.has_output_device(idx)) {
-            auto& host = m_tensor_map.get_or_create_host_for_output(idx, *m_buffer_manager);
-            return ov::get_tensor_impl(host);
+            const auto& dev = m_tensor_map.get_output_device(idx);
+            if (dev.buf.storage_mode == static_cast<uint32_t>(MTLStorageModeShared)) {
+                id<MTLBuffer> buf = static_cast<id<MTLBuffer>>(dev.buf.buffer);
+                void* ptr = buf ? [buf contents] : nullptr;
+                if (!ptr) {
+                    OPENVINO_THROW("METAL: shared output buffer has no CPU pointer");
+                }
+                ov::Shape shape = dev.shape;
+                if (shape.empty()) {
+                    const auto& out = get_outputs().at(idx);
+                    if (out.get_partial_shape().is_static())
+                        shape = out.get_shape();
+                    else
+                        shape = ov::Shape{1};
+                }
+                ov::element::Type logical = dev.expected_type == ov::element::dynamic ? dev.buf.type : dev.expected_type;
+                ov::Tensor view{logical, shape, ptr};
+                return ov::get_tensor_impl(view);
+            }
+            OPENVINO_THROW("METAL: output buffer is private (no CPU access, no copies)");
         }
     }
     return ov::ISyncInferRequest::get_tensor(port);
@@ -136,8 +149,10 @@ void InferRequest::infer() {
     OPENVINO_ASSERT(m_buffer_manager, "MetalBufferManager is null");
 
     m_tensor_map.reset_inference();
-    m_buffer_manager->reset_stats();
-    m_buffer_manager->reset_inference_pool();
+    if (m_buffer_manager) {
+        m_buffer_manager->reset_stats();
+        m_buffer_manager->reset_inference_pool();
+    }
 
     auto ensure_input_tensor = [&](size_t idx) -> ov::Tensor {
         if (idx < m_bound_inputs.size() && m_bound_inputs[idx]) {
@@ -201,10 +216,87 @@ void InferRequest::infer() {
         return base;
     };
 
-    bool device_ok = false;
-    OPENVINO_ASSERT(cm->backend(), "Backend is null");
-    if (auto mlir = dynamic_cast<MlirBackend*>(cm->backend())) {
-        device_ok = mlir->run_device(m_tensor_map, *m_buffer_manager);
+    auto run_pipeline = [&]() -> bool {
+        if (!cm->op_pipeline_enabled() || !cm->op_pipeline_built() || cm->op_pipeline_size() == 0)
+            return false;
+        auto& pipeline = cm->pipeline_mutable();
+        const auto& node_map = cm->node_to_stage();
+        const auto& param_map = cm->parameter_index();
+
+        // Allocate outputs and bind inputs for each stage.
+        for (auto& stage : pipeline) {
+            for (size_t oi = 0; oi < stage.outputs.size(); ++oi) {
+                auto& out_ref = stage.outputs[oi];
+                if (!out_ref->buf.valid()) {
+                    const auto& et = stage.node->get_output_element_type(oi);
+                    size_t bytes = et.size();
+                    if (out_ref->shape.empty() && stage.node->get_output_partial_shape(oi).is_static()) {
+                        out_ref->shape = stage.node->get_output_shape(oi);
+                    }
+                    for (auto d : out_ref->shape) bytes *= d;
+                    out_ref->buf = m_buffer_manager->allocate(bytes, et, /*persistent=*/false, /*storageModePrivate=*/true);
+                }
+            }
+        }
+
+        for (const auto& stage : pipeline) {
+            std::vector<MetalTensor*> resolved;
+            resolved.reserve(stage.inputs.size());
+            for (const auto& link : stage.inputs) {
+                if (!link.node) {
+                    resolved.push_back(nullptr);
+                    continue;
+                }
+                if (auto itp = param_map.find(link.node.get()); itp != param_map.end()) {
+                    resolved.push_back(&m_tensor_map.get_input_device(itp->second));
+                    continue;
+                }
+                if (auto it = node_map.find(link.node.get()); it != node_map.end()) {
+                    auto& src_stage = pipeline[it->second];
+                    MetalTensor* tensor = nullptr;
+                    if (link.port < src_stage.outputs.size()) {
+                        tensor = src_stage.outputs[link.port].get();
+                    }
+                    resolved.push_back(tensor);
+                    continue;
+                }
+                resolved.push_back(nullptr);  // constants handled inside ops
+            }
+            stage.op->set_inputs(resolved);
+            stage.op->init(m_buffer_manager.get());
+            stage.op->execute();
+        }
+
+        // Bind model outputs to device tensors from pipeline
+        for (size_t out_idx = 0; out_idx < get_outputs().size(); ++out_idx) {
+            auto res_node = get_outputs()[out_idx].get_node();
+            auto src_node = res_node->input_value(0).get_node_shared_ptr();
+            auto it = node_map.find(src_node.get());
+            if (it != node_map.end()) {
+                size_t src_port = res_node->input_value(0).get_index();
+                auto& outs = pipeline[it->second].outputs;
+                if (src_port < outs.size() && outs[src_port]) {
+                    m_tensor_map.bind_output_device(out_idx, *outs[src_port]);
+                    continue;
+                }
+            }
+            if (auto pit = param_map.find(src_node.get()); pit != param_map.end()) {
+                // Direct passthrough from model input.
+                m_tensor_map.bind_output_device(out_idx, m_tensor_map.get_input_device(pit->second));
+                continue;
+            }
+            // Fallback to legacy device path if pipeline is incomplete.
+            return false;
+        }
+        return true;
+    };
+
+    bool device_ok = run_pipeline();
+    if (!device_ok) {
+        OPENVINO_ASSERT(cm->backend(), "Backend is null");
+        if (auto mlir = dynamic_cast<MlirBackend*>(cm->backend())) {
+            device_ok = mlir->run_device(m_tensor_map, *m_buffer_manager);
+        }
     }
 
     OPENVINO_ASSERT(device_ok, "METAL: device execution failed and CPU fallback is disabled");
@@ -215,14 +307,23 @@ void InferRequest::infer() {
             continue;
         const auto& dev = m_tensor_map.get_output_device(idx);
         ov::element::Type logical = dev.expected_type == ov::element::dynamic ? dev.buf.type : dev.expected_type;
-        ov::Tensor shadow{logical, dev.shape};
-        ov::ISyncInferRequest::set_tensor(get_outputs()[idx], ov::get_tensor_impl(shadow));
-        if (std::getenv("METAL_DEBUG_DUMP_OUTPUT")) {
-            ov::Tensor tmp = m_buffer_manager->copy_to_host(dev);
-            if (tmp && tmp.get_size() > 0) {
-                fprintf(stderr, "[METAL][dbg] out%zu first=%f (shape=%zu...)\n",
-                        idx, tmp.data<const float>()[0], tmp.get_size());
-            }
+        ov::Shape shape = dev.shape;
+        if (shape.empty()) {
+            const auto& out = get_outputs()[idx];
+            if (out.get_partial_shape().is_static())
+                shape = out.get_shape();
+            else
+                shape = ov::Shape{1};
+        }
+        if (dev.buf.storage_mode == static_cast<uint32_t>(MTLStorageModeShared)) {
+            id<MTLBuffer> buf = static_cast<id<MTLBuffer>>(dev.buf.buffer);
+            void* ptr = buf ? [buf contents] : nullptr;
+            OPENVINO_ASSERT(ptr, "METAL: shared output buffer has no CPU pointer");
+            ov::Tensor view{logical, shape, ptr};
+            ov::ISyncInferRequest::set_tensor(get_outputs()[idx], ov::get_tensor_impl(view));
+        } else {
+            ov::Tensor shadow{logical, shape};
+            ov::ISyncInferRequest::set_tensor(get_outputs()[idx], ov::get_tensor_impl(shadow));
         }
     }
 

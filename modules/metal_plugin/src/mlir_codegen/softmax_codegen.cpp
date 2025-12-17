@@ -58,6 +58,8 @@ std::string emit_softmax_msl(const SoftmaxCodegenDesc& d,
                              const std::vector<std::string>& input_idx,
                              const std::vector<std::string>& output_idx,
                              uint32_t rank) {
+    const bool use_half = (d.element_type == ov::element::f16);
+    const char* scalar = use_half ? "half" : "float";
     std::vector<std::string> dims;
     if (rank == 3)
         dims = {"p.cols", "p.inner"};
@@ -71,8 +73,8 @@ std::string emit_softmax_msl(const SoftmaxCodegenDesc& d,
     ss << "using namespace metal;\n";
     ss << "struct SoftmaxParams { uint rows; uint cols; uint inner; };\n";
     ss << "kernel void softmax_kernel(\n";
-    ss << "  device const float* input [[buffer(0)]],\n";
-    ss << "  device float* output [[buffer(1)]],\n";
+    ss << "  device const " << scalar << "* input [[buffer(0)]],\n";
+    ss << "  device " << scalar << "* output [[buffer(1)]],\n";
     ss << "  constant SoftmaxParams& p [[buffer(2)]],\n";
     ss << "  uint gid [[thread_position_in_grid]]) {\n";
     ss << "    uint row = gid / p.cols;\n";
@@ -85,7 +87,7 @@ std::string emit_softmax_msl(const SoftmaxCodegenDesc& d,
     ss << "    float m = -INFINITY;\n";
     ss << "    for (uint c = 0; c < p.cols; ++c) {\n";
     ss << "        uint idx = base_outer + c * p.inner + inner_i;\n";
-    ss << "        float v = input[idx];\n";
+    ss << "        float v = static_cast<float>(input[idx]);\n";
     ss << "        m = m > v ? m : v;\n";
     ss << "    }\n";
     ss << "    float sum = 0.0f;\n";
@@ -95,8 +97,12 @@ std::string emit_softmax_msl(const SoftmaxCodegenDesc& d,
     ss << "    }\n";
     ss << "    float inv = 1.0f / sum;\n";
     ss << "    uint out_idx = base_outer + col * p.inner + inner_i;\n";
-    ss << "    float v = input[out_idx];\n";
-    ss << "    output[out_idx] = exp(v - m) * inv;\n";
+    ss << "    float v = static_cast<float>(input[out_idx]);\n";
+    if (use_half) {
+        ss << "    output[out_idx] = static_cast<" << scalar << ">(exp(v - m) * inv);\n";
+    } else {
+        ss << "    output[out_idx] = exp(v - m) * inv;\n";
+    }
     ss << "}\n";
     return ss.str();
 }
@@ -105,8 +111,14 @@ std::string emit_softmax_msl(const SoftmaxCodegenDesc& d,
 
 std::string generate_msl_for_softmax(const SoftmaxCodegenDesc& d, mlir::ModuleOp module) {
     OPENVINO_ASSERT(d.rows > 0 && d.cols > 0, "Softmax: rows/cols must be positive");
-    if (!module)
-        return emit_softmax_msl(d, {"row_i", "col_i"}, {"row_i", "col_i"}, d.inner > 1 ? 3 : 2);
+    if (!module) {
+        const bool has_inner = d.inner > 1;
+        if (has_inner) {
+            return emit_softmax_msl(d, {"row_i", "col_i", "inner_i"}, {"row_i", "col_i", "inner_i"}, 3);
+        } else {
+            return emit_softmax_msl(d, {"row_i", "col_i"}, {"row_i", "col_i"}, 2);
+        }
+    }
 
     auto func = find_func(module);
     OPENVINO_ASSERT(func, "Softmax MLIR: function not found");

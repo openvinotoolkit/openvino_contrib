@@ -54,7 +54,9 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d) {
     const bool is_int32 = d.element_type == ov::element::i32;
     const bool is_int64 = d.element_type == ov::element::i64;
     const bool is_int = is_int32 || is_int64;
-    const std::string scalar_ty = is_int64 ? "long" : (is_int32 ? "int" : "float");
+    const bool is_f16 = d.element_type == ov::element::f16;
+    const bool use_half = d.use_half_compute || is_f16;
+    const std::string scalar_ty = is_int64 ? "long" : (is_int32 ? "int" : (is_f16 ? "half" : "float"));
     std::ostringstream ss;
     ss << "#include <metal_stdlib>\n";
     ss << "using namespace metal;\n";
@@ -73,7 +75,6 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d) {
         ss << "    return result;\n";
         ss << "}\n";
     }
-    const bool use_half = d.use_half_compute;
     auto emit_op = [&](const std::string& a, const std::string& b) -> std::string {
         if (d.eltwise_kind == KernelOpKind::ElementwisePow) {
             if (is_int) {
@@ -81,17 +82,17 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d) {
             }
             return "pow(" + a + "," + b + ")";
         }
-        if (d.eltwise_kind == KernelOpKind::ElementwiseMod ||
-            d.eltwise_kind == KernelOpKind::ElementwiseFloorMod) {
-            // floor_mod = fmod(a, b) adjusted for sign (same as numpy)
-            return "";  // handled as a statement block below
-        }
+    if (d.eltwise_kind == KernelOpKind::ElementwiseMod ||
+        d.eltwise_kind == KernelOpKind::ElementwiseFloorMod) {
+        // Mod/FloorMod are handled in dedicated statement blocks below.
+        return "";
+    }
         return a + op_to_msl(d.eltwise_kind) + b;
     };
 
     auto emit_floor_mod_block = [&](const std::string& a, const std::string& b, const std::string& dst) {
+        // FloorMod: result has the sign of the divisor (numpy/TF semantics).
         if (is_int) {
-            // numpy-style mod: result has the sign of the divisor.
             ss << "    " << scalar_ty << " _a = " << a << ";\n";
             ss << "    " << scalar_ty << " _b = " << b << ";\n";
             ss << "    " << scalar_ty << " _r = _a % _b;\n";
@@ -102,6 +103,21 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d) {
             ss << "    float _b = " << b << ";\n";
             ss << "    float _r = fmod(_a, _b);\n";
             ss << "    if (_r != 0.0f && ((_r < 0.0f) != (_b < 0.0f))) _r += _b;\n";
+            ss << "    " << dst << " = _r;\n";
+        }
+    };
+
+    auto emit_mod_block = [&](const std::string& a, const std::string& b, const std::string& dst) {
+        // Mod (fmod) semantics: result keeps the sign of the dividend (C/C++ fmod/%).
+        if (is_int) {
+            ss << "    " << scalar_ty << " _a = " << a << ";\n";
+            ss << "    " << scalar_ty << " _b = " << b << ";\n";
+            ss << "    " << scalar_ty << " _r = _a % _b;\n";
+            ss << "    " << dst << " = _r;\n";
+        } else {
+            ss << "    float _a = " << a << ";\n";
+            ss << "    float _b = " << b << ";\n";
+            ss << "    float _r = fmod(_a, _b);\n";
             ss << "    " << dst << " = _r;\n";
         }
     };
@@ -118,9 +134,10 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d) {
     ss << "  uint gid [[thread_position_in_grid]]) {\n";
     ss << "    if (gid >= NUM_ELEMS) return;\n";
     if (!d.is_broadcast) {
-        if (d.eltwise_kind == KernelOpKind::ElementwiseFloorMod ||
-            d.eltwise_kind == KernelOpKind::ElementwiseMod) {
+        if (d.eltwise_kind == KernelOpKind::ElementwiseFloorMod) {
             emit_floor_mod_block("A[gid]", "B[gid]", "C[gid]");
+        } else if (d.eltwise_kind == KernelOpKind::ElementwiseMod) {
+            emit_mod_block("A[gid]", "B[gid]", "C[gid]");
         } else if (!is_int && use_half && d.eltwise_kind == KernelOpKind::ElementwiseDiv) {
             ss << "    half a = half(A[gid]);\n";
             ss << "    half b = half(B[gid]);\n";
@@ -142,9 +159,10 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d) {
     ss << "        off0 += (stride0[d] == 0 ? 0 : coord * stride0[d]);\n";
     ss << "        off1 += (stride1[d] == 0 ? 0 : coord * stride1[d]);\n";
     ss << "    }\n";
-    if (d.eltwise_kind == KernelOpKind::ElementwiseFloorMod ||
-        d.eltwise_kind == KernelOpKind::ElementwiseMod) {
+    if (d.eltwise_kind == KernelOpKind::ElementwiseFloorMod) {
         emit_floor_mod_block("A[off0]", "B[off1]", "C[gid]");
+    } else if (d.eltwise_kind == KernelOpKind::ElementwiseMod) {
+        emit_mod_block("A[off0]", "B[off1]", "C[gid]");
     } else if (!is_int && use_half && d.eltwise_kind == KernelOpKind::ElementwiseDiv) {
         ss << "    half a = half(A[off0]);\n";
         ss << "    half b = half(B[off1]);\n";

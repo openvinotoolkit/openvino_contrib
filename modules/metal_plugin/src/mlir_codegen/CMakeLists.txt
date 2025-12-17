@@ -36,13 +36,17 @@ target_link_libraries(metal_mlir_codegen
         MLIRSupport
         MLIRPass
         MLIRTransforms
+        MLIRLinalgUtils
+        MLIRAnalysis
+        MLIRArithTransforms
         MLIRFuncDialect
         MLIRLinalgDialect
         MLIRTensorDialect
         MLIRArithDialect
         MLIRSCFDialect
         MLIRLinalgTransforms
-        LLVMSupport)
+        LLVMSupport
+        LLVMDemangle)
 
 if(DEFINED METAL_LLVM_EXTERNAL_TARGET)
     add_dependencies(metal_mlir_codegen ${METAL_LLVM_EXTERNAL_TARGET})

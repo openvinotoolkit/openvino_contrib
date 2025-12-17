@@ -39,6 +39,9 @@ id<MTLComputePipelineState> MetalKernelCompiler::compile_conv3d_kernel(const Ker
     desc.outD = c.outD;
     desc.outH = c.outH;
     desc.outW = c.outW;
+    if (op.output && op.output->dtype.ov_type != ov::element::dynamic) {
+        desc.element_type = op.output->dtype.ov_type;
+    }
 
     auto source = generate_msl_for_conv3d(desc, /*module*/ nullptr);
     return compile_msl_from_source(source, "conv3d_kernel", log);

@@ -27,7 +27,9 @@ MetalKernelIR build_kernel_ir_for_matmul(const std::shared_ptr<const ov::Model>&
     auto shape_a = matmul->get_input_shape(0);
     auto shape_b = matmul->get_input_shape(1);
     OPENVINO_ASSERT(!shape_a.empty() && !shape_b.empty(), "MatMul: empty shapes");
-    OPENVINO_ASSERT(matmul->get_output_element_type(0) == ov::element::f32, "MatMul only supports f32");
+    const auto out_et = matmul->get_output_element_type(0);
+    OPENVINO_ASSERT(out_et == ov::element::f32 || out_et == ov::element::f16, "MatMul supports f16/f32");
+    const auto dtype = resolve_metal_dtype(out_et);
 
     auto flatten_to_3d = [](const ov::Shape& s) {
         OPENVINO_ASSERT(s.size() >= 2 && s.size() <= 4, "MatMul: rank 2–4 supported");
@@ -85,6 +87,9 @@ MetalKernelIR build_kernel_ir_for_matmul(const std::shared_ptr<const ov::Model>&
     KernelTensor a{"a", {a3.begin(), a3.end()}};
     KernelTensor b{"b", {b3.begin(), b3.end()}};
     KernelTensor c{"c", batch == 1 ? std::vector<int64_t>{M, N} : std::vector<int64_t>{batch, M, N}};
+    a.dtype = dtype;
+    b.dtype = dtype;
+    c.dtype = dtype;
 
     ir.tensors.push_back(a);
     ir.tensors.push_back(b);
@@ -105,6 +110,8 @@ MetalKernelIR build_kernel_ir_for_matmul(const std::shared_ptr<const ov::Model>&
     ir.ops.back().b_is_nk_layout = b_is_nk_layout;
     ir.ops.back().a_transpose = ta;
     ir.ops.back().b_transpose = tb || b_is_nk_layout;
+    ir.ops.back().dtype = dtype;
+    ir.ops.back().element_type = static_cast<uint32_t>(static_cast<ov::element::Type_t>(out_et));
     return ir;
 }
 

@@ -31,13 +31,16 @@ std::string activation_expr(ActivationKind kind, float alpha) {
 
 std::string generate_msl_for_unary(const UnaryCodegenDesc& d) {
     std::ostringstream ss;
+    const char* scalar = (d.element_type == ov::element::f16) ? "half" : "float";
     ss << "#include <metal_stdlib>\n";
     ss << "using namespace metal;\n";
     ss << "kernel void unary_kernel(\n";
-    ss << "  device const float* in0 [[buffer(0)]],\n";
-    ss << "  device float* out [[buffer(1)]],\n";
+    ss << "  device const " << scalar << "* in0 [[buffer(0)]],\n";
+    ss << "  device " << scalar << "* out [[buffer(1)]],\n";
+    ss << "  constant uint& NUM_ELEMS [[buffer(2)]],\n";
     ss << "  uint gid [[thread_position_in_grid]]) {\n";
-    ss << "    float x = in0[gid];\n";
+    ss << "    if (gid >= NUM_ELEMS) return;\n";
+    ss << "    float x = static_cast<float>(in0[gid]);\n";
     ss << "    out[gid] = " << activation_expr(d.activation, d.alpha) << ";\n";
     ss << "}\n";
     return ss.str();

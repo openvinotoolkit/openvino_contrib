@@ -54,6 +54,8 @@ std::string emit_conv3d_msl(const Conv3DCodegenDesc& d,
                             const std::vector<std::string>& input_idx,
                             const std::vector<std::string>& weight_idx,
                             const std::vector<std::string>& output_idx) {
+    const bool use_half = (d.element_type == ov::element::f16);
+    const char* scalar = use_half ? "half" : "float";
     std::ostringstream ss;
     ss << "#include <metal_stdlib>\n";
     ss << "using namespace metal;\n";
@@ -67,9 +69,9 @@ std::string emit_conv3d_msl(const Conv3DCodegenDesc& d,
     ss << "  uint outD, outH, outW;\n";
     ss << "};\n";
     ss << "kernel void conv3d_kernel(\n";
-    ss << "  device const float* input  [[buffer(0)]],\n";
-    ss << "  device const float* weight [[buffer(1)]],\n";
-    ss << "  device float*       output [[buffer(2)]],\n";
+    ss << "  device const " << scalar << "* input  [[buffer(0)]],\n";
+    ss << "  device const " << scalar << "* weight [[buffer(1)]],\n";
+    ss << "  device " << scalar << "*       output [[buffer(2)]],\n";
     ss << "  constant Conv3DParams& p   [[buffer(3)]],\n";
     ss << "  uint2 gid [[thread_position_in_grid]]) {\n";
     ss << "  uint n = gid.y;\n";
@@ -98,13 +100,17 @@ std::string emit_conv3d_msl(const Conv3DCodegenDesc& d,
     ss << "                if (id < 0 || ih < 0 || iw < 0 || id >= int(p.D) || ih >= int(p.H) || iw >= int(p.W)) continue;\n";
     ss << "                uint in_idx = (((uint(n_i) * p.C_in + uint(ic_i)) * p.D + uint(id)) * p.H + uint(ih)) * p.W + uint(iw);\n";
     ss << "                uint w_idx  = (((uint(oc_i) * p.C_in + uint(ic_i)) * p.kD + uint(kd_i)) * p.kH + uint(kh_i)) * p.kW + uint(kw_i);\n";
-    ss << "                acc += input[in_idx] * weight[w_idx];\n";
+    ss << "                acc += static_cast<float>(input[in_idx]) * static_cast<float>(weight[w_idx]);\n";
     ss << "              }\n";
     ss << "            }\n";
     ss << "          }\n";
     ss << "        }\n";
     ss << "        uint out_idx = " << flatten_indices(output_idx, {"p.C_out", "p.outD", "p.outH", "p.outW"}) << ";\n";
-    ss << "        output[out_idx] = acc;\n";
+    if (use_half) {
+        ss << "        output[out_idx] = static_cast<" << scalar << ">(acc);\n";
+    } else {
+        ss << "        output[out_idx] = acc;\n";
+    }
     ss << "      }\n";
     ss << "    }\n";
     ss << "  }\n";

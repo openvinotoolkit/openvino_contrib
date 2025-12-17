@@ -19,6 +19,7 @@ inline EltwiseCodegenDesc make_desc(const KernelOp& op) {
     desc.eltwise_kind = op.kind;
     if (op.output) {
         desc.element_type = op.output->dtype.ov_type;
+        desc.use_half_compute = (desc.element_type == ov::element::f16);
     }
     desc.is_broadcast = op.is_broadcast;
     desc.out_shape = op.out_shape.empty() && op.output ? op.output->shape : op.out_shape;

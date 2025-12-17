@@ -34,6 +34,34 @@ list(APPEND SOURCES
     # Handwritten MSL removed; MLIR->MSL used instead
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_dtype.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_logger.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_conv.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_activations.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_elementwise.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_pooling.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_softmax.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_split.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_matmul.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_concat.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_reshape.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_batchnorm.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_convert.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_factory.mm
+)
+list(APPEND HEADERS
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_conv.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_activations.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_elementwise.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_pooling.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_softmax.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_split.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_matmul.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_concat.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_reshape.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_batchnorm.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_convert.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_factory.hpp
 )
 # Exclude LayerNorm sources when the op is not available in this build.
 list(FILTER SOURCES EXCLUDE REGEX "layernorm_kernel_ir.cpp")
@@ -47,6 +75,11 @@ endif()
 
 # Build METAL plugin as SHARED (not MODULE) to allow normal linking/registration in OpenVINO
 add_library(${TARGET_NAME} SHARED ${SOURCES} ${HEADERS})
+
+# On macOS, force ".so" suffix so OpenVINO loader picks the plugin consistently.
+if(APPLE)
+    set_target_properties(${TARGET_NAME} PROPERTIES SUFFIX ".so")
+endif()
 
 ov_add_version_defines(plugin/plugin.cpp ${TARGET_NAME})
 target_compile_definitions(${TARGET_NAME} PRIVATE IMPLEMENT_OPENVINO_RUNTIME_PLUGIN)

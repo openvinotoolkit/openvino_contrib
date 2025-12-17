@@ -1,26 +1,8 @@
 std::vector<ov::Tensor> MlirBackend::Impl::run_segment(const Segment& seg, const std::vector<ov::Tensor>& inputs) {
         @autoreleasepool {
         auto run_fallback = [&](const char* reason) -> std::vector<ov::Tensor> {
-            METAL_LOG_ERROR("fallback", std::string("[METAL MLIR] run_segment -> run_fallback: ") + (reason ? reason : "unknown"));
-            if (!m_allow_partial_offload) {
-                OPENVINO_THROW("METAL: CPU fallback is disabled in pure device mode");
-            }
-            ensure_fallback();
-            OPENVINO_ASSERT(m_fallback_request, "Fallback request is null");
-            OPENVINO_ASSERT(inputs.size() == m_fallback_inputs.size(), "Fallback: input count mismatch");
-            for (size_t i = 0; i < inputs.size(); ++i) {
-                m_fallback_request->set_input_tensor(i, inputs[i]);
-            }
-            m_fallback_request->infer();
-            std::vector<ov::Tensor> res;
-            res.reserve(m_fallback_outputs.size());
-            for (size_t i = 0; i < m_fallback_outputs.size(); ++i) {
-                auto tmp = m_fallback_request->get_output_tensor(i);
-                ov::Tensor out(tmp.get_element_type(), tmp.get_shape());
-                std::memcpy(out.data(), tmp.data(), tmp.get_byte_size());
-                res.emplace_back(std::move(out));
-            }
-            return res;
+            METAL_LOG_ERROR("fallback", std::string("[METAL MLIR] run_segment fallback disabled: ") + (reason ? reason : "unknown"));
+            OPENVINO_THROW("METAL: CPU fallback disabled");
         };
 
         // Ensure ops are present; if compile filled m_ir but not m_ops, sync them.

@@ -71,6 +71,8 @@ std::vector<std::string> render_indices(mlir::Operation::operand_range range,
 
 std::string emit_pool2d_msl(const Pool2DCodegenDesc& d) {
     std::ostringstream ss;
+    const bool use_half = (d.element_type == ov::element::f16);
+    const char* scalar = use_half ? "half" : "float";
     ss << "#include <metal_stdlib>\n";
     ss << "using namespace metal;\n";
     ss << "struct Pool2DParams {\n";
@@ -84,8 +86,8 @@ std::string emit_pool2d_msl(const Pool2DCodegenDesc& d) {
     ss << "  bool exclude_pad;\n";
     ss << "};\n";
     ss << "kernel void pool2d_kernel(\n";
-    ss << "  device const float* input  [[buffer(0)]],\n";
-    ss << "  device float*       output [[buffer(1)]],\n";
+    ss << "  device const " << scalar << "* input  [[buffer(0)]],\n";
+    ss << "  device " << scalar << "*       output [[buffer(1)]],\n";
     ss << "  constant Pool2DParams& p   [[buffer(2)]],\n";
     ss << "  uint gid [[thread_position_in_grid]]) {\n";
     ss << "  uint total = p.N * p.C;\n";
@@ -109,7 +111,7 @@ std::string emit_pool2d_msl(const Pool2DCodegenDesc& d) {
     ss << "            continue;\n";
     ss << "          }\n";
     ss << "          uint idx = ((n * p.C + c) * p.H + uint(ih)) * p.W + uint(iw);\n";
-    ss << "          float v = input[idx];\n";
+    ss << "          float v = static_cast<float>(input[idx]);\n";
     ss << "          if (p.is_avg) {\n";
     ss << "            acc += v;\n";
     ss << "            count++;\n";
@@ -123,7 +125,11 @@ std::string emit_pool2d_msl(const Pool2DCodegenDesc& d) {
     ss << "        acc = acc / float(count);\n";
     ss << "      }\n";
     ss << "      uint out_idx = ((n * p.C + c) * p.outH + oh) * p.outW + ow;\n";
-    ss << "      output[out_idx] = acc;\n";
+    if (use_half) {
+        ss << "      output[out_idx] = static_cast<" << scalar << ">(acc);\n";
+    } else {
+        ss << "      output[out_idx] = acc;\n";
+    }
     ss << "    }\n";
     ss << "  }\n";
     ss << "}\n";

@@ -30,6 +30,14 @@ id<MTLComputePipelineState> MetalKernelCompiler::compile_maxpool2d_kernel(const 
     desc.outW = op.pool.outW;
     desc.is_avg = false;
     desc.exclude_pad = op.pool.exclude_pad;
+    ov::element::Type et = op.dtype.ov_type;
+    if (op.output && op.output->dtype.ov_type != ov::element::dynamic)
+        et = op.output->dtype.ov_type;
+    else if (op.input0 && op.input0->dtype.ov_type != ov::element::dynamic)
+        et = op.input0->dtype.ov_type;
+    if (et == ov::element::dynamic)
+        et = ov::element::f32;
+    desc.element_type = et;
     auto source = generate_msl_for_maxpool2d(desc, /*module*/ nullptr);
     return compile_msl_from_source(source, "pool2d_kernel", log);
 }

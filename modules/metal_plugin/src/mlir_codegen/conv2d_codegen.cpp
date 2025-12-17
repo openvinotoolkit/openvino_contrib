@@ -15,10 +15,12 @@ namespace metal_plugin {
 // Generation is parameterized by Conv2DCodegenDesc; MLIR module is not required (we don't pattern-match it).
 std::string generate_msl_for_conv2d(const Conv2DCodegenDesc& d, mlir::ModuleOp /*module*/) {
     OPENVINO_ASSERT(d.N && d.C_in && d.H && d.W && d.C_out && d.kH && d.kW, "Conv2D desc missing dims");
-    const bool promote_fp16 = true;
+    // Keep kernel scalar type matched to logical tensor storage to avoid
+    // writing 32-bit floats into 16-bit buffers (which causes OOB / GPU reset).
+    const bool promote_fp16 = false;
     uint32_t outH = d.outH;
     uint32_t outW = d.outW;
-    const bool use_half = !promote_fp16 && d.element_type == ov::element::f16;
+    const bool use_half = d.element_type == ov::element::f16;
     const char* scalar = use_half ? "half" : "float";
     if (outH == 0) {
         int64_t eff_kh = static_cast<int64_t>(d.dilationH) * (static_cast<int64_t>(d.kH) - 1) + 1;

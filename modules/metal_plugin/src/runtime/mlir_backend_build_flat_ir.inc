@@ -26,6 +26,7 @@ void MlirBackend::Impl::build_flat_ir(const std::shared_ptr<const ov::Model>& mo
             const auto pshape = out.get_partial_shape();
             KernelTensor t;
             t.name = out.get_node()->get_friendly_name();
+            t.source_index = out.get_index();
             t.from_parameter = ov::is_type<ov::op::v0::Parameter>(out.get_node());
             t.from_constant = ov::is_type<ov::op::v0::Constant>(out.get_node());
             if (t.from_constant) {
@@ -56,6 +57,19 @@ void MlirBackend::Impl::build_flat_ir(const std::shared_ptr<const ov::Model>& mo
         };
 
         const auto& ordered = model->get_ordered_ops();
+        auto align_const_dtype = [&](KernelTensor* t, const MetalDType& target) {
+            if (!t || !t->from_constant)
+                return;
+            if (target.ov_type == ov::element::dynamic)
+                return;
+            if (t->dtype.ov_type == target.ov_type)
+                return;
+            try {
+                t->dtype = resolve_metal_dtype(target.ov_type);
+            } catch (const ov::Exception&) {
+                // leave dtype as-is; unsupported types will be handled by fallback
+            }
+        };
         for (const auto& node : ordered) {
             std::ostringstream oss;
             oss << "[METAL MLIR] visiting node " << node->get_friendly_name()
@@ -1069,6 +1083,34 @@ void MlirBackend::Impl::build_flat_ir(const std::shared_ptr<const ov::Model>& mo
                 const auto bn_v0 = ov::as_type_ptr<const ov::op::v0::BatchNormInference>(node);
                 const bool use_v5 = static_cast<bool>(bn_v5);
                 op.batchnorm.eps = static_cast<float>(use_v5 ? bn_v5->get_eps_value() : bn_v0->get_eps_value());
+                auto get_const = [&](size_t idx) {
+                    return std::dynamic_pointer_cast<const ov::op::v0::Constant>(use_v5
+                        ? bn_v5->get_input_node_shared_ptr(idx)
+                        : bn_v0->get_input_node_shared_ptr(idx));
+                };
+                auto gamma = get_const(1);
+                auto beta = get_const(2);
+                auto mean = get_const(3);
+                auto var = get_const(4);
+                OPENVINO_ASSERT(gamma && beta && mean && var,
+                                "METAL: BatchNormInference params must be constant for MLIR path");
+                const size_t C = static_cast<size_t>(op.batchnorm.C);
+                op.bn_params.assign(4 * C + 1, 0.f);
+                auto copy_vec = [&](const std::shared_ptr<const ov::op::v0::Constant>& cst, size_t offset) {
+                    auto vec = cst->cast_vector<float>();
+                    if (vec.size() == 1) {
+                        std::fill(op.bn_params.begin() + offset, op.bn_params.begin() + offset + C, vec[0]);
+                    } else if (vec.size() == C) {
+                        std::copy(vec.begin(), vec.end(), op.bn_params.begin() + offset);
+                    } else {
+                        OPENVINO_THROW("METAL: BatchNorm param size mismatch");
+                    }
+                };
+                copy_vec(gamma, 0 * C);
+                copy_vec(beta, 1 * C);
+                copy_vec(mean, 2 * C);
+                copy_vec(var, 3 * C);
+                op.bn_params[4 * C] = op.batchnorm.eps;
                 supported = true;
             } else if (auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(node)) {
                 const auto axis = concat->get_axis();
@@ -1080,6 +1122,7 @@ void MlirBackend::Impl::build_flat_ir(const std::shared_ptr<const ov::Model>& mo
                 for (size_t i = 0; i < static_cast<size_t>(axis); ++i) outer *= static_cast<uint64_t>(out_shape[i]);
                 uint64_t inner = 1;
                 for (size_t i = static_cast<size_t>(axis) + 1; i < out_shape.size(); ++i) inner *= static_cast<uint64_t>(out_shape[i]);
+                uint64_t axis_total = static_cast<uint64_t>(out_shape[static_cast<size_t>(axis)]);
 
                 size_t out_idx = make_tensor(node->output(0));
                 KernelTensor* out_t = &m_flat_tensors[out_idx];
@@ -1096,6 +1139,7 @@ void MlirBackend::Impl::build_flat_ir(const std::shared_ptr<const ov::Model>& mo
                     cop.concat.axis = axis;
                     cop.concat.outer = outer;
                     cop.concat.inner = inner;
+                    cop.concat.axis_total = axis_total;
                     cop.concat.axis_sizes = {axis_len};
                     cop.concat.axis_offsets = {axis_offset};
                     axis_offset += axis_len;
@@ -1179,6 +1223,27 @@ void MlirBackend::Impl::build_flat_ir(const std::shared_ptr<const ov::Model>& mo
 
             if (supported) {
                 propagate_dtype(op);
+                switch (op.kind) {
+                    case KernelOpKind::ElementwiseAdd:
+                    case KernelOpKind::ElementwiseSub:
+                    case KernelOpKind::ElementwiseMul:
+                    case KernelOpKind::ElementwiseDiv:
+                    case KernelOpKind::ElementwisePow:
+                    case KernelOpKind::ElementwiseMod:
+                    case KernelOpKind::ElementwiseFloorMod:
+                        align_const_dtype(op.input0, op.dtype);
+                        align_const_dtype(op.input1, op.dtype);
+                        break;
+                    case KernelOpKind::Conv2D:
+                        align_const_dtype(op.input1, op.dtype);
+                        align_const_dtype(op.input2, op.dtype);
+                        break;
+                    case KernelOpKind::Conv3D:
+                        align_const_dtype(op.input1, op.dtype);
+                        break;
+                    default:
+                        break;
+                }
                 m_flat_ops.push_back(op);
             }
         }

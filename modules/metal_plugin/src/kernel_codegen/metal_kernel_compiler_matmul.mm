@@ -23,6 +23,9 @@ id<MTLComputePipelineState> MetalKernelCompiler::compile_matmul_kernel(const Ker
     desc.a_transpose = op.a_transpose;
     desc.b_transpose = op.b_transpose;
     desc.b_is_nk_layout = op.b_is_nk_layout;
+    if (op.output && op.output->dtype.ov_type != ov::element::dynamic) {
+        desc.element_type = op.output->dtype.ov_type;
+    }
     auto source = generate_msl_for_matmul(desc, /*module*/ nullptr);
     return compile_msl_from_source(source, "matmul_kernel", log);
 }

@@ -60,6 +60,9 @@ TEST_F(MetalBufferManagerTest, AllocAlignedAndNonNull) {
 }
 
 TEST_F(MetalBufferManagerTest, ReuseBuffersInPerInferPool) {
+    if (ov::metal_plugin::metal_safe_debug_enabled()) {
+        GTEST_SKIP() << "Reuse is disabled in SAFE_DEBUG mode";
+    }
     mgr->reset_stats();
     auto buf1 = mgr->allocate(2048, ov::element::f32, /*persistent=*/false, /*shared=*/false);
     auto ptr1 = static_cast<id<MTLBuffer>>(buf1.buffer);
@@ -120,22 +123,12 @@ TEST_F(MetalTensorMapTest, BindInputReusesDeviceBufferSamePort) {
 TEST_F(MetalTensorMapTest, HostTensorCreatedOnDemand) {
     mgr->reset_stats();
     ov::Shape shape{1, 2, 2};
-    auto& dev = tensor_map.ensure_output_device(0, shape, ov::element::f32, *mgr, /*shared=*/false);
-    auto buf = static_cast<id<MTLBuffer>>(dev.buf.buffer);
-    float pattern[4] = {1.f, 2.f, 3.f, 4.f};
-    std::memcpy([buf contents], pattern, sizeof(pattern));
+    auto& dev = tensor_map.ensure_output_device(0, shape, ov::element::f32, *mgr, /*shared=*/true);
+    (void)dev;
     EXPECT_FALSE(tensor_map.has_host_for_output(0));
-    auto& host = tensor_map.get_or_create_host_for_output(0, *mgr);
-    EXPECT_TRUE(tensor_map.has_host_for_output(0));
-    EXPECT_EQ(host.get_shape(), shape);
-    const float* p = host.data<const float>();
-    for (size_t i = 0; i < host.get_size(); ++i) {
-        EXPECT_FLOAT_EQ(p[i], pattern[i]);
-    }
-    size_t first_d2h = mgr->stats().d2h_bytes;
-    auto& host2 = tensor_map.get_or_create_host_for_output(0, *mgr);
-    (void)host2;
-    EXPECT_EQ(mgr->stats().d2h_bytes, first_d2h);  // no extra D2H on second call
+    EXPECT_THROW(tensor_map.get_or_create_host_for_output(0, *mgr), ov::Exception);
+    EXPECT_FALSE(tensor_map.has_host_for_output(0));
+    EXPECT_EQ(mgr->stats().d2h_bytes, 0u);
 }
 
 TEST_F(MetalTensorMapTest, BindInputAddsH2DOncePerCall) {
@@ -193,11 +186,10 @@ TEST(MetalRunDeviceIntegration, NoHostRoundTripUntilOutputRequested) {
               << " d2h=" << stats_before.d2h_bytes
               << " alloc=" << stats_before.alloc_bytes
               << " reused=" << stats_before.reused_bytes << std::endl;
-    if (stats_before.alloc_bytes == 0 && stats_before.h2d_bytes == 0) {
-        GTEST_SKIP() << "METAL backend did not execute device path in this build; skipping integration check.";
-    }
-    EXPECT_EQ(stats_before.d2h_bytes, 0u);
+    EXPECT_GT(stats_before.alloc_bytes, 0u);
+    EXPECT_GT(stats_before.h2d_bytes, 0u);
     EXPECT_GE(stats_before.h2d_bytes, a.get_byte_size() + b.get_byte_size());
+    EXPECT_EQ(stats_before.d2h_bytes, 0u);
 
     auto metal_out = metal_req.get_output_tensor();
     auto stats_after = metal_cm.get_property("METAL_MEM_STATS").as<MetalMemoryStats>();
@@ -205,11 +197,8 @@ TEST(MetalRunDeviceIntegration, NoHostRoundTripUntilOutputRequested) {
               << " d2h=" << stats_after.d2h_bytes
               << " alloc=" << stats_after.alloc_bytes
               << " reused=" << stats_after.reused_bytes << std::endl;
-    if (stats_after.d2h_bytes == 0) {
-        GTEST_SKIP() << "No device→host copy recorded; run_device likely fell back. Skipping correctness check.";
-        return;
-    }
-    EXPECT_GE(stats_after.d2h_bytes, metal_out.get_byte_size());
+    // No CPU copies in METAL backend; output should be shared-memory view.
+    EXPECT_EQ(stats_after.d2h_bytes, 0u);
 
     ASSERT_EQ(metal_out.get_shape(), ov::Shape({2, 4}));
     ASSERT_EQ(metal_out.get_element_type(), ov::element::f32);

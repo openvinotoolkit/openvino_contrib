@@ -14,7 +14,12 @@ namespace metal_plugin {
 id<MTLComputePipelineState> MetalKernelCompiler::compile_transpose_kernel(const KernelOp& op, std::string& log) {
     TransposeCodegenDesc desc;
     desc.kind = KernelOpKind::Transpose;
-    desc.element_type = op.output ? op.output->dtype.ov_type : ov::element::f32;
+    ov::element::Type et = op.dtype.ov_type;
+    if (et == ov::element::dynamic && op.output)
+        et = op.output->dtype.ov_type;
+    if (et == ov::element::dynamic)
+        et = ov::element::f32;
+    desc.element_type = et;
     desc.in_shape.assign(op.transpose.in_shape.begin(), op.transpose.in_shape.end());
     desc.out_shape.assign(op.transpose.out_shape.begin(), op.transpose.out_shape.end());
     for (auto p : op.transpose.perm) desc.perm.push_back(static_cast<uint32_t>(p));
