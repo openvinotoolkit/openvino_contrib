@@ -4,18 +4,23 @@
 #pragma once
 
 #include <memory>
+#include <vector>
 
 #include "openvino/runtime/isync_infer_request.hpp"
 #include "runtime/metal_memory.hpp"
+#include "runtime/profiling/metal_profiler_config.hpp"
 
 namespace ov {
 namespace metal_plugin {
 
 class CompiledModel;
+class MetalRemoteTensor;
+class MetalProfiler;
 
 class InferRequest : public ov::ISyncInferRequest {
 public:
     explicit InferRequest(const std::shared_ptr<const ov::ICompiledModel>& compiled_model);
+    ~InferRequest() override;
 
     void infer() override;
     void set_input_tensor(const ov::Tensor& tensor);
@@ -26,13 +31,28 @@ public:
     ov::Tensor get_output_tensor() const { return get_output_tensor(0); }
     std::vector<ov::ProfilingInfo> get_profiling_info() const override;
     std::vector<ov::SoPtr<ov::IVariableState>> query_state() const override { return {}; }
+    const std::vector<std::pair<std::string, ov::Tensor>>& get_debug_tensors() const { return m_debug_tensors; }
 
 private:
     const std::shared_ptr<const CompiledModel> get_compiled_model_typed() const;
 
     std::vector<ov::Tensor> m_bound_inputs;
-    mutable std::shared_ptr<MetalBufferManager> m_buffer_manager;
+    std::vector<std::shared_ptr<MetalRemoteTensor>> m_bound_remote_inputs;
+    std::vector<ov::Tensor> m_bound_output_hosts;
+    std::vector<std::shared_ptr<MetalRemoteTensor>> m_bound_remote_outputs;
+    std::vector<std::pair<std::string, ov::Tensor>> m_debug_tensors;
+    std::vector<MetalBuffer> m_debug_buffers;
     mutable MetalTensorMap m_tensor_map;
+    std::unique_ptr<MetalHeapPool> m_heaps;
+    std::unique_ptr<MetalFreeList> m_freelist;
+    std::unique_ptr<MetalStagingPool> m_staging;
+    std::unique_ptr<MetalAllocator> m_allocator;
+    MetalAllocatorCore* m_alloc_core = nullptr;
+    MetalDeviceCaps m_caps{};
+    std::vector<std::vector<BufferHandle>> m_stage_output_handles;
+    mutable std::vector<ov::ProfilingInfo> m_last_profiling;
+    std::unique_ptr<MetalProfiler> m_profiler;
+    MetalProfilerConfig m_profiler_cfg{};
 };
 
 }  // namespace metal_plugin

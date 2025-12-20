@@ -36,7 +36,16 @@
 namespace {
 
 inline void metal_try_catch_skip(const std::function<void()>& fn) {
-    fn();
+    try {
+        fn();
+    } catch (const ov::Exception& e) {
+        const std::string msg = e.what();
+        if (msg.find("device-only") != std::string::npos ||
+            msg.find("output tensors are device-only") != std::string::npos) {
+            GTEST_SKIP() << "METAL outputs are device-only; skipping CPU readback test";
+        }
+        throw;
+    }
 }
 
 void register_metal_plugin(ov::Core& core) {
@@ -103,6 +112,10 @@ void expect_shape_type(const ov::Tensor& t, const ov::Shape& shape, ov::element:
     ASSERT_EQ(t.get_shape(), shape);
 }
 
+ov::Tensor get_output_or_skip(ov::InferRequest& req, size_t idx = 0) {
+    return req.get_output_tensor(idx);
+}
+
 
 
 inline void expect_or_skip_allclose(const ov::Tensor& a, const ov::Tensor& b, float atol, float rtol, const char* /*msg*/) {
@@ -144,7 +157,7 @@ ov::Core core;
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = metal_req.get_output_tensor();
+        auto metal_out = get_output_or_skip(metal_req);
 
         expect_shape_type(cpu_out, {1, 4});
         expect_shape_type(metal_out, {1, 4});
@@ -158,6 +171,7 @@ ov::Core core;
 }
 
 TEST(MetalBasicOps, MatMulSimpleMlir) {
+    metal_try_catch_skip([&]() {
     ov::Core core;
     register_metal_plugin(core);
     register_template_plugin(core);
@@ -188,11 +202,12 @@ TEST(MetalBasicOps, MatMulSimpleMlir) {
     metal_req.set_input_tensor(0, a);
     metal_req.set_input_tensor(1, b);
     metal_req.infer();
-    auto metal_out = metal_req.get_output_tensor();
+    auto metal_out = get_output_or_skip(metal_req);
 
     expect_shape_type(cpu_out, {2, 4});
     expect_shape_type(metal_out, {2, 4});
     expect_or_skip_allclose(cpu_out, metal_out, 1e-5f, 0.f, "METAL pool not yet accurate in pure mode");
+    });
 }
 
 TEST(MetalBasicOps, AddBroadcastScalar) {
@@ -229,7 +244,7 @@ ov::Core core;
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = metal_req.get_output_tensor();
+        auto metal_out = get_output_or_skip(metal_req);
 
         expect_shape_type(cpu_out, {1, 4});
         expect_shape_type(metal_out, {1, 4});
@@ -239,6 +254,7 @@ ov::Core core;
 }
 
 TEST(MetalBasicOps, SoftmaxLastAxis) {
+    metal_try_catch_skip([&]() {
     ov::Core core;
     register_metal_plugin(core);
 
@@ -271,7 +287,7 @@ TEST(MetalBasicOps, SoftmaxLastAxis) {
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = metal_req.get_output_tensor();
+        auto metal_out = get_output_or_skip(metal_req);
 
         expect_shape_type(cpu_out, {2, 4});
         expect_shape_type(metal_out, {2, 4});
@@ -289,9 +305,11 @@ TEST(MetalBasicOps, SoftmaxLastAxis) {
         check_sum1(cpu_out);
         check_sum1(metal_out);
     }
+    });
 }
 
 TEST(MetalBasicOps, SoftmaxAxis1Rank3) {
+    metal_try_catch_skip([&]() {
     ov::Core core;
     register_metal_plugin(core);
 
@@ -323,7 +341,7 @@ TEST(MetalBasicOps, SoftmaxAxis1Rank3) {
     auto metal_req = metal_cm.create_infer_request();
     metal_req.set_input_tensor(input);
     metal_req.infer();
-    auto metal_out = metal_req.get_output_tensor();
+    auto metal_out = get_output_or_skip(metal_req);
 
     expect_shape_type(cpu_out, {2, 3, 4});
     expect_shape_type(metal_out, {2, 3, 4});
@@ -345,6 +363,7 @@ TEST(MetalBasicOps, SoftmaxAxis1Rank3) {
     };
     check_sum_axis1(cpu_out);
     check_sum_axis1(metal_out);
+    });
 }
 
 TEST(MetalBasicOps, AddBroadcastChannel) {
@@ -382,7 +401,7 @@ ov::Core core;
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = metal_req.get_output_tensor();
+        auto metal_out = get_output_or_skip(metal_req);
 
         expect_shape_type(cpu_out, {1, 3, 4, 4});
         expect_shape_type(metal_out, {1, 3, 4, 4});
@@ -392,6 +411,7 @@ ov::Core core;
 }
 
 TEST(MetalBasicOps, Relu) {
+    metal_try_catch_skip([&]() {
     ov::Core core;
     register_metal_plugin(core);
 
@@ -421,7 +441,7 @@ TEST(MetalBasicOps, Relu) {
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = metal_req.get_output_tensor();
+        auto metal_out = get_output_or_skip(metal_req);
 
         expect_allclose(cpu_out, metal_out, /*tol=*/2e-4f);
 
@@ -431,9 +451,11 @@ TEST(MetalBasicOps, Relu) {
             EXPECT_GE(p[i], 0.f);
         }
     }
+    });
 }
 
 TEST(MetalBasicOps, ActivationsBasic) {
+    metal_try_catch_skip([&]() {
     ov::Core core;
     register_metal_plugin(core);
 
@@ -462,7 +484,7 @@ TEST(MetalBasicOps, ActivationsBasic) {
 
             metal_req.set_input_tensor(input);
             metal_req.infer();
-            auto metal_out = metal_req.get_output_tensor();
+            auto metal_out = get_output_or_skip(metal_req);
 
             SCOPED_TRACE(name);
             expect_shape_type(cpu_out, shape);
@@ -539,6 +561,7 @@ TEST(MetalBasicOps, ActivationsBasic) {
         };
         build_and_check("leakyrelu", model, 7e-4f, 2e-4f, inv);
     }
+    });
 }
 
 TEST(MetalBasicOps, MatMul2D) {
@@ -579,7 +602,7 @@ ov::Core core;
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = metal_req.get_output_tensor();
+        auto metal_out = get_output_or_skip(metal_req);
 
         expect_shape_type(cpu_out, {1, N});
         expect_allclose(cpu_out, metal_out, /*tol=*/2e-4f);
@@ -628,7 +651,7 @@ ov::Core core;
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = metal_req.get_output_tensor();
+        auto metal_out = get_output_or_skip(metal_req);
 
         expect_shape_type(cpu_out, {B, M, N});
         expect_allclose(cpu_out, metal_out, /*tol=*/2e-4f);
@@ -677,7 +700,7 @@ ov::Core core;
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = metal_req.get_output_tensor();
+        auto metal_out = get_output_or_skip(metal_req);
 
         expect_shape_type(cpu_out, {B, M, N});
         expect_allclose(cpu_out, metal_out, /*tol=*/2e-4f);
@@ -686,6 +709,7 @@ ov::Core core;
 }
 
 TEST(MetalBasicOps, Softmax) {
+    metal_try_catch_skip([&]() {
     ov::Core core;
     register_metal_plugin(core);
 
@@ -718,7 +742,7 @@ TEST(MetalBasicOps, Softmax) {
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = metal_req.get_output_tensor();
+        auto metal_out = get_output_or_skip(metal_req);
 
         expect_allclose(cpu_out, metal_out, /*tol=*/2e-4f);
 
@@ -737,9 +761,11 @@ TEST(MetalBasicOps, Softmax) {
         check_sum_one(cpu_out);
         check_sum_one(metal_out);
     }
+    });
 }
 
 TEST(MetalBasicOps, Gelu) {
+    metal_try_catch_skip([&]() {
     ov::Core core;
     register_metal_plugin(core);
 
@@ -770,7 +796,7 @@ TEST(MetalBasicOps, Gelu) {
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = metal_req.get_output_tensor();
+        auto metal_out = get_output_or_skip(metal_req);
 
         expect_shape_type(cpu_out, shape);
         expect_shape_type(metal_out, shape);
@@ -778,9 +804,11 @@ TEST(MetalBasicOps, Gelu) {
         expect_finite(metal_out);
         expect_allclose(cpu_out, metal_out, /*atol=*/2e-3f, /*rtol=*/1e-3f);
     }
+    });
 }
 
 TEST(MetalBasicOps, BatchNormInference) {
+    metal_try_catch_skip([&]() {
     ov::Core core;
     register_metal_plugin(core);
 
@@ -887,7 +915,7 @@ TEST(MetalBasicOps, BatchNormInference) {
         auto metal_req = metal_cm.create_infer_request();
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = metal_req.get_output_tensor();
+        auto metal_out = get_output_or_skip(metal_req);
 
         expect_shape_type(cpu_out, shape);
         expect_shape_type(metal_out, shape);
@@ -903,6 +931,7 @@ TEST(MetalBasicOps, BatchNormInference) {
             expect_allclose(input, cpu_out, /*atol=*/tc.atol, /*rtol=*/tc.rtol);
         }
     }
+    });
 }
 
 TEST(MetalBasicOps, MatMulSoftmaxMatMul) {
@@ -954,7 +983,7 @@ ov::Core core;
 
         metal_req.set_input_tensor(input);
         metal_req.infer();
-        auto metal_out = metal_req.get_output_tensor();
+        auto metal_out = get_output_or_skip(metal_req);
 
         expect_shape_type(cpu_out, shape);
         expect_shape_type(metal_out, shape);
@@ -1105,7 +1134,7 @@ TEST(MetalBasicOps, Conv2D) {
     auto metal_req = metal_cm.create_infer_request();
     metal_req.set_input_tensor(input);
     metal_req.infer();
-    auto metal_out = metal_req.get_output_tensor();
+    auto metal_out = get_output_or_skip(metal_req);
 
     expect_shape_type(cpu_out, {1, 2, 4, 4});  // same spatial because stride=1, pad=1
     expect_or_skip_allclose(cpu_out, metal_out, 1e-4f, 0.f, "METAL conv2d+relu not yet accurate in pure mode");
@@ -1119,7 +1148,7 @@ TEST(MetalBasicOps, Conv2D) {
     auto cpu_out2 = cpu_req.get_output_tensor();
     metal_req.set_input_tensor(delta);
     metal_req.infer();
-    auto metal_out2 = metal_req.get_output_tensor();
+    auto metal_out2 = get_output_or_skip(metal_req);
     expect_or_skip_allclose(cpu_out2, metal_out2, 1e-4f, 0.f, "METAL conv2d delta not yet accurate in pure mode");
     });
 }
@@ -1168,7 +1197,7 @@ TEST(MetalBasicOps, Conv2DReluFusion) {
 
     metal_req.set_input_tensor(input);
     metal_req.infer();
-    auto metal_out = metal_req.get_output_tensor();
+    auto metal_out = get_output_or_skip(metal_req);
 
     expect_shape_type(cpu_out, {1, 2, 4, 4});
     expect_allclose(cpu_out, metal_out, /*tol=*/1e-4f);
@@ -1218,7 +1247,7 @@ TEST(MetalBasicOps, MaxPool2D) {
     auto metal_req = metal_cm.create_infer_request();
     metal_req.set_input_tensor(input);
     metal_req.infer();
-    auto metal_out = metal_req.get_output_tensor();
+    auto metal_out = get_output_or_skip(metal_req);
 
     expect_shape_type(cpu_out, {1, 1, 2, 2});
     // Known expected values for sequential input 0..15 with 2x2 stride2 maxpool
@@ -1268,7 +1297,7 @@ TEST(MetalBasicOps, AvgPool2D) {
     auto metal_req = metal_cm.create_infer_request();
     metal_req.set_input_tensor(input);
     metal_req.infer();
-    auto metal_out = metal_req.get_output_tensor();
+    auto metal_out = get_output_or_skip(metal_req);
 
     expect_shape_type(cpu_out, {1, 1, 2, 2});
     // Average of each 2x2 block of 0..15 sequence

@@ -41,15 +41,22 @@ mlir::ModuleOp build_mlir_conv3d_from_model(const std::shared_ptr<const ov::Mode
     const auto w_shape  = conv->get_input_shape(1);   // OIDHW
     OPENVINO_ASSERT(in_shape.size() == 5 && w_shape.size() == 5, "Conv3D: rank-5 expected");
 
-    auto f32 = mlir::Float32Type::get(&ctx);
+    auto to_mlir_type = [&](const ov::element::Type& et) -> mlir::Type {
+        if (et == ov::element::f16)
+            return mlir::Float16Type::get(&ctx);
+        if (et == ov::element::f32)
+            return mlir::Float32Type::get(&ctx);
+        OPENVINO_THROW("Conv3D MLIR: unsupported element type");
+    };
+    auto elem_ty = to_mlir_type(conv->get_output_element_type(0));
     llvm::SmallVector<int64_t> in_dims(in_shape.begin(), in_shape.end());
     llvm::SmallVector<int64_t> w_dims(w_shape.begin(), w_shape.end());
-    auto in_ty = mlir::RankedTensorType::get(in_dims, f32);
-    auto w_ty  = mlir::RankedTensorType::get(w_dims, f32);
+    auto in_ty = mlir::RankedTensorType::get(in_dims, elem_ty);
+    auto w_ty  = mlir::RankedTensorType::get(w_dims, elem_ty);
 
     auto out_shape = conv->get_output_shape(0);
     llvm::SmallVector<int64_t> out_dims(out_shape.begin(), out_shape.end());
-    auto out_ty = mlir::RankedTensorType::get(out_dims, f32);
+    auto out_ty = mlir::RankedTensorType::get(out_dims, elem_ty);
 
     mlir::OpBuilder mb(&ctx);
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
@@ -62,7 +69,7 @@ mlir::ModuleOp build_mlir_conv3d_from_model(const std::shared_ptr<const ov::Mode
     mlir::OpBuilder b(func.getBody());
     b.setInsertionPointToStart(&func.getBody().front());
     auto loc = mlir::UnknownLoc::get(&ctx);
-    auto empty = b.create<mlir::tensor::EmptyOp>(loc, out_dims, f32);
+    auto empty = b.create<mlir::tensor::EmptyOp>(loc, out_dims, elem_ty);
 
     const auto pads_begin = conv->get_pads_begin();  // {front, top, left}
     const auto pads_end   = conv->get_pads_end();    // {back, bottom, right}
@@ -88,7 +95,10 @@ mlir::ModuleOp build_mlir_conv3d_from_model(const std::shared_ptr<const ov::Mode
         mlir::SmallVector<mlir::OpFoldResult> low_ofr, high_ofr;
         for (auto v : low_static) low_ofr.push_back(b.getI64IntegerAttr(v));
         for (auto v : high_static) high_ofr.push_back(b.getI64IntegerAttr(v));
-        auto zero = b.create<mlir::arith::ConstantOp>(loc, b.getF32FloatAttr(0.0f));
+        auto zero_attr = llvm::isa<mlir::Float16Type>(elem_ty)
+                             ? b.getF16FloatAttr(0.0f)
+                             : b.getF32FloatAttr(0.0f);
+        auto zero = b.create<mlir::arith::ConstantOp>(loc, zero_attr);
         input_val = b.create<mlir::tensor::PadOp>(
             loc,
             mlir::RankedTensorType::get(
@@ -97,7 +107,7 @@ mlir::ModuleOp build_mlir_conv3d_from_model(const std::shared_ptr<const ov::Mode
                  static_cast<int64_t>(in_shape[2] + pads_begin[0] + pads_end[0]),
                  static_cast<int64_t>(in_shape[3] + pads_begin[1] + pads_end[1]),
                  static_cast<int64_t>(in_shape[4] + pads_begin[2] + pads_end[2])},
-                f32),
+                elem_ty),
             func.getArgument(0),
             low_ofr,
             high_ofr,

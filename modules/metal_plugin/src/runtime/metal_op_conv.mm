@@ -6,12 +6,17 @@
 
 #include <numeric>
 #include <cstdint>
+#include <string>
 
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"
-#include "runtime/metal_dtype.hpp"
 #include "runtime/metal_logger.hpp"
 #include "runtime/metal_memory.hpp"
+#include "runtime/metal_op_utils.hpp"
+#include "mlir_builder.hpp"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir_codegen/codegen_common.hpp"
 
 namespace ov {
 namespace metal_plugin {
@@ -50,44 +55,80 @@ MetalConvOp::MetalConvOp(const std::shared_ptr<const ov::op::v1::Convolution>& n
     const auto& in_shape = m_node->get_input_shape(0);   // NCHW
     const auto& w_shape = m_node->get_input_shape(1);    // OIHW (groups folded)
 
-    m_desc.kind = KernelOpKind::Conv2D;
-    m_desc.dtype = resolve_metal_dtype(m_node->get_output_element_type(0));
-    m_desc.conv2d.dtype = m_desc.dtype;
-    m_desc.conv2d.N = static_cast<uint32_t>(in_shape.at(0));
-    m_desc.conv2d.C_in = static_cast<uint32_t>(in_shape.at(1));
-    m_desc.conv2d.H = static_cast<uint32_t>(in_shape.at(2));
-    m_desc.conv2d.W = static_cast<uint32_t>(in_shape.at(3));
-    m_desc.conv2d.C_out = static_cast<uint32_t>(w_shape.at(0));
+    m_element_type = m_node->get_output_element_type(0);
+    m_desc.element_type = m_element_type;
+    m_desc.N = static_cast<uint32_t>(in_shape.at(0));
+    m_desc.C_in = static_cast<uint32_t>(in_shape.at(1));
+    m_desc.H = static_cast<uint32_t>(in_shape.at(2));
+    m_desc.W = static_cast<uint32_t>(in_shape.at(3));
+    m_desc.C_out = static_cast<uint32_t>(w_shape.at(0));
     // Derive groups from weight shape: O x (I/groups) x kH x kW
     const uint32_t cin_per_group = static_cast<uint32_t>(w_shape.at(1));
-    m_desc.conv2d.groups = (cin_per_group > 0 && (m_desc.conv2d.C_in % cin_per_group) == 0)
-                               ? m_desc.conv2d.C_in / cin_per_group
+    m_desc.groups = (cin_per_group > 0 && (m_desc.C_in % cin_per_group) == 0)
+                               ? m_desc.C_in / cin_per_group
                                : 1;
-    m_desc.conv2d.C_in_per_group = cin_per_group;
-    m_desc.conv2d.C_out_per_group = m_desc.conv2d.groups ? m_desc.conv2d.C_out / m_desc.conv2d.groups
-                                                         : m_desc.conv2d.C_out;
-    m_desc.conv2d.kernelH = static_cast<uint32_t>(w_shape.at(2));
-    m_desc.conv2d.kernelW = static_cast<uint32_t>(w_shape.at(3));
-    m_desc.conv2d.strideH = static_cast<uint32_t>(strides.at(0));
-    m_desc.conv2d.strideW = static_cast<uint32_t>(strides.at(1));
-    m_desc.conv2d.dilationH = static_cast<uint32_t>(dilations.at(0));
-    m_desc.conv2d.dilationW = static_cast<uint32_t>(dilations.at(1));
-    m_desc.conv2d.padTop = static_cast<uint32_t>(pads_begin.at(0));
-    m_desc.conv2d.padLeft = static_cast<uint32_t>(pads_begin.at(1));
-    m_desc.conv2d.padBottom = static_cast<uint32_t>(pads_end.at(0));
-    m_desc.conv2d.padRight = static_cast<uint32_t>(pads_end.at(1));
-    m_desc.conv2d.outH = 0;  // will be derived by codegen if zero
-    m_desc.conv2d.outW = 0;
-    m_desc.conv2d.has_bias = false;
-    m_desc.conv2d.has_bn = false;
-    m_desc.conv2d.has_activation = false;
-    m_desc.output = nullptr;
+    m_desc.C_in_pg = cin_per_group;
+    m_desc.C_out_pg = m_desc.groups ? m_desc.C_out / m_desc.groups
+                                    : m_desc.C_out;
+    m_desc.kH = static_cast<uint32_t>(w_shape.at(2));
+    m_desc.kW = static_cast<uint32_t>(w_shape.at(3));
+    m_desc.strideH = static_cast<uint32_t>(strides.at(0));
+    m_desc.strideW = static_cast<uint32_t>(strides.at(1));
+    m_desc.dilationH = static_cast<uint32_t>(dilations.at(0));
+    m_desc.dilationW = static_cast<uint32_t>(dilations.at(1));
+    m_desc.padTop = static_cast<uint32_t>(pads_begin.at(0));
+    m_desc.padLeft = static_cast<uint32_t>(pads_begin.at(1));
+    m_desc.padBottom = static_cast<uint32_t>(pads_end.at(0));
+    m_desc.padRight = static_cast<uint32_t>(pads_end.at(1));
+    m_desc.outH = 0;  // will be derived by codegen if zero
+    m_desc.outW = 0;
+    m_desc.has_bias = false;
+    m_desc.has_bn = false;
+    m_desc.has_activation = false;
 }
 
 void MetalConvOp::init(MetalBufferManager* buffer_manager) {
     MetalOp::init(buffer_manager);
+}
+
+bool MetalConvOp::fuse_activation(ActivationKind kind, float alpha) {
+    OPENVINO_ASSERT(!is_compiled(), "MetalConvOp: cannot fuse activation after compilation");
+    m_has_activation = true;
+    m_activation = kind;
+    m_activation_alpha = alpha;
+    return true;
+}
+
+void MetalConvOp::compile(MetalBufferManager* buffer_manager) {
+    if (is_compiled()) {
+        return;
+    }
+    if (!this->buffer_manager()) {
+        MetalOp::init(buffer_manager);
+    }
     prepare_weights();
-    compile_pipeline();
+    OPENVINO_ASSERT(m_device, "MetalConvOp: Metal device is null");
+    MetalKernelCompiler compiler(m_device);
+    std::string log;
+    mlir::MLIRContext ctx;
+    auto model = make_single_op_model(m_node);
+    std::optional<std::pair<ActivationKind, float>> unary;
+    if (m_has_activation) {
+        unary = std::make_optional(std::make_pair(m_activation, m_activation_alpha));
+    }
+    auto module = unary ? build_mlir_conv2d_from_model(model, ctx, *unary)
+                        : build_mlir_conv2d_from_model(model, ctx);
+    Conv2DCodegenDesc desc = m_desc;
+    desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
+    if (m_has_activation) {
+        desc.has_activation = true;
+        desc.activation = m_activation;
+        desc.alpha = m_activation_alpha;
+    }
+    auto source = generate_msl_from_mlir(module, desc);
+    m_pipeline = compiler.compile_msl_from_source(source, "conv2d_kernel", log);
+    OPENVINO_ASSERT(m_pipeline, "MetalConvOp: failed to compile conv2d kernel: ", log);
+    MetalOp::compile(buffer_manager);
 }
 
 void MetalConvOp::prepare_weights() {
@@ -98,23 +139,14 @@ void MetalConvOp::prepare_weights() {
     const auto& et = weights_const->get_element_type();
     const size_t bytes = element_size(et) * shape_size(weights_const->get_shape());
 
-    m_weights = buffer_manager()->allocate(bytes,
-                                           et,
-                                           /*persistent=*/true,
-                                           /*storageModePrivate=*/true);
-    OPENVINO_ASSERT(m_weights.valid(), "MetalConvOp: failed to allocate weights buffer");
-    buffer_manager()->upload(m_weights, weights_const->get_data_ptr(), bytes);
+    const std::string key = m_node->get_friendly_name() + "/weights";
+    m_weights = buffer_manager()->wrap_const(key, weights_const->get_data_ptr(), bytes, et);
+    OPENVINO_ASSERT(m_weights.valid(), "MetalConvOp: failed to wrap weights buffer");
 }
 
-void MetalConvOp::compile_pipeline() {
-    OPENVINO_ASSERT(m_device, "MetalConvOp: Metal device is null");
-    MetalKernelCompiler compiler(m_device);
-    std::string log;
-    m_pipeline = compiler.compile_conv2d_kernel(m_desc, log);
-    OPENVINO_ASSERT(m_pipeline, "MetalConvOp: failed to compile conv2d kernel: ", log);
-}
+// compile_pipeline removed: compile() performs MLIR construction and pipeline build.
 
-void MetalConvOp::execute() {
+void MetalConvOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     OPENVINO_ASSERT(!inputs().empty(), "MetalConvOp: no inputs bound");
     MetalTensor* src = inputs().at(0);
     OPENVINO_ASSERT(src && src->buf.valid(), "MetalConvOp: input buffer is null");
@@ -126,16 +158,19 @@ void MetalConvOp::execute() {
     // out‑of‑bounds kernel that can hang or reset the GPU.
     const ov::Shape in_shape = !src->shape.empty() ? src->shape : m_node->get_input_shape(0);
     OPENVINO_ASSERT(in_shape.size() == 4, "MetalConvOp: expected NCHW input, got rank ", in_shape.size());
-    OPENVINO_ASSERT(in_shape[0] == m_desc.conv2d.N &&
-                        in_shape[1] == m_desc.conv2d.C_in &&
-                        in_shape[2] == m_desc.conv2d.H &&
-                        in_shape[3] == m_desc.conv2d.W,
+    OPENVINO_ASSERT(in_shape[0] == m_desc.N &&
+                        in_shape[1] == m_desc.C_in &&
+                        in_shape[2] == m_desc.H &&
+                        in_shape[3] == m_desc.W,
                     "MetalConvOp: runtime input shape differs from compiled shape");
+    const size_t in_bytes = ov::shape_size(in_shape) * element_size(m_element_type);
+    OPENVINO_ASSERT(src->buf.size >= in_bytes, "MetalConvOp: input buffer too small");
 
     const ov::Shape out_shape = !output_shape().empty() ? output_shape() : m_node->get_output_shape(0);
     OPENVINO_ASSERT(out_shape.size() == 4, "MetalConvOp: expected NCHW output, got rank ", out_shape.size());
 
-    if (!dst_tensor.buf.valid()) {
+    const size_t out_bytes = ov::shape_size(out_shape) * element_size(m_element_type);
+    if (!dst_tensor.buf.valid() || dst_tensor.buf.size < out_bytes) {
         // Allocate output on first run; reuse across inferences.
         const auto& et = m_node->get_output_element_type(0);
         size_t bytes = element_size(et);
@@ -143,16 +178,14 @@ void MetalConvOp::execute() {
         dst_tensor.buf = buffer_manager()->allocate(bytes,
                                                     et,
                                                     /*persistent=*/false,
-                                                    /*storageModePrivate=*/true);
+                                                    dst_tensor.prefer_private);
         dst_tensor.expected_type = et;
     }
     dst_tensor.shape = out_shape;
     dst_tensor.expected_type = m_node->get_output_element_type(0);
 
-    if (!m_queue) {
-        m_queue = [m_device newCommandQueue];
-    }
-    id<MTLCommandBuffer> cb = [m_queue commandBuffer];
+    id<MTLCommandBuffer> cb = static_cast<id<MTLCommandBuffer>>(cmd_buf_handle);
+    OPENVINO_ASSERT(cb, "MetalConvOp: command buffer is null");
     id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
     [enc setComputePipelineState:m_pipeline];
 
@@ -164,6 +197,11 @@ void MetalConvOp::execute() {
     id<MTLBuffer> mean = nil;
     id<MTLBuffer> var = nil;
     id<MTLBuffer> out = to_mtl(dst_tensor.buf);
+    if (w) {
+        const ov::Shape w_shape = m_node->get_input_shape(1);
+        const size_t w_bytes = ov::shape_size(w_shape) * element_size(m_element_type);
+        OPENVINO_ASSERT(m_weights.size >= w_bytes, "MetalConvOp: weights buffer too small");
+    }
 
     [enc setBuffer:in0 offset:0 atIndex:0];
     [enc setBuffer:w offset:0 atIndex:1];
@@ -193,35 +231,35 @@ void MetalConvOp::execute() {
         float clamp_min;
         float clamp_max;
     } params{};
-    params.N = m_desc.conv2d.N;
-    params.C_in = m_desc.conv2d.C_in;
-    params.H = m_desc.conv2d.H;
-    params.W = m_desc.conv2d.W;
-    params.C_out = m_desc.conv2d.C_out;
-    params.groups = m_desc.conv2d.groups;
-    params.C_in_pg = m_desc.conv2d.C_in_per_group;
-    params.C_out_pg = m_desc.conv2d.C_out_per_group;
-    params.kH = m_desc.conv2d.kernelH;
-    params.kW = m_desc.conv2d.kernelW;
-    params.strideH = m_desc.conv2d.strideH;
-    params.strideW = m_desc.conv2d.strideW;
-    params.dilationH = m_desc.conv2d.dilationH;
-    params.dilationW = m_desc.conv2d.dilationW;
-    params.padTop = m_desc.conv2d.padTop;
-    params.padLeft = m_desc.conv2d.padLeft;
-    params.padBottom = m_desc.conv2d.padBottom;
-    params.padRight = m_desc.conv2d.padRight;
+    params.N = m_desc.N;
+    params.C_in = m_desc.C_in;
+    params.H = m_desc.H;
+    params.W = m_desc.W;
+    params.C_out = m_desc.C_out;
+    params.groups = m_desc.groups;
+    params.C_in_pg = m_desc.C_in_pg;
+    params.C_out_pg = m_desc.C_out_pg;
+    params.kH = m_desc.kH;
+    params.kW = m_desc.kW;
+    params.strideH = m_desc.strideH;
+    params.strideW = m_desc.strideW;
+    params.dilationH = m_desc.dilationH;
+    params.dilationW = m_desc.dilationW;
+    params.padTop = m_desc.padTop;
+    params.padLeft = m_desc.padLeft;
+    params.padBottom = m_desc.padBottom;
+    params.padRight = m_desc.padRight;
     // Trust the model's output shape to avoid negative/overflowed dims.
     params.outH = static_cast<uint32_t>(out_shape[2]);
     params.outW = static_cast<uint32_t>(out_shape[3]);
     OPENVINO_ASSERT(params.outH > 0 && params.outW > 0, "MetalConvOp: output spatial dims must be positive");
-    params.has_bias = m_desc.conv2d.has_bias ? 1u : 0u;
-    params.has_bn = m_desc.conv2d.has_bn ? 1u : 0u;
-    params.activation = static_cast<uint32_t>(m_desc.conv2d.activation);
-    params.alpha = m_desc.conv2d.alpha;
-    params.epsilon = m_desc.conv2d.epsilon;
-    params.clamp_min = m_desc.conv2d.clamp_min;
-    params.clamp_max = m_desc.conv2d.clamp_max;
+    params.has_bias = m_desc.has_bias ? 1u : 0u;
+    params.has_bn = m_desc.has_bn ? 1u : 0u;
+    params.activation = static_cast<uint32_t>(m_desc.activation);
+    params.alpha = m_desc.alpha;
+    params.epsilon = m_desc.epsilon;
+    params.clamp_min = m_desc.clamp_min;
+    params.clamp_max = m_desc.clamp_max;
     [enc setBytes:&params length:sizeof(params) atIndex:8];
 
     const uint64_t total_u64 = static_cast<uint64_t>(params.N) *
@@ -233,15 +271,17 @@ void MetalConvOp::execute() {
     constexpr uint64_t kMaxGrid = 1ULL << 31;  // ~2 billion threads
     OPENVINO_ASSERT(total_u64 < kMaxGrid, "MetalConvOp: computed grid too large: ", total_u64);
     const NSUInteger total = static_cast<NSUInteger>(total_u64);
+    if (total == 0) {
+        [enc endEncoding];
+        return;
+    }
     MTLSize grid = MTLSizeMake(total, 1, 1);
-    MTLSize tg = MTLSizeMake(64, 1, 1);
+    const NSUInteger tg_size = static_cast<NSUInteger>(metal_clamp_tg_size((void*)m_pipeline, 64));
+    MTLSize tg = MTLSizeMake(tg_size, 1, 1);
+    start_profiling(enc);
     [enc dispatchThreads:grid threadsPerThreadgroup:tg];
+    stop_profiling_ms(enc);
     [enc endEncoding];
-
-    start_profiling();
-    [cb commit];
-    [cb waitUntilCompleted];
-    stop_profiling_ms();
 
     // Update output shape/type metadata in tensor.
     dst_tensor.shape = output_shape();

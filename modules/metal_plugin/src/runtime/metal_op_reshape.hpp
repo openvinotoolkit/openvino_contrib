@@ -9,7 +9,7 @@
 #include "openvino/op/reshape.hpp"
 #include "openvino/op/transpose.hpp"
 #include "runtime/metal_op.hpp"
-#include "kernel_ir/kernel_ir_common.hpp"
+#include "mlir_codegen/codegen_common.hpp"
 
 namespace ov {
 namespace metal_plugin {
@@ -20,9 +20,11 @@ public:
     ~MetalReshapeOp() override = default;
 
     void init(MetalBufferManager* buffer_manager) override;
-    void execute() override;
+    void compile(MetalBufferManager* buffer_manager) override;
+    void execute(MetalCommandBufferHandle command_buffer) override;
 
 private:
+    std::shared_ptr<const ov::Node> m_node;
     ov::Shape m_target_shape;
     ov::element::Type m_element_type{ov::element::dynamic};
 };
@@ -33,12 +35,18 @@ public:
     ~MetalTransposeOp() override = default;
 
     void init(MetalBufferManager* buffer_manager) override;
-    void execute() override;
+    void compile(MetalBufferManager* buffer_manager) override;
+    void execute(MetalCommandBufferHandle command_buffer) override;
 
 private:
     void build_desc(const std::shared_ptr<const ov::Node>& node);
 
-    KernelOp m_desc{};
+    std::shared_ptr<const ov::Node> m_node;
+    struct TransposeRuntimeDesc {
+        std::vector<int64_t> in_shape;
+        std::vector<int64_t> out_shape;
+        std::vector<int64_t> perm;
+    } m_desc;
     ov::element::Type m_element_type{ov::element::f32};
 
     id<MTLDevice> m_device = nil;

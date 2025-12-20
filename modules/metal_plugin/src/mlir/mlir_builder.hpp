@@ -7,7 +7,7 @@
 
 #include "mlir/IR/BuiltinOps.h"
 #include "openvino/core/node.hpp"
-#include "kernel_ir/kernel_ir_common.hpp"
+#include "runtime/metal_op_kinds.hpp"
 
 namespace ov {
 class Model;
@@ -21,7 +21,8 @@ mlir::ModuleOp build_mlir_module_from_model(const std::shared_ptr<const ov::Mode
 mlir::ModuleOp build_mlir_unary_from_node(const std::shared_ptr<const ov::Node>& node,
                                           mlir::MLIRContext& ctx,
                                           ActivationKind kind,
-                                          float alpha);
+                                          float alpha,
+                                          std::optional<std::pair<double, double>> clamp_range = std::nullopt);
 
 // Build MLIR modules for binary eltwise ops with broadcast & dynamic shapes.
 mlir::ModuleOp build_mlir_add_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
@@ -31,12 +32,26 @@ mlir::ModuleOp build_mlir_div_from_model(const std::shared_ptr<const ov::Model>&
 mlir::ModuleOp build_mlir_pow_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_mod_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_floor_mod_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_prelu_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_min_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_max_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_logical_and_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_logical_or_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_logical_xor_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_equal_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_not_equal_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_less_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_greater_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_less_equal_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_greater_equal_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_squared_difference_from_model(const std::shared_ptr<const ov::Model>& model,
                                                         mlir::MLIRContext& ctx);
 
 // Build MLIR module for Softmax (currently last-axis only).
 mlir::ModuleOp build_mlir_softmax_from_model(const std::shared_ptr<const ov::Model>& model,
                                              mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_logsoftmax_from_model(const std::shared_ptr<const ov::Model>& model,
+                                                mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_maxpool_from_model(const std::shared_ptr<const ov::Model>& model,
                                              mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_avgpool_from_model(const std::shared_ptr<const ov::Model>& model,
@@ -55,18 +70,49 @@ mlir::ModuleOp build_mlir_conv3d_from_model(const std::shared_ptr<const ov::Mode
                                             mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_batchnorm_from_model(const std::shared_ptr<const ov::Model>& model,
                                                mlir::MLIRContext& ctx);
-
-// Build MLIR for a single flat Concat copy (one input -> output with axis_offset/axis_len/inner).
-mlir::ModuleOp build_mlir_concat_from_op(const KernelOp& op, mlir::MLIRContext& ctx);
-
-// Build MLIR for Interpolate (nearest/bilinear) on NHWC?; here assumes NCHW 2D.
-mlir::ModuleOp build_mlir_interpolate_from_op(const KernelOp& op, mlir::MLIRContext& ctx);
-
-// Build MLIR for a single Split slice copy (one output chunk).
-mlir::ModuleOp build_mlir_split_from_op(const KernelOp& op, mlir::MLIRContext& ctx);
-
-// Build MLIR for elementwise Convert (type cast).
-mlir::ModuleOp build_mlir_convert_from_op(const KernelOp& op, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_convert_from_model(const std::shared_ptr<const ov::Model>& model,
+                                             mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_transpose_from_model(const std::shared_ptr<const ov::Model>& model,
+                                               mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_slice_from_model(const std::shared_ptr<const ov::Model>& model,
+                                           mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_concat_from_model(const std::shared_ptr<const ov::Model>& model,
+                                            mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_split_from_model(const std::shared_ptr<const ov::Model>& model,
+                                           mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_interpolate_from_model(const std::shared_ptr<const ov::Model>& model,
+                                                 mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_gather_from_model(const std::shared_ptr<const ov::Model>& model,
+                                            mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_gathernd_from_model(const std::shared_ptr<const ov::Model>& model,
+                                              mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_gather_elements_from_model(const std::shared_ptr<const ov::Model>& model,
+                                                     mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_depth_to_space_from_model(const std::shared_ptr<const ov::Model>& model,
+                                                    mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_space_to_depth_from_model(const std::shared_ptr<const ov::Model>& model,
+                                                    mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_scatter_elements_update_from_model(const std::shared_ptr<const ov::Model>& model,
+                                                             mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_scatter_nd_update_from_model(const std::shared_ptr<const ov::Model>& model,
+                                                       mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_shapeof_from_model(const std::shared_ptr<const ov::Model>& model,
+                                             mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_select_from_model(const std::shared_ptr<const ov::Model>& model,
+                                            mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_reducesum_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_reducemean_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_reducemax_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_reducemin_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_reduceprod_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_reducel1_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_reducel2_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_pad_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_tile_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_broadcast_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_range_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_topk_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_reverse_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
 
 }  // namespace metal_plugin
 }  // namespace ov

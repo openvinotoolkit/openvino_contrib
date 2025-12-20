@@ -51,11 +51,11 @@ std::vector<std::string> render_indices(mlir::Operation::operand_range range,
 }
 
 std::string emit_conv3d_msl(const Conv3DCodegenDesc& d,
+                            const std::string& scalar,
                             const std::vector<std::string>& input_idx,
                             const std::vector<std::string>& weight_idx,
                             const std::vector<std::string>& output_idx) {
-    const bool use_half = (d.element_type == ov::element::f16);
-    const char* scalar = use_half ? "half" : "float";
+    const bool use_half = (scalar == "half");
     std::ostringstream ss;
     ss << "#include <metal_stdlib>\n";
     ss << "using namespace metal;\n";
@@ -123,11 +123,17 @@ std::string emit_conv3d_msl(const Conv3DCodegenDesc& d,
 std::string generate_msl_for_conv3d(const Conv3DCodegenDesc& d, mlir::ModuleOp module) {
     OPENVINO_ASSERT(d.N && d.C_in && d.D && d.H && d.W && d.C_out && d.kD && d.kH && d.kW, "Conv3D desc missing dims");
     OPENVINO_ASSERT(d.outD && d.outH && d.outW, "Conv3D desc missing output dims");
-    if (!module)
-        return emit_conv3d_msl(d,
+    std::string scalar = msl_type_from_element(d.element_type);
+    if (scalar.empty())
+        scalar = "float";
+    auto fallback = [&]() {
+        return emit_conv3d_msl(d, scalar,
                                {"n_i", "ic_i", "0", "0", "0"},
                                {"oc_i", "ic_i", "kd_i", "kh_i", "kw_i"},
                                {"n_i", "oc_i", "od_i", "oh_i", "ow_i"});
+    };
+    if (!module)
+        return fallback();
 
     auto func = find_func(module);
     OPENVINO_ASSERT(func, "Conv3D MLIR module does not contain a function");
@@ -161,7 +167,9 @@ std::string generate_msl_for_conv3d(const Conv3DCodegenDesc& d, mlir::ModuleOp m
             output_store = op;
     });
 
-    OPENVINO_ASSERT(input_load && weight_load && output_store, "Conv3D MLIR: failed to find load/store ops");
+    if (!input_load || !weight_load || !output_store) {
+        return fallback();
+    }
 
     // Reconstruct loop chain based on the output store location to skip padding/copy loops.
     std::vector<mlir::scf::ForOp> loops;
@@ -255,7 +263,7 @@ std::string generate_msl_for_conv3d(const Conv3DCodegenDesc& d, mlir::ModuleOp m
         mlir_codegen_log("  output idx: [" + join(output_idx) + "]");
     }
 
-    return emit_conv3d_msl(d, input_idx, weight_idx, output_idx);
+    return emit_conv3d_msl(d, scalar, input_idx, weight_idx, output_idx);
 }
 
 }  // namespace metal_plugin

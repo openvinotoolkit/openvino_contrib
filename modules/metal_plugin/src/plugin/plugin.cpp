@@ -4,8 +4,12 @@
 
 #include "plugin.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <istream>
 #include <memory>
+#include <sstream>
+#include <unordered_map>
 #include <vector>
 
 #include "compiled_model.hpp"
@@ -41,15 +45,14 @@
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
 #include "openvino/op/elu.hpp"
-#if __has_include("openvino/op/layer_norm.hpp")
-#include "openvino/op/layer_norm.hpp"
-#endif
 #include "openvino/op/result.hpp"
 #include "openvino/runtime/internal_properties.hpp"
 #include "openvino/runtime/properties.hpp"
 #include "openvino/runtime/shared_buffer.hpp"
 #include "openvino/util/common_util.hpp"
-#include "runtime/backend.hpp"
+#include "runtime/metal_op_factory.hpp"
+#include "runtime/metal_memory.hpp"
+#include "runtime/metal_logger.hpp"
 #include "remote_stub.hpp"
 #include "transforms/pipeline.hpp"
 
@@ -59,68 +62,94 @@ namespace {
 
 constexpr const char* kBackendProperty = "METAL_BACKEND";
 
-bool is_fp_supported(const ov::element::Type& t) {
-    return t == ov::element::f32 || t == ov::element::f16;
-}
-
-bool shape_is_static(const ov::PartialShape& ps) {
-    if (!ps.rank().is_static())
-        return false;
-    for (const auto& d : ps) {
-        if (!d.is_static())
-            return false;
+ProfilingLevel parse_profiling_level(const ov::Any& value) {
+    if (value.is<int>()) {
+        const int v = value.as<int>();
+        if (v <= 0)
+            return ProfilingLevel::Off;
+        if (v == 1)
+            return ProfilingLevel::Standard;
+        return ProfilingLevel::Detailed;
     }
-    return true;
-}
-
-bool softmax_shape_supported(const ov::PartialShape& ps, int64_t axis) {
-    if (!shape_is_static(ps))
-        return false;
-    const auto rank = ps.rank().get_length();
-    if (rank < 2 || rank > 5)
-        return false;
-
-    if (axis < 0)
-        axis += rank;
-    if (axis < 0 || axis >= rank)
-        return false;
-
-    if (rank == 4 || rank == 5) {
-        // Allow channel or last axis (common cases), plus batch axis for simplicity
-        if (!(axis == 1 || axis == rank - 1 || axis == 0))
-            return false;
+    if (value.is<unsigned int>()) {
+        const unsigned int v = value.as<unsigned int>();
+        if (v == 0)
+            return ProfilingLevel::Off;
+        if (v == 1)
+            return ProfilingLevel::Standard;
+        return ProfilingLevel::Detailed;
     }
-    return true;
+    if (value.is<bool>()) {
+        return value.as<bool>() ? ProfilingLevel::Standard : ProfilingLevel::Off;
+    }
+    if (value.is<std::string>()) {
+        auto s = value.as<std::string>();
+        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (s == "0" || s == "off" || s == "false") {
+            return ProfilingLevel::Off;
+        }
+        if (s == "1" || s == "standard" || s == "on" || s == "true") {
+            return ProfilingLevel::Standard;
+        }
+        if (s == "2" || s == "detailed" || s == "detail") {
+            return ProfilingLevel::Detailed;
+        }
+    }
+    OPENVINO_THROW("Unsupported profiling level type/value");
 }
 
 // Helper that enumerates ops currently supported by the METAL plugin; keep in sync with MLIR/MSL path.
 // used by query_model (and can be reused to validate compile_model paths).
 bool is_supported_node(const std::shared_ptr<const ov::Node>& node) {
-    return ov::as_type_ptr<const ov::op::v0::Parameter>(node) ||
-           ov::as_type_ptr<const ov::op::v0::Constant>(node) ||
-           ov::as_type_ptr<const ov::op::v0::Result>(node) ||
-           ov::as_type_ptr<const ov::op::v0::Relu>(node) ||
-           ov::as_type_ptr<const ov::op::v0::Tanh>(node) ||
-           ov::as_type_ptr<const ov::op::v0::Sigmoid>(node) ||
-           ov::as_type_ptr<const ov::op::v0::Elu>(node) ||
-           ov::as_type_ptr<const ov::op::v0::PRelu>(node) ||
-           ov::as_type_ptr<const ov::op::v1::Add>(node) ||
-           ov::as_type_ptr<const ov::op::v0::MatMul>(node) ||
-           ov::as_type_ptr<const ov::op::v1::Convolution>(node) ||
-           ov::as_type_ptr<const ov::op::v1::MaxPool>(node) ||
-           ov::as_type_ptr<const ov::op::v1::AvgPool>(node) ||
-           ov::as_type_ptr<const ov::op::v1::Softmax>(node) ||
-           ov::as_type_ptr<const ov::op::v8::Softmax>(node) ||
-           ov::as_type_ptr<const ov::op::v1::Reshape>(node) ||
-           ov::as_type_ptr<const ov::op::v0::Concat>(node) ||
-           ov::as_type_ptr<const ov::op::v3::ShapeOf>(node) ||
-           ov::as_type_ptr<const ov::op::v1::Gather>(node) ||
-           ov::as_type_ptr<const ov::op::v0::Convert>(node) ||
-           ov::as_type_ptr<const ov::op::v5::BatchNormInference>(node) ||
-           ov::as_type_ptr<const ov::op::v0::BatchNormInference>(node) ||
-           ov::as_type_ptr<const ov::op::v7::Gelu>(node) ||
-           ov::as_type_ptr<const ov::op::v0::Gelu>(node)
-        ;
+    if (ov::as_type_ptr<const ov::op::v0::Parameter>(node) ||
+        ov::as_type_ptr<const ov::op::v0::Constant>(node) ||
+        ov::as_type_ptr<const ov::op::v0::Result>(node)) {
+        return true;
+    }
+    try {
+        auto probe = MetalOpFactory::create(node, /*device*/ nullptr, /*queue*/ nullptr);
+        if (!probe && metal_log_debug_enabled()) {
+            METAL_LOG_DEBUG("Plugin", "Unsupported node: " << node->get_friendly_name()
+                                                           << " (" << node->get_type_name() << ")");
+        }
+        return probe != nullptr;
+    } catch (const std::exception& e) {
+        if (metal_log_debug_enabled()) {
+            METAL_LOG_DEBUG("Plugin", "Exception probing node " << node->get_friendly_name()
+                                                                << " (" << node->get_type_name() << "): " << e.what());
+        }
+        return false;
+    } catch (...) {
+        if (metal_log_debug_enabled()) {
+            METAL_LOG_DEBUG("Plugin", "Unknown exception probing node " << node->get_friendly_name()
+                                                                         << " (" << node->get_type_name() << ")");
+        }
+        return false;
+    }
+}
+
+struct UnsupportedSummary {
+    std::vector<std::string> node_names;
+    std::vector<std::pair<std::string, size_t>> type_counts;
+};
+
+UnsupportedSummary collect_unsupported(const std::shared_ptr<const ov::Model>& model) {
+    UnsupportedSummary summary;
+    std::unordered_map<std::string, size_t> counts;
+    for (const auto& node : model->get_ordered_ops()) {
+        if (is_supported_node(node))
+            continue;
+        const std::string type = node->get_type_name();
+        counts[type] += 1;
+        if (summary.node_names.size() < 8) {
+            summary.node_names.emplace_back(node->get_friendly_name() + " (" + type + ")");
+        }
+    }
+    summary.type_counts.reserve(counts.size());
+    for (const auto& kv : counts) {
+        summary.type_counts.emplace_back(kv.first, kv.second);
+    }
+    return summary;
 }
 
 }  // namespace
@@ -147,9 +176,6 @@ std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(
         OPENVINO_THROW("METAL plugin does not support HETERO subgraphs yet");
     }
 
-    // Allow compilation to proceed; unsupported ops will trigger CPU fallback in the backend
-    // when partial offload is enabled.
-
     auto transformed = ov::metal_plugin::transforms::run_pipeline(model);
 
     if (auto it = properties.find(kBackendProperty); it != properties.end()) {
@@ -164,14 +190,89 @@ std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(
         compile_properties[kv.first] = kv.second;
     }
 
+    if (!model_supported_by_metal(transformed, compile_properties)) {
+        auto summary = collect_unsupported(transformed);
+        std::ostringstream oss;
+        oss << "METAL: model contains unsupported ops for MLIR/METAL execution.";
+        if (!summary.type_counts.empty()) {
+            oss << " Types: ";
+            size_t shown = 0;
+            for (const auto& kv : summary.type_counts) {
+                if (shown++)
+                    oss << ", ";
+                oss << kv.first << " x" << kv.second;
+            }
+        }
+        if (!summary.node_names.empty()) {
+            oss << ". Nodes: ";
+            for (size_t i = 0; i < summary.node_names.size(); ++i) {
+                if (i)
+                    oss << ", ";
+                oss << summary.node_names[i];
+            }
+        }
+        OPENVINO_THROW(oss.str());
+    }
+
     return std::make_shared<CompiledModel>(transformed, shared_from_this(), model, compile_properties);
 }
 
 std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(
     const std::shared_ptr<const ov::Model>& model,
     const ov::AnyMap& properties,
-    const ov::SoPtr<ov::IRemoteContext>& /*context*/) const {
-    return compile_model(model, properties);
+    const ov::SoPtr<ov::IRemoteContext>& context) const {
+    if (!context) {
+        return compile_model(model, properties);
+    }
+    auto metal_ctx = std::dynamic_pointer_cast<MetalRemoteContext>(context._ptr);
+    OPENVINO_ASSERT(metal_ctx, "METAL: remote context type mismatch");
+    ov::AnyMap merged = properties;
+    merged[ov::device::id.name()] = metal_ctx->device_id();
+    OPENVINO_ASSERT(model, "Model is null");
+
+    if (is_hetero_subgraph(model)) {
+        OPENVINO_THROW("METAL plugin does not support HETERO subgraphs yet");
+    }
+
+    auto transformed = ov::metal_plugin::transforms::run_pipeline(model);
+
+    if (auto it = merged.find(kBackendProperty); it != merged.end()) {
+        const auto backend_name = ov::util::to_lower(it->second.as<std::string>());
+        if (backend_name != "mlir") {
+            OPENVINO_THROW("Only MLIR backend is supported; received: ", backend_name);
+        }
+    }
+
+    ov::AnyMap compile_properties = m_config;
+    for (const auto& kv : merged) {
+        compile_properties[kv.first] = kv.second;
+    }
+
+    if (!model_supported_by_metal(transformed, compile_properties)) {
+        auto summary = collect_unsupported(transformed);
+        std::ostringstream oss;
+        oss << "METAL: model contains unsupported ops for MLIR/METAL execution.";
+        if (!summary.type_counts.empty()) {
+            oss << " Types: ";
+            size_t shown = 0;
+            for (const auto& kv : summary.type_counts) {
+                if (shown++)
+                    oss << ", ";
+                oss << kv.first << " x" << kv.second;
+            }
+        }
+        if (!summary.node_names.empty()) {
+            oss << ". Nodes: ";
+            for (size_t i = 0; i < summary.node_names.size(); ++i) {
+                if (i)
+                    oss << ", ";
+                oss << summary.node_names[i];
+            }
+        }
+        OPENVINO_THROW(oss.str());
+    }
+
+    return std::make_shared<CompiledModel>(transformed, shared_from_this(), model, compile_properties, context);
 }
 
 std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& /*model*/,
@@ -204,127 +305,21 @@ ov::SupportedOpsMap Plugin::query_model(const std::shared_ptr<const ov::Model>& 
                                         const ov::AnyMap& /*properties*/) const {
     OPENVINO_ASSERT(model, "Model is null");
     ov::SupportedOpsMap res;
+    if (!model_supported_by_metal(model, {})) {
+        // No partial fallback to CPU/HETERO: all-or-nothing support.
+        return res;
+    }
     for (const auto& node : model->get_ordered_ops()) {
-        if (is_supported_node(node)) {
-            res.emplace(node->get_friendly_name(), get_device_name());
-        }
+        res.emplace(node->get_friendly_name(), get_device_name());
     }
     return res;
 }
 
 bool Plugin::model_supported_by_metal(const std::shared_ptr<const ov::Model>& model,
                                       const ov::AnyMap& /*properties*/) const {
-    // Conservative acceptance: allow only the ops / dtypes / shapes we can lower today.
     for (const auto& node : model->get_ordered_ops()) {
-        if (ov::is_type<ov::op::v0::Parameter>(node.get()) || ov::is_type<ov::op::v0::Result>(node.get()) ||
-            ov::is_type<ov::op::v0::Constant>(node.get())) {
-            continue;
-        }
-
-        const auto& out_type = node->get_output_element_type(0);
-
-        auto check_fp = [&](const ov::element::Type& t) {
-            return is_fp_supported(t);
-        };
-
-        if (auto mm = ov::as_type_ptr<const ov::op::v0::MatMul>(node)) {
-            if (!shape_is_static(node->get_input_partial_shape(0)) ||
-                !shape_is_static(node->get_input_partial_shape(1)))
-                return false;
-            const auto r0 = node->get_input_partial_shape(0).rank().get_length();
-            const auto r1 = node->get_input_partial_shape(1).rank().get_length();
-            if (r0 < 2 || r0 > 4 || r1 < 2 || r1 > 4)
-                return false;
-            if (!check_fp(out_type) || !check_fp(node->get_input_element_type(0)) ||
-                !check_fp(node->get_input_element_type(1)))
-                return false;
-            continue;
-        }
-        if (ov::as_type_ptr<const ov::op::v1::Convolution>(node) ||
-            ov::as_type_ptr<const ov::op::v1::GroupConvolution>(node)) {
-            // Conv2D policy: NCHW, static. Groups are allowed (depthwise/group conv).
-            auto in_ps = node->get_input_partial_shape(0);
-            auto w_ps  = node->get_input_partial_shape(1);
-            if (!shape_is_static(in_ps) || !shape_is_static(w_ps))
-                return false;
-            if (in_ps.rank().get_length() != 4 || (w_ps.rank().get_length() != 4 && w_ps.rank().get_length() != 5))
-                return false;
-            if (!check_fp(out_type) || !check_fp(node->get_input_element_type(0)) || !check_fp(node->get_input_element_type(1)))
-                return false;
-            continue;
-        }
-        if (ov::as_type_ptr<const ov::op::v1::Subtract>(node)) {
-            if (!shape_is_static(node->get_input_partial_shape(0)) ||
-                !shape_is_static(node->get_input_partial_shape(1)))
-                return false;
-            if (!check_fp(out_type) || !check_fp(node->get_input_element_type(0)) ||
-                !check_fp(node->get_input_element_type(1)))
-                return false;
-            continue;
-        }
-        if (ov::as_type_ptr<const ov::op::v1::Add>(node) || ov::as_type_ptr<const ov::op::v1::Multiply>(node)) {
-            if (!shape_is_static(node->get_input_partial_shape(0)) ||
-                !shape_is_static(node->get_input_partial_shape(1)))
-                return false;
-            if (!check_fp(out_type) || !check_fp(node->get_input_element_type(0)) ||
-                !check_fp(node->get_input_element_type(1)))
-                return false;
-            continue;
-        }
-        if (auto s1 = ov::as_type_ptr<const ov::op::v1::Softmax>(node)) {
-            if (!softmax_shape_supported(node->get_input_partial_shape(0), s1->get_axis()))
-                return false;
-            if (!check_fp(out_type))
-                return false;
-            continue;
-        }
-        if (auto s8 = ov::as_type_ptr<const ov::op::v8::Softmax>(node)) {
-            if (!softmax_shape_supported(node->get_input_partial_shape(0), s8->get_axis()))
-                return false;
-            if (!check_fp(out_type))
-                return false;
-            continue;
-        }
-        if (ov::as_type_ptr<const ov::op::v1::MaxPool>(node) || ov::as_type_ptr<const ov::op::v1::AvgPool>(node)) {
-            auto in_ps = node->get_input_partial_shape(0);
-            if (!shape_is_static(in_ps))
-                return false;
-            if (in_ps.rank().get_length() != 4)
-                return false;
-            if (!check_fp(out_type))
-                return false;
-            continue;
-        }
-        if (ov::as_type_ptr<const ov::op::v5::BatchNormInference>(node) ||
-            ov::as_type_ptr<const ov::op::v0::BatchNormInference>(node)) {
-            if (!shape_is_static(node->get_input_partial_shape(0)))
-                return false;
-            if (!check_fp(out_type) || !check_fp(node->get_input_element_type(0)))
-                return false;
-            continue;
-        }
-        if (ov::as_type_ptr<const ov::op::v0::Relu>(node) || ov::as_type_ptr<const ov::op::v0::Tanh>(node) ||
-            ov::as_type_ptr<const ov::op::v0::Sigmoid>(node) || ov::as_type_ptr<const ov::op::v0::Elu>(node) ||
-            ov::as_type_ptr<const ov::op::v0::PRelu>(node) || ov::as_type_ptr<const ov::op::v4::Swish>(node) ||
-            ov::as_type_ptr<const ov::op::v0::Gelu>(node) || ov::as_type_ptr<const ov::op::v7::Gelu>(node)) {
-            if (!shape_is_static(node->get_input_partial_shape(0)))
-                return false;
-            if (!check_fp(out_type) || !check_fp(node->get_input_element_type(0)))
-                return false;
-            continue;
-        }
-        if (ov::as_type_ptr<const ov::op::v1::Reshape>(node) || ov::as_type_ptr<const ov::op::v1::Transpose>(node) ||
-            ov::as_type_ptr<const ov::op::v0::Squeeze>(node) || ov::as_type_ptr<const ov::op::v0::Unsqueeze>(node) ||
-            ov::as_type_ptr<const ov::op::v1::VariadicSplit>(node) || ov::as_type_ptr<const ov::op::v0::Concat>(node) ||
-            ov::as_type_ptr<const ov::op::v3::ShapeOf>(node) || ov::as_type_ptr<const ov::op::v1::Gather>(node) ||
-            ov::as_type_ptr<const ov::op::v0::Interpolate>(node) || ov::as_type_ptr<const ov::op::v4::Interpolate>(node) ||
-            ov::as_type_ptr<const ov::op::v8::Slice>(node) || ov::as_type_ptr<const ov::op::v0::Convert>(node)) {
-            // Layout / shape helper ops are accepted even with partial/dynamic shapes.
-            continue;
-        }
-
-        // Unknown op
-        return false;
+        if (!is_supported_node(node))
+            return false;
     }
     return true;
 }
@@ -351,15 +346,14 @@ void Plugin::set_property(const ov::AnyMap& properties) {
             m_performance_mode = kv.second.as<ov::hint::PerformanceMode>();
             m_config[kv.first] = kv.second;
         } else if (kv.first == ov::device::id.name()) {
-            // Accept numeric IDs (0) and empty; reject arbitrary strings
+            // Accept numeric IDs or empty; reject arbitrary strings
             try {
                 // allow both string and integral form
                 auto id_any = kv.second;
                 if (id_any.is<std::string>()) {
                     auto s = id_any.as<std::string>();
-                    // allow empty or "0"
-                    if (!s.empty() && s != "0") {
-                        OPENVINO_THROW("Unsupported device id: ", s);
+                    if (!s.empty()) {
+                        (void)std::stoi(s);
                     }
                 } else {
                     (void)id_any.as<int>();
@@ -374,6 +368,10 @@ void Plugin::set_property(const ov::AnyMap& properties) {
         } else if (kv.first == "PERF_COUNT") {  // legacy spelling accepted by benchmark_app
             m_enable_profiling = kv.second.as<bool>();
             m_config[ov::enable_profiling.name()] = m_enable_profiling;
+            m_config[kv.first] = kv.second;
+        } else if (kv.first == kMetalProfilingLevelProperty) {
+            m_profiling_level = parse_profiling_level(kv.second);
+            m_profiling_level_set = true;
             m_config[kv.first] = kv.second;
         } else if (kv.first == kBackendProperty) {
             m_config[kv.first] = kv.second;
@@ -405,6 +403,8 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& /*argume
     const auto rw_props = [&]() {
         return std::vector<ov::PropertyName>{ov::device::id,
                                              ov::enable_profiling,
+                                             ov::PropertyName{kMetalProfilingLevelProperty,
+                                                              ov::PropertyMutability::RW},
                                              ov::hint::performance_mode,
                                              ov::hint::num_requests,
                                              ov::hint::execution_mode,
@@ -435,10 +435,16 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& /*argume
             ov::PropertyName{ov::internal::cache_header_alignment.name(), ov::PropertyMutability::RO},
         };
     } else if (ov::available_devices == name) {
-        // TODO: enumerate actual Metal devices/GPUs
-        return decltype(ov::available_devices)::value_type{{get_device_name()}};
+        auto names = metal_get_device_names();
+        if (names.empty()) {
+            return decltype(ov::available_devices)::value_type{{get_device_name()}};
+        }
+        return decltype(ov::available_devices)::value_type{names.begin(), names.end()};
     } else if (ov::device::full_name == name) {
-        return decltype(ov::device::full_name)::value_type{"METAL (Apple GPU)"};
+        auto names = metal_get_device_names();
+        if (!names.empty())
+            return decltype(ov::device::full_name)::value_type{"METAL (" + names.front() + ")"};
+        return decltype(ov::device::full_name)::value_type{"METAL"};
     } else if (ov::device::architecture == name) {
         return decltype(ov::device::architecture)::value_type{"METAL"};
     } else if (ov::device::type == name) {
@@ -454,6 +460,11 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& /*argume
         return m_performance_mode;
     } else if (ov::enable_profiling == name) {
         return m_enable_profiling;
+    } else if (name == kMetalProfilingLevelProperty) {
+        if (m_profiling_level_set) {
+            return static_cast<int>(m_profiling_level);
+        }
+        return static_cast<int>(ProfilingLevel::Standard);
     } else if (ov::execution_devices == name) {
         return decltype(ov::execution_devices)::value_type{get_device_name()};
     } else if (name == kBackendProperty) {
@@ -483,7 +494,23 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& /*argume
 }
 
 ov::SoPtr<ov::IRemoteContext> Plugin::create_context(const ov::AnyMap& remote_properties) const {
-    return ov::SoPtr<ov::IRemoteContext>{std::make_shared<MetalRemoteContext>(get_device_name(), remote_properties), nullptr};
+    int device_id = 0;
+    if (auto it = remote_properties.find(ov::device::id.name()); it != remote_properties.end()) {
+        try {
+            if (it->second.is<std::string>()) {
+                device_id = std::stoi(it->second.as<std::string>());
+            } else {
+                device_id = it->second.as<int>();
+            }
+        } catch (...) {
+            device_id = 0;
+        }
+    }
+    auto handle = metal_get_device_by_id(device_id);
+    OPENVINO_ASSERT(handle, "METAL: failed to resolve device for remote context");
+    return ov::SoPtr<ov::IRemoteContext>{
+        std::make_shared<MetalRemoteContext>(get_device_name(), device_id, handle, remote_properties),
+        nullptr};
 }
 
 ov::SoPtr<ov::IRemoteContext> Plugin::get_default_context(const ov::AnyMap& remote_properties) const {

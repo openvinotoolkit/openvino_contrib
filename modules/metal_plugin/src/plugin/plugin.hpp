@@ -7,6 +7,8 @@
 #include <unordered_map>
 
 #include "openvino/runtime/iplugin.hpp"
+#include "runtime/profiling/metal_profiler_config.hpp"
+#include "plugin/metal_properties.hpp"
 
 namespace ov {
 namespace metal_plugin {
@@ -51,6 +53,8 @@ private:
     std::string m_device_name;
     ov::hint::PerformanceMode m_performance_mode = ov::hint::PerformanceMode::LATENCY;
     bool m_enable_profiling = false;
+    ProfilingLevel m_profiling_level = ProfilingLevel::Standard;
+    bool m_profiling_level_set = false;
     ov::AnyMap m_config;
 };
 

@@ -17,6 +17,8 @@
 #include "common_test_utils/ov_tensor_utils.hpp"
 #include "transformations/convert_precision.hpp"
 #include "openvino/pass/manager.hpp"
+#include "openvino/runtime/remote_context.hpp"
+#include "openvino/runtime/remote_tensor.hpp"
 
 #include "runtime/metal_dtype.hpp"
 #include "runtime/metal_memory.hpp"

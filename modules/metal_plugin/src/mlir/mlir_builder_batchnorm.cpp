@@ -45,7 +45,7 @@ mlir::ModuleOp build_mlir_batchnorm_from_model(const std::shared_ptr<const ov::M
     auto outputTy = inputTy;
     auto paramTy = mlir::RankedTensorType::get({static_cast<int64_t>(C)}, f32);
 
-    // Fetch parameter constants; fallback will be triggered in the caller if they are not constants.
+    // Fetch parameter constants; caller must ensure they are constants in the MLIR path.
     auto get_vec = [&](size_t idx) -> std::vector<float> {
         auto c = std::dynamic_pointer_cast<const ov::op::v0::Constant>(bn->get_input_node_shared_ptr(idx));
         OPENVINO_ASSERT(c, "BatchNorm builder expects constant parameter");

@@ -5,8 +5,12 @@
 #import "runtime/metal_op_convert.hpp"
 
 #include "kernel_codegen/metal_kernel_compiler.hpp"
-#include "runtime/metal_dtype.hpp"
+#include "mlir/mlir_builder.hpp"
 #include "runtime/metal_logger.hpp"
+#include "runtime/metal_op_utils.hpp"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir_codegen/codegen_common.hpp"
 
 namespace ov {
 namespace metal_plugin {
@@ -24,27 +28,42 @@ MetalConvertOp::MetalConvertOp(const std::shared_ptr<const ov::Node>& node, void
               node->get_output_partial_shape(0).is_static() ? node->get_output_shape(0) : ov::Shape{},
               device,
               queue),
+    m_node(node),
     m_device((id<MTLDevice>)device),
     m_queue((id<MTLCommandQueue>)queue) {
     auto cvt = ov::as_type_ptr<const ov::op::v0::Convert>(node);
     OPENVINO_ASSERT(cvt, "MetalConvertOp expects v0::Convert");
     m_src_type = cvt->get_input_element_type(0);
     m_dst_type = cvt->get_output_element_type(0);
-    m_desc.kind = KernelOpKind::Convert;
-    m_desc.convert.src_dtype = resolve_metal_dtype(m_src_type);
-    m_desc.convert.dst_dtype = resolve_metal_dtype(m_dst_type);
-    m_desc.dtype = m_desc.convert.dst_dtype;
 }
 
 void MetalConvertOp::init(MetalBufferManager* buffer_manager) {
     MetalOp::init(buffer_manager);
-    MetalKernelCompiler compiler(m_device ? m_device : (id<MTLDevice>)buffer_manager->device());
-    std::string log;
-    m_pipeline = compiler.compile_convert_kernel(m_desc, log);
-    OPENVINO_ASSERT(m_pipeline, "MetalConvertOp: failed to compile kernel: ", log);
 }
 
-void MetalConvertOp::execute() {
+void MetalConvertOp::compile(MetalBufferManager* buffer_manager) {
+    if (is_compiled()) {
+        return;
+    }
+    if (!this->buffer_manager()) {
+        MetalOp::init(buffer_manager);
+    }
+    MetalKernelCompiler compiler(m_device ? m_device : (id<MTLDevice>)buffer_manager->device());
+    std::string log;
+    ConvertCodegenDesc desc{};
+    desc.src_type = m_src_type;
+    desc.dst_type = m_dst_type;
+    desc.element_type = m_dst_type == ov::element::dynamic ? ov::element::f32 : m_dst_type;
+    mlir::MLIRContext ctx;
+    auto module = build_mlir_convert_from_model(make_single_op_model(m_node), ctx);
+    auto source = generate_msl_from_mlir(module, desc);
+    m_pipeline = compiler.compile_msl_from_source(source, "convert_kernel", log);
+    OPENVINO_ASSERT(m_pipeline, "MetalConvertOp: failed to compile kernel: ", log);
+
+    MetalOp::compile(buffer_manager);
+}
+
+void MetalConvertOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     OPENVINO_ASSERT(!inputs().empty(), "Convert: missing input");
     MetalTensor* src = inputs()[0];
     OPENVINO_ASSERT(src && src->buf.valid(), "Convert: input buffer null");
@@ -55,10 +74,17 @@ void MetalConvertOp::execute() {
         out_shape = src->shape;
     OPENVINO_ASSERT(!out_shape.empty(), "Convert: unknown shape");
 
+    if (!src->shape.empty() && m_node->get_input_partial_shape(0).is_static()) {
+        OPENVINO_ASSERT(src->shape == m_node->get_input_shape(0),
+                        "Convert: runtime input shape mismatch");
+    }
+    const size_t src_bytes = ov::shape_size(src->shape.empty() ? out_shape : src->shape) * m_src_type.size();
+    OPENVINO_ASSERT(src->buf.size >= src_bytes, "Convert: input buffer too small");
+
     const size_t num_elems = ov::shape_size(out_shape);
     if (!dst.buf.valid()) {
         size_t bytes = num_elems * m_dst_type.size();
-        dst.buf = buffer_manager()->allocate(bytes, m_dst_type, /*persistent=*/false, /*storageModePrivate=*/true);
+        dst.buf = buffer_manager()->allocate(bytes, m_dst_type, /*persistent=*/false, dst.prefer_private);
     }
     dst.shape = out_shape;
     dst.expected_type = m_dst_type;
@@ -66,15 +92,13 @@ void MetalConvertOp::execute() {
     if (m_src_type == m_dst_type) {
         // Trivial case: reuse buffer.
         dst.buf = src->buf;
-        start_profiling();
-        stop_profiling_ms();
+        start_profiling(nullptr);
+        stop_profiling_ms(nullptr);
         return;
     }
 
-    if (!m_queue) {
-        m_queue = [m_device newCommandQueue];
-    }
-    id<MTLCommandBuffer> cb = [m_queue commandBuffer];
+    id<MTLCommandBuffer> cb = static_cast<id<MTLCommandBuffer>>(cmd_buf_handle);
+    OPENVINO_ASSERT(cb, "MetalConvertOp: command buffer is null");
     id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
     [enc setComputePipelineState:m_pipeline];
     [enc setBuffer:to_mtl(src->buf) offset:0 atIndex:0];
@@ -82,15 +106,18 @@ void MetalConvertOp::execute() {
     uint32_t n = static_cast<uint32_t>(num_elems);
     [enc setBytes:&n length:sizeof(n) atIndex:2];
 
+    if (n == 0) {
+        [enc endEncoding];
+        return;
+    }
     MTLSize grid = MTLSizeMake(n, 1, 1);
-    MTLSize tg = MTLSizeMake(64, 1, 1);
+    const NSUInteger tg_size = static_cast<NSUInteger>(metal_clamp_tg_size((void*)m_pipeline, 64));
+    MTLSize tg = MTLSizeMake(tg_size, 1, 1);
 
-    start_profiling();
+    start_profiling(enc);
     [enc dispatchThreads:grid threadsPerThreadgroup:tg];
+    stop_profiling_ms(enc);
     [enc endEncoding];
-    [cb commit];
-    [cb waitUntilCompleted];
-    stop_profiling_ms();
 }
 
 }  // namespace metal_plugin

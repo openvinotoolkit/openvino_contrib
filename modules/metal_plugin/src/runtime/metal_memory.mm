@@ -4,15 +4,14 @@
 
 #include "runtime/metal_memory.hpp"
 
-#include <cstring>
 #include <cstdlib>
 #include <string>
-#include <utility>
-#include <unordered_set>
-#include <algorithm>
 
-#include "openvino/core/except.hpp"
 #include "runtime/metal_dtype.hpp"
+
+#ifdef __OBJC__
+#import <Metal/Metal.h>
+#endif
 
 namespace ov {
 namespace metal_plugin {
@@ -28,484 +27,132 @@ bool metal_safe_debug_enabled() {
     return cached;
 }
 
-namespace {
-constexpr size_t kAlignment = 256;  // good default for MTLBuffer alignment
-constexpr size_t kDefaultHeapSize = 64 * 1024 * 1024;  // 64MB per heap
-
-MTLResourceOptions choose_options(bool storageModePrivate) {
+std::vector<std::string> metal_get_device_names() {
+    std::vector<std::string> names;
 #ifdef __OBJC__
-    return storageModePrivate ? MTLResourceStorageModePrivate : MTLResourceStorageModeShared;
-#else
-    (void)storageModePrivate;
-    return 0;
-#endif
-}
-}  // namespace
-
-MetalBufferManager::MetalBufferManager(MetalDeviceHandle device) : m_device(device) {
-#ifdef __OBJC__
-    if (!m_device) {
-        m_device = MTLCreateSystemDefaultDevice();
-    }
-    if (auto dev = static_cast<id<MTLDevice>>(m_device)) {
-        m_copy_queue = [dev newCommandQueue];
-    }
-#endif
-}
-
-MetalBufferManager::~MetalBufferManager() {
-#ifdef __OBJC__
-    std::unordered_set<void*> released;
-    auto release_buf = [&](const MetalBuffer& b) {
-        if (!b.buffer) return;
-        void* key = (__bridge void*)static_cast<id<MTLBuffer>>(b.buffer);
-        if (released.count(key)) return;
-        [static_cast<id<MTLBuffer>>(b.buffer) release];
-        released.insert(key);
-    };
-    for (const auto& b : m_live_persistent) release_buf(b);
-    for (const auto& b : m_live_handle) release_buf(b);
-    for (const auto& b : m_live_inference) release_buf(b);
-    for (const auto& kv : m_free_inference) {
-        for (const auto& b : kv.second) release_buf(b);
-    }
-    for (auto h : m_heaps) {
-        if (h) [static_cast<id<MTLHeap>>(h) release];
-    }
-    if (auto q = static_cast<id<MTLCommandQueue>>(m_copy_queue)) {
-        [q release];
-        m_copy_queue = nullptr;
-    }
-#endif
-}
-
-size_t MetalBufferManager::align_size(size_t size) const {
-    const size_t mask = kAlignment - 1;
-    if (size == 0)
-        return kAlignment;
-    return (size + mask) & ~mask;
-}
-
-size_t MetalBufferManager::bucket_size(size_t size) const {
-    size = align_size(size);
-    // Round up to nearest power of two to improve reuse and reduce fragmentation.
-    size_t b = kAlignment;
-    while (b < size) {
-        b <<= 1;
-    }
-    return b;
-}
-
-MetalBuffer MetalBufferManager::allocate(size_t size,
-                                         ov::element::Type type,
-                                         bool persistent,
-                                         bool storageModePrivate,
-                                         bool from_handle) {
-    const size_t bucket = bucket_size(size);
-    const bool safe_debug = metal_safe_debug_enabled();
-#ifdef __OBJC__
-    const uint32_t desired_mode = storageModePrivate ? static_cast<uint32_t>(MTLStorageModePrivate)
-                                                     : static_cast<uint32_t>(MTLStorageModeShared);
-#endif
-    FreeKey key{bucket, desired_mode};
-    auto& free_list = m_free_inference[key];
-    if (!persistent && !safe_debug) {
-        for (auto it = free_list.begin(); it != free_list.end(); ++it) {
-#ifdef __OBJC__
-            if (it->storage_mode != desired_mode)
-                continue;
-#endif
-            MetalBuffer buf = *it;
-            free_list.erase(it);
-            buf.type = type;
-            buf.persistent = false;
-            buf.from_handle = from_handle;
-            if (from_handle) {
-                m_live_handle.push_back(buf);
-            } else {
-                m_live_inference.push_back(buf);
-            }
-            m_stats.reused_bytes += bucket;
-            return buf;
-        }
-    }
-
-    MetalBuffer out;
-#ifdef __OBJC__
-    auto dev = static_cast<id<MTLDevice>>(m_device);
-    if (!dev) {
-        OPENVINO_THROW("MetalBufferManager: device is null");
-    }
-    // For non-shared, non-persistent temporaries try to suballocate from a private heap.
-    auto try_heap = [&]() -> id<MTLBuffer> {
-        if (safe_debug)
-            return nil;  // Disable heap aliasing/reuse in safe mode
-        if (!storageModePrivate || persistent)
-            return nil;
-        for (auto heap : m_heaps) {
-            if (!heap) continue;
-            if ([heap maxAvailableSizeWithAlignment:kAlignment] >= bucket) {
-                id<MTLBuffer> hbuf = [heap newBufferWithLength:bucket options:MTLResourceStorageModePrivate];
-                if (hbuf) {
-                    out.heap = heap;
-                    return hbuf;
+    @autoreleasepool {
+        NSArray<id<MTLDevice>>* devices = MTLCopyAllDevices();
+        if (devices && devices.count > 0) {
+            for (id<MTLDevice> dev in devices) {
+                if (dev && dev.name) {
+                    names.emplace_back(std::string([[dev name] UTF8String]));
                 }
             }
         }
-        // create new heap if needed
-        MTLHeapDescriptor* desc = [MTLHeapDescriptor new];
-        desc.storageMode = MTLStorageModePrivate;
-        desc.cpuCacheMode = MTLCPUCacheModeDefaultCache;
-        desc.hazardTrackingMode = MTLHazardTrackingModeTracked;
-        desc.size = std::max(kDefaultHeapSize, bucket * 2);
-        id<MTLHeap> heap = [dev newHeapWithDescriptor:desc];
-        [desc release];
-        if (!heap)
-            return nil;
-        m_heaps.push_back(heap);
-        id<MTLBuffer> hbuf = [heap newBufferWithLength:bucket options:MTLResourceStorageModePrivate];
-        if (hbuf)
-            out.heap = heap;
-        return hbuf;
-    };
-
-    id<MTLBuffer> buf = try_heap();
-    if (!buf) {
-        MTLResourceOptions opts = choose_options(storageModePrivate);
-        buf = [dev newBufferWithLength:bucket options:opts];
-    }
-    OPENVINO_ASSERT(buf, "MetalBufferManager: newBufferWithLength failed");
-    out.buffer = buf;
-    out.storage_mode = static_cast<uint32_t>(buf.storageMode);
-#else
-    (void)shared;
-    OPENVINO_THROW("MetalBufferManager::allocate requires Objective-C++ (Metal)");
-#endif
-    out.size = bucket;
-    out.type = type;
-    out.persistent = persistent;
-    out.from_handle = from_handle;
-    m_stats.alloc_bytes += bucket;
-
-    if (persistent) {
-        m_live_persistent.push_back(out);
-    } else if (from_handle) {
-        m_live_handle.push_back(out);
-    } else {
-        m_live_inference.push_back(out);
-    }
-    return out;
-}
-
-MetalBuffer MetalBufferManager::allocate_dynamic(size_t requested,
-                                                 ov::element::Type type,
-                                                 BufferHandle& handle,
-                                                 bool persistent,
-                                                 bool storageModePrivate) {
-    const size_t target = bucket_size(requested);
-    auto storage_matches = [&](const MetalBuffer& buf) {
-#ifdef __OBJC__
-        const uint32_t desired = storageModePrivate ? static_cast<uint32_t>(MTLStorageModePrivate)
-                                                    : static_cast<uint32_t>(MTLStorageModeShared);
-        return buf.storage_mode == desired;
-#else
-        (void)buf;
-        return true;
-#endif
-    };
-    const bool persistent_matches = handle.buf.persistent == persistent;
-    if (handle.capacity >= target && handle.buf.valid() && storage_matches(handle.buf) && persistent_matches) {
-        handle.buf.from_handle = true;
-        m_stats.reused_bytes += target;
-        return handle.buf;
-    }
-    if (handle.buf.valid()) {
-        auto it = std::remove_if(m_live_handle.begin(),
-                                 m_live_handle.end(),
-                                 [&](const MetalBuffer& b) { return b.buffer == handle.buf.buffer; });
-        if (it != m_live_handle.end())
-            m_live_handle.erase(it, m_live_handle.end());
-        MetalBuffer old = handle.buf;
-        old.from_handle = false;
-        release(old);
-    }
-    // Growth with 1.5x headroom to reduce reallocations on dynamic shapes.
-    size_t grow = handle.capacity == 0 ? target : std::max(target, static_cast<size_t>(handle.capacity * 3 / 2));
-    // Old buffer stays in free list/pool if it existed; a larger dedicated buffer is allocated.
-    handle.buf = allocate(grow, type, persistent, storageModePrivate, /*from_handle=*/true);
-    handle.capacity = handle.buf.size;
-    return handle.buf;
-}
-
-void MetalBufferManager::release(const MetalBuffer& buf) {
-    if (!buf.valid() || buf.persistent || buf.from_handle)
-        return;
-    if (metal_safe_debug_enabled()) {
-        // In safe-debug mode we never recycle device buffers to avoid aliasing/UB.
-        return;
-    }
-#ifdef __OBJC__
-    if (buf.heap) {
-        auto mb = static_cast<id<MTLBuffer>>(buf.buffer);
-        if (mb && [mb respondsToSelector:@selector(makeAliasable)]) {
-            [mb makeAliasable];
-        }
-    }
-#endif
-    FreeKey key{bucket_size(buf.size), buf.storage_mode};
-    m_free_inference[key].push_back(buf);
-}
-
-void MetalBufferManager::reset_inference_pool() {
-    if (metal_safe_debug_enabled()) {
-#ifdef __OBJC__
-        std::unordered_set<void*> released;
-        auto release_buf = [&](const MetalBuffer& b) {
-            if (!b.buffer) return;
-            void* key = (__bridge void*)static_cast<id<MTLBuffer>>(b.buffer);
-            if (released.count(key)) return;
-            [static_cast<id<MTLBuffer>>(b.buffer) release];
-            released.insert(key);
-        };
-        for (const auto& buf : m_live_inference) release_buf(buf);
-        for (const auto& kv : m_free_inference) {
-            for (const auto& b : kv.second) release_buf(b);
-        }
-#endif
-        m_live_inference.clear();
-        m_free_inference.clear();
-        return;
-    }
-    for (auto& buf : m_live_inference) {
-        FreeKey key{bucket_size(buf.size), buf.storage_mode};
-        m_free_inference[key].push_back(buf);
-    }
-    m_live_inference.clear();
-}
-
-void MetalBufferManager::reset_stats() {
-    m_stats = {};
-}
-
-void MetalBufferManager::upload(const MetalBuffer& dst, const void* src, size_t bytes) {
-#ifdef __OBJC__
-    if (!dst.valid() || !src || bytes == 0)
-        return;
-    OPENVINO_ASSERT(bytes <= dst.size, "MetalBufferManager::upload size exceeds buffer capacity");
-    auto dev_buf = static_cast<id<MTLBuffer>>(dst.buffer);
-    const size_t copy_bytes = std::min(bytes, dst.size);
-    // Treat any non-shared storage as GPU-only; use a staging blit for safety.
-    if (dst.storage_mode != static_cast<uint32_t>(MTLStorageModeShared)) {
-        auto dev = static_cast<id<MTLDevice>>(m_device);
-        auto queue = static_cast<id<MTLCommandQueue>>(m_copy_queue);
-        // Lazily initialize the copy queue if it was not created yet (or if the
-        // manager was constructed with a null device handle). This avoids
-        // assertion failures when a buffer was allocated in Private storage
-        // and needs a staging blit.
-        if (!dev) {
-            if (dev_buf && [dev_buf respondsToSelector:@selector(device)]) {
-                dev = [dev_buf device];
-            }
-            if (!dev) {
-                dev = MTLCreateSystemDefaultDevice();
-            }
-            m_device = dev;
-        }
-        if (!queue && dev) {
-            queue = [dev newCommandQueue];
-            m_copy_queue = queue;
-        }
-        OPENVINO_ASSERT(dev && queue, "MetalBufferManager: copy queue not initialized");
-        id<MTLBuffer> staging = [dev newBufferWithLength:copy_bytes options:MTLResourceStorageModeShared];
-        OPENVINO_ASSERT(staging, "MetalBufferManager: staging buffer alloc failed");
-        std::memcpy([staging contents], src, copy_bytes);
-        id<MTLCommandBuffer> cmd = [queue commandBuffer];
-        id<MTLBlitCommandEncoder> blit = [cmd blitCommandEncoder];
-        [blit copyFromBuffer:staging sourceOffset:0 toBuffer:dev_buf destinationOffset:0 size:copy_bytes];
-        [blit endEncoding];
-        [cmd commit];
-        [cmd waitUntilCompleted];
-        [staging release];
-        add_h2d(copy_bytes);
-    } else {
-        std::memcpy([dev_buf contents], src, copy_bytes);
-        add_h2d(copy_bytes);
     }
 #else
-    OPENVINO_THROW("MetalBufferManager::upload requires Objective-C++ (Metal)");
+    names.emplace_back("METAL");
 #endif
+    if (names.empty()) {
+        names.emplace_back("METAL");
+    }
+    return names;
 }
 
-ov::Tensor MetalBufferManager::copy_to_host(const MetalTensor& tensor) const {
-    OPENVINO_THROW("METAL: copy_to_host disabled (no CPU copies)");
-    (void)tensor;
-    ov::element::Type dst_type = tensor.expected_type == ov::element::dynamic ? tensor.buf.type : tensor.expected_type;
-    ov::Tensor host{dst_type, tensor.shape};
-    if (!tensor.buf.valid()) {
-        return host;
-    }
+MetalDeviceHandle metal_get_device_by_id(int index) {
 #ifdef __OBJC__
-    auto buf = static_cast<id<MTLBuffer>>(tensor.buf.buffer);
-    if (!buf) {
-        return host;
-    }
-    const size_t buf_len = buf ? static_cast<size_t>([buf length]) : tensor.buf.size;
-    auto src_type = tensor.buf.type;
-
-    auto copy_bytes = [&](void* dst, size_t bytes) {
-        if (tensor.buf.storage_mode == static_cast<uint32_t>(MTLStorageModePrivate)) {
-            auto dev = static_cast<id<MTLDevice>>(m_device);
-            auto queue = static_cast<id<MTLCommandQueue>>(m_copy_queue);
-            if (!dev && buf) {
-                dev = [buf device];
+    @autoreleasepool {
+        NSArray<id<MTLDevice>>* devices = MTLCopyAllDevices();
+        if (devices && devices.count > 0) {
+            if (index >= 0 && index < static_cast<int>(devices.count)) {
+                return devices[index];
             }
-            if (!dev) {
-                dev = MTLCreateSystemDefaultDevice();
-            }
-            if (!queue && dev) {
-                queue = [dev newCommandQueue];
-            }
-            OPENVINO_ASSERT(dev && queue, "MetalBufferManager: copy queue not initialized");
-            id<MTLBuffer> staging = [dev newBufferWithLength:bytes options:MTLResourceStorageModeShared];
-            OPENVINO_ASSERT(staging, "MetalBufferManager: staging buffer alloc failed");
-            id<MTLCommandBuffer> cmd = [queue commandBuffer];
-            id<MTLBlitCommandEncoder> blit = [cmd blitCommandEncoder];
-            [blit copyFromBuffer:buf sourceOffset:0 toBuffer:staging destinationOffset:0 size:bytes];
-            [blit endEncoding];
-            [cmd commit];
-            [cmd waitUntilCompleted];
-            std::memcpy(dst, [staging contents], bytes);
-            [staging release];
-        } else {
-            std::memcpy(dst, [buf contents], bytes);
+            return nullptr;
         }
-    };
-
-    if (src_type == dst_type) {
-        const size_t bytes = std::min<size_t>(buf_len, host.get_byte_size());
-        copy_bytes(host.data(), bytes);
-    } else if (src_type == ov::element::f32 && dst_type == ov::element::f16) {
-        const size_t elems = ov::shape_size(tensor.shape);
-        std::vector<float> tmp(elems, 0.f);
-        const size_t bytes = std::min<size_t>(buf_len, elems * sizeof(float));
-        copy_bytes(tmp.data(), bytes);
-        host = ov::Tensor{ov::element::f16, tensor.shape};
-        auto* dst = host.data<ov::float16>();
-        for (size_t i = 0; i < elems; ++i) dst[i] = ov::float16{tmp[i]};
-    } else if (src_type == ov::element::f16 && dst_type == ov::element::f32) {
-        const size_t elems = ov::shape_size(tensor.shape);
-        std::vector<ov::float16> tmp(elems);
-        const size_t bytes = std::min<size_t>(buf_len, elems * sizeof(ov::float16));
-        copy_bytes(tmp.data(), bytes);
-        host = ov::Tensor{ov::element::f32, tensor.shape};
-        auto* dst = host.data<float>();
-        for (size_t i = 0; i < elems; ++i) dst[i] = static_cast<float>(tmp[i]);
-    } else {
-        const size_t bytes = std::min<size_t>(buf_len, host.get_byte_size());
-        copy_bytes(host.data(), bytes);
+        return nullptr;
     }
 #else
-    OPENVINO_THROW("MetalBufferManager::copy_to_host requires Objective-C++ (Metal)");
+    (void)index;
+    return nullptr;
 #endif
-    if (std::getenv("METAL_F16_DBG")) {
-        if (host.get_size() > 0) {
-            fprintf(stderr, "[dbg] copy_to_host buf=%p buf_type=%s dst_type=%s elems=%zu bytes=%zu buf.size=%zu\n",
-                    static_cast<void*>(tensor.buf.buffer),
-                    tensor.buf.type.get_type_name().c_str(),
-                    dst_type.get_type_name().c_str(),
-                    host.get_size(),
-                    host.get_byte_size(),
-                    tensor.buf.size);
-            if (host.get_element_type() == ov::element::f16) {
-                auto* p = host.data<const ov::float16>();
-                fprintf(stderr, "[dbg] copy_to_host first=%f\n", static_cast<float>(p[0]));
-            } else if (host.get_element_type() == ov::element::f32) {
-                auto* p = host.data<const float>();
-                fprintf(stderr, "[dbg] copy_to_host first=%f\n", p[0]);
-            }
-        }
-    }
-    const_cast<MetalBufferManager*>(this)->add_d2h(host.get_byte_size());
-    return host;
 }
 
-MetalTensor& MetalTensorMap::bind_input(size_t index, const ov::Tensor& host, MetalBufferManager& mgr, bool shared) {
+MetalCommandQueueHandle metal_create_command_queue(MetalDeviceHandle device) {
+#ifdef __OBJC__
+    if (!device) {
+        return nullptr;
+    }
+    @autoreleasepool {
+        id<MTLDevice> dev = static_cast<id<MTLDevice>>(device);
+        id<MTLCommandQueue> queue = [dev newCommandQueue];
+        return queue;
+    }
+#else
+    (void)device;
+    return nullptr;
+#endif
+}
+
+void metal_release_command_queue(MetalCommandQueueHandle queue) {
+#ifdef __OBJC__
+    if (!queue) {
+        return;
+    }
+    id<MTLCommandQueue> q = static_cast<id<MTLCommandQueue>>(queue);
+    [q release];
+#else
+    (void)queue;
+#endif
+}
+
+void metal_release_external_buffer(MetalBuffer& buf) {
+#ifdef __OBJC__
+    if (!buf.external || !buf.buffer)
+        return;
+    auto mb = static_cast<id<MTLBuffer>>(buf.buffer);
+    if (mb) {
+        [mb release];
+    }
+    buf.buffer = nullptr;
+#endif
+}
+
+MetalTensor& MetalTensorMap::bind_input(size_t index, const ov::Tensor& host, MetalAllocatorCore& core) {
     auto& binding = m_inputs[index];
     binding.host = host;
-    MetalDType dtype = resolve_metal_dtype(host.get_element_type());
-    const size_t elem_size = element_size(dtype);
-    const size_t elems = host.get_size();
-    const size_t bytes = elems * elem_size;
-    binding.dev = MetalTensor{mgr.allocate(bytes, dtype.ov_type, /*persistent=*/false, /*storageModePrivate=*/!shared),
+    const size_t bytes = host.get_byte_size();
+    OPENVINO_ASSERT(bytes > 0 && host.data(), "MetalTensorMap::bind_input: host tensor is empty");
+    binding.dev = MetalTensor{core.wrap_shared(host.data(), bytes, host.get_element_type()),
                               host.get_shape(),
                               host.get_element_type()};
-#ifdef __OBJC__
-    if (auto buf = static_cast<id<MTLBuffer>>(binding.dev.buf.buffer)) {
-        if (!shared) {
-            // Private buffer: go through manager upload to avoid CPU writes into private memory.
-            // If compute type is wider than storage (e.g., f16→f32), promote on upload so kernels reading
-            // float* see valid data.
-            if (dtype.storage == MetalDType::StorageType::F16 && dtype.compute == MetalDType::ComputeType::F32) {
-                std::vector<float> tmp(elems);
-                const auto* src = host.data<ov::float16>();
-                for (size_t i = 0; i < elems; ++i)
-                    tmp[i] = static_cast<float>(src[i]);
-                mgr.upload(binding.dev.buf, tmp.data(), tmp.size() * sizeof(float));
-            } else {
-                mgr.upload(binding.dev.buf, host.data(), host.get_byte_size());
-            }
-        } else {
-            std::memcpy([buf contents], host.data(), host.get_byte_size());
-        }
-    }
-#endif
-    mgr.add_h2d(bytes);
+    return binding.dev;
+}
+
+MetalTensor& MetalTensorMap::bind_input_device(size_t index, const MetalTensor& dev) {
+    auto& binding = m_inputs[index];
+    binding.host = {};
+    binding.dev = dev;
+    if (binding.dev.expected_type == ov::element::dynamic)
+        binding.dev.expected_type = dev.buf.type;
     return binding.dev;
 }
 
 MetalTensor& MetalTensorMap::ensure_output_device(size_t index,
                                                   const ov::Shape& shape,
                                                   ov::element::Type type,
-                                                  MetalBufferManager& mgr,
-                                                  bool shared) {
-    (void)shared;
+                                                  MetalAllocator& alloc,
+                                                  const MetalDeviceCaps& caps,
+                                                  bool prefer_private) {
     auto& binding = m_outputs[index];
     MetalDType dtype = resolve_metal_dtype(type);
     const size_t elem_size = element_size(dtype);
     const size_t bytes = ov::shape_size(shape) * elem_size;
-    // Keep outputs host-visible for tests and on-demand host copies; using Shared by default.
-    const bool use_private = false;
-    binding.dev.buf = mgr.allocate_dynamic(bytes, dtype.ov_type, binding.handle, /*persistent=*/false, use_private);
+
+    BufferDesc desc;
+    desc.bytes = bytes;
+    desc.type = dtype.ov_type;
+    desc.usage = BufferUsage::IO;
+    desc.storage = (prefer_private && caps.prefer_private_intermediates) ? MetalStorage::Private : MetalStorage::Shared;
+    desc.cpu_read = !prefer_private;
+    desc.cpu_write = !prefer_private;
+
+    binding.dev.buf = alloc.ensure_handle(binding.handle, desc, /*persistent=*/false);
     if (!binding.dev.buf.buffer) {
-        // Fallback allocation to avoid null buffer (tests rely on non-null).
-        binding.dev.buf = mgr.allocate(bytes,
-                                       dtype.ov_type,
-                                       /*persistent=*/false,
-                                       /*storageModePrivate=*/false,
-                                       /*from_handle=*/true);
-#ifdef __OBJC__
-        if (!binding.dev.buf.buffer) {
-            id<MTLDevice> dev = MTLCreateSystemDefaultDevice();
-            id<MTLBuffer> buf = [dev newBufferWithLength:bytes options:MTLResourceStorageModeShared];
-            binding.dev.buf.buffer = buf;
-            binding.dev.buf.size = bytes;
-            binding.dev.buf.type = dtype.ov_type;
-            binding.dev.buf.storage_mode = static_cast<uint32_t>(MTLStorageModeShared);
-            binding.dev.buf.from_handle = true;
-        }
-#endif
+        OPENVINO_THROW("METAL: failed to allocate output buffer");
     }
     binding.dev.shape = shape;
     binding.dev.expected_type = type;
-    if (std::getenv("METAL_F16_DBG")) {
-        fprintf(stderr,
-                "[dbg] ensure_output_device idx=%zu type=%s bytes=%zu buf.size=%zu buf.type=%s\n",
-                index,
-                type.get_type_name().c_str(),
-                bytes,
-                binding.dev.buf.size,
-                binding.dev.buf.type.get_type_name().c_str());
-    }
+    binding.dev.prefer_private = prefer_private;
     return binding.dev;
 }
 
@@ -524,7 +171,7 @@ bool MetalTensorMap::has_host_for_output(size_t index) const {
     return it != m_outputs.end() && it->second.host;
 }
 
-ov::Tensor& MetalTensorMap::get_or_create_host_for_output(size_t index, const MetalBufferManager& mgr) {
+ov::Tensor& MetalTensorMap::get_or_create_host_for_output(size_t index) {
     auto it = m_outputs.find(index);
     OPENVINO_ASSERT(it != m_outputs.end(), "MetalTensorMap: output binding missing");
     if (!it->second.host) {
@@ -573,12 +220,126 @@ ov::Tensor& MetalTensorMap::get_input_host(size_t index) {
     return it->second.host;
 }
 
-void MetalTensorMap::reset_inference() {
+void MetalTensorMap::reset_inference(MetalAllocatorCore* core) {
+    if (core) {
+        for (auto& kv : m_inputs) {
+            if (kv.second.dev.buf.external) {
+                metal_release_external_buffer(kv.second.dev.buf);
+            }
+        }
+        for (auto& kv : m_outputs) {
+            if (kv.second.dev.buf.external) {
+                metal_release_external_buffer(kv.second.dev.buf);
+            }
+        }
+    }
     m_inputs.clear();
     for (auto& kv : m_outputs) {
-        // Keep buffer handles to allow growth reuse across inferences
         kv.second.host = {};
     }
+}
+
+namespace {
+thread_local MetalAllocator* tls_alloc = nullptr;
+thread_local MetalMemorySession* tls_session = nullptr;
+}  // namespace
+
+MetalBufferManager::MetalBufferManager(MetalAllocatorCore& core, MetalConstCache* const_cache)
+    : m_core(core), m_const_cache(const_cache) {}
+
+void MetalBufferManager::set_current_allocator(MetalAllocator* alloc) {
+    tls_alloc = alloc;
+    tls_session = nullptr;
+}
+
+void MetalBufferManager::set_current_session(MetalMemorySession* session) {
+    tls_session = session;
+    tls_alloc = session ? &session->allocator() : nullptr;
+}
+
+MetalBuffer MetalBufferManager::allocate(size_t size,
+                                         ov::element::Type type,
+                                         bool persistent,
+                                         bool storageModePrivate,
+                                         bool from_handle) {
+    MetalAllocator* alloc = tls_alloc;
+    BufferDesc desc;
+    desc.bytes = size;
+    desc.type = type;
+    desc.storage = storageModePrivate ? MetalStorage::Private : MetalStorage::Shared;
+    desc.usage = BufferUsage::Intermediate;
+    MetalBuffer buf;
+    if (alloc) {
+        buf = alloc->allocate(desc, persistent);
+    } else {
+        buf = m_core.create_buffer(desc);
+    }
+    buf.from_handle = from_handle;
+    return buf;
+}
+
+MetalBuffer MetalBufferManager::allocate_dynamic(size_t requested,
+                                                 ov::element::Type type,
+                                                 BufferHandle& handle,
+                                                 bool persistent,
+                                                 bool storageModePrivate) {
+    MetalAllocator* alloc = tls_alloc;
+    BufferDesc desc;
+    desc.bytes = requested;
+    desc.type = type;
+    desc.storage = storageModePrivate ? MetalStorage::Private : MetalStorage::Shared;
+    desc.usage = BufferUsage::Intermediate;
+    MetalBuffer buf;
+    if (alloc) {
+        buf = alloc->ensure_handle(handle, desc, persistent);
+    } else {
+        buf = m_core.create_buffer(desc);
+        handle.buf = buf;
+        handle.capacity = buf.size;
+    }
+    buf.from_handle = true;
+    return buf;
+}
+
+void MetalBufferManager::release(MetalBuffer&& buf) {
+    MetalAllocator* alloc = tls_alloc;
+    if (!alloc)
+        return;
+    alloc->release(std::move(buf));
+}
+
+void MetalBufferManager::reset_stats() {
+    MetalAllocator* alloc = tls_alloc;
+    if (!alloc)
+        return;
+    alloc->reset_stats();
+}
+
+const MetalMemoryStats& MetalBufferManager::stats() const {
+    MetalAllocator* alloc = tls_alloc;
+    if (!alloc)
+        return m_dummy_stats;
+    return alloc->stats();
+}
+
+MetalBuffer MetalBufferManager::wrap_shared(void* ptr, size_t bytes, ov::element::Type type) {
+    return m_core.wrap_shared(ptr, bytes, type);
+}
+
+MetalBuffer MetalBufferManager::wrap_const(const std::string& key,
+                                           const void* data,
+                                           size_t bytes,
+                                           ov::element::Type type,
+                                           MetalStorage storage) {
+    BufferDesc desc;
+    desc.bytes = bytes;
+    desc.type = type;
+    desc.storage = storage;
+    desc.usage = BufferUsage::Const;
+    if (m_const_cache) {
+        return m_const_cache->get_or_create(ConstKey{key}, data, bytes, desc);
+    }
+    return m_core.wrap_shared(const_cast<void*>(data), bytes, type);
 }
 
 }  // namespace metal_plugin

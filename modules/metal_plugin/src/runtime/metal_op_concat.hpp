@@ -18,20 +18,24 @@ public:
     ~MetalConcatOp() override = default;
 
     void init(MetalBufferManager* buffer_manager) override;
-    void execute() override;
+    void compile(MetalBufferManager* buffer_manager) override;
+    void execute(MetalCommandBufferHandle command_buffer) override;
 
 private:
     void compute_layout(const std::shared_ptr<const ov::Node>& node);
 
+    std::shared_ptr<const ov::Node> m_node;
     int64_t m_axis = 0;
     uint64_t m_outer = 0;
     uint64_t m_inner = 0;
     std::vector<uint64_t> m_axis_sizes;
     std::vector<uint64_t> m_axis_offsets;
     ov::element::Type m_element_type{ov::element::f32};
+    std::vector<MetalTensor> m_const_inputs;
 
     id<MTLDevice> m_device = nil;
     id<MTLCommandQueue> m_queue = nil;
+    id<MTLComputePipelineState> m_pipeline = nil;
 };
 
 }  // namespace metal_plugin

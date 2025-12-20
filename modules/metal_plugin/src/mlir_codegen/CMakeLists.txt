@@ -3,7 +3,6 @@
 
 set(METAL_MLIR_CODEGEN_SOURCES
     codegen_common.hpp
-    codegen_dispatcher.cpp
     matmul_codegen.cpp
     conv2d_codegen.cpp
     conv3d_codegen.cpp
@@ -18,8 +17,24 @@ set(METAL_MLIR_CODEGEN_SOURCES
     split_codegen.cpp
     transpose_codegen.cpp
     slice_generic_codegen.cpp
+    gather_codegen.cpp
+    gathernd_codegen.cpp
+    gather_elements_codegen.cpp
+    depth_to_space_codegen.cpp
+    space_to_depth_codegen.cpp
+    scatter_elements_update_codegen.cpp
+    scatter_nd_update_codegen.cpp
+    shapeof_codegen.cpp
     convert_codegen.cpp
-    unary_codegen.cpp)
+    unary_codegen.cpp
+    select_codegen.cpp
+    reduce_codegen.cpp
+    pad_codegen.cpp
+    tile_codegen.cpp
+    broadcast_codegen.cpp
+    range_codegen.cpp
+    reverse_codegen.cpp
+    topk_codegen.cpp)
 
 add_library(metal_mlir_codegen STATIC ${METAL_MLIR_CODEGEN_SOURCES})
 

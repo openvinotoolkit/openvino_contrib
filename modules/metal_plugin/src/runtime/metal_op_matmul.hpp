@@ -5,7 +5,7 @@
 
 #include <memory>
 
-#include "kernel_ir/kernel_ir_common.hpp"
+#include "mlir_codegen/codegen_common.hpp"
 #include "openvino/op/matmul.hpp"
 #include "runtime/metal_op.hpp"
 
@@ -18,13 +18,14 @@ public:
     ~MetalMatMulOp() override = default;
 
     void init(MetalBufferManager* buffer_manager) override;
-    void execute() override;
+    void compile(MetalBufferManager* buffer_manager) override;
+    void execute(MetalCommandBufferHandle command_buffer) override;
 
 private:
     void fill_desc_from_node(const std::shared_ptr<const ov::Node>& node);
 
     std::shared_ptr<const ov::Node> m_node;
-    KernelOp m_desc{};
+    MatMulCodegenDesc m_desc{};
     ov::Shape m_shape_a;
     ov::Shape m_shape_b;
     ov::element::Type m_element_type{ov::element::f32};

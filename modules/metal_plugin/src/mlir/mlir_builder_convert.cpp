@@ -2,95 +2,129 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "mlir_builder.hpp"
+#include "mlir/mlir_builder.hpp"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Types.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/MLIRContext.h"
 
-#include "kernel_ir/kernel_ir_common.hpp"
 #include "openvino/core/except.hpp"
+#include "openvino/core/model.hpp"
+#include "openvino/op/convert.hpp"
 
 namespace ov {
 namespace metal_plugin {
 
-// Simple elementwise convert using memref dim to drive loop bounds (1D flattened).
-mlir::ModuleOp build_mlir_convert_from_op(const KernelOp& op, mlir::MLIRContext& ctx) {
-    OPENVINO_ASSERT(op.kind == KernelOpKind::Convert, "Convert builder expects Convert op");
-    ctx.loadDialect<mlir::func::FuncDialect, mlir::memref::MemRefDialect, mlir::arith::ArithDialect, mlir::scf::SCFDialect>();
-
-    mlir::Type dst_ty = mlir::Float32Type::get(&ctx);
-    switch (op.convert.dst_dtype.ov_type) {
-        case ov::element::f16: dst_ty = mlir::Float16Type::get(&ctx); break;
-        case ov::element::i32: dst_ty = mlir::IntegerType::get(&ctx, 32); break;
-        case ov::element::i64: dst_ty = mlir::IntegerType::get(&ctx, 64); break;
-        default: break;
+namespace {
+mlir::Type to_mlir_type(ov::element::Type et, mlir::MLIRContext& ctx) {
+    switch (et) {
+        case ov::element::f32: return mlir::Float32Type::get(&ctx);
+        case ov::element::f16: return mlir::Float16Type::get(&ctx);
+        case ov::element::i8:
+        case ov::element::u8:  return mlir::IntegerType::get(&ctx, 8, mlir::IntegerType::Signed);
+        case ov::element::i32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
+        case ov::element::i64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Signed);
+        default: OPENVINO_THROW("Convert MLIR: unsupported element type");
     }
-    mlir::Type src_ty = mlir::Float32Type::get(&ctx);
-    switch (op.convert.src_dtype.ov_type) {
-        case ov::element::f16: src_ty = mlir::Float16Type::get(&ctx); break;
-        case ov::element::i32: src_ty = mlir::IntegerType::get(&ctx, 32); break;
-        case ov::element::i64: src_ty = mlir::IntegerType::get(&ctx, 64); break;
-        default: break;
-    }
-    auto noneFM = mlir::arith::FastMathFlagsAttr::get(&ctx, mlir::arith::FastMathFlags::none);
+}
 
-    auto src_memref = mlir::MemRefType::get({mlir::ShapedType::kDynamic}, src_ty);
-    auto dst_memref = mlir::MemRefType::get({mlir::ShapedType::kDynamic}, dst_ty);
+mlir::SmallVector<int64_t> to_shape(const ov::PartialShape& ps) {
+    mlir::SmallVector<int64_t> dims;
+    dims.reserve(ps.rank().get_length());
+    for (const auto& d : ps) {
+        dims.push_back(d.is_dynamic() ? mlir::ShapedType::kDynamic
+                                      : static_cast<int64_t>(d.get_length()));
+    }
+    return dims;
+}
+}  // namespace
+
+mlir::ModuleOp build_mlir_convert_from_model(const std::shared_ptr<const ov::Model>& model,
+                                             mlir::MLIRContext& ctx) {
+    ctx.loadDialect<mlir::func::FuncDialect, mlir::linalg::LinalgDialect, mlir::tensor::TensorDialect,
+                    mlir::arith::ArithDialect>();
+
+    std::shared_ptr<const ov::op::v0::Convert> cvt;
+    for (const auto& node : model->get_ordered_ops()) {
+        if (auto c = ov::as_type_ptr<const ov::op::v0::Convert>(node)) {
+            OPENVINO_ASSERT(!cvt, "Convert MLIR builder: expected single Convert");
+            cvt = c;
+        }
+    }
+    OPENVINO_ASSERT(cvt, "Convert MLIR builder: Convert op not found");
+
+    auto in_shape = to_shape(cvt->get_input_partial_shape(0));
+    auto out_shape = to_shape(cvt->get_output_partial_shape(0));
+    auto in_ty = to_mlir_type(cvt->get_input_element_type(0), ctx);
+    auto out_ty = to_mlir_type(cvt->get_output_element_type(0), ctx);
+
+    auto in_tensor_ty = mlir::RankedTensorType::get(in_shape, in_ty);
+    auto out_tensor_ty = mlir::RankedTensorType::get(out_shape, out_ty);
 
     mlir::OpBuilder mb(&ctx);
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
     mb.setInsertionPointToStart(module.getBody());
 
-    auto func_type = mb.getFunctionType({src_memref, dst_memref}, {});
+    auto func_type = mb.getFunctionType({in_tensor_ty}, {out_tensor_ty});
     auto func = mb.create<mlir::func::FuncOp>(mlir::UnknownLoc::get(&ctx), "convert_main", func_type);
     func.addEntryBlock();
 
     mlir::OpBuilder b(func.getBody());
     auto loc = mlir::UnknownLoc::get(&ctx);
-    auto src = func.getArgument(0);
-    auto dst = func.getArgument(1);
+    b.setInsertionPointToStart(&func.getBody().front());
 
-    auto total = b.create<mlir::memref::DimOp>(loc, src, 0);
-    auto c0 = b.create<mlir::arith::ConstantIndexOp>(loc, 0);
-    auto c1 = b.create<mlir::arith::ConstantIndexOp>(loc, 1);
-    auto for_i = b.create<mlir::scf::ForOp>(loc, c0, total, c1, std::nullopt,
-        [&](mlir::OpBuilder& bb, mlir::Location loc, mlir::Value i, mlir::ValueRange) {
-            auto v = bb.create<mlir::memref::LoadOp>(loc, src, mlir::ValueRange{i});
-            mlir::Value casted = v;
-            auto srcElemTy = v.getType();
-            if (srcElemTy == dst_ty) {
-                casted = v;
-            } else if (mlir::isa<mlir::FloatType>(srcElemTy) && mlir::isa<mlir::FloatType>(dst_ty)) {
-                auto srcF = mlir::cast<mlir::FloatType>(srcElemTy);
-                auto dstF = mlir::cast<mlir::FloatType>(dst_ty);
-                if (dstF.getWidth() > srcF.getWidth())
-                    casted = bb.create<mlir::arith::ExtFOp>(loc, dst_ty, v, noneFM);
-                else
-                    casted = bb.create<mlir::arith::TruncFOp>(loc, dst_ty, v,
-                                                              mlir::arith::RoundingModeAttr(), noneFM);
-            } else if (mlir::isa<mlir::IntegerType>(srcElemTy) && mlir::isa<mlir::FloatType>(dst_ty)) {
-                casted = bb.create<mlir::arith::SIToFPOp>(loc, dst_ty, v);
-            } else if (mlir::isa<mlir::FloatType>(srcElemTy) && mlir::isa<mlir::IntegerType>(dst_ty)) {
-                casted = bb.create<mlir::arith::FPToSIOp>(loc, dst_ty, v);
-            } else if (mlir::isa<mlir::IntegerType>(srcElemTy) && mlir::isa<mlir::IntegerType>(dst_ty)) {
-                auto srcI = mlir::cast<mlir::IntegerType>(srcElemTy);
-                auto dstI = mlir::cast<mlir::IntegerType>(dst_ty);
-                if (dstI.getWidth() > srcI.getWidth())
-                    casted = bb.create<mlir::arith::ExtSIOp>(loc, dst_ty, v);
-                else
-                    casted = bb.create<mlir::arith::TruncIOp>(loc, dst_ty, v);
+    auto empty = b.create<mlir::tensor::EmptyOp>(loc, out_shape, out_ty);
+    auto map = mlir::AffineMap::getMultiDimIdentityMap(out_shape.size(), &ctx);
+    llvm::SmallVector<mlir::utils::IteratorType> iters(out_shape.size(), mlir::utils::IteratorType::parallel);
+
+    auto generic = b.create<mlir::linalg::GenericOp>(
+        loc,
+        out_tensor_ty,
+        mlir::ValueRange{func.getArgument(0)},
+        mlir::ValueRange{empty},
+        mlir::ArrayRef<mlir::AffineMap>{map, map},
+        mlir::ArrayRef<mlir::utils::IteratorType>(iters));
+    {
+        auto& region = generic.getRegion();
+        region.getBlocks().clear();
+        auto* block = &region.emplaceBlock();
+        block->addArguments({in_ty, out_ty}, {loc, loc});
+        mlir::OpBuilder body(block, block->begin());
+        auto x = block->getArgument(0);
+        mlir::Value y;
+        if (in_ty == out_ty) {
+            y = x;
+        } else if (mlir::isa<mlir::FloatType>(in_ty) && mlir::isa<mlir::FloatType>(out_ty)) {
+            auto in_bits = mlir::cast<mlir::FloatType>(in_ty).getWidth();
+            auto out_bits = mlir::cast<mlir::FloatType>(out_ty).getWidth();
+            if (out_bits > in_bits) {
+                y = body.create<mlir::arith::ExtFOp>(loc, out_ty, x);
             } else {
-                casted = bb.create<mlir::arith::BitcastOp>(loc, dst_ty, v);
+                y = body.create<mlir::arith::TruncFOp>(loc, out_ty, x);
             }
-            bb.create<mlir::memref::StoreOp>(loc, casted, dst, mlir::ValueRange{i});
-            bb.create<mlir::scf::YieldOp>(loc);
-        });
-    b.setInsertionPointAfter(for_i);
-    b.create<mlir::func::ReturnOp>(loc);
+        } else if (mlir::isa<mlir::IntegerType>(in_ty) && mlir::isa<mlir::IntegerType>(out_ty)) {
+            auto in_bits = mlir::cast<mlir::IntegerType>(in_ty).getWidth();
+            auto out_bits = mlir::cast<mlir::IntegerType>(out_ty).getWidth();
+            if (out_bits > in_bits) {
+                y = body.create<mlir::arith::ExtSIOp>(loc, out_ty, x);
+            } else {
+                y = body.create<mlir::arith::TruncIOp>(loc, out_ty, x);
+            }
+        } else if (mlir::isa<mlir::IntegerType>(in_ty) && mlir::isa<mlir::FloatType>(out_ty)) {
+            y = body.create<mlir::arith::SIToFPOp>(loc, out_ty, x);
+        } else if (mlir::isa<mlir::FloatType>(in_ty) && mlir::isa<mlir::IntegerType>(out_ty)) {
+            y = body.create<mlir::arith::FPToSIOp>(loc, out_ty, x);
+        } else {
+            OPENVINO_THROW("Convert MLIR: unsupported type conversion");
+        }
+        body.create<mlir::linalg::YieldOp>(loc, y);
+    }
+
+    b.create<mlir::func::ReturnOp>(loc, generic.getResults());
     return module;
 }
 

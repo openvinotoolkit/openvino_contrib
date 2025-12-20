@@ -4,12 +4,19 @@
 
 #import "runtime/metal_op_elementwise.hpp"
 
+#include <string>
+
 #include <numeric>
 
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"
 #include "runtime/metal_logger.hpp"
+#include "runtime/metal_op_utils.hpp"
+#include "mlir_builder.hpp"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir_codegen/codegen_common.hpp"
 
 namespace ov {
 namespace metal_plugin {
@@ -78,7 +85,7 @@ size_t shape_elems(const std::vector<int64_t>& shp) {
 }  // namespace
 
 MetalElementwiseOp::MetalElementwiseOp(const std::shared_ptr<const ov::Node>& node,
-                                       KernelOpKind kind,
+                                       EltwiseKind kind,
                                        void* device,
                                        void* queue)
     : MetalOp(node->get_friendly_name(),
@@ -129,6 +136,15 @@ void MetalElementwiseOp::refresh_shapes_from_inputs() {
 
 void MetalElementwiseOp::init(MetalBufferManager* buffer_manager) {
     MetalOp::init(buffer_manager);
+}
+
+void MetalElementwiseOp::compile(MetalBufferManager* buffer_manager) {
+    if (is_compiled()) {
+        return;
+    }
+    if (!this->buffer_manager()) {
+        MetalOp::init(buffer_manager);
+    }
     // Preload constant inputs if present.
     auto maybe_upload_const = [&](const std::shared_ptr<const ov::Node>& n,
                                  size_t input_idx,
@@ -138,8 +154,8 @@ void MetalElementwiseOp::init(MetalBufferManager* buffer_manager) {
             return;
         const auto cet = c->get_element_type();
         const size_t bytes = c->get_byte_size();
-        tgt.buf = buffer_manager->allocate(bytes, cet, /*persistent=*/true, /*storageModePrivate=*/true);
-        buffer_manager->upload(tgt.buf, c->get_data_ptr(), bytes);
+        const std::string key = m_node->get_friendly_name() + "/const_" + std::to_string(input_idx);
+        tgt.buf = buffer_manager->wrap_const(key, c->get_data_ptr(), bytes, cet);
         tgt.shape = c->get_shape();
         tgt.expected_type = cet;
         if (inputs().size() <= input_idx || inputs()[input_idx] == nullptr) {
@@ -157,24 +173,29 @@ void MetalElementwiseOp::init(MetalBufferManager* buffer_manager) {
     // Compute broadcast info from static shapes (if available).
     ov::Shape a_shape;
     ov::Shape b_shape;
-    if (!inputs().empty() && inputs()[0] && !inputs()[0]->shape.empty())
+    bool a_known = false;
+    bool b_known = false;
+    if (!inputs().empty() && inputs()[0]) {
         a_shape = inputs()[0]->shape;
-    if (inputs().size() > 1 && inputs()[1] && !inputs()[1]->shape.empty())
+        if (!a_shape.empty())
+            a_known = true;
+    }
+    if (inputs().size() > 1 && inputs()[1]) {
         b_shape = inputs()[1]->shape;
-    if (a_shape.empty() && m_node && m_node->get_input_partial_shape(0).is_static())
+        if (!b_shape.empty())
+            b_known = true;
+    }
+    if (!a_known && m_node && m_node->get_input_partial_shape(0).is_static()) {
         a_shape = m_node->get_input_shape(0);
-    if (b_shape.empty() && m_node && m_node->get_input_partial_shape(1).is_static())
+        a_known = true;
+    }
+    if (!b_known && m_node && m_node->get_input_partial_shape(1).is_static()) {
         b_shape = m_node->get_input_shape(1);
+        b_known = true;
+    }
 
-    bool is_broadcast = false;
-    if (a_shape.empty() || b_shape.empty()) {
-        m_out_dims.clear();
-        for (auto d : output_shape()) m_out_dims.push_back(static_cast<int>(d));
-        if (m_out_dims.empty()) m_out_dims.push_back(1);
-        size_t rank = m_out_dims.size();
-        m_stride0.assign(rank, 1);
-        m_stride1.assign(rank, 1);
-    } else {
+    bool is_broadcast = true;
+    if (a_known && b_known) {
         auto br = compute_broadcast(a_shape, b_shape);
         if (br.success) {
             m_out_dims.assign(br.out_shape.begin(), br.out_shape.end());
@@ -185,38 +206,100 @@ void MetalElementwiseOp::init(MetalBufferManager* buffer_manager) {
             };
             is_broadcast = (br.out_shape != to_vec64(a_shape) || br.out_shape != to_vec64(b_shape));
         }
+    } else if (!output_shape().empty()) {
+        m_out_dims.clear();
+        for (auto d : output_shape()) m_out_dims.push_back(static_cast<int>(d));
+        size_t rank = m_out_dims.size();
+        m_stride0.assign(rank, 1);
+        m_stride1.assign(rank, 1);
     }
-    m_num_elems = 1;
+    m_num_elems = m_out_dims.empty() ? 0 : 1;
     for (auto d : m_out_dims) m_num_elems *= static_cast<size_t>(d);
-
-    KernelOp op{};
-    op.kind = m_kind;
-    op.is_broadcast = is_broadcast;
-    op.out_shape.assign(m_out_dims.begin(), m_out_dims.end());
-    op.stride0.assign(m_stride0.begin(), m_stride0.end());
-    op.stride1.assign(m_stride1.begin(), m_stride1.end());
-    KernelTensor out_t{};
-    out_t.shape.assign(op.out_shape.begin(), op.out_shape.end());
-    out_t.dtype = resolve_metal_dtype(m_element_type);
-    op.output = &out_t;
-    op.input0 = nullptr;
-    op.input1 = nullptr;
-    op.dtype = out_t.dtype;
-    op.element_type = static_cast<uint32_t>(static_cast<ov::element::Type_t>(m_element_type));
 
     MetalKernelCompiler compiler(m_device);
     std::string log;
+    EltwiseCodegenDesc desc{};
+    desc.eltwise_kind = m_kind;
+    desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
+    desc.is_broadcast = is_broadcast;
+    desc.out_shape.assign(m_out_dims.begin(), m_out_dims.end());
+    desc.stride0.assign(m_stride0.begin(), m_stride0.end());
+    desc.stride1.assign(m_stride1.begin(), m_stride1.end());
+    mlir::MLIRContext ctx;
+    auto model = make_single_op_model(m_node);
+    mlir::ModuleOp module;
     switch (m_kind) {
-        case KernelOpKind::ElementwiseAdd: m_pipeline = compiler.compile_add_kernel(op, log); break;
-        case KernelOpKind::ElementwiseSub: m_pipeline = compiler.compile_sub_kernel(op, log); break;
-        case KernelOpKind::ElementwiseMul: m_pipeline = compiler.compile_mul_kernel(op, log); break;
-        case KernelOpKind::ElementwiseDiv: m_pipeline = compiler.compile_div_kernel(op, log); break;
-        default: OPENVINO_THROW("Unsupported elementwise kind in MetalElementwiseOp");
+        case EltwiseKind::Add:
+            module = build_mlir_add_from_model(model, ctx);
+            break;
+        case EltwiseKind::Sub:
+            module = build_mlir_sub_from_model(model, ctx);
+            break;
+        case EltwiseKind::Mul:
+            module = build_mlir_mul_from_model(model, ctx);
+            break;
+        case EltwiseKind::Div:
+            module = build_mlir_div_from_model(model, ctx);
+            break;
+        case EltwiseKind::Pow:
+            module = build_mlir_pow_from_model(model, ctx);
+            break;
+        case EltwiseKind::Mod:
+            module = build_mlir_mod_from_model(model, ctx);
+            break;
+        case EltwiseKind::FloorMod:
+            module = build_mlir_floor_mod_from_model(model, ctx);
+            break;
+        case EltwiseKind::Prelu:
+            module = build_mlir_prelu_from_model(model, ctx);
+            break;
+        case EltwiseKind::SquaredDiff:
+            module = build_mlir_squared_difference_from_model(model, ctx);
+            break;
+        case EltwiseKind::Min:
+            module = build_mlir_min_from_model(model, ctx);
+            break;
+        case EltwiseKind::Max:
+            module = build_mlir_max_from_model(model, ctx);
+            break;
+        case EltwiseKind::LogicalAnd:
+            module = build_mlir_logical_and_from_model(model, ctx);
+            break;
+        case EltwiseKind::LogicalOr:
+            module = build_mlir_logical_or_from_model(model, ctx);
+            break;
+        case EltwiseKind::LogicalXor:
+            module = build_mlir_logical_xor_from_model(model, ctx);
+            break;
+        case EltwiseKind::Equal:
+            module = build_mlir_equal_from_model(model, ctx);
+            break;
+        case EltwiseKind::NotEqual:
+            module = build_mlir_not_equal_from_model(model, ctx);
+            break;
+        case EltwiseKind::Less:
+            module = build_mlir_less_from_model(model, ctx);
+            break;
+        case EltwiseKind::Greater:
+            module = build_mlir_greater_from_model(model, ctx);
+            break;
+        case EltwiseKind::LessEqual:
+            module = build_mlir_less_equal_from_model(model, ctx);
+            break;
+        case EltwiseKind::GreaterEqual:
+            module = build_mlir_greater_equal_from_model(model, ctx);
+            break;
+        default:
+            OPENVINO_THROW("MetalElementwiseOp: unsupported MLIR builder for eltwise kind");
     }
+    auto source = generate_msl_from_mlir(module, desc);
+    m_pipeline = compiler.compile_msl_from_source(source, "eltwise_kernel", log);
     OPENVINO_ASSERT(m_pipeline, "Failed to compile elementwise pipeline: ", log);
+
+    MetalOp::compile(buffer_manager);
 }
 
-void MetalElementwiseOp::execute() {
+void MetalElementwiseOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     OPENVINO_ASSERT(inputs().size() >= 2, "Eltwise: missing inputs");
     MetalTensor* in0 = inputs()[0] ? inputs()[0] : (m_const0.buf.valid() ? &m_const0 : nullptr);
     MetalTensor* in1 = inputs()[1] ? inputs()[1] : (m_const1.buf.valid() ? &m_const1 : nullptr);
@@ -224,31 +307,74 @@ void MetalElementwiseOp::execute() {
     OPENVINO_ASSERT(in1 && in1->buf.valid(), "Eltwise: input1 is null");
 
     MetalTensor& out = require_output();
-    if (out.shape.empty()) {
-        out.shape.clear();
-        if (!m_out_dims.empty()) {
-            for (auto d : m_out_dims) out.shape.push_back(static_cast<size_t>(d));
-        } else {
-            out.shape = in0->shape.empty() ? in1->shape : in0->shape;
-        }
+
+    // Always recompute broadcast metadata from runtime shapes to avoid stale dims for dynamic inputs.
+    ov::Shape a_shape = !in0->shape.empty() ? in0->shape : ov::Shape{};
+    ov::Shape b_shape = !in1->shape.empty() ? in1->shape : ov::Shape{};
+    if (a_shape.empty() && m_node && m_node->get_input_partial_shape(0).is_static())
+        a_shape = m_node->get_input_shape(0);
+    if (b_shape.empty() && m_node && m_node->get_input_partial_shape(1).is_static())
+        b_shape = m_node->get_input_shape(1);
+
+    auto elem_size_for = [](const MetalTensor* t) -> size_t {
+        if (!t)
+            return 0;
+        const auto et = t->expected_type == ov::element::dynamic ? t->buf.type : t->expected_type;
+        return et.size();
+    };
+    if (!a_shape.empty()) {
+        const size_t need = ov::shape_size(a_shape) * elem_size_for(in0);
+        OPENVINO_ASSERT(in0->buf.size >= need, "Eltwise: input0 buffer too small");
     }
-    if (!out.buf.valid()) {
-        size_t bytes = ov::shape_size(out.shape) * m_element_type.size();
-        out.buf = buffer_manager()->allocate(bytes, m_element_type, /*persistent=*/false, /*storageModePrivate=*/true);
+    if (!b_shape.empty()) {
+        const size_t need = ov::shape_size(b_shape) * elem_size_for(in1);
+        OPENVINO_ASSERT(in1->buf.size >= need, "Eltwise: input1 buffer too small");
+    }
+
+    ov::Shape out_shape;
+    auto br = compute_broadcast(a_shape, b_shape);
+    if (br.success) {
+        out_shape.assign(br.out_shape.begin(), br.out_shape.end());
+        m_out_dims.assign(br.out_shape.begin(), br.out_shape.end());
+        m_stride0.assign(br.stride0.begin(), br.stride0.end());
+        m_stride1.assign(br.stride1.begin(), br.stride1.end());
+        m_num_elems = shape_elems(br.out_shape);
+    } else {
+        if (!a_shape.empty())
+            out_shape = a_shape;
+        else if (!b_shape.empty())
+            out_shape = b_shape;
+        else if (!output_shape().empty())
+            out_shape = output_shape();
+        if (out_shape.empty())
+            out_shape = ov::Shape{1};
+        m_out_dims.clear();
+        for (auto d : out_shape) m_out_dims.push_back(static_cast<int>(d));
+        size_t rank = m_out_dims.size();
+        auto make_stride = [&](const ov::Shape& shp) {
+            std::vector<int64_t> st(shp.size(), 1);
+            for (int i = static_cast<int>(shp.size()) - 2; i >= 0; --i) {
+                st[i] = st[i + 1] * static_cast<int64_t>(shp[i + 1]);
+            }
+            return st;
+        };
+        auto st = make_stride(out_shape);
+        m_stride0.assign(st.begin(), st.end());
+        m_stride1.assign(st.begin(), st.end());
+        m_num_elems = ov::shape_size(out_shape);
+    }
+
+    out.shape = out_shape;
+    out.expected_type = m_element_type;
+
+    size_t bytes = m_num_elems * m_element_type.size();
+    if (!out.buf.valid() || out.buf.size < bytes) {
+        out.buf = buffer_manager()->allocate(bytes, m_element_type, /*persistent=*/false, out.prefer_private);
         out.expected_type = m_element_type;
     }
 
-    if (m_out_dims.empty() || m_stride0.empty() || m_stride1.empty() || m_num_elems == 0) {
-        refresh_shapes_from_inputs();
-    }
-    if (m_num_elems == 0) {
-        m_num_elems = ov::shape_size(out.shape);
-    }
-
-    if (!m_queue) {
-        m_queue = [m_device newCommandQueue];
-    }
-    id<MTLCommandBuffer> cb = [m_queue commandBuffer];
+    id<MTLCommandBuffer> cb = static_cast<id<MTLCommandBuffer>>(cmd_buf_handle);
+    OPENVINO_ASSERT(cb, "MetalElementwiseOp: command buffer is null");
     id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
     [enc setComputePipelineState:m_pipeline];
     [enc setBuffer:to_mtl(in0->buf) offset:0 atIndex:0];
@@ -272,14 +398,17 @@ void MetalElementwiseOp::execute() {
 
     const NSUInteger threads_per_tg = 64;
     MTLSize grid = MTLSizeMake(num_elems, 1, 1);
-    MTLSize tg = MTLSizeMake(threads_per_tg, 1, 1);
+    const NSUInteger tg_size = static_cast<NSUInteger>(metal_clamp_tg_size((void*)m_pipeline, threads_per_tg));
+    MTLSize tg = MTLSizeMake(tg_size, 1, 1);
 
-    start_profiling();
+    start_profiling(enc);
+    if (num_elems == 0) {
+        [enc endEncoding];
+        return;
+    }
     [enc dispatchThreads:grid threadsPerThreadgroup:tg];
+    stop_profiling_ms(enc);
     [enc endEncoding];
-    [cb commit];
-    [cb waitUntilCompleted];
-    stop_profiling_ms();
 
     out.expected_type = m_element_type;
 }

@@ -9,22 +9,24 @@
 namespace ov {
 namespace metal_plugin {
 
-namespace {
-std::string scalar_type(ov::element::Type et) {
-    switch (et) {
-        case ov::element::f16: return "half";
-        case ov::element::f32: return "float";
-        default: return "float";
+std::string generate_msl_for_interpolate(const InterpolateCodegenDesc& d, mlir::ModuleOp module) {
+    std::string scalar_t = "float";
+    if (auto func = get_entry_func(module)) {
+        auto ft = func.getFunctionType();
+        if (ft.getNumInputs() >= 1) {
+            scalar_t = msl_type_from_mlir(ft.getInput(0));
+        }
+    } else {
+        switch (d.element_type) {
+            case ov::element::f16: scalar_t = "half"; break;
+            case ov::element::f32: scalar_t = "float"; break;
+            default: break;
+        }
     }
-}
-}  // namespace
-
-std::string generate_msl_for_interpolate(const InterpolateCodegenDesc& d, mlir::ModuleOp /*module*/) {
-    const auto t = scalar_type(d.element_type);
     std::ostringstream ss;
     ss << "#include <metal_stdlib>\n";
     ss << "using namespace metal;\n";
-    ss << "using scalar_t = " << t << ";\n";
+    ss << "using scalar_t = " << scalar_t << ";\n";
     ss << "struct InterpolateParams {\n"
           "  uint N;\n"
           "  uint C;\n"
@@ -35,6 +37,8 @@ std::string generate_msl_for_interpolate(const InterpolateCodegenDesc& d, mlir::
           "  float scale_h;\n"
           "  float scale_w;\n"
           "  uint align_corners;\n"
+          "  uint use_half_pixel;\n"
+          "  uint nearest_mode;\n"
           "};\n";
     ss << "kernel void interpolate_kernel(\n"
           "  device const scalar_t* src [[buffer(0)]],\n"
@@ -50,12 +54,24 @@ std::string generate_msl_for_interpolate(const InterpolateCodegenDesc& d, mlir::
           "  uint n = tmp;\n"
           "  float fh, fw;\n"
           "  if (p.align_corners && p.H_out > 1) fh = (float)h * (float)(p.H_in - 1) / (float)(p.H_out - 1);\n"
-          "  else fh = ((float)h + 0.5f) * p.scale_h - 0.5f;\n"
+          "  else if (p.use_half_pixel) fh = ((float)h + 0.5f) * p.scale_h - 0.5f;\n"
+          "  else fh = (float)h * p.scale_h;\n"
           "  if (p.align_corners && p.W_out > 1) fw = (float)w * (float)(p.W_in - 1) / (float)(p.W_out - 1);\n"
-          "  else fw = ((float)w + 0.5f) * p.scale_w - 0.5f;\n";
+          "  else if (p.use_half_pixel) fw = ((float)w + 0.5f) * p.scale_w - 0.5f;\n"
+          "  else fw = (float)w * p.scale_w;\n";
     if (d.nearest) {
-        ss << "  int ih = clamp((int)round(fh), 0, (int)p.H_in - 1);\n"
-              "  int iw = clamp((int)round(fw), 0, (int)p.W_in - 1);\n"
+        ss << "  int ih;\n"
+              "  int iw;\n"
+              "  if (p.nearest_mode == 1) {\n"
+              "    ih = clamp((int)floor(fh), 0, (int)p.H_in - 1);\n"
+              "    iw = clamp((int)floor(fw), 0, (int)p.W_in - 1);\n"
+              "  } else if (p.nearest_mode == 2) {\n"
+              "    ih = clamp((int)ceil(fh), 0, (int)p.H_in - 1);\n"
+              "    iw = clamp((int)ceil(fw), 0, (int)p.W_in - 1);\n"
+              "  } else {\n"
+              "    ih = clamp((int)round(fh), 0, (int)p.H_in - 1);\n"
+              "    iw = clamp((int)round(fw), 0, (int)p.W_in - 1);\n"
+              "  }\n"
               "  uint src_idx = (((n * p.C + c) * p.H_in) + (uint)ih) * p.W_in + (uint)iw;\n"
               "  dst[gid] = src[src_idx];\n";
     } else {

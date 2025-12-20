@@ -26,7 +26,16 @@ inline mlir::Type to_mlir_type(ov::element::Type et, mlir::MLIRContext& ctx) {
     switch (et) {
         case ov::element::f32: return mlir::Float32Type::get(&ctx);
         case ov::element::f16: return mlir::Float16Type::get(&ctx);
+        case ov::element::bf16: return mlir::BFloat16Type::get(&ctx);
+        case ov::element::i8: return mlir::IntegerType::get(&ctx, 8, mlir::IntegerType::Signed);
+        case ov::element::u8: return mlir::IntegerType::get(&ctx, 8, mlir::IntegerType::Unsigned);
+        case ov::element::i16: return mlir::IntegerType::get(&ctx, 16, mlir::IntegerType::Signed);
+        case ov::element::u16: return mlir::IntegerType::get(&ctx, 16, mlir::IntegerType::Unsigned);
         case ov::element::i32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
+        case ov::element::u32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Unsigned);
+        case ov::element::i64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Signed);
+        case ov::element::u64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Unsigned);
+        case ov::element::boolean: return mlir::IntegerType::get(&ctx, 1, mlir::IntegerType::Unsigned);
         default: OPENVINO_THROW("Eltwise MLIR: unsupported element type");
     }
 }

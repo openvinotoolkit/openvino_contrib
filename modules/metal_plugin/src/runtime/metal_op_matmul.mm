@@ -4,10 +4,17 @@
 
 #import "runtime/metal_op_matmul.hpp"
 
+#include <string>
+
 #include "openvino/core/shape_util.hpp"
 #include "openvino/core/validation_util.hpp"
 #include "openvino/op/constant.hpp"
 #include "kernel_codegen/metal_kernel_compiler.hpp"
+#include "runtime/metal_op_utils.hpp"
+#include "mlir_builder.hpp"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir_codegen/codegen_common.hpp"
 #include "runtime/metal_logger.hpp"
 
 namespace ov {
@@ -79,9 +86,7 @@ void MetalMatMulOp::fill_desc_from_node(const std::shared_ptr<const ov::Node>& n
     OPENVINO_ASSERT(m_element_type == ov::element::f32 || m_element_type == ov::element::f16,
                     "MetalMatMulOp supports only f16/f32");
 
-    m_desc.kind = KernelOpKind::MatMul;
-    m_desc.dtype = resolve_metal_dtype(m_element_type);
-    m_desc.element_type = static_cast<uint32_t>(static_cast<ov::element::Type_t>(m_element_type));
+    m_desc.element_type = m_element_type;
     m_desc.M = M;
     m_desc.N = N;
     m_desc.K = K_a;
@@ -95,6 +100,15 @@ void MetalMatMulOp::fill_desc_from_node(const std::shared_ptr<const ov::Node>& n
 
 void MetalMatMulOp::init(MetalBufferManager* buffer_manager) {
     MetalOp::init(buffer_manager);
+}
+
+void MetalMatMulOp::compile(MetalBufferManager* buffer_manager) {
+    if (is_compiled()) {
+        return;
+    }
+    if (!this->buffer_manager()) {
+        MetalOp::init(buffer_manager);
+    }
     auto maybe_upload_const = [&](size_t idx, MetalTensor& tgt) {
         auto c = std::dynamic_pointer_cast<const ov::op::v0::Constant>(m_node->get_input_node_shared_ptr(idx));
         if (!c)
@@ -106,11 +120,8 @@ void MetalMatMulOp::init(MetalBufferManager* buffer_manager) {
                         " got ",
                         cet.get_type_name());
         const size_t bytes = c->get_byte_size();
-        tgt.buf = buffer_manager->allocate(bytes,
-                                           cet,
-                                           /*persistent=*/true,
-                                           /*storageModePrivate=*/true);
-        buffer_manager->upload(tgt.buf, c->get_data_ptr(), bytes);
+        const std::string key = m_node->get_friendly_name() + "/const_" + std::to_string(idx);
+        tgt.buf = buffer_manager->wrap_const(key, c->get_data_ptr(), bytes, cet);
         tgt.shape = c->get_shape();
         tgt.expected_type = cet;
     };
@@ -121,11 +132,19 @@ void MetalMatMulOp::init(MetalBufferManager* buffer_manager) {
 
     MetalKernelCompiler compiler(m_device ? m_device : (id<MTLDevice>)buffer_manager->device());
     std::string log;
-    m_pipeline = compiler.compile_matmul_kernel(m_desc, log);
+    mlir::MLIRContext ctx;
+    auto model = make_single_op_model(m_node);
+    auto module = build_mlir_module_from_model(model, ctx);
+    MatMulCodegenDesc desc = m_desc;
+    desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
+    auto source = generate_msl_from_mlir(module, desc);
+    m_pipeline = compiler.compile_msl_from_source(source, "matmul_kernel", log);
     OPENVINO_ASSERT(m_pipeline, "MetalMatMulOp: failed to compile matmul kernel: ", log);
+
+    MetalOp::compile(buffer_manager);
 }
 
-void MetalMatMulOp::execute() {
+void MetalMatMulOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     OPENVINO_ASSERT(inputs().size() >= 2, "MatMul: missing inputs");
     MetalTensor* A = inputs()[0] ? inputs()[0] : (m_constA.buf.valid() ? &m_constA : nullptr);
     MetalTensor* B = inputs()[1] ? inputs()[1] : (m_constB.buf.valid() ? &m_constB : nullptr);
@@ -146,9 +165,9 @@ void MetalMatMulOp::execute() {
                            static_cast<size_t>(m_desc.N)};
         }
     }
-    if (!C.buf.valid()) {
-        size_t bytes = ov::shape_size(C.shape) * m_element_type.size();
-        C.buf = buffer_manager()->allocate(bytes, m_element_type, /*persistent=*/false, /*storageModePrivate=*/true);
+    const size_t c_bytes = ov::shape_size(C.shape) * m_element_type.size();
+    if (!C.buf.valid() || C.buf.size < c_bytes) {
+        C.buf = buffer_manager()->allocate(c_bytes, m_element_type, /*persistent=*/false, C.prefer_private);
     }
     C.expected_type = m_element_type;
 
@@ -160,10 +179,8 @@ void MetalMatMulOp::execute() {
     OPENVINO_ASSERT(B->buf.size >= need_b, "MatMul: B buffer too small");
     OPENVINO_ASSERT(C.buf.size >= need_c, "MatMul: C buffer too small");
 
-    if (!m_queue) {
-        m_queue = [m_device newCommandQueue];
-    }
-    id<MTLCommandBuffer> cb = [m_queue commandBuffer];
+    id<MTLCommandBuffer> cb = static_cast<id<MTLCommandBuffer>>(cmd_buf_handle);
+    OPENVINO_ASSERT(cb, "MetalMatMulOp: command buffer is null");
     id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
     [enc setComputePipelineState:m_pipeline];
     [enc setBuffer:to_mtl(A->buf) offset:0 atIndex:0];
@@ -171,16 +188,19 @@ void MetalMatMulOp::execute() {
     [enc setBuffer:to_mtl(C.buf) offset:0 atIndex:2];
 
     const uint32_t total = static_cast<uint32_t>(m_desc.batch * m_desc.M * m_desc.N);
+    if (total == 0) {
+        [enc endEncoding];
+        return;
+    }
     const NSUInteger threads_per_tg = 256;
     MTLSize grid = MTLSizeMake(total, 1, 1);
-    MTLSize tg = MTLSizeMake(threads_per_tg, 1, 1);
+    const NSUInteger tg_size = static_cast<NSUInteger>(metal_clamp_tg_size((void*)m_pipeline, threads_per_tg));
+    MTLSize tg = MTLSizeMake(tg_size, 1, 1);
 
-    start_profiling();
+    start_profiling(enc);
     [enc dispatchThreads:grid threadsPerThreadgroup:tg];
+    stop_profiling_ms(enc);
     [enc endEncoding];
-    [cb commit];
-    [cb waitUntilCompleted];
-    stop_profiling_ms();
 }
 
 }  // namespace metal_plugin

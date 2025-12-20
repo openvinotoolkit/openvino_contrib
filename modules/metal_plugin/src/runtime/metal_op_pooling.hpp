@@ -5,7 +5,7 @@
 
 #include <memory>
 
-#include "kernel_ir/kernel_ir_common.hpp"
+#include "mlir_codegen/codegen_common.hpp"
 #include "openvino/op/avg_pool.hpp"
 #include "openvino/op/max_pool.hpp"
 #include "runtime/metal_op.hpp"
@@ -17,25 +17,26 @@ namespace metal_plugin {
 class METAL_OP_API MetalPoolOp : public MetalOp {
 public:
     MetalPoolOp(const std::shared_ptr<const ov::Node>& node,
-                KernelOpKind kind,
+                bool is_avg,
                 bool exclude_pad,
                 void* device,
                 void* queue);
     ~MetalPoolOp() override = default;
 
     void init(MetalBufferManager* buffer_manager) override;
-    void execute() override;
+    void compile(MetalBufferManager* buffer_manager) override;
+    void execute(MetalCommandBufferHandle command_buffer) override;
 
 protected:
-    KernelOpKind m_kind;
+    bool m_is_avg = false;
+    std::shared_ptr<const ov::Node> m_node;
     ov::element::Type m_element_type{ov::element::f32};
-    KernelOp m_desc{};
+    Pool2DCodegenDesc m_desc{};
     ov::op::RoundingType m_rounding{ov::op::RoundingType::FLOOR};
 
     id<MTLDevice> m_device = nil;
     id<MTLCommandQueue> m_queue = nil;
     id<MTLComputePipelineState> m_pipeline = nil;
-    bool m_compiled = false;
 };
 
 class METAL_OP_API MetalMaxPoolOp final : public MetalPoolOp {

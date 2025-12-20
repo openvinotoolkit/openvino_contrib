@@ -8,7 +8,7 @@
 
 #include "openvino/op/convolution.hpp"
 #include "runtime/metal_op.hpp"
-#include "kernel_ir/kernel_ir_common.hpp"
+#include "mlir_codegen/codegen_common.hpp"
 #include "kernel_codegen/metal_kernel_compiler.hpp"
 
 namespace ov {
@@ -23,14 +23,19 @@ public:
     ~MetalConvOp() override = default;
 
     void init(MetalBufferManager* buffer_manager) override;
-    void execute() override;
+    void compile(MetalBufferManager* buffer_manager) override;
+    void execute(MetalCommandBufferHandle command_buffer) override;
+    bool fuse_activation(ActivationKind kind, float alpha = 0.0f) override;
 
 private:
     void prepare_weights();
-    void compile_pipeline();
 
     std::shared_ptr<const ov::op::v1::Convolution> m_node;
-    KernelOp m_desc{};
+    Conv2DCodegenDesc m_desc{};
+    ov::element::Type m_element_type{ov::element::f32};
+    bool m_has_activation = false;
+    ActivationKind m_activation = ActivationKind::Relu;
+    float m_activation_alpha = 0.0f;
 
     MetalBuffer m_weights{};
 

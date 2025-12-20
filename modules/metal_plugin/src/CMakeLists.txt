@@ -9,33 +9,14 @@ file(GLOB_RECURSE HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp)
 
 # Ensure newly added per-op files are included even if glob caching misses them
 list(APPEND SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/conv_kernel_ir.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/conv3d_kernel_ir.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/batchnorm_kernel_ir.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/mul_kernel_ir.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/sub_kernel_ir.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/slice_kernel_ir.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_common.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_eltwise.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_matmul.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_unary.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_softmax.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_maxpool2d.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_avgpool2d.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_conv2d.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_conv3d.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_batchnorm2d.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_slice.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_split.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_convert.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_concat.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_interpolate.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_reshape.mm
+    # Legacy per-kernel compiler helpers are not used by the object-based MLIR path.
     # Handwritten MSL removed; MLIR->MSL used instead
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_dtype.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_logger.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_conv.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_conv3d.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_group_conv.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_activations.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_elementwise.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_pooling.mm
@@ -46,11 +27,33 @@ list(APPEND SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_reshape.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_batchnorm.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_convert.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_interpolate.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_depth_to_space.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_slice.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_gather.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_gather_elements.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_gathernd.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_scatter_elements_update.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_scatter_nd_update.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_shapeof.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_pad.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_tile.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_broadcast.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_range.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_reverse.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_space_to_depth.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_topk.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_factory.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/plugin/remote_stub.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/profiling/metal_profiler.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/profiling/metal_gpu_timestamps.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/profiling/metal_profiling_report.cpp
 )
 list(APPEND HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_conv.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_conv3d.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_group_conv.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_activations.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_elementwise.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_pooling.hpp
@@ -61,11 +64,43 @@ list(APPEND HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_reshape.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_batchnorm.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_convert.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_interpolate.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_depth_to_space.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_slice.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_gather.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_gather_elements.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_gathernd.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_scatter_elements_update.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_scatter_nd_update.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_shapeof.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_pad.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_tile.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_broadcast.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_range.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_reverse.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_space_to_depth.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_topk.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_factory.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/profiling/metal_profiler.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/profiling/metal_profiler_config.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/profiling/metal_gpu_timestamps.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/profiling/metal_profiling_report.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/plugin/metal_properties.hpp
 )
-# Exclude LayerNorm sources when the op is not available in this build.
-list(FILTER SOURCES EXCLUDE REGEX "layernorm_kernel_ir.cpp")
-list(FILTER SOURCES EXCLUDE REGEX "layernorm_msl.cpp")
+# Remove legacy MLIR dispatcher (per-op codegen is used instead).
+list(FILTER SOURCES EXCLUDE REGEX "codegen_dispatcher.cpp")
+# Remove legacy reshape codegen that depends on KernelOp.
+list(FILTER SOURCES EXCLUDE REGEX "reshape_codegen.cpp")
+# Remove legacy Kernel IR builders and handwritten kernel compilers.
+list(FILTER SOURCES EXCLUDE REGEX "kernel_ir/.*\\.cpp$")
+list(FILTER SOURCES EXCLUDE REGEX "kernel_codegen/metal_kernel_compiler_.*\\.mm$")
+# Remove legacy MLIR builders that depend on KernelOp.
+list(FILTER SOURCES EXCLUDE REGEX "mlir_builder_concat\\.cpp$")
+list(FILTER SOURCES EXCLUDE REGEX "mlir_builder_split\\.cpp$")
+list(FILTER SOURCES EXCLUDE REGEX "mlir_builder_convert\\.cpp$")
+list(FILTER SOURCES EXCLUDE REGEX "mlir_builder_interpolate\\.cpp$")
+# Keep the common Metal compiler helper.
+list(APPEND SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_common.mm)
 # MLIR-only backend: source lists already limited to existing files; legacy ops/graph were removed.
 
 if(ENABLE_METAL_MLIR)
@@ -91,7 +126,6 @@ target_include_directories(${TARGET_NAME} PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/plugin"
     "${CMAKE_CURRENT_SOURCE_DIR}/runtime"
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen"
-    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir"
     "${CMAKE_CURRENT_SOURCE_DIR}/msl"
     "${CMAKE_CURRENT_SOURCE_DIR}/transforms"
     "${CMAKE_CURRENT_SOURCE_DIR}/mlir"

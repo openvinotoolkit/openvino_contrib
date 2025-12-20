@@ -1,0 +1,50 @@
+// Copyright (C) 2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+#pragma once
+
+namespace ov {
+namespace metal_plugin {
+
+enum class ActivationKind {
+    Relu,
+    Sigmoid,
+    Tanh,
+    Elu,
+    Prelu,
+    Gelu,
+    Swish,
+    HSwish,
+    HSigmoid,
+    SoftPlus,
+    Mish,
+    SoftSign,
+    Abs,
+    Sign,
+    Identity,
+    Clamp,
+    LogicalNot,
+    Exp,
+    Log,
+    Sqrt,
+    Floor,
+    Ceil,
+    Negative,
+    Sin,
+    Cos,
+    Tan,
+    Erf,
+    Asin,
+    Acos,
+    Atan,
+    Asinh,
+    Acosh,
+    Atanh,
+    Sinh,
+    Cosh,
+    RoundEven,
+    RoundAway
+};
+
+}  // namespace metal_plugin
+}  // namespace ov

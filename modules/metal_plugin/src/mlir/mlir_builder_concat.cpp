@@ -2,90 +2,119 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "mlir_builder.hpp"
+#include "mlir/mlir_builder.hpp"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
 
-#include "kernel_ir/kernel_ir_common.hpp"
 #include "openvino/core/except.hpp"
+#include "openvino/core/model.hpp"
+#include "openvino/op/concat.hpp"
 
 namespace ov {
 namespace metal_plugin {
 
-mlir::ModuleOp build_mlir_concat_from_op(const KernelOp& op, mlir::MLIRContext& ctx) {
-    OPENVINO_ASSERT(op.kind == KernelOpKind::Concat, "Concat builder expects Concat op");
-    ctx.loadDialect<mlir::func::FuncDialect, mlir::memref::MemRefDialect, mlir::arith::ArithDialect, mlir::scf::SCFDialect>();
+namespace {
+mlir::Type to_mlir_type(ov::element::Type et, mlir::MLIRContext& ctx) {
+    switch (et) {
+        case ov::element::f32: return mlir::Float32Type::get(&ctx);
+        case ov::element::f16: return mlir::Float16Type::get(&ctx);
+        case ov::element::i8:
+        case ov::element::u8:  return mlir::IntegerType::get(&ctx, 8, mlir::IntegerType::Signed);
+        case ov::element::i32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
+        case ov::element::i64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Signed);
+        default: OPENVINO_THROW("Concat MLIR: unsupported element type");
+    }
+}
 
-    // Flattened view: input [total] -> output [total + axis_offset*inner]
-    mlir::Type elem_ty = mlir::Float32Type::get(&ctx);
-    if (op.output && op.output->dtype.ov_type == ov::element::f16)
-        elem_ty = mlir::Float16Type::get(&ctx);
-    else if (op.output && op.output->dtype.ov_type == ov::element::i32)
-        elem_ty = mlir::IntegerType::get(&ctx, 32);
-    else if (op.output && op.output->dtype.ov_type == ov::element::i64)
-        elem_ty = mlir::IntegerType::get(&ctx, 64);
+mlir::SmallVector<int64_t> to_shape(const ov::PartialShape& ps) {
+    mlir::SmallVector<int64_t> dims;
+    dims.reserve(ps.rank().get_length());
+    for (const auto& d : ps) {
+        dims.push_back(d.is_dynamic() ? mlir::ShapedType::kDynamic
+                                      : static_cast<int64_t>(d.get_length()));
+    }
+    return dims;
+}
+}  // namespace
 
-    auto memref_ty = mlir::MemRefType::get(mlir::ShapedType::kDynamic, elem_ty);
+mlir::ModuleOp build_mlir_concat_from_model(const std::shared_ptr<const ov::Model>& model,
+                                            mlir::MLIRContext& ctx) {
+    ctx.loadDialect<mlir::func::FuncDialect, mlir::tensor::TensorDialect, mlir::arith::ArithDialect>();
+
+    std::shared_ptr<const ov::op::v0::Concat> concat;
+    for (const auto& node : model->get_ordered_ops()) {
+        if (auto c = ov::as_type_ptr<const ov::op::v0::Concat>(node)) {
+            OPENVINO_ASSERT(!concat, "Concat MLIR builder: expected single Concat");
+            concat = c;
+        }
+    }
+    OPENVINO_ASSERT(concat, "Concat MLIR builder: Concat op not found");
+
+    const size_t rank = concat->get_output_shape(0).size();
+    OPENVINO_ASSERT(rank > 0, "Concat MLIR: output rank must be static");
+
+    auto elem_ty = to_mlir_type(concat->get_output_element_type(0), ctx);
+
+    mlir::SmallVector<int64_t> out_shape(concat->get_output_shape(0).begin(),
+                                         concat->get_output_shape(0).end());
+    auto out_tensor_ty = mlir::RankedTensorType::get(out_shape, elem_ty);
+
+    mlir::SmallVector<mlir::Type> input_types;
+    input_types.reserve(concat->get_input_size());
+    for (size_t i = 0; i < concat->get_input_size(); ++i) {
+        auto in_shape = to_shape(concat->get_input_partial_shape(i));
+        input_types.push_back(mlir::RankedTensorType::get(in_shape, elem_ty));
+    }
 
     mlir::OpBuilder mb(&ctx);
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
     mb.setInsertionPointToStart(module.getBody());
 
-    auto func_type = mb.getFunctionType({memref_ty, memref_ty}, {});
+    auto func_type = mb.getFunctionType(input_types, {out_tensor_ty});
     auto func = mb.create<mlir::func::FuncOp>(mlir::UnknownLoc::get(&ctx), "concat_main", func_type);
     func.addEntryBlock();
 
     mlir::OpBuilder b(func.getBody());
     auto loc = mlir::UnknownLoc::get(&ctx);
-    auto input = func.getArgument(0);
-    auto output = func.getArgument(1);
+    b.setInsertionPointToStart(&func.getBody().front());
+    mlir::Value result = b.create<mlir::tensor::EmptyOp>(loc, out_shape, elem_ty);
 
-    const int64_t axis_offset = static_cast<int64_t>(op.concat.axis_offsets.empty() ? 0 : op.concat.axis_offsets[0]);
-    auto axis_offset_c = b.create<mlir::arith::ConstantIndexOp>(loc, axis_offset);
-    auto inner_c = b.create<mlir::arith::ConstantIndexOp>(loc, static_cast<int64_t>(op.concat.inner));
-    auto axis_len_c = b.create<mlir::arith::ConstantIndexOp>(loc, static_cast<int64_t>(op.concat.axis_sizes.empty() ? 0 : op.concat.axis_sizes[0]));
-    auto axis_total_c = b.create<mlir::arith::ConstantIndexOp>(loc, static_cast<int64_t>(op.concat.axis_total));
-    auto outer_c = b.create<mlir::arith::ConstantIndexOp>(loc, static_cast<int64_t>(op.concat.outer));
+    int64_t axis = concat->get_axis();
+    if (axis < 0) axis += static_cast<int64_t>(rank);
+    OPENVINO_ASSERT(axis >= 0 && static_cast<size_t>(axis) < rank, "Concat MLIR: axis out of range");
 
-    // total elements in this slice: outer * axis_len * inner
-    auto total = b.create<mlir::arith::MulIOp>(loc, outer_c,
-                   b.create<mlir::arith::MulIOp>(loc, axis_len_c, inner_c));
+    int64_t axis_offset = 0;
+    for (size_t i = 0; i < concat->get_input_size(); ++i) {
+        auto in_shape = concat->get_input_shape(i);
+        mlir::SmallVector<mlir::OpFoldResult> offsets;
+        mlir::SmallVector<mlir::OpFoldResult> sizes;
+        mlir::SmallVector<mlir::OpFoldResult> strides;
+        offsets.reserve(rank);
+        sizes.reserve(rank);
+        strides.reserve(rank);
+        for (size_t d = 0; d < rank; ++d) {
+            int64_t off = (d == static_cast<size_t>(axis)) ? axis_offset : 0;
+            offsets.push_back(b.getIndexAttr(off));
+            sizes.push_back(b.getIndexAttr(static_cast<int64_t>(in_shape[d])));
+            strides.push_back(b.getIndexAttr(1));
+        }
+        result = b.create<mlir::tensor::InsertSliceOp>(loc,
+                                                       func.getArgument(static_cast<unsigned>(i)),
+                                                       result,
+                                                       offsets,
+                                                       sizes,
+                                                       strides)
+                     .getResult();
+        axis_offset += static_cast<int64_t>(in_shape[static_cast<size_t>(axis)]);
+    }
 
-    auto c0 = b.create<mlir::arith::ConstantIndexOp>(loc, 0);
-    auto c1 = b.create<mlir::arith::ConstantIndexOp>(loc, 1);
-
-    auto for_i = b.create<mlir::scf::ForOp>(loc, c0, total, c1, std::nullopt,
-        [&](mlir::OpBuilder& bb, mlir::Location loc, mlir::Value i, mlir::ValueRange) {
-            // Decode flat index i -> (outer, axis, inner)
-            auto axis_stride = bb.create<mlir::arith::MulIOp>(loc, axis_len_c, inner_c);
-            auto outer = bb.create<mlir::arith::DivUIOp>(loc, i, axis_stride);
-            auto rem0 = bb.create<mlir::arith::SubIOp>(loc, i, bb.create<mlir::arith::MulIOp>(loc, outer, axis_stride));
-            auto axis = bb.create<mlir::arith::DivUIOp>(loc, rem0, inner_c);
-            auto inner = bb.create<mlir::arith::SubIOp>(loc, rem0, bb.create<mlir::arith::MulIOp>(loc, axis, inner_c));
-
-            auto dst_outer_stride = bb.create<mlir::arith::MulIOp>(loc, outer, axis_total_c);
-            auto dst_axis = bb.create<mlir::arith::AddIOp>(loc, axis_offset_c, axis);
-            auto dst_flat = bb.create<mlir::arith::AddIOp>(loc,
-                               bb.create<mlir::arith::MulIOp>(loc,
-                                   bb.create<mlir::arith::AddIOp>(loc, dst_outer_stride, dst_axis),
-                                   inner_c),
-                               inner);
-            auto src_outer_stride = bb.create<mlir::arith::MulIOp>(loc, outer, axis_stride);
-            auto src_flat = bb.create<mlir::arith::AddIOp>(loc, src_outer_stride,
-                              bb.create<mlir::arith::AddIOp>(loc, bb.create<mlir::arith::MulIOp>(loc, axis, inner_c), inner));
-
-            auto val = bb.create<mlir::memref::LoadOp>(loc, input, mlir::ValueRange{src_flat});
-            bb.create<mlir::memref::StoreOp>(loc, val, output, mlir::ValueRange{dst_flat});
-            bb.create<mlir::scf::YieldOp>(loc);
-        });
-
-    b.setInsertionPointAfter(for_i);
-    b.create<mlir::func::ReturnOp>(loc);
-
+    b.create<mlir::func::ReturnOp>(loc, result);
     return module;
 }
 

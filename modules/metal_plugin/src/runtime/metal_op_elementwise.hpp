@@ -5,7 +5,7 @@
 
 #include <vector>
 
-#include "kernel_ir/kernel_ir_common.hpp"
+#include "mlir_codegen/codegen_common.hpp"
 #include "runtime/metal_op.hpp"
 #include "kernel_codegen/metal_kernel_compiler.hpp"
 
@@ -15,16 +15,17 @@ namespace metal_plugin {
 class METAL_OP_API MetalElementwiseOp : public MetalOp {
 public:
     MetalElementwiseOp(const std::shared_ptr<const ov::Node>& node,
-                       KernelOpKind kind,
+                       EltwiseKind kind,
                        void* device,
                        void* queue);
     ~MetalElementwiseOp() override = default;
 
     void init(MetalBufferManager* buffer_manager) override;
-    void execute() override;
+    void compile(MetalBufferManager* buffer_manager) override;
+    void execute(MetalCommandBufferHandle command_buffer) override;
 
 protected:
-    KernelOpKind m_kind;
+    EltwiseKind m_kind;
     std::shared_ptr<const ov::Node> m_node;
     ov::element::Type m_element_type{ov::element::f32};
     id<MTLDevice> m_device = nil;
@@ -48,25 +49,121 @@ protected:
 class METAL_OP_API MetalAddOp final : public MetalElementwiseOp {
 public:
     MetalAddOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
-        : MetalElementwiseOp(node, KernelOpKind::ElementwiseAdd, device, queue) {}
+        : MetalElementwiseOp(node, EltwiseKind::Add, device, queue) {}
 };
 
 class METAL_OP_API MetalSubOp final : public MetalElementwiseOp {
 public:
     MetalSubOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
-        : MetalElementwiseOp(node, KernelOpKind::ElementwiseSub, device, queue) {}
+        : MetalElementwiseOp(node, EltwiseKind::Sub, device, queue) {}
 };
 
 class METAL_OP_API MetalMulOp final : public MetalElementwiseOp {
 public:
     MetalMulOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
-        : MetalElementwiseOp(node, KernelOpKind::ElementwiseMul, device, queue) {}
+        : MetalElementwiseOp(node, EltwiseKind::Mul, device, queue) {}
 };
 
 class METAL_OP_API MetalDivOp final : public MetalElementwiseOp {
 public:
     MetalDivOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
-        : MetalElementwiseOp(node, KernelOpKind::ElementwiseDiv, device, queue) {}
+        : MetalElementwiseOp(node, EltwiseKind::Div, device, queue) {}
+};
+
+class METAL_OP_API MetalPowOp final : public MetalElementwiseOp {
+public:
+    MetalPowOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
+        : MetalElementwiseOp(node, EltwiseKind::Pow, device, queue) {}
+};
+
+class METAL_OP_API MetalModOp final : public MetalElementwiseOp {
+public:
+    MetalModOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
+        : MetalElementwiseOp(node, EltwiseKind::Mod, device, queue) {}
+};
+
+class METAL_OP_API MetalFloorModOp final : public MetalElementwiseOp {
+public:
+    MetalFloorModOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
+        : MetalElementwiseOp(node, EltwiseKind::FloorMod, device, queue) {}
+};
+
+class METAL_OP_API MetalPreluOp final : public MetalElementwiseOp {
+public:
+    MetalPreluOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
+        : MetalElementwiseOp(node, EltwiseKind::Prelu, device, queue) {}
+};
+
+class METAL_OP_API MetalSquaredDiffOp final : public MetalElementwiseOp {
+public:
+    MetalSquaredDiffOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
+        : MetalElementwiseOp(node, EltwiseKind::SquaredDiff, device, queue) {}
+};
+
+class METAL_OP_API MetalMinOp final : public MetalElementwiseOp {
+public:
+    MetalMinOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
+        : MetalElementwiseOp(node, EltwiseKind::Min, device, queue) {}
+};
+
+class METAL_OP_API MetalMaxOp final : public MetalElementwiseOp {
+public:
+    MetalMaxOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
+        : MetalElementwiseOp(node, EltwiseKind::Max, device, queue) {}
+};
+
+class METAL_OP_API MetalLogicalAndOp final : public MetalElementwiseOp {
+public:
+    MetalLogicalAndOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
+        : MetalElementwiseOp(node, EltwiseKind::LogicalAnd, device, queue) {}
+};
+
+class METAL_OP_API MetalLogicalOrOp final : public MetalElementwiseOp {
+public:
+    MetalLogicalOrOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
+        : MetalElementwiseOp(node, EltwiseKind::LogicalOr, device, queue) {}
+};
+
+class METAL_OP_API MetalLogicalXorOp final : public MetalElementwiseOp {
+public:
+    MetalLogicalXorOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
+        : MetalElementwiseOp(node, EltwiseKind::LogicalXor, device, queue) {}
+};
+
+class METAL_OP_API MetalEqualOp final : public MetalElementwiseOp {
+public:
+    MetalEqualOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
+        : MetalElementwiseOp(node, EltwiseKind::Equal, device, queue) {}
+};
+
+class METAL_OP_API MetalNotEqualOp final : public MetalElementwiseOp {
+public:
+    MetalNotEqualOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
+        : MetalElementwiseOp(node, EltwiseKind::NotEqual, device, queue) {}
+};
+
+class METAL_OP_API MetalLessOp final : public MetalElementwiseOp {
+public:
+    MetalLessOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
+        : MetalElementwiseOp(node, EltwiseKind::Less, device, queue) {}
+};
+
+class METAL_OP_API MetalGreaterOp final : public MetalElementwiseOp {
+public:
+    MetalGreaterOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
+        : MetalElementwiseOp(node, EltwiseKind::Greater, device, queue) {}
+};
+
+class METAL_OP_API MetalLessEqualOp final : public MetalElementwiseOp {
+public:
+    MetalLessEqualOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
+        : MetalElementwiseOp(node, EltwiseKind::LessEqual, device, queue) {}
+};
+
+class METAL_OP_API MetalGreaterEqualOp final : public MetalElementwiseOp {
+public:
+    MetalGreaterEqualOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
+        : MetalElementwiseOp(node, EltwiseKind::GreaterEqual, device, queue) {}
 };
 
 }  // namespace metal_plugin

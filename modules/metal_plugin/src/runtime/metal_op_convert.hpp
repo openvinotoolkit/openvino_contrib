@@ -7,7 +7,6 @@
 
 #include "openvino/op/convert.hpp"
 #include "runtime/metal_op.hpp"
-#include "kernel_ir/kernel_ir_common.hpp"
 
 namespace ov {
 namespace metal_plugin {
@@ -18,10 +17,11 @@ public:
     ~MetalConvertOp() override = default;
 
     void init(MetalBufferManager* buffer_manager) override;
-    void execute() override;
+    void compile(MetalBufferManager* buffer_manager) override;
+    void execute(MetalCommandBufferHandle command_buffer) override;
 
 private:
-    KernelOp m_desc{};
+    std::shared_ptr<const ov::Node> m_node;
     ov::element::Type m_src_type{ov::element::dynamic};
     ov::element::Type m_dst_type{ov::element::dynamic};
     id<MTLDevice> m_device = nil;

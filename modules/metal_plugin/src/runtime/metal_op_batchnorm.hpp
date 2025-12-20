@@ -7,7 +7,7 @@
 
 #include "openvino/op/batch_norm.hpp"
 #include "runtime/metal_op.hpp"
-#include "kernel_ir/kernel_ir_common.hpp"
+#include "mlir_codegen/codegen_common.hpp"
 
 namespace ov {
 namespace metal_plugin {
@@ -18,12 +18,14 @@ public:
     ~MetalBatchNormOp() override = default;
 
     void init(MetalBufferManager* buffer_manager) override;
-    void execute() override;
+    void compile(MetalBufferManager* buffer_manager) override;
+    void execute(MetalCommandBufferHandle command_buffer) override;
 
 private:
     void parse_bn(const std::shared_ptr<const ov::Node>& node);
 
-    KernelOp m_desc{};
+    std::shared_ptr<const ov::Node> m_node;
+    BatchNorm2DCodegenDesc m_desc{};
     ov::element::Type m_element_type{ov::element::f32};
     std::vector<float> m_params;  // gamma | beta | mean | var | eps
 

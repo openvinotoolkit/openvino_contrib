@@ -5,6 +5,7 @@
 #include "mlir_builder.hpp"
 
 #include "openvino/op/softmax.hpp"
+#include "openvino/op/log_softmax.hpp"
 #include "openvino/core/model.hpp"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -23,13 +24,18 @@ std::shared_ptr<const ov::Node> find_single_softmax(const std::shared_ptr<const 
     }
     OPENVINO_THROW("Softmax builder: Softmax op not found");
 }
-}  // namespace
 
-mlir::ModuleOp build_mlir_softmax_from_model(const std::shared_ptr<const ov::Model>& model,
-                                             mlir::MLIRContext& ctx) {
+std::shared_ptr<const ov::Node> find_single_logsoftmax(const std::shared_ptr<const ov::Model>& model) {
+    for (const auto& node : model->get_ordered_ops()) {
+        if (ov::is_type<const ov::op::v5::LogSoftmax>(node))
+            return node;
+    }
+    OPENVINO_THROW("Softmax builder: LogSoftmax op not found");
+}
+
+mlir::ModuleOp build_softmax_like_from_node(const std::shared_ptr<const ov::Node>& sm, mlir::MLIRContext& ctx) {
     ctx.loadDialect<mlir::func::FuncDialect, mlir::scf::SCFDialect, mlir::memref::MemRefDialect,
                     mlir::arith::ArithDialect>();
-    auto sm = find_single_softmax(model);
     const auto shape = sm->get_input_shape(0);
     auto f32 = mlir::Float32Type::get(&ctx);
     mlir::SmallVector<int64_t> dims(shape.begin(), shape.end());
@@ -48,6 +54,8 @@ mlir::ModuleOp build_mlir_softmax_from_model(const std::shared_ptr<const ov::Mod
     int64_t axis = -1;
     if (auto s1 = ov::as_type_ptr<const ov::op::v1::Softmax>(sm)) axis = s1->get_axis();
     else if (auto s8 = ov::as_type_ptr<const ov::op::v8::Softmax>(sm)) axis = s8->get_axis();
+    else if (auto ls = ov::as_type_ptr<const ov::op::v5::LogSoftmax>(sm)) axis = ls->get_axis();
+    else OPENVINO_THROW("Softmax builder: unsupported op kind");
     if (axis < 0) axis += static_cast<int64_t>(shape.size());
     int64_t rows = 1, cols = shape.at(axis), inner = 1;
     for (size_t i = 0; i < static_cast<size_t>(axis); ++i) rows *= shape[i];
@@ -84,6 +92,19 @@ mlir::ModuleOp build_mlir_softmax_from_model(const std::shared_ptr<const ov::Mod
 
     b.create<mlir::func::ReturnOp>(loc, mlir::ValueRange{out_alloc});
     return module;
+}
+}  // namespace
+
+mlir::ModuleOp build_mlir_softmax_from_model(const std::shared_ptr<const ov::Model>& model,
+                                             mlir::MLIRContext& ctx) {
+    auto sm = find_single_softmax(model);
+    return build_softmax_like_from_node(sm, ctx);
+}
+
+mlir::ModuleOp build_mlir_logsoftmax_from_model(const std::shared_ptr<const ov::Model>& model,
+                                                mlir::MLIRContext& ctx) {
+    auto sm = find_single_logsoftmax(model);
+    return build_softmax_like_from_node(sm, ctx);
 }
 
 }  // namespace metal_plugin

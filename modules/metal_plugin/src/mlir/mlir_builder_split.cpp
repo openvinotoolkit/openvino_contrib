@@ -2,118 +2,155 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "mlir_builder.hpp"
+#include "mlir/mlir_builder.hpp"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
 
 #include "openvino/core/except.hpp"
+#include "openvino/core/model.hpp"
+#include "openvino/op/constant.hpp"
+#include "openvino/op/split.hpp"
+#include "openvino/op/variadic_split.hpp"
 
 namespace ov {
 namespace metal_plugin {
 
-mlir::ModuleOp build_mlir_split_from_op(const KernelOp& op, mlir::MLIRContext& ctx) {
-    OPENVINO_ASSERT(op.kind == KernelOpKind::Split || op.kind == KernelOpKind::Slice,
-                    "Split builder expects Split/Slice op");
-    ctx.loadDialect<mlir::func::FuncDialect, mlir::memref::MemRefDialect, mlir::arith::ArithDialect, mlir::scf::SCFDialect>();
+namespace {
+mlir::Type to_mlir_type(ov::element::Type et, mlir::MLIRContext& ctx) {
+    switch (et) {
+        case ov::element::f32: return mlir::Float32Type::get(&ctx);
+        case ov::element::f16: return mlir::Float16Type::get(&ctx);
+        case ov::element::i8:
+        case ov::element::u8:  return mlir::IntegerType::get(&ctx, 8, mlir::IntegerType::Signed);
+        case ov::element::i32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
+        case ov::element::i64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Signed);
+        default: OPENVINO_THROW("Split MLIR: unsupported element type");
+    }
+}
 
-    mlir::Type elem_ty = mlir::Float32Type::get(&ctx);
-    if (op.output && op.output->dtype.ov_type == ov::element::f16)
-        elem_ty = mlir::Float16Type::get(&ctx);
+std::vector<size_t> extract_split_sizes(const std::shared_ptr<const ov::Node>& node,
+                                        int64_t& axis_out,
+                                        ov::Shape& input_shape) {
+    if (auto s = ov::as_type_ptr<const ov::op::v1::Split>(node)) {
+        auto axis_const = ov::as_type_ptr<const ov::op::v0::Constant>(s->input_value(1).get_node_shared_ptr());
+        OPENVINO_ASSERT(axis_const, "Split axis must be constant");
+        axis_out = axis_const->cast_vector<int64_t>().at(0);
+        input_shape = s->get_input_shape(0);
+        const size_t parts = s->get_num_splits();
+        const size_t axis_norm = axis_out >= 0 ? static_cast<size_t>(axis_out)
+                                               : static_cast<size_t>(axis_out + static_cast<int64_t>(input_shape.size()));
+        OPENVINO_ASSERT(axis_norm < input_shape.size(), "Split axis out of range");
+        OPENVINO_ASSERT(input_shape.at(axis_norm) % parts == 0, "Split dimension not divisible by parts");
+        size_t chunk = input_shape.at(axis_norm) / parts;
+        return std::vector<size_t>(parts, chunk);
+    } else if (auto vs = ov::as_type_ptr<const ov::op::v1::VariadicSplit>(node)) {
+        auto axis_const = ov::as_type_ptr<const ov::op::v0::Constant>(vs->input_value(1).get_node_shared_ptr());
+        OPENVINO_ASSERT(axis_const, "VariadicSplit axis must be constant");
+        axis_out = axis_const->cast_vector<int64_t>().at(0);
+        input_shape = vs->get_input_shape(0);
+        auto lengths_const = ov::as_type_ptr<const ov::op::v0::Constant>(vs->input_value(2).get_node_shared_ptr());
+        OPENVINO_ASSERT(lengths_const, "VariadicSplit lengths must be constant");
+        auto lengths = lengths_const->cast_vector<int64_t>();
+        std::vector<size_t> res;
+        res.reserve(lengths.size());
+        for (auto v : lengths) {
+            OPENVINO_ASSERT(v >= 0, "VariadicSplit negative length not supported");
+            res.push_back(static_cast<size_t>(v));
+        }
+        return res;
+    }
+    OPENVINO_THROW("Split MLIR: unsupported node type");
+}
+}  // namespace
 
-    auto input_ty = mlir::MemRefType::get({mlir::ShapedType::kDynamic}, elem_ty);
-    auto output_ty = mlir::MemRefType::get({mlir::ShapedType::kDynamic}, elem_ty);
+mlir::ModuleOp build_mlir_split_from_model(const std::shared_ptr<const ov::Model>& model,
+                                           mlir::MLIRContext& ctx) {
+    ctx.loadDialect<mlir::func::FuncDialect, mlir::tensor::TensorDialect, mlir::arith::ArithDialect>();
+
+    std::shared_ptr<const ov::Node> split_node;
+    for (const auto& node : model->get_ordered_ops()) {
+        if (ov::as_type_ptr<const ov::op::v1::Split>(node) ||
+            ov::as_type_ptr<const ov::op::v1::VariadicSplit>(node)) {
+            OPENVINO_ASSERT(!split_node, "Split MLIR builder: expected single split node");
+            split_node = node;
+        }
+    }
+    OPENVINO_ASSERT(split_node, "Split MLIR builder: split node not found");
+
+    int64_t axis = 0;
+    ov::Shape input_shape;
+    auto split_sizes = extract_split_sizes(split_node, axis, input_shape);
+    auto elem_ty = to_mlir_type(split_node->get_output_element_type(0), ctx);
+
+    mlir::SmallVector<int64_t> in_shape_vec;
+    in_shape_vec.reserve(input_shape.size());
+    for (auto v : input_shape) in_shape_vec.push_back(static_cast<int64_t>(v));
+    auto in_tensor_ty = mlir::RankedTensorType::get(in_shape_vec, elem_ty);
+    mlir::SmallVector<mlir::Type> out_types;
+    out_types.reserve(split_sizes.size());
+    int64_t axis_norm = axis;
+    if (axis_norm < 0)
+        axis_norm += static_cast<int64_t>(input_shape.size());
+    for (size_t i = 0; i < split_sizes.size(); ++i) {
+        ov::Shape out_shape = input_shape;
+        out_shape[static_cast<size_t>(axis_norm)] = split_sizes[i];
+        mlir::SmallVector<int64_t> out_shape_vec;
+        out_shape_vec.reserve(out_shape.size());
+        for (auto v : out_shape) out_shape_vec.push_back(static_cast<int64_t>(v));
+        out_types.push_back(mlir::RankedTensorType::get(out_shape_vec, elem_ty));
+    }
 
     mlir::OpBuilder mb(&ctx);
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
     mb.setInsertionPointToStart(module.getBody());
 
-    auto func_type = mb.getFunctionType({input_ty, output_ty}, {});
+    auto func_type = mb.getFunctionType({in_tensor_ty}, out_types);
     auto func = mb.create<mlir::func::FuncOp>(mlir::UnknownLoc::get(&ctx), "split_main", func_type);
     func.addEntryBlock();
 
     mlir::OpBuilder b(func.getBody());
     auto loc = mlir::UnknownLoc::get(&ctx);
-    auto input = func.getArgument(0);
-    auto output = func.getArgument(1);
+    b.setInsertionPointToStart(&func.getBody().front());
 
-    std::vector<int64_t> ishape;
-    int64_t axis = 0;
-    int64_t axis_dim = 0;
-    int64_t split_size = 0;
+    // axis_norm computed above
+    OPENVINO_ASSERT(axis_norm >= 0 && static_cast<size_t>(axis_norm) < input_shape.size(),
+                    "Split MLIR: axis out of range");
+
+    mlir::SmallVector<mlir::Value> results;
+    results.reserve(split_sizes.size());
     int64_t axis_offset = 0;
-    int64_t inner = 1;
-
-    if (op.kind == KernelOpKind::Split) {
-        ishape.assign(op.split.input_shape.begin(), op.split.input_shape.end());
-        axis = op.split.axis;
-        axis_dim = (axis >= 0 && axis < static_cast<int64_t>(ishape.size()))
-                       ? ishape[static_cast<size_t>(axis)]
-                       : 0;
-        split_size = static_cast<int64_t>(op.split.split_sizes.empty() ? 0 : op.split.split_sizes[0]);
-        axis_offset = static_cast<int64_t>(op.split.axis_offsets.empty() ? 0 : op.split.axis_offsets[0]);
-        inner = static_cast<int64_t>(op.split.inner);
-    } else {  // Slice
-        ishape.assign(op.slice.in_shape.begin(), op.slice.in_shape.end());
-        // infer axis: first dim where out_shape differs or start non-zero
-        const auto& osh = op.slice.out_shape;
-        axis = 0;
-        for (size_t i = 0; i < ishape.size(); ++i) {
-            if (i >= osh.size() || ishape[i] != osh[i] || (i < op.slice.starts.size() && op.slice.starts[i] != 0)) {
-                axis = static_cast<int64_t>(i);
-                break;
-            }
+    for (size_t i = 0; i < split_sizes.size(); ++i) {
+        mlir::SmallVector<mlir::OpFoldResult> offsets;
+        mlir::SmallVector<mlir::OpFoldResult> sizes;
+        mlir::SmallVector<mlir::OpFoldResult> strides;
+        offsets.reserve(input_shape.size());
+        sizes.reserve(input_shape.size());
+        strides.reserve(input_shape.size());
+        for (size_t d = 0; d < input_shape.size(); ++d) {
+            int64_t off = (d == static_cast<size_t>(axis_norm)) ? axis_offset : 0;
+            int64_t sz = (d == static_cast<size_t>(axis_norm))
+                             ? static_cast<int64_t>(split_sizes[i])
+                             : static_cast<int64_t>(input_shape[d]);
+            offsets.push_back(b.getIndexAttr(off));
+            sizes.push_back(b.getIndexAttr(sz));
+            strides.push_back(b.getIndexAttr(1));
         }
-        axis_dim = ishape.empty() ? 0 : ishape[static_cast<size_t>(axis)];
-        split_size = (axis < static_cast<int64_t>(osh.size())) ? osh[static_cast<size_t>(axis)] : 0;
-        axis_offset = (axis < static_cast<int64_t>(op.slice.starts.size())) ? op.slice.starts[static_cast<size_t>(axis)] : 0;
-        for (size_t k = static_cast<size_t>(axis + 1); k < ishape.size(); ++k) inner *= static_cast<int64_t>(ishape[k]);
+        auto slice = b.create<mlir::tensor::ExtractSliceOp>(loc,
+                                                            func.getArgument(0),
+                                                            offsets,
+                                                            sizes,
+                                                            strides);
+        results.push_back(slice.getResult());
+        axis_offset += static_cast<int64_t>(split_sizes[i]);
     }
-    int64_t outer = 1;
-    for (int64_t i = 0; i < axis; ++i) outer *= ishape[static_cast<size_t>(i)];
 
-    auto c_axis_total = b.create<mlir::arith::ConstantIndexOp>(loc, axis_dim);
-    auto c_axis_offset = b.create<mlir::arith::ConstantIndexOp>(loc, axis_offset);
-    auto c_split = b.create<mlir::arith::ConstantIndexOp>(loc, split_size);
-    auto c_inner = b.create<mlir::arith::ConstantIndexOp>(loc, inner);
-    auto c_outer = b.create<mlir::arith::ConstantIndexOp>(loc, outer);
-    auto c0 = b.create<mlir::arith::ConstantIndexOp>(loc, 0);
-    auto c1 = b.create<mlir::arith::ConstantIndexOp>(loc, 1);
-
-    auto for_outer = b.create<mlir::scf::ForOp>(loc, c0, c_outer, c1, std::nullopt,
-        [&](mlir::OpBuilder& bo, mlir::Location loc, mlir::Value o, mlir::ValueRange){
-            auto for_axis = bo.create<mlir::scf::ForOp>(loc, c0, c_split, c1, std::nullopt,
-                [&](mlir::OpBuilder& ba, mlir::Location loc, mlir::Value a, mlir::ValueRange){
-                    auto for_in = ba.create<mlir::scf::ForOp>(loc, c0, c_inner, c1, std::nullopt,
-                        [&](mlir::OpBuilder& bi, mlir::Location loc, mlir::Value i, mlir::ValueRange){
-                            auto outer_stride = bi.create<mlir::arith::MulIOp>(loc, o,
-                                bi.create<mlir::arith::MulIOp>(loc, c_axis_total, c_inner));
-                            auto src_idx = bi.create<mlir::arith::AddIOp>(loc, outer_stride,
-                                bi.create<mlir::arith::AddIOp>(loc,
-                                    bi.create<mlir::arith::MulIOp>(loc,
-                                        bi.create<mlir::arith::AddIOp>(loc, c_axis_offset, a),
-                                        c_inner),
-                                    i));
-                            auto dst_idx = bi.create<mlir::arith::AddIOp>(loc,
-                                bi.create<mlir::arith::MulIOp>(loc,
-                                    bi.create<mlir::arith::MulIOp>(loc, o, c_split),
-                                    c_inner),
-                                bi.create<mlir::arith::AddIOp>(loc,
-                                    bi.create<mlir::arith::MulIOp>(loc, a, c_inner), i));
-                            auto val = bi.create<mlir::memref::LoadOp>(loc, input, mlir::ValueRange{src_idx});
-                            bi.create<mlir::memref::StoreOp>(loc, val, output, mlir::ValueRange{dst_idx});
-                            bi.create<mlir::scf::YieldOp>(loc);
-                        });
-                    ba.create<mlir::scf::YieldOp>(loc);
-                });
-            bo.create<mlir::scf::YieldOp>(loc);
-        });
-
-    b.setInsertionPointAfter(for_outer);
-    b.create<mlir::func::ReturnOp>(loc);
+    b.create<mlir::func::ReturnOp>(loc, results);
     return module;
 }
 

@@ -24,7 +24,7 @@ public:
         MetalOp::init(buffer_manager);
     }
 
-    void execute() override {
+    void execute(MetalCommandBufferHandle /*cb*/) override {
         start_profiling();
         executed = true;
         stop_profiling_ms();
@@ -60,10 +60,9 @@ TEST(MetalOpTest, VirtualDispatchExecute) {
 
     base->enable_profiling(true);
     base->init(nullptr);
-    base->execute();
+    base->execute(nullptr);
 
     EXPECT_TRUE(derived.init_called);
     EXPECT_TRUE(derived.executed);
     EXPECT_GE(derived.last_exec_duration_ms(), 0.0);
 }
-

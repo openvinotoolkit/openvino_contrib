@@ -21,6 +21,8 @@ public:
     static std::unique_ptr<MetalOp> create(const std::shared_ptr<const ov::Node>& node,
                                            void* device = nullptr,
                                            void* queue = nullptr);
+    // Clone a compiled MetalOp prototype for per-infer execution.
+    static std::unique_ptr<MetalOp> clone(const MetalOp& op);
 };
 
 }  // namespace metal_plugin

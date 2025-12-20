@@ -55,11 +55,11 @@ std::vector<std::string> render_indices(mlir::Operation::operand_range range,
 }
 
 std::string emit_softmax_msl(const SoftmaxCodegenDesc& d,
+                             const std::string& scalar,
                              const std::vector<std::string>& input_idx,
                              const std::vector<std::string>& output_idx,
                              uint32_t rank) {
-    const bool use_half = (d.element_type == ov::element::f16);
-    const char* scalar = use_half ? "half" : "float";
+    const bool use_half = (scalar == "half");
     std::vector<std::string> dims;
     if (rank == 3)
         dims = {"p.cols", "p.inner"};
@@ -93,15 +93,25 @@ std::string emit_softmax_msl(const SoftmaxCodegenDesc& d,
     ss << "    float sum = 0.0f;\n";
     ss << "    for (uint c = 0; c < p.cols; ++c) {\n";
     ss << "        uint idx = base_outer + c * p.inner + inner_i;\n";
-    ss << "        sum += exp(input[idx] - m);\n";
+    ss << "        float v = static_cast<float>(input[idx]);\n";
+    ss << "        sum += exp(v - m);\n";
     ss << "    }\n";
-    ss << "    float inv = 1.0f / sum;\n";
     ss << "    uint out_idx = base_outer + col * p.inner + inner_i;\n";
     ss << "    float v = static_cast<float>(input[out_idx]);\n";
-    if (use_half) {
-        ss << "    output[out_idx] = static_cast<" << scalar << ">(exp(v - m) * inv);\n";
+    if (d.log_softmax) {
+        ss << "    float logsum = log(sum);\n";
+        if (use_half) {
+            ss << "    output[out_idx] = static_cast<" << scalar << ">((v - m) - logsum);\n";
+        } else {
+            ss << "    output[out_idx] = (v - m) - logsum;\n";
+        }
     } else {
-        ss << "    output[out_idx] = exp(v - m) * inv;\n";
+        ss << "    float inv = 1.0f / sum;\n";
+        if (use_half) {
+            ss << "    output[out_idx] = static_cast<" << scalar << ">(exp(v - m) * inv);\n";
+        } else {
+            ss << "    output[out_idx] = exp(v - m) * inv;\n";
+        }
     }
     ss << "}\n";
     return ss.str();
@@ -111,20 +121,30 @@ std::string emit_softmax_msl(const SoftmaxCodegenDesc& d,
 
 std::string generate_msl_for_softmax(const SoftmaxCodegenDesc& d, mlir::ModuleOp module) {
     OPENVINO_ASSERT(d.rows > 0 && d.cols > 0, "Softmax: rows/cols must be positive");
-    if (!module) {
-        const bool has_inner = d.inner > 1;
+    std::string scalar = msl_type_from_element(d.element_type);
+    if (scalar.empty()) {
+        scalar = "float";
+    }
+    const bool has_inner = d.inner > 1;
+    auto fallback = [&]() {
         if (has_inner) {
-            return emit_softmax_msl(d, {"row_i", "col_i", "inner_i"}, {"row_i", "col_i", "inner_i"}, 3);
-        } else {
-            return emit_softmax_msl(d, {"row_i", "col_i"}, {"row_i", "col_i"}, 2);
+            return emit_softmax_msl(d, scalar, {"row_i", "col_i", "inner_i"}, {"row_i", "col_i", "inner_i"}, 3);
         }
+        return emit_softmax_msl(d, scalar, {"row_i", "col_i"}, {"row_i", "col_i"}, 2);
+    };
+    if (!module) {
+        return fallback();
     }
 
     auto func = find_func(module);
-    OPENVINO_ASSERT(func, "Softmax MLIR: function not found");
+    if (!func) {
+        return fallback();
+    }
 
     auto loops = collect_loop_chain(func);
-    OPENVINO_ASSERT(!loops.empty(), "Softmax MLIR: expected loop nest");
+    if (loops.empty() || loops.size() > 3) {
+        return fallback();
+    }
 
     // Typical lowering: outer loops for row / inner (optional), inner for col
     uint32_t rank = 2;
@@ -136,7 +156,7 @@ std::string generate_msl_for_softmax(const SoftmaxCodegenDesc& d, mlir::ModuleOp
         loop_names = {"row_i", "inner_i", "col_i"};
         rank = 3;
     } else {
-        OPENVINO_THROW("Softmax MLIR: unexpected loop depth ", loops.size());
+        return fallback();
     }
 
     llvm::DenseMap<mlir::Value, std::string> names;
@@ -154,7 +174,9 @@ std::string generate_msl_for_softmax(const SoftmaxCodegenDesc& d, mlir::ModuleOp
         if (!output_store)
             output_store = op;
     });
-    OPENVINO_ASSERT(input_load && output_store, "Softmax MLIR: failed to find load/store");
+    if (!input_load || !output_store) {
+        return fallback();
+    }
 
     auto input_idx = render_indices(input_load.getIndices(), names);
     auto output_idx = render_indices(output_store.getIndices(), names);
@@ -173,7 +195,7 @@ std::string generate_msl_for_softmax(const SoftmaxCodegenDesc& d, mlir::ModuleOp
     mlir_codegen_log("  output idx: [" + join(output_idx) + "]");
 #endif
 
-    return emit_softmax_msl(d, input_idx, output_idx, rank);
+    return emit_softmax_msl(d, scalar, input_idx, output_idx, rank);
 }
 
 }  // namespace metal_plugin

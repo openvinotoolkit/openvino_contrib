@@ -30,18 +30,26 @@ void run_activation(const ActivationCase& tc) {
     ASSERT_NE(device, nil);
     id<MTLCommandQueue> queue = [device newCommandQueue];
 
-    MetalBufferManager mgr(device);
+    MetalDeviceCaps caps = query_metal_device_caps(device);
+    MetalAllocatorCore core(device, caps);
+    MetalHeapPool heaps(core);
+    MetalFreeList freelist;
+    MetalStagingPool staging(core);
+    MetalAllocator allocator(core, heaps, freelist, staging, caps);
+    MetalConstCache const_cache(allocator);
+    MetalBufferManager mgr(core, &const_cache);
+    MetalBufferManager::set_current_allocator(&allocator);
 
     // Prepare tensors
     MetalTensor input{};
     input.shape = {tc.in.size()};
     input.expected_type = ov::element::f32;
-    input.buf = mgr.allocate(tc.in.size() * sizeof(float), ov::element::f32, false, false);
-    mgr.upload(input.buf, tc.in.data(), tc.in.size() * sizeof(float));
+    input.buf = mgr.wrap_shared(tc.in.data(), tc.in.size() * sizeof(float), ov::element::f32);
 
     MetalTensor output{};
     output.shape = {tc.in.size()};
     output.expected_type = ov::element::f32;
+    output.prefer_private = false;
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{tc.in.size()});
     auto node = OpFactory::make_node(param);
@@ -49,7 +57,12 @@ void run_activation(const ActivationCase& tc) {
     op->set_inputs({&input});
     op->set_output(&output);
     op->init(&mgr);
-    op->execute();
+    id<MTLCommandBuffer> cb = [queue commandBuffer];
+    op->execute(cb);
+    [cb commit];
+    [cb waitUntilCompleted];
+
+    MetalBufferManager::set_current_allocator(nullptr);
 
     id<MTLBuffer> out_buf = static_cast<id<MTLBuffer>>(output.buf.buffer);
     ASSERT_NE(out_buf, nil);

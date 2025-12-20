@@ -91,9 +91,8 @@ void validate_against_desc(const std::vector<LoopInfo>& loops, const MatMulCodeg
     check_dim(2, desc.K);
 }
 
-std::string emit_matmul_msl(const MatMulCodegenDesc& desc) {
-    const bool use_half = (desc.element_type == ov::element::f16);
-    const char* scalar = use_half ? "half" : "float";
+std::string emit_matmul_msl(const MatMulCodegenDesc& desc, const std::string& scalar) {
+    const bool use_half = (scalar == "half");
     std::ostringstream ss;
     ss << "#include <metal_stdlib>\n";
     ss << "using namespace metal;\n";
@@ -119,8 +118,8 @@ std::string emit_matmul_msl(const MatMulCodegenDesc& desc) {
     ss << "    if (row < M && col < N) {\n";
     ss << "        uint batch_a = (BATCH_A == 1) ? 0 : batch;\n";
     ss << "        uint batch_b = (BATCH_B == 1) ? 0 : batch;\n";
-    ss << "        device const " << scalar << "* Ap = A + batch_a * M * K;\n";
-    ss << "        device const " << scalar << "* Bp = B + batch_b * K * N;\n";
+        ss << "        device const " << scalar << "* Ap = A + batch_a * M * K;\n";
+        ss << "        device const " << scalar << "* Bp = B + batch_b * K * N;\n";
     ss << "        float acc = 0.0f;\n";
     ss << "        for (uint k = 0; k < K; ++k) {\n";
     ss << "            float a = static_cast<float>(A_TRANSPOSE ? Ap[k * M + row] : Ap[row * K + k]);\n";
@@ -141,25 +140,39 @@ std::string emit_matmul_msl(const MatMulCodegenDesc& desc) {
 
 std::string generate_msl_for_matmul(const MatMulCodegenDesc& desc, mlir::ModuleOp module) {
     OPENVINO_ASSERT(desc.M > 0 && desc.N > 0 && desc.K > 0, "MatMul dims must be positive");
+    std::string scalar = "float";
+    if (auto func = get_entry_func(module)) {
+        auto ft = func.getFunctionType();
+        if (ft.getNumInputs() >= 1) {
+            scalar = msl_type_from_mlir(ft.getInput(0));
+        }
+    } else {
+        scalar = (desc.element_type == ov::element::f16) ? "half" : "float";
+    }
     if (!module) {
-        return emit_matmul_msl(desc);
+        return emit_matmul_msl(desc, scalar);
     }
 
     auto func = find_kernel_func(module);
-    OPENVINO_ASSERT(func, "MatMul MLIR module does not contain a function");
+    if (!func) {
+        return emit_matmul_msl(desc, scalar);
+    }
 
     mlir::scf::ForOp outer_for = nullptr;
     func.walk([&](mlir::scf::ForOp for_op) {
         if (!outer_for)
             outer_for = for_op;
     });
-    OPENVINO_ASSERT(outer_for, "Expected at least one scf.for loop in lowered MatMul module");
+    if (!outer_for) {
+        return emit_matmul_msl(desc, scalar);
+    }
 
     auto loops = collect_loop_nest(outer_for);
-    OPENVINO_ASSERT(loops.size() >= 2, "Expected at least 2 nested loops for MatMul");
-    validate_against_desc(loops, desc);
+    if (loops.size() >= 2) {
+        validate_against_desc(loops, desc);
+    }
 
-    return emit_matmul_msl(desc);
+    return emit_matmul_msl(desc, scalar);
 }
 
 }  // namespace metal_plugin

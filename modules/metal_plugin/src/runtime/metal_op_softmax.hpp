@@ -5,8 +5,9 @@
 
 #include <memory>
 
-#include "kernel_ir/kernel_ir_common.hpp"
+#include "mlir_codegen/codegen_common.hpp"
 #include "openvino/op/softmax.hpp"
+#include "openvino/op/log_softmax.hpp"
 #include "runtime/metal_op.hpp"
 
 namespace ov {
@@ -14,16 +15,22 @@ namespace metal_plugin {
 
 class METAL_OP_API MetalSoftmaxOp : public MetalOp {
 public:
-    MetalSoftmaxOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue);
+    MetalSoftmaxOp(const std::shared_ptr<const ov::Node>& node,
+                   void* device,
+                   void* queue,
+                   bool log_softmax = false);
     ~MetalSoftmaxOp() override = default;
 
     void init(MetalBufferManager* buffer_manager) override;
-    void execute() override;
+    void compile(MetalBufferManager* buffer_manager) override;
+    void execute(MetalCommandBufferHandle command_buffer) override;
 
 private:
     int64_t m_axis = -1;
+    std::shared_ptr<const ov::Node> m_node;
     ov::element::Type m_element_type{ov::element::f32};
-    KernelOp m_desc{};
+    SoftmaxCodegenDesc m_desc{};
+    bool m_log_softmax = false;
 
     id<MTLDevice> m_device = nil;
     id<MTLCommandQueue> m_queue = nil;

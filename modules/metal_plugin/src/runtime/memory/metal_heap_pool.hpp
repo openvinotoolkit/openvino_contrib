@@ -1,0 +1,30 @@
+// Copyright (C) 2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <vector>
+
+#include "runtime/memory/metal_allocator_core.hpp"
+#include "runtime/memory/metal_buffer.hpp"
+
+namespace ov {
+namespace metal_plugin {
+
+class MetalHeapPool {
+public:
+    explicit MetalHeapPool(MetalAllocatorCore& core);
+    ~MetalHeapPool();
+
+    MetalBuffer alloc_private_from_heap(const BufferDesc& desc);
+    void on_release(MetalBuffer& buf);
+
+private:
+    MetalAllocatorCore& m_core;
+    std::vector<MetalHeapHandle> m_private_heaps;
+};
+
+}  // namespace metal_plugin
+}  // namespace ov

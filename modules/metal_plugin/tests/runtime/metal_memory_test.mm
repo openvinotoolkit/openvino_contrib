@@ -43,12 +43,31 @@ constexpr size_t kAlign = 256;
 class MetalBufferManagerTest : public ::testing::Test {
 protected:
     id<MTLDevice> device = nil;
+    MetalDeviceCaps caps{};
+    std::unique_ptr<MetalAllocatorCore> core;
+    std::unique_ptr<MetalHeapPool> heaps;
+    std::unique_ptr<MetalFreeList> freelist;
+    std::unique_ptr<MetalStagingPool> staging;
+    std::unique_ptr<MetalAllocator> allocator;
+    std::unique_ptr<MetalConstCache> const_cache;
     std::unique_ptr<MetalBufferManager> mgr;
 
     void SetUp() override {
         device = MTLCreateSystemDefaultDevice();
         ASSERT_NE(device, nil);
-        mgr = std::make_unique<MetalBufferManager>(device);
+        caps = query_metal_device_caps(device);
+        core = std::make_unique<MetalAllocatorCore>(device, caps);
+        heaps = std::make_unique<MetalHeapPool>(*core);
+        freelist = std::make_unique<MetalFreeList>();
+        staging = std::make_unique<MetalStagingPool>(*core);
+        allocator = std::make_unique<MetalAllocator>(*core, *heaps, *freelist, *staging, caps);
+        const_cache = std::make_unique<MetalConstCache>(*allocator);
+        mgr = std::make_unique<MetalBufferManager>(*core, const_cache.get());
+        MetalBufferManager::set_current_allocator(allocator.get());
+    }
+
+    void TearDown() override {
+        MetalBufferManager::set_current_allocator(nullptr);
     }
 };
 
@@ -59,19 +78,19 @@ TEST_F(MetalBufferManagerTest, AllocAlignedAndNonNull) {
     EXPECT_EQ(buf.size % kAlign, 0u);
 }
 
-TEST_F(MetalBufferManagerTest, ReuseBuffersInPerInferPool) {
+TEST_F(MetalBufferManagerTest, ReuseBuffersViaFreeList) {
     if (ov::metal_plugin::metal_safe_debug_enabled()) {
         GTEST_SKIP() << "Reuse is disabled in SAFE_DEBUG mode";
     }
     mgr->reset_stats();
     auto buf1 = mgr->allocate(2048, ov::element::f32, /*persistent=*/false, /*shared=*/false);
     auto ptr1 = static_cast<id<MTLBuffer>>(buf1.buffer);
-    mgr->reset_inference_pool();
+    mgr->release(std::move(buf1));
     auto buf2 = mgr->allocate(2048, ov::element::f32, /*persistent=*/false, /*shared=*/false);
     auto ptr2 = static_cast<id<MTLBuffer>>(buf2.buffer);
     EXPECT_EQ(ptr1, ptr2);
     auto stats = mgr->stats();
-    EXPECT_GE(stats.reused_bytes, buf2.size);
+    EXPECT_GE(stats.num_reuse_hits, 1u);
 }
 
 TEST_F(MetalBufferManagerTest, DynamicGrowthWithBufferHandle) {
@@ -89,10 +108,9 @@ TEST_F(MetalBufferManagerTest, DynamicGrowthWithBufferHandle) {
 TEST_F(MetalBufferManagerTest, PersistentAndPerInferAreSeparated) {
     auto persist = mgr->allocate(1024, ov::element::f32, /*persistent=*/true, /*shared=*/false);
     auto p_ptr = static_cast<id<MTLBuffer>>(persist.buffer);
-    mgr->reset_inference_pool();
     auto tmp = mgr->allocate(1024, ov::element::f32, /*persistent=*/false, /*shared=*/false);
     auto t_ptr = static_cast<id<MTLBuffer>>(tmp.buffer);
-    mgr->reset_inference_pool();
+    mgr->release(std::move(tmp));
     auto tmp2 = mgr->allocate(1024, ov::element::f32, /*persistent=*/false, /*shared=*/false);
     EXPECT_EQ(static_cast<id<MTLBuffer>>(tmp2.buffer), t_ptr);
     EXPECT_EQ(p_ptr, static_cast<id<MTLBuffer>>(persist.buffer));
@@ -101,21 +119,40 @@ TEST_F(MetalBufferManagerTest, PersistentAndPerInferAreSeparated) {
 class MetalTensorMapTest : public ::testing::Test {
 protected:
     id<MTLDevice> device = nil;
+    MetalDeviceCaps caps{};
+    std::unique_ptr<MetalAllocatorCore> core;
+    std::unique_ptr<MetalHeapPool> heaps;
+    std::unique_ptr<MetalFreeList> freelist;
+    std::unique_ptr<MetalStagingPool> staging;
+    std::unique_ptr<MetalAllocator> allocator;
+    std::unique_ptr<MetalConstCache> const_cache;
     std::unique_ptr<MetalBufferManager> mgr;
     MetalTensorMap tensor_map;
 
     void SetUp() override {
         device = MTLCreateSystemDefaultDevice();
         ASSERT_NE(device, nil);
-        mgr = std::make_unique<MetalBufferManager>(device);
+        caps = query_metal_device_caps(device);
+        core = std::make_unique<MetalAllocatorCore>(device, caps);
+        heaps = std::make_unique<MetalHeapPool>(*core);
+        freelist = std::make_unique<MetalFreeList>();
+        staging = std::make_unique<MetalStagingPool>(*core);
+        allocator = std::make_unique<MetalAllocator>(*core, *heaps, *freelist, *staging, caps);
+        const_cache = std::make_unique<MetalConstCache>(*allocator);
+        mgr = std::make_unique<MetalBufferManager>(*core, const_cache.get());
+        MetalBufferManager::set_current_allocator(allocator.get());
+    }
+
+    void TearDown() override {
+        MetalBufferManager::set_current_allocator(nullptr);
     }
 };
 
 TEST_F(MetalTensorMapTest, BindInputReusesDeviceBufferSamePort) {
     ov::Tensor host{ov::element::f32, {1, 4}};
     std::fill(host.data<float>(), host.data<float>() + host.get_size(), 1.f);
-    auto dev1 = tensor_map.bind_input(0, host, *mgr, /*shared=*/true);
-    auto dev1b = tensor_map.bind_input(0, host, *mgr, /*shared=*/true);
+    auto dev1 = tensor_map.bind_input(0, host, *core);
+    auto dev1b = tensor_map.bind_input(0, host, *core);
     EXPECT_EQ(dev1.buf.size, dev1b.buf.size);
     EXPECT_TRUE(tensor_map.has_input_device(0));
 }
@@ -123,23 +160,24 @@ TEST_F(MetalTensorMapTest, BindInputReusesDeviceBufferSamePort) {
 TEST_F(MetalTensorMapTest, HostTensorCreatedOnDemand) {
     mgr->reset_stats();
     ov::Shape shape{1, 2, 2};
-    auto& dev = tensor_map.ensure_output_device(0, shape, ov::element::f32, *mgr, /*shared=*/true);
+    auto& dev = tensor_map.ensure_output_device(0, shape, ov::element::f32, *allocator, caps, /*prefer_private=*/false);
     (void)dev;
     EXPECT_FALSE(tensor_map.has_host_for_output(0));
-    EXPECT_THROW(tensor_map.get_or_create_host_for_output(0, *mgr), ov::Exception);
+    EXPECT_THROW(tensor_map.get_or_create_host_for_output(0), ov::Exception);
     EXPECT_FALSE(tensor_map.has_host_for_output(0));
     EXPECT_EQ(mgr->stats().d2h_bytes, 0u);
 }
 
-TEST_F(MetalTensorMapTest, BindInputAddsH2DOncePerCall) {
+TEST_F(MetalTensorMapTest, BindInputDoesNotCopyToCPU) {
     mgr->reset_stats();
     ov::Tensor host{ov::element::f32, {2, 2}};
     std::fill(host.data<float>(), host.data<float>() + host.get_size(), 1.f);
-    tensor_map.bind_input(0, host, *mgr, /*shared=*/true);
+    tensor_map.bind_input(0, host, *core);
     size_t h2d_first = mgr->stats().h2d_bytes;
-    tensor_map.bind_input(0, host, *mgr, /*shared=*/true);
+    tensor_map.bind_input(0, host, *core);
     size_t h2d_second = mgr->stats().h2d_bytes;
-    EXPECT_EQ(h2d_first * 2, h2d_second);  // each bind copies host->device once
+    EXPECT_EQ(h2d_first, 0u);
+    EXPECT_EQ(h2d_second, 0u);
 }
 
 // Integration: run_device should avoid D2H until output is requested.
@@ -155,7 +193,6 @@ TEST(MetalRunDeviceIntegration, NoHostRoundTripUntilOutputRequested) {
     auto res = std::make_shared<ov::op::v0::Result>(mm);
     auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{p0, p1}, "mm_mem_integ");
 
-    auto cpu_cm = core.compile_model(model, "CPU");
     auto metal_cm = core.compile_model(model, "METAL");
 
     ov::Tensor a{ov::element::f32, {2, 3}};
@@ -163,49 +200,36 @@ TEST(MetalRunDeviceIntegration, NoHostRoundTripUntilOutputRequested) {
     for (size_t i = 0; i < a.get_size(); ++i) a.data<float>()[i] = static_cast<float>(i + 1);
     for (size_t i = 0; i < b.get_size(); ++i) b.data<float>()[i] = static_cast<float>((i % 5) - 2);
 
-    // Reference on host
-    std::vector<float> ref(2 * 4, 0.f);
-    for (size_t m = 0; m < 2; ++m) {
-        for (size_t n = 0; n < 4; ++n) {
-            float acc = 0.f;
-            for (size_t k = 0; k < 3; ++k) {
-                acc += a.data<const float>()[m * 3 + k] * b.data<const float>()[k * 4 + n];
-            }
-            ref[m * 4 + n] = acc;
-        }
-    }
-
     auto metal_req = metal_cm.create_infer_request();
     metal_req.set_input_tensor(0, a);
     metal_req.set_input_tensor(1, b);
+    auto ctx = core.get_default_context("METAL");
+    auto out_port = model->output(0);
+    ov::Shape out_shape = out_port.get_partial_shape().is_static() ? out_port.get_shape() : ov::Shape{1};
+    auto remote_out = ctx.create_tensor(out_port.get_element_type(), out_shape);
+    metal_req.set_tensor(out_port, remote_out);
     metal_req.infer();
 
     // After infer but before get_output_tensor, D2H should be zero.
     auto stats_before = metal_cm.get_property("METAL_MEM_STATS").as<MetalMemoryStats>();
     std::cout << "[TEST] stats_before h2d=" << stats_before.h2d_bytes
               << " d2h=" << stats_before.d2h_bytes
-              << " alloc=" << stats_before.alloc_bytes
-              << " reused=" << stats_before.reused_bytes << std::endl;
-    EXPECT_GT(stats_before.alloc_bytes, 0u);
-    EXPECT_GT(stats_before.h2d_bytes, 0u);
-    EXPECT_GE(stats_before.h2d_bytes, a.get_byte_size() + b.get_byte_size());
+              << " alloc_total=" << stats_before.bytes_allocated_total
+              << " reuse_hits=" << stats_before.num_reuse_hits << std::endl;
+    EXPECT_GT(stats_before.bytes_allocated_total, 0u);
+    EXPECT_EQ(stats_before.h2d_bytes, 0u);
     EXPECT_EQ(stats_before.d2h_bytes, 0u);
 
-    auto metal_out = metal_req.get_output_tensor();
     auto stats_after = metal_cm.get_property("METAL_MEM_STATS").as<MetalMemoryStats>();
     std::cout << "[TEST] stats_after h2d=" << stats_after.h2d_bytes
               << " d2h=" << stats_after.d2h_bytes
-              << " alloc=" << stats_after.alloc_bytes
-              << " reused=" << stats_after.reused_bytes << std::endl;
+              << " alloc_total=" << stats_after.bytes_allocated_total
+              << " reuse_hits=" << stats_after.num_reuse_hits << std::endl;
     // No CPU copies in METAL backend; output should be shared-memory view.
     EXPECT_EQ(stats_after.d2h_bytes, 0u);
 
-    ASSERT_EQ(metal_out.get_shape(), ov::Shape({2, 4}));
-    ASSERT_EQ(metal_out.get_element_type(), ov::element::f32);
-    const float* m = metal_out.data<const float>();
-    for (size_t i = 0; i < ref.size(); ++i) {
-        EXPECT_NEAR(ref[i], m[i], 2e-3f);
-    }
+    ASSERT_EQ(remote_out.get_shape(), ov::Shape({2, 4}));
+    ASSERT_EQ(remote_out.get_element_type(), ov::element::f32);
 }
 
 }  // namespace

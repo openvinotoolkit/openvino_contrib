@@ -6,7 +6,14 @@
 
 #include "openvino/op/constant.hpp"
 #include "openvino/core/validation_util.hpp"
+#include "kernel_codegen/metal_kernel_compiler.hpp"
+#include "mlir/mlir_builder.hpp"
+#include "mlir_codegen/codegen_common.hpp"
 #include "runtime/metal_logger.hpp"
+#include "runtime/metal_op_utils.hpp"
+
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
 
 namespace ov {
 namespace metal_plugin {
@@ -58,6 +65,7 @@ MetalSplitOp::MetalSplitOp(const std::shared_ptr<const ov::Node>& node, void* de
               {},  // output shapes are per-output; not used in base
               device,
               queue),
+      m_node(node),
       m_device((id<MTLDevice>)device),
       m_queue((id<MTLCommandQueue>)queue) {
     parse_split(node);
@@ -66,6 +74,37 @@ MetalSplitOp::MetalSplitOp(const std::shared_ptr<const ov::Node>& node, void* de
 void MetalSplitOp::parse_split(const std::shared_ptr<const ov::Node>& node) {
     m_split_sizes = extract_split_sizes(node, m_axis, m_input_shape);
     m_element_type = node->get_input_element_type(0);
+    if (auto s = ov::as_type_ptr<const ov::op::v1::Split>(node)) {
+        m_is_variadic = false;
+        m_num_splits = s->get_num_splits();
+    } else if (ov::as_type_ptr<const ov::op::v1::VariadicSplit>(node)) {
+        m_is_variadic = true;
+        m_num_splits = m_split_sizes.size();
+    }
+}
+
+void MetalSplitOp::init(MetalBufferManager* buffer_manager) {
+    MetalOp::init(buffer_manager);
+}
+
+void MetalSplitOp::compile(MetalBufferManager* buffer_manager) {
+    if (is_compiled()) {
+        return;
+    }
+    if (!this->buffer_manager()) {
+        MetalOp::init(buffer_manager);
+    }
+    MetalKernelCompiler compiler(m_device ? m_device : (id<MTLDevice>)buffer_manager->device());
+    std::string log;
+    SplitCodegenDesc desc{};
+    desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
+    mlir::MLIRContext ctx;
+    auto module = build_mlir_split_from_model(make_single_op_model_all_outputs(m_node), ctx);
+    auto source = generate_msl_from_mlir(module, desc);
+    m_pipeline = compiler.compile_msl_from_source(source, "split_kernel", log);
+    OPENVINO_ASSERT(m_pipeline, "MetalSplitOp: failed to compile kernel: ", log);
+
+    MetalOp::compile(buffer_manager);
 }
 
 void MetalSplitOp::set_outputs(const std::vector<std::unique_ptr<MetalTensor>>& outputs) {
@@ -76,7 +115,7 @@ void MetalSplitOp::set_outputs(const std::vector<std::unique_ptr<MetalTensor>>& 
     }
 }
 
-void MetalSplitOp::execute() {
+void MetalSplitOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     OPENVINO_ASSERT(!inputs().empty(), "Split: no inputs bound");
     MetalTensor* src = inputs().at(0);
     OPENVINO_ASSERT(src && src->buf.valid(), "Split: input buffer is null");
@@ -88,6 +127,8 @@ void MetalSplitOp::execute() {
 
     const ov::Shape shape = !src->shape.empty() ? src->shape : m_input_shape;
     OPENVINO_ASSERT(!shape.empty(), "Split: input shape unknown");
+    const size_t src_bytes = element_size() * ov::shape_size(shape);
+    OPENVINO_ASSERT(src->buf.size >= src_bytes, "Split: input buffer too small");
     int64_t axis_norm = m_axis;
     if (axis_norm < 0)
         axis_norm += static_cast<int64_t>(shape.size());
@@ -101,17 +142,25 @@ void MetalSplitOp::execute() {
     for (size_t i = static_cast<size_t>(axis_norm) + 1; i < shape.size(); ++i)
         inner *= shape[i];
 
-    // If split sizes were not known statically (e.g., zeros), derive from output shapes if present.
-    size_t total_requested = 0;
-    for (auto s : m_split_sizes) total_requested += s;
-    if (total_requested == 0 || total_requested != axis_len) {
-        m_split_sizes.clear();
-        m_split_sizes.reserve(m_outputs.size());
-        for (auto* out : m_outputs) {
-            size_t sz = out && out->shape.size() > static_cast<size_t>(axis_norm)
-                            ? out->shape[static_cast<size_t>(axis_norm)]
-                            : 0;
-            m_split_sizes.push_back(sz);
+    if (!m_is_variadic) {
+        const size_t parts = m_num_splits ? m_num_splits : m_outputs.size();
+        OPENVINO_ASSERT(parts > 0, "Split: number of splits is zero");
+        OPENVINO_ASSERT(axis_len % parts == 0, "Split dimension not divisible by parts");
+        const size_t chunk = axis_len / parts;
+        m_split_sizes.assign(parts, chunk);
+    } else {
+        // If split sizes were not known statically (e.g., zeros), derive from output shapes if present.
+        size_t total_requested = 0;
+        for (auto s : m_split_sizes) total_requested += s;
+        if (total_requested == 0 || total_requested != axis_len) {
+            m_split_sizes.clear();
+            m_split_sizes.reserve(m_outputs.size());
+            for (auto* out : m_outputs) {
+                size_t sz = out && out->shape.size() > static_cast<size_t>(axis_norm)
+                                ? out->shape[static_cast<size_t>(axis_norm)]
+                                : 0;
+                m_split_sizes.push_back(sz);
+            }
         }
     }
     size_t sum = 0;
@@ -128,21 +177,22 @@ void MetalSplitOp::execute() {
             out->shape = out_shape;
             out->expected_type = m_element_type;
             size_t bytes = element_size() * outer * split * inner;
-            if (!out->buf.valid()) {
+            if (!out->buf.valid() || out->buf.size < bytes) {
                 out->buf = buffer_manager()->allocate(bytes,
                                                       m_element_type,
                                                       /*persistent=*/false,
-                                                      /*storageModePrivate=*/true);
+                                                      out->prefer_private);
             }
         }
     }
 
-    if (!m_queue) {
-        m_queue = [m_device newCommandQueue];
-    }
-    id<MTLCommandBuffer> cb = [m_queue commandBuffer];
-    id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+    id<MTLCommandBuffer> cb = static_cast<id<MTLCommandBuffer>>(cmd_buf_handle);
+    OPENVINO_ASSERT(cb, "MetalSplitOp: command buffer is null");
+    OPENVINO_ASSERT(m_pipeline, "MetalSplitOp: pipeline is null");
+    id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+    [enc setComputePipelineState:m_pipeline];
 
+    start_profiling(enc);
     size_t axis_offset = 0;
     for (size_t out_idx = 0; out_idx < m_outputs.size(); ++out_idx) {
         MetalTensor* out = m_outputs[out_idx];
@@ -151,21 +201,33 @@ void MetalSplitOp::execute() {
             continue;
         }
         const size_t split = m_split_sizes[out_idx];
-        for (size_t o = 0; o < outer; ++o) {
-            size_t src_off = (o * axis_len * inner + axis_offset * inner) * element_size();
-            size_t dst_off = (o * split * inner) * element_size();
-            size_t bytes = split * inner * element_size();
-            [blit copyFromBuffer:to_mtl(src->buf)
-                    sourceOffset:src_off
-                        toBuffer:to_mtl(out->buf)
-               destinationOffset:dst_off
-                        size:bytes];
+
+        const uint64_t total = static_cast<uint64_t>(outer) * split * inner;
+        if (total > 0) {
+            [enc setBuffer:to_mtl(src->buf) offset:0 atIndex:0];
+            [enc setBuffer:to_mtl(out->buf) offset:0 atIndex:1];
+            struct SplitParams {
+                uint32_t outer;
+                uint32_t inner;
+                uint32_t axis_offset;
+                uint32_t axis_len;
+                uint32_t axis_total;
+            } params{};
+            params.outer = static_cast<uint32_t>(outer);
+            params.inner = static_cast<uint32_t>(inner);
+            params.axis_offset = static_cast<uint32_t>(axis_offset);
+            params.axis_len = static_cast<uint32_t>(split);
+            params.axis_total = static_cast<uint32_t>(axis_len);
+            [enc setBytes:&params length:sizeof(params) atIndex:2];
+            MTLSize grid = MTLSizeMake(static_cast<NSUInteger>(total), 1, 1);
+            const NSUInteger tg_size = static_cast<NSUInteger>(metal_clamp_tg_size((void*)m_pipeline, 256));
+            MTLSize tg = MTLSizeMake(tg_size, 1, 1);
+            [enc dispatchThreads:grid threadsPerThreadgroup:tg];
         }
         axis_offset += split;
     }
-    [blit endEncoding];
-    [cb commit];
-    [cb waitUntilCompleted];
+    stop_profiling_ms(enc);
+    [enc endEncoding];
 }
 
 }  // namespace metal_plugin

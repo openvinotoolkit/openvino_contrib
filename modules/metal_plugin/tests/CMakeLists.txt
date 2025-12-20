@@ -48,6 +48,13 @@ target_sources(${TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_factory_test.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_activation_op_test.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/metal_memory.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/memory/metal_device_caps.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/memory/metal_allocator_core.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/memory/metal_heap_pool.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/memory/metal_staging_pool.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/memory/metal_allocator.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/memory/metal_memory_session.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/memory/metal_const_cache.mm
 )
 
 # Device-specific bits: path to the built plugin and access to local src headers.
@@ -60,6 +67,10 @@ target_include_directories(${TARGET_NAME} PRIVATE
     ${OpenVINO_SOURCE_DIR}/src
     ${OpenVINO_SOURCE_DIR}/src/plugins/template/include
 )
+
+if(ENABLE_METAL_MLIR)
+    target_include_directories(${TARGET_NAME} PRIVATE ${MLIR_INCLUDE_DIRS})
+endif()
 
 if(APPLE)
     target_link_libraries(${TARGET_NAME} PRIVATE "-framework Metal" "-framework Foundation")

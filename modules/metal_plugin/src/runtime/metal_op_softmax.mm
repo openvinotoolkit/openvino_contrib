@@ -10,6 +10,11 @@
 #include "openvino/core/validation_util.hpp"
 #include "kernel_codegen/metal_kernel_compiler.hpp"
 #include "runtime/metal_logger.hpp"
+#include "runtime/metal_op_utils.hpp"
+#include "mlir_builder.hpp"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir_codegen/codegen_common.hpp"
 
 namespace ov {
 namespace metal_plugin {
@@ -49,29 +54,30 @@ SoftmaxDims flatten_softmax_dims(const ov::Shape& shape, int64_t axis_in) {
 
 MetalSoftmaxOp::MetalSoftmaxOp(const std::shared_ptr<const ov::Node>& node,
                                void* device,
-                               void* queue)
+                               void* queue,
+                               bool log_softmax)
     : MetalOp(node->get_friendly_name(),
-              "Softmax",
+              log_softmax ? "LogSoftmax" : "Softmax",
               node->get_output_partial_shape(0).is_static() ? node->get_output_shape(0) : ov::Shape{},
               device,
               queue),
       m_device((id<MTLDevice>)device),
-      m_queue((id<MTLCommandQueue>)queue) {
+      m_queue((id<MTLCommandQueue>)queue),
+      m_node(node),
+      m_log_softmax(log_softmax) {
     OPENVINO_ASSERT(node->get_input_size() == 1, "Softmax expects single input");
     if (auto s1 = std::dynamic_pointer_cast<const ov::op::v1::Softmax>(node)) {
         m_axis = s1->get_axis();
     } else if (auto s8 = std::dynamic_pointer_cast<const ov::op::v8::Softmax>(node)) {
         m_axis = s8->get_axis();
+    } else if (auto ls = std::dynamic_pointer_cast<const ov::op::v5::LogSoftmax>(node)) {
+        m_axis = ls->get_axis();
     } else {
         OPENVINO_THROW("MetalSoftmaxOp: unsupported softmax version");
     }
     m_element_type = node->get_output_element_type(0);
     OPENVINO_ASSERT(m_element_type == ov::element::f32 || m_element_type == ov::element::f16,
                     "Softmax supports only f16/f32");
-    m_desc.kind = KernelOpKind::Softmax;
-    m_desc.dtype = resolve_metal_dtype(m_element_type);
-    m_desc.element_type = static_cast<uint32_t>(static_cast<ov::element::Type_t>(m_element_type));
-    m_desc.softmax_axis = static_cast<int64_t>(m_axis);
     if (node->get_output_partial_shape(0).is_static()) {
         auto d = flatten_softmax_dims(node->get_output_shape(0), m_axis);
         m_desc.rows = d.rows;
@@ -82,16 +88,38 @@ MetalSoftmaxOp::MetalSoftmaxOp(const std::shared_ptr<const ov::Node>& node,
 
 void MetalSoftmaxOp::init(MetalBufferManager* buffer_manager) {
     MetalOp::init(buffer_manager);
+}
+
+void MetalSoftmaxOp::compile(MetalBufferManager* buffer_manager) {
+    if (is_compiled()) {
+        return;
+    }
+    if (!this->buffer_manager()) {
+        MetalOp::init(buffer_manager);
+    }
     if (!m_device && buffer_manager) {
         m_device = (id<MTLDevice>)buffer_manager->device();
     }
     MetalKernelCompiler compiler(m_device ? m_device : (id<MTLDevice>)buffer_manager->device());
     std::string log;
-    m_pipeline = compiler.compile_softmax_kernel(m_desc, log);
+    mlir::MLIRContext ctx;
+    auto model = make_single_op_model(m_node);
+    auto module = m_log_softmax ? build_mlir_logsoftmax_from_model(model, ctx)
+                                : build_mlir_softmax_from_model(model, ctx);
+    SoftmaxCodegenDesc desc{};
+    desc.rows = m_desc.rows;
+    desc.cols = m_desc.cols;
+    desc.inner = m_desc.inner == 0 ? 1 : m_desc.inner;
+    desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
+    desc.log_softmax = m_log_softmax;
+    auto source = generate_msl_from_mlir(module, desc);
+    m_pipeline = compiler.compile_msl_from_source(source, "softmax_kernel", log);
     OPENVINO_ASSERT(m_pipeline, "MetalSoftmaxOp: failed to compile softmax kernel: ", log);
+
+    MetalOp::compile(buffer_manager);
 }
 
-void MetalSoftmaxOp::execute() {
+void MetalSoftmaxOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     OPENVINO_ASSERT(!inputs().empty(), "Softmax: no inputs bound");
     MetalTensor* src = inputs().at(0);
     OPENVINO_ASSERT(src && src->buf.valid(), "Softmax: input buffer is null");
@@ -112,22 +140,31 @@ void MetalSoftmaxOp::execute() {
         m_desc.inner = dims.inner;
         MetalKernelCompiler compiler(m_device);
         std::string log;
-        m_pipeline = compiler.compile_softmax_kernel(m_desc, log);
+        mlir::MLIRContext ctx;
+        auto model = make_single_op_model(m_node);
+        auto module = m_log_softmax ? build_mlir_logsoftmax_from_model(model, ctx)
+                                    : build_mlir_softmax_from_model(model, ctx);
+        SoftmaxCodegenDesc desc{};
+        desc.rows = m_desc.rows;
+        desc.cols = m_desc.cols;
+        desc.inner = m_desc.inner == 0 ? 1 : m_desc.inner;
+        desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
+        desc.log_softmax = m_log_softmax;
+        auto source = generate_msl_from_mlir(module, desc);
+        m_pipeline = compiler.compile_msl_from_source(source, "softmax_kernel", log);
         OPENVINO_ASSERT(m_pipeline, "MetalSoftmaxOp: failed to recompile softmax kernel: ", log);
     }
 
     // Allocate output if needed.
-    if (!dst.buf.valid()) {
-        size_t bytes = m_element_type.size() * ov::shape_size(in_shape);
-        dst.buf = buffer_manager()->allocate(bytes, m_element_type, /*persistent=*/false, /*storageModePrivate=*/true);
+    const size_t bytes = m_element_type.size() * ov::shape_size(in_shape);
+    if (!dst.buf.valid() || dst.buf.size < bytes) {
+        dst.buf = buffer_manager()->allocate(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
     }
     dst.shape = in_shape;
     dst.expected_type = m_element_type;
 
-    if (!m_queue) {
-        m_queue = [m_device newCommandQueue];
-    }
-    id<MTLCommandBuffer> cb = [m_queue commandBuffer];
+    id<MTLCommandBuffer> cb = static_cast<id<MTLCommandBuffer>>(cmd_buf_handle);
+    OPENVINO_ASSERT(cb, "MetalSoftmaxOp: command buffer is null");
     id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
     [enc setComputePipelineState:m_pipeline];
     id<MTLBuffer> src_buf = to_mtl(src->buf);
@@ -135,8 +172,8 @@ void MetalSoftmaxOp::execute() {
     OPENVINO_ASSERT(src_buf, "Softmax: src MTLBuffer is null");
     OPENVINO_ASSERT(dst_buf, "Softmax: dst MTLBuffer is null");
     const size_t need_bytes = m_element_type.size() * ov::shape_size(in_shape);
-    OPENVINO_ASSERT(static_cast<size_t>([src_buf length]) >= src->buf.size, "Softmax: src buffer length underrun");
-    OPENVINO_ASSERT(static_cast<size_t>([dst_buf length]) >= need_bytes, "Softmax: dst buffer length underrun");
+    OPENVINO_ASSERT(src->buf.size >= need_bytes, "Softmax: src buffer too small");
+    OPENVINO_ASSERT(dst.buf.size >= need_bytes, "Softmax: dst buffer too small");
     [enc setBuffer:src_buf offset:0 atIndex:0];
     [enc setBuffer:dst_buf offset:0 atIndex:1];
     struct SoftmaxParams {
@@ -147,16 +184,19 @@ void MetalSoftmaxOp::execute() {
     [enc setBytes:&params length:sizeof(params) atIndex:2];
 
     const NSUInteger total = static_cast<NSUInteger>(params.rows) * static_cast<NSUInteger>(params.cols);
+    if (total == 0) {
+        [enc endEncoding];
+        return;
+    }
     const NSUInteger threads_per_tg = 64;
     MTLSize grid = MTLSizeMake(total, 1, 1);
-    MTLSize tg = MTLSizeMake(threads_per_tg, 1, 1);
+    const NSUInteger tg_size = static_cast<NSUInteger>(metal_clamp_tg_size((void*)m_pipeline, threads_per_tg));
+    MTLSize tg = MTLSizeMake(tg_size, 1, 1);
 
-    start_profiling();
+    start_profiling(enc);
     [enc dispatchThreads:grid threadsPerThreadgroup:tg];
+    stop_profiling_ms(enc);
     [enc endEncoding];
-    [cb commit];
-    [cb waitUntilCompleted];
-    stop_profiling_ms();
 }
 
 }  // namespace metal_plugin

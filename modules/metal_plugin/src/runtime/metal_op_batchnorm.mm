@@ -4,10 +4,17 @@
 
 #import "runtime/metal_op_batchnorm.hpp"
 
+#include <string>
+
 #include "openvino/op/constant.hpp"
 #include "openvino/op/batch_norm.hpp"
 #include "kernel_codegen/metal_kernel_compiler.hpp"
 #include "runtime/metal_logger.hpp"
+#include "runtime/metal_op_utils.hpp"
+#include "mlir_builder.hpp"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir_codegen/codegen_common.hpp"
 
 namespace ov {
 namespace metal_plugin {
@@ -25,7 +32,8 @@ MetalBatchNormOp::MetalBatchNormOp(const std::shared_ptr<const ov::Node>& node, 
               device,
               queue),
       m_device((id<MTLDevice>)device),
-      m_queue((id<MTLCommandQueue>)queue) {
+      m_queue((id<MTLCommandQueue>)queue),
+      m_node(node) {
     parse_bn(node);
 }
 
@@ -65,33 +73,47 @@ void MetalBatchNormOp::parse_bn(const std::shared_ptr<const ov::Node>& node) {
     std::copy(var_v.begin(), var_v.end(), m_params.begin() + 3 * C);
     m_params[4 * C] = eps;
 
-    m_desc.kind = KernelOpKind::BatchNorm2D;
-    m_desc.dtype = resolve_metal_dtype(m_element_type);
-    m_desc.batchnorm.N = static_cast<uint32_t>(in_shape[0]);
-    m_desc.batchnorm.C = static_cast<uint32_t>(in_shape[1]);
-    m_desc.batchnorm.H = static_cast<uint32_t>(in_shape[2]);
-    m_desc.batchnorm.W = static_cast<uint32_t>(in_shape[3]);
-    m_desc.batchnorm.eps = eps;
-    m_desc.bn_params = m_params;
-    m_desc.element_type = static_cast<uint32_t>(static_cast<ov::element::Type_t>(m_element_type));
+    m_desc.N = static_cast<uint32_t>(in_shape[0]);
+    m_desc.C = static_cast<uint32_t>(in_shape[1]);
+    m_desc.H = static_cast<uint32_t>(in_shape[2]);
+    m_desc.W = static_cast<uint32_t>(in_shape[3]);
+    m_desc.element_type = m_element_type;
 }
 
 void MetalBatchNormOp::init(MetalBufferManager* buffer_manager) {
     MetalOp::init(buffer_manager);
+}
+
+void MetalBatchNormOp::compile(MetalBufferManager* buffer_manager) {
+    if (is_compiled()) {
+        return;
+    }
+    if (!this->buffer_manager()) {
+        MetalOp::init(buffer_manager);
+    }
     const size_t bytes = m_params.size() * sizeof(float);
-    m_params_buf = buffer_manager->allocate(bytes,
-                                            ov::element::f32,
-                                            /*persistent=*/true,
-                                            /*storageModePrivate=*/true);
-    buffer_manager->upload(m_params_buf, m_params.data(), bytes);
+    const std::string key = m_node->get_friendly_name() + "/params";
+    m_params_buf = buffer_manager->wrap_const(key, m_params.data(), bytes, ov::element::f32);
 
     MetalKernelCompiler compiler(m_device ? m_device : (id<MTLDevice>)buffer_manager->device());
     std::string log;
-    m_pipeline = compiler.compile_batchnorm2d_kernel(m_desc, log);
+    BatchNorm2DCodegenDesc desc{};
+    desc.N = m_desc.N;
+    desc.C = m_desc.C;
+    desc.H = m_desc.H;
+    desc.W = m_desc.W;
+    desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
+    mlir::MLIRContext ctx;
+    auto model = make_single_op_model(m_node);
+    auto module = build_mlir_batchnorm_from_model(model, ctx);
+    auto source = generate_msl_from_mlir(module, desc);
+    m_pipeline = compiler.compile_msl_from_source(source, "batchnorm2d_kernel", log);
     OPENVINO_ASSERT(m_pipeline, "MetalBatchNormOp: failed to compile kernel: ", log);
+
+    MetalOp::compile(buffer_manager);
 }
 
-void MetalBatchNormOp::execute() {
+void MetalBatchNormOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     OPENVINO_ASSERT(!inputs().empty(), "BatchNorm: missing input");
     MetalTensor* src = inputs()[0];
     OPENVINO_ASSERT(src && src->buf.valid(), "BatchNorm: input buffer null");
@@ -102,22 +124,25 @@ void MetalBatchNormOp::execute() {
         out_shape = src->shape;
     OPENVINO_ASSERT(!out_shape.empty(), "BatchNorm: output shape unknown");
 
-    if (!dst.buf.valid()) {
-        size_t bytes = ov::shape_size(out_shape) * m_element_type.size();
-        dst.buf = buffer_manager()->allocate(bytes, m_element_type, /*persistent=*/false, /*storageModePrivate=*/true);
+    if (!src->shape.empty() && m_node->get_input_partial_shape(0).is_static()) {
+        OPENVINO_ASSERT(src->shape == m_node->get_input_shape(0),
+                        "BatchNorm: runtime input shape mismatch");
+    }
+    const size_t bytes = ov::shape_size(out_shape) * m_element_type.size();
+    if (!dst.buf.valid() || dst.buf.size < bytes) {
+        dst.buf = buffer_manager()->allocate(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
     }
     dst.shape = out_shape;
     dst.expected_type = m_element_type;
     const size_t elem_sz = m_element_type.size();
-    const size_t need_src = ov::shape_size(src->shape.empty() ? out_shape : src->shape) * elem_sz;
+    const ov::Shape src_shape = !src->shape.empty() ? src->shape : out_shape;
+    const size_t need_src = ov::shape_size(src_shape) * elem_sz;
     const size_t need_dst = ov::shape_size(out_shape) * elem_sz;
     OPENVINO_ASSERT(src->buf.size >= need_src, "BatchNorm: src buffer too small");
     OPENVINO_ASSERT(dst.buf.size >= need_dst, "BatchNorm: dst buffer too small");
 
-    if (!m_queue) {
-        m_queue = [m_device newCommandQueue];
-    }
-    id<MTLCommandBuffer> cb = [m_queue commandBuffer];
+    id<MTLCommandBuffer> cb = static_cast<id<MTLCommandBuffer>>(cmd_buf_handle);
+    OPENVINO_ASSERT(cb, "MetalBatchNormOp: command buffer is null");
     id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
     [enc setComputePipelineState:m_pipeline];
     [enc setBuffer:to_mtl(src->buf) offset:0 atIndex:0];
@@ -129,19 +154,22 @@ void MetalBatchNormOp::execute() {
         uint32_t C;
         uint32_t H;
         uint32_t W;
-    } gpu_params{m_desc.batchnorm.N, m_desc.batchnorm.C, m_desc.batchnorm.H, m_desc.batchnorm.W};
+    } gpu_params{m_desc.N, m_desc.C, m_desc.H, m_desc.W};
     [enc setBytes:&gpu_params length:sizeof(gpu_params) atIndex:3];
 
-    const uint32_t total = m_desc.batchnorm.N * m_desc.batchnorm.C * m_desc.batchnorm.H * m_desc.batchnorm.W;
+    const uint32_t total = m_desc.N * m_desc.C * m_desc.H * m_desc.W;
+    if (total == 0) {
+        [enc endEncoding];
+        return;
+    }
     MTLSize grid = MTLSizeMake(total, 1, 1);
-    MTLSize tg = MTLSizeMake(64, 1, 1);
+    const NSUInteger tg_size = static_cast<NSUInteger>(metal_clamp_tg_size((void*)m_pipeline, 64));
+    MTLSize tg = MTLSizeMake(tg_size, 1, 1);
 
-    start_profiling();
+    start_profiling(enc);
     [enc dispatchThreads:grid threadsPerThreadgroup:tg];
+    stop_profiling_ms(enc);
     [enc endEncoding];
-    [cb commit];
-    [cb waitUntilCompleted];
-    stop_profiling_ms();
 }
 
 }  // namespace metal_plugin

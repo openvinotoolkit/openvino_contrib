@@ -11,10 +11,18 @@
 namespace ov {
 namespace metal_plugin {
 
-std::string generate_msl_for_batchnorm2d(const BatchNorm2DCodegenDesc& d) {
+std::string generate_msl_for_batchnorm2d(const BatchNorm2DCodegenDesc& d, mlir::ModuleOp module) {
     OPENVINO_ASSERT(d.N && d.C && d.H && d.W, "BatchNorm2D desc missing dims");
-    const bool use_half = (d.element_type == ov::element::f16);
-    const char* scalar = use_half ? "half" : "float";
+    std::string scalar = "float";
+    if (auto func = get_entry_func(module)) {
+        auto ft = func.getFunctionType();
+        if (ft.getNumInputs() >= 1) {
+            scalar = msl_type_from_mlir(ft.getInput(0));
+        }
+    } else {
+        scalar = (d.element_type == ov::element::f16) ? "half" : "float";
+    }
+    const bool use_half = (scalar == "half");
 
     std::ostringstream ss;
     ss << "#include <metal_stdlib>\n";

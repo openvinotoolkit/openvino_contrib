@@ -69,10 +69,9 @@ std::vector<std::string> render_indices(mlir::Operation::operand_range range,
     return out;
 }
 
-std::string emit_pool2d_msl(const Pool2DCodegenDesc& d) {
+std::string emit_pool2d_msl(const Pool2DCodegenDesc& d, const std::string& scalar) {
     std::ostringstream ss;
-    const bool use_half = (d.element_type == ov::element::f16);
-    const char* scalar = use_half ? "half" : "float";
+    const bool use_half = (scalar == "half");
     ss << "#include <metal_stdlib>\n";
     ss << "using namespace metal;\n";
     ss << "struct Pool2DParams {\n";
@@ -141,11 +140,20 @@ std::string emit_pool2d_msl(const Pool2DCodegenDesc& d) {
 std::string generate_msl_for_avgpool2d(const Pool2DCodegenDesc& d, mlir::ModuleOp module) {
     OPENVINO_ASSERT(d.N && d.C && d.H && d.W && d.kH && d.kW && d.outH && d.outW, "Pool2D desc incomplete");
     OPENVINO_ASSERT(d.is_avg, "AvgPool2D codegen expects is_avg=true");
+    std::string scalar = "float";
+    if (auto func = get_entry_func(module)) {
+        auto ft = func.getFunctionType();
+        if (ft.getNumInputs() >= 1) {
+            scalar = msl_type_from_mlir(ft.getInput(0));
+        }
+    } else {
+        scalar = (d.element_type == ov::element::f16) ? "half" : "float";
+    }
     if (!module)
-        return emit_pool2d_msl(d);
+        return emit_pool2d_msl(d, scalar);
 
     (void)module;
-    return emit_pool2d_msl(d);
+    return emit_pool2d_msl(d, scalar);
 }
 
 }  // namespace metal_plugin
