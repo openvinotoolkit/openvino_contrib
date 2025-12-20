@@ -77,7 +77,7 @@ ov::Tensor convert_to_float(const ov::Tensor& t) {
     }
 }
 
-Stats compare_tensors(const ov::Tensor& ref, const ov::Tensor& test, double rel_eps = 1e-5) {
+Stats compare_tensors(const ov::Tensor& ref, const ov::Tensor& test, double abs_eps = 1e-5, double rel_eps = 1e-5) {
     Stats s;
     s.total = ref.get_size();
     const float* a = ref.data<const float>();
@@ -88,7 +88,7 @@ Stats compare_tensors(const ov::Tensor& ref, const ov::Tensor& test, double rel_
         double rel = diff / denom;
         s.max_abs = std::max(s.max_abs, diff);
         s.max_rel = std::max(s.max_rel, rel);
-        if (diff > rel_eps && rel > rel_eps) ++s.mismatches;
+        if (diff > abs_eps && rel > rel_eps) ++s.mismatches;
     }
     return s;
 }
@@ -97,26 +97,39 @@ Stats compare_tensors(const ov::Tensor& ref, const ov::Tensor& test, double rel_
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " model.xml [--iter N] [--seed S]\n";
-        std::cerr << "       Add --per-op to stop on first differing op.\n";
+        std::cerr << "Usage: " << argv[0] << " model.xml [--iter N] [--count N] [--seed S]\n";
+        std::cerr << "       [--abs_eps E] [--rel_eps E] [--per-op]\n";
+        std::cerr << "       Add --per-op to stop on first differing op (only with --count 1).\n";
         return 1;
     }
     std::string model_path = argv[1];
     int iterations = 1;
+    int count = 1;
     uint64_t seed = 0;
+    double abs_eps = 1e-5;
+    double rel_eps = 1e-5;
     bool per_op = false;
     for (int i = 2; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--iter" && i + 1 < argc) {
             iterations = std::max(1, std::atoi(argv[++i]));
+        } else if (arg == "--count" && i + 1 < argc) {
+            count = std::max(1, std::atoi(argv[++i]));
         } else if (arg == "--seed" && i + 1 < argc) {
             seed = static_cast<uint64_t>(std::strtoull(argv[++i], nullptr, 10));
+        } else if (arg == "--abs_eps" && i + 1 < argc) {
+            abs_eps = std::max(0.0, std::strtod(argv[++i], nullptr));
+        } else if (arg == "--rel_eps" && i + 1 < argc) {
+            rel_eps = std::max(0.0, std::strtod(argv[++i], nullptr));
         } else if (arg == "--per-op") {
             per_op = true;
         }
     }
 
-    std::mt19937 gen(seed);
+    if (per_op && count > 1) {
+        std::cerr << "--per-op is only supported with --count 1\n";
+        return 1;
+    }
 
     ov::Core core;
     auto model = core.read_model(model_path);
@@ -130,23 +143,28 @@ int main(int argc, char** argv) {
     auto compiled_cpu = compile("CPU");
     auto compiled_metal = compile("METAL");
 
-    // Prepare shared input tensors once to ensure identical data.
-    std::vector<ov::Tensor> shared_inputs;
-    for (const auto& input : compiled_cpu.inputs()) {
-        const auto ps = input.get_partial_shape();
-        ov::Shape shp = ps.is_static() ? ps.to_shape() : make_static_shape(ps);
-        const auto et = input.get_element_type();
-        ov::Tensor t(et, shp);
-        switch (et) {
-            case ov::element::f32: fill_tensor<float>(t, gen); break;
-            case ov::element::f16: fill_tensor<ov::float16>(t, gen); break;
-            case ov::element::i32: fill_tensor<int32_t>(t, gen); break;
-            default:
-                std::cerr << "Unsupported input type: " << et << "\n";
-                return 1;
+    auto make_inputs = [&](uint64_t seed_value) {
+        std::mt19937 gen(seed_value);
+        std::vector<ov::Tensor> inputs;
+        inputs.reserve(compiled_cpu.inputs().size());
+        for (const auto& input : compiled_cpu.inputs()) {
+            const auto ps = input.get_partial_shape();
+            ov::Shape shp = ps.is_static() ? ps.to_shape() : make_static_shape(ps);
+            const auto et = input.get_element_type();
+            ov::Tensor t(et, shp);
+            switch (et) {
+                case ov::element::f32: fill_tensor<float>(t, gen); break;
+                case ov::element::f16: fill_tensor<ov::float16>(t, gen); break;
+                case ov::element::i32: fill_tensor<int32_t>(t, gen); break;
+                default:
+                    std::cerr << "Unsupported input type: " << et << "\n";
+                    inputs.clear();
+                    return inputs;
+            }
+            inputs.push_back(t);
         }
-        shared_inputs.push_back(t);
-    }
+        return inputs;
+    };
 
     auto make_request = [&](ov::CompiledModel& cm, const std::vector<ov::Tensor>& src_inputs) {
         auto req = cm.create_infer_request();
@@ -157,44 +175,67 @@ int main(int argc, char** argv) {
         return req;
     };
 
-    auto req_cpu = make_request(compiled_cpu, shared_inputs);
-    auto req_metal = make_request(compiled_metal, shared_inputs);
-
     auto run_req = [&](ov::InferRequest& req, int n_iter) {
         for (int i = 0; i < n_iter; ++i) req.infer();
+    };
+
+    struct RunStats {
+        double max_abs = 0.0;
+        double max_rel = 0.0;
+        size_t mismatches = 0;
+        size_t total = 0;
     };
 
     auto compare_outputs = [&](const ov::OutputVector& outs,
                                ov::CompiledModel& cm_cpu,
                                ov::CompiledModel& cm_metal,
                                const std::vector<ov::Tensor>& inputs,
-                               const std::string& tag) -> bool {
+                               const std::string& tag,
+                               bool verbose) -> RunStats {
         auto req_c = make_request(cm_cpu, inputs);
         auto req_m = make_request(cm_metal, inputs);
         run_req(req_c, iterations);
         run_req(req_m, iterations);
-        bool ok = true;
+        RunStats rs;
         for (size_t i = 0; i < outs.size(); ++i) {
             auto ref = req_c.get_tensor(cm_cpu.output(i));
             auto tst = req_m.get_tensor(cm_metal.output(i));
             auto ref_f = convert_to_float(ref);
             auto tst_f = convert_to_float(tst);
-            auto stats = compare_tensors(ref_f, tst_f);
-            std::cout << tag << " Output[" << i << "] shape=" << ref.get_shape()
-                      << " max_abs=" << stats.max_abs
-                      << " max_rel=" << stats.max_rel
-                      << " mismatches=" << stats.mismatches << "/" << stats.total
-                      << "\n";
-            if (stats.mismatches > 0) ok = false;
+            auto stats = compare_tensors(ref_f, tst_f, abs_eps, rel_eps);
+            if (verbose) {
+                std::cout << tag << " Output[" << i << "] shape=" << ref.get_shape()
+                          << " max_abs=" << stats.max_abs
+                          << " max_rel=" << stats.max_rel
+                          << " mismatches=" << stats.mismatches << "/" << stats.total
+                          << "\n";
+            }
+            rs.max_abs = std::max(rs.max_abs, stats.max_abs);
+            rs.max_rel = std::max(rs.max_rel, stats.max_rel);
+            rs.mismatches += stats.mismatches;
+            rs.total += stats.total;
         }
-        return ok;
+        return rs;
     };
 
-    // Full model first
-    run_req(req_cpu, iterations);
-    run_req(req_metal, iterations);
+    size_t match_count = 0;
+    size_t mismatch_count = 0;
+    double global_max_abs = 0.0;
+    double global_max_rel = 0.0;
     bool all_ok = true;
-    {
+
+    for (int run = 0; run < count; ++run) {
+        uint64_t run_seed = seed + static_cast<uint64_t>(run);
+        auto inputs = make_inputs(run_seed);
+        if (inputs.empty()) return 1;
+
+        auto req_cpu = make_request(compiled_cpu, inputs);
+        auto req_metal = make_request(compiled_metal, inputs);
+
+        run_req(req_cpu, iterations);
+        run_req(req_metal, iterations);
+
+        RunStats rs;
         const auto outputs_cpu = compiled_cpu.outputs();
         for (size_t i = 0; i < outputs_cpu.size(); ++i) {
             const auto& port = outputs_cpu[i];
@@ -202,17 +243,47 @@ int main(int argc, char** argv) {
             ov::Tensor tst = req_metal.get_tensor(port);
             ov::Tensor ref_f = convert_to_float(ref);
             ov::Tensor tst_f = convert_to_float(tst);
-            auto stats = compare_tensors(ref_f, tst_f);
-            std::cout << "Output[" << i << "] shape=" << ref.get_shape()
-                      << " max_abs=" << stats.max_abs
-                      << " max_rel=" << stats.max_rel
-                      << " mismatches=" << stats.mismatches << "/" << stats.total
+            auto stats = compare_tensors(ref_f, tst_f, abs_eps, rel_eps);
+            if (count == 1) {
+                std::cout << "Output[" << i << "] shape=" << ref.get_shape()
+                          << " max_abs=" << stats.max_abs
+                          << " max_rel=" << stats.max_rel
+                          << " mismatches=" << stats.mismatches << "/" << stats.total
+                          << "\n";
+            }
+            rs.max_abs = std::max(rs.max_abs, stats.max_abs);
+            rs.max_rel = std::max(rs.max_rel, stats.max_rel);
+            rs.mismatches += stats.mismatches;
+            rs.total += stats.total;
+        }
+
+        bool ok = (rs.mismatches == 0);
+        if (ok) {
+            ++match_count;
+        } else {
+            ++mismatch_count;
+            all_ok = false;
+        }
+        global_max_abs = std::max(global_max_abs, rs.max_abs);
+        global_max_rel = std::max(global_max_rel, rs.max_rel);
+
+        if (count > 1) {
+            std::cout << "Seed " << run_seed << ": " << (ok ? "MATCH" : "MISMATCH")
+                      << " max_abs=" << rs.max_abs
+                      << " max_rel=" << rs.max_rel
+                      << " mismatches=" << rs.mismatches << "/" << rs.total
                       << "\n";
-            if (stats.mismatches > 0) all_ok = false;
         }
     }
 
-    if (!per_op || all_ok) {
+    if (!per_op || count > 1 || all_ok) {
+        if (count > 1) {
+            std::cout << "Summary: match=" << match_count
+                      << " mismatch=" << mismatch_count
+                      << " max_abs=" << global_max_abs
+                      << " max_rel=" << global_max_rel
+                      << "\n";
+        }
         std::cout << (all_ok ? "MATCH" : "MISMATCH") << std::endl;
         return all_ok ? 0 : 2;
     }
@@ -243,9 +314,13 @@ int main(int argc, char** argv) {
         }
         bool ok = true;
         try {
-            ok = compare_outputs(res_outputs, sub_cpu, sub_metal, shared_inputs,
-                                 "[op " + std::to_string(idx) + "] " + node->get_friendly_name() +
-                                     " (" + node->get_type_name() + ")");
+            auto inputs = make_inputs(seed);
+            if (inputs.empty()) return 1;
+            auto rs = compare_outputs(res_outputs, sub_cpu, sub_metal, inputs,
+                                      "[op " + std::to_string(idx) + "] " + node->get_friendly_name() +
+                                          " (" + node->get_type_name() + ")",
+                                      true);
+            ok = (rs.mismatches == 0);
         } catch (const std::exception& e) {
             std::cout << "[op " << idx << "] " << node->get_friendly_name() << " (" << node->get_type_name()
                       << ") SKIP: infer failed: " << e.what() << "\n";
@@ -256,6 +331,9 @@ int main(int argc, char** argv) {
             std::cout << "Mismatch at op #" << idx << " name=" << node->get_friendly_name()
                       << " type=" << node->get_type_name() << "\n";
             all_ok = false;
+            std::cout << "Stopping at first mismatch (per-op).\n";
+            std::cout << "MISMATCH" << std::endl;
+            return 2;
         }
         ++idx;
     }

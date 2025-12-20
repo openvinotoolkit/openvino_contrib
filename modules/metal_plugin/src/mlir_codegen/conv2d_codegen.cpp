@@ -105,7 +105,7 @@ std::string generate_msl_for_conv2d(const Conv2DCodegenDesc& d, mlir::ModuleOp m
     ss << "                uint ci_global = (p.groups == 0 || p.groups == 1) ? ci : g * p.C_in_pg + ci;\n";
     ss << "                uint in_idx = ((n * p.C_in + ci_global) * p.H + uint(ih)) * p.W + uint(iw);\n";
     ss << "                uint w_idx = (((g * p.C_out_pg + co_g) * p.C_in_pg + ci) * p.kH + kh) * p.kW + kw;\n";
-    ss << "                acc = fma((float)in0[in_idx], (float)w[w_idx], acc);\n";
+    ss << "                acc += (float)in0[in_idx] * (float)w[w_idx];\n";
     ss << "            }\n";
     ss << "        }\n";
     ss << "    }\n";
