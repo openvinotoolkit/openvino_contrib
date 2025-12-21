@@ -1,0 +1,51 @@
+// Copyright (C) 2018-2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+
+#include "single_op_tests/reshape.hpp"
+
+#include <vector>
+
+#include "common_test_utils/test_constants.hpp"
+#include "../../test_constants.hpp"
+#include "../../metal_test_utils.hpp"
+
+using ov::test::ReshapeLayerTest;
+using MetalReshapeLayerTest = ov::test::utils::GfxVsTemplateLayerTest<ReshapeLayerTest>;
+
+TEST_P(MetalReshapeLayerTest, CompareWithTemplate) {
+    run_compare();
+}
+
+namespace {
+const std::vector<ov::element::Type> model_types = {
+    ov::element::f32,
+};
+
+INSTANTIATE_TEST_SUITE_P(Metal_smoke_ReshapeCheckDynBatch,
+                         MetalReshapeLayerTest,
+                         ::testing::Combine(::testing::Values(true),
+                                            ::testing::ValuesIn(model_types),
+                                            ::testing::Values(std::vector<size_t>({30, 30, 30, 30})),
+                                            ::testing::Values(std::vector<int64_t>({30, 30, 30, 30})),
+                                            ::testing::Values(ov::test::utils::DEVICE_GFX)),
+                         ReshapeLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(Metal_smoke_ReshapeCheck,
+                         MetalReshapeLayerTest,
+                         ::testing::Combine(::testing::Values(true),
+                                            ::testing::ValuesIn(model_types),
+                                            ::testing::Values(std::vector<size_t>({10, 10, 10, 10})),
+                                            ::testing::Values(std::vector<int64_t>({10, 0, 100})),
+                                            ::testing::Values(ov::test::utils::DEVICE_GFX)),
+                         ReshapeLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(Metal_smoke_ReshapeCheckNegative,
+                         MetalReshapeLayerTest,
+                         ::testing::Combine(::testing::Values(true),
+                                            ::testing::ValuesIn(model_types),
+                                            ::testing::Values(std::vector<size_t>({10, 10, 10, 10})),
+                                            ::testing::Values(std::vector<int64_t>({10, -1, 100})),
+                                            ::testing::Values(ov::test::utils::DEVICE_GFX)),
+                         ReshapeLayerTest::getTestCaseName);
+}  // namespace
