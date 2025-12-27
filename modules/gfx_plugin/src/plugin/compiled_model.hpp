@@ -12,13 +12,13 @@
 #include "openvino/runtime/icompiled_model.hpp"
 #include "openvino/core/type/element_type.hpp"
 
-#include "runtime/metal_memory.hpp"
-#include "runtime/metal_op.hpp"
-#include "runtime/metal_op_factory.hpp"
-#include "runtime/profiling/metal_profiler_config.hpp"
-#include "runtime/profiling/metal_profiling_report.hpp"
+#include "runtime/gpu_stage.hpp"
+#include "runtime/gpu_stage_factory.hpp"
+#include "backends/metal/runtime/memory.hpp"
+#include "runtime/profiling/gfx_profiler_config.hpp"
+#include "backends/metal/profiling/profiling_report.hpp"
 
-#include "plugin/metal_properties.hpp"
+#include "backends/metal/plugin/properties.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -33,7 +33,7 @@ struct OutputDesc {
 
 struct PipelineStageDesc {
     std::shared_ptr<const ov::Node> node;
-    std::unique_ptr<MetalOp> op;  // compiled prototype
+    std::unique_ptr<GpuStage> stage;  // compiled prototype
     struct InputLink {
         std::shared_ptr<const ov::Node> node;
         size_t port = 0;
@@ -58,6 +58,8 @@ public:
     ov::Any get_property(const std::string& name) const override;
 
     ov::element::Type get_inference_precision() const { return m_inference_precision; }
+    GpuBackend backend() const { return m_backend; }
+    const std::string& backend_name() const { return m_backend_name; }
     std::shared_ptr<MetalBufferManager> const_manager() const { return m_const_manager; }
     MetalAllocatorCore& allocator_core() const { return *m_alloc_core; }
     const MetalDeviceCaps& device_caps() const { return m_caps; }
@@ -94,6 +96,8 @@ private:
     std::shared_ptr<const ov::Model> m_runtime_model;
     std::shared_ptr<const ov::Model> m_original_model;
     ov::AnyMap m_config;
+    GpuBackend m_backend = GpuBackend::Metal;
+    std::string m_backend_name{"metal"};
     ov::element::Type m_inference_precision{ov::element::f32};
     bool m_enable_profiling = false;
     ProfilingLevel m_profiling_level = ProfilingLevel::Standard;

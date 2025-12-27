@@ -25,9 +25,16 @@
 #include "openvino/runtime/tensor.hpp"
 #include "openvino/runtime/profiling_info.hpp"
 #include "openvino/core/shape_util.hpp"
-#include "runtime/metal_logger.hpp"
-#include "runtime/metal_memory.hpp"
-#include "runtime/profiling/metal_profiler.hpp"
+#include "runtime/gfx_logger.hpp"
+#include "runtime/gfx_backend_utils.hpp"
+#include "runtime/gpu_buffer_pool.hpp"
+#include "runtime/gpu_memory.hpp"
+#include "backends/metal/runtime/gpu_memory.hpp"
+#include "backends/metal/runtime/memory.hpp"
+#include "backends/metal/profiling/profiler.hpp"
+#include "backends/vulkan/profiling/profiler.hpp"
+#include "infer_pipeline.hpp"
+#include "infer_io_utils.hpp"
 #include "remote_stub.hpp"
 
 namespace ov {
@@ -53,6 +60,9 @@ InferRequest::InferRequest(const std::shared_ptr<const ov::ICompiledModel>& comp
     m_bound_output_hosts.resize(get_outputs().size());
     m_bound_remote_outputs.resize(get_outputs().size());
     if (auto cm = get_compiled_model_typed()) {
+        if (cm->backend() != GpuBackend::Metal) {
+            return;
+        }
         m_alloc_core = &cm->allocator_core();
         m_caps = cm->device_caps();
         m_heaps = std::make_unique<MetalHeapPool>(*m_alloc_core);
@@ -62,7 +72,9 @@ InferRequest::InferRequest(const std::shared_ptr<const ov::ICompiledModel>& comp
     }
 }
 
-InferRequest::~InferRequest() = default;
+InferRequest::~InferRequest() {
+    release_vulkan_cache();
+}
 
 void InferRequest::set_input_tensor(const ov::Tensor& tensor) {
     // Single-input convenience: index 0
@@ -80,6 +92,11 @@ void InferRequest::set_input_tensor(size_t idx, const ov::Tensor& tensor) {
     if (std::dynamic_pointer_cast<ov::IRemoteTensor>(impl._ptr)) {
         auto remote = std::dynamic_pointer_cast<GfxRemoteTensor>(impl._ptr);
         OPENVINO_ASSERT(remote, "GFX: remote tensor type mismatch");
+        const auto cm = get_compiled_model_typed();
+        const auto backend = cm ? cm->backend() : GpuBackend::Metal;
+        const char* backend_name = backend_to_string(backend);
+        OPENVINO_ASSERT(remote->backend() == backend,
+                        "GFX: remote tensor backend mismatch (expected ", backend_name, ")");
         ov::ISyncInferRequest::set_tensor(get_inputs().at(idx), impl);
         m_bound_inputs[idx] = {};
         m_bound_remote_inputs[idx] = remote;
@@ -101,8 +118,13 @@ void InferRequest::set_tensor(const ov::Output<const ov::Node>& port, const ov::
         }
     }
     if (remote) {
-        auto metal_remote = std::dynamic_pointer_cast<GfxRemoteTensor>(remote);
-        OPENVINO_ASSERT(metal_remote, "GFX: remote tensor type mismatch");
+        auto gfx_remote = std::dynamic_pointer_cast<GfxRemoteTensor>(remote);
+        OPENVINO_ASSERT(gfx_remote, "GFX: remote tensor type mismatch");
+        const auto cm = get_compiled_model_typed();
+        const auto backend = cm ? cm->backend() : GpuBackend::Metal;
+        const char* backend_name = backend_to_string(backend);
+        OPENVINO_ASSERT(gfx_remote->backend() == backend,
+                        "GFX: remote tensor backend mismatch (expected ", backend_name, ")");
         ov::ISyncInferRequest::set_tensor(port, tensor);
     } else {
         ov::ISyncInferRequest::set_tensor(port, tensor);
@@ -186,6 +208,10 @@ void InferRequest::infer() {
     @autoreleasepool {
         auto cm = get_compiled_model_typed();
         OPENVINO_ASSERT(cm, "CompiledModel is null");
+        if (cm->backend() != GpuBackend::Metal) {
+            infer_vulkan_impl(cm);
+            return;
+        }
 
         OPENVINO_ASSERT(m_allocator && m_alloc_core, "MetalAllocator is not initialized");
 
@@ -210,49 +236,36 @@ void InferRequest::infer() {
             }
         } session_guard{session};
 
-        auto ensure_input_tensor = [&](size_t idx) -> ov::Tensor {
-            if (idx < m_bound_inputs.size() && m_bound_inputs[idx]) {
-                return m_bound_inputs[idx];
-            }
-            auto impl = get_tensor(get_inputs()[idx]);
-            ov::Tensor src;
-            if (!impl._ptr) {
-                ov::Shape sh = get_inputs()[idx].get_partial_shape().is_static()
-                                   ? get_inputs()[idx].get_shape()
-                                   : ov::Shape{1};
-                src = ov::Tensor{get_inputs()[idx].get_element_type(), sh};
-                ov::ISyncInferRequest::set_tensor(get_inputs()[idx], ov::get_tensor_impl(src));
-            } else {
-                src = ov::make_tensor(impl);
-            }
-            if (!src || !src.data()) {
-                ov::Shape sh = get_inputs()[idx].get_partial_shape().is_static()
-                                   ? get_inputs()[idx].get_shape()
-                                   : ov::Shape{1};
-                src = ov::Tensor{get_inputs()[idx].get_element_type(), sh};
-                ov::ISyncInferRequest::set_tensor(get_inputs()[idx], ov::get_tensor_impl(src));
-            }
-            return src;
-        };
-
-        std::vector<ov::Tensor> host_inputs;
-        host_inputs.reserve(get_inputs().size());
-        for (size_t idx = 0; idx < get_inputs().size(); ++idx) {
-            if (idx < m_bound_remote_inputs.size() && m_bound_remote_inputs[idx]) {
-            m_tensor_map.bind_input_device(idx, m_bound_remote_inputs[idx]->metal_tensor());
-            continue;
-        }
-        ov::Tensor src = ensure_input_tensor(idx);
-        if (!src) {
-            ov::Shape sh = get_inputs()[idx].get_partial_shape().is_static()
-                               ? get_inputs()[idx].get_shape()
-                               : ov::Shape{1};
-            src = ov::Tensor{get_inputs()[idx].get_element_type(), sh};
-        }
-        host_inputs.emplace_back(src);
-        // Bind host -> device using zero-copy shared buffer (no memcpy).
-        m_tensor_map.bind_input(idx, src, *m_alloc_core);
-    }
+        for_each_input_tensor(
+            get_inputs().size(),
+            m_bound_remote_inputs,
+            [&](size_t idx) {
+                return resolve_remote_input_tensor(idx, GpuBackend::Metal, "GFX");
+            },
+            [&](size_t idx) {
+                return resolve_host_input_tensor(idx);
+            },
+            [&](size_t idx, const GpuTensor& dev) {
+                m_tensor_map.bind_input_device(idx, dev);
+            },
+            [&](size_t idx, const ov::Tensor& host) {
+                ov::Tensor src = host;
+                if (!src) {
+                    ov::Shape sh = get_inputs()[idx].get_partial_shape().is_static()
+                                       ? get_inputs()[idx].get_shape()
+                                       : ov::Shape{1};
+                    src = ov::Tensor{get_inputs()[idx].get_element_type(), sh};
+                }
+                // Bind host -> device using zero-copy shared buffer (no memcpy).
+                const auto dev = bind_host_input(src,
+                                                 GpuBackend::Metal,
+                                                 m_alloc_core,
+                                                 nullptr,
+                                                 nullptr,
+                                                 nullptr,
+                                                 "GFX");
+                m_tensor_map.bind_input_device(idx, dev);
+            });
 
     MetalProfiler* profiler = nullptr;
     if (cm && cm->enable_profiling()) {
@@ -275,43 +288,8 @@ void InferRequest::infer() {
         m_allocator->set_profiler(profiler, detailed);
     }
 
+    std::vector<InferStage> pipeline;
     auto run_pipeline = [&]() {
-        struct DebugFilter {
-            bool enabled = false;
-            bool all = false;
-            std::vector<std::string> tokens;
-        } dbg;
-        if (const char* env = std::getenv("OV_GFX_DEBUG_TENSORS")) {
-            std::string spec = env;
-            if (!spec.empty()) {
-                dbg.enabled = true;
-                if (spec == "all") {
-                    dbg.all = true;
-                } else {
-                    size_t pos = 0;
-                    while (pos < spec.size()) {
-                        size_t comma = spec.find(',', pos);
-                        if (comma == std::string::npos)
-                            comma = spec.size();
-                        std::string tok = spec.substr(pos, comma - pos);
-                        if (!tok.empty())
-                            dbg.tokens.push_back(tok);
-                        pos = comma + 1;
-                    }
-                }
-            }
-        }
-        auto match_debug = [&](const std::string& name, const std::string& type) -> bool {
-            if (!dbg.enabled)
-                return false;
-            if (dbg.all)
-                return true;
-            for (const auto& tok : dbg.tokens) {
-                if (name.find(tok) != std::string::npos || type.find(tok) != std::string::npos)
-                    return true;
-            }
-            return false;
-        };
         auto shape_to_string = [](const ov::Shape& shape) {
             std::ostringstream ss;
             ss << "[";
@@ -355,120 +333,43 @@ void InferRequest::infer() {
         const auto& node_map = cm->node_to_stage();
         const auto& param_map = cm->parameter_index();
 
-        struct InferStage {
-            std::shared_ptr<const ov::Node> node;
-            std::unique_ptr<MetalOp> op;
-            std::vector<std::unique_ptr<MetalTensor>> outputs;
-            std::vector<bool> output_is_model_output;
-            std::vector<PipelineStageDesc::InputLink> inputs;
-        };
-
-        std::vector<InferStage> pipeline;
-        pipeline.reserve(descs.size());
         const bool profiling_enabled = (profiler != nullptr);
-        for (size_t stage_id = 0; stage_id < descs.size(); ++stage_id) {
-            const auto& desc = descs[stage_id];
-            InferStage stage;
-            stage.node = desc.node;
-            stage.op = MetalOpFactory::clone(*desc.op);
-            OPENVINO_ASSERT(stage.op, "GFX: failed to clone op for stage ", desc.node->get_friendly_name());
-            stage.inputs = desc.inputs;
-            stage.outputs.reserve(desc.outputs.size());
-            stage.output_is_model_output.reserve(desc.outputs.size());
-            for (const auto& out_desc : desc.outputs) {
-                auto out_tensor = std::make_unique<MetalTensor>();
-                out_tensor->shape = out_desc.shape;
-                out_tensor->expected_type = out_desc.type;
-                stage.outputs.emplace_back(std::move(out_tensor));
-                stage.output_is_model_output.push_back(out_desc.is_model_output);
-            }
-            if (stage.outputs.size() == 1) {
-                stage.op->set_output(stage.outputs[0].get());
-            } else {
-                stage.op->set_outputs(stage.outputs);
-            }
-            stage.op->init(cm->const_manager().get());
-            stage.op->enable_profiling(profiling_enabled);
-            if (profiling_enabled) {
-                const std::string node_name =
-                    stage.node ? stage.node->get_friendly_name() : stage.op->name();
-                const std::string node_type =
-                    stage.node ? stage.node->get_type_name() : stage.op->type();
-                stage.op->set_profiler(profiler,
-                                       static_cast<uint32_t>(stage_id),
-                                       node_name,
-                                       node_type);
-            }
-            pipeline.emplace_back(std::move(stage));
-        }
-
-        // Bind remote outputs to pipeline buffers before allocations.
-        if (!m_bound_remote_outputs.empty()) {
-            for (size_t out_idx = 0; out_idx < get_outputs().size(); ++out_idx) {
-                if (out_idx >= m_bound_remote_outputs.size() || !m_bound_remote_outputs[out_idx]) {
-                    continue;
-                }
-                auto res_node = get_outputs()[out_idx].get_node();
-                auto src_node = res_node->input_value(0).get_node_shared_ptr();
-                if (auto it = node_map.find(src_node.get()); it != node_map.end()) {
-                    size_t src_port = res_node->input_value(0).get_index();
-                    auto& outs = pipeline[it->second].outputs;
-                    OPENVINO_ASSERT(src_port < outs.size(), "GFX: remote output port out of range");
-                    auto& dst = outs[src_port];
-                    dst->buf = m_bound_remote_outputs[out_idx]->metal_tensor().buf;
-                    dst->shape = m_bound_remote_outputs[out_idx]->metal_tensor().shape;
-                    dst->expected_type = m_bound_remote_outputs[out_idx]->metal_tensor().expected_type;
-                    continue;
-                }
-                if (auto pit = param_map.find(src_node.get()); pit != param_map.end()) {
-                    const size_t input_idx = pit->second;
-                    if (input_idx < m_bound_remote_inputs.size() && m_bound_remote_inputs[input_idx]) {
-                        auto in_buf = m_bound_remote_inputs[input_idx]->metal_tensor().buf.buffer;
-                        auto out_buf = m_bound_remote_outputs[out_idx]->metal_tensor().buf.buffer;
-                        OPENVINO_ASSERT(in_buf == out_buf,
-                                        "GFX: remote output must alias remote input for passthrough outputs");
-                        continue;
-                    }
-                    OPENVINO_THROW("GFX: remote output cannot be bound to non-remote input passthrough");
-                }
-                OPENVINO_THROW("GFX: failed to bind remote output ", out_idx, " (pipeline incomplete)");
-            }
-        }
+        pipeline = build_bound_pipeline(descs,
+                                        cm->const_manager().get(),
+                                        profiler,
+                                        profiling_enabled,
+                                        get_outputs(),
+                                        node_map,
+                                        param_map,
+                                        m_bound_remote_outputs,
+                                        m_bound_remote_inputs,
+                                        GpuBackend::Metal,
+                                        "GFX");
 
         // Allocate outputs (reuse buffers across iterations via handles).
-        if (m_stage_output_handles.size() != pipeline.size()) {
-            m_stage_output_handles.assign(pipeline.size(), {});
-        }
-        for (size_t stage_idx = 0; stage_idx < pipeline.size(); ++stage_idx) {
-            auto& stage = pipeline[stage_idx];
-            auto& handles = m_stage_output_handles[stage_idx];
-            if (handles.size() < stage.outputs.size()) {
-                handles.resize(stage.outputs.size());
-            }
-            for (size_t oi = 0; oi < stage.outputs.size(); ++oi) {
-                auto& out_ref = stage.outputs[oi];
-                const bool is_model_output = (oi < stage.output_is_model_output.size()) &&
-                                             stage.output_is_model_output[oi];
-                out_ref->prefer_private = !is_model_output;
-                if (!out_ref->buf.valid()) {
-                    if (out_ref->shape.empty() && stage.node->get_output_partial_shape(oi).is_static()) {
-                        out_ref->shape = stage.node->get_output_shape(oi);
-                    }
-                    if (out_ref->shape.empty()) {
-                        continue;  // let op allocate at runtime
-                    }
-                    const auto& et = stage.node->get_output_element_type(oi);
-                    size_t bytes = et.size();
-                    for (auto d : out_ref->shape) bytes *= d;
-                    BufferDesc desc;
-                    desc.bytes = bytes;
-                    desc.type = et;
-                    desc.usage = BufferUsage::Intermediate;
-                    desc.storage = out_ref->prefer_private ? MetalStorage::Private : MetalStorage::Shared;
-                    out_ref->buf = m_allocator->ensure_handle(handles[oi], desc, /*persistent=*/false);
-                }
-            }
-        }
+        MetalGpuAllocator gpu_alloc(*m_allocator, *m_alloc_core, m_caps);
+        GpuBufferPool pool(gpu_alloc);
+    allocate_stage_outputs(
+        pipeline,
+        m_stage_output_handles,
+        pool,
+        [&](InferStage& stage,
+            size_t oi,
+            GpuTensor& out_ref,
+            GpuBufferDesc& desc,
+            const char* error_prefix) {
+            const bool is_model_output = (oi < stage.output_is_model_output.size()) &&
+                                         stage.output_is_model_output[oi];
+            return init_stage_output_desc(GpuBackend::Metal,
+                                          stage,
+                                          oi,
+                                          out_ref,
+                                          desc,
+                                          is_model_output,
+                                          /*skip_view_ops=*/false,
+                                          error_prefix);
+        },
+        "GFX");
 
         if (profiler) {
             const size_t expected_samples = pipeline.size() * 4;
@@ -481,34 +382,19 @@ void InferRequest::infer() {
         id<MTLCommandBuffer> cb = [cq commandBuffer];
 
         for (const auto& stage : pipeline) {
-            std::vector<MetalTensor*> resolved;
-            resolved.reserve(stage.inputs.size());
-            for (const auto& link : stage.inputs) {
-                if (!link.node) {
-                    resolved.push_back(nullptr);
-                    continue;
-                }
-                if (auto itp = param_map.find(link.node.get()); itp != param_map.end()) {
-                    resolved.push_back(&m_tensor_map.get_input_device(itp->second));
-                    continue;
-                }
-                if (auto it = node_map.find(link.node.get()); it != node_map.end()) {
-                    auto& src_stage = pipeline[it->second];
-                    MetalTensor* tensor = nullptr;
-                    if (link.port < src_stage.outputs.size()) {
-                        tensor = src_stage.outputs[link.port].get();
-                    }
-                    resolved.push_back(tensor);
-                    continue;
-                }
-                resolved.push_back(nullptr);  // constants handled inside ops
-            }
-            if (metal_log_debug_enabled() || metal_safe_debug_enabled()) {
+            auto resolved = resolve_stage_inputs(stage,
+                                                 node_map,
+                                                 param_map,
+                                                 pipeline,
+                                                 [&](size_t input_idx) -> GpuTensor* {
+                                                     return &m_tensor_map.get_input_device(input_idx);
+                                                 });
+            if (gfx_log_debug_enabled() || metal_safe_debug_enabled()) {
                 const std::string node_name =
-                    stage.node ? stage.node->get_friendly_name() : stage.op->name();
+                    stage.node ? stage.node->get_friendly_name() : stage.stage->name();
                 const std::string node_type =
-                    stage.node ? stage.node->get_type_name() : stage.op->type();
-                if (metal_log_debug_enabled()) {
+                    stage.node ? stage.node->get_type_name() : stage.stage->type();
+                if (gfx_log_debug_enabled()) {
                     std::ostringstream oss;
                     oss << "Op=" << node_type << " name=" << node_name;
                     for (size_t i = 0; i < resolved.size(); ++i) {
@@ -551,102 +437,12 @@ void InferRequest::infer() {
                                false);
                 }
             }
-            stage.op->set_inputs(resolved);
-            stage.op->execute(cb);
-
-            if (dbg.enabled) {
-                const std::string node_name =
-                    stage.node ? stage.node->get_friendly_name() : stage.op->name();
-                const std::string node_type =
-                    stage.node ? stage.node->get_type_name() : stage.op->type();
-                if (match_debug(node_name, node_type)) {
-                    for (size_t oi = 0; oi < stage.outputs.size(); ++oi) {
-                        MetalTensor* src = stage.outputs[oi].get();
-                        if (!src || !src->buf.valid())
-                            continue;
-                        ov::Shape shape = src->shape;
-                        if (shape.empty() && stage.node &&
-                            stage.node->get_output_partial_shape(oi).is_static()) {
-                            shape = stage.node->get_output_shape(oi);
-                        }
-                        if (shape.empty())
-                            continue;
-                        ov::element::Type logical =
-                            src->expected_type == ov::element::dynamic ? src->buf.type : src->expected_type;
-                        size_t bytes = logical.size();
-                        for (auto d : shape) bytes *= d;
-                        BufferDesc desc;
-                        desc.bytes = bytes;
-                        desc.type = logical;
-                        desc.usage = BufferUsage::Temp;
-                        desc.storage = MetalStorage::Shared;
-                        desc.cpu_read = true;
-                        desc.cpu_write = true;
-                        MetalBuffer snap = m_allocator->allocate(desc, /*persistent=*/false);
-                        id<MTLCommandQueue> cq = static_cast<id<MTLCommandQueue>>(cm->command_queue());
-                        OPENVINO_ASSERT(cq, "GFX: command queue is null");
-                        id<MTLCommandBuffer> blit_cb = [cq commandBuffer];
-                        id<MTLBlitCommandEncoder> blit = [blit_cb blitCommandEncoder];
-                        [blit copyFromBuffer:static_cast<id<MTLBuffer>>(src->buf.buffer)
-                               sourceOffset:0
-                                   toBuffer:static_cast<id<MTLBuffer>>(snap.buffer)
-                          destinationOffset:0
-                                        size:bytes];
-                        [blit endEncoding];
-                        [blit_cb commit];
-                        [blit_cb waitUntilCompleted];
-                        id<MTLBuffer> buf = static_cast<id<MTLBuffer>>(snap.buffer);
-                        void* ptr = buf ? [buf contents] : nullptr;
-                        if (ptr) {
-                            ov::Tensor view{logical, shape, ptr};
-                            std::string tag = node_name + ":" + std::to_string(oi);
-                            m_debug_tensors.emplace_back(tag, view);
-                            m_debug_buffers.emplace_back(std::move(snap));
-                        } else {
-                            if (snap.valid()) {
-                                m_allocator->release(std::move(snap));
-                            }
-                        }
-                    }
-                }
-            }
+            stage.stage->set_inputs(resolved);
+            stage.stage->execute(cb);
         }
 
         [cb commit];
         [cb waitUntilCompleted];
-
-        // Bind model outputs to device tensors from pipeline
-        const auto runtime_model = cm->get_runtime_model();
-        const auto& public_outputs = get_outputs();
-        const auto runtime_results = runtime_model ? runtime_model->get_results() : ov::ResultVector{};
-        const bool use_runtime_results = runtime_results.size() == public_outputs.size();
-        for (size_t out_idx = 0; out_idx < public_outputs.size(); ++out_idx) {
-            std::shared_ptr<const ov::Node> src_node;
-            size_t src_port = 0;
-            if (use_runtime_results) {
-                auto res_node = runtime_results[out_idx];
-                src_node = res_node->input_value(0).get_node_shared_ptr();
-                src_port = res_node->input_value(0).get_index();
-            } else {
-                auto res_node = public_outputs[out_idx].get_node();
-                src_node = res_node->input_value(0).get_node_shared_ptr();
-                src_port = res_node->input_value(0).get_index();
-            }
-            auto it = node_map.find(src_node.get());
-            if (it != node_map.end()) {
-                auto& outs = pipeline[it->second].outputs;
-                if (src_port < outs.size() && outs[src_port]) {
-                    m_tensor_map.bind_output_device(out_idx, *outs[src_port]);
-                    continue;
-                }
-            }
-            if (auto pit = param_map.find(src_node.get()); pit != param_map.end()) {
-                // Direct passthrough from model input.
-                m_tensor_map.bind_output_device(out_idx, m_tensor_map.get_input_device(pit->second));
-                continue;
-            }
-            OPENVINO_THROW("GFX: failed to bind output ", out_idx, " (pipeline incomplete)");
-        }
 
         m_last_profiling.clear();
         if (profiler) {
@@ -666,109 +462,47 @@ void InferRequest::infer() {
 
     run_pipeline();
 
-    // Outputs: device-only by default; optional host-visible shared buffers when enabled.
-    auto ensure_host_visible = [&](const MetalTensor& src,
-                                   ov::element::Type logical_type,
-                                   const ov::Shape& shape,
-                                   const ov::Tensor* host_override) {
-        size_t bytes = logical_type.size();
-        for (auto d : shape) bytes *= d;
-
-        if (host_override && *host_override) {
-            OPENVINO_ASSERT(host_override->get_element_type() == logical_type,
-                            "GFX: output tensor type mismatch");
-            OPENVINO_ASSERT(host_override->get_shape() == shape,
-                            "GFX: output tensor shape mismatch");
-            OPENVINO_ASSERT(host_override->data(), "GFX: output tensor has null data");
-            MetalBuffer shared = m_alloc_core->wrap_shared(host_override->data(), bytes, logical_type);
-            if (src.buf.buffer != shared.buffer) {
-                id<MTLCommandQueue> cq = static_cast<id<MTLCommandQueue>>(cm->command_queue());
-                OPENVINO_ASSERT(cq, "GFX: command queue is null");
-                id<MTLCommandBuffer> blit_cb = [cq commandBuffer];
-                id<MTLBlitCommandEncoder> blit = [blit_cb blitCommandEncoder];
-                [blit copyFromBuffer:static_cast<id<MTLBuffer>>(src.buf.buffer)
-                       sourceOffset:0
-                           toBuffer:static_cast<id<MTLBuffer>>(shared.buffer)
-                  destinationOffset:0
-                                size:bytes];
-                [blit endEncoding];
-                [blit_cb commit];
-                [blit_cb waitUntilCompleted];
-            }
-            MetalTensor out = src;
-            out.buf = shared;
-            out.expected_type = logical_type;
-            out.shape = shape;
-            out.prefer_private = false;
-            return out;
+    auto output_input_lookup = [&](size_t input_idx) -> GpuTensor* {
+        if (!m_tensor_map.has_input_device(input_idx)) {
+            return nullptr;
         }
-
-        if (src.buf.storage_mode == static_cast<uint32_t>(MTLStorageModeShared)) {
-            return src;
-        }
-        // Allocate shared buffer and copy on GPU (no CPU copies).
-        BufferDesc desc;
-        desc.bytes = bytes;
-        desc.type = logical_type;
-        desc.usage = BufferUsage::IO;
-        desc.storage = MetalStorage::Shared;
-        desc.cpu_read = true;
-        desc.cpu_write = true;
-        MetalBuffer shared = m_allocator->allocate(desc, /*persistent=*/false);
-        id<MTLCommandQueue> cq = static_cast<id<MTLCommandQueue>>(cm->command_queue());
-        OPENVINO_ASSERT(cq, "GFX: command queue is null");
-        id<MTLCommandBuffer> blit_cb = [cq commandBuffer];
-        id<MTLBlitCommandEncoder> blit = [blit_cb blitCommandEncoder];
-        [blit copyFromBuffer:static_cast<id<MTLBuffer>>(src.buf.buffer)
-               sourceOffset:0
-                   toBuffer:static_cast<id<MTLBuffer>>(shared.buffer)
-          destinationOffset:0
-                        size:bytes];
-        [blit endEncoding];
-        [blit_cb commit];
-        [blit_cb waitUntilCompleted];
-        MetalTensor out = src;
-        out.buf = shared;
-        out.expected_type = logical_type;
-        out.shape = shape;
-        out.prefer_private = false;
-        return out;
+        return &m_tensor_map.get_input_device(input_idx);
     };
-    for (size_t idx = 0; idx < get_outputs().size(); ++idx) {
-        if (idx < m_bound_remote_outputs.size() && m_bound_remote_outputs[idx]) {
+    bind_outputs_common(
+        get_outputs(),
+        cm->get_runtime_model(),
+        cm->node_to_stage(),
+        cm->parameter_index(),
+        pipeline,
+        output_input_lookup,
+        m_bound_remote_outputs,
+        [&](size_t idx, const ov::element::Type& type, const ov::Shape& shape, const char* error_prefix) {
+            return get_host_output_override(idx, type, shape, error_prefix);
+        },
+        [&](size_t idx, const std::shared_ptr<GfxRemoteTensor>& remote) {
             ov::ISyncInferRequest::set_tensor(get_outputs()[idx],
-                                              ov::SoPtr<ov::ITensor>{m_bound_remote_outputs[idx], nullptr});
-            continue;
-        }
-        if (!m_tensor_map.has_output_device(idx)) {
-            OPENVINO_THROW("GFX: output device tensor missing (pipeline incomplete)");
-        }
-        const auto& dev = m_tensor_map.get_output_device(idx);
-        ov::element::Type logical = dev.expected_type == ov::element::dynamic ? dev.buf.type : dev.expected_type;
-        ov::Shape shape = dev.shape;
-        if (shape.empty()) {
-            const auto& out = get_outputs()[idx];
-            if (out.get_partial_shape().is_static())
-                shape = out.get_shape();
-            else
-                shape = ov::Shape{1};
-        }
-        const ov::Tensor* host_override = nullptr;
-        if (idx < m_bound_output_hosts.size() && m_bound_output_hosts[idx]) {
-            host_override = &m_bound_output_hosts[idx];
-        }
-        MetalTensor host_dev = ensure_host_visible(dev, logical, shape, host_override);
-        m_tensor_map.bind_output_device(idx, host_dev);
-        if (host_override && *host_override) {
-            ov::ISyncInferRequest::set_tensor(get_outputs()[idx], ov::get_tensor_impl(*host_override));
-        } else {
-            id<MTLBuffer> buf = static_cast<id<MTLBuffer>>(host_dev.buf.buffer);
-            void* ptr = buf ? [buf contents] : nullptr;
-            OPENVINO_ASSERT(ptr, "GFX: shared output buffer has no CPU pointer");
-            ov::Tensor view{logical, shape, ptr};
-            ov::ISyncInferRequest::set_tensor(get_outputs()[idx], ov::get_tensor_impl(view));
-        }
-    }
+                                              ov::SoPtr<ov::ITensor>{remote, nullptr});
+        },
+        [&](size_t idx,
+            GpuTensor& dev,
+            const OutputViewInfo& info,
+            const ov::Tensor* host_override) {
+            auto bound = bind_host_output(dev,
+                                          info,
+                                          host_override,
+                                          GpuBackend::Metal,
+                                          m_alloc_core,
+                                          m_allocator.get(),
+                                          cm->command_queue(),
+                                          nullptr,
+                                          nullptr,
+                                          "GFX");
+            m_tensor_map.bind_output_device(idx, bound.device_tensor);
+            ov::ISyncInferRequest::set_tensor(get_outputs()[idx], ov::get_tensor_impl(bound.host_tensor));
+        },
+        /*allow_missing=*/false,
+        /*allow_fallback_one=*/true,
+        "GFX");
 
     if (const char* mem_flag = std::getenv("OV_GFX_MEM_STATS")) {
         (void)mem_flag;

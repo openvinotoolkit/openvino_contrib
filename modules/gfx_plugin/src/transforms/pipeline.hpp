@@ -13,6 +13,7 @@
 #include "transformations/fp16_compression/mark_decompression_convert_constant_folding.hpp"
 #include "transformations/op_conversions/convert_avgpool_downgrade.hpp"
 #include "transformations/op_conversions/convert_maxpool_downgrade.hpp"
+#include "transformations/op_conversions/convert_mod.hpp"
 #include "transformations/op_conversions/convert_reduce_to_pooling.hpp"
 #include "transformations/op_conversions/scaled_dot_product_attention_decomposition.hpp"
 #include "transforms/conv_relu_fusion.hpp"
@@ -37,6 +38,7 @@ inline std::shared_ptr<const ov::Model> run_pipeline(const std::shared_ptr<const
     pass_config->disable<ov::pass::ConvertMaxPool14ToMaxPool8>();
     pass_config->disable<ov::pass::ConvertAvgPool14ToAvgPool1>();
     pass_config->disable<ov::pass::ConvertReduceSumToPooling>();
+    pass_config->disable<ov::pass::ConvertMod>();
 
     // Allow FP16 converts to be folded and decompression converts to be upgraded back to FP32
     pass_config->disable<ov::pass::DisableDecompressionConvertConstantFolding>();

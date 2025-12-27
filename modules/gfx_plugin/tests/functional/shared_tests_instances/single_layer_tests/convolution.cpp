@@ -8,11 +8,11 @@
 
 #include "common_test_utils/test_constants.hpp"
 #include "../../test_constants.hpp"
-#include "../../metal_test_utils.hpp"
+#include "../../metal/test_utils.hpp"
 
 using ov::test::ConvolutionLayerTest;
 
-class MetalConvolutionLayerTest : public ov::test::utils::GfxVsTemplateLayerTest<ConvolutionLayerTest> {
+class GfxConvolutionLayerTest : public ov::test::utils::GfxVsTemplateLayerTest<ConvolutionLayerTest> {
 protected:
     void SetUp() override {
         GfxVsTemplateLayerTest::SetUp();
@@ -25,7 +25,7 @@ protected:
     }
 };
 
-TEST_P(MetalConvolutionLayerTest, CompareWithTemplate) {
+TEST_P(GfxConvolutionLayerTest, CompareWithTemplate) {
     run_compare();
 }
 
@@ -62,8 +62,8 @@ const auto conv2DParams_AutoPadValid = ::testing::Combine(::testing::ValuesIn(ke
                                                           ::testing::Values(ov::op::PadType::VALID));
 
 INSTANTIATE_TEST_SUITE_P(
-    Metal_Convolution2D_ExplicitPadding,
-    MetalConvolutionLayerTest,
+    Gfx_Convolution2D_ExplicitPadding,
+    GfxConvolutionLayerTest,
     ::testing::Combine(conv2DParams_ExplicitPadding,
                        ::testing::ValuesIn(model_types),
                        ::testing::Values(ov::test::static_shapes_to_test_representation({{1, 3, 30, 30}})),
@@ -71,8 +71,8 @@ INSTANTIATE_TEST_SUITE_P(
     ConvolutionLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(
-    Metal_Convolution2D_AutoPadValid,
-    MetalConvolutionLayerTest,
+    Gfx_Convolution2D_AutoPadValid,
+    GfxConvolutionLayerTest,
     ::testing::Combine(conv2DParams_AutoPadValid,
                        ::testing::ValuesIn(model_types),
                        ::testing::Values(ov::test::static_shapes_to_test_representation({{1, 3, 30, 30}})),
@@ -103,8 +103,8 @@ const auto conv3DParams_AutoPadValid = ::testing::Combine(::testing::ValuesIn(ke
                                                           ::testing::Values(ov::op::PadType::VALID));
 
 INSTANTIATE_TEST_SUITE_P(
-    Metal_smoke_Convolution3D_ExplicitPadding,
-    MetalConvolutionLayerTest,
+    Gfx_smoke_Convolution3D_ExplicitPadding,
+    GfxConvolutionLayerTest,
     ::testing::Combine(conv3DParams_ExplicitPadding,
                        ::testing::ValuesIn(model_types),
                        ::testing::Values(ov::test::static_shapes_to_test_representation({{1, 3, 10, 10, 10}})),
@@ -112,8 +112,8 @@ INSTANTIATE_TEST_SUITE_P(
     ConvolutionLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(
-    Metal_nightly_Convolution3D_AutoPadValid,
-    MetalConvolutionLayerTest,
+    Gfx_nightly_Convolution3D_AutoPadValid,
+    GfxConvolutionLayerTest,
     ::testing::Combine(conv3DParams_AutoPadValid,
                        ::testing::ValuesIn(model_types),
                        ::testing::Values(ov::test::static_shapes_to_test_representation({{1, 3, 10, 10, 10}})),

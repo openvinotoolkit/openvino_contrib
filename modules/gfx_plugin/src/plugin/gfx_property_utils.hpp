@@ -1,0 +1,123 @@
+// Copyright (C) 2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+#pragma once
+
+#include <string>
+
+#include "openvino/runtime/properties.hpp"
+#include "openvino/util/common_util.hpp"
+#include "backends/metal/plugin/properties.hpp"
+#include "runtime/gfx_logger.hpp"
+#include "runtime/gfx_backend_utils.hpp"
+
+namespace ov {
+namespace gfx_plugin {
+
+struct BackendRequest {
+    GpuBackend kind = GpuBackend::Metal;
+    bool explicit_request = false;
+    std::string requested;
+};
+
+struct ResolvedBackendInfo {
+    GpuBackend backend = GpuBackend::Metal;
+    std::string backend_name;
+    bool explicit_request = false;
+    std::string requested;
+};
+
+struct RemoteContextParams {
+    ov::AnyMap merged;
+    GpuBackend backend = GpuBackend::Metal;
+    std::string backend_name;
+    int device_id = 0;
+};
+
+inline BackendRequest get_backend_request(const ov::AnyMap& properties) {
+    if (auto it = properties.find(kGfxBackendProperty); it != properties.end()) {
+        const auto requested = ov::util::to_lower(it->second.as<std::string>());
+        return BackendRequest{parse_backend_kind(requested), true, requested};
+    }
+    return BackendRequest{default_backend_kind(), false, ""};
+}
+
+inline GpuBackend resolve_backend_kind_from_properties(const ov::AnyMap& properties,
+                                                       bool log_fallback,
+                                                       const char* log_tag) {
+    auto request = get_backend_request(properties);
+    if (backend_supported(request.kind)) {
+        return request.kind;
+    }
+    const auto fallback = fallback_backend_kind();
+    if (!backend_supported(fallback)) {
+        OPENVINO_THROW("GFX: no supported backend available on this platform.");
+    }
+    if (log_fallback) {
+        if (request.explicit_request) {
+            GFX_LOG_WARN(log_tag,
+                         "GFX_BACKEND=" << request.requested
+                                        << " is not available on this platform; falling back to "
+                                        << backend_to_string(fallback));
+        } else {
+            GFX_LOG_WARN(log_tag,
+                         "Default GFX backend is not available on this platform; falling back to "
+                                        << backend_to_string(fallback));
+        }
+    }
+    return fallback;
+}
+
+inline std::string resolve_backend_name_from_properties(const ov::AnyMap& properties,
+                                                        bool log_fallback,
+                                                        const char* log_tag) {
+    const auto backend = resolve_backend_kind_from_properties(properties, log_fallback, log_tag);
+    return std::string(backend_to_string(backend));
+}
+
+inline ResolvedBackendInfo resolve_backend_for_properties(ov::AnyMap& properties,
+                                                          bool log_fallback,
+                                                          const char* log_tag) {
+    const auto request = get_backend_request(properties);
+    const auto backend = resolve_backend_kind_from_properties(properties, log_fallback, log_tag);
+    ResolvedBackendInfo info;
+    info.backend = backend;
+    info.backend_name = backend_to_string(backend);
+    info.explicit_request = request.explicit_request;
+    info.requested = request.requested;
+    properties[kGfxBackendProperty] = info.backend_name;
+    return info;
+}
+
+inline int parse_device_id(const ov::AnyMap& properties) {
+    int device_id = 0;
+    auto it = properties.find(ov::device::id.name());
+    if (it == properties.end()) {
+        return device_id;
+    }
+    try {
+        if (it->second.is<std::string>()) {
+            device_id = std::stoi(it->second.as<std::string>());
+        } else {
+            device_id = it->second.as<int>();
+        }
+    } catch (...) {
+        device_id = 0;
+    }
+    return device_id;
+}
+
+inline RemoteContextParams normalize_remote_context_params(const ov::AnyMap& remote_properties) {
+    RemoteContextParams params;
+    params.merged = remote_properties;
+    params.backend = resolve_backend_kind_from_properties(params.merged,
+                                                          /*log_fallback=*/true,
+                                                          "RemoteContext");
+    params.backend_name = backend_to_string(params.backend);
+    params.merged[kGfxBackendProperty] = params.backend_name;
+    params.device_id = parse_device_id(params.merged);
+    return params;
+}
+
+}  // namespace gfx_plugin
+}  // namespace ov

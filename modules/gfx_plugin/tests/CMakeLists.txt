@@ -9,32 +9,38 @@ set(GFX_TEST_LINK_LIBS
     gtest_main
     gtest)
 
-# Template plugin may be absent in the Developer Package; import it if available.
-if(NOT TARGET openvino_template_plugin)
-    find_library(TEMPLATE_PLUGIN_LIB
-        NAMES openvino_template_plugin
-        PATHS
-            ${OpenVINODeveloperPackage_DIR}/bin
-            ${OpenVINODeveloperPackage_DIR}/lib
-            ${OpenVINODeveloperPackage_DIR}/share
-        NO_DEFAULT_PATH)
-    if(TEMPLATE_PLUGIN_LIB)
-        add_library(openvino_template_plugin SHARED IMPORTED)
-        set_target_properties(openvino_template_plugin PROPERTIES
-            IMPORTED_LOCATION "${TEMPLATE_PLUGIN_LIB}")
-    endif()
-endif()
-
-if(TARGET openvino_template_plugin)
-    list(APPEND GFX_TEST_DEPENDENCIES openvino_template_plugin)
-    list(APPEND GFX_TEST_LINK_LIBS openvino_template_plugin)
-endif()
-
 # Align with CPU functional tests: single target built via ov_add_test_target,
 # no custom archives or force-load.
+set(GFX_TEST_EXCLUDED_PATHS "")
+if(NOT GFX_BACKEND_VULKAN_AVAILABLE)
+    list(APPEND GFX_TEST_EXCLUDED_PATHS
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime/backend_test.cpp
+    )
+endif()
+if(APPLE)
+    list(APPEND GFX_TEST_EXCLUDED_PATHS
+        ${CMAKE_CURRENT_SOURCE_DIR}/set_device_name.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/memory_test_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/runtime/gpu_backend_test_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/runtime/gpu_stage_activation_test_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/runtime/gpu_stage_factory_test_stub.cpp
+    )
+else()
+    list(APPEND GFX_TEST_EXCLUDED_PATHS
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/memory_test.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/runtime/gpu_backend_test.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/runtime/gpu_stage_activation_test.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/runtime/gpu_stage_factory_test.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/metal/set_device_name.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime/backend_test_stub.cpp
+    )
+endif()
+
 ov_add_test_target(
     NAME ${TARGET_NAME}
     ROOT ${CMAKE_CURRENT_SOURCE_DIR}
+    EXCLUDED_SOURCE_PATHS ${GFX_TEST_EXCLUDED_PATHS}
     DEPENDENCIES ${GFX_TEST_DEPENDENCIES}
     LINK_LIBRARIES ${GFX_TEST_LINK_LIBS}
     LABELS
@@ -43,35 +49,69 @@ ov_add_test_target(
 
 # Add ObjC++ runtime tests for memory manager.
 target_sources(${TARGET_NAME} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_memory_test.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_test.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_factory_test.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_activation_op_test.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/metal_memory.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/memory/metal_device_caps.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/memory/metal_allocator_core.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/memory/metal_heap_pool.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/memory/metal_staging_pool.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/memory/metal_allocator.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/memory/metal_memory_session.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/memory/metal_const_cache.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/gpu_stage_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/gpu_memory_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/gpu_memory.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/gfx_logger.cpp
 )
+if(NOT GFX_BACKEND_VULKAN_AVAILABLE)
+    target_sources(${TARGET_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/backends/vulkan/runtime/memory_api_stub.cpp
+    )
+endif()
+if(NOT APPLE)
+    target_sources(${TARGET_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/backends/metal/runtime/runtime_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/backends/metal/runtime/dtype.cpp
+    )
+endif()
+
+if(APPLE)
+    target_sources(${TARGET_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/memory_test.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/runtime/gpu_stage_factory_test.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/runtime/gpu_stage_activation_test.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/runtime/gpu_backend_test.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime/backend_test_stub.cpp
+    )
+endif()
+
+if(TARGET gfx_runtime_metal_obj)
+    target_sources(${TARGET_NAME} PRIVATE $<TARGET_OBJECTS:gfx_runtime_metal_obj>)
+endif()
+if(GFX_BACKEND_VULKAN_AVAILABLE AND TARGET gfx_runtime_vulkan_obj)
+    target_sources(${TARGET_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime/backend_test.cpp
+        $<TARGET_OBJECTS:gfx_runtime_vulkan_obj>)
+endif()
 
 # Device-specific bits: path to the built plugin and access to local src headers.
-target_compile_definitions(${TARGET_NAME} PRIVATE GFX_PLUGIN_PATH="$<TARGET_FILE:openvino_gfx_plugin>")
-if(TARGET openvino_template_plugin)
-    target_compile_definitions(${TARGET_NAME} PRIVATE TEMPLATE_PLUGIN_PATH="$<TARGET_FILE:openvino_template_plugin>")
-endif()
+target_compile_definitions(${TARGET_NAME} PRIVATE
+    GFX_PLUGIN_PATH="$<TARGET_FILE:openvino_gfx_plugin>"
+    GFX_BACKEND_METAL_AVAILABLE=$<BOOL:${GFX_BACKEND_METAL_AVAILABLE}>
+    GFX_BACKEND_VULKAN_AVAILABLE=$<BOOL:${GFX_BACKEND_VULKAN_AVAILABLE}>)
 target_include_directories(${TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    ${CMAKE_CURRENT_BINARY_DIR}/../src
     ${OpenVINO_SOURCE_DIR}/src
     ${OpenVINO_SOURCE_DIR}/src/plugins/template/include
 )
 
-if(ENABLE_GFX_MLIR)
-    target_include_directories(${TARGET_NAME} PRIVATE ${MLIR_INCLUDE_DIRS})
+if(TARGET gfx_plugin_build_settings)
+    target_link_libraries(${TARGET_NAME} PRIVATE gfx_plugin_build_settings)
 endif()
 
-if(APPLE)
-    target_link_libraries(${TARGET_NAME} PRIVATE "-framework Metal" "-framework Foundation")
+if(ENABLE_GFX_MLIR)
+    target_include_directories(${TARGET_NAME} PRIVATE ${MLIR_INCLUDE_DIRS})
+    target_link_libraries(${TARGET_NAME} PRIVATE gfx_mlir gfx_mlir_codegen)
+endif()
+
+if(TARGET GFX::Metal)
+    target_link_libraries(${TARGET_NAME} PRIVATE GFX::Metal)
+endif()
+if(TARGET GFX::Vulkan)
+    target_link_libraries(${TARGET_NAME} PRIVATE GFX::Vulkan)
+endif()
+if(TARGET gfx_vulkan_mlir_deps)
+    target_link_libraries(${TARGET_NAME} PRIVATE gfx_vulkan_mlir_deps)
 endif()

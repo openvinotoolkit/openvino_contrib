@@ -4,112 +4,84 @@
 
 set(TARGET_NAME "openvino_gfx_plugin")
 
-file(GLOB_RECURSE SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/*.mm)
-file(GLOB_RECURSE HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp)
+include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/GfxSources.cmake)
 
-# Ensure newly added per-op files are included even if glob caching misses them
-list(APPEND SOURCES
-    # Legacy per-kernel compiler helpers are not used by the object-based MLIR path.
-    # Handwritten MSL removed; MLIR->MSL used instead
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_dtype.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_logger.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_conv.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_conv3d.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_group_conv.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_activations.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_elementwise.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_pooling.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_softmax.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_split.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_matmul.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_concat.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_reshape.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_batchnorm.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_convert.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_interpolate.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_depth_to_space.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_slice.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_gather.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_gather_elements.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_gathernd.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_scatter_elements_update.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_scatter_nd_update.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_shapeof.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_pad.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_tile.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_broadcast.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_range.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_reverse.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_space_to_depth.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_topk.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_factory.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/plugin/remote_stub.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/profiling/metal_profiler.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/profiling/metal_gpu_timestamps.mm
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/profiling/metal_profiling_report.cpp
-)
-list(APPEND HEADERS
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_conv.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_conv3d.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_group_conv.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_activations.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_elementwise.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_pooling.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_softmax.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_split.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_matmul.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_concat.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_reshape.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_batchnorm.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_convert.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_interpolate.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_depth_to_space.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_slice.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_gather.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_gather_elements.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_gathernd.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_scatter_elements_update.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_scatter_nd_update.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_shapeof.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_pad.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_tile.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_broadcast.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_range.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_reverse.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_space_to_depth.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_topk.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/metal_op_factory.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/profiling/metal_profiler.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/profiling/metal_profiler_config.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/profiling/metal_gpu_timestamps.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/runtime/profiling/metal_profiling_report.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/plugin/metal_properties.hpp
-)
-# Remove legacy MLIR dispatcher (per-op codegen is used instead).
-list(FILTER SOURCES EXCLUDE REGEX "codegen_dispatcher.cpp")
-# Remove legacy reshape codegen that depends on KernelOp.
-list(FILTER SOURCES EXCLUDE REGEX "reshape_codegen.cpp")
-# Remove legacy Kernel IR builders and handwritten kernel compilers.
-list(FILTER SOURCES EXCLUDE REGEX "kernel_ir/.*\\.cpp$")
-list(FILTER SOURCES EXCLUDE REGEX "kernel_codegen/metal_kernel_compiler_.*\\.mm$")
-# Remove legacy MLIR builders that depend on KernelOp.
-list(FILTER SOURCES EXCLUDE REGEX "mlir_builder_concat\\.cpp$")
-list(FILTER SOURCES EXCLUDE REGEX "mlir_builder_split\\.cpp$")
-list(FILTER SOURCES EXCLUDE REGEX "mlir_builder_convert\\.cpp$")
-list(FILTER SOURCES EXCLUDE REGEX "mlir_builder_interpolate\\.cpp$")
-# Keep the common Metal compiler helper.
-list(APPEND SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen/metal_kernel_compiler_common.mm)
-# MLIR-only backend: source lists already limited to existing files; legacy ops/graph were removed.
+set(GFX_PLUGIN_SOURCES ${GFX_PLUGIN_SOURCES})
+set(GFX_RUNTIME_COMMON_SOURCES ${GFX_RUNTIME_COMMON_SOURCES})
 
-if(ENABLE_GFX_MLIR)
-    add_subdirectory(mlir)
-    add_subdirectory(mlir_codegen)
+if(NOT GFX_BACKEND_METAL_AVAILABLE)
+    list(REMOVE_ITEM GFX_PLUGIN_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/plugin/infer_request.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/plugin/remote_stub.mm)
+    list(FILTER GFX_PLUGIN_SOURCES EXCLUDE REGEX ".*/infer_request\\.mm$")
+    list(FILTER GFX_PLUGIN_SOURCES EXCLUDE REGEX "infer_request\\.mm$")
+    list(FILTER GFX_PLUGIN_SOURCES EXCLUDE REGEX ".*/remote_stub\\.mm$")
+    list(FILTER GFX_PLUGIN_SOURCES EXCLUDE REGEX "remote_stub\\.mm$")
+    list(APPEND GFX_PLUGIN_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/plugin/infer_request_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/plugin/remote_stub_stub.cpp)
+    list(APPEND GFX_RUNTIME_COMMON_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/runtime_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/profiling/profiler_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/profiling/gpu_timestamps_stub.cpp)
 endif()
 
+if(GFX_BACKEND_VULKAN_AVAILABLE)
+    list(APPEND GFX_PLUGIN_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/infer_request.cpp)
+else()
+    list(APPEND GFX_PLUGIN_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/infer_request_stub.cpp)
+endif()
+
+if(NOT GFX_BACKEND_VULKAN_AVAILABLE)
+    list(APPEND GFX_RUNTIME_COMMON_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime/memory_api_stub.cpp)
+endif()
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/plugin/gfx_backend_config.hpp.in
+    ${CMAKE_CURRENT_BINARY_DIR}/plugin/gfx_backend_config.hpp
+    @ONLY
+)
+
+if(GFX_ENABLE_METAL AND GFX_RUNTIME_METAL_SOURCES AND NOT GFX_BACKEND_METAL_AVAILABLE)
+    message(FATAL_ERROR "GFX: Metal backend sources are present but Metal is not available.")
+endif()
+
+if(NOT GFX_PLUGIN_SOURCES)
+    message(FATAL_ERROR "GFX: plugin sources are missing.")
+endif()
+
+if(ENABLE_GFX_MLIR)
+    add_subdirectory(compiler/mlir)
+    add_subdirectory(compiler/mlir_codegen)
+endif()
+
+# Build settings shared by plugin and runtime objects.
+add_library(gfx_plugin_build_settings INTERFACE)
+target_include_directories(gfx_plugin_build_settings INTERFACE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_BINARY_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/plugin"
+    "${CMAKE_CURRENT_SOURCE_DIR}/runtime"
+    "${CMAKE_CURRENT_SOURCE_DIR}/backends"
+    "${CMAKE_CURRENT_SOURCE_DIR}/compiler"
+    "${CMAKE_CURRENT_SOURCE_DIR}/compiler/mlir"
+    "${CMAKE_CURRENT_SOURCE_DIR}/compiler/mlir_codegen"
+    "${CMAKE_CURRENT_SOURCE_DIR}/compiler/spirv"
+    "${CMAKE_CURRENT_SOURCE_DIR}/msl"
+    "${CMAKE_CURRENT_SOURCE_DIR}/transforms"
+    $<$<BOOL:${ENABLE_GFX_MLIR}>:${MLIR_INCLUDE_DIRS}>)
+target_compile_definitions(gfx_plugin_build_settings INTERFACE
+    ENABLE_GFX_MLIR=$<BOOL:${ENABLE_GFX_MLIR}>
+    GFX_BACKEND_METAL_AVAILABLE=$<BOOL:${GFX_BACKEND_METAL_AVAILABLE}>
+    GFX_BACKEND_VULKAN_AVAILABLE=$<BOOL:${GFX_BACKEND_VULKAN_AVAILABLE}>)
+
 # Build GFX plugin as SHARED (not MODULE) to allow normal linking/registration in OpenVINO
-add_library(${TARGET_NAME} SHARED ${SOURCES} ${HEADERS})
+add_library(${TARGET_NAME} SHARED)
+target_sources(${TARGET_NAME} PRIVATE ${GFX_PLUGIN_SOURCES} ${GFX_PLUGIN_HEADERS} ${GFX_RUNTIME_COMMON_SOURCES})
+target_link_libraries(${TARGET_NAME} PRIVATE gfx_plugin_build_settings)
 
 # On macOS, force ".so" suffix so OpenVINO loader picks the plugin consistently.
 if(APPLE)
@@ -121,18 +93,6 @@ target_compile_definitions(${TARGET_NAME} PRIVATE IMPLEMENT_OPENVINO_RUNTIME_PLU
 ov_add_vs_version_file(NAME ${TARGET_NAME}
     FILEDESCRIPTION "OpenVINO Runtime GFX device plugin library")
 
-target_include_directories(${TARGET_NAME} PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/plugin"
-    "${CMAKE_CURRENT_SOURCE_DIR}/runtime"
-    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_codegen"
-    "${CMAKE_CURRENT_SOURCE_DIR}/msl"
-    "${CMAKE_CURRENT_SOURCE_DIR}/transforms"
-    "${CMAKE_CURRENT_SOURCE_DIR}/mlir"
-    $<$<BOOL:${ENABLE_GFX_MLIR}>:${MLIR_INCLUDE_DIRS}>)
-
-target_compile_definitions(${TARGET_NAME} PRIVATE ENABLE_GFX_MLIR)
-
 # Link reference implementations for early bring-up
 target_link_libraries(${TARGET_NAME} PRIVATE
     openvino::runtime
@@ -140,9 +100,164 @@ target_link_libraries(${TARGET_NAME} PRIVATE
     openvino::interpreter_backend
     openvino::reference
     $<$<BOOL:${ENABLE_GFX_MLIR}>:gfx_mlir>
-    $<$<BOOL:${ENABLE_GFX_MLIR}>:gfx_mlir_codegen>
-    "-framework Metal"
-    "-framework Foundation")
+    $<$<BOOL:${ENABLE_GFX_MLIR}>:gfx_mlir_codegen>)
+
+if(GFX_BACKEND_METAL_AVAILABLE)
+    add_library(gfx_runtime_metal_obj OBJECT)
+    target_sources(gfx_runtime_metal_obj PRIVATE
+        ${GFX_RUNTIME_COMMON_HEADERS}
+        ${GFX_RUNTIME_METAL_SOURCES}
+        ${GFX_RUNTIME_METAL_HEADERS})
+    target_link_libraries(gfx_runtime_metal_obj PRIVATE
+        gfx_plugin_build_settings
+        openvino::runtime
+        openvino::runtime::dev)
+    set_target_properties(gfx_runtime_metal_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_sources(${TARGET_NAME} PRIVATE $<TARGET_OBJECTS:gfx_runtime_metal_obj>)
+    if(DEFINED GFX_LLVM_EXTERNAL_TARGET)
+        add_dependencies(gfx_runtime_metal_obj ${GFX_LLVM_EXTERNAL_TARGET})
+    endif()
+endif()
+
+if(TARGET GFX::Metal)
+    target_link_libraries(${TARGET_NAME} PRIVATE GFX::Metal)
+endif()
+
+if(GFX_BACKEND_VULKAN_AVAILABLE)
+    add_library(gfx_runtime_vulkan_obj OBJECT)
+    target_sources(gfx_runtime_vulkan_obj PRIVATE
+        ${GFX_RUNTIME_COMMON_HEADERS}
+        ${GFX_RUNTIME_VULKAN_SOURCES}
+        ${GFX_RUNTIME_VULKAN_HEADERS})
+    set(GFX_VULKAN_MLIR_LIBS
+        MLIRSPIRVSerialization
+        MLIRSPIRVTransforms
+        MLIRSPIRVConversion
+        MLIRGPUToSPIRV
+        MLIRArithToSPIRV
+        MLIRMathToSPIRV
+        MLIRSCFToSPIRV
+        MLIRTensorToSPIRV
+        MLIRMemRefToSPIRV
+        MLIRFuncToSPIRV
+        MLIRIndexToSPIRV
+        MLIRControlFlowToSPIRV
+        MLIRVectorDialect
+        MLIRVectorInterfaces
+        MLIRMaskableOpInterface
+        MLIRMaskingOpInterface
+        MLIRSPIRVDialect
+        MLIRSPIRVImageInterfaces
+        MLIRSPIRVUtils
+        MLIRSPIRVBinaryUtils
+        MLIRUBDialect
+        MLIRUBToSPIRV
+        MLIRControlFlowDialect
+        MLIRControlFlowInterfaces
+        MLIRDLTIDialect
+        MLIRIndexDialect
+        MLIRMemRefDialect
+        MLIRFunctionInterfaces
+        MLIRDestinationStyleOpInterface
+        MLIRShapedOpInterfaces
+        MLIRIndexingMapOpInterface
+        MLIRLoopLikeInterface
+        MLIRParallelCombiningOpInterface
+        MLIRMemorySlotInterfaces
+        MLIRCopyOpInterface
+        MLIRArithValueBoundsOpInterfaceImpl
+        MLIRTensorInferTypeOpInterfaceImpl
+        MLIRTensorTilingInterfaceImpl
+        MLIRInferIntRangeCommon
+        MLIRInferIntRangeInterface
+        MLIRInferTypeOpInterface
+        MLIRSideEffectInterfaces
+        MLIRViewLikeInterface
+        MLIRCastInterfaces
+        MLIRDataLayoutInterfaces
+        MLIRTransformUtils
+        MLIRRewrite
+        MLIRRewritePDL
+        MLIRPDLToPDLInterp
+        MLIRPDLInterpDialect
+        MLIRPDLDialect
+        MLIRPDLLAST
+        MLIRSubsetOpInterface
+        MLIRReconcileUnrealizedCasts
+        MLIRParser
+        MLIRAsmParser
+        MLIRBytecodeReader
+        MLIRBytecodeWriter
+        MLIRBytecodeOpInterface
+        MLIRDialect
+        MLIRDialectUtils
+        MLIRIR
+        MLIRSupport
+        MLIRPass
+        MLIRTransforms
+        MLIRAffineTransforms
+        MLIRAffineToStandard
+        MLIRAffineUtils
+        MLIRAffineAnalysis
+        MLIRAffineDialect
+        MLIRTensorUtils
+        MLIRTensorTransforms
+        MLIRTensorTransformOps
+        MLIRPresburger
+        MLIRArithUtils
+        MLIRSCFTransforms
+        MLIRSCFUtils
+        MLIRMemRefUtils
+        MLIRVectorToSPIRV)
+    set(GFX_VULKAN_MLIR_LINK_LIBS "")
+    set(_gfx_mlir_lib_dir "")
+    if(DEFINED MLIR_DIR)
+        get_filename_component(_gfx_mlir_cmake_dir "${MLIR_DIR}" DIRECTORY)
+        get_filename_component(_gfx_mlir_lib_dir "${_gfx_mlir_cmake_dir}" DIRECTORY)
+    endif()
+    foreach(_gfx_mlir_lib IN LISTS GFX_VULKAN_MLIR_LIBS)
+        if(TARGET ${_gfx_mlir_lib})
+            list(APPEND GFX_VULKAN_MLIR_LINK_LIBS ${_gfx_mlir_lib})
+        elseif(_gfx_mlir_lib_dir)
+            set(_gfx_mlir_lib_path "${_gfx_mlir_lib_dir}/lib${_gfx_mlir_lib}.a")
+            if(EXISTS "${_gfx_mlir_lib_path}")
+                list(APPEND GFX_VULKAN_MLIR_LINK_LIBS "${_gfx_mlir_lib_path}")
+            else()
+                list(APPEND GFX_VULKAN_MLIR_LINK_LIBS ${_gfx_mlir_lib})
+            endif()
+        else()
+            list(APPEND GFX_VULKAN_MLIR_LINK_LIBS ${_gfx_mlir_lib})
+        endif()
+    endforeach()
+    if(UNIX AND NOT APPLE)
+        list(JOIN GFX_VULKAN_MLIR_LINK_LIBS "," GFX_VULKAN_MLIR_LIBS_JOINED)
+        set(GFX_VULKAN_MLIR_LINK_LIBS "$<LINK_GROUP:RESCAN,${GFX_VULKAN_MLIR_LIBS_JOINED}>")
+    endif()
+    unset(_gfx_mlir_lib_dir)
+    unset(_gfx_mlir_cmake_dir)
+    unset(_gfx_mlir_lib_path)
+    unset(_gfx_mlir_lib)
+    add_library(gfx_vulkan_mlir_deps INTERFACE)
+    target_link_libraries(gfx_vulkan_mlir_deps INTERFACE ${GFX_VULKAN_MLIR_LINK_LIBS})
+    target_link_libraries(gfx_runtime_vulkan_obj PRIVATE
+        gfx_plugin_build_settings
+        openvino::runtime
+        openvino::runtime::dev
+        gfx_vulkan_mlir_deps)
+    set_target_properties(gfx_runtime_vulkan_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_sources(${TARGET_NAME} PRIVATE $<TARGET_OBJECTS:gfx_runtime_vulkan_obj>)
+    if(DEFINED GFX_LLVM_EXTERNAL_TARGET)
+        add_dependencies(gfx_runtime_vulkan_obj ${GFX_LLVM_EXTERNAL_TARGET})
+    endif()
+    if(TARGET GFX::Vulkan)
+        target_link_libraries(gfx_runtime_vulkan_obj PRIVATE GFX::Vulkan)
+    endif()
+    target_link_libraries(${TARGET_NAME} PRIVATE gfx_vulkan_mlir_deps)
+endif()
+
+if(TARGET GFX::Vulkan)
+    target_link_libraries(${TARGET_NAME} PRIVATE GFX::Vulkan)
+endif()
 
 ov_mark_target_as_cc(${TARGET_NAME})
 ov_abi_free_target(${TARGET_NAME})

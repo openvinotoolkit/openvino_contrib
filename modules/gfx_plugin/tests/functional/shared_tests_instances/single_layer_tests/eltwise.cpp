@@ -8,25 +8,35 @@
 
 #include "common_test_utils/test_constants.hpp"
 #include "../../test_constants.hpp"
-#include "../../metal_test_utils.hpp"
+#include "../../metal/test_utils.hpp"
 
 using ov::test::EltwiseLayerTest;
 
-class MetalEltwiseLayerTest : public ov::test::utils::GfxVsTemplateLayerTest<EltwiseLayerTest> {
+class GfxEltwiseLayerTest : public ov::test::utils::GfxVsTemplateLayerTest<EltwiseLayerTest> {
 protected:
     void SetUp() override {
         ov::test::utils::GfxVsTemplateLayerTest<EltwiseLayerTest>::SetUp();
         const auto& params = GetParam();
         const auto eltwise_type = std::get<1>(params);
+        const auto net_precision = std::get<4>(params);
         if (eltwise_type == ov::test::utils::EltwiseTypes::POWER) {
-            // Pow is sensitive; loosen tolerance to match CPU/TEMPLATE behavior.
-            this->abs_threshold = 1e-3f;
-            this->rel_threshold = 1e-3f;
+            // Pow is sensitive; loosen tolerance to match reference behavior.
+            const float base_tol = (net_precision == ov::element::f16) ? 5e-3f : 1e-3f;
+            this->abs_threshold = base_tol;
+            this->rel_threshold = base_tol;
+        }
+        if (net_precision == ov::element::f16 &&
+            eltwise_type == ov::test::utils::EltwiseTypes::DIVIDE) {
+            // FP16 division on Vulkan can differ by ~1 ULP vs FP32 reference.
+            using ThresholdT = decltype(this->abs_threshold);
+            const auto loosen = static_cast<ThresholdT>(7e-4);
+            this->abs_threshold = std::max(this->abs_threshold, loosen);
+            this->rel_threshold = std::max(this->rel_threshold, loosen);
         }
     }
 };
 
-TEST_P(MetalEltwiseLayerTest, CompareWithTemplate) {
+TEST_P(GfxEltwiseLayerTest, CompareWithTemplate) {
     run_compare();  // No fallback/skip: GFX is sole target
 }
 
@@ -114,12 +124,12 @@ const auto multiply_params_dynamic =
                        ::testing::Values(ov::test::utils::DEVICE_GFX),
                        ::testing::Values(additional_config));
 
-INSTANTIATE_TEST_SUITE_P(Metal_smoke_CompareWithRefs_static,
-                         MetalEltwiseLayerTest,
+INSTANTIATE_TEST_SUITE_P(Gfx_smoke_CompareWithRefs_static,
+                         GfxEltwiseLayerTest,
                          multiply_params,
                          EltwiseLayerTest::getTestCaseName);
-INSTANTIATE_TEST_SUITE_P(Metal_smoke_CompareWithRefs_dynamic,
-                         MetalEltwiseLayerTest,
+INSTANTIATE_TEST_SUITE_P(Gfx_smoke_CompareWithRefs_dynamic,
+                         GfxEltwiseLayerTest,
                          multiply_params_dynamic,
                          EltwiseLayerTest::getTestCaseName);
 
@@ -147,8 +157,8 @@ const auto single_thread_params =
                        ::testing::Values(ov::test::utils::DEVICE_GFX),
                        ::testing::Values(additional_config_single_thread));
 
-INSTANTIATE_TEST_SUITE_P(Metal_smoke_SingleThread,
-                         MetalEltwiseLayerTest,
+INSTANTIATE_TEST_SUITE_P(Gfx_smoke_SingleThread,
+                         GfxEltwiseLayerTest,
                          single_thread_params,
                          EltwiseLayerTest::getTestCaseName);
 

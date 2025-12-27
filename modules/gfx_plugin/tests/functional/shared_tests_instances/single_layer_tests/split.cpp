@@ -8,21 +8,21 @@
 
 #include "common_test_utils/test_constants.hpp"
 #include "../../test_constants.hpp"
-#include "../../metal_test_utils.hpp"
+#include "../../metal/test_utils.hpp"
 
 using ov::test::SplitLayerTest;
 
-using MetalSplitLayerTest = ov::test::utils::GfxVsTemplateLayerTest<SplitLayerTest>;
+using GfxSplitLayerTest = ov::test::utils::GfxVsTemplateLayerTest<SplitLayerTest>;
 
-TEST_P(MetalSplitLayerTest, CompareWithTemplate) {
+TEST_P(GfxSplitLayerTest, CompareWithTemplate) {
     run_compare();
 }
 
 namespace {
 
 INSTANTIATE_TEST_SUITE_P(
-    Metal_smoke_NumSplitsCheck,
-    MetalSplitLayerTest,
+    Gfx_smoke_NumSplitsCheck,
+    GfxSplitLayerTest,
     ::testing::Combine(::testing::Values(1, 2, 3, 5, 6, 10, 30),
                        ::testing::Values(0, 1, 2, 3),
                        ::testing::Values(ov::element::f32),

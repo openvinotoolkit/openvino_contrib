@@ -1,0 +1,15 @@
+// Copyright (C) 2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+#pragma once
+
+namespace ov {
+namespace gfx_plugin {
+
+inline constexpr const char* kGfxDefaultBackend = "@GFX_RESOLVED_DEFAULT_BACKEND@";
+
+inline constexpr bool kGfxBackendMetalAvailable = @GFX_BACKEND_METAL_AVAILABLE_VALUE@;
+inline constexpr bool kGfxBackendVulkanAvailable = @GFX_BACKEND_VULKAN_AVAILABLE_VALUE@;
+
+}  // namespace gfx_plugin
+}  // namespace ov

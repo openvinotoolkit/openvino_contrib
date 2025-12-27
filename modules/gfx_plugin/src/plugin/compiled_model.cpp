@@ -5,12 +5,16 @@
 #include "compiled_model.hpp"
 
 #include "infer_request.hpp"
-#include "plugin/metal_properties.hpp"
+#include "plugin/gfx_backend_config.hpp"
+#include "plugin/gfx_profiling_utils.hpp"
+#include "backends/metal/plugin/properties.hpp"
 #include "plugin.hpp"
 #include "remote_stub.hpp"
-#include "runtime/metal_logger.hpp"
-#include "runtime/metal_memory.hpp"
-#include "runtime/profiling/metal_profiler_config.hpp"
+#include "plugin/gfx_property_utils.hpp"
+#include "runtime/gfx_logger.hpp"
+#include "runtime/gfx_backend_utils.hpp"
+#include "backends/metal/runtime/memory.hpp"
+#include "runtime/profiling/gfx_profiler_config.hpp"
 
 #include "openvino/core/except.hpp"
 #include "openvino/core/validation_util.hpp"
@@ -25,50 +29,8 @@
 
 #include <cstdlib>
 #include <string>
-#include <algorithm>
-#include <cctype>
-
 namespace ov {
 namespace gfx_plugin {
-
-namespace {
-ProfilingLevel parse_profiling_level(const ov::Any& value) {
-    if (value.is<int>()) {
-        const int v = value.as<int>();
-        if (v <= 0)
-            return ProfilingLevel::Off;
-        if (v == 1)
-            return ProfilingLevel::Standard;
-        return ProfilingLevel::Detailed;
-    }
-    if (value.is<unsigned int>()) {
-        const unsigned int v = value.as<unsigned int>();
-        if (v == 0)
-            return ProfilingLevel::Off;
-        if (v == 1)
-            return ProfilingLevel::Standard;
-        return ProfilingLevel::Detailed;
-    }
-    if (value.is<bool>()) {
-        return value.as<bool>() ? ProfilingLevel::Standard : ProfilingLevel::Off;
-    }
-    if (value.is<std::string>()) {
-        auto s = value.as<std::string>();
-        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        if (s == "0" || s == "off" || s == "false") {
-            return ProfilingLevel::Off;
-        }
-        if (s == "1" || s == "standard" || s == "on" || s == "true") {
-            return ProfilingLevel::Standard;
-        }
-        if (s == "2" || s == "detailed" || s == "detail") {
-            return ProfilingLevel::Detailed;
-        }
-    }
-    OPENVINO_THROW("Unsupported profiling level type/value");
-}
-
-}  // namespace
 
 CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
                              const std::shared_ptr<const ov::IPlugin>& plugin,
@@ -94,9 +56,32 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
         m_profiling_level = parse_profiling_level(it->second);
         m_profiling_level_set = true;
     }
+    ov::AnyMap resolved_props = properties;
+    const auto request = get_backend_request(resolved_props);
+    auto resolved = resolve_backend_for_properties(resolved_props, /*log_fallback=*/true, "CompiledModel");
+    if (context) {
+        auto gfx_ctx = std::dynamic_pointer_cast<GfxRemoteContext>(context._ptr);
+        OPENVINO_ASSERT(gfx_ctx, "GFX: remote context type mismatch");
+        const auto ctx_backend = gfx_ctx->backend();
+        if (request.explicit_request && request.kind != ctx_backend) {
+            OPENVINO_THROW("GFX: backend mismatch between properties (",
+                           backend_to_string(request.kind),
+                           ") and remote context (",
+                           backend_to_string(ctx_backend),
+                           ")");
+        }
+        resolved.backend = ctx_backend;
+        resolved.backend_name = backend_to_string(ctx_backend);
+        resolved_props[kGfxBackendProperty] = resolved.backend_name;
+    }
+    m_backend = resolved.backend;
+    if (!backend_supported(m_backend)) {
+        OPENVINO_THROW("GFX ", backend_to_string(m_backend), " backend is not available in this build.");
+    }
+    m_backend_name = resolved.backend_name;
 
     // Preserve user properties; store inference_precision as ov::element::Type.
-    for (const auto& kv : properties) {
+    for (const auto& kv : resolved_props) {
         if (kv.first == ov::hint::inference_precision.name()) {
             m_config[kv.first] = m_inference_precision;
         } else if (kv.first == ov::enable_profiling.name() || kv.first == "PERF_COUNT") {
@@ -107,45 +92,41 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
             m_config[kv.first] = kv.second;
         }
     }
-    // Create buffer manager bound to selected Metal device (context or DEVICE_ID).
-    MetalDeviceHandle dev = nullptr;
-    if (context) {
-        auto metal_ctx = std::dynamic_pointer_cast<GfxRemoteContext>(context._ptr);
-        OPENVINO_ASSERT(metal_ctx, "GFX: remote context type mismatch");
-        dev = metal_ctx->device_handle();
-    }
-    if (!dev) {
-        int device_id = 0;
-        if (auto it = properties.find(ov::device::id.name()); it != properties.end()) {
-            try {
-                if (it->second.is<std::string>()) {
-                    device_id = std::stoi(it->second.as<std::string>());
-                } else {
-                    device_id = it->second.as<int>();
-                }
-            } catch (...) {
-                device_id = 0;
-            }
+    m_config[kGfxBackendProperty] = m_backend_name;
+    if (m_backend == GpuBackend::Metal) {
+        // Create buffer manager bound to selected Metal device (context or DEVICE_ID).
+        MetalDeviceHandle dev = nullptr;
+        if (context) {
+            auto metal_ctx = std::dynamic_pointer_cast<GfxRemoteContext>(context._ptr);
+            OPENVINO_ASSERT(metal_ctx, "GFX: remote context type mismatch");
+            OPENVINO_ASSERT(metal_ctx->backend() == GpuBackend::Metal,
+                            "GFX: remote context backend mismatch (expected Metal)");
+            dev = metal_ctx->device_handle();
         }
-        dev = metal_get_device_by_id(device_id);
+        if (!dev) {
+            int device_id = parse_device_id(properties);
+            dev = metal_get_device_by_id(device_id);
+        }
+        m_device = dev;
+        m_command_queue = metal_create_command_queue(m_device);
+        OPENVINO_ASSERT(m_command_queue, "GFX: failed to create command queue");
+        m_caps = query_metal_device_caps(m_device);
+        m_alloc_core = std::make_unique<MetalAllocatorCore>(m_device, m_caps);
+        m_persistent_heaps = std::make_unique<MetalHeapPool>(*m_alloc_core);
+        m_persistent_freelist = std::make_unique<MetalFreeList>();
+        m_persistent_staging = std::make_unique<MetalStagingPool>(*m_alloc_core);
+        m_persistent_alloc = std::make_unique<MetalAllocator>(*m_alloc_core,
+                                                              *m_persistent_heaps,
+                                                              *m_persistent_freelist,
+                                                              *m_persistent_staging,
+                                                              m_caps);
+        m_const_cache = std::make_unique<MetalConstCache>(*m_persistent_alloc);
+        m_const_manager = std::make_shared<MetalBufferManager>(*m_alloc_core, m_const_cache.get());
+    } else {
+        GFX_LOG_INFO("CompiledModel", "Vulkan backend selected");
     }
-    m_device = dev;
-    m_command_queue = metal_create_command_queue(m_device);
-    OPENVINO_ASSERT(m_command_queue, "GFX: failed to create command queue");
-    m_caps = query_metal_device_caps(m_device);
-    m_alloc_core = std::make_unique<MetalAllocatorCore>(m_device, m_caps);
-    m_persistent_heaps = std::make_unique<MetalHeapPool>(*m_alloc_core);
-    m_persistent_freelist = std::make_unique<MetalFreeList>();
-    m_persistent_staging = std::make_unique<MetalStagingPool>(*m_alloc_core);
-    m_persistent_alloc = std::make_unique<MetalAllocator>(*m_alloc_core,
-                                                          *m_persistent_heaps,
-                                                          *m_persistent_freelist,
-                                                          *m_persistent_staging,
-                                                          m_caps);
-    m_const_cache = std::make_unique<MetalConstCache>(*m_persistent_alloc);
-    m_const_manager = std::make_shared<MetalBufferManager>(*m_alloc_core, m_const_cache.get());
 
-    // Build MetalOp pipeline eagerly; fail early if unsupported ops encountered.
+    // Build GpuStage pipeline eagerly; fail early if unsupported ops encountered.
     build_op_pipeline();
 }
 
@@ -172,6 +153,10 @@ void CompiledModel::set_property(const ov::AnyMap& properties) {
         } else if (kv.first == ov::enable_profiling.name()) {
             m_enable_profiling = kv.second.as<bool>();
             m_config[kv.first] = m_enable_profiling;
+        } else if (kv.first == "PERF_COUNT") {
+            m_enable_profiling = kv.second.as<bool>();
+            m_config[ov::enable_profiling.name()] = m_enable_profiling;
+            m_config[kv.first] = kv.second;
         } else if (kv.first == kGfxProfilingLevelProperty) {
             m_profiling_level = parse_profiling_level(kv.second);
             m_profiling_level_set = true;
@@ -215,10 +200,19 @@ ov::Any CompiledModel::get_property(const std::string& name) const {
         auto props = default_ro_properties();
         props.push_back(ov::PropertyName{ov::hint::inference_precision.name(), ov::PropertyMutability::RW});
         props.push_back(ov::PropertyName{ov::enable_profiling.name(), ov::PropertyMutability::RW});
+        props.push_back(ov::PropertyName{"PERF_COUNT", ov::PropertyMutability::RW});
         props.push_back(ov::PropertyName{kGfxProfilingLevelProperty, ov::PropertyMutability::RW});
+        props.push_back(ov::PropertyName{kGfxBackendProperty, ov::PropertyMutability::RO});
         props.push_back(ov::PropertyName{kGfxProfilingReportProperty, ov::PropertyMutability::RO});
         props.push_back(ov::PropertyName{kGfxMemStatsProperty, ov::PropertyMutability::RO});
         return decltype(ov::supported_properties)::value_type(props.begin(), props.end());
+    }
+
+    if (name == kGfxBackendProperty) {
+        return m_backend_name;
+    }
+    if (name == "PERF_COUNT") {
+        return m_enable_profiling;
     }
 
     if (auto it = m_config.find(name); it != m_config.end()) {
@@ -261,7 +255,7 @@ void CompiledModel::build_op_pipeline() {
         return;
     }
 
-    if (!m_const_manager) {
+    if (!m_const_manager && m_backend == GpuBackend::Metal) {
         GFX_LOG_WARN("OpFactory", "Cannot build pipeline: const manager is null");
         return;
     }
@@ -305,7 +299,7 @@ void CompiledModel::build_op_pipeline() {
                 auto it = m_node_to_stage.find(input.get());
                 if (it != m_node_to_stage.end()) {
                     auto& conv_stage = m_pipeline[it->second];
-                    if (conv_stage.op->fuse_activation(ActivationKind::Relu, 0.0f)) {
+                    if (conv_stage.stage->fuse_activation(ActivationKind::Relu, 0.0f)) {
                         m_node_to_stage[node.get()] = it->second;
                         if (auto mo = model_outputs.find(node.get()); mo != model_outputs.end()) {
                             for (size_t oi = 0; oi < mo->second.size() && oi < conv_stage.outputs.size(); ++oi) {
@@ -320,56 +314,62 @@ void CompiledModel::build_op_pipeline() {
             }
         }
 
-        auto op = MetalOpFactory::create(node, device, m_command_queue);
-        OPENVINO_ASSERT(op,
+        auto gpu_stage = GpuStageFactory::create(node, m_backend, device, m_command_queue);
+        OPENVINO_ASSERT(gpu_stage,
                         "GFX: unsupported op in MLIR pipeline: ",
                         node->get_friendly_name(),
                         " (",
                         node->get_type_name(),
                         ")");
 
-        PipelineStageDesc stage;
-        stage.node = node;
-        stage.op = std::move(op);
+        PipelineStageDesc stage_desc;
+        stage_desc.node = node;
+        stage_desc.stage = std::move(gpu_stage);
         const size_t out_count = node->get_output_size();
-        stage.outputs.reserve(out_count);
+        stage_desc.outputs.reserve(out_count);
         for (size_t oi = 0; oi < out_count; ++oi) {
             OutputDesc out_desc{};
             if (node->get_output_partial_shape(oi).is_static()) {
                 out_desc.shape = node->get_output_shape(oi);
             }
             out_desc.type = node->get_output_element_type(oi);
-            stage.outputs.emplace_back(std::move(out_desc));
+            stage_desc.outputs.emplace_back(std::move(out_desc));
         }
         if (auto it = model_outputs.find(node.get()); it != model_outputs.end()) {
             const auto& flags = it->second;
             for (size_t oi = 0; oi < out_count && oi < flags.size(); ++oi) {
-                stage.outputs[oi].is_model_output = flags[oi];
+                stage_desc.outputs[oi].is_model_output = flags[oi];
             }
         }
         for (const auto& iv : node->input_values()) {
-            stage.inputs.push_back({iv.get_node_shared_ptr(), iv.get_index()});
+            stage_desc.inputs.push_back({iv.get_node_shared_ptr(), iv.get_index()});
+        }
+        if (gfx_log_debug_enabled()) {
+            GFX_LOG_DEBUG("StageFactory",
+                          "Created GpuStage for " << node->get_type_name()
+                                                  << " name=" << node->get_friendly_name());
         }
 
         const size_t idx = m_pipeline.size();
         m_node_to_stage[node.get()] = idx;
-        m_pipeline.emplace_back(std::move(stage));
+        m_pipeline.emplace_back(std::move(stage_desc));
     }
 
     for (auto& stage : m_pipeline) {
-        std::vector<MetalTensor*> inputs;
+        std::vector<GpuTensor*> inputs;
         inputs.reserve(stage.node->get_input_size());
         for (const auto& link : stage.inputs) {
             (void)link;
             inputs.push_back(nullptr);  // Parameter/Constant or previous stage; not needed for compile
         }
-        stage.op->set_inputs(inputs);
-        stage.op->init(m_const_manager.get());
-        stage.op->compile(m_const_manager.get());
+        stage.stage->set_inputs(inputs);
+        stage.stage->init(m_const_manager.get());
+        stage.stage->compile(m_const_manager.get());
     }
 
     m_pipeline_built = true;
-    GFX_LOG_INFO("OpFactory", "Built MetalOp pipeline with " << m_pipeline.size() << " stages");
+    GFX_LOG_INFO("StageFactory",
+                 "Built GFX " << m_backend_name << " pipeline with " << m_pipeline.size() << " stages");
 }
 
 }  // namespace gfx_plugin

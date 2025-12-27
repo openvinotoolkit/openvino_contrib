@@ -8,12 +8,12 @@
 
 #include "common_test_utils/test_constants.hpp"
 #include "../../test_constants.hpp"
-#include "../../metal_test_utils.hpp"
+#include "../../metal/test_utils.hpp"
 
 using ov::test::ReshapeLayerTest;
-using MetalReshapeLayerTest = ov::test::utils::GfxVsTemplateLayerTest<ReshapeLayerTest>;
+using GfxReshapeLayerTest = ov::test::utils::GfxVsTemplateLayerTest<ReshapeLayerTest>;
 
-TEST_P(MetalReshapeLayerTest, CompareWithTemplate) {
+TEST_P(GfxReshapeLayerTest, CompareWithTemplate) {
     run_compare();
 }
 
@@ -22,8 +22,8 @@ const std::vector<ov::element::Type> model_types = {
     ov::element::f32,
 };
 
-INSTANTIATE_TEST_SUITE_P(Metal_smoke_ReshapeCheckDynBatch,
-                         MetalReshapeLayerTest,
+INSTANTIATE_TEST_SUITE_P(Gfx_smoke_ReshapeCheckDynBatch,
+                         GfxReshapeLayerTest,
                          ::testing::Combine(::testing::Values(true),
                                             ::testing::ValuesIn(model_types),
                                             ::testing::Values(std::vector<size_t>({30, 30, 30, 30})),
@@ -31,8 +31,8 @@ INSTANTIATE_TEST_SUITE_P(Metal_smoke_ReshapeCheckDynBatch,
                                             ::testing::Values(ov::test::utils::DEVICE_GFX)),
                          ReshapeLayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_SUITE_P(Metal_smoke_ReshapeCheck,
-                         MetalReshapeLayerTest,
+INSTANTIATE_TEST_SUITE_P(Gfx_smoke_ReshapeCheck,
+                         GfxReshapeLayerTest,
                          ::testing::Combine(::testing::Values(true),
                                             ::testing::ValuesIn(model_types),
                                             ::testing::Values(std::vector<size_t>({10, 10, 10, 10})),
@@ -40,8 +40,8 @@ INSTANTIATE_TEST_SUITE_P(Metal_smoke_ReshapeCheck,
                                             ::testing::Values(ov::test::utils::DEVICE_GFX)),
                          ReshapeLayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_SUITE_P(Metal_smoke_ReshapeCheckNegative,
-                         MetalReshapeLayerTest,
+INSTANTIATE_TEST_SUITE_P(Gfx_smoke_ReshapeCheckNegative,
+                         GfxReshapeLayerTest,
                          ::testing::Combine(::testing::Values(true),
                                             ::testing::ValuesIn(model_types),
                                             ::testing::Values(std::vector<size_t>({10, 10, 10, 10})),

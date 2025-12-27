@@ -1,0 +1,289 @@
+// Copyright (C) 2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+
+#include "backends/vulkan/runtime/memory.hpp"
+
+#include <cstring>
+
+#include "openvino/core/except.hpp"
+#include "backends/vulkan/runtime/backend.hpp"
+
+namespace ov {
+namespace gfx_plugin {
+
+namespace {
+
+uint32_t find_memory_type(VkPhysicalDevice phys,
+                          uint32_t type_bits,
+                          VkMemoryPropertyFlags properties) {
+    VkPhysicalDeviceMemoryProperties mem_props{};
+    vkGetPhysicalDeviceMemoryProperties(phys, &mem_props);
+    for (uint32_t i = 0; i < mem_props.memoryTypeCount; ++i) {
+        if ((type_bits & (1u << i)) && (mem_props.memoryTypes[i].propertyFlags & properties) == properties) {
+            return i;
+        }
+    }
+    return UINT32_MAX;
+}
+
+}  // namespace
+
+GpuBuffer vulkan_allocate_buffer(size_t bytes,
+                                 ov::element::Type type,
+                                 VkBufferUsageFlags usage,
+                                 VkMemoryPropertyFlags properties) {
+    GpuBuffer buf{};
+    if (bytes == 0) {
+        return buf;
+    }
+
+    auto& ctx = VulkanContext::instance();
+    VkDevice device = ctx.device();
+    VkPhysicalDevice phys = ctx.physical_device();
+
+    VkBufferCreateInfo buffer_info{};
+    buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    buffer_info.size = bytes;
+    buffer_info.usage = usage;
+    buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkResult res = vkCreateBuffer(device, &buffer_info, nullptr, &buffer);
+    if (res != VK_SUCCESS) {
+        OPENVINO_THROW("GFX Vulkan: vkCreateBuffer failed");
+    }
+
+    VkMemoryRequirements mem_req{};
+    vkGetBufferMemoryRequirements(device, buffer, &mem_req);
+    uint32_t mem_type = find_memory_type(phys, mem_req.memoryTypeBits, properties);
+    if (mem_type == UINT32_MAX) {
+        vkDestroyBuffer(device, buffer, nullptr);
+        OPENVINO_THROW("GFX Vulkan: suitable memory type not found");
+    }
+
+    VkMemoryAllocateInfo alloc_info{};
+    alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    alloc_info.allocationSize = mem_req.size;
+    alloc_info.memoryTypeIndex = mem_type;
+
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    res = vkAllocateMemory(device, &alloc_info, nullptr, &memory);
+    if (res != VK_SUCCESS) {
+        vkDestroyBuffer(device, buffer, nullptr);
+        OPENVINO_THROW("GFX Vulkan: vkAllocateMemory failed");
+    }
+
+    res = vkBindBufferMemory(device, buffer, memory, 0);
+    if (res != VK_SUCCESS) {
+        vkDestroyBuffer(device, buffer, nullptr);
+        vkFreeMemory(device, memory, nullptr);
+        OPENVINO_THROW("GFX Vulkan: vkBindBufferMemory failed");
+    }
+
+    buf.buffer = reinterpret_cast<GpuBufferHandle>(buffer);
+    buf.heap = reinterpret_cast<GpuHeapHandle>(memory);
+    buf.size = bytes;
+    buf.type = type;
+    buf.offset = 0;
+    buf.persistent = false;
+    buf.from_handle = false;
+    buf.external = false;
+    buf.backend = GpuBackend::Vulkan;
+    buf.host_visible = (properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
+    return buf;
+}
+
+void vulkan_free_buffer(GpuBuffer& buf) {
+    if (!buf.buffer || buf.external) {
+        return;
+    }
+    auto& ctx = VulkanContext::instance();
+    VkDevice device = ctx.device();
+    VkBuffer buffer = vk_buffer_from_gpu(buf);
+    VkDeviceMemory memory = vk_memory_from_gpu(buf);
+    vkDestroyBuffer(device, buffer, nullptr);
+    if (memory) {
+        vkFreeMemory(device, memory, nullptr);
+    }
+    buf = GpuBuffer{};
+}
+
+void* vulkan_map_buffer(const GpuBuffer& buf) {
+    if (!buf.buffer) {
+        return nullptr;
+    }
+    auto& ctx = VulkanContext::instance();
+    VkDevice device = ctx.device();
+    VkDeviceMemory memory = vk_memory_from_gpu(buf);
+    void* mapped = nullptr;
+    VkResult res = vkMapMemory(device, memory, buf.offset, buf.size, 0, &mapped);
+    if (res != VK_SUCCESS) {
+        OPENVINO_THROW("GFX Vulkan: vkMapMemory failed");
+    }
+    return mapped;
+}
+
+void vulkan_unmap_buffer(const GpuBuffer& buf) {
+    if (!buf.buffer) {
+        return;
+    }
+    auto& ctx = VulkanContext::instance();
+    VkDevice device = ctx.device();
+    VkDeviceMemory memory = vk_memory_from_gpu(buf);
+    vkUnmapMemory(device, memory);
+}
+
+namespace {
+VkDeviceSize align_down(VkDeviceSize value, VkDeviceSize align) {
+    if (align == 0) {
+        return value;
+    }
+    return value & ~(align - 1);
+}
+
+VkDeviceSize align_up(VkDeviceSize value, VkDeviceSize align) {
+    if (align == 0) {
+        return value;
+    }
+    return (value + align - 1) & ~(align - 1);
+}
+}  // namespace
+
+void vulkan_flush_buffer(const GpuBuffer& buf, size_t bytes, size_t offset) {
+    if (!buf.buffer || bytes == 0) {
+        return;
+    }
+    auto& ctx = VulkanContext::instance();
+    VkDevice device = ctx.device();
+    VkDeviceMemory memory = vk_memory_from_gpu(buf);
+    VkDeviceSize atom = static_cast<VkDeviceSize>(ctx.noncoherent_atom_size());
+    VkDeviceSize start = static_cast<VkDeviceSize>(buf.offset + offset);
+    VkDeviceSize end = start + static_cast<VkDeviceSize>(bytes);
+    VkDeviceSize aligned_start = align_down(start, atom);
+    VkDeviceSize aligned_end = align_up(end, atom);
+
+    VkMappedMemoryRange range{};
+    range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+    range.memory = memory;
+    range.offset = aligned_start;
+    range.size = aligned_end - aligned_start;
+    vkFlushMappedMemoryRanges(device, 1, &range);
+}
+
+void vulkan_invalidate_buffer(const GpuBuffer& buf, size_t bytes, size_t offset) {
+    if (!buf.buffer || bytes == 0) {
+        return;
+    }
+    auto& ctx = VulkanContext::instance();
+    VkDevice device = ctx.device();
+    VkDeviceMemory memory = vk_memory_from_gpu(buf);
+    VkDeviceSize atom = static_cast<VkDeviceSize>(ctx.noncoherent_atom_size());
+    VkDeviceSize start = static_cast<VkDeviceSize>(buf.offset + offset);
+    VkDeviceSize end = start + static_cast<VkDeviceSize>(bytes);
+    VkDeviceSize aligned_start = align_down(start, atom);
+    VkDeviceSize aligned_end = align_up(end, atom);
+
+    VkMappedMemoryRange range{};
+    range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+    range.memory = memory;
+    range.offset = aligned_start;
+    range.size = aligned_end - aligned_start;
+    vkInvalidateMappedMemoryRanges(device, 1, &range);
+}
+
+void vulkan_copy_buffer(const GpuBuffer& src, const GpuBuffer& dst, size_t bytes) {
+    if (!src.buffer || !dst.buffer || bytes == 0) {
+        return;
+    }
+    auto& ctx = VulkanContext::instance();
+    VkDevice device = ctx.device();
+    VkCommandPool pool = VK_NULL_HANDLE;
+    VkCommandPoolCreateInfo pool_info{};
+    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    pool_info.queueFamilyIndex = ctx.queue_family_index();
+    pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+    VkResult res = vkCreateCommandPool(device, &pool_info, nullptr, &pool);
+    if (res != VK_SUCCESS) {
+        OPENVINO_THROW("GFX Vulkan: vkCreateCommandPool failed");
+    }
+
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+    VkCommandBufferAllocateInfo alloc{};
+    alloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    alloc.commandPool = pool;
+    alloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    alloc.commandBufferCount = 1;
+    res = vkAllocateCommandBuffers(device, &alloc, &cmd);
+    if (res != VK_SUCCESS) {
+        vkDestroyCommandPool(device, pool, nullptr);
+        OPENVINO_THROW("GFX Vulkan: vkAllocateCommandBuffers failed");
+    }
+
+    VkCommandBufferBeginInfo begin{};
+    begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    res = vkBeginCommandBuffer(cmd, &begin);
+    if (res != VK_SUCCESS) {
+        vkFreeCommandBuffers(device, pool, 1, &cmd);
+        vkDestroyCommandPool(device, pool, nullptr);
+        OPENVINO_THROW("GFX Vulkan: vkBeginCommandBuffer failed");
+    }
+
+    VkBufferCopy region{};
+    region.srcOffset = 0;
+    region.dstOffset = 0;
+    region.size = bytes;
+    vkCmdCopyBuffer(cmd, vk_buffer_from_gpu(src), vk_buffer_from_gpu(dst), 1, &region);
+
+    res = vkEndCommandBuffer(cmd);
+    if (res != VK_SUCCESS) {
+        vkFreeCommandBuffers(device, pool, 1, &cmd);
+        vkDestroyCommandPool(device, pool, nullptr);
+        OPENVINO_THROW("GFX Vulkan: vkEndCommandBuffer failed");
+    }
+
+    VkSubmitInfo submit{};
+    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit.commandBufferCount = 1;
+    submit.pCommandBuffers = &cmd;
+    res = vkQueueSubmit(ctx.queue(), 1, &submit, VK_NULL_HANDLE);
+    if (res != VK_SUCCESS) {
+        vkFreeCommandBuffers(device, pool, 1, &cmd);
+        vkDestroyCommandPool(device, pool, nullptr);
+        OPENVINO_THROW("GFX Vulkan: vkQueueSubmit failed");
+    }
+    vkQueueWaitIdle(ctx.queue());
+    vkFreeCommandBuffers(device, pool, 1, &cmd);
+    vkDestroyCommandPool(device, pool, nullptr);
+}
+
+GpuBuffer vulkan_upload_device_buffer(const void* src,
+                                      size_t bytes,
+                                      ov::element::Type type,
+                                      VkBufferUsageFlags usage) {
+    if (bytes == 0) {
+        return GpuBuffer{};
+    }
+    OPENVINO_ASSERT(src, "GFX Vulkan: upload source is null");
+    GpuBuffer staging = vulkan_allocate_buffer(bytes,
+                                               type,
+                                               VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    void* mapped = vulkan_map_buffer(staging);
+    std::memcpy(mapped, src, bytes);
+    vulkan_unmap_buffer(staging);
+
+    GpuBuffer device_buf = vulkan_allocate_buffer(bytes,
+                                                  type,
+                                                  usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    vulkan_copy_buffer(staging, device_buf, bytes);
+    vulkan_free_buffer(staging);
+    device_buf.host_visible = false;
+    return device_buf;
+}
+
+}  // namespace gfx_plugin
+}  // namespace ov

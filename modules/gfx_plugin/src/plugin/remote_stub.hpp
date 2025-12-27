@@ -6,10 +6,11 @@
 #include <vector>
 
 #include "openvino/core/shape.hpp"
+#include "openvino/core/except.hpp"
 #include "openvino/runtime/iremote_context.hpp"
 #include "openvino/runtime/iremote_tensor.hpp"
 #include "openvino/runtime/so_ptr.hpp"
-#include "runtime/metal_memory.hpp"
+#include "runtime/gpu_tensor.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -20,7 +21,7 @@ public:
                     const ov::Shape& shape,
                     const ov::AnyMap& params,
                     const std::string& dev,
-                    const MetalTensor& tensor,
+                    const GpuTensor& tensor,
                     bool owns_buffer);
 
     ~GfxRemoteTensor() override;
@@ -36,10 +37,17 @@ public:
         m_shape = std::move(shape);
         m_tensor.shape = m_shape;
         recalc_strides();
+        const auto elem_type = m_type != ov::element::dynamic ? m_type : m_tensor.expected_type;
+        if (elem_type != ov::element::dynamic && m_tensor.buf.size > 0) {
+            const size_t required = shape_size(m_shape) * elem_type.size();
+            OPENVINO_ASSERT(required <= m_tensor.buf.size,
+                            "GFX: remote tensor shape exceeds buffer size");
+        }
     }
 
-    const MetalTensor& metal_tensor() const { return m_tensor; }
-    MetalTensor& metal_tensor() { return m_tensor; }
+    const GpuTensor& gpu_tensor() const { return m_tensor; }
+    GpuTensor& gpu_tensor() { return m_tensor; }
+    GpuBackend backend() const { return m_tensor.buf.backend; }
     bool owns_buffer() const { return m_owns_buffer; }
 
 private:
@@ -57,19 +65,31 @@ private:
     Strides m_strides{};
     ov::AnyMap m_params;
     std::string m_device;
-    MetalTensor m_tensor{};
+    GpuTensor m_tensor{};
     bool m_owns_buffer = false;
 };
 
 class GfxRemoteContext : public ov::IRemoteContext {
 public:
-    GfxRemoteContext(const std::string& device, int device_id, MetalDeviceHandle handle, const ov::AnyMap& params)
-        : m_device(device), m_device_id(device_id), m_handle(handle), m_params(params) {}
+    GfxRemoteContext(const std::string& device,
+                     int device_id,
+                     GpuBackend backend,
+                     GpuDeviceHandle handle,
+                     std::string backend_name,
+                     const ov::AnyMap& params)
+        : m_device(device),
+          m_device_id(device_id),
+          m_backend(backend),
+          m_backend_name(std::move(backend_name)),
+          m_handle(handle),
+          m_params(params) {}
 
     const std::string& get_device_name() const override { return m_device; }
     const ov::AnyMap& get_property() const override { return m_params; }
     int device_id() const { return m_device_id; }
-    MetalDeviceHandle device_handle() const { return m_handle; }
+    GpuBackend backend() const { return m_backend; }
+    const std::string& backend_name() const { return m_backend_name; }
+    GpuDeviceHandle device_handle() const { return m_handle; }
 
     ov::SoPtr<ov::IRemoteTensor> create_tensor(const ov::element::Type& type,
                                                const ov::Shape& shape,
@@ -78,7 +98,9 @@ public:
 private:
     std::string m_device;
     int m_device_id = 0;
-    MetalDeviceHandle m_handle = nullptr;
+    GpuBackend m_backend = GpuBackend::Metal;
+    std::string m_backend_name;
+    GpuDeviceHandle m_handle = nullptr;
     ov::AnyMap m_params;
 };
 

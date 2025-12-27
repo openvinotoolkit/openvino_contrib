@@ -7,8 +7,9 @@
 #include <unordered_map>
 
 #include "openvino/runtime/iplugin.hpp"
-#include "runtime/profiling/metal_profiler_config.hpp"
-#include "plugin/metal_properties.hpp"
+#include "runtime/profiling/gfx_profiler_config.hpp"
+#include "runtime/gpu_buffer.hpp"
+#include "backends/metal/plugin/properties.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -48,8 +49,6 @@ public:
 
 private:
     bool is_hetero_subgraph(const std::shared_ptr<const ov::Model>& model) const;
-    bool model_supported_by_metal(const std::shared_ptr<const ov::Model>& model,
-                                  const ov::AnyMap& properties) const;
     std::string m_device_name;
     ov::hint::PerformanceMode m_performance_mode = ov::hint::PerformanceMode::LATENCY;
     bool m_enable_profiling = false;

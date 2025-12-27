@@ -8,16 +8,16 @@
 
 #include "common_test_utils/test_constants.hpp"
 #include "../../test_constants.hpp"
-#include "../../metal_test_utils.hpp"
+#include "../../metal/test_utils.hpp"
 
 using ov::test::subgraph::SoftMax8LayerTest;
 
-class MetalSoftmaxLayerTest : public ov::test::utils::GfxVsTemplateLayerTest<SoftMax8LayerTest> {
+class GfxSoftmaxLayerTest : public ov::test::utils::GfxVsTemplateLayerTest<SoftMax8LayerTest> {
 protected:
     void SetUp() override {
         ov::test::utils::GfxVsTemplateLayerTest<SoftMax8LayerTest>::SetUp();
-        // Softmax falls back to CPU path in GFX backend; align tolerances with CPU/GPU
-        // to avoid tiny numeric deltas vs TEMPLATE reference.
+        // Softmax is numerically sensitive; loosen tolerances to avoid tiny deltas
+        // between GFX and reference backend.
         if (abs_threshold == 0.f) {
             abs_threshold = 5e-4f;
         }
@@ -34,11 +34,11 @@ protected:
     }
 };
 
-TEST_P(MetalSoftmaxLayerTest, CompareWithTemplate) {
+TEST_P(GfxSoftmaxLayerTest, CompareWithTemplate) {
     run_compare();
 }
 
-TEST_P(MetalSoftmaxLayerTest, CompareQueryModel) {
+TEST_P(GfxSoftmaxLayerTest, CompareQueryModel) {
     this->query_model();
 }
 
@@ -80,13 +80,13 @@ const auto params2D_dynamic = testing::Combine(testing::ValuesIn(netPrecisions),
                                                testing::Values(ov::test::utils::DEVICE_GFX),
                                                testing::Values(ov::AnyMap()));
 
-INSTANTIATE_TEST_SUITE_P(Metal_smoke_SoftMax2D_static,
-                         MetalSoftmaxLayerTest,
+INSTANTIATE_TEST_SUITE_P(Gfx_smoke_SoftMax2D_static,
+                         GfxSoftmaxLayerTest,
                          params2D_static,
                          SoftMax8LayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_SUITE_P(Metal_smoke_SoftMax2D_dynamic,
-                         MetalSoftmaxLayerTest,
+INSTANTIATE_TEST_SUITE_P(Gfx_smoke_SoftMax2D_dynamic,
+                         GfxSoftmaxLayerTest,
                          params2D_dynamic,
                          SoftMax8LayerTest::getTestCaseName);
 
@@ -125,13 +125,13 @@ const auto params4Ddynamic = testing::Combine(testing::ValuesIn(netPrecisions4D)
                                               testing::Values(ov::test::utils::DEVICE_GFX),
                                               testing::Values(ov::AnyMap()));
 
-INSTANTIATE_TEST_SUITE_P(Metal_smoke_SoftMax4D_static,
-                         MetalSoftmaxLayerTest,
+INSTANTIATE_TEST_SUITE_P(Gfx_smoke_SoftMax4D_static,
+                         GfxSoftmaxLayerTest,
                          params4Dstatic,
                          SoftMax8LayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_SUITE_P(Metal_smoke_SoftMax4D_dynamic,
-                         MetalSoftmaxLayerTest,
+INSTANTIATE_TEST_SUITE_P(Gfx_smoke_SoftMax4D_dynamic,
+                         GfxSoftmaxLayerTest,
                          params4Ddynamic,
                          SoftMax8LayerTest::getTestCaseName);
 
@@ -174,13 +174,13 @@ const auto params5Ddynamic = testing::Combine(testing::ValuesIn(netPrecisions5D)
                                               testing::Values(ov::test::utils::DEVICE_GFX),
                                               testing::Values(ov::AnyMap()));
 
-INSTANTIATE_TEST_SUITE_P(Metal_smoke_SoftMax5D_static,
-                         MetalSoftmaxLayerTest,
+INSTANTIATE_TEST_SUITE_P(Gfx_smoke_SoftMax5D_static,
+                         GfxSoftmaxLayerTest,
                          params5Dstatic,
                          SoftMax8LayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_SUITE_P(Metal_smoke_SoftMax5D_dynamic,
-                         MetalSoftmaxLayerTest,
+INSTANTIATE_TEST_SUITE_P(Gfx_smoke_SoftMax5D_dynamic,
+                         GfxSoftmaxLayerTest,
                          params5Ddynamic,
                          SoftMax8LayerTest::getTestCaseName);
 

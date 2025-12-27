@@ -1,0 +1,48 @@
+// Copyright (C) 2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+#pragma once
+
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "runtime/gpu_types.hpp"
+#include "runtime/gfx_activation.hpp"
+
+namespace ov {
+namespace gfx_plugin {
+
+// Backend-neutral execution stage interface.
+class GpuStage {
+public:
+    virtual ~GpuStage() = default;
+
+    virtual void init(GpuBufferManager* buffer_manager) = 0;
+    virtual void compile(GpuBufferManager* buffer_manager) = 0;
+    virtual void execute(GpuCommandBufferHandle command_buffer) = 0;
+
+    virtual void set_inputs(const std::vector<GpuTensor*>& inputs) = 0;
+    virtual void set_output(GpuTensor* output) = 0;
+    virtual void set_outputs(const std::vector<std::unique_ptr<GpuTensor>>& outputs) {
+        if (!outputs.empty()) {
+            set_output(outputs.front().get());
+        }
+    }
+
+    virtual bool fuse_activation(ActivationKind /*kind*/, float /*alpha*/) { return false; }
+
+    virtual void enable_profiling(bool /*enable*/) {}
+    virtual void set_profiler(void* /*profiler*/,
+                              uint32_t /*node_id*/,
+                              const std::string& /*node_name*/,
+                              const std::string& /*node_type*/) {}
+
+    virtual const std::string& name() const = 0;
+    virtual const std::string& type() const = 0;
+
+    virtual std::unique_ptr<GpuStage> clone() const = 0;
+};
+
+}  // namespace gfx_plugin
+}  // namespace ov

@@ -16,9 +16,9 @@ namespace utils {
 // Primary device names used across GFX functional tests.
 static const char* DEVICE_GFX = "GFX";
 
-// Reference device for numerical comparisons. CPU handles mixed precisions
-// (including f16 inputs) without pointer-representability issues seen in TEMPLATE.
-static const char* DEVICE_REF = ov::test::utils::DEVICE_CPU;
+// Reference device for numerical comparisons. Use TEMPLATE plugin to keep
+// GFX tests consistent across backends.
+static const char* DEVICE_REF = ov::test::utils::DEVICE_TEMPLATE;
 
 // Always enable GFX functional tests; use env only for debug logging.
 inline bool gfx_tests_enabled() {

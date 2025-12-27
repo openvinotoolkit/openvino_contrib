@@ -8,33 +8,19 @@
 
 #include "openvino/core/except.hpp"
 #include "openvino/util/common_util.hpp"
+#include "plugin/gfx_remote_utils.hpp"
+#include "plugin/gfx_remote_properties.hpp"
+#include "backends/metal/plugin/properties.hpp"
+#include "backends/metal/runtime/memory.hpp"
+#include "plugin/gfx_backend_config.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 namespace {
-
-void* any_to_ptr(const ov::Any& value) {
-    if (value.empty())
-        return nullptr;
-    if (value.is<void*>())
-        return value.as<void*>();
-    if (value.is<intptr_t>())
-        return reinterpret_cast<void*>(value.as<intptr_t>());
-    if (value.is<uintptr_t>())
-        return reinterpret_cast<void*>(value.as<uintptr_t>());
-    if (value.is<size_t>())
-        return reinterpret_cast<void*>(value.as<size_t>());
-    if (value.is<uint64_t>())
-        return reinterpret_cast<void*>(value.as<uint64_t>());
-    if (value.is<int64_t>())
-        return reinterpret_cast<void*>(value.as<int64_t>());
-    return nullptr;
-}
-
 uint32_t parse_storage_mode(const ov::AnyMap& params) {
-    auto it = params.find("GFX_STORAGE_MODE");
+    auto it = params.find(kGfxStorageModeProperty);
     if (it == params.end())
-        it = params.find("STORAGE_MODE");
+        it = params.find(kStorageModeProperty);
     if (it == params.end())
         return static_cast<uint32_t>(MTLStorageModeShared);
     if (it->second.is<int>()) {
@@ -72,7 +58,7 @@ GfxRemoteTensor::GfxRemoteTensor(const ov::element::Type& type,
                                      const ov::Shape& shape,
                                      const ov::AnyMap& params,
                                      const std::string& dev,
-                                     const MetalTensor& tensor,
+                                     const GpuTensor& tensor,
                                      bool owns_buffer)
     : m_type(type),
       m_shape(shape),
@@ -85,7 +71,10 @@ GfxRemoteTensor::GfxRemoteTensor(const ov::element::Type& type,
 
 GfxRemoteTensor::~GfxRemoteTensor() {
 #ifdef __OBJC__
-    if (m_owns_buffer && m_tensor.buf.buffer) {
+    if (!m_owns_buffer || !m_tensor.buf.buffer) {
+        return;
+    }
+    if (m_tensor.buf.backend == GpuBackend::Metal) {
         [static_cast<id<MTLBuffer>>(m_tensor.buf.buffer) release];
         m_tensor.buf.buffer = nullptr;
     }
@@ -97,29 +86,40 @@ ov::SoPtr<ov::IRemoteTensor> GfxRemoteContext::create_tensor(const ov::element::
                                                                const ov::AnyMap& params) {
     ov::AnyMap merged = m_params;
     merged.insert(params.begin(), params.end());
+    merged[kGfxBackendProperty] = m_backend_name;
+
+    if (m_backend != GpuBackend::Metal) {
+        OPENVINO_THROW("GFX remote tensors are supported only with Metal backend");
+    }
 
     const size_t bytes = std::max<size_t>(1, ov::shape_size(shape)) * type.size();
-    MetalTensor tensor;
+    GpuTensor tensor;
     tensor.shape = shape;
     tensor.expected_type = type;
     tensor.buf.type = type;
+    tensor.buf.backend = GpuBackend::Metal;
 
     bool owns_buffer = false;
-    void* external = nullptr;
-    if (auto it = merged.find("MTL_BUFFER"); it != merged.end())
-        external = any_to_ptr(it->second);
-    if (!external) {
-        if (auto it = merged.find("GFX_BUFFER"); it != merged.end())
-            external = any_to_ptr(it->second);
-    }
+    void* external = find_any_ptr(merged, {kMtlBufferProperty, kGfxBufferProperty});
 
     if (external) {
         tensor.buf.buffer = external;
-        tensor.buf.size = bytes;
-        tensor.buf.external = false;
+        tensor.buf.from_handle = true;
+        tensor.buf.external = true;
 #ifdef __OBJC__
         auto mb = static_cast<id<MTLBuffer>>(external);
+        const size_t buf_len = static_cast<size_t>(mb.length);
+        OPENVINO_ASSERT(buf_len >= bytes,
+                        "GFX: remote MTLBuffer is smaller than required (",
+                        buf_len,
+                        " < ",
+                        bytes,
+                        ")");
+        tensor.buf.size = buf_len;
         tensor.buf.storage_mode = static_cast<uint32_t>(mb.storageMode);
+        tensor.buf.host_visible = (mb.storageMode != MTLStorageModePrivate);
+#else
+        tensor.buf.size = bytes;
 #endif
     } else {
         OPENVINO_ASSERT(m_handle, "GFX: remote context device handle is null");
@@ -131,6 +131,7 @@ ov::SoPtr<ov::IRemoteTensor> GfxRemoteContext::create_tensor(const ov::element::
         tensor.buf.buffer = buf;
         tensor.buf.size = bytes;
         tensor.buf.storage_mode = static_cast<uint32_t>(buf.storageMode);
+        tensor.buf.host_visible = (buf.storageMode != MTLStorageModePrivate);
         owns_buffer = true;
 #else
         OPENVINO_THROW("GFX remote tensor requires Objective-C++ (Metal)");
