@@ -9,7 +9,7 @@
 
 #include "openvino/core/any.hpp"
 #include "openvino/core/except.hpp"
-#include "runtime/profiling/gfx_profiler_config.hpp"
+#include "openvino/gfx_plugin/profiling.hpp"
 
 namespace ov {
 namespace gfx_plugin {

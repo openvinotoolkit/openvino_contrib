@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "openvino/core/model.hpp"
-#include "runtime/gpu_backend.hpp"
+#include "runtime/gpu_backend_base.hpp"
 
 namespace ov {
 namespace gfx_plugin {

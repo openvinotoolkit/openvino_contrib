@@ -8,11 +8,11 @@
 
 #include "openvino/core/except.hpp"
 #include "openvino/op/parameter.hpp"
-#include "backends/metal/runtime/backend.hpp"
+#include "backends/metal/runtime/metal_backend.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "mlir_builder.hpp"
-#include "mlir_codegen/codegen_common.hpp"
+#include "mlir/codegen/codegen_common.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 
@@ -51,7 +51,7 @@ void MetalSelectOp::compile(MetalBufferManager* buffer_manager) {
     auto module = build_mlir_select_from_model(make_single_op_model(m_node), ctx);
     auto source = generate_msl_for_select(module, m_element_type);
 
-    KernelSpec spec(m_node, 0u);
+    KernelSpec spec(m_node, 10u);
     m_kernel = compile_msl_kernel(backend, spec, module, "select_kernel", source, &log);
     OPENVINO_ASSERT(m_kernel, "MetalSelectOp: failed to compile select kernel: ", log);
 

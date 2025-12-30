@@ -9,13 +9,13 @@
 
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"
-#include "backends/metal/runtime/backend.hpp"
+#include "backends/metal/runtime/metal_backend.hpp"
 #include "mlir/mlir_builder.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir_codegen/codegen_common.hpp"
+#include "mlir/codegen/codegen_common.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -136,7 +136,7 @@ void MetalSliceOp::compile(MetalBufferManager* buffer_manager) {
     auto module = build_mlir_slice_from_model(make_single_op_model(m_node), ctx);
     auto source = generate_msl_for_slice_generic(desc, module);
 
-    KernelSpec spec(m_node, 0u);
+    KernelSpec spec(m_node, 8u);
     m_kernel = compile_msl_kernel(backend, spec, module, "slice_kernel", source, &log);
     OPENVINO_ASSERT(m_kernel, "MetalSliceOp: failed to compile kernel: ", log);
 

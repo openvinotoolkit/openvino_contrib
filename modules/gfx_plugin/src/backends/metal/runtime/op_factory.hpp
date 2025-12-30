@@ -6,7 +6,7 @@
 #include <memory>
 
 #include "openvino/core/node.hpp"
-#include "backends/metal/runtime/memory.hpp"
+#include "backends/metal/runtime/metal_memory.hpp"
 #include "backends/metal/runtime/op.hpp"
 
 namespace ov {

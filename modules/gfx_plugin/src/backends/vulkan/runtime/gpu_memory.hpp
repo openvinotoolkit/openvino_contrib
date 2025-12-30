@@ -5,7 +5,7 @@
 
 #include <vulkan/vulkan.h>
 
-#include "runtime/gpu_memory.hpp"
+#include "runtime/memory_manager.hpp"
 
 namespace ov {
 namespace gfx_plugin {

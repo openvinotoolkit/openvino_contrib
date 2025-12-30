@@ -2,19 +2,24 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "compiled_model.hpp"
+#include "openvino/gfx_plugin/compiled_model.hpp"
 
-#include "infer_request.hpp"
+#include "openvino/gfx_plugin/infer_request.hpp"
 #include "plugin/gfx_backend_config.hpp"
 #include "plugin/gfx_profiling_utils.hpp"
-#include "backends/metal/plugin/properties.hpp"
-#include "plugin.hpp"
-#include "remote_stub.hpp"
+#include "openvino/gfx_plugin/properties.hpp"
+#include "openvino/gfx_plugin/plugin.hpp"
+#include "runtime/gfx_remote_context.hpp"
+#include "backends/metal/plugin/compiled_model_state.hpp"
+#include "backends/metal/plugin/compiled_model_backend.hpp"
+#include "backends/vulkan/plugin/compiled_model_backend.hpp"
+#include "plugin/compiled_model_backend_resources.hpp"
 #include "plugin/gfx_property_utils.hpp"
+#include "plugin/model_serialization.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_backend_utils.hpp"
-#include "backends/metal/runtime/memory.hpp"
-#include "runtime/profiling/gfx_profiler_config.hpp"
+#include "openvino/gfx_plugin/profiling.hpp"
+#include "plugin/backend_state.hpp"
 
 #include "openvino/core/except.hpp"
 #include "openvino/core/validation_util.hpp"
@@ -56,6 +61,9 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
         m_profiling_level = parse_profiling_level(it->second);
         m_profiling_level_set = true;
     }
+    if (auto it = properties.find(ov::loaded_from_cache.name()); it != properties.end()) {
+        m_loaded_from_cache = it->second.as<bool>();
+    }
     ov::AnyMap resolved_props = properties;
     const auto request = get_backend_request(resolved_props);
     auto resolved = resolve_backend_for_properties(resolved_props, /*log_fallback=*/true, "CompiledModel");
@@ -94,35 +102,9 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
     }
     m_config[kGfxBackendProperty] = m_backend_name;
     if (m_backend == GpuBackend::Metal) {
-        // Create buffer manager bound to selected Metal device (context or DEVICE_ID).
-        MetalDeviceHandle dev = nullptr;
-        if (context) {
-            auto metal_ctx = std::dynamic_pointer_cast<GfxRemoteContext>(context._ptr);
-            OPENVINO_ASSERT(metal_ctx, "GFX: remote context type mismatch");
-            OPENVINO_ASSERT(metal_ctx->backend() == GpuBackend::Metal,
-                            "GFX: remote context backend mismatch (expected Metal)");
-            dev = metal_ctx->device_handle();
-        }
-        if (!dev) {
-            int device_id = parse_device_id(properties);
-            dev = metal_get_device_by_id(device_id);
-        }
-        m_device = dev;
-        m_command_queue = metal_create_command_queue(m_device);
-        OPENVINO_ASSERT(m_command_queue, "GFX: failed to create command queue");
-        m_caps = query_metal_device_caps(m_device);
-        m_alloc_core = std::make_unique<MetalAllocatorCore>(m_device, m_caps);
-        m_persistent_heaps = std::make_unique<MetalHeapPool>(*m_alloc_core);
-        m_persistent_freelist = std::make_unique<MetalFreeList>();
-        m_persistent_staging = std::make_unique<MetalStagingPool>(*m_alloc_core);
-        m_persistent_alloc = std::make_unique<MetalAllocator>(*m_alloc_core,
-                                                              *m_persistent_heaps,
-                                                              *m_persistent_freelist,
-                                                              *m_persistent_staging,
-                                                              m_caps);
-        m_const_cache = std::make_unique<MetalConstCache>(*m_persistent_alloc);
-        m_const_manager = std::make_shared<MetalBufferManager>(*m_alloc_core, m_const_cache.get());
+        m_backend_state = create_metal_backend_state(properties, context);
     } else {
+        m_backend_state = create_vulkan_backend_state();
         GFX_LOG_INFO("CompiledModel", "Vulkan backend selected");
     }
 
@@ -131,9 +113,10 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
 }
 
 CompiledModel::~CompiledModel() {
-    if (m_command_queue) {
-        metal_release_command_queue(m_command_queue);
-        m_command_queue = nullptr;
+    if (auto* metal = dynamic_cast<MetalBackendState*>(m_backend_state.get())) {
+        release_metal_backend_state(*metal);
+    } else if (auto* vulkan = dynamic_cast<VulkanBackendState*>(m_backend_state.get())) {
+        release_vulkan_backend_state(*vulkan);
     }
 }
 
@@ -141,8 +124,9 @@ std::shared_ptr<ov::ISyncInferRequest> CompiledModel::create_sync_infer_request(
     return std::make_shared<InferRequest>(shared_from_this());
 }
 
-void CompiledModel::export_model(std::ostream& /*model*/) const {
-    OPENVINO_THROW("GFX plugin export_model is not implemented yet");
+void CompiledModel::export_model(std::ostream& model) const {
+    const auto source = m_original_model ? m_original_model : m_runtime_model;
+    write_model_to_stream(source, model);
 }
 
 void CompiledModel::set_property(const ov::AnyMap& properties) {
@@ -195,7 +179,7 @@ ov::Any CompiledModel::get_property(const std::string& name) const {
         // Single-stream synchronous execution for now
         return decltype(ov::optimal_number_of_infer_requests)::value_type{1};
     } else if (ov::loaded_from_cache == name) {
-        return decltype(ov::loaded_from_cache)::value_type{false};
+        return decltype(ov::loaded_from_cache)::value_type{m_loaded_from_cache};
     } else if (ov::supported_properties == name) {
         auto props = default_ro_properties();
         props.push_back(ov::PropertyName{ov::hint::inference_precision.name(), ov::PropertyMutability::RW});
@@ -220,7 +204,7 @@ ov::Any CompiledModel::get_property(const std::string& name) const {
     }
 
     if (name == kGfxMemStatsProperty) {
-        return ov::Any{m_last_stats};
+        return ov::Any{get_metal_memory_stats(dynamic_cast<const MetalBackendState*>(m_backend_state.get()))};
     }
     if (name == kGfxProfilingReportProperty) {
         return last_profiling_report_json();
@@ -239,9 +223,9 @@ ov::Any CompiledModel::get_property(const std::string& name) const {
     OPENVINO_THROW("CompiledModel unsupported property: ", name);
 }
 
-void CompiledModel::update_last_profiling_report(const MetalProfilingReport& report) const {
+void CompiledModel::update_last_profiling_report_json(std::string report_json) const {
     std::lock_guard<std::mutex> lock(m_report_mutex);
-    m_last_report_json = report.to_json();
+    m_last_report_json = std::move(report_json);
 }
 
 std::string CompiledModel::last_profiling_report_json() const {
@@ -255,12 +239,12 @@ void CompiledModel::build_op_pipeline() {
         return;
     }
 
-    if (!m_const_manager && m_backend == GpuBackend::Metal) {
+    if (!backend_has_const_manager(m_backend, backend_state())) {
         GFX_LOG_WARN("OpFactory", "Cannot build pipeline: const manager is null");
         return;
     }
 
-    const auto device = m_device;
+    const auto resources = get_backend_resources(m_backend, backend_state());
     // Map Parameter nodes to input indices.
     for (size_t i = 0; i < m_runtime_model->inputs().size(); ++i) {
         m_param_index[m_runtime_model->inputs()[i].get_node()] = i;
@@ -314,7 +298,11 @@ void CompiledModel::build_op_pipeline() {
             }
         }
 
-        auto gpu_stage = GpuStageFactory::create(node, m_backend, device, m_command_queue);
+        auto gpu_stage =
+            GpuStageFactory::create(node,
+                                    m_backend,
+                                    resources.device,
+                                    resources.queue);
         OPENVINO_ASSERT(gpu_stage,
                         "GFX: unsupported op in MLIR pipeline: ",
                         node->get_friendly_name(),
@@ -363,8 +351,9 @@ void CompiledModel::build_op_pipeline() {
             inputs.push_back(nullptr);  // Parameter/Constant or previous stage; not needed for compile
         }
         stage.stage->set_inputs(inputs);
-        stage.stage->init(m_const_manager.get());
-        stage.stage->compile(m_const_manager.get());
+        GpuBufferManager* buffer_manager = resources.const_manager;
+        stage.stage->init(buffer_manager);
+        stage.stage->compile(buffer_manager);
     }
 
     m_pipeline_built = true;

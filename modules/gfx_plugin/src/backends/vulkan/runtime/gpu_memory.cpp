@@ -5,7 +5,7 @@
 #include "backends/vulkan/runtime/gpu_memory.hpp"
 
 #include "openvino/core/except.hpp"
-#include "backends/vulkan/runtime/memory.hpp"
+#include "backends/vulkan/runtime/vulkan_memory.hpp"
 
 namespace ov {
 namespace gfx_plugin {

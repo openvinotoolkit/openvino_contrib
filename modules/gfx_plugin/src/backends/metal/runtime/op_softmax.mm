@@ -8,13 +8,13 @@
 
 #include "openvino/core/shape_util.hpp"
 #include "openvino/core/validation_util.hpp"
-#include "backends/metal/runtime/backend.hpp"
+#include "backends/metal/runtime/metal_backend.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "mlir_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir_codegen/codegen_common.hpp"
+#include "mlir/codegen/codegen_common.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -110,7 +110,7 @@ void MetalSoftmaxOp::compile(MetalBufferManager* buffer_manager) {
     desc.log_softmax = m_log_softmax;
     auto source = generate_msl_from_mlir(module, desc);
 
-    KernelSpec spec(m_node, 0u);
+    KernelSpec spec(m_node, 3u);
     m_kernel = compile_msl_kernel(backend, spec, module, "softmax_kernel", source, &log);
     OPENVINO_ASSERT(m_kernel, "MetalSoftmaxOp: failed to compile softmax kernel: ", log);
 
@@ -149,8 +149,7 @@ void MetalSoftmaxOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
         desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
         desc.log_softmax = m_log_softmax;
         auto source = generate_msl_from_mlir(module, desc);
-        KernelSpec spec(m_node,
-                        static_cast<uint32_t>((m_node ? m_node->get_input_size() : inputs().size()) + 1u));
+        KernelSpec spec(m_node, 3u);
         m_kernel = compile_msl_kernel(backend, spec, module, "softmax_kernel", source, &log);
         OPENVINO_ASSERT(m_kernel, "MetalSoftmaxOp: failed to recompile softmax kernel: ", log);
     }

@@ -7,13 +7,13 @@
 #include "openvino/core/except.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/range.hpp"
-#include "backends/metal/runtime/backend.hpp"
+#include "backends/metal/runtime/metal_backend.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "mlir_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir_codegen/codegen_common.hpp"
+#include "mlir/codegen/codegen_common.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -60,7 +60,7 @@ void MetalRangeOp::compile(MetalBufferManager* buffer_manager) {
     desc.element_type = m_element_type;
     auto source = generate_msl_from_mlir(module, desc);
 
-    KernelSpec spec(m_node, 0u);
+    KernelSpec spec(m_node, 4u);
     m_kernel = compile_msl_kernel(backend, spec, module, "range_kernel", source, &log);
     OPENVINO_ASSERT(m_kernel, "MetalRangeOp: failed to compile range kernel: ", log);
 

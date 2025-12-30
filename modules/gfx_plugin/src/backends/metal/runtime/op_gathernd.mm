@@ -6,9 +6,9 @@
 
 #include <string>
 
-#include "backends/metal/runtime/backend.hpp"
+#include "backends/metal/runtime/metal_backend.hpp"
 #include "mlir/mlir_builder.hpp"
-#include "mlir_codegen/codegen_common.hpp"
+#include "mlir/codegen/codegen_common.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"
 #include "runtime/gfx_logger.hpp"
@@ -112,7 +112,7 @@ void MetalGatherNDOp::compile(MetalBufferManager* buffer_manager) {
     auto module = build_mlir_gathernd_from_model(make_single_op_model(m_node), ctx);
     auto source = generate_msl_from_mlir(module, m_desc);
 
-    KernelSpec spec(m_node, 0u);
+    KernelSpec spec(m_node, 4u);
     m_kernel = compile_msl_kernel(backend, spec, module, "gathernd_kernel", source, &log);
     OPENVINO_ASSERT(m_kernel, "MetalGatherNDOp: failed to compile kernel: ", log);
 

@@ -10,12 +10,12 @@
 
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"
-#include "backends/metal/runtime/backend.hpp"
+#include "backends/metal/runtime/metal_backend.hpp"
 #include "runtime/gfx_logger.hpp"
-#include "backends/metal/runtime/memory.hpp"
+#include "backends/metal/runtime/metal_memory.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir_codegen/codegen_common.hpp"
+#include "mlir/codegen/codegen_common.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -119,7 +119,7 @@ void MetalGroupConvOp::compile(MetalBufferManager* buffer_manager) {
     mlir::ModuleOp module;
     auto source = generate_msl_from_mlir(module, desc);
 
-    KernelSpec spec(m_node, 0u);
+    KernelSpec spec(m_node, 9u);
     m_kernel = compile_msl_kernel(backend, spec, module, "conv2d_kernel", source, &log);
     OPENVINO_ASSERT(m_kernel, "MetalGroupConvOp: failed to compile conv2d kernel: ", log);
     MetalOp::compile(buffer_manager);

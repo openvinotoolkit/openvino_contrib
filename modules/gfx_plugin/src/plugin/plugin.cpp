@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "plugin.hpp"
+#include "openvino/gfx_plugin/plugin.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -12,27 +12,35 @@
 #include <string>
 #include <vector>
 
-#include "compiled_model.hpp"
+#include "openvino/gfx_plugin/compiled_model.hpp"
 #include "plugin/remote_context_support.hpp"
 #include "plugin/gfx_backend_config.hpp"
 #include "plugin/gfx_device_info.hpp"
 #include "plugin/gfx_profiling_utils.hpp"
 #include "plugin/gfx_property_utils.hpp"
+#include "plugin/model_serialization.hpp"
 #include "runtime/gfx_backend_utils.hpp"
 #include "runtime/gfx_op_support.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/validation_util.hpp"
 #include "openvino/runtime/internal_properties.hpp"
 #include "openvino/runtime/properties.hpp"
-#include "openvino/runtime/shared_buffer.hpp"
 #include "openvino/util/common_util.hpp"
 #include "runtime/gfx_logger.hpp"
-#include "remote_stub.hpp"
+#include "runtime/gfx_remote_context.hpp"
 #include "transforms/pipeline.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 namespace {
+
+std::string make_compiled_runtime_properties(const ov::AnyMap& config) {
+    const auto info = query_device_info_from_properties(config, /*log_fallback=*/false, "Plugin");
+    std::ostringstream oss;
+    oss << "backend=" << info.backend_name << ";device=" << info.device_name << ";id=" << info.device_id;
+    return oss.str();
+}
+
 }  // namespace
 
 Plugin::Plugin() {
@@ -155,30 +163,38 @@ std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(
     return std::make_shared<CompiledModel>(transformed, shared_from_this(), model, compile_properties, context);
 }
 
-std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& /*model*/,
-                                                         const ov::AnyMap& /*properties*/) const {
-    OPENVINO_THROW("GFX plugin import_model(stream) is not implemented yet");
+std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model,
+                                                         const ov::AnyMap& properties) const {
+    auto core = get_core();
+    OPENVINO_ASSERT(core, "GFX: core is null");
+    auto ov_model = read_model_from_stream(core, model);
+    return compile_model(ov_model, properties);
 }
 
-std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& /*model*/,
-                                                         const ov::SoPtr<ov::IRemoteContext>& /*context*/,
-                                                         const ov::AnyMap& /*properties*/) const {
-    OPENVINO_THROW("GFX plugin import_model(stream, context) is not implemented yet");
+std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model,
+                                                         const ov::SoPtr<ov::IRemoteContext>& context,
+                                                         const ov::AnyMap& properties) const {
+    auto core = get_core();
+    OPENVINO_ASSERT(core, "GFX: core is null");
+    auto ov_model = read_model_from_stream(core, model);
+    return compile_model(ov_model, properties, context);
 }
 
 std::shared_ptr<ov::ICompiledModel> Plugin::import_model(const ov::Tensor& model,
                                                          const ov::AnyMap& properties) const {
-    ov::SharedStreamBuffer buffer{model.data(), model.get_byte_size()};
-    std::istream stream{&buffer};
-    return import_model(stream, properties);
+    auto core = get_core();
+    OPENVINO_ASSERT(core, "GFX: core is null");
+    auto ov_model = read_model_from_buffer(core, model);
+    return compile_model(ov_model, properties);
 }
 
 std::shared_ptr<ov::ICompiledModel> Plugin::import_model(const ov::Tensor& model,
                                                          const ov::SoPtr<ov::IRemoteContext>& context,
                                                          const ov::AnyMap& properties) const {
-    ov::SharedStreamBuffer buffer{model.data(), model.get_byte_size()};
-    std::istream stream{&buffer};
-    return import_model(stream, context, properties);
+    auto core = get_core();
+    OPENVINO_ASSERT(core, "GFX: core is null");
+    auto ov_model = read_model_from_buffer(core, model);
+    return compile_model(ov_model, properties, context);
 }
 
 ov::SupportedOpsMap Plugin::query_model(const std::shared_ptr<const ov::Model>& model,
@@ -280,7 +296,7 @@ void Plugin::set_property(const ov::AnyMap& properties) {
     }
 }
 
-ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& /*arguments*/) const {
+ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& arguments) const {
     const auto ro_props = [&]() {
         return std::vector<ov::PropertyName>{ov::available_devices,
                                              ov::supported_properties,
@@ -327,8 +343,31 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& /*argume
             ov::PropertyName{ov::internal::exclusive_async_requests.name(), ov::PropertyMutability::RW},
             ov::PropertyName{ov::internal::threads_per_stream.name(), ov::PropertyMutability::RW},
             ov::PropertyName{ov::internal::compiled_model_runtime_properties.name(), ov::PropertyMutability::RO},
+            ov::PropertyName{ov::internal::compiled_model_runtime_properties_supported.name(),
+                             ov::PropertyMutability::RO},
             ov::PropertyName{ov::internal::cache_header_alignment.name(), ov::PropertyMutability::RO},
         };
+    } else if (ov::internal::caching_properties == name) {
+        return decltype(ov::internal::caching_properties)::value_type{
+            ov::PropertyName{ov::device::architecture.name(), ov::PropertyMutability::RO},
+            ov::PropertyName{ov::device::id.name(), ov::PropertyMutability::RW},
+            ov::PropertyName{kGfxBackendProperty, ov::PropertyMutability::RW},
+            ov::PropertyName{ov::hint::inference_precision.name(), ov::PropertyMutability::RW},
+        };
+    } else if (ov::internal::compiled_model_runtime_properties == name) {
+        ov::AnyMap merged = m_config;
+        for (const auto& kv : arguments) {
+            merged[kv.first] = kv.second;
+        }
+        return make_compiled_runtime_properties(merged);
+    } else if (ov::internal::compiled_model_runtime_properties_supported == name) {
+        auto it = arguments.find(ov::internal::compiled_model_runtime_properties.name());
+        if (it == arguments.end()) {
+            return false;
+        }
+        ov::AnyMap merged = m_config;
+        const std::string expected = it->second.as<std::string>();
+        return expected == make_compiled_runtime_properties(merged);
     } else if (ov::available_devices == name) {
         const auto info = device_info();
         if (info.available_devices.empty()) {

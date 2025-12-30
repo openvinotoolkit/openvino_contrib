@@ -10,12 +10,12 @@
 #include "openvino/core/shape_util.hpp"
 #include "openvino/core/validation_util.hpp"
 #include "runtime/gfx_logger.hpp"
-#include "backends/metal/runtime/backend.hpp"
+#include "backends/metal/runtime/metal_backend.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "mlir_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir_codegen/codegen_common.hpp"
+#include "mlir/codegen/codegen_common.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -162,7 +162,7 @@ void MetalPoolOp::compile(MetalBufferManager* buffer_manager) {
                                      : build_mlir_maxpool_from_model(model, ctx);
     auto source = generate_msl_from_mlir(module, desc);
 
-    KernelSpec spec(m_node, 0u);
+    KernelSpec spec(m_node, 3u);
     m_kernel = compile_msl_kernel(backend, spec, module, "pool2d_kernel", source, &log);
     OPENVINO_ASSERT(m_kernel, "MetalPoolOp: failed to compile pool2d kernel: ", log);
 

@@ -9,12 +9,12 @@
 #include "openvino/core/shape_util.hpp"
 #include "openvino/core/validation_util.hpp"
 #include "openvino/op/constant.hpp"
-#include "backends/metal/runtime/backend.hpp"
+#include "backends/metal/runtime/metal_backend.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "mlir_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir_codegen/codegen_common.hpp"
+#include "mlir/codegen/codegen_common.hpp"
 #include "runtime/gfx_logger.hpp"
 
 namespace ov {
@@ -135,7 +135,7 @@ void MetalMatMulOp::compile(MetalBufferManager* buffer_manager) {
     desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
     auto source = generate_msl_from_mlir(module, desc);
 
-    KernelSpec spec(m_node, 0u);
+    KernelSpec spec(m_node, 3u);
     m_kernel = compile_msl_kernel(backend, spec, module, "matmul_kernel", source, &log);
     OPENVINO_ASSERT(m_kernel, "MetalMatMulOp: failed to compile matmul kernel: ", log);
 

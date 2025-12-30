@@ -4,13 +4,13 @@
 
 #import "backends/metal/runtime/op_convert.hpp"
 
-#include "backends/metal/runtime/backend.hpp"
+#include "backends/metal/runtime/metal_backend.hpp"
 #include "mlir/mlir_builder.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir_codegen/codegen_common.hpp"
+#include "mlir/codegen/codegen_common.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -51,7 +51,7 @@ void MetalConvertOp::compile(MetalBufferManager* buffer_manager) {
     auto module = build_mlir_convert_from_model(make_single_op_model(m_node), ctx);
     auto source = generate_msl_from_mlir(module, desc);
 
-    KernelSpec spec(m_node, 0u);
+    KernelSpec spec(m_node, 3u);
     m_kernel = compile_msl_kernel(backend, spec, module, "convert_kernel", source, &log);
     OPENVINO_ASSERT(m_kernel, "MetalConvertOp: failed to compile kernel: ", log);
 

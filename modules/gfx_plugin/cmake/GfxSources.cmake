@@ -8,72 +8,91 @@ set(_gfx_src_dir "${CMAKE_CURRENT_LIST_DIR}/../src")
 
 set(GFX_PLUGIN_SOURCES
     ${_gfx_src_dir}/plugin/compiled_model.cpp
+    ${_gfx_src_dir}/plugin/compiled_model_backend_resources.cpp
     ${_gfx_src_dir}/plugin/gfx_device_info.cpp
-    ${_gfx_src_dir}/plugin/infer_request.mm
+    ${_gfx_src_dir}/plugin/gfx_property_utils.cpp
+    ${_gfx_src_dir}/plugin/gfx_remote_utils.cpp
+    ${_gfx_src_dir}/plugin/infer_request_common.cpp
+    ${_gfx_src_dir}/plugin/infer_io_utils.cpp
+    ${_gfx_src_dir}/plugin/infer_pipeline.cpp
+    ${_gfx_src_dir}/plugin/model_serialization.cpp
     ${_gfx_src_dir}/plugin/plugin.cpp
     ${_gfx_src_dir}/plugin/remote_context_support.cpp
-    ${_gfx_src_dir}/plugin/remote_stub.mm
+    ${_gfx_src_dir}/transforms/pipeline.cpp
+    ${_gfx_src_dir}/transforms/conv_relu_fusion.cpp
 )
 
 set(GFX_PLUGIN_HEADERS
-    ${_gfx_src_dir}/plugin/compiled_model.hpp
+    ${_gfx_src_dir}/plugin/backend_state.hpp
     ${_gfx_src_dir}/plugin/gfx_device_info.hpp
     ${_gfx_src_dir}/plugin/gfx_profiling_utils.hpp
-    ${_gfx_src_dir}/plugin/gfx_remote_properties.hpp
     ${_gfx_src_dir}/plugin/gfx_remote_utils.hpp
     ${_gfx_src_dir}/plugin/gfx_property_utils.hpp
-    ${_gfx_src_dir}/plugin/infer_request.hpp
+    ${_gfx_src_dir}/plugin/infer_request_backend_hooks.hpp
+    ${_gfx_src_dir}/plugin/infer_request_state.hpp
     ${_gfx_src_dir}/plugin/infer_pipeline.hpp
-    ${_gfx_src_dir}/backends/metal/plugin/properties.hpp
-    ${_gfx_src_dir}/plugin/plugin.hpp
+    ${_gfx_src_dir}/plugin/model_serialization.hpp
+    ${_gfx_src_dir}/backends/metal/plugin/metal_properties.hpp
+    ${_gfx_src_dir}/backends/metal/plugin/compiled_model_state.hpp
+    ${_gfx_src_dir}/backends/vulkan/plugin/vulkan_properties.hpp
+    ${_gfx_src_dir}/backends/vulkan/plugin/compiled_model_state.hpp
     ${_gfx_src_dir}/plugin/remote_context_support.hpp
-    ${_gfx_src_dir}/plugin/remote_stub.hpp
+    ${_gfx_src_dir}/runtime/gfx_remote_context.hpp
     ${_gfx_src_dir}/transforms/conv_relu_fusion.hpp
     ${_gfx_src_dir}/transforms/pipeline.hpp
+    ${_gfx_src_dir}/../include/openvino/gfx_plugin/plugin.hpp
+    ${_gfx_src_dir}/../include/openvino/gfx_plugin/compiled_model.hpp
+    ${_gfx_src_dir}/../include/openvino/gfx_plugin/infer_request.hpp
+    ${_gfx_src_dir}/../include/openvino/gfx_plugin/properties.hpp
+    ${_gfx_src_dir}/../include/openvino/gfx_plugin/profiling.hpp
 )
 
 set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/gfx_activation.hpp
     ${_gfx_src_dir}/runtime/gfx_backend_caps.hpp
     ${_gfx_src_dir}/runtime/gfx_backend_utils.hpp
+    ${_gfx_src_dir}/runtime/gfx_kernel_cache.hpp
     ${_gfx_src_dir}/runtime/gfx_op_support.hpp
-    ${_gfx_src_dir}/runtime/gpu_backend.hpp
-    ${_gfx_src_dir}/compiler/gfx_codegen_backend.hpp
+    ${_gfx_src_dir}/runtime/gpu_backend_base.hpp
+    ${_gfx_src_dir}/mlir/gfx_codegen_backend.hpp
     ${_gfx_src_dir}/runtime/gpu_buffer.hpp
     ${_gfx_src_dir}/runtime/gpu_buffer_pool.hpp
+    ${_gfx_src_dir}/runtime/gfx_stage_factory.hpp
     ${_gfx_src_dir}/runtime/gpu_stage.hpp
-    ${_gfx_src_dir}/runtime/gpu_stage_factory.hpp
+    ${_gfx_src_dir}/runtime/execution_dispatcher.hpp
     ${_gfx_src_dir}/runtime/gpu_tensor.hpp
     ${_gfx_src_dir}/runtime/gpu_types.hpp
     ${_gfx_src_dir}/runtime/gfx_kernel_dispatch.hpp
-    ${_gfx_src_dir}/compiler/gfx_kernel_plan.hpp
-    ${_gfx_src_dir}/compiler/gfx_kernel_spec.hpp
-    ${_gfx_src_dir}/compiler/mlir/gfx_mlir_kernel_builder.hpp
-    ${_gfx_src_dir}/compiler/mlir_support.hpp
+    ${_gfx_src_dir}/mlir/gfx_kernel_plan.hpp
+    ${_gfx_src_dir}/mlir/gfx_kernel_spec.hpp
+    ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.hpp
+    ${_gfx_src_dir}/mlir/mlir_support.hpp
     ${_gfx_src_dir}/runtime/gfx_logger.hpp
     ${_gfx_src_dir}/runtime/gfx_op_utils.hpp
-    ${_gfx_src_dir}/runtime/profiling/gfx_profiler_config.hpp
     ${_gfx_src_dir}/backends/vulkan/runtime/memory_api.hpp
 )
 
 set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/gfx_backend_caps.cpp
+    ${_gfx_src_dir}/runtime/gfx_backend_utils.cpp
+    ${_gfx_src_dir}/runtime/gfx_kernel_cache.cpp
     ${_gfx_src_dir}/runtime/gfx_op_support.cpp
-    ${_gfx_src_dir}/runtime/gpu_stage_factory.cpp
-    ${_gfx_src_dir}/runtime/gpu_memory.cpp
-    ${_gfx_src_dir}/compiler/mlir/gfx_mlir_kernel_builder.cpp
-    ${_gfx_src_dir}/compiler/mlir_support.cpp
+    ${_gfx_src_dir}/runtime/execution_dispatcher.cpp
+    ${_gfx_src_dir}/runtime/memory_manager.cpp
+    ${_gfx_src_dir}/runtime/gfx_remote_context.cpp
+    ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.cpp
+    ${_gfx_src_dir}/mlir/mlir_support.cpp
     ${_gfx_src_dir}/runtime/gfx_logger.cpp
     ${_gfx_src_dir}/runtime/gfx_op_utils.cpp
 )
 
 set(GFX_RUNTIME_METAL_SOURCES
-    ${_gfx_src_dir}/backends/metal/runtime/stage.cpp
+    ${_gfx_src_dir}/backends/metal/runtime/metal_executor.cpp
     ${_gfx_src_dir}/backends/metal/runtime/gpu_memory.mm
-    ${_gfx_src_dir}/backends/metal/codegen/kernel_compiler_common.mm
-    ${_gfx_src_dir}/backends/metal/runtime/backend.mm
+    ${_gfx_src_dir}/backends/metal/codegen/metal_compiler.mm
+    ${_gfx_src_dir}/backends/metal/runtime/metal_backend.mm
     ${_gfx_src_dir}/backends/metal/runtime/dtype.cpp
-    ${_gfx_src_dir}/backends/metal/runtime/memory.mm
+    ${_gfx_src_dir}/backends/metal/runtime/metal_memory.mm
     ${_gfx_src_dir}/backends/metal/runtime/op.mm
     ${_gfx_src_dir}/backends/metal/runtime/op_activations.mm
     ${_gfx_src_dir}/backends/metal/runtime/op_batchnorm.mm
@@ -107,24 +126,24 @@ set(GFX_RUNTIME_METAL_SOURCES
     ${_gfx_src_dir}/backends/metal/runtime/op_split.mm
     ${_gfx_src_dir}/backends/metal/runtime/op_tile.mm
     ${_gfx_src_dir}/backends/metal/runtime/op_topk.mm
-    ${_gfx_src_dir}/backends/metal/memory/allocator.mm
-    ${_gfx_src_dir}/backends/metal/memory/allocator_core.mm
-    ${_gfx_src_dir}/backends/metal/memory/const_cache.mm
-    ${_gfx_src_dir}/backends/metal/memory/device_caps.mm
-    ${_gfx_src_dir}/backends/metal/memory/heap_pool.mm
-    ${_gfx_src_dir}/backends/metal/memory/memory_session.mm
-    ${_gfx_src_dir}/backends/metal/memory/staging_pool.mm
-    ${_gfx_src_dir}/backends/metal/profiling/gpu_timestamps.mm
-    ${_gfx_src_dir}/backends/metal/profiling/profiler.mm
-    ${_gfx_src_dir}/backends/metal/profiling/profiling_report.cpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/allocator.mm
+    ${_gfx_src_dir}/backends/metal/runtime/memory/allocator_core.mm
+    ${_gfx_src_dir}/backends/metal/runtime/memory/const_cache.mm
+    ${_gfx_src_dir}/backends/metal/runtime/memory/device_caps.mm
+    ${_gfx_src_dir}/backends/metal/runtime/memory/heap_pool.mm
+    ${_gfx_src_dir}/backends/metal/runtime/memory/memory_session.mm
+    ${_gfx_src_dir}/backends/metal/runtime/memory/staging_pool.mm
+    ${_gfx_src_dir}/backends/metal/runtime/profiling/gpu_timestamps.mm
+    ${_gfx_src_dir}/backends/metal/runtime/profiling/profiler.mm
+    ${_gfx_src_dir}/backends/metal/runtime/profiling/profiling_report.cpp
 )
 
 set(GFX_RUNTIME_METAL_HEADERS
-    ${_gfx_src_dir}/backends/metal/codegen/kernel_compiler.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/backend.hpp
+    ${_gfx_src_dir}/backends/metal/codegen/metal_compiler.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/metal_backend.hpp
     ${_gfx_src_dir}/backends/metal/runtime/dtype.hpp
     ${_gfx_src_dir}/backends/metal/runtime/logger.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/memory.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/metal_memory.hpp
     ${_gfx_src_dir}/backends/metal/runtime/op.hpp
     ${_gfx_src_dir}/backends/metal/runtime/op_activations.hpp
     ${_gfx_src_dir}/backends/metal/runtime/op_batchnorm.hpp
@@ -160,37 +179,49 @@ set(GFX_RUNTIME_METAL_HEADERS
     ${_gfx_src_dir}/backends/metal/runtime/op_tile.hpp
     ${_gfx_src_dir}/backends/metal/runtime/op_topk.hpp
     ${_gfx_src_dir}/backends/metal/runtime/op_utils.hpp
-    ${_gfx_src_dir}/backends/metal/memory/allocator.hpp
-    ${_gfx_src_dir}/backends/metal/memory/allocator_core.hpp
-    ${_gfx_src_dir}/backends/metal/memory/buffer.hpp
-    ${_gfx_src_dir}/backends/metal/memory/const_cache.hpp
-    ${_gfx_src_dir}/backends/metal/memory/device_caps.hpp
-    ${_gfx_src_dir}/backends/metal/memory/freelist.hpp
-    ${_gfx_src_dir}/backends/metal/memory/heap_pool.hpp
-    ${_gfx_src_dir}/backends/metal/memory/memory_session.hpp
-    ${_gfx_src_dir}/backends/metal/memory/memory_stats.hpp
-    ${_gfx_src_dir}/backends/metal/memory/staging_pool.hpp
-    ${_gfx_src_dir}/backends/metal/profiling/gpu_timestamps.hpp
-    ${_gfx_src_dir}/backends/metal/profiling/profiler.hpp
-    ${_gfx_src_dir}/backends/metal/profiling/profiler_config.hpp
-    ${_gfx_src_dir}/backends/metal/profiling/profiling_report.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/stage.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/allocator.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/allocator_core.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/buffer.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/const_cache.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/device_caps.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/freelist.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/heap_pool.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/memory_session.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/memory_stats.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/memory/staging_pool.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/profiling/gpu_timestamps.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/profiling/profiler.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/profiling/profiler_config.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/profiling/profiling_report.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/metal_executor.hpp
 )
 
 # TODO: add Vulkan backend sources once they are introduced.
 set(GFX_RUNTIME_VULKAN_SOURCES
-    ${_gfx_src_dir}/backends/vulkan/runtime/backend.cpp
-    ${_gfx_src_dir}/backends/vulkan/runtime/stage.cpp
-    ${_gfx_src_dir}/backends/vulkan/runtime/memory.cpp
+    ${_gfx_src_dir}/backends/vulkan/codegen/vulkan_compiler.cpp
+    ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_backend.cpp
+    ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_executor.cpp
+    ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_memory.cpp
     ${_gfx_src_dir}/backends/vulkan/runtime/gpu_memory.cpp
-    ${_gfx_src_dir}/backends/vulkan/profiling/profiler.cpp
+    ${_gfx_src_dir}/backends/vulkan/runtime/profiling/profiler.cpp
 )
 
 set(GFX_RUNTIME_VULKAN_HEADERS
-    ${_gfx_src_dir}/backends/vulkan/runtime/backend.hpp
-    ${_gfx_src_dir}/backends/vulkan/runtime/stage.hpp
-    ${_gfx_src_dir}/backends/vulkan/runtime/memory.hpp
-    ${_gfx_src_dir}/backends/vulkan/profiling/profiler.hpp
+    ${_gfx_src_dir}/backends/vulkan/codegen/vulkan_compiler.hpp
+    ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_backend.hpp
+    ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_executor.hpp
+    ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_memory.hpp
+    ${_gfx_src_dir}/backends/vulkan/runtime/profiling/profiler.hpp
+)
+
+set(GFX_PLUGIN_METAL_SOURCES
+    ${_gfx_src_dir}/backends/metal/plugin/remote_context.mm
+    ${_gfx_src_dir}/backends/metal/plugin/device_info.mm
+)
+
+set(GFX_PLUGIN_VULKAN_SOURCES
+    ${_gfx_src_dir}/backends/vulkan/plugin/remote_context.cpp
+    ${_gfx_src_dir}/backends/vulkan/plugin/device_info.cpp
 )
 
 set(GFX_HAS_METAL_SOURCES OFF)

@@ -11,13 +11,12 @@
 #include "runtime/gfx_backend_caps.hpp"
 #include "runtime/gfx_backend_utils.hpp"
 
-#if GFX_BACKEND_METAL_AVAILABLE
-#include "backends/metal/runtime/memory.hpp"
-#endif
-
-#if GFX_BACKEND_VULKAN_AVAILABLE
-#include "backends/vulkan/runtime/backend.hpp"
-#endif
+namespace ov {
+namespace gfx_plugin {
+void fill_metal_device_info(GfxDeviceInfo& info, const ov::AnyMap& properties);
+void fill_vulkan_device_info(GfxDeviceInfo& info, const ov::AnyMap& properties);
+}  // namespace gfx_plugin
+}  // namespace ov
 
 namespace ov {
 namespace gfx_plugin {
@@ -58,38 +57,11 @@ GfxDeviceInfo query_device_info(GpuBackend backend, const ov::AnyMap& properties
 
     switch (backend) {
     case GpuBackend::Metal: {
-#if GFX_BACKEND_METAL_AVAILABLE
-        auto names = metal_get_device_names();
-        if (!names.empty()) {
-            info.available_devices = names;
-            info.device_name = names.front();
-            info.full_name = "GFX (" + info.device_name + ")";
-        } else {
-            info.device_name = "GFX";
-            info.full_name = "GFX";
-        }
-#else
-        info.device_name = "GFX (Metal)";
-        info.full_name = "GFX (Metal)";
-#endif
+        fill_metal_device_info(info, properties);
         break;
     }
     case GpuBackend::Vulkan: {
-#if GFX_BACKEND_VULKAN_AVAILABLE
-        const auto& ctx = VulkanContext::instance();
-        const auto& name = ctx.device_name();
-        if (!name.empty()) {
-            info.device_name = name;
-            info.full_name = "GFX (" + name + ")";
-            info.available_devices = {name};
-        } else {
-            info.device_name = "GFX (Vulkan)";
-            info.full_name = "GFX (Vulkan)";
-        }
-#else
-        info.device_name = "GFX (Vulkan)";
-        info.full_name = "GFX (Vulkan)";
-#endif
+        fill_vulkan_device_info(info, properties);
         break;
     }
     default:

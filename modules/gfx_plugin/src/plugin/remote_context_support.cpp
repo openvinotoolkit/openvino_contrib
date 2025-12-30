@@ -6,15 +6,17 @@
 
 #include "openvino/core/except.hpp"
 #include "plugin/gfx_property_utils.hpp"
-#include "plugin/remote_stub.hpp"
+#include "runtime/gfx_remote_context.hpp"
 #include "runtime/gfx_backend_utils.hpp"
 
-#if GFX_BACKEND_METAL_AVAILABLE
-#include "backends/metal/runtime/memory.hpp"
-#endif
-#if GFX_BACKEND_VULKAN_AVAILABLE
-#include "backends/vulkan/runtime/backend.hpp"
-#endif
+namespace ov {
+namespace gfx_plugin {
+ov::SoPtr<ov::IRemoteContext> create_metal_remote_context(const std::string& resolved_name,
+                                                          const RemoteContextParams& params);
+ov::SoPtr<ov::IRemoteContext> create_vulkan_remote_context(const std::string& resolved_name,
+                                                           const RemoteContextParams& params);
+}  // namespace gfx_plugin
+}  // namespace ov
 
 namespace ov {
 namespace gfx_plugin {
@@ -40,36 +42,10 @@ ov::SoPtr<ov::IRemoteContext> make_gfx_remote_context(const std::string& device_
     const std::string resolved_name = device_name.empty() ? "GFX" : device_name;
     switch (params.backend) {
         case GpuBackend::Metal: {
-#if GFX_BACKEND_METAL_AVAILABLE
-            auto handle = metal_get_device_by_id(params.device_id);
-            OPENVINO_ASSERT(handle, "GFX: failed to resolve device for remote context");
-            return ov::SoPtr<ov::IRemoteContext>{
-                std::make_shared<GfxRemoteContext>(resolved_name,
-                                                   params.device_id,
-                                                   GpuBackend::Metal,
-                                                   handle,
-                                                   params.backend_name,
-                                                   params.merged),
-                nullptr};
-#else
-            OPENVINO_THROW("GFX: Metal backend is not available for remote context");
-#endif
+            return create_metal_remote_context(resolved_name, params);
         }
         case GpuBackend::Vulkan: {
-#if GFX_BACKEND_VULKAN_AVAILABLE
-            auto& ctx = VulkanContext::instance();
-            auto handle = reinterpret_cast<GpuDeviceHandle>(ctx.device());
-            return ov::SoPtr<ov::IRemoteContext>{
-                std::make_shared<GfxRemoteContext>(resolved_name,
-                                                   /*device_id=*/0,
-                                                   GpuBackend::Vulkan,
-                                                   handle,
-                                                   params.backend_name,
-                                                   params.merged),
-                nullptr};
-#else
-            OPENVINO_THROW("GFX: Vulkan backend is not available for remote context");
-#endif
+            return create_vulkan_remote_context(resolved_name, params);
         }
         default:
             break;

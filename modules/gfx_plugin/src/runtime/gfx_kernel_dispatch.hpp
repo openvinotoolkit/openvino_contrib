@@ -4,7 +4,7 @@
 #pragma once
 
 #include "openvino/core/shape.hpp"
-#include "runtime/gpu_backend.hpp"
+#include "runtime/gpu_backend_base.hpp"
 
 namespace ov {
 namespace gfx_plugin {

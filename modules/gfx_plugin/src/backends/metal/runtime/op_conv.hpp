@@ -8,7 +8,7 @@
 
 #include "openvino/op/convolution.hpp"
 #include "backends/metal/runtime/op.hpp"
-#include "mlir_codegen/codegen_desc.hpp"
+#include "mlir/codegen/codegen_desc.hpp"
 
 namespace ov {
 namespace gfx_plugin {

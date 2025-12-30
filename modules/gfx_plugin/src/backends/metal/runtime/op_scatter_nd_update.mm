@@ -6,9 +6,9 @@
 
 #include <string>
 
-#include "backends/metal/runtime/backend.hpp"
+#include "backends/metal/runtime/metal_backend.hpp"
 #include "mlir/mlir_builder.hpp"
-#include "mlir_codegen/codegen_common.hpp"
+#include "mlir/codegen/codegen_common.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"
 #include "runtime/gfx_logger.hpp"
@@ -140,10 +140,11 @@ void MetalScatterNDUpdateOp::compile(MetalBufferManager* buffer_manager) {
     auto module = build_mlir_scatter_nd_update_from_model(make_single_op_model(m_node), ctx);
     auto source = generate_msl_from_mlir(module, m_desc);
 
-    KernelSpec spec(m_node, 0u);
-    m_kernel_init = compile_msl_kernel(backend, spec, module, "scatter_nd_init", source, &log);
+    KernelSpec spec_init(m_node, 3u);
+    KernelSpec spec_update(m_node, 4u);
+    m_kernel_init = compile_msl_kernel(backend, spec_init, module, "scatter_nd_init", source, &log);
     OPENVINO_ASSERT(m_kernel_init, "MetalScatterNDUpdateOp: init kernel compile failed: ", log);
-    m_kernel_update = compile_msl_kernel(backend, spec, module, "scatter_nd_update", source, &log);
+    m_kernel_update = compile_msl_kernel(backend, spec_update, module, "scatter_nd_update", source, &log);
     OPENVINO_ASSERT(m_kernel_update, "MetalScatterNDUpdateOp: update kernel compile failed: ", log);
 
     MetalOp::compile(buffer_manager);

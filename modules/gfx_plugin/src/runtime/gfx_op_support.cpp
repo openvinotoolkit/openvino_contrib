@@ -15,8 +15,8 @@
 #include "openvino/op/squeeze.hpp"
 #include "openvino/op/unsqueeze.hpp"
 #include "runtime/gfx_logger.hpp"
-#include "compiler/mlir_support.hpp"
-#include "runtime/gpu_stage_factory.hpp"
+#include "mlir/mlir_support.hpp"
+#include "runtime/execution_dispatcher.hpp"
 
 namespace ov {
 namespace gfx_plugin {

@@ -3,8 +3,8 @@
 //
 
 #include "backends/metal/runtime/op.hpp"
-#include "backends/metal/runtime/backend.hpp"
-#include "backends/metal/profiling/profiler.hpp"
+#include "backends/metal/runtime/metal_backend.hpp"
+#include "backends/metal/runtime/profiling/profiler.hpp"
 
 #include <cstring>
 

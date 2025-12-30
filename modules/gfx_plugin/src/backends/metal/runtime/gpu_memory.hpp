@@ -3,10 +3,10 @@
 //
 #pragma once
 
-#include "runtime/gpu_memory.hpp"
-#include "backends/metal/runtime/memory.hpp"
-#include "backends/metal/memory/allocator.hpp"
-#include "backends/metal/memory/device_caps.hpp"
+#include "runtime/memory_manager.hpp"
+#include "backends/metal/runtime/metal_memory.hpp"
+#include "backends/metal/runtime/memory/allocator.hpp"
+#include "backends/metal/runtime/memory/device_caps.hpp"
 
 namespace ov {
 namespace gfx_plugin {

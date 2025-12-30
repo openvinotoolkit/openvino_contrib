@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "backends/metal/runtime/memory.hpp"
+#include "backends/metal/runtime/metal_memory.hpp"
 
 #include "openvino/core/except.hpp"
-#include "backends/metal/memory/allocator.hpp"
-#include "backends/metal/memory/const_cache.hpp"
-#include "backends/metal/memory/device_caps.hpp"
-#include "backends/metal/memory/heap_pool.hpp"
-#include "backends/metal/memory/staging_pool.hpp"
+#include "backends/metal/runtime/memory/allocator.hpp"
+#include "backends/metal/runtime/memory/const_cache.hpp"
+#include "backends/metal/runtime/memory/device_caps.hpp"
+#include "backends/metal/runtime/memory/heap_pool.hpp"
+#include "backends/metal/runtime/memory/staging_pool.hpp"
 
 namespace ov {
 namespace gfx_plugin {

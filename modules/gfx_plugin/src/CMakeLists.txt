@@ -9,29 +9,53 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/GfxSources.cmake)
 set(GFX_PLUGIN_SOURCES ${GFX_PLUGIN_SOURCES})
 set(GFX_RUNTIME_COMMON_SOURCES ${GFX_RUNTIME_COMMON_SOURCES})
 
-if(NOT GFX_BACKEND_METAL_AVAILABLE)
-    list(REMOVE_ITEM GFX_PLUGIN_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/plugin/infer_request.mm
-        ${CMAKE_CURRENT_SOURCE_DIR}/plugin/remote_stub.mm)
-    list(FILTER GFX_PLUGIN_SOURCES EXCLUDE REGEX ".*/infer_request\\.mm$")
-    list(FILTER GFX_PLUGIN_SOURCES EXCLUDE REGEX "infer_request\\.mm$")
-    list(FILTER GFX_PLUGIN_SOURCES EXCLUDE REGEX ".*/remote_stub\\.mm$")
-    list(FILTER GFX_PLUGIN_SOURCES EXCLUDE REGEX "remote_stub\\.mm$")
+if(GFX_BACKEND_METAL_AVAILABLE)
     list(APPEND GFX_PLUGIN_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/plugin/infer_request_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/plugin/remote_stub_stub.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/infer_request.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/infer_io_metal.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/compiled_model_backend.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/remote_context.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/device_info.mm)
+    list(APPEND GFX_RUNTIME_METAL_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/stage_factory.cpp)
+else()
+    list(APPEND GFX_PLUGIN_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/infer_request_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/compiled_model_backend_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/device_info_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/remote_context_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/remote_tensor_stub.cpp)
     list(APPEND GFX_RUNTIME_COMMON_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/stage_factory_stub.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/runtime_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/profiling/profiler_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/profiling/gpu_timestamps_stub.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/profiling/profiler_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/profiling/gpu_timestamps_stub.cpp)
 endif()
 
 if(GFX_BACKEND_VULKAN_AVAILABLE)
     list(APPEND GFX_PLUGIN_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/infer_request.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/infer_request.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/infer_io_vulkan.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/compiled_model_backend.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/remote_tensor.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/remote_context.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/device_info.cpp)
+    list(APPEND GFX_RUNTIME_VULKAN_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime/stage_factory.cpp)
 else()
     list(APPEND GFX_PLUGIN_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/infer_request_stub.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/infer_request_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/compiled_model_backend_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/device_info_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/remote_context_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/remote_tensor_stub.cpp)
+    list(APPEND GFX_RUNTIME_COMMON_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime/stage_factory_stub.cpp)
+endif()
+
+if(GFX_BACKEND_METAL_AVAILABLE)
+    list(APPEND GFX_PLUGIN_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/remote_tensor.mm)
 endif()
 
 if(NOT GFX_BACKEND_VULKAN_AVAILABLE)
@@ -54,23 +78,21 @@ if(NOT GFX_PLUGIN_SOURCES)
 endif()
 
 if(ENABLE_GFX_MLIR)
-    add_subdirectory(compiler/mlir)
-    add_subdirectory(compiler/mlir_codegen)
+    add_subdirectory(mlir)
+    add_subdirectory(mlir/codegen)
 endif()
 
 # Build settings shared by plugin and runtime objects.
 add_library(gfx_plugin_build_settings INTERFACE)
 target_include_directories(gfx_plugin_build_settings INTERFACE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../include"
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_BINARY_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/plugin"
     "${CMAKE_CURRENT_SOURCE_DIR}/runtime"
     "${CMAKE_CURRENT_SOURCE_DIR}/backends"
-    "${CMAKE_CURRENT_SOURCE_DIR}/compiler"
-    "${CMAKE_CURRENT_SOURCE_DIR}/compiler/mlir"
-    "${CMAKE_CURRENT_SOURCE_DIR}/compiler/mlir_codegen"
-    "${CMAKE_CURRENT_SOURCE_DIR}/compiler/spirv"
-    "${CMAKE_CURRENT_SOURCE_DIR}/msl"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mlir"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mlir/codegen"
     "${CMAKE_CURRENT_SOURCE_DIR}/transforms"
     $<$<BOOL:${ENABLE_GFX_MLIR}>:${MLIR_INCLUDE_DIRS}>)
 target_compile_definitions(gfx_plugin_build_settings INTERFACE
@@ -93,12 +115,9 @@ target_compile_definitions(${TARGET_NAME} PRIVATE IMPLEMENT_OPENVINO_RUNTIME_PLU
 ov_add_vs_version_file(NAME ${TARGET_NAME}
     FILEDESCRIPTION "OpenVINO Runtime GFX device plugin library")
 
-# Link reference implementations for early bring-up
 target_link_libraries(${TARGET_NAME} PRIVATE
     openvino::runtime
     openvino::runtime::dev
-    openvino::interpreter_backend
-    openvino::reference
     $<$<BOOL:${ENABLE_GFX_MLIR}>:gfx_mlir>
     $<$<BOOL:${ENABLE_GFX_MLIR}>:gfx_mlir_codegen>)
 
