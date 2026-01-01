@@ -4,7 +4,6 @@
 #pragma once
 
 #include <cstdio>
-#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -26,10 +25,6 @@ namespace gfx_plugin {
 inline void mlir_codegen_log(const std::string& msg) {
 #if GFX_MLIR_DEBUG
     fprintf(stderr, "%s\n", msg.c_str());
-#else
-    if (std::getenv("GFX_MLIR_DEBUG")) {
-        fprintf(stderr, "%s\n", msg.c_str());
-    }
 #endif
 }
 

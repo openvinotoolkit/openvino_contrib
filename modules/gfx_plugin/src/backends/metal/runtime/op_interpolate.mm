@@ -266,7 +266,7 @@ void MetalInterpolateOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     const size_t bytes = ov::shape_size(out_shape) * m_element_type.size();
     if (!dst.buf.valid() || dst.buf.size < bytes) {
-        dst.buf = buffer_manager()->allocate(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
+        dst.buf = allocate_temp_buffer(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
     }
     dst.shape = out_shape;
     dst.expected_type = m_element_type;
@@ -305,8 +305,8 @@ void MetalInterpolateOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     std::vector<KernelArg> args;
     args.reserve(3);
     append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-    append_kernel_output_args(args, 1, &dst, name().c_str());
-    args.push_back(make_bytes_arg(2, &params, sizeof(params)));
+    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &params, sizeof(params)));
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 

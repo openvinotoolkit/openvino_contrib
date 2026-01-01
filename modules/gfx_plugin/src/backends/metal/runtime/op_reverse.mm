@@ -129,7 +129,7 @@ void MetalReverseOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     OPENVINO_ASSERT(src->buf.size >= in_bytes, "Reverse: input buffer too small");
     if (!dst.buf.valid() || dst.buf.size < num_elems * m_element_type.size()) {
         size_t bytes = num_elems * m_element_type.size();
-        dst.buf = buffer_manager()->allocate(bytes,
+        dst.buf = allocate_temp_buffer(bytes,
                                              m_element_type,
                                              /*persistent=*/false,
                                              /*storageModePrivate=*/dst.prefer_private);
@@ -145,8 +145,8 @@ void MetalReverseOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     std::vector<KernelArg> args;
     args.reserve(3);
     append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-    append_kernel_output_args(args, 1, &dst, name().c_str());
-    args.push_back(make_bytes_arg(2, &m_desc, sizeof(m_desc)));
+    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &m_desc, sizeof(m_desc)));
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 

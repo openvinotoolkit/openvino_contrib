@@ -166,7 +166,7 @@ void MetalSliceOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     const size_t bytes = ov::shape_size(out_shape) * m_element_type.size();
     if (!dst.buf.valid() || dst.buf.size < bytes) {
-        dst.buf = buffer_manager()->allocate(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
+        dst.buf = allocate_temp_buffer(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
     }
     dst.shape = out_shape;
     dst.expected_type = m_element_type;
@@ -184,13 +184,13 @@ void MetalSliceOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     std::vector<KernelArg> args;
     args.reserve(8);
     append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-    append_kernel_output_args(args, 1, &dst, name().c_str());
-    args.push_back(make_bytes_arg(2, &total, sizeof(total)));
-    args.push_back(make_bytes_arg(3, &rank, sizeof(rank)));
-    args.push_back(make_bytes_arg(4, m_out_shape.data(), m_out_shape.size() * sizeof(uint32_t)));
-    args.push_back(make_bytes_arg(5, m_in_stride.data(), m_in_stride.size() * sizeof(uint32_t)));
-    args.push_back(make_bytes_arg(6, m_starts.data(), m_starts.size() * sizeof(int32_t)));
-    args.push_back(make_bytes_arg(7, m_steps.data(), m_steps.size() * sizeof(uint32_t)));
+    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &total, sizeof(total)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &rank, sizeof(rank)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_out_shape.data(), m_out_shape.size() * sizeof(uint32_t)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_in_stride.data(), m_in_stride.size() * sizeof(uint32_t)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_starts.data(), m_starts.size() * sizeof(int32_t)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_steps.data(), m_steps.size() * sizeof(uint32_t)));
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 

@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "openvino/core/any.hpp"
 #include "openvino/core/shape.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/runtime/iremote_tensor.hpp"
@@ -70,6 +71,7 @@ private:
 
 struct RemoteTensorCreateResult {
     GpuTensor tensor{};
+    ov::AnyMap properties{};
     RemoteTensorReleaseFn release_fn = nullptr;
 };
 

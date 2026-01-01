@@ -11,6 +11,7 @@
 
 #include "openvino/core/shape.hpp"
 #include "openvino/core/except.hpp"
+#include "kernel_ir/gfx_kernel_args.hpp"
 #include "runtime/gpu_backend_base.hpp"
 #include "kernel_ir/gfx_kernel_plan.hpp"
 #include "kernel_ir/gfx_kernel_spec.hpp"
@@ -94,6 +95,37 @@ protected:
                         const KernelDispatch& dispatch,
                         const std::vector<KernelArg>& args);
 
+    template <typename ResolveInputFn>
+    void append_kernel_input_args(std::vector<KernelArg>& args,
+                                  const std::vector<size_t>& kernel_inputs,
+                                  ResolveInputFn&& resolve_input,
+                                  const char* stage_name) const {
+        ::ov::gfx_plugin::append_kernel_input_args(args,
+                                                   kernel_inputs,
+                                                   std::forward<ResolveInputFn>(resolve_input),
+                                                   stage_name);
+    }
+
+    template <typename ResolveInputFn>
+    void append_kernel_input_args(std::vector<KernelArg>& args,
+                                  size_t input_count,
+                                  ResolveInputFn&& resolve_input,
+                                  const char* stage_name) const {
+        if (!m_kernel_inputs.empty()) {
+            if (m_kernel_inputs.size() <= input_count) {
+                ::ov::gfx_plugin::append_kernel_input_args(args,
+                                                           m_kernel_inputs,
+                                                           std::forward<ResolveInputFn>(resolve_input),
+                                                           stage_name);
+                return;
+            }
+        }
+        ::ov::gfx_plugin::append_kernel_input_args(args,
+                                                   input_count,
+                                                   std::forward<ResolveInputFn>(resolve_input),
+                                                   stage_name);
+    }
+
     // Allocate temporary device memory via the shared buffer manager.
     MetalBuffer allocate_temp_buffer(size_t bytes,
                                      ov::element::Type type,
@@ -135,6 +167,7 @@ private:
     std::string m_profile_node_name;
     std::string m_profile_node_type;
 
+    std::vector<size_t> m_kernel_inputs;
     std::vector<MetalBuffer> m_inflight_const_buffers;
     std::vector<std::shared_ptr<std::vector<uint8_t>>> m_inflight_const_payloads;
 };

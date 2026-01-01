@@ -3,10 +3,13 @@
 //
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include "openvino/core/except.hpp"
+#include "kernel_ir/gfx_kernel_cache.hpp"
 #include "runtime/gpu_backend_base.hpp"
+#include "runtime/gpu_buffer_manager.hpp"
 #include "runtime/gpu_tensor.hpp"
 
 namespace ov {
@@ -98,6 +101,54 @@ inline uint32_t validate_kernel_args(const ICompiledKernel& kernel,
                         ")");
     }
     return count;
+}
+
+inline std::vector<KernelArg> materialize_kernel_bytes_args(const std::vector<KernelArg>& args,
+                                                            GpuBufferManager& buffer_manager,
+                                                            const char* stage_name) {
+    bool has_bytes = false;
+    for (const auto& arg : args) {
+        if (arg.kind == KernelArg::Kind::Bytes) {
+            has_bytes = true;
+            break;
+        }
+    }
+    if (!has_bytes) {
+        return args;
+    }
+    OPENVINO_ASSERT(buffer_manager.supports_const_cache(),
+                    "GFX: const cache is required for bytes args in stage ",
+                    stage_name ? stage_name : "<unknown>");
+    std::vector<KernelArg> out;
+    out.reserve(args.size());
+    for (const auto& arg : args) {
+        if (arg.kind != KernelArg::Kind::Bytes) {
+            out.push_back(arg);
+            continue;
+        }
+        OPENVINO_ASSERT(arg.bytes,
+                        "GFX: bytes arg pointer is null for stage ",
+                        stage_name ? stage_name : "<unknown>");
+        OPENVINO_ASSERT(arg.byte_size > 0,
+                        "GFX: bytes arg size is zero for stage ",
+                        stage_name ? stage_name : "<unknown>");
+        const uint64_t data_hash = gfx_hash_bytes(arg.bytes, arg.byte_size);
+        std::string key;
+        key.reserve(64);
+        key.append(stage_name ? stage_name : "GFX");
+        key.append("/arg/");
+        key.append(std::to_string(arg.index));
+        key.append("/bytes/");
+        key.append(std::to_string(arg.byte_size));
+        key.append("/h/");
+        key.append(std::to_string(data_hash));
+        GpuBuffer buf = buffer_manager.wrap_const(key, arg.bytes, arg.byte_size, ov::element::u8);
+        OPENVINO_ASSERT(buf.valid(),
+                        "GFX: failed to materialize bytes arg for stage ",
+                        stage_name ? stage_name : "<unknown>");
+        out.push_back(make_buffer_arg(arg.index, buf, arg.offset));
+    }
+    return out;
 }
 
 }  // namespace gfx_plugin

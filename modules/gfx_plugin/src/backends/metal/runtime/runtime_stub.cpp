@@ -178,6 +178,10 @@ MetalBuffer MetalBufferManager::allocate(size_t /*size*/,
     throw_metal_unavailable();
 }
 
+MetalBuffer MetalBufferManager::allocate(const GpuBufferDesc& /*desc*/, bool /*persistent*/, bool /*from_handle*/) {
+    throw_metal_unavailable();
+}
+
 MetalBuffer MetalBufferManager::allocate_dynamic(size_t /*requested*/,
                                                  ov::element::Type /*type*/,
                                                  BufferHandle& /*handle*/,
@@ -202,8 +206,7 @@ MetalBuffer MetalBufferManager::wrap_shared(void* /*ptr*/, size_t /*bytes*/, ov:
 MetalBuffer MetalBufferManager::wrap_const(const std::string& /*key*/,
                                            const void* /*data*/,
                                            size_t /*bytes*/,
-                                           ov::element::Type /*type*/,
-                                           MetalStorage /*storage*/) {
+                                           ov::element::Type /*type*/) {
     throw_metal_unavailable();
 }
 

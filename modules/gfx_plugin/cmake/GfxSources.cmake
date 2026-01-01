@@ -210,12 +210,12 @@ set(GFX_RUNTIME_METAL_HEADERS
     ${_gfx_src_dir}/backends/metal/runtime/metal_executor.hpp
 )
 
-# TODO: add Vulkan backend sources once they are introduced.
 set(GFX_RUNTIME_VULKAN_SOURCES
     ${_gfx_src_dir}/backends/vulkan/codegen/vulkan_codegen_backend.cpp
     ${_gfx_src_dir}/backends/vulkan/runtime/op_support.cpp
     ${_gfx_src_dir}/backends/vulkan/runtime/memory_ops.cpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_backend.cpp
+    ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_buffer_manager.cpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_executor.cpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_memory.cpp
     ${_gfx_src_dir}/backends/vulkan/runtime/gpu_memory.cpp
@@ -225,6 +225,7 @@ set(GFX_RUNTIME_VULKAN_SOURCES
 set(GFX_RUNTIME_VULKAN_HEADERS
     ${_gfx_src_dir}/backends/vulkan/codegen/vulkan_codegen_backend.hpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_backend.hpp
+    ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_buffer_manager.hpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_executor.hpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_memory.hpp
     ${_gfx_src_dir}/backends/vulkan/runtime/profiling/profiler.hpp

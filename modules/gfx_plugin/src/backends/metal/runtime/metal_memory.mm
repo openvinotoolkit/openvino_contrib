@@ -380,16 +380,30 @@ MetalBuffer MetalBufferManager::allocate(size_t size,
                                          bool storageModePrivate,
                                          bool from_handle) {
     MetalAllocator* alloc = tls_alloc;
-    BufferDesc desc;
+    GpuBufferDesc desc{};
     desc.bytes = size;
     desc.type = type;
-    desc.storage = storageModePrivate ? MetalStorage::Private : MetalStorage::Shared;
     desc.usage = BufferUsage::Intermediate;
+    desc.prefer_device_local = storageModePrivate;
+    return allocate(desc, persistent, from_handle);
+}
+
+MetalBuffer MetalBufferManager::allocate(const GpuBufferDesc& desc, bool persistent, bool from_handle) {
+    MetalAllocator* alloc = tls_alloc;
+    BufferDesc mdesc;
+    mdesc.bytes = desc.bytes;
+    mdesc.type = desc.type;
+    mdesc.usage = desc.usage;
+    const bool host_visible = desc.cpu_read || desc.cpu_write || !desc.prefer_device_local;
+    mdesc.storage = host_visible ? MetalStorage::Shared : MetalStorage::Private;
+    mdesc.cpu_read = desc.cpu_read;
+    mdesc.cpu_write = desc.cpu_write;
+    mdesc.label = desc.label;
     MetalBuffer buf;
     if (alloc) {
-        buf = alloc->allocate(desc, persistent);
+        buf = alloc->allocate(mdesc, persistent);
     } else {
-        buf = m_core.create_buffer(desc);
+        buf = m_core.create_buffer(mdesc);
     }
     buf.from_handle = from_handle;
     return buf;
@@ -446,19 +460,17 @@ MetalBuffer MetalBufferManager::wrap_shared(void* ptr, size_t bytes, ov::element
 MetalBuffer MetalBufferManager::wrap_const(const std::string& key,
                                            const void* data,
                                            size_t bytes,
-                                           ov::element::Type type,
-                                           MetalStorage storage) {
+                                           ov::element::Type type) {
+    if (bytes == 0) {
+        return {};
+    }
     BufferDesc desc;
     desc.bytes = bytes;
     desc.type = type;
-    desc.storage = storage;
+    desc.storage = MetalStorage::Private;
     desc.usage = BufferUsage::Const;
-    if (m_const_cache) {
-        return m_const_cache->get_or_create(ConstKey{key}, data, bytes, desc);
-    }
-    OPENVINO_ASSERT(storage == MetalStorage::Shared,
-                    "GFX: const cache is required for private constants");
-    return m_core.wrap_shared(const_cast<void*>(data), bytes, type);
+    OPENVINO_ASSERT(m_const_cache, "GFX: const cache is required for Metal constants");
+    return m_const_cache->get_or_create(ConstKey{key}, data, bytes, desc);
 }
 
 }  // namespace gfx_plugin

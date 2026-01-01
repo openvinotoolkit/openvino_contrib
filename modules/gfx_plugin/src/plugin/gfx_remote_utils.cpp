@@ -44,6 +44,40 @@ bool any_to_bool(const ov::Any& value, bool fallback) {
     return fallback;
 }
 
+size_t any_to_size(const ov::Any& value, size_t fallback) {
+    if (value.empty())
+        return fallback;
+    if (value.is<size_t>())
+        return value.as<size_t>();
+    if (value.is<uint64_t>())
+        return static_cast<size_t>(value.as<uint64_t>());
+    if (value.is<uint32_t>())
+        return static_cast<size_t>(value.as<uint32_t>());
+    if (value.is<unsigned int>())
+        return static_cast<size_t>(value.as<unsigned int>());
+    if (value.is<int64_t>()) {
+        const auto v = value.as<int64_t>();
+        return v > 0 ? static_cast<size_t>(v) : fallback;
+    }
+    if (value.is<int>()) {
+        const int v = value.as<int>();
+        return v > 0 ? static_cast<size_t>(v) : fallback;
+    }
+    if (value.is<std::string>()) {
+        try {
+            const auto s = value.as<std::string>();
+            if (s.empty()) {
+                return fallback;
+            }
+            const unsigned long long parsed = std::stoull(s);
+            return static_cast<size_t>(parsed);
+        } catch (...) {
+            return fallback;
+        }
+    }
+    return fallback;
+}
+
 void* find_any_ptr(const ov::AnyMap& params, std::initializer_list<const char*> keys) {
     for (const auto* key : keys) {
         auto it = params.find(key);
@@ -66,6 +100,19 @@ bool find_any_bool(const ov::AnyMap& params,
             continue;
         }
         return any_to_bool(it->second, fallback);
+    }
+    return fallback;
+}
+
+size_t find_any_size(const ov::AnyMap& params,
+                     std::initializer_list<const char*> keys,
+                     size_t fallback) {
+    for (const auto* key : keys) {
+        auto it = params.find(key);
+        if (it == params.end()) {
+            continue;
+        }
+        return any_to_size(it->second, fallback);
     }
     return fallback;
 }

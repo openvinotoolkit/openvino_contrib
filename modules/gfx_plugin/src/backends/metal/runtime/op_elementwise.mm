@@ -146,7 +146,7 @@ void MetalElementwiseOp::compile(MetalBufferManager* buffer_manager) {
         const auto cet = c->get_element_type();
         const size_t bytes = c->get_byte_size();
         const std::string key = m_node->get_friendly_name() + "/const_" + std::to_string(input_idx);
-        tgt.buf = buffer_manager->wrap_const(key, c->get_data_ptr(), bytes, cet, MetalStorage::Private);
+        tgt.buf = buffer_manager->wrap_const(key, c->get_data_ptr(), bytes, cet);
         tgt.shape = c->get_shape();
         tgt.expected_type = cet;
         if (inputs().size() <= input_idx || inputs()[input_idx] == nullptr) {
@@ -362,7 +362,7 @@ void MetalElementwiseOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     size_t bytes = m_num_elems * m_element_type.size();
     if (!out.buf.valid() || out.buf.size < bytes) {
-        out.buf = buffer_manager()->allocate(bytes, m_element_type, /*persistent=*/false, out.prefer_private);
+        out.buf = allocate_temp_buffer(bytes, m_element_type, /*persistent=*/false, out.prefer_private);
         out.expected_type = m_element_type;
     }
 
@@ -387,12 +387,12 @@ void MetalElementwiseOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
                              2,
                              [&](size_t idx) { return idx == 0 ? in0 : in1; },
                              name().c_str());
-    append_kernel_output_args(args, 2, &out, name().c_str());
-    args.push_back(make_bytes_arg(3, &num_elems, sizeof(num_elems)));
-    args.push_back(make_bytes_arg(4, &rank, sizeof(rank)));
-    args.push_back(make_bytes_arg(5, m_out_dims.data(), m_out_dims.size() * sizeof(int)));
-    args.push_back(make_bytes_arg(6, m_stride0.data(), m_stride0.size() * sizeof(int)));
-    args.push_back(make_bytes_arg(7, m_stride1.data(), m_stride1.size() * sizeof(int)));
+    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &out, name().c_str());
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &num_elems, sizeof(num_elems)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &rank, sizeof(rank)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_out_dims.data(), m_out_dims.size() * sizeof(int)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_stride0.data(), m_stride0.size() * sizeof(int)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_stride1.data(), m_stride1.size() * sizeof(int)));
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 
     out.expected_type = m_element_type;

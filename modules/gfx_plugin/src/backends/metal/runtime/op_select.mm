@@ -78,7 +78,7 @@ void MetalSelectOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     OPENVINO_ASSERT(!out_shape.empty(), "Select: output shape unknown");
     const size_t bytes = m_element_type.size() * ov::shape_size(out_shape);
     if (!out.buf.valid() || out.buf.size < bytes) {
-        out.buf = buffer_manager()->allocate(bytes, m_element_type, /*persistent=*/false, out.prefer_private);
+        out.buf = allocate_temp_buffer(bytes, m_element_type, /*persistent=*/false, out.prefer_private);
     }
     out.expected_type = m_element_type;
     out.shape = out_shape;
@@ -156,13 +156,13 @@ void MetalSelectOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
                                  }
                              },
                              name().c_str());
-    append_kernel_output_args(args, 3, &out, name().c_str());
-    args.push_back(make_bytes_arg(4, &num, sizeof(num)));
-    args.push_back(make_bytes_arg(5, &r, sizeof(r)));
-    args.push_back(make_bytes_arg(6, out_dims.data(), out_dims.size() * sizeof(int)));
-    args.push_back(make_bytes_arg(7, stride_c.data(), stride_c.size() * sizeof(int)));
-    args.push_back(make_bytes_arg(8, stride_a.data(), stride_a.size() * sizeof(int)));
-    args.push_back(make_bytes_arg(9, stride_b.data(), stride_b.size() * sizeof(int)));
+    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &out, name().c_str());
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &num, sizeof(num)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &r, sizeof(r)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), out_dims.data(), out_dims.size() * sizeof(int)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), stride_c.data(), stride_c.size() * sizeof(int)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), stride_a.data(), stride_a.size() * sizeof(int)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), stride_b.data(), stride_b.size() * sizeof(int)));
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 
     out.expected_type = m_element_type;

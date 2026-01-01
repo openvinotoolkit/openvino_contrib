@@ -3,6 +3,8 @@
 //
 #pragma once
 
+#include <memory>
+
 #include "plugin/backend_state.hpp"
 #include "runtime/gpu_buffer.hpp"
 #include "runtime/gpu_buffer_manager.hpp"
@@ -14,13 +16,13 @@ namespace gfx_plugin {
 struct VulkanBackendState final : BackendState {
     GpuDeviceHandle device = nullptr;
     GpuCommandQueueHandle queue = nullptr;
-    GpuBufferManager* const_manager = nullptr;
+    std::shared_ptr<GpuBufferManager> const_manager;
 
     GpuBackend backend() const override { return GpuBackend::Vulkan; }
     BackendResources resources() const override {
-        return {device, queue, const_manager};
+        return {device, queue, const_manager.get()};
     }
-    bool requires_const_manager() const override { return false; }
+    bool requires_const_manager() const override { return true; }
     bool has_const_manager() const override { return const_manager != nullptr; }
     void init_infer_state(InferRequestState& state) const override;
     std::unique_ptr<GfxProfiler> create_profiler(const GfxProfilerConfig& cfg) const override;

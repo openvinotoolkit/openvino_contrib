@@ -5,6 +5,7 @@
 #include "backends/vulkan/plugin/compiled_model_backend.hpp"
 
 #include "backends/vulkan/runtime/vulkan_backend.hpp"
+#include "backends/vulkan/runtime/vulkan_buffer_manager.hpp"
 #include "backends/vulkan/runtime/profiling/profiler.hpp"
 
 namespace ov {
@@ -15,7 +16,7 @@ std::unique_ptr<VulkanBackendState> create_vulkan_backend_state() {
     auto state = std::make_unique<VulkanBackendState>();
     state->device = reinterpret_cast<GpuDeviceHandle>(ctx.device());
     state->queue = reinterpret_cast<GpuCommandQueueHandle>(ctx.queue());
-    state->const_manager = nullptr;
+    state->const_manager = std::make_shared<VulkanBufferManager>();
     return state;
 }
 

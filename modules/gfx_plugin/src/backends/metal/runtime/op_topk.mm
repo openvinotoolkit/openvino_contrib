@@ -148,13 +148,13 @@ void MetalTopKOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     const size_t values_bytes = m_element_type.size() * ov::shape_size(out_shape);
     const size_t index_bytes = m_index_type.size() * ov::shape_size(out_shape);
     if (!out_vals->buf.valid() || out_vals->buf.size < values_bytes) {
-        out_vals->buf = buffer_manager()->allocate(values_bytes,
+        out_vals->buf = allocate_temp_buffer(values_bytes,
                                                    m_element_type,
                                                    /*persistent=*/false,
                                                    out_vals->prefer_private);
     }
     if (!out_idx->buf.valid() || out_idx->buf.size < index_bytes) {
-        out_idx->buf = buffer_manager()->allocate(index_bytes,
+        out_idx->buf = allocate_temp_buffer(index_bytes,
                                                   m_index_type,
                                                   /*persistent=*/false,
                                                   out_idx->prefer_private);
@@ -174,7 +174,7 @@ void MetalTopKOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     args.reserve(3);
     append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
     std::vector<GpuTensor*> outputs = {out_vals, out_idx};
-    append_kernel_output_args(args, 1, outputs, name().c_str());
+    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), outputs, name().c_str());
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 

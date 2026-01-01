@@ -82,7 +82,7 @@ void MetalShapeOfOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     ov::Shape out_shape = ov::Shape{shape_vals.size()};
     const size_t bytes = ov::shape_size(out_shape) * m_element_type.size();
     if (!dst.buf.valid() || dst.buf.size < bytes) {
-        dst.buf = buffer_manager()->allocate(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
+        dst.buf = allocate_temp_buffer(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
     }
     dst.shape = out_shape;
     dst.expected_type = m_element_type;
@@ -92,19 +92,19 @@ void MetalShapeOfOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     std::vector<KernelArg> args;
     args.reserve(4);
     append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-    append_kernel_output_args(args, 1, &dst, name().c_str());
-    args.push_back(make_bytes_arg(2, &rank, sizeof(rank)));
+    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &rank, sizeof(rank)));
     if (m_element_type == ov::element::i32) {
         std::vector<int32_t> tmp(rank);
         for (size_t i = 0; i < shape_vals.size(); ++i) tmp[i] = static_cast<int32_t>(shape_vals[i]);
-        args.push_back(make_bytes_arg(3, tmp.data(), tmp.size() * sizeof(int32_t)));
+        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), tmp.data(), tmp.size() * sizeof(int32_t)));
         if (rank == 0) {
             return;
         }
         KernelDispatch dispatch = make_1d_dispatch(rank, m_kernel->clamp_threadgroup_size(64));
         execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
     } else {
-        args.push_back(make_bytes_arg(3, shape_vals.data(), shape_vals.size() * sizeof(int64_t)));
+        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), shape_vals.data(), shape_vals.size() * sizeof(int64_t)));
         if (rank == 0) {
             return;
         }

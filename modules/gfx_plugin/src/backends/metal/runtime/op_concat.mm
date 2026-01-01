@@ -119,7 +119,7 @@ void MetalConcatOp::compile(MetalBufferManager* buffer_manager) {
             t.shape = c->get_shape();
             t.expected_type = c->get_element_type();
             const std::string key = m_node->get_friendly_name() + "/const_" + std::to_string(i);
-            t.buf = buffer_manager->wrap_const(key, c->get_data_ptr(), bytes, t.expected_type, MetalStorage::Private);
+            t.buf = buffer_manager->wrap_const(key, c->get_data_ptr(), bytes, t.expected_type);
             m_const_inputs[i] = std::move(t);
         }
     }
@@ -138,7 +138,7 @@ void MetalConcatOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     out.expected_type = m_element_type;
     const size_t out_bytes = ov::shape_size(out_shape) * element_size(m_element_type);
     if (!out.buf.valid() || out.buf.size < out_bytes) {
-        out.buf = buffer_manager()->allocate(out_bytes, m_element_type, /*persistent=*/false, out.prefer_private);
+        out.buf = allocate_temp_buffer(out_bytes, m_element_type, /*persistent=*/false, out.prefer_private);
     }
     out.shape = out_shape;
 
@@ -209,8 +209,8 @@ void MetalConcatOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
         std::vector<KernelArg> args;
         args.reserve(3);
         append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-        append_kernel_output_args(args, 1, &out, name().c_str());
-        args.push_back(make_bytes_arg(2, &params, sizeof(params)));
+        append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &out, name().c_str());
+        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &params, sizeof(params)));
         execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
     }
 }

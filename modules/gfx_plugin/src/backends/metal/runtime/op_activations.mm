@@ -114,7 +114,7 @@ void MetalActivationOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     OPENVINO_ASSERT(src->buf.size >= src_bytes, "Activation: input buffer too small");
     if (!dst.buf.valid() || dst.buf.size < bytes) {
         // Keep output device-only; CPU-visible outputs are not supported.
-        dst.buf = buffer_manager()->allocate(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
+        dst.buf = allocate_temp_buffer(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
         dst.expected_type = m_element_type;
     }
 
@@ -130,8 +130,8 @@ void MetalActivationOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     std::vector<KernelArg> args;
     args.reserve(3);
     append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-    append_kernel_output_args(args, 1, &dst, name().c_str());
-    args.push_back(make_bytes_arg(2, &num_elems, sizeof(num_elems)));
+    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &num_elems, sizeof(num_elems)));
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 
     dst.shape = out_shape;

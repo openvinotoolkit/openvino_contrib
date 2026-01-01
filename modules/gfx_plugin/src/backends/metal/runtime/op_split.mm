@@ -172,7 +172,7 @@ void MetalSplitOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
             out->expected_type = m_element_type;
             size_t bytes = element_size() * outer * split * inner;
             if (!out->buf.valid() || out->buf.size < bytes) {
-                out->buf = buffer_manager()->allocate(bytes,
+                out->buf = allocate_temp_buffer(bytes,
                                                       m_element_type,
                                                       /*persistent=*/false,
                                                       out->prefer_private);
@@ -209,8 +209,8 @@ void MetalSplitOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
             std::vector<KernelArg> args;
             args.reserve(3);
             append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-            append_kernel_output_args(args, 1, out, name().c_str());
-            args.push_back(make_bytes_arg(2, &params, sizeof(params)));
+            append_kernel_output_args(args, static_cast<uint32_t>(args.size()), out, name().c_str());
+            args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &params, sizeof(params)));
             execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
         }
         axis_offset += split;

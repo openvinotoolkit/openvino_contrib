@@ -20,6 +20,9 @@ ov::SoPtr<ov::IRemoteTensor> GfxRemoteContext::create_tensor(const ov::element::
 
     const size_t bytes = std::max<size_t>(1, ov::shape_size(shape)) * type.size();
     auto created = create_remote_tensor(type, shape, merged, bytes);
+    for (const auto& kv : created.properties) {
+        merged[kv.first] = kv.second;
+    }
 
     auto t = std::make_shared<GfxRemoteTensor>(type,
                                                shape,

@@ -15,6 +15,7 @@ constexpr const char* kGfxBackendProperty = "GFX_BACKEND";
 // Common remote tensor/property keys.
 constexpr const char* kGfxBufferProperty = "GFX_BUFFER";
 constexpr const char* kGfxMemoryProperty = "GFX_MEMORY";
+constexpr const char* kGfxBufferBytesProperty = "GFX_BUFFER_BYTES";
 constexpr const char* kGfxHostVisibleProperty = "GFX_HOST_VISIBLE";
 constexpr const char* kGfxStorageModeProperty = "GFX_STORAGE_MODE";
 

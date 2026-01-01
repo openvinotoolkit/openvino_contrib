@@ -26,7 +26,10 @@
 
 #include <functional>
 #include <stdexcept>
-#include <cstdlib>
+
+#ifndef GFX_MLIR_DEBUG
+#define GFX_MLIR_DEBUG 0
+#endif
 
 namespace ov {
 namespace gfx_plugin {
@@ -65,10 +68,10 @@ static void runConvEltwiseFusion(mlir::ModuleOp module) {
         if (llvm::isa<mlir::linalg::GenericOp>(op)) afterGeneric++;
     });
 
-    if (std::getenv("GFX_MLIR_FUSION_LOG")) {
-        llvm::errs() << "[GFX][MLIR] Fusion stats: conv " << beforeConv << " -> " << afterConv
-                     << ", linalg.generic " << beforeGeneric << " -> " << afterGeneric << "\n";
-    }
+#if GFX_MLIR_DEBUG
+    llvm::errs() << "[GFX][MLIR] Fusion stats: conv " << beforeConv << " -> " << afterConv
+                 << ", linalg.generic " << beforeGeneric << " -> " << afterGeneric << "\n";
+#endif
 }
 
 static void strip_strided_func_layouts(mlir::ModuleOp module) {
@@ -109,9 +112,9 @@ static void strip_strided_func_layouts(mlir::ModuleOp module) {
     });
 
     if (updated) {
-        if (std::getenv("GFX_MLIR_DEBUG")) {
-            llvm::errs() << "[GFX][MLIR] Stripped strided layouts from func arguments\n";
-        }
+#if GFX_MLIR_DEBUG
+        llvm::errs() << "[GFX][MLIR] Stripped strided layouts from func arguments\n";
+#endif
     }
 }
 
@@ -407,10 +410,8 @@ void run_mlir_pipeline(mlir::ModuleOp module) {
                     mlir::func::FuncDialect,
                     mlir::linalg::LinalgDialect>();
 
-    const auto env_debug = std::getenv("GFX_MLIR_DEBUG");
-    const bool debug = env_debug && std::string(env_debug) != "0";
-    const auto env_pre = std::getenv("GFX_MLIR_DEBUG_PRE_BUFFERIZE");
-    const bool debug_pre = env_pre && std::string(env_pre) != "0";
+    const bool debug = (GFX_MLIR_DEBUG != 0);
+    const bool debug_pre = debug;
 
     if (mlir::failed(mlir::verify(module))) {
         llvm::errs() << "[GFX][MLIR] Module verification failed before pipeline\n";

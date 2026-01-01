@@ -101,7 +101,7 @@ void MetalRangeOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     m_num_elems = static_cast<uint32_t>(ov::shape_size(out_shape));
     const size_t bytes = m_element_type.size() * static_cast<size_t>(m_num_elems);
     if (!dst.buf.valid() || dst.buf.size < bytes) {
-        dst.buf = buffer_manager()->allocate(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
+        dst.buf = allocate_temp_buffer(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
     }
     dst.expected_type = m_element_type;
     dst.shape = out_shape;
@@ -113,29 +113,29 @@ void MetalRangeOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     std::vector<KernelArg> args;
     args.reserve(4);
-    append_kernel_output_args(args, 0, &dst, name().c_str());
-    args.push_back(make_bytes_arg(1, &num, sizeof(num)));
+    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &num, sizeof(num)));
 
     if (m_element_type == ov::element::i32) {
         int32_t start = static_cast<int32_t>(m_start);
         int32_t step = static_cast<int32_t>(m_step);
-        args.push_back(make_bytes_arg(2, &start, sizeof(start)));
-        args.push_back(make_bytes_arg(3, &step, sizeof(step)));
+        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &start, sizeof(start)));
+        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &step, sizeof(step)));
     } else if (m_element_type == ov::element::i64) {
         int64_t start = static_cast<int64_t>(m_start);
         int64_t step = static_cast<int64_t>(m_step);
-        args.push_back(make_bytes_arg(2, &start, sizeof(start)));
-        args.push_back(make_bytes_arg(3, &step, sizeof(step)));
+        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &start, sizeof(start)));
+        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &step, sizeof(step)));
     } else if (m_element_type == ov::element::f16) {
         ov::float16 start = static_cast<ov::float16>(m_start);
         ov::float16 step = static_cast<ov::float16>(m_step);
-        args.push_back(make_bytes_arg(2, &start, sizeof(start)));
-        args.push_back(make_bytes_arg(3, &step, sizeof(step)));
+        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &start, sizeof(start)));
+        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &step, sizeof(step)));
     } else {
         float start = static_cast<float>(m_start);
         float step = static_cast<float>(m_step);
-        args.push_back(make_bytes_arg(2, &start, sizeof(start)));
-        args.push_back(make_bytes_arg(3, &step, sizeof(step)));
+        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &start, sizeof(start)));
+        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &step, sizeof(step)));
     }
     KernelDispatch dispatch = make_1d_dispatch(num, m_kernel->clamp_threadgroup_size(64));
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);

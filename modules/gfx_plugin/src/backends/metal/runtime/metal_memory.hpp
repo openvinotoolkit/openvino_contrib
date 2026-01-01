@@ -16,6 +16,7 @@
 #include "openvino/runtime/tensor.hpp"
 
 #include "runtime/gpu_buffer_manager.hpp"
+#include "runtime/memory_manager.hpp"
 #include "runtime/gpu_tensor.hpp"
 #include "backends/metal/runtime/memory/allocator.hpp"
 #include "backends/metal/runtime/memory/buffer.hpp"
@@ -97,6 +98,9 @@ public:
                          bool persistent = false,
                          bool storageModePrivate = true,
                          bool from_handle = false);
+    MetalBuffer allocate(const GpuBufferDesc& desc,
+                         bool persistent = false,
+                         bool from_handle = false);
     MetalBuffer allocate_dynamic(size_t requested,
                                  ov::element::Type type,
                                  BufferHandle& handle,
@@ -111,11 +115,12 @@ public:
     MetalBuffer wrap_shared(const void* ptr, size_t bytes, ov::element::Type type) {
         return wrap_shared(const_cast<void*>(ptr), bytes, type);
     }
+    bool supports_const_cache() const override { return m_const_cache != nullptr; }
     MetalBuffer wrap_const(const std::string& key,
                            const void* data,
                            size_t bytes,
-                           ov::element::Type type,
-                           MetalStorage storage = MetalStorage::Shared);
+                           ov::element::Type type) override;
+    bool has_const_cache() const { return supports_const_cache(); }
 
     MetalDeviceHandle device() const { return m_core.device(); }
 

@@ -252,7 +252,7 @@ void MetalBroadcastOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     const size_t bytes = m_element_type.size() * static_cast<size_t>(m_num_elems);
     if (!dst.buf.valid() || dst.buf.size < bytes) {
-        dst.buf = buffer_manager()->allocate(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
+        dst.buf = allocate_temp_buffer(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
     }
     dst.expected_type = m_element_type;
     dst.shape = out_shape;
@@ -268,14 +268,14 @@ void MetalBroadcastOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     std::vector<KernelArg> args;
     args.reserve(9);
     append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-    append_kernel_output_args(args, 1, &dst, name().c_str());
-    args.push_back(make_bytes_arg(2, &num, sizeof(num)));
-    args.push_back(make_bytes_arg(3, &out_rank_u, sizeof(out_rank_u)));
-    args.push_back(make_bytes_arg(4, &in_rank_u, sizeof(in_rank_u)));
-    args.push_back(make_bytes_arg(5, m_out_dims.data(), m_out_dims.size() * sizeof(int)));
-    args.push_back(make_bytes_arg(6, m_in_dims.data(), m_in_dims.size() * sizeof(int)));
-    args.push_back(make_bytes_arg(7, m_in_strides.data(), m_in_strides.size() * sizeof(int)));
-    args.push_back(make_bytes_arg(8, m_axes.data(), m_axes.size() * sizeof(int)));
+    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &num, sizeof(num)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &out_rank_u, sizeof(out_rank_u)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &in_rank_u, sizeof(in_rank_u)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_out_dims.data(), m_out_dims.size() * sizeof(int)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_in_dims.data(), m_in_dims.size() * sizeof(int)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_in_strides.data(), m_in_strides.size() * sizeof(int)));
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_axes.data(), m_axes.size() * sizeof(int)));
 
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
     dst.expected_type = m_element_type;

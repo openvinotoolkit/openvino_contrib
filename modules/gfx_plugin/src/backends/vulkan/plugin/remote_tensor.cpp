@@ -41,17 +41,36 @@ RemoteTensorCreateResult create_vulkan_remote_tensor(const ov::element::Type& ty
     void* external_mem = find_any_ptr(params,
                                       {kVkMemoryProperty, kVulkanMemoryProperty, kGfxMemoryProperty});
 
+    const size_t declared_bytes = find_any_size(params, {kGfxBufferBytesProperty}, 0);
+
     bool host_visible = find_any_bool(params, {kHostVisibleProperty, kGfxHostVisibleProperty}, false);
 
     if (external_buf) {
+        OPENVINO_ASSERT(declared_bytes > 0,
+                        "GFX Vulkan: remote buffer size must be provided via ",
+                        kGfxBufferBytesProperty);
+        OPENVINO_ASSERT(declared_bytes >= bytes,
+                        "GFX Vulkan: remote buffer is smaller than required (",
+                        declared_bytes,
+                        " < ",
+                        bytes,
+                        ")");
         tensor.buf.buffer = external_buf;
         tensor.buf.heap = external_mem;
-        tensor.buf.size = bytes;
+        tensor.buf.size = declared_bytes;
         tensor.buf.host_visible = host_visible;
         tensor.buf.external = true;
         tensor.buf.from_handle = true;
         tensor.buf.owned = false;
     } else {
+        if (declared_bytes) {
+            OPENVINO_ASSERT(declared_bytes == bytes,
+                            "GFX Vulkan: remote tensor bytes mismatch (declared ",
+                            declared_bytes,
+                            ", required ",
+                            bytes,
+                            ")");
+        }
         VulkanGpuAllocator allocator;
         GpuBufferDesc desc;
         desc.bytes = bytes;
@@ -65,6 +84,15 @@ RemoteTensorCreateResult create_vulkan_remote_tensor(const ov::element::Type& ty
     }
 
     result.tensor = tensor;
+    result.properties[kGfxBufferProperty] = tensor.buf.buffer;
+    result.properties[kGfxMemoryProperty] = tensor.buf.heap;
+    result.properties[kGfxBufferBytesProperty] = tensor.buf.size;
+    result.properties[kGfxHostVisibleProperty] = tensor.buf.host_visible;
+    result.properties[kVkBufferProperty] = tensor.buf.buffer;
+    result.properties[kVulkanBufferProperty] = tensor.buf.buffer;
+    result.properties[kVkMemoryProperty] = tensor.buf.heap;
+    result.properties[kVulkanMemoryProperty] = tensor.buf.heap;
+    result.properties[kHostVisibleProperty] = tensor.buf.host_visible;
     result.release_fn = &release_vulkan_remote_tensor;
     return result;
 }

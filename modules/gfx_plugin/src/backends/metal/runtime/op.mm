@@ -6,8 +6,12 @@
 #include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "backends/metal/runtime/profiling/profiler.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
+#include "kernel_ir/gfx_kernel_cache.hpp"
+#include "kernel_ir/gfx_kernel_inputs.hpp"
+#include "kernel_ir/gfx_kernel_plan.hpp"
+#include "openvino/op/constant.hpp"
 
-#include <cstring>
+#include <string>
 
 namespace ov {
 namespace gfx_plugin {
@@ -85,7 +89,36 @@ std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(MetalCodegenBackend
                                                              const std::string& entry_point,
                                                              std::string msl_source,
                                                              std::string* log) {
-    KernelPlan plan(module, entry_point, spec.arg_count());
+    KernelFunctionSignature signature{};
+    if (spec.node() && module) {
+        signature = infer_kernel_signature(module, entry_point);
+        const size_t func_inputs = signature.inputs;
+        const size_t node_inputs = spec.node()->get_input_size();
+        if (func_inputs > 0 && func_inputs <= node_inputs) {
+            size_t nonconst_count = 0;
+            for (size_t i = 0; i < node_inputs; ++i) {
+                auto src = spec.node()->get_input_node_shared_ptr(i);
+                if (!ov::as_type_ptr<const ov::op::v0::Constant>(src)) {
+                    ++nonconst_count;
+                }
+            }
+            if (func_inputs >= nonconst_count) {
+                auto mapping = build_kernel_inputs(spec.node(), func_inputs, spec.name().c_str());
+                if (!mapping.kernel_inputs.empty() &&
+                    (m_kernel_inputs.empty() || mapping.kernel_inputs.size() > m_kernel_inputs.size())) {
+                    m_kernel_inputs = std::move(mapping.kernel_inputs);
+                }
+            }
+        }
+    } else if (module) {
+        signature = infer_kernel_signature(module, entry_point);
+    }
+    const uint32_t inferred_total = signature.total();
+    uint32_t arg_count = spec.arg_count();
+    if (arg_count == 0 && inferred_total) {
+        arg_count = inferred_total;
+    }
+    KernelPlan plan(module, entry_point, arg_count);
     return backend.compile(plan.to_source_with_msl(std::move(msl_source)), log);
 }
 
@@ -99,34 +132,21 @@ MetalBuffer MetalOp::allocate_temp_buffer(size_t bytes,
                                           bool persistent,
                                           bool storageModePrivate) {
     OPENVINO_ASSERT(m_buffer_manager, "Buffer manager is not set for op ", m_name);
-    return m_buffer_manager->allocate(bytes, type, persistent, storageModePrivate);
+    GpuBufferDesc desc{};
+    desc.bytes = bytes;
+    desc.type = type;
+    desc.usage = BufferUsage::Intermediate;
+    desc.prefer_device_local = storageModePrivate;
+    desc.label = m_name.c_str();
+    return m_buffer_manager->allocate(desc, persistent);
 }
 
 std::vector<KernelArg> MetalOp::materialize_kernel_args(const std::vector<KernelArg>& args) {
     if (args.empty()) {
         return args;
     }
-    std::vector<KernelArg> out;
-    out.reserve(args.size());
-    for (const auto& arg : args) {
-        if (arg.kind != KernelArg::Kind::Bytes) {
-            out.push_back(arg);
-            continue;
-        }
-        OPENVINO_ASSERT(m_buffer_manager, "Buffer manager is not set for op ", m_name);
-        OPENVINO_ASSERT(arg.bytes, "MetalOp: bytes arg pointer is null for op ", m_name);
-        OPENVINO_ASSERT(arg.byte_size > 0, "MetalOp: bytes arg size is zero for op ", m_name);
-        auto payload = std::make_shared<std::vector<uint8_t>>(arg.byte_size);
-        std::memcpy(payload->data(), arg.bytes, arg.byte_size);
-        MetalBuffer buf = m_buffer_manager->wrap_shared(payload->data(), payload->size(), ov::element::u8);
-        buf.external = true;
-        buf.from_handle = true;
-        buf.host_visible = true;
-        m_inflight_const_buffers.push_back(buf);
-        m_inflight_const_payloads.push_back(std::move(payload));
-        out.push_back(make_buffer_arg(arg.index, buf, 0));
-    }
-    return out;
+    OPENVINO_ASSERT(m_buffer_manager, "Buffer manager is not set for op ", m_name);
+    return materialize_kernel_bytes_args(args, *m_buffer_manager, m_name.c_str());
 }
 
 void MetalOp::flush_inflight_const_buffers(MetalCommandBufferHandle command_buffer) {

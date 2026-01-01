@@ -5,6 +5,8 @@ set(GFX_TEST_LINK_LIBS
     openvino::funcSharedTests
     openvino::runtime::dev
     openvino_gfx_plugin
+    gfx_plugin_core
+    gfx_runtime_common
     gmock
     gtest_main
     gtest)
@@ -20,19 +22,20 @@ if(NOT GFX_BACKEND_VULKAN_AVAILABLE)
 endif()
 if(APPLE)
     list(APPEND GFX_TEST_EXCLUDED_PATHS
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/set_device_name.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/memory_test_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_backend_test_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_stage_activation_test_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_stage_factory_test_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/set_device_name_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/gpu_backend_test_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/gpu_stage_activation_test_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/gpu_stage_factory_test_stub.cpp
     )
 else()
     list(APPEND GFX_TEST_EXCLUDED_PATHS
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/memory_test.mm
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/integration
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_backend_test.mm
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_stage_activation_test.mm
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_stage_factory_test.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_backend_test.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_stage_activation_test.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_stage_factory_test.mm
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/set_device_name.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/vulkan_runtime_test_stub.cpp
     )
@@ -51,24 +54,19 @@ ov_add_test_target(
 # Add ObjC++ runtime tests for memory manager.
 target_sources(${TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_stage_test.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_memory_test.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/transforms/pipeline.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/transforms/conv_relu_fusion.cpp
 )
 
-if(TARGET gfx_runtime_common_obj)
-    target_sources(${TARGET_NAME} PRIVATE $<TARGET_OBJECTS:gfx_runtime_common_obj>)
-endif()
-if(ENABLE_GFX_MLIR AND TARGET gfx_runtime_mlir_obj)
-    target_sources(${TARGET_NAME} PRIVATE $<TARGET_OBJECTS:gfx_runtime_mlir_obj>)
+if(TARGET gfx_runtime_mlir)
+    target_link_libraries(${TARGET_NAME} PRIVATE gfx_runtime_mlir)
 endif()
 
 if(APPLE)
     target_sources(${TARGET_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/memory_test.mm
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_stage_factory_test.mm
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_stage_activation_test.mm
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_backend_test.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_memory_copy_test.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_stage_factory_test.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_stage_activation_test.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_backend_test.mm
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/vulkan_runtime_test_stub.cpp
     )
 else()
@@ -77,13 +75,20 @@ else()
     )
 endif()
 
-if(TARGET gfx_runtime_metal_obj)
-    target_sources(${TARGET_NAME} PRIVATE $<TARGET_OBJECTS:gfx_runtime_metal_obj>)
+if(TARGET gfx_runtime_metal)
+    target_link_libraries(${TARGET_NAME} PRIVATE gfx_runtime_metal)
 endif()
-if(GFX_BACKEND_VULKAN_AVAILABLE AND TARGET gfx_runtime_vulkan_obj)
+if(GFX_BACKEND_VULKAN_AVAILABLE AND TARGET gfx_runtime_vulkan)
     target_sources(${TARGET_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/vulkan_runtime_test.cpp
-        $<TARGET_OBJECTS:gfx_runtime_vulkan_obj>)
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/gpu_memory_copy_test.cpp
+    )
+    if(NOT APPLE)
+        target_sources(${TARGET_NAME} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/set_device_name_stub.cpp
+        )
+    endif()
+    target_link_libraries(${TARGET_NAME} PRIVATE gfx_runtime_vulkan)
 endif()
 
 # Device-specific bits: path to the built plugin and access to local src headers.

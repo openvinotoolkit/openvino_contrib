@@ -59,8 +59,7 @@ private:
     std::shared_ptr<ConstBufferSet> m_const_buffers;
     ov::Shape m_output_shape;
     ov::Shape m_last_input_shape;
-    bool m_softmax_tiled = false;
-    GpuBuffer m_softmax_params;
+    GpuBufferManager* m_buffer_manager = nullptr;
     bool m_profiling_enabled = false;
     void* m_profiler = nullptr;
     uint32_t m_profile_node_id = 0;

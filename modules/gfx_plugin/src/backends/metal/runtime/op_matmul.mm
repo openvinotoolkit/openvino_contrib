@@ -118,7 +118,7 @@ void MetalMatMulOp::compile(MetalBufferManager* buffer_manager) {
                         cet.get_type_name());
         const size_t bytes = c->get_byte_size();
         const std::string key = m_node->get_friendly_name() + "/const_" + std::to_string(idx);
-        tgt.buf = buffer_manager->wrap_const(key, c->get_data_ptr(), bytes, cet, MetalStorage::Private);
+        tgt.buf = buffer_manager->wrap_const(key, c->get_data_ptr(), bytes, cet);
         tgt.shape = c->get_shape();
         tgt.expected_type = cet;
     };
@@ -166,7 +166,7 @@ void MetalMatMulOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     }
     const size_t c_bytes = ov::shape_size(C.shape) * m_element_type.size();
     if (!C.buf.valid() || C.buf.size < c_bytes) {
-        C.buf = buffer_manager()->allocate(c_bytes, m_element_type, /*persistent=*/false, C.prefer_private);
+        C.buf = allocate_temp_buffer(c_bytes, m_element_type, /*persistent=*/false, C.prefer_private);
     }
     C.expected_type = m_element_type;
 
@@ -191,7 +191,7 @@ void MetalMatMulOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
                              2,
                              [&](size_t idx) { return idx == 0 ? A : B; },
                              name().c_str());
-    append_kernel_output_args(args, 2, &C, name().c_str());
+    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &C, name().c_str());
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 

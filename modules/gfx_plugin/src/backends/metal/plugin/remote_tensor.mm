@@ -39,7 +39,7 @@ uint32_t parse_storage_mode(const ov::AnyMap& params) {
     }
     if (!explicit_mode) {
         const bool host_visible =
-            find_any_bool(params, {kGfxHostVisibleProperty, "HOST_VISIBLE"}, /*fallback=*/true);
+            find_any_bool(params, {kGfxHostVisibleProperty, "HOST_VISIBLE"}, /*fallback=*/false);
         resolved = host_visible ? static_cast<uint32_t>(MTLStorageModeShared)
                                 : static_cast<uint32_t>(MTLStorageModePrivate);
     }
@@ -83,6 +83,7 @@ RemoteTensorCreateResult create_metal_remote_tensor(const ov::element::Type& typ
     tensor.buf.backend = GpuBackend::Metal;
 
     void* external = find_any_ptr(params, {kMtlBufferProperty, kGfxBufferProperty});
+    const size_t declared_bytes = find_any_size(params, {kGfxBufferBytesProperty}, 0);
 
     if (external) {
         tensor.buf.buffer = external;
@@ -98,14 +99,36 @@ RemoteTensorCreateResult create_metal_remote_tensor(const ov::element::Type& typ
                         " < ",
                         bytes,
                         ")");
+        if (declared_bytes) {
+            OPENVINO_ASSERT(declared_bytes == buf_len,
+                            "GFX: remote MTLBuffer size mismatch (declared ",
+                            declared_bytes,
+                            ", actual ",
+                            buf_len,
+                            ")");
+        }
         tensor.buf.size = buf_len;
         tensor.buf.storage_mode = static_cast<uint32_t>(mb.storageMode);
         tensor.buf.host_visible = (mb.storageMode != MTLStorageModePrivate);
 #else
-        tensor.buf.size = bytes;
+        OPENVINO_ASSERT(!declared_bytes || declared_bytes >= bytes,
+                        "GFX: remote buffer bytes smaller than required (",
+                        declared_bytes,
+                        " < ",
+                        bytes,
+                        ")");
+        tensor.buf.size = declared_bytes ? declared_bytes : bytes;
 #endif
     } else {
         OPENVINO_ASSERT(device, "GFX: remote context device handle is null");
+        if (declared_bytes) {
+            OPENVINO_ASSERT(declared_bytes == bytes,
+                            "GFX: remote tensor bytes mismatch (declared ",
+                            declared_bytes,
+                            ", required ",
+                            bytes,
+                            ")");
+        }
 #ifdef __OBJC__
         auto dev = static_cast<id<MTLDevice>>(device);
         const uint32_t storage_mode = parse_storage_mode(params);
@@ -122,6 +145,12 @@ RemoteTensorCreateResult create_metal_remote_tensor(const ov::element::Type& typ
     }
 
     result.tensor = tensor;
+    result.properties[kGfxBufferProperty] = tensor.buf.buffer;
+    result.properties[kGfxBufferBytesProperty] = tensor.buf.size;
+    result.properties[kGfxHostVisibleProperty] = tensor.buf.host_visible;
+    result.properties[kGfxStorageModeProperty] = tensor.buf.storage_mode;
+    result.properties[kMtlBufferProperty] = tensor.buf.buffer;
+    result.properties[kStorageModeProperty] = tensor.buf.storage_mode;
     result.release_fn = &release_metal_remote_tensor;
     return result;
 }

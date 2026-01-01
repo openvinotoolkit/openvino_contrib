@@ -88,7 +88,7 @@ void MetalBatchNormOp::compile(MetalBufferManager* buffer_manager) {
     }
     const size_t bytes = m_params.size() * sizeof(float);
     const std::string key = m_node->get_friendly_name() + "/params";
-    m_params_buf = buffer_manager->wrap_const(key, m_params.data(), bytes, ov::element::f32, MetalStorage::Private);
+    m_params_buf = buffer_manager->wrap_const(key, m_params.data(), bytes, ov::element::f32);
 
     MetalCodegenBackend backend(m_device ? m_device : (id<MTLDevice>)buffer_manager->device());
     std::string log;
@@ -127,7 +127,7 @@ void MetalBatchNormOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     }
     const size_t bytes = ov::shape_size(out_shape) * m_element_type.size();
     if (!dst.buf.valid() || dst.buf.size < bytes) {
-        dst.buf = buffer_manager()->allocate(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
+        dst.buf = allocate_temp_buffer(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
     }
     dst.shape = out_shape;
     dst.expected_type = m_element_type;
@@ -154,9 +154,9 @@ void MetalBatchNormOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     std::vector<KernelArg> args;
     args.reserve(4);
     append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-    append_kernel_buffer_arg(args, 1, m_params_buf, name().c_str(), "params");
-    append_kernel_output_args(args, 2, &dst, name().c_str());
-    args.push_back(make_bytes_arg(3, &gpu_params, sizeof(gpu_params)));
+    append_kernel_buffer_arg(args, static_cast<uint32_t>(args.size()), m_params_buf, name().c_str(), "params");
+    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &gpu_params, sizeof(gpu_params)));
 
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }

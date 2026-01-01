@@ -14,6 +14,7 @@
 #include "backends/vulkan/runtime/gpu_memory.hpp"
 #include "backends/vulkan/runtime/vulkan_memory.hpp"
 #include "runtime/memory_manager.hpp"
+#include "kernel_ir/gfx_kernel_cache.hpp"
 #include "kernel_ir/gfx_kernel_dispatch.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
 #include "kernel_ir/gfx_kernel_inputs.hpp"
@@ -36,11 +37,7 @@
 namespace ov {
 namespace gfx_plugin {
 
-namespace {
-
-constexpr uint64_t kSoftmaxTileWork = 1024;
-
-}  // namespace
+namespace {}  // namespace
 
 VulkanStage::VulkanStage(const std::shared_ptr<const ov::Node>& node)
     : m_node(node),
@@ -54,31 +51,30 @@ VulkanStage::VulkanStage(const std::shared_ptr<const ov::Node>& node)
     }
 }
 
-VulkanStage::~VulkanStage() {
-    if (m_softmax_params.valid()) {
-        vulkan_free_buffer(m_softmax_params);
-    }
-}
+VulkanStage::~VulkanStage() = default;
 
 VulkanStage::ConstBufferSet::~ConstBufferSet() {
     for (auto& tensor : buffers) {
-        if (tensor.buf.valid()) {
+        if (tensor.buf.valid() && tensor.buf.owned) {
             vulkan_free_buffer(tensor.buf);
         }
     }
 }
 
-void VulkanStage::init(GpuBufferManager* /*buffer_manager*/) {
-    // No-op: Vulkan backend does not allocate buffers at this stage yet.
+void VulkanStage::init(GpuBufferManager* buffer_manager) {
+    m_buffer_manager = buffer_manager;
 }
 
-void VulkanStage::compile(GpuBufferManager* /*buffer_manager*/) {
+void VulkanStage::compile(GpuBufferManager* buffer_manager) {
     mlir::MLIRContext ctx;
     if (m_is_view_op) {
         return;
     }
     if (m_kernel) {
         return;
+    }
+    if (!m_buffer_manager) {
+        m_buffer_manager = buffer_manager;
     }
     if (m_node) {
         if (gfx_log_debug_enabled() && m_type == "MatMul") {
@@ -99,6 +95,14 @@ void VulkanStage::compile(GpuBufferManager* /*buffer_manager*/) {
             m_const_buffers->buffers.resize(in_count);
             m_const_buffers->present.assign(in_count, false);
         }
+        OPENVINO_ASSERT(m_buffer_manager,
+                        "GFX Vulkan: const buffer manager is required for constants (stage ",
+                        m_name,
+                        ")");
+        OPENVINO_ASSERT(m_buffer_manager->supports_const_cache(),
+                        "GFX Vulkan: const cache must be supported for stage ",
+                        m_name);
+        const bool use_const_cache = true;
         for (size_t i = 0; i < in_count; ++i) {
             auto c = std::dynamic_pointer_cast<const ov::op::v0::Constant>(m_node->get_input_node_shared_ptr(i));
             if (!c) {
@@ -108,6 +112,7 @@ void VulkanStage::compile(GpuBufferManager* /*buffer_manager*/) {
                 continue;
             }
             const size_t bytes = c->get_byte_size();
+            const auto et = c->get_element_type();
             if (gfx_log_debug_enabled() && c->get_element_type() == ov::element::f32 && bytes >= sizeof(float)) {
                 const float* vals = static_cast<const float*>(c->get_data_ptr());
                 const size_t count = bytes / sizeof(float);
@@ -122,37 +127,27 @@ void VulkanStage::compile(GpuBufferManager* /*buffer_manager*/) {
                 }
                 GFX_LOG_DEBUG("VulkanConst", oss.str());
             }
-            VulkanGpuAllocator staging_alloc(VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-            VulkanGpuAllocator device_alloc(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-                                            VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-            GpuBufferDesc staging_desc{};
-            staging_desc.bytes = bytes;
-            staging_desc.type = c->get_element_type();
-            staging_desc.usage = BufferUsage::Staging;
-            staging_desc.cpu_write = true;
-            staging_desc.prefer_device_local = false;
-            GpuBuffer staging = staging_alloc.allocate(staging_desc);
-            if (bytes) {
-                gpu_copy_from_host(staging, c->get_data_ptr(), bytes);
+            if (use_const_cache && bytes) {
+                const uint64_t hash = gfx_hash_bytes(c->get_data_ptr(), bytes);
+                std::ostringstream key;
+                key << m_name
+                    << "/const/"
+                    << i
+                    << "/"
+                    << et.get_type_name()
+                    << "/"
+                    << bytes
+                    << "/"
+                    << hash;
+                GpuBuffer buf = m_buffer_manager->wrap_const(key.str(), c->get_data_ptr(), bytes, et);
+                OPENVINO_ASSERT(buf.valid(),
+                                "GFX Vulkan: failed to wrap const buffer for stage ",
+                                m_name);
+                buf.owned = false;
+                m_const_buffers->buffers[i].buf = buf;
             }
-
-            GpuBufferDesc device_desc{};
-            device_desc.bytes = bytes;
-            device_desc.type = c->get_element_type();
-            device_desc.usage = BufferUsage::Const;
-            device_desc.cpu_read = false;
-            device_desc.cpu_write = false;
-            device_desc.prefer_device_local = true;
-            GpuBuffer buf = device_alloc.allocate(device_desc);
-            if (bytes && staging.valid() && buf.valid()) {
-                gpu_copy_buffer(nullptr, staging, buf, bytes);
-            }
-            if (staging.valid()) {
-                staging_alloc.release(std::move(staging));
-            }
-            m_const_buffers->buffers[i].buf = buf;
             m_const_buffers->buffers[i].shape = c->get_shape();
-            m_const_buffers->buffers[i].expected_type = c->get_element_type();
+            m_const_buffers->buffers[i].expected_type = et;
             m_const_buffers->present[i] = true;
         }
     }
@@ -213,8 +208,6 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
     if (outputs.empty()) {
         OPENVINO_THROW("GFX Vulkan: output tensor is not bound for stage ", m_name);
     }
-    uint64_t softmax_total_work = 0;
-
     auto resolve_input_shape = [&](size_t idx) -> ov::Shape {
         if (idx < m_inputs.size() && m_inputs[idx] && !m_inputs[idx]->shape.empty()) {
             return m_inputs[idx]->shape;
@@ -269,34 +262,30 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
         else OPENVINO_THROW("GFX Vulkan: unsupported softmax op kind");
         const auto dims = compute_softmax_dims(in_shape, axis, "GFX Vulkan: Softmax");
         const uint64_t total_work = dims.rows;
-        const bool want_tiled = (dims.axis == 0) || (total_work > kSoftmaxTileWork);
-        softmax_total_work = total_work;
         if (gfx_log_debug_enabled()) {
             GFX_LOG_DEBUG("VulkanSoftmax",
                           "shape_rank=" << in_shape.size()
                                         << " axis=" << dims.axis
                                         << " rows*inner=" << total_work
-                                        << " tiled=" << (want_tiled ? "1" : "0"));
+                                        << " tiled=0");
         }
         for (auto* out : outputs) {
             if (out) {
                 out->shape = in_shape;
             }
         }
-        if (m_node && (m_last_input_shape != in_shape || !m_kernel || want_tiled != m_softmax_tiled)) {
+        if (m_node && (m_last_input_shape != in_shape || !m_kernel)) {
             mlir::MLIRContext ctx;
             const bool log_softmax = ov::as_type_ptr<const ov::op::v5::LogSoftmax>(m_node) != nullptr;
             auto module = log_softmax
-                              ? (want_tiled ? build_mlir_logsoftmax_tiled_from_node(m_node, ctx, in_shape)
-                                            : build_mlir_logsoftmax_from_node(m_node, ctx, in_shape))
-                              : (want_tiled ? build_mlir_softmax_tiled_from_node(m_node, ctx, in_shape)
-                                            : build_mlir_softmax_from_node(m_node, ctx, in_shape));
+                              ? build_mlir_logsoftmax_from_node(m_node, ctx, in_shape)
+                              : build_mlir_softmax_from_node(m_node, ctx, in_shape);
             std::string entry = find_entry_point(module);
             if (entry.empty()) {
                 entry = "softmax_main";
             }
             const uint32_t arg_count =
-                static_cast<uint32_t>(m_kernel_inputs.size() + outputs.size() + (want_tiled ? 1u : 0u));
+                static_cast<uint32_t>(m_kernel_inputs.size() + outputs.size());
             KernelPlan plan(module, std::move(entry), arg_count);
             KernelSource src = plan.to_source();
             VulkanCodegenBackend backend;
@@ -319,7 +308,6 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
                             "): ",
                             log);
             m_last_input_shape = in_shape;
-            m_softmax_tiled = want_tiled;
         }
     } else if (m_type == "Split" || m_type == "VariadicSplit") {
         ov::Shape in_shape = resolve_input_shape(0);
@@ -441,16 +429,21 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
         }
         const auto elem_size = out_type == ov::element::dynamic ? out->buf.type.size() : out_type.size();
         const size_t out_bytes = ov::shape_size(out->shape) * elem_size;
-        if (!out->buf.valid() || out->buf.size < out_bytes) {
-            VulkanGpuAllocator allocator;
-            GpuBufferDesc desc{};
-            desc.bytes = out_bytes;
-            desc.type = out_type == ov::element::dynamic ? out->buf.type : out_type;
-            desc.usage = out->prefer_private ? BufferUsage::Intermediate : BufferUsage::IO;
-            desc.cpu_read = !out->prefer_private;
-            desc.cpu_write = !out->prefer_private;
-            desc.prefer_device_local = out->prefer_private;
-            out->buf = allocator.allocate(desc);
+        if (m_is_view_op) {
+            out->expected_type = out_type;
+            continue;
+        }
+        if (!out->buf.valid()) {
+            OPENVINO_THROW("GFX Vulkan: output buffer is not allocated for stage ", m_name);
+        }
+        if (out->buf.size < out_bytes) {
+            OPENVINO_THROW("GFX Vulkan: output buffer too small for stage ",
+                           m_name,
+                           " (need ",
+                           out_bytes,
+                           ", have ",
+                           out->buf.size,
+                           ")");
         }
         out->expected_type = out_type;
     }
@@ -509,49 +502,6 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
         return &hooks;
     };
 
-    if ((m_type == "Softmax" || m_type == "LogSoftmax") &&
-        m_softmax_tiled && softmax_total_work > 0) {
-        const size_t param_bytes = sizeof(uint32_t) * 2;
-        if (!m_softmax_params.valid() || m_softmax_params.size < param_bytes) {
-            VulkanGpuAllocator allocator;
-            GpuBufferDesc desc{};
-            desc.bytes = param_bytes;
-            desc.type = ov::element::i32;
-            desc.usage = BufferUsage::Temp;
-            desc.cpu_write = true;
-            desc.prefer_device_local = false;
-            m_softmax_params = allocator.allocate(desc);
-        }
-
-        std::vector<KernelArg> args;
-        args.reserve(m_kernel_inputs.size() + outputs.size() + 1);
-        append_kernel_input_args(args, m_kernel_inputs, resolve_input_tensor, m_name.c_str());
-        append_kernel_output_args(args,
-                                  static_cast<uint32_t>(args.size()),
-                                  outputs,
-                                  m_name.c_str());
-        const uint32_t param_index = static_cast<uint32_t>(args.size());
-        append_kernel_buffer_arg(args, param_index, m_softmax_params, m_name.c_str(), "softmax params");
-        validate_kernel_args(*m_kernel, args, m_name.c_str());
-
-        uint64_t offset = 0;
-        while (offset < softmax_total_work) {
-            const uint64_t count = std::min<uint64_t>(kSoftmaxTileWork, softmax_total_work - offset);
-            if (m_softmax_params.host_visible) {
-                auto* mapped = static_cast<uint32_t*>(gpu_map_buffer(m_softmax_params));
-                OPENVINO_ASSERT(mapped, "GFX Vulkan: failed to map softmax params buffer");
-                mapped[0] = static_cast<uint32_t>(offset);
-                mapped[1] = static_cast<uint32_t>(count);
-                gpu_unmap_buffer(m_softmax_params);
-            }
-            KernelDispatch dispatch = make_1d_dispatch(static_cast<size_t>(count), 1);
-            KernelExecutionHooks tile_hooks;
-            m_kernel->execute(nullptr, dispatch, args, make_hooks(tile_hooks));
-            offset += count;
-        }
-        return;
-    }
-
     std::vector<KernelArg> args;
     args.reserve(m_kernel_inputs.size() + outputs.size());
     append_kernel_input_args(args, m_kernel_inputs, resolve_input_tensor, m_name.c_str());
@@ -559,6 +509,9 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
                               static_cast<uint32_t>(args.size()),
                               outputs,
                               m_name.c_str());
+    if (m_buffer_manager) {
+        args = materialize_kernel_bytes_args(args, *m_buffer_manager, m_name.c_str());
+    }
     validate_kernel_args(*m_kernel, args, m_name.c_str());
 
     KernelDispatch dispatch{};
@@ -626,7 +579,6 @@ std::unique_ptr<GpuStage> VulkanStage::clone() const {
     stage->m_output_shape = m_output_shape;
     stage->m_last_input_shape = m_last_input_shape;
     stage->m_kernel_inputs = m_kernel_inputs;
-    stage->m_softmax_tiled = m_softmax_tiled;
     stage->m_const_buffers = m_const_buffers;
     return stage;
 }

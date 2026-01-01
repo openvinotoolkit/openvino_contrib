@@ -80,7 +80,7 @@ void MetalConvertOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     const size_t num_elems = ov::shape_size(out_shape);
     if (!dst.buf.valid()) {
         size_t bytes = num_elems * m_dst_type.size();
-        dst.buf = buffer_manager()->allocate(bytes, m_dst_type, /*persistent=*/false, dst.prefer_private);
+        dst.buf = allocate_temp_buffer(bytes, m_dst_type, /*persistent=*/false, dst.prefer_private);
     }
     dst.shape = out_shape;
     dst.expected_type = m_dst_type;
@@ -102,8 +102,8 @@ void MetalConvertOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     std::vector<KernelArg> args;
     args.reserve(3);
     append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-    append_kernel_output_args(args, 1, &dst, name().c_str());
-    args.push_back(make_bytes_arg(2, &n, sizeof(n)));
+    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &n, sizeof(n)));
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 

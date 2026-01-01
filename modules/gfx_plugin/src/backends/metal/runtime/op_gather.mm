@@ -103,7 +103,7 @@ void MetalGatherOp::compile(MetalBufferManager* buffer_manager) {
     if (idx_const) {
         const size_t bytes = idx_const->get_byte_size();
         const std::string key = m_node->get_friendly_name() + "/indices";
-        m_const_indices.buf = buffer_manager->wrap_const(key, idx_const->get_data_ptr(), bytes, m_index_type, MetalStorage::Private);
+        m_const_indices.buf = buffer_manager->wrap_const(key, idx_const->get_data_ptr(), bytes, m_index_type);
         m_const_indices.shape = idx_const->get_shape();
         m_const_indices.expected_type = m_index_type;
     }
@@ -152,7 +152,7 @@ void MetalGatherOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     const size_t bytes = ov::shape_size(out_shape) * m_element_type.size();
     if (!dst.buf.valid() || dst.buf.size < bytes) {
-        dst.buf = buffer_manager()->allocate(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
+        dst.buf = allocate_temp_buffer(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
     }
     dst.shape = out_shape;
     dst.expected_type = m_element_type;
@@ -180,8 +180,8 @@ void MetalGatherOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
                              2,
                              [&](size_t idx) { return idx == 0 ? data : indices; },
                              name().c_str());
-    append_kernel_output_args(args, 2, &dst, name().c_str());
-    args.push_back(make_bytes_arg(3, &params, sizeof(params)));
+    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &params, sizeof(params)));
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 

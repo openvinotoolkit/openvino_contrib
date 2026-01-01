@@ -90,7 +90,7 @@ void MetalConv3DOp::prepare_weights() {
     const auto& et = weights_const->get_element_type();
     const size_t bytes = et.size() * shape_size(weights_const->get_shape());
     const std::string key = m_node->get_friendly_name() + "/weights";
-    m_weights = buffer_manager()->wrap_const(key, weights_const->get_data_ptr(), bytes, et, MetalStorage::Private);
+    m_weights = buffer_manager()->wrap_const(key, weights_const->get_data_ptr(), bytes, et);
     OPENVINO_ASSERT(m_weights.valid(), "MetalConv3DOp: failed to wrap weights buffer");
 }
 
@@ -145,7 +145,7 @@ void MetalConv3DOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
         const auto& et = m_node->get_output_element_type(0);
         size_t bytes = element_size();
         for (auto d : out_shape) bytes *= d;
-        dst_tensor.buf = buffer_manager()->allocate(bytes, et, /*persistent=*/false, dst_tensor.prefer_private);
+        dst_tensor.buf = allocate_temp_buffer(bytes, et, /*persistent=*/false, dst_tensor.prefer_private);
         dst_tensor.expected_type = et;
     }
     dst_tensor.shape = out_shape;
@@ -193,9 +193,9 @@ void MetalConv3DOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     std::vector<KernelArg> args;
     args.reserve(4);
     append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-    append_kernel_buffer_arg(args, 1, m_weights, name().c_str(), "weights");
-    append_kernel_output_args(args, 2, &dst_tensor, name().c_str());
-    args.push_back(make_bytes_arg(3, &params, sizeof(params)));
+    append_kernel_buffer_arg(args, static_cast<uint32_t>(args.size()), m_weights, name().c_str(), "weights");
+    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst_tensor, name().c_str());
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &params, sizeof(params)));
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 

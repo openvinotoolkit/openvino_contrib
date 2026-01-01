@@ -56,6 +56,10 @@
 namespace ov {
 namespace gfx_plugin {
 
+#ifndef GFX_MLIR_DEBUG
+#define GFX_MLIR_DEBUG 0
+#endif
+
 namespace {
 
 void populate_spirv_patterns(const mlir::SPIRVTypeConverter& type_converter,
@@ -154,11 +158,12 @@ std::vector<uint32_t> lower_to_spirv(mlir::ModuleOp module,
                      mlir::vector::VectorDialect,
                      mlir::spirv::SPIRVDialect>();
 
-    const auto env_verify_dump = std::getenv("GFX_MLIR_DEBUG");
-    if (env_verify_dump && std::string(env_verify_dump) != "0") {
+#if GFX_MLIR_DEBUG
+    {
         llvm::errs() << "[GFX][MLIR] Pre-verify module:\n";
         module.dump();
     }
+#endif
     if (mlir::failed(mlir::verify(module))) {
         if (log) {
             *log = "MLIR module verification failed";
@@ -175,8 +180,7 @@ std::vector<uint32_t> lower_to_spirv(mlir::ModuleOp module,
         return {};
     }
 
-    const auto env_spirv_debug = std::getenv("GFX_MLIR_SPIRV_DEBUG");
-    const bool spirv_debug = env_spirv_debug && std::string(env_spirv_debug) != "0";
+    const bool spirv_debug = (GFX_MLIR_DEBUG != 0);
 
     if (spirv_debug) {
         ctx->disableMultithreading();

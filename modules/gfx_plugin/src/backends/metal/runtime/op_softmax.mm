@@ -130,7 +130,7 @@ void MetalSoftmaxOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     // Allocate output if needed.
     const size_t bytes = m_element_type.size() * ov::shape_size(in_shape);
     if (!dst.buf.valid() || dst.buf.size < bytes) {
-        dst.buf = buffer_manager()->allocate(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
+        dst.buf = allocate_temp_buffer(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
     }
     dst.shape = in_shape;
     dst.expected_type = m_element_type;
