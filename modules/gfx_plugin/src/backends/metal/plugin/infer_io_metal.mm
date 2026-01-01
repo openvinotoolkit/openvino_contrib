@@ -12,7 +12,7 @@ namespace ov {
 namespace gfx_plugin {
 
 GpuTensor bind_host_input_metal(const ov::Tensor& host,
-                                MetalAllocatorCore* metal_core,
+                                IGpuAllocator* allocator,
                                 const char* error_prefix) {
     HostInputBinding binding = prepare_host_input_binding(host, GpuBackend::Metal, error_prefix);
     GpuTensor tensor = binding.tensor;
@@ -21,9 +21,9 @@ GpuTensor bind_host_input_metal(const ov::Tensor& host,
         return tensor;
     }
 
-    OPENVINO_ASSERT(metal_core, error_prefix, ": Metal allocator core is null");
-    tensor.buf = metal_core->wrap_shared(host.data(), bytes, host.get_element_type());
-    tensor.buf.backend = GpuBackend::Metal;
+    OPENVINO_ASSERT(allocator, error_prefix, ": GPU allocator is null");
+    tensor.buf = allocator->wrap_shared(const_cast<void*>(host.data()), bytes, host.get_element_type());
+    tensor.buf.backend = allocator->backend();
     tensor.buf.host_visible = true;
     tensor.prefer_private = false;
     return tensor;
@@ -32,8 +32,7 @@ GpuTensor bind_host_input_metal(const ov::Tensor& host,
 OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
                                           const OutputViewInfo& info,
                                           const ov::Tensor* host_override,
-                                          MetalAllocatorCore* metal_core,
-                                          MetalAllocator* metal_allocator,
+                                          IGpuAllocator* allocator,
                                           GpuCommandQueueHandle metal_queue,
                                           const char* error_prefix) {
     OutputBindingResult result{};
@@ -42,11 +41,10 @@ OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
     HostOutputBinding host_binding = prepare_host_output_binding(info, host_override);
     size_t bytes = host_binding.bytes;
 
-    OPENVINO_ASSERT(metal_core && metal_allocator,
-                    error_prefix, ": Metal allocator is not available");
+    OPENVINO_ASSERT(allocator, error_prefix, ": GPU allocator is not available");
 
     if (host_override && *host_override) {
-        MetalBuffer shared = metal_core->wrap_shared(host_override->data(), bytes, info.type);
+        GpuBuffer shared = allocator->wrap_shared(const_cast<void*>(host_override->data()), bytes, info.type);
         if (bytes && dev.buf.buffer != shared.buffer) {
             gpu_copy_buffer(metal_queue, dev.buf, shared, bytes);
         }
@@ -72,14 +70,14 @@ OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
     }
 
     if (bytes) {
-        BufferDesc desc;
+        GpuBufferDesc desc;
         desc.bytes = bytes;
         desc.type = info.type;
         desc.usage = BufferUsage::IO;
-        desc.storage = MetalStorage::Shared;
         desc.cpu_read = true;
         desc.cpu_write = true;
-        MetalBuffer shared = metal_allocator->allocate(desc, /*persistent=*/false);
+        desc.prefer_device_local = false;
+        GpuBuffer shared = allocator->allocate(desc);
         gpu_copy_buffer(metal_queue, dev.buf, shared, bytes);
         result.device_tensor = dev;
         result.device_tensor.buf = shared;

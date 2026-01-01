@@ -7,8 +7,7 @@
 #include <cstring>
 
 #include "openvino/core/except.hpp"
-#include "backends/metal/runtime/metal_memory.hpp"
-#include "backends/vulkan/runtime/memory_api.hpp"
+#include "runtime/gpu_memory_ops.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -21,29 +20,17 @@ void* gpu_map_buffer(const GpuBuffer& buf) {
     if (!buf.buffer) {
         return nullptr;
     }
-    switch (buf.backend) {
-        case GpuBackend::Metal:
-            return metal_map_buffer(buf);
-        case GpuBackend::Vulkan:
-            return vulkan_map_buffer(buf);
-        default:
-            return nullptr;
-    }
+    const auto& ops = memory_ops_for_backend(buf.backend);
+    return ops.map ? ops.map(buf) : nullptr;
 }
 
 void gpu_unmap_buffer(const GpuBuffer& buf) {
     if (!buf.buffer) {
         return;
     }
-    switch (buf.backend) {
-        case GpuBackend::Metal:
-            metal_unmap_buffer(buf);
-            return;
-        case GpuBackend::Vulkan:
-            vulkan_unmap_buffer(buf);
-            return;
-        default:
-            return;
+    const auto& ops = memory_ops_for_backend(buf.backend);
+    if (ops.unmap) {
+        ops.unmap(buf);
     }
 }
 
@@ -60,8 +47,9 @@ void gpu_copy_from_host(GpuBuffer& buf, const void* src, size_t bytes, size_t of
     auto* mapped = static_cast<uint8_t*>(gpu_map_buffer(buf));
     OPENVINO_ASSERT(mapped, "GFX: failed to map buffer for host copy");
     std::memcpy(mapped + offset, src, bytes);
-    if (buf.backend == GpuBackend::Vulkan) {
-        vulkan_flush_buffer(buf, bytes, offset);
+    const auto& ops = memory_ops_for_backend(buf.backend);
+    if (ops.flush) {
+        ops.flush(buf, bytes, offset);
     }
     gpu_unmap_buffer(buf);
 }
@@ -78,8 +66,9 @@ void gpu_copy_to_host(const GpuBuffer& buf, void* dst, size_t bytes, size_t offs
     }
     auto* mapped = static_cast<const uint8_t*>(gpu_map_buffer(buf));
     OPENVINO_ASSERT(mapped, "GFX: failed to map buffer for host copy");
-    if (buf.backend == GpuBackend::Vulkan) {
-        vulkan_invalidate_buffer(buf, bytes, offset);
+    const auto& ops = memory_ops_for_backend(buf.backend);
+    if (ops.invalidate) {
+        ops.invalidate(buf, bytes, offset);
     }
     std::memcpy(dst, mapped + offset, bytes);
     gpu_unmap_buffer(buf);
@@ -93,15 +82,9 @@ void gpu_copy_buffer(GpuCommandQueueHandle queue,
         return;
     }
     OPENVINO_ASSERT(src.backend == dst.backend, "GFX: cannot copy between different backends");
-    switch (src.backend) {
-        case GpuBackend::Metal:
-            metal_copy_buffer(queue, src, dst, bytes);
-            return;
-        case GpuBackend::Vulkan:
-            vulkan_copy_buffer(src, dst, bytes);
-            return;
-        default:
-            return;
+    const auto& ops = memory_ops_for_backend(src.backend);
+    if (ops.copy) {
+        ops.copy(queue, src, dst, bytes);
     }
 }
 

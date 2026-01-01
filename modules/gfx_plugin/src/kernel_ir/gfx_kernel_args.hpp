@@ -83,5 +83,22 @@ inline void append_kernel_optional_buffer_arg(std::vector<KernelArg>& args,
     args.push_back(make_buffer_arg(index, buffer));
 }
 
+inline uint32_t validate_kernel_args(const ICompiledKernel& kernel,
+                                     const std::vector<KernelArg>& args,
+                                     const char* stage_name) {
+    const uint32_t count = ensure_kernel_args_dense(args, stage_name);
+    const uint32_t expected = kernel.args_count();
+    if (expected) {
+        OPENVINO_ASSERT(expected == count,
+                        stage_name ? stage_name : "GFX",
+                        ": kernel args count mismatch (expected ",
+                        expected,
+                        ", got ",
+                        count,
+                        ")");
+    }
+    return count;
+}
+
 }  // namespace gfx_plugin
 }  // namespace ov

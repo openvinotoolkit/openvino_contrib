@@ -114,7 +114,7 @@ void MetalGatherElementsOp::compile(MetalBufferManager* buffer_manager) {
     if (idx_const) {
         const size_t bytes = idx_const->get_byte_size();
         const std::string key = m_node->get_friendly_name() + "/indices";
-        m_const_indices.buf = buffer_manager->wrap_const(key, idx_const->get_data_ptr(), bytes, m_index_type);
+        m_const_indices.buf = buffer_manager->wrap_const(key, idx_const->get_data_ptr(), bytes, m_index_type, MetalStorage::Private);
         m_const_indices.shape = idx_const->get_shape();
         m_const_indices.expected_type = m_index_type;
     }

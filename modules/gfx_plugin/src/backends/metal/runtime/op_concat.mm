@@ -119,7 +119,7 @@ void MetalConcatOp::compile(MetalBufferManager* buffer_manager) {
             t.shape = c->get_shape();
             t.expected_type = c->get_element_type();
             const std::string key = m_node->get_friendly_name() + "/const_" + std::to_string(i);
-            t.buf = buffer_manager->wrap_const(key, c->get_data_ptr(), bytes, t.expected_type);
+            t.buf = buffer_manager->wrap_const(key, c->get_data_ptr(), bytes, t.expected_type, MetalStorage::Private);
             m_const_inputs[i] = std::move(t);
         }
     }

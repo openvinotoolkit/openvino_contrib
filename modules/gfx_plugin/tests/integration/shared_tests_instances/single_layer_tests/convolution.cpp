@@ -8,7 +8,7 @@
 
 #include "common_test_utils/test_constants.hpp"
 #include "../../test_constants.hpp"
-#include "../../metal/test_utils.hpp"
+#include "../../../backends/metal/integration/test_utils.hpp"
 
 using ov::test::ConvolutionLayerTest;
 

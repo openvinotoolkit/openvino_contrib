@@ -5,7 +5,9 @@
 #include "backends/metal/runtime/metal_memory.hpp"
 
 #include <cstdlib>
+#include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "backends/metal/runtime/dtype.hpp"
@@ -64,6 +66,21 @@ MetalDeviceCache& metal_device_cache() {
     static MetalDeviceCache cache;
     return cache;
 }
+
+struct MetalQueueEntry {
+    id<MTLCommandQueue> queue = nil;
+    size_t refs = 0;
+};
+
+std::mutex& metal_queue_mutex() {
+    static std::mutex m;
+    return m;
+}
+
+std::unordered_map<id<MTLDevice>, MetalQueueEntry>& metal_queue_cache() {
+    static std::unordered_map<id<MTLDevice>, MetalQueueEntry> cache;
+    return cache;
+}
 #endif
 }  // namespace
 
@@ -107,8 +124,18 @@ MetalCommandQueueHandle metal_create_command_queue(MetalDeviceHandle device) {
     }
     @autoreleasepool {
         id<MTLDevice> dev = static_cast<id<MTLDevice>>(device);
-        id<MTLCommandQueue> queue = [dev newCommandQueue];
-        return queue;
+        std::lock_guard<std::mutex> lock(metal_queue_mutex());
+        auto& cache = metal_queue_cache();
+        auto& entry = cache[dev];
+        if (!entry.queue) {
+            entry.queue = [dev newCommandQueue];
+            if (!entry.queue) {
+                cache.erase(dev);
+                return nullptr;
+            }
+        }
+        entry.refs += 1;
+        return entry.queue;
     }
 #else
     (void)device;
@@ -122,7 +149,17 @@ void metal_release_command_queue(MetalCommandQueueHandle queue) {
         return;
     }
     id<MTLCommandQueue> q = static_cast<id<MTLCommandQueue>>(queue);
-    [q release];
+    std::lock_guard<std::mutex> lock(metal_queue_mutex());
+    auto& cache = metal_queue_cache();
+    for (auto it = cache.begin(); it != cache.end(); ++it) {
+        if (it->second.queue == q) {
+            if (it->second.refs > 0) {
+                it->second.refs -= 1;
+            }
+            return;
+        }
+    }
+    // Keep command queues alive for the process lifetime to avoid device reloads.
 #else
     (void)queue;
 #endif
@@ -419,6 +456,8 @@ MetalBuffer MetalBufferManager::wrap_const(const std::string& key,
     if (m_const_cache) {
         return m_const_cache->get_or_create(ConstKey{key}, data, bytes, desc);
     }
+    OPENVINO_ASSERT(storage == MetalStorage::Shared,
+                    "GFX: const cache is required for private constants");
     return m_core.wrap_shared(const_cast<void*>(data), bytes, type);
 }
 

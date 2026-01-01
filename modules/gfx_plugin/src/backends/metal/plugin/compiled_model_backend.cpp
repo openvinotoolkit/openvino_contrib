@@ -44,7 +44,7 @@ std::unique_ptr<MetalBackendState> create_metal_backend_state(const ov::AnyMap& 
                                                                *state->persistent_freelist,
                                                                *state->persistent_staging,
                                                                state->caps);
-    state->const_cache = std::make_unique<MetalConstCache>(*state->persistent_alloc);
+    state->const_cache = std::make_unique<MetalConstCache>(*state->persistent_alloc, state->command_queue);
     state->const_manager = std::make_shared<MetalBufferManager>(*state->alloc_core, state->const_cache.get());
 
     return state;

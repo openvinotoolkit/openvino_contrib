@@ -4,27 +4,25 @@
 
 set(TARGET_NAME "openvino_gfx_plugin")
 
+include(GNUInstallDirs)
+
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/GfxSources.cmake)
 
-set(GFX_PLUGIN_SOURCES ${GFX_PLUGIN_SOURCES})
+set(GFX_PLUGIN_COMMON_SOURCES ${GFX_PLUGIN_SOURCES})
+set(GFX_PLUGIN_ENTRY_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/plugin/plugin.cpp")
+list(FILTER GFX_PLUGIN_COMMON_SOURCES EXCLUDE REGEX "plugin/plugin\\.cpp$")
+set(GFX_PLUGIN_METAL_SOURCES_EFFECTIVE "")
+set(GFX_PLUGIN_VULKAN_SOURCES_EFFECTIVE "")
 set(GFX_RUNTIME_COMMON_SOURCES ${GFX_RUNTIME_COMMON_SOURCES})
 
 if(GFX_BACKEND_METAL_AVAILABLE)
-    list(APPEND GFX_PLUGIN_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/infer_request.mm
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/infer_io_metal.mm
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/compiled_model_backend.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/remote_context.mm
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/device_info.mm)
+    list(APPEND GFX_PLUGIN_METAL_SOURCES_EFFECTIVE
+        ${GFX_PLUGIN_METAL_SOURCES})
     list(APPEND GFX_RUNTIME_METAL_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/stage_factory.cpp)
 else()
-    list(APPEND GFX_PLUGIN_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/infer_request_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/compiled_model_backend_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/device_info_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/remote_context_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/remote_tensor_stub.cpp)
+    list(APPEND GFX_PLUGIN_METAL_SOURCES_EFFECTIVE
+        ${GFX_PLUGIN_METAL_STUB_SOURCES})
     list(APPEND GFX_RUNTIME_COMMON_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/stage_factory_stub.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/op_support_stub.cpp
@@ -34,34 +32,16 @@ else()
 endif()
 
 if(GFX_BACKEND_VULKAN_AVAILABLE)
-    list(APPEND GFX_PLUGIN_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/infer_request.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/infer_io_vulkan.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/compiled_model_backend.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/remote_tensor.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/remote_context.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/device_info.cpp)
+    list(APPEND GFX_PLUGIN_VULKAN_SOURCES_EFFECTIVE
+        ${GFX_PLUGIN_VULKAN_SOURCES})
     list(APPEND GFX_RUNTIME_VULKAN_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime/stage_factory.cpp)
 else()
-    list(APPEND GFX_PLUGIN_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/infer_request_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/compiled_model_backend_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/device_info_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/remote_context_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/remote_tensor_stub.cpp)
+    list(APPEND GFX_PLUGIN_VULKAN_SOURCES_EFFECTIVE
+        ${GFX_PLUGIN_VULKAN_STUB_SOURCES})
     list(APPEND GFX_RUNTIME_COMMON_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime/stage_factory_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime/op_support_stub.cpp)
-endif()
-
-if(GFX_BACKEND_METAL_AVAILABLE)
-    list(APPEND GFX_PLUGIN_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/remote_tensor.mm)
-endif()
-
-if(NOT GFX_BACKEND_VULKAN_AVAILABLE)
-    list(APPEND GFX_RUNTIME_COMMON_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime/op_support_stub.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime/memory_api_stub.cpp)
 endif()
 
@@ -75,7 +55,7 @@ if(GFX_ENABLE_METAL AND GFX_RUNTIME_METAL_SOURCES AND NOT GFX_BACKEND_METAL_AVAI
     message(FATAL_ERROR "GFX: Metal backend sources are present but Metal is not available.")
 endif()
 
-if(NOT GFX_PLUGIN_SOURCES)
+if(NOT GFX_PLUGIN_COMMON_SOURCES)
     message(FATAL_ERROR "GFX: plugin sources are missing.")
 endif()
 
@@ -102,9 +82,75 @@ target_compile_definitions(gfx_plugin_build_settings INTERFACE
     GFX_BACKEND_METAL_AVAILABLE=$<BOOL:${GFX_BACKEND_METAL_AVAILABLE}>
     GFX_BACKEND_VULKAN_AVAILABLE=$<BOOL:${GFX_BACKEND_VULKAN_AVAILABLE}>)
 
+# Build common runtime as a separate object library (core target).
+add_library(gfx_runtime_common_obj OBJECT)
+target_sources(gfx_runtime_common_obj PRIVATE
+    ${GFX_RUNTIME_COMMON_HEADERS}
+    ${GFX_RUNTIME_COMMON_SOURCES})
+target_link_libraries(gfx_runtime_common_obj PRIVATE
+    gfx_plugin_build_settings
+    openvino::runtime
+    openvino::runtime::dev)
+set_target_properties(gfx_runtime_common_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+if(ENABLE_GFX_MLIR)
+    add_library(gfx_runtime_mlir_obj OBJECT)
+    target_sources(gfx_runtime_mlir_obj PRIVATE
+        ${GFX_RUNTIME_MLIR_HEADERS}
+        ${GFX_RUNTIME_MLIR_SOURCES})
+    target_link_libraries(gfx_runtime_mlir_obj PRIVATE
+        gfx_plugin_build_settings
+        openvino::runtime
+        openvino::runtime::dev)
+    set_target_properties(gfx_runtime_mlir_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    if(DEFINED GFX_LLVM_EXTERNAL_TARGET)
+        add_dependencies(gfx_runtime_mlir_obj ${GFX_LLVM_EXTERNAL_TARGET})
+    endif()
+endif()
+
+# Build common plugin sources as a separate object library (core target).
+add_library(gfx_plugin_core_obj OBJECT)
+target_sources(gfx_plugin_core_obj PRIVATE
+    ${GFX_PLUGIN_COMMON_SOURCES}
+    ${GFX_PLUGIN_HEADERS})
+target_link_libraries(gfx_plugin_core_obj PRIVATE
+    gfx_plugin_build_settings
+    openvino::runtime
+    openvino::runtime::dev)
+target_compile_definitions(gfx_plugin_core_obj PRIVATE IMPLEMENT_OPENVINO_RUNTIME_PLUGIN)
+set_target_properties(gfx_plugin_core_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# Build backend plugin sources as separate object libraries.
+add_library(gfx_plugin_metal_obj OBJECT)
+target_sources(gfx_plugin_metal_obj PRIVATE
+    ${GFX_PLUGIN_METAL_SOURCES_EFFECTIVE}
+    ${GFX_PLUGIN_METAL_HEADERS})
+target_link_libraries(gfx_plugin_metal_obj PRIVATE
+    gfx_plugin_build_settings
+    openvino::runtime
+    openvino::runtime::dev)
+set_target_properties(gfx_plugin_metal_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_library(gfx_plugin_vulkan_obj OBJECT)
+target_sources(gfx_plugin_vulkan_obj PRIVATE
+    ${GFX_PLUGIN_VULKAN_SOURCES_EFFECTIVE}
+    ${GFX_PLUGIN_VULKAN_HEADERS})
+target_link_libraries(gfx_plugin_vulkan_obj PRIVATE
+    gfx_plugin_build_settings
+    openvino::runtime
+    openvino::runtime::dev)
+set_target_properties(gfx_plugin_vulkan_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 # Build GFX plugin as SHARED (not MODULE) to allow normal linking/registration in OpenVINO
 add_library(${TARGET_NAME} SHARED)
-target_sources(${TARGET_NAME} PRIVATE ${GFX_PLUGIN_SOURCES} ${GFX_PLUGIN_HEADERS} ${GFX_RUNTIME_COMMON_SOURCES})
+target_sources(${TARGET_NAME} PRIVATE
+    ${GFX_PLUGIN_HEADERS}
+    ${GFX_PLUGIN_ENTRY_SOURCE}
+    $<TARGET_OBJECTS:gfx_plugin_core_obj>
+    $<TARGET_OBJECTS:gfx_plugin_metal_obj>
+    $<TARGET_OBJECTS:gfx_plugin_vulkan_obj>
+    $<TARGET_OBJECTS:gfx_runtime_common_obj>
+    $<$<BOOL:${ENABLE_GFX_MLIR}>:$<TARGET_OBJECTS:gfx_runtime_mlir_obj>>)
 target_link_libraries(${TARGET_NAME} PRIVATE gfx_plugin_build_settings)
 
 # On macOS, force ".so" suffix so OpenVINO loader picks the plugin consistently.
@@ -112,8 +158,8 @@ if(APPLE)
     set_target_properties(${TARGET_NAME} PROPERTIES SUFFIX ".so")
 endif()
 
-ov_add_version_defines(plugin/plugin.cpp ${TARGET_NAME})
 target_compile_definitions(${TARGET_NAME} PRIVATE IMPLEMENT_OPENVINO_RUNTIME_PLUGIN)
+ov_add_version_defines(plugin/plugin.cpp ${TARGET_NAME})
 ov_add_vs_version_file(NAME ${TARGET_NAME}
     FILEDESCRIPTION "OpenVINO Runtime GFX device plugin library")
 
@@ -306,3 +352,7 @@ install(TARGETS ${TARGET_NAME}
 
 install(TARGETS ${TARGET_NAME}
         LIBRARY DESTINATION tests COMPONENT tests EXCLUDE_FROM_ALL)
+
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../include/openvino/gfx_plugin
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/openvino
+        COMPONENT gfx)

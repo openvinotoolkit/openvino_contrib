@@ -24,7 +24,7 @@ struct ConstKeyHash {
 
 class MetalConstCache {
 public:
-    explicit MetalConstCache(MetalAllocator& persistent_alloc);
+    MetalConstCache(MetalAllocator& persistent_alloc, MetalCommandQueueHandle queue);
     ~MetalConstCache();
 
     const MetalBuffer& get_or_create(const ConstKey& key, const void* data, size_t bytes, const BufferDesc& desc);
@@ -32,6 +32,7 @@ public:
 
 private:
     MetalAllocator& m_alloc;
+    MetalCommandQueueHandle m_queue = nullptr;
     std::unordered_map<ConstKey, MetalBuffer, ConstKeyHash> m_cache;
     size_t m_total_bytes = 0;
 };

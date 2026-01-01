@@ -88,7 +88,7 @@ void MetalBatchNormOp::compile(MetalBufferManager* buffer_manager) {
     }
     const size_t bytes = m_params.size() * sizeof(float);
     const std::string key = m_node->get_friendly_name() + "/params";
-    m_params_buf = buffer_manager->wrap_const(key, m_params.data(), bytes, ov::element::f32);
+    m_params_buf = buffer_manager->wrap_const(key, m_params.data(), bytes, ov::element::f32, MetalStorage::Private);
 
     MetalCodegenBackend backend(m_device ? m_device : (id<MTLDevice>)buffer_manager->device());
     std::string log;

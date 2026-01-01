@@ -8,6 +8,8 @@
 #include <functional>
 #include <memory>
 #include <vector>
+
+#include "openvino/core/except.hpp"
 #include "runtime/gpu_types.hpp"
 
 namespace ov {
@@ -91,6 +93,14 @@ inline bool kernel_args_dense(const std::vector<KernelArg>& args, uint32_t* out_
         seen[arg.index] = true;
     }
     return std::all_of(seen.begin(), seen.end(), [](bool v) { return v; });
+}
+
+inline uint32_t ensure_kernel_args_dense(const std::vector<KernelArg>& args, const char* label) {
+    uint32_t count = 0;
+    OPENVINO_ASSERT(kernel_args_dense(args, &count),
+                    label ? label : "GFX",
+                    ": kernel args must be densely indexed from 0");
+    return count;
 }
 
 class ICompiledKernel {

@@ -86,9 +86,7 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
     id<MTLCommandBuffer> cb = static_cast<id<MTLCommandBuffer>>(command_buffer);
     OPENVINO_ASSERT(cb, "MetalCompiledKernel: command buffer is null");
     OPENVINO_ASSERT(m_pipeline, "MetalCompiledKernel: pipeline is null");
-    uint32_t runtime_count = 0;
-    OPENVINO_ASSERT(kernel_args_dense(args, &runtime_count),
-                    "MetalCompiledKernel: kernel args must be densely indexed from 0");
+    const uint32_t runtime_count = ensure_kernel_args_dense(args, "MetalCompiledKernel");
     set_args_count(runtime_count);
 
     id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];

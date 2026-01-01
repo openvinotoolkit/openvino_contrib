@@ -12,7 +12,7 @@
 namespace ov {
 namespace gfx_plugin {
 
-using RemoteTensorReleaseFn = void (*)(GpuTensor&, bool);
+using RemoteTensorReleaseFn = void (*)(GpuTensor&);
 
 class GfxRemoteTensor : public ov::IRemoteTensor {
 public:

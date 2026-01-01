@@ -28,7 +28,9 @@ template <typename OpFactory>
 void run_activation(const ActivationCase& tc) {
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     ASSERT_NE(device, nil);
-    id<MTLCommandQueue> queue = [device newCommandQueue];
+    MetalCommandQueueHandle gfx_queue = metal_create_command_queue(device);
+    ASSERT_NE(gfx_queue, nullptr);
+    id<MTLCommandQueue> queue = static_cast<id<MTLCommandQueue>>(gfx_queue);
 
     MetalDeviceCaps caps = query_metal_device_caps(device);
     MetalAllocatorCore core(device, caps);
@@ -36,7 +38,7 @@ void run_activation(const ActivationCase& tc) {
     MetalFreeList freelist;
     MetalStagingPool staging(core);
     MetalAllocator allocator(core, heaps, freelist, staging, caps);
-    MetalConstCache const_cache(allocator);
+    MetalConstCache const_cache(allocator, gfx_queue);
     MetalBufferManager mgr(core, &const_cache);
     MetalBufferManager::set_current_allocator(&allocator);
 
@@ -65,6 +67,7 @@ void run_activation(const ActivationCase& tc) {
     [cb waitUntilCompleted];
 
     MetalBufferManager::set_current_allocator(nullptr);
+    metal_release_command_queue(gfx_queue);
 
     id<MTLBuffer> out_buf = static_cast<id<MTLBuffer>>(output.buf.buffer);
     ASSERT_NE(out_buf, nil);

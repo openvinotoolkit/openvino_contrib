@@ -60,9 +60,9 @@ MTLResourceOptions options_from_storage(uint32_t mode) {
 
 }  // namespace
 
-static void release_metal_remote_tensor(GpuTensor& tensor, bool owns_buffer) {
+static void release_metal_remote_tensor(GpuTensor& tensor) {
 #ifdef __OBJC__
-    if (!owns_buffer || tensor.buf.backend != GpuBackend::Metal || !tensor.buf.buffer) {
+    if (!tensor.buf.owned || tensor.buf.backend != GpuBackend::Metal || !tensor.buf.buffer) {
         return;
     }
     [static_cast<id<MTLBuffer>>(tensor.buf.buffer) release];

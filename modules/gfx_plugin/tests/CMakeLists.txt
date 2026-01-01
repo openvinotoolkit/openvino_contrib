@@ -29,6 +29,7 @@ if(APPLE)
 else()
     list(APPEND GFX_TEST_EXCLUDED_PATHS
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/memory_test.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/integration
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_backend_test.mm
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_stage_activation_test.mm
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_stage_factory_test.mm
@@ -53,21 +54,13 @@ target_sources(${TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_memory_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/transforms/pipeline.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/transforms/conv_relu_fusion.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/memory_manager.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/gfx_backend_utils.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/kernel_ir/gfx_kernel_cache.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/gfx_logger.cpp
 )
-if(NOT GFX_BACKEND_VULKAN_AVAILABLE)
-    target_sources(${TARGET_NAME} PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../src/backends/vulkan/runtime/memory_api_stub.cpp
-    )
+
+if(TARGET gfx_runtime_common_obj)
+    target_sources(${TARGET_NAME} PRIVATE $<TARGET_OBJECTS:gfx_runtime_common_obj>)
 endif()
-if(NOT APPLE)
-    target_sources(${TARGET_NAME} PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../src/backends/metal/runtime/runtime_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/../src/backends/metal/runtime/dtype.cpp
-    )
+if(ENABLE_GFX_MLIR AND TARGET gfx_runtime_mlir_obj)
+    target_sources(${TARGET_NAME} PRIVATE $<TARGET_OBJECTS:gfx_runtime_mlir_obj>)
 endif()
 
 if(APPLE)
@@ -77,6 +70,10 @@ if(APPLE)
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_stage_activation_test.mm
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_backend_test.mm
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/vulkan_runtime_test_stub.cpp
+    )
+else()
+    target_sources(${TARGET_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/backends/metal/runtime/dtype.cpp
     )
 endif()
 

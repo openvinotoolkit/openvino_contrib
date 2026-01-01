@@ -35,10 +35,6 @@ set(GFX_PLUGIN_HEADERS
     ${_gfx_src_dir}/plugin/infer_request_state.hpp
     ${_gfx_src_dir}/plugin/infer_pipeline.hpp
     ${_gfx_src_dir}/plugin/model_serialization.hpp
-    ${_gfx_src_dir}/backends/metal/plugin/metal_properties.hpp
-    ${_gfx_src_dir}/backends/metal/plugin/compiled_model_state.hpp
-    ${_gfx_src_dir}/backends/vulkan/plugin/vulkan_properties.hpp
-    ${_gfx_src_dir}/backends/vulkan/plugin/compiled_model_state.hpp
     ${_gfx_src_dir}/plugin/remote_context_support.hpp
     ${_gfx_src_dir}/transforms/conv_relu_fusion.hpp
     ${_gfx_src_dir}/transforms/pipeline.hpp
@@ -53,6 +49,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/gfx_activation.hpp
     ${_gfx_src_dir}/runtime/gfx_backend_caps.hpp
     ${_gfx_src_dir}/runtime/gfx_backend_utils.hpp
+    ${_gfx_src_dir}/runtime/gpu_memory_ops.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_args.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.hpp
@@ -70,32 +67,39 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_dispatch.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_plan.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_spec.hpp
-    ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.hpp
-    ${_gfx_src_dir}/mlir/mlir_support.hpp
     ${_gfx_src_dir}/runtime/gfx_logger.hpp
     ${_gfx_src_dir}/runtime/gfx_op_utils.hpp
     ${_gfx_src_dir}/runtime/gfx_remote_context.hpp
     ${_gfx_src_dir}/runtime/gfx_remote_tensor.hpp
-    ${_gfx_src_dir}/backends/vulkan/runtime/memory_api.hpp
 )
 
 set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/gfx_backend_caps.cpp
     ${_gfx_src_dir}/runtime/gfx_backend_utils.cpp
+    ${_gfx_src_dir}/runtime/gpu_memory_ops.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.cpp
     ${_gfx_src_dir}/runtime/gfx_op_support.cpp
     ${_gfx_src_dir}/runtime/execution_dispatcher.cpp
     ${_gfx_src_dir}/runtime/memory_manager.cpp
-    ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.cpp
-    ${_gfx_src_dir}/mlir/mlir_support.cpp
     ${_gfx_src_dir}/runtime/gfx_logger.cpp
     ${_gfx_src_dir}/runtime/gfx_op_utils.cpp
     ${_gfx_src_dir}/runtime/gfx_remote_context.cpp
     ${_gfx_src_dir}/runtime/gfx_remote_tensor.cpp
 )
 
+set(GFX_RUNTIME_MLIR_HEADERS
+    ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.hpp
+    ${_gfx_src_dir}/mlir/mlir_support.hpp
+)
+
+set(GFX_RUNTIME_MLIR_SOURCES
+    ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.cpp
+    ${_gfx_src_dir}/mlir/mlir_support.cpp
+)
+
 set(GFX_RUNTIME_METAL_SOURCES
+    ${_gfx_src_dir}/backends/metal/runtime/memory_ops.mm
     ${_gfx_src_dir}/backends/metal/runtime/metal_executor.cpp
     ${_gfx_src_dir}/backends/metal/runtime/gpu_memory.mm
     ${_gfx_src_dir}/backends/metal/codegen/metal_compiler.mm
@@ -210,6 +214,7 @@ set(GFX_RUNTIME_METAL_HEADERS
 set(GFX_RUNTIME_VULKAN_SOURCES
     ${_gfx_src_dir}/backends/vulkan/codegen/vulkan_codegen_backend.cpp
     ${_gfx_src_dir}/backends/vulkan/runtime/op_support.cpp
+    ${_gfx_src_dir}/backends/vulkan/runtime/memory_ops.cpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_backend.cpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_executor.cpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_memory.cpp
@@ -226,13 +231,47 @@ set(GFX_RUNTIME_VULKAN_HEADERS
 )
 
 set(GFX_PLUGIN_METAL_SOURCES
+    ${_gfx_src_dir}/backends/metal/plugin/infer_request.mm
+    ${_gfx_src_dir}/backends/metal/plugin/infer_io_metal.mm
+    ${_gfx_src_dir}/backends/metal/plugin/compiled_model_backend.cpp
     ${_gfx_src_dir}/backends/metal/plugin/remote_context.mm
     ${_gfx_src_dir}/backends/metal/plugin/device_info.mm
+    ${_gfx_src_dir}/backends/metal/plugin/remote_tensor.mm
+)
+
+set(GFX_PLUGIN_METAL_STUB_SOURCES
+    ${_gfx_src_dir}/backends/metal/plugin/infer_request_stub.cpp
+    ${_gfx_src_dir}/backends/metal/plugin/compiled_model_backend_stub.cpp
+    ${_gfx_src_dir}/backends/metal/plugin/device_info_stub.cpp
+    ${_gfx_src_dir}/backends/metal/plugin/remote_context_stub.cpp
+    ${_gfx_src_dir}/backends/metal/plugin/remote_tensor_stub.cpp
+)
+
+set(GFX_PLUGIN_METAL_HEADERS
+    ${_gfx_src_dir}/backends/metal/plugin/metal_properties.hpp
+    ${_gfx_src_dir}/backends/metal/plugin/compiled_model_state.hpp
 )
 
 set(GFX_PLUGIN_VULKAN_SOURCES
+    ${_gfx_src_dir}/backends/vulkan/plugin/infer_request.cpp
+    ${_gfx_src_dir}/backends/vulkan/plugin/infer_io_vulkan.cpp
+    ${_gfx_src_dir}/backends/vulkan/plugin/compiled_model_backend.cpp
+    ${_gfx_src_dir}/backends/vulkan/plugin/remote_tensor.cpp
     ${_gfx_src_dir}/backends/vulkan/plugin/remote_context.cpp
     ${_gfx_src_dir}/backends/vulkan/plugin/device_info.cpp
+)
+
+set(GFX_PLUGIN_VULKAN_STUB_SOURCES
+    ${_gfx_src_dir}/backends/vulkan/plugin/infer_request_stub.cpp
+    ${_gfx_src_dir}/backends/vulkan/plugin/compiled_model_backend_stub.cpp
+    ${_gfx_src_dir}/backends/vulkan/plugin/device_info_stub.cpp
+    ${_gfx_src_dir}/backends/vulkan/plugin/remote_context_stub.cpp
+    ${_gfx_src_dir}/backends/vulkan/plugin/remote_tensor_stub.cpp
+)
+
+set(GFX_PLUGIN_VULKAN_HEADERS
+    ${_gfx_src_dir}/backends/vulkan/plugin/vulkan_properties.hpp
+    ${_gfx_src_dir}/backends/vulkan/plugin/compiled_model_state.hpp
 )
 
 set(GFX_HAS_METAL_SOURCES OFF)

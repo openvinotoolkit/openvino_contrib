@@ -140,6 +140,8 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
             }
         } session_guard{session};
 
+        MetalGpuAllocator gpu_alloc(allocator, *alloc_core, caps);
+
         for_each_input_tensor(
             get_inputs().size(),
             state.bound_remote_inputs,
@@ -162,7 +164,7 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                 }
                 // Bind host -> device using zero-copy shared buffer (no memcpy).
                 const auto dev = bind_host_input_metal(src,
-                                                       alloc_core,
+                                                       &gpu_alloc,
                                                        "GFX");
                 tensor_map.bind_input_device(idx, dev);
             });
@@ -217,7 +219,6 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
         void* stage_profiler = profiler ? profiler->native_handle() : nullptr;
         auto* metal = dynamic_cast<const MetalBackendState*>(cm->backend_state());
         OPENVINO_ASSERT(metal && metal->const_manager, "GFX: Metal buffer manager is not initialized");
-        MetalGpuAllocator gpu_alloc(allocator, *alloc_core, caps);
         GpuBufferPool pool(gpu_alloc);
         pipeline = build_pipeline_with_outputs(descs,
                                                metal->const_manager.get(),
@@ -367,8 +368,7 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
             auto bound = bind_host_output_metal(dev,
                                                 info,
                                                 host_override,
-                                                alloc_core,
-                                                &allocator,
+                                                &gpu_alloc,
                                                 resources.queue,
                                                 "GFX");
             tensor_map.bind_output_device(idx, bound.device_tensor);

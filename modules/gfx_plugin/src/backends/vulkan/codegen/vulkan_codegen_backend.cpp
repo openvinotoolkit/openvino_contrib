@@ -96,9 +96,7 @@ void VulkanCompiledKernel::execute(GpuCommandBufferHandle /*command_buffer*/,
                                    const KernelDispatch& dispatch,
                                    const std::vector<KernelArg>& args,
                                    const KernelExecutionHooks* hooks) {
-    uint32_t runtime_count = 0;
-    OPENVINO_ASSERT(kernel_args_dense(args, &runtime_count),
-                    "GFX Vulkan: kernel args must be densely indexed from 0");
+    const uint32_t runtime_count = ensure_kernel_args_dense(args, "GFX Vulkan");
     set_args_count(runtime_count);
     const uint32_t binding_count = runtime_count;
     ensure_pipeline(binding_count);

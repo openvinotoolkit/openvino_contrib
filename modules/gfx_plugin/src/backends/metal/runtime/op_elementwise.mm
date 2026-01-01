@@ -146,7 +146,7 @@ void MetalElementwiseOp::compile(MetalBufferManager* buffer_manager) {
         const auto cet = c->get_element_type();
         const size_t bytes = c->get_byte_size();
         const std::string key = m_node->get_friendly_name() + "/const_" + std::to_string(input_idx);
-        tgt.buf = buffer_manager->wrap_const(key, c->get_data_ptr(), bytes, cet);
+        tgt.buf = buffer_manager->wrap_const(key, c->get_data_ptr(), bytes, cet, MetalStorage::Private);
         tgt.shape = c->get_shape();
         tgt.expected_type = cet;
         if (inputs().size() <= input_idx || inputs()[input_idx] == nullptr) {

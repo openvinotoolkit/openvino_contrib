@@ -11,6 +11,7 @@
 #include "mlir/mlir_builder.hpp"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "backends/vulkan/codegen/vulkan_codegen_backend.hpp"
+#include "backends/vulkan/runtime/gpu_memory.hpp"
 #include "backends/vulkan/runtime/vulkan_memory.hpp"
 #include "runtime/memory_manager.hpp"
 #include "kernel_ir/gfx_kernel_dispatch.hpp"
@@ -76,6 +77,9 @@ void VulkanStage::compile(GpuBufferManager* /*buffer_manager*/) {
     if (m_is_view_op) {
         return;
     }
+    if (m_kernel) {
+        return;
+    }
     if (m_node) {
         if (gfx_log_debug_enabled() && m_type == "MatMul") {
             if (auto mm = std::dynamic_pointer_cast<const ov::op::v0::MatMul>(m_node)) {
@@ -118,10 +122,34 @@ void VulkanStage::compile(GpuBufferManager* /*buffer_manager*/) {
                 }
                 GFX_LOG_DEBUG("VulkanConst", oss.str());
             }
-            GpuBuffer buf = vulkan_upload_device_buffer(c->get_data_ptr(),
-                                                        bytes,
-                                                        c->get_element_type(),
-                                                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+            VulkanGpuAllocator staging_alloc(VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+            VulkanGpuAllocator device_alloc(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                                            VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+            GpuBufferDesc staging_desc{};
+            staging_desc.bytes = bytes;
+            staging_desc.type = c->get_element_type();
+            staging_desc.usage = BufferUsage::Staging;
+            staging_desc.cpu_write = true;
+            staging_desc.prefer_device_local = false;
+            GpuBuffer staging = staging_alloc.allocate(staging_desc);
+            if (bytes) {
+                gpu_copy_from_host(staging, c->get_data_ptr(), bytes);
+            }
+
+            GpuBufferDesc device_desc{};
+            device_desc.bytes = bytes;
+            device_desc.type = c->get_element_type();
+            device_desc.usage = BufferUsage::Const;
+            device_desc.cpu_read = false;
+            device_desc.cpu_write = false;
+            device_desc.prefer_device_local = true;
+            GpuBuffer buf = device_alloc.allocate(device_desc);
+            if (bytes && staging.valid() && buf.valid()) {
+                gpu_copy_buffer(nullptr, staging, buf, bytes);
+            }
+            if (staging.valid()) {
+                staging_alloc.release(std::move(staging));
+            }
             m_const_buffers->buffers[i].buf = buf;
             m_const_buffers->buffers[i].shape = c->get_shape();
             m_const_buffers->buffers[i].expected_type = c->get_element_type();
@@ -414,15 +442,15 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
         const auto elem_size = out_type == ov::element::dynamic ? out->buf.type.size() : out_type.size();
         const size_t out_bytes = ov::shape_size(out->shape) * elem_size;
         if (!out->buf.valid() || out->buf.size < out_bytes) {
-            const bool host_visible = !out->prefer_private;
-            const VkMemoryPropertyFlags props =
-                host_visible ? (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
-                             : VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-            out->buf = vulkan_allocate_buffer(out_bytes,
-                                              out_type == ov::element::dynamic ? out->buf.type : out_type,
-                                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                                              props);
-            out->buf.host_visible = host_visible;
+            VulkanGpuAllocator allocator;
+            GpuBufferDesc desc{};
+            desc.bytes = out_bytes;
+            desc.type = out_type == ov::element::dynamic ? out->buf.type : out_type;
+            desc.usage = out->prefer_private ? BufferUsage::Intermediate : BufferUsage::IO;
+            desc.cpu_read = !out->prefer_private;
+            desc.cpu_write = !out->prefer_private;
+            desc.prefer_device_local = out->prefer_private;
+            out->buf = allocator.allocate(desc);
         }
         out->expected_type = out_type;
     }
@@ -485,20 +513,26 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
         m_softmax_tiled && softmax_total_work > 0) {
         const size_t param_bytes = sizeof(uint32_t) * 2;
         if (!m_softmax_params.valid() || m_softmax_params.size < param_bytes) {
-            m_softmax_params = vulkan_allocate_buffer(param_bytes,
-                                                      ov::element::i32,
-                                                      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                                                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                                          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-            m_softmax_params.host_visible = true;
+            VulkanGpuAllocator allocator;
+            GpuBufferDesc desc{};
+            desc.bytes = param_bytes;
+            desc.type = ov::element::i32;
+            desc.usage = BufferUsage::Temp;
+            desc.cpu_write = true;
+            desc.prefer_device_local = false;
+            m_softmax_params = allocator.allocate(desc);
         }
 
         std::vector<KernelArg> args;
         args.reserve(m_kernel_inputs.size() + outputs.size() + 1);
         append_kernel_input_args(args, m_kernel_inputs, resolve_input_tensor, m_name.c_str());
+        append_kernel_output_args(args,
+                                  static_cast<uint32_t>(args.size()),
+                                  outputs,
+                                  m_name.c_str());
         const uint32_t param_index = static_cast<uint32_t>(args.size());
         append_kernel_buffer_arg(args, param_index, m_softmax_params, m_name.c_str(), "softmax params");
-        append_kernel_output_args(args, param_index + 1, outputs, m_name.c_str());
+        validate_kernel_args(*m_kernel, args, m_name.c_str());
 
         uint64_t offset = 0;
         while (offset < softmax_total_work) {
@@ -525,6 +559,7 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
                               static_cast<uint32_t>(args.size()),
                               outputs,
                               m_name.c_str());
+    validate_kernel_args(*m_kernel, args, m_name.c_str());
 
     KernelDispatch dispatch{};
     if (m_type == "Softmax" || m_type == "LogSoftmax" ||

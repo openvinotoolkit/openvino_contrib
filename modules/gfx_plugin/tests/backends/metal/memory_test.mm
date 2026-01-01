@@ -54,23 +54,29 @@ protected:
     std::unique_ptr<MetalAllocator> allocator;
     std::unique_ptr<MetalConstCache> const_cache;
     std::unique_ptr<MetalBufferManager> mgr;
+    MetalCommandQueueHandle queue = nullptr;
 
     void SetUp() override {
         device = MTLCreateSystemDefaultDevice();
         ASSERT_NE(device, nil);
         caps = query_metal_device_caps(device);
         core = std::make_unique<MetalAllocatorCore>(device, caps);
+        queue = metal_create_command_queue(device);
         heaps = std::make_unique<MetalHeapPool>(*core);
         freelist = std::make_unique<MetalFreeList>();
         staging = std::make_unique<MetalStagingPool>(*core);
         allocator = std::make_unique<MetalAllocator>(*core, *heaps, *freelist, *staging, caps);
-        const_cache = std::make_unique<MetalConstCache>(*allocator);
+        const_cache = std::make_unique<MetalConstCache>(*allocator, queue);
         mgr = std::make_unique<MetalBufferManager>(*core, const_cache.get());
         MetalBufferManager::set_current_allocator(allocator.get());
     }
 
     void TearDown() override {
         MetalBufferManager::set_current_allocator(nullptr);
+        if (queue) {
+            metal_release_command_queue(queue);
+            queue = nullptr;
+        }
     }
 };
 
@@ -132,23 +138,29 @@ protected:
     std::unique_ptr<MetalConstCache> const_cache;
     std::unique_ptr<MetalBufferManager> mgr;
     MetalTensorMap tensor_map;
+    MetalCommandQueueHandle queue = nullptr;
 
     void SetUp() override {
         device = MTLCreateSystemDefaultDevice();
         ASSERT_NE(device, nil);
         caps = query_metal_device_caps(device);
         core = std::make_unique<MetalAllocatorCore>(device, caps);
+        queue = metal_create_command_queue(device);
         heaps = std::make_unique<MetalHeapPool>(*core);
         freelist = std::make_unique<MetalFreeList>();
         staging = std::make_unique<MetalStagingPool>(*core);
         allocator = std::make_unique<MetalAllocator>(*core, *heaps, *freelist, *staging, caps);
-        const_cache = std::make_unique<MetalConstCache>(*allocator);
+        const_cache = std::make_unique<MetalConstCache>(*allocator, queue);
         mgr = std::make_unique<MetalBufferManager>(*core, const_cache.get());
         MetalBufferManager::set_current_allocator(allocator.get());
     }
 
     void TearDown() override {
         MetalBufferManager::set_current_allocator(nullptr);
+        if (queue) {
+            metal_release_command_queue(queue);
+            queue = nullptr;
+        }
     }
 };
 

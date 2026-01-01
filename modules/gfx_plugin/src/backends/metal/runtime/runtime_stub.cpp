@@ -3,6 +3,7 @@
 //
 
 #include "backends/metal/runtime/metal_memory.hpp"
+#include "runtime/gpu_memory_ops.hpp"
 
 #include "openvino/core/except.hpp"
 #include "backends/metal/runtime/memory/allocator.hpp"
@@ -51,6 +52,24 @@ void metal_copy_buffer(MetalCommandQueueHandle /*queue*/,
                        const MetalBuffer& /*dst*/,
                        size_t /*bytes*/) {
     throw_metal_unavailable();
+}
+
+const GpuMemoryOps& metal_memory_ops() {
+    static const GpuMemoryOps ops{
+        /*map*/ [](const GpuBuffer& /*buf*/) -> void* {
+            throw_metal_unavailable();
+            return nullptr;
+        },
+        /*unmap*/ [](const GpuBuffer& /*buf*/) {
+            throw_metal_unavailable();
+        },
+        /*flush*/ nullptr,
+        /*invalidate*/ nullptr,
+        /*copy*/ [](GpuCommandQueueHandle /*queue*/,
+                    const GpuBuffer& /*src*/,
+                    const GpuBuffer& /*dst*/,
+                    size_t /*bytes*/) { throw_metal_unavailable(); }};
+    return ops;
 }
 
 MetalDeviceCaps query_metal_device_caps(MetalDeviceHandle /*device*/) {
@@ -132,7 +151,8 @@ void MetalAllocator::release(MetalBuffer&& /*buf*/) {}
 
 void MetalAllocator::set_profiler(MetalProfiler* /*profiler*/, bool /*detailed*/) {}
 
-MetalConstCache::MetalConstCache(MetalAllocator& persistent_alloc) : m_alloc(persistent_alloc) {
+MetalConstCache::MetalConstCache(MetalAllocator& persistent_alloc, MetalCommandQueueHandle /*queue*/)
+    : m_alloc(persistent_alloc) {
     throw_metal_unavailable();
 }
 

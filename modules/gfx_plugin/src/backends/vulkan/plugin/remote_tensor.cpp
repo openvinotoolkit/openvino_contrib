@@ -15,8 +15,8 @@
 namespace ov {
 namespace gfx_plugin {
 
-static void release_vulkan_remote_tensor(GpuTensor& tensor, bool owns_buffer) {
-    if (!owns_buffer || tensor.buf.backend != GpuBackend::Vulkan || !tensor.buf.buffer) {
+static void release_vulkan_remote_tensor(GpuTensor& tensor) {
+    if (!tensor.buf.owned || tensor.buf.backend != GpuBackend::Vulkan || !tensor.buf.buffer) {
         return;
     }
     vulkan_free_buffer(tensor.buf);

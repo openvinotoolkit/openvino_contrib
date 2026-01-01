@@ -3,6 +3,7 @@
 //
 
 #include "backends/vulkan/runtime/memory_api.hpp"
+#include "runtime/gpu_memory_ops.hpp"
 
 #include "openvino/core/except.hpp"
 
@@ -55,6 +56,21 @@ void vulkan_copy_buffer(const GpuBuffer& src, const GpuBuffer& dst, size_t bytes
         return;
     }
     throw_vulkan_unavailable();
+}
+
+const GpuMemoryOps& vulkan_memory_ops() {
+    static const GpuMemoryOps ops{
+        /*map*/ [](const GpuBuffer& buf) -> void* { return vulkan_map_buffer(buf); },
+        /*unmap*/ [](const GpuBuffer& buf) { vulkan_unmap_buffer(buf); },
+        /*flush*/ [](const GpuBuffer& buf, size_t bytes, size_t offset) { vulkan_flush_buffer(buf, bytes, offset); },
+        /*invalidate*/ [](const GpuBuffer& buf, size_t bytes, size_t offset) {
+            vulkan_invalidate_buffer(buf, bytes, offset);
+        },
+        /*copy*/ [](GpuCommandQueueHandle /*queue*/,
+                    const GpuBuffer& src,
+                    const GpuBuffer& dst,
+                    size_t bytes) { vulkan_copy_buffer(src, dst, bytes); }};
+    return ops;
 }
 
 }  // namespace gfx_plugin

@@ -4,7 +4,7 @@
 //
 
 #include "test_utils.hpp"
-#include "../test_constants.hpp"
+#include "../../../integration/test_constants.hpp"
 
 #include "shared_test_classes/subgraph/stateful_model.hpp"
 

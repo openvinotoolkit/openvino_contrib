@@ -26,7 +26,7 @@ GfxRemoteTensor::~GfxRemoteTensor() {
     if (!m_tensor.buf.owned || !m_tensor.buf.buffer || !m_release_fn) {
         return;
     }
-    m_release_fn(m_tensor, m_tensor.buf.owned);
+    m_release_fn(m_tensor);
 }
 
 }  // namespace gfx_plugin

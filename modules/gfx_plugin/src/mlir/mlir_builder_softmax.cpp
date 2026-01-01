@@ -228,7 +228,8 @@ mlir::ModuleOp build_softmax_like_from_node_tiled(const std::shared_ptr<const ov
     mlir::OpBuilder mb(&ctx);
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
     mb.setInsertionPointToStart(module.getBody());
-    auto func_type = mb.getFunctionType({ty, param_ty, ty}, {});
+    // Argument order matches runtime binding: input(s), output(s), then params.
+    auto func_type = mb.getFunctionType({ty, ty, param_ty}, {});
     auto func = mb.create<mlir::func::FuncOp>(mlir::UnknownLoc::get(&ctx), "softmax_main", func_type);
     func.addEntryBlock();
     mlir::OpBuilder b(func.getBody());
@@ -266,12 +267,12 @@ mlir::ModuleOp build_softmax_like_from_node_tiled(const std::shared_ptr<const ov
                                                             strides);
     auto flat_out = b.create<mlir::memref::ReinterpretCastOp>(loc,
                                                              flat_ty,
-                                                             func.getArgument(2),
+                                                             func.getArgument(1),
                                                              offset,
                                                              sizes,
                                                              strides);
 
-    auto params = func.getArgument(1);
+    auto params = func.getArgument(2);
     auto off_i32 = b.create<mlir::memref::LoadOp>(loc, params, mlir::ValueRange{c0});
     auto count_i32 = b.create<mlir::memref::LoadOp>(loc, params, mlir::ValueRange{c1});
     auto offset_idx = b.create<mlir::arith::IndexCastOp>(loc, b.getIndexType(), off_i32);

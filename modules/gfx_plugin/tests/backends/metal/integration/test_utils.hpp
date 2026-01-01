@@ -23,8 +23,8 @@
 #include "backends/metal/runtime/dtype.hpp"
 #include "backends/metal/runtime/metal_memory.hpp"
 
-#include "../test_constants.hpp"
-#include "../../gfx_test_utils.hpp"
+#include "../../../integration/test_constants.hpp"
+#include "../../../gfx_test_utils.hpp"
 
 namespace ov {
 namespace test {

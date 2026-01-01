@@ -134,7 +134,7 @@ void MetalGroupConvOp::prepare_weights() {
     const auto& et = weights_const->get_element_type();
     const size_t bytes = element_size(et) * shape_size(weights_const->get_shape());
     const std::string key = m_node->get_friendly_name() + "/weights";
-    m_weights = buffer_manager()->wrap_const(key, weights_const->get_data_ptr(), bytes, et);
+    m_weights = buffer_manager()->wrap_const(key, weights_const->get_data_ptr(), bytes, et, MetalStorage::Private);
     OPENVINO_ASSERT(m_weights.valid(), "MetalGroupConvOp: failed to wrap weights buffer");
 }
 

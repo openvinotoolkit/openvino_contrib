@@ -5,6 +5,7 @@
 #include "backends/metal/runtime/op.hpp"
 #include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "backends/metal/runtime/profiling/profiler.hpp"
+#include "kernel_ir/gfx_kernel_args.hpp"
 
 #include <cstring>
 
@@ -62,6 +63,7 @@ void MetalOp::execute_kernel(ICompiledKernel& kernel,
         hooks.on_end = [this](GpuCommandEncoderHandle encoder) { stop_profiling_ms(encoder); };
         hooks_ptr = &hooks;
     }
+    validate_kernel_args(kernel, args, m_name.c_str());
     const auto bound_args = materialize_kernel_args(args);
     kernel.execute(command_buffer, dispatch, bound_args, hooks_ptr);
     flush_inflight_const_buffers(command_buffer);
