@@ -7,7 +7,7 @@
 
 #include "openvino/op/batch_norm.hpp"
 #include "backends/metal/runtime/op.hpp"
-#include "mlir/codegen/codegen_desc.hpp"
+#include "mlir_codegen/codegen_desc.hpp"
 
 namespace ov {
 namespace gfx_plugin {

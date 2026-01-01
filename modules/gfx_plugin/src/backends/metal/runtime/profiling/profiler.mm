@@ -28,7 +28,7 @@ MetalProfiler::MetalProfiler(GfxProfilerConfig cfg, MetalDeviceCaps caps, MetalD
     m_counters_used = m_use_timestamps;
 }
 
-void MetalProfiler::set_config(GfxProfilerConfig cfg) {
+void MetalProfiler::set_config(const GfxProfilerConfig& cfg) {
     m_cfg = cfg;
     m_use_timestamps = (m_cfg.level == ProfilingLevel::Detailed) && m_counters_supported;
     m_counters_used = m_use_timestamps;
@@ -52,7 +52,7 @@ void MetalProfiler::begin_infer(size_t expected_samples) {
     }
 }
 
-void MetalProfiler::end_infer(MetalCommandBufferHandle command_buffer) {
+void MetalProfiler::end_infer(GpuCommandBufferHandle command_buffer) {
     record_command_buffer_gpu_time(command_buffer);
 
     if (m_use_timestamps) {
@@ -276,6 +276,10 @@ MetalProfilingReport MetalProfiler::export_extended() const {
     }
 
     return report;
+}
+
+std::string MetalProfiler::export_extended_json() const {
+    return export_extended().to_json();
 }
 
 }  // namespace gfx_plugin

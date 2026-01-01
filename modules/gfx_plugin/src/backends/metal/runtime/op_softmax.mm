@@ -8,45 +8,18 @@
 
 #include "openvino/core/shape_util.hpp"
 #include "openvino/core/validation_util.hpp"
-#include "backends/metal/runtime/metal_backend.hpp"
+#include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "runtime/gfx_logger.hpp"
+#include "kernel_ir/gfx_kernel_args.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
-#include "mlir_builder.hpp"
+#include "mlir/mlir_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/codegen/codegen_common.hpp"
+#include "mlir_codegen/codegen_common.hpp"
+#include "runtime/gfx_shape_utils.hpp"
 
 namespace ov {
 namespace gfx_plugin {
-
-namespace {
-struct SoftmaxDims {
-    uint32_t rows = 0;
-    uint32_t cols = 0;
-    uint32_t inner = 1;
-};
-
-SoftmaxDims flatten_softmax_dims(const ov::Shape& shape, int64_t axis_in) {
-    SoftmaxDims d{};
-    if (shape.empty())
-        return d;
-    int64_t axis = axis_in;
-    if (axis < 0)
-        axis += static_cast<int64_t>(shape.size());
-    OPENVINO_ASSERT(axis >= 0 && axis < static_cast<int64_t>(shape.size()), "Softmax: axis out of range");
-    uint64_t outer = 1;
-    for (int64_t i = 0; i < axis; ++i)
-        outer *= shape[static_cast<size_t>(i)];
-    uint64_t inner = 1;
-    for (size_t i = static_cast<size_t>(axis) + 1; i < shape.size(); ++i)
-        inner *= shape[i];
-    uint64_t cols = shape[static_cast<size_t>(axis)];
-    d.rows = static_cast<uint32_t>(outer * inner);
-    d.cols = static_cast<uint32_t>(cols);
-    d.inner = static_cast<uint32_t>(inner);
-    return d;
-}
-}  // namespace
 
 MetalSoftmaxOp::MetalSoftmaxOp(const std::shared_ptr<const ov::Node>& node,
                                void* device,
@@ -75,10 +48,10 @@ MetalSoftmaxOp::MetalSoftmaxOp(const std::shared_ptr<const ov::Node>& node,
     OPENVINO_ASSERT(m_element_type == ov::element::f32 || m_element_type == ov::element::f16,
                     "Softmax supports only f16/f32");
     if (node->get_output_partial_shape(0).is_static()) {
-        auto d = flatten_softmax_dims(node->get_output_shape(0), m_axis);
-        m_desc.rows = d.rows;
-        m_desc.cols = d.cols;
-        m_desc.inner = d.inner;
+        auto dims = compute_softmax_dims(node->get_output_shape(0), m_axis, "Softmax");
+        m_desc.rows = static_cast<int64_t>(dims.rows);
+        m_desc.cols = static_cast<int64_t>(dims.axis_len);
+        m_desc.inner = static_cast<int64_t>(dims.inner);
     }
 }
 
@@ -125,17 +98,17 @@ void MetalSoftmaxOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     ov::Shape in_shape = src->shape.empty() ? output_shape() : src->shape;
     OPENVINO_ASSERT(!in_shape.empty(), "Softmax: input shape unknown");
-    auto dims = flatten_softmax_dims(in_shape, m_axis);
-    OPENVINO_ASSERT(dims.rows > 0 && dims.cols > 0, "Softmax: invalid flattened dims");
+    auto dims = compute_softmax_dims(in_shape, m_axis, "Softmax");
+    OPENVINO_ASSERT(dims.rows > 0 && dims.axis_len > 0, "Softmax: invalid flattened dims");
 
     // Recompile kernel on-the-fly if runtime dims differ from the specialized pipeline.
     if (m_desc.rows != static_cast<int64_t>(dims.rows) ||
-        m_desc.cols != static_cast<int64_t>(dims.cols) ||
+        m_desc.cols != static_cast<int64_t>(dims.axis_len) ||
         m_desc.inner != static_cast<int64_t>(dims.inner) ||
         !m_kernel) {
-        m_desc.rows = dims.rows;
-        m_desc.cols = dims.cols;
-        m_desc.inner = dims.inner;
+        m_desc.rows = static_cast<int64_t>(dims.rows);
+        m_desc.cols = static_cast<int64_t>(dims.axis_len);
+        m_desc.inner = static_cast<int64_t>(dims.inner);
         MetalCodegenBackend backend(m_device);
         std::string log;
         mlir::MLIRContext ctx;
@@ -171,7 +144,9 @@ void MetalSoftmaxOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
         uint32_t rows;
         uint32_t cols;
         uint32_t inner;
-    } params{dims.rows, dims.cols, dims.inner == 0 ? 1u : dims.inner};
+    } params{static_cast<uint32_t>(dims.rows),
+             static_cast<uint32_t>(dims.axis_len),
+             static_cast<uint32_t>(dims.inner == 0 ? 1u : dims.inner)};
 
     const NSUInteger total = static_cast<NSUInteger>(params.rows) * static_cast<NSUInteger>(params.cols);
     if (total == 0) {
@@ -182,9 +157,15 @@ void MetalSoftmaxOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     std::vector<KernelArg> args;
     args.reserve(3);
-    args.push_back(make_buffer_arg(0, src->buf));
-    args.push_back(make_buffer_arg(1, dst.buf));
-    args.push_back(make_bytes_arg(2, &params, sizeof(params)));
+    append_kernel_input_args(args,
+                             std::vector<size_t>{0},
+                             [&](size_t idx) { return inputs()[idx]; },
+                             name().c_str());
+    append_kernel_output_args(args,
+                              static_cast<uint32_t>(args.size()),
+                              std::vector<GpuTensor*>{&dst},
+                              name().c_str());
+    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &params, sizeof(params)));
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 

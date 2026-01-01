@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "mlir_builder.hpp"
+#include "mlir/mlir_builder.hpp"
 
 #include "openvino/op/softmax.hpp"
 #include "openvino/op/log_softmax.hpp"

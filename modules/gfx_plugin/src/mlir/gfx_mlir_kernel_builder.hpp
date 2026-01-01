@@ -9,8 +9,8 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "openvino/core/node.hpp"
-#include "mlir/gfx_kernel_plan.hpp"
-#include "mlir/gfx_kernel_spec.hpp"
+#include "kernel_ir/gfx_kernel_plan.hpp"
+#include "kernel_ir/gfx_kernel_spec.hpp"
 
 namespace ov {
 namespace gfx_plugin {

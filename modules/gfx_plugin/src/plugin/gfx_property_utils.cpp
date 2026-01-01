@@ -5,6 +5,7 @@
 #include "gfx_property_utils.hpp"
 
 #include "openvino/core/except.hpp"
+#include "plugin/gfx_profiling_utils.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -92,6 +93,32 @@ RemoteContextParams normalize_remote_context_params(const ov::AnyMap& remote_pro
     params.merged[kGfxBackendProperty] = params.backend_name;
     params.device_id = parse_device_id(params.merged);
     return params;
+}
+
+bool apply_profiling_property(const std::string& key,
+                              const ov::Any& value,
+                              bool& enable_profiling,
+                              ProfilingLevel& profiling_level,
+                              bool& profiling_level_set,
+                              ov::AnyMap& config) {
+    if (key == ov::enable_profiling.name()) {
+        enable_profiling = value.as<bool>();
+        config[key] = enable_profiling;
+        return true;
+    }
+    if (key == "PERF_COUNT") {  // legacy spelling accepted by benchmark_app
+        enable_profiling = value.as<bool>();
+        config[ov::enable_profiling.name()] = enable_profiling;
+        config[key] = enable_profiling;
+        return true;
+    }
+    if (key == kGfxProfilingLevelProperty) {
+        profiling_level = parse_profiling_level(value);
+        profiling_level_set = true;
+        config[key] = value;
+        return true;
+    }
+    return false;
 }
 
 }  // namespace gfx_plugin

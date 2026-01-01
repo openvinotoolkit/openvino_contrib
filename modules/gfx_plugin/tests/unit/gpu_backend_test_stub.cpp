@@ -4,8 +4,8 @@
 
 #include <gtest/gtest.h>
 
-#include "mlir/spirv_codegen.hpp"
-#include "backends/vulkan/codegen/vulkan_compiler.hpp"
+#include "mlir_codegen/spirv_codegen.hpp"
+#include "backends/vulkan/codegen/vulkan_codegen_backend.hpp"
 
 namespace ov {
 namespace gfx_plugin {

@@ -6,7 +6,7 @@
 
 #include "openvino/core/except.hpp"
 
-#include "backends/vulkan/codegen/vulkan_compiler.hpp"
+#include "backends/vulkan/codegen/vulkan_codegen_backend.hpp"
 
 namespace ov {
 namespace gfx_plugin {

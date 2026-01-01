@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "runtime/gfx_remote_context.hpp"
+#include "backends/metal/plugin/remote_tensor.hpp"
 
 #import <Metal/Metal.h>
 
@@ -16,26 +16,34 @@ namespace ov {
 namespace gfx_plugin {
 namespace {
 uint32_t parse_storage_mode(const ov::AnyMap& params) {
+    bool explicit_mode = false;
+    uint32_t resolved = static_cast<uint32_t>(MTLStorageModeShared);
     auto it = params.find(kGfxStorageModeProperty);
     if (it == params.end())
         it = params.find(kStorageModeProperty);
-    if (it == params.end())
-        return static_cast<uint32_t>(MTLStorageModeShared);
-    if (it->second.is<int>()) {
-        return static_cast<uint32_t>(it->second.as<int>());
+    if (it != params.end()) {
+        explicit_mode = true;
+        if (it->second.is<int>()) {
+            resolved = static_cast<uint32_t>(it->second.as<int>());
+        } else if (it->second.is<uint32_t>()) {
+            resolved = it->second.as<uint32_t>();
+        } else if (it->second.is<std::string>()) {
+            auto mode = ov::util::to_lower(it->second.as<std::string>());
+            if (mode == "private")
+                resolved = static_cast<uint32_t>(MTLStorageModePrivate);
+            else if (mode == "managed")
+                resolved = static_cast<uint32_t>(MTLStorageModeManaged);
+            else
+                resolved = static_cast<uint32_t>(MTLStorageModeShared);
+        }
     }
-    if (it->second.is<uint32_t>()) {
-        return it->second.as<uint32_t>();
+    if (!explicit_mode) {
+        const bool host_visible =
+            find_any_bool(params, {kGfxHostVisibleProperty, "HOST_VISIBLE"}, /*fallback=*/true);
+        resolved = host_visible ? static_cast<uint32_t>(MTLStorageModeShared)
+                                : static_cast<uint32_t>(MTLStorageModePrivate);
     }
-    if (it->second.is<std::string>()) {
-        auto mode = ov::util::to_lower(it->second.as<std::string>());
-        if (mode == "private")
-            return static_cast<uint32_t>(MTLStorageModePrivate);
-        if (mode == "managed")
-            return static_cast<uint32_t>(MTLStorageModeManaged);
-        return static_cast<uint32_t>(MTLStorageModeShared);
-    }
-    return static_cast<uint32_t>(MTLStorageModeShared);
+    return resolved;
 }
 
 MTLResourceOptions options_from_storage(uint32_t mode) {
@@ -52,6 +60,16 @@ MTLResourceOptions options_from_storage(uint32_t mode) {
 
 }  // namespace
 
+static void release_metal_remote_tensor(GpuTensor& tensor, bool owns_buffer) {
+#ifdef __OBJC__
+    if (!owns_buffer || tensor.buf.backend != GpuBackend::Metal || !tensor.buf.buffer) {
+        return;
+    }
+    [static_cast<id<MTLBuffer>>(tensor.buf.buffer) release];
+    tensor.buf.buffer = nullptr;
+#endif
+}
+
 RemoteTensorCreateResult create_metal_remote_tensor(const ov::element::Type& type,
                                                     const ov::Shape& shape,
                                                     const ov::AnyMap& params,
@@ -64,13 +82,13 @@ RemoteTensorCreateResult create_metal_remote_tensor(const ov::element::Type& typ
     tensor.buf.type = type;
     tensor.buf.backend = GpuBackend::Metal;
 
-    bool owns_buffer = false;
     void* external = find_any_ptr(params, {kMtlBufferProperty, kGfxBufferProperty});
 
     if (external) {
         tensor.buf.buffer = external;
         tensor.buf.from_handle = true;
         tensor.buf.external = true;
+        tensor.buf.owned = false;
 #ifdef __OBJC__
         auto mb = static_cast<id<MTLBuffer>>(external);
         const size_t buf_len = static_cast<size_t>(mb.length);
@@ -97,25 +115,15 @@ RemoteTensorCreateResult create_metal_remote_tensor(const ov::element::Type& typ
         tensor.buf.size = bytes;
         tensor.buf.storage_mode = static_cast<uint32_t>(buf.storageMode);
         tensor.buf.host_visible = (buf.storageMode != MTLStorageModePrivate);
-        owns_buffer = true;
+        tensor.buf.owned = true;
 #else
         OPENVINO_THROW("GFX remote tensor requires Objective-C++ (Metal)");
 #endif
     }
 
     result.tensor = tensor;
-    result.owns_buffer = owns_buffer;
+    result.release_fn = &release_metal_remote_tensor;
     return result;
-}
-
-void release_metal_remote_tensor(GpuTensor& tensor, bool owns_buffer) {
-#ifdef __OBJC__
-    if (!owns_buffer || tensor.buf.backend != GpuBackend::Metal || !tensor.buf.buffer) {
-        return;
-    }
-    [static_cast<id<MTLBuffer>>(tensor.buf.buffer) release];
-    tensor.buf.buffer = nullptr;
-#endif
 }
 
 }  // namespace gfx_plugin

@@ -8,13 +8,14 @@
 
 #include "openvino/op/constant.hpp"
 #include "openvino/op/batch_norm.hpp"
-#include "backends/metal/runtime/metal_backend.hpp"
+#include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
-#include "mlir_builder.hpp"
+#include "kernel_ir/gfx_kernel_args.hpp"
+#include "mlir/mlir_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/codegen/codegen_common.hpp"
+#include "mlir_codegen/codegen_common.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -152,9 +153,9 @@ void MetalBatchNormOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     std::vector<KernelArg> args;
     args.reserve(4);
-    args.push_back(make_buffer_arg(0, src->buf));
-    args.push_back(make_buffer_arg(1, m_params_buf));
-    args.push_back(make_buffer_arg(2, dst.buf));
+    append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
+    append_kernel_buffer_arg(args, 1, m_params_buf, name().c_str(), "params");
+    append_kernel_output_args(args, 2, &dst, name().c_str());
     args.push_back(make_bytes_arg(3, &gpu_params, sizeof(gpu_params)));
 
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);

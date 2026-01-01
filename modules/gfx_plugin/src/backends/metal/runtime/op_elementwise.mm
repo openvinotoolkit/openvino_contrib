@@ -11,13 +11,15 @@
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"
-#include "backends/metal/runtime/metal_backend.hpp"
+#include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "runtime/gfx_logger.hpp"
+#include "runtime/gfx_shape_utils.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
-#include "mlir_builder.hpp"
+#include "kernel_ir/gfx_kernel_args.hpp"
+#include "mlir/mlir_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/codegen/codegen_common.hpp"
+#include "mlir_codegen/codegen_common.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -71,14 +73,6 @@ BroadcastResult compute_broadcast(const ov::Shape& a_shape, const ov::Shape& b_s
     return res;
 }
 
-size_t shape_elems(const std::vector<int64_t>& shp) {
-    if (shp.empty())
-        return 1;
-    size_t r = 1;
-    for (auto d : shp) r *= static_cast<size_t>(d);
-    return r;
-}
-
 }  // namespace
 
 MetalElementwiseOp::MetalElementwiseOp(const std::shared_ptr<const ov::Node>& node,
@@ -114,7 +108,7 @@ void MetalElementwiseOp::refresh_shapes_from_inputs() {
             m_out_dims.assign(br.out_shape.begin(), br.out_shape.end());
             m_stride0.assign(br.stride0.begin(), br.stride0.end());
             m_stride1.assign(br.stride1.begin(), br.stride1.end());
-            m_num_elems = shape_elems(br.out_shape);
+            m_num_elems = static_cast<size_t>(shape_product(br.out_shape, 0, br.out_shape.size()));
             return;
         }
     }
@@ -337,7 +331,7 @@ void MetalElementwiseOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
         m_out_dims.assign(br.out_shape.begin(), br.out_shape.end());
         m_stride0.assign(br.stride0.begin(), br.stride0.end());
         m_stride1.assign(br.stride1.begin(), br.stride1.end());
-        m_num_elems = shape_elems(br.out_shape);
+        m_num_elems = static_cast<size_t>(shape_product(br.out_shape, 0, br.out_shape.size()));
     } else {
         if (!a_shape.empty())
             out_shape = a_shape;
@@ -389,9 +383,11 @@ void MetalElementwiseOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     std::vector<KernelArg> args;
     args.reserve(8);
-    args.push_back(make_buffer_arg(0, in0->buf));
-    args.push_back(make_buffer_arg(1, in1->buf));
-    args.push_back(make_buffer_arg(2, out.buf));
+    append_kernel_input_args(args,
+                             2,
+                             [&](size_t idx) { return idx == 0 ? in0 : in1; },
+                             name().c_str());
+    append_kernel_output_args(args, 2, &out, name().c_str());
     args.push_back(make_bytes_arg(3, &num_elems, sizeof(num_elems)));
     args.push_back(make_bytes_arg(4, &rank, sizeof(rank)));
     args.push_back(make_bytes_arg(5, m_out_dims.data(), m_out_dims.size() * sizeof(int)));

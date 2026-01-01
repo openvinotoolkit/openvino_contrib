@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "runtime/gfx_remote_context.hpp"
+#include "backends/vulkan/plugin/remote_tensor.hpp"
 
 #include "openvino/core/except.hpp"
 
@@ -14,6 +14,15 @@
 
 namespace ov {
 namespace gfx_plugin {
+
+static void release_vulkan_remote_tensor(GpuTensor& tensor, bool owns_buffer) {
+    if (!owns_buffer || tensor.buf.backend != GpuBackend::Vulkan || !tensor.buf.buffer) {
+        return;
+    }
+    vulkan_free_buffer(tensor.buf);
+    tensor.buf.buffer = nullptr;
+    tensor.buf.size = 0;
+}
 
 RemoteTensorCreateResult create_vulkan_remote_tensor(const ov::element::Type& type,
                                                      const ov::Shape& shape,
@@ -27,7 +36,6 @@ RemoteTensorCreateResult create_vulkan_remote_tensor(const ov::element::Type& ty
     tensor.buf.type = type;
     tensor.buf.backend = GpuBackend::Vulkan;
 
-    bool owns_buffer = false;
     void* external_buf = find_any_ptr(params,
                                       {kVkBufferProperty, kVulkanBufferProperty, kGfxBufferProperty});
     void* external_mem = find_any_ptr(params,
@@ -42,6 +50,7 @@ RemoteTensorCreateResult create_vulkan_remote_tensor(const ov::element::Type& ty
         tensor.buf.host_visible = host_visible;
         tensor.buf.external = true;
         tensor.buf.from_handle = true;
+        tensor.buf.owned = false;
     } else {
         VulkanGpuAllocator allocator;
         GpuBufferDesc desc;
@@ -52,21 +61,12 @@ RemoteTensorCreateResult create_vulkan_remote_tensor(const ov::element::Type& ty
         desc.cpu_write = host_visible;
         desc.prefer_device_local = !host_visible;
         tensor.buf = allocator.allocate(desc);
-        owns_buffer = true;
+        tensor.buf.owned = true;
     }
 
     result.tensor = tensor;
-    result.owns_buffer = owns_buffer;
+    result.release_fn = &release_vulkan_remote_tensor;
     return result;
-}
-
-void release_vulkan_remote_tensor(GpuTensor& tensor, bool owns_buffer) {
-    if (!owns_buffer || tensor.buf.backend != GpuBackend::Vulkan || !tensor.buf.buffer) {
-        return;
-    }
-    vulkan_free_buffer(tensor.buf);
-    tensor.buf.buffer = nullptr;
-    tensor.buf.size = 0;
 }
 
 }  // namespace gfx_plugin

@@ -6,6 +6,7 @@
 
 #include "openvino/core/except.hpp"
 #include "runtime/memory_manager.hpp"
+#include "runtime/gfx_shape_utils.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -13,15 +14,9 @@ namespace gfx_plugin {
 GpuTensor bind_host_input_metal(const ov::Tensor& host,
                                 MetalAllocatorCore* metal_core,
                                 const char* error_prefix) {
-    OPENVINO_ASSERT(host && host.data(), error_prefix, ": input host tensor is empty");
-    const size_t bytes = host.get_byte_size();
-
-    GpuTensor tensor{};
-    tensor.shape = host.get_shape();
-    tensor.expected_type = host.get_element_type();
-    tensor.buf.type = host.get_element_type();
-    tensor.buf.backend = GpuBackend::Metal;
-
+    HostInputBinding binding = prepare_host_input_binding(host, GpuBackend::Metal, error_prefix);
+    GpuTensor tensor = binding.tensor;
+    const size_t bytes = binding.bytes;
     if (bytes == 0) {
         return tensor;
     }
@@ -44,13 +39,8 @@ OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
     OutputBindingResult result{};
     result.device_tensor = dev;
 
-    size_t bytes = 0;
-    if (info.type != ov::element::dynamic) {
-        bytes = info.type.size();
-        for (auto d : info.shape) {
-            bytes *= d;
-        }
-    }
+    HostOutputBinding host_binding = prepare_host_output_binding(info, host_override);
+    size_t bytes = host_binding.bytes;
 
     OPENVINO_ASSERT(metal_core && metal_allocator,
                     error_prefix, ": Metal allocator is not available");
@@ -65,12 +55,12 @@ OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
         result.device_tensor.expected_type = info.type;
         result.device_tensor.shape = info.shape;
         result.device_tensor.prefer_private = false;
-        result.host_tensor = *host_override;
+        result.host_tensor = host_binding.host;
         return result;
     }
 
     if (dev.buf.host_visible && dev.buf.buffer) {
-        void* ptr = metal_map_buffer(dev.buf);
+        void* ptr = gpu_map_buffer(dev.buf);
         OPENVINO_ASSERT(ptr, error_prefix, ": shared output buffer has no CPU pointer");
         result.host_tensor = ov::Tensor(info.type, info.shape, ptr);
         result.device_tensor.expected_type = info.type;
@@ -96,7 +86,7 @@ OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
         result.device_tensor.expected_type = info.type;
         result.device_tensor.shape = info.shape;
         result.device_tensor.prefer_private = false;
-        void* ptr = metal_map_buffer(shared);
+        void* ptr = gpu_map_buffer(shared);
         OPENVINO_ASSERT(ptr, error_prefix, ": shared output buffer has no CPU pointer");
         result.host_tensor = ov::Tensor(info.type, info.shape, ptr);
         return result;
@@ -105,11 +95,7 @@ OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
     result.device_tensor.expected_type = info.type;
     result.device_tensor.shape = info.shape;
     result.device_tensor.prefer_private = false;
-    if (host_override && *host_override) {
-        result.host_tensor = *host_override;
-    } else {
-        result.host_tensor = ov::Tensor(info.type, info.shape);
-    }
+    result.host_tensor = host_binding.host;
     return result;
 }
 

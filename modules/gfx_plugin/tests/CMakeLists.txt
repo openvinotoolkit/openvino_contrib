@@ -55,7 +55,7 @@ target_sources(${TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/transforms/conv_relu_fusion.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/memory_manager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/gfx_backend_utils.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/gfx_kernel_cache.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/kernel_ir/gfx_kernel_cache.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime/gfx_logger.cpp
 )
 if(NOT GFX_BACKEND_VULKAN_AVAILABLE)

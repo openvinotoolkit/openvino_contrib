@@ -10,9 +10,10 @@
 #include "openvino/op/constant.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
-#include "mlir_builder.hpp"
-#include "mlir/codegen/codegen_common.hpp"
-#include "backends/metal/runtime/metal_backend.hpp"
+#include "kernel_ir/gfx_kernel_args.hpp"
+#include "mlir/mlir_builder.hpp"
+#include "mlir_codegen/codegen_common.hpp"
+#include "backends/metal/codegen/metal_codegen_backend.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -191,9 +192,9 @@ void MetalConv3DOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     std::vector<KernelArg> args;
     args.reserve(4);
-    args.push_back(make_buffer_arg(0, src->buf));
-    args.push_back(make_buffer_arg(1, m_weights));
-    args.push_back(make_buffer_arg(2, dst_tensor.buf));
+    append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
+    append_kernel_buffer_arg(args, 1, m_weights, name().c_str(), "weights");
+    append_kernel_output_args(args, 2, &dst_tensor, name().c_str());
     args.push_back(make_bytes_arg(3, &params, sizeof(params)));
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }

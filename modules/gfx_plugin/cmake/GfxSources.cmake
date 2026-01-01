@@ -7,9 +7,11 @@ include_guard(GLOBAL)
 set(_gfx_src_dir "${CMAKE_CURRENT_LIST_DIR}/../src")
 
 set(GFX_PLUGIN_SOURCES
+    ${_gfx_src_dir}/plugin/backend_factory.cpp
     ${_gfx_src_dir}/plugin/compiled_model.cpp
     ${_gfx_src_dir}/plugin/compiled_model_backend_resources.cpp
     ${_gfx_src_dir}/plugin/gfx_device_info.cpp
+    ${_gfx_src_dir}/plugin/gfx_property_lists.cpp
     ${_gfx_src_dir}/plugin/gfx_property_utils.cpp
     ${_gfx_src_dir}/plugin/gfx_remote_utils.cpp
     ${_gfx_src_dir}/plugin/infer_request_common.cpp
@@ -23,12 +25,13 @@ set(GFX_PLUGIN_SOURCES
 )
 
 set(GFX_PLUGIN_HEADERS
+    ${_gfx_src_dir}/plugin/backend_factory.hpp
     ${_gfx_src_dir}/plugin/backend_state.hpp
     ${_gfx_src_dir}/plugin/gfx_device_info.hpp
     ${_gfx_src_dir}/plugin/gfx_profiling_utils.hpp
     ${_gfx_src_dir}/plugin/gfx_remote_utils.hpp
     ${_gfx_src_dir}/plugin/gfx_property_utils.hpp
-    ${_gfx_src_dir}/plugin/infer_request_backend_hooks.hpp
+    ${_gfx_src_dir}/plugin/gfx_property_lists.hpp
     ${_gfx_src_dir}/plugin/infer_request_state.hpp
     ${_gfx_src_dir}/plugin/infer_pipeline.hpp
     ${_gfx_src_dir}/plugin/model_serialization.hpp
@@ -37,7 +40,6 @@ set(GFX_PLUGIN_HEADERS
     ${_gfx_src_dir}/backends/vulkan/plugin/vulkan_properties.hpp
     ${_gfx_src_dir}/backends/vulkan/plugin/compiled_model_state.hpp
     ${_gfx_src_dir}/plugin/remote_context_support.hpp
-    ${_gfx_src_dir}/runtime/gfx_remote_context.hpp
     ${_gfx_src_dir}/transforms/conv_relu_fusion.hpp
     ${_gfx_src_dir}/transforms/pipeline.hpp
     ${_gfx_src_dir}/../include/openvino/gfx_plugin/plugin.hpp
@@ -51,10 +53,13 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/gfx_activation.hpp
     ${_gfx_src_dir}/runtime/gfx_backend_caps.hpp
     ${_gfx_src_dir}/runtime/gfx_backend_utils.hpp
-    ${_gfx_src_dir}/runtime/gfx_kernel_cache.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_args.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.hpp
     ${_gfx_src_dir}/runtime/gfx_op_support.hpp
+    ${_gfx_src_dir}/runtime/gfx_profiler.hpp
     ${_gfx_src_dir}/runtime/gpu_backend_base.hpp
-    ${_gfx_src_dir}/mlir/gfx_codegen_backend.hpp
+    ${_gfx_src_dir}/mlir_codegen/gfx_codegen_backend.hpp
     ${_gfx_src_dir}/runtime/gpu_buffer.hpp
     ${_gfx_src_dir}/runtime/gpu_buffer_pool.hpp
     ${_gfx_src_dir}/runtime/gfx_stage_factory.hpp
@@ -62,35 +67,39 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/execution_dispatcher.hpp
     ${_gfx_src_dir}/runtime/gpu_tensor.hpp
     ${_gfx_src_dir}/runtime/gpu_types.hpp
-    ${_gfx_src_dir}/runtime/gfx_kernel_dispatch.hpp
-    ${_gfx_src_dir}/mlir/gfx_kernel_plan.hpp
-    ${_gfx_src_dir}/mlir/gfx_kernel_spec.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_dispatch.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_plan.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_spec.hpp
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.hpp
     ${_gfx_src_dir}/mlir/mlir_support.hpp
     ${_gfx_src_dir}/runtime/gfx_logger.hpp
     ${_gfx_src_dir}/runtime/gfx_op_utils.hpp
+    ${_gfx_src_dir}/runtime/gfx_remote_context.hpp
+    ${_gfx_src_dir}/runtime/gfx_remote_tensor.hpp
     ${_gfx_src_dir}/backends/vulkan/runtime/memory_api.hpp
 )
 
 set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/gfx_backend_caps.cpp
     ${_gfx_src_dir}/runtime/gfx_backend_utils.cpp
-    ${_gfx_src_dir}/runtime/gfx_kernel_cache.cpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.cpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.cpp
     ${_gfx_src_dir}/runtime/gfx_op_support.cpp
     ${_gfx_src_dir}/runtime/execution_dispatcher.cpp
     ${_gfx_src_dir}/runtime/memory_manager.cpp
-    ${_gfx_src_dir}/runtime/gfx_remote_context.cpp
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.cpp
     ${_gfx_src_dir}/mlir/mlir_support.cpp
     ${_gfx_src_dir}/runtime/gfx_logger.cpp
     ${_gfx_src_dir}/runtime/gfx_op_utils.cpp
+    ${_gfx_src_dir}/runtime/gfx_remote_context.cpp
+    ${_gfx_src_dir}/runtime/gfx_remote_tensor.cpp
 )
 
 set(GFX_RUNTIME_METAL_SOURCES
     ${_gfx_src_dir}/backends/metal/runtime/metal_executor.cpp
     ${_gfx_src_dir}/backends/metal/runtime/gpu_memory.mm
     ${_gfx_src_dir}/backends/metal/codegen/metal_compiler.mm
-    ${_gfx_src_dir}/backends/metal/runtime/metal_backend.mm
+    ${_gfx_src_dir}/backends/metal/codegen/metal_codegen_backend.mm
     ${_gfx_src_dir}/backends/metal/runtime/dtype.cpp
     ${_gfx_src_dir}/backends/metal/runtime/metal_memory.mm
     ${_gfx_src_dir}/backends/metal/runtime/op.mm
@@ -126,6 +135,7 @@ set(GFX_RUNTIME_METAL_SOURCES
     ${_gfx_src_dir}/backends/metal/runtime/op_split.mm
     ${_gfx_src_dir}/backends/metal/runtime/op_tile.mm
     ${_gfx_src_dir}/backends/metal/runtime/op_topk.mm
+    ${_gfx_src_dir}/backends/metal/runtime/op_support.cpp
     ${_gfx_src_dir}/backends/metal/runtime/memory/allocator.mm
     ${_gfx_src_dir}/backends/metal/runtime/memory/allocator_core.mm
     ${_gfx_src_dir}/backends/metal/runtime/memory/const_cache.mm
@@ -140,7 +150,7 @@ set(GFX_RUNTIME_METAL_SOURCES
 
 set(GFX_RUNTIME_METAL_HEADERS
     ${_gfx_src_dir}/backends/metal/codegen/metal_compiler.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/metal_backend.hpp
+    ${_gfx_src_dir}/backends/metal/codegen/metal_codegen_backend.hpp
     ${_gfx_src_dir}/backends/metal/runtime/dtype.hpp
     ${_gfx_src_dir}/backends/metal/runtime/logger.hpp
     ${_gfx_src_dir}/backends/metal/runtime/metal_memory.hpp
@@ -198,7 +208,8 @@ set(GFX_RUNTIME_METAL_HEADERS
 
 # TODO: add Vulkan backend sources once they are introduced.
 set(GFX_RUNTIME_VULKAN_SOURCES
-    ${_gfx_src_dir}/backends/vulkan/codegen/vulkan_compiler.cpp
+    ${_gfx_src_dir}/backends/vulkan/codegen/vulkan_codegen_backend.cpp
+    ${_gfx_src_dir}/backends/vulkan/runtime/op_support.cpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_backend.cpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_executor.cpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_memory.cpp
@@ -207,7 +218,7 @@ set(GFX_RUNTIME_VULKAN_SOURCES
 )
 
 set(GFX_RUNTIME_VULKAN_HEADERS
-    ${_gfx_src_dir}/backends/vulkan/codegen/vulkan_compiler.hpp
+    ${_gfx_src_dir}/backends/vulkan/codegen/vulkan_codegen_backend.hpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_backend.hpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_executor.hpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_memory.hpp

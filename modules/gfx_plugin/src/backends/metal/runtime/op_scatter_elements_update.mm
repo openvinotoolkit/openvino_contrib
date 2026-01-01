@@ -6,14 +6,16 @@
 
 #include <string>
 
-#include "backends/metal/runtime/metal_backend.hpp"
+#include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "mlir/mlir_builder.hpp"
-#include "mlir/codegen/codegen_common.hpp"
+#include "mlir_codegen/codegen_common.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
+#include "kernel_ir/gfx_kernel_args.hpp"
 #include "mlir/IR/MLIRContext.h"
+#include "runtime/gfx_shape_utils.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -80,11 +82,9 @@ void MetalScatterElementsUpdateOp::parse_scatter_elements_update(const std::shar
     OPENVINO_ASSERT(axis_const, "ScatterElementsUpdate: axis must be constant");
     auto axis_v = axis_const->cast_vector<int64_t>();
     OPENVINO_ASSERT(axis_v.size() == 1, "ScatterElementsUpdate: axis must be scalar");
-    int64_t axis = axis_v[0];
-    if (axis < 0)
-        axis += static_cast<int64_t>(data_shape.size());
-    OPENVINO_ASSERT(axis >= 0 && axis < static_cast<int64_t>(data_shape.size()),
-                    "ScatterElementsUpdate: axis out of range");
+    const int64_t axis = normalize_axis(axis_v[0],
+                                        data_shape.size(),
+                                        "ScatterElementsUpdate");
 
     m_rank = static_cast<uint32_t>(data_shape.size());
     m_axis = static_cast<uint32_t>(axis);
@@ -231,8 +231,8 @@ void MetalScatterElementsUpdateOp::execute(MetalCommandBufferHandle cmd_buf_hand
         KernelDispatch dispatch = make_1d_dispatch(static_cast<size_t>(m_total_data), m_kernel_init->clamp_threadgroup_size(256));
         std::vector<KernelArg> args;
         args.reserve(3);
-        args.push_back(make_buffer_arg(0, data->buf));
-        args.push_back(make_buffer_arg(1, dst.buf));
+        append_kernel_input_args(args, 1, [&](size_t) { return data; }, name().c_str());
+        append_kernel_output_args(args, 1, &dst, name().c_str());
         args.push_back(make_bytes_arg(2, &params, sizeof(params)));
         execute_kernel(*m_kernel_init, cmd_buf_handle, dispatch, args);
     }
@@ -242,9 +242,11 @@ void MetalScatterElementsUpdateOp::execute(MetalCommandBufferHandle cmd_buf_hand
         KernelDispatch dispatch = make_1d_dispatch(static_cast<size_t>(m_total_updates), m_kernel_update->clamp_threadgroup_size(256));
         std::vector<KernelArg> args;
         args.reserve(4);
-        args.push_back(make_buffer_arg(0, indices->buf));
-        args.push_back(make_buffer_arg(1, updates->buf));
-        args.push_back(make_buffer_arg(2, dst.buf));
+        append_kernel_input_args(args,
+                                 2,
+                                 [&](size_t idx) { return idx == 0 ? indices : updates; },
+                                 name().c_str());
+        append_kernel_output_args(args, 2, &dst, name().c_str());
         args.push_back(make_bytes_arg(3, &params, sizeof(params)));
         execute_kernel(*m_kernel_update, cmd_buf_handle, dispatch, args);
     }

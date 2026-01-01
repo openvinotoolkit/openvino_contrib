@@ -130,7 +130,7 @@ void metal_release_command_queue(MetalCommandQueueHandle queue) {
 
 void metal_release_external_buffer(MetalBuffer& buf) {
 #ifdef __OBJC__
-    if (!buf.external || !buf.buffer)
+    if (!buf.external || !buf.buffer || !buf.owned)
         return;
     auto mb = static_cast<id<MTLBuffer>>(buf.buffer);
     if (mb) {

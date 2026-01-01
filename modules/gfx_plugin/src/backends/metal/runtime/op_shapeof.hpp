@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "openvino/op/shape_of.hpp"
-#include "mlir/codegen/codegen_desc.hpp"
+#include "mlir_codegen/codegen_desc.hpp"
 #include "backends/metal/runtime/op.hpp"
 
 namespace ov {

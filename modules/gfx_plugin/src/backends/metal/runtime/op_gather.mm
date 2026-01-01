@@ -10,13 +10,15 @@
 
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"
-#include "backends/metal/runtime/metal_backend.hpp"
+#include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "mlir/mlir_builder.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
+#include "kernel_ir/gfx_kernel_args.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/codegen/codegen_common.hpp"
+#include "mlir_codegen/codegen_common.hpp"
+#include "runtime/gfx_shape_utils.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -26,12 +28,6 @@ std::vector<int64_t> get_axis_const(const std::shared_ptr<const ov::Node>& node)
     auto axis_c = ov::as_type_ptr<const ov::op::v0::Constant>(node->get_input_node_shared_ptr(2));
     OPENVINO_ASSERT(axis_c, "Gather: axis must be constant");
     return axis_c->cast_vector<int64_t>();
-}
-
-uint64_t product(const ov::Shape& s, size_t start, size_t end) {
-    uint64_t prod = 1;
-    for (size_t i = start; i < end; ++i) prod *= s[i];
-    return prod;
 }
 }  // namespace
 
@@ -61,21 +57,18 @@ void MetalGatherOp::parse_gather(const std::shared_ptr<const ov::Node>& node) {
 
     auto axis_v = get_axis_const(node);
     OPENVINO_ASSERT(axis_v.size() == 1, "Gather: axis must be scalar");
-    int64_t axis = axis_v[0];
+    const int64_t axis = axis_v[0];
 
     const auto data_shape = node->get_input_shape(0);
     const auto idx_shape = node->get_input_shape(1);
     OPENVINO_ASSERT(!data_shape.empty(), "Gather: data shape must be static");
     OPENVINO_ASSERT(!idx_shape.empty(), "Gather: indices shape must be static");
 
-    if (axis < 0)
-        axis += static_cast<int64_t>(data_shape.size());
-    OPENVINO_ASSERT(axis >= 0 && axis < static_cast<int64_t>(data_shape.size()), "Gather: axis out of range");
-
-    m_axis = axis;
-    m_axis_dim = static_cast<uint64_t>(data_shape[static_cast<size_t>(axis)]);
-    m_outer = product(data_shape, 0, static_cast<size_t>(axis));
-    m_inner = product(data_shape, static_cast<size_t>(axis) + 1, data_shape.size());
+    const int64_t axis_norm = normalize_axis(axis, data_shape.size(), "Gather");
+    m_axis = axis_norm;
+    m_axis_dim = static_cast<uint64_t>(data_shape[static_cast<size_t>(axis_norm)]);
+    m_outer = shape_product(data_shape, 0, static_cast<size_t>(axis_norm));
+    m_inner = shape_product(data_shape, static_cast<size_t>(axis_norm) + 1, data_shape.size());
     m_indices_count = ov::shape_size(idx_shape);
 
     m_element_type = node->get_output_element_type(0);
@@ -183,9 +176,11 @@ void MetalGatherOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     std::vector<KernelArg> args;
     args.reserve(4);
-    args.push_back(make_buffer_arg(0, data->buf));
-    args.push_back(make_buffer_arg(1, indices->buf));
-    args.push_back(make_buffer_arg(2, dst.buf));
+    append_kernel_input_args(args,
+                             2,
+                             [&](size_t idx) { return idx == 0 ? data : indices; },
+                             name().c_str());
+    append_kernel_output_args(args, 2, &dst, name().c_str());
     args.push_back(make_bytes_arg(3, &params, sizeof(params)));
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }

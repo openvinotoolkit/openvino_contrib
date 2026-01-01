@@ -95,7 +95,7 @@ GpuBuffer vulkan_allocate_buffer(size_t bytes,
 }
 
 void vulkan_free_buffer(GpuBuffer& buf) {
-    if (!buf.buffer || buf.external) {
+    if (!buf.buffer || buf.external || !buf.owned) {
         return;
     }
     auto& ctx = VulkanContext::instance();

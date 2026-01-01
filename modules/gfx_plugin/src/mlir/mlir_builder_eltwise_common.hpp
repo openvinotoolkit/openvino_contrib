@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "mlir_builder.hpp"
+#include "mlir/mlir_builder.hpp"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"

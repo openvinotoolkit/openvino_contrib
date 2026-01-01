@@ -10,12 +10,12 @@
 #include <vulkan/vulkan.h>
 
 #include "openvino/runtime/profiling_info.hpp"
-#include "openvino/gfx_plugin/profiling.hpp"
+#include "runtime/gfx_profiler.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 
-class VulkanProfiler {
+class VulkanProfiler : public GfxProfiler {
 public:
     struct SamplePair {
         uint32_t begin = UINT32_MAX;
@@ -26,11 +26,12 @@ public:
                    VkPhysicalDevice physical_device,
                    uint32_t queue_family_index);
 
-    void set_config(const GfxProfilerConfig& cfg);
+    void set_config(const GfxProfilerConfig& cfg) override;
+    const GfxProfilerConfig& config() const override { return m_cfg; }
     bool enabled() const { return m_enabled && m_supported; }
 
-    void begin_infer(size_t expected_samples);
-    void end_infer();
+    void begin_infer(size_t expected_samples) override;
+    void end_infer(GpuCommandBufferHandle command_buffer) override;
 
     void begin_node(uint32_t node_id,
                     const char* node_name,
@@ -41,7 +42,8 @@ public:
     SamplePair reserve_samples();
     void write_timestamp(VkCommandBuffer cmd, uint32_t query_index) const;
 
-    std::vector<ov::ProfilingInfo> export_ov() const;
+    std::vector<ov::ProfilingInfo> export_ov() const override;
+    void* native_handle() override { return this; }
 
 private:
     struct NodeRec {

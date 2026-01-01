@@ -8,14 +8,12 @@
 #include <string>
 #include <vector>
 
-#include "openvino/runtime/profiling_info.hpp"
-
 #include "backends/metal/runtime/memory/buffer.hpp"
 #include "backends/metal/runtime/memory/device_caps.hpp"
 #include "backends/metal/runtime/memory/memory_stats.hpp"
 #include "backends/metal/runtime/profiling/gpu_timestamps.hpp"
-#include "openvino/gfx_plugin/profiling.hpp"
 #include "backends/metal/runtime/profiling/profiling_report.hpp"
+#include "runtime/gfx_profiler.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -27,15 +25,15 @@ namespace gfx_plugin {
 #    define GFX_PROFILER_API
 #endif
 
-class GFX_PROFILER_API MetalProfiler {
+class GFX_PROFILER_API MetalProfiler : public GfxProfiler {
 public:
     MetalProfiler(GfxProfilerConfig cfg, MetalDeviceCaps caps, MetalDeviceHandle device);
 
-    void set_config(GfxProfilerConfig cfg);
-    const GfxProfilerConfig& config() const { return m_cfg; }
+    void set_config(const GfxProfilerConfig& cfg) override;
+    const GfxProfilerConfig& config() const override { return m_cfg; }
 
-    void begin_infer(size_t expected_samples);
-    void end_infer(MetalCommandBufferHandle command_buffer);
+    void begin_infer(size_t expected_samples) override;
+    void end_infer(GpuCommandBufferHandle command_buffer) override;
 
     void begin_node(uint32_t node_id, const char* node_name, const char* node_type, const char* exec_type);
     void end_node(uint32_t node_id,
@@ -49,8 +47,10 @@ public:
     void set_memory_stats(const MetalMemoryStats& stats);
     void record_alloc(const char* tag, size_t bytes, bool reused, std::chrono::microseconds cpu_us);
 
-    std::vector<ov::ProfilingInfo> export_ov() const;
+    std::vector<ov::ProfilingInfo> export_ov() const override;
     MetalProfilingReport export_extended() const;
+    std::string export_extended_json() const override;
+    void* native_handle() override { return this; }
 
 private:
     struct SamplePair {

@@ -7,7 +7,6 @@
 #include <iostream>
 #include <cstring>
 #include <algorithm>
-#include <cstdlib>
 #include <sstream>
 
 #import <Metal/Metal.h>
@@ -19,11 +18,13 @@
 #endif
 
 #include "openvino/gfx_plugin/compiled_model.hpp"
+#include "openvino/core/any.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/runtime/make_tensor.hpp"
 #include "openvino/runtime/tensor.hpp"
-#include "plugin/infer_request_backend_hooks.hpp"
 #include "runtime/gfx_logger.hpp"
+#include "runtime/gfx_profiler.hpp"
+#include "runtime/gfx_shape_utils.hpp"
 #include "runtime/gpu_buffer_pool.hpp"
 #include "runtime/memory_manager.hpp"
 #include "backends/metal/plugin/compiled_model_state.hpp"
@@ -32,13 +33,15 @@
 #include "backends/metal/runtime/profiling/profiler.hpp"
 #include "backends/metal/plugin/infer_io_metal.hpp"
 #include "plugin/infer_request_state.hpp"
+#include "plugin/gfx_profiling_utils.hpp"
+#include "plugin/infer_profiling_utils.hpp"
 #include "infer_pipeline.hpp"
 #include "infer_io_utils.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 
-struct MetalInferState {
+struct MetalInferState final : BackendInferState {
     MetalAllocatorCore* alloc_core = nullptr;
     MetalDeviceCaps caps{};
     MetalTensorMap tensor_map;
@@ -56,27 +59,32 @@ struct MetalInferState {
           allocator(core, heaps, freelist, staging, caps_in) {}
 };
 
-void MetalInferStateDeleter::operator()(MetalInferState* ptr) const {
-    delete ptr;
+namespace {
+
+MetalInferState* get_metal_state(InferRequestState& state) {
+    return dynamic_cast<MetalInferState*>(state.backend.get());
 }
 
-void init_backend_infer_state(InferRequestState& state, const CompiledModel& cm) {
-    if (cm.backend() != GpuBackend::Metal) {
-        return;
-    }
-    auto* metal = dynamic_cast<const MetalBackendState*>(cm.backend_state());
-    OPENVINO_ASSERT(metal, "GFX: Metal backend state is not initialized");
-    OPENVINO_ASSERT(metal->alloc_core, "GFX: Metal allocator core is not initialized");
-    state.metal.reset(new MetalInferState(*metal->alloc_core, metal->caps));
+const MetalInferState* get_metal_state(const InferRequestState& state) {
+    return dynamic_cast<const MetalInferState*>(state.backend.get());
 }
 
-ov::SoPtr<ov::ITensor> get_backend_tensor_override(const InferRequestState& state,
-                                                   size_t idx,
-                                                   const std::vector<ov::Output<const ov::Node>>& outputs) {
-    if (!state.metal || !state.metal->tensor_map.has_output_device(idx)) {
+}  // namespace
+
+void MetalBackendState::init_infer_state(InferRequestState& state) const {
+    OPENVINO_ASSERT(alloc_core, "GFX: Metal allocator core is not initialized");
+    state.backend = std::make_unique<MetalInferState>(*alloc_core, caps);
+}
+
+ov::SoPtr<ov::ITensor> MetalBackendState::get_tensor_override(
+    const InferRequestState& state,
+    size_t idx,
+    const std::vector<ov::Output<const ov::Node>>& outputs) const {
+    const auto* metal_state = get_metal_state(state);
+    if (!metal_state || !metal_state->tensor_map.has_output_device(idx)) {
         return {};
     }
-    const auto& dev = state.metal->tensor_map.get_output_device(idx);
+    const auto& dev = metal_state->tensor_map.get_output_device(idx);
     if (dev.buf.storage_mode != static_cast<uint32_t>(MTLStorageModeShared)) {
         OPENVINO_THROW("GFX: output buffer is not host-visible");
     }
@@ -104,11 +112,12 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
         OPENVINO_ASSERT(cm->backend() == GpuBackend::Metal, "GFX: Metal infer called for non-metal backend");
 
         auto& state = *m_state;
-        OPENVINO_ASSERT(state.metal && state.metal->alloc_core, "MetalAllocator is not initialized");
-        auto* alloc_core = state.metal->alloc_core;
-        auto& allocator = state.metal->allocator;
-        auto& tensor_map = state.metal->tensor_map;
-        auto& caps = state.metal->caps;
+        auto* metal_state = get_metal_state(state);
+        OPENVINO_ASSERT(metal_state && metal_state->alloc_core, "MetalAllocator is not initialized");
+        auto* alloc_core = metal_state->alloc_core;
+        auto& allocator = metal_state->allocator;
+        auto& tensor_map = metal_state->tensor_map;
+        auto& caps = metal_state->caps;
 
         if (!state.debug_buffers.empty()) {
             for (auto& buf : state.debug_buffers) {
@@ -158,26 +167,12 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                 tensor_map.bind_input_device(idx, dev);
             });
 
-    MetalProfiler* profiler = nullptr;
-    if (cm && cm->enable_profiling()) {
-        state.profiler_cfg.level = cm->profiling_level();
-        const bool detailed = (state.profiler_cfg.level == ProfilingLevel::Detailed);
-        state.profiler_cfg.include_segments = detailed;
-        state.profiler_cfg.include_allocations = detailed;
-        state.profiler_cfg.include_transfers = detailed;
-        if (state.profiler_cfg.level != ProfilingLevel::Off) {
-            if (!state.metal_profiler) {
-                auto* metal = dynamic_cast<const MetalBackendState*>(cm->backend_state());
-                OPENVINO_ASSERT(metal, "GFX: Metal backend state is not initialized");
-                state.metal_profiler = std::make_unique<MetalProfiler>(state.profiler_cfg, caps, metal->device);
-            } else {
-                state.metal_profiler->set_config(state.profiler_cfg);
-            }
-            profiler = state.metal_profiler.get();
-        }
-    }
+    GfxProfiler* profiler = prepare_infer_profiler(*cm, state, "GFX");
+    MetalProfiler* metal_profiler = profiler
+                                        ? static_cast<MetalProfiler*>(profiler->native_handle())
+                                        : nullptr;
     const bool detailed = (state.profiler_cfg.level == ProfilingLevel::Detailed);
-    allocator.set_profiler(profiler, detailed);
+    allocator.set_profiler(metal_profiler, detailed);
 
     std::vector<InferStage> pipeline;
     auto run_pipeline = [&]() {
@@ -194,12 +189,6 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
         auto tensor_type = [](const MetalTensor& t) {
             return t.expected_type == ov::element::dynamic ? t.buf.type : t.expected_type;
         };
-        auto tensor_bytes = [&](const MetalTensor& t, const ov::Shape& shape) -> size_t {
-            if (shape.empty())
-                return 0;
-            const auto ty = tensor_type(t);
-            return ov::shape_size(shape) * ty.size();
-        };
         auto safe_check = [&](const char* label,
                               const MetalTensor* t,
                               const ov::Shape& shape,
@@ -212,7 +201,7 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
             }
             if (shape.empty())
                 return;
-            const size_t need = tensor_bytes(*t, shape);
+            const size_t need = tensor_byte_size(shape, tensor_type(*t));
             OPENVINO_ASSERT(need <= t->buf.size,
                             "GFX: ", label, " buffer overflow (need ", need,
                             ", have ", t->buf.size, ", shape=", shape_to_string(shape), ")");
@@ -225,44 +214,42 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
         const auto& param_map = cm->parameter_index();
 
         const bool profiling_enabled = (profiler != nullptr);
+        void* stage_profiler = profiler ? profiler->native_handle() : nullptr;
         auto* metal = dynamic_cast<const MetalBackendState*>(cm->backend_state());
         OPENVINO_ASSERT(metal && metal->const_manager, "GFX: Metal buffer manager is not initialized");
-        pipeline = build_bound_pipeline(descs,
-                                        metal->const_manager.get(),
-                                        profiler,
-                                        profiling_enabled,
-                                        get_outputs(),
-                                        node_map,
-                                        param_map,
-                                        state.bound_remote_outputs,
-                                        state.bound_remote_inputs,
-                                        GpuBackend::Metal,
-                                        "GFX");
-
-        // Allocate outputs (reuse buffers across iterations via handles).
         MetalGpuAllocator gpu_alloc(allocator, *alloc_core, caps);
         GpuBufferPool pool(gpu_alloc);
-        allocate_stage_outputs(
-            pipeline,
-            state.stage_output_handles,
-            pool,
-            [&](InferStage& stage,
-                size_t oi,
-                GpuTensor& out_ref,
-                GpuBufferDesc& desc,
-                const char* error_prefix) {
-                const bool is_model_output = (oi < stage.output_is_model_output.size()) &&
-                                             stage.output_is_model_output[oi];
-                return init_stage_output_desc(GpuBackend::Metal,
-                                              stage,
-                                              oi,
-                                              out_ref,
-                                              desc,
-                                              is_model_output,
-                                              /*skip_view_ops=*/false,
-                                              error_prefix);
-            },
-            "GFX");
+        pipeline = build_pipeline_with_outputs(descs,
+                                               metal->const_manager.get(),
+                                               stage_profiler,
+                                               profiling_enabled,
+                                               get_outputs(),
+                                               node_map,
+                                               param_map,
+                                               state.bound_remote_outputs,
+                                               state.bound_remote_inputs,
+                                               GpuBackend::Metal,
+                                               pool,
+                                               metal_state->stage_output_handles,
+                                               [](std::vector<InferStage>&) {},
+                                               [&](InferStage& stage,
+                                                   size_t oi,
+                                                   GpuTensor& out_ref,
+                                                   GpuBufferDesc& desc,
+                                                   const char* error_prefix) {
+                                                   const bool is_model_output =
+                                                       (oi < stage.output_is_model_output.size()) &&
+                                                       stage.output_is_model_output[oi];
+                                                   return init_stage_output_desc(GpuBackend::Metal,
+                                                                                 stage,
+                                                                                 oi,
+                                                                                 out_ref,
+                                                                                 desc,
+                                                                                 is_model_output,
+                                                                                 /*skip_view_ops=*/true,
+                                                                                 error_prefix);
+                                               },
+                                               "GFX");
 
         if (profiler) {
             const size_t expected_samples = pipeline.size() * 4;
@@ -275,83 +262,77 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
         OPENVINO_ASSERT(cq, "GFX: command queue is null");
         id<MTLCommandBuffer> cb = [cq commandBuffer];
 
-        for (const auto& stage : pipeline) {
-            auto resolved = resolve_stage_inputs(stage,
-                                                 node_map,
-                                                 param_map,
-                                                 pipeline,
-                                                 [&](size_t input_idx) -> GpuTensor* {
-                                                     return &tensor_map.get_input_device(input_idx);
-                                                 });
-            if (gfx_log_debug_enabled() || metal_safe_debug_enabled()) {
-                const std::string node_name =
-                    stage.node ? stage.node->get_friendly_name() : stage.stage->name();
-                const std::string node_type =
-                    stage.node ? stage.node->get_type_name() : stage.stage->type();
-                if (gfx_log_debug_enabled()) {
-                    std::ostringstream oss;
-                    oss << "Op=" << node_type << " name=" << node_name;
+        execute_pipeline(
+            pipeline,
+            node_map,
+            param_map,
+            [&](size_t input_idx) -> GpuTensor* {
+                return &tensor_map.get_input_device(input_idx);
+            },
+            [&](InferStage& stage, const std::vector<GpuTensor*>& resolved) {
+                if (gfx_log_debug_enabled() || metal_safe_debug_enabled()) {
+                    const std::string node_name =
+                        stage.node ? stage.node->get_friendly_name() : stage.stage->name();
+                    const std::string node_type =
+                        stage.node ? stage.node->get_type_name() : stage.stage->type();
+                    if (gfx_log_debug_enabled()) {
+                        std::ostringstream oss;
+                        oss << "Op=" << node_type << " name=" << node_name;
+                        for (size_t i = 0; i < resolved.size(); ++i) {
+                            if (!resolved[i])
+                                continue;
+                            const auto& t = *resolved[i];
+                            oss << " in" << i << "_shape=" << shape_to_string(t.shape)
+                                << " in" << i << "_bytes=" << t.buf.size;
+                        }
+                        for (size_t i = 0; i < stage.outputs.size(); ++i) {
+                            const auto& t = stage.outputs[i];
+                            if (!t)
+                                continue;
+                            oss << " out" << i << "_shape=" << shape_to_string(t->shape)
+                                << " out" << i << "_bytes=" << t->buf.size;
+                        }
+                        GFX_LOG_DEBUG("PIPELINE", oss.str());
+                    }
                     for (size_t i = 0; i < resolved.size(); ++i) {
                         if (!resolved[i])
                             continue;
-                        const auto& t = *resolved[i];
-                        oss << " in" << i << "_shape=" << shape_to_string(t.shape)
-                            << " in" << i << "_bytes=" << t.buf.size;
+                        ov::Shape in_shape = resolved[i]->shape;
+                        if (in_shape.empty() && stage.node &&
+                            stage.node->get_input_partial_shape(i).is_static()) {
+                            in_shape = stage.node->get_input_shape(i);
+                        }
+                        safe_check(("input" + std::to_string(i)).c_str(), resolved[i], in_shape, true);
                     }
                     for (size_t i = 0; i < stage.outputs.size(); ++i) {
-                        const auto& t = stage.outputs[i];
-                        if (!t)
+                        if (!stage.outputs[i])
                             continue;
-                        oss << " out" << i << "_shape=" << shape_to_string(t->shape)
-                            << " out" << i << "_bytes=" << t->buf.size;
+                        ov::Shape out_shape = stage.outputs[i]->shape;
+                        if (out_shape.empty() && stage.node &&
+                            stage.node->get_output_partial_shape(i).is_static()) {
+                            out_shape = stage.node->get_output_shape(i);
+                        }
+                        safe_check(("output" + std::to_string(i)).c_str(),
+                                   stage.outputs[i].get(),
+                                   out_shape,
+                                   false);
                     }
-                    GFX_LOG_DEBUG("PIPELINE", oss.str());
                 }
-                for (size_t i = 0; i < resolved.size(); ++i) {
-                    if (!resolved[i])
-                        continue;
-                    ov::Shape in_shape = resolved[i]->shape;
-                    if (in_shape.empty() && stage.node &&
-                        stage.node->get_input_partial_shape(i).is_static()) {
-                        in_shape = stage.node->get_input_shape(i);
-                    }
-                    safe_check(("input" + std::to_string(i)).c_str(), resolved[i], in_shape, true);
-                }
-                for (size_t i = 0; i < stage.outputs.size(); ++i) {
-                    if (!stage.outputs[i])
-                        continue;
-                    ov::Shape out_shape = stage.outputs[i]->shape;
-                    if (out_shape.empty() && stage.node &&
-                        stage.node->get_output_partial_shape(i).is_static()) {
-                        out_shape = stage.node->get_output_shape(i);
-                    }
-                    safe_check(("output" + std::to_string(i)).c_str(),
-                               stage.outputs[i].get(),
-                               out_shape,
-                               false);
-                }
-            }
-            stage.stage->set_inputs(resolved);
-            stage.stage->execute(cb);
-        }
+                stage.stage->execute(cb);
+            });
 
         [cb commit];
         [cb waitUntilCompleted];
 
-        state.last_profiling.clear();
-        if (profiler) {
-            const auto stats = allocator.stats();
-            profiler->set_memory_stats(stats);
-            profiler->end_infer(cb);
-            state.last_profiling = profiler->export_ov();
-            if (cm) {
-                cm->update_last_profiling_report_json(profiler->export_extended().to_json());
-            }
-        } else if (cm) {
-            MetalProfilingReport empty;
-            empty.level = ProfilingLevel::Off;
-            cm->update_last_profiling_report_json(empty.to_json());
-        }
+        finalize_infer_profiling("metal",
+                                 cm,
+                                 state,
+                                 profiler,
+                                 reinterpret_cast<GpuCommandBufferHandle>(cb),
+                                 [&]() {
+                                     const auto stats = allocator.stats();
+                                     metal_profiler->set_memory_stats(stats);
+                                 });
     };
 
     run_pipeline();
@@ -362,8 +343,8 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
         }
         return &tensor_map.get_input_device(input_idx);
     };
-    auto* metal = dynamic_cast<const MetalBackendState*>(cm->backend_state());
-    OPENVINO_ASSERT(metal && metal->command_queue, "GFX: command queue is null");
+    const auto resources = cm->backend_state()->resources();
+    OPENVINO_ASSERT(resources.queue, "GFX: command queue is null");
     bind_outputs_common(
         get_outputs(),
         cm->get_runtime_model(),
@@ -388,31 +369,17 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                                                 host_override,
                                                 alloc_core,
                                                 &allocator,
-                                                metal->command_queue,
+                                                resources.queue,
                                                 "GFX");
             tensor_map.bind_output_device(idx, bound.device_tensor);
             ov::ISyncInferRequest::set_tensor(get_outputs()[idx], ov::get_tensor_impl(bound.host_tensor));
         },
         /*allow_missing=*/false,
-        /*allow_fallback_one=*/true,
+        /*allow_fallback_one=*/false,
         "GFX");
 
-    if (const char* mem_flag = std::getenv("OV_GFX_MEM_STATS")) {
-        (void)mem_flag;
-        auto stats = allocator.stats();
-        double mb = 1024.0 * 1024.0;
-        std::ostringstream oss;
-        oss << "[GFX][mem] H2D=" << (stats.h2d_bytes / mb) << "MB "
-            << "D2H=" << (stats.d2h_bytes / mb) << "MB "
-            << "alloc=" << (stats.bytes_allocated_total / mb) << "MB "
-            << "reuse_hits=" << stats.num_reuse_hits;
-        std::cerr << oss.str() << std::endl;
-    }
-
-    if (cm) {
-        if (auto* metal = dynamic_cast<const MetalBackendState*>(cm->backend_state())) {
-            metal->last_stats = allocator.stats();
-        }
+    if (cm && cm->backend_state()) {
+        cm->backend_state()->set_mem_stats(ov::Any{allocator.stats()});
     }
     }
 }

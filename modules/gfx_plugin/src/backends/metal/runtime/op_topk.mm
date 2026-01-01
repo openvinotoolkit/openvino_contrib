@@ -9,13 +9,15 @@
 #include "openvino/core/validation_util.hpp"
 #include "openvino/op/util/topk_base.hpp"
 #include "openvino/op/topk.hpp"
-#include "backends/metal/runtime/metal_backend.hpp"
+#include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
-#include "mlir_builder.hpp"
+#include "kernel_ir/gfx_kernel_args.hpp"
+#include "mlir/mlir_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/codegen/codegen_common.hpp"
+#include "mlir_codegen/codegen_common.hpp"
+#include "runtime/gfx_shape_utils.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -42,7 +44,8 @@ void MetalTopKOp::parse_topk(const std::shared_ptr<const ov::Node>& node) {
     m_output_shape = node->get_output_shape(0);
     m_element_type = node->get_output_element_type(0);
     m_index_type = node->get_output_element_type(1);
-    m_axis = static_cast<uint32_t>(topk->get_axis());
+    const int64_t axis = normalize_axis(topk->get_axis(), m_input_shape.size(), "TopK");
+    m_axis = static_cast<uint32_t>(axis);
     m_k = static_cast<uint32_t>(topk->get_k());
     m_mode_max = topk->get_mode() == ov::op::TopKMode::MAX;
     switch (topk->get_sort_type()) {
@@ -57,7 +60,6 @@ void MetalTopKOp::parse_topk(const std::shared_ptr<const ov::Node>& node) {
     }
 
     OPENVINO_ASSERT(!m_input_shape.empty(), "TopK: input shape is empty");
-    OPENVINO_ASSERT(m_axis < m_input_shape.size(), "TopK: axis out of range");
     m_axis_len = static_cast<uint32_t>(m_input_shape[m_axis]);
     OPENVINO_ASSERT(m_k > 0 && m_k <= m_axis_len, "TopK: invalid k");
     uint64_t outer = 1;
@@ -170,9 +172,9 @@ void MetalTopKOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     std::vector<KernelArg> args;
     args.reserve(3);
-    args.push_back(make_buffer_arg(0, src->buf));
-    args.push_back(make_buffer_arg(1, out_vals->buf));
-    args.push_back(make_buffer_arg(2, out_idx->buf));
+    append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
+    std::vector<GpuTensor*> outputs = {out_vals, out_idx};
+    append_kernel_output_args(args, 1, outputs, name().c_str());
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 

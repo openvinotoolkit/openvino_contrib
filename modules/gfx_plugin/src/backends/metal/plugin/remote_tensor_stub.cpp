@@ -3,7 +3,7 @@
 //
 
 #include "openvino/core/except.hpp"
-#include "runtime/gfx_remote_context.hpp"
+#include "backends/metal/plugin/remote_tensor.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -15,8 +15,6 @@ RemoteTensorCreateResult create_metal_remote_tensor(const ov::element::Type& /*t
                                                     size_t /*bytes*/) {
     OPENVINO_THROW("GFX: Metal backend is not available for remote tensor");
 }
-
-void release_metal_remote_tensor(GpuTensor& /*tensor*/, bool /*owns_buffer*/) {}
 
 }  // namespace gfx_plugin
 }  // namespace ov

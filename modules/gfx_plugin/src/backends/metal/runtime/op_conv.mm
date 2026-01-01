@@ -10,14 +10,15 @@
 
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"
-#include "backends/metal/runtime/metal_backend.hpp"
+#include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/metal_memory.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
-#include "mlir_builder.hpp"
+#include "kernel_ir/gfx_kernel_args.hpp"
+#include "mlir/mlir_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/codegen/codegen_common.hpp"
+#include "mlir_codegen/codegen_common.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -256,14 +257,14 @@ void MetalConvOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     std::vector<KernelArg> args;
     args.reserve(9);
-    args.push_back(make_buffer_arg(0, src->buf));
-    args.push_back(make_buffer_arg(1, m_weights));
-    args.push_back(make_buffer_arg(2, bias));
-    args.push_back(make_buffer_arg(3, gamma));
-    args.push_back(make_buffer_arg(4, beta));
-    args.push_back(make_buffer_arg(5, mean));
-    args.push_back(make_buffer_arg(6, var));
-    args.push_back(make_buffer_arg(7, dst_tensor.buf));
+    append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
+    append_kernel_buffer_arg(args, 1, m_weights, name().c_str(), "weights");
+    append_kernel_optional_buffer_arg(args, 2, bias);
+    append_kernel_optional_buffer_arg(args, 3, gamma);
+    append_kernel_optional_buffer_arg(args, 4, beta);
+    append_kernel_optional_buffer_arg(args, 5, mean);
+    append_kernel_optional_buffer_arg(args, 6, var);
+    append_kernel_output_args(args, 7, &dst_tensor, name().c_str());
     args.push_back(make_bytes_arg(8, &params, sizeof(params)));
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 

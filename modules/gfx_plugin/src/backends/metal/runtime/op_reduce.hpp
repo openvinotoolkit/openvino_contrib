@@ -6,7 +6,7 @@
 #include <memory>
 #include <vector>
 
-#include "mlir/codegen/codegen_desc.hpp"
+#include "mlir_codegen/codegen_desc.hpp"
 #include "backends/metal/runtime/op.hpp"
 
 namespace ov {

@@ -5,9 +5,35 @@
 #include "infer_io_utils.hpp"
 
 #include "openvino/core/except.hpp"
+#include "runtime/gfx_shape_utils.hpp"
 
 namespace ov {
 namespace gfx_plugin {
+
+HostInputBinding prepare_host_input_binding(const ov::Tensor& host,
+                                            GpuBackend backend,
+                                            const char* error_prefix) {
+    OPENVINO_ASSERT(host && host.data(), error_prefix, ": input host tensor is empty");
+    HostInputBinding binding{};
+    binding.bytes = host.get_byte_size();
+    binding.tensor.shape = host.get_shape();
+    binding.tensor.expected_type = host.get_element_type();
+    binding.tensor.buf.type = host.get_element_type();
+    binding.tensor.buf.backend = backend;
+    return binding;
+}
+
+HostOutputBinding prepare_host_output_binding(const OutputViewInfo& info,
+                                              const ov::Tensor* host_override) {
+    HostOutputBinding binding{};
+    binding.bytes = tensor_byte_size(info.shape, info.type);
+    if (host_override && *host_override) {
+        binding.host = *host_override;
+    } else {
+        binding.host = ov::Tensor(info.type, info.shape);
+    }
+    return binding;
+}
 
 bool init_stage_output_desc(GpuBackend backend,
                             InferStage& stage,
@@ -25,26 +51,17 @@ bool init_stage_output_desc(GpuBackend backend,
         return false;
     }
     const auto et = resolve_stage_output_type(stage, out_ref, out_idx, error_prefix);
-    size_t bytes = et.size();
-    for (auto d : out_shape) {
-        bytes *= d;
-    }
+    size_t bytes = tensor_byte_size(out_shape, et);
 
-    if (backend == GpuBackend::Metal) {
-        out_ref.prefer_private = !is_model_output;
-        desc.cpu_read = !out_ref.prefer_private;
-        desc.cpu_write = !out_ref.prefer_private;
-        desc.prefer_device_local = out_ref.prefer_private;
-    } else {
-        out_ref.prefer_private = true;
-        desc.cpu_read = false;
-        desc.cpu_write = false;
-        desc.prefer_device_local = true;
-    }
+    const bool prefer_private = !is_model_output;
+    out_ref.prefer_private = prefer_private;
+    desc.cpu_read = !prefer_private;
+    desc.cpu_write = !prefer_private;
+    desc.prefer_device_local = prefer_private;
 
     desc.bytes = bytes;
     desc.type = et;
-    desc.usage = BufferUsage::Intermediate;
+    desc.usage = is_model_output ? BufferUsage::IO : BufferUsage::Intermediate;
     return true;
 }
 

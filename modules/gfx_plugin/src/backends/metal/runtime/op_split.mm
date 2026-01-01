@@ -6,11 +6,13 @@
 
 #include "openvino/op/constant.hpp"
 #include "openvino/core/validation_util.hpp"
-#include "backends/metal/runtime/metal_backend.hpp"
+#include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "mlir/mlir_builder.hpp"
-#include "mlir/codegen/codegen_common.hpp"
+#include "mlir_codegen/codegen_common.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
+#include "kernel_ir/gfx_kernel_args.hpp"
+#include "runtime/gfx_shape_utils.hpp"
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -28,9 +30,8 @@ std::vector<size_t> extract_split_sizes(const std::shared_ptr<const ov::Node>& n
         axis_out = axis_const->cast_vector<int64_t>().at(0);
         input_shape = s->get_input_shape(0);
         const size_t parts = s->get_num_splits();
-        const size_t axis_norm = axis_out >= 0 ? static_cast<size_t>(axis_out)
-                                               : static_cast<size_t>(axis_out + static_cast<int64_t>(input_shape.size()));
-        OPENVINO_ASSERT(axis_norm < input_shape.size(), "Split axis out of range");
+        const size_t axis_norm =
+            static_cast<size_t>(normalize_axis(axis_out, input_shape.size(), "Split"));
         OPENVINO_ASSERT(input_shape.at(axis_norm) % parts == 0, "Split dimension not divisible by parts");
         size_t chunk = input_shape.at(axis_norm) / parts;
         return std::vector<size_t>(parts, chunk);
@@ -127,18 +128,13 @@ void MetalSplitOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     OPENVINO_ASSERT(!shape.empty(), "Split: input shape unknown");
     const size_t src_bytes = element_size() * ov::shape_size(shape);
     OPENVINO_ASSERT(src->buf.size >= src_bytes, "Split: input buffer too small");
-    int64_t axis_norm = m_axis;
-    if (axis_norm < 0)
-        axis_norm += static_cast<int64_t>(shape.size());
-    OPENVINO_ASSERT(axis_norm >= 0 && axis_norm < static_cast<int64_t>(shape.size()), "Split: axis out of range");
+    int64_t axis_norm = normalize_axis(m_axis, shape.size(), "Split");
 
     size_t axis_len = shape[static_cast<size_t>(axis_norm)];
-    size_t outer = 1;
-    for (size_t i = 0; i < static_cast<size_t>(axis_norm); ++i)
-        outer *= shape[i];
-    size_t inner = 1;
-    for (size_t i = static_cast<size_t>(axis_norm) + 1; i < shape.size(); ++i)
-        inner *= shape[i];
+    size_t outer = static_cast<size_t>(shape_product(shape, 0, static_cast<size_t>(axis_norm)));
+    size_t inner = static_cast<size_t>(shape_product(shape,
+                                                     static_cast<size_t>(axis_norm) + 1,
+                                                     shape.size()));
 
     if (!m_is_variadic) {
         const size_t parts = m_num_splits ? m_num_splits : m_outputs.size();
@@ -212,8 +208,8 @@ void MetalSplitOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
             std::vector<KernelArg> args;
             args.reserve(3);
-            args.push_back(make_buffer_arg(0, src->buf));
-            args.push_back(make_buffer_arg(1, out->buf));
+            append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
+            append_kernel_output_args(args, 1, out, name().c_str());
             args.push_back(make_bytes_arg(2, &params, sizeof(params)));
             execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
         }

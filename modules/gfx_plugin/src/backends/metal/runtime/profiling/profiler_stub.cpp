@@ -10,13 +10,13 @@ namespace gfx_plugin {
 MetalProfiler::MetalProfiler(GfxProfilerConfig cfg, MetalDeviceCaps /*caps*/, MetalDeviceHandle /*device*/)
     : m_cfg(cfg), m_timestamps(nullptr, false) {}
 
-void MetalProfiler::set_config(GfxProfilerConfig cfg) {
+void MetalProfiler::set_config(const GfxProfilerConfig& cfg) {
     m_cfg = cfg;
 }
 
 void MetalProfiler::begin_infer(size_t /*expected_samples*/) {}
 
-void MetalProfiler::end_infer(MetalCommandBufferHandle /*command_buffer*/) {}
+void MetalProfiler::end_infer(GpuCommandBufferHandle /*command_buffer*/) {}
 
 void MetalProfiler::begin_node(uint32_t /*node_id*/,
                                const char* /*node_name*/,
@@ -48,6 +48,10 @@ std::vector<ov::ProfilingInfo> MetalProfiler::export_ov() const {
 }
 
 MetalProfilingReport MetalProfiler::export_extended() const {
+    return {};
+}
+
+std::string MetalProfiler::export_extended_json() const {
     return {};
 }
 

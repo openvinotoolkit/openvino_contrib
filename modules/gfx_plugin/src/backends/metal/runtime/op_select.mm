@@ -8,11 +8,13 @@
 
 #include "openvino/core/except.hpp"
 #include "openvino/op/parameter.hpp"
-#include "backends/metal/runtime/metal_backend.hpp"
+#include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "runtime/gfx_logger.hpp"
+#include "runtime/gfx_shape_utils.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
-#include "mlir_builder.hpp"
-#include "mlir/codegen/codegen_common.hpp"
+#include "kernel_ir/gfx_kernel_args.hpp"
+#include "mlir/mlir_builder.hpp"
+#include "mlir_codegen/codegen_common.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 
@@ -95,7 +97,7 @@ void MetalSelectOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     for (size_t i = 0; i < out_shape.size(); ++i) out_dims[i] = static_cast<int>(out_shape[i]);
 
     auto norm_shape = [&](const ov::Shape& s) {
-        std::vector<size_t> r(rank, 1);
+        ov::Shape r(rank, 1);
         if (s.empty()) return r;
         size_t off = rank - s.size();
         for (size_t i = 0; i < s.size(); ++i) r[off + i] = s[i];
@@ -111,14 +113,12 @@ void MetalSelectOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
         const auto et = t->expected_type == ov::element::dynamic ? t->buf.type : t->expected_type;
         return et.size();
     };
-    auto shape_elems = [](const std::vector<size_t>& s) {
-        size_t prod = 1;
-        for (auto v : s) prod *= v;
-        return prod;
-    };
-    const size_t cond_bytes = shape_elems(cond_norm) * elem_size_for(cond);
-    const size_t a_bytes = shape_elems(a_norm) * elem_size_for(tval);
-    const size_t b_bytes = shape_elems(b_norm) * elem_size_for(fval);
+    const size_t cond_bytes =
+        static_cast<size_t>(shape_product(cond_norm, 0, cond_norm.size())) * elem_size_for(cond);
+    const size_t a_bytes =
+        static_cast<size_t>(shape_product(a_norm, 0, a_norm.size())) * elem_size_for(tval);
+    const size_t b_bytes =
+        static_cast<size_t>(shape_product(b_norm, 0, b_norm.size())) * elem_size_for(fval);
     OPENVINO_ASSERT(cond->buf.size >= cond_bytes, "Select: cond buffer too small");
     OPENVINO_ASSERT(tval->buf.size >= a_bytes, "Select: true buffer too small");
     OPENVINO_ASSERT(fval->buf.size >= b_bytes, "Select: false buffer too small");
@@ -143,10 +143,20 @@ void MetalSelectOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     std::vector<KernelArg> args;
     args.reserve(10);
-    args.push_back(make_buffer_arg(0, cond->buf));
-    args.push_back(make_buffer_arg(1, tval->buf));
-    args.push_back(make_buffer_arg(2, fval->buf));
-    args.push_back(make_buffer_arg(3, out.buf));
+    append_kernel_input_args(args,
+                             3,
+                             [&](size_t idx) {
+                                 switch (idx) {
+                                 case 0:
+                                     return cond;
+                                 case 1:
+                                     return tval;
+                                 default:
+                                     return fval;
+                                 }
+                             },
+                             name().c_str());
+    append_kernel_output_args(args, 3, &out, name().c_str());
     args.push_back(make_bytes_arg(4, &num, sizeof(num)));
     args.push_back(make_bytes_arg(5, &r, sizeof(r)));
     args.push_back(make_bytes_arg(6, out_dims.data(), out_dims.size() * sizeof(int)));

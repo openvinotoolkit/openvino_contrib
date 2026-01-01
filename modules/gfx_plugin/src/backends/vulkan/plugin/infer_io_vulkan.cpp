@@ -6,6 +6,7 @@
 
 #include "openvino/core/except.hpp"
 #include "runtime/memory_manager.hpp"
+#include "runtime/gfx_shape_utils.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -15,15 +16,9 @@ GpuTensor bind_host_input_vulkan(const ov::Tensor& host,
                                  BufferHandle* device_handle,
                                  BufferHandle* staging_handle,
                                  const char* error_prefix) {
-    OPENVINO_ASSERT(host && host.data(), error_prefix, ": input host tensor is empty");
-    const size_t bytes = host.get_byte_size();
-
-    GpuTensor tensor{};
-    tensor.shape = host.get_shape();
-    tensor.expected_type = host.get_element_type();
-    tensor.buf.type = host.get_element_type();
-    tensor.buf.backend = GpuBackend::Vulkan;
-
+    HostInputBinding binding = prepare_host_input_binding(host, GpuBackend::Vulkan, error_prefix);
+    GpuTensor tensor = binding.tensor;
+    const size_t bytes = binding.bytes;
     if (bytes == 0) {
         return tensor;
     }
@@ -68,19 +63,26 @@ OutputBindingResult bind_host_output_vulkan(const GpuTensor& dev,
     OutputBindingResult result{};
     result.device_tensor = dev;
 
-    size_t bytes = 0;
-    if (info.type != ov::element::dynamic) {
-        bytes = info.type.size();
-        for (auto d : info.shape) {
-            bytes *= d;
-        }
-    }
+    HostOutputBinding host_binding = prepare_host_output_binding(info, host_override);
+    size_t bytes = host_binding.bytes;
 
     OPENVINO_ASSERT(pool && staging_handle,
                     error_prefix, ": Vulkan output staging handle is missing");
 
-    ov::Tensor host = host_override && *host_override ? *host_override : ov::Tensor(info.type, info.shape);
+    ov::Tensor host = host_binding.host;
     if (bytes) {
+        if (dev.buf.host_visible && dev.buf.buffer) {
+            if (pool && staging_handle) {
+                pool->release(*staging_handle);
+            }
+            gpu_copy_to_host(dev.buf, host.data(), bytes);
+            result.host_tensor = host;
+            result.device_tensor.expected_type = info.type;
+            if (result.device_tensor.shape.empty()) {
+                result.device_tensor.shape = info.shape;
+            }
+            return result;
+        }
         GpuBufferDesc staging_desc;
         staging_desc.bytes = bytes;
         staging_desc.type = info.type;

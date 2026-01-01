@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "mlir_builder.hpp"
+#include "mlir/mlir_builder.hpp"
 
 #include "openvino/core/model.hpp"
 #include "openvino/op/group_conv.hpp"

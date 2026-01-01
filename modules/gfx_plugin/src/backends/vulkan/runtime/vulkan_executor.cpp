@@ -8,15 +8,18 @@
 #include <cstring>
 #include <sstream>
 
-#include "mlir_builder.hpp"
+#include "mlir/mlir_builder.hpp"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "backends/vulkan/codegen/vulkan_compiler.hpp"
+#include "backends/vulkan/codegen/vulkan_codegen_backend.hpp"
 #include "backends/vulkan/runtime/vulkan_memory.hpp"
 #include "runtime/memory_manager.hpp"
-#include "runtime/gfx_kernel_dispatch.hpp"
-#include "mlir/gfx_kernel_plan.hpp"
-#include "mlir/gfx_kernel_spec.hpp"
+#include "kernel_ir/gfx_kernel_dispatch.hpp"
+#include "kernel_ir/gfx_kernel_args.hpp"
+#include "kernel_ir/gfx_kernel_inputs.hpp"
+#include "kernel_ir/gfx_kernel_plan.hpp"
+#include "kernel_ir/gfx_kernel_spec.hpp"
 #include "runtime/gfx_logger.hpp"
+#include "runtime/gfx_shape_utils.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "backends/vulkan/runtime/profiling/profiler.hpp"
 
@@ -140,68 +143,14 @@ void VulkanStage::compile(GpuBufferManager* /*buffer_manager*/) {
     if (entry.empty()) {
         entry = "gfx_kernel";
     }
-    size_t func_inputs = 0;
-    size_t func_results = 0;
-    if (module) {
-        mlir::func::FuncOp func;
-        if (!entry.empty()) {
-            func = module.lookupSymbol<mlir::func::FuncOp>(entry);
-        }
-        if (!func) {
-            module.walk([&](mlir::func::FuncOp f) {
-                if (!func) {
-                    func = f;
-                }
-            });
-        }
-        if (func) {
-            auto ftype = func.getFunctionType();
-            func_inputs = static_cast<size_t>(ftype.getNumInputs());
-            func_results = static_cast<size_t>(ftype.getNumResults());
-        }
-    }
-    m_kernel_inputs.clear();
-    if (m_node) {
-        const size_t node_inputs = m_node->get_input_size();
-        if (func_inputs == 0) {
-            func_inputs = node_inputs;
-        }
-        size_t nonconst_count = 0;
-        for (size_t i = 0; i < node_inputs; ++i) {
-            auto src = m_node->get_input_node_shared_ptr(i);
-            if (!ov::as_type_ptr<const ov::op::v0::Constant>(src)) {
-                ++nonconst_count;
-            }
-        }
-        OPENVINO_ASSERT(func_inputs >= nonconst_count,
-                        "GFX Vulkan: MLIR expects fewer inputs than non-constant inputs for ",
-                        m_name);
-        const size_t need_consts = func_inputs - nonconst_count;
-        size_t const_added = 0;
-        m_kernel_inputs.reserve(func_inputs);
-        for (size_t i = 0; i < node_inputs; ++i) {
-            auto src = m_node->get_input_node_shared_ptr(i);
-            const bool is_const = ov::as_type_ptr<const ov::op::v0::Constant>(src) != nullptr;
-            if (is_const) {
-                if (const_added < need_consts) {
-                    m_kernel_inputs.push_back(i);
-                    ++const_added;
-                }
-            } else {
-                m_kernel_inputs.push_back(i);
-            }
-        }
-        OPENVINO_ASSERT(m_kernel_inputs.size() == func_inputs,
-                        "GFX Vulkan: MLIR input count mismatch for ",
-                        m_name,
-                        " (expected ",
-                        func_inputs,
-                        ", got ",
-                        m_kernel_inputs.size(),
-                        ")");
-        if (func_results == 0) {
-            func_results = m_node->get_output_size();
-        }
+    const auto signature = infer_kernel_signature(module, entry);
+    size_t func_inputs = signature.inputs;
+    size_t func_results = signature.results;
+    auto mapping = build_kernel_inputs(m_node, func_inputs, m_name.c_str());
+    func_inputs = mapping.func_inputs;
+    m_kernel_inputs = std::move(mapping.kernel_inputs);
+    if (m_node && func_results == 0) {
+        func_results = m_node->get_output_size();
     }
     const uint32_t arg_count = static_cast<uint32_t>(func_inputs + func_results);
     KernelPlan plan_with_count(module, entry, arg_count);
@@ -290,26 +239,14 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
         else if (auto s8 = ov::as_type_ptr<const ov::op::v8::Softmax>(m_node)) axis = s8->get_axis();
         else if (auto ls = ov::as_type_ptr<const ov::op::v5::LogSoftmax>(m_node)) axis = ls->get_axis();
         else OPENVINO_THROW("GFX Vulkan: unsupported softmax op kind");
-        if (axis < 0) {
-            axis += static_cast<int64_t>(in_shape.size());
-        }
-        OPENVINO_ASSERT(axis >= 0 && axis < static_cast<int64_t>(in_shape.size()),
-                        "Softmax axis out of range");
-        uint64_t rows = 1;
-        uint64_t inner = 1;
-        for (int64_t i = 0; i < axis; ++i) {
-            rows *= in_shape[static_cast<size_t>(i)];
-        }
-        for (size_t i = static_cast<size_t>(axis) + 1; i < in_shape.size(); ++i) {
-            inner *= in_shape[i];
-        }
-        const uint64_t total_work = rows * inner;
-        const bool want_tiled = (axis == 0) || (total_work > kSoftmaxTileWork);
+        const auto dims = compute_softmax_dims(in_shape, axis, "GFX Vulkan: Softmax");
+        const uint64_t total_work = dims.rows;
+        const bool want_tiled = (dims.axis == 0) || (total_work > kSoftmaxTileWork);
         softmax_total_work = total_work;
         if (gfx_log_debug_enabled()) {
             GFX_LOG_DEBUG("VulkanSoftmax",
                           "shape_rank=" << in_shape.size()
-                                        << " axis=" << axis
+                                        << " axis=" << dims.axis
                                         << " rows*inner=" << total_work
                                         << " tiled=" << (want_tiled ? "1" : "0"));
         }
@@ -363,18 +300,14 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
         }
         int64_t axis = 0;
         std::vector<size_t> split_sizes;
+        size_t parts = 0;
+        bool is_split = false;
         if (auto s = ov::as_type_ptr<const ov::op::v1::Split>(m_node)) {
             auto axis_const = ov::as_type_ptr<const ov::op::v0::Constant>(s->input_value(1).get_node_shared_ptr());
             OPENVINO_ASSERT(axis_const, "Split axis must be constant");
             axis = axis_const->cast_vector<int64_t>().at(0);
-            size_t parts = s->get_num_splits();
-            int64_t axis_norm = axis < 0 ? axis + static_cast<int64_t>(in_shape.size()) : axis;
-            OPENVINO_ASSERT(axis_norm >= 0 && axis_norm < static_cast<int64_t>(in_shape.size()),
-                            "Split axis out of range");
-            const size_t axis_len = in_shape[static_cast<size_t>(axis_norm)];
-            OPENVINO_ASSERT(parts > 0, "Split number of splits is zero");
-            OPENVINO_ASSERT(axis_len % parts == 0, "Split dimension not divisible by parts");
-            split_sizes.assign(parts, axis_len / parts);
+            parts = s->get_num_splits();
+            is_split = true;
         } else if (auto vs = ov::as_type_ptr<const ov::op::v1::VariadicSplit>(m_node)) {
             auto axis_const = ov::as_type_ptr<const ov::op::v0::Constant>(vs->input_value(1).get_node_shared_ptr());
             OPENVINO_ASSERT(axis_const, "VariadicSplit axis must be constant");
@@ -388,10 +321,13 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
                 split_sizes.push_back(static_cast<size_t>(v));
             }
         }
-        int64_t axis_norm = axis < 0 ? axis + static_cast<int64_t>(in_shape.size()) : axis;
-        OPENVINO_ASSERT(axis_norm >= 0 && axis_norm < static_cast<int64_t>(in_shape.size()),
-                        "Split axis out of range");
+        const int64_t axis_norm = normalize_axis(axis, in_shape.size(), "GFX Vulkan: Split");
         const size_t axis_len = in_shape[static_cast<size_t>(axis_norm)];
+        if (is_split) {
+            OPENVINO_ASSERT(parts > 0, "Split number of splits is zero");
+            OPENVINO_ASSERT(axis_len % parts == 0, "Split dimension not divisible by parts");
+            split_sizes.assign(parts, axis_len / parts);
+        }
         size_t sum = 0;
         for (auto s : split_sizes) {
             sum += s;
@@ -424,45 +360,16 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
             if (entry.empty()) {
                 entry = "split_main";
             }
-            if (m_node) {
-                size_t func_inputs = 0;
-                if (auto func = module.lookupSymbol<mlir::func::FuncOp>(entry)) {
-                    func_inputs = static_cast<size_t>(func.getFunctionType().getNumInputs());
-                }
-                if (func_inputs == 0) {
-                    func_inputs = m_node->get_input_size();
-                }
-                const size_t node_inputs = m_node->get_input_size();
-                size_t nonconst_count = 0;
-                for (size_t i = 0; i < node_inputs; ++i) {
-                    auto src = m_node->get_input_node_shared_ptr(i);
-                    if (!ov::as_type_ptr<const ov::op::v0::Constant>(src)) {
-                        ++nonconst_count;
-                    }
-                }
-                OPENVINO_ASSERT(func_inputs >= nonconst_count,
-                                "GFX Vulkan: Split MLIR expects fewer inputs than non-constant inputs");
-                const size_t need_consts = func_inputs - nonconst_count;
-                size_t const_added = 0;
-                m_kernel_inputs.clear();
-                m_kernel_inputs.reserve(func_inputs);
-                for (size_t i = 0; i < node_inputs; ++i) {
-                    auto src = m_node->get_input_node_shared_ptr(i);
-                    const bool is_const = ov::as_type_ptr<const ov::op::v0::Constant>(src) != nullptr;
-                    if (is_const) {
-                        if (const_added < need_consts) {
-                            m_kernel_inputs.push_back(i);
-                            ++const_added;
-                        }
-                    } else {
-                        m_kernel_inputs.push_back(i);
-                    }
-                }
-                OPENVINO_ASSERT(m_kernel_inputs.size() == func_inputs,
-                                "GFX Vulkan: Split MLIR input count mismatch");
+            const auto signature = infer_kernel_signature(module, entry);
+            size_t func_inputs = signature.inputs;
+            size_t func_results = signature.results;
+            auto mapping = build_kernel_inputs(m_node, func_inputs, "Split");
+            func_inputs = mapping.func_inputs;
+            m_kernel_inputs = std::move(mapping.kernel_inputs);
+            if (func_results == 0) {
+                func_results = outputs.size();
             }
-            const uint32_t arg_count =
-                static_cast<uint32_t>(m_kernel_inputs.size() + outputs.size());
+            const uint32_t arg_count = static_cast<uint32_t>(func_inputs + func_results);
             KernelPlan plan(module, std::move(entry), arg_count);
             KernelSource src = plan.to_source();
             VulkanCodegenBackend backend;
@@ -540,6 +447,7 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
                         ")");
         out->buf = in->buf;
         out->buf.external = true;
+        out->buf.owned = false;
         out->expected_type = out_type;
         return;
     }
@@ -548,27 +456,30 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
         OPENVINO_THROW("GFX Vulkan: kernel was not compiled for stage ", m_name);
     }
 
-    VulkanProfiler::SamplePair sample{};
-    KernelExecutionHooks hooks;
-    KernelExecutionHooks* hooks_ptr = nullptr;
+    VulkanProfiler* vk_profiler = nullptr;
     if (m_profiling_enabled && m_profiler) {
-        auto* profiler = static_cast<VulkanProfiler*>(m_profiler);
-        profiler->begin_node(m_profile_node_id,
-                             m_profile_node_name.c_str(),
-                             m_profile_node_type.c_str(),
-                             "GFX");
-        sample = profiler->reserve_samples();
-        hooks.on_begin = [profiler, sample](GpuCommandEncoderHandle enc) {
-            profiler->write_timestamp(reinterpret_cast<VkCommandBuffer>(enc), sample.begin);
-        };
-        hooks.on_end = [profiler, sample](GpuCommandEncoderHandle enc) {
-            profiler->write_timestamp(reinterpret_cast<VkCommandBuffer>(enc), sample.end);
-        };
-        hooks.on_complete = [profiler, sample, node_id = m_profile_node_id]() {
-            profiler->end_node(node_id, sample);
-        };
-        hooks_ptr = &hooks;
+        vk_profiler = static_cast<VulkanProfiler*>(m_profiler);
+        vk_profiler->begin_node(m_profile_node_id,
+                                m_profile_node_name.c_str(),
+                                m_profile_node_type.c_str(),
+                                "GFX");
     }
+    auto make_hooks = [&](KernelExecutionHooks& hooks) -> KernelExecutionHooks* {
+        if (!vk_profiler) {
+            return nullptr;
+        }
+        const auto sample = vk_profiler->reserve_samples();
+        hooks.on_begin = [vk_profiler, sample](GpuCommandEncoderHandle enc) {
+            vk_profiler->write_timestamp(reinterpret_cast<VkCommandBuffer>(enc), sample.begin);
+        };
+        hooks.on_end = [vk_profiler, sample](GpuCommandEncoderHandle enc) {
+            vk_profiler->write_timestamp(reinterpret_cast<VkCommandBuffer>(enc), sample.end);
+        };
+        hooks.on_complete = [vk_profiler, sample, node_id = m_profile_node_id]() {
+            vk_profiler->end_node(node_id, sample);
+        };
+        return &hooks;
+    };
 
     if ((m_type == "Softmax" || m_type == "LogSoftmax") &&
         m_softmax_tiled && softmax_total_work > 0) {
@@ -584,19 +495,10 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
 
         std::vector<KernelArg> args;
         args.reserve(m_kernel_inputs.size() + outputs.size() + 1);
-        for (size_t ai = 0; ai < m_kernel_inputs.size(); ++ai) {
-            const size_t input_idx = m_kernel_inputs[ai];
-            GpuTensor* t = resolve_input_tensor(input_idx);
-            OPENVINO_ASSERT(t && t->buf.valid(), "GFX Vulkan: missing input buffer for stage ", m_name);
-            args.push_back(make_buffer_arg(static_cast<uint32_t>(ai), t->buf));
-        }
-        const uint32_t param_index = static_cast<uint32_t>(m_kernel_inputs.size());
-        args.push_back(make_buffer_arg(param_index, m_softmax_params));
-        for (size_t oi = 0; oi < outputs.size(); ++oi) {
-            auto* out = outputs[oi];
-            OPENVINO_ASSERT(out && out->buf.valid(), "GFX Vulkan: missing output buffer for stage ", m_name);
-            args.push_back(make_buffer_arg(static_cast<uint32_t>(m_kernel_inputs.size() + 1 + oi), out->buf));
-        }
+        append_kernel_input_args(args, m_kernel_inputs, resolve_input_tensor, m_name.c_str());
+        const uint32_t param_index = static_cast<uint32_t>(args.size());
+        append_kernel_buffer_arg(args, param_index, m_softmax_params, m_name.c_str(), "softmax params");
+        append_kernel_output_args(args, param_index + 1, outputs, m_name.c_str());
 
         uint64_t offset = 0;
         while (offset < softmax_total_work) {
@@ -609,7 +511,8 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
                 gpu_unmap_buffer(m_softmax_params);
             }
             KernelDispatch dispatch = make_1d_dispatch(static_cast<size_t>(count), 1);
-            m_kernel->execute(nullptr, dispatch, args, nullptr);
+            KernelExecutionHooks tile_hooks;
+            m_kernel->execute(nullptr, dispatch, args, make_hooks(tile_hooks));
             offset += count;
         }
         return;
@@ -617,17 +520,11 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
 
     std::vector<KernelArg> args;
     args.reserve(m_kernel_inputs.size() + outputs.size());
-    for (size_t ai = 0; ai < m_kernel_inputs.size(); ++ai) {
-        const size_t input_idx = m_kernel_inputs[ai];
-        GpuTensor* t = resolve_input_tensor(input_idx);
-        OPENVINO_ASSERT(t && t->buf.valid(), "GFX Vulkan: missing input buffer for stage ", m_name);
-        args.push_back(make_buffer_arg(static_cast<uint32_t>(ai), t->buf));
-    }
-    for (size_t oi = 0; oi < outputs.size(); ++oi) {
-        auto* out = outputs[oi];
-        OPENVINO_ASSERT(out && out->buf.valid(), "GFX Vulkan: missing output buffer for stage ", m_name);
-        args.push_back(make_buffer_arg(static_cast<uint32_t>(m_kernel_inputs.size() + oi), out->buf));
-    }
+    append_kernel_input_args(args, m_kernel_inputs, resolve_input_tensor, m_name.c_str());
+    append_kernel_output_args(args,
+                              static_cast<uint32_t>(args.size()),
+                              outputs,
+                              m_name.c_str());
 
     KernelDispatch dispatch{};
     if (m_type == "Softmax" || m_type == "LogSoftmax" ||
@@ -642,7 +539,8 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
         dispatch = KernelPlan::make_default_dispatch(outputs.front()->shape, *m_kernel);
     }
 
-    m_kernel->execute(nullptr, dispatch, args, hooks_ptr);
+    KernelExecutionHooks hooks;
+    m_kernel->execute(nullptr, dispatch, args, make_hooks(hooks));
 }
 
 void VulkanStage::set_inputs(const std::vector<GpuTensor*>& inputs) {

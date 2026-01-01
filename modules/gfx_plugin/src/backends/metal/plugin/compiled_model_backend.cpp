@@ -9,6 +9,7 @@
 #include "plugin/gfx_property_utils.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/metal_memory.hpp"
+#include "backends/metal/runtime/profiling/profiler.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -49,31 +50,9 @@ std::unique_ptr<MetalBackendState> create_metal_backend_state(const ov::AnyMap& 
     return state;
 }
 
-void release_metal_backend_state(MetalBackendState& state) {
-    if (state.command_queue) {
-        metal_release_command_queue(state.command_queue);
-        state.command_queue = nullptr;
-    }
-}
-
-MetalMemoryStats get_metal_memory_stats(const MetalBackendState* state) {
-    return state ? state->last_stats : MetalMemoryStats{};
-}
-
-GpuDeviceHandle get_metal_device_handle(const MetalBackendState* state) {
-    return state ? state->device : nullptr;
-}
-
-GpuCommandQueueHandle get_metal_command_queue(const MetalBackendState* state) {
-    return state ? state->command_queue : nullptr;
-}
-
-GpuBufferManager* get_metal_const_buffer_manager(MetalBackendState* state) {
-    return state ? static_cast<GpuBufferManager*>(state->const_manager.get()) : nullptr;
-}
-
-const GpuBufferManager* get_metal_const_buffer_manager(const MetalBackendState* state) {
-    return state ? static_cast<const GpuBufferManager*>(state->const_manager.get()) : nullptr;
+std::unique_ptr<GfxProfiler> MetalBackendState::create_profiler(const GfxProfilerConfig& cfg) const {
+    OPENVINO_ASSERT(device, "GFX: Metal device is null");
+    return std::make_unique<MetalProfiler>(cfg, caps, device);
 }
 
 }  // namespace gfx_plugin

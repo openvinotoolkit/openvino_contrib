@@ -5,7 +5,7 @@
 
 #include <memory>
 
-#include "mlir/codegen/codegen_desc.hpp"
+#include "mlir_codegen/codegen_desc.hpp"
 #include "openvino/op/softmax.hpp"
 #include "openvino/op/log_softmax.hpp"
 #include "backends/metal/runtime/op.hpp"

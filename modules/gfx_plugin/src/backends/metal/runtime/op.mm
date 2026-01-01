@@ -3,7 +3,7 @@
 //
 
 #include "backends/metal/runtime/op.hpp"
-#include "backends/metal/runtime/metal_backend.hpp"
+#include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "backends/metal/runtime/profiling/profiler.hpp"
 
 #include <cstring>

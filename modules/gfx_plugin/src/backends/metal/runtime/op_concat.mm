@@ -8,11 +8,13 @@
 
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"
-#include "backends/metal/runtime/metal_backend.hpp"
+#include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "mlir/mlir_builder.hpp"
-#include "mlir/codegen/codegen_common.hpp"
+#include "mlir_codegen/codegen_common.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
+#include "kernel_ir/gfx_kernel_args.hpp"
+#include "runtime/gfx_shape_utils.hpp"
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -54,11 +56,7 @@ void MetalConcatOp::compute_layout(const std::shared_ptr<const ov::Node>& node) 
 
     const auto& out_shape = concat->get_output_shape(0);
     OPENVINO_ASSERT(!out_shape.empty(), "Concat: static output shape required");
-    int64_t axis_norm = m_axis;
-    if (axis_norm < 0)
-        axis_norm += static_cast<int64_t>(out_shape.size());
-    OPENVINO_ASSERT(axis_norm >= 0 && axis_norm < static_cast<int64_t>(out_shape.size()),
-                    "Concat: axis out of range");
+    const int64_t axis_norm = normalize_axis(m_axis, out_shape.size(), "Concat");
 
     m_axis_sizes.clear();
     m_axis_offsets.clear();
@@ -146,10 +144,7 @@ void MetalConcatOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     const size_t elem_sz = element_size(m_element_type);
     const size_t rank = out_shape.size();
-    int64_t axis_norm = m_axis;
-    if (axis_norm < 0)
-        axis_norm += static_cast<int64_t>(rank);
-    OPENVINO_ASSERT(axis_norm >= 0 && static_cast<size_t>(axis_norm) < rank, "Concat: invalid axis");
+    const int64_t axis_norm = normalize_axis(m_axis, rank, "Concat");
 
     uint64_t outer = 1;
     for (size_t i = 0; i < static_cast<size_t>(axis_norm); ++i) {
@@ -213,8 +208,8 @@ void MetalConcatOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
         std::vector<KernelArg> args;
         args.reserve(3);
-        args.push_back(make_buffer_arg(0, src->buf));
-        args.push_back(make_buffer_arg(1, out.buf));
+        append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
+        append_kernel_output_args(args, 1, &out, name().c_str());
         args.push_back(make_bytes_arg(2, &params, sizeof(params)));
         execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
     }

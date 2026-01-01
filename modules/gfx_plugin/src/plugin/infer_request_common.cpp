@@ -10,8 +10,9 @@
 #include "openvino/runtime/make_tensor.hpp"
 #include "openvino/runtime/profiling_info.hpp"
 #include "openvino/runtime/tensor.hpp"
-#include "plugin/infer_request_backend_hooks.hpp"
 #include "plugin/infer_request_state.hpp"
+#include "plugin/backend_state.hpp"
+#include "plugin/infer_pipeline.hpp"
 #include "runtime/gfx_backend_utils.hpp"
 #include "runtime/gfx_remote_context.hpp"
 
@@ -42,12 +43,13 @@ InferRequest::InferRequest(const std::shared_ptr<const ov::ICompiledModel>& comp
     state.bound_remote_outputs.resize(get_outputs().size());
 
     if (auto cm = get_compiled_model_typed()) {
-        init_backend_infer_state(state, *cm);
+        if (auto* backend = cm->backend_state()) {
+            backend->init_infer_state(state);
+        }
     }
 }
 
 InferRequest::~InferRequest() {
-    release_vulkan_cache();
 }
 
 void InferRequest::set_input_tensor(const ov::Tensor& tensor) {
@@ -146,9 +148,13 @@ ov::SoPtr<ov::ITensor> InferRequest::get_tensor(const ov::Output<const ov::Node>
         if (idx < state.bound_remote_outputs.size() && state.bound_remote_outputs[idx]) {
             return ov::SoPtr<ov::ITensor>{state.bound_remote_outputs[idx], nullptr};
         }
-        auto override_tensor = get_backend_tensor_override(state, idx, get_outputs());
-        if (override_tensor._ptr) {
-            return override_tensor;
+        if (auto cm = get_compiled_model_typed()) {
+            if (auto* backend = cm->backend_state()) {
+                auto override_tensor = backend->get_tensor_override(state, idx, get_outputs());
+                if (override_tensor._ptr) {
+                    return override_tensor;
+                }
+            }
         }
     }
     return ov::ISyncInferRequest::get_tensor(port);
@@ -219,16 +225,8 @@ GpuTensor InferRequest::resolve_remote_input_tensor(size_t idx,
     OPENVINO_ASSERT(idx < state.bound_remote_inputs.size() && state.bound_remote_inputs[idx],
                     error_prefix, ": remote input is not bound");
     const auto& remote = state.bound_remote_inputs[idx];
-    OPENVINO_ASSERT(remote->backend() == expected_backend,
-                    error_prefix, ": remote input backend mismatch");
-    GpuTensor tensor = remote->gpu_tensor();
-    if (tensor.shape.empty()) {
-        tensor.shape = remote->get_shape();
-    }
-    if (tensor.expected_type == ov::element::dynamic) {
-        tensor.expected_type = remote->get_element_type();
-    }
-    return tensor;
+    normalize_remote_tensor(*remote, expected_backend, error_prefix);
+    return remote->gpu_tensor();
 }
 
 const ov::Tensor* InferRequest::get_host_output_override(size_t idx,

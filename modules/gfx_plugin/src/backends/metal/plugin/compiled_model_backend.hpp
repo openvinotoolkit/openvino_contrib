@@ -5,7 +5,6 @@
 
 #include <memory>
 
-#include "openvino/core/any.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/runtime/so_ptr.hpp"
 #include "openvino/runtime/iremote_context.hpp"
@@ -19,12 +18,6 @@ namespace gfx_plugin {
 
 std::unique_ptr<MetalBackendState> create_metal_backend_state(const ov::AnyMap& properties,
                                                               const ov::SoPtr<ov::IRemoteContext>& context);
-void release_metal_backend_state(MetalBackendState& state);
-MetalMemoryStats get_metal_memory_stats(const MetalBackendState* state);
-GpuDeviceHandle get_metal_device_handle(const MetalBackendState* state);
-GpuCommandQueueHandle get_metal_command_queue(const MetalBackendState* state);
-GpuBufferManager* get_metal_const_buffer_manager(MetalBackendState* state);
-const GpuBufferManager* get_metal_const_buffer_manager(const MetalBackendState* state);
 
 }  // namespace gfx_plugin
 }  // namespace ov

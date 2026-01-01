@@ -32,6 +32,7 @@ struct GpuBuffer {
     bool persistent = false;
     bool from_handle = false;
     bool external = false;
+    bool owned = true;
 
     uint32_t storage_mode = 0;  // backend-specific storage mode as integer
     uint32_t options_mask = 0;  // backend-specific resource options mask

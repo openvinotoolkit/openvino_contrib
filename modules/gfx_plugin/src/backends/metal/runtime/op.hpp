@@ -12,8 +12,8 @@
 #include "openvino/core/shape.hpp"
 #include "openvino/core/except.hpp"
 #include "runtime/gpu_backend_base.hpp"
-#include "mlir/gfx_kernel_plan.hpp"
-#include "mlir/gfx_kernel_spec.hpp"
+#include "kernel_ir/gfx_kernel_plan.hpp"
+#include "kernel_ir/gfx_kernel_spec.hpp"
 #include "backends/metal/runtime/metal_memory.hpp"
 #include "runtime/gfx_activation.hpp"
 

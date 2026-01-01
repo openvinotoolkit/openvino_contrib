@@ -5,7 +5,7 @@
 
 #include <memory>
 
-#include "mlir/codegen/codegen_desc.hpp"
+#include "mlir_codegen/codegen_desc.hpp"
 #include "openvino/op/space_to_depth.hpp"
 #include "backends/metal/runtime/op.hpp"
 

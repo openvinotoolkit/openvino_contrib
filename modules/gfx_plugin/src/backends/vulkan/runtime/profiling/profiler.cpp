@@ -54,7 +54,7 @@ void VulkanProfiler::begin_infer(size_t expected_samples) {
     ensure_query_pool(expected_samples);
 }
 
-void VulkanProfiler::end_infer() {
+void VulkanProfiler::end_infer(GpuCommandBufferHandle /*command_buffer*/) {
     // No-op: timestamps are resolved per node once command buffer completes.
 }
 

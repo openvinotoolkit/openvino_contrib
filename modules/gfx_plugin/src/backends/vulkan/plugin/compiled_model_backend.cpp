@@ -5,6 +5,7 @@
 #include "backends/vulkan/plugin/compiled_model_backend.hpp"
 
 #include "backends/vulkan/runtime/vulkan_backend.hpp"
+#include "backends/vulkan/runtime/profiling/profiler.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -18,26 +19,12 @@ std::unique_ptr<VulkanBackendState> create_vulkan_backend_state() {
     return state;
 }
 
-void release_vulkan_backend_state(VulkanBackendState& /*state*/) {}
-
-GpuDeviceHandle get_vulkan_device_handle(const VulkanBackendState* state) {
-    return state ? state->device : nullptr;
-}
-
-GpuCommandQueueHandle get_vulkan_command_queue(const VulkanBackendState* state) {
-    return state ? state->queue : nullptr;
-}
-
-GpuBufferManager* get_vulkan_const_buffer_manager(VulkanBackendState* state) {
-    return state ? state->const_manager : nullptr;
-}
-
-const GpuBufferManager* get_vulkan_const_buffer_manager(const VulkanBackendState* state) {
-    return state ? state->const_manager : nullptr;
-}
-
-bool vulkan_has_const_manager(const VulkanBackendState* /*state*/) {
-    return true;
+std::unique_ptr<GfxProfiler> VulkanBackendState::create_profiler(const GfxProfilerConfig& cfg) const {
+    (void)cfg;
+    auto& ctx = VulkanContext::instance();
+    return std::make_unique<VulkanProfiler>(ctx.device(),
+                                            ctx.physical_device(),
+                                            ctx.queue_family_index());
 }
 
 }  // namespace gfx_plugin

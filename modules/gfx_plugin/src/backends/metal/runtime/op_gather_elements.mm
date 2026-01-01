@@ -6,14 +6,16 @@
 
 #include <string>
 
-#include "backends/metal/runtime/metal_backend.hpp"
+#include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "mlir/mlir_builder.hpp"
-#include "mlir/codegen/codegen_common.hpp"
+#include "mlir_codegen/codegen_common.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
+#include "kernel_ir/gfx_kernel_args.hpp"
 #include "mlir/IR/MLIRContext.h"
+#include "runtime/gfx_shape_utils.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -64,10 +66,9 @@ void MetalGatherElementsOp::parse_gather_elements(const std::shared_ptr<const ov
     OPENVINO_ASSERT(data_shape.size() == out_shape.size(), "GatherElements: output rank mismatch");
     OPENVINO_ASSERT(data_shape.size() <= GatherElementsCodegenDesc::kMaxDims, "GatherElements: rank too large");
 
-    int64_t axis = g6->get_axis();
-    if (axis < 0)
-        axis += static_cast<int64_t>(data_shape.size());
-    OPENVINO_ASSERT(axis >= 0 && axis < static_cast<int64_t>(data_shape.size()), "GatherElements: axis out of range");
+    const int64_t axis = normalize_axis(g6->get_axis(),
+                                        data_shape.size(),
+                                        "GatherElements");
 
     m_rank = static_cast<uint32_t>(data_shape.size());
     m_axis = static_cast<uint32_t>(axis);
@@ -192,9 +193,11 @@ void MetalGatherElementsOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     std::vector<KernelArg> args;
     args.reserve(4);
-    args.push_back(make_buffer_arg(0, data->buf));
-    args.push_back(make_buffer_arg(1, indices->buf));
-    args.push_back(make_buffer_arg(2, dst.buf));
+    append_kernel_input_args(args,
+                             2,
+                             [&](size_t idx) { return idx == 0 ? data : indices; },
+                             name().c_str());
+    append_kernel_output_args(args, 2, &dst, name().c_str());
     args.push_back(make_bytes_arg(3, &params, sizeof(params)));
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }

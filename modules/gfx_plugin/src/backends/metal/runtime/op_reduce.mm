@@ -9,12 +9,13 @@
 #include "openvino/core/except.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/parameter.hpp"
-#include "openvino/core/validation_util.hpp"
-#include "backends/metal/runtime/metal_backend.hpp"
+#include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "runtime/gfx_logger.hpp"
+#include "runtime/gfx_shape_utils.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
-#include "mlir_builder.hpp"
-#include "mlir/codegen/codegen_common.hpp"
+#include "kernel_ir/gfx_kernel_args.hpp"
+#include "mlir/mlir_builder.hpp"
+#include "mlir_codegen/codegen_common.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 
@@ -119,7 +120,7 @@ void MetalReduceOp::compile(MetalBufferManager* buffer_manager) {
     OPENVINO_ASSERT(axes_const, "Reduce axes must be constant");
     auto axes_vec = axes_const->cast_vector<int64_t>();
     for (auto ax : axes_vec) {
-        int axis = static_cast<int>(ov::util::normalize_axis(ax, static_cast<int64_t>(m_in_dims.size())));
+        int axis = static_cast<int>(normalize_axis(ax, m_in_dims.size(), "Reduce"));
         m_axes_mask[axis] = 1;
         m_reduce_dims[axis] = m_in_dims[axis];
     }
@@ -161,7 +162,7 @@ void MetalReduceOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     OPENVINO_ASSERT(axes_const, "Reduce axes must be constant");
     auto axes_vec = axes_const->cast_vector<int64_t>();
     for (auto ax : axes_vec) {
-        int axis = static_cast<int>(ov::util::normalize_axis(ax, static_cast<int64_t>(m_in_dims.size())));
+        int axis = static_cast<int>(normalize_axis(ax, m_in_dims.size(), "Reduce"));
         m_axes_mask[axis] = 1;
         m_reduce_dims[axis] = m_in_dims[axis];
     }
@@ -185,8 +186,8 @@ void MetalReduceOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     std::vector<KernelArg> args;
     args.reserve(9);
-    args.push_back(make_buffer_arg(0, src->buf));
-    args.push_back(make_buffer_arg(1, dst.buf));
+    append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
+    append_kernel_output_args(args, 1, &dst, name().c_str());
     args.push_back(make_bytes_arg(2, &num, sizeof(num)));
     args.push_back(make_bytes_arg(3, &rank, sizeof(rank)));
     args.push_back(make_bytes_arg(4, m_out_dims.data(), m_out_dims.size() * sizeof(int)));

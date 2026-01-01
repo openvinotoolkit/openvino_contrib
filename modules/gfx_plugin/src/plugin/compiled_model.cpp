@@ -10,10 +10,9 @@
 #include "openvino/gfx_plugin/properties.hpp"
 #include "openvino/gfx_plugin/plugin.hpp"
 #include "runtime/gfx_remote_context.hpp"
-#include "backends/metal/plugin/compiled_model_state.hpp"
-#include "backends/metal/plugin/compiled_model_backend.hpp"
-#include "backends/vulkan/plugin/compiled_model_backend.hpp"
 #include "plugin/compiled_model_backend_resources.hpp"
+#include "plugin/backend_factory.hpp"
+#include "plugin/gfx_property_lists.hpp"
 #include "plugin/gfx_property_utils.hpp"
 #include "plugin/model_serialization.hpp"
 #include "runtime/gfx_logger.hpp"
@@ -83,9 +82,6 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
         resolved_props[kGfxBackendProperty] = resolved.backend_name;
     }
     m_backend = resolved.backend;
-    if (!backend_supported(m_backend)) {
-        OPENVINO_THROW("GFX ", backend_to_string(m_backend), " backend is not available in this build.");
-    }
     m_backend_name = resolved.backend_name;
 
     // Preserve user properties; store inference_precision as ov::element::Type.
@@ -101,10 +97,8 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
         }
     }
     m_config[kGfxBackendProperty] = m_backend_name;
-    if (m_backend == GpuBackend::Metal) {
-        m_backend_state = create_metal_backend_state(properties, context);
-    } else {
-        m_backend_state = create_vulkan_backend_state();
+    m_backend_state = create_backend_state(m_backend, properties, context);
+    if (m_backend == GpuBackend::Vulkan) {
         GFX_LOG_INFO("CompiledModel", "Vulkan backend selected");
     }
 
@@ -113,10 +107,8 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
 }
 
 CompiledModel::~CompiledModel() {
-    if (auto* metal = dynamic_cast<MetalBackendState*>(m_backend_state.get())) {
-        release_metal_backend_state(*metal);
-    } else if (auto* vulkan = dynamic_cast<VulkanBackendState*>(m_backend_state.get())) {
-        release_vulkan_backend_state(*vulkan);
+    if (m_backend_state) {
+        m_backend_state->release();
     }
 }
 
@@ -134,19 +126,15 @@ void CompiledModel::set_property(const ov::AnyMap& properties) {
         if (kv.first == ov::hint::inference_precision.name()) {
             m_inference_precision = kv.second.as<ov::element::Type>();
             m_config[kv.first] = m_inference_precision;
-        } else if (kv.first == ov::enable_profiling.name()) {
-            m_enable_profiling = kv.second.as<bool>();
-            m_config[kv.first] = m_enable_profiling;
-        } else if (kv.first == "PERF_COUNT") {
-            m_enable_profiling = kv.second.as<bool>();
-            m_config[ov::enable_profiling.name()] = m_enable_profiling;
-            m_config[kv.first] = kv.second;
-        } else if (kv.first == kGfxProfilingLevelProperty) {
-            m_profiling_level = parse_profiling_level(kv.second);
-            m_profiling_level_set = true;
-            m_config[kv.first] = kv.second;
+        } else if (apply_profiling_property(kv.first,
+                                            kv.second,
+                                            m_enable_profiling,
+                                            m_profiling_level,
+                                            m_profiling_level_set,
+                                            m_config)) {
+            // handled
         } else {
-            m_config[kv.first] = kv.second;
+            OPENVINO_THROW("CompiledModel unsupported property: ", kv.first);
         }
     }
 }
@@ -163,14 +151,6 @@ ProfilingLevel CompiledModel::profiling_level() const {
 
 ov::Any CompiledModel::get_property(const std::string& name) const {
     // Read-only properties we currently expose for integration with tools like benchmark_app
-    const auto default_ro_properties = []() {
-        return std::vector<ov::PropertyName>{ov::model_name,
-                                             ov::supported_properties,
-                                             ov::execution_devices,
-                                             ov::loaded_from_cache,
-                                             ov::optimal_number_of_infer_requests};
-    };
-
     if (ov::model_name == name) {
         return decltype(ov::model_name)::value_type{m_runtime_model->get_friendly_name()};
     } else if (ov::execution_devices == name) {
@@ -181,14 +161,7 @@ ov::Any CompiledModel::get_property(const std::string& name) const {
     } else if (ov::loaded_from_cache == name) {
         return decltype(ov::loaded_from_cache)::value_type{m_loaded_from_cache};
     } else if (ov::supported_properties == name) {
-        auto props = default_ro_properties();
-        props.push_back(ov::PropertyName{ov::hint::inference_precision.name(), ov::PropertyMutability::RW});
-        props.push_back(ov::PropertyName{ov::enable_profiling.name(), ov::PropertyMutability::RW});
-        props.push_back(ov::PropertyName{"PERF_COUNT", ov::PropertyMutability::RW});
-        props.push_back(ov::PropertyName{kGfxProfilingLevelProperty, ov::PropertyMutability::RW});
-        props.push_back(ov::PropertyName{kGfxBackendProperty, ov::PropertyMutability::RO});
-        props.push_back(ov::PropertyName{kGfxProfilingReportProperty, ov::PropertyMutability::RO});
-        props.push_back(ov::PropertyName{kGfxMemStatsProperty, ov::PropertyMutability::RO});
+        auto props = gfx_compiled_model_supported_properties();
         return decltype(ov::supported_properties)::value_type(props.begin(), props.end());
     }
 
@@ -204,7 +177,7 @@ ov::Any CompiledModel::get_property(const std::string& name) const {
     }
 
     if (name == kGfxMemStatsProperty) {
-        return ov::Any{get_metal_memory_stats(dynamic_cast<const MetalBackendState*>(m_backend_state.get()))};
+        return m_backend_state ? m_backend_state->get_mem_stats() : ov::Any{};
     }
     if (name == kGfxProfilingReportProperty) {
         return last_profiling_report_json();
@@ -239,12 +212,14 @@ void CompiledModel::build_op_pipeline() {
         return;
     }
 
-    if (!backend_has_const_manager(m_backend, backend_state())) {
+    if (!backend_has_const_manager(backend_state())) {
         GFX_LOG_WARN("OpFactory", "Cannot build pipeline: const manager is null");
         return;
     }
 
-    const auto resources = get_backend_resources(m_backend, backend_state());
+    const auto resources = get_backend_resources(backend_state());
+    auto* backend_state = m_backend_state.get();
+    OPENVINO_ASSERT(backend_state, "GFX: backend state is not initialized");
     // Map Parameter nodes to input indices.
     for (size_t i = 0; i < m_runtime_model->inputs().size(); ++i) {
         m_param_index[m_runtime_model->inputs()[i].get_node()] = i;
@@ -298,11 +273,7 @@ void CompiledModel::build_op_pipeline() {
             }
         }
 
-        auto gpu_stage =
-            GpuStageFactory::create(node,
-                                    m_backend,
-                                    resources.device,
-                                    resources.queue);
+        auto gpu_stage = backend_state->create_stage(node);
         OPENVINO_ASSERT(gpu_stage,
                         "GFX: unsupported op in MLIR pipeline: ",
                         node->get_friendly_name(),

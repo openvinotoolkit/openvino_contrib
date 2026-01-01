@@ -229,6 +229,23 @@ inline std::vector<GpuTensor*> resolve_stage_inputs(
     return resolved;
 }
 
+template <typename InputLookup, typename StageFn>
+inline void execute_pipeline(std::vector<InferStage>& pipeline,
+                             const std::unordered_map<const ov::Node*, size_t>& node_map,
+                             const std::unordered_map<const ov::Node*, size_t>& param_map,
+                             InputLookup&& input_lookup,
+                             StageFn&& on_stage) {
+    for (auto& stage : pipeline) {
+        auto resolved = resolve_stage_inputs(stage,
+                                             node_map,
+                                             param_map,
+                                             pipeline,
+                                             std::forward<InputLookup>(input_lookup));
+        stage.stage->set_inputs(resolved);
+        on_stage(stage, resolved);
+    }
+}
+
 template <typename InputLookup>
 inline GpuTensor* resolve_output_tensor(const std::vector<ov::Output<const ov::Node>>& public_outputs,
                                         const std::shared_ptr<const ov::Model>& runtime_model,

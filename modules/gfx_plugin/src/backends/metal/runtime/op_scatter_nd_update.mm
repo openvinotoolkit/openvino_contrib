@@ -6,25 +6,21 @@
 
 #include <string>
 
-#include "backends/metal/runtime/metal_backend.hpp"
+#include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "mlir/mlir_builder.hpp"
-#include "mlir/codegen/codegen_common.hpp"
+#include "mlir_codegen/codegen_common.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"
 #include "runtime/gfx_logger.hpp"
+#include "runtime/gfx_shape_utils.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
+#include "kernel_ir/gfx_kernel_args.hpp"
 #include "mlir/IR/MLIRContext.h"
 
 namespace ov {
 namespace gfx_plugin {
 
 namespace {
-uint64_t product(const ov::Shape& s, size_t start, size_t end) {
-    uint64_t prod = 1;
-    for (size_t i = start; i < end; ++i) prod *= s[i];
-    return prod;
-}
-
 constexpr size_t kMaxScatterNDDims = 8;
 }  // namespace
 
@@ -76,14 +72,14 @@ void MetalScatterNDUpdateOp::parse_scatter_nd_update(const std::shared_ptr<const
     }
 
     m_k = k;
-    m_num_indices = (idx_rank > 1) ? product(idx_shape, 0, idx_rank - 1) : 1;
-    m_inner = product(data_shape, k, data_rank);
+    m_num_indices = (idx_rank > 1) ? shape_product(idx_shape, 0, idx_rank - 1) : 1;
+    m_inner = shape_product(data_shape, k, data_rank);
     m_total_updates = m_num_indices * m_inner;
     m_total_data = ov::shape_size(data_shape);
 
     for (size_t i = 0; i < k; ++i) {
         m_dims[i] = static_cast<uint32_t>(data_shape[i]);
-        m_strides[i] = static_cast<uint32_t>(product(data_shape, i + 1, data_rank));
+        m_strides[i] = static_cast<uint32_t>(shape_product(data_shape, i + 1, data_rank));
     }
 
     m_element_type = node->get_output_element_type(0);
@@ -219,8 +215,8 @@ void MetalScatterNDUpdateOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
         KernelDispatch dispatch = make_1d_dispatch(static_cast<size_t>(m_total_data), m_kernel_init->clamp_threadgroup_size(256));
         std::vector<KernelArg> args;
         args.reserve(3);
-        args.push_back(make_buffer_arg(0, data->buf));
-        args.push_back(make_buffer_arg(1, dst.buf));
+        append_kernel_input_args(args, 1, [&](size_t) { return data; }, name().c_str());
+        append_kernel_output_args(args, 1, &dst, name().c_str());
         args.push_back(make_bytes_arg(2, &params, sizeof(params)));
         execute_kernel(*m_kernel_init, cmd_buf_handle, dispatch, args);
     }
@@ -230,9 +226,11 @@ void MetalScatterNDUpdateOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
         KernelDispatch dispatch = make_1d_dispatch(static_cast<size_t>(m_total_updates), m_kernel_update->clamp_threadgroup_size(256));
         std::vector<KernelArg> args;
         args.reserve(4);
-        args.push_back(make_buffer_arg(0, indices->buf));
-        args.push_back(make_buffer_arg(1, updates->buf));
-        args.push_back(make_buffer_arg(2, dst.buf));
+        append_kernel_input_args(args,
+                                 2,
+                                 [&](size_t idx) { return idx == 0 ? indices : updates; },
+                                 name().c_str());
+        append_kernel_output_args(args, 2, &dst, name().c_str());
         args.push_back(make_bytes_arg(3, &params, sizeof(params)));
         execute_kernel(*m_kernel_update, cmd_buf_handle, dispatch, args);
     }

@@ -17,6 +17,7 @@
 #include "plugin/gfx_backend_config.hpp"
 #include "plugin/gfx_device_info.hpp"
 #include "plugin/gfx_profiling_utils.hpp"
+#include "plugin/gfx_property_lists.hpp"
 #include "plugin/gfx_property_utils.hpp"
 #include "plugin/model_serialization.hpp"
 #include "runtime/gfx_backend_utils.hpp"
@@ -54,11 +55,46 @@ Plugin::Plugin() {
     m_config[ov::inference_num_threads.name()] = static_cast<uint32_t>(1);
     m_config[ov::log::level.name()] = ov::log::Level::INFO;
     m_config[ov::hint::inference_precision.name()] = ov::element::f32;
+    m_config[ov::internal::threads_per_stream.name()] = static_cast<uint32_t>(1);
+    m_config[ov::internal::exclusive_async_requests.name()] = false;
 }
 
 std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(
     const std::shared_ptr<const ov::Model>& model,
     const ov::AnyMap& properties) const {
+    return compile_model_impl(model, properties, {});
+}
+
+std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(
+    const std::shared_ptr<const ov::Model>& model,
+    const ov::AnyMap& properties,
+    const ov::SoPtr<ov::IRemoteContext>& context) const {
+    if (!context) {
+        return compile_model(model, properties);
+    }
+    ov::AnyMap merged = properties;
+    const auto ctx_backend = ov::util::to_lower(get_remote_backend(context));
+    if (auto it = merged.find(kGfxBackendProperty); it != merged.end()) {
+        const auto requested = ov::util::to_lower(it->second.as<std::string>());
+        if (requested != ctx_backend) {
+            OPENVINO_THROW("GFX: backend mismatch between properties (", requested,
+                           ") and remote context (", ctx_backend, ")");
+        }
+    }
+    merged[kGfxBackendProperty] = ctx_backend;
+    merged[ov::device::id.name()] = get_remote_device_id(context);
+    OPENVINO_ASSERT(model, "Model is null");
+
+    if (is_hetero_subgraph(model)) {
+        OPENVINO_THROW("GFX plugin does not support HETERO subgraphs yet");
+    }
+    return compile_model_impl(model, merged, context);
+}
+
+std::shared_ptr<ov::ICompiledModel> Plugin::compile_model_impl(
+    const std::shared_ptr<const ov::Model>& model,
+    const ov::AnyMap& properties,
+    const ov::SoPtr<ov::IRemoteContext>& context) const {
     OPENVINO_ASSERT(model, "Model is null");
 
     if (is_hetero_subgraph(model)) {
@@ -99,102 +135,53 @@ std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(
         OPENVINO_THROW(oss.str());
     }
 
-    return std::make_shared<CompiledModel>(transformed, shared_from_this(), model, compile_properties);
+    return std::make_shared<CompiledModel>(transformed,
+                                           shared_from_this(),
+                                           model,
+                                           compile_properties,
+                                           context);
 }
 
-std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(
+std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model,
+                                                         const ov::AnyMap& properties) const {
+    auto ov_model = read_model_from_stream(get_core_checked(), model);
+    return import_model_impl(ov_model, properties, {});
+}
+
+std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model,
+                                                         const ov::SoPtr<ov::IRemoteContext>& context,
+                                                         const ov::AnyMap& properties) const {
+    auto ov_model = read_model_from_stream(get_core_checked(), model);
+    return import_model_impl(ov_model, properties, context);
+}
+
+std::shared_ptr<ov::ICompiledModel> Plugin::import_model(const ov::Tensor& model,
+                                                         const ov::AnyMap& properties) const {
+    auto ov_model = read_model_from_buffer(get_core_checked(), model);
+    return import_model_impl(ov_model, properties, {});
+}
+
+std::shared_ptr<ov::ICompiledModel> Plugin::import_model(const ov::Tensor& model,
+                                                         const ov::SoPtr<ov::IRemoteContext>& context,
+                                                         const ov::AnyMap& properties) const {
+    auto ov_model = read_model_from_buffer(get_core_checked(), model);
+    return import_model_impl(ov_model, properties, context);
+}
+
+std::shared_ptr<ov::ICompiledModel> Plugin::import_model_impl(
     const std::shared_ptr<const ov::Model>& model,
     const ov::AnyMap& properties,
     const ov::SoPtr<ov::IRemoteContext>& context) const {
-    if (!context) {
-        return compile_model(model, properties);
+    if (context) {
+        return compile_model(model, properties, context);
     }
-    ov::AnyMap merged = properties;
-    const auto ctx_backend = ov::util::to_lower(get_remote_backend(context));
-    if (auto it = merged.find(kGfxBackendProperty); it != merged.end()) {
-        const auto requested = ov::util::to_lower(it->second.as<std::string>());
-        if (requested != ctx_backend) {
-            OPENVINO_THROW("GFX: backend mismatch between properties (", requested,
-                           ") and remote context (", ctx_backend, ")");
-        }
-    }
-    merged[kGfxBackendProperty] = ctx_backend;
-    merged[ov::device::id.name()] = get_remote_device_id(context);
-    OPENVINO_ASSERT(model, "Model is null");
-
-    if (is_hetero_subgraph(model)) {
-        OPENVINO_THROW("GFX plugin does not support HETERO subgraphs yet");
-    }
-
-    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
-
-    ov::AnyMap compile_properties = m_config;
-    for (const auto& kv : merged) {
-        compile_properties[kv.first] = kv.second;
-    }
-    const auto resolved = resolve_backend_for_properties(compile_properties, /*log_fallback=*/true, "Plugin");
-    const auto backend_kind = resolved.backend;
-    GFX_LOG_INFO("Plugin", "Selected GFX backend: " << resolved.backend_name);
-
-    if (!model_supported_by_backend(transformed, backend_kind)) {
-        auto summary = collect_unsupported(transformed, backend_kind);
-        std::ostringstream oss;
-        oss << "GFX: model contains unsupported ops for MLIR/GFX execution.";
-        if (!summary.type_counts.empty()) {
-            oss << " Types: ";
-            size_t shown = 0;
-            for (const auto& kv : summary.type_counts) {
-                if (shown++)
-                    oss << ", ";
-                oss << kv.first << " x" << kv.second;
-            }
-        }
-        if (!summary.node_names.empty()) {
-            oss << ". Nodes: ";
-            for (size_t i = 0; i < summary.node_names.size(); ++i) {
-                if (i)
-                    oss << ", ";
-                oss << summary.node_names[i];
-            }
-        }
-        OPENVINO_THROW(oss.str());
-    }
-
-    return std::make_shared<CompiledModel>(transformed, shared_from_this(), model, compile_properties, context);
+    return compile_model(model, properties);
 }
 
-std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model,
-                                                         const ov::AnyMap& properties) const {
+std::shared_ptr<ov::ICore> Plugin::get_core_checked() const {
     auto core = get_core();
     OPENVINO_ASSERT(core, "GFX: core is null");
-    auto ov_model = read_model_from_stream(core, model);
-    return compile_model(ov_model, properties);
-}
-
-std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model,
-                                                         const ov::SoPtr<ov::IRemoteContext>& context,
-                                                         const ov::AnyMap& properties) const {
-    auto core = get_core();
-    OPENVINO_ASSERT(core, "GFX: core is null");
-    auto ov_model = read_model_from_stream(core, model);
-    return compile_model(ov_model, properties, context);
-}
-
-std::shared_ptr<ov::ICompiledModel> Plugin::import_model(const ov::Tensor& model,
-                                                         const ov::AnyMap& properties) const {
-    auto core = get_core();
-    OPENVINO_ASSERT(core, "GFX: core is null");
-    auto ov_model = read_model_from_buffer(core, model);
-    return compile_model(ov_model, properties);
-}
-
-std::shared_ptr<ov::ICompiledModel> Plugin::import_model(const ov::Tensor& model,
-                                                         const ov::SoPtr<ov::IRemoteContext>& context,
-                                                         const ov::AnyMap& properties) const {
-    auto core = get_core();
-    OPENVINO_ASSERT(core, "GFX: core is null");
-    auto ov_model = read_model_from_buffer(core, model);
-    return compile_model(ov_model, properties, context);
+    return core;
 }
 
 ov::SupportedOpsMap Plugin::query_model(const std::shared_ptr<const ov::Model>& model,
@@ -248,6 +235,14 @@ bool Plugin::is_hetero_subgraph(const std::shared_ptr<const ov::Model>& model) c
 
 void Plugin::set_property(const ov::AnyMap& properties) {
     for (const auto& kv : properties) {
+        if (apply_profiling_property(kv.first,
+                                     kv.second,
+                                     m_enable_profiling,
+                                     m_profiling_level,
+                                     m_profiling_level_set,
+                                     m_config)) {
+            continue;
+        }
         if (kv.first == ov::hint::performance_mode.name()) {
             m_performance_mode = kv.second.as<ov::hint::PerformanceMode>();
             m_config[kv.first] = kv.second;
@@ -268,23 +263,14 @@ void Plugin::set_property(const ov::AnyMap& properties) {
             } catch (const std::exception& e) {
                 OPENVINO_THROW("Unsupported device id");
             }
-        } else if (kv.first == ov::enable_profiling.name()) {
-            m_enable_profiling = kv.second.as<bool>();
-            m_config[kv.first] = kv.second;
-        } else if (kv.first == "PERF_COUNT") {  // legacy spelling accepted by benchmark_app
-            m_enable_profiling = kv.second.as<bool>();
-            m_config[ov::enable_profiling.name()] = m_enable_profiling;
-            m_config[kv.first] = kv.second;
-        } else if (kv.first == kGfxProfilingLevelProperty) {
-            m_profiling_level = parse_profiling_level(kv.second);
-            m_profiling_level_set = true;
-            m_config[kv.first] = kv.second;
         } else if (kv.first == kGfxBackendProperty) {
             ov::AnyMap tmp{{kGfxBackendProperty, kv.second}};
             const auto backend = resolve_backend_name_from_properties(tmp, /*log_fallback=*/true, "Plugin");
             m_config[kv.first] = backend;
         } else if (kv.first == ov::hint::inference_precision.name()) {
             m_config[kv.first] = kv.second.as<ov::element::Type>();
+        } else if (kv.first == ov::internal::threads_per_stream.name()) {
+            m_config[kv.first] = kv.second.as<uint32_t>();
         } else if (kv.first == ov::hint::num_requests.name() || kv.first == ov::hint::execution_mode.name() ||
                    kv.first == ov::num_streams.name() || kv.first == ov::inference_num_threads.name() ||
                    kv.first == ov::log::level.name() || kv.first == ov::internal::exclusive_async_requests.name()) {
@@ -297,75 +283,28 @@ void Plugin::set_property(const ov::AnyMap& properties) {
 }
 
 ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& arguments) const {
-    const auto ro_props = [&]() {
-        return std::vector<ov::PropertyName>{ov::available_devices,
-                                             ov::supported_properties,
-                                             ov::internal::supported_properties,
-                                             ov::device::full_name,
-                                             ov::device::architecture,
-                                             ov::device::type,
-                                             ov::device::capabilities,
-                                             ov::execution_devices,
-                                             ov::range_for_async_infer_requests};
-    };
-    const auto rw_props = [&]() {
-        return std::vector<ov::PropertyName>{ov::device::id,
-                                             ov::enable_profiling,
-                                             ov::PropertyName{kGfxProfilingLevelProperty,
-                                                              ov::PropertyMutability::RW},
-                                             ov::hint::performance_mode,
-                                             ov::hint::num_requests,
-                                             ov::hint::execution_mode,
-                                             ov::hint::inference_precision,
-                                             ov::num_streams,
-                                             ov::inference_num_threads,
-                                             ov::log::level};
-    };
+    ov::AnyMap merged = m_config;
+    for (const auto& kv : arguments) {
+        merged[kv.first] = kv.second;
+    }
     const auto device_info = [&]() {
-        return query_device_info_from_properties(m_config, /*log_fallback=*/false, "Plugin");
+        return query_device_info_from_properties(merged, /*log_fallback=*/false, "Plugin");
     };
 
     if (ov::supported_properties == name) {
-        auto ro = ro_props();
-        auto rw = rw_props();
-        rw.push_back(ov::PropertyName{kGfxBackendProperty, ov::PropertyMutability::RW});
-        // Accept legacy PERF_COUNT spelling as RW alias of enable_profiling
-        rw.push_back(ov::PropertyName{"PERF_COUNT", ov::PropertyMutability::RW});
-        std::vector<ov::PropertyName> supported;
-        supported.reserve(ro.size() + rw.size());
-        supported.insert(supported.end(), ro.begin(), ro.end());
-        supported.insert(supported.end(), rw.begin(), rw.end());
-        return supported;
+        return gfx_plugin_supported_properties();
     } else if (ov::internal::supported_properties == name) {
         // Advertise internal properties this plugin understands (minimal set for dev flow)
-        return decltype(ov::internal::supported_properties)::value_type{
-            ov::PropertyName{ov::internal::caching_properties.name(), ov::PropertyMutability::RO},
-            ov::PropertyName{ov::internal::exclusive_async_requests.name(), ov::PropertyMutability::RW},
-            ov::PropertyName{ov::internal::threads_per_stream.name(), ov::PropertyMutability::RW},
-            ov::PropertyName{ov::internal::compiled_model_runtime_properties.name(), ov::PropertyMutability::RO},
-            ov::PropertyName{ov::internal::compiled_model_runtime_properties_supported.name(),
-                             ov::PropertyMutability::RO},
-            ov::PropertyName{ov::internal::cache_header_alignment.name(), ov::PropertyMutability::RO},
-        };
+        return decltype(ov::internal::supported_properties)::value_type(gfx_internal_supported_properties());
     } else if (ov::internal::caching_properties == name) {
-        return decltype(ov::internal::caching_properties)::value_type{
-            ov::PropertyName{ov::device::architecture.name(), ov::PropertyMutability::RO},
-            ov::PropertyName{ov::device::id.name(), ov::PropertyMutability::RW},
-            ov::PropertyName{kGfxBackendProperty, ov::PropertyMutability::RW},
-            ov::PropertyName{ov::hint::inference_precision.name(), ov::PropertyMutability::RW},
-        };
+        return decltype(ov::internal::caching_properties)::value_type(gfx_caching_properties());
     } else if (ov::internal::compiled_model_runtime_properties == name) {
-        ov::AnyMap merged = m_config;
-        for (const auto& kv : arguments) {
-            merged[kv.first] = kv.second;
-        }
         return make_compiled_runtime_properties(merged);
     } else if (ov::internal::compiled_model_runtime_properties_supported == name) {
         auto it = arguments.find(ov::internal::compiled_model_runtime_properties.name());
         if (it == arguments.end()) {
             return false;
         }
-        ov::AnyMap merged = m_config;
         const std::string expected = it->second.as<std::string>();
         return expected == make_compiled_runtime_properties(merged);
     } else if (ov::available_devices == name) {
@@ -402,10 +341,10 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& argument
     } else if (ov::execution_devices == name) {
         return decltype(ov::execution_devices)::value_type{get_device_name()};
     } else if (name == kGfxBackendProperty) {
-        if (auto it = m_config.find(kGfxBackendProperty); it != m_config.end()) {
+        if (auto it = merged.find(kGfxBackendProperty); it != merged.end()) {
             return it->second;
         }
-        return resolve_backend_name_from_properties(ov::AnyMap{}, /*log_fallback=*/false, "Plugin");
+        return resolve_backend_name_from_properties(merged, /*log_fallback=*/false, "Plugin");
     } else if (ov::internal::cache_header_alignment == name) {
         // Align cache header to 64 bytes to match Template expectations and CacheHeaderAlignmentTests.
         return decltype(ov::internal::cache_header_alignment)::value_type{64u};
@@ -413,7 +352,7 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& argument
         // min, max, step
         return decltype(ov::range_for_async_infer_requests)::value_type{1, 1, 1};
     } else if (ov::hint::inference_precision == name) {
-        if (auto it = m_config.find(ov::hint::inference_precision.name()); it != m_config.end()) {
+        if (auto it = merged.find(ov::hint::inference_precision.name()); it != merged.end()) {
             return it->second.as<ov::element::Type>();
         }
         return ov::element::f32;

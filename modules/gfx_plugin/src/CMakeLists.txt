@@ -27,6 +27,7 @@ else()
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/plugin/remote_tensor_stub.cpp)
     list(APPEND GFX_RUNTIME_COMMON_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/stage_factory_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/op_support_stub.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/runtime_stub.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/profiling/profiler_stub.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/profiling/gpu_timestamps_stub.cpp)
@@ -50,7 +51,8 @@ else()
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/remote_context_stub.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/plugin/remote_tensor_stub.cpp)
     list(APPEND GFX_RUNTIME_COMMON_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime/stage_factory_stub.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime/stage_factory_stub.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime/op_support_stub.cpp)
 endif()
 
 if(GFX_BACKEND_METAL_AVAILABLE)
@@ -79,7 +81,7 @@ endif()
 
 if(ENABLE_GFX_MLIR)
     add_subdirectory(mlir)
-    add_subdirectory(mlir/codegen)
+    add_subdirectory(mlir_codegen)
 endif()
 
 # Build settings shared by plugin and runtime objects.
@@ -92,7 +94,7 @@ target_include_directories(gfx_plugin_build_settings INTERFACE
     "${CMAKE_CURRENT_SOURCE_DIR}/runtime"
     "${CMAKE_CURRENT_SOURCE_DIR}/backends"
     "${CMAKE_CURRENT_SOURCE_DIR}/mlir"
-    "${CMAKE_CURRENT_SOURCE_DIR}/mlir/codegen"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mlir_codegen"
     "${CMAKE_CURRENT_SOURCE_DIR}/transforms"
     $<$<BOOL:${ENABLE_GFX_MLIR}>:${MLIR_INCLUDE_DIRS}>)
 target_compile_definitions(gfx_plugin_build_settings INTERFACE

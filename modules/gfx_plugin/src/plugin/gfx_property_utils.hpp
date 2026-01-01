@@ -8,6 +8,7 @@
 #include "openvino/runtime/properties.hpp"
 #include "openvino/util/common_util.hpp"
 #include "openvino/gfx_plugin/properties.hpp"
+#include "openvino/gfx_plugin/profiling.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_backend_utils.hpp"
 
@@ -51,6 +52,13 @@ ResolvedBackendInfo resolve_backend_for_properties(ov::AnyMap& properties,
 int parse_device_id(const ov::AnyMap& properties);
 
 RemoteContextParams normalize_remote_context_params(const ov::AnyMap& remote_properties);
+
+bool apply_profiling_property(const std::string& key,
+                              const ov::Any& value,
+                              bool& enable_profiling,
+                              ProfilingLevel& profiling_level,
+                              bool& profiling_level_set,
+                              ov::AnyMap& config);
 
 }  // namespace gfx_plugin
 }  // namespace ov

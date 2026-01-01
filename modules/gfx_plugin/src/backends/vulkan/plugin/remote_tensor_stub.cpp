@@ -3,7 +3,7 @@
 //
 
 #include "openvino/core/except.hpp"
-#include "runtime/gfx_remote_context.hpp"
+#include "backends/vulkan/plugin/remote_tensor.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -15,8 +15,6 @@ RemoteTensorCreateResult create_vulkan_remote_tensor(const ov::element::Type& /*
                                                      size_t /*bytes*/) {
     OPENVINO_THROW("GFX: Vulkan backend is not available for remote tensor");
 }
-
-void release_vulkan_remote_tensor(GpuTensor& /*tensor*/, bool /*owns_buffer*/) {}
 
 }  // namespace gfx_plugin
 }  // namespace ov

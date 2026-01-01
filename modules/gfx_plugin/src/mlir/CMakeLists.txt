@@ -46,9 +46,7 @@ set(GFX_MLIR_SOURCES
     mlir_builder_scatter_nd_update.cpp
     mlir_builder_shapeof.cpp
     mlir_passes.cpp
-    mlir_utils.cpp
-    spirv_codegen.cpp
-    msl_codegen.cpp)
+    mlir_utils.cpp)
 
 add_library(gfx_mlir STATIC ${GFX_MLIR_SOURCES})
 
