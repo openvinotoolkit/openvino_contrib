@@ -502,17 +502,10 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
         return &hooks;
     };
 
-    std::vector<KernelArg> args;
-    args.reserve(m_kernel_inputs.size() + outputs.size());
-    append_kernel_input_args(args, m_kernel_inputs, resolve_input_tensor, m_name.c_str());
-    append_kernel_output_args(args,
-                              static_cast<uint32_t>(args.size()),
-                              outputs,
-                              m_name.c_str());
-    if (m_buffer_manager) {
-        args = materialize_kernel_bytes_args(args, *m_buffer_manager, m_name.c_str());
-    }
-    validate_kernel_args(*m_kernel, args, m_name.c_str());
+    KernelArgsBuilder args_builder(m_name.c_str());
+    args_builder.add_inputs(m_kernel_inputs, resolve_input_tensor);
+    args_builder.add_outputs(outputs);
+    auto args = args_builder.finalize(m_buffer_manager, m_kernel.get());
 
     KernelDispatch dispatch{};
     if (m_type == "Softmax" || m_type == "LogSoftmax" ||

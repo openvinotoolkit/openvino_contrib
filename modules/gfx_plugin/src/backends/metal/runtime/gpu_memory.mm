@@ -10,9 +10,12 @@ namespace ov {
 namespace gfx_plugin {
 
 MetalGpuAllocator::MetalGpuAllocator(MetalAllocator& alloc, MetalAllocatorCore& core, const MetalDeviceCaps& caps)
-    : m_alloc(alloc), m_core(core), m_caps(caps) {}
+    : m_alloc(alloc), m_core(core), m_caps(caps) {
+    ensure_metal_memory_ops_registered();
+}
 
 GpuBuffer MetalGpuAllocator::allocate(const GpuBufferDesc& desc) {
+    validate_gpu_buffer_desc(desc, "GFX Metal");
     BufferDesc mdesc;
     mdesc.bytes = desc.bytes;
     mdesc.type = desc.type;

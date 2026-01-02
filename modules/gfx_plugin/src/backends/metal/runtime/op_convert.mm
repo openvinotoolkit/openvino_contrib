@@ -50,10 +50,11 @@ void MetalConvertOp::compile(MetalBufferManager* buffer_manager) {
     desc.element_type = m_dst_type == ov::element::dynamic ? ov::element::f32 : m_dst_type;
     mlir::MLIRContext ctx;
     auto module = build_mlir_convert_from_model(make_single_op_model(m_node), ctx);
-    auto source = generate_msl_from_mlir(module, desc);
+    auto msl_desc = desc;
+    auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
     KernelSpec spec(m_node, 3u);
-    m_kernel = compile_msl_kernel(backend, spec, module, "convert_kernel", source, &log);
+    m_kernel = compile_msl_kernel(backend, spec, module, "convert_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalConvertOp: failed to compile kernel: ", log);
 
     MetalOp::compile(buffer_manager);
@@ -99,11 +100,12 @@ void MetalConvertOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     }
     KernelDispatch dispatch = make_1d_dispatch(n, m_kernel->clamp_threadgroup_size(64));
 
-    std::vector<KernelArg> args;
-    args.reserve(3);
-    append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &n, sizeof(n)));
+    KernelArgsBuilder args_builder(name().c_str());
+    append_kernel_input_args(args_builder, 1, [&](size_t) { return src; }, name().c_str());
+    args_builder.add_output(&dst);
+    args_builder.add_bytes(&n, sizeof(n));
+
+    const auto args = args_builder.finalize(buffer_manager(), m_kernel.get());
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 

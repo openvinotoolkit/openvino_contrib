@@ -4,7 +4,7 @@
 
 #include <gtest/gtest.h>
 
-#include "mlir_codegen/spirv_codegen.hpp"
+#include "mlir/spirv_codegen.hpp"
 #include "backends/vulkan/codegen/vulkan_codegen_backend.hpp"
 
 namespace ov {

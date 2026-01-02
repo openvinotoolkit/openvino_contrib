@@ -25,8 +25,8 @@
 #include "plugin/infer_profiling_utils.hpp"
 #include "plugin/infer_request_state.hpp"
 #include "runtime/gfx_remote_context.hpp"
-#include "infer_pipeline.hpp"
-#include "infer_io_utils.hpp"
+#include "plugin/infer_pipeline.hpp"
+#include "plugin/infer_io_utils.hpp"
 #include "backends/vulkan/plugin/compiled_model_state.hpp"
 
 namespace ov {

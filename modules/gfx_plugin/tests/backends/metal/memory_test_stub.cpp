@@ -16,11 +16,18 @@
 #include "plugin/gfx_backend_config.hpp"
 #include "runtime/memory_manager.hpp"
 #include "backends/vulkan/runtime/gpu_memory.hpp"
+#include "backends/vulkan/runtime/memory_api.hpp"
 #include "backends/vulkan/runtime/vulkan_memory.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 namespace {
+
+struct VulkanMemoryOpsRegistration {
+    VulkanMemoryOpsRegistration() { ensure_vulkan_memory_ops_registered(); }
+};
+
+const VulkanMemoryOpsRegistration kVulkanMemoryOpsRegistration{};
 
 bool is_vulkan_unsupported_error(const std::string& msg) {
     return msg.find("GFX Vulkan") != std::string::npos ||

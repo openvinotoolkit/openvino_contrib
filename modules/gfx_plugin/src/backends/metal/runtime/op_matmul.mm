@@ -134,10 +134,11 @@ void MetalMatMulOp::compile(MetalBufferManager* buffer_manager) {
     auto module = build_mlir_module_from_model(model, ctx);
     MatMulCodegenDesc desc = m_desc;
     desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
-    auto source = generate_msl_from_mlir(module, desc);
+    auto msl_desc = desc;
+    auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
     KernelSpec spec(m_node, 3u);
-    m_kernel = compile_msl_kernel(backend, spec, module, "matmul_kernel", source, &log);
+    m_kernel = compile_msl_kernel(backend, spec, module, "matmul_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalMatMulOp: failed to compile matmul kernel: ", log);
 
     MetalOp::compile(buffer_manager);
@@ -185,13 +186,10 @@ void MetalMatMulOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     const NSUInteger threads_per_tg = 256;
     KernelDispatch dispatch = make_1d_dispatch(total, m_kernel->clamp_threadgroup_size(threads_per_tg));
 
-    std::vector<KernelArg> args;
-    args.reserve(3);
-    append_kernel_input_args(args,
-                             2,
-                             [&](size_t idx) { return idx == 0 ? A : B; },
-                             name().c_str());
-    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &C, name().c_str());
+    KernelArgsBuilder args_builder(name().c_str());
+    args_builder.add_inputs(2, [&](size_t idx) { return idx == 0 ? A : B; });
+    args_builder.add_output(&C);
+    auto args = args_builder.finalize(nullptr, nullptr);
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 

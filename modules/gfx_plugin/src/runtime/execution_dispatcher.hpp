@@ -21,6 +21,13 @@ namespace gfx_plugin {
 
 class GFX_STAGE_API GpuStageFactory {
 public:
+    using StageFactoryFn = std::unique_ptr<GpuStage> (*)(const std::shared_ptr<const ov::Node>&,
+                                                         void* device,
+                                                         void* queue);
+
+    static bool register_factory(GpuBackend backend, StageFactoryFn fn);
+    static StageFactoryFn factory_for_backend(GpuBackend backend);
+
     static std::unique_ptr<GpuStage> create(const std::shared_ptr<const ov::Node>& node,
                                             GpuBackend backend = GpuBackend::Metal,
                                             void* device = nullptr,

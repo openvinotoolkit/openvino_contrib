@@ -5,14 +5,18 @@
 #include "backends/vulkan/runtime/gpu_memory.hpp"
 
 #include "openvino/core/except.hpp"
+#include "backends/vulkan/runtime/memory_api.hpp"
 #include "backends/vulkan/runtime/vulkan_memory.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 
-VulkanGpuAllocator::VulkanGpuAllocator(VkBufferUsageFlags usage) : m_usage(usage) {}
+VulkanGpuAllocator::VulkanGpuAllocator(VkBufferUsageFlags usage) : m_usage(usage) {
+    ensure_vulkan_memory_ops_registered();
+}
 
 GpuBuffer VulkanGpuAllocator::allocate(const GpuBufferDesc& desc) {
+    validate_gpu_buffer_desc(desc, "GFX Vulkan");
     VkMemoryPropertyFlags props = 0;
     if (desc.cpu_read || desc.cpu_write) {
         props = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;

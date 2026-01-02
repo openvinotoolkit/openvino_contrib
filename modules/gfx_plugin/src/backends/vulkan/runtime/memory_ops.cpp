@@ -33,5 +33,14 @@ const GpuMemoryOps& vulkan_memory_ops() {
     return ops;
 }
 
+void ensure_vulkan_memory_ops_registered() {
+    static const bool registered = register_memory_ops(GpuBackend::Vulkan, &vulkan_memory_ops);
+    (void)registered;
+}
+
+namespace {
+const bool kRegistered = (ensure_vulkan_memory_ops_registered(), true);
+}  // namespace
+
 }  // namespace gfx_plugin
 }  // namespace ov

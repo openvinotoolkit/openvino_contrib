@@ -33,6 +33,8 @@ OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
                                           const OutputViewInfo& info,
                                           const ov::Tensor* host_override,
                                           IGpuAllocator* allocator,
+                                          GpuBufferPool* pool,
+                                          BufferHandle* staging_handle,
                                           GpuCommandQueueHandle metal_queue,
                                           const char* error_prefix) {
     OutputBindingResult result{};
@@ -42,8 +44,11 @@ OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
     size_t bytes = host_binding.bytes;
 
     OPENVINO_ASSERT(allocator, error_prefix, ": GPU allocator is not available");
+    OPENVINO_ASSERT(pool, error_prefix, ": GPU buffer pool is not available");
+    OPENVINO_ASSERT(staging_handle, error_prefix, ": staging handle is not available");
 
     if (host_override && *host_override) {
+        pool->release(*staging_handle);
         GpuBuffer shared = allocator->wrap_shared(const_cast<void*>(host_override->data()), bytes, info.type);
         if (bytes && dev.buf.buffer != shared.buffer) {
             gpu_copy_buffer(metal_queue, dev.buf, shared, bytes);
@@ -58,6 +63,7 @@ OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
     }
 
     if (dev.buf.host_visible && dev.buf.buffer) {
+        pool->release(*staging_handle);
         void* ptr = gpu_map_buffer(dev.buf);
         OPENVINO_ASSERT(ptr, error_prefix, ": shared output buffer has no CPU pointer");
         result.host_tensor = ov::Tensor(info.type, info.shape, ptr);
@@ -77,7 +83,7 @@ OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
         desc.cpu_read = true;
         desc.cpu_write = true;
         desc.prefer_device_local = false;
-        GpuBuffer shared = allocator->allocate(desc);
+        GpuBuffer shared = pool->ensure(*staging_handle, desc);
         gpu_copy_buffer(metal_queue, dev.buf, shared, bytes);
         result.device_tensor = dev;
         result.device_tensor.buf = shared;

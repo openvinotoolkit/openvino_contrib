@@ -24,10 +24,9 @@ MetalCodegenBackend::MetalCodegenBackend(MetalDeviceHandle device) : m_device(de
 
 std::shared_ptr<ICompiledKernel> MetalCodegenBackend::compile(const KernelSource& source,
                                                               std::string* log) {
-    std::string msl = source.msl_source;
-    if (msl.empty() && source.msl_generator) {
-        msl = source.msl_generator(source.module);
-    }
+    std::string local_log;
+    std::string* log_ptr = log ? log : &local_log;
+    std::string msl = resolve_msl_source(source, log_ptr);
     OPENVINO_ASSERT(!msl.empty(), "MetalCodegenBackend: missing MSL source");
     OPENVINO_ASSERT(!source.entry_point.empty(), "MetalCodegenBackend: missing entry point");
 

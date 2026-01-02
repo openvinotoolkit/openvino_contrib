@@ -10,6 +10,7 @@
 #include "openvino/core/except.hpp"
 #include "runtime/memory_manager.hpp"
 #include "backends/vulkan/runtime/gpu_memory.hpp"
+#include "backends/vulkan/runtime/memory_api.hpp"
 
 namespace {
 
@@ -29,6 +30,7 @@ ov::gfx_plugin::GpuBufferDesc make_desc(size_t bytes) {
 
 TEST(GfxVulkanMemory, CopyRoundtrip) {
     try {
+        ov::gfx_plugin::ensure_vulkan_memory_ops_registered();
         ov::gfx_plugin::VulkanGpuAllocator alloc;
         auto desc = make_desc(256);
         auto buf = alloc.allocate(desc);

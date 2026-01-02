@@ -7,8 +7,8 @@
 #include <vector>
 
 #include "common_test_utils/test_constants.hpp"
-#include "../../test_constants.hpp"
-#include "../../../backends/metal/integration/test_utils.hpp"
+#include "integration/test_constants.hpp"
+#include "backends/metal/test_utils.hpp"
 
 using ov::test::SplitLayerTest;
 

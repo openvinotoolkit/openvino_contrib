@@ -81,7 +81,7 @@ protected:
 };
 
 TEST_F(GfxBufferManagerTest, AllocAlignedAndNonNull) {
-    auto buf = mgr->allocate(1024, ov::element::f32, /*persistent=*/false, /*shared=*/false);
+    auto buf = mgr->allocate(1024, ov::element::f32, /*persistent=*/false, /*storageModePrivate=*/true);
     ASSERT_NE(static_cast<id<MTLBuffer>>(buf.buffer), nil);
     EXPECT_GE(buf.size, 1024u);
     EXPECT_EQ(buf.size % kAlign, 0u);
@@ -93,10 +93,10 @@ TEST_F(GfxBufferManagerTest, ReuseBuffersViaFreeList) {
         return;
     }
     mgr->reset_stats();
-    auto buf1 = mgr->allocate(2048, ov::element::f32, /*persistent=*/false, /*shared=*/false);
+    auto buf1 = mgr->allocate(2048, ov::element::f32, /*persistent=*/false, /*storageModePrivate=*/true);
     auto ptr1 = static_cast<id<MTLBuffer>>(buf1.buffer);
     mgr->release(std::move(buf1));
-    auto buf2 = mgr->allocate(2048, ov::element::f32, /*persistent=*/false, /*shared=*/false);
+    auto buf2 = mgr->allocate(2048, ov::element::f32, /*persistent=*/false, /*storageModePrivate=*/true);
     auto ptr2 = static_cast<id<MTLBuffer>>(buf2.buffer);
     EXPECT_EQ(ptr1, ptr2);
     auto stats = mgr->stats();
@@ -116,12 +116,12 @@ TEST_F(GfxBufferManagerTest, DynamicGrowthWithBufferHandle) {
 }
 
 TEST_F(GfxBufferManagerTest, PersistentAndPerInferAreSeparated) {
-    auto persist = mgr->allocate(1024, ov::element::f32, /*persistent=*/true, /*shared=*/false);
+    auto persist = mgr->allocate(1024, ov::element::f32, /*persistent=*/true, /*storageModePrivate=*/true);
     auto p_ptr = static_cast<id<MTLBuffer>>(persist.buffer);
-    auto tmp = mgr->allocate(1024, ov::element::f32, /*persistent=*/false, /*shared=*/false);
+    auto tmp = mgr->allocate(1024, ov::element::f32, /*persistent=*/false, /*storageModePrivate=*/true);
     auto t_ptr = static_cast<id<MTLBuffer>>(tmp.buffer);
     mgr->release(std::move(tmp));
-    auto tmp2 = mgr->allocate(1024, ov::element::f32, /*persistent=*/false, /*shared=*/false);
+    auto tmp2 = mgr->allocate(1024, ov::element::f32, /*persistent=*/false, /*storageModePrivate=*/true);
     EXPECT_EQ(static_cast<id<MTLBuffer>>(tmp2.buffer), t_ptr);
     EXPECT_EQ(p_ptr, static_cast<id<MTLBuffer>>(persist.buffer));
 }

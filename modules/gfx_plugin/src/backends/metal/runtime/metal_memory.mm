@@ -390,6 +390,7 @@ MetalBuffer MetalBufferManager::allocate(size_t size,
 
 MetalBuffer MetalBufferManager::allocate(const GpuBufferDesc& desc, bool persistent, bool from_handle) {
     MetalAllocator* alloc = tls_alloc;
+    validate_gpu_buffer_desc(desc, "GFX Metal");
     BufferDesc mdesc;
     mdesc.bytes = desc.bytes;
     mdesc.type = desc.type;

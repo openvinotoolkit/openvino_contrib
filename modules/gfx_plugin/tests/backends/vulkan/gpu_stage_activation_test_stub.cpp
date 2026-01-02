@@ -12,6 +12,7 @@
 #include "openvino/op/relu.hpp"
 #include "openvino/op/sigmoid.hpp"
 #include "openvino/op/tanh.hpp"
+#include "backends/vulkan/runtime/stage_factory.hpp"
 #include "runtime/gfx_backend_utils.hpp"
 #include "runtime/execution_dispatcher.hpp"
 #include "backends/vulkan/runtime/vulkan_memory.hpp"
@@ -34,6 +35,7 @@ bool is_vulkan_unsupported_error(const std::string& msg) {
 
 template <typename OpFactory>
 void run_activation(const ActivationCase& tc) {
+    ensure_vulkan_stage_factory_registered();
     try {
         const size_t bytes = tc.in.size() * sizeof(float);
         ASSERT_GT(bytes, 0u);

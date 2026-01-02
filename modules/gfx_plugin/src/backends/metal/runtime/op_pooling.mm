@@ -161,10 +161,11 @@ void MetalPoolOp::compile(MetalBufferManager* buffer_manager) {
     auto model = make_single_op_model(m_node);
     mlir::ModuleOp module = m_is_avg ? build_mlir_avgpool_from_model(model, ctx)
                                      : build_mlir_maxpool_from_model(model, ctx);
-    auto source = generate_msl_from_mlir(module, desc);
+    auto msl_desc = desc;
+    auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
     KernelSpec spec(m_node, 3u);
-    m_kernel = compile_msl_kernel(backend, spec, module, "pool2d_kernel", source, &log);
+    m_kernel = compile_msl_kernel(backend, spec, module, "pool2d_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalPoolOp: failed to compile pool2d kernel: ", log);
 
     MetalOp::compile(buffer_manager);
@@ -256,11 +257,12 @@ void MetalPoolOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     const NSUInteger threads_per_tg = 64;
     KernelDispatch dispatch = make_1d_dispatch(total, m_kernel->clamp_threadgroup_size(threads_per_tg));
 
-    std::vector<KernelArg> args;
-    args.reserve(3);
-    append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &params, sizeof(params)));
+    KernelArgsBuilder args_builder(name().c_str());
+    append_kernel_input_args(args_builder, 1, [&](size_t) { return src; }, name().c_str());
+    args_builder.add_output(&dst);
+    args_builder.add_bytes(&params, sizeof(params));
+
+    const auto args = args_builder.finalize(buffer_manager(), m_kernel.get());
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 

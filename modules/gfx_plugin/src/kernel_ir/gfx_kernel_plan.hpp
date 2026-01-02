@@ -3,10 +3,11 @@
 //
 #pragma once
 
+#include <functional>
 #include <string>
 
 #include "openvino/core/shape.hpp"
-#include "mlir_codegen/gfx_codegen_backend.hpp"
+#include "kernel_ir/gfx_codegen_backend.hpp"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "kernel_ir/gfx_kernel_dispatch.hpp"
 
@@ -37,9 +38,22 @@ public:
         return src;
     }
 
+    KernelSource to_source_with_msl_generator(std::function<std::string(mlir::ModuleOp)> generator) const {
+        KernelSource src = to_source();
+        src.msl_generator = std::move(generator);
+        return src;
+    }
+
     KernelSource to_source_with_spirv(std::vector<uint32_t> spirv_binary) const {
         KernelSource src = to_source();
         src.spirv_binary = std::move(spirv_binary);
+        return src;
+    }
+
+    KernelSource to_source_with_spirv_generator(
+        std::function<std::vector<uint32_t>(mlir::ModuleOp)> generator) const {
+        KernelSource src = to_source();
+        src.spirv_generator = std::move(generator);
         return src;
     }
 

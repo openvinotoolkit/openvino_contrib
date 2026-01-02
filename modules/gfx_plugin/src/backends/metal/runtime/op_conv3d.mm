@@ -111,10 +111,11 @@ void MetalConv3DOp::compile(MetalBufferManager* buffer_manager) {
     auto module = build_mlir_conv3d_from_model(model, ctx);
     Conv3DCodegenDesc desc = m_desc;
     desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
-    auto source = generate_msl_from_mlir(module, desc);
+    auto msl_desc = desc;
+    auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
     KernelSpec spec(m_node, 4u);
-    m_kernel = compile_msl_kernel(backend, spec, module, "conv3d_kernel", source, &log);
+    m_kernel = compile_msl_kernel(backend, spec, module, "conv3d_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalConv3DOp: failed to compile conv3d kernel: ", log);
 
     MetalOp::compile(buffer_manager);
@@ -190,12 +191,13 @@ void MetalConv3DOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     KernelDispatch dispatch =
         make_2d_dispatch(m_desc.C_out, m_desc.N, m_kernel->clamp_threadgroup_size(8));
 
-    std::vector<KernelArg> args;
-    args.reserve(4);
-    append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-    append_kernel_buffer_arg(args, static_cast<uint32_t>(args.size()), m_weights, name().c_str(), "weights");
-    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst_tensor, name().c_str());
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &params, sizeof(params)));
+    KernelArgsBuilder args_builder(name().c_str());
+    append_kernel_input_args(args_builder, 1, [&](size_t) { return src; }, name().c_str());
+    args_builder.add_input_buffer(m_weights, "weights");
+    args_builder.add_output(&dst_tensor);
+    args_builder.add_bytes(&params, sizeof(params));
+
+    const auto args = args_builder.finalize(buffer_manager(), m_kernel.get());
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 

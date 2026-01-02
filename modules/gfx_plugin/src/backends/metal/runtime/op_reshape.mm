@@ -183,10 +183,11 @@ void MetalTransposeOp::compile(MetalBufferManager* buffer_manager) {
     for (auto v : m_desc.perm) desc.perm.push_back(static_cast<uint32_t>(v));
     mlir::MLIRContext ctx;
     auto module = build_mlir_transpose_from_model(make_single_op_model(m_node), ctx);
-    auto source = generate_msl_from_mlir(module, desc);
+    auto msl_desc = desc;
+    auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
     KernelSpec spec(m_node, 3u);
-    m_kernel = compile_msl_kernel(backend, spec, module, "transpose_kernel", source, &log);
+    m_kernel = compile_msl_kernel(backend, spec, module, "transpose_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalTransposeOp: failed to compile kernel: ", log);
 
     MetalOp::compile(buffer_manager);
@@ -222,11 +223,12 @@ void MetalTransposeOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     OPENVINO_ASSERT(dst.buf.size >= need_dst, "Transpose: dst buffer too small");
     KernelDispatch dispatch = make_1d_dispatch(num_elems, m_kernel->clamp_threadgroup_size(64));
 
-    std::vector<KernelArg> args;
-    args.reserve(3);
-    append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &num_elems, sizeof(num_elems)));
+    KernelArgsBuilder args_builder(name().c_str());
+    append_kernel_input_args(args_builder, 1, [&](size_t) { return src; }, name().c_str());
+    args_builder.add_output(&dst);
+    args_builder.add_bytes(&num_elems, sizeof(num_elems));
+
+    const auto args = args_builder.finalize(buffer_manager(), m_kernel.get());
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 

@@ -71,10 +71,11 @@ void MetalBroadcastOp::compile(MetalBufferManager* buffer_manager) {
     auto module = build_mlir_broadcast_from_model(make_single_op_model(m_node), ctx);
     BroadcastCodegenDesc desc{};
     desc.element_type = m_element_type;
-    auto source = generate_msl_from_mlir(module, desc);
+    auto msl_desc = desc;
+    auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
     KernelSpec spec(m_node, 9u);
-    m_kernel = compile_msl_kernel(backend, spec, module, "broadcast_kernel", source, &log);
+    m_kernel = compile_msl_kernel(backend, spec, module, "broadcast_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalBroadcastOp: failed to compile broadcast kernel: ", log);
 
     ov::Shape in_shape = m_node->get_input_shape(0);
@@ -265,18 +266,18 @@ void MetalBroadcastOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     }
     KernelDispatch dispatch = make_1d_dispatch(num, m_kernel->clamp_threadgroup_size(64));
 
-    std::vector<KernelArg> args;
-    args.reserve(9);
-    append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &num, sizeof(num)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &out_rank_u, sizeof(out_rank_u)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &in_rank_u, sizeof(in_rank_u)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_out_dims.data(), m_out_dims.size() * sizeof(int)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_in_dims.data(), m_in_dims.size() * sizeof(int)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_in_strides.data(), m_in_strides.size() * sizeof(int)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_axes.data(), m_axes.size() * sizeof(int)));
+    KernelArgsBuilder args_builder(name().c_str());
+    append_kernel_input_args(args_builder, 1, [&](size_t) { return src; }, name().c_str());
+    args_builder.add_output(&dst);
+    args_builder.add_bytes(&num, sizeof(num));
+    args_builder.add_bytes(&out_rank_u, sizeof(out_rank_u));
+    args_builder.add_bytes(&in_rank_u, sizeof(in_rank_u));
+    args_builder.add_bytes(m_out_dims.data(), m_out_dims.size() * sizeof(int));
+    args_builder.add_bytes(m_in_dims.data(), m_in_dims.size() * sizeof(int));
+    args_builder.add_bytes(m_in_strides.data(), m_in_strides.size() * sizeof(int));
+    args_builder.add_bytes(m_axes.data(), m_axes.size() * sizeof(int));
 
+    const auto args = args_builder.finalize(buffer_manager(), m_kernel.get());
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
     dst.expected_type = m_element_type;
 }

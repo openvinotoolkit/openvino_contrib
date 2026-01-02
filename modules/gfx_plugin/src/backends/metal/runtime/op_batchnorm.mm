@@ -101,10 +101,11 @@ void MetalBatchNormOp::compile(MetalBufferManager* buffer_manager) {
     mlir::MLIRContext ctx;
     auto model = make_single_op_model(m_node);
     auto module = build_mlir_batchnorm_from_model(model, ctx);
-    auto source = generate_msl_from_mlir(module, desc);
+    auto msl_desc = desc;
+    auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
     KernelSpec spec(m_node, 4u);
-    m_kernel = compile_msl_kernel(backend, spec, module, "batchnorm2d_kernel", source, &log);
+    m_kernel = compile_msl_kernel(backend, spec, module, "batchnorm2d_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalBatchNormOp: failed to compile kernel: ", log);
 
     MetalOp::compile(buffer_manager);
@@ -151,13 +152,13 @@ void MetalBatchNormOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     }
     KernelDispatch dispatch = make_1d_dispatch(total, m_kernel->clamp_threadgroup_size(64));
 
-    std::vector<KernelArg> args;
-    args.reserve(4);
-    append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-    append_kernel_buffer_arg(args, static_cast<uint32_t>(args.size()), m_params_buf, name().c_str(), "params");
-    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &gpu_params, sizeof(gpu_params)));
+    KernelArgsBuilder args_builder(name().c_str());
+    append_kernel_input_args(args_builder, 1, [&](size_t) { return src; }, name().c_str());
+    args_builder.add_input_buffer(m_params_buf, "params");
+    args_builder.add_output(&dst);
+    args_builder.add_bytes(&gpu_params, sizeof(gpu_params));
 
+    const auto args = args_builder.finalize(buffer_manager(), m_kernel.get());
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 

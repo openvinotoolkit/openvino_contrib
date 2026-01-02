@@ -51,10 +51,11 @@ void MetalSelectOp::compile(MetalBufferManager* buffer_manager) {
     std::string log;
     mlir::MLIRContext ctx;
     auto module = build_mlir_select_from_model(make_single_op_model(m_node), ctx);
-    auto source = generate_msl_for_select(module, m_element_type);
+    const auto msl_type = m_element_type;
+    auto msl_generator = [msl_type](mlir::ModuleOp mod) { return generate_msl_for_select(mod, msl_type); };
 
     KernelSpec spec(m_node, 10u);
-    m_kernel = compile_msl_kernel(backend, spec, module, "select_kernel", source, &log);
+    m_kernel = compile_msl_kernel(backend, spec, module, "select_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalSelectOp: failed to compile select kernel: ", log);
 
     m_num_elems = static_cast<uint32_t>(ov::shape_size(output_shape()));
@@ -141,9 +142,8 @@ void MetalSelectOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     }
     KernelDispatch dispatch = make_1d_dispatch(num, m_kernel->clamp_threadgroup_size(64));
 
-    std::vector<KernelArg> args;
-    args.reserve(10);
-    append_kernel_input_args(args,
+    KernelArgsBuilder args_builder(name().c_str());
+    append_kernel_input_args(args_builder,
                              3,
                              [&](size_t idx) {
                                  switch (idx) {
@@ -156,13 +156,15 @@ void MetalSelectOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
                                  }
                              },
                              name().c_str());
-    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &out, name().c_str());
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &num, sizeof(num)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &r, sizeof(r)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), out_dims.data(), out_dims.size() * sizeof(int)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), stride_c.data(), stride_c.size() * sizeof(int)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), stride_a.data(), stride_a.size() * sizeof(int)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), stride_b.data(), stride_b.size() * sizeof(int)));
+    args_builder.add_output(&out);
+    args_builder.add_bytes(&num, sizeof(num));
+    args_builder.add_bytes(&r, sizeof(r));
+    args_builder.add_bytes(out_dims.data(), out_dims.size() * sizeof(int));
+    args_builder.add_bytes(stride_c.data(), stride_c.size() * sizeof(int));
+    args_builder.add_bytes(stride_a.data(), stride_a.size() * sizeof(int));
+    args_builder.add_bytes(stride_b.data(), stride_b.size() * sizeof(int));
+
+    const auto args = args_builder.finalize(buffer_manager(), m_kernel.get());
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 
     out.expected_type = m_element_type;

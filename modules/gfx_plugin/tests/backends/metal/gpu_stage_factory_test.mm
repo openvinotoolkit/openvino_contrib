@@ -7,12 +7,14 @@
 #include "openvino/op/add.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
+#include "backends/metal/runtime/stage_factory.hpp"
 #include "runtime/gfx_backend_utils.hpp"
 #include "runtime/execution_dispatcher.hpp"
 
 using namespace ov::gfx_plugin;
 
 TEST(GpuStageFactory, CreatesStubForRelu) {
+    ensure_metal_stage_factory_registered();
     auto p = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
     auto relu = std::make_shared<ov::op::v0::Relu>(p);
 
@@ -24,6 +26,7 @@ TEST(GpuStageFactory, CreatesStubForRelu) {
 }
 
 TEST(GpuStageFactory, ReturnsNullForUnsupportedParameter) {
+    ensure_metal_stage_factory_registered();
     auto p = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
 
     auto stage = GpuStageFactory::create(p, default_backend_kind());

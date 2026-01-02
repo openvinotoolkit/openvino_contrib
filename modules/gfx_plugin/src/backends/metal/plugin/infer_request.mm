@@ -35,8 +35,8 @@
 #include "plugin/infer_request_state.hpp"
 #include "plugin/gfx_profiling_utils.hpp"
 #include "plugin/infer_profiling_utils.hpp"
-#include "infer_pipeline.hpp"
-#include "infer_io_utils.hpp"
+#include "plugin/infer_pipeline.hpp"
+#include "plugin/infer_io_utils.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -49,6 +49,7 @@ struct MetalInferState final : BackendInferState {
     MetalFreeList freelist;
     MetalStagingPool staging;
     MetalAllocator allocator;
+    std::vector<BufferHandle> output_staging_handles;
 
     MetalInferState(MetalAllocatorCore& core, const MetalDeviceCaps& caps_in)
         : alloc_core(&core),
@@ -338,6 +339,11 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
 
     run_pipeline();
 
+    if (metal_state->output_staging_handles.size() < get_outputs().size()) {
+        metal_state->output_staging_handles.resize(get_outputs().size());
+    }
+    GpuBufferPool output_pool(gpu_alloc);
+
     auto output_input_lookup = [&](size_t input_idx) -> GpuTensor* {
         if (!tensor_map.has_input_device(input_idx)) {
             return nullptr;
@@ -369,6 +375,8 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                                                 info,
                                                 host_override,
                                                 &gpu_alloc,
+                                                &output_pool,
+                                                &metal_state->output_staging_handles[idx],
                                                 resources.queue,
                                                 "GFX");
             tensor_map.bind_output_device(idx, bound.device_tensor);

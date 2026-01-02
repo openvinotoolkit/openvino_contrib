@@ -6,12 +6,16 @@
 
 #include "backends/vulkan/runtime/vulkan_backend.hpp"
 #include "backends/vulkan/runtime/vulkan_buffer_manager.hpp"
+#include "backends/vulkan/runtime/memory_api.hpp"
+#include "backends/vulkan/runtime/stage_factory.hpp"
 #include "backends/vulkan/runtime/profiling/profiler.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 
 std::unique_ptr<VulkanBackendState> create_vulkan_backend_state() {
+    ensure_vulkan_memory_ops_registered();
+    ensure_vulkan_stage_factory_registered();
     auto& ctx = VulkanContext::instance();
     auto state = std::make_unique<VulkanBackendState>();
     state->device = reinterpret_cast<GpuDeviceHandle>(ctx.device());

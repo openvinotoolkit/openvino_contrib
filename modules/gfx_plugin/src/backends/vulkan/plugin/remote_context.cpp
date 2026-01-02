@@ -7,6 +7,8 @@
 #include "plugin/gfx_property_utils.hpp"
 #include "backends/vulkan/runtime/vulkan_backend.hpp"
 #include "backends/vulkan/plugin/remote_tensor.hpp"
+#include "openvino/core/except.hpp"
+#include "openvino/runtime/properties.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -26,6 +28,12 @@ protected:
 
 ov::SoPtr<ov::IRemoteContext> create_vulkan_remote_context(const std::string& resolved_name,
                                                            const RemoteContextParams& params) {
+    if (params.device_id != 0) {
+        OPENVINO_THROW("GFX Vulkan backend supports only device id 0; got ", params.device_id);
+    }
+    auto merged = params.merged;
+    merged[ov::device::id.name()] = 0;
+
     auto& ctx = VulkanContext::instance();
     auto handle = reinterpret_cast<GpuDeviceHandle>(ctx.device());
     return ov::SoPtr<ov::IRemoteContext>{
@@ -34,7 +42,7 @@ ov::SoPtr<ov::IRemoteContext> create_vulkan_remote_context(const std::string& re
                                               GpuBackend::Vulkan,
                                               handle,
                                               params.backend_name,
-                                              params.merged),
+                                              merged),
         nullptr};
 }
 

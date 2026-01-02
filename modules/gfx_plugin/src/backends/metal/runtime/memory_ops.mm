@@ -27,5 +27,14 @@ const GpuMemoryOps& metal_memory_ops() {
     return ops;
 }
 
+void ensure_metal_memory_ops_registered() {
+    static const bool registered = register_memory_ops(GpuBackend::Metal, &metal_memory_ops);
+    (void)registered;
+}
+
+namespace {
+const bool kRegistered = (ensure_metal_memory_ops_registered(), true);
+}  // namespace
+
 }  // namespace gfx_plugin
 }  // namespace ov

@@ -283,10 +283,11 @@ void MetalElementwiseOp::compile(MetalBufferManager* buffer_manager) {
         default:
             OPENVINO_THROW("MetalElementwiseOp: unsupported MLIR builder for eltwise kind");
     }
-    auto source = generate_msl_from_mlir(module, desc);
+    auto msl_desc = desc;
+    auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
     KernelSpec spec(m_node, 8u);
-    m_kernel = compile_msl_kernel(backend, spec, module, "eltwise_kernel", source, &log);
+    m_kernel = compile_msl_kernel(backend, spec, module, "eltwise_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "Failed to compile elementwise pipeline: ", log);
 
     MetalOp::compile(buffer_manager);
@@ -381,18 +382,15 @@ void MetalElementwiseOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     }
     KernelDispatch dispatch = make_1d_dispatch(num_elems, m_kernel->clamp_threadgroup_size(threads_per_tg));
 
-    std::vector<KernelArg> args;
-    args.reserve(8);
-    append_kernel_input_args(args,
-                             2,
-                             [&](size_t idx) { return idx == 0 ? in0 : in1; },
-                             name().c_str());
-    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &out, name().c_str());
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &num_elems, sizeof(num_elems)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &rank, sizeof(rank)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_out_dims.data(), m_out_dims.size() * sizeof(int)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_stride0.data(), m_stride0.size() * sizeof(int)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_stride1.data(), m_stride1.size() * sizeof(int)));
+    KernelArgsBuilder args_builder(name().c_str());
+    args_builder.add_inputs(2, [&](size_t idx) { return idx == 0 ? in0 : in1; });
+    args_builder.add_output(&out);
+    args_builder.add_bytes(&num_elems, sizeof(num_elems));
+    args_builder.add_bytes(&rank, sizeof(rank));
+    args_builder.add_bytes(m_out_dims.data(), m_out_dims.size() * sizeof(int));
+    args_builder.add_bytes(m_stride0.data(), m_stride0.size() * sizeof(int));
+    args_builder.add_bytes(m_stride1.data(), m_stride1.size() * sizeof(int));
+    auto args = args_builder.finalize(nullptr, nullptr);
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 
     out.expected_type = m_element_type;

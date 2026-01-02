@@ -6,7 +6,7 @@
 #include <memory>
 #include <string>
 
-#include "mlir_codegen/gfx_codegen_backend.hpp"
+#include "kernel_ir/gfx_codegen_backend.hpp"
 #include "backends/metal/runtime/memory/buffer.hpp"
 
 #ifdef __OBJC__

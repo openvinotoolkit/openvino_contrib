@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "runtime/gfx_op_support.hpp"
+#include "plugin/gfx_op_support.hpp"
 
 #include <unordered_map>
 

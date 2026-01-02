@@ -3,6 +3,7 @@
 //
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -83,12 +84,26 @@ protected:
                                                         std::string msl_source,
                                                         std::string* log = nullptr,
                                                         uint32_t arg_count = 0);
+    std::shared_ptr<ICompiledKernel> compile_msl_kernel(
+        MetalCodegenBackend& backend,
+        mlir::ModuleOp module,
+        const std::string& entry_point,
+        std::function<std::string(mlir::ModuleOp)> msl_generator,
+        std::string* log = nullptr,
+        uint32_t arg_count = 0);
     std::shared_ptr<ICompiledKernel> compile_msl_kernel(MetalCodegenBackend& backend,
                                                         const KernelSpec& spec,
                                                         mlir::ModuleOp module,
                                                         const std::string& entry_point,
                                                         std::string msl_source,
                                                         std::string* log = nullptr);
+    std::shared_ptr<ICompiledKernel> compile_msl_kernel(
+        MetalCodegenBackend& backend,
+        const KernelSpec& spec,
+        mlir::ModuleOp module,
+        const std::string& entry_point,
+        std::function<std::string(mlir::ModuleOp)> msl_generator,
+        std::string* log = nullptr);
 
     void execute_kernel(ICompiledKernel& kernel,
                         MetalCommandBufferHandle command_buffer,
@@ -124,6 +139,28 @@ protected:
                                                    input_count,
                                                    std::forward<ResolveInputFn>(resolve_input),
                                                    stage_name);
+    }
+
+    template <typename ResolveInputFn>
+    void append_kernel_input_args(KernelArgsBuilder& builder,
+                                  const std::vector<size_t>& kernel_inputs,
+                                  ResolveInputFn&& resolve_input,
+                                  const char* /*stage_name*/) const {
+        builder.add_inputs(kernel_inputs, std::forward<ResolveInputFn>(resolve_input));
+    }
+
+    template <typename ResolveInputFn>
+    void append_kernel_input_args(KernelArgsBuilder& builder,
+                                  size_t input_count,
+                                  ResolveInputFn&& resolve_input,
+                                  const char* /*stage_name*/) const {
+        if (!m_kernel_inputs.empty()) {
+            if (m_kernel_inputs.size() <= input_count) {
+                builder.add_inputs(m_kernel_inputs, std::forward<ResolveInputFn>(resolve_input));
+                return;
+            }
+        }
+        builder.add_inputs(input_count, std::forward<ResolveInputFn>(resolve_input));
     }
 
     // Allocate temporary device memory via the shared buffer manager.

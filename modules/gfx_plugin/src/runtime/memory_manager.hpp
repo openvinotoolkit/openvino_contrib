@@ -5,6 +5,7 @@
 
 #include <cstddef>
 
+#include "openvino/core/except.hpp"
 #include "openvino/core/type/element_type.hpp"
 #include "runtime/gpu_types.hpp"
 
@@ -21,6 +22,36 @@ struct GpuBufferDesc {
     bool prefer_device_local = true;
     const char* label = nullptr;
 };
+
+inline void validate_gpu_buffer_desc(const GpuBufferDesc& desc, const char* error_prefix = "GFX") {
+    if (desc.bytes == 0) {
+        return;
+    }
+    switch (desc.usage) {
+    case BufferUsage::Staging:
+        OPENVINO_ASSERT(!desc.prefer_device_local,
+                        error_prefix,
+                        ": staging buffers must be host-visible");
+        OPENVINO_ASSERT(desc.cpu_read || desc.cpu_write,
+                        error_prefix,
+                        ": staging buffers require CPU access");
+        break;
+    case BufferUsage::IO:
+        break;
+    case BufferUsage::Const:
+    case BufferUsage::Intermediate:
+    case BufferUsage::Temp:
+        OPENVINO_ASSERT(desc.prefer_device_local,
+                        error_prefix,
+                        ": internal buffers must be device-local");
+        OPENVINO_ASSERT(!desc.cpu_read && !desc.cpu_write,
+                        error_prefix,
+                        ": internal buffers must be device-only");
+        break;
+    default:
+        break;
+    }
+}
 
 class IGpuAllocator {
 public:

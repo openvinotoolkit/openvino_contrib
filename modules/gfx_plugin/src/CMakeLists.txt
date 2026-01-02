@@ -32,6 +32,9 @@ else()
 endif()
 
 if(GFX_BACKEND_VULKAN_AVAILABLE)
+    if(NOT ENABLE_GFX_MLIR)
+        message(FATAL_ERROR "GFX: Vulkan backend requires ENABLE_GFX_MLIR=ON.")
+    endif()
     list(APPEND GFX_PLUGIN_VULKAN_SOURCES_EFFECTIVE
         ${GFX_PLUGIN_VULKAN_SOURCES})
     list(APPEND GFX_RUNTIME_VULKAN_SOURCES
@@ -61,26 +64,26 @@ endif()
 
 if(ENABLE_GFX_MLIR)
     add_subdirectory(mlir)
-    add_subdirectory(mlir_codegen)
 endif()
 
 # Build settings shared by plugin and runtime objects.
 add_library(gfx_plugin_build_settings INTERFACE)
-target_include_directories(gfx_plugin_build_settings INTERFACE
-    "${CMAKE_CURRENT_SOURCE_DIR}/../include"
-    "${CMAKE_CURRENT_SOURCE_DIR}"
-    "${CMAKE_CURRENT_BINARY_DIR}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/plugin"
-    "${CMAKE_CURRENT_SOURCE_DIR}/runtime"
-    "${CMAKE_CURRENT_SOURCE_DIR}/backends"
-    "${CMAKE_CURRENT_SOURCE_DIR}/mlir"
-    "${CMAKE_CURRENT_SOURCE_DIR}/mlir_codegen"
-    "${CMAKE_CURRENT_SOURCE_DIR}/transforms"
-    $<$<BOOL:${ENABLE_GFX_MLIR}>:${MLIR_INCLUDE_DIRS}>)
 target_compile_definitions(gfx_plugin_build_settings INTERFACE
     ENABLE_GFX_MLIR=$<BOOL:${ENABLE_GFX_MLIR}>
     GFX_BACKEND_METAL_AVAILABLE=$<BOOL:${GFX_BACKEND_METAL_AVAILABLE}>
     GFX_BACKEND_VULKAN_AVAILABLE=$<BOOL:${GFX_BACKEND_VULKAN_AVAILABLE}>)
+
+# Public headers are exposed to consumers via include/.
+add_library(gfx_plugin_public_headers INTERFACE)
+target_include_directories(gfx_plugin_public_headers INTERFACE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../include")
+
+# Internal headers live under src/; generated headers are in the build tree.
+add_library(gfx_plugin_private_headers INTERFACE)
+target_include_directories(gfx_plugin_private_headers INTERFACE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_BINARY_DIR}"
+    $<$<BOOL:${ENABLE_GFX_MLIR}>:${MLIR_INCLUDE_DIRS}>)
 
 # Build common runtime as a separate static library (core target).
 add_library(gfx_runtime_common STATIC)
@@ -89,6 +92,8 @@ target_sources(gfx_runtime_common PRIVATE
     ${GFX_RUNTIME_COMMON_SOURCES})
 target_link_libraries(gfx_runtime_common PRIVATE
     gfx_plugin_build_settings
+    gfx_plugin_public_headers
+    gfx_plugin_private_headers
     openvino::runtime
     openvino::runtime::dev)
 set_target_properties(gfx_runtime_common PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -100,6 +105,8 @@ if(ENABLE_GFX_MLIR)
         ${GFX_RUNTIME_MLIR_SOURCES})
     target_link_libraries(gfx_runtime_mlir PRIVATE
         gfx_plugin_build_settings
+        gfx_plugin_public_headers
+        gfx_plugin_private_headers
         openvino::runtime
         openvino::runtime::dev)
     set_target_properties(gfx_runtime_mlir PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -115,6 +122,8 @@ target_sources(gfx_plugin_core PRIVATE
     ${GFX_PLUGIN_HEADERS})
 target_link_libraries(gfx_plugin_core PRIVATE
     gfx_plugin_build_settings
+    gfx_plugin_public_headers
+    gfx_plugin_private_headers
     openvino::runtime
     openvino::runtime::dev)
 target_compile_definitions(gfx_plugin_core PRIVATE IMPLEMENT_OPENVINO_RUNTIME_PLUGIN)
@@ -127,6 +136,8 @@ target_sources(gfx_plugin_metal PRIVATE
     ${GFX_PLUGIN_METAL_HEADERS})
 target_link_libraries(gfx_plugin_metal PRIVATE
     gfx_plugin_build_settings
+    gfx_plugin_public_headers
+    gfx_plugin_private_headers
     openvino::runtime
     openvino::runtime::dev)
 set_target_properties(gfx_plugin_metal PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -137,6 +148,8 @@ target_sources(gfx_plugin_vulkan PRIVATE
     ${GFX_PLUGIN_VULKAN_HEADERS})
 target_link_libraries(gfx_plugin_vulkan PRIVATE
     gfx_plugin_build_settings
+    gfx_plugin_public_headers
+    gfx_plugin_private_headers
     openvino::runtime
     openvino::runtime::dev)
 set_target_properties(gfx_plugin_vulkan PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -146,13 +159,14 @@ add_library(${TARGET_NAME} SHARED)
 target_sources(${TARGET_NAME} PRIVATE
     ${GFX_PLUGIN_HEADERS}
     ${GFX_PLUGIN_ENTRY_SOURCE})
-target_link_libraries(${TARGET_NAME} PRIVATE gfx_plugin_build_settings)
+target_link_libraries(${TARGET_NAME}
+    PRIVATE gfx_plugin_build_settings
+    PRIVATE gfx_plugin_private_headers
+    PUBLIC gfx_plugin_public_headers)
 target_link_libraries(${TARGET_NAME} PRIVATE
     gfx_plugin_core
     gfx_plugin_metal
-    gfx_plugin_vulkan
-    gfx_runtime_common
-    $<$<BOOL:${ENABLE_GFX_MLIR}>:gfx_runtime_mlir>)
+    gfx_plugin_vulkan)
 
 # On macOS, force ".so" suffix so OpenVINO loader picks the plugin consistently.
 if(APPLE)
@@ -167,8 +181,7 @@ ov_add_vs_version_file(NAME ${TARGET_NAME}
 target_link_libraries(${TARGET_NAME} PRIVATE
     openvino::runtime
     openvino::runtime::dev
-    $<$<BOOL:${ENABLE_GFX_MLIR}>:gfx_mlir>
-    $<$<BOOL:${ENABLE_GFX_MLIR}>:gfx_mlir_codegen>)
+    $<$<BOOL:${ENABLE_GFX_MLIR}>:gfx_mlir>)
 
 if(GFX_BACKEND_METAL_AVAILABLE)
     add_library(gfx_runtime_metal STATIC)
@@ -176,10 +189,17 @@ if(GFX_BACKEND_METAL_AVAILABLE)
         ${GFX_RUNTIME_COMMON_HEADERS}
         ${GFX_RUNTIME_METAL_SOURCES}
         ${GFX_RUNTIME_METAL_HEADERS})
+    target_include_directories(gfx_runtime_metal PRIVATE
+        $<$<BOOL:${ENABLE_GFX_MLIR}>:${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/codegen>)
     target_link_libraries(gfx_runtime_metal PRIVATE
         gfx_plugin_build_settings
+        gfx_plugin_public_headers
+        gfx_plugin_private_headers
         openvino::runtime
         openvino::runtime::dev)
+    if(ENABLE_GFX_MLIR)
+        target_link_libraries(gfx_runtime_metal PRIVATE gfx_runtime_mlir)
+    endif()
     set_target_properties(gfx_runtime_metal PROPERTIES POSITION_INDEPENDENT_CODE ON)
     target_link_libraries(${TARGET_NAME} PRIVATE gfx_runtime_metal)
     if(DEFINED GFX_LLVM_EXTERNAL_TARGET)
@@ -196,7 +216,9 @@ if(GFX_BACKEND_VULKAN_AVAILABLE)
     target_sources(gfx_runtime_vulkan PRIVATE
         ${GFX_RUNTIME_COMMON_HEADERS}
         ${GFX_RUNTIME_VULKAN_SOURCES}
-        ${GFX_RUNTIME_VULKAN_HEADERS})
+        ${GFX_RUNTIME_VULKAN_HEADERS}
+        $<$<BOOL:${ENABLE_GFX_MLIR}>:${GFX_RUNTIME_VULKAN_CODEGEN_HEADERS}>
+        $<$<BOOL:${ENABLE_GFX_MLIR}>:${GFX_RUNTIME_VULKAN_CODEGEN_SOURCES}>)
     set(GFX_VULKAN_MLIR_LIBS
         MLIRSPIRVSerialization
         MLIRSPIRVTransforms
@@ -309,6 +331,8 @@ if(GFX_BACKEND_VULKAN_AVAILABLE)
     target_link_libraries(gfx_vulkan_mlir_deps INTERFACE ${GFX_VULKAN_MLIR_LINK_LIBS})
     target_link_libraries(gfx_runtime_vulkan PRIVATE
         gfx_plugin_build_settings
+        gfx_plugin_public_headers
+        gfx_plugin_private_headers
         openvino::runtime
         openvino::runtime::dev
         gfx_vulkan_mlir_deps)
@@ -322,6 +346,10 @@ if(GFX_BACKEND_VULKAN_AVAILABLE)
     endif()
     target_link_libraries(${TARGET_NAME} PRIVATE gfx_vulkan_mlir_deps)
 endif()
+
+target_link_libraries(${TARGET_NAME} PRIVATE
+    gfx_runtime_common
+    $<$<BOOL:${ENABLE_GFX_MLIR}>:gfx_runtime_mlir>)
 
 if(TARGET GFX::Vulkan)
     target_link_libraries(${TARGET_NAME} PRIVATE GFX::Vulkan)

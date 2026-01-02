@@ -5,10 +5,10 @@
 
 #include <memory>
 
+#include "backends/vulkan/runtime/stage_factory.hpp"
 #include "plugin/backend_state.hpp"
 #include "runtime/gpu_buffer.hpp"
 #include "runtime/gpu_buffer_manager.hpp"
-#include "runtime/gfx_stage_factory.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -25,6 +25,9 @@ struct VulkanBackendState final : BackendState {
     bool requires_const_manager() const override { return true; }
     bool has_const_manager() const override { return const_manager != nullptr; }
     void init_infer_state(InferRequestState& state) const override;
+    std::unique_ptr<GpuStage> create_stage(const std::shared_ptr<const ov::Node>& node) const override {
+        return create_vulkan_stage(node, device, queue);
+    }
     std::unique_ptr<GfxProfiler> create_profiler(const GfxProfilerConfig& cfg) const override;
     ov::Any get_mem_stats() const override { return {}; }
     void set_mem_stats(const ov::Any& /*stats*/) const override {}

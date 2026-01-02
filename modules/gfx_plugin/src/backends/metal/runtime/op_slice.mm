@@ -135,10 +135,13 @@ void MetalSliceOp::compile(MetalBufferManager* buffer_manager) {
     desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
     mlir::MLIRContext ctx;
     auto module = build_mlir_slice_from_model(make_single_op_model(m_node), ctx);
-    auto source = generate_msl_for_slice_generic(desc, module);
+    auto msl_desc = desc;
+    auto msl_generator = [msl_desc](mlir::ModuleOp mod) {
+        return generate_msl_for_slice_generic(msl_desc, mod);
+    };
 
     KernelSpec spec(m_node, 8u);
-    m_kernel = compile_msl_kernel(backend, spec, module, "slice_kernel", source, &log);
+    m_kernel = compile_msl_kernel(backend, spec, module, "slice_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalSliceOp: failed to compile kernel: ", log);
 
     MetalOp::compile(buffer_manager);
@@ -181,16 +184,17 @@ void MetalSliceOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     KernelDispatch dispatch = make_1d_dispatch(total, m_kernel->clamp_threadgroup_size(256));
 
-    std::vector<KernelArg> args;
-    args.reserve(8);
-    append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &total, sizeof(total)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &rank, sizeof(rank)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_out_shape.data(), m_out_shape.size() * sizeof(uint32_t)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_in_stride.data(), m_in_stride.size() * sizeof(uint32_t)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_starts.data(), m_starts.size() * sizeof(int32_t)));
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), m_steps.data(), m_steps.size() * sizeof(uint32_t)));
+    KernelArgsBuilder args_builder(name().c_str());
+    append_kernel_input_args(args_builder, 1, [&](size_t) { return src; }, name().c_str());
+    args_builder.add_output(&dst);
+    args_builder.add_bytes(&total, sizeof(total));
+    args_builder.add_bytes(&rank, sizeof(rank));
+    args_builder.add_bytes(m_out_shape.data(), m_out_shape.size() * sizeof(uint32_t));
+    args_builder.add_bytes(m_in_stride.data(), m_in_stride.size() * sizeof(uint32_t));
+    args_builder.add_bytes(m_starts.data(), m_starts.size() * sizeof(int32_t));
+    args_builder.add_bytes(m_steps.data(), m_steps.size() * sizeof(uint32_t));
+
+    const auto args = args_builder.finalize(buffer_manager(), m_kernel.get());
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 

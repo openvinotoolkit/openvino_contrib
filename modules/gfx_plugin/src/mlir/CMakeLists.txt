@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 set(GFX_MLIR_SOURCES
+    spirv_codegen.cpp
     mlir_builder.cpp
     mlir_builder_matmul.cpp
     mlir_builder_unary.cpp

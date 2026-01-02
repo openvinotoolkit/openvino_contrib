@@ -122,10 +122,11 @@ void MetalConvOp::compile(MetalBufferManager* buffer_manager) {
         desc.activation = m_activation;
         desc.alpha = m_activation_alpha;
     }
-    auto source = generate_msl_from_mlir(module, desc);
+    auto msl_desc = desc;
+    auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
     KernelSpec spec(m_node, 9u);
-    m_kernel = compile_msl_kernel(backend, spec, module, "conv2d_kernel", source, &log);
+    m_kernel = compile_msl_kernel(backend, spec, module, "conv2d_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalConvOp: failed to compile conv2d kernel: ", log);
     MetalOp::compile(buffer_manager);
 }
@@ -255,17 +256,17 @@ void MetalConvOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     }
     KernelDispatch dispatch = make_1d_dispatch(total, m_kernel->clamp_threadgroup_size(64));
 
-    std::vector<KernelArg> args;
-    args.reserve(9);
-    append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-    append_kernel_buffer_arg(args, static_cast<uint32_t>(args.size()), m_weights, name().c_str(), "weights");
-    append_kernel_optional_buffer_arg(args, static_cast<uint32_t>(args.size()), bias);
-    append_kernel_optional_buffer_arg(args, static_cast<uint32_t>(args.size()), gamma);
-    append_kernel_optional_buffer_arg(args, static_cast<uint32_t>(args.size()), beta);
-    append_kernel_optional_buffer_arg(args, static_cast<uint32_t>(args.size()), mean);
-    append_kernel_optional_buffer_arg(args, static_cast<uint32_t>(args.size()), var);
-    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst_tensor, name().c_str());
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &params, sizeof(params)));
+    KernelArgsBuilder args_builder(name().c_str());
+    args_builder.add_inputs(1, [&](size_t) { return src; });
+    args_builder.add_input_buffer(m_weights, "weights");
+    args_builder.add_optional_input_buffer(bias);
+    args_builder.add_optional_input_buffer(gamma);
+    args_builder.add_optional_input_buffer(beta);
+    args_builder.add_optional_input_buffer(mean);
+    args_builder.add_optional_input_buffer(var);
+    args_builder.add_output(&dst_tensor);
+    args_builder.add_bytes(&params, sizeof(params));
+    auto args = args_builder.finalize(nullptr, nullptr);
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 
     // Update output shape/type metadata in tensor.

@@ -101,10 +101,11 @@ void MetalTopKOp::compile(MetalBufferManager* buffer_manager) {
     desc.mode_max = m_mode_max;
     desc.sort_type = m_sort_type;
 
-    auto source = generate_msl_from_mlir(module, desc);
+    auto msl_desc = desc;
+    auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
     KernelSpec spec(m_node, 3u);
-    m_kernel = compile_msl_kernel(backend, spec, module, "topk_kernel", source, &log);
+    m_kernel = compile_msl_kernel(backend, spec, module, "topk_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalTopKOp: failed to compile kernel: ", log);
 
     MetalOp::compile(buffer_manager);
@@ -170,11 +171,12 @@ void MetalTopKOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     }
     KernelDispatch dispatch = make_1d_dispatch(rows, m_kernel->clamp_threadgroup_size(64));
 
-    std::vector<KernelArg> args;
-    args.reserve(3);
-    append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
+    KernelArgsBuilder args_builder(name().c_str());
+    append_kernel_input_args(args_builder, 1, [&](size_t) { return src; }, name().c_str());
     std::vector<GpuTensor*> outputs = {out_vals, out_idx};
-    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), outputs, name().c_str());
+    args_builder.add_outputs(outputs);
+
+    const auto args = args_builder.finalize(buffer_manager(), m_kernel.get());
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 

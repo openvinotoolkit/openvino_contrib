@@ -149,13 +149,14 @@ void MetalScatterElementsUpdateOp::compile(MetalBufferManager* buffer_manager) {
     std::string log;
     mlir::MLIRContext ctx;
     auto module = build_mlir_scatter_elements_update_from_model(make_single_op_model(m_node), ctx);
-    auto source = generate_msl_from_mlir(module, m_desc);
+    auto msl_desc = m_desc;
+    auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
     KernelSpec spec_init(m_node, 3u);
     KernelSpec spec_update(m_node, 4u);
-    m_kernel_init = compile_msl_kernel(backend, spec_init, module, "scatter_elements_init", source, &log);
+    m_kernel_init = compile_msl_kernel(backend, spec_init, module, "scatter_elements_init", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel_init, "MetalScatterElementsUpdateOp: init kernel compile failed: ", log);
-    m_kernel_update = compile_msl_kernel(backend, spec_update, module, "scatter_elements_update", source, &log);
+    m_kernel_update = compile_msl_kernel(backend, spec_update, module, "scatter_elements_update", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel_update, "MetalScatterElementsUpdateOp: update kernel compile failed: ", log);
 
     MetalOp::compile(buffer_manager);
@@ -229,25 +230,27 @@ void MetalScatterElementsUpdateOp::execute(MetalCommandBufferHandle cmd_buf_hand
     // Init kernel: copy data to output
     if (m_total_data > 0) {
         KernelDispatch dispatch = make_1d_dispatch(static_cast<size_t>(m_total_data), m_kernel_init->clamp_threadgroup_size(256));
-        std::vector<KernelArg> args;
-        args.reserve(3);
-        append_kernel_input_args(args, 1, [&](size_t) { return data; }, name().c_str());
-        append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
-        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &params, sizeof(params)));
+        KernelArgsBuilder args_builder(name().c_str());
+        append_kernel_input_args(args_builder, 1, [&](size_t) { return data; }, name().c_str());
+        args_builder.add_output(&dst);
+        args_builder.add_bytes(&params, sizeof(params));
+
+        const auto args = args_builder.finalize(buffer_manager(), m_kernel_init.get());
         execute_kernel(*m_kernel_init, cmd_buf_handle, dispatch, args);
     }
 
     // Update kernel: scatter updates
     if (m_total_updates > 0) {
         KernelDispatch dispatch = make_1d_dispatch(static_cast<size_t>(m_total_updates), m_kernel_update->clamp_threadgroup_size(256));
-        std::vector<KernelArg> args;
-        args.reserve(4);
-        append_kernel_input_args(args,
+        KernelArgsBuilder args_builder(name().c_str());
+        append_kernel_input_args(args_builder,
                                  2,
                                  [&](size_t idx) { return idx == 0 ? indices : updates; },
                                  name().c_str());
-        append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
-        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &params, sizeof(params)));
+        args_builder.add_output(&dst);
+        args_builder.add_bytes(&params, sizeof(params));
+
+        const auto args = args_builder.finalize(buffer_manager(), m_kernel_update.get());
         execute_kernel(*m_kernel_update, cmd_buf_handle, dispatch, args);
     }
 }

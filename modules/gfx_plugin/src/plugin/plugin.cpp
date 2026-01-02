@@ -21,7 +21,7 @@
 #include "plugin/gfx_property_utils.hpp"
 #include "plugin/model_serialization.hpp"
 #include "runtime/gfx_backend_utils.hpp"
-#include "runtime/gfx_op_support.hpp"
+#include "plugin/gfx_op_support.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/validation_util.hpp"
 #include "openvino/runtime/internal_properties.hpp"

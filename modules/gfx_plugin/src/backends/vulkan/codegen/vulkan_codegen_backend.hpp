@@ -10,7 +10,7 @@
 
 #include <vulkan/vulkan.h>
 
-#include "mlir_codegen/gfx_codegen_backend.hpp"
+#include "kernel_ir/gfx_codegen_backend.hpp"
 #include "backends/vulkan/runtime/vulkan_backend.hpp"
 
 namespace ov {

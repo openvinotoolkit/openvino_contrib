@@ -4,7 +4,7 @@
 //
 
 #include "test_utils.hpp"
-#include "../../../integration/test_constants.hpp"
+#include "integration/test_constants.hpp"
 
 #include "preprocessing/yuv_to_grey_tests.hpp"
 

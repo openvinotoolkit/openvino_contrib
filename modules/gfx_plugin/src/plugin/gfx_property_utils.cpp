@@ -25,6 +25,9 @@ GpuBackend resolve_backend_kind_from_properties(const ov::AnyMap& properties,
     if (backend_supported(request.kind)) {
         return request.kind;
     }
+    if (request.explicit_request) {
+        OPENVINO_THROW("GFX: backend '", request.requested, "' is not available on this platform");
+    }
     const auto fallback = fallback_backend_kind();
     if (!backend_supported(fallback)) {
         OPENVINO_THROW("GFX: no supported backend available on this platform.");
@@ -66,32 +69,53 @@ ResolvedBackendInfo resolve_backend_for_properties(ov::AnyMap& properties,
 }
 
 int parse_device_id(const ov::AnyMap& properties) {
-    int device_id = 0;
     auto it = properties.find(ov::device::id.name());
     if (it == properties.end()) {
-        return device_id;
+        return 0;
     }
     try {
+        int device_id = 0;
         if (it->second.is<std::string>()) {
             device_id = std::stoi(it->second.as<std::string>());
-        } else {
+        } else if (it->second.is<int>()) {
             device_id = it->second.as<int>();
+        } else {
+            OPENVINO_THROW("GFX: device id must be int or string");
         }
-    } catch (...) {
-        device_id = 0;
+        if (device_id < 0) {
+            OPENVINO_THROW("GFX: device id must be non-negative, got ", device_id);
+        }
+        return device_id;
+    } catch (const std::exception& ex) {
+        OPENVINO_THROW("GFX: failed to parse device id: ", ex.what());
     }
-    return device_id;
 }
 
 RemoteContextParams normalize_remote_context_params(const ov::AnyMap& remote_properties) {
     RemoteContextParams params;
     params.merged = remote_properties;
-    params.backend = resolve_backend_kind_from_properties(params.merged,
-                                                          /*log_fallback=*/true,
-                                                          "RemoteContext");
-    params.backend_name = backend_to_string(params.backend);
+    const auto request = get_backend_request(params.merged);
+    if (request.explicit_request && !backend_supported(request.kind)) {
+        OPENVINO_THROW("GFX: backend '", request.requested,
+                       "' is not available for remote context");
+    }
+    GpuBackend resolved_backend = request.explicit_request ? request.kind : default_backend_kind();
+    if (!backend_supported(resolved_backend)) {
+        const auto fallback = fallback_backend_kind();
+        if (!backend_supported(fallback)) {
+            OPENVINO_THROW("GFX: no supported backend available for remote context");
+        }
+        GFX_LOG_WARN("RemoteContext",
+                     "Default backend '" << backend_to_string(resolved_backend)
+                                         << "' is not available; falling back to "
+                                         << backend_to_string(fallback));
+        resolved_backend = fallback;
+    }
+    params.backend = resolved_backend;
+    params.backend_name = backend_to_string(resolved_backend);
     params.merged[kGfxBackendProperty] = params.backend_name;
     params.device_id = parse_device_id(params.merged);
+    params.merged[ov::device::id.name()] = params.device_id;
     return params;
 }
 

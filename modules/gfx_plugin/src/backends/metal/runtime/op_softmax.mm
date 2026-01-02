@@ -81,10 +81,11 @@ void MetalSoftmaxOp::compile(MetalBufferManager* buffer_manager) {
     desc.inner = m_desc.inner == 0 ? 1 : m_desc.inner;
     desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
     desc.log_softmax = m_log_softmax;
-    auto source = generate_msl_from_mlir(module, desc);
+    auto msl_desc = desc;
+    auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
     KernelSpec spec(m_node, 3u);
-    m_kernel = compile_msl_kernel(backend, spec, module, "softmax_kernel", source, &log);
+    m_kernel = compile_msl_kernel(backend, spec, module, "softmax_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalSoftmaxOp: failed to compile softmax kernel: ", log);
 
     MetalOp::compile(buffer_manager);
@@ -121,9 +122,10 @@ void MetalSoftmaxOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
         desc.inner = m_desc.inner == 0 ? 1 : m_desc.inner;
         desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
         desc.log_softmax = m_log_softmax;
-        auto source = generate_msl_from_mlir(module, desc);
+        auto msl_desc = desc;
+        auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
         KernelSpec spec(m_node, 3u);
-        m_kernel = compile_msl_kernel(backend, spec, module, "softmax_kernel", source, &log);
+        m_kernel = compile_msl_kernel(backend, spec, module, "softmax_kernel", msl_generator, &log);
         OPENVINO_ASSERT(m_kernel, "MetalSoftmaxOp: failed to recompile softmax kernel: ", log);
     }
 
@@ -155,17 +157,15 @@ void MetalSoftmaxOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     const NSUInteger threads_per_tg = 64;
     KernelDispatch dispatch = make_1d_dispatch(total, m_kernel->clamp_threadgroup_size(threads_per_tg));
 
-    std::vector<KernelArg> args;
-    args.reserve(3);
-    append_kernel_input_args(args,
+    KernelArgsBuilder args_builder(name().c_str());
+    append_kernel_input_args(args_builder,
                              std::vector<size_t>{0},
                              [&](size_t idx) { return inputs()[idx]; },
                              name().c_str());
-    append_kernel_output_args(args,
-                              static_cast<uint32_t>(args.size()),
-                              std::vector<GpuTensor*>{&dst},
-                              name().c_str());
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &params, sizeof(params)));
+    args_builder.add_output(&dst);
+    args_builder.add_bytes(&params, sizeof(params));
+
+    const auto args = args_builder.finalize(buffer_manager(), m_kernel.get());
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 

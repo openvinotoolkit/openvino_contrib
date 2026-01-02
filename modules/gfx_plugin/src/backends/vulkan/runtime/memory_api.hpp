@@ -17,6 +17,7 @@ void vulkan_flush_buffer(const GpuBuffer& buf, size_t bytes, size_t offset = 0);
 void vulkan_invalidate_buffer(const GpuBuffer& buf, size_t bytes, size_t offset = 0);
 void vulkan_free_buffer(GpuBuffer& buf);
 void vulkan_copy_buffer(const GpuBuffer& src, const GpuBuffer& dst, size_t bytes);
+void ensure_vulkan_memory_ops_registered();
 
 }  // namespace gfx_plugin
 }  // namespace ov

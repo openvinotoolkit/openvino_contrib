@@ -6,8 +6,8 @@
 #include <memory>
 
 #include "backends/metal/runtime/metal_memory.hpp"
+#include "backends/metal/runtime/stage_factory.hpp"
 #include "plugin/backend_state.hpp"
-#include "runtime/gfx_stage_factory.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -39,6 +39,9 @@ struct MetalBackendState final : BackendState {
         }
     }
     void init_infer_state(InferRequestState& state) const override;
+    std::unique_ptr<GpuStage> create_stage(const std::shared_ptr<const ov::Node>& node) const override {
+        return create_metal_stage(node, device, command_queue);
+    }
     ov::SoPtr<ov::ITensor> get_tensor_override(
         const InferRequestState& state,
         size_t idx,

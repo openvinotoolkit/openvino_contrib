@@ -5,7 +5,7 @@
 
 #include <string>
 
-#include "mlir_codegen/codegen_desc.hpp"
+#include "kernel_ir/gfx_codegen_desc.hpp"
 #include "openvino/core/type/element_type.hpp"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"

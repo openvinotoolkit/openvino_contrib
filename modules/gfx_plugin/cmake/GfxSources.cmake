@@ -11,6 +11,7 @@ set(GFX_PLUGIN_SOURCES
     ${_gfx_src_dir}/plugin/compiled_model.cpp
     ${_gfx_src_dir}/plugin/compiled_model_backend_resources.cpp
     ${_gfx_src_dir}/plugin/gfx_device_info.cpp
+    ${_gfx_src_dir}/plugin/gfx_op_support.cpp
     ${_gfx_src_dir}/plugin/gfx_property_lists.cpp
     ${_gfx_src_dir}/plugin/gfx_property_utils.cpp
     ${_gfx_src_dir}/plugin/gfx_remote_utils.cpp
@@ -28,6 +29,7 @@ set(GFX_PLUGIN_HEADERS
     ${_gfx_src_dir}/plugin/backend_factory.hpp
     ${_gfx_src_dir}/plugin/backend_state.hpp
     ${_gfx_src_dir}/plugin/gfx_device_info.hpp
+    ${_gfx_src_dir}/plugin/gfx_op_support.hpp
     ${_gfx_src_dir}/plugin/gfx_profiling_utils.hpp
     ${_gfx_src_dir}/plugin/gfx_remote_utils.hpp
     ${_gfx_src_dir}/plugin/gfx_property_utils.hpp
@@ -50,20 +52,19 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/gfx_backend_caps.hpp
     ${_gfx_src_dir}/runtime/gfx_backend_utils.hpp
     ${_gfx_src_dir}/runtime/gpu_memory_ops.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_codegen_desc.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_args.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.hpp
-    ${_gfx_src_dir}/runtime/gfx_op_support.hpp
     ${_gfx_src_dir}/runtime/gfx_profiler.hpp
     ${_gfx_src_dir}/runtime/gpu_backend_base.hpp
-    ${_gfx_src_dir}/mlir_codegen/gfx_codegen_backend.hpp
     ${_gfx_src_dir}/runtime/gpu_buffer.hpp
     ${_gfx_src_dir}/runtime/gpu_buffer_pool.hpp
-    ${_gfx_src_dir}/runtime/gfx_stage_factory.hpp
     ${_gfx_src_dir}/runtime/gpu_stage.hpp
     ${_gfx_src_dir}/runtime/execution_dispatcher.hpp
     ${_gfx_src_dir}/runtime/gpu_tensor.hpp
     ${_gfx_src_dir}/runtime/gpu_types.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_codegen_backend.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_dispatch.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_plan.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_spec.hpp
@@ -79,7 +80,6 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/gpu_memory_ops.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.cpp
-    ${_gfx_src_dir}/runtime/gfx_op_support.cpp
     ${_gfx_src_dir}/runtime/execution_dispatcher.cpp
     ${_gfx_src_dir}/runtime/memory_manager.cpp
     ${_gfx_src_dir}/runtime/gfx_logger.cpp
@@ -91,11 +91,46 @@ set(GFX_RUNTIME_COMMON_SOURCES
 set(GFX_RUNTIME_MLIR_HEADERS
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.hpp
     ${_gfx_src_dir}/mlir/mlir_support.hpp
+    ${_gfx_src_dir}/mlir_codegen/codegen_common.hpp
+    ${_gfx_src_dir}/mlir_codegen/index_expr_utils.hpp
+    ${_gfx_src_dir}/mlir_codegen/msl_codegen.hpp
 )
 
 set(GFX_RUNTIME_MLIR_SOURCES
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.cpp
     ${_gfx_src_dir}/mlir/mlir_support.cpp
+    ${_gfx_src_dir}/mlir_codegen/batchnorm_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/broadcast_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/concat_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/conv2d_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/conv3d_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/convert_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/depth_to_space_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/eltwise_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/gather_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/gather_elements_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/gathernd_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/interpolate_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/matmul_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/msl_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/pad_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/pool_avg_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/pool_max_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/range_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/reduce_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/reverse_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/scatter_elements_update_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/scatter_nd_update_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/select_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/shapeof_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/slice_generic_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/softmax_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/space_to_depth_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/split_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/tile_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/topk_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/transpose_codegen.cpp
+    ${_gfx_src_dir}/mlir_codegen/unary_codegen.cpp
 )
 
 set(GFX_RUNTIME_METAL_SOURCES
@@ -208,10 +243,10 @@ set(GFX_RUNTIME_METAL_HEADERS
     ${_gfx_src_dir}/backends/metal/runtime/profiling/profiler_config.hpp
     ${_gfx_src_dir}/backends/metal/runtime/profiling/profiling_report.hpp
     ${_gfx_src_dir}/backends/metal/runtime/metal_executor.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/stage_factory.hpp
 )
 
 set(GFX_RUNTIME_VULKAN_SOURCES
-    ${_gfx_src_dir}/backends/vulkan/codegen/vulkan_codegen_backend.cpp
     ${_gfx_src_dir}/backends/vulkan/runtime/op_support.cpp
     ${_gfx_src_dir}/backends/vulkan/runtime/memory_ops.cpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_backend.cpp
@@ -223,12 +258,20 @@ set(GFX_RUNTIME_VULKAN_SOURCES
 )
 
 set(GFX_RUNTIME_VULKAN_HEADERS
-    ${_gfx_src_dir}/backends/vulkan/codegen/vulkan_codegen_backend.hpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_backend.hpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_buffer_manager.hpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_executor.hpp
     ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_memory.hpp
     ${_gfx_src_dir}/backends/vulkan/runtime/profiling/profiler.hpp
+    ${_gfx_src_dir}/backends/vulkan/runtime/stage_factory.hpp
+)
+
+set(GFX_RUNTIME_VULKAN_CODEGEN_HEADERS
+    ${_gfx_src_dir}/backends/vulkan/codegen/vulkan_codegen_backend.hpp
+)
+
+set(GFX_RUNTIME_VULKAN_CODEGEN_SOURCES
+    ${_gfx_src_dir}/backends/vulkan/codegen/vulkan_codegen_backend.cpp
 )
 
 set(GFX_PLUGIN_METAL_SOURCES

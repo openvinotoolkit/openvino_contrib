@@ -11,12 +11,10 @@
 namespace ov {
 namespace gfx_plugin {
 
-std::unique_ptr<GpuStage> create_metal_stage(const std::shared_ptr<const ov::Node>& node,
-                                             void* device,
-                                             void* queue);
 std::unique_ptr<GpuStage> create_vulkan_stage(const std::shared_ptr<const ov::Node>& node,
                                               void* device,
                                               void* queue);
+void ensure_vulkan_stage_factory_registered();
 
 }  // namespace gfx_plugin
 }  // namespace ov

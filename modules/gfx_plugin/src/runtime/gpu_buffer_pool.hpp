@@ -16,6 +16,7 @@ public:
     explicit GpuBufferPool(IGpuAllocator& allocator) : m_allocator(allocator) {}
 
     GpuBuffer ensure(BufferHandle& handle, const GpuBufferDesc& desc) {
+        validate_gpu_buffer_desc(desc);
         if (desc.bytes == 0) {
             release(handle);
             return {};

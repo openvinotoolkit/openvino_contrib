@@ -83,6 +83,17 @@ std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(MetalCodegenBackend
     return backend.compile(plan.to_source_with_msl(std::move(msl_source)), log);
 }
 
+std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(
+    MetalCodegenBackend& backend,
+    mlir::ModuleOp module,
+    const std::string& entry_point,
+    std::function<std::string(mlir::ModuleOp)> msl_generator,
+    std::string* log,
+    uint32_t arg_count) {
+    KernelPlan plan(module, entry_point, arg_count);
+    return backend.compile(plan.to_source_with_msl_generator(std::move(msl_generator)), log);
+}
+
 std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(MetalCodegenBackend& backend,
                                                              const KernelSpec& spec,
                                                              mlir::ModuleOp module,
@@ -122,6 +133,46 @@ std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(MetalCodegenBackend
     return backend.compile(plan.to_source_with_msl(std::move(msl_source)), log);
 }
 
+std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(
+    MetalCodegenBackend& backend,
+    const KernelSpec& spec,
+    mlir::ModuleOp module,
+    const std::string& entry_point,
+    std::function<std::string(mlir::ModuleOp)> msl_generator,
+    std::string* log) {
+    KernelFunctionSignature signature{};
+    if (spec.node() && module) {
+        signature = infer_kernel_signature(module, entry_point);
+        const size_t func_inputs = signature.inputs;
+        const size_t node_inputs = spec.node()->get_input_size();
+        if (func_inputs > 0 && func_inputs <= node_inputs) {
+            size_t nonconst_count = 0;
+            for (size_t i = 0; i < node_inputs; ++i) {
+                auto src = spec.node()->get_input_node_shared_ptr(i);
+                if (!ov::as_type_ptr<const ov::op::v0::Constant>(src)) {
+                    ++nonconst_count;
+                }
+            }
+            if (func_inputs >= nonconst_count) {
+                auto mapping = build_kernel_inputs(spec.node(), func_inputs, spec.name().c_str());
+                if (!mapping.kernel_inputs.empty() &&
+                    (m_kernel_inputs.empty() || mapping.kernel_inputs.size() > m_kernel_inputs.size())) {
+                    m_kernel_inputs = std::move(mapping.kernel_inputs);
+                }
+            }
+        }
+    } else if (module) {
+        signature = infer_kernel_signature(module, entry_point);
+    }
+    const uint32_t inferred_total = signature.total();
+    uint32_t arg_count = spec.arg_count();
+    if (arg_count == 0 && inferred_total) {
+        arg_count = inferred_total;
+    }
+    KernelPlan plan(module, entry_point, arg_count);
+    return backend.compile(plan.to_source_with_msl_generator(std::move(msl_generator)), log);
+}
+
 MetalTensor& MetalOp::require_output() const {
     OPENVINO_ASSERT(m_output, "Output tensor is not bound for op ", m_name);
     return *m_output;
@@ -135,7 +186,7 @@ MetalBuffer MetalOp::allocate_temp_buffer(size_t bytes,
     GpuBufferDesc desc{};
     desc.bytes = bytes;
     desc.type = type;
-    desc.usage = BufferUsage::Intermediate;
+    desc.usage = storageModePrivate ? BufferUsage::Intermediate : BufferUsage::IO;
     desc.prefer_device_local = storageModePrivate;
     desc.label = m_name.c_str();
     return m_buffer_manager->allocate(desc, persistent);

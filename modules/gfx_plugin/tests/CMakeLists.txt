@@ -32,7 +32,6 @@ else()
     list(APPEND GFX_TEST_EXCLUDED_PATHS
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/memory_test.mm
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/integration
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_backend_test.mm
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_stage_activation_test.mm
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_stage_factory_test.mm
@@ -97,6 +96,7 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     GFX_BACKEND_METAL_AVAILABLE=$<BOOL:${GFX_BACKEND_METAL_AVAILABLE}>
     GFX_BACKEND_VULKAN_AVAILABLE=$<BOOL:${GFX_BACKEND_VULKAN_AVAILABLE}>)
 target_include_directories(${TARGET_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
     ${CMAKE_CURRENT_BINARY_DIR}/../src
     ${OpenVINO_SOURCE_DIR}/src
@@ -109,7 +109,7 @@ endif()
 
 if(ENABLE_GFX_MLIR)
     target_include_directories(${TARGET_NAME} PRIVATE ${MLIR_INCLUDE_DIRS})
-    target_link_libraries(${TARGET_NAME} PRIVATE gfx_mlir gfx_mlir_codegen)
+    target_link_libraries(${TARGET_NAME} PRIVATE gfx_mlir)
 endif()
 
 if(TARGET GFX::Metal)

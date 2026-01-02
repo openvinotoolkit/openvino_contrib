@@ -13,6 +13,7 @@
 #include "openvino/op/sigmoid.hpp"
 #include "openvino/op/tanh.hpp"
 #include "backends/metal/runtime/metal_memory.hpp"
+#include "backends/metal/runtime/stage_factory.hpp"
 #include "runtime/execution_dispatcher.hpp"
 
 using namespace ov::gfx_plugin;
@@ -26,6 +27,7 @@ struct ActivationCase {
 
 template <typename OpFactory>
 void run_activation(const ActivationCase& tc) {
+    ensure_metal_stage_factory_registered();
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     ASSERT_NE(device, nil);
     MetalCommandQueueHandle gfx_queue = metal_create_command_queue(device);

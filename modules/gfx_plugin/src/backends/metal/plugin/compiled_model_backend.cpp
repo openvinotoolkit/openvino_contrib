@@ -9,6 +9,7 @@
 #include "plugin/gfx_property_utils.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/metal_memory.hpp"
+#include "backends/metal/runtime/stage_factory.hpp"
 #include "backends/metal/runtime/profiling/profiler.hpp"
 
 namespace ov {
@@ -17,6 +18,8 @@ namespace gfx_plugin {
 std::unique_ptr<MetalBackendState> create_metal_backend_state(const ov::AnyMap& properties,
                                                               const ov::SoPtr<ov::IRemoteContext>& context) {
     auto state = std::make_unique<MetalBackendState>();
+    ensure_metal_memory_ops_registered();
+    ensure_metal_stage_factory_registered();
 
     MetalDeviceHandle dev = nullptr;
     if (context) {

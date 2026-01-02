@@ -151,5 +151,126 @@ inline std::vector<KernelArg> materialize_kernel_bytes_args(const std::vector<Ke
     return out;
 }
 
+class KernelArgsBuilder {
+public:
+    explicit KernelArgsBuilder(const char* stage_name)
+        : m_stage_name(stage_name ? stage_name : "<unknown>") {}
+
+    template <typename ResolveInputFn>
+    void add_inputs(const std::vector<size_t>& kernel_inputs,
+                    ResolveInputFn&& resolve_input) {
+        OPENVINO_ASSERT(m_phase == Phase::Inputs && m_args.empty(),
+                        "GFX: inputs must be added first for stage ",
+                        m_stage_name);
+        append_kernel_input_args(m_args,
+                                 kernel_inputs,
+                                 std::forward<ResolveInputFn>(resolve_input),
+                                 m_stage_name);
+    }
+
+    template <typename ResolveInputFn>
+    void add_inputs(size_t input_count,
+                    ResolveInputFn&& resolve_input) {
+        OPENVINO_ASSERT(m_phase == Phase::Inputs && m_args.empty(),
+                        "GFX: inputs must be added first for stage ",
+                        m_stage_name);
+        append_kernel_input_args(m_args,
+                                 input_count,
+                                 std::forward<ResolveInputFn>(resolve_input),
+                                 m_stage_name);
+    }
+
+    void add_input_buffer(const GpuBuffer& buffer, const char* label = nullptr) {
+        OPENVINO_ASSERT(m_phase == Phase::Inputs,
+                        "GFX: input buffers must be added before outputs for stage ",
+                        m_stage_name);
+        append_kernel_buffer_arg(m_args,
+                                 next_index(),
+                                 buffer,
+                                 m_stage_name,
+                                 label);
+    }
+
+    void add_optional_input_buffer(const GpuBuffer& buffer) {
+        OPENVINO_ASSERT(m_phase == Phase::Inputs,
+                        "GFX: optional input buffers must be added before outputs for stage ",
+                        m_stage_name);
+        append_kernel_optional_buffer_arg(m_args, next_index(), buffer);
+    }
+
+    void add_outputs(const std::vector<GpuTensor*>& outputs) {
+        OPENVINO_ASSERT(m_phase != Phase::Params,
+                        "GFX: outputs must be added before params for stage ",
+                        m_stage_name);
+        m_phase = Phase::Outputs;
+        append_kernel_output_args(m_args,
+                                  next_index(),
+                                  outputs,
+                                  m_stage_name);
+    }
+
+    void add_output(GpuTensor* output) {
+        OPENVINO_ASSERT(m_phase != Phase::Params,
+                        "GFX: output must be added before params for stage ",
+                        m_stage_name);
+        m_phase = Phase::Outputs;
+        append_kernel_output_args(m_args,
+                                  next_index(),
+                                  output,
+                                  m_stage_name);
+    }
+
+    void add_buffer(const GpuBuffer& buffer, const char* label = nullptr) {
+        OPENVINO_ASSERT(m_phase != Phase::Inputs,
+                        "GFX: params must be added after outputs for stage ",
+                        m_stage_name);
+        m_phase = Phase::Params;
+        append_kernel_buffer_arg(m_args,
+                                 next_index(),
+                                 buffer,
+                                 m_stage_name,
+                                 label);
+    }
+
+    void add_optional_buffer(const GpuBuffer& buffer) {
+        OPENVINO_ASSERT(m_phase != Phase::Inputs,
+                        "GFX: params must be added after outputs for stage ",
+                        m_stage_name);
+        m_phase = Phase::Params;
+        append_kernel_optional_buffer_arg(m_args, next_index(), buffer);
+    }
+
+    void add_bytes(const void* data, size_t size) {
+        OPENVINO_ASSERT(m_phase != Phase::Inputs,
+                        "GFX: params must be added after outputs for stage ",
+                        m_stage_name);
+        m_phase = Phase::Params;
+        m_args.push_back(make_bytes_arg(next_index(), data, size));
+    }
+
+    const std::vector<KernelArg>& args() const { return m_args; }
+
+    std::vector<KernelArg> finalize(GpuBufferManager* buffer_manager,
+                                    const ICompiledKernel* kernel) const {
+        std::vector<KernelArg> out = m_args;
+        if (buffer_manager) {
+            out = materialize_kernel_bytes_args(out, *buffer_manager, m_stage_name);
+        }
+        if (kernel) {
+            validate_kernel_args(*kernel, out, m_stage_name);
+        }
+        return out;
+    }
+
+private:
+    enum class Phase { Inputs, Outputs, Params };
+
+    uint32_t next_index() const { return static_cast<uint32_t>(m_args.size()); }
+
+    const char* m_stage_name = "<unknown>";
+    Phase m_phase = Phase::Inputs;
+    std::vector<KernelArg> m_args;
+};
+
 }  // namespace gfx_plugin
 }  // namespace ov

@@ -12,7 +12,6 @@
 #include "openvino/runtime/itensor.hpp"
 #include "openvino/runtime/so_ptr.hpp"
 
-#include "runtime/execution_dispatcher.hpp"
 #include "runtime/gfx_profiler.hpp"
 #include "runtime/gpu_buffer.hpp"
 #include "runtime/gpu_buffer_manager.hpp"
@@ -40,10 +39,7 @@ struct BackendState {
     virtual void release() {}
     virtual void init_infer_state(InferRequestState& /*state*/) const {}
     virtual std::unique_ptr<GfxProfiler> create_profiler(const GfxProfilerConfig& /*cfg*/) const { return {}; }
-    virtual std::unique_ptr<GpuStage> create_stage(const std::shared_ptr<const ov::Node>& node) const {
-        const auto res = resources();
-        return GpuStageFactory::create(node, backend(), res.device, res.queue);
-    }
+    virtual std::unique_ptr<GpuStage> create_stage(const std::shared_ptr<const ov::Node>& node) const = 0;
     virtual ov::SoPtr<ov::ITensor> get_tensor_override(
         const InferRequestState& /*state*/,
         size_t /*idx*/,

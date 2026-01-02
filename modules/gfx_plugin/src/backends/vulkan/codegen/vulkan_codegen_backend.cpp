@@ -10,7 +10,7 @@
 
 #include "openvino/core/except.hpp"
 
-#include "mlir_codegen/spirv_codegen.hpp"
+#include "mlir/spirv_codegen.hpp"
 
 #include "backends/vulkan/runtime/vulkan_memory.hpp"
 #include "kernel_ir/gfx_kernel_cache.hpp"
@@ -116,9 +116,12 @@ void VulkanCompiledKernel::execute(GpuCommandBufferHandle /*command_buffer*/,
         buffer = vk_buffer_from_gpu(arg.buffer);
         size = arg.buffer.size;
 
-        if (!buffer) {
-            continue;
-        }
+        OPENVINO_ASSERT(buffer,
+                        "GFX Vulkan: missing VkBuffer for arg ",
+                        arg.index,
+                        " (kernel ",
+                        m_entry_point,
+                        ")");
 
         VkDescriptorBufferInfo info{};
         info.buffer = buffer;
@@ -377,17 +380,11 @@ VulkanCodegenBackend::VulkanCodegenBackend(VulkanDeviceHandle device) : m_device
 
 std::shared_ptr<ICompiledKernel> VulkanCodegenBackend::compile(const KernelSource& source, std::string* log) {
     mlir::ModuleOp module = source.module;
-    std::string entry = source.entry_point.empty() ? "gfx_kernel" : source.entry_point;
+    std::string entry = resolve_entry_point(source, "gfx_kernel");
 
     std::string local_log;
     std::string* log_ptr = log ? log : &local_log;
-    std::vector<uint32_t> spirv_binary = source.spirv_binary;
-    if (spirv_binary.empty() && source.spirv_generator) {
-        spirv_binary = source.spirv_generator(module);
-        if (spirv_binary.empty()) {
-            *log_ptr = "SPIR-V generator returned empty output";
-        }
-    }
+    std::vector<uint32_t> spirv_binary = resolve_spirv_binary_from_source(source, log_ptr);
     if (spirv_binary.empty()) {
         spirv_binary = lower_to_spirv(module, entry, log_ptr);
     }

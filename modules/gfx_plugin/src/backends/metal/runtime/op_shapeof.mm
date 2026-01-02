@@ -56,10 +56,11 @@ void MetalShapeOfOp::compile(MetalBufferManager* buffer_manager) {
     std::string log;
     mlir::MLIRContext ctx;
     auto module = build_mlir_shapeof_from_model(make_single_op_model(m_node), ctx);
-    auto source = generate_msl_from_mlir(module, m_desc);
+    auto msl_desc = m_desc;
+    auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
     KernelSpec spec(m_node, 4u);
-    m_kernel = compile_msl_kernel(backend, spec, module, "shapeof_kernel", source, &log);
+    m_kernel = compile_msl_kernel(backend, spec, module, "shapeof_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalShapeOfOp: failed to compile kernel: ", log);
 
     MetalOp::compile(buffer_manager);
@@ -89,26 +90,27 @@ void MetalShapeOfOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     const uint32_t rank = static_cast<uint32_t>(shape_vals.size());
 
-    std::vector<KernelArg> args;
-    args.reserve(4);
-    append_kernel_input_args(args, 1, [&](size_t) { return src; }, name().c_str());
-    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &rank, sizeof(rank)));
+    KernelArgsBuilder args_builder(name().c_str());
+    append_kernel_input_args(args_builder, 1, [&](size_t) { return src; }, name().c_str());
+    args_builder.add_output(&dst);
+    args_builder.add_bytes(&rank, sizeof(rank));
     if (m_element_type == ov::element::i32) {
         std::vector<int32_t> tmp(rank);
         for (size_t i = 0; i < shape_vals.size(); ++i) tmp[i] = static_cast<int32_t>(shape_vals[i]);
-        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), tmp.data(), tmp.size() * sizeof(int32_t)));
+        args_builder.add_bytes(tmp.data(), tmp.size() * sizeof(int32_t));
         if (rank == 0) {
             return;
         }
         KernelDispatch dispatch = make_1d_dispatch(rank, m_kernel->clamp_threadgroup_size(64));
+        const auto args = args_builder.finalize(buffer_manager(), m_kernel.get());
         execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
     } else {
-        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), shape_vals.data(), shape_vals.size() * sizeof(int64_t)));
+        args_builder.add_bytes(shape_vals.data(), shape_vals.size() * sizeof(int64_t));
         if (rank == 0) {
             return;
         }
         KernelDispatch dispatch = make_1d_dispatch(rank, m_kernel->clamp_threadgroup_size(64));
+        const auto args = args_builder.finalize(buffer_manager(), m_kernel.get());
         execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
     }
 }

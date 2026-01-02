@@ -28,6 +28,8 @@
 namespace ov {
 namespace gfx_plugin {
 
+using MetalTensor = GpuTensor;
+
 // Returns true when OV_GFX_SAFE_DEBUG=1 is set in the environment.
 bool metal_safe_debug_enabled();
 
@@ -49,6 +51,7 @@ void metal_copy_buffer(MetalCommandQueueHandle queue,
                        const MetalBuffer& src,
                        const MetalBuffer& dst,
                        size_t bytes);
+void ensure_metal_memory_ops_registered();
 
 class MetalTensorMap {
 public:

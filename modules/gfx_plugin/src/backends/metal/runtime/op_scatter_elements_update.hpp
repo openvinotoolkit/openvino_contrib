@@ -5,7 +5,7 @@
 
 #include <memory>
 
-#include "mlir_codegen/codegen_desc.hpp"
+#include "kernel_ir/gfx_codegen_desc.hpp"
 #include "openvino/op/scatter_elements_update.hpp"
 #include "backends/metal/runtime/op.hpp"
 

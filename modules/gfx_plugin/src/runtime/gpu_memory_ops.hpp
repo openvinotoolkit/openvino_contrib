@@ -24,11 +24,10 @@ struct GpuMemoryOps {
     CopyFn copy = nullptr;
 };
 
-const GpuMemoryOps& memory_ops_for_backend(GpuBackend backend);
+using GpuMemoryOpsFn = const GpuMemoryOps& (*)();
 
-// Implemented in backend-specific runtime units (or stubs when backend is unavailable).
-const GpuMemoryOps& metal_memory_ops();
-const GpuMemoryOps& vulkan_memory_ops();
+bool register_memory_ops(GpuBackend backend, GpuMemoryOpsFn fn);
+const GpuMemoryOps& memory_ops_for_backend(GpuBackend backend);
 
 }  // namespace gfx_plugin
 }  // namespace ov

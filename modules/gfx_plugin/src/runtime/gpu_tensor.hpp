@@ -17,7 +17,5 @@ struct GpuTensor {
     bool prefer_private = true;
 };
 
-using MetalTensor = GpuTensor;
-
 }  // namespace gfx_plugin
 }  // namespace ov

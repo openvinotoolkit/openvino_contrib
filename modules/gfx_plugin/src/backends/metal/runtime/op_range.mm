@@ -59,10 +59,11 @@ void MetalRangeOp::compile(MetalBufferManager* buffer_manager) {
     auto module = build_mlir_range_from_model(make_single_op_model(m_node), ctx);
     RangeCodegenDesc desc{};
     desc.element_type = m_element_type;
-    auto source = generate_msl_from_mlir(module, desc);
+    auto msl_desc = desc;
+    auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
     KernelSpec spec(m_node, 4u);
-    m_kernel = compile_msl_kernel(backend, spec, module, "range_kernel", source, &log);
+    m_kernel = compile_msl_kernel(backend, spec, module, "range_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalRangeOp: failed to compile range kernel: ", log);
 
     if (m_node->get_output_partial_shape(0).is_static()) {
@@ -111,33 +112,33 @@ void MetalRangeOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
         return;
     }
 
-    std::vector<KernelArg> args;
-    args.reserve(4);
-    append_kernel_output_args(args, static_cast<uint32_t>(args.size()), &dst, name().c_str());
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &num, sizeof(num)));
+    KernelArgsBuilder args_builder(name().c_str());
+    args_builder.add_output(&dst);
+    args_builder.add_bytes(&num, sizeof(num));
 
     if (m_element_type == ov::element::i32) {
         int32_t start = static_cast<int32_t>(m_start);
         int32_t step = static_cast<int32_t>(m_step);
-        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &start, sizeof(start)));
-        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &step, sizeof(step)));
+        args_builder.add_bytes(&start, sizeof(start));
+        args_builder.add_bytes(&step, sizeof(step));
     } else if (m_element_type == ov::element::i64) {
         int64_t start = static_cast<int64_t>(m_start);
         int64_t step = static_cast<int64_t>(m_step);
-        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &start, sizeof(start)));
-        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &step, sizeof(step)));
+        args_builder.add_bytes(&start, sizeof(start));
+        args_builder.add_bytes(&step, sizeof(step));
     } else if (m_element_type == ov::element::f16) {
         ov::float16 start = static_cast<ov::float16>(m_start);
         ov::float16 step = static_cast<ov::float16>(m_step);
-        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &start, sizeof(start)));
-        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &step, sizeof(step)));
+        args_builder.add_bytes(&start, sizeof(start));
+        args_builder.add_bytes(&step, sizeof(step));
     } else {
         float start = static_cast<float>(m_start);
         float step = static_cast<float>(m_step);
-        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &start, sizeof(start)));
-        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &step, sizeof(step)));
+        args_builder.add_bytes(&start, sizeof(start));
+        args_builder.add_bytes(&step, sizeof(step));
     }
     KernelDispatch dispatch = make_1d_dispatch(num, m_kernel->clamp_threadgroup_size(64));
+    const auto args = args_builder.finalize(buffer_manager(), m_kernel.get());
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
     dst.expected_type = m_element_type;
 }
