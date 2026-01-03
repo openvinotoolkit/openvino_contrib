@@ -28,6 +28,11 @@ struct MatMulCodegenDesc : BaseCodegenDesc {
     bool a_transpose = false;
     bool b_transpose = false;
     bool b_is_nk_layout = false;
+    bool has_bias = false;
+    std::array<int64_t, 3> bias_dims{{1, 1, 1}};  // aligned to [batch, M, N]
+    bool has_activation = false;
+    ActivationKind activation = ActivationKind::Relu;
+    float alpha = 0.0f;
 };
 
 struct Conv2DCodegenDesc : BaseCodegenDesc {

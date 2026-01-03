@@ -14,6 +14,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "openvino/core/except.hpp"
+#include "runtime/gfx_activation.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -104,10 +105,20 @@ std::string emit_matmul_msl(const MatMulCodegenDesc& desc, const std::string& sc
     ss << "constant uint BATCH_B = " << desc.batch_b << ";\n";
     ss << "constant bool B_IS_NK = " << (desc.b_is_nk_layout ? "true" : "false") << ";\n";
     ss << "constant bool A_TRANSPOSE = " << (desc.a_transpose ? "true" : "false") << ";\n";
+    if (desc.has_bias) {
+        ss << "constant uint BIAS_B = " << desc.bias_dims[0] << ";\n";
+        ss << "constant uint BIAS_M = " << desc.bias_dims[1] << ";\n";
+        ss << "constant uint BIAS_N = " << desc.bias_dims[2] << ";\n";
+    }
     ss << "kernel void matmul_kernel(\n";
     ss << "  device const " << scalar << "* A [[buffer(0)]],\n";
     ss << "  device const " << scalar << "* B [[buffer(1)]],\n";
-    ss << "  device " << scalar << "* C [[buffer(2)]],\n";
+    if (desc.has_bias) {
+        ss << "  device const " << scalar << "* bias [[buffer(2)]],\n";
+        ss << "  device " << scalar << "* C [[buffer(3)]],\n";
+    } else {
+        ss << "  device " << scalar << "* C [[buffer(2)]],\n";
+    }
     ss << "  uint gid [[thread_position_in_grid]]) {\n";
     ss << "    uint total = BATCH * M * N;\n";
     ss << "    if (gid >= total) return;\n";
@@ -126,6 +137,42 @@ std::string emit_matmul_msl(const MatMulCodegenDesc& desc, const std::string& sc
     ss << "            float b = static_cast<float>(B_IS_NK ? Bp[col * K + k] : Bp[k * N + col]);\n";
     ss << "            acc += a * b;\n";
     ss << "        }\n";
+    if (desc.has_bias) {
+        ss << "        uint bb = (BIAS_B == 1) ? 0 : batch;\n";
+        ss << "        uint bm = (BIAS_M == 1) ? 0 : row;\n";
+        ss << "        uint bn = (BIAS_N == 1) ? 0 : col;\n";
+        ss << "        uint bias_idx = (bb * BIAS_M + bm) * BIAS_N + bn;\n";
+        ss << "        acc += static_cast<float>(bias[bias_idx]);\n";
+    }
+    if (desc.has_activation) {
+        auto act = [&]() -> std::string {
+            switch (desc.activation) {
+                case ActivationKind::Relu: return "max(x, 0.0f)";
+                case ActivationKind::Sigmoid: return "1.0f / (1.0f + exp(-x))";
+                case ActivationKind::Tanh: return "tanh(x)";
+                case ActivationKind::Elu:
+                    return "(x >= 0.0f) ? x : " + std::to_string(desc.alpha) + " * (exp(x) - 1.0f)";
+                case ActivationKind::Prelu:
+                    return "(x >= 0.0f) ? x : x * " + std::to_string(desc.alpha);
+                case ActivationKind::Gelu:
+                    return "0.5f * x * (1.0f + tanh(0.79788456f * (x + 0.044715f * x * x * x)))";
+                case ActivationKind::Swish:
+                    return "x / (1.0f + exp(-x))";
+                case ActivationKind::HSwish:
+                    return "x * clamp(x + 3.0f, 0.0f, 6.0f) / 6.0f";
+                case ActivationKind::HSigmoid:
+                    return "clamp(x + 3.0f, 0.0f, 6.0f) / 6.0f";
+                case ActivationKind::Abs:
+                    return "fabs(x)";
+                case ActivationKind::Sign:
+                    return "(x > 0.0f) ? 1.0f : ((x < 0.0f) ? -1.0f : 0.0f)";
+                default:
+                    return "x";
+            }
+        }();
+        ss << "        float x = acc;\n";
+        ss << "        acc = " << act << ";\n";
+    }
     if (use_half) {
         ss << "        C[(batch * M + row) * N + col] = static_cast<" << scalar << ">(acc);\n";
     } else {

@@ -28,10 +28,12 @@
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_shape_utils.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
+#include "transforms/mlir_fused_ops.hpp"
 #include "backends/vulkan/runtime/profiling/profiler.hpp"
 
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
+#include "openvino/op/batch_norm.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/log_softmax.hpp"
 #include "openvino/op/matmul.hpp"
@@ -314,6 +316,67 @@ void VulkanStage::compile(GpuBufferManager* buffer_manager) {
             m_const_buffers->present[i] = true;
         }
     }
+    if (m_has_bias) {
+        m_kernel_extra_inputs.clear();
+        const size_t count = m_bias_params.values.size();
+        if (count) {
+            ov::element::Type out_et = ov::element::dynamic;
+            if (m_node) {
+                out_et = m_node->get_output_element_type(0);
+            }
+            ov::element::Type bias_et = out_et == ov::element::dynamic ? m_bias_params.element_type : out_et;
+            if (bias_et == ov::element::dynamic) {
+                bias_et = ov::element::f32;
+            }
+            const std::string key = m_name + "/bias";
+            GpuBuffer buf;
+            if (bias_et == ov::element::f16) {
+                m_bias_f16.resize(count);
+                for (size_t i = 0; i < count; ++i) {
+                    m_bias_f16[i] = ov::float16(m_bias_params.values[i]);
+                }
+                buf = m_buffer_manager->wrap_const(key,
+                                                   m_bias_f16.data(),
+                                                   m_bias_f16.size() * sizeof(ov::float16),
+                                                   bias_et);
+            } else {
+                buf = m_buffer_manager->wrap_const(key,
+                                                   m_bias_params.values.data(),
+                                                   m_bias_params.values.size() * sizeof(float),
+                                                   bias_et);
+            }
+            OPENVINO_ASSERT(buf.valid(),
+                            "GFX Vulkan: failed to wrap bias buffer for stage ",
+                            m_name);
+            buf.owned = false;
+            GpuTensor tensor;
+            tensor.buf = buf;
+            tensor.expected_type = bias_et;
+            size_t out_rank = m_bias_params.shape.size();
+            if (m_node) {
+                const auto& pshape = m_node->get_output_partial_shape(0);
+                if (pshape.rank().is_static()) {
+                    out_rank = static_cast<size_t>(pshape.rank().get_length());
+                }
+            }
+            std::vector<int64_t> aligned_shape(out_rank, 1);
+            if (out_rank >= m_bias_params.shape.size()) {
+                const size_t offset = out_rank - m_bias_params.shape.size();
+                for (size_t i = 0; i < m_bias_params.shape.size(); ++i) {
+                    aligned_shape[offset + i] = m_bias_params.shape[i];
+                }
+            }
+            ov::Shape bias_shape;
+            bias_shape.reserve(aligned_shape.size());
+            for (auto dim : aligned_shape) {
+                bias_shape.push_back(static_cast<size_t>(dim));
+            }
+            tensor.shape = std::move(bias_shape);
+            m_kernel_extra_inputs.push_back(std::move(tensor));
+        }
+    } else {
+        m_kernel_extra_inputs.clear();
+    }
     if (m_type == "Softmax" || m_type == "LogSoftmax" ||
         m_type == "Split" || m_type == "VariadicSplit") {
         return;
@@ -326,12 +389,40 @@ void VulkanStage::compile(GpuBufferManager* buffer_manager) {
         if (!mod) {
             return;
         }
+        const bool is_elementwise =
+            (m_type == "Add" || m_type == "Subtract" || m_type == "Multiply" ||
+             m_type == "Divide" || m_type == "Power" || m_type == "Mod" ||
+             m_type == "FloorMod" || m_type == "PRelu" || m_type == "Minimum" ||
+             m_type == "Maximum" || m_type == "LogicalAnd" || m_type == "LogicalOr" ||
+             m_type == "LogicalXor" || m_type == "Equal" || m_type == "NotEqual" ||
+             m_type == "Less" || m_type == "Greater" || m_type == "LessEqual" ||
+             m_type == "GreaterEqual" || m_type == "SquaredDifference");
         const bool prefer_parallel =
-            (m_type == "Convolution" || m_type == "GroupConvolution" || m_type == "MatMul");
+            (m_type == "Convolution" || m_type == "GroupConvolution" || m_type == "MatMul" ||
+             is_elementwise);
         mod->setAttr("gfx.prefer_parallel",
                      mlir::BoolAttr::get(mod.getContext(), prefer_parallel));
     };
     set_parallel_pref(module);
+    if (module) {
+        if (m_has_bn) {
+            const bool applied = apply_fused_batchnorm(module, m_bn_params);
+            OPENVINO_ASSERT(applied, "GFX Vulkan: failed to apply fused batchnorm for stage ", m_name);
+        }
+        if (m_has_bias) {
+            const bool applied = apply_fused_bias(module, m_bias_params);
+            OPENVINO_ASSERT(applied, "GFX Vulkan: failed to apply fused bias for stage ", m_name);
+        }
+        if (m_has_activation) {
+            const bool conv_like = (m_type == "Convolution" || m_type == "GroupConvolution");
+            if (!conv_like) {
+                module->setAttr("gfx.post_activation_only",
+                                mlir::BoolAttr::get(module.getContext(), true));
+            }
+            const bool applied = apply_fused_activation(module, m_activation, m_activation_alpha);
+            OPENVINO_ASSERT(applied, "GFX Vulkan: failed to apply fused activation for stage ", m_name);
+        }
+    }
     std::string entry = plan.entry_point();
     if (module && entry.empty()) {
         entry = find_entry_point(module);
@@ -390,6 +481,28 @@ void VulkanStage::compile(GpuBufferManager* buffer_manager) {
             m_parallel_dispatch = attr.getValue();
         } else {
             m_parallel_dispatch = false;
+        }
+        m_dispatch_tile_h = 1;
+        m_dispatch_tile_w = 1;
+        m_dispatch_threads_h = 1;
+        m_dispatch_threads_w = 1;
+        if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_tile_h")) {
+            m_dispatch_tile_h = static_cast<uint32_t>(attr.getInt());
+        }
+        if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_tile_w")) {
+            m_dispatch_tile_w = static_cast<uint32_t>(attr.getInt());
+        }
+        if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_h")) {
+            m_dispatch_threads_h = static_cast<uint32_t>(attr.getInt());
+        }
+        if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_w")) {
+            m_dispatch_threads_w = static_cast<uint32_t>(attr.getInt());
+        }
+        if (m_dispatch_threads_h == 1) {
+            m_dispatch_threads_h = m_dispatch_tile_h;
+        }
+        if (m_dispatch_threads_w == 1) {
+            m_dispatch_threads_w = m_dispatch_tile_w;
         }
         m_kernel_operand_kinds = extract_kernel_operand_kinds(module);
         m_kernel_operand_arg_indices = extract_kernel_operand_arg_indices(module);
@@ -598,6 +711,28 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
                 } else {
                     m_parallel_dispatch = false;
                 }
+                m_dispatch_tile_h = 1;
+                m_dispatch_tile_w = 1;
+                m_dispatch_threads_h = 1;
+                m_dispatch_threads_w = 1;
+                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_tile_h")) {
+                    m_dispatch_tile_h = static_cast<uint32_t>(attr.getInt());
+                }
+                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_tile_w")) {
+                    m_dispatch_tile_w = static_cast<uint32_t>(attr.getInt());
+                }
+                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_h")) {
+                    m_dispatch_threads_h = static_cast<uint32_t>(attr.getInt());
+                }
+                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_w")) {
+                    m_dispatch_threads_w = static_cast<uint32_t>(attr.getInt());
+                }
+                if (m_dispatch_threads_h == 1) {
+                    m_dispatch_threads_h = m_dispatch_tile_h;
+                }
+                if (m_dispatch_threads_w == 1) {
+                    m_dispatch_threads_w = m_dispatch_tile_w;
+                }
                 m_kernel_operand_kinds = extract_kernel_operand_kinds(module);
                 m_kernel_operand_arg_indices = extract_kernel_operand_arg_indices(module);
                 m_kernel_scalar_args = extract_kernel_scalar_values(module);
@@ -736,6 +871,28 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
                 } else {
                     m_parallel_dispatch = false;
                 }
+                m_dispatch_tile_h = 1;
+                m_dispatch_tile_w = 1;
+                m_dispatch_threads_h = 1;
+                m_dispatch_threads_w = 1;
+                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_tile_h")) {
+                    m_dispatch_tile_h = static_cast<uint32_t>(attr.getInt());
+                }
+                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_tile_w")) {
+                    m_dispatch_tile_w = static_cast<uint32_t>(attr.getInt());
+                }
+                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_h")) {
+                    m_dispatch_threads_h = static_cast<uint32_t>(attr.getInt());
+                }
+                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_w")) {
+                    m_dispatch_threads_w = static_cast<uint32_t>(attr.getInt());
+                }
+                if (m_dispatch_threads_h == 1) {
+                    m_dispatch_threads_h = m_dispatch_tile_h;
+                }
+                if (m_dispatch_threads_w == 1) {
+                    m_dispatch_threads_w = m_dispatch_tile_w;
+                }
                 m_kernel_operand_kinds = extract_kernel_operand_kinds(module);
                 m_kernel_operand_arg_indices = extract_kernel_operand_arg_indices(module);
                 m_kernel_scalar_args = extract_kernel_scalar_values(module);
@@ -870,6 +1027,7 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
         size_t scalar_idx = 0;
         size_t input_pos = 0;
         size_t output_pos = 0;
+        size_t extra_pos = 0;
         const bool has_arg_indices =
             m_kernel_operand_arg_indices.size() == m_kernel_operand_kinds.size();
         const size_t input_arg_count = m_kernel_inputs.size();
@@ -926,6 +1084,20 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
                     }
                     continue;
                 }
+            }
+            if (extra_pos < m_kernel_extra_inputs.size()) {
+                auto& extra = m_kernel_extra_inputs[extra_pos++];
+                OPENVINO_ASSERT(extra.buf.valid(),
+                                "GFX Vulkan: missing extra buffer for stage ",
+                                m_name);
+                args.push_back(make_buffer_arg(arg_index++, extra.buf));
+                if (gfx_log_debug_enabled()) {
+                    if (op_idx) {
+                        arg_map << ", ";
+                    }
+                    arg_map << "arg" << op_idx << "=extra[" << (extra_pos - 1) << "]";
+                }
+                continue;
             }
             if (input_pos < m_kernel_inputs.size()) {
                 const size_t input_idx = m_kernel_inputs[input_pos++];
@@ -989,18 +1161,28 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
                                      ? outputs.front()->shape
                                      : m_output_shape;
         const size_t rank = shape.size();
+        const uint64_t tile_h = m_dispatch_tile_h ? m_dispatch_tile_h : 1;
+        const uint64_t tile_w = m_dispatch_tile_w ? m_dispatch_tile_w : 1;
+        const uint64_t thread_h = m_dispatch_threads_h ? m_dispatch_threads_h : 1;
+        const uint64_t thread_w = m_dispatch_threads_w ? m_dispatch_threads_w : 1;
         if (rank == 1) {
             dispatch.grid[0] = shape[0];
         } else if (rank == 2) {
             dispatch.grid[0] = shape[0];
             dispatch.grid[1] = shape[1];
         } else if (rank >= 3) {
-            dispatch.grid[0] = shape[rank - 3];
-            dispatch.grid[1] = shape[rank - 2];
-            dispatch.grid[2] = shape[rank - 1];
+            const uint64_t c = shape[rank - 3];
+            const uint64_t h = shape[rank - 2];
+            const uint64_t w = shape[rank - 1];
+            const uint64_t h_tiles = (h + tile_h - 1) / tile_h;
+            const uint64_t w_tiles = (w + tile_w - 1) / tile_w;
+            dispatch.grid[0] = c * thread_w;
+            dispatch.grid[1] = h_tiles * thread_h;
+            dispatch.grid[2] = w_tiles;
         }
-        dispatch.threads_per_group[0] = m_kernel ? m_kernel->clamp_threadgroup_size(1) : 1;
-        dispatch.threads_per_group[1] = 1;
+        dispatch.threads_per_group[0] =
+            m_kernel ? m_kernel->clamp_threadgroup_size(thread_w) : thread_w;
+        dispatch.threads_per_group[1] = thread_h;
         dispatch.threads_per_group[2] = 1;
     } else {
         dispatch.grid[0] = 1;
@@ -1057,6 +1239,106 @@ void VulkanStage::set_profiler(void* profiler,
     m_profile_node_type = node_type;
 }
 
+bool VulkanStage::fuse_activation(ActivationKind kind, float alpha) {
+    OPENVINO_ASSERT(!m_kernel, "VulkanStage: cannot fuse activation after compilation");
+    if (!m_node) {
+        return false;
+    }
+    if (m_type != "Convolution" && m_type != "GroupConvolution" &&
+        m_type != "Add" && m_type != "Multiply" && m_type != "Maximum") {
+        return false;
+    }
+    const auto et = m_node->get_output_element_type(0);
+    if (!et.is_real()) {
+        return false;
+    }
+    const auto& pshape = m_node->get_output_partial_shape(0);
+    if (pshape.rank().is_dynamic()) {
+        return false;
+    }
+    if ((m_type == "Convolution" || m_type == "GroupConvolution") && !m_has_bn) {
+        for (const auto& user : m_node->get_output_target_inputs(0)) {
+            auto user_node = user.get_node()->shared_from_this();
+            if (ov::as_type_ptr<ov::op::v5::BatchNormInference>(user_node)) {
+                return false;
+            }
+        }
+    }
+    m_has_activation = true;
+    m_activation = kind;
+    m_activation_alpha = alpha;
+    return true;
+}
+
+bool VulkanStage::fuse_batchnorm(const BatchNormParams& params) {
+    OPENVINO_ASSERT(!m_kernel, "VulkanStage: cannot fuse batchnorm after compilation");
+    if (!m_node) {
+        return false;
+    }
+    if (m_type != "Convolution" && m_type != "GroupConvolution") {
+        return false;
+    }
+    if (params.empty()) {
+        return false;
+    }
+    const auto et = m_node->get_output_element_type(0);
+    if (!et.is_real()) {
+        return false;
+    }
+    const auto& pshape = m_node->get_output_partial_shape(0);
+    if (pshape.rank().is_dynamic() || pshape.rank().get_length() < 2) {
+        return false;
+    }
+    if (pshape[1].is_static() &&
+        static_cast<size_t>(pshape[1].get_length()) != params.gamma.size()) {
+        return false;
+    }
+    m_has_bn = true;
+    m_bn_params = params;
+    return true;
+}
+
+bool VulkanStage::fuse_bias(const BiasParams& params) {
+    OPENVINO_ASSERT(!m_kernel, "VulkanStage: cannot fuse bias after compilation");
+    if (!m_node) {
+        return false;
+    }
+    if (m_type != "Convolution" && m_type != "GroupConvolution" &&
+        m_type != "MatMul" && m_type != "Add" && m_type != "Multiply" && m_type != "Maximum") {
+        return false;
+    }
+    if (params.empty()) {
+        return false;
+    }
+    if (params.element_type != ov::element::f16 && params.element_type != ov::element::f32) {
+        return false;
+    }
+    const auto& pshape = m_node->get_output_partial_shape(0);
+    if (pshape.rank().is_dynamic()) {
+        return false;
+    }
+    const size_t out_rank = static_cast<size_t>(pshape.rank().get_length());
+    if (params.shape.size() > out_rank) {
+        return false;
+    }
+    const size_t offset = out_rank - params.shape.size();
+    for (size_t i = 0; i < out_rank; ++i) {
+        const int64_t bias_dim = (i < offset) ? 1 : params.shape[i - offset];
+        if (bias_dim <= 0) {
+            return false;
+        }
+        if (pshape[i].is_static()) {
+            const int64_t out_dim = pshape[i].get_length();
+            if (bias_dim != 1 && bias_dim != out_dim) {
+                return false;
+            }
+        }
+    }
+    m_has_bias = true;
+    m_bias_params = params;
+    return true;
+}
+
 std::unique_ptr<GpuStage> VulkanStage::clone() const {
     auto stage = std::make_unique<VulkanStage>(m_node);
     stage->m_kernel = m_kernel;
@@ -1065,9 +1347,22 @@ std::unique_ptr<GpuStage> VulkanStage::clone() const {
     stage->m_kernel_inputs = m_kernel_inputs;
     stage->m_const_buffers = m_const_buffers;
     stage->m_parallel_dispatch = m_parallel_dispatch;
+    stage->m_dispatch_tile_h = m_dispatch_tile_h;
+    stage->m_dispatch_tile_w = m_dispatch_tile_w;
+    stage->m_dispatch_threads_h = m_dispatch_threads_h;
+    stage->m_dispatch_threads_w = m_dispatch_threads_w;
     stage->m_kernel_scalar_args = m_kernel_scalar_args;
     stage->m_kernel_operand_kinds = m_kernel_operand_kinds;
     stage->m_kernel_operand_arg_indices = m_kernel_operand_arg_indices;
+    stage->m_has_activation = m_has_activation;
+    stage->m_activation = m_activation;
+    stage->m_activation_alpha = m_activation_alpha;
+    stage->m_has_bn = m_has_bn;
+    stage->m_bn_params = m_bn_params;
+    stage->m_has_bias = m_has_bias;
+    stage->m_bias_params = m_bias_params;
+    stage->m_kernel_extra_inputs = m_kernel_extra_inputs;
+    stage->m_bias_f16 = m_bias_f16;
     return stage;
 }
 

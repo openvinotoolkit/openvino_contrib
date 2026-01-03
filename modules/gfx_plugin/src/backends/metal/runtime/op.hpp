@@ -19,6 +19,7 @@
 #include "backends/metal/runtime/metal_memory.hpp"
 #include "runtime/gfx_activation.hpp"
 #include "runtime/gfx_batchnorm.hpp"
+#include "runtime/gfx_bias.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -56,6 +57,7 @@ public:
     // Optional fusion hook (e.g., Conv + Relu). Default: not supported.
     virtual bool fuse_activation(ActivationKind /*kind*/, float /*alpha*/) { return false; }
     virtual bool fuse_batchnorm(const BatchNormParams& /*params*/) { return false; }
+    virtual bool fuse_bias(const BiasParams& /*params*/) { return false; }
 
     void set_inputs(const std::vector<MetalTensor*>& inputs);
     void set_output(MetalTensor* output);

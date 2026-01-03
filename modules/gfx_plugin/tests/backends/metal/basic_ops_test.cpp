@@ -15,6 +15,7 @@
 #include "openvino/op/constant.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/multiply.hpp"
+#include "openvino/op/maximum.hpp"
 #include "openvino/op/convolution.hpp"
 #include "openvino/op/max_pool.hpp"
 #include "openvino/op/avg_pool.hpp"
@@ -192,6 +193,205 @@ ov::Core core;
     });
 }
 
+TEST(GfxBasicOps, MulReluFusion) {
+    gfx_try_catch_fail([&]() {
+    ov::Core core;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    auto ref_dev = reference_device(core);
+
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
+    auto mul = std::make_shared<ov::op::v1::Multiply>(lhs, rhs);
+    auto relu = std::make_shared<ov::op::v0::Relu>(mul);
+    auto res = std::make_shared<ov::op::v0::Result>(relu);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{lhs, rhs},
+                                             "mul_relu");
+
+    auto cpu_cm = core.compile_model(model, ref_dev);
+    auto gfx_cm = core.compile_model(model, "GFX");
+
+    std::vector<float> a_vals(1 * 4 * 4 * 4);
+    std::vector<float> b_vals(1 * 4 * 4 * 4);
+    for (size_t i = 0; i < a_vals.size(); ++i) {
+        a_vals[i] = static_cast<float>(static_cast<int>(i % 7) - 3);
+        b_vals[i] = static_cast<float>(static_cast<int>(i % 5) - 2);
+    }
+    ov::Tensor a{ov::element::f32, {1, 4, 4, 4}, a_vals.data()};
+    ov::Tensor b{ov::element::f32, {1, 4, 4, 4}, b_vals.data()};
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    cpu_req.set_input_tensor(0, a);
+    cpu_req.set_input_tensor(1, b);
+    cpu_req.infer();
+    auto cpu_out = cpu_req.get_output_tensor();
+
+    auto gfx_req = gfx_cm.create_infer_request();
+    gfx_req.set_input_tensor(0, a);
+    gfx_req.set_input_tensor(1, b);
+    gfx_req.infer();
+    auto gfx_out = get_output_or_skip(gfx_req);
+
+    expect_shape_type(cpu_out, {1, 4, 4, 4});
+    expect_allclose(cpu_out, gfx_out, /*tol=*/1e-4f);
+    expect_finite(gfx_out);
+    const float* data = gfx_out.data<const float>();
+    for (size_t i = 0; i < gfx_out.get_size(); ++i) {
+        EXPECT_GE(data[i], 0.f);
+    }
+    });
+}
+
+TEST(GfxBasicOps, MaxReluFusion) {
+    gfx_try_catch_fail([&]() {
+    ov::Core core;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    auto ref_dev = reference_device(core);
+
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
+    auto max = std::make_shared<ov::op::v1::Maximum>(lhs, rhs);
+    auto relu = std::make_shared<ov::op::v0::Relu>(max);
+    auto res = std::make_shared<ov::op::v0::Result>(relu);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{lhs, rhs},
+                                             "max_relu");
+
+    auto cpu_cm = core.compile_model(model, ref_dev);
+    auto gfx_cm = core.compile_model(model, "GFX");
+
+    std::vector<float> a_vals(1 * 4 * 4 * 4);
+    std::vector<float> b_vals(1 * 4 * 4 * 4);
+    for (size_t i = 0; i < a_vals.size(); ++i) {
+        a_vals[i] = static_cast<float>(static_cast<int>(i % 9) - 4);
+        b_vals[i] = static_cast<float>(static_cast<int>(i % 7) - 3);
+    }
+    ov::Tensor a{ov::element::f32, {1, 4, 4, 4}, a_vals.data()};
+    ov::Tensor b{ov::element::f32, {1, 4, 4, 4}, b_vals.data()};
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    cpu_req.set_input_tensor(0, a);
+    cpu_req.set_input_tensor(1, b);
+    cpu_req.infer();
+    auto cpu_out = cpu_req.get_output_tensor();
+
+    auto gfx_req = gfx_cm.create_infer_request();
+    gfx_req.set_input_tensor(0, a);
+    gfx_req.set_input_tensor(1, b);
+    gfx_req.infer();
+    auto gfx_out = get_output_or_skip(gfx_req);
+
+    expect_shape_type(cpu_out, {1, 4, 4, 4});
+    expect_allclose(cpu_out, gfx_out, /*tol=*/1e-4f);
+    expect_finite(gfx_out);
+    const float* data = gfx_out.data<const float>();
+    for (size_t i = 0; i < gfx_out.get_size(); ++i) {
+        EXPECT_GE(data[i], 0.f);
+    }
+    });
+}
+
+TEST(GfxBasicOps, MulBiasReluFusion) {
+    gfx_try_catch_fail([&]() {
+    ov::Core core;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    auto ref_dev = reference_device(core);
+
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
+    auto mul = std::make_shared<ov::op::v1::Multiply>(lhs, rhs);
+    auto bias = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                       ov::Shape{1, 4, 1, 1},
+                                                       std::vector<float>{0.25f, -0.1f, 0.05f, -0.2f});
+    auto add = std::make_shared<ov::op::v1::Add>(mul, bias);
+    auto relu = std::make_shared<ov::op::v0::Relu>(add);
+    auto res = std::make_shared<ov::op::v0::Result>(relu);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{lhs, rhs},
+                                             "mul_bias_relu");
+
+    auto cpu_cm = core.compile_model(model, ref_dev);
+    auto gfx_cm = core.compile_model(model, "GFX");
+
+    std::vector<float> a_vals(1 * 4 * 4 * 4);
+    std::vector<float> b_vals(1 * 4 * 4 * 4);
+    for (size_t i = 0; i < a_vals.size(); ++i) {
+        a_vals[i] = static_cast<float>(static_cast<int>(i % 7) - 3);
+        b_vals[i] = static_cast<float>(static_cast<int>(i % 5) - 2);
+    }
+    ov::Tensor a{ov::element::f32, {1, 4, 4, 4}, a_vals.data()};
+    ov::Tensor b{ov::element::f32, {1, 4, 4, 4}, b_vals.data()};
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    cpu_req.set_input_tensor(0, a);
+    cpu_req.set_input_tensor(1, b);
+    cpu_req.infer();
+    auto cpu_out = cpu_req.get_output_tensor();
+
+    auto gfx_req = gfx_cm.create_infer_request();
+    gfx_req.set_input_tensor(0, a);
+    gfx_req.set_input_tensor(1, b);
+    gfx_req.infer();
+    auto gfx_out = get_output_or_skip(gfx_req);
+
+    expect_shape_type(cpu_out, {1, 4, 4, 4});
+    expect_allclose(cpu_out, gfx_out, /*tol=*/1e-4f);
+    expect_finite(gfx_out);
+    const float* data = gfx_out.data<const float>();
+    for (size_t i = 0; i < gfx_out.get_size(); ++i) {
+        EXPECT_GE(data[i], 0.f);
+    }
+    });
+}
+
+TEST(GfxBasicOps, MaxBiasFusion) {
+    gfx_try_catch_fail([&]() {
+    ov::Core core;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    auto ref_dev = reference_device(core);
+
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
+    auto max = std::make_shared<ov::op::v1::Maximum>(lhs, rhs);
+    auto bias = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                       ov::Shape{1, 4, 1, 1},
+                                                       std::vector<float>{-0.2f, 0.1f, 0.0f, 0.05f});
+    auto add = std::make_shared<ov::op::v1::Add>(max, bias);
+    auto res = std::make_shared<ov::op::v0::Result>(add);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{lhs, rhs},
+                                             "max_bias");
+
+    auto cpu_cm = core.compile_model(model, ref_dev);
+    auto gfx_cm = core.compile_model(model, "GFX");
+
+    std::vector<float> a_vals(1 * 4 * 4 * 4);
+    std::vector<float> b_vals(1 * 4 * 4 * 4);
+    for (size_t i = 0; i < a_vals.size(); ++i) {
+        a_vals[i] = static_cast<float>(static_cast<int>(i % 9) - 4);
+        b_vals[i] = static_cast<float>(static_cast<int>(i % 7) - 3);
+    }
+    ov::Tensor a{ov::element::f32, {1, 4, 4, 4}, a_vals.data()};
+    ov::Tensor b{ov::element::f32, {1, 4, 4, 4}, b_vals.data()};
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    cpu_req.set_input_tensor(0, a);
+    cpu_req.set_input_tensor(1, b);
+    cpu_req.infer();
+    auto cpu_out = cpu_req.get_output_tensor();
+
+    auto gfx_req = gfx_cm.create_infer_request();
+    gfx_req.set_input_tensor(0, a);
+    gfx_req.set_input_tensor(1, b);
+    gfx_req.infer();
+    auto gfx_out = get_output_or_skip(gfx_req);
+
+    expect_shape_type(cpu_out, {1, 4, 4, 4});
+    expect_allclose(cpu_out, gfx_out, /*tol=*/1e-4f);
+    expect_finite(gfx_out);
+    });
+}
+
 TEST(GfxBasicOps, MatMulSimpleMlir) {
     gfx_try_catch_fail([&]() {
     ov::Core core;
@@ -228,6 +428,187 @@ TEST(GfxBasicOps, MatMulSimpleMlir) {
     expect_shape_type(cpu_out, {2, 4});
     expect_shape_type(metal_out, {2, 4});
     expect_or_skip_allclose(cpu_out, metal_out, 1e-5f, 0.f, "GFX pool not yet accurate in pure mode");
+    });
+}
+
+TEST(GfxBasicOps, MatMulSwishFusion) {
+    gfx_try_catch_fail([&]() {
+    ov::Core core;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    auto ref_dev = reference_device(core);
+
+    auto p0 = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 3});
+    auto p1 = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{3, 4});
+    auto mm = std::make_shared<ov::op::v0::MatMul>(p0, p1, false, false);
+    auto sigmoid = std::make_shared<ov::op::v0::Sigmoid>(mm);
+    auto mul = std::make_shared<ov::op::v1::Multiply>(mm, sigmoid);
+    auto res = std::make_shared<ov::op::v0::Result>(mul);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{p0, p1}, "matmul_swish");
+
+    auto cpu_cm = core.compile_model(model, ref_dev);
+    auto metal_cm = core.compile_model(model, "GFX");
+
+    ov::Tensor a{ov::element::f32, {2, 3}};
+    for (size_t i = 0; i < a.get_size(); ++i) {
+        a.data<float>()[i] = static_cast<float>(i - 2);
+    }
+    std::vector<float> bvals(3 * 4);
+    for (size_t i = 0; i < bvals.size(); ++i) {
+        bvals[i] = static_cast<float>(static_cast<int>(i % 7) - 3);
+    }
+    ov::Tensor b{ov::element::f32, {3, 4}, bvals.data()};
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    cpu_req.set_input_tensor(0, a);
+    cpu_req.set_input_tensor(1, b);
+    cpu_req.infer();
+    auto cpu_out = cpu_req.get_output_tensor();
+
+    auto metal_req = metal_cm.create_infer_request();
+    metal_req.set_input_tensor(0, a);
+    metal_req.set_input_tensor(1, b);
+    metal_req.infer();
+    auto metal_out = get_output_or_skip(metal_req);
+
+    expect_shape_type(cpu_out, {2, 4});
+    expect_shape_type(metal_out, {2, 4});
+    expect_or_skip_allclose(cpu_out, metal_out, 1e-4f, 0.f, "GFX MatMul swish mismatch");
+    });
+}
+
+TEST(GfxBasicOps, AttentionMatMulSoftmaxMatMul) {
+    gfx_try_catch_fail([&]() {
+    ov::Core core;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    auto ref_dev = reference_device(core);
+
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4});
+    auto w1 = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                     ov::Shape{4, 4},
+                                                     std::vector<float>(16, 0.25f));
+    auto w2 = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                     ov::Shape{4, 4},
+                                                     std::vector<float>(16, -0.15f));
+    auto mm1 = std::make_shared<ov::op::v0::MatMul>(param, w1, false, false);
+    auto sm = std::make_shared<ov::op::v1::Softmax>(mm1, 1);
+    auto mm2 = std::make_shared<ov::op::v0::MatMul>(sm, w2, false, false);
+    auto res = std::make_shared<ov::op::v0::Result>(mm2);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "attention_basic");
+
+    auto cpu_cm = core.compile_model(model, ref_dev);
+    auto gfx_cm = core.compile_model(model, "GFX");
+
+    std::vector<float> vals{1.0f, -2.0f, 0.5f, 3.0f};
+    ov::Tensor input{ov::element::f32, {1, 4}, vals.data()};
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    cpu_req.set_input_tensor(input);
+    cpu_req.infer();
+    auto cpu_out = cpu_req.get_output_tensor();
+
+    auto gfx_req = gfx_cm.create_infer_request();
+    gfx_req.set_input_tensor(input);
+    gfx_req.infer();
+    auto gfx_out = get_output_or_skip(gfx_req);
+
+    expect_shape_type(cpu_out, {1, 4});
+    expect_allclose(cpu_out, gfx_out, /*atol=*/5e-1f, /*rtol=*/1e-1f);
+    expect_finite(gfx_out);
+    });
+}
+
+TEST(GfxBasicOps, AttentionScaleMaskMatMulSoftmaxMatMul) {
+    gfx_try_catch_fail([&]() {
+    ov::Core core;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    auto ref_dev = reference_device(core);
+
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4});
+    auto w1 = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                     ov::Shape{4, 4},
+                                                     std::vector<float>(16, 0.5f));
+    auto w2 = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                     ov::Shape{4, 4},
+                                                     std::vector<float>(16, 0.1f));
+    auto scale = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                        ov::Shape{1},
+                                                        std::vector<float>{0.5f});
+    auto mask = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                       ov::Shape{1, 4},
+                                                       std::vector<float>{0.0f, -1.0f, 0.0f, -1.0f});
+    auto mm1 = std::make_shared<ov::op::v0::MatMul>(param, w1, false, false);
+    auto scaled = std::make_shared<ov::op::v1::Multiply>(mm1, scale);
+    auto added = std::make_shared<ov::op::v1::Add>(scaled, mask);
+    auto sm = std::make_shared<ov::op::v1::Softmax>(added, 1);
+    auto mm2 = std::make_shared<ov::op::v0::MatMul>(sm, w2, false, false);
+    auto res = std::make_shared<ov::op::v0::Result>(mm2);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{param},
+                                             "attention_scale_mask");
+
+    auto cpu_cm = core.compile_model(model, ref_dev);
+    auto gfx_cm = core.compile_model(model, "GFX");
+
+    std::vector<float> vals{1.5f, -0.5f, 0.25f, 2.0f};
+    ov::Tensor input{ov::element::f32, {1, 4}, vals.data()};
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    cpu_req.set_input_tensor(input);
+    cpu_req.infer();
+    auto cpu_out = cpu_req.get_output_tensor();
+
+    auto gfx_req = gfx_cm.create_infer_request();
+    gfx_req.set_input_tensor(input);
+    gfx_req.infer();
+    auto gfx_out = get_output_or_skip(gfx_req);
+
+    expect_shape_type(cpu_out, {1, 4});
+    expect_allclose(cpu_out, gfx_out, /*atol=*/5e-1f, /*rtol=*/1e-1f);
+    expect_finite(gfx_out);
+    });
+}
+
+TEST(GfxBasicOps, MatMulBiasReluFusion) {
+    gfx_try_catch_fail([&]() {
+    ov::Core core;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+    auto ref_dev = reference_device(core);
+
+    auto p0 = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 3});
+    auto weights = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                          ov::Shape{3, 4},
+                                                          std::vector<float>(12, 0.25f));
+    auto bias = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                       ov::Shape{1, 4},
+                                                       std::vector<float>{0.1f, -0.2f, 0.3f, -0.4f});
+    auto mm = std::make_shared<ov::op::v0::MatMul>(p0, weights, false, false);
+    auto add = std::make_shared<ov::op::v1::Add>(mm, bias);
+    auto relu = std::make_shared<ov::op::v0::Relu>(add);
+    auto res = std::make_shared<ov::op::v0::Result>(relu);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{p0},
+                                             "matmul_bias_relu");
+
+    auto cpu_cm = core.compile_model(model, ref_dev);
+    auto metal_cm = core.compile_model(model, "GFX");
+
+    ov::Tensor a{ov::element::f32, {2, 3}};
+    for (size_t i = 0; i < a.get_size(); ++i) {
+        a.data<float>()[i] = static_cast<float>(i) - 2.0f;
+    }
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    cpu_req.set_input_tensor(0, a);
+    cpu_req.infer();
+    auto cpu_out = cpu_req.get_output_tensor();
+
+    auto metal_req = metal_cm.create_infer_request();
+    metal_req.set_input_tensor(0, a);
+    metal_req.infer();
+    auto metal_out = get_output_or_skip(metal_req);
+
+    expect_shape_type(cpu_out, {2, 4});
+    expect_shape_type(metal_out, {2, 4});
+    expect_or_skip_allclose(cpu_out, metal_out, 1e-4f, 0.f, "GFX MatMul bias+relu mismatch");
     });
 }
 
@@ -1255,6 +1636,167 @@ TEST(GfxTransforms, MlirFusionAddHSigmoidPlan) {
     EXPECT_TRUE(found);
 }
 
+TEST(GfxTransforms, MlirFusionMulReluPlan) {
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
+    auto mul = std::make_shared<ov::op::v1::Multiply>(lhs, rhs);
+    auto relu = std::make_shared<ov::op::v0::Relu>(mul);
+    auto res = std::make_shared<ov::op::v0::Result>(relu);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{lhs, rhs},
+                                             "mul_relu");
+
+    ov::gfx_plugin::FusionConfig cfg;
+    cfg.enable_fusion = true;
+    auto plan = ov::gfx_plugin::build_fusion_plan(model, cfg);
+    ASSERT_FALSE(plan.groups.empty());
+
+    bool found = false;
+    const auto ordered = model->get_ordered_ops();
+    for (const auto& group : plan.groups) {
+        if (group.kind != "EltwiseActivation" || group.node_indices.size() != 2) {
+            continue;
+        }
+        const auto elt_idx = group.node_indices[0];
+        const auto act_idx = group.node_indices[1];
+        ASSERT_LT(elt_idx, ordered.size());
+        ASSERT_LT(act_idx, ordered.size());
+        const auto& elt_node = ordered[elt_idx];
+        const auto& act_node = ordered[act_idx];
+        if (ov::as_type_ptr<const ov::op::v1::Multiply>(elt_node) &&
+            ov::as_type_ptr<const ov::op::v0::Relu>(act_node) &&
+            group.activation.has_value() &&
+            group.activation.value() == ov::gfx_plugin::ActivationKind::Relu) {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(GfxTransforms, MlirFusionMaxReluPlan) {
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
+    auto max = std::make_shared<ov::op::v1::Maximum>(lhs, rhs);
+    auto relu = std::make_shared<ov::op::v0::Relu>(max);
+    auto res = std::make_shared<ov::op::v0::Result>(relu);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{lhs, rhs},
+                                             "max_relu");
+
+    ov::gfx_plugin::FusionConfig cfg;
+    cfg.enable_fusion = true;
+    auto plan = ov::gfx_plugin::build_fusion_plan(model, cfg);
+    ASSERT_FALSE(plan.groups.empty());
+
+    bool found = false;
+    const auto ordered = model->get_ordered_ops();
+    for (const auto& group : plan.groups) {
+        if (group.kind != "EltwiseActivation" || group.node_indices.size() != 2) {
+            continue;
+        }
+        const auto elt_idx = group.node_indices[0];
+        const auto act_idx = group.node_indices[1];
+        ASSERT_LT(elt_idx, ordered.size());
+        ASSERT_LT(act_idx, ordered.size());
+        const auto& elt_node = ordered[elt_idx];
+        const auto& act_node = ordered[act_idx];
+        if (ov::as_type_ptr<const ov::op::v1::Maximum>(elt_node) &&
+            ov::as_type_ptr<const ov::op::v0::Relu>(act_node) &&
+            group.activation.has_value() &&
+            group.activation.value() == ov::gfx_plugin::ActivationKind::Relu) {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(GfxTransforms, MlirFusionMulBiasReluPlan) {
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
+    auto bias = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                       ov::Shape{1, 4, 1, 1},
+                                                       std::vector<float>(4, 0.25f));
+    auto mul = std::make_shared<ov::op::v1::Multiply>(lhs, rhs);
+    auto add = std::make_shared<ov::op::v1::Add>(mul, bias);
+    auto relu = std::make_shared<ov::op::v0::Relu>(add);
+    auto res = std::make_shared<ov::op::v0::Result>(relu);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{lhs, rhs},
+                                             "mul_bias_relu");
+
+    ov::gfx_plugin::FusionConfig cfg;
+    cfg.enable_fusion = true;
+    auto plan = ov::gfx_plugin::build_fusion_plan(model, cfg);
+    ASSERT_FALSE(plan.groups.empty());
+
+    bool found = false;
+    const auto ordered = model->get_ordered_ops();
+    for (const auto& group : plan.groups) {
+        if (group.kind != "EltwiseBiasActivation" || group.node_indices.size() != 3) {
+            continue;
+        }
+        const auto elt_idx = group.node_indices[0];
+        const auto add_idx = group.node_indices[1];
+        const auto act_idx = group.node_indices[2];
+        ASSERT_LT(elt_idx, ordered.size());
+        ASSERT_LT(add_idx, ordered.size());
+        ASSERT_LT(act_idx, ordered.size());
+        const auto& elt_node = ordered[elt_idx];
+        const auto& add_node = ordered[add_idx];
+        const auto& act_node = ordered[act_idx];
+        if (ov::as_type_ptr<const ov::op::v1::Multiply>(elt_node) &&
+            ov::as_type_ptr<const ov::op::v1::Add>(add_node) &&
+            ov::as_type_ptr<const ov::op::v0::Relu>(act_node) &&
+            group.activation.has_value() &&
+            group.activation.value() == ov::gfx_plugin::ActivationKind::Relu) {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(GfxTransforms, MlirFusionMaxBiasPlan) {
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
+    auto bias = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                       ov::Shape{1, 4, 1, 1},
+                                                       std::vector<float>(4, -0.5f));
+    auto max = std::make_shared<ov::op::v1::Maximum>(lhs, rhs);
+    auto add = std::make_shared<ov::op::v1::Add>(max, bias);
+    auto res = std::make_shared<ov::op::v0::Result>(add);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{lhs, rhs},
+                                             "max_bias");
+
+    ov::gfx_plugin::FusionConfig cfg;
+    cfg.enable_fusion = true;
+    auto plan = ov::gfx_plugin::build_fusion_plan(model, cfg);
+    ASSERT_FALSE(plan.groups.empty());
+
+    bool found = false;
+    const auto ordered = model->get_ordered_ops();
+    for (const auto& group : plan.groups) {
+        if (group.kind != "EltwiseBias" || group.node_indices.size() != 2) {
+            continue;
+        }
+        const auto elt_idx = group.node_indices[0];
+        const auto add_idx = group.node_indices[1];
+        ASSERT_LT(elt_idx, ordered.size());
+        ASSERT_LT(add_idx, ordered.size());
+        const auto& elt_node = ordered[elt_idx];
+        const auto& add_node = ordered[add_idx];
+        if (ov::as_type_ptr<const ov::op::v1::Maximum>(elt_node) &&
+            ov::as_type_ptr<const ov::op::v1::Add>(add_node)) {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
 TEST(GfxTransforms, MlirFusionAttentionPlan) {
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4});
     auto w1 = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
@@ -1494,6 +2036,50 @@ TEST(GfxTransforms, MlirFusionMatMulGeluPlan) {
     EXPECT_TRUE(found);
 }
 
+TEST(GfxTransforms, MlirFusionMatMulSwishPlan) {
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 4});
+    auto weights = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                          ov::Shape{4, 4},
+                                                          std::vector<float>(16, 0.25f));
+    auto mm = std::make_shared<ov::op::v0::MatMul>(param, weights, false, false);
+    auto sigmoid = std::make_shared<ov::op::v0::Sigmoid>(mm);
+    auto mul = std::make_shared<ov::op::v1::Multiply>(mm, sigmoid);
+    auto res = std::make_shared<ov::op::v0::Result>(mul);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param},
+                                             "matmul_swish");
+
+    ov::gfx_plugin::FusionConfig cfg;
+    cfg.enable_fusion = true;
+    auto plan = ov::gfx_plugin::build_fusion_plan(model, cfg);
+    ASSERT_FALSE(plan.groups.empty());
+
+    bool found = false;
+    const auto ordered = model->get_ordered_ops();
+    for (const auto& group : plan.groups) {
+        if (group.kind != "MatMulActivation" || group.node_indices.size() != 3) {
+            continue;
+        }
+        const auto mm_idx = group.node_indices[0];
+        const auto sig_idx = group.node_indices[1];
+        const auto mul_idx = group.node_indices[2];
+        ASSERT_LT(mm_idx, ordered.size());
+        ASSERT_LT(sig_idx, ordered.size());
+        ASSERT_LT(mul_idx, ordered.size());
+        const auto& mm_node = ordered[mm_idx];
+        const auto& sig_node = ordered[sig_idx];
+        const auto& mul_node = ordered[mul_idx];
+        if (ov::as_type_ptr<const ov::op::v0::MatMul>(mm_node) &&
+            ov::as_type_ptr<const ov::op::v0::Sigmoid>(sig_node) &&
+            ov::as_type_ptr<const ov::op::v1::Multiply>(mul_node) &&
+            group.activation.has_value() &&
+            group.activation.value() == ov::gfx_plugin::ActivationKind::Swish) {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
 TEST(GfxTransforms, MlirFusionMatMulBiasReluPlan) {
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 4});
     auto weights = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
@@ -1534,6 +2120,58 @@ TEST(GfxTransforms, MlirFusionMatMulBiasReluPlan) {
             ov::as_type_ptr<const ov::op::v0::Relu>(act_node) &&
             group.activation.has_value() &&
             group.activation.value() == ov::gfx_plugin::ActivationKind::Relu) {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(GfxTransforms, MlirFusionMatMulBiasSwishPlan) {
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 4});
+    auto weights = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                          ov::Shape{4, 4},
+                                                          std::vector<float>(16, 0.5f));
+    auto bias = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                       ov::Shape{1, 4},
+                                                       std::vector<float>(4, 0.1f));
+    auto mm = std::make_shared<ov::op::v0::MatMul>(param, weights, false, false);
+    auto add = std::make_shared<ov::op::v1::Add>(mm, bias);
+    auto sigmoid = std::make_shared<ov::op::v0::Sigmoid>(add);
+    auto mul = std::make_shared<ov::op::v1::Multiply>(add, sigmoid);
+    auto res = std::make_shared<ov::op::v0::Result>(mul);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param},
+                                             "matmul_bias_swish");
+
+    ov::gfx_plugin::FusionConfig cfg;
+    cfg.enable_fusion = true;
+    auto plan = ov::gfx_plugin::build_fusion_plan(model, cfg);
+    ASSERT_FALSE(plan.groups.empty());
+
+    bool found = false;
+    const auto ordered = model->get_ordered_ops();
+    for (const auto& group : plan.groups) {
+        if (group.kind != "MatMulBiasActivation" || group.node_indices.size() != 4) {
+            continue;
+        }
+        const auto mm_idx = group.node_indices[0];
+        const auto add_idx = group.node_indices[1];
+        const auto sig_idx = group.node_indices[2];
+        const auto mul_idx = group.node_indices[3];
+        ASSERT_LT(mm_idx, ordered.size());
+        ASSERT_LT(add_idx, ordered.size());
+        ASSERT_LT(sig_idx, ordered.size());
+        ASSERT_LT(mul_idx, ordered.size());
+        const auto& mm_node = ordered[mm_idx];
+        const auto& add_node = ordered[add_idx];
+        const auto& sig_node = ordered[sig_idx];
+        const auto& mul_node = ordered[mul_idx];
+        if (ov::as_type_ptr<const ov::op::v0::MatMul>(mm_node) &&
+            ov::as_type_ptr<const ov::op::v1::Add>(add_node) &&
+            ov::as_type_ptr<const ov::op::v0::Sigmoid>(sig_node) &&
+            ov::as_type_ptr<const ov::op::v1::Multiply>(mul_node) &&
+            group.activation.has_value() &&
+            group.activation.value() == ov::gfx_plugin::ActivationKind::Swish) {
             found = true;
             break;
         }
@@ -1586,6 +2224,63 @@ TEST(GfxTransforms, MlirFusionConvBiasReluPlan) {
             ov::as_type_ptr<const ov::op::v0::Relu>(act_node) &&
             group.activation.has_value() &&
             group.activation.value() == ov::gfx_plugin::ActivationKind::Relu) {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(GfxTransforms, MlirFusionConvBiasSwishPlan) {
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});
+    auto weights = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                          ov::Shape{2, 3, 3, 3},
+                                                          std::vector<float>(2 * 3 * 3 * 3, 1.f));
+    auto bias = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                       ov::Shape{1, 2, 1, 1},
+                                                       std::vector<float>(2, 0.25f));
+    auto conv = std::make_shared<ov::op::v1::Convolution>(param,
+                                                          weights,
+                                                          ov::Strides{1, 1},
+                                                          ov::CoordinateDiff{1, 1},
+                                                          ov::CoordinateDiff{1, 1},
+                                                          ov::Strides{1, 1});
+    auto add = std::make_shared<ov::op::v1::Add>(conv, bias);
+    auto sigmoid = std::make_shared<ov::op::v0::Sigmoid>(add);
+    auto mul = std::make_shared<ov::op::v1::Multiply>(add, sigmoid);
+    auto res = std::make_shared<ov::op::v0::Result>(mul);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param},
+                                             "conv_bias_swish");
+
+    ov::gfx_plugin::FusionConfig cfg;
+    cfg.enable_fusion = true;
+    auto plan = ov::gfx_plugin::build_fusion_plan(model, cfg);
+    ASSERT_FALSE(plan.groups.empty());
+
+    bool found = false;
+    const auto ordered = model->get_ordered_ops();
+    for (const auto& group : plan.groups) {
+        if (group.kind != "ConvBiasActivation" || group.node_indices.size() != 4) {
+            continue;
+        }
+        const auto conv_idx = group.node_indices[0];
+        const auto add_idx = group.node_indices[1];
+        const auto sig_idx = group.node_indices[2];
+        const auto mul_idx = group.node_indices[3];
+        ASSERT_LT(conv_idx, ordered.size());
+        ASSERT_LT(add_idx, ordered.size());
+        ASSERT_LT(sig_idx, ordered.size());
+        ASSERT_LT(mul_idx, ordered.size());
+        const auto& conv_node = ordered[conv_idx];
+        const auto& add_node = ordered[add_idx];
+        const auto& sig_node = ordered[sig_idx];
+        const auto& mul_node = ordered[mul_idx];
+        if (ov::as_type_ptr<const ov::op::v1::Convolution>(conv_node) &&
+            ov::as_type_ptr<const ov::op::v1::Add>(add_node) &&
+            ov::as_type_ptr<const ov::op::v0::Sigmoid>(sig_node) &&
+            ov::as_type_ptr<const ov::op::v1::Multiply>(mul_node) &&
+            group.activation.has_value() &&
+            group.activation.value() == ov::gfx_plugin::ActivationKind::Swish) {
             found = true;
             break;
         }
@@ -1950,6 +2645,303 @@ TEST(GfxBasicOps, Conv2DReluFusion) {
     for (size_t i = 0; i < metal_out.get_size(); ++i) {
         EXPECT_GE(data[i], 0.f);
     }
+    });
+}
+
+TEST(GfxBasicOps, Conv2DBiasReluFusion) {
+    gfx_try_catch_fail([&]() {
+    ov::Core core;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});
+    auto weights = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32, ov::Shape{2, 3, 3, 3},
+        std::vector<float>(2 * 3 * 3 * 3, 0.5f));
+    auto bias = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32, ov::Shape{1, 2, 1, 1}, std::vector<float>{0.1f, -0.2f});
+
+    auto conv = std::make_shared<ov::op::v1::Convolution>(param,
+                                                          weights,
+                                                          ov::Strides{1, 1},
+                                                          ov::CoordinateDiff{1, 1},
+                                                          ov::CoordinateDiff{1, 1},
+                                                          ov::Strides{1, 1});
+    auto add = std::make_shared<ov::op::v1::Add>(conv, bias);
+    auto relu = std::make_shared<ov::op::v0::Relu>(add);
+    auto res = std::make_shared<ov::op::v0::Result>(relu);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param},
+                                             "conv2d_bias_relu");
+
+    auto cpu_cm = core.compile_model(model, reference_device(core));
+    auto metal_cm = core.compile_model(model, "GFX");
+
+    ov::Tensor input{ov::element::f32, {1, 3, 4, 4}};
+    std::vector<float> vals(1 * 3 * 4 * 4);
+    for (size_t i = 0; i < vals.size(); ++i) {
+        vals[i] = static_cast<float>(i % 5) - 2.f;
+    }
+    std::copy(vals.begin(), vals.end(), input.data<float>());
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    auto metal_req = metal_cm.create_infer_request();
+
+    cpu_req.set_input_tensor(input);
+    cpu_req.infer();
+    auto cpu_out = cpu_req.get_output_tensor();
+
+    metal_req.set_input_tensor(input);
+    metal_req.infer();
+    auto metal_out = get_output_or_skip(metal_req);
+
+    expect_shape_type(cpu_out, {1, 2, 4, 4});
+    expect_or_skip_allclose(cpu_out, metal_out, 1e-4f, 0.f, "GFX conv2d+bias+relu mismatch");
+    });
+}
+
+TEST(GfxBasicOps, Conv2DBatchNormFusion) {
+    gfx_try_catch_fail([&]() {
+    ov::Core core;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});  // NCHW
+    auto weights = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32, ov::Shape{2, 3, 3, 3},
+        std::vector<float>{
+            1.f, 0.f, -1.f, 0.f, 1.f, 0.f, -1.f, 0.f, 1.f,
+            1.f, 0.f, -1.f, 0.f, 1.f, 0.f, -1.f, 0.f, 1.f,
+            1.f, 0.f, -1.f, 0.f, 1.f, 0.f, -1.f, 0.f, 1.f,
+            -1.f, -1.f, -1.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f,
+            -1.f, -1.f, -1.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f,
+            -1.f, -1.f, -1.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f});
+
+    auto conv = std::make_shared<ov::op::v1::Convolution>(param,
+                                                          weights,
+                                                          ov::Strides{1, 1},
+                                                          ov::CoordinateDiff{1, 1},
+                                                          ov::CoordinateDiff{1, 1},
+                                                          ov::Strides{1, 1});
+
+    const float eps = 1e-5f;
+    auto gamma = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32, ov::Shape{2}, std::vector<float>{1.1f, 0.9f});
+    auto beta = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32, ov::Shape{2}, std::vector<float>{0.2f, -0.1f});
+    auto mean = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32, ov::Shape{2}, std::vector<float>{0.05f, -0.03f});
+    auto var = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32, ov::Shape{2}, std::vector<float>{1.2f, 0.8f});
+    auto bn = std::make_shared<ov::op::v5::BatchNormInference>(conv, gamma, beta, mean, var, eps);
+
+    auto res = std::make_shared<ov::op::v0::Result>(bn);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "conv2d_bn");
+
+    auto cpu_cm = core.compile_model(model, reference_device(core));
+    auto metal_cm = core.compile_model(model, "GFX");
+
+    ov::Tensor input{ov::element::f32, {1, 3, 4, 4}};
+    std::vector<float> vals(1 * 3 * 4 * 4);
+    for (size_t i = 0; i < vals.size(); ++i)
+        vals[i] = static_cast<float>(i % 7) - 3.f;
+    std::copy(vals.begin(), vals.end(), input.data<float>());
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    auto metal_req = metal_cm.create_infer_request();
+
+    cpu_req.set_input_tensor(input);
+    cpu_req.infer();
+    auto cpu_out = cpu_req.get_output_tensor();
+
+    metal_req.set_input_tensor(input);
+    metal_req.infer();
+    auto metal_out = get_output_or_skip(metal_req);
+
+    expect_shape_type(cpu_out, {1, 2, 4, 4});
+    expect_allclose(cpu_out, metal_out, /*tol=*/1e-4f);
+    });
+}
+
+TEST(GfxBasicOps, Conv2DBatchNormReluFusion) {
+    gfx_try_catch_fail([&]() {
+    ov::Core core;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});  // NCHW
+    auto weights = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32, ov::Shape{2, 3, 3, 3},
+        std::vector<float>{
+            1.f, 0.f, -1.f, 0.f, 1.f, 0.f, -1.f, 0.f, 1.f,
+            1.f, 0.f, -1.f, 0.f, 1.f, 0.f, -1.f, 0.f, 1.f,
+            1.f, 0.f, -1.f, 0.f, 1.f, 0.f, -1.f, 0.f, 1.f,
+            -1.f, -1.f, -1.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f,
+            -1.f, -1.f, -1.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f,
+            -1.f, -1.f, -1.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f});
+
+    auto conv = std::make_shared<ov::op::v1::Convolution>(param,
+                                                          weights,
+                                                          ov::Strides{1, 1},
+                                                          ov::CoordinateDiff{1, 1},
+                                                          ov::CoordinateDiff{1, 1},
+                                                          ov::Strides{1, 1});
+
+    const float eps = 1e-5f;
+    auto gamma = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32, ov::Shape{2}, std::vector<float>{1.1f, 0.9f});
+    auto beta = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32, ov::Shape{2}, std::vector<float>{0.2f, -0.1f});
+    auto mean = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32, ov::Shape{2}, std::vector<float>{0.05f, -0.03f});
+    auto var = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32, ov::Shape{2}, std::vector<float>{1.2f, 0.8f});
+    auto bn = std::make_shared<ov::op::v5::BatchNormInference>(conv, gamma, beta, mean, var, eps);
+    auto relu = std::make_shared<ov::op::v0::Relu>(bn);
+
+    auto res = std::make_shared<ov::op::v0::Result>(relu);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "conv2d_bn_relu");
+
+    auto cpu_cm = core.compile_model(model, reference_device(core));
+    auto metal_cm = core.compile_model(model, "GFX");
+
+    ov::Tensor input{ov::element::f32, {1, 3, 4, 4}};
+    std::vector<float> vals(1 * 3 * 4 * 4);
+    for (size_t i = 0; i < vals.size(); ++i)
+        vals[i] = static_cast<float>(i % 5) - 2.f;
+    std::copy(vals.begin(), vals.end(), input.data<float>());
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    auto metal_req = metal_cm.create_infer_request();
+
+    cpu_req.set_input_tensor(input);
+    cpu_req.infer();
+    auto cpu_out = cpu_req.get_output_tensor();
+
+    metal_req.set_input_tensor(input);
+    metal_req.infer();
+    auto metal_out = get_output_or_skip(metal_req);
+
+    expect_shape_type(cpu_out, {1, 2, 4, 4});
+    expect_allclose(cpu_out, metal_out, /*tol=*/1e-4f);
+    expect_finite(metal_out);
+    const float* data = metal_out.data<const float>();
+    for (size_t i = 0; i < metal_out.get_size(); ++i) {
+        EXPECT_GE(data[i], 0.f);
+    }
+    });
+}
+
+TEST(GfxBasicOps, Conv2DSwishFusion) {
+    gfx_try_catch_fail([&]() {
+    ov::Core core;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});  // NCHW
+    auto weights = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32, ov::Shape{2, 3, 3, 3},
+        std::vector<float>{
+            1.f, 0.f, -1.f, 0.f, 1.f, 0.f, -1.f, 0.f, 1.f,
+            1.f, 0.f, -1.f, 0.f, 1.f, 0.f, -1.f, 0.f, 1.f,
+            1.f, 0.f, -1.f, 0.f, 1.f, 0.f, -1.f, 0.f, 1.f,
+            -1.f, -1.f, -1.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f,
+            -1.f, -1.f, -1.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f,
+            -1.f, -1.f, -1.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f});
+
+    auto conv = std::make_shared<ov::op::v1::Convolution>(param,
+                                                          weights,
+                                                          ov::Strides{1, 1},
+                                                          ov::CoordinateDiff{1, 1},
+                                                          ov::CoordinateDiff{1, 1},
+                                                          ov::Strides{1, 1});
+    auto sigmoid = std::make_shared<ov::op::v0::Sigmoid>(conv);
+    auto swish = std::make_shared<ov::op::v1::Multiply>(conv, sigmoid);
+    auto res = std::make_shared<ov::op::v0::Result>(swish);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "conv2d_swish");
+
+    auto cpu_cm = core.compile_model(model, reference_device(core));
+    auto metal_cm = core.compile_model(model, "GFX");
+
+    ov::Tensor input{ov::element::f32, {1, 3, 4, 4}};
+    std::vector<float> vals(1 * 3 * 4 * 4);
+    for (size_t i = 0; i < vals.size(); ++i)
+        vals[i] = static_cast<float>(i % 7) - 3.f;
+    std::copy(vals.begin(), vals.end(), input.data<float>());
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    auto metal_req = metal_cm.create_infer_request();
+
+    cpu_req.set_input_tensor(input);
+    cpu_req.infer();
+    auto cpu_out = cpu_req.get_output_tensor();
+
+    metal_req.set_input_tensor(input);
+    metal_req.infer();
+    auto metal_out = get_output_or_skip(metal_req);
+
+    expect_shape_type(cpu_out, {1, 2, 4, 4});
+    expect_allclose(cpu_out, metal_out, /*tol=*/1e-4f);
+    });
+}
+
+TEST(GfxBasicOps, Conv2DBatchNormSwishFusion) {
+    gfx_try_catch_fail([&]() {
+    ov::Core core;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});  // NCHW
+    auto weights = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32, ov::Shape{2, 3, 3, 3},
+        std::vector<float>{
+            1.f, 0.f, -1.f, 0.f, 1.f, 0.f, -1.f, 0.f, 1.f,
+            1.f, 0.f, -1.f, 0.f, 1.f, 0.f, -1.f, 0.f, 1.f,
+            1.f, 0.f, -1.f, 0.f, 1.f, 0.f, -1.f, 0.f, 1.f,
+            -1.f, -1.f, -1.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f,
+            -1.f, -1.f, -1.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f,
+            -1.f, -1.f, -1.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f});
+
+    auto conv = std::make_shared<ov::op::v1::Convolution>(param,
+                                                          weights,
+                                                          ov::Strides{1, 1},
+                                                          ov::CoordinateDiff{1, 1},
+                                                          ov::CoordinateDiff{1, 1},
+                                                          ov::Strides{1, 1});
+
+    const float eps = 1e-5f;
+    auto gamma = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32, ov::Shape{2}, std::vector<float>{1.1f, 0.9f});
+    auto beta = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32, ov::Shape{2}, std::vector<float>{0.2f, -0.1f});
+    auto mean = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32, ov::Shape{2}, std::vector<float>{0.05f, -0.03f});
+    auto var = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32, ov::Shape{2}, std::vector<float>{1.2f, 0.8f});
+    auto bn = std::make_shared<ov::op::v5::BatchNormInference>(conv, gamma, beta, mean, var, eps);
+
+    auto sigmoid = std::make_shared<ov::op::v0::Sigmoid>(bn);
+    auto swish = std::make_shared<ov::op::v1::Multiply>(bn, sigmoid);
+
+    auto res = std::make_shared<ov::op::v0::Result>(swish);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "conv2d_bn_swish");
+
+    auto cpu_cm = core.compile_model(model, reference_device(core));
+    auto metal_cm = core.compile_model(model, "GFX");
+
+    ov::Tensor input{ov::element::f32, {1, 3, 4, 4}};
+    std::vector<float> vals(1 * 3 * 4 * 4);
+    for (size_t i = 0; i < vals.size(); ++i)
+        vals[i] = static_cast<float>(i % 5) - 2.f;
+    std::copy(vals.begin(), vals.end(), input.data<float>());
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    auto metal_req = metal_cm.create_infer_request();
+
+    cpu_req.set_input_tensor(input);
+    cpu_req.infer();
+    auto cpu_out = cpu_req.get_output_tensor();
+
+    metal_req.set_input_tensor(input);
+    metal_req.infer();
+    auto metal_out = get_output_or_skip(metal_req);
+
+    expect_shape_type(cpu_out, {1, 2, 4, 4});
+    expect_allclose(cpu_out, metal_out, /*tol=*/1e-4f);
     });
 }
 

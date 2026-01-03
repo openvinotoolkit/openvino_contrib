@@ -142,6 +142,36 @@ bool MetalConvOp::fuse_batchnorm(const BatchNormParams& params) {
     return true;
 }
 
+bool MetalConvOp::fuse_bias(const BiasParams& params) {
+    OPENVINO_ASSERT(!is_compiled(), "MetalConvOp: cannot fuse bias after compilation");
+    if (params.empty()) {
+        return false;
+    }
+    if (params.element_type != ov::element::f16 && params.element_type != ov::element::f32) {
+        return false;
+    }
+    const size_t c_out = m_desc.C_out;
+    if (params.shape.size() == 1) {
+        if (static_cast<size_t>(params.shape[0]) != c_out) {
+            return false;
+        }
+    } else if (params.shape.size() == 4) {
+        if (params.shape[0] != 1 || params.shape[2] != 1 || params.shape[3] != 1) {
+            return false;
+        }
+        if (static_cast<size_t>(params.shape[1]) != c_out) {
+            return false;
+        }
+    } else {
+        return false;
+    }
+    m_has_bias = true;
+    m_bias_params = params;
+    m_desc.has_bias = true;
+    m_desc.bias_rank = static_cast<uint32_t>(params.shape.size());
+    return true;
+}
+
 void MetalConvOp::compile(MetalBufferManager* buffer_manager) {
     if (is_compiled()) {
         return;
@@ -150,6 +180,7 @@ void MetalConvOp::compile(MetalBufferManager* buffer_manager) {
         MetalOp::init(buffer_manager);
     }
     prepare_weights();
+    prepare_bias();
     prepare_batchnorm();
     OPENVINO_ASSERT(m_device, "MetalConvOp: Metal device is null");
     MetalCodegenBackend backend(m_device);
@@ -236,6 +267,36 @@ void MetalConvOp::prepare_batchnorm() {
                     "MetalConvOp: failed to wrap batchnorm buffers");
 }
 
+void MetalConvOp::prepare_bias() {
+    if (!m_has_bias) {
+        return;
+    }
+    OPENVINO_ASSERT(buffer_manager(), "MetalConvOp: buffer manager is null");
+    const ov::element::Type et =
+        (m_element_type == ov::element::dynamic) ? ov::element::f32 : m_element_type;
+    const size_t count = m_bias_params.values.size();
+    if (count == 0) {
+        return;
+    }
+    const std::string key = m_node->get_friendly_name() + "/bias";
+    if (et == ov::element::f16) {
+        m_bias_f16.resize(count);
+        for (size_t i = 0; i < count; ++i) {
+            m_bias_f16[i] = ov::float16(m_bias_params.values[i]);
+        }
+        m_bias = buffer_manager()->wrap_const(key,
+                                              m_bias_f16.data(),
+                                              m_bias_f16.size() * sizeof(ov::float16),
+                                              et);
+    } else {
+        m_bias = buffer_manager()->wrap_const(key,
+                                              m_bias_params.values.data(),
+                                              m_bias_params.values.size() * sizeof(float),
+                                              et);
+    }
+    OPENVINO_ASSERT(m_bias.valid(), "MetalConvOp: failed to wrap bias buffer");
+}
+
 // compile_pipeline removed: compile() performs MLIR construction and pipeline build.
 
 void MetalConvOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
@@ -280,7 +341,10 @@ void MetalConvOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     const size_t w_bytes = ov::shape_size(w_shape) * element_size(m_element_type);
     OPENVINO_ASSERT(m_weights.size >= w_bytes, "MetalConvOp: weights buffer too small");
 
-    MetalBuffer bias{};
+    MetalBuffer bias = m_bias;
+    if (m_desc.has_bias) {
+        OPENVINO_ASSERT(bias.valid(), "MetalConvOp: bias buffer is null");
+    }
     MetalBuffer gamma = m_bn_gamma;
     MetalBuffer beta = m_bn_beta;
     MetalBuffer mean = m_bn_mean;

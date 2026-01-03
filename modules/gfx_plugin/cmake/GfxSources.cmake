@@ -50,6 +50,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/gfx_batchnorm.hpp
     ${_gfx_src_dir}/runtime/gfx_backend_caps.hpp
     ${_gfx_src_dir}/runtime/gfx_backend_utils.hpp
+    ${_gfx_src_dir}/runtime/fused_sequence_stage.hpp
     ${_gfx_src_dir}/runtime/gpu_memory_ops.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_codegen_desc.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_args.hpp
@@ -77,6 +78,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
 set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/gfx_backend_caps.cpp
     ${_gfx_src_dir}/runtime/gfx_backend_utils.cpp
+    ${_gfx_src_dir}/runtime/fused_sequence_stage.cpp
     ${_gfx_src_dir}/runtime/gpu_memory_ops.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.cpp

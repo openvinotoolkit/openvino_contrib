@@ -10,6 +10,7 @@
 #include "runtime/gpu_types.hpp"
 #include "runtime/gfx_activation.hpp"
 #include "runtime/gfx_batchnorm.hpp"
+#include "runtime/gfx_bias.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -33,6 +34,7 @@ public:
 
     virtual bool fuse_activation(ActivationKind /*kind*/, float /*alpha*/) { return false; }
     virtual bool fuse_batchnorm(const BatchNormParams& /*params*/) { return false; }
+    virtual bool fuse_bias(const BiasParams& /*params*/) { return false; }
 
     virtual void enable_profiling(bool /*enable*/) {}
     virtual void set_profiler(void* /*profiler*/,

@@ -44,6 +44,10 @@ bool MetalStage::fuse_batchnorm(const BatchNormParams& params) {
     return m_op->fuse_batchnorm(params);
 }
 
+bool MetalStage::fuse_bias(const BiasParams& params) {
+    return m_op->fuse_bias(params);
+}
+
 void MetalStage::enable_profiling(bool enable) {
     m_op->enable_profiling(enable);
 }

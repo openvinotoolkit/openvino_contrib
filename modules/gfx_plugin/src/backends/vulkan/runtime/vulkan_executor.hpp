@@ -7,8 +7,12 @@
 #include <string>
 #include <vector>
 
+#include "runtime/gfx_activation.hpp"
+#include "runtime/gfx_batchnorm.hpp"
+#include "runtime/gfx_bias.hpp"
 #include "runtime/gpu_backend_base.hpp"
 #include "runtime/gpu_stage.hpp"
+#include "openvino/core/type/float16.hpp"
 
 namespace ov {
 class Node;
@@ -39,6 +43,9 @@ public:
     const std::string& type() const override { return m_type; }
 
     std::unique_ptr<GpuStage> clone() const override;
+    bool fuse_activation(ActivationKind kind, float alpha) override;
+    bool fuse_batchnorm(const BatchNormParams& params) override;
+    bool fuse_bias(const BiasParams& params) override;
 
 private:
     struct ConstBufferSet {
@@ -58,6 +65,7 @@ private:
     std::vector<int32_t> m_kernel_operand_kinds;
     std::vector<int32_t> m_kernel_operand_arg_indices;
     std::vector<int32_t> m_kernel_scalar_args;
+    std::vector<GpuTensor> m_kernel_extra_inputs;
     GpuTensor* m_output = nullptr;
     std::shared_ptr<ConstBufferSet> m_const_buffers;
     ov::Shape m_output_shape;
@@ -65,6 +73,18 @@ private:
     GpuBufferManager* m_buffer_manager = nullptr;
     bool m_profiling_enabled = false;
     bool m_parallel_dispatch = false;
+    uint32_t m_dispatch_tile_h = 1;
+    uint32_t m_dispatch_tile_w = 1;
+    uint32_t m_dispatch_threads_h = 1;
+    uint32_t m_dispatch_threads_w = 1;
+    bool m_has_activation = false;
+    ActivationKind m_activation = ActivationKind::Relu;
+    float m_activation_alpha = 0.0f;
+    bool m_has_bn = false;
+    BatchNormParams m_bn_params{};
+    bool m_has_bias = false;
+    BiasParams m_bias_params{};
+    std::vector<ov::float16> m_bias_f16;
     void* m_profiler = nullptr;
     uint32_t m_profile_node_id = 0;
     std::string m_profile_node_name;

@@ -4,11 +4,13 @@
 
 #import "backends/metal/runtime/op_matmul.hpp"
 
+#include <array>
 #include <string>
 
 #include "openvino/core/shape_util.hpp"
 #include "openvino/core/validation_util.hpp"
 #include "openvino/op/constant.hpp"
+#include "openvino/core/type/float16.hpp"
 #include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
@@ -16,6 +18,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/codegen_common.hpp"
+#include "transforms/mlir_fused_ops.hpp"
 #include "runtime/gfx_logger.hpp"
 
 namespace ov {
@@ -31,6 +34,40 @@ std::vector<int64_t> flatten_to_3d(const ov::Shape& s) {
     int64_t m = static_cast<int64_t>(s[s.size() - 2]);
     int64_t k = static_cast<int64_t>(s[s.size() - 1]);
     return {batch, m, k};
+}
+
+bool compute_bias_dims(const BiasParams& params,
+                       const MatMulCodegenDesc& desc,
+                       std::array<int64_t, 3>& out_dims) {
+    if (params.values.empty()) {
+        return false;
+    }
+    if (params.shape.size() > 3) {
+        return false;
+    }
+    const std::array<int64_t, 3> out_shape{{desc.batch, desc.M, desc.N}};
+    std::array<int64_t, 3> aligned{{1, 1, 1}};
+    const size_t offset = 3 - params.shape.size();
+    for (size_t i = 0; i < params.shape.size(); ++i) {
+        aligned[offset + i] = params.shape[i];
+    }
+    for (size_t i = 0; i < 3; ++i) {
+        if (aligned[i] != 1 && aligned[i] != out_shape[i]) {
+            return false;
+        }
+    }
+    size_t expected = 1;
+    for (auto d : params.shape) {
+        if (d <= 0) {
+            return false;
+        }
+        expected *= static_cast<size_t>(d);
+    }
+    if (expected != params.values.size()) {
+        return false;
+    }
+    out_dims = aligned;
+    return true;
 }
 
 }  // namespace
@@ -99,6 +136,36 @@ void MetalMatMulOp::init(MetalBufferManager* buffer_manager) {
     MetalOp::init(buffer_manager);
 }
 
+bool MetalMatMulOp::fuse_activation(ActivationKind kind, float alpha) {
+    OPENVINO_ASSERT(!is_compiled(), "MetalMatMulOp: cannot fuse activation after compilation");
+    m_has_activation = true;
+    m_activation = kind;
+    m_activation_alpha = alpha;
+    m_desc.has_activation = true;
+    m_desc.activation = kind;
+    m_desc.alpha = alpha;
+    return true;
+}
+
+bool MetalMatMulOp::fuse_bias(const BiasParams& params) {
+    OPENVINO_ASSERT(!is_compiled(), "MetalMatMulOp: cannot fuse bias after compilation");
+    if (params.empty()) {
+        return false;
+    }
+    if (params.element_type != ov::element::f16 && params.element_type != ov::element::f32) {
+        return false;
+    }
+    std::array<int64_t, 3> dims{{1, 1, 1}};
+    if (!compute_bias_dims(params, m_desc, dims)) {
+        return false;
+    }
+    m_has_bias = true;
+    m_bias_params = params;
+    m_desc.has_bias = true;
+    m_desc.bias_dims = dims;
+    return true;
+}
+
 void MetalMatMulOp::compile(MetalBufferManager* buffer_manager) {
     if (is_compiled()) {
         return;
@@ -126,18 +193,46 @@ void MetalMatMulOp::compile(MetalBufferManager* buffer_manager) {
         maybe_upload_const(0, m_constA);
         maybe_upload_const(1, m_constB);
     }
+    if (m_has_bias) {
+        const ov::element::Type et =
+            (m_element_type == ov::element::dynamic) ? ov::element::f32 : m_element_type;
+        const size_t count = m_bias_params.values.size();
+        if (count) {
+            const std::string key = m_node->get_friendly_name() + "/bias";
+            if (et == ov::element::f16) {
+                m_bias_f16.resize(count);
+                for (size_t i = 0; i < count; ++i) {
+                    m_bias_f16[i] = ov::float16(m_bias_params.values[i]);
+                }
+                m_bias = buffer_manager->wrap_const(key,
+                                                    m_bias_f16.data(),
+                                                    m_bias_f16.size() * sizeof(ov::float16),
+                                                    et);
+            } else {
+                m_bias = buffer_manager->wrap_const(key,
+                                                    m_bias_params.values.data(),
+                                                    m_bias_params.values.size() * sizeof(float),
+                                                    et);
+            }
+            OPENVINO_ASSERT(m_bias.valid(), "MetalMatMulOp: failed to wrap bias buffer");
+        }
+    }
 
     MetalCodegenBackend backend(m_device ? m_device : (id<MTLDevice>)buffer_manager->device());
     std::string log;
     mlir::MLIRContext ctx;
     auto model = make_single_op_model(m_node);
     auto module = build_mlir_module_from_model(model, ctx);
+    if (m_has_activation) {
+        const bool applied = apply_fused_activation(module, m_activation, m_activation_alpha);
+        OPENVINO_ASSERT(applied, "MetalMatMulOp: failed to apply fused activation for ", name());
+    }
     MatMulCodegenDesc desc = m_desc;
     desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
-    KernelSpec spec(m_node, 3u);
+    KernelSpec spec(m_node, m_has_bias ? 4u : 3u);
     m_kernel = compile_msl_kernel(backend, spec, module, "matmul_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalMatMulOp: failed to compile matmul kernel: ", log);
 
@@ -188,6 +283,10 @@ void MetalMatMulOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     KernelArgsBuilder args_builder(name().c_str());
     args_builder.add_inputs(2, [&](size_t idx) { return idx == 0 ? A : B; });
+    if (m_has_bias) {
+        OPENVINO_ASSERT(m_bias.valid(), "MatMul: bias buffer is null");
+        args_builder.add_input_buffer(m_bias, "bias");
+    }
     args_builder.add_output(&C);
     auto args = args_builder.finalize(nullptr, nullptr);
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);

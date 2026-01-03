@@ -68,6 +68,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
+#include <algorithm>
 namespace ov {
 namespace gfx_plugin {
 
@@ -110,15 +111,31 @@ void map_parallel_loops_to_blocks(mlir::ModuleOp module) {
         if (num_loops == 0) {
             return;
         }
-        const int64_t mapped = std::min<int64_t>(3, num_loops);
-        const int64_t start = num_loops - mapped;
+        bool wants_threads = false;
+        if (auto mod = op->getParentOfType<mlir::ModuleOp>()) {
+            auto th = mod->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_h");
+            auto tw = mod->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_w");
+            const int64_t th_val = th ? th.getInt() : 1;
+            const int64_t tw_val = tw ? tw.getInt() : 1;
+            wants_threads = (th_val > 1 || tw_val > 1);
+        }
         mlir::OpBuilder b(op);
         llvm::SmallVector<mlir::gpu::ParallelLoopDimMappingAttr, 4> attrs;
         attrs.reserve(static_cast<size_t>(num_loops));
         for (int64_t i = 0; i < num_loops; ++i) {
             mlir::gpu::Processor proc = mlir::gpu::Processor::Sequential;
-            if (i >= start) {
-                switch (i - start) {
+            const int64_t thread_dims = (wants_threads && num_loops >= 3) ? 2 : 0;
+            const int64_t block_dims = std::min<int64_t>(3, num_loops - thread_dims);
+            const int64_t block_start = num_loops - thread_dims - block_dims;
+            if (thread_dims != 0) {
+                if (i == num_loops - 1) {
+                    proc = mlir::gpu::Processor::ThreadX;
+                } else if (i == num_loops - 2) {
+                    proc = mlir::gpu::Processor::ThreadY;
+                }
+            }
+            if (proc == mlir::gpu::Processor::Sequential && i >= block_start) {
+                switch (i - block_start) {
                     case 0: proc = mlir::gpu::Processor::BlockX; break;
                     case 1: proc = mlir::gpu::Processor::BlockY; break;
                     case 2: proc = mlir::gpu::Processor::BlockZ; break;
@@ -163,6 +180,135 @@ void ensure_spirv_entry_point_interface(mlir::spirv::ModuleOp module) {
         entry->setAttr(mlir::spirv::EntryPointOp::getInterfaceAttrName(entry->getName()),
                        b.getArrayAttr(iface));
     });
+}
+
+void apply_spirv_local_size(mlir::ModuleOp module,
+                            mlir::spirv::ModuleOp spirv_module,
+                            const std::string& entry_point) {
+    if (!module || !spirv_module || entry_point.empty()) {
+        return;
+    }
+    auto th = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_h");
+    auto tw = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_w");
+    const uint32_t local_y = th ? static_cast<uint32_t>(th.getInt()) : 1;
+    const uint32_t local_x = tw ? static_cast<uint32_t>(tw.getInt()) : 1;
+    if (local_x <= 1 && local_y <= 1) {
+        return;
+    }
+
+    auto* ctx = spirv_module.getContext();
+    auto exec_mode = mlir::spirv::ExecutionModeAttr::get(
+        ctx, mlir::spirv::ExecutionMode::LocalSize);
+    auto values = mlir::ArrayAttr::get(
+        ctx,
+        {mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32), static_cast<int32_t>(local_x)),
+         mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32), static_cast<int32_t>(local_y)),
+         mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32), static_cast<int32_t>(1))});
+
+    bool updated = false;
+    spirv_module.walk([&](mlir::spirv::ExecutionModeOp op) {
+        if (op.getExecutionMode() != mlir::spirv::ExecutionMode::LocalSize) {
+            return;
+        }
+        auto fn = op.getFnAttr();
+        if (!fn || fn.getRootReference().str() != entry_point) {
+            return;
+        }
+        op.setValuesAttr(values);
+        updated = true;
+    });
+    if (updated) {
+        return;
+    }
+
+    mlir::OpBuilder b(spirv_module.getBody(), spirv_module.getBody()->begin());
+    b.create<mlir::spirv::ExecutionModeOp>(
+        spirv_module.getLoc(),
+        mlir::SymbolRefAttr::get(ctx, entry_point),
+        exec_mode,
+        values);
+}
+
+bool validate_spirv_module(mlir::spirv::ModuleOp module, std::string* log) {
+    if (!module) {
+        return true;
+    }
+    const auto binding_attr_name =
+        mlir::spirv::SPIRVDialect::getAttributeName(mlir::spirv::Decoration::Binding);
+    const auto set_attr_name =
+        mlir::spirv::SPIRVDialect::getAttributeName(mlir::spirv::Decoration::DescriptorSet);
+    const auto builtin_attr_name =
+        mlir::spirv::SPIRVDialect::getAttributeName(mlir::spirv::Decoration::BuiltIn);
+
+    llvm::SmallVector<int32_t, 16> bindings;
+    llvm::SmallDenseSet<int32_t, 16> seen;
+    bool ok = true;
+
+    module.walk([&](mlir::spirv::GlobalVariableOp var) {
+        const auto sc = var.storageClass();
+        if (sc != mlir::spirv::StorageClass::StorageBuffer &&
+            sc != mlir::spirv::StorageClass::Uniform) {
+            return;
+        }
+        if (var->hasAttr(builtin_attr_name)) {
+            return;
+        }
+        auto binding_attr = var->getAttrOfType<mlir::IntegerAttr>(binding_attr_name);
+        auto set_attr = var->getAttrOfType<mlir::IntegerAttr>(set_attr_name);
+        if (!binding_attr || !set_attr) {
+            ok = false;
+            if (log) {
+                *log += "SPIR-V validation: missing binding/descriptor_set on ";
+                *log += var.getSymName().str();
+                *log += "\n";
+            }
+            return;
+        }
+        const int32_t binding = static_cast<int32_t>(binding_attr.getInt());
+        const int32_t set = static_cast<int32_t>(set_attr.getInt());
+        if (set != 0) {
+            ok = false;
+            if (log) {
+                *log += "SPIR-V validation: descriptor_set != 0 for ";
+                *log += var.getSymName().str();
+                *log += "\n";
+            }
+        }
+        if (seen.contains(binding)) {
+            ok = false;
+            if (log) {
+                *log += "SPIR-V validation: duplicate binding ";
+                *log += std::to_string(binding);
+                *log += " for ";
+                *log += var.getSymName().str();
+                *log += "\n";
+            }
+        } else {
+            seen.insert(binding);
+        }
+        bindings.push_back(binding);
+    });
+
+    if (!ok) {
+        return false;
+    }
+    if (!bindings.empty()) {
+        std::sort(bindings.begin(), bindings.end());
+        for (size_t i = 0; i < bindings.size(); ++i) {
+            if (bindings[i] != static_cast<int32_t>(i)) {
+                ok = false;
+                if (log) {
+                    *log += "SPIR-V validation: non-contiguous binding ";
+                    *log += std::to_string(bindings[i]);
+                    *log += " (expected ";
+                    *log += std::to_string(i);
+                    *log += ")\n";
+                }
+                break;
+            }
+        }
+    }
+    return ok;
 }
 
 std::optional<int64_t> eval_scalar_value(mlir::Value value) {
@@ -1113,6 +1259,10 @@ static std::vector<uint32_t> lower_to_spirv_impl(mlir::ModuleOp module,
     }
 
     ensure_spirv_entry_point_interface(spirv_module);
+    apply_spirv_local_size(module, spirv_module, entry_point);
+    if (!validate_spirv_module(spirv_module, log)) {
+        return {};
+    }
     dump_spirv_mlir_if_requested(spirv_module, entry_point);
 
     return serialize_spirv(spirv_module, log);

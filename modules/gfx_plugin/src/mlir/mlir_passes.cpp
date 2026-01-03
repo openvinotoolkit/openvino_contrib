@@ -29,6 +29,7 @@
 
 #include "transforms/conv_parallel_lowering.hpp"
 #include "transforms/parallel_fill_fusion.hpp"
+#include "transforms/parallel_post_fusion.hpp"
 
 #ifndef GFX_MLIR_DEBUG
 #define GFX_MLIR_DEBUG 0
@@ -524,6 +525,7 @@ void run_mlir_pipeline(mlir::ModuleOp module, bool use_alloca, bool use_parallel
     }
     if (use_parallel_loops) {
         run_parallel_fill_fusion(module);
+        run_parallel_post_fusion(module);
     }
 
     {

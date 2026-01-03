@@ -11,10 +11,14 @@ namespace gfx_plugin {
 
 void add_conv_activation_fusion_patterns(mlir::RewritePatternSet& patterns,
                                          const FusionConfig& config);
+void add_conv_swish_fusion_patterns(mlir::RewritePatternSet& patterns,
+                                    const FusionConfig& config);
 void add_conv_batchnorm_fusion_patterns(mlir::RewritePatternSet& patterns,
                                         const FusionConfig& config);
 void add_conv_batchnorm_act_fusion_patterns(mlir::RewritePatternSet& patterns,
                                             const FusionConfig& config);
+void add_conv_batchnorm_swish_fusion_patterns(mlir::RewritePatternSet& patterns,
+                                              const FusionConfig& config);
 void add_eltwise_activation_fusion_patterns(mlir::RewritePatternSet& patterns,
                                             const FusionConfig& config);
 void add_eltwise_bias_activation_fusion_patterns(mlir::RewritePatternSet& patterns,
@@ -23,12 +27,18 @@ void add_eltwise_bias_fusion_patterns(mlir::RewritePatternSet& patterns,
                                       const FusionConfig& config);
 void add_matmul_activation_fusion_patterns(mlir::RewritePatternSet& patterns,
                                            const FusionConfig& config);
+void add_matmul_swish_fusion_patterns(mlir::RewritePatternSet& patterns,
+                                      const FusionConfig& config);
 void add_matmul_bias_activation_fusion_patterns(mlir::RewritePatternSet& patterns,
                                                 const FusionConfig& config);
+void add_matmul_bias_swish_fusion_patterns(mlir::RewritePatternSet& patterns,
+                                           const FusionConfig& config);
 void add_matmul_bias_fusion_patterns(mlir::RewritePatternSet& patterns,
                                      const FusionConfig& config);
 void add_conv_bias_activation_fusion_patterns(mlir::RewritePatternSet& patterns,
                                               const FusionConfig& config);
+void add_conv_bias_swish_fusion_patterns(mlir::RewritePatternSet& patterns,
+                                         const FusionConfig& config);
 void add_conv_bias_fusion_patterns(mlir::RewritePatternSet& patterns,
                                    const FusionConfig& config);
 void add_attention_fusion_patterns(mlir::RewritePatternSet& patterns,
