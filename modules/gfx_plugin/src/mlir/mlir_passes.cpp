@@ -27,6 +27,9 @@
 #include <functional>
 #include <stdexcept>
 
+#include "transforms/conv_parallel_lowering.hpp"
+#include "transforms/parallel_fill_fusion.hpp"
+
 #ifndef GFX_MLIR_DEBUG
 #define GFX_MLIR_DEBUG 0
 #endif
@@ -188,6 +191,40 @@ static void fix_subview_memory_spaces(mlir::ModuleOp module) {
     });
 }
 
+static void fix_shape_cast_memory_spaces(mlir::ModuleOp module) {
+    module.walk([&](mlir::memref::CollapseShapeOp op) {
+        auto src_type = mlir::dyn_cast<mlir::MemRefType>(op.getSrcType());
+        auto res_type = mlir::dyn_cast<mlir::MemRefType>(op.getType());
+        if (!src_type || !res_type) {
+            return;
+        }
+        if (src_type.getMemorySpace() == res_type.getMemorySpace()) {
+            return;
+        }
+        auto fixed = mlir::MemRefType::get(res_type.getShape(),
+                                           res_type.getElementType(),
+                                           res_type.getLayout(),
+                                           src_type.getMemorySpace());
+        op.getResult().setType(fixed);
+    });
+
+    module.walk([&](mlir::memref::ExpandShapeOp op) {
+        auto src_type = mlir::dyn_cast<mlir::MemRefType>(op.getSrcType());
+        auto res_type = mlir::dyn_cast<mlir::MemRefType>(op.getType());
+        if (!src_type || !res_type) {
+            return;
+        }
+        if (src_type.getMemorySpace() == res_type.getMemorySpace()) {
+            return;
+        }
+        auto fixed = mlir::MemRefType::get(res_type.getShape(),
+                                           res_type.getElementType(),
+                                           res_type.getLayout(),
+                                           src_type.getMemorySpace());
+        op.getResult().setType(fixed);
+    });
+}
+
 static void inline_simple_subviews(mlir::ModuleOp module) {
     llvm::SmallVector<mlir::memref::SubViewOp, 8> to_erase;
     module.walk([&](mlir::memref::SubViewOp subview) {
@@ -306,19 +343,29 @@ static void fold_out_param_allocs(mlir::ModuleOp module) {
         }
         for (auto copy : llvm::make_early_inc_range(func.getOps<mlir::memref::CopyOp>())) {
             auto alloc = copy.getSource().getDefiningOp<mlir::memref::AllocOp>();
-            if (!alloc) {
+            auto alloca = copy.getSource().getDefiningOp<mlir::memref::AllocaOp>();
+            if (!alloc && !alloca) {
                 continue;
             }
             auto dest_arg = mlir::dyn_cast<mlir::BlockArgument>(copy.getTarget());
             if (!dest_arg) {
                 continue;
             }
-            if (alloc.getType() != dest_arg.getType()) {
+            const auto src_type = alloc ? alloc.getType() : alloca.getType();
+            if (src_type != dest_arg.getType()) {
                 continue;
             }
-            alloc.replaceAllUsesWith(dest_arg);
+            if (alloc) {
+                alloc.replaceAllUsesWith(dest_arg);
+            } else {
+                alloca.replaceAllUsesWith(dest_arg);
+            }
             copy.erase();
-            alloc.erase();
+            if (alloc) {
+                alloc.erase();
+            } else {
+                alloca.erase();
+            }
         }
     });
 }
@@ -394,7 +441,7 @@ static void lower_allocs_to_alloca(mlir::ModuleOp module) {
 
 }  // namespace
 
-void run_mlir_pipeline(mlir::ModuleOp module) {
+void run_mlir_pipeline(mlir::ModuleOp module, bool use_alloca, bool use_parallel_loops) {
     auto* ctx = module.getContext();
     mlir::DialectRegistry registry;
     mlir::arith::registerBufferizableOpInterfaceExternalModels(registry);
@@ -419,40 +466,64 @@ void run_mlir_pipeline(mlir::ModuleOp module) {
         throw std::runtime_error("MLIR module verification failed");
     }
 
-    mlir::PassManager pm(ctx);
     if (debug) {
         module.dump();
     }
-    // Canonicalize and CSE before fusion to expose larger elementwise regions.
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(mlir::createCSEPass());
+    {
+        mlir::PassManager pm_pre(ctx);
+        // Canonicalize and CSE before fusion to expose larger elementwise regions.
+        pm_pre.addPass(mlir::createCanonicalizerPass());
+        pm_pre.addPass(mlir::createCSEPass());
 
-    // Fuse conv -> eltwise chains (bias/add/unary) at the tensor level.
-    // Run it directly before bufferization to maximize fusion opportunities.
-    // (Runs outside the pass manager to avoid plugin RTTI issues.)
-    // Generic linalg elementwise fusion still happens via the standard pass.
-    runConvEltwiseFusion(module);
-    pm.addPass(mlir::createLinalgElementwiseOpFusionPass());
+        // Fuse conv -> eltwise chains (bias/add/unary) at the tensor level.
+        // Run it directly before bufferization to maximize fusion opportunities.
+        // (Runs outside the pass manager to avoid plugin RTTI issues.)
+        // Generic linalg elementwise fusion still happens via the standard pass.
+        runConvEltwiseFusion(module);
+        pm_pre.addPass(mlir::createLinalgElementwiseOpFusionPass());
 
-    if (debug_pre) {
-        llvm::errs() << "[GFX][MLIR] Module before bufferization:\n";
-        module.dump();
+        if (debug_pre) {
+            llvm::errs() << "[GFX][MLIR] Module before bufferization:\n";
+            module.dump();
+        }
+
+        // Run cleanup again to simplify the fused op bodies prior to bufferization.
+        pm_pre.addPass(mlir::createCanonicalizerPass());
+        pm_pre.addPass(mlir::createCSEPass());
+        mlir::bufferization::OneShotBufferizePassOptions opts;
+        opts.bufferizeFunctionBoundaries = true;
+        pm_pre.addPass(mlir::bufferization::createOneShotBufferizePass(opts));
+
+        if (mlir::failed(pm_pre.run(module))) {
+            throw std::runtime_error("MLIR pipeline failed (pre-bufferization)");
+        }
     }
 
-    // Run cleanup again to simplify the fused op bodies prior to bufferization.
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(mlir::createCSEPass());
-    mlir::bufferization::OneShotBufferizePassOptions opts;
-    opts.bufferizeFunctionBoundaries = true;
-    pm.addPass(mlir::bufferization::createOneShotBufferizePass(opts));
-    pm.addPass(mlir::createConvertLinalgToLoopsPass());
-    pm.addPass(mlir::createLowerAffinePass());
-    pm.addPass(mlir::memref::createNormalizeMemRefsPass());
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(mlir::createCSEPass());
+    if (use_parallel_loops) {
+        run_conv2d_parallel_lowering(module);
+        if (mlir::failed(mlir::verify(module))) {
+            throw std::runtime_error("MLIR module verification failed after Conv2D parallel lowering");
+        }
+    }
 
-    if (mlir::failed(pm.run(module))) {
-        throw std::runtime_error("MLIR pipeline failed");
+    {
+        mlir::PassManager pm_post(ctx);
+        if (use_parallel_loops) {
+            pm_post.addPass(mlir::createConvertLinalgToParallelLoopsPass());
+        } else if (!use_parallel_loops) {
+            pm_post.addPass(mlir::createConvertLinalgToLoopsPass());
+        }
+        pm_post.addPass(mlir::createLowerAffinePass());
+        pm_post.addPass(mlir::memref::createNormalizeMemRefsPass());
+        pm_post.addPass(mlir::createCanonicalizerPass());
+        pm_post.addPass(mlir::createCSEPass());
+
+        if (mlir::failed(pm_post.run(module))) {
+            throw std::runtime_error("MLIR pipeline failed (post-bufferization)");
+        }
+    }
+    if (use_parallel_loops) {
+        run_parallel_fill_fusion(module);
     }
 
     {
@@ -463,11 +534,13 @@ void run_mlir_pipeline(mlir::ModuleOp module) {
         }
     }
 
-    lower_allocs_to_alloca(module);
-    lower_memref_copies_to_loops(module);
+    if (use_alloca) {
+        lower_allocs_to_alloca(module);
+    }
     fold_out_param_allocs(module);
-    strip_strided_func_layouts(module);
+    lower_memref_copies_to_loops(module);
     fix_subview_memory_spaces(module);
+    fix_shape_cast_memory_spaces(module);
     inline_simple_subviews(module);
     {
         mlir::PassManager cleanup_pm(ctx);
@@ -478,6 +551,7 @@ void run_mlir_pipeline(mlir::ModuleOp module) {
         }
     }
     fix_subview_memory_spaces(module);
+    fix_shape_cast_memory_spaces(module);
 
     if (debug) {
         module.dump();

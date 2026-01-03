@@ -4,9 +4,11 @@
 
 #import "backends/metal/codegen/metal_codegen_backend.hpp"
 
+#include <exception>
 #include <vector>
 
 #include "backends/metal/codegen/metal_compiler.hpp"
+#include "mlir/mlir_passes.hpp"
 #include "openvino/core/except.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "kernel_ir/gfx_kernel_cache.hpp"
@@ -26,6 +28,16 @@ std::shared_ptr<ICompiledKernel> MetalCodegenBackend::compile(const KernelSource
                                                               std::string* log) {
     std::string local_log;
     std::string* log_ptr = log ? log : &local_log;
+    if (source.module && source.msl_source.empty() && source.msl_generator) {
+        try {
+            run_mlir_pipeline(source.module, /*use_alloca=*/true, /*use_parallel_loops=*/false);
+        } catch (const std::exception& e) {
+            if (log_ptr) {
+                *log_ptr = std::string("MLIR preprocessing failed: ") + e.what();
+            }
+            return nullptr;
+        }
+    }
     std::string msl = resolve_msl_source(source, log_ptr);
     OPENVINO_ASSERT(!msl.empty(), "MetalCodegenBackend: missing MSL source");
     OPENVINO_ASSERT(!source.entry_point.empty(), "MetalCodegenBackend: missing entry point");

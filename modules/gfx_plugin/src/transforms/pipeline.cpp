@@ -14,7 +14,6 @@
 #include "transformations/op_conversions/convert_mod.hpp"
 #include "transformations/op_conversions/convert_reduce_to_pooling.hpp"
 #include "transformations/op_conversions/scaled_dot_product_attention_decomposition.hpp"
-#include "transforms/conv_relu_fusion.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -44,8 +43,6 @@ std::shared_ptr<const ov::Model> run_pipeline(const std::shared_ptr<const ov::Mo
     // Keep SDPA as-is (GFX has its own lowering path later).
     pass_config->disable<ov::pass::ScaledDotProductAttentionDecomposition>();
 
-    // GFX-specific hinting pass.
-    manager.register_pass<ConvReluFusion>();
     manager.run_passes(cloned);
     return cloned;
 }

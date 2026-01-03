@@ -6,7 +6,7 @@
 
 #include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "mlir/mlir_builder.hpp"
-#include "mlir_codegen/codegen_common.hpp"
+#include "mlir/codegen_common.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/op_utils.hpp"

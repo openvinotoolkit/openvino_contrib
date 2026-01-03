@@ -15,11 +15,13 @@
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_shape_utils.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
+#include "backends/metal/runtime/metal_memory.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
 #include "mlir/mlir_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir_codegen/codegen_common.hpp"
+#include "mlir/codegen_common.hpp"
+#include "openvino/core/type/float16.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -31,6 +33,37 @@ struct BroadcastResult {
     std::vector<int64_t> stride0;
     std::vector<int64_t> stride1;
 };
+
+ov::element::Type resolve_tensor_type(const MetalTensor* t) {
+    if (!t) {
+        return ov::element::dynamic;
+    }
+    if (t->expected_type != ov::element::dynamic) {
+        return t->expected_type;
+    }
+    return t->buf.type;
+}
+
+ov::element::Type resolve_runtime_type(const MetalTensor* in0,
+                                       const MetalTensor* in1,
+                                       ov::element::Type fallback) {
+    const auto t0 = resolve_tensor_type(in0);
+    const auto t1 = resolve_tensor_type(in1);
+    if (t0 != ov::element::dynamic && t1 != ov::element::dynamic && t0 != t1) {
+        OPENVINO_THROW("Eltwise: input element types mismatch (", t0.get_type_name(),
+                       " vs ", t1.get_type_name(), ")");
+    }
+    if (t0 != ov::element::dynamic) {
+        return t0;
+    }
+    if (t1 != ov::element::dynamic) {
+        return t1;
+    }
+    if (fallback == ov::element::dynamic) {
+        return ov::element::f32;
+    }
+    return fallback;
+}
 
 BroadcastResult compute_broadcast(const ov::Shape& a_shape, const ov::Shape& b_shape) {
     BroadcastResult res;
@@ -90,6 +123,28 @@ MetalElementwiseOp::MetalElementwiseOp(const std::shared_ptr<const ov::Node>& no
       m_device((id<MTLDevice>)device),
       m_queue((id<MTLCommandQueue>)queue) {
     OPENVINO_ASSERT(node->get_input_size() == 2, "Elementwise expects two inputs");
+}
+
+bool MetalElementwiseOp::fuse_activation(ActivationKind kind, float alpha) {
+    if (m_has_activation) {
+        return false;
+    }
+    if (kind != ActivationKind::Relu &&
+        kind != ActivationKind::Sigmoid &&
+        kind != ActivationKind::Tanh &&
+        kind != ActivationKind::Gelu &&
+        kind != ActivationKind::Swish &&
+        kind != ActivationKind::HSwish &&
+        kind != ActivationKind::HSigmoid) {
+        return false;
+    }
+    if (m_element_type.is_integral_number() || m_element_type == ov::element::boolean) {
+        return false;
+    }
+    m_has_activation = true;
+    m_activation = kind;
+    m_activation_alpha = alpha;
+    return true;
 }
 
 void MetalElementwiseOp::refresh_shapes_from_inputs() {
@@ -207,15 +262,32 @@ void MetalElementwiseOp::compile(MetalBufferManager* buffer_manager) {
     m_num_elems = m_out_dims.empty() ? 0 : 1;
     for (auto d : m_out_dims) m_num_elems *= static_cast<size_t>(d);
 
+    m_is_broadcast = is_broadcast;
+    const ov::element::Type compile_type =
+        m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
+    compile_kernel(buffer_manager, compile_type, m_is_broadcast);
+    MetalOp::compile(buffer_manager);
+}
+
+void MetalElementwiseOp::compile_kernel(MetalBufferManager* buffer_manager,
+                                        ov::element::Type elem_type,
+                                        bool is_broadcast) {
+    if (!this->buffer_manager()) {
+        MetalOp::init(buffer_manager);
+    }
+
     MetalCodegenBackend backend(m_device);
     std::string log;
     EltwiseCodegenDesc desc{};
     desc.eltwise_kind = m_kind;
-    desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
+    desc.element_type = elem_type;
     desc.is_broadcast = is_broadcast;
     desc.out_shape.assign(m_out_dims.begin(), m_out_dims.end());
     desc.stride0.assign(m_stride0.begin(), m_stride0.end());
     desc.stride1.assign(m_stride1.begin(), m_stride1.end());
+    desc.has_activation = m_has_activation;
+    desc.activation = m_activation;
+    desc.alpha = m_activation_alpha;
     mlir::MLIRContext ctx;
     auto model = make_single_op_model(m_node);
     mlir::ModuleOp module;
@@ -285,12 +357,48 @@ void MetalElementwiseOp::compile(MetalBufferManager* buffer_manager) {
     }
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
+    if (gfx_log_debug_enabled()) {
+        const std::string preview = msl_generator(module);
+        auto sig_pos = preview.find("kernel void");
+        auto line_pos = preview.find("device const", sig_pos == std::string::npos ? 0 : sig_pos);
+        if (line_pos != std::string::npos) {
+            auto line_end = preview.find('\n', line_pos);
+            const auto line = preview.substr(line_pos,
+                                             (line_end == std::string::npos)
+                                                 ? std::string::npos
+                                                 : (line_end - line_pos));
+            GFX_LOG_DEBUG("Eltwise", "msl_signature=" << line);
+        }
+        auto b_pos = preview.find("device const", line_pos == std::string::npos ? 0 : line_pos + 1);
+        if (b_pos != std::string::npos) {
+            auto line_end = preview.find('\n', b_pos);
+            const auto line = preview.substr(b_pos,
+                                             (line_end == std::string::npos)
+                                                 ? std::string::npos
+                                                 : (line_end - b_pos));
+            GFX_LOG_DEBUG("Eltwise", "msl_signature2=" << line);
+        }
+        auto c_pos = preview.find("C[gid]");
+        if (c_pos != std::string::npos) {
+            auto line_start = preview.rfind('\n', c_pos);
+            if (line_start == std::string::npos) {
+                line_start = 0;
+            } else {
+                line_start += 1;
+            }
+            auto line_end = preview.find('\n', c_pos);
+            const auto line = preview.substr(line_start,
+                                             (line_end == std::string::npos)
+                                                 ? std::string::npos
+                                                 : (line_end - line_start));
+            GFX_LOG_DEBUG("Eltwise", "msl_assign=" << line);
+        }
+    }
 
     KernelSpec spec(m_node, 8u);
     m_kernel = compile_msl_kernel(backend, spec, module, "eltwise_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "Failed to compile elementwise pipeline: ", log);
-
-    MetalOp::compile(buffer_manager);
+    m_compiled_type = elem_type;
 }
 
 void MetalElementwiseOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
@@ -301,6 +409,41 @@ void MetalElementwiseOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     OPENVINO_ASSERT(in1 && in1->buf.valid(), "Eltwise: input1 is null");
 
     MetalTensor& out = require_output();
+    const ov::element::Type runtime_type = (m_element_type == ov::element::dynamic)
+                                               ? resolve_runtime_type(in0, in1, m_element_type)
+                                               : m_element_type;
+    const ov::element::Type out_type =
+        (m_element_type == ov::element::dynamic) ? runtime_type : m_element_type;
+    if (gfx_log_debug_enabled()) {
+        const auto t0 = resolve_tensor_type(in0);
+        const auto t1 = resolve_tensor_type(in1);
+        GFX_LOG_DEBUG("Eltwise",
+                      "name=" << name()
+                              << " node_type=" << (m_node ? m_node->get_type_name() : "null")
+                              << " m_element_type=" << m_element_type.get_type_name()
+                              << " in0_type=" << t0.get_type_name()
+                              << " in1_type=" << t1.get_type_name()
+                              << " runtime_type=" << runtime_type.get_type_name()
+                              << " compiled_type=" << m_compiled_type.get_type_name()
+                              << " in0_buf=" << in0->buf.buffer
+                              << " in1_buf=" << in1->buf.buffer
+                              << " out_buf=" << out.buf.buffer);
+        if (in1 && in1->buf.host_visible && in1->buf.buffer) {
+            void* mapped = metal_map_buffer(in1->buf);
+            if (mapped) {
+                if (t1 == ov::element::f16) {
+                    auto* h = static_cast<const ov::float16*>(mapped);
+                    const auto raw = *reinterpret_cast<const uint16_t*>(mapped);
+                    GFX_LOG_DEBUG("Eltwise", "in1_mapped_f16=" << static_cast<float>(h[0])
+                                                              << " raw=0x" << std::hex << raw << std::dec);
+                } else if (t1 == ov::element::f32) {
+                    auto* h = static_cast<const float*>(mapped);
+                    GFX_LOG_DEBUG("Eltwise", "in1_mapped_f32=" << h[0]);
+                }
+                metal_unmap_buffer(in1->buf);
+            }
+        }
+    }
 
     // Always recompute broadcast metadata from runtime shapes to avoid stale dims for dynamic inputs.
     ov::Shape a_shape = !in0->shape.empty() ? in0->shape : ov::Shape{};
@@ -359,12 +502,16 @@ void MetalElementwiseOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     }
 
     out.shape = out_shape;
-    out.expected_type = m_element_type;
+    out.expected_type = out_type;
 
-    size_t bytes = m_num_elems * m_element_type.size();
+    if (!m_kernel || m_compiled_type != out_type) {
+        compile_kernel(buffer_manager(), out_type, m_is_broadcast);
+    }
+
+    size_t bytes = m_num_elems * out_type.size();
     if (!out.buf.valid() || out.buf.size < bytes) {
-        out.buf = allocate_temp_buffer(bytes, m_element_type, /*persistent=*/false, out.prefer_private);
-        out.expected_type = m_element_type;
+        out.buf = allocate_temp_buffer(bytes, out_type, /*persistent=*/false, out.prefer_private);
+        out.expected_type = out_type;
     }
 
     uint32_t num_elems = static_cast<uint32_t>(m_num_elems);
@@ -375,6 +522,26 @@ void MetalElementwiseOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     }
     if (m_stride0.empty()) m_stride0.assign(rank, 1);
     if (m_stride1.empty()) m_stride1.assign(rank, 1);
+    if (gfx_log_debug_enabled()) {
+        std::ostringstream dims;
+        dims << "dims=[";
+        for (size_t i = 0; i < m_out_dims.size(); ++i) {
+            if (i) dims << ",";
+            dims << m_out_dims[i];
+        }
+        dims << "] stride0=[";
+        for (size_t i = 0; i < m_stride0.size(); ++i) {
+            if (i) dims << ",";
+            dims << m_stride0[i];
+        }
+        dims << "] stride1=[";
+        for (size_t i = 0; i < m_stride1.size(); ++i) {
+            if (i) dims << ",";
+            dims << m_stride1[i];
+        }
+        dims << "] num=" << m_num_elems << " rank=" << rank;
+        GFX_LOG_DEBUG("Eltwise", dims.str());
+    }
 
     const NSUInteger threads_per_tg = 64;
     if (num_elems == 0) {
@@ -391,9 +558,37 @@ void MetalElementwiseOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     args_builder.add_bytes(m_stride0.data(), m_stride0.size() * sizeof(int));
     args_builder.add_bytes(m_stride1.data(), m_stride1.size() * sizeof(int));
     auto args = args_builder.finalize(nullptr, nullptr);
+    if (gfx_log_debug_enabled()) {
+        std::ostringstream oss;
+        oss << "args=";
+        for (const auto& arg : args) {
+            oss << " [i=" << arg.index << " kind=" << (arg.kind == KernelArg::Kind::Buffer ? "buf" : "bytes");
+            if (arg.kind == KernelArg::Kind::Buffer) {
+                oss << " ptr=" << arg.buffer.buffer;
+            } else {
+                oss << " bytes=" << arg.byte_size;
+            }
+            oss << "]";
+        }
+        GFX_LOG_DEBUG("Eltwise", oss.str());
+    }
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 
-    out.expected_type = m_element_type;
+    if (gfx_log_debug_enabled() && out.buf.host_visible && out.buf.buffer) {
+        void* mapped = metal_map_buffer(out.buf);
+        if (mapped) {
+            if (out_type == ov::element::f16) {
+                auto* h = static_cast<const ov::float16*>(mapped);
+                GFX_LOG_DEBUG("Eltwise", "out_mapped_f16=" << static_cast<float>(h[0]));
+            } else if (out_type == ov::element::f32) {
+                auto* h = static_cast<const float*>(mapped);
+                GFX_LOG_DEBUG("Eltwise", "out_mapped_f32=" << h[0]);
+            }
+            metal_unmap_buffer(out.buf);
+        }
+    }
+
+    out.expected_type = out_type;
 }
 
 }  // namespace gfx_plugin

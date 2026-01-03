@@ -10,10 +10,15 @@
 
 #include "mlir/mlir_builder.hpp"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 #include "backends/vulkan/codegen/vulkan_codegen_backend.hpp"
 #include "backends/vulkan/runtime/gpu_memory.hpp"
 #include "backends/vulkan/runtime/vulkan_memory.hpp"
 #include "runtime/memory_manager.hpp"
+#include "runtime/gfx_logger.hpp"
 #include "kernel_ir/gfx_kernel_cache.hpp"
 #include "kernel_ir/gfx_kernel_dispatch.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
@@ -37,7 +42,165 @@
 namespace ov {
 namespace gfx_plugin {
 
-namespace {}  // namespace
+namespace {
+
+mlir::func::FuncOp resolve_entry_func(mlir::ModuleOp module, const std::string& entry) {
+    if (!module) {
+        return {};
+    }
+    if (!entry.empty()) {
+        if (auto func = module.lookupSymbol<mlir::func::FuncOp>(entry)) {
+            return func;
+        }
+    }
+    mlir::func::FuncOp func;
+    module.walk([&](mlir::func::FuncOp f) {
+        if (!func) {
+            func = f;
+        }
+    });
+    return func;
+}
+
+size_t count_scalar_inputs(mlir::func::FuncOp func) {
+    if (!func) {
+        return 0;
+    }
+    size_t scalar_inputs = 0;
+    auto ftype = func.getFunctionType();
+    for (auto type : ftype.getInputs()) {
+        if (!mlir::isa<mlir::ShapedType>(type)) {
+            ++scalar_inputs;
+        }
+    }
+    return scalar_inputs;
+}
+
+std::vector<int32_t> extract_kernel_scalar_args(mlir::ModuleOp module) {
+    std::vector<int32_t> scalars;
+    if (!module) {
+        return scalars;
+    }
+    if (auto attr = module->getAttr("gfx.kernel_scalar_args")) {
+        if (auto attrs = mlir::dyn_cast<mlir::ArrayAttr>(attr)) {
+            scalars.reserve(attrs.size());
+            for (auto attr_val : attrs) {
+                if (auto iattr = mlir::dyn_cast<mlir::IntegerAttr>(attr_val)) {
+                    scalars.push_back(static_cast<int32_t>(iattr.getInt()));
+                }
+            }
+            return scalars;
+        }
+        if (auto dense = mlir::dyn_cast<mlir::DenseI32ArrayAttr>(attr)) {
+            auto vals = dense.asArrayRef();
+            scalars.assign(vals.begin(), vals.end());
+            return scalars;
+        }
+        if (auto dense = mlir::dyn_cast<mlir::DenseIntElementsAttr>(attr)) {
+            scalars.reserve(dense.getNumElements());
+            for (auto v : dense.getValues<int32_t>()) {
+                scalars.push_back(v);
+            }
+            return scalars;
+        }
+    }
+    return scalars;
+}
+
+std::vector<int32_t> extract_kernel_scalar_values(mlir::ModuleOp module) {
+    if (!module) {
+        return {};
+    }
+    if (auto attr = module->getAttr("gfx.kernel_scalar_values")) {
+        if (auto attrs = mlir::dyn_cast<mlir::ArrayAttr>(attr)) {
+            std::vector<int32_t> values;
+            values.reserve(attrs.size());
+            for (auto attr_val : attrs) {
+                if (auto iattr = mlir::dyn_cast<mlir::IntegerAttr>(attr_val)) {
+                    values.push_back(static_cast<int32_t>(iattr.getInt()));
+                }
+            }
+            return values;
+        }
+        if (auto dense = mlir::dyn_cast<mlir::DenseI32ArrayAttr>(attr)) {
+            auto vals = dense.asArrayRef();
+            return std::vector<int32_t>(vals.begin(), vals.end());
+        }
+        if (auto dense = mlir::dyn_cast<mlir::DenseIntElementsAttr>(attr)) {
+            std::vector<int32_t> values;
+            values.reserve(dense.getNumElements());
+            for (auto v : dense.getValues<int32_t>()) {
+                values.push_back(v);
+            }
+            return values;
+        }
+    }
+    return extract_kernel_scalar_args(module);
+}
+
+std::vector<int32_t> extract_kernel_operand_kinds(mlir::ModuleOp module) {
+    std::vector<int32_t> kinds;
+    if (!module) {
+        return kinds;
+    }
+    if (auto attr = module->getAttr("gfx.kernel_operand_kinds")) {
+        if (auto attrs = mlir::dyn_cast<mlir::ArrayAttr>(attr)) {
+            kinds.reserve(attrs.size());
+            for (auto attr_val : attrs) {
+                if (auto iattr = mlir::dyn_cast<mlir::IntegerAttr>(attr_val)) {
+                    kinds.push_back(static_cast<int32_t>(iattr.getInt()));
+                }
+            }
+            return kinds;
+        }
+        if (auto dense = mlir::dyn_cast<mlir::DenseI32ArrayAttr>(attr)) {
+            auto vals = dense.asArrayRef();
+            kinds.assign(vals.begin(), vals.end());
+            return kinds;
+        }
+        if (auto dense = mlir::dyn_cast<mlir::DenseIntElementsAttr>(attr)) {
+            kinds.reserve(dense.getNumElements());
+            for (auto v : dense.getValues<int32_t>()) {
+                kinds.push_back(v);
+            }
+            return kinds;
+        }
+    }
+    return kinds;
+}
+
+std::vector<int32_t> extract_kernel_operand_arg_indices(mlir::ModuleOp module) {
+    std::vector<int32_t> indices;
+    if (!module) {
+        return indices;
+    }
+    if (auto attr = module->getAttr("gfx.kernel_operand_arg_indices")) {
+        if (auto attrs = mlir::dyn_cast<mlir::ArrayAttr>(attr)) {
+            indices.reserve(attrs.size());
+            for (auto attr_val : attrs) {
+                if (auto iattr = mlir::dyn_cast<mlir::IntegerAttr>(attr_val)) {
+                    indices.push_back(static_cast<int32_t>(iattr.getInt()));
+                }
+            }
+            return indices;
+        }
+        if (auto dense = mlir::dyn_cast<mlir::DenseI32ArrayAttr>(attr)) {
+            auto vals = dense.asArrayRef();
+            indices.assign(vals.begin(), vals.end());
+            return indices;
+        }
+        if (auto dense = mlir::dyn_cast<mlir::DenseIntElementsAttr>(attr)) {
+            indices.reserve(dense.getNumElements());
+            for (auto v : dense.getValues<int32_t>()) {
+                indices.push_back(v);
+            }
+            return indices;
+        }
+    }
+    return indices;
+}
+
+}  // namespace
 
 VulkanStage::VulkanStage(const std::shared_ptr<const ov::Node>& node)
     : m_node(node),
@@ -159,6 +322,16 @@ void VulkanStage::compile(GpuBufferManager* buffer_manager) {
     KernelSpec spec(m_node, 0);
     KernelPlan plan = plan_builder.build_plan(spec, ctx);
     auto module = plan.module();
+    auto set_parallel_pref = [&](mlir::ModuleOp mod) {
+        if (!mod) {
+            return;
+        }
+        const bool prefer_parallel =
+            (m_type == "Convolution" || m_type == "GroupConvolution" || m_type == "MatMul");
+        mod->setAttr("gfx.prefer_parallel",
+                     mlir::BoolAttr::get(mod.getContext(), prefer_parallel));
+    };
+    set_parallel_pref(module);
     std::string entry = plan.entry_point();
     if (module && entry.empty()) {
         entry = find_entry_point(module);
@@ -169,13 +342,27 @@ void VulkanStage::compile(GpuBufferManager* buffer_manager) {
     const auto signature = infer_kernel_signature(module, entry);
     size_t func_inputs = signature.inputs;
     size_t func_results = signature.results;
-    auto mapping = build_kernel_inputs(m_node, func_inputs, m_name.c_str());
+    const auto func = resolve_entry_func(module, entry);
+    const size_t scalar_inputs = count_scalar_inputs(func);
+    size_t output_args = 0;
+    if (signature.results == 0 && m_node) {
+        output_args = m_node->get_output_size();
+    }
+    size_t buffer_inputs = func_inputs;
+    if (scalar_inputs <= buffer_inputs) {
+        buffer_inputs -= scalar_inputs;
+    }
+    if (output_args <= buffer_inputs) {
+        buffer_inputs -= output_args;
+    }
+    auto mapping = build_kernel_inputs(m_node, buffer_inputs, m_name.c_str());
     func_inputs = mapping.func_inputs;
     m_kernel_inputs = std::move(mapping.kernel_inputs);
     if (m_node && func_results == 0) {
         func_results = m_node->get_output_size();
     }
-    const uint32_t arg_count = static_cast<uint32_t>(func_inputs + func_results);
+    const uint32_t arg_count =
+        signature.total() ? signature.total() : static_cast<uint32_t>(func_inputs + func_results);
     KernelPlan plan_with_count(module, entry, arg_count);
     KernelSource src = plan_with_count.to_source();
 
@@ -198,9 +385,84 @@ void VulkanStage::compile(GpuBufferManager* buffer_manager) {
                     m_type,
                     "): ",
                     log);
+    if (module) {
+        if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.parallel_dispatch")) {
+            m_parallel_dispatch = attr.getValue();
+        } else {
+            m_parallel_dispatch = false;
+        }
+        m_kernel_operand_kinds = extract_kernel_operand_kinds(module);
+        m_kernel_operand_arg_indices = extract_kernel_operand_arg_indices(module);
+        m_kernel_scalar_args = extract_kernel_scalar_values(module);
+        if (m_kernel_operand_kinds.empty() && scalar_inputs != 0) {
+            OPENVINO_ASSERT(m_kernel_scalar_args.size() == scalar_inputs,
+                            "GFX Vulkan: kernel scalar args mismatch for ",
+                            m_name,
+                            " (expected ",
+                            scalar_inputs,
+                            ", got ",
+                            m_kernel_scalar_args.size(),
+                            ")");
+        }
+        if (gfx_log_debug_enabled() && !m_kernel_scalar_args.empty()) {
+            std::ostringstream oss;
+            oss << "Kernel scalar args: ";
+            const size_t dump_n = std::min<size_t>(m_kernel_scalar_args.size(), 8);
+            for (size_t i = 0; i < dump_n; ++i) {
+                if (i) {
+                    oss << ", ";
+                }
+                oss << m_kernel_scalar_args[i];
+            }
+            if (m_kernel_scalar_args.size() > dump_n) {
+                oss << ", ...";
+            }
+            GFX_LOG_DEBUG("VulkanExec", oss.str());
+        }
+        if (gfx_log_debug_enabled()) {
+            const bool has_kinds = module->hasAttr("gfx.kernel_operand_kinds");
+            const bool has_scalars = module->hasAttr("gfx.kernel_scalar_values");
+            GFX_LOG_DEBUG("VulkanExec",
+                          "Kernel attrs: operand_kinds=" << (has_kinds ? "yes" : "no")
+                                                         << " scalar_values=" << (has_scalars ? "yes" : "no"));
+            GFX_LOG_DEBUG("VulkanExec",
+                          "Kernel operand kinds size=" << m_kernel_operand_kinds.size());
+            if (!m_kernel_operand_arg_indices.empty()) {
+                std::ostringstream idxs;
+                idxs << "Kernel operand arg indices: ";
+                const size_t dump_n = std::min<size_t>(m_kernel_operand_arg_indices.size(), 8);
+                for (size_t i = 0; i < dump_n; ++i) {
+                    if (i) {
+                        idxs << ", ";
+                    }
+                    idxs << m_kernel_operand_arg_indices[i];
+                }
+                if (m_kernel_operand_arg_indices.size() > dump_n) {
+                    idxs << ", ...";
+                }
+                GFX_LOG_DEBUG("VulkanExec", idxs.str());
+            }
+            if (auto attr = module->getAttr("gfx.kernel_operand_kinds")) {
+                std::string text;
+                llvm::raw_string_ostream os(text);
+                attr.print(os);
+                GFX_LOG_DEBUG("VulkanExec", "Kernel operand_kinds attr=" << os.str());
+                GFX_LOG_DEBUG("VulkanExec",
+                              "operand_kinds isa ArrayAttr="
+                                  << (llvm::isa<mlir::ArrayAttr>(attr) ? "yes" : "no")
+                                  << " DenseI32ArrayAttr="
+                                  << (llvm::isa<mlir::DenseI32ArrayAttr>(attr) ? "yes" : "no")
+                                  << " DenseIntElementsAttr="
+                                  << (llvm::isa<mlir::DenseIntElementsAttr>(attr) ? "yes" : "no"));
+            }
+        }
+    }
 }
 
 void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
+    if (gfx_log_debug_enabled()) {
+        GFX_LOG_DEBUG("VulkanExec", "Execute stage " << m_name << " (" << m_type << ")");
+    }
     std::vector<GpuTensor*> outputs = m_outputs;
     if (outputs.empty() && m_output) {
         outputs.push_back(m_output);
@@ -280,12 +542,35 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
             auto module = log_softmax
                               ? build_mlir_logsoftmax_from_node(m_node, ctx, in_shape)
                               : build_mlir_softmax_from_node(m_node, ctx, in_shape);
+            if (module) {
+                module->setAttr("gfx.prefer_parallel",
+                                mlir::BoolAttr::get(module.getContext(), false));
+            }
             std::string entry = find_entry_point(module);
             if (entry.empty()) {
                 entry = "softmax_main";
             }
-            const uint32_t arg_count =
-                static_cast<uint32_t>(m_kernel_inputs.size() + outputs.size());
+            const auto signature = infer_kernel_signature(module, entry);
+            const auto func = resolve_entry_func(module, entry);
+            const size_t scalar_inputs = count_scalar_inputs(func);
+            size_t output_args = 0;
+            if (signature.results == 0 && m_node) {
+                output_args = outputs.size();
+            }
+            size_t buffer_inputs = signature.inputs;
+            if (scalar_inputs <= buffer_inputs) {
+                buffer_inputs -= scalar_inputs;
+            }
+            if (output_args <= buffer_inputs) {
+                buffer_inputs -= output_args;
+            }
+            if (m_node) {
+                auto mapping = build_kernel_inputs(m_node, buffer_inputs, m_name.c_str());
+                m_kernel_inputs = std::move(mapping.kernel_inputs);
+            }
+            const uint32_t arg_count = signature.total()
+                                           ? signature.total()
+                                           : static_cast<uint32_t>(m_kernel_inputs.size() + outputs.size());
             KernelPlan plan(module, std::move(entry), arg_count);
             KernelSource src = plan.to_source();
             VulkanCodegenBackend backend;
@@ -307,6 +592,26 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
                             m_type,
                             "): ",
                             log);
+            if (module) {
+                if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.parallel_dispatch")) {
+                    m_parallel_dispatch = attr.getValue();
+                } else {
+                    m_parallel_dispatch = false;
+                }
+                m_kernel_operand_kinds = extract_kernel_operand_kinds(module);
+                m_kernel_operand_arg_indices = extract_kernel_operand_arg_indices(module);
+                m_kernel_scalar_args = extract_kernel_scalar_values(module);
+                if (m_kernel_operand_kinds.empty() && scalar_inputs != 0) {
+                    OPENVINO_ASSERT(m_kernel_scalar_args.size() == scalar_inputs,
+                                    "GFX Vulkan: kernel scalar args mismatch for ",
+                                    m_name,
+                                    " (expected ",
+                                    scalar_inputs,
+                                    ", got ",
+                                    m_kernel_scalar_args.size(),
+                                    ")");
+                }
+            }
             m_last_input_shape = in_shape;
         }
     } else if (m_type == "Split" || m_type == "VariadicSplit") {
@@ -372,6 +677,10 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
         if (m_node && (m_last_input_shape != in_shape || !m_kernel)) {
             mlir::MLIRContext ctx;
             auto module = build_mlir_split_from_node(m_node, ctx, in_shape);
+            if (module) {
+                module->setAttr("gfx.prefer_parallel",
+                                mlir::BoolAttr::get(module.getContext(), false));
+            }
             std::string entry = find_entry_point(module);
             if (entry.empty()) {
                 entry = "split_main";
@@ -379,13 +688,27 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
             const auto signature = infer_kernel_signature(module, entry);
             size_t func_inputs = signature.inputs;
             size_t func_results = signature.results;
-            auto mapping = build_kernel_inputs(m_node, func_inputs, "Split");
+            const auto func = resolve_entry_func(module, entry);
+            const size_t scalar_inputs = count_scalar_inputs(func);
+            size_t output_args = 0;
+            if (signature.results == 0) {
+                output_args = outputs.size();
+            }
+            size_t buffer_inputs = func_inputs;
+            if (scalar_inputs <= buffer_inputs) {
+                buffer_inputs -= scalar_inputs;
+            }
+            if (output_args <= buffer_inputs) {
+                buffer_inputs -= output_args;
+            }
+            auto mapping = build_kernel_inputs(m_node, buffer_inputs, "Split");
             func_inputs = mapping.func_inputs;
             m_kernel_inputs = std::move(mapping.kernel_inputs);
             if (func_results == 0) {
                 func_results = outputs.size();
             }
-            const uint32_t arg_count = static_cast<uint32_t>(func_inputs + func_results);
+            const uint32_t arg_count =
+                signature.total() ? signature.total() : static_cast<uint32_t>(func_inputs + func_results);
             KernelPlan plan(module, std::move(entry), arg_count);
             KernelSource src = plan.to_source();
             VulkanCodegenBackend backend;
@@ -407,6 +730,26 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
                             m_type,
                             "): ",
                             log);
+            if (module) {
+                if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.parallel_dispatch")) {
+                    m_parallel_dispatch = attr.getValue();
+                } else {
+                    m_parallel_dispatch = false;
+                }
+                m_kernel_operand_kinds = extract_kernel_operand_kinds(module);
+                m_kernel_operand_arg_indices = extract_kernel_operand_arg_indices(module);
+                m_kernel_scalar_args = extract_kernel_scalar_values(module);
+                if (m_kernel_operand_kinds.empty() && scalar_inputs != 0) {
+                    OPENVINO_ASSERT(m_kernel_scalar_args.size() == scalar_inputs,
+                                    "GFX Vulkan: kernel scalar args mismatch for ",
+                                    m_name,
+                                    " (expected ",
+                                    scalar_inputs,
+                                    ", got ",
+                                    m_kernel_scalar_args.size(),
+                                    ")");
+                }
+            }
             m_last_input_shape = in_shape;
         }
     } else {
@@ -502,26 +845,174 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
         return &hooks;
     };
 
-    KernelArgsBuilder args_builder(m_name.c_str());
-    args_builder.add_inputs(m_kernel_inputs, resolve_input_tensor);
-    args_builder.add_outputs(outputs);
-    auto args = args_builder.finalize(m_buffer_manager, m_kernel.get());
+    std::vector<KernelArg> args;
+    if (gfx_log_debug_enabled()) {
+        GFX_LOG_DEBUG("VulkanExec", "Kernel args prep: scalars=" << m_kernel_scalar_args.size()
+                                                                 << " inputs=" << m_kernel_inputs.size()
+                                                                 << " outputs=" << outputs.size()
+                                                                 << " kinds=" << m_kernel_operand_kinds.size());
+    }
+    uint32_t arg_index = 0;
+    std::vector<int32_t> scalar_storage;
+    if (!m_kernel_operand_kinds.empty()) {
+        args.reserve(m_kernel_operand_kinds.size());
+        std::ostringstream arg_map;
+        if (gfx_log_debug_enabled()) {
+            arg_map << "Kernel arg map: ";
+        }
+        size_t scalar_count = 0;
+        for (auto kind : m_kernel_operand_kinds) {
+            if (kind == 0) {
+                ++scalar_count;
+            }
+        }
+        scalar_storage.reserve(scalar_count);
+        size_t scalar_idx = 0;
+        size_t input_pos = 0;
+        size_t output_pos = 0;
+        const bool has_arg_indices =
+            m_kernel_operand_arg_indices.size() == m_kernel_operand_kinds.size();
+        const size_t input_arg_count = m_kernel_inputs.size();
+        for (size_t op_idx = 0; op_idx < m_kernel_operand_kinds.size(); ++op_idx) {
+            const auto kind = m_kernel_operand_kinds[op_idx];
+            if (kind == 0) {
+                int32_t value = 0;
+                if (scalar_idx < m_kernel_scalar_args.size()) {
+                    value = m_kernel_scalar_args[scalar_idx++];
+                }
+                scalar_storage.push_back(value);
+                args.push_back(make_bytes_arg(arg_index++, &scalar_storage.back(), sizeof(value)));
+                if (gfx_log_debug_enabled()) {
+                    if (op_idx) {
+                        arg_map << ", ";
+                    }
+                    arg_map << "arg" << op_idx << "=scalar(" << value << ")";
+                }
+                continue;
+            }
+            int32_t arg_idx = -1;
+            if (has_arg_indices) {
+                arg_idx = m_kernel_operand_arg_indices[op_idx];
+            }
+            if (arg_idx >= 0) {
+                const size_t uarg = static_cast<size_t>(arg_idx);
+                if (uarg < input_arg_count) {
+                    const size_t input_idx = m_kernel_inputs[uarg];
+                    GpuTensor* t = resolve_input_tensor(input_idx);
+                    OPENVINO_ASSERT(t && t->buf.valid(),
+                                    "GFX Vulkan: missing input buffer for stage ",
+                                    m_name);
+                    args.push_back(make_buffer_arg(arg_index++, t->buf));
+                    if (gfx_log_debug_enabled()) {
+                        if (op_idx) {
+                            arg_map << ", ";
+                        }
+                        arg_map << "arg" << op_idx << "=input[" << input_idx << "]";
+                    }
+                    continue;
+                }
+                const size_t out_idx = uarg - input_arg_count;
+                if (out_idx < outputs.size()) {
+                    auto* out = outputs[out_idx];
+                    OPENVINO_ASSERT(out && out->buf.valid(),
+                                    "GFX Vulkan: missing output buffer for stage ",
+                                    m_name);
+                    args.push_back(make_buffer_arg(arg_index++, out->buf));
+                    if (gfx_log_debug_enabled()) {
+                        if (op_idx) {
+                            arg_map << ", ";
+                        }
+                        arg_map << "arg" << op_idx << "=output[" << out_idx << "]";
+                    }
+                    continue;
+                }
+            }
+            if (input_pos < m_kernel_inputs.size()) {
+                const size_t input_idx = m_kernel_inputs[input_pos++];
+                GpuTensor* t = resolve_input_tensor(input_idx);
+                OPENVINO_ASSERT(t && t->buf.valid(),
+                                "GFX Vulkan: missing input buffer for stage ",
+                                m_name);
+                args.push_back(make_buffer_arg(arg_index++, t->buf));
+                if (gfx_log_debug_enabled()) {
+                    if (op_idx) {
+                        arg_map << ", ";
+                    }
+                    arg_map << "arg" << op_idx << "=input[" << input_idx << "]";
+                }
+                continue;
+            }
+            OPENVINO_ASSERT(output_pos < outputs.size(),
+                            "GFX Vulkan: missing output buffer for stage ",
+                            m_name);
+            auto* out = outputs[output_pos++];
+            OPENVINO_ASSERT(out && out->buf.valid(),
+                            "GFX Vulkan: missing output buffer for stage ",
+                            m_name);
+            args.push_back(make_buffer_arg(arg_index++, out->buf));
+            if (gfx_log_debug_enabled()) {
+                if (op_idx) {
+                    arg_map << ", ";
+                }
+                arg_map << "arg" << op_idx << "=output[" << (output_pos - 1) << "]";
+            }
+        }
+        if (gfx_log_debug_enabled()) {
+            GFX_LOG_DEBUG("VulkanExec", arg_map.str());
+        }
+    } else {
+        args.reserve(m_kernel_scalar_args.size() + m_kernel_inputs.size() + outputs.size());
+        scalar_storage = m_kernel_scalar_args;
+        for (auto& v : scalar_storage) {
+            args.push_back(make_bytes_arg(arg_index++, &v, sizeof(v)));
+        }
+        for (size_t ai = 0; ai < m_kernel_inputs.size(); ++ai) {
+            const size_t input_idx = m_kernel_inputs[ai];
+            GpuTensor* t = resolve_input_tensor(input_idx);
+            OPENVINO_ASSERT(t && t->buf.valid(),
+                            "GFX Vulkan: missing input buffer for stage ",
+                            m_name);
+            args.push_back(make_buffer_arg(arg_index++, t->buf));
+        }
+        for (auto* out : outputs) {
+            OPENVINO_ASSERT(out && out->buf.valid(),
+                            "GFX Vulkan: missing output buffer for stage ",
+                            m_name);
+            args.push_back(make_buffer_arg(arg_index++, out->buf));
+        }
+    }
+    auto bound_args = materialize_kernel_bytes_args(args, *m_buffer_manager, m_name.c_str());
 
     KernelDispatch dispatch{};
-    if (m_type == "Softmax" || m_type == "LogSoftmax" ||
-        m_type == "Split" || m_type == "VariadicSplit") {
+    if (m_parallel_dispatch) {
+        const ov::Shape& shape = outputs.front() && !outputs.front()->shape.empty()
+                                     ? outputs.front()->shape
+                                     : m_output_shape;
+        const size_t rank = shape.size();
+        if (rank == 1) {
+            dispatch.grid[0] = shape[0];
+        } else if (rank == 2) {
+            dispatch.grid[0] = shape[0];
+            dispatch.grid[1] = shape[1];
+        } else if (rank >= 3) {
+            dispatch.grid[0] = shape[rank - 3];
+            dispatch.grid[1] = shape[rank - 2];
+            dispatch.grid[2] = shape[rank - 1];
+        }
+        dispatch.threads_per_group[0] = m_kernel ? m_kernel->clamp_threadgroup_size(1) : 1;
+        dispatch.threads_per_group[1] = 1;
+        dispatch.threads_per_group[2] = 1;
+    } else {
         dispatch.grid[0] = 1;
         dispatch.grid[1] = 1;
         dispatch.grid[2] = 1;
         dispatch.threads_per_group[0] = 1;
         dispatch.threads_per_group[1] = 1;
         dispatch.threads_per_group[2] = 1;
-    } else {
-        dispatch = KernelPlan::make_default_dispatch(outputs.front()->shape, *m_kernel);
     }
 
     KernelExecutionHooks hooks;
-    m_kernel->execute(nullptr, dispatch, args, make_hooks(hooks));
+    m_kernel->execute(nullptr, dispatch, bound_args, make_hooks(hooks));
 }
 
 void VulkanStage::set_inputs(const std::vector<GpuTensor*>& inputs) {
@@ -573,6 +1064,10 @@ std::unique_ptr<GpuStage> VulkanStage::clone() const {
     stage->m_last_input_shape = m_last_input_shape;
     stage->m_kernel_inputs = m_kernel_inputs;
     stage->m_const_buffers = m_const_buffers;
+    stage->m_parallel_dispatch = m_parallel_dispatch;
+    stage->m_kernel_scalar_args = m_kernel_scalar_args;
+    stage->m_kernel_operand_kinds = m_kernel_operand_kinds;
+    stage->m_kernel_operand_arg_indices = m_kernel_operand_arg_indices;
     return stage;
 }
 

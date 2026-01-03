@@ -26,6 +26,7 @@ std::vector<ov::PropertyName> gfx_plugin_supported_properties() {
         ov::device::id,
         ov::enable_profiling,
         ov::PropertyName{kGfxProfilingLevelProperty, ov::PropertyMutability::RW},
+        ov::PropertyName{kGfxEnableFusionProperty, ov::PropertyMutability::RW},
         ov::hint::performance_mode,
         ov::hint::num_requests,
         ov::hint::execution_mode,
@@ -80,6 +81,7 @@ std::vector<ov::PropertyName> gfx_compiled_model_supported_properties() {
     props.push_back(ov::PropertyName{ov::enable_profiling.name(), ov::PropertyMutability::RW});
     props.push_back(ov::PropertyName{"PERF_COUNT", ov::PropertyMutability::RW});
     props.push_back(ov::PropertyName{kGfxProfilingLevelProperty, ov::PropertyMutability::RW});
+    props.push_back(ov::PropertyName{kGfxEnableFusionProperty, ov::PropertyMutability::RW});
     props.push_back(ov::PropertyName{kGfxBackendProperty, ov::PropertyMutability::RO});
     props.push_back(ov::PropertyName{kGfxProfilingReportProperty, ov::PropertyMutability::RO});
     props.push_back(ov::PropertyName{kGfxMemStatsProperty, ov::PropertyMutability::RO});

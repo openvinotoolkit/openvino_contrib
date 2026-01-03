@@ -27,6 +27,7 @@ public:
     void set_outputs(const std::vector<std::unique_ptr<GpuTensor>>& outputs) override;
 
     bool fuse_activation(ActivationKind kind, float alpha) override;
+    bool fuse_batchnorm(const BatchNormParams& params) override;
 
     void enable_profiling(bool enable) override;
     void set_profiler(void* profiler,

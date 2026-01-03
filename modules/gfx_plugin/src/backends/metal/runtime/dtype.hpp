@@ -28,9 +28,5 @@ OPENVINO_API size_t storage_size(const MetalDType& dtype);
 OPENVINO_API size_t compute_size(const MetalDType& dtype);
 OPENVINO_API size_t element_size(const MetalDType& dtype);
 
-// Debug/helper utility: produce a float32 host tensor from any float-like input.
-// Returns the same tensor if already f32; otherwise allocates a new buffer.
-OPENVINO_API ov::Tensor to_float32_tensor(const ov::Tensor& src);
-
 }  // namespace gfx_plugin
 }  // namespace ov

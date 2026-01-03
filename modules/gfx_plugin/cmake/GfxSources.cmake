@@ -22,7 +22,6 @@ set(GFX_PLUGIN_SOURCES
     ${_gfx_src_dir}/plugin/plugin.cpp
     ${_gfx_src_dir}/plugin/remote_context_support.cpp
     ${_gfx_src_dir}/transforms/pipeline.cpp
-    ${_gfx_src_dir}/transforms/conv_relu_fusion.cpp
 )
 
 set(GFX_PLUGIN_HEADERS
@@ -38,7 +37,6 @@ set(GFX_PLUGIN_HEADERS
     ${_gfx_src_dir}/plugin/infer_pipeline.hpp
     ${_gfx_src_dir}/plugin/model_serialization.hpp
     ${_gfx_src_dir}/plugin/remote_context_support.hpp
-    ${_gfx_src_dir}/transforms/conv_relu_fusion.hpp
     ${_gfx_src_dir}/transforms/pipeline.hpp
     ${_gfx_src_dir}/../include/openvino/gfx_plugin/plugin.hpp
     ${_gfx_src_dir}/../include/openvino/gfx_plugin/compiled_model.hpp
@@ -49,6 +47,7 @@ set(GFX_PLUGIN_HEADERS
 
 set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/gfx_activation.hpp
+    ${_gfx_src_dir}/runtime/gfx_batchnorm.hpp
     ${_gfx_src_dir}/runtime/gfx_backend_caps.hpp
     ${_gfx_src_dir}/runtime/gfx_backend_utils.hpp
     ${_gfx_src_dir}/runtime/gpu_memory_ops.hpp
@@ -72,6 +71,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/gfx_op_utils.hpp
     ${_gfx_src_dir}/runtime/gfx_remote_context.hpp
     ${_gfx_src_dir}/runtime/gfx_remote_tensor.hpp
+    ${_gfx_src_dir}/runtime/gfx_tensor_utils.hpp
 )
 
 set(GFX_RUNTIME_COMMON_SOURCES
@@ -86,51 +86,58 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/gfx_op_utils.cpp
     ${_gfx_src_dir}/runtime/gfx_remote_context.cpp
     ${_gfx_src_dir}/runtime/gfx_remote_tensor.cpp
+    ${_gfx_src_dir}/runtime/gfx_tensor_utils.cpp
 )
 
 set(GFX_RUNTIME_MLIR_HEADERS
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.hpp
     ${_gfx_src_dir}/mlir/mlir_support.hpp
-    ${_gfx_src_dir}/mlir_codegen/codegen_common.hpp
-    ${_gfx_src_dir}/mlir_codegen/index_expr_utils.hpp
-    ${_gfx_src_dir}/mlir_codegen/msl_codegen.hpp
 )
 
 set(GFX_RUNTIME_MLIR_SOURCES
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.cpp
     ${_gfx_src_dir}/mlir/mlir_support.cpp
-    ${_gfx_src_dir}/mlir_codegen/batchnorm_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/broadcast_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/concat_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/conv2d_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/conv3d_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/convert_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/depth_to_space_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/eltwise_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/gather_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/gather_elements_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/gathernd_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/interpolate_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/matmul_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/msl_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/pad_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/pool_avg_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/pool_max_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/range_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/reduce_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/reverse_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/scatter_elements_update_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/scatter_nd_update_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/select_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/shapeof_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/slice_generic_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/softmax_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/space_to_depth_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/split_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/tile_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/topk_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/transpose_codegen.cpp
-    ${_gfx_src_dir}/mlir_codegen/unary_codegen.cpp
+)
+
+set(GFX_RUNTIME_METAL_MSL_HEADERS
+    ${_gfx_src_dir}/mlir/codegen_common.hpp
+    ${_gfx_src_dir}/mlir/index_expr_utils.hpp
+    ${_gfx_src_dir}/mlir/msl_codegen.hpp
+)
+
+set(GFX_RUNTIME_METAL_MSL_SOURCES
+    ${_gfx_src_dir}/mlir/batchnorm_codegen.cpp
+    ${_gfx_src_dir}/mlir/broadcast_codegen.cpp
+    ${_gfx_src_dir}/mlir/concat_codegen.cpp
+    ${_gfx_src_dir}/mlir/conv2d_codegen.cpp
+    ${_gfx_src_dir}/mlir/conv3d_codegen.cpp
+    ${_gfx_src_dir}/mlir/convert_codegen.cpp
+    ${_gfx_src_dir}/mlir/depth_to_space_codegen.cpp
+    ${_gfx_src_dir}/mlir/eltwise_codegen.cpp
+    ${_gfx_src_dir}/mlir/gather_codegen.cpp
+    ${_gfx_src_dir}/mlir/gather_elements_codegen.cpp
+    ${_gfx_src_dir}/mlir/gathernd_codegen.cpp
+    ${_gfx_src_dir}/mlir/interpolate_codegen.cpp
+    ${_gfx_src_dir}/mlir/matmul_codegen.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen.cpp
+    ${_gfx_src_dir}/mlir/pad_codegen.cpp
+    ${_gfx_src_dir}/mlir/pool_avg_codegen.cpp
+    ${_gfx_src_dir}/mlir/pool_max_codegen.cpp
+    ${_gfx_src_dir}/mlir/range_codegen.cpp
+    ${_gfx_src_dir}/mlir/reduce_codegen.cpp
+    ${_gfx_src_dir}/mlir/reverse_codegen.cpp
+    ${_gfx_src_dir}/mlir/scatter_elements_update_codegen.cpp
+    ${_gfx_src_dir}/mlir/scatter_nd_update_codegen.cpp
+    ${_gfx_src_dir}/mlir/select_codegen.cpp
+    ${_gfx_src_dir}/mlir/shapeof_codegen.cpp
+    ${_gfx_src_dir}/mlir/slice_generic_codegen.cpp
+    ${_gfx_src_dir}/mlir/softmax_codegen.cpp
+    ${_gfx_src_dir}/mlir/space_to_depth_codegen.cpp
+    ${_gfx_src_dir}/mlir/split_codegen.cpp
+    ${_gfx_src_dir}/mlir/tile_codegen.cpp
+    ${_gfx_src_dir}/mlir/topk_codegen.cpp
+    ${_gfx_src_dir}/mlir/transpose_codegen.cpp
+    ${_gfx_src_dir}/mlir/unary_codegen.cpp
 )
 
 set(GFX_RUNTIME_METAL_SOURCES
@@ -267,10 +274,12 @@ set(GFX_RUNTIME_VULKAN_HEADERS
 )
 
 set(GFX_RUNTIME_VULKAN_CODEGEN_HEADERS
+    ${_gfx_src_dir}/mlir/spirv_codegen.hpp
     ${_gfx_src_dir}/backends/vulkan/codegen/vulkan_codegen_backend.hpp
 )
 
 set(GFX_RUNTIME_VULKAN_CODEGEN_SOURCES
+    ${_gfx_src_dir}/mlir/spirv_codegen.cpp
     ${_gfx_src_dir}/backends/vulkan/codegen/vulkan_codegen_backend.cpp
 )
 

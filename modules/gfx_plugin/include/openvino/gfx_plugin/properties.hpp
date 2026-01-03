@@ -11,6 +11,7 @@ constexpr const char* kGfxProfilingLevelProperty = "GFX_PROFILING_LEVEL";
 constexpr const char* kGfxProfilingReportProperty = "GFX_PROFILING_REPORT";
 constexpr const char* kGfxMemStatsProperty = "GFX_MEM_STATS";
 constexpr const char* kGfxBackendProperty = "GFX_BACKEND";
+constexpr const char* kGfxEnableFusionProperty = "GFX_ENABLE_FUSION";
 
 // Common remote tensor/property keys.
 constexpr const char* kGfxBufferProperty = "GFX_BUFFER";

@@ -8,8 +8,7 @@
 namespace ov {
 namespace gfx_plugin {
 
-void run_mlir_pipeline(mlir::ModuleOp module);
+void run_mlir_pipeline(mlir::ModuleOp module, bool use_alloca = true, bool use_parallel_loops = false);
 
 }  // namespace gfx_plugin
 }  // namespace ov
-

@@ -223,7 +223,7 @@ mlir::ModuleOp build_softmax_like_from_node_tiled(const std::shared_ptr<const ov
 
     mlir::SmallVector<int64_t> dims(shape.begin(), shape.end());
     auto ty = mlir::MemRefType::get(dims, elem_ty);
-    auto param_ty = mlir::MemRefType::get({2}, mlir::IntegerType::get(&ctx, 32));
+    auto param_ty = mlir::MemRefType::get({2}, mlir::IndexType::get(&ctx));
 
     mlir::OpBuilder mb(&ctx);
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
@@ -273,20 +273,14 @@ mlir::ModuleOp build_softmax_like_from_node_tiled(const std::shared_ptr<const ov
                                                              strides);
 
     auto params = func.getArgument(2);
-    auto off_i32 = b.create<mlir::memref::LoadOp>(loc, params, mlir::ValueRange{c0});
-    auto count_i32 = b.create<mlir::memref::LoadOp>(loc, params, mlir::ValueRange{c1});
-    auto offset_idx = b.create<mlir::arith::IndexCastOp>(loc, b.getIndexType(), off_i32);
-    auto count_idx = b.create<mlir::arith::IndexCastOp>(loc, b.getIndexType(), count_i32);
+    auto offset_idx = b.create<mlir::memref::LoadOp>(loc, params, mlir::ValueRange{c0});
+    auto count_idx = b.create<mlir::memref::LoadOp>(loc, params, mlir::ValueRange{c1});
 
     auto for_idx = b.create<mlir::scf::ForOp>(loc, c0, count_idx, c1);
     auto bidx = mlir::OpBuilder::atBlockBegin(for_idx.getBody());
     auto global_idx = bidx.create<mlir::arith::AddIOp>(loc, offset_idx, for_idx.getInductionVar());
-    auto global_i32 = bidx.create<mlir::arith::IndexCastOp>(loc, bidx.getI32Type(), global_idx);
-    auto inner_i32 = bidx.create<mlir::arith::ConstantIntOp>(loc, inner, 32);
-    auto row_i32 = bidx.create<mlir::arith::DivUIOp>(loc, global_i32, inner_i32);
-    auto inner_i32_val = bidx.create<mlir::arith::RemUIOp>(loc, global_i32, inner_i32);
-    auto row = bidx.create<mlir::arith::IndexCastOp>(loc, bidx.getIndexType(), row_i32);
-    auto inner_idx = bidx.create<mlir::arith::IndexCastOp>(loc, bidx.getIndexType(), inner_i32_val);
+    auto row = bidx.create<mlir::arith::DivUIOp>(loc, global_idx, inner_c);
+    auto inner_idx = bidx.create<mlir::arith::RemUIOp>(loc, global_idx, inner_c);
 
     auto compute_flat = [&](mlir::OpBuilder& bld, mlir::Value row_v, mlir::Value col_v, mlir::Value in_idx) {
         auto mul1 = bld.create<mlir::arith::MulIOp>(loc, row_v, cols_c);

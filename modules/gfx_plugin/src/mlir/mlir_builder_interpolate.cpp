@@ -177,23 +177,14 @@ mlir::ModuleOp build_mlir_interpolate_from_model(const std::shared_ptr<const ov:
     const uint64_t H_out = out_shape_static[2];
     const uint64_t W_out = out_shape_static[3];
 
-    auto out_flat_ty = mlir::RankedTensorType::get({static_cast<int64_t>(ov::shape_size(out_shape_static))}, elem_ty);
-    auto in_flat_ty = mlir::RankedTensorType::get({static_cast<int64_t>(ov::shape_size(in_shape_static))}, elem_ty);
-
-    auto collapse_reassoc = [&](size_t rank) {
-        mlir::SmallVector<mlir::ReassociationIndices> reassoc;
-        mlir::ReassociationIndices group;
-        for (size_t i = 0; i < rank; ++i) group.push_back(static_cast<int64_t>(i));
-        reassoc.push_back(group);
-        return reassoc;
-    };
-
-    mlir::Value in_flat = func.getArgument(0);
-    in_flat = b.create<mlir::tensor::CollapseShapeOp>(loc, in_flat_ty, in_flat, collapse_reassoc(4));
-    mlir::Value out_flat = b.create<mlir::tensor::EmptyOp>(loc,
-                                                           mlir::ArrayRef<int64_t>({
-                                                               static_cast<int64_t>(ov::shape_size(out_shape_static))}),
-                                                           elem_ty);
+    mlir::Value in_tensor = func.getArgument(0);
+    mlir::Value out_tensor = b.create<mlir::tensor::EmptyOp>(
+        loc,
+        mlir::ArrayRef<int64_t>({static_cast<int64_t>(N),
+                                 static_cast<int64_t>(C),
+                                 static_cast<int64_t>(H_out),
+                                 static_cast<int64_t>(W_out)}),
+        elem_ty);
 
     auto c0 = b.create<mlir::arith::ConstantIndexOp>(loc, 0);
     auto c1 = b.create<mlir::arith::ConstantIndexOp>(loc, 1);
@@ -213,24 +204,24 @@ mlir::ModuleOp build_mlir_interpolate_from_model(const std::shared_ptr<const ov:
                        loc, make_float_attr(static_cast<float>(W_in) / static_cast<float>(W_out)))
                        .getResult();
 
-    auto loop = b.create<mlir::scf::ForOp>(loc, c0, c_total, c1, mlir::ValueRange{out_flat});
+    auto loop = b.create<mlir::scf::ForOp>(loc, c0, c_total, c1, mlir::ValueRange{out_tensor});
     {
         auto* body = loop.getBody();
         mlir::OpBuilder lb(body, body->begin());
         auto iv = loop.getInductionVar();
         auto acc = loop.getRegionIterArgs()[0];
 
-        auto w = lb.create<mlir::arith::RemUIOp>(loc, iv, c_W_out).getResult();
-        auto tmp = lb.create<mlir::arith::DivUIOp>(loc, iv, c_W_out).getResult();
-        auto h = lb.create<mlir::arith::RemUIOp>(loc, tmp, c_H_out).getResult();
-        tmp = lb.create<mlir::arith::DivUIOp>(loc, tmp, c_H_out).getResult();
-        auto c = lb.create<mlir::arith::RemUIOp>(loc, tmp, c_C).getResult();
-        auto n = lb.create<mlir::arith::DivUIOp>(loc, tmp, c_C).getResult();
+        auto w = lb.create<mlir::arith::RemSIOp>(loc, iv, c_W_out).getResult();
+        auto tmp = lb.create<mlir::arith::DivSIOp>(loc, iv, c_W_out).getResult();
+        auto h = lb.create<mlir::arith::RemSIOp>(loc, tmp, c_H_out).getResult();
+        tmp = lb.create<mlir::arith::DivSIOp>(loc, tmp, c_H_out).getResult();
+        auto c = lb.create<mlir::arith::RemSIOp>(loc, tmp, c_C).getResult();
+        auto n = lb.create<mlir::arith::DivSIOp>(loc, tmp, c_C).getResult();
 
-        auto h_i64 = lb.create<mlir::arith::IndexCastOp>(loc, lb.getI64Type(), h).getResult();
-        auto w_i64 = lb.create<mlir::arith::IndexCastOp>(loc, lb.getI64Type(), w).getResult();
-        mlir::Value fh = lb.create<mlir::arith::SIToFPOp>(loc, f32, h_i64).getResult();
-        mlir::Value fw = lb.create<mlir::arith::SIToFPOp>(loc, f32, w_i64).getResult();
+        auto h_i32 = lb.create<mlir::arith::IndexCastOp>(loc, lb.getI32Type(), h).getResult();
+        auto w_i32 = lb.create<mlir::arith::IndexCastOp>(loc, lb.getI32Type(), w).getResult();
+        mlir::Value fh = lb.create<mlir::arith::SIToFPOp>(loc, f32, h_i32).getResult();
+        mlir::Value fw = lb.create<mlir::arith::SIToFPOp>(loc, f32, w_i32).getResult();
 
         if (align_corners && H_out > 1) {
             auto h_scale = lb.create<mlir::arith::ConstantOp>(
@@ -257,10 +248,21 @@ mlir::ModuleOp build_mlir_interpolate_from_model(const std::shared_ptr<const ov:
             fw = lb.create<mlir::arith::MulFOp>(loc, fw, scale_w).getResult();
         }
 
-        auto h0f = lb.create<mlir::math::FloorOp>(loc, fh).getResult();
-        auto w0f = lb.create<mlir::math::FloorOp>(loc, fw).getResult();
-        auto h0 = lb.create<mlir::arith::FPToSIOp>(loc, lb.getIndexType(), h0f).getResult();
-        auto w0 = lb.create<mlir::arith::FPToSIOp>(loc, lb.getIndexType(), w0f).getResult();
+        auto c1_i32 = lb.create<mlir::arith::ConstantIntOp>(loc, 1, 32).getResult();
+        auto h0_i32 = lb.create<mlir::arith::FPToSIOp>(loc, lb.getI32Type(), fh).getResult();
+        auto w0_i32 = lb.create<mlir::arith::FPToSIOp>(loc, lb.getI32Type(), fw).getResult();
+        auto h0f = lb.create<mlir::arith::SIToFPOp>(loc, f32, h0_i32).getResult();
+        auto w0f = lb.create<mlir::arith::SIToFPOp>(loc, f32, w0_i32).getResult();
+        auto h_lt = lb.create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OLT, fh, h0f).getResult();
+        auto w_lt = lb.create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OLT, fw, w0f).getResult();
+        auto h_adj = lb.create<mlir::arith::SubIOp>(loc, h0_i32, c1_i32).getResult();
+        auto w_adj = lb.create<mlir::arith::SubIOp>(loc, w0_i32, c1_i32).getResult();
+        h0_i32 = lb.create<mlir::arith::SelectOp>(loc, h_lt, h_adj, h0_i32).getResult();
+        w0_i32 = lb.create<mlir::arith::SelectOp>(loc, w_lt, w_adj, w0_i32).getResult();
+        h0f = lb.create<mlir::arith::SIToFPOp>(loc, f32, h0_i32).getResult();
+        w0f = lb.create<mlir::arith::SIToFPOp>(loc, f32, w0_i32).getResult();
+        auto h0 = lb.create<mlir::arith::IndexCastOp>(loc, lb.getIndexType(), h0_i32).getResult();
+        auto w0 = lb.create<mlir::arith::IndexCastOp>(loc, lb.getIndexType(), w0_i32).getResult();
 
         auto clamp_idx = [&](mlir::Value v, mlir::Value maxv) {
             auto zero = lb.create<mlir::arith::ConstantIndexOp>(loc, 0).getResult();
@@ -283,60 +285,32 @@ mlir::ModuleOp build_mlir_interpolate_from_model(const std::shared_ptr<const ov:
             auto nch = lb.create<mlir::arith::AddIOp>(loc,
                                                       lb.create<mlir::arith::MulIOp>(loc, nc, c_H_in).getResult(),
                                                       h0).getResult();
-            auto src_idx = lb.create<mlir::arith::AddIOp>(
-                               loc,
-                               lb.create<mlir::arith::MulIOp>(loc, nch, c_W_in).getResult(),
-                               w0)
-                               .getResult();
-            value = lb.create<mlir::tensor::ExtractOp>(loc, in_flat, mlir::ValueRange{src_idx}).getResult();
+            value = lb.create<mlir::tensor::ExtractOp>(loc,
+                                                       in_tensor,
+                                                       mlir::ValueRange{n, c, h0, w0})
+                        .getResult();
         } else {
             auto h1 = lb.create<mlir::arith::AddIOp>(loc, h0, c1).getResult();
             auto w1 = lb.create<mlir::arith::AddIOp>(loc, w0, c1).getResult();
             h1 = clamp_idx(h1, max_h);
             w1 = clamp_idx(w1, max_w);
 
-            auto nc = lb.create<mlir::arith::AddIOp>(loc,
-                                                     lb.create<mlir::arith::MulIOp>(loc, n, c_C).getResult(),
-                                                     c).getResult();
-            auto base = lb.create<mlir::arith::MulIOp>(loc, nc, c_H_in).getResult();
-
-            auto idx00 = lb.create<mlir::arith::AddIOp>(
-                             loc,
-                             lb.create<mlir::arith::MulIOp>(loc,
-                                                            lb.create<mlir::arith::AddIOp>(loc, base, h0).getResult(),
-                                                            c_W_in)
-                                 .getResult(),
-                             w0)
-                             .getResult();
-            auto idx01 = lb.create<mlir::arith::AddIOp>(
-                             loc,
-                             lb.create<mlir::arith::MulIOp>(loc,
-                                                            lb.create<mlir::arith::AddIOp>(loc, base, h0).getResult(),
-                                                            c_W_in)
-                                 .getResult(),
-                             w1)
-                             .getResult();
-            auto idx10 = lb.create<mlir::arith::AddIOp>(
-                             loc,
-                             lb.create<mlir::arith::MulIOp>(loc,
-                                                            lb.create<mlir::arith::AddIOp>(loc, base, h1).getResult(),
-                                                            c_W_in)
-                                 .getResult(),
-                             w0)
-                             .getResult();
-            auto idx11 = lb.create<mlir::arith::AddIOp>(
-                             loc,
-                             lb.create<mlir::arith::MulIOp>(loc,
-                                                            lb.create<mlir::arith::AddIOp>(loc, base, h1).getResult(),
-                                                            c_W_in)
-                                 .getResult(),
-                             w1)
-                             .getResult();
-
-            auto v00 = lb.create<mlir::tensor::ExtractOp>(loc, in_flat, mlir::ValueRange{idx00}).getResult();
-            auto v01 = lb.create<mlir::tensor::ExtractOp>(loc, in_flat, mlir::ValueRange{idx01}).getResult();
-            auto v10 = lb.create<mlir::tensor::ExtractOp>(loc, in_flat, mlir::ValueRange{idx10}).getResult();
-            auto v11 = lb.create<mlir::tensor::ExtractOp>(loc, in_flat, mlir::ValueRange{idx11}).getResult();
+            auto v00 = lb.create<mlir::tensor::ExtractOp>(loc,
+                                                          in_tensor,
+                                                          mlir::ValueRange{n, c, h0, w0})
+                          .getResult();
+            auto v01 = lb.create<mlir::tensor::ExtractOp>(loc,
+                                                          in_tensor,
+                                                          mlir::ValueRange{n, c, h0, w1})
+                          .getResult();
+            auto v10 = lb.create<mlir::tensor::ExtractOp>(loc,
+                                                          in_tensor,
+                                                          mlir::ValueRange{n, c, h1, w0})
+                          .getResult();
+            auto v11 = lb.create<mlir::tensor::ExtractOp>(loc,
+                                                          in_tensor,
+                                                          mlir::ValueRange{n, c, h1, w1})
+                          .getResult();
 
             mlir::Value v00f = v00;
             mlir::Value v01f = v01;
@@ -373,15 +347,16 @@ mlir::ModuleOp build_mlir_interpolate_from_model(const std::shared_ptr<const ov:
             }
         }
 
-        auto updated = lb.create<mlir::tensor::InsertOp>(loc, value, acc, mlir::ValueRange{iv}).getResult();
+        auto updated = lb.create<mlir::tensor::InsertOp>(loc,
+                                                         value,
+                                                         acc,
+                                                         mlir::ValueRange{n, c, h, w})
+                           .getResult();
         lb.create<mlir::scf::YieldOp>(loc, updated);
     }
-    out_flat = loop.getResults()[0];
+    out_tensor = loop.getResults()[0];
 
-    mlir::Value final_out = out_flat;
-    auto reassoc = collapse_reassoc(4);
-    final_out = b.create<mlir::tensor::ExpandShapeOp>(loc, out_tensor_ty, out_flat, reassoc);
-    b.create<mlir::func::ReturnOp>(loc, final_out);
+    b.create<mlir::func::ReturnOp>(loc, out_tensor);
     return module;
 }
 

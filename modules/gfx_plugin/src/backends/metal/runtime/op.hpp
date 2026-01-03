@@ -18,6 +18,7 @@
 #include "kernel_ir/gfx_kernel_spec.hpp"
 #include "backends/metal/runtime/metal_memory.hpp"
 #include "runtime/gfx_activation.hpp"
+#include "runtime/gfx_batchnorm.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -54,6 +55,7 @@ public:
     virtual void execute(MetalCommandBufferHandle command_buffer) = 0;
     // Optional fusion hook (e.g., Conv + Relu). Default: not supported.
     virtual bool fuse_activation(ActivationKind /*kind*/, float /*alpha*/) { return false; }
+    virtual bool fuse_batchnorm(const BatchNormParams& /*params*/) { return false; }
 
     void set_inputs(const std::vector<MetalTensor*>& inputs);
     void set_output(MetalTensor* output);

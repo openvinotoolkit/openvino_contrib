@@ -24,6 +24,7 @@
 #include "plugin/gfx_profiling_utils.hpp"
 #include "plugin/infer_profiling_utils.hpp"
 #include "plugin/infer_request_state.hpp"
+#include "plugin/compiled_model_backend_resources.hpp"
 #include "runtime/gfx_remote_context.hpp"
 #include "plugin/infer_pipeline.hpp"
 #include "plugin/infer_io_utils.hpp"
@@ -92,6 +93,9 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
     OPENVINO_ASSERT(vk_state, "GFX: Vulkan infer state is not initialized");
     OPENVINO_ASSERT(cm->op_pipeline_built() && cm->op_pipeline_size() > 0,
                     "GFX: op pipeline is not built");
+    const auto resources = get_backend_resources(cm->backend_state());
+    OPENVINO_ASSERT(resources.const_manager,
+                    "GFX Vulkan: const buffer manager is required for infer pipeline");
 
     const auto& descs = cm->pipeline_desc();
     const auto& node_map = cm->node_to_stage();
@@ -107,7 +111,7 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
     GpuBufferPool pool(allocator);
     auto pipeline = build_pipeline_with_outputs(
         descs,
-        nullptr,
+        resources.const_manager,
         stage_profiler,
         profiling_enabled,
         get_outputs(),

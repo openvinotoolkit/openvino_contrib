@@ -5,7 +5,6 @@
 #include "openvino/gfx_plugin/infer_request.hpp"
 
 #include <iostream>
-#include <cstring>
 #include <algorithm>
 #include <sstream>
 
@@ -29,6 +28,7 @@
 #include "runtime/memory_manager.hpp"
 #include "backends/metal/plugin/compiled_model_state.hpp"
 #include "backends/metal/runtime/gpu_memory.hpp"
+#include "runtime/gfx_tensor_utils.hpp"
 #include "backends/metal/runtime/metal_memory.hpp"
 #include "backends/metal/runtime/profiling/profiler.hpp"
 #include "backends/metal/plugin/infer_io_metal.hpp"
@@ -162,6 +162,24 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                                        ? get_inputs()[idx].get_shape()
                                        : ov::Shape{1};
                     src = ov::Tensor{get_inputs()[idx].get_element_type(), sh};
+                }
+                if (gfx_log_debug_enabled()) {
+                    GFX_LOG_DEBUG("InferIO",
+                                  "input[" << idx << "] host_et=" << src.get_element_type().get_type_name()
+                                           << " bytes=" << src.get_byte_size()
+                                           << " ptr=" << src.data()
+                                           << " align4=" << (reinterpret_cast<uintptr_t>(src.data()) & 3u));
+                    if (src && src.get_size() > 0) {
+                        auto as_f32 = ov::gfx_plugin::to_float32_tensor(src);
+                        const float* p = as_f32.data<const float>();
+                        const size_t n = std::min<size_t>(4, as_f32.get_size());
+                        std::ostringstream vals;
+                        for (size_t i = 0; i < n; ++i) {
+                            if (i) vals << " ";
+                            vals << p[i];
+                        }
+                        GFX_LOG_DEBUG("InferIO", "input[" << idx << "] first=" << vals.str());
+                    }
                 }
                 // Bind host -> device using zero-copy shared buffer (no memcpy).
                 const auto dev = bind_host_input_metal(src,
@@ -371,6 +389,13 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
             GpuTensor& dev,
             const OutputViewInfo& info,
             const ov::Tensor* host_override) {
+            if (gfx_log_debug_enabled()) {
+                GFX_LOG_DEBUG("InferIO",
+                              "output[" << idx << "] dev_buf=" << dev.buf.buffer
+                                        << " et=" << (dev.expected_type == ov::element::dynamic
+                                                          ? dev.buf.type.get_type_name()
+                                                          : dev.expected_type.get_type_name()));
+            }
             auto bound = bind_host_output_metal(dev,
                                                 info,
                                                 host_override,

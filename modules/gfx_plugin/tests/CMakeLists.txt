@@ -30,12 +30,13 @@ if(APPLE)
     )
 else()
     list(APPEND GFX_TEST_EXCLUDED_PATHS
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/memory_test.mm
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_backend_test.mm
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_stage_activation_test.mm
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_stage_factory_test.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_memory_copy_test.mm
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/set_device_name.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/set_device_name_stub.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/vulkan_runtime_test_stub.cpp
     )
 endif()

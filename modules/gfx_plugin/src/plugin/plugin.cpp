@@ -57,6 +57,7 @@ Plugin::Plugin() {
     m_config[ov::hint::inference_precision.name()] = ov::element::f32;
     m_config[ov::internal::threads_per_stream.name()] = static_cast<uint32_t>(1);
     m_config[ov::internal::exclusive_async_requests.name()] = false;
+    m_config[kGfxEnableFusionProperty] = true;
 }
 
 std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(
@@ -267,6 +268,8 @@ void Plugin::set_property(const ov::AnyMap& properties) {
             ov::AnyMap tmp{{kGfxBackendProperty, kv.second}};
             const auto backend = resolve_backend_name_from_properties(tmp, /*log_fallback=*/true, "Plugin");
             m_config[kv.first] = backend;
+        } else if (kv.first == kGfxEnableFusionProperty) {
+            m_config[kv.first] = kv.second.as<bool>();
         } else if (kv.first == ov::hint::inference_precision.name()) {
             m_config[kv.first] = kv.second.as<ov::element::Type>();
         } else if (kv.first == ov::internal::threads_per_stream.name()) {

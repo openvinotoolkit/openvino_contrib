@@ -17,24 +17,108 @@
 #include "plugin/model_serialization.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_backend_utils.hpp"
+#include "runtime/gfx_batchnorm.hpp"
 #include "openvino/gfx_plugin/profiling.hpp"
 #include "plugin/backend_state.hpp"
 
 #include "openvino/core/except.hpp"
 #include "openvino/core/validation_util.hpp"
+#include "openvino/core/shape_util.hpp"
+#include "openvino/core/type/float16.hpp"
 #include "openvino/op/constant.hpp"
-#include "openvino/op/convolution.hpp"
+#include "openvino/op/batch_norm.hpp"
 #include "openvino/op/parameter.hpp"
-#include "openvino/op/relu.hpp"
 #include "openvino/op/result.hpp"
 #include "openvino/runtime/exec_model_info.hpp"
 #include "openvino/runtime/properties.hpp"
 #include "openvino/util/common_util.hpp"
 
+#if ENABLE_GFX_MLIR
+#include "transforms/fusion_pass.hpp"
+#endif
+
+#include <algorithm>
 #include <cstdlib>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 namespace ov {
 namespace gfx_plugin {
+
+namespace {
+
+bool read_const_f32(const std::shared_ptr<const ov::op::v0::Constant>& constant,
+                    std::vector<float>& out) {
+    if (!constant) {
+        return false;
+    }
+    const auto et = constant->get_element_type();
+    const size_t count = shape_size(constant->get_shape());
+    out.resize(count);
+    if (count == 0) {
+        return false;
+    }
+    if (et == ov::element::f32) {
+        const float* src = constant->get_data_ptr<float>();
+        std::copy(src, src + count, out.begin());
+        return true;
+    }
+    if (et == ov::element::f16) {
+        const ov::float16* src = constant->get_data_ptr<ov::float16>();
+        for (size_t i = 0; i < count; ++i) {
+            out[i] = static_cast<float>(src[i]);
+        }
+        return true;
+    }
+    return false;
+}
+
+bool extract_batchnorm_params(const std::shared_ptr<const ov::Node>& node, BatchNormParams& out) {
+    auto bn = ov::as_type_ptr<const ov::op::v5::BatchNormInference>(node);
+    if (!bn) {
+        return false;
+    }
+
+    auto gamma = std::dynamic_pointer_cast<const ov::op::v0::Constant>(bn->get_input_node_shared_ptr(1));
+    auto beta = std::dynamic_pointer_cast<const ov::op::v0::Constant>(bn->get_input_node_shared_ptr(2));
+    auto mean = std::dynamic_pointer_cast<const ov::op::v0::Constant>(bn->get_input_node_shared_ptr(3));
+    auto var = std::dynamic_pointer_cast<const ov::op::v0::Constant>(bn->get_input_node_shared_ptr(4));
+    if (!gamma || !beta || !mean || !var) {
+        return false;
+    }
+
+    BatchNormParams params{};
+    if (!read_const_f32(gamma, params.gamma) ||
+        !read_const_f32(beta, params.beta) ||
+        !read_const_f32(mean, params.mean) ||
+        !read_const_f32(var, params.var)) {
+        return false;
+    }
+
+    const size_t channels = params.gamma.size();
+    if (channels == 0 ||
+        params.beta.size() != channels ||
+        params.mean.size() != channels ||
+        params.var.size() != channels) {
+        return false;
+    }
+
+    if (bn->get_input_partial_shape(0).rank().is_static()) {
+        const auto& in_shape = bn->get_input_partial_shape(0);
+        if (in_shape.rank().get_length() >= 2 && in_shape[1].is_static()) {
+            const size_t expected = static_cast<size_t>(in_shape[1].get_length());
+            if (expected != channels) {
+                return false;
+            }
+        }
+    }
+
+    params.epsilon = static_cast<float>(bn->get_eps_value());
+    out = std::move(params);
+    return true;
+}
+
+}  // namespace
 
 CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
                              const std::shared_ptr<const ov::IPlugin>& plugin,
@@ -55,6 +139,9 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
         if (auto it2 = properties.find("PERF_COUNT"); it2 != properties.end()) {
             m_enable_profiling = it2->second.as<bool>();
         }
+    }
+    if (auto it = properties.find(kGfxEnableFusionProperty); it != properties.end()) {
+        m_enable_fusion = it->second.as<bool>();
     }
     if (auto it = properties.find(kGfxProfilingLevelProperty); it != properties.end()) {
         m_profiling_level = parse_profiling_level(it->second);
@@ -92,17 +179,22 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
             m_config[kv.first] = m_enable_profiling;
         } else if (kv.first == kGfxProfilingLevelProperty) {
             m_config[kv.first] = kv.second;
+        } else if (kv.first == kGfxEnableFusionProperty) {
+            m_config[kv.first] = m_enable_fusion;
         } else {
             m_config[kv.first] = kv.second;
         }
     }
     m_config[kGfxBackendProperty] = m_backend_name;
+    GFX_LOG_INFO("CompiledModel", "Creating backend state for " << m_backend_name);
     m_backend_state = create_backend_state(m_backend, properties, context);
+    GFX_LOG_INFO("CompiledModel", "Backend state created");
     if (m_backend == GpuBackend::Vulkan) {
         GFX_LOG_INFO("CompiledModel", "Vulkan backend selected");
     }
 
     // Build GpuStage pipeline eagerly; fail early if unsupported ops encountered.
+    GFX_LOG_INFO("CompiledModel", "Building stage pipeline");
     build_op_pipeline();
 }
 
@@ -133,6 +225,9 @@ void CompiledModel::set_property(const ov::AnyMap& properties) {
                                             m_profiling_level_set,
                                             m_config)) {
             // handled
+        } else if (kv.first == kGfxEnableFusionProperty) {
+            m_enable_fusion = kv.second.as<bool>();
+            m_config[kv.first] = m_enable_fusion;
         } else {
             OPENVINO_THROW("CompiledModel unsupported property: ", kv.first);
         }
@@ -220,6 +315,9 @@ void CompiledModel::build_op_pipeline() {
     const auto resources = get_backend_resources(backend_state());
     auto* backend_state = m_backend_state.get();
     OPENVINO_ASSERT(backend_state, "GFX: backend state is not initialized");
+    GFX_LOG_INFO("StageFactory",
+                 "Building pipeline for backend=" << m_backend_name
+                                                 << " ops=" << m_runtime_model->get_ops().size());
     // Map Parameter nodes to input indices.
     for (size_t i = 0; i < m_runtime_model->inputs().size(); ++i) {
         m_param_index[m_runtime_model->inputs()[i].get_node()] = i;
@@ -240,39 +338,61 @@ void CompiledModel::build_op_pipeline() {
     }
 
     const auto ordered_ops = m_runtime_model->get_ordered_ops();
+    GFX_LOG_INFO("StageFactory", "Ordered ops count=" << ordered_ops.size());
     m_pipeline.reserve(ordered_ops.size());
 
-    const bool allow_conv_relu_fusion = false;  // TODO: re-enable after fused path validation.
-    for (const auto& node : ordered_ops) {
+#if ENABLE_GFX_MLIR
+    FusionPlan fusion_plan;
+    std::unordered_map<size_t, const FusionGroup*> fusion_primary;
+    if (m_enable_fusion) {
+        FusionConfig fusion_cfg;
+        fusion_cfg.enable_fusion = true;
+        fusion_plan = build_fusion_plan(m_runtime_model, fusion_cfg);
+        fusion_primary.reserve(fusion_plan.groups.size());
+        for (const auto& group : fusion_plan.groups) {
+            if (group.node_indices.size() < 2) {
+                continue;
+            }
+            fusion_primary[group.node_indices.front()] = &group;
+        }
+        if (gfx_log_debug_enabled()) {
+            GFX_LOG_DEBUG("Fusion", "Fusion enabled: groups=" << fusion_plan.groups.size());
+        }
+    } else if (gfx_log_debug_enabled()) {
+        GFX_LOG_DEBUG("Fusion", "Fusion disabled via " << kGfxEnableFusionProperty);
+    }
+#endif
+
+    std::unordered_set<size_t> fused_indices;
+    fused_indices.reserve(ordered_ops.size());
+    auto merge_model_outputs = [&](PipelineStageDesc& stage_desc, const ov::Node* node) {
+        auto it = model_outputs.find(node);
+        if (it == model_outputs.end()) {
+            return;
+        }
+        const auto& flags = it->second;
+        for (size_t oi = 0; oi < stage_desc.outputs.size() && oi < flags.size(); ++oi) {
+            stage_desc.outputs[oi].is_model_output = stage_desc.outputs[oi].is_model_output || flags[oi];
+        }
+    };
+
+    for (size_t op_index = 0; op_index < ordered_ops.size(); ++op_index) {
+        const auto& node = ordered_ops[op_index];
         if (ov::as_type_ptr<ov::op::v0::Parameter>(node) ||
             ov::as_type_ptr<ov::op::v0::Result>(node) ||
             ov::as_type_ptr<ov::op::v0::Constant>(node)) {
             continue;
         }
 
-        if (allow_conv_relu_fusion) {
-            if (auto relu = ov::as_type_ptr<const ov::op::v0::Relu>(node)) {
-            auto input = relu->input_value(0).get_node_shared_ptr();
-            auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(input);
-            if (conv && input->output(0).get_target_inputs().size() == 1) {
-                auto it = m_node_to_stage.find(input.get());
-                if (it != m_node_to_stage.end()) {
-                    auto& conv_stage = m_pipeline[it->second];
-                    if (conv_stage.stage->fuse_activation(ActivationKind::Relu, 0.0f)) {
-                        m_node_to_stage[node.get()] = it->second;
-                        if (auto mo = model_outputs.find(node.get()); mo != model_outputs.end()) {
-                            for (size_t oi = 0; oi < mo->second.size() && oi < conv_stage.outputs.size(); ++oi) {
-                                conv_stage.outputs[oi].is_model_output =
-                                    conv_stage.outputs[oi].is_model_output || mo->second[oi];
-                            }
-                        }
-                        continue;  // skip creating a separate Relu stage
-                    }
-                }
-            }
-            }
+        if (fused_indices.count(op_index)) {
+            continue;
         }
 
+        if (gfx_log_debug_enabled()) {
+            GFX_LOG_DEBUG("StageFactory",
+                          "Preparing stage for " << node->get_type_name()
+                                                 << " name=" << node->get_friendly_name());
+        }
         auto gpu_stage = backend_state->create_stage(node);
         OPENVINO_ASSERT(gpu_stage,
                         "GFX: unsupported op in MLIR pipeline: ",
@@ -294,12 +414,7 @@ void CompiledModel::build_op_pipeline() {
             out_desc.type = node->get_output_element_type(oi);
             stage_desc.outputs.emplace_back(std::move(out_desc));
         }
-        if (auto it = model_outputs.find(node.get()); it != model_outputs.end()) {
-            const auto& flags = it->second;
-            for (size_t oi = 0; oi < out_count && oi < flags.size(); ++oi) {
-                stage_desc.outputs[oi].is_model_output = flags[oi];
-            }
-        }
+        merge_model_outputs(stage_desc, node.get());
         for (const auto& iv : node->input_values()) {
             stage_desc.inputs.push_back({iv.get_node_shared_ptr(), iv.get_index()});
         }
@@ -312,6 +427,54 @@ void CompiledModel::build_op_pipeline() {
         const size_t idx = m_pipeline.size();
         m_node_to_stage[node.get()] = idx;
         m_pipeline.emplace_back(std::move(stage_desc));
+
+#if ENABLE_GFX_MLIR
+        auto f_it = fusion_primary.find(op_index);
+        if (f_it != fusion_primary.end() && f_it->second) {
+            const auto* group = f_it->second;
+            auto& stage = m_pipeline[idx];
+            auto mark_fused = [&](size_t fused_idx) {
+                if (fused_idx >= ordered_ops.size()) {
+                    return;
+                }
+                fused_indices.insert(fused_idx);
+                const auto& fused_node = ordered_ops[fused_idx];
+                m_node_to_stage[fused_node.get()] = idx;
+                merge_model_outputs(stage, fused_node.get());
+            };
+
+            if (group->kind == "ConvBatchNorm" || group->kind == "ConvBatchNormAct") {
+                if (group->node_indices.size() >= 2) {
+                    const size_t bn_idx = group->node_indices[1];
+                    if (bn_idx < ordered_ops.size()) {
+                        BatchNormParams bn_params{};
+                        if (extract_batchnorm_params(ordered_ops[bn_idx], bn_params) &&
+                            stage.stage->fuse_batchnorm(bn_params)) {
+                            mark_fused(bn_idx);
+                        }
+                    }
+                }
+                if (group->kind == "ConvBatchNormAct" && group->activation.has_value() &&
+                    group->node_indices.size() >= 3) {
+                    if (stage.stage->fuse_activation(*group->activation, group->activation_alpha)) {
+                        mark_fused(group->node_indices[2]);
+                    }
+                }
+            } else if (group->kind == "ConvActivation") {
+                if (group->activation.has_value() && group->node_indices.size() >= 2) {
+                    if (stage.stage->fuse_activation(*group->activation, group->activation_alpha)) {
+                        mark_fused(group->node_indices[1]);
+                    }
+                }
+            } else if (group->kind == "EltwiseActivation") {
+                if (group->activation.has_value() && group->node_indices.size() >= 2) {
+                    if (stage.stage->fuse_activation(*group->activation, group->activation_alpha)) {
+                        mark_fused(group->node_indices[1]);
+                    }
+                }
+            }
+        }
+#endif
     }
 
     for (auto& stage : m_pipeline) {
@@ -320,6 +483,11 @@ void CompiledModel::build_op_pipeline() {
         for (const auto& link : stage.inputs) {
             (void)link;
             inputs.push_back(nullptr);  // Parameter/Constant or previous stage; not needed for compile
+        }
+        if (gfx_log_debug_enabled()) {
+            GFX_LOG_DEBUG("StageFactory",
+                          "Compiling stage for " << stage.node->get_type_name()
+                                                 << " name=" << stage.node->get_friendly_name());
         }
         stage.stage->set_inputs(inputs);
         GpuBufferManager* buffer_manager = resources.const_manager;

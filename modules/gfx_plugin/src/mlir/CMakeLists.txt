@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 set(GFX_MLIR_SOURCES
-    spirv_codegen.cpp
     mlir_builder.cpp
     mlir_builder_matmul.cpp
     mlir_builder_unary.cpp
@@ -46,6 +45,22 @@ set(GFX_MLIR_SOURCES
     mlir_builder_scatter_elements_update.cpp
     mlir_builder_scatter_nd_update.cpp
     mlir_builder_shapeof.cpp
+    ../transforms/fusion_pass.cpp
+    ../transforms/fusion_conv_activation.cpp
+    ../transforms/fusion_conv_batchnorm.cpp
+    ../transforms/fusion_conv_batchnorm_act.cpp
+    ../transforms/fusion_eltwise_activation.cpp
+    ../transforms/fusion_matmul_activation.cpp
+    ../transforms/fusion_matmul_bias_activation.cpp
+    ../transforms/fusion_matmul_bias.cpp
+    ../transforms/fusion_conv_bias_activation.cpp
+    ../transforms/fusion_conv_bias.cpp
+    ../transforms/fusion_eltwise_bias_activation.cpp
+    ../transforms/fusion_eltwise_bias.cpp
+    ../transforms/fusion_attention.cpp
+    ../transforms/fusion_attention_scale_mask.cpp
+    ../transforms/conv_parallel_lowering.cpp
+    ../transforms/parallel_fill_fusion.cpp
     mlir_passes.cpp
     mlir_utils.cpp)
 
@@ -75,12 +90,7 @@ target_link_libraries(gfx_mlir
         MLIRLinalgUtils
         MLIRGPUDialect
         MLIRGPUTransforms
-        MLIRGPUToSPIRV
         MLIRSCFToGPU
-        MLIRSPIRVDialect
-        MLIRSPIRVTransforms
-        MLIRSPIRVSerialization
-        MLIRVectorToSPIRV
         MLIRVectorDialect
         MLIRVectorInterfaces
         MLIRSubsetOpInterface

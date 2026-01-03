@@ -12,7 +12,7 @@
 #include "backends/metal/runtime/op_utils.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
 #include "mlir/mlir_builder.hpp"
-#include "mlir_codegen/codegen_common.hpp"
+#include "mlir/codegen_common.hpp"
 #include "backends/metal/codegen/metal_codegen_backend.hpp"
 
 namespace ov {

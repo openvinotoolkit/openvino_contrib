@@ -5,6 +5,7 @@
 #include "backends/metal/runtime/metal_memory.hpp"
 
 #include <cstdlib>
+#include <cstring>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -465,13 +466,19 @@ MetalBuffer MetalBufferManager::wrap_const(const std::string& key,
     if (bytes == 0) {
         return {};
     }
+    const size_t aligned = (bytes + 3u) & ~size_t{3u};
     BufferDesc desc;
-    desc.bytes = bytes;
+    desc.bytes = aligned;
     desc.type = type;
     desc.storage = MetalStorage::Private;
     desc.usage = BufferUsage::Const;
     OPENVINO_ASSERT(m_const_cache, "GFX: const cache is required for Metal constants");
-    return m_const_cache->get_or_create(ConstKey{key}, data, bytes, desc);
+    if (aligned == bytes) {
+        return m_const_cache->get_or_create(ConstKey{key}, data, bytes, desc);
+    }
+    std::vector<uint8_t> padded(aligned, 0);
+    std::memcpy(padded.data(), data, bytes);
+    return m_const_cache->get_or_create(ConstKey{key}, padded.data(), aligned, desc);
 }
 
 }  // namespace gfx_plugin

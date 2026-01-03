@@ -23,6 +23,7 @@ public:
     void init(MetalBufferManager* buffer_manager) override;
     void compile(MetalBufferManager* buffer_manager) override;
     void execute(MetalCommandBufferHandle command_buffer) override;
+    bool fuse_activation(ActivationKind kind, float alpha = 0.0f) override;
 
 protected:
     EltwiseKind m_kind;
@@ -31,6 +32,8 @@ protected:
     id<MTLDevice> m_device = nil;
     id<MTLCommandQueue> m_queue = nil;
     std::shared_ptr<ICompiledKernel> m_kernel;
+    ov::element::Type m_compiled_type{ov::element::dynamic};
+    bool m_is_broadcast = true;
 
     // Broadcasting metadata (ints for Metal constant buffers).
     std::vector<int> m_out_dims;
@@ -42,8 +45,17 @@ protected:
     MetalTensor m_const0;
     MetalTensor m_const1;
 
+    // Optional fused activation (e.g. Add + Relu).
+    bool m_has_activation = false;
+    ActivationKind m_activation = ActivationKind::Relu;
+    float m_activation_alpha = 0.0f;
+
     // Recompute shapes/strides from runtime tensors if needed.
     void refresh_shapes_from_inputs();
+
+    void compile_kernel(MetalBufferManager* buffer_manager,
+                        ov::element::Type elem_type,
+                        bool is_broadcast);
 };
 
 class GFX_OP_API MetalAddOp final : public MetalElementwiseOp {

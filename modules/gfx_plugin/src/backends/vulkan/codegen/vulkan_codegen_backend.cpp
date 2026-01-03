@@ -10,6 +10,7 @@
 
 #include "openvino/core/except.hpp"
 
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/spirv_codegen.hpp"
 
 #include "backends/vulkan/runtime/vulkan_memory.hpp"
@@ -395,7 +396,14 @@ std::shared_ptr<ICompiledKernel> VulkanCodegenBackend::compile(const KernelSourc
                        *log_ptr);
     }
 
-    const uint32_t arg_count = source.signature.arg_count;
+    uint32_t arg_count = source.signature.arg_count;
+    if (module) {
+        if (auto kinds = module->getAttrOfType<mlir::ArrayAttr>("gfx.kernel_operand_kinds")) {
+            arg_count = static_cast<uint32_t>(kinds.size());
+        } else if (auto scalars = module->getAttrOfType<mlir::ArrayAttr>("gfx.kernel_scalar_args")) {
+            arg_count = static_cast<uint32_t>(arg_count + scalars.size());
+        }
+    }
     const uintptr_t device_key = reinterpret_cast<uintptr_t>(m_device);
     const void* code_ptr = spirv_binary.empty() ? nullptr : spirv_binary.data();
     const size_t code_bytes = spirv_binary.size() * sizeof(uint32_t);

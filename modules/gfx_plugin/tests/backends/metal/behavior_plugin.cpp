@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "test_utils.hpp"
+#include "shared_tests_instances/test_utils.hpp"
 #include "integration/test_constants.hpp"
 
 #include <string>

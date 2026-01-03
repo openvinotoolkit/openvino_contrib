@@ -43,6 +43,17 @@ mlir::DenseIntElementsAttr make_i64_attr(mlir::OpBuilder& b, const ov::Strides& 
     return mlir::DenseIntElementsAttr::get(type, data);
 }
 
+mlir::DenseIntElementsAttr make_i64_attr(mlir::OpBuilder& b, const ov::CoordinateDiff& vals) {
+    auto i64 = b.getI64Type();
+    auto type = mlir::RankedTensorType::get({static_cast<int64_t>(vals.size())}, i64);
+    llvm::SmallVector<int64_t, 4> data;
+    data.reserve(vals.size());
+    for (auto v : vals) {
+        data.push_back(static_cast<int64_t>(v));
+    }
+    return mlir::DenseIntElementsAttr::get(type, data);
+}
+
 mlir::Value pad_input(mlir::OpBuilder& b,
                       mlir::Location loc,
                       mlir::Value input,
@@ -90,6 +101,88 @@ mlir::Value pad_input(mlir::OpBuilder& b,
                                              /*nofold=*/false,
                                              mlir::ArrayRef<mlir::NamedAttribute>{});
     return pad.getResult();
+}
+
+mlir::Value apply_unary_activation(mlir::OpBuilder& b,
+                                   mlir::Location loc,
+                                   mlir::Value input,
+                                   ActivationKind kind,
+                                   float alpha) {
+    auto input_type = mlir::dyn_cast<mlir::RankedTensorType>(input.getType());
+    if (!input_type) {
+        return input;
+    }
+    auto elem_ty = input_type.getElementType();
+    if (!mlir::isa<mlir::FloatType>(elem_ty)) {
+        return input;
+    }
+
+    const auto rank = input_type.getRank();
+    mlir::SmallVector<int64_t, 4> dims(input_type.getShape().begin(), input_type.getShape().end());
+    mlir::SmallVector<mlir::Value, 4> dyn_dims;
+    dyn_dims.reserve(rank);
+    for (int64_t i = 0; i < rank; ++i) {
+        if (dims[i] == mlir::ShapedType::kDynamic) {
+            dyn_dims.push_back(b.create<mlir::tensor::DimOp>(loc, input, i));
+        }
+    }
+
+    auto out_init = b.create<mlir::tensor::EmptyOp>(loc, dims, elem_ty, dyn_dims);
+    auto map = mlir::AffineMap::getMultiDimIdentityMap(rank, b.getContext());
+    mlir::SmallVector<mlir::AffineMap> maps{map, map};
+    mlir::SmallVector<mlir::utils::IteratorType> iters(rank, mlir::utils::IteratorType::parallel);
+
+    auto generic = b.create<mlir::linalg::GenericOp>(
+        loc, input_type,
+        mlir::ValueRange{input},
+        mlir::ValueRange{out_init.getResult()},
+        maps,
+        iters);
+    {
+        auto& region = generic.getRegion();
+        region.getBlocks().clear();
+        auto* block = &region.emplaceBlock();
+        block->addArguments({elem_ty, elem_ty}, {loc, loc});
+        mlir::OpBuilder body(block, block->begin());
+        auto x = block->getArgument(0);
+        auto make_float_attr = [&](double v) { return mlir::FloatAttr::get(elem_ty, v); };
+
+        mlir::Value result = x;
+        switch (kind) {
+            case ActivationKind::Relu: {
+                auto zero = body.create<mlir::arith::ConstantOp>(loc, make_float_attr(0.0));
+                result = body.create<mlir::arith::MaximumFOp>(loc, x, zero);
+                break;
+            }
+            case ActivationKind::Sigmoid: {
+                auto neg = body.create<mlir::arith::NegFOp>(loc, x);
+                auto exp = body.create<mlir::math::ExpOp>(loc, neg);
+                auto one = body.create<mlir::arith::ConstantOp>(loc, make_float_attr(1.0));
+                auto denom = body.create<mlir::arith::AddFOp>(loc, one, exp);
+                result = body.create<mlir::arith::DivFOp>(loc, one, denom);
+                break;
+            }
+            case ActivationKind::Tanh: {
+                result = body.create<mlir::math::TanhOp>(loc, x);
+                break;
+            }
+            case ActivationKind::Elu: {
+                auto alpha_c = body.create<mlir::arith::ConstantOp>(loc, make_float_attr(alpha));
+                auto exp = body.create<mlir::math::ExpOp>(loc, x);
+                auto one = body.create<mlir::arith::ConstantOp>(loc, make_float_attr(1.0));
+                auto expm1 = body.create<mlir::arith::SubFOp>(loc, exp, one);
+                auto neg_branch = body.create<mlir::arith::MulFOp>(loc, alpha_c, expm1);
+                auto zero = body.create<mlir::arith::ConstantOp>(loc, make_float_attr(0.0));
+                auto cond = body.create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OGT, x, zero);
+                result = body.create<mlir::arith::SelectOp>(loc, cond, x, neg_branch);
+                break;
+            }
+            default:
+                break;
+        }
+        body.create<mlir::linalg::YieldOp>(loc, mlir::ValueRange{result});
+    }
+    return generic.getResult(0);
 }
 }  // namespace
 
@@ -221,6 +314,8 @@ mlir::ModuleOp build_mlir_conv2d_from_model(const std::shared_ptr<const ov::Mode
                                                             mlir::ValueRange{out_filled.getResult(0)},
                                                             strides_attr,
                                                             dil_attr);
+    conv_op->setAttr("gfx.pad_begin", make_i64_attr(b, pads_begin));
+    conv_op->setAttr("gfx.pad_end", make_i64_attr(b, pads_end));
 
     b.create<mlir::func::ReturnOp>(loc, mlir::ValueRange{conv_op.getResult(0)});
     return module;
@@ -247,39 +342,7 @@ mlir::ModuleOp build_mlir_conv2d_from_model(const std::shared_ptr<const ov::Mode
 
     auto kind = unary_kind->first;
     float alpha = unary_kind->second;
-    switch (kind) {
-        case ActivationKind::Relu: {
-            auto zero = b.create<mlir::arith::ConstantOp>(loc, make_float_attr(0.0f));
-            auto cmp = b.create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OGT, result, zero);
-            result = b.create<mlir::arith::SelectOp>(loc, cmp, result, zero);
-            break;
-        }
-        case ActivationKind::Sigmoid: {
-            auto neg = b.create<mlir::arith::NegFOp>(loc, result);
-            auto exp = b.create<mlir::math::ExpOp>(loc, neg);
-            auto one = b.create<mlir::arith::ConstantOp>(loc, make_float_attr(1.0f));
-            auto denom = b.create<mlir::arith::AddFOp>(loc, one, exp);
-            result = b.create<mlir::arith::DivFOp>(loc, one, denom);
-            break;
-        }
-        case ActivationKind::Tanh: {
-            result = b.create<mlir::math::TanhOp>(loc, result);
-            break;
-        }
-        case ActivationKind::Elu: {
-            auto alpha_c = b.create<mlir::arith::ConstantOp>(loc, make_float_attr(alpha));
-            auto zero_c = b.create<mlir::arith::ConstantOp>(loc, make_float_attr(0.0f));
-            auto exp = b.create<mlir::math::ExpOp>(loc, result);
-            auto one_c = b.create<mlir::arith::ConstantOp>(loc, make_float_attr(1.0f));
-            auto expm1 = b.create<mlir::arith::SubFOp>(loc, exp, one_c);
-            auto scaled = b.create<mlir::arith::MulFOp>(loc, alpha_c, expm1);
-            auto cond = b.create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OGT, result, zero_c);
-            result = b.create<mlir::arith::SelectOp>(loc, cond, result, scaled);
-            break;
-        }
-        default:
-            break;
-    }
+    result = apply_unary_activation(b, loc, result, kind, alpha);
     ret->setOperand(0, result);
     return module;
 }
@@ -423,6 +486,8 @@ mlir::ModuleOp build_mlir_conv2d_with_bias_from_model(const std::shared_ptr<cons
                                                             mlir::ValueRange{out_filled.getResult(0)},
                                                             strides_attr,
                                                             dil_attr);
+    conv_op->setAttr("gfx.pad_begin", make_i64_attr(b, pads_begin));
+    conv_op->setAttr("gfx.pad_end", make_i64_attr(b, pads_end));
 
     // linalg.generic to add bias with broadcasting over N,H,W when bias is 1D (C_out).
     mlir::AffineMap outMap = mlir::AffineMap::get(4, 0,
@@ -461,39 +526,7 @@ mlir::ModuleOp build_mlir_conv2d_with_bias_from_model(const std::shared_ptr<cons
     if (unary_kind.has_value()) {
         auto kind = unary_kind->first;
         float alpha = unary_kind->second;
-        switch (kind) {
-            case ActivationKind::Relu: {
-                auto zero = b.create<mlir::arith::ConstantOp>(loc, make_float_attr(0.0f));
-                auto cmp = b.create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OGT, result, zero);
-                result = b.create<mlir::arith::SelectOp>(loc, cmp, result, zero);
-                break;
-            }
-            case ActivationKind::Sigmoid: {
-                auto neg = b.create<mlir::arith::NegFOp>(loc, result);
-                auto exp = b.create<mlir::math::ExpOp>(loc, neg);
-                auto one = b.create<mlir::arith::ConstantOp>(loc, make_float_attr(1.0f));
-                auto denom = b.create<mlir::arith::AddFOp>(loc, one, exp);
-                result = b.create<mlir::arith::DivFOp>(loc, one, denom);
-                break;
-            }
-            case ActivationKind::Tanh: {
-                result = b.create<mlir::math::TanhOp>(loc, result);
-                break;
-            }
-            case ActivationKind::Elu: {
-                auto alpha_c = b.create<mlir::arith::ConstantOp>(loc, make_float_attr(alpha));
-                auto zero_c = b.create<mlir::arith::ConstantOp>(loc, make_float_attr(0.0f));
-                auto exp = b.create<mlir::math::ExpOp>(loc, result);
-                auto one_c = b.create<mlir::arith::ConstantOp>(loc, make_float_attr(1.0f));
-                auto expm1 = b.create<mlir::arith::SubFOp>(loc, exp, one_c);
-                auto scaled = b.create<mlir::arith::MulFOp>(loc, alpha_c, expm1);
-                auto cond = b.create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OGT, result, zero_c);
-                result = b.create<mlir::arith::SelectOp>(loc, cond, result, scaled);
-                break;
-            }
-            default:
-                break;
-        }
+        result = apply_unary_activation(b, loc, result, kind, alpha);
     }
 
     b.create<mlir::func::ReturnOp>(loc, mlir::ValueRange{result});

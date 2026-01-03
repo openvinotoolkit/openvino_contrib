@@ -135,6 +135,9 @@ struct EltwiseCodegenDesc : BaseCodegenDesc {
     std::vector<int64_t> out_shape;
     std::vector<int64_t> stride0;
     std::vector<int64_t> stride1;
+    bool has_activation = false;
+    ActivationKind activation = ActivationKind::Relu;
+    float alpha = 0.0f;
 };
 
 struct Pool2DCodegenDesc : BaseCodegenDesc {

@@ -51,6 +51,10 @@ bool is_supported_node(const std::shared_ptr<const ov::Node>& node, GpuBackend b
             return supported;
         }
         if (backend == GpuBackend::Vulkan) {
+            if (gfx_log_debug_enabled()) {
+                GFX_LOG_DEBUG("Plugin", "Check node: " << node->get_friendly_name()
+                                                       << " (" << node->get_type_name() << ")");
+            }
             const bool supported = vulkan_supports_node(node);
             if (!supported && gfx_log_debug_enabled()) {
                 GFX_LOG_DEBUG("Plugin", "Unsupported node: " << node->get_friendly_name()

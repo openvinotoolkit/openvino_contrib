@@ -28,23 +28,12 @@ GpuBackend resolve_backend_kind_from_properties(const ov::AnyMap& properties,
     if (request.explicit_request) {
         OPENVINO_THROW("GFX: backend '", request.requested, "' is not available on this platform");
     }
-    const auto fallback = fallback_backend_kind();
-    if (!backend_supported(fallback)) {
-        OPENVINO_THROW("GFX: no supported backend available on this platform.");
-    }
-    if (log_fallback) {
-        if (request.explicit_request) {
-            GFX_LOG_WARN(log_tag,
-                         "GFX_BACKEND=" << request.requested
-                                        << " is not available on this platform; falling back to "
-                                        << backend_to_string(fallback));
-        } else {
-            GFX_LOG_WARN(log_tag,
-                         "Default GFX backend is not available on this platform; falling back to "
-                                        << backend_to_string(fallback));
-        }
-    }
-    return fallback;
+    (void)log_fallback;
+    (void)log_tag;
+    const auto default_backend = default_backend_kind();
+    OPENVINO_THROW("GFX: default backend '",
+                   backend_to_string(default_backend),
+                   "' is not available on this platform");
 }
 
 std::string resolve_backend_name_from_properties(const ov::AnyMap& properties,
@@ -101,15 +90,9 @@ RemoteContextParams normalize_remote_context_params(const ov::AnyMap& remote_pro
     }
     GpuBackend resolved_backend = request.explicit_request ? request.kind : default_backend_kind();
     if (!backend_supported(resolved_backend)) {
-        const auto fallback = fallback_backend_kind();
-        if (!backend_supported(fallback)) {
-            OPENVINO_THROW("GFX: no supported backend available for remote context");
-        }
-        GFX_LOG_WARN("RemoteContext",
-                     "Default backend '" << backend_to_string(resolved_backend)
-                                         << "' is not available; falling back to "
-                                         << backend_to_string(fallback));
-        resolved_backend = fallback;
+        OPENVINO_THROW("GFX: default backend '",
+                       backend_to_string(resolved_backend),
+                       "' is not available for remote context");
     }
     params.backend = resolved_backend;
     params.backend_name = backend_to_string(resolved_backend);

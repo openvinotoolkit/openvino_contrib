@@ -188,7 +188,9 @@ if(GFX_BACKEND_METAL_AVAILABLE)
     target_sources(gfx_runtime_metal PRIVATE
         ${GFX_RUNTIME_COMMON_HEADERS}
         ${GFX_RUNTIME_METAL_SOURCES}
-        ${GFX_RUNTIME_METAL_HEADERS})
+        ${GFX_RUNTIME_METAL_HEADERS}
+        $<$<BOOL:${ENABLE_GFX_MLIR}>:${GFX_RUNTIME_METAL_MSL_HEADERS}>
+        $<$<BOOL:${ENABLE_GFX_MLIR}>:${GFX_RUNTIME_METAL_MSL_SOURCES}>)
     target_include_directories(gfx_runtime_metal PRIVATE
         $<$<BOOL:${ENABLE_GFX_MLIR}>:${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/codegen>)
     target_link_libraries(gfx_runtime_metal PRIVATE

@@ -44,15 +44,5 @@ bool backend_supported(GpuBackend backend) {
     }
 }
 
-GpuBackend fallback_backend_kind() {
-    if (backend_supported(GpuBackend::Metal)) {
-        return GpuBackend::Metal;
-    }
-    if (backend_supported(GpuBackend::Vulkan)) {
-        return GpuBackend::Vulkan;
-    }
-    return default_backend_kind();
-}
-
 }  // namespace gfx_plugin
 }  // namespace ov

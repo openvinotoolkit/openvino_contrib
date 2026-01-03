@@ -40,6 +40,10 @@ bool MetalStage::fuse_activation(ActivationKind kind, float alpha) {
     return m_op->fuse_activation(kind, alpha);
 }
 
+bool MetalStage::fuse_batchnorm(const BatchNormParams& params) {
+    return m_op->fuse_batchnorm(params);
+}
+
 void MetalStage::enable_profiling(bool enable) {
     m_op->enable_profiling(enable);
 }

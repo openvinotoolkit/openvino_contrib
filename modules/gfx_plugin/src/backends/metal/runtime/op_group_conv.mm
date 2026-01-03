@@ -10,13 +10,14 @@
 
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"
+#include "openvino/core/type/float16.hpp"
 #include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/metal_memory.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir_codegen/codegen_common.hpp"
+#include "mlir/codegen_common.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -25,6 +26,26 @@ namespace {
 
 inline size_t element_size(const ov::element::Type& t) {
     return t.size();
+}
+
+inline uint32_t to_msl_activation(ActivationKind kind) {
+    switch (kind) {
+        case ActivationKind::Relu: return 1u;
+        case ActivationKind::Sigmoid: return 2u;
+        case ActivationKind::Tanh: return 3u;
+        case ActivationKind::Elu: return 4u;
+        case ActivationKind::Prelu: return 5u;
+        case ActivationKind::Gelu: return 6u;
+        case ActivationKind::Swish: return 7u;
+        case ActivationKind::HSwish: return 8u;
+        case ActivationKind::HSigmoid: return 9u;
+        case ActivationKind::Abs: return 10u;
+        case ActivationKind::Sign: return 11u;
+        case ActivationKind::Clamp: return 12u;
+        case ActivationKind::Identity:
+        default:
+            return 0u;
+    }
 }
 
 }  // namespace
@@ -96,6 +117,31 @@ bool MetalGroupConvOp::fuse_activation(ActivationKind kind, float alpha) {
     m_has_activation = true;
     m_activation = kind;
     m_activation_alpha = alpha;
+    m_desc.has_activation = true;
+    m_desc.activation = kind;
+    m_desc.alpha = alpha;
+    return true;
+}
+
+bool MetalGroupConvOp::fuse_batchnorm(const BatchNormParams& params) {
+    OPENVINO_ASSERT(!is_compiled(), "MetalGroupConvOp: cannot fuse batchnorm after compilation");
+    if (params.empty()) {
+        return false;
+    }
+    const size_t channels = params.gamma.size();
+    if (channels == 0 ||
+        params.beta.size() != channels ||
+        params.mean.size() != channels ||
+        params.var.size() != channels) {
+        return false;
+    }
+    if (m_desc.C_out != 0 && channels != m_desc.C_out) {
+        return false;
+    }
+    m_has_bn = true;
+    m_bn_params = params;
+    m_desc.has_bn = true;
+    m_desc.epsilon = params.epsilon;
     return true;
 }
 
@@ -107,6 +153,7 @@ void MetalGroupConvOp::compile(MetalBufferManager* buffer_manager) {
         MetalOp::init(buffer_manager);
     }
     prepare_weights();
+    prepare_batchnorm();
     OPENVINO_ASSERT(m_device, "MetalGroupConvOp: Metal device is null");
     MetalCodegenBackend backend(m_device);
     std::string log;
@@ -116,6 +163,10 @@ void MetalGroupConvOp::compile(MetalBufferManager* buffer_manager) {
         desc.has_activation = true;
         desc.activation = m_activation;
         desc.alpha = m_activation_alpha;
+    }
+    if (m_has_bn) {
+        desc.has_bn = true;
+        desc.epsilon = m_bn_params.epsilon;
     }
     mlir::ModuleOp module;
     auto msl_desc = desc;
@@ -137,6 +188,47 @@ void MetalGroupConvOp::prepare_weights() {
     const std::string key = m_node->get_friendly_name() + "/weights";
     m_weights = buffer_manager()->wrap_const(key, weights_const->get_data_ptr(), bytes, et);
     OPENVINO_ASSERT(m_weights.valid(), "MetalGroupConvOp: failed to wrap weights buffer");
+}
+
+void MetalGroupConvOp::prepare_batchnorm() {
+    if (!m_has_bn) {
+        return;
+    }
+    OPENVINO_ASSERT(buffer_manager(), "MetalGroupConvOp: buffer manager is null");
+    const ov::element::Type et = (m_element_type == ov::element::dynamic) ? ov::element::f32 : m_element_type;
+    const std::string base = m_node->get_friendly_name() + "/batchnorm/";
+    const size_t channels = m_bn_params.gamma.size();
+    if (channels == 0) {
+        return;
+    }
+
+    auto wrap_const_vec = [&](const std::string& suffix,
+                              const std::vector<float>& src,
+                              std::vector<ov::float16>& storage_f16) -> MetalBuffer {
+        OPENVINO_ASSERT(src.size() == channels, "MetalGroupConvOp: BN buffer size mismatch for ", suffix);
+        if (et == ov::element::f16) {
+            storage_f16.resize(src.size());
+            for (size_t i = 0; i < src.size(); ++i) {
+                storage_f16[i] = ov::float16(src[i]);
+            }
+            return buffer_manager()->wrap_const(base + suffix,
+                                                storage_f16.data(),
+                                                storage_f16.size() * sizeof(ov::float16),
+                                                et);
+        }
+        return buffer_manager()->wrap_const(base + suffix,
+                                            src.data(),
+                                            src.size() * sizeof(float),
+                                            et);
+    };
+
+    m_bn_gamma = wrap_const_vec("gamma", m_bn_params.gamma, m_bn_gamma_f16);
+    m_bn_beta  = wrap_const_vec("beta",  m_bn_params.beta,  m_bn_beta_f16);
+    m_bn_mean  = wrap_const_vec("mean",  m_bn_params.mean,  m_bn_mean_f16);
+    m_bn_var   = wrap_const_vec("var",   m_bn_params.var,   m_bn_var_f16);
+
+    OPENVINO_ASSERT(m_bn_gamma.valid() && m_bn_beta.valid() && m_bn_mean.valid() && m_bn_var.valid(),
+                    "MetalGroupConvOp: failed to wrap batchnorm buffers");
 }
 
 void MetalGroupConvOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
@@ -176,10 +268,10 @@ void MetalGroupConvOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     OPENVINO_ASSERT(m_weights.size >= w_bytes, "MetalGroupConvOp: weights buffer too small");
 
     MetalBuffer bias{};
-    MetalBuffer gamma{};
-    MetalBuffer beta{};
-    MetalBuffer mean{};
-    MetalBuffer var{};
+    MetalBuffer gamma = m_bn_gamma;
+    MetalBuffer beta = m_bn_beta;
+    MetalBuffer mean = m_bn_mean;
+    MetalBuffer var = m_bn_var;
     struct ConvParams {
         uint32_t N, C_in, H, W;
         uint32_t C_out;
@@ -222,10 +314,10 @@ void MetalGroupConvOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     params.outW = static_cast<uint32_t>(out_shape[3]);
     OPENVINO_ASSERT(params.outH > 0 && params.outW > 0, "MetalGroupConvOp: output spatial dims must be positive");
     params.has_bias = 0;
-    params.has_bn = 0;
-    params.activation = m_has_activation ? static_cast<uint32_t>(m_activation) : 0;
+    params.has_bn = m_desc.has_bn ? 1u : 0u;
+    params.activation = m_desc.has_activation ? to_msl_activation(m_desc.activation) : 0u;
     params.alpha = m_activation_alpha;
-    params.epsilon = 0.0f;
+    params.epsilon = m_desc.epsilon;
     params.clamp_min = 0.0f;
     params.clamp_max = 0.0f;
 
