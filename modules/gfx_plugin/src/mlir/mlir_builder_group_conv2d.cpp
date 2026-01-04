@@ -14,6 +14,7 @@
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "runtime/gfx_logger.hpp"
@@ -200,119 +201,69 @@ mlir::ModuleOp build_mlir_group_conv2d_from_model(const std::shared_ptr<const ov
                         w_shape[1] == 1 && w_shape[2] == 1,
                     "GroupConv2D builder: depthwise expects weights shape [G,1,1,KH,KW]");
 
-    const int64_t kh = w_shape[3];
-    const int64_t kw = w_shape[4];
-    auto zero_idx = b.create<mlir::arith::ConstantIndexOp>(loc, 0);
-    auto one_idx = b.create<mlir::arith::ConstantIndexOp>(loc, 1);
-    auto kh_max = b.create<mlir::arith::ConstantIndexOp>(loc, kh);
-    auto kw_max = b.create<mlir::arith::ConstantIndexOp>(loc, kw);
-    auto stride_h = b.create<mlir::arith::ConstantIndexOp>(loc, strides[0]);
-    auto stride_w = b.create<mlir::arith::ConstantIndexOp>(loc, strides[1]);
-    auto dil_h = b.create<mlir::arith::ConstantIndexOp>(loc, dilations[0]);
-    auto dil_w = b.create<mlir::arith::ConstantIndexOp>(loc, dilations[1]);
-    auto pad_h = b.create<mlir::arith::ConstantIndexOp>(loc, pads_begin[0]);
-    auto pad_w = b.create<mlir::arith::ConstantIndexOp>(loc, pads_begin[1]);
-    auto in_h = b.create<mlir::arith::ConstantIndexOp>(loc, in_shape[2]);
-    auto in_w = b.create<mlir::arith::ConstantIndexOp>(loc, in_shape[3]);
+    OPENVINO_ASSERT(mlir::isa<mlir::FloatType>(elem_ty),
+                    "GroupConv2D builder: depthwise expects floating point input");
+
+    auto padded = pad_input(b, loc, input, pads_begin, pads_end);
+    auto out_init = b.create<mlir::tensor::EmptyOp>(loc, out_shape, elem_ty);
     auto zero_val = b.create<mlir::arith::ConstantOp>(loc, b.getZeroAttr(elem_ty));
+    auto out_filled = b.create<mlir::linalg::FillOp>(loc,
+                                                     mlir::ValueRange{zero_val},
+                                                     mlir::ValueRange{out_init.getResult()});
 
     if (gfx_log_debug_enabled()) {
-        GFX_LOG_DEBUG("MLIR", "GroupConv2D constants ready: kh=" << kh << " kw=" << kw);
+        GFX_LOG_DEBUG("MLIR", "GroupConv2D depthwise linalg.generic");
     }
 
-    auto gen = b.create<mlir::tensor::GenerateOp>(loc, out_type, mlir::ValueRange{});
-    if (gfx_log_debug_enabled()) {
-        GFX_LOG_DEBUG("MLIR", "GroupConv2D created tensor.generate");
-    }
+    auto d0 = b.getAffineDimExpr(0);
+    auto d1 = b.getAffineDimExpr(1);
+    auto d2 = b.getAffineDimExpr(2);
+    auto d3 = b.getAffineDimExpr(3);
+    auto d4 = b.getAffineDimExpr(4);
+    auto d5 = b.getAffineDimExpr(5);
+
+    auto in_h_expr = d2 * static_cast<int64_t>(strides[0]) +
+                     d4 * static_cast<int64_t>(dilations[0]);
+    auto in_w_expr = d3 * static_cast<int64_t>(strides[1]) +
+                     d5 * static_cast<int64_t>(dilations[1]);
+
+    auto input_map = mlir::AffineMap::get(6, 0, {d0, d1, in_h_expr, in_w_expr}, &ctx);
+    auto zero = b.getAffineConstantExpr(0);
+    auto weight_map = mlir::AffineMap::get(6, 0, {d1, zero, zero, d4, d5}, &ctx);
+    auto out_map = mlir::AffineMap::get(6, 0, {d0, d1, d2, d3}, &ctx);
+
+    llvm::SmallVector<mlir::AffineMap, 3> maps{input_map, weight_map, out_map};
+    llvm::SmallVector<mlir::utils::IteratorType, 6> iters{
+        mlir::utils::IteratorType::parallel,
+        mlir::utils::IteratorType::parallel,
+        mlir::utils::IteratorType::parallel,
+        mlir::utils::IteratorType::parallel,
+        mlir::utils::IteratorType::reduction,
+        mlir::utils::IteratorType::reduction,
+    };
+
+    auto generic = b.create<mlir::linalg::GenericOp>(
+        loc,
+        out_type,
+        mlir::ValueRange{padded, weight},
+        mlir::ValueRange{out_filled.getResult(0)},
+        maps,
+        iters);
     {
-        mlir::OpBuilder::InsertionGuard guard(b);
-        auto idx_ty = b.getIndexType();
-        auto* body = b.createBlock(&gen.getBody(),
-                                   gen.getBody().begin(),
-                                   {idx_ty, idx_ty, idx_ty, idx_ty},
-                                   {loc, loc, loc, loc});
-        b.setInsertionPointToStart(body);
-        auto n = body->getArgument(0);
-        auto c = body->getArgument(1);
-        auto oh = body->getArgument(2);
-        auto ow = body->getArgument(3);
-
-        auto kh_loop = b.create<mlir::scf::ForOp>(loc,
-                                                  zero_idx,
-                                                  kh_max,
-                                                  one_idx,
-                                                  mlir::ValueRange{zero_val});
-        {
-            mlir::OpBuilder kb(kh_loop.getBody(), kh_loop.getBody()->begin());
-            auto kh_iv = kh_loop.getInductionVar();
-            auto acc_in = kh_loop.getRegionIterArg(0);
-            auto kw_loop = kb.create<mlir::scf::ForOp>(loc,
-                                                       zero_idx,
-                                                       kw_max,
-                                                       one_idx,
-                                                       mlir::ValueRange{acc_in});
-            {
-                mlir::OpBuilder wb(kw_loop.getBody(), kw_loop.getBody()->begin());
-                auto kw_iv = kw_loop.getInductionVar();
-                auto acc = kw_loop.getRegionIterArg(0);
-                auto oh_stride = wb.create<mlir::arith::MulIOp>(loc, oh, stride_h);
-                auto kh_dil = wb.create<mlir::arith::MulIOp>(loc, kh_iv, dil_h);
-                auto ih = wb.create<mlir::arith::SubIOp>(loc,
-                                                         wb.create<mlir::arith::AddIOp>(loc, oh_stride, kh_dil),
-                                                         pad_h);
-                auto ow_stride = wb.create<mlir::arith::MulIOp>(loc, ow, stride_w);
-                auto kw_dil = wb.create<mlir::arith::MulIOp>(loc, kw_iv, dil_w);
-                auto iw = wb.create<mlir::arith::SubIOp>(loc,
-                                                         wb.create<mlir::arith::AddIOp>(loc, ow_stride, kw_dil),
-                                                         pad_w);
-
-                auto ih_ge0 = wb.create<mlir::arith::CmpIOp>(loc,
-                                                             mlir::arith::CmpIPredicate::sge,
-                                                             ih,
-                                                             zero_idx);
-                auto ih_lt = wb.create<mlir::arith::CmpIOp>(loc,
-                                                            mlir::arith::CmpIPredicate::slt,
-                                                            ih,
-                                                            in_h);
-                auto iw_ge0 = wb.create<mlir::arith::CmpIOp>(loc,
-                                                             mlir::arith::CmpIPredicate::sge,
-                                                             iw,
-                                                             zero_idx);
-                auto iw_lt = wb.create<mlir::arith::CmpIOp>(loc,
-                                                            mlir::arith::CmpIPredicate::slt,
-                                                            iw,
-                                                            in_w);
-                auto ih_ok = wb.create<mlir::arith::AndIOp>(loc, ih_ge0, ih_lt);
-                auto iw_ok = wb.create<mlir::arith::AndIOp>(loc, iw_ge0, iw_lt);
-                auto in_bounds = wb.create<mlir::arith::AndIOp>(loc, ih_ok, iw_ok);
-
-                auto if_op = wb.create<mlir::scf::IfOp>(loc, elem_ty, in_bounds, true);
-                {
-                    auto thenb = if_op.getThenBodyBuilder();
-                    auto val = thenb.create<mlir::tensor::ExtractOp>(loc,
-                                                                     input,
-                                                                     mlir::ValueRange{n, c, ih, iw});
-                    thenb.create<mlir::scf::YieldOp>(loc, val.getResult());
-                }
-                {
-                    auto elseb = if_op.getElseBodyBuilder();
-                    elseb.create<mlir::scf::YieldOp>(loc, zero_val.getResult());
-                }
-
-                auto w_val = wb.create<mlir::tensor::ExtractOp>(loc,
-                                                                 weight,
-                                                                 mlir::ValueRange{c, zero_idx, zero_idx, kh_iv, kw_iv});
-                auto mul = wb.create<mlir::arith::MulFOp>(loc, if_op.getResult(0), w_val.getResult());
-                auto acc_next = wb.create<mlir::arith::AddFOp>(loc, acc, mul.getResult());
-                wb.create<mlir::scf::YieldOp>(loc, acc_next.getResult());
-            }
-            kb.create<mlir::scf::YieldOp>(loc, kw_loop.getResult(0));
-        }
-
-        b.create<mlir::tensor::YieldOp>(loc, kh_loop.getResult(0));
+        auto& region = generic.getRegion();
+        region.getBlocks().clear();
+        auto* block = &region.emplaceBlock();
+        block->addArguments({elem_ty, elem_ty, elem_ty}, {loc, loc, loc});
+        mlir::OpBuilder body(block, block->begin());
+        auto in_val = block->getArgument(0);
+        auto w_val = block->getArgument(1);
+        auto acc = block->getArgument(2);
+        auto mul = body.create<mlir::arith::MulFOp>(loc, in_val, w_val);
+        auto sum = body.create<mlir::arith::AddFOp>(loc, acc, mul);
+        body.create<mlir::linalg::YieldOp>(loc, mlir::ValueRange{sum});
     }
 
-    b.create<mlir::func::ReturnOp>(loc, mlir::ValueRange{gen.getResult()});
+    b.create<mlir::func::ReturnOp>(loc, mlir::ValueRange{generic.getResult(0)});
     return module;
 }
 

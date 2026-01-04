@@ -18,7 +18,8 @@ struct KernelInputMapping {
 
 KernelInputMapping build_kernel_inputs(const std::shared_ptr<const ov::Node>& node,
                                        size_t func_inputs,
-                                       const char* stage_name);
+                                       const char* stage_name,
+                                       size_t extra_inputs = 0);
 
 }  // namespace gfx_plugin
 }  // namespace ov

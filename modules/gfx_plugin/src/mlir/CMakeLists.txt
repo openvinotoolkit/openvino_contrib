@@ -66,6 +66,8 @@ set(GFX_MLIR_SOURCES
     ../transforms/fusion_attention.cpp
     ../transforms/fusion_attention_scale_mask.cpp
     ../transforms/conv_parallel_lowering.cpp
+    ../transforms/conv3d_parallel_lowering.cpp
+    ../transforms/matmul_parallel_lowering.cpp
     ../transforms/parallel_fill_fusion.cpp
     ../transforms/parallel_post_fusion.cpp
     mlir_passes.cpp

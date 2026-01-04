@@ -142,6 +142,15 @@ struct BnGlobals {
     mlir::Value bias;
 };
 
+mlir::Value append_func_arg(mlir::func::FuncOp func, mlir::Type type, mlir::Location loc) {
+    auto fn_type = func.getFunctionType();
+    llvm::SmallVector<mlir::Type, 8> inputs(fn_type.getInputs().begin(), fn_type.getInputs().end());
+    inputs.push_back(type);
+    auto new_type = mlir::FunctionType::get(func.getContext(), inputs, fn_type.getResults());
+    func.setType(new_type);
+    return func.getBody().front().addArgument(type, loc);
+}
+
 std::optional<mlir::Value> prepare_bias_global(mlir::linalg::Conv2DNchwFchwOp op,
                                                mlir::IRRewriter& rewriter,
                                                mlir::Type elem_ty) {
@@ -153,24 +162,13 @@ std::optional<mlir::Value> prepare_bias_global(mlir::linalg::Conv2DNchwFchwOp op
     if (!bias_type || bias_type.getRank() != 1) {
         return std::nullopt;
     }
-    auto module = op->getParentOfType<mlir::ModuleOp>();
-    if (!module) {
+    auto func = op->getParentOfType<mlir::func::FuncOp>();
+    if (!func) {
         return std::nullopt;
     }
     auto loc = op.getLoc();
     auto memref_type = mlir::MemRefType::get(bias_type.getShape(), elem_ty);
-    static int64_t bias_id = 0;
-    const std::string bias_name = "_gfx_bias_" + std::to_string(bias_id++);
-
-    mlir::OpBuilder mod_builder(module.getBodyRegion());
-    mod_builder.setInsertionPointToStart(module.getBody());
-    mod_builder.create<mlir::memref::GlobalOp>(
-        loc, bias_name, mod_builder.getStringAttr("private"), memref_type,
-        bias_attr, /*constant=*/true, /*alignment=*/nullptr);
-
-    rewriter.setInsertionPoint(op);
-    auto bias_get = rewriter.create<mlir::memref::GetGlobalOp>(loc, memref_type, bias_name);
-    return bias_get.getResult();
+    return append_func_arg(func, memref_type, loc);
 }
 
 std::optional<BnGlobals> prepare_bn_globals(mlir::linalg::Conv2DNchwFchwOp op,
@@ -186,36 +184,29 @@ std::optional<BnGlobals> prepare_bn_globals(mlir::linalg::Conv2DNchwFchwOp op,
     if (!scale_type || !bias_type || scale_type.getShape() != bias_type.getShape()) {
         return std::nullopt;
     }
-    auto module = op->getParentOfType<mlir::ModuleOp>();
-    if (!module) {
+    auto func = op->getParentOfType<mlir::func::FuncOp>();
+    if (!func) {
         return std::nullopt;
     }
     auto loc = op.getLoc();
     auto memref_type = mlir::MemRefType::get(scale_type.getShape(), elem_ty);
-    static int64_t global_id = 0;
-    const std::string scale_name = "_gfx_bn_scale_" + std::to_string(global_id++);
-    const std::string bias_name = "_gfx_bn_bias_" + std::to_string(global_id++);
-
-    mlir::OpBuilder mod_builder(module.getBodyRegion());
-    mod_builder.setInsertionPointToStart(module.getBody());
-    mod_builder.create<mlir::memref::GlobalOp>(
-        loc, scale_name, mod_builder.getStringAttr("private"), memref_type,
-        scale_attr, /*constant=*/true, /*alignment=*/nullptr);
-    mod_builder.create<mlir::memref::GlobalOp>(
-        loc, bias_name, mod_builder.getStringAttr("private"), memref_type,
-        bias_attr, /*constant=*/true, /*alignment=*/nullptr);
-
-    rewriter.setInsertionPoint(op);
-    auto scale_get = rewriter.create<mlir::memref::GetGlobalOp>(loc, memref_type, scale_name);
-    auto bias_get = rewriter.create<mlir::memref::GetGlobalOp>(loc, memref_type, bias_name);
-    return BnGlobals{scale_get.getResult(), bias_get.getResult()};
+    auto scale_arg = append_func_arg(func, memref_type, loc);
+    auto bias_arg = append_func_arg(func, memref_type, loc);
+    return BnGlobals{scale_arg, bias_arg};
 }
 
 bool extract_hw(mlir::DenseIntElementsAttr attr, int64_t& h, int64_t& w) {
-    if (!attr || attr.getNumElements() != 2) {
+    if (!attr) {
+        return false;
+    }
+    const auto count = static_cast<size_t>(attr.getNumElements());
+    if (count < 2) {
         return false;
     }
     auto it = attr.getValues<int64_t>().begin();
+    for (size_t i = 0; i + 2 < count; ++i) {
+        ++it;
+    }
     h = *it++;
     w = *it++;
     return true;
@@ -287,7 +278,9 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
     int64_t pad_w = 0;
     int64_t pad_end_h = 0;
     int64_t pad_end_w = 0;
-    mlir::scf::ParallelOp pad_fill_parallel;
+    mlir::Operation* pad_fill_loop = nullptr;
+    mlir::Operation* pad_copy_loop = nullptr;
+    const bool has_pad_begin_attr = op->getAttr("gfx.pad_begin") != nullptr;
     if (auto pad_attr = op->getAttrOfType<mlir::DenseIntElementsAttr>("gfx.pad_begin")) {
         (void)extract_hw(pad_attr, pad_h, pad_w);
     }
@@ -296,6 +289,15 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
     }
 
     bool found_copy = false;
+    auto find_outer_loop = [](mlir::Operation* op) -> mlir::Operation* {
+        mlir::Operation* outer = nullptr;
+        for (auto* cur = op; cur; cur = cur->getParentOp()) {
+            if (mlir::isa<mlir::scf::ForOp, mlir::scf::ParallelOp>(cur)) {
+                outer = cur;
+            }
+        }
+        return outer;
+    };
     if (auto func = op->getParentOfType<mlir::func::FuncOp>()) {
         func.walk([&](mlir::memref::StoreOp store) {
             if (strip_memref_casts(store.getMemRef()) != input_base) {
@@ -305,19 +307,20 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
                 if (auto load = store.getValue().getDefiningOp<mlir::memref::LoadOp>()) {
                     conv_input = strip_memref_casts(load.getMemRef());
                     auto indices = store.getIndices();
-                    if (indices.size() >= 4) {
+                    if (!has_pad_begin_attr && indices.size() >= 4) {
                         (void)extract_addi_offset(indices[2], pad_h);
                         (void)extract_addi_offset(indices[3], pad_w);
                     }
+                    pad_copy_loop = find_outer_loop(store);
                     found_copy = true;
                     return;
                 }
             }
-            if (!pad_fill_parallel) {
+            if (!pad_fill_loop) {
                 if (auto cst = store.getValue().getDefiningOp<mlir::arith::ConstantOp>()) {
                     if (auto fattr = mlir::dyn_cast<mlir::FloatAttr>(cst.getValue())) {
                         if (fattr.getValueAsDouble() == 0.0) {
-                            pad_fill_parallel = store->getParentOfType<mlir::scf::ParallelOp>();
+                            pad_fill_loop = find_outer_loop(store);
                         }
                     }
                 }
@@ -354,7 +357,19 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
         }
     }
 
-    const bool using_padded_input = (strip_memref_casts(conv_input) == input_base);
+    const bool input_is_padded = (pad_fill_loop != nullptr || pad_copy_loop != nullptr);
+    const bool using_padded_input = input_is_padded && (strip_memref_casts(conv_input) == input_base);
+    bool prefer_parallel = true;
+    if (auto module = op->getParentOfType<mlir::ModuleOp>()) {
+        if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.prefer_parallel")) {
+            prefer_parallel = attr.getValue();
+        }
+    }
+    const bool has_explicit_padding = (pad_h != 0 || pad_w != 0 || pad_end_h != 0 || pad_end_w != 0 ||
+                                       pad_fill_loop != nullptr || pad_copy_loop != nullptr);
+    if (!prefer_parallel && !has_explicit_padding) {
+        return false;
+    }
     if (gfx_log_debug_enabled()) {
         GFX_LOG_DEBUG("MLIR", "Conv2D pad detect: conv_input="
                                   << (using_padded_input ? "padded" : "orig")
@@ -463,8 +478,8 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
     if (auto alpha_attr = op->getAttrOfType<mlir::FloatAttr>("gfx.activation_alpha")) {
         activation_alpha = static_cast<float>(alpha_attr.getValueAsDouble());
     }
-    auto bn_globals = prepare_bn_globals(op, rewriter, elem_ty);
     auto bias_global = prepare_bias_global(op, rewriter, elem_ty);
+    auto bn_globals = prepare_bn_globals(op, rewriter, elem_ty);
 
     auto h_tiles_num = rewriter.create<mlir::arith::AddIOp>(loc, H_out, tileH_minus1);
     auto w_tiles_num = rewriter.create<mlir::arith::AddIOp>(loc, W_out, tileW_minus1);
@@ -518,12 +533,11 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
         ow_in_vals.push_back(rewriter.create<mlir::arith::CmpIOp>(
             loc, mlir::arith::CmpIPredicate::slt, ow, W_out));
     }
-    const bool needs_bounds = !using_padded_input;
-    const int64_t effective_pad_h = using_padded_input ? 0 : pad_h;
-    const int64_t effective_pad_w = using_padded_input ? 0 : pad_w;
+    const bool needs_bounds = has_explicit_padding && !using_padded_input;
+    const int64_t effective_pad_h = needs_bounds ? pad_h : 0;
+    const int64_t effective_pad_w = needs_bounds ? pad_w : 0;
     auto padH = rewriter.create<mlir::arith::ConstantIndexOp>(loc, effective_pad_h);
     auto padW = rewriter.create<mlir::arith::ConstantIndexOp>(loc, effective_pad_w);
-
     rewriter.create<mlir::scf::ForOp>(
         loc, c0, N, c1, mlir::ValueRange{},
         [&](mlir::OpBuilder& b, mlir::Location body_loc, mlir::Value iv_n, mlir::ValueRange) {
@@ -595,12 +609,8 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
                                         for (int64_t i = 0; i < lane_count; ++i) {
                                             auto oh_mul = b5.create<mlir::arith::MulIOp>(loc5, lane_oh[i], strideH);
                                             auto ow_mul = b5.create<mlir::arith::MulIOp>(loc5, lane_ow[i], strideW);
-                                            mlir::Value ih = b5.create<mlir::arith::AddIOp>(loc5, oh_mul, kh_mul).getResult();
-                                            mlir::Value iw = b5.create<mlir::arith::AddIOp>(loc5, ow_mul, kw_mul).getResult();
-                                            if (needs_bounds) {
-                                                ih = b5.create<mlir::arith::SubIOp>(loc5, ih, padH).getResult();
-                                                iw = b5.create<mlir::arith::SubIOp>(loc5, iw, padW).getResult();
-                                            }
+                                            mlir::Value ih_padded = b5.create<mlir::arith::AddIOp>(loc5, oh_mul, kh_mul).getResult();
+                                            mlir::Value iw_padded = b5.create<mlir::arith::AddIOp>(loc5, ow_mul, kw_mul).getResult();
                                             auto if_lane = b5.create<mlir::scf::IfOp>(
                                                 loc5, acc_kw[i].getType(), lane_in[i], /*withElse=*/true);
                                             {
@@ -608,6 +618,8 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
                                                 b5.setInsertionPointToStart(&if_lane.getThenRegion().front());
                                                 mlir::Value acc_next = acc_kw[i];
                                                 if (needs_bounds) {
+                                                    auto ih = b5.create<mlir::arith::SubIOp>(loc5, ih_padded, padH).getResult();
+                                                    auto iw = b5.create<mlir::arith::SubIOp>(loc5, iw_padded, padW).getResult();
                                                     auto ge_h = b5.create<mlir::arith::CmpIOp>(
                                                         loc5, mlir::arith::CmpIPredicate::sge, ih, c0);
                                                     auto lt_h = b5.create<mlir::arith::CmpIOp>(
@@ -638,7 +650,7 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
                                                     acc_next = ifop2.getResult(0);
                                                 } else {
                                                     auto in_val = b5.create<mlir::memref::LoadOp>(
-                                                        loc5, conv_input, mlir::ValueRange{iv_n, iv_ic, ih, iw}).getResult();
+                                                        loc5, conv_input, mlir::ValueRange{iv_n, iv_ic, ih_padded, iw_padded}).getResult();
                                                     auto mul = b5.create<mlir::arith::MulFOp>(loc5, in_val, w_val);
                                                     acc_next = b5.create<mlir::arith::AddFOp>(loc5, acc_kw[i], mul).getResult();
                                                 }
@@ -706,8 +718,23 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
     if (fill_op) {
         rewriter.eraseOp(fill_op);
     }
-    if (pad_fill_parallel && !using_padded_input) {
-        rewriter.eraseOp(pad_fill_parallel);
+    if (!using_padded_input) {
+        if (pad_copy_loop && pad_copy_loop->getParentOp()) {
+            rewriter.eraseOp(pad_copy_loop);
+        }
+        if (pad_fill_loop && pad_fill_loop->getParentOp() && pad_fill_loop != pad_copy_loop) {
+            rewriter.eraseOp(pad_fill_loop);
+        }
+        if (auto alloc = input_base.getDefiningOp<mlir::memref::AllocOp>()) {
+            if (alloc->use_empty()) {
+                rewriter.eraseOp(alloc);
+            }
+        }
+        if (auto alloca = input_base.getDefiningOp<mlir::memref::AllocaOp>()) {
+            if (alloca->use_empty()) {
+                rewriter.eraseOp(alloca);
+            }
+        }
     }
     return true;
 }

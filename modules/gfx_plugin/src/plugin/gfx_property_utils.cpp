@@ -4,6 +4,8 @@
 
 #include "gfx_property_utils.hpp"
 
+#include <cstdint>
+
 #include "openvino/core/except.hpp"
 #include "plugin/gfx_profiling_utils.hpp"
 
@@ -109,12 +111,12 @@ bool apply_profiling_property(const std::string& key,
                               bool& profiling_level_set,
                               ov::AnyMap& config) {
     if (key == ov::enable_profiling.name()) {
-        enable_profiling = value.as<bool>();
+        enable_profiling = parse_bool_property(value, key);
         config[key] = enable_profiling;
         return true;
     }
     if (key == "PERF_COUNT") {  // legacy spelling accepted by benchmark_app
-        enable_profiling = value.as<bool>();
+        enable_profiling = parse_bool_property(value, key);
         config[ov::enable_profiling.name()] = enable_profiling;
         config[key] = enable_profiling;
         return true;
@@ -126,6 +128,34 @@ bool apply_profiling_property(const std::string& key,
         return true;
     }
     return false;
+}
+
+bool parse_bool_property(const ov::Any& value, const std::string& key) {
+    if (value.is<bool>()) {
+        return value.as<bool>();
+    }
+    if (value.is<std::string>()) {
+        auto text = ov::util::to_lower(value.as<std::string>());
+        if (text == "true" || text == "1" || text == "yes" || text == "on") {
+            return true;
+        }
+        if (text == "false" || text == "0" || text == "no" || text == "off") {
+            return false;
+        }
+    }
+    if (value.is<int>()) {
+        return value.as<int>() != 0;
+    }
+    if (value.is<int64_t>()) {
+        return value.as<int64_t>() != 0;
+    }
+    if (value.is<uint32_t>()) {
+        return value.as<uint32_t>() != 0;
+    }
+    if (value.is<uint64_t>()) {
+        return value.as<uint64_t>() != 0;
+    }
+    OPENVINO_THROW("GFX: property '", key, "' expects a boolean value");
 }
 
 }  // namespace gfx_plugin

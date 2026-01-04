@@ -3,6 +3,7 @@
 //
 #pragma once
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <string>
@@ -202,6 +203,7 @@ private:
 
     bool m_profiling_enabled = false;
     double m_last_duration_ms = 0.0;
+    std::chrono::steady_clock::time_point m_profile_start_time{};
     MetalProfiler* m_profiler = nullptr;  // non-owning
     uint32_t m_profile_node_id = 0;
     int32_t m_gpu_sample_begin = -1;

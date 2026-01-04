@@ -269,7 +269,7 @@ void Plugin::set_property(const ov::AnyMap& properties) {
             const auto backend = resolve_backend_name_from_properties(tmp, /*log_fallback=*/true, "Plugin");
             m_config[kv.first] = backend;
         } else if (kv.first == kGfxEnableFusionProperty) {
-            m_config[kv.first] = kv.second.as<bool>();
+            m_config[kv.first] = parse_bool_property(kv.second, kv.first);
         } else if (kv.first == ov::hint::inference_precision.name()) {
             m_config[kv.first] = kv.second.as<ov::element::Type>();
         } else if (kv.first == ov::internal::threads_per_stream.name()) {

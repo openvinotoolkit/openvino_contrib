@@ -5,6 +5,7 @@
 #include "backends/vulkan/runtime/vulkan_executor.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <sstream>
 
@@ -35,6 +36,7 @@
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/batch_norm.hpp"
 #include "openvino/op/constant.hpp"
+#include "openvino/op/group_conv.hpp"
 #include "openvino/op/log_softmax.hpp"
 #include "openvino/op/matmul.hpp"
 #include "openvino/op/softmax.hpp"
@@ -76,6 +78,16 @@ size_t count_scalar_inputs(mlir::func::FuncOp func) {
         }
     }
     return scalar_inputs;
+}
+
+size_t infer_extra_inputs_for_mapping(size_t buffer_inputs,
+                                      size_t node_inputs,
+                                      size_t extra_inputs) {
+    if (buffer_inputs <= node_inputs) {
+        return 0;
+    }
+    const size_t inferred = buffer_inputs - node_inputs;
+    return std::min(inferred, extra_inputs);
 }
 
 std::vector<int32_t> extract_kernel_scalar_args(mlir::ModuleOp module) {
@@ -316,14 +328,14 @@ void VulkanStage::compile(GpuBufferManager* buffer_manager) {
             m_const_buffers->present[i] = true;
         }
     }
+    m_kernel_extra_inputs.clear();
+    ov::element::Type out_et = ov::element::dynamic;
+    if (m_node) {
+        out_et = m_node->get_output_element_type(0);
+    }
     if (m_has_bias) {
-        m_kernel_extra_inputs.clear();
         const size_t count = m_bias_params.values.size();
         if (count) {
-            ov::element::Type out_et = ov::element::dynamic;
-            if (m_node) {
-                out_et = m_node->get_output_element_type(0);
-            }
             ov::element::Type bias_et = out_et == ov::element::dynamic ? m_bias_params.element_type : out_et;
             if (bias_et == ov::element::dynamic) {
                 bias_et = ov::element::f32;
@@ -352,30 +364,86 @@ void VulkanStage::compile(GpuBufferManager* buffer_manager) {
             GpuTensor tensor;
             tensor.buf = buf;
             tensor.expected_type = bias_et;
-            size_t out_rank = m_bias_params.shape.size();
-            if (m_node) {
-                const auto& pshape = m_node->get_output_partial_shape(0);
-                if (pshape.rank().is_static()) {
-                    out_rank = static_cast<size_t>(pshape.rank().get_length());
+            const bool conv_like = (m_type == "Convolution" || m_type == "GroupConvolution");
+            if (conv_like) {
+                tensor.shape = ov::Shape{m_bias_params.values.size()};
+            } else {
+                size_t out_rank = m_bias_params.shape.size();
+                if (m_node) {
+                    const auto& pshape = m_node->get_output_partial_shape(0);
+                    if (pshape.rank().is_static()) {
+                        out_rank = static_cast<size_t>(pshape.rank().get_length());
+                    }
                 }
-            }
-            std::vector<int64_t> aligned_shape(out_rank, 1);
-            if (out_rank >= m_bias_params.shape.size()) {
-                const size_t offset = out_rank - m_bias_params.shape.size();
-                for (size_t i = 0; i < m_bias_params.shape.size(); ++i) {
-                    aligned_shape[offset + i] = m_bias_params.shape[i];
+                std::vector<int64_t> aligned_shape(out_rank, 1);
+                if (out_rank >= m_bias_params.shape.size()) {
+                    const size_t offset = out_rank - m_bias_params.shape.size();
+                    for (size_t i = 0; i < m_bias_params.shape.size(); ++i) {
+                        aligned_shape[offset + i] = m_bias_params.shape[i];
+                    }
                 }
+                ov::Shape bias_shape;
+                bias_shape.reserve(aligned_shape.size());
+                for (auto dim : aligned_shape) {
+                    bias_shape.push_back(static_cast<size_t>(dim));
+                }
+                tensor.shape = std::move(bias_shape);
             }
-            ov::Shape bias_shape;
-            bias_shape.reserve(aligned_shape.size());
-            for (auto dim : aligned_shape) {
-                bias_shape.push_back(static_cast<size_t>(dim));
-            }
-            tensor.shape = std::move(bias_shape);
             m_kernel_extra_inputs.push_back(std::move(tensor));
         }
-    } else {
-        m_kernel_extra_inputs.clear();
+    }
+    if (m_has_bn && !m_bn_params.empty()) {
+        const size_t channels = m_bn_params.gamma.size();
+        if (channels &&
+            m_bn_params.beta.size() == channels &&
+            m_bn_params.mean.size() == channels &&
+            m_bn_params.var.size() == channels) {
+            ov::element::Type bn_et = out_et == ov::element::dynamic ? ov::element::f32 : out_et;
+            std::vector<float> scale_vals(channels);
+            std::vector<float> bias_vals(channels);
+            for (size_t c = 0; c < channels; ++c) {
+                const float gamma = m_bn_params.gamma[c];
+                const float beta = m_bn_params.beta[c];
+                const float mean = m_bn_params.mean[c];
+                const float var = m_bn_params.var[c];
+                const float inv_std = 1.0f / std::sqrt(var + m_bn_params.epsilon);
+                const float scale = gamma * inv_std;
+                const float bias = beta - mean * scale;
+                scale_vals[c] = scale;
+                bias_vals[c] = bias;
+            }
+            auto wrap_bn = [&](const std::string& suffix,
+                               const std::vector<float>& vals) -> GpuTensor {
+                GpuTensor tensor;
+                const std::string key = m_name + "/" + suffix;
+                GpuBuffer buf;
+                if (bn_et == ov::element::f16) {
+                    std::vector<ov::float16> tmp(vals.size());
+                    for (size_t i = 0; i < vals.size(); ++i) {
+                        tmp[i] = ov::float16(vals[i]);
+                    }
+                    buf = m_buffer_manager->wrap_const(key,
+                                                       tmp.data(),
+                                                       tmp.size() * sizeof(ov::float16),
+                                                       bn_et);
+                } else {
+                    buf = m_buffer_manager->wrap_const(key,
+                                                       vals.data(),
+                                                       vals.size() * sizeof(float),
+                                                       bn_et);
+                }
+                OPENVINO_ASSERT(buf.valid(),
+                                "GFX Vulkan: failed to wrap batchnorm buffer for stage ",
+                                m_name);
+                buf.owned = false;
+                tensor.buf = buf;
+                tensor.expected_type = bn_et;
+                tensor.shape = ov::Shape{channels};
+                return tensor;
+            };
+            m_kernel_extra_inputs.push_back(wrap_bn("bn_scale", scale_vals));
+            m_kernel_extra_inputs.push_back(wrap_bn("bn_bias", bias_vals));
+        }
     }
     if (m_type == "Softmax" || m_type == "LogSoftmax" ||
         m_type == "Split" || m_type == "VariadicSplit") {
@@ -389,17 +457,14 @@ void VulkanStage::compile(GpuBufferManager* buffer_manager) {
         if (!mod) {
             return;
         }
-        const bool is_elementwise =
-            (m_type == "Add" || m_type == "Subtract" || m_type == "Multiply" ||
-             m_type == "Divide" || m_type == "Power" || m_type == "Mod" ||
-             m_type == "FloorMod" || m_type == "PRelu" || m_type == "Minimum" ||
-             m_type == "Maximum" || m_type == "LogicalAnd" || m_type == "LogicalOr" ||
-             m_type == "LogicalXor" || m_type == "Equal" || m_type == "NotEqual" ||
-             m_type == "Less" || m_type == "Greater" || m_type == "LessEqual" ||
-             m_type == "GreaterEqual" || m_type == "SquaredDifference");
-        const bool prefer_parallel =
-            (m_type == "Convolution" || m_type == "GroupConvolution" || m_type == "MatMul" ||
-             is_elementwise);
+        bool conv2d = false;
+        if (m_node && (m_type == "Convolution" || m_type == "GroupConvolution")) {
+            auto in_shape = m_node->get_input_partial_shape(0);
+            if (in_shape.rank().is_static() && in_shape.rank().get_length() == 4) {
+                conv2d = true;
+            }
+        }
+        bool prefer_parallel = conv2d || (m_type == "MatMul");
         mod->setAttr("gfx.prefer_parallel",
                      mlir::BoolAttr::get(mod.getContext(), prefer_parallel));
     };
@@ -446,9 +511,29 @@ void VulkanStage::compile(GpuBufferManager* buffer_manager) {
     if (output_args <= buffer_inputs) {
         buffer_inputs -= output_args;
     }
-    auto mapping = build_kernel_inputs(m_node, buffer_inputs, m_name.c_str());
+    m_kernel_input_arg_count = buffer_inputs;
+    const size_t node_inputs = m_node ? m_node->get_input_size() : 0;
+    const size_t extra_inputs_for_mapping =
+        infer_extra_inputs_for_mapping(buffer_inputs, node_inputs, m_kernel_extra_inputs.size());
+    auto mapping = build_kernel_inputs(m_node,
+                                       buffer_inputs,
+                                       m_name.c_str(),
+                                       extra_inputs_for_mapping);
     func_inputs = mapping.func_inputs;
     m_kernel_inputs = std::move(mapping.kernel_inputs);
+    if (gfx_log_debug_enabled()) {
+        GFX_LOG_DEBUG("VulkanExec",
+                      "Kernel signature: entry=" << entry
+                                                 << " func_inputs=" << signature.inputs
+                                                 << " func_results=" << signature.results
+                                                 << " scalar_inputs=" << scalar_inputs
+                                                 << " output_args=" << output_args
+                                                 << " buffer_inputs=" << buffer_inputs
+                                                 << " extra_inputs=" << m_kernel_extra_inputs.size()
+                                                 << " extra_inputs_map=" << extra_inputs_for_mapping
+                                                 << " kernel_inputs=" << m_kernel_inputs.size()
+                                                 << " node_inputs=" << node_inputs);
+    }
     if (m_node && func_results == 0) {
         func_results = m_node->get_output_size();
     }
@@ -482,6 +567,10 @@ void VulkanStage::compile(GpuBufferManager* buffer_manager) {
         } else {
             m_parallel_dispatch = false;
         }
+        m_parallel_loop_dims = 0;
+        if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.parallel_loop_dims")) {
+            m_parallel_loop_dims = static_cast<size_t>(attr.getInt());
+        }
         m_dispatch_tile_h = 1;
         m_dispatch_tile_w = 1;
         m_dispatch_threads_h = 1;
@@ -507,6 +596,21 @@ void VulkanStage::compile(GpuBufferManager* buffer_manager) {
         m_kernel_operand_kinds = extract_kernel_operand_kinds(module);
         m_kernel_operand_arg_indices = extract_kernel_operand_arg_indices(module);
         m_kernel_scalar_args = extract_kernel_scalar_values(module);
+        if (!m_kernel_operand_arg_indices.empty()) {
+            int32_t max_idx = -1;
+            for (auto idx : m_kernel_operand_arg_indices) {
+                if (idx > max_idx) {
+                    max_idx = idx;
+                }
+            }
+            if (max_idx >= 0) {
+                const size_t total_buffer_args = static_cast<size_t>(max_idx) + 1;
+                const size_t output_arg_count = m_node ? m_node->get_output_size() : 0;
+                if (output_arg_count <= total_buffer_args) {
+                    m_kernel_input_arg_count = total_buffer_args - output_arg_count;
+                }
+            }
+        }
         if (m_kernel_operand_kinds.empty() && scalar_inputs != 0) {
             OPENVINO_ASSERT(m_kernel_scalar_args.size() == scalar_inputs,
                             "GFX Vulkan: kernel scalar args mismatch for ",
@@ -677,8 +781,15 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
             if (output_args <= buffer_inputs) {
                 buffer_inputs -= output_args;
             }
+            m_kernel_input_arg_count = buffer_inputs;
             if (m_node) {
-                auto mapping = build_kernel_inputs(m_node, buffer_inputs, m_name.c_str());
+                const size_t node_inputs = m_node->get_input_size();
+                const size_t extra_inputs_for_mapping =
+                    infer_extra_inputs_for_mapping(buffer_inputs, node_inputs, m_kernel_extra_inputs.size());
+                auto mapping = build_kernel_inputs(m_node,
+                                                   buffer_inputs,
+                                                   m_name.c_str(),
+                                                   extra_inputs_for_mapping);
                 m_kernel_inputs = std::move(mapping.kernel_inputs);
             }
             const uint32_t arg_count = signature.total()
@@ -711,6 +822,10 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
                 } else {
                     m_parallel_dispatch = false;
                 }
+                m_parallel_loop_dims = 0;
+                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.parallel_loop_dims")) {
+                    m_parallel_loop_dims = static_cast<size_t>(attr.getInt());
+                }
                 m_dispatch_tile_h = 1;
                 m_dispatch_tile_w = 1;
                 m_dispatch_threads_h = 1;
@@ -736,6 +851,21 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
                 m_kernel_operand_kinds = extract_kernel_operand_kinds(module);
                 m_kernel_operand_arg_indices = extract_kernel_operand_arg_indices(module);
                 m_kernel_scalar_args = extract_kernel_scalar_values(module);
+                if (!m_kernel_operand_arg_indices.empty()) {
+                    int32_t max_idx = -1;
+                    for (auto idx : m_kernel_operand_arg_indices) {
+                        if (idx > max_idx) {
+                            max_idx = idx;
+                        }
+                    }
+                    if (max_idx >= 0) {
+                        const size_t total_buffer_args = static_cast<size_t>(max_idx) + 1;
+                        const size_t output_arg_count = outputs.size();
+                        if (output_arg_count <= total_buffer_args) {
+                            m_kernel_input_arg_count = total_buffer_args - output_arg_count;
+                        }
+                    }
+                }
                 if (m_kernel_operand_kinds.empty() && scalar_inputs != 0) {
                     OPENVINO_ASSERT(m_kernel_scalar_args.size() == scalar_inputs,
                                     "GFX Vulkan: kernel scalar args mismatch for ",
@@ -836,7 +966,14 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
             if (output_args <= buffer_inputs) {
                 buffer_inputs -= output_args;
             }
-            auto mapping = build_kernel_inputs(m_node, buffer_inputs, "Split");
+            m_kernel_input_arg_count = buffer_inputs;
+            const size_t node_inputs = m_node ? m_node->get_input_size() : 0;
+            const size_t extra_inputs_for_mapping =
+                infer_extra_inputs_for_mapping(buffer_inputs, node_inputs, m_kernel_extra_inputs.size());
+            auto mapping = build_kernel_inputs(m_node,
+                                               buffer_inputs,
+                                               "Split",
+                                               extra_inputs_for_mapping);
             func_inputs = mapping.func_inputs;
             m_kernel_inputs = std::move(mapping.kernel_inputs);
             if (func_results == 0) {
@@ -871,6 +1008,10 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
                 } else {
                     m_parallel_dispatch = false;
                 }
+                m_parallel_loop_dims = 0;
+                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.parallel_loop_dims")) {
+                    m_parallel_loop_dims = static_cast<size_t>(attr.getInt());
+                }
                 m_dispatch_tile_h = 1;
                 m_dispatch_tile_w = 1;
                 m_dispatch_threads_h = 1;
@@ -896,6 +1037,21 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
                 m_kernel_operand_kinds = extract_kernel_operand_kinds(module);
                 m_kernel_operand_arg_indices = extract_kernel_operand_arg_indices(module);
                 m_kernel_scalar_args = extract_kernel_scalar_values(module);
+                if (!m_kernel_operand_arg_indices.empty()) {
+                    int32_t max_idx = -1;
+                    for (auto idx : m_kernel_operand_arg_indices) {
+                        if (idx > max_idx) {
+                            max_idx = idx;
+                        }
+                    }
+                    if (max_idx >= 0) {
+                        const size_t total_buffer_args = static_cast<size_t>(max_idx) + 1;
+                        const size_t output_arg_count = outputs.size();
+                        if (output_arg_count <= total_buffer_args) {
+                            m_kernel_input_arg_count = total_buffer_args - output_arg_count;
+                        }
+                    }
+                }
                 if (m_kernel_operand_kinds.empty() && scalar_inputs != 0) {
                     OPENVINO_ASSERT(m_kernel_scalar_args.size() == scalar_inputs,
                                     "GFX Vulkan: kernel scalar args mismatch for ",
@@ -1030,7 +1186,8 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
         size_t extra_pos = 0;
         const bool has_arg_indices =
             m_kernel_operand_arg_indices.size() == m_kernel_operand_kinds.size();
-        const size_t input_arg_count = m_kernel_inputs.size();
+        const size_t input_arg_count =
+            (m_kernel_input_arg_count != 0) ? m_kernel_input_arg_count : m_kernel_inputs.size();
         for (size_t op_idx = 0; op_idx < m_kernel_operand_kinds.size(); ++op_idx) {
             const auto kind = m_kernel_operand_kinds[op_idx];
             if (kind == 0) {
@@ -1055,17 +1212,35 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
             if (arg_idx >= 0) {
                 const size_t uarg = static_cast<size_t>(arg_idx);
                 if (uarg < input_arg_count) {
-                    const size_t input_idx = m_kernel_inputs[uarg];
-                    GpuTensor* t = resolve_input_tensor(input_idx);
-                    OPENVINO_ASSERT(t && t->buf.valid(),
-                                    "GFX Vulkan: missing input buffer for stage ",
+                    if (uarg < m_kernel_inputs.size()) {
+                        const size_t input_idx = m_kernel_inputs[uarg];
+                        GpuTensor* t = resolve_input_tensor(input_idx);
+                        OPENVINO_ASSERT(t && t->buf.valid(),
+                                        "GFX Vulkan: missing input buffer for stage ",
+                                        m_name);
+                        args.push_back(make_buffer_arg(arg_index++, t->buf));
+                        if (gfx_log_debug_enabled()) {
+                            if (op_idx) {
+                                arg_map << ", ";
+                            }
+                            arg_map << "arg" << op_idx << "=input[" << input_idx << "]";
+                        }
+                        continue;
+                    }
+                    const size_t extra_idx = uarg - m_kernel_inputs.size();
+                    OPENVINO_ASSERT(extra_idx < m_kernel_extra_inputs.size(),
+                                    "GFX Vulkan: missing extra buffer for stage ",
                                     m_name);
-                    args.push_back(make_buffer_arg(arg_index++, t->buf));
+                    auto& extra = m_kernel_extra_inputs[extra_idx];
+                    OPENVINO_ASSERT(extra.buf.valid(),
+                                    "GFX Vulkan: missing extra buffer for stage ",
+                                    m_name);
+                    args.push_back(make_buffer_arg(arg_index++, extra.buf));
                     if (gfx_log_debug_enabled()) {
                         if (op_idx) {
                             arg_map << ", ";
                         }
-                        arg_map << "arg" << op_idx << "=input[" << input_idx << "]";
+                        arg_map << "arg" << op_idx << "=extra[" << extra_idx << "]";
                     }
                     continue;
                 }
@@ -1133,7 +1308,8 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
             GFX_LOG_DEBUG("VulkanExec", arg_map.str());
         }
     } else {
-        args.reserve(m_kernel_scalar_args.size() + m_kernel_inputs.size() + outputs.size());
+        args.reserve(m_kernel_scalar_args.size() + m_kernel_inputs.size() +
+                     m_kernel_extra_inputs.size() + outputs.size());
         scalar_storage = m_kernel_scalar_args;
         for (auto& v : scalar_storage) {
             args.push_back(make_bytes_arg(arg_index++, &v, sizeof(v)));
@@ -1145,6 +1321,12 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
                             "GFX Vulkan: missing input buffer for stage ",
                             m_name);
             args.push_back(make_buffer_arg(arg_index++, t->buf));
+        }
+        for (auto& extra : m_kernel_extra_inputs) {
+            OPENVINO_ASSERT(extra.buf.valid(),
+                            "GFX Vulkan: missing extra buffer for stage ",
+                            m_name);
+            args.push_back(make_buffer_arg(arg_index++, extra.buf));
         }
         for (auto* out : outputs) {
             OPENVINO_ASSERT(out && out->buf.valid(),
@@ -1165,25 +1347,59 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
         const uint64_t tile_w = m_dispatch_tile_w ? m_dispatch_tile_w : 1;
         const uint64_t thread_h = m_dispatch_threads_h ? m_dispatch_threads_h : 1;
         const uint64_t thread_w = m_dispatch_threads_w ? m_dispatch_threads_w : 1;
+        const bool wants_threads = (thread_h > 1 || thread_w > 1);
         if (rank == 1) {
-            dispatch.grid[0] = shape[0];
+            dispatch.grid[0] = wants_threads ? (shape[0] * thread_w) : shape[0];
         } else if (rank == 2) {
-            dispatch.grid[0] = shape[0];
-            dispatch.grid[1] = shape[1];
+            dispatch.grid[0] = wants_threads ? (shape[0] * thread_w) : shape[0];
+            dispatch.grid[1] = wants_threads ? (shape[1] * thread_h) : shape[1];
         } else if (rank >= 3) {
             const uint64_t c = shape[rank - 3];
             const uint64_t h = shape[rank - 2];
             const uint64_t w = shape[rank - 1];
-            const uint64_t h_tiles = (h + tile_h - 1) / tile_h;
-            const uint64_t w_tiles = (w + tile_w - 1) / tile_w;
-            dispatch.grid[0] = c * thread_w;
-            dispatch.grid[1] = h_tiles * thread_h;
-            dispatch.grid[2] = w_tiles;
+            if (wants_threads && m_parallel_loop_dims >= 3) {
+                const uint64_t h_tiles = (h + tile_h - 1) / tile_h;
+                const uint64_t w_tiles = (w + tile_w - 1) / tile_w;
+                const size_t block_dims = m_parallel_loop_dims > 2 ? m_parallel_loop_dims - 2 : 0;
+                if (m_parallel_loop_dims == 3) {
+                    dispatch.grid[0] = c * thread_w;
+                    dispatch.grid[1] = h_tiles * thread_h;
+                    dispatch.grid[2] = w_tiles;
+                } else if (block_dims >= 3) {
+                    dispatch.grid[0] = c * thread_w;
+                    dispatch.grid[1] = h_tiles * thread_h;
+                    dispatch.grid[2] = w_tiles;
+                } else if (block_dims == 2) {
+                    dispatch.grid[0] = h_tiles * thread_h;
+                    dispatch.grid[1] = w_tiles * thread_w;
+                    dispatch.grid[2] = 1;
+                } else {
+                    dispatch.grid[0] = (c > 1) ? c : (h_tiles * w_tiles);
+                    dispatch.grid[1] = 1;
+                    dispatch.grid[2] = 1;
+                }
+            } else {
+                const uint64_t h_tiles = (h + tile_h - 1) / tile_h;
+                const uint64_t w_tiles = (w + tile_w - 1) / tile_w;
+                dispatch.grid[0] = c * thread_w;
+                dispatch.grid[1] = h_tiles * thread_h;
+                dispatch.grid[2] = w_tiles;
+            }
         }
         dispatch.threads_per_group[0] =
             m_kernel ? m_kernel->clamp_threadgroup_size(thread_w) : thread_w;
         dispatch.threads_per_group[1] = thread_h;
         dispatch.threads_per_group[2] = 1;
+        if (gfx_log_debug_enabled()) {
+            GFX_LOG_DEBUG("VulkanExec",
+                          "Dispatch grid=(" << dispatch.grid[0] << ", "
+                                            << dispatch.grid[1] << ", "
+                                            << dispatch.grid[2] << ")"
+                                            << " tpg=(" << dispatch.threads_per_group[0] << ", "
+                                            << dispatch.threads_per_group[1] << ", "
+                                            << dispatch.threads_per_group[2] << ")"
+                                            << " loops=" << m_parallel_loop_dims);
+        }
     } else {
         dispatch.grid[0] = 1;
         dispatch.grid[1] = 1;
@@ -1345,8 +1561,10 @@ std::unique_ptr<GpuStage> VulkanStage::clone() const {
     stage->m_output_shape = m_output_shape;
     stage->m_last_input_shape = m_last_input_shape;
     stage->m_kernel_inputs = m_kernel_inputs;
+    stage->m_kernel_input_arg_count = m_kernel_input_arg_count;
     stage->m_const_buffers = m_const_buffers;
     stage->m_parallel_dispatch = m_parallel_dispatch;
+    stage->m_parallel_loop_dims = m_parallel_loop_dims;
     stage->m_dispatch_tile_h = m_dispatch_tile_h;
     stage->m_dispatch_tile_w = m_dispatch_tile_w;
     stage->m_dispatch_threads_h = m_dispatch_threads_h;

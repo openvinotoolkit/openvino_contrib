@@ -60,5 +60,7 @@ bool apply_profiling_property(const std::string& key,
                               bool& profiling_level_set,
                               ov::AnyMap& config);
 
+bool parse_bool_property(const ov::Any& value, const std::string& key);
+
 }  // namespace gfx_plugin
 }  // namespace ov

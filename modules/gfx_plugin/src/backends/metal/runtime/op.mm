@@ -247,6 +247,7 @@ void MetalOp::set_profiler(MetalProfiler* profiler,
 void MetalOp::start_profiling(MetalCommandEncoderHandle encoder) {
     if (!m_profiling_enabled)
         return;
+    m_profile_start_time = std::chrono::steady_clock::now();
     if (m_profiler) {
         const char* name = m_profile_node_name.empty() ? m_name.c_str() : m_profile_node_name.c_str();
         const char* type = m_profile_node_type.empty() ? m_type.c_str() : m_profile_node_type.c_str();
@@ -258,12 +259,14 @@ void MetalOp::start_profiling(MetalCommandEncoderHandle encoder) {
 double MetalOp::stop_profiling_ms(MetalCommandEncoderHandle encoder) {
     if (!m_profiling_enabled)
         return m_last_duration_ms;
+    const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - m_profile_start_time);
     if (m_profiler) {
         const auto sample_end = m_profiler->gpu_sample_end(encoder);
-        m_profiler->end_node(m_profile_node_id, std::chrono::microseconds{0}, m_gpu_sample_begin, sample_end);
+        m_profiler->end_node(m_profile_node_id, elapsed, m_gpu_sample_begin, sample_end);
         m_gpu_sample_begin = -1;
     }
-    m_last_duration_ms = 0.0;
+    m_last_duration_ms = static_cast<double>(elapsed.count()) / 1000.0;
     return m_last_duration_ms;
 }
 

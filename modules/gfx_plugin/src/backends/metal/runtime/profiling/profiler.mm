@@ -196,9 +196,9 @@ std::vector<ov::ProfilingInfo> MetalProfiler::export_ov() const {
         info.node_type = rec.node_type;
         info.exec_type = rec.exec_type.empty() ? std::string{"GFX"} : rec.exec_type;
         info.status = ov::ProfilingInfo::Status::EXECUTED;
-        const auto us = std::chrono::microseconds{static_cast<int64_t>(rec.gpu_us)};
-        info.real_time = us;
-        info.cpu_time = us;
+        const uint64_t measured_us = rec.gpu_us ? rec.gpu_us : rec.cpu_us;
+        info.real_time = std::chrono::microseconds{static_cast<int64_t>(measured_us)};
+        info.cpu_time = std::chrono::microseconds{static_cast<int64_t>(rec.cpu_us)};
         out.push_back(std::move(info));
     }
     return out;

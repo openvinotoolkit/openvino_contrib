@@ -28,6 +28,8 @@
 #include <stdexcept>
 
 #include "transforms/conv_parallel_lowering.hpp"
+#include "transforms/conv3d_parallel_lowering.hpp"
+#include "transforms/matmul_parallel_lowering.hpp"
 #include "transforms/parallel_fill_fusion.hpp"
 #include "transforms/parallel_post_fusion.hpp"
 
@@ -500,11 +502,11 @@ void run_mlir_pipeline(mlir::ModuleOp module, bool use_alloca, bool use_parallel
         }
     }
 
-    if (use_parallel_loops) {
-        run_conv2d_parallel_lowering(module);
-        if (mlir::failed(mlir::verify(module))) {
-            throw std::runtime_error("MLIR module verification failed after Conv2D parallel lowering");
-        }
+    run_conv2d_parallel_lowering(module);
+    run_conv3d_parallel_lowering(module);
+    run_matmul_parallel_lowering(module);
+    if (mlir::failed(mlir::verify(module))) {
+        throw std::runtime_error("MLIR module verification failed after Conv2D/Conv3D lowering");
     }
 
     {

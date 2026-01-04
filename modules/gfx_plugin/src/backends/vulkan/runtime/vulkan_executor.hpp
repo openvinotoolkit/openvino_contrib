@@ -62,6 +62,7 @@ private:
     std::vector<GpuTensor*> m_inputs;
     std::vector<GpuTensor*> m_outputs;
     std::vector<size_t> m_kernel_inputs;
+    size_t m_kernel_input_arg_count = 0;
     std::vector<int32_t> m_kernel_operand_kinds;
     std::vector<int32_t> m_kernel_operand_arg_indices;
     std::vector<int32_t> m_kernel_scalar_args;
@@ -73,6 +74,7 @@ private:
     GpuBufferManager* m_buffer_manager = nullptr;
     bool m_profiling_enabled = false;
     bool m_parallel_dispatch = false;
+    size_t m_parallel_loop_dims = 0;
     uint32_t m_dispatch_tile_h = 1;
     uint32_t m_dispatch_tile_w = 1;
     uint32_t m_dispatch_threads_h = 1;

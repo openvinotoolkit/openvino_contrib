@@ -454,8 +454,14 @@ bool apply_fused_bias_impl(mlir::ModuleOp module, const BiasParams& params) {
     mlir::OpBuilder b(ret);
     auto loc = ret.getLoc();
     auto bias_type = mlir::RankedTensorType::get(aligned_shape, elem_ty);
-    auto bias_attr = mlir::DenseFPElementsAttr::get(bias_type, params.values);
-    auto bias_const = b.create<mlir::arith::ConstantOp>(loc, bias_type, bias_attr);
+    auto func_type = func.getFunctionType();
+    llvm::SmallVector<mlir::Type, 8> inputs(func_type.getInputs().begin(),
+                                            func_type.getInputs().end());
+    inputs.push_back(bias_type);
+    auto new_type = mlir::FunctionType::get(func.getContext(), inputs, func_type.getResults());
+    func.setType(new_type);
+    auto& entry = func.getBody().front();
+    auto bias_arg = entry.addArgument(bias_type, loc);
 
     auto out_shape = out_type.getShape();
     auto out_empty = b.create<mlir::tensor::EmptyOp>(loc, out_shape, elem_ty);
@@ -476,7 +482,7 @@ bool apply_fused_bias_impl(mlir::ModuleOp module, const BiasParams& params) {
     auto fused = b.create<mlir::linalg::GenericOp>(
         loc,
         out_type,
-        mlir::ValueRange{result, bias_const.getResult()},
+        mlir::ValueRange{result, bias_arg},
         mlir::ValueRange{out_empty.getResult()},
         mlir::ArrayRef<mlir::AffineMap>{out_map, bias_map, out_map},
         llvm::ArrayRef<mlir::utils::IteratorType>(iters));

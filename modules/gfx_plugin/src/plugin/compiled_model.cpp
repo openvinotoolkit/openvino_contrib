@@ -173,15 +173,15 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
         m_inference_precision = it->second.as<ov::element::Type>();
     }
     if (auto it = properties.find(ov::enable_profiling.name()); it != properties.end()) {
-        m_enable_profiling = it->second.as<bool>();
+        m_enable_profiling = parse_bool_property(it->second, ov::enable_profiling.name());
     } else {
         // Honour legacy PERF_COUNT=true if provided under a different key.
         if (auto it2 = properties.find("PERF_COUNT"); it2 != properties.end()) {
-            m_enable_profiling = it2->second.as<bool>();
+            m_enable_profiling = parse_bool_property(it2->second, "PERF_COUNT");
         }
     }
     if (auto it = properties.find(kGfxEnableFusionProperty); it != properties.end()) {
-        m_enable_fusion = it->second.as<bool>();
+        m_enable_fusion = parse_bool_property(it->second, kGfxEnableFusionProperty);
     }
     if (auto it = properties.find(kGfxProfilingLevelProperty); it != properties.end()) {
         m_profiling_level = parse_profiling_level(it->second);
@@ -266,7 +266,7 @@ void CompiledModel::set_property(const ov::AnyMap& properties) {
                                             m_config)) {
             // handled
         } else if (kv.first == kGfxEnableFusionProperty) {
-            m_enable_fusion = kv.second.as<bool>();
+            m_enable_fusion = parse_bool_property(kv.second, kv.first);
             m_config[kv.first] = m_enable_fusion;
         } else {
             OPENVINO_THROW("CompiledModel unsupported property: ", kv.first);

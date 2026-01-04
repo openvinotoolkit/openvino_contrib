@@ -7,6 +7,7 @@
 #include "openvino/op/convolution.hpp"
 #include "openvino/core/model.hpp"
 #include "openvino/core/strides.hpp"
+#include "openvino/core/coordinate_diff.hpp"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -21,6 +22,17 @@ namespace gfx_plugin {
 
 namespace {
 mlir::DenseIntElementsAttr make_i64_attr(mlir::OpBuilder& b, const ov::Strides& vals) {
+    auto i64 = b.getI64Type();
+    auto type = mlir::RankedTensorType::get({static_cast<int64_t>(vals.size())}, i64);
+    llvm::SmallVector<int64_t, 4> data;
+    data.reserve(vals.size());
+    for (auto v : vals) {
+        data.push_back(static_cast<int64_t>(v));
+    }
+    return mlir::DenseIntElementsAttr::get(type, data);
+}
+
+mlir::DenseIntElementsAttr make_i64_attr(mlir::OpBuilder& b, const ov::CoordinateDiff& vals) {
     auto i64 = b.getI64Type();
     auto type = mlir::RankedTensorType::get({static_cast<int64_t>(vals.size())}, i64);
     llvm::SmallVector<int64_t, 4> data;
@@ -147,6 +159,8 @@ mlir::ModuleOp build_mlir_conv3d_from_model(const std::shared_ptr<const ov::Mode
         mlir::ValueRange{filled.getResult(0)},
         strides_attr,
         dil_attr);
+    conv_op->setAttr("gfx.pad_begin", make_i64_attr(b, pads_begin));
+    conv_op->setAttr("gfx.pad_end", make_i64_attr(b, pads_end));
 
     b.create<mlir::func::ReturnOp>(loc, conv_op.getResult(0));
 

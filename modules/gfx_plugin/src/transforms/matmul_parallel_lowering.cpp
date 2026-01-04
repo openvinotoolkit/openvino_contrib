@@ -1,0 +1,408 @@
+// Copyright (C) 2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+
+#include "transforms/matmul_parallel_lowering.hpp"
+
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+
+#include "runtime/gfx_logger.hpp"
+
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/STLExtras.h"
+
+namespace ov {
+namespace gfx_plugin {
+
+namespace {
+
+mlir::Value strip_memref_casts(mlir::Value value) {
+    while (auto cast = value.getDefiningOp<mlir::memref::CastOp>()) {
+        value = cast.getSource();
+    }
+    while (auto cast = value.getDefiningOp<mlir::memref::ReinterpretCastOp>()) {
+        value = cast.getSource();
+    }
+    return value;
+}
+
+mlir::Value get_dim(mlir::OpBuilder& b, mlir::Location loc, mlir::Value value, int64_t dim) {
+    auto mem_ty = mlir::dyn_cast<mlir::MemRefType>(value.getType());
+    if (mem_ty && dim < mem_ty.getRank()) {
+        const int64_t sz = mem_ty.getDimSize(dim);
+        if (sz != mlir::ShapedType::kDynamic) {
+            return b.create<mlir::arith::ConstantIndexOp>(loc, sz);
+        }
+    }
+    return b.create<mlir::memref::DimOp>(loc, value, dim);
+}
+
+int64_t find_k_dim(const mlir::AffineMap& map) {
+    for (auto [idx, expr] : llvm::enumerate(map.getResults())) {
+        if (auto dim = mlir::dyn_cast<mlir::AffineDimExpr>(expr)) {
+            if (dim.getPosition() == 3) {
+                return static_cast<int64_t>(idx);
+            }
+        }
+    }
+    return -1;
+}
+
+bool is_pure_matmul_body(mlir::linalg::GenericOp op) {
+    auto& body = op.getRegion().front();
+    if (body.getNumArguments() != 3) {
+        return false;
+    }
+    auto* term = body.getTerminator();
+    auto yield = mlir::dyn_cast<mlir::linalg::YieldOp>(term);
+    if (!yield || yield.getNumOperands() != 1) {
+        return false;
+    }
+    llvm::SmallVector<mlir::Operation*, 4> ops;
+    for (auto& it : body.without_terminator()) {
+        ops.push_back(&it);
+    }
+    if (ops.size() != 2) {
+        return false;
+    }
+    mlir::Operation* mul_op = nullptr;
+    mlir::Operation* add_op = nullptr;
+    for (auto* op_it : ops) {
+        if (mlir::isa<mlir::arith::MulFOp, mlir::arith::MulIOp>(op_it)) {
+            mul_op = op_it;
+            continue;
+        }
+        if (mlir::isa<mlir::arith::AddFOp, mlir::arith::AddIOp>(op_it)) {
+            add_op = op_it;
+            continue;
+        }
+        return false;
+    }
+    if (!mul_op || !add_op) {
+        return false;
+    }
+    auto add_operands = add_op->getOperands();
+    if (add_operands.size() != 2) {
+        return false;
+    }
+    auto mul_result = mul_op->getResult(0);
+    bool has_mul = (add_operands[0] == mul_result) || (add_operands[1] == mul_result);
+    bool has_acc = (add_operands[0] == body.getArgument(2)) ||
+                   (add_operands[1] == body.getArgument(2));
+    if (!has_mul || !has_acc) {
+        return false;
+    }
+    if (yield.getOperand(0) != add_op->getResult(0)) {
+        return false;
+    }
+    return true;
+}
+
+bool is_zero_fill(mlir::linalg::FillOp fill_op) {
+    if (!fill_op || fill_op.getInputs().empty()) {
+        return false;
+    }
+    auto cst = fill_op.getInputs()[0].getDefiningOp<mlir::arith::ConstantOp>();
+    if (!cst) {
+        return false;
+    }
+    if (auto fattr = mlir::dyn_cast<mlir::FloatAttr>(cst.getValue())) {
+        return fattr.getValueAsDouble() == 0.0;
+    }
+    if (auto iattr = mlir::dyn_cast<mlir::IntegerAttr>(cst.getValue())) {
+        return iattr.getInt() == 0;
+    }
+    return false;
+}
+
+bool has_inplace_elementwise_consumer(mlir::linalg::GenericOp producer, mlir::Value output) {
+    if (!producer || !output) {
+        return false;
+    }
+    for (auto* user : output.getUsers()) {
+        auto gen = mlir::dyn_cast<mlir::linalg::GenericOp>(user);
+        if (!gen || gen == producer || gen->isBeforeInBlock(producer)) {
+            continue;
+        }
+        const auto iters = gen.getIteratorTypesArray();
+        bool all_parallel = llvm::all_of(iters, [](mlir::utils::IteratorType it) {
+            return it == mlir::utils::IteratorType::parallel;
+        });
+        if (!all_parallel) {
+            continue;
+        }
+        bool uses_output = false;
+        for (auto in : gen.getDpsInputs()) {
+            if (strip_memref_casts(in) == output) {
+                uses_output = true;
+                break;
+            }
+        }
+        if (!uses_output) {
+            continue;
+        }
+        bool inplace = false;
+        for (auto out : gen.getDpsInits()) {
+            if (strip_memref_casts(out) == output) {
+                inplace = true;
+                break;
+            }
+        }
+        if (inplace) {
+            return true;
+        }
+    }
+    return false;
+}
+
+mlir::linalg::FillOp find_zero_fill(mlir::linalg::GenericOp op, mlir::Value output) {
+    if (!op || !output) {
+        return nullptr;
+    }
+    for (auto* user : output.getUsers()) {
+        auto fill = mlir::dyn_cast<mlir::linalg::FillOp>(user);
+        if (!fill || !fill->isBeforeInBlock(op)) {
+            continue;
+        }
+        if (strip_memref_casts(fill.getOutputs()[0]) != output) {
+            continue;
+        }
+        if (is_zero_fill(fill)) {
+            return fill;
+        }
+    }
+    return nullptr;
+}
+
+void build_affine_indices(mlir::PatternRewriter& rewriter,
+                          mlir::Location loc,
+                          const mlir::AffineMap& map,
+                          mlir::ValueRange dims,
+                          llvm::SmallVectorImpl<mlir::Value>& out) {
+    out.clear();
+    out.reserve(map.getNumResults());
+    for (auto expr : map.getResults()) {
+        auto one_map = mlir::AffineMap::get(map.getNumDims(),
+                                            map.getNumSymbols(),
+                                            expr,
+                                            rewriter.getContext());
+        out.push_back(rewriter.create<mlir::affine::AffineApplyOp>(loc, one_map, dims));
+    }
+}
+
+struct MatMulLoweringPattern final : public mlir::OpRewritePattern<mlir::linalg::GenericOp> {
+    using mlir::OpRewritePattern<mlir::linalg::GenericOp>::OpRewritePattern;
+
+    mlir::LogicalResult matchAndRewrite(mlir::linalg::GenericOp op,
+                                        mlir::PatternRewriter& rewriter) const override {
+        if (op.getNumDpsInputs() != 2 || op.getNumDpsInits() != 1) {
+            return mlir::failure();
+        }
+        if (op.getNumLoops() != 4) {
+            return mlir::failure();
+        }
+        if (!is_pure_matmul_body(op)) {
+            return mlir::failure();
+        }
+        const auto iters = op.getIteratorTypesArray();
+        if (iters.size() != 4 ||
+            iters[0] != mlir::utils::IteratorType::parallel ||
+            iters[1] != mlir::utils::IteratorType::parallel ||
+            iters[2] != mlir::utils::IteratorType::parallel ||
+            iters[3] != mlir::utils::IteratorType::reduction) {
+            return mlir::failure();
+        }
+        auto maps = op.getIndexingMapsArray();
+        if (maps.size() != 3) {
+            return mlir::failure();
+        }
+        const auto c_map = maps[2];
+        if (c_map.getNumResults() != 3) {
+            return mlir::failure();
+        }
+        for (int64_t i = 0; i < 3; ++i) {
+            auto dim = mlir::dyn_cast<mlir::AffineDimExpr>(c_map.getResult(i));
+            if (!dim || dim.getPosition() != i) {
+                return mlir::failure();
+            }
+        }
+        auto module = op->getParentOfType<mlir::ModuleOp>();
+        if (module) {
+            if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.prefer_parallel")) {
+                if (!attr.getValue()) {
+                    return mlir::failure();
+                }
+            }
+        }
+
+        auto output = strip_memref_casts(op.getDpsInits()[0]);
+        auto output_type = mlir::dyn_cast<mlir::MemRefType>(output.getType());
+        if (!output_type || output_type.getRank() != 3) {
+            return mlir::failure();
+        }
+        if (has_inplace_elementwise_consumer(op, output)) {
+            return mlir::failure();
+        }
+        auto zero_fill = find_zero_fill(op, output);
+        auto input_a = strip_memref_casts(op.getDpsInputs()[0]);
+        auto input_b = strip_memref_casts(op.getDpsInputs()[1]);
+        auto input_a_type = mlir::dyn_cast<mlir::MemRefType>(input_a.getType());
+        if (!input_a_type) {
+            return mlir::failure();
+        }
+
+        const auto a_map = maps[0];
+        const auto b_map = maps[1];
+        const int64_t k_dim = find_k_dim(a_map);
+        if (k_dim < 0) {
+            return mlir::failure();
+        }
+
+        const auto loc = op.getLoc();
+        rewriter.setInsertionPoint(op);
+
+        constexpr int64_t kThreadH = 8;
+        constexpr int64_t kThreadW = 8;
+        const int64_t tile_h = kThreadH;
+        const int64_t tile_w = kThreadW;
+        if (module) {
+            auto* ctx = module.getContext();
+            module->setAttr("gfx.dispatch_tile_h",
+                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), tile_h));
+            module->setAttr("gfx.dispatch_tile_w",
+                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), tile_w));
+            module->setAttr("gfx.dispatch_threads_h",
+                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), kThreadH));
+            module->setAttr("gfx.dispatch_threads_w",
+                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), kThreadW));
+        }
+
+        auto c0 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 0);
+        auto c1 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 1);
+        auto tileH = rewriter.create<mlir::arith::ConstantIndexOp>(loc, tile_h);
+        auto tileW = rewriter.create<mlir::arith::ConstantIndexOp>(loc, tile_w);
+        auto threadH = rewriter.create<mlir::arith::ConstantIndexOp>(loc, kThreadH);
+        auto threadW = rewriter.create<mlir::arith::ConstantIndexOp>(loc, kThreadW);
+        auto tileH_minus1 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, tile_h - 1);
+        auto tileW_minus1 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, tile_w - 1);
+
+        auto B = get_dim(rewriter, loc, output, 0);
+        auto M = get_dim(rewriter, loc, output, 1);
+        auto N = get_dim(rewriter, loc, output, 2);
+        auto K = get_dim(rewriter, loc, input_a, k_dim);
+
+        auto h_tiles_num = rewriter.create<mlir::arith::AddIOp>(loc, M, tileH_minus1);
+        auto w_tiles_num = rewriter.create<mlir::arith::AddIOp>(loc, N, tileW_minus1);
+        auto H_tiles = rewriter.create<mlir::arith::DivSIOp>(loc, h_tiles_num, tileH);
+        auto W_tiles = rewriter.create<mlir::arith::DivSIOp>(loc, w_tiles_num, tileW);
+
+        auto par = rewriter.create<mlir::scf::ParallelOp>(
+            loc,
+            mlir::ValueRange{c0, c0, c0, c0, c0},
+            mlir::ValueRange{B, H_tiles, W_tiles, threadH, threadW},
+            mlir::ValueRange{c1, c1, c1, c1, c1});
+
+        mlir::OpBuilder::InsertionGuard guard(rewriter);
+        rewriter.setInsertionPoint(par.getBody()->getTerminator());
+
+        auto ivs = par.getInductionVars();
+        auto iv_b = ivs[0];
+        auto iv_m_base = rewriter.create<mlir::arith::MulIOp>(loc, ivs[1], tileH);
+        auto iv_n_base = rewriter.create<mlir::arith::MulIOp>(loc, ivs[2], tileW);
+        auto iv_m = rewriter.create<mlir::arith::AddIOp>(loc, iv_m_base, ivs[3]);
+        auto iv_n = rewriter.create<mlir::arith::AddIOp>(loc, iv_n_base, ivs[4]);
+
+        auto m_in = rewriter.create<mlir::arith::CmpIOp>(loc,
+                                                         mlir::arith::CmpIPredicate::slt,
+                                                         iv_m,
+                                                         M);
+        auto n_in = rewriter.create<mlir::arith::CmpIOp>(loc,
+                                                         mlir::arith::CmpIPredicate::slt,
+                                                         iv_n,
+                                                         N);
+        auto in_bounds = rewriter.create<mlir::arith::AndIOp>(loc, m_in, n_in);
+        auto if_op = rewriter.create<mlir::scf::IfOp>(loc, in_bounds, /*withElseRegion=*/false);
+
+        rewriter.setInsertionPointToStart(if_op.thenBlock());
+        auto elem_ty = output_type.getElementType();
+        if (!mlir::isa<mlir::FloatType, mlir::IntegerType>(elem_ty)) {
+            return mlir::failure();
+        }
+        mlir::Value init_val;
+        if (zero_fill) {
+            if (auto ft = mlir::dyn_cast<mlir::FloatType>(elem_ty)) {
+                init_val =
+                    rewriter.create<mlir::arith::ConstantOp>(loc, mlir::FloatAttr::get(ft, 0.0));
+            } else if (auto it = mlir::dyn_cast<mlir::IntegerType>(elem_ty)) {
+                init_val =
+                    rewriter.create<mlir::arith::ConstantOp>(loc, mlir::IntegerAttr::get(it, 0));
+            }
+        } else {
+            init_val = rewriter.create<mlir::memref::LoadOp>(
+                loc, output, mlir::ValueRange{iv_b, iv_m, iv_n});
+        }
+        auto k_for = rewriter.create<mlir::scf::ForOp>(loc, c0, K, c1, mlir::ValueRange{init_val});
+        {
+            mlir::OpBuilder::InsertionGuard loop_guard(rewriter);
+            rewriter.setInsertionPointToStart(k_for.getBody());
+            auto iv_k = k_for.getInductionVar();
+            auto acc = k_for.getRegionIterArgs()[0];
+
+            llvm::SmallVector<mlir::Value, 4> dims = {iv_b, iv_m, iv_n, iv_k};
+            llvm::SmallVector<mlir::Value, 4> a_indices;
+            llvm::SmallVector<mlir::Value, 4> b_indices;
+            build_affine_indices(rewriter, loc, a_map, dims, a_indices);
+            build_affine_indices(rewriter, loc, b_map, dims, b_indices);
+
+            auto lhs = rewriter.create<mlir::memref::LoadOp>(loc, input_a, a_indices);
+            auto rhs = rewriter.create<mlir::memref::LoadOp>(loc, input_b, b_indices);
+
+            mlir::Value mul;
+            mlir::Value sum;
+            if (mlir::isa<mlir::FloatType>(elem_ty)) {
+                mul = rewriter.create<mlir::arith::MulFOp>(loc, lhs, rhs);
+                sum = rewriter.create<mlir::arith::AddFOp>(loc, acc, mul);
+            } else {
+                mul = rewriter.create<mlir::arith::MulIOp>(loc, lhs, rhs);
+                sum = rewriter.create<mlir::arith::AddIOp>(loc, acc, mul);
+            }
+            rewriter.create<mlir::scf::YieldOp>(loc, sum);
+        }
+
+        auto acc_val = k_for.getResult(0);
+        rewriter.create<mlir::memref::StoreOp>(loc, acc_val, output, mlir::ValueRange{iv_b, iv_m, iv_n});
+
+        if (op->getNumResults() > 0) {
+            op.getResult(0).replaceAllUsesWith(op.getDpsInits()[0]);
+        }
+        if (zero_fill) {
+            rewriter.eraseOp(zero_fill);
+        }
+        rewriter.eraseOp(op);
+        return mlir::success();
+    }
+};
+
+}  // namespace
+
+void run_matmul_parallel_lowering(mlir::ModuleOp module) {
+    if (!module) {
+        return;
+    }
+    if (gfx_log_debug_enabled()) {
+        GFX_LOG_DEBUG("MLIR", "MatMul parallel lowering pass");
+    }
+    auto* ctx = module.getContext();
+    mlir::RewritePatternSet patterns(ctx);
+    patterns.add<MatMulLoweringPattern>(ctx);
+    (void)mlir::applyPatternsGreedily(module, std::move(patterns));
+}
+
+}  // namespace gfx_plugin
+}  // namespace ov

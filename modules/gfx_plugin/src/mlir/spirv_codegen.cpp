@@ -23,6 +23,7 @@
 #include "mlir/Conversion/VectorToSPIRV/VectorToSPIRVPass.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/Arith/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
@@ -57,6 +58,7 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/APFloat.h"
 
 #include "mlir/mlir_passes.hpp"
 #include "runtime/gfx_logger.hpp"
@@ -147,6 +149,100 @@ void map_parallel_loops_to_blocks(mlir::ModuleOp module) {
         }
         (void)mlir::gpu::setMappingAttr(op, attrs);
     });
+}
+
+bool convert_gpu_modules_to_spirv_with_math(mlir::ModuleOp module) {
+    if (!module) {
+        return false;
+    }
+    auto* ctx = module.getContext();
+    mlir::OpBuilder builder(ctx);
+    llvm::SmallVector<mlir::Operation*, 1> gpu_modules;
+
+    auto target_env_supports_kernel_cap = [](mlir::gpu::GPUModuleOp module_op) {
+        auto target_attr = mlir::spirv::lookupTargetEnvOrDefault(module_op.getOperation());
+        mlir::spirv::TargetEnv target_env(target_attr);
+        return target_env.allows(mlir::spirv::Capability::Kernel);
+    };
+
+    module.walk([&](mlir::gpu::GPUModuleOp module_op) {
+        if (target_env_supports_kernel_cap(module_op)) {
+            builder.setInsertionPointToStart(module_op.getBody());
+        } else {
+            builder.setInsertionPoint(module_op.getOperation());
+        }
+        gpu_modules.push_back(builder.clone(*module_op.getOperation()));
+    });
+
+    for (auto* gpu_module : gpu_modules) {
+        auto target_attr = mlir::spirv::lookupTargetEnvOrDefault(gpu_module);
+        // Ensure memref memory spaces are mapped for the cloned GPU module.
+        {
+            auto mem_space_map =
+                target_env_supports_kernel_cap(mlir::dyn_cast<mlir::gpu::GPUModuleOp>(gpu_module))
+                    ? mlir::spirv::mapMemorySpaceToOpenCLStorageClass
+                    : mlir::spirv::mapMemorySpaceToVulkanStorageClass;
+            mlir::spirv::MemorySpaceToStorageClassConverter converter(mem_space_map);
+            mlir::spirv::convertMemRefTypesAndAttrs(gpu_module, converter);
+
+            auto target = mlir::spirv::getMemorySpaceToStorageClassTarget(*ctx);
+            bool illegal = false;
+            gpu_module->walk([&](mlir::Operation* child) {
+                if (target->isIllegal(child)) {
+                    illegal = true;
+                }
+            });
+            if (illegal) {
+                return false;
+            }
+        }
+
+        auto target = mlir::SPIRVConversionTarget::get(target_attr);
+
+        mlir::SPIRVConversionOptions options;
+        mlir::SPIRVTypeConverter type_converter(target_attr, options);
+        mlir::populateMMAToSPIRVCoopMatrixTypeConversion(type_converter);
+
+        mlir::RewritePatternSet patterns(ctx);
+        mlir::arith::populateCeilFloorDivExpandOpsPatterns(patterns);
+        mlir::populateGPUToSPIRVPatterns(type_converter, patterns);
+        mlir::populateGpuWMMAToSPIRVCoopMatrixKHRConversionPatterns(type_converter, patterns);
+
+        mlir::ScfToSPIRVContext scf_ctx;
+        mlir::populateSCFToSPIRVPatterns(type_converter, scf_ctx, patterns);
+        mlir::arith::populateArithToSPIRVPatterns(type_converter, patterns);
+        mlir::populateBuiltinFuncToSPIRVPatterns(type_converter, patterns);
+        mlir::index::populateIndexToSPIRVPatterns(type_converter, patterns);
+        mlir::populateMathToSPIRVPatterns(type_converter, patterns);
+        mlir::populateMemRefToSPIRVPatterns(type_converter, patterns);
+        mlir::populateFuncToSPIRVPatterns(type_converter, patterns);
+        mlir::populateVectorToSPIRVPatterns(type_converter, patterns);
+        mlir::cf::populateControlFlowToSPIRVPatterns(type_converter, patterns);
+        mlir::ub::populateUBToSPIRVConversionPatterns(type_converter, patterns);
+
+        if (mlir::failed(mlir::applyFullConversion(gpu_module, *target, std::move(patterns)))) {
+            return false;
+        }
+    }
+
+    module.walk([&](mlir::gpu::GPUModuleOp module_op) {
+        if (!target_env_supports_kernel_cap(module_op)) {
+            return;
+        }
+        module_op.walk([&](mlir::gpu::GPUFuncOp func_op) {
+            builder.setInsertionPoint(func_op);
+            auto new_func = builder.create<mlir::func::FuncOp>(
+                func_op.getLoc(), func_op.getName(), func_op.getFunctionType());
+            auto entry = new_func.addEntryBlock();
+            builder.setInsertionPointToEnd(entry);
+            builder.create<mlir::func::ReturnOp>(func_op.getLoc());
+            new_func->setAttr(mlir::gpu::GPUDialect::getKernelFuncAttrName(),
+                              builder.getUnitAttr());
+            func_op.erase();
+        });
+    });
+
+    return true;
 }
 
 void ensure_spirv_entry_point_interface(mlir::spirv::ModuleOp module) {
@@ -311,6 +407,91 @@ bool validate_spirv_module(mlir::spirv::ModuleOp module, std::string* log) {
     return ok;
 }
 
+std::optional<int64_t> eval_scalar_value(mlir::Value value);
+
+bool get_static_strides_and_offset(mlir::MemRefType memref,
+                                   llvm::SmallVectorImpl<int64_t>& strides,
+                                   int64_t& offset) {
+    if (!memref) {
+        return false;
+    }
+    const auto shape = memref.getShape();
+    if (llvm::any_of(shape, [](int64_t dim) { return dim == mlir::ShapedType::kDynamic; })) {
+        return false;
+    }
+    if (memref.getLayout().isIdentity()) {
+        strides.assign(shape.size(), 1);
+        for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; --i) {
+            strides[static_cast<size_t>(i)] =
+                strides[static_cast<size_t>(i + 1)] * shape[static_cast<size_t>(i + 1)];
+        }
+        offset = 0;
+        return true;
+    }
+    if (auto layout = mlir::dyn_cast<mlir::StridedLayoutAttr>(memref.getLayout())) {
+        auto maybe_offset = layout.getOffset();
+        if (maybe_offset == mlir::ShapedType::kDynamic) {
+            return false;
+        }
+        offset = static_cast<int64_t>(maybe_offset);
+        auto layout_strides = layout.getStrides();
+        if (layout_strides.size() != shape.size()) {
+            return false;
+        }
+        strides.clear();
+        strides.reserve(layout_strides.size());
+        for (auto s : layout_strides) {
+            if (s == mlir::ShapedType::kDynamic) {
+                return false;
+            }
+            strides.push_back(static_cast<int64_t>(s));
+        }
+        return true;
+    }
+    return false;
+}
+
+std::optional<int64_t> eval_from_extract_strided_metadata(mlir::Value value) {
+    auto meta = value.getDefiningOp<mlir::memref::ExtractStridedMetadataOp>();
+    if (!meta) {
+        return std::nullopt;
+    }
+    auto memref = mlir::dyn_cast<mlir::MemRefType>(meta.getSource().getType());
+    if (!memref) {
+        return std::nullopt;
+    }
+    int64_t offset = 0;
+    llvm::SmallVector<int64_t, 4> strides;
+    if (!get_static_strides_and_offset(memref, strides, offset)) {
+        return std::nullopt;
+    }
+    if (value == meta.getOffset()) {
+        return offset;
+    }
+    auto sizes = meta.getSizes();
+    auto shape = memref.getShape();
+    for (auto it : llvm::enumerate(sizes)) {
+        if (it.value() == value) {
+            int64_t size = shape[it.index()];
+            if (size == mlir::ShapedType::kDynamic) {
+                return std::nullopt;
+            }
+            return size;
+        }
+    }
+    auto strides_vals = meta.getStrides();
+    for (auto it : llvm::enumerate(strides_vals)) {
+        if (it.value() == value) {
+            int64_t stride = strides[it.index()];
+            if (stride == mlir::ShapedType::kDynamic) {
+                return std::nullopt;
+            }
+            return stride;
+        }
+    }
+    return std::nullopt;
+}
+
 std::optional<int64_t> eval_scalar_value(mlir::Value value) {
     if (!value) {
         return std::nullopt;
@@ -321,9 +502,13 @@ std::optional<int64_t> eval_scalar_value(mlir::Value value) {
             return static_cast<int64_t>(iattr.getInt());
         }
         if (auto fattr = llvm::dyn_cast<mlir::FloatAttr>(attr)) {
-            const double fval = fattr.getValueAsDouble();
-            if (fattr.getType().isF32()) {
-                float f = static_cast<float>(fval);
+            const auto type = fattr.getType();
+            if (type.isF16()) {
+                const auto bits = fattr.getValue().bitcastToAPInt().getZExtValue();
+                return static_cast<int64_t>(bits);
+            }
+            if (type.isF32()) {
+                float f = static_cast<float>(fattr.getValueAsDouble());
                 uint32_t bits = 0;
                 static_assert(sizeof(bits) == sizeof(f), "f32 size mismatch");
                 std::memcpy(&bits, &f, sizeof(bits));
@@ -336,6 +521,9 @@ std::optional<int64_t> eval_scalar_value(mlir::Value value) {
     }
     if (auto cint = value.getDefiningOp<mlir::arith::ConstantIntOp>()) {
         return static_cast<int64_t>(cint.value());
+    }
+    if (auto meta = eval_from_extract_strided_metadata(value)) {
+        return meta;
     }
     if (auto cast = value.getDefiningOp<mlir::arith::IndexCastOp>()) {
         return eval_scalar_value(cast.getIn());
@@ -388,6 +576,164 @@ std::optional<int64_t> eval_scalar_value(mlir::Value value) {
         auto rhs = eval_scalar_value(div.getRhs());
         if (lhs && rhs && *rhs != 0) {
             return *lhs / *rhs;
+        }
+    }
+    if (auto divu = value.getDefiningOp<mlir::arith::DivUIOp>()) {
+        auto lhs = eval_scalar_value(divu.getLhs());
+        auto rhs = eval_scalar_value(divu.getRhs());
+        if (lhs && rhs && *rhs != 0) {
+            return static_cast<int64_t>(static_cast<uint64_t>(*lhs) / static_cast<uint64_t>(*rhs));
+        }
+    }
+    if (auto div = value.getDefiningOp<mlir::arith::CeilDivSIOp>()) {
+        auto lhs = eval_scalar_value(div.getLhs());
+        auto rhs = eval_scalar_value(div.getRhs());
+        if (lhs && rhs && *rhs != 0) {
+            const int64_t a = *lhs;
+            const int64_t b = *rhs;
+            return (a + b - 1) / b;
+        }
+    }
+    if (auto div = value.getDefiningOp<mlir::arith::CeilDivUIOp>()) {
+        auto lhs = eval_scalar_value(div.getLhs());
+        auto rhs = eval_scalar_value(div.getRhs());
+        if (lhs && rhs && *rhs != 0) {
+            const uint64_t a = static_cast<uint64_t>(*lhs);
+            const uint64_t b = static_cast<uint64_t>(*rhs);
+            return static_cast<int64_t>((a + b - 1) / b);
+        }
+    }
+    if (auto div = value.getDefiningOp<mlir::arith::FloorDivSIOp>()) {
+        auto lhs = eval_scalar_value(div.getLhs());
+        auto rhs = eval_scalar_value(div.getRhs());
+        if (lhs && rhs && *rhs != 0) {
+            const int64_t a = *lhs;
+            const int64_t b = *rhs;
+            return a / b;
+        }
+    }
+    if (auto rem = value.getDefiningOp<mlir::arith::RemSIOp>()) {
+        auto lhs = eval_scalar_value(rem.getLhs());
+        auto rhs = eval_scalar_value(rem.getRhs());
+        if (lhs && rhs && *rhs != 0) {
+            return *lhs % *rhs;
+        }
+    }
+    if (auto remu = value.getDefiningOp<mlir::arith::RemUIOp>()) {
+        auto lhs = eval_scalar_value(remu.getLhs());
+        auto rhs = eval_scalar_value(remu.getRhs());
+        if (lhs && rhs && *rhs != 0) {
+            return static_cast<int64_t>(static_cast<uint64_t>(*lhs) % static_cast<uint64_t>(*rhs));
+        }
+    }
+    if (auto shl = value.getDefiningOp<mlir::arith::ShLIOp>()) {
+        auto lhs = eval_scalar_value(shl.getLhs());
+        auto rhs = eval_scalar_value(shl.getRhs());
+        if (lhs && rhs) {
+            return *lhs << *rhs;
+        }
+    }
+    if (auto shr = value.getDefiningOp<mlir::arith::ShRSIOp>()) {
+        auto lhs = eval_scalar_value(shr.getLhs());
+        auto rhs = eval_scalar_value(shr.getRhs());
+        if (lhs && rhs) {
+            return *lhs >> *rhs;
+        }
+    }
+    if (auto shr = value.getDefiningOp<mlir::arith::ShRUIOp>()) {
+        auto lhs = eval_scalar_value(shr.getLhs());
+        auto rhs = eval_scalar_value(shr.getRhs());
+        if (lhs && rhs) {
+            return static_cast<int64_t>(static_cast<uint64_t>(*lhs) >> static_cast<uint64_t>(*rhs));
+        }
+    }
+    if (auto andi = value.getDefiningOp<mlir::arith::AndIOp>()) {
+        auto lhs = eval_scalar_value(andi.getLhs());
+        auto rhs = eval_scalar_value(andi.getRhs());
+        if (lhs && rhs) {
+            return *lhs & *rhs;
+        }
+    }
+    if (auto ori = value.getDefiningOp<mlir::arith::OrIOp>()) {
+        auto lhs = eval_scalar_value(ori.getLhs());
+        auto rhs = eval_scalar_value(ori.getRhs());
+        if (lhs && rhs) {
+            return *lhs | *rhs;
+        }
+    }
+    if (auto xori = value.getDefiningOp<mlir::arith::XOrIOp>()) {
+        auto lhs = eval_scalar_value(xori.getLhs());
+        auto rhs = eval_scalar_value(xori.getRhs());
+        if (lhs && rhs) {
+            return *lhs ^ *rhs;
+        }
+    }
+    if (auto min = value.getDefiningOp<mlir::arith::MinSIOp>()) {
+        auto lhs = eval_scalar_value(min.getLhs());
+        auto rhs = eval_scalar_value(min.getRhs());
+        if (lhs && rhs) {
+            return std::min(*lhs, *rhs);
+        }
+    }
+    if (auto max = value.getDefiningOp<mlir::arith::MaxSIOp>()) {
+        auto lhs = eval_scalar_value(max.getLhs());
+        auto rhs = eval_scalar_value(max.getRhs());
+        if (lhs && rhs) {
+            return std::max(*lhs, *rhs);
+        }
+    }
+    if (auto min = value.getDefiningOp<mlir::arith::MinUIOp>()) {
+        auto lhs = eval_scalar_value(min.getLhs());
+        auto rhs = eval_scalar_value(min.getRhs());
+        if (lhs && rhs) {
+            const uint64_t a = static_cast<uint64_t>(*lhs);
+            const uint64_t b = static_cast<uint64_t>(*rhs);
+            return static_cast<int64_t>(std::min(a, b));
+        }
+    }
+    if (auto max = value.getDefiningOp<mlir::arith::MaxUIOp>()) {
+        auto lhs = eval_scalar_value(max.getLhs());
+        auto rhs = eval_scalar_value(max.getRhs());
+        if (lhs && rhs) {
+            const uint64_t a = static_cast<uint64_t>(*lhs);
+            const uint64_t b = static_cast<uint64_t>(*rhs);
+            return static_cast<int64_t>(std::max(a, b));
+        }
+    }
+    if (auto sel = value.getDefiningOp<mlir::arith::SelectOp>()) {
+        auto cond = eval_scalar_value(sel.getCondition());
+        if (!cond) {
+            return std::nullopt;
+        }
+        return *cond ? eval_scalar_value(sel.getTrueValue())
+                     : eval_scalar_value(sel.getFalseValue());
+    }
+    if (auto cmp = value.getDefiningOp<mlir::arith::CmpIOp>()) {
+        auto lhs = eval_scalar_value(cmp.getLhs());
+        auto rhs = eval_scalar_value(cmp.getRhs());
+        if (lhs && rhs) {
+            bool result = false;
+            switch (cmp.getPredicate()) {
+            case mlir::arith::CmpIPredicate::eq: result = (*lhs == *rhs); break;
+            case mlir::arith::CmpIPredicate::ne: result = (*lhs != *rhs); break;
+            case mlir::arith::CmpIPredicate::slt: result = (*lhs < *rhs); break;
+            case mlir::arith::CmpIPredicate::sle: result = (*lhs <= *rhs); break;
+            case mlir::arith::CmpIPredicate::sgt: result = (*lhs > *rhs); break;
+            case mlir::arith::CmpIPredicate::sge: result = (*lhs >= *rhs); break;
+            case mlir::arith::CmpIPredicate::ult:
+                result = (static_cast<uint64_t>(*lhs) < static_cast<uint64_t>(*rhs));
+                break;
+            case mlir::arith::CmpIPredicate::ule:
+                result = (static_cast<uint64_t>(*lhs) <= static_cast<uint64_t>(*rhs));
+                break;
+            case mlir::arith::CmpIPredicate::ugt:
+                result = (static_cast<uint64_t>(*lhs) > static_cast<uint64_t>(*rhs));
+                break;
+            case mlir::arith::CmpIPredicate::uge:
+                result = (static_cast<uint64_t>(*lhs) >= static_cast<uint64_t>(*rhs));
+                break;
+            }
+            return result ? 1 : 0;
         }
     }
     return std::nullopt;
@@ -489,7 +835,8 @@ void annotate_kernel_scalar_args(mlir::ModuleOp module) {
         llvm::SmallVector<int32_t, 8> scalar_values;
         operand_kinds.reserve(launch.getKernelOperands().size());
         operand_arg_indices.reserve(launch.getKernelOperands().size());
-        bool invalid = false;
+        bool any_scalar = false;
+        bool all_scalars_known = true;
         for (auto operand : launch.getKernelOperands()) {
             auto type = operand.getType();
             if (mlir::isa<mlir::MemRefType>(type)) {
@@ -503,16 +850,18 @@ void annotate_kernel_scalar_args(mlir::ModuleOp module) {
                 continue;
             }
             auto maybe_value = eval_scalar_value(operand);
-            if (!maybe_value) {
-                invalid = true;
-                break;
+            int64_t value = 0;
+            if (maybe_value) {
+                value = *maybe_value;
+            } else {
+                all_scalars_known = false;
             }
-            int64_t value = *maybe_value;
             operand_kinds.push_back(0);
             operand_arg_indices.push_back(-1);
             scalar_values.push_back(static_cast<int32_t>(value));
+            any_scalar = true;
         }
-        if (!invalid && !operand_kinds.empty()) {
+        if (!operand_kinds.empty()) {
             mlir::OpBuilder b(launch);
             auto make_i32_array_attr = [&](llvm::ArrayRef<int32_t> vals) {
                 llvm::SmallVector<mlir::Attribute, 16> attrs;
@@ -524,7 +873,7 @@ void annotate_kernel_scalar_args(mlir::ModuleOp module) {
             };
             module->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr(operand_kinds));
             module->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr(operand_arg_indices));
-            if (!scalar_values.empty()) {
+            if (any_scalar) {
                 module->setAttr("gfx.kernel_scalar_values", make_i32_array_attr(scalar_values));
             }
 
@@ -540,18 +889,19 @@ void annotate_kernel_scalar_args(mlir::ModuleOp module) {
                     break;
                 }
             }
-            if (prefix && !scalar_values.empty()) {
+            if (prefix && all_scalars_known && !scalar_values.empty()) {
                 module->setAttr("gfx.kernel_scalar_args", make_i32_array_attr(scalar_values));
             }
             if (gfx_log_debug_enabled()) {
                 std::ostringstream oss;
                 oss << "Kernel operand kinds=" << operand_kinds.size()
                     << " scalars=" << scalar_values.size()
-                    << " prefix=" << (prefix ? "true" : "false");
+                    << " prefix=" << (prefix ? "true" : "false")
+                    << " all_scalars_known=" << (all_scalars_known ? "true" : "false");
                 GFX_LOG_DEBUG("MLIR", oss.str());
             }
         } else if (gfx_log_debug_enabled()) {
-            GFX_LOG_DEBUG("MLIR", "Kernel scalar annotation skipped (invalid operands or empty)");
+            GFX_LOG_DEBUG("MLIR", "Kernel scalar annotation skipped (no operands)");
         }
         recorded = true;
     });
@@ -918,6 +1268,18 @@ static std::vector<uint32_t> lower_to_spirv_impl(mlir::ModuleOp module,
 
     const bool use_gpu_dispatch = has_parallel_loops(module);
     module->setAttr("gfx.parallel_dispatch", mlir::BoolAttr::get(ctx, use_gpu_dispatch));
+    if (use_gpu_dispatch) {
+        int64_t loop_dims = 0;
+        module.walk([&](mlir::scf::ParallelOp op) {
+            if (loop_dims == 0) {
+                loop_dims = static_cast<int64_t>(op.getNumLoops());
+            }
+        });
+        if (loop_dims > 0) {
+            module->setAttr("gfx.parallel_loop_dims",
+                            mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 64), loop_dims));
+        }
+    }
 
     if (use_gpu_dispatch) {
         ctx->loadDialect<mlir::gpu::GPUDialect>();
@@ -1012,8 +1374,10 @@ static std::vector<uint32_t> lower_to_spirv_impl(mlir::ModuleOp module,
 
         {
             mlir::PassManager gpu_pm(ctx);
-            gpu_pm.addPass(mlir::createConvertGPUToSPIRVPass(/*mapMemorySpace=*/false));
-            if (mlir::failed(gpu_pm.run(module))) {
+            gpu_pm.addPass(mlir::createCanonicalizerPass());
+            gpu_pm.addPass(mlir::createCSEPass());
+            if (mlir::failed(gpu_pm.run(module)) ||
+                !convert_gpu_modules_to_spirv_with_math(module)) {
                 if (log) {
                     std::string module_dump;
                     {
@@ -1078,6 +1442,14 @@ static std::vector<uint32_t> lower_to_spirv_impl(mlir::ModuleOp module,
             mlir::RewritePatternSet patterns(ctx);
             populate_spirv_patterns(type_converter, scf_to_spirv_ctx, patterns);
             auto target = mlir::SPIRVConversionTarget::get(target_env);
+            target->addIllegalDialect<mlir::arith::ArithDialect,
+                                      mlir::func::FuncDialect,
+                                      mlir::memref::MemRefDialect,
+                                      mlir::scf::SCFDialect,
+                                      mlir::tensor::TensorDialect,
+                                      mlir::vector::VectorDialect,
+                                      mlir::math::MathDialect,
+                                      mlir::cf::ControlFlowDialect>();
             target->addLegalOp<mlir::UnrealizedConversionCastOp>();
             if (mlir::failed(mlir::applyPartialConversion(module.getOperation(),
                                                           *target,
