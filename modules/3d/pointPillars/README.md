@@ -3,6 +3,79 @@
 _This directory is a fork from [PointPillars](https://github.com/zhulf0804/PointPillars) (commit 620e6b0)._
 -----------------------
 
+<details>
+<summary style="font-size:2em; font-weight:600">OpenVino Model Export and Inference</summary>
+
+```bash
+# Install the required packages
+sudo apt update && sudo apt install -y \
+  software-properties-common \
+  build-essential \
+  cmake \
+  git \
+  libx11-6 \
+  libgl1
+```
+
+Tested over python 3.10:
+```bash
+conda install python=3.10
+conda create -n ovpp310 python=3.10
+conda activate ovpp310
+```
+Considering the `REPO_ROOT` variable points to the `pointPillars` directory:
+
+```bash
+REPO_ROOT=/path/to/3d/pointPillars
+```
+
+Install the required python packages:
+```bash
+# Install the required pip packages
+python -m pip install -r "${REPO_ROOT}/requirements-ov.txt"
+```
+
+Build the pytorch extension required for exporting the model:
+```bash
+# Build the pytorch extensions (will be used only to export the model)
+cd ${REPO_ROOT}
+CPU_BUILD=1 python setup.py build_ext --inplace
+cd ..
+```
+
+Build the OpenVino Extension required for inference:
+```bash
+# Build the openvino extension
+cd "${REPO_ROOT}/ov_extensions" && rm -rf build/ && bash build.sh && cd ..
+```
+
+Exporting the model:
+```bash
+# Export the PointPillars .pth model to OpenVINO format
+python "${REPO_ROOT}/export_ov_e2e.py" --checkpoint "${REPO_ROOT}/pretrained/epoch_160.pth" --output "${REPO_ROOT}/pretrained/pointpillars_ov"
+```
+The above command will generate the following five files:
+- pointpillars_ov_config.json
+- pointpillars_ov_nn.bin
+- pointpillars_ov_nn.xml
+- pointpillars_ov_pillar_layer.xml
+- pointpillars_ov_postproc.xml
+
+Running inference using OpenVINO over a single pc data:
+```bash
+# Run inference with OpenVINO
+python "${REPO_ROOT}/e2eOVInference.py" --config "${REPO_ROOT}/pretrained/pointpillars_ov_config.json" --pc_path "${REPO_ROOT}/pointpillars/dataset/demo_data/test/000002.bin"
+```
+The Kitti dataset Download and Preprocess steps are described in [this section](#datasets). Say, it is stored in `${REPO_ROOT}/Datasets`.
+
+Evaluate model over the KITTI val set:
+```bash
+python "${REPO_ROOT}/evaluate-e2eOV.py" --device CPU --data_root "${REPO_ROOT}/Datasets" --config "${REPO_ROOT}/pretrained/pointpillars_full_config.json" --saved_path "${REPO_ROOT}/profiles/evals-e2eov-cpu"
+```
+
+</details>
+
+
 # [PointPillars: Fast Encoders for Object Detection from Point Clouds](https://arxiv.org/abs/1812.05784)
 
 A Simple PointPillars PyTorch Implenmentation for 3D Lidar(KITTI) Detection. [[Zhihu](https://zhuanlan.zhihu.com/p/521277176)]
