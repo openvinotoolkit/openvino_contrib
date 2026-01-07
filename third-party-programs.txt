@@ -1005,11 +1005,11 @@ ru-gpts
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-   
+
 -------------------------------------------------------------
 
    pytorch
-   
+
    From PyTorch:
 
 Copyright (c) 2016-     Facebook, Inc            (Adam Paszke)
@@ -1282,7 +1282,7 @@ such a program is covered only if its contents constitute a work based
 on the Library (independent of the use of the Library in a tool for
 writing it).  Whether that is true depends on what the Library does
 and what the program that uses the Library does.
-  
+
   1. You may copy and distribute verbatim copies of the Library's
 complete source code as you receive it, in any medium, provided that
 you conspicuously and appropriately publish on each copy an
@@ -1639,7 +1639,7 @@ That's all there is to it!
 
 -------------------------------------------------------------
 
-pysoundfile 
+pysoundfile
 
 Copyright (c) 2013, Bastian Bechtold
 All rights reserved.
@@ -1677,7 +1677,7 @@ Pytorch audio
 
 BSD 2-Clause License
 
-Copyright (c) 2017 Facebook Inc. (Soumith Chintala), 
+Copyright (c) 2017 Facebook Inc. (Soumith Chintala),
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -1994,7 +1994,7 @@ NetworkX
    THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-   
+
 -------------------------------------------------------------
 
 JUnit
@@ -2100,7 +2100,7 @@ You may add additional accurate notices of copyright ownership.
 
 -------------------------------------------------------------
 
-google-java-format 
+google-java-format
 
 
                                  Apache License
@@ -2597,8 +2597,8 @@ license to reproduce, analyze, test, perform and/or display publicly,
 prepare derivative works, distribute, and otherwise use Python
 alone or in any derivative version, provided, however, that PSF's
 License Agreement and PSF's notice of copyright, i.e., "Copyright (c)
-2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008 Python Software Foundation; 
-All Rights Reserved" are retained in Python alone or in any derivative 
+2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008 Python Software Foundation;
+All Rights Reserved" are retained in Python alone or in any derivative
 version prepared by Licensee.
 
 3. In the event Licensee prepares a derivative work that is based on
@@ -2983,7 +2983,7 @@ any additional license rights for the SOFTWARE other than the licenses expressly
 
 7.5 The parties agree that the following sections of the Agreement will survive the termination of the License: Sections 2.1.4 and 4-7.
 
- 
+
 
 ATTACHMENT A
 Redistributable Software
@@ -3291,20 +3291,20 @@ vscode-extension-samples
 
 Copyright (c) Microsoft Corporation
 
-All rights reserved. 
+All rights reserved.
 
 MIT License
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation 
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation
 files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy,
-modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software 
+modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software
 is furnished to do so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
-OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS 
-BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT 
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 -------------------------------------------------------------
@@ -3515,7 +3515,7 @@ Apache License
 
 Version 2.0, January 2004
 
-http://www.apache.org/licenses/ 
+http://www.apache.org/licenses/
 
 TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 
@@ -3601,7 +3601,7 @@ Apache License
 
 Version 2.0, January 2004
 
-http://www.apache.org/licenses/ 
+http://www.apache.org/licenses/
 
 TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 
@@ -3661,7 +3661,7 @@ Apache License
 
 Version 2.0, January 2004
 
-http://www.apache.org/licenses/ 
+http://www.apache.org/licenses/
 
 TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 
@@ -3721,7 +3721,7 @@ Apache License
 
 Version 2.0, January 2004
 
-http://www.apache.org/licenses/ 
+http://www.apache.org/licenses/
 
 TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 
@@ -3781,7 +3781,7 @@ Apache License
 
 Version 2.0, January 2004
 
-http://www.apache.org/licenses/ 
+http://www.apache.org/licenses/
 
 TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 
@@ -3901,3 +3901,30 @@ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+-------------------------------------------------------------
+
+PointPillars
+
+
+MIT License
+
+Copyright (c) 2023 ZhuLifa
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
