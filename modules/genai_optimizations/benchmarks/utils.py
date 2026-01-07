@@ -1,4 +1,4 @@
-# Copyright (C) 2018-2025 Intel Corporation
+# Copyright (C) 2018-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 from genai_opt import SparseAttention
 from genai_opt import KVCacheCompressionMode, KVCacheCompressionParameters, KVCacheCompressor, KVCacheRefinedSelection
