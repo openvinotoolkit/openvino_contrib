@@ -4,7 +4,7 @@
 from setuptools import find_packages, setup
 
 EXTRAS_REQUIRE = {
-    "tests": ["onnx", "onnxruntime", "accelerate", "diffusers", "openvino", "optimum", "optimum-intel", "open-clip-torch","timm", "pytest"],
+    "tests": ["onnx", "onnxruntime", "onnxscript", "accelerate", "diffusers", "openvino", "optimum", "optimum-intel", "open-clip-torch","timm", "pytest"],
 }
 
 setup(
