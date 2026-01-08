@@ -13,7 +13,7 @@ setup(
     author="Alexander Kozlov",
     url="https://github.com/openvinotoolkit/openvino_contrib/tree/master/modules/token_merging",
     description="Token Merging for OpenVINO",
-    install_requires=["torch~=2.4", "torchvision~=0.19.1"],
+    install_requires=["torch~=2.6", "torchvision~=0.19.1"],
     dependency_links=["https://download.pytorch.org/whl/cpu"],
     extras_require=EXTRAS_REQUIRE,
     packages=find_packages(exclude=("examples", "build")),
