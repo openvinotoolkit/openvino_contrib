@@ -74,7 +74,8 @@ class TokenMergingIntegrationTest(unittest.TestCase):
                 dynamic_axes={ 
                     "image": {0: "batch"},
                     "output": {0: "batch"},
-                }
+                },
+                dynamo=False, # This keeps using the classic ONNX exporter (works in PyTorch 1.x – 2.5+).
             )
             compiled_model = ov.compile_model(model_file)
             self.assertTrue(compiled_model)
