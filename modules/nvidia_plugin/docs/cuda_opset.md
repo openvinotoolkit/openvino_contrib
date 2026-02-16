@@ -67,7 +67,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [GRUCell](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/GRUCell_3.md)                                              | Supported*    |
 | [GRUSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/GRUSequence_5.md)                                      | Supported*    |
 | [HardSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HardSigmoid_1.md)                                    | Not Supported |
-| [HSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSigmoid_5.md)                                          | Not Supported |
+| [HSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSigmoid_5.md)                                          | Supported     |
 | [HSwish](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSwish_4.md)                                              | Supported     |
 | [Interpolate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/image/Interpolate_4.md)                                         | Supported*    |
 | [Less](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/Less_1.md)                                                  | Supported     |
@@ -138,7 +138,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [Sin](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sin_1.md)                                                    | Supported     |
 | [Sinh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sinh_1.md)                                                  | Supported     |
 | [SoftMax](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/SoftMax_1.md)                                            | Supported     |
-| [SoftPlus](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/SoftPlus_4.md)                                          | Not Supported |
+| [SoftPlus](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/SoftPlus_4.md)                                          | Supported     |
 | [SoftSign](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/SoftSign_1.md)                                          | Supported |
 | [SpaceToBatch](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/SpaceToBatch_2.md)                                    | Not Supported |
 | [SpaceToDepth](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/SpaceToDepth_1.md)                                    | Not Supported |
