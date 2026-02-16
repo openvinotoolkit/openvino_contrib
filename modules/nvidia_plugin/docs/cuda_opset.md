@@ -48,7 +48,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [EmbeddingBagPackedSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sparse/EmbeddingBagPackedSum_3.md)                    | Not Supported |
 | [EmbeddingSegmentsSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sparse/EmbeddingSegmentsSum_3.md)                      | Not Supported |
 | [Equal](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/Equal_1.md)                                                | Supported     |
-| [Erf](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Erf_1.md)                                                    | Not Supported |
+| [Erf](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Erf_1.md)                                                    | Supported     |
 | [Exp](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Exp_1.md)                                                    | Supported     |
 | [ExtractImagePatches](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ExtractImagePatches_3.md)                      | Not Supported |
 | [FakeQuantize](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/quantization/FakeQuantize_1.md)                                | Supported     |
