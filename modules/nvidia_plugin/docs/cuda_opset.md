@@ -27,7 +27,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [CTCGreedyDecoder](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/CTCGreedyDecoder_1.md)                            | Not Supported |
 | [CTCGreedyDecoderSeqLen](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/CTCGreedyDecoderSeqLen_6.md)                | Not Supported |
 | [CTCLoss](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/CTCLoss_4.md)                                              | Not Supported |
-| [Ceiling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Ceiling_1.md)                                            | Not Supported |
+| [Ceiling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Ceiling_1.md)                                            | Supported     |
 | [Clamp](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Clamp_1.md)                                                | Supported     |
 | [Concat](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Concat_1.md)                                                | Supported     |
 | [Constant](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Constant_1.md)                                      | Supported     |

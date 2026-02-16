@@ -50,7 +50,7 @@ const std::map<ActivationTypes, std::vector<std::vector<float>>> activationTypes
         // {ActivationTypes::Erf,                   {}},
         // {ActivationTypes::HardSigmoid,           {{0.2f, 0.5f}}},
         // {ActivationTypes::Selu,                  {{1.6732f, 1.0507f}}},
-        // {ActivationTypes::Ceiling,               {}},
+        {ActivationTypes::Ceiling,               {}},
         {ActivationTypes::Mish,                  {}},
         {ActivationTypes::HSwish,                {}},
         // {ActivationTypes::SoftPlus,              {}},
@@ -69,7 +69,7 @@ const std::map<ActivationTypes, std::vector<std::vector<float>>> bigRankActivati
         {ActivationTypes::Log,                   {}},
         {ActivationTypes::Abs,                   {}},
         {ActivationTypes::Clamp,                 {{-2.0f, 2.0f}}},
-        // {ActivationTypes::Ceiling,               {}},
+        {ActivationTypes::Ceiling,               {}},
         {ActivationTypes::Swish,                 {{0.5f}}},
 };
 
