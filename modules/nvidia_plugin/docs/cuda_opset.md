@@ -73,7 +73,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [Less](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/Less_1.md)                                                  | Supported     |
 | [LessEqual](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/LessEqual_1.md)                                        | Supported     |
 | [Log](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Log_1.md)                                                    | Supported     |
-| [LogicalAnd](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalAnd_1.md)                                         | Not Supported |
+| [LogicalAnd](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalAnd_1.md)                                         | Supported     |
 | [LogicalNot](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalNot_1.md)                                         | Supported     |
 | [LogicalOr](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalOr_1.md)                                           | Not Supported |
 | [LogicalXor](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalXor_1.md)                                         | Not Supported |
