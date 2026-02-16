@@ -57,6 +57,23 @@ INSTANTIATE_TEST_SUITE_P(smoke_BitwiseAnd,
                          bitwise_and_params,
                          EltwiseLayerTest::getTestCaseName);
 
+// ---- BitwiseOr ----
+const auto bitwise_or_params = ::testing::Combine(
+    ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bitwise_input_shapes_static)),
+    ::testing::Values(EltwiseTypes::BITWISE_OR),
+    ::testing::ValuesIn(secondary_input_types),
+    ::testing::Values(OpType::VECTOR),
+    ::testing::ValuesIn(bitwise_integer_and_bool_types),
+    ::testing::Values(ov::element::Type_t::dynamic),
+    ::testing::Values(ov::element::Type_t::dynamic),
+    ::testing::Values(DEVICE_NVIDIA),
+    ::testing::Values(ov::AnyMap()));
+
+INSTANTIATE_TEST_SUITE_P(smoke_BitwiseOr,
+                         EltwiseLayerTest,
+                         bitwise_or_params,
+                         EltwiseLayerTest::getTestCaseName);
+
 // ---- BitwiseNot ----
 const auto bitwise_not_params = ::testing::Combine(
     ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bitwise_unary_shapes_static)),
