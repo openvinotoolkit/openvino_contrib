@@ -81,4 +81,17 @@ INSTANTIATE_TEST_CASE_P(smoke_LogicalAnd,
                         LogicalTestParamsAnd,
                         LogicalLayerTest::getTestCaseName);
 
+const auto LogicalTestParamsOr =
+    ::testing::Combine(::testing::ValuesIn(static_shapes_to_test_representation(combine_shapes(input_shapes_binary))),
+                       ::testing::Values(LogicalTypes::LOGICAL_OR),
+                       ::testing::ValuesIn(second_input_types_binary),
+                       ::testing::ValuesIn(model_types),
+                       ::testing::Values(DEVICE_NVIDIA),
+                       ::testing::Values(additional_config));
+
+INSTANTIATE_TEST_CASE_P(smoke_LogicalOr,
+                        LogicalLayerTest,
+                        LogicalTestParamsOr,
+                        LogicalLayerTest::getTestCaseName);
+
 }  // namespace

@@ -75,8 +75,8 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [Log](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Log_1.md)                                                    | Supported     |
 | [LogicalAnd](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalAnd_1.md)                                         | Supported     |
 | [LogicalNot](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalNot_1.md)                                         | Supported     |
-| [LogicalOr](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalOr_1.md)                                           | Not Supported |
-| [LogicalXor](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalXor_1.md)                                         | Not Supported |
+| [LogicalOr](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalOr_1.md)                                           | Supported     |
+| [LogicalXor](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalXor_1.md)                                         | Supported     |
 | [LogSoftmax](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/LogSoftmax_5.md)                                      | Not Supported |
 | [Loop](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Loop_5.md)                                              | Not Supported |
 | [LRN](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/LRN_1.md)                                                 | Not Supported |
