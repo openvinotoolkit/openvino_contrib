@@ -78,7 +78,7 @@ std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(const std::shared_ptr<
 }
 
 std::shared_ptr<ov::ICompiledModel> Plugin::import_model(const ov::Tensor& model, const ov::AnyMap& properties) const {
-    ov::SharedStreamBuffer buffer{model.data(), model.get_byte_size()};
+    ov::SharedStreamBuffer buffer{static_cast<const char*>(model.data()), model.get_byte_size()};
     std::istream stream{&buffer};
     return import_model(stream, properties);
 };
@@ -86,7 +86,7 @@ std::shared_ptr<ov::ICompiledModel> Plugin::import_model(const ov::Tensor& model
 std::shared_ptr<ov::ICompiledModel> Plugin::import_model(const ov::Tensor& model,
                                                          const ov::SoPtr<ov::IRemoteContext>& context,
                                                          const ov::AnyMap& properties) const {
-    ov::SharedStreamBuffer buffer{model.data(), model.get_byte_size()};
+    ov::SharedStreamBuffer buffer{static_cast<const char*>(model.data()), model.get_byte_size()};
     std::istream stream{&buffer};
     return import_model(stream, context, properties);
 };
