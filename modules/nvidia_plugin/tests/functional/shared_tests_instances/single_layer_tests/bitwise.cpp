@@ -20,11 +20,6 @@ std::vector<std::vector<ov::Shape>> bitwise_unary_shapes_static = {
     {{2, 17, 3, 4}},
 };
 
-std::vector<ov::element::Type> bitwise_integer_and_bool_types = {
-    ov::element::i32,
-    ov::element::boolean,
-};
-
 std::vector<std::vector<ov::Shape>> bitwise_input_shapes_static = {
     {{256}, {256}},
     {{256}, {1}},
@@ -40,95 +35,67 @@ std::vector<InputLayerType> secondary_input_types = {
     InputLayerType::PARAMETER,
 };
 
-// ---- BitwiseAnd ----
-const auto bitwise_and_params = ::testing::Combine(
-    ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bitwise_input_shapes_static)),
-    ::testing::Values(EltwiseTypes::BITWISE_AND),
-    ::testing::ValuesIn(secondary_input_types),
-    ::testing::Values(OpType::VECTOR),
-    ::testing::ValuesIn(bitwise_integer_and_bool_types),
-    ::testing::Values(ov::element::Type_t::dynamic),
-    ::testing::Values(ov::element::Type_t::dynamic),
-    ::testing::Values(DEVICE_NVIDIA),
-    ::testing::Values(ov::AnyMap()));
+// Note: InType and OutType must use concrete types (not ov::element::Type_t::dynamic)
+// because "dynamic" in the test name matches the skip pattern in skip_tests_config.cpp:
+//   std::regex(R"(.*(d|D)ynamic*.*)")
+// which is intended for dynamic shapes but also catches InType=dynamic/OutType=dynamic.
 
-INSTANTIATE_TEST_SUITE_P(smoke_BitwiseAnd,
-                         EltwiseLayerTest,
-                         bitwise_and_params,
-                         EltwiseLayerTest::getTestCaseName);
+#define BITWISE_BINARY_TESTS(OpEnum, Prefix, Type, TypeName)                                                     \
+    INSTANTIATE_TEST_SUITE_P(                                                                                     \
+        smoke_##Prefix##_##TypeName,                                                                              \
+        EltwiseLayerTest,                                                                                         \
+        ::testing::Combine(                                                                                       \
+            ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bitwise_input_shapes_static)),      \
+            ::testing::Values(EltwiseTypes::OpEnum),                                                               \
+            ::testing::ValuesIn(secondary_input_types),                                                            \
+            ::testing::Values(OpType::VECTOR),                                                                     \
+            ::testing::Values(Type),                                                                               \
+            ::testing::Values(Type),                                                                               \
+            ::testing::Values(Type),                                                                               \
+            ::testing::Values(std::string(DEVICE_NVIDIA)),                                                         \
+            ::testing::Values(ov::AnyMap())),                                                                      \
+        EltwiseLayerTest::getTestCaseName)
+
+#define BITWISE_UNARY_TESTS(OpEnum, Prefix, Type, TypeName)                                                      \
+    INSTANTIATE_TEST_SUITE_P(                                                                                     \
+        smoke_##Prefix##_##TypeName,                                                                              \
+        EltwiseLayerTest,                                                                                         \
+        ::testing::Combine(                                                                                       \
+            ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bitwise_unary_shapes_static)),      \
+            ::testing::Values(EltwiseTypes::OpEnum),                                                               \
+            ::testing::Values(InputLayerType::CONSTANT),                                                           \
+            ::testing::Values(OpType::VECTOR),                                                                     \
+            ::testing::Values(Type),                                                                               \
+            ::testing::Values(Type),                                                                               \
+            ::testing::Values(Type),                                                                               \
+            ::testing::Values(std::string(DEVICE_NVIDIA)),                                                         \
+            ::testing::Values(ov::AnyMap())),                                                                      \
+        EltwiseLayerTest::getTestCaseName)
+
+// ---- BitwiseAnd ----
+BITWISE_BINARY_TESTS(BITWISE_AND, BitwiseAnd, ov::element::Type_t::i32, i32);
+BITWISE_BINARY_TESTS(BITWISE_AND, BitwiseAnd, ov::element::Type_t::boolean, bool);
 
 // ---- BitwiseOr ----
-const auto bitwise_or_params = ::testing::Combine(
-    ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bitwise_input_shapes_static)),
-    ::testing::Values(EltwiseTypes::BITWISE_OR),
-    ::testing::ValuesIn(secondary_input_types),
-    ::testing::Values(OpType::VECTOR),
-    ::testing::ValuesIn(bitwise_integer_and_bool_types),
-    ::testing::Values(ov::element::Type_t::dynamic),
-    ::testing::Values(ov::element::Type_t::dynamic),
-    ::testing::Values(DEVICE_NVIDIA),
-    ::testing::Values(ov::AnyMap()));
-
-INSTANTIATE_TEST_SUITE_P(smoke_BitwiseOr,
-                         EltwiseLayerTest,
-                         bitwise_or_params,
-                         EltwiseLayerTest::getTestCaseName);
+BITWISE_BINARY_TESTS(BITWISE_OR, BitwiseOr, ov::element::Type_t::i32, i32);
+BITWISE_BINARY_TESTS(BITWISE_OR, BitwiseOr, ov::element::Type_t::boolean, bool);
 
 // ---- BitwiseXor ----
-const auto bitwise_xor_params = ::testing::Combine(
-    ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bitwise_input_shapes_static)),
-    ::testing::Values(EltwiseTypes::BITWISE_XOR),
-    ::testing::ValuesIn(secondary_input_types),
-    ::testing::Values(OpType::VECTOR),
-    ::testing::ValuesIn(bitwise_integer_and_bool_types),
-    ::testing::Values(ov::element::Type_t::dynamic),
-    ::testing::Values(ov::element::Type_t::dynamic),
-    ::testing::Values(DEVICE_NVIDIA),
-    ::testing::Values(ov::AnyMap()));
-
-INSTANTIATE_TEST_SUITE_P(smoke_BitwiseXor,
-                         EltwiseLayerTest,
-                         bitwise_xor_params,
-                         EltwiseLayerTest::getTestCaseName);
+BITWISE_BINARY_TESTS(BITWISE_XOR, BitwiseXor, ov::element::Type_t::i32, i32);
+BITWISE_BINARY_TESTS(BITWISE_XOR, BitwiseXor, ov::element::Type_t::boolean, bool);
 
 // ---- BitwiseNot ----
-const auto bitwise_not_params = ::testing::Combine(
-    ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bitwise_unary_shapes_static)),
-    ::testing::Values(EltwiseTypes::BITWISE_NOT),
-    ::testing::Values(InputLayerType::CONSTANT),
-    ::testing::Values(OpType::VECTOR),
-    ::testing::ValuesIn(bitwise_integer_and_bool_types),
-    ::testing::Values(ov::element::Type_t::dynamic),
-    ::testing::Values(ov::element::Type_t::dynamic),
-    ::testing::Values(DEVICE_NVIDIA),
-    ::testing::Values(ov::AnyMap()));
-
-INSTANTIATE_TEST_SUITE_P(smoke_BitwiseNot,
-                         EltwiseLayerTest,
-                         bitwise_not_params,
-                         EltwiseLayerTest::getTestCaseName);
-
-std::vector<ov::element::Type> bitwise_integer_types = {
-    ov::element::i32,
-    ov::element::i16,
-    ov::element::u32,
-};
+BITWISE_UNARY_TESTS(BITWISE_NOT, BitwiseNot, ov::element::Type_t::i32, i32);
+BITWISE_UNARY_TESTS(BITWISE_NOT, BitwiseNot, ov::element::Type_t::boolean, bool);
 
 // ---- BitwiseLeftShift ----
-const auto bitwise_left_shift_params = ::testing::Combine(
-    ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bitwise_input_shapes_static)),
-    ::testing::Values(EltwiseTypes::LEFT_SHIFT),
-    ::testing::ValuesIn(secondary_input_types),
-    ::testing::Values(OpType::VECTOR),
-    ::testing::ValuesIn(bitwise_integer_types),
-    ::testing::Values(ov::element::Type_t::dynamic),
-    ::testing::Values(ov::element::Type_t::dynamic),
-    ::testing::Values(DEVICE_NVIDIA),
-    ::testing::Values(ov::AnyMap()));
+BITWISE_BINARY_TESTS(LEFT_SHIFT, BitwiseLeftShift, ov::element::Type_t::i32, i32);
+BITWISE_BINARY_TESTS(LEFT_SHIFT, BitwiseLeftShift, ov::element::Type_t::i16, i16);
+BITWISE_BINARY_TESTS(LEFT_SHIFT, BitwiseLeftShift, ov::element::Type_t::u32, u32);
 
-INSTANTIATE_TEST_SUITE_P(smoke_BitwiseLeftShift,
-                         EltwiseLayerTest,
-                         bitwise_left_shift_params,
-                         EltwiseLayerTest::getTestCaseName);
+// ---- BitwiseRightShift ----
+BITWISE_BINARY_TESTS(RIGHT_SHIFT, BitwiseRightShift, ov::element::Type_t::i32, i32);
+BITWISE_BINARY_TESTS(RIGHT_SHIFT, BitwiseRightShift, ov::element::Type_t::i16, i16);
+BITWISE_BINARY_TESTS(RIGHT_SHIFT, BitwiseRightShift, ov::element::Type_t::u32, u32);
 
 }  // namespace
