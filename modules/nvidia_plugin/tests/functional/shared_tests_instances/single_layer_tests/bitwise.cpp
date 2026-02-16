@@ -108,4 +108,27 @@ INSTANTIATE_TEST_SUITE_P(smoke_BitwiseNot,
                          bitwise_not_params,
                          EltwiseLayerTest::getTestCaseName);
 
+std::vector<ov::element::Type> bitwise_integer_types = {
+    ov::element::i32,
+    ov::element::i16,
+    ov::element::u32,
+};
+
+// ---- BitwiseLeftShift ----
+const auto bitwise_left_shift_params = ::testing::Combine(
+    ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bitwise_input_shapes_static)),
+    ::testing::Values(EltwiseTypes::LEFT_SHIFT),
+    ::testing::ValuesIn(secondary_input_types),
+    ::testing::Values(OpType::VECTOR),
+    ::testing::ValuesIn(bitwise_integer_types),
+    ::testing::Values(ov::element::Type_t::dynamic),
+    ::testing::Values(ov::element::Type_t::dynamic),
+    ::testing::Values(DEVICE_NVIDIA),
+    ::testing::Values(ov::AnyMap()));
+
+INSTANTIATE_TEST_SUITE_P(smoke_BitwiseLeftShift,
+                         EltwiseLayerTest,
+                         bitwise_left_shift_params,
+                         EltwiseLayerTest::getTestCaseName);
+
 }  // namespace
