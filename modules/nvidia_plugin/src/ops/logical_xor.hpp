@@ -1,0 +1,20 @@
+// Copyright (C) 2018-2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+
+#pragma once
+
+#include "elementwise_binary.hpp"
+#include "kernels/logical_xor.hpp"
+#include "openvino/op/logical_xor.hpp"
+
+namespace ov {
+namespace nvidia_gpu {
+
+class LogicalXorOp : public ElementwiseBinaryOp<ov::op::v1::LogicalXor, kernel::LogicalXor> {
+public:
+    using ElementwiseBinaryOp::ElementwiseBinaryOp;
+};
+
+}  // namespace nvidia_gpu
+}  // namespace ov

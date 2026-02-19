@@ -27,7 +27,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [CTCGreedyDecoder](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/CTCGreedyDecoder_1.md)                            | Not Supported |
 | [CTCGreedyDecoderSeqLen](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/CTCGreedyDecoderSeqLen_6.md)                | Not Supported |
 | [CTCLoss](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/CTCLoss_4.md)                                              | Not Supported |
-| [Ceiling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Ceiling_1.md)                                            | Not Supported |
+| [Ceiling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Ceiling_1.md)                                            | Supported     |
 | [Clamp](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Clamp_1.md)                                                | Supported     |
 | [Concat](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Concat_1.md)                                                | Supported     |
 | [Constant](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Constant_1.md)                                      | Supported     |
@@ -48,7 +48,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [EmbeddingBagPackedSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sparse/EmbeddingBagPackedSum_3.md)                    | Not Supported |
 | [EmbeddingSegmentsSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sparse/EmbeddingSegmentsSum_3.md)                      | Not Supported |
 | [Equal](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/Equal_1.md)                                                | Supported     |
-| [Erf](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Erf_1.md)                                                    | Not Supported |
+| [Erf](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Erf_1.md)                                                    | Supported     |
 | [Exp](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Exp_1.md)                                                    | Supported     |
 | [ExtractImagePatches](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ExtractImagePatches_3.md)                      | Not Supported |
 | [FakeQuantize](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/quantization/FakeQuantize_1.md)                                | Supported     |
@@ -67,16 +67,16 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [GRUCell](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/GRUCell_3.md)                                              | Supported*    |
 | [GRUSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/GRUSequence_5.md)                                      | Supported*    |
 | [HardSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HardSigmoid_1.md)                                    | Not Supported |
-| [HSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSigmoid_5.md)                                          | Not Supported |
+| [HSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSigmoid_5.md)                                          | Supported     |
 | [HSwish](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSwish_4.md)                                              | Supported     |
 | [Interpolate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/image/Interpolate_4.md)                                         | Supported*    |
 | [Less](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/Less_1.md)                                                  | Supported     |
 | [LessEqual](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/LessEqual_1.md)                                        | Supported     |
 | [Log](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Log_1.md)                                                    | Supported     |
-| [LogicalAnd](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalAnd_1.md)                                         | Not Supported |
+| [LogicalAnd](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalAnd_1.md)                                         | Supported     |
 | [LogicalNot](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalNot_1.md)                                         | Supported     |
-| [LogicalOr](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalOr_1.md)                                           | Not Supported |
-| [LogicalXor](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalXor_1.md)                                         | Not Supported |
+| [LogicalOr](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalOr_1.md)                                           | Supported     |
+| [LogicalXor](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalXor_1.md)                                         | Supported     |
 | [LogSoftmax](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/LogSoftmax_5.md)                                      | Not Supported |
 | [Loop](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Loop_5.md)                                              | Not Supported |
 | [LRN](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/LRN_1.md)                                                 | Not Supported |
@@ -138,7 +138,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [Sin](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sin_1.md)                                                    | Supported     |
 | [Sinh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sinh_1.md)                                                  | Supported     |
 | [SoftMax](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/SoftMax_1.md)                                            | Supported     |
-| [SoftPlus](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/SoftPlus_4.md)                                          | Not Supported |
+| [SoftPlus](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/SoftPlus_4.md)                                          | Supported     |
 | [SoftSign](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/SoftSign_1.md)                                          | Supported |
 | [SpaceToBatch](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/SpaceToBatch_2.md)                                    | Not Supported |
 | [SpaceToDepth](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/SpaceToDepth_1.md)                                    | Not Supported |

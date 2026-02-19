@@ -57,6 +57,25 @@ using FloatElementTypesSwitch = ElementTypesSwitch<Type_t::f32,
 #endif
                                                    Type_t::f16,
                                                    Type_t::f64>;
+
+using IntegerElementTypesSwitch = ElementTypesSwitch<Type_t::i8,
+                                                     Type_t::i16,
+                                                     Type_t::i32,
+                                                     Type_t::i64,
+                                                     Type_t::u8,
+                                                     Type_t::u16,
+                                                     Type_t::u32,
+                                                     Type_t::u64>;
+
+using IntegerAndBooleanElementTypesSwitch = ElementTypesSwitch<Type_t::boolean,
+                                                               Type_t::i8,
+                                                               Type_t::i16,
+                                                               Type_t::i32,
+                                                               Type_t::i64,
+                                                               Type_t::u8,
+                                                               Type_t::u16,
+                                                               Type_t::u32,
+                                                               Type_t::u64>;
 }  // namespace kernel
 }  // namespace nvidia_gpu
 }  // namespace ov
