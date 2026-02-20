@@ -25,7 +25,7 @@ jobs:
     defaults:
       run:
         shell: bash
-    runs-on: 'macos-13-large'
+    runs-on: 'macos-15-large'
     env:
       CMAKE_BUILD_TYPE: 'Release'
       MACOSX_DEPLOYMENT_TARGET: '11.0'
@@ -112,7 +112,6 @@ jobs:
             -DENABLE_OV_TF_FRONTEND=OFF \
             -DENABLE_OV_TF_LITE_FRONTEND=OFF \
             -DENABLE_OV_PYTORCH_FRONTEND=OFF \
-            -DENABLE_CPPLINT=OFF \
             -DENABLE_INTEL_NPU=OFF \
             -S ${{ env.OPENVINO_REPO }} \
             -B ${{ env.BUILD_DIR }}
