@@ -1,0 +1,70 @@
+<?xml version="1.0"?>
+<net name="pillar_layer" version="11">
+    <layers>
+        <layer id="0" name="points_input" type="Parameter" version="opset1">
+            <data shape="-1,4" element_type="f32"/>
+            <output>
+                <port id="0" precision="FP32">
+                    <dim>-1</dim>
+                    <dim>4</dim>
+                </port>
+            </output>
+        </layer>
+        <layer id="1" name="voxelization" type="VoxelizationOp" version="extension">
+            <data voxel_size="0.16,0.16,4"
+                  point_cloud_range="0,-39.68,-3,69.12,39.68,1"
+                  max_points_per_voxel="32"
+                  max_voxels="16000"/>
+            <input>
+                <port id="0">
+                    <dim>-1</dim>
+                    <dim>4</dim>
+                </port>
+            </input>
+            <output>
+                <port id="1" precision="FP32">
+                    <dim>-1</dim>
+                    <dim>32</dim>
+                    <dim>4</dim>
+                </port>
+                <port id="2" precision="I32">
+                    <dim>-1</dim>
+                    <dim>4</dim>
+                </port>
+                <port id="3" precision="I32">
+                    <dim>-1</dim>
+                </port>
+            </output>
+        </layer>
+        <layer id="2" name="voxels_output" type="Result" version="opset1">
+            <input>
+                <port id="0">
+                    <dim>-1</dim>
+                    <dim>32</dim>
+                    <dim>4</dim>
+                </port>
+            </input>
+        </layer>
+        <layer id="3" name="coors_output" type="Result" version="opset1">
+            <input>
+                <port id="0">
+                    <dim>-1</dim>
+                    <dim>4</dim>
+                </port>
+            </input>
+        </layer>
+        <layer id="4" name="npoints_output" type="Result" version="opset1">
+            <input>
+                <port id="0">
+                    <dim>-1</dim>
+                </port>
+            </input>
+        </layer>
+    </layers>
+    <edges>
+        <edge from-layer="0" from-port="0" to-layer="1" to-port="0"/>
+        <edge from-layer="1" from-port="1" to-layer="2" to-port="0"/>
+        <edge from-layer="1" from-port="2" to-layer="3" to-port="0"/>
+        <edge from-layer="1" from-port="3" to-layer="4" to-port="0"/>
+    </edges>
+</net>

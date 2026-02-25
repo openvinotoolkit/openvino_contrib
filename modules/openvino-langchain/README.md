@@ -32,6 +32,8 @@ The following models are tested:
     - meta-llama/Llama-2-13b-chat-hf
     - microsoft/Phi-3.5-mini-instruct
     - deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
+  * Tool calling models:
+    - Qwen/Qwen2.5-7B-Instruct
 
 #### Use HuggingFace Hub
 
@@ -118,6 +120,15 @@ const messages = [
 const response = await model.invoke(messages);
 console.log(response.content);
 ```
+
+### Tool calling (beta)
+
+ChatOpenVINO has limited support for tool calling. The simplest way to set up a tool for use by an LLM is to use the `bindTool` function. You can also create an agent and set up the necessary tools to use them with ChatOpenVINO.
+
+Different models have different tool calling requirements, so each model requires specific tool processing. Currently, however, tool calling is only supported for the Qwen model in ChatOpenVINO.
+
+The list of supported models will expand in the future. Please follow the new releases.
+
 
 ## Text Embedding Model
 

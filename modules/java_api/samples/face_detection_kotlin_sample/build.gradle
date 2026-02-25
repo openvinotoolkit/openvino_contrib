@@ -40,7 +40,10 @@ sourceSets {
     main.java.srcDirs = ['src/main/kotlin', '../common']
     main.kotlin.srcDirs = ['src/main/kotlin', '../common']
 }
-mainClassName = 'Main'
+
+application {
+    mainClass = 'Main'
+}
 
 dependencies {
     implementation rootProject

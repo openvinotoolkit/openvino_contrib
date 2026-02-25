@@ -3,7 +3,7 @@ import { PromptTemplate } from '@langchain/core/prompts';
 import { OpenVINO } from '../llms.js';
 
 const modelPath = process.env.MODEL_PATH;
-if (modelPath === undefined) throw new Error('MODEL_PATH doest not defined');
+if (modelPath === undefined) throw new Error('MODEL_PATH is not defined');
 
 test('Test llm with incorrect modelPath', async () => {
   const model = new OpenVINO({modelPath: ''});

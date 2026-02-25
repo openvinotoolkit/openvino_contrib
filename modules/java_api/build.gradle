@@ -11,7 +11,7 @@ println 'CPU architecture: ' + arch
 
 
 def nativesCPP;
-def openvinoVersion = "2024.2"
+def openvinoVersion = "2025.1"
 
 def native_resources = []
 def tbb_dir = System.getenv('TBB_DIR')
@@ -28,7 +28,11 @@ if (arch == "x86_64" || arch == "amd64" || arch == "x64" || arch == "x86-64") {
     ov_arch = "intel64";
 } else if (arch == "aarch64" || arch == "arm64" || arch == "arm-v8") {
     arch = "arm64";
-    ov_arch = "aarch64";
+    if (OperatingSystem.current().isMacOsX()) {
+        ov_arch = "arm64";
+    } else {
+        ov_arch = "aarch64";
+    }
 } else if (arch == "arm" || arch == "arm-v7" || arch == "armv7" || arch == "arm32") {
     arch = "arm32";
     ov_arch = "armhf";
