@@ -33,6 +33,18 @@ std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::compile_model(const std::sha
     OPENVINO_THROW_NOT_IMPLEMENTED("Currently only direct GGUF file loading is "
                                    "supported for the LLAMA_CPP* plugins");
 }
+
+std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::import_model(const ov::Tensor& model, const ov::AnyMap& properties) const {
+    OPENVINO_THROW("This method may not be used with LLAMA_CPP* plugins");
+}
+
+std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::import_model(const ov::Tensor& model,
+                                                 const ov::SoPtr<ov::IRemoteContext>& context,
+                                                 const ov::AnyMap& properties) const {
+    OPENVINO_THROW("This method may not be used with LLAMA_CPP* plugins");
+}
+
+
 std::shared_ptr<ov::ICompiledModel> LlamaCppPlugin::compile_model(const std::string& fname,
                                                                   const ov::AnyMap& properties) const {
     size_t num_threads = 0;

@@ -36,9 +36,15 @@ public:
     virtual std::shared_ptr<ov::ICompiledModel> import_model(std::istream& model,
                                                              const ov::SoPtr<ov::IRemoteContext>& context,
                                                              const ov::AnyMap& properties) const override;
-
     virtual ov::SupportedOpsMap query_model(const std::shared_ptr<const ov::Model>& model,
                                             const ov::AnyMap& properties) const override;
+
+
+    virtual std::shared_ptr<ov::ICompiledModel> import_model(const ov::Tensor& model, const ov::AnyMap& properties) const override;
+
+    virtual std::shared_ptr<ov::ICompiledModel> import_model(const ov::Tensor& model,
+                                                               const ov::SoPtr<ov::IRemoteContext>& context,
+                                                               const ov::AnyMap& properties) const override;
 
 private:
     size_t m_num_threads = 0;
