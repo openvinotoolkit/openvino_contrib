@@ -52,9 +52,9 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
     public static final float CONFIDENCE_THRESHOLD = 0.6F;
     public static final float NMS_THRESHOLD = 0.6F;
     public static final String OPENCV_LIBRARY_NAME = "opencv_java4";
-    public static final String MODEL_XML = "ssd_mobilenet_v2_coco.xml";
+    public static final String MODEL_XML = "ssd_mobilenet_v1_coco.xml";
     public static final String COCO_LABELS = "labels.txt";
-    public static final String MODEL_BIN = "ssd_mobilenet_v2_coco.bin";
+    public static final String MODEL_BIN = "ssd_mobilenet_v1_coco.bin";
     public static final String DEVICE_NAME = "CPU";
     public static String[] COCO_CLASSES_91;
 
