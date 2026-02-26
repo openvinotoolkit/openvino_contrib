@@ -66,6 +66,12 @@ type Server struct {
 
 	// next sequence for prompt processing to avoid starvation
 	nextSeq int
+
+	// device being used
+	device string
+
+	// model load error if any
+	loadError error
 }
 
 func (s *Server) allNil() bool {
@@ -96,6 +102,11 @@ func (s *Server) inputs(prompt string, images []ImageData) ([]genai.Input, error
 
 func (s *Server) NewSequence(prompt string, images []ImageData, params NewSequenceParams) (*(genai.Sequence), error) {
 	s.ready.Wait()
+
+	// Check if there was a load error
+	if s.loadError != nil {
+		return nil, fmt.Errorf("model failed to load: %w", s.loadError)
+	}
 
 	startTime := time.Now()
 
@@ -147,7 +158,13 @@ func (s *Server) processBatch() error {
 
 		seq.SetStartGenerationTime(time.Now())
 		for _, input := range seq.GetInputs() {
-			genai.GenerateTextWithMetrics(s.model, input.GetPrompt(), seq.GetSamplingParameters(), seq)
+			err := genai.GenerateTextWithMetrics(s.model, input.GetPrompt(), seq.GetSamplingParameters(), seq)
+			if err != nil {
+				log.Printf("Error generating text: %v", err)
+				// Set error as done reason so user can see it
+				s.removeSequence(i, fmt.Sprintf("error: %v", err))
+				return err
+			}
 			// log.Printf("gen result: ", seq.GetpendingResponses())
 		}
 		s.removeSequence(i, "")
@@ -218,6 +235,10 @@ type CompletionResponse struct {
 	Timings Timings `json:"timings"`
 }
 
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
 // func (s *Server) run(ctx context.Context) {
 func (s *Server) run(ctx context.Context) {
 	s.ready.Wait()
@@ -272,7 +293,11 @@ func (s *Server) completion(w http.ResponseWriter, r *http.Request) {
 		samplingParams: &samplingParams,
 	})
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to create new sequence: %v", err), http.StatusInternalServerError)
+		log.Printf("Failed to create sequence: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(&ErrorResponse{
+			Error: fmt.Sprintf("Failed to create new sequence: %v", err),
+		})
 		return
 	}
 
@@ -312,18 +337,33 @@ func (s *Server) completion(w http.ResponseWriter, r *http.Request) {
 
 				flusher.Flush()
 			} else {
-				// Send the final response
-				if err := json.NewEncoder(w).Encode(&CompletionResponse{
-					Stop:         true,
-					StoppedLimit: seq.GetDoneReason() == "limit",
-					Timings: Timings{
-						PromptN:     seq.GetNumPromptInputs(),
-						PromptMS:    float64(seq.GetStartGenerationTime().Sub(seq.GetStartProcessingTime()).Milliseconds()),
-						PredictedN:  seq.GetNumDecoded(),
-						PredictedMS: float64(time.Since(seq.GetStartGenerationTime()).Milliseconds()),
-					},
-				}); err != nil {
-					http.Error(w, fmt.Sprintf("failed to encode final response: %v", err), http.StatusInternalServerError)
+				doneReason := seq.GetDoneReason()
+
+				// Check if done reason contains an error
+				if strings.HasPrefix(doneReason, "error:") {
+					// Send error response
+					if err := json.NewEncoder(w).Encode(&CompletionResponse{
+						Stop:         true,
+						Content:      "",
+						StoppedLimit: false,
+					}); err != nil {
+						http.Error(w, fmt.Sprintf("failed to encode error response: %v", err), http.StatusInternalServerError)
+					}
+					log.Printf("Generation failed: %s", doneReason)
+				} else {
+					// Send the final response
+					if err := json.NewEncoder(w).Encode(&CompletionResponse{
+						Stop:         true,
+						StoppedLimit: doneReason == "limit",
+						Timings: Timings{
+							PromptN:     seq.GetNumPromptInputs(),
+							PromptMS:    float64(seq.GetStartGenerationTime().Sub(seq.GetStartProcessingTime()).Milliseconds()),
+							PredictedN:  seq.GetNumDecoded(),
+							PredictedMS: float64(time.Since(seq.GetStartGenerationTime()).Milliseconds()),
+						},
+					}); err != nil {
+						http.Error(w, fmt.Sprintf("failed to encode final response: %v", err), http.StatusInternalServerError)
+					}
 				}
 
 				return
@@ -335,6 +375,8 @@ func (s *Server) completion(w http.ResponseWriter, r *http.Request) {
 type HealthResponse struct {
 	Status   string  `json:"status"`
 	Progress float32 `json:"progress"`
+	Error    string  `json:"error,omitempty"`
+	Device   string  `json:"device,omitempty"`
 }
 
 type ServerStatus int
@@ -358,10 +400,18 @@ func (s ServerStatus) ToString() string {
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(&HealthResponse{
+
+	response := &HealthResponse{
 		Status:   s.status.ToString(),
 		Progress: s.progress,
-	}); err != nil {
+		Device:   s.device,
+	}
+
+	if s.loadError != nil {
+		response.Error = s.loadError.Error()
+	}
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		http.Error(w, fmt.Sprintf("failed to encode response: %v", err), http.StatusInternalServerError)
 	}
 }
@@ -379,15 +429,26 @@ func (m *multiLPath) String() string {
 
 func (s *Server) loadModel(mpath string, mname string, device string) {
 	var err error
+	s.device = device
+
+	// Log available devices at startup
+	availableDevices := genai.GetAvailableDeviceNames()
+	log.Printf("Available devices: %v", availableDevices)
+	log.Printf("Requested device: %s", device)
+
 	ov_ir_dir := strings.ReplaceAll(mname, ":", "_")
 	tempDir := filepath.Join("/tmp", ov_ir_dir)
 	ov_model_path := ""
 
 	isGGUF, err := genai.IsGGUF(mpath)
 	if err != nil {
-		fmt.Printf("Error checking file: %v\n", err)
-		panic(err)
+		log.Printf("Error checking if file is GGUF: %v", err)
+		s.loadError = fmt.Errorf("error checking file type: %w", err)
+		s.status = ServerStatusError
+		s.ready.Done()
+		return
 	}
+
 	if isGGUF {
 		log.Printf("The model is a GGUF file.")
 		ov_model_path = filepath.Join(tempDir, "tmp.gguf")
@@ -395,20 +456,32 @@ func (s *Server) loadModel(mpath string, mname string, device string) {
 		if _, err := os.Stat(tempDir); os.IsNotExist(err) {
 			err := os.MkdirAll(tempDir, 0755)
 			if err != nil {
-				fmt.Errorf("Error creating dir: %v", err)
-				panic(err)
+				log.Printf("Error creating directory: %v", err)
+				s.loadError = fmt.Errorf("error creating directory: %w", err)
+				s.status = ServerStatusError
+				s.ready.Done()
+				return
 			}
 			err = genai.CopyFile(mpath, ov_model_path)
 			if err != nil {
-				panic(err)
+				log.Printf("Error copying file: %v", err)
+				s.loadError = fmt.Errorf("error copying file: %w", err)
+				s.status = ServerStatusError
+				s.ready.Done()
+				return
 			}
 		}
 	}
 
 	isGzip, err := genai.IsGzipByMagicBytes(mpath)
 	if err != nil {
-		fmt.Printf("Error checking file: %v\n", err)
+		log.Printf("Error checking if file is Gzip: %v", err)
+		s.loadError = fmt.Errorf("error checking file type: %w", err)
+		s.status = ServerStatusError
+		s.ready.Done()
+		return
 	}
+
 	if isGzip {
 		log.Printf("The model is a OpenVINO IR file.")
 		// for OpenVINO IR
@@ -416,11 +489,23 @@ func (s *Server) loadModel(mpath string, mname string, device string) {
 		if os.IsNotExist(err) {
 			err = genai.UnpackTarGz(mpath, tempDir)
 			if err != nil {
-				panic(err)
+				log.Printf("Error unpacking tar.gz: %v", err)
+				s.loadError = fmt.Errorf("error unpacking tar.gz: %w", err)
+				s.status = ServerStatusError
+				s.ready.Done()
+				return
 			}
 		}
 
-		entries, _ := os.ReadDir(tempDir)
+		entries, err := os.ReadDir(tempDir)
+		if err != nil {
+			log.Printf("Error reading directory: %v", err)
+			s.loadError = fmt.Errorf("error reading directory: %w", err)
+			s.status = ServerStatusError
+			s.ready.Done()
+			return
+		}
+
 		var subdirs []string
 		for _, entry := range entries {
 			if entry.IsDir() {
@@ -428,11 +513,37 @@ func (s *Server) loadModel(mpath string, mname string, device string) {
 			}
 		}
 
+		if len(subdirs) == 0 {
+			log.Printf("Error: no subdirectories found in unpacked model")
+			s.loadError = errors.New("no subdirectories found in unpacked model")
+			s.status = ServerStatusError
+			s.ready.Done()
+			return
+		}
+
 		ov_model_path = filepath.Join(tempDir, subdirs[0])
 	}
 
-	s.model = genai.CreatePipeline(ov_model_path, device)
-	log.Printf("The model had been load by GenAI, ov_model_path: %s , %s", ov_model_path, device)
+	// Create pipeline with error checking
+	model, err := genai.CreatePipeline(ov_model_path, device)
+	if err != nil {
+		log.Printf("Error creating pipeline: %v", err)
+		s.loadError = fmt.Errorf("failed to create pipeline: %w", err)
+		s.status = ServerStatusError
+		s.ready.Done()
+		return
+	}
+
+	if model == nil {
+		log.Printf("Error: CreatePipeline returned nil model")
+		s.loadError = errors.New("pipeline creation returned nil")
+		s.status = ServerStatusError
+		s.ready.Done()
+		return
+	}
+
+	s.model = model
+	log.Printf("The model has been loaded by GenAI, ov_model_path: %s, device: %s", ov_model_path, device)
 	s.status = ServerStatusReady
 	s.ready.Done()
 }
