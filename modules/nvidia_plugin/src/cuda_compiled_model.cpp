@@ -99,9 +99,6 @@ void CompiledModel::compile_model(const std::shared_ptr<const ov::Model>& model)
         // Apply transformations pipeline
         transformer.transform(device, model_, config_);
     }
-    if (model->is_dynamic()) {
-        throw_ov_exception("Dynamic models are not supported by NVIDIA plugin yet!");
-    }
     // Generate backend specific blob mappings. For example Inference Engine uses not ov::Result nodes friendly name
     // as inference request output names but the name of the layer before.
     for (auto& result : model_->get_results()) {
