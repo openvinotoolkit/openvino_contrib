@@ -229,20 +229,23 @@ unsigned int CompiledModel::run_benchmark_for(const int numInfers,
 
 size_t CompiledModel::get_optimal_number_of_streams(size_t const_blob_size,
                                                     size_t memory_blob_size) const {
-    if (memory_blob_size == 0) {
-        return 0;
-    }
     CUDA::Device device{config_.get_device_id()};
     device.setCurrent();
+    const size_t max_streams_supported = max_concurrent_streams(device);
+    const size_t num_streams = config_.get_optimal_number_of_streams();
+    if (memory_blob_size == 0) {
+        // Dynamic models allocate per-inference buffers via cudaMallocAsync,
+        // so no pre-allocated mutable memory block is needed. Still need at
+        // least one MemoryPool entry for the CudaGraphContext slot.
+        return std::min(max_streams_supported, num_streams);
+    }
     size_t free;
     [[maybe_unused]] size_t total;
     throwIfError(cudaMemGetInfo(&free, &total));
-    const size_t max_streams_supported = max_concurrent_streams(device);
     const auto available_infer_requests = (free - const_blob_size) / memory_blob_size;
     if (0 == available_infer_requests) {
         throw_ov_exception("Not enough memory even for single InferRequest!");
     }
-    const size_t num_streams = config_.get_optimal_number_of_streams();
     return std::min({max_streams_supported, available_infer_requests, num_streams});
 }
 
@@ -258,13 +261,14 @@ std::shared_ptr<MemoryPool> CompiledModel::create_memory_pool() {
 
 std::shared_ptr<ov::ISyncInferRequest> CompiledModel::create_benchmark_sync_infer_request() {
     return std::make_shared<CudaInferRequest>(
-        std::static_pointer_cast<const CompiledModel>(std::shared_ptr<CompiledModel>(this, [](CompiledModel*) {})));
+        std::static_pointer_cast<const CompiledModel>(std::shared_ptr<CompiledModel>(this, [](CompiledModel*) {})),
+        cuda_stream_executor_);
 }
 
 std::shared_ptr<ov::IAsyncInferRequest> CompiledModel::create_benchmark_infer_request() {
     auto internal_request = create_benchmark_sync_infer_request();
     return std::make_shared<CudaAsyncInferRequest>(
-        std::static_pointer_cast<CudaInferRequest>(std::move(internal_request)),
+        std::static_pointer_cast<CudaInferRequest>(internal_request),
         get_task_executor(),
         cuda_stream_executor_,
         get_callback_executor());
@@ -272,7 +276,8 @@ std::shared_ptr<ov::IAsyncInferRequest> CompiledModel::create_benchmark_infer_re
 
 std::shared_ptr<ov::ISyncInferRequest> CompiledModel::create_sync_infer_request() const {
     return std::make_shared<CudaInferRequest>(
-        std::static_pointer_cast<const CompiledModel>(shared_from_this()));
+        std::static_pointer_cast<const CompiledModel>(shared_from_this()),
+        cuda_stream_executor_);
 }
 
 std::shared_ptr<ov::IAsyncInferRequest> CompiledModel::create_infer_request() const {
