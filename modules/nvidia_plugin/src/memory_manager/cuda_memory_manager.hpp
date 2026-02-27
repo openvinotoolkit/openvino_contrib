@@ -19,6 +19,7 @@ namespace nvidia_gpu {
 class MemoryModel;
 class IOperationMeta;
 class IOperationExec;
+class DynamicBufferContext;
 
 /**
  * @brief MemoryManager provides device side tensor pointers by
@@ -53,17 +54,20 @@ public:
      * @throws ov::Exception if any of tensor pointers is not found
      */
     InputTensors inputTensorPointers(const IOperationMeta& operation,
-                                     CUDA::DevicePointer<void*> mutableBufferPtr) const;
+                                     CUDA::DevicePointer<void*> mutableBufferPtr,
+                                     const DynamicBufferContext* dynBufCtx = nullptr) const;
 
     /**
      * Maps output tensor identifiers into device side tensor pointers.
      * @param[in] operation An operation which defines output tensors.
      * @param[in] mutableBufferPtr A memory block based on which mapping is performed.
+     * @param[in] dynBufCtx Optional dynamic buffer context for dynamic shape overrides.
      * @returns An array of corresponding output tensor pointers.
      * @throws ov::Exception if any of tensor pointers is not found
      */
     OutputTensors outputTensorPointers(const IOperationMeta& operation,
-                                       CUDA::DevicePointer<void*> mutableBufferPtr) const;
+                                       CUDA::DevicePointer<void*> mutableBufferPtr,
+                                       const DynamicBufferContext* dynBufCtx = nullptr) const;
 
     /**
      * Maps operation onto device side work work buffer pointers.
