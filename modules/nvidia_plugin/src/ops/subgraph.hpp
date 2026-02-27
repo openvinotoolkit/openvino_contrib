@@ -79,6 +79,9 @@ public:
 private:
     void initSharedImmutableWorkbuffers(const std::vector<OperationBase::Ptr>& init_sequence);
     void initExecuteSequence(bool isStableParams, bool isStableResults);
+    static bool isDynamicOp(const ov::Node& node);
+    void createDynamicReleaseSchedule(const OperationBuffersExtractor& opBuffersExtractor,
+                                      const std::unordered_map<int, int>& node_to_exec_idx);
     static std::unique_ptr<MemoryManager> createMemoryManager(const OperationBuffersExtractor& opBuffersExtractor);
     std::vector<DevicePointer<void*>> getSharedWorkbuffers(const IOperationExec& operation);
 

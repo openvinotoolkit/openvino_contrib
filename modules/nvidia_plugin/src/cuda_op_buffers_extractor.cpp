@@ -54,7 +54,8 @@ OperationBuffersExtractor::OperationBuffersExtractor(gsl::span<const NodePtr> or
                     if (node_idx > mutableBuffer.lifespan_end) {
                         mutableBuffer.lifespan_end = node_idx;
                     }
-                    if (mutableBuffer.size < GetTensorByteSize(input)) {
+                    if (mutableBuffer.size != 0 &&
+                        mutableBuffer.size < GetTensorByteSize(input)) {
                         ThrowBufferSizesAreNotMatchError(input);
                     }
                 }
@@ -175,7 +176,7 @@ void OperationBuffersExtractor::mergeConcatMutableTensors(const NodePtr& node, i
         totalSize += mutable_tensor_sizes_.at(tensor->GetId());
     }
     mutable_tensor_sizes_[parentTensor->GetId()] = totalSize;
-    OPENVINO_ASSERT(mergedTensorByteSize == totalSize);
+    OPENVINO_ASSERT(mergedTensorByteSize == 0 || mergedTensorByteSize == totalSize);
 }
 
 void OperationBuffersExtractor::extractReshapeTensors(const NodePtr& node, int node_idx) {
@@ -291,8 +292,10 @@ MemoryModel::Ptr OperationBuffersExtractor::createConstantMemoryModel() const {
 MemoryModel::Ptr OperationBuffersExtractor::createMutableMemoryModel() const {
     MemoryModelBuilder mutable_model_builder;
     for (auto id : mutableBuffersIds()) {
+        auto size = mutableBufferSize(id);
+        if (size == 0) continue;  // Dynamic tensors — allocated at runtime
         mutable_model_builder.addAllocation(
-            id, mutableBufferLifespanStart(id), mutableBufferLifespanEnd(id), mutableBufferSize(id));
+            id, mutableBufferLifespanStart(id), mutableBufferLifespanEnd(id), size);
     }
     return mutable_model_builder.build();
 }
