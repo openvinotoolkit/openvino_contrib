@@ -63,7 +63,16 @@ std::optional<std::size_t> ResultOp::GetOutputTensorSubIndex(const ov::Output<ov
 
 std::vector<std::string> ResultOp::GetOutputTensorName(const ov::op::v0::Result& node) {
     const auto& input = node.input_value(0);
-    return ov::getFusedNamesVector(input.get_node()->shared_from_this());
+    auto names = ov::getFusedNamesVector(input.get_node()->shared_from_this());
+    if (names.empty()) {
+        auto name = input.get_node()->get_friendly_name();
+        auto sub_index = GetOutputTensorSubIndex(input);
+        if (sub_index.has_value()) {
+            name += "." + std::to_string(sub_index.value());
+        }
+        names.push_back(name);
+    }
+    return names;
 }
 
 void ResultOp::Capture(InferenceRequestContext& context,
