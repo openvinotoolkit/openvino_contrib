@@ -45,7 +45,7 @@ void EluOp::Execute(const InferenceRequestContext& context,
     (*kernel_)(stream.get(), inputTensors[0].get(), outputTensors[0].get());
 }
 
-CudaGraphCompatibility EluOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility EluOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 OPERATION_REGISTER(EluOp, Elu);
 }  // namespace nvidia_gpu
