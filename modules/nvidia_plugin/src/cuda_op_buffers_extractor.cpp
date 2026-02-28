@@ -181,6 +181,14 @@ void OperationBuffersExtractor::mergeConcatMutableTensors(const NodePtr& node, i
 }
 
 void OperationBuffersExtractor::extractReshapeTensors(const NodePtr& node, int node_idx) {
+    // When the node has dynamic shapes, it will be wrapped in DynamicOperation
+    // which needs a separate output buffer ID to avoid overwriting ShapeContext
+    // and DynamicBufferContext entries of the input tensor (they share memory
+    // but have different shapes).
+    if (node->is_dynamic()) {
+        extractMutableTensors(node, node_idx);
+        return;
+    }
     try {
         OPENVINO_ASSERT(node->inputs().size() >= 1);
         OPENVINO_ASSERT(node->outputs().size() == 1);
