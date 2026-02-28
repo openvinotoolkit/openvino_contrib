@@ -207,7 +207,7 @@ void TensorIteratorOp::Execute(const InferenceRequestContext& context,
     }
 }
 
-CudaGraphCompatibility TensorIteratorOp::GetCudaGraphCompatibility() const {
+CudaGraphCompatibility TensorIteratorOp::GetCudaGraphCompatibilityImpl() const {
     // This implementation is CUDA graph compatible only if this is the standard TI with output only of the last
     // iteration (which is handled outside of the iterations loop)
     if (iterations_results_map_.size() != 1 || iterations_results_map_.count(num_iterations_ - 1) == 0) {

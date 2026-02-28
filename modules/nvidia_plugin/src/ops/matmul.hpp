@@ -29,7 +29,7 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
-    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibilityImpl() const override;
 
     int GetBatchCount() const { return batch_count_; }
 

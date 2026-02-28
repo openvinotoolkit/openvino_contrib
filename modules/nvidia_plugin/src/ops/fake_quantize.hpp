@@ -20,7 +20,7 @@ public:
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds);
 
-    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibilityImpl() const override;
 
 private:
     void Execute(const InferenceRequestContext& context,

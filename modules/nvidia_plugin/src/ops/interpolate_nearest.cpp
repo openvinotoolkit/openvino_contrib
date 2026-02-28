@@ -158,7 +158,7 @@ void InterpolateNearestOp::Execute(const InferenceRequestContext& context,
                     dst);
 }
 
-CudaGraphCompatibility InterpolateNearestOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility InterpolateNearestOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 template <typename T>
 static auto size_in_bytes(const std::vector<T>& v) noexcept {

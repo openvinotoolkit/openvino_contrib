@@ -87,7 +87,17 @@ public:
                   IndexCollection&& inputIds,
                   IndexCollection&& outputIds);
 
-    CudaGraphCompatibility GetCudaGraphCompatibility() const override { return CudaGraphCompatibility::NONE; }
+    // Template Method: checks has_dynamic_buffer_ first, then delegates to impl.
+    // Operations that read from dynamic buffers (directly or transitively) are
+    // incompatible with CUDA graph capture — DynamicOperation uses stream-ordered
+    // allocation via DynamicBufferContext which changes memory addresses.
+    CudaGraphCompatibility GetCudaGraphCompatibility() const final {
+        if (has_dynamic_buffer_) return CudaGraphCompatibility::NONE;
+        return GetCudaGraphCompatibilityImpl();
+    }
+
+    bool HasDynamicBuffer() const { return has_dynamic_buffer_; }
+    virtual CudaGraphCompatibility GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::NONE; }
 
     void Capture(InferenceRequestContext& context,
                  Inputs inputTensors,
@@ -135,6 +145,7 @@ protected:
     const IndexCollection input_ids_;
     const IndexCollection output_ids_;
     WorkbufferIds workbuffer_ids_;
+    bool has_dynamic_buffer_ = false;
 };
 
 template <decltype(&IOperationMeta::Category::CUDA) CategoryString>

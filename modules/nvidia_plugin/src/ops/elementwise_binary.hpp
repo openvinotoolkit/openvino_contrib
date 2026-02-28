@@ -59,7 +59,7 @@ public:
                    static_cast<void*>(outputTensors[0].get()));
     }
 
-    CudaGraphCompatibility GetCudaGraphCompatibility() const override { return CudaGraphCompatibility::FULL; }
+    CudaGraphCompatibility GetCudaGraphCompatibilityImpl() const override { return CudaGraphCompatibility::FULL; }
 
     void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers& buffers) override {
         in0_broadcast_params_->initWorkbuffers(buffers);

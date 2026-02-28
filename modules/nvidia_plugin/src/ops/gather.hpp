@@ -22,10 +22,11 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
-    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibilityImpl() const override;
 
 private:
     std::optional<kernel::Gather> gather_kernel_;
+    bool is_empty_ = false;
 };
 
 }  // namespace nvidia_gpu

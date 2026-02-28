@@ -59,7 +59,7 @@ void ActivationForwardCuDnnOpBase::Execute(const InferenceRequestContext& contex
                                                              outputTensors[0].get());
 }
 
-CudaGraphCompatibility ActivationForwardCuDnnOpBase::GetCudaGraphCompatibility() const {
+CudaGraphCompatibility ActivationForwardCuDnnOpBase::GetCudaGraphCompatibilityImpl() const {
     return CudaGraphCompatibility::FULL;
 }
 

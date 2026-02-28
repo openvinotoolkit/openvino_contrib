@@ -15,6 +15,7 @@
 #include <openvino/op/tensor_iterator.hpp>
 #include <openvino/op/transpose.hpp>
 #include <openvino/op/unsqueeze.hpp>
+#include <openvino/op/util/assign_base.hpp>
 #include <stdexcept>
 #include <transformer/nodes/concat_optimized.hpp>
 #include <utility>
@@ -32,7 +33,7 @@ OperationBuffersExtractor::OperationBuffersExtractor(gsl::span<const NodePtr> or
         const auto& node = ordered_nodes[node_idx];
         if (IsParameterNode(*node))
             extractParameterTensors(node, node_idx);
-        else if (IsResultNode(*node))
+        else if (IsResultNode(*node) || IsAssignNode(*node))
             extractResultTensors(node);
         else if (IsConstantNode(*node))
             extractImmutableTensors(node);
@@ -54,7 +55,8 @@ OperationBuffersExtractor::OperationBuffersExtractor(gsl::span<const NodePtr> or
                     if (node_idx > mutableBuffer.lifespan_end) {
                         mutableBuffer.lifespan_end = node_idx;
                     }
-                    if (mutableBuffer.size < GetTensorByteSize(input)) {
+                    if (mutableBuffer.size != 0 &&
+                        mutableBuffer.size < GetTensorByteSize(input)) {
                         ThrowBufferSizesAreNotMatchError(input);
                     }
                 }
@@ -75,7 +77,7 @@ std::vector<TensorID> OperationBuffersExtractor::inputTensorIds(const ov::Node& 
 }
 
 std::vector<TensorID> OperationBuffersExtractor::outputTensorIds(const ov::Node& node) const {
-    if (IsResultNode(node)) return {};
+    if (IsResultNode(node) || IsAssignNode(node)) return {};
     std::vector<TensorID> result{};
     for (const auto& output : node.outputs()) {
         const auto& tensorId = tensor_names_.at(GetTensorNameInternal(output));
@@ -175,10 +177,18 @@ void OperationBuffersExtractor::mergeConcatMutableTensors(const NodePtr& node, i
         totalSize += mutable_tensor_sizes_.at(tensor->GetId());
     }
     mutable_tensor_sizes_[parentTensor->GetId()] = totalSize;
-    OPENVINO_ASSERT(mergedTensorByteSize == totalSize);
+    OPENVINO_ASSERT(mergedTensorByteSize == 0 || mergedTensorByteSize == totalSize);
 }
 
 void OperationBuffersExtractor::extractReshapeTensors(const NodePtr& node, int node_idx) {
+    // When the node has dynamic shapes, it will be wrapped in DynamicOperation
+    // which needs a separate output buffer ID to avoid overwriting ShapeContext
+    // and DynamicBufferContext entries of the input tensor (they share memory
+    // but have different shapes).
+    if (node->is_dynamic()) {
+        extractMutableTensors(node, node_idx);
+        return;
+    }
     try {
         OPENVINO_ASSERT(node->inputs().size() >= 1);
         OPENVINO_ASSERT(node->outputs().size() == 1);
@@ -291,8 +301,10 @@ MemoryModel::Ptr OperationBuffersExtractor::createConstantMemoryModel() const {
 MemoryModel::Ptr OperationBuffersExtractor::createMutableMemoryModel() const {
     MemoryModelBuilder mutable_model_builder;
     for (auto id : mutableBuffersIds()) {
+        auto size = mutableBufferSize(id);
+        if (size == 0) continue;  // Dynamic tensors — allocated at runtime
         mutable_model_builder.addAllocation(
-            id, mutableBufferLifespanStart(id), mutableBufferLifespanEnd(id), mutableBufferSize(id));
+            id, mutableBufferLifespanStart(id), mutableBufferLifespanEnd(id), size);
     }
     return mutable_model_builder.build();
 }
@@ -316,6 +328,10 @@ bool OperationBuffersExtractor::IsResultNode(const ov::Node& node) {
 
 bool OperationBuffersExtractor::IsConstantNode(const ov::Node& node) {
     return dynamic_cast<const ov::op::v0::Constant*>(&node) != nullptr;
+}
+
+bool OperationBuffersExtractor::IsAssignNode(const ov::Node& node) {
+    return dynamic_cast<const ov::op::util::AssignBase*>(&node) != nullptr;
 }
 
 bool OperationBuffersExtractor::IsConcatOptimizedNode(const ov::Node& node) {
