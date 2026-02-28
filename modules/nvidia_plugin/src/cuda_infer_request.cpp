@@ -59,6 +59,13 @@ CudaInferRequest::CudaInferRequest(const std::shared_ptr<const CompiledModel>& c
                                      compiled_model->get_topology_runner().GetSubGraph())},
       is_benchmark_mode_{compiled_model->get_property(ov::nvidia_gpu::operation_benchmark.name()).as<bool>()} {
     create_infer_request();
+
+    // Initialize variable states for stateful models (KV-cache, etc.)
+    auto model = compiled_model->model_;
+    for (const auto& variable : model->get_variables()) {
+        auto state = std::make_shared<CudaVariableState>(variable->get_info());
+        variable_context_.register_variable(variable->get_info().variable_id, state);
+    }
 }
 
 void CudaInferRequest::create_infer_request() {
@@ -166,6 +173,9 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
                                                     *executionDelegator_,
                                                     cudaGraphContext,
                                                     is_benchmark_mode_};
+        if (!variable_context_.empty()) {
+            inferRequestContext.setVariableContext(variable_context_);
+        }
         topology_runner.UpdateContext(inferRequestContext, memory);
         topology_runner.Run(inferRequestContext, memory);
         executionDelegator_->stop_stage(PerfStages::StartPipeline);
@@ -260,7 +270,7 @@ void CudaInferRequest::set_tensors_impl(const ov::Output<const ov::Node> port,
 }
 
 std::vector<ov::SoPtr<ov::IVariableState>> CudaInferRequest::query_state() const {
-    OPENVINO_NOT_IMPLEMENTED;
+    return variable_context_.query_states();
 }
 
 std::vector<ov::ProfilingInfo> CudaInferRequest::get_profiling_info() const {

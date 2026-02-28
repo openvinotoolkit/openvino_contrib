@@ -12,6 +12,7 @@
 #include "cuda_shape_context.hpp"
 #include "cuda_tensor_mapping_context.hpp"
 #include "cuda_thread_context.hpp"
+#include "cuda_variable_context.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -77,6 +78,13 @@ public:
     [[nodiscard]] DynamicBufferContext& getDynamicBufferContext() { return dynamic_buffer_context_; }
     [[nodiscard]] const DynamicBufferContext& getDynamicBufferContext() const { return dynamic_buffer_context_; }
 
+    void setVariableContext(CudaVariableContext& ctx) { variable_context_ = &ctx; }
+    [[nodiscard]] bool hasVariableContext() const { return variable_context_ != nullptr; }
+    [[nodiscard]] CudaVariableContext& getVariableContext() const {
+        OPENVINO_ASSERT(variable_context_, "VariableContext is not set");
+        return *variable_context_;
+    }
+
 private:
     const ThreadContext& threadContext;
     CancellationToken& token;
@@ -87,6 +95,7 @@ private:
     ICudaGraphInfo* current_cuda_graph_info_ = nullptr;
     ShapeContext shape_context_;
     DynamicBufferContext dynamic_buffer_context_;
+    CudaVariableContext* variable_context_ = nullptr;
 };
 
 }  // namespace nvidia_gpu
