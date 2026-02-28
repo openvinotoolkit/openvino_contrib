@@ -15,6 +15,7 @@
 #include <openvino/op/tensor_iterator.hpp>
 #include <openvino/op/transpose.hpp>
 #include <openvino/op/unsqueeze.hpp>
+#include <openvino/op/util/assign_base.hpp>
 #include <stdexcept>
 #include <transformer/nodes/concat_optimized.hpp>
 #include <utility>
@@ -32,7 +33,7 @@ OperationBuffersExtractor::OperationBuffersExtractor(gsl::span<const NodePtr> or
         const auto& node = ordered_nodes[node_idx];
         if (IsParameterNode(*node))
             extractParameterTensors(node, node_idx);
-        else if (IsResultNode(*node))
+        else if (IsResultNode(*node) || IsAssignNode(*node))
             extractResultTensors(node);
         else if (IsConstantNode(*node))
             extractImmutableTensors(node);
@@ -76,7 +77,7 @@ std::vector<TensorID> OperationBuffersExtractor::inputTensorIds(const ov::Node& 
 }
 
 std::vector<TensorID> OperationBuffersExtractor::outputTensorIds(const ov::Node& node) const {
-    if (IsResultNode(node)) return {};
+    if (IsResultNode(node) || IsAssignNode(node)) return {};
     std::vector<TensorID> result{};
     for (const auto& output : node.outputs()) {
         const auto& tensorId = tensor_names_.at(GetTensorNameInternal(output));
@@ -319,6 +320,10 @@ bool OperationBuffersExtractor::IsResultNode(const ov::Node& node) {
 
 bool OperationBuffersExtractor::IsConstantNode(const ov::Node& node) {
     return dynamic_cast<const ov::op::v0::Constant*>(&node) != nullptr;
+}
+
+bool OperationBuffersExtractor::IsAssignNode(const ov::Node& node) {
+    return dynamic_cast<const ov::op::util::AssignBase*>(&node) != nullptr;
 }
 
 bool OperationBuffersExtractor::IsConcatOptimizedNode(const ov::Node& node) {

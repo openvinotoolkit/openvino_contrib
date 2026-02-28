@@ -13,6 +13,8 @@
 #include <openvino/op/parameter.hpp>
 #include <openvino/op/result.hpp>
 #include <openvino/op/tensor_iterator.hpp>
+#include <openvino/op/util/assign_base.hpp>
+#include <openvino/op/util/read_value_base.hpp>
 
 #include <cuda_dynamic_operation.hpp>
 
@@ -94,9 +96,12 @@ void SubGraph::initExecuteSequence(bool isStableParams, bool isStableResults) {
         const bool isDynamic = isDynamicOp(*node);
         const bool isParam = dynamic_cast<const ov::op::v0::Parameter*>(node.get()) != nullptr;
         const bool isResult = dynamic_cast<const ov::op::v0::Result*>(node.get()) != nullptr;
+        // ReadValue/Assign manage their own state-driven shapes, not wrapped in DynamicOperation
+        const bool isStateful = dynamic_cast<const ov::op::util::ReadValueBase*>(node.get()) != nullptr ||
+                                dynamic_cast<const ov::op::util::AssignBase*>(node.get()) != nullptr;
 
         OperationBase::Ptr operation;
-        if (isDynamic) {
+        if (isDynamic && !isStateful) {
             operation = std::make_shared<DynamicOperation>(
                 creation_context_, node, std::move(inIds), std::move(outIds));
         } else {
