@@ -44,6 +44,8 @@
 #include "transformations/op_conversions/hswish_decomposition.hpp"
 #include "transformations/common_optimizations/reshape_prelu.hpp"
 #include "transformations/op_conversions/scaled_dot_product_attention_decomposition.hpp"
+#include "transformations/op_conversions/convert_convertlike.hpp"
+#include "transformations/op_conversions/convert_slice_to_strided_slice.hpp"
 
 using namespace ov::nvidia_gpu;
 
@@ -147,6 +149,9 @@ void GraphTransformer::transform(const CUDA::Device& device,
     // Decompose ScaledDotProductAttention into elementary operations (MatMul, Softmax, etc.)
     // that are already supported by the plugin
     pass_manager.register_pass<ov::pass::ScaledDotProductAttentionDecomposition>();
+    // Convert ops produced by SDPA decomposition to supported equivalents
+    pass_manager.register_pass<ov::pass::ConvertConvertLike>();
+    pass_manager.register_pass<ov::pass::SliceToStridedSlice>(true);
 
     pass_manager.register_pass<ov::nvidia_gpu::pass::ConvolutionAsymPaddingTransformation>();
     pass_manager.register_pass<ov::nvidia_gpu::pass::GroupConvolutionAsymPaddingTransformation>();
