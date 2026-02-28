@@ -129,11 +129,11 @@ std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model_str
 
     auto full_config = get_full_config(_properties);
     auto wait_executor = get_stream_executor(full_config);
-    auto compiled_model= std::make_shared<CompiledModel>(model,
-                                                         full_config,
-                                                         wait_executor,
-                                                         shared_from_this(),
-                                                         loaded_from_cache);
+    auto compiled_model = std::make_shared<CompiledModel>(model,
+                                                          full_config,
+                                                          wait_executor,
+                                                          shared_from_this(),
+                                                          loaded_from_cache);
     return compiled_model;
 }
 
