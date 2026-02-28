@@ -54,7 +54,7 @@ void FullyConnectedOp::Execute(const InferenceRequestContext& context,
     matmul_op_.Execute(context, inputs.first(inputs.size() - 1), outputs, workbuffers);
 }
 
-CudaGraphCompatibility FullyConnectedOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility FullyConnectedOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 OPERATION_REGISTER(FullyConnectedOp, FullyConnected);
 }  // namespace nvidia_gpu

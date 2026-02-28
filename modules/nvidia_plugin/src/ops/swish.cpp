@@ -69,7 +69,7 @@ void SwishOp::Execute(const InferenceRequestContext& context,
     (*kernel_)(stream.get(), inputTensors[0].get(), outputTensors[0].get());
 }
 
-CudaGraphCompatibility SwishOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility SwishOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 OPERATION_REGISTER(SwishOp, Swish);
 }  // namespace nvidia_gpu
