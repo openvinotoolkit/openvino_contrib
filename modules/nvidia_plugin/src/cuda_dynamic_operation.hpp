@@ -16,19 +16,30 @@ namespace v0 {
 class Parameter;
 class Result;
 }  // namespace v0
+namespace util {
+class ReadValueBase;
+class AssignBase;
+}  // namespace util
 }  // namespace op
 namespace nvidia_gpu {
 
+class ShapeContext;
 class DynamicBufferContext;
 
 /**
- * @brief Key for caching static operations by input shapes.
+ * @brief Key for caching static operations by input shapes and values.
+ *
+ * For most operations, only input shapes matter for output shape inference.
+ * However, operations like Broadcast, Reshape, Squeeze etc. depend on input
+ * VALUES (not just shapes) to determine output shapes. Small integer tensors
+ * (1D, <=64 elements, i32/i64) are included in the cache key to handle these.
  */
 struct ShapeKey {
     std::vector<ov::Shape> input_shapes;
+    std::vector<std::vector<int64_t>> input_values;  // shape-value inputs; empty if not applicable
 
     bool operator==(const ShapeKey& other) const {
-        return input_shapes == other.input_shapes;
+        return input_shapes == other.input_shapes && input_values == other.input_values;
     }
 };
 
@@ -40,6 +51,11 @@ struct ShapeKeyHash {
                 seed ^= std::hash<size_t>{}(dim) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             }
             seed ^= std::hash<size_t>{}(shape.size()) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        }
+        for (const auto& vals : key.input_values) {
+            for (auto v : vals) {
+                seed ^= std::hash<int64_t>{}(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            }
         }
         return seed;
     }
@@ -58,74 +74,15 @@ struct CachedOperation {
 };
 
 /**
- * @brief Global LRU cache for dynamic shape operations.
- *
- * Shared across all DynamicOperation instances within a CompiledModel.
- * Uses a composite key (operation identity + input shapes) to cache
- * static operation variants. Thread-safe via internal mutex.
- *
- * Capacity 300, matching Intel GPU plugin's approach for dynamic shapes.
- */
-class DynamicOperationCache {
-public:
-    static constexpr size_t kDefaultCapacity = 300;
-
-    explicit DynamicOperationCache(size_t capacity = kDefaultCapacity) : cache_{capacity} {}
-
-    /**
-     * Lookup or create a cached operation, avoiding duplicate creation.
-     * Uses double-checked locking: if two threads miss simultaneously,
-     * only the first insert wins; the second thread reuses the cached entry.
-     */
-    template <typename Factory>
-    std::shared_ptr<CachedOperation> getOrCreate(const void* op_id, const ShapeKey& key, Factory factory) {
-        GlobalShapeKey gkey{op_id, key};
-        {
-            std::lock_guard<std::mutex> lock{mutex_};
-            auto* found = cache_.find(gkey);
-            if (found) return *found;
-        }
-        auto op = factory();
-        {
-            std::lock_guard<std::mutex> lock{mutex_};
-            auto* found = cache_.find(gkey);
-            if (found) return *found;
-            return cache_.insert(gkey, std::move(op));
-        }
-    }
-
-private:
-    struct GlobalShapeKey {
-        const void* op_id;
-        ShapeKey shape_key;
-
-        bool operator==(const GlobalShapeKey& other) const {
-            return op_id == other.op_id && shape_key == other.shape_key;
-        }
-    };
-
-    struct GlobalShapeKeyHash {
-        size_t operator()(const GlobalShapeKey& key) const {
-            size_t seed = std::hash<const void*>{}(key.op_id);
-            ShapeKeyHash shape_hash;
-            seed ^= shape_hash(key.shape_key) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-            return seed;
-        }
-    };
-
-    std::mutex mutex_;
-    LruCache<GlobalShapeKey, std::shared_ptr<CachedOperation>, GlobalShapeKeyHash> cache_;
-};
-
-/**
  * @brief Delegator operation for nodes with dynamic shapes.
  *
  * Sits in exec_sequence_ like a normal operation. On Execute():
- * 1. Reads actual input shapes from DynamicBufferContext
+ * 1. Reads actual input shapes from ShapeContext
  * 2. Looks up (or creates) a cached static operation for those shapes
  * 3. Allocates dynamic GPU memory for outputs and workbuffers
  * 4. Delegates Execute to the cached static operation
- * 5. Registers output pointers and shapes in DynamicBufferContext
+ * 5. Registers output pointers in DynamicBufferContext
+ * 6. Registers output shapes in ShapeContext
  *
  * CUDA Graphs are incompatible with dynamic shapes.
  */
@@ -141,7 +98,7 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
-    CudaGraphCompatibility GetCudaGraphCompatibility() const override {
+    CudaGraphCompatibility GetCudaGraphCompatibilityImpl() const override {
         return CudaGraphCompatibility::NONE;
     }
 
@@ -157,16 +114,33 @@ private:
     void executeParameter(const ov::op::v0::Parameter& paramNode,
                           const InferenceRequestContext& context,
                           const CUDA::Stream& stream,
+                          ShapeContext& shapeCtx,
                           DynamicBufferContext& dynBufCtx) const;
 
     void executeResult(const ov::op::v0::Result& resultNode,
                        const InferenceRequestContext& context,
                        const CUDA::Stream& stream,
+                       ShapeContext& shapeCtx,
                        DynamicBufferContext& dynBufCtx) const;
 
-    void executeReshapeOnly(DynamicBufferContext& dynBufCtx) const;
+    void executeReadValue(const ov::op::util::ReadValueBase& readValueNode,
+                          const InferenceRequestContext& context,
+                          const CUDA::Stream& stream,
+                          Inputs inputTensors,
+                          ShapeContext& shapeCtx,
+                          DynamicBufferContext& dynBufCtx) const;
 
-    std::shared_ptr<CachedOperation> createCachedOperation(const ShapeKey& key) const;
+    void executeAssign(const ov::op::util::AssignBase& assignNode,
+                       const InferenceRequestContext& context,
+                       const CUDA::Stream& stream,
+                       Inputs inputTensors,
+                       ShapeContext& shapeCtx,
+                       DynamicBufferContext& dynBufCtx) const;
+
+    std::shared_ptr<CachedOperation> createCachedOperation(
+        const ShapeKey& key,
+        const std::vector<CUDA::DevicePointer<const void*>>& input_ptrs,
+        const CUDA::Stream& stream) const;
 
     std::shared_ptr<ov::Node> original_node_;
     CreationContext creation_context_;
@@ -180,6 +154,13 @@ private:
     // Set by SubGraph::initExecuteSequence() based on buffer lifespan analysis.
     std::vector<BufferID> release_ids_;
 
+    // Set to true after first cache miss reveals that output shape depends
+    // on input values (not just shapes). Triggers value-based cache keying.
+    mutable bool needs_value_cache_ = false;
+
+    static constexpr size_t kCacheCapacity = 16;
+    mutable std::mutex cache_mutex_;
+    mutable LruCache<ShapeKey, std::shared_ptr<CachedOperation>, ShapeKeyHash> shape_cache_{kCacheCapacity};
 };
 
 }  // namespace nvidia_gpu
