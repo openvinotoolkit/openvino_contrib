@@ -57,7 +57,7 @@ void LSTMCellOp::Execute(const InferenceRequestContext& context,
                                                       nullptr);
 }
 
-CudaGraphCompatibility LSTMCellOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility LSTMCellOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 void LSTMCellOp::InitSharedImmutableWorkbuffers(const IOperationExec::Buffers& buffers) {
     OPENVINO_ASSERT(buffers.size() == 1 || buffers.size() == 2, "Node name: ", GetName());

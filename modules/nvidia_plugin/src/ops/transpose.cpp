@@ -85,21 +85,21 @@ void TransposeOp::Execute(const InferenceRequestContext& context,
     const std::vector<int> outputMode = permutation(context, inputTensors);
     auto& threadContext = context.getThreadContext();
 
-    cutensorInitTensorDescriptor(&threadContext.cuTensorHandle().get(),
+    throwIfError(cutensorInitTensorDescriptor(&threadContext.cuTensorHandle().get(),
                                  &inputDesc,
                                  dimsNumber_,
                                  inputExtents_.data(),
                                  inputStrides_.data(),
                                  inputElementsType_,
-                                 CUTENSOR_OP_IDENTITY);
+                                 CUTENSOR_OP_IDENTITY));
 
-    cutensorInitTensorDescriptor(&threadContext.cuTensorHandle().get(),
+    throwIfError(cutensorInitTensorDescriptor(&threadContext.cuTensorHandle().get(),
                                  &outputDesc,
                                  dimsNumber_,
                                  outputExtents_.data(),
                                  outputStrides_.data(),
                                  inputElementsType_,
-                                 CUTENSOR_OP_IDENTITY);
+                                 CUTENSOR_OP_IDENTITY));
 
     throwIfError(cutensorPermutation(&threadContext.cuTensorHandle().get(),
                                      &CUDA::NumericConst<CUDA::constants::one>(inputElementsType_),
@@ -113,7 +113,7 @@ void TransposeOp::Execute(const InferenceRequestContext& context,
                                      context.getThreadContext().stream().get()));
 }
 
-CudaGraphCompatibility TransposeOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility TransposeOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 std::vector<std::int64_t> TransposeOp::extractInputExtents(const ov::Node& node) {
     std::vector<std::int64_t> result;

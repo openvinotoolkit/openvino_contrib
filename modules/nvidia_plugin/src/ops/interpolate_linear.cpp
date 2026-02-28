@@ -69,7 +69,7 @@ void InterpolateLinearOp::Execute(const InferenceRequestContext& context,
     (*interpolate_)(context.getThreadContext().stream().get(), inputs[0].get(), outputs[0].get());
 }
 
-CudaGraphCompatibility InterpolateLinearOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility InterpolateLinearOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 WorkbufferRequest InterpolateLinearOp::GetWorkBufferRequest() const {
     return {interpolate_->immutableWorkbufferSizes(), {}};

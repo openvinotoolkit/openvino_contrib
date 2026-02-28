@@ -22,7 +22,7 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
-    CudaGraphCompatibility GetCudaGraphCompatibility() const override {
+    CudaGraphCompatibility GetCudaGraphCompatibilityImpl() const override {
         return CudaGraphCompatibility::NONE;
     }
 
