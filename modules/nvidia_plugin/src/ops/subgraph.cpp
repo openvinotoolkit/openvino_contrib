@@ -14,6 +14,8 @@
 #include <openvino/op/result.hpp>
 #include <openvino/op/tensor_iterator.hpp>
 
+#include <cuda_dynamic_operation.hpp>
+
 #include "nop_op.hpp"
 #include "parameter.hpp"
 #include "result.hpp"
@@ -47,6 +49,22 @@ SubGraph::SubGraph(const CreationContext& context,
       model_{model},
       creation_context_{context} {}
 
+const std::vector<OperationBase::Ptr>& SubGraph::getParams() const { return params_; }
+
+const std::vector<OperationBase::Ptr>& SubGraph::getResults() const { return results_; }
+
+bool SubGraph::isDynamicOp(const ov::Node& node) {
+    if (node.is_dynamic()) {
+        return true;
+    }
+    for (size_t i = 0; i < node.get_output_size(); ++i) {
+        if (node.get_output_partial_shape(i).is_dynamic()) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void SubGraph::initExecuteSequence(bool isStableParams, bool isStableResults) {
     static constexpr auto InitNeeded = IOperationExec::WorkbufferStatus::InitNeeded;
 
@@ -54,7 +72,6 @@ void SubGraph::initExecuteSequence(bool isStableParams, bool isStableResults) {
         return;
     }
     const auto& orderedNodes = model_->get_ordered_ops();
-
     std::vector<Ptr> init_sequence{};
     OperationBuffersExtractor opBuffersExtractor{orderedNodes, isStableParams, isStableResults};
     const auto paramSize = model_->get_parameters().size();
@@ -63,6 +80,7 @@ void SubGraph::initExecuteSequence(bool isStableParams, bool isStableResults) {
     const auto resultSize = model_->get_results().size();
     results_ = std::vector<OperationBase::Ptr>(resultSize);
     results_info_ = std::vector<OperationInfo>(resultSize);
+    std::unordered_map<int, int> node_to_exec_idx;
     for (unsigned node_idx = 0; node_idx < orderedNodes.size(); node_idx++) {
         const auto& node = orderedNodes[node_idx];
         if (!OperationRegistry::getInstance().hasOperation(node)) {
@@ -72,7 +90,19 @@ void SubGraph::initExecuteSequence(bool isStableParams, bool isStableResults) {
         }
         auto inIds = opBuffersExtractor.inputTensorIds(*node);
         auto outIds = opBuffersExtractor.outputTensorIds(*node);
-        auto operation = OperationRegistry::getInstance().createOperation(creation_context_, node, move(inIds), move(outIds));
+
+        const bool isDynamic = isDynamicOp(*node);
+        const bool isParam = dynamic_cast<const ov::op::v0::Parameter*>(node.get()) != nullptr;
+        const bool isResult = dynamic_cast<const ov::op::v0::Result*>(node.get()) != nullptr;
+
+        OperationBase::Ptr operation;
+        if (isDynamic) {
+            operation = std::make_shared<DynamicOperation>(
+                creation_context_, node, std::move(inIds), std::move(outIds));
+        } else {
+            operation = OperationRegistry::getInstance().createOperation(
+                creation_context_, node, move(inIds), move(outIds));
+        }
         if (dynamic_cast<NopOp*>(operation.get())) {
             continue;
         }
@@ -82,24 +112,49 @@ void SubGraph::initExecuteSequence(bool isStableParams, bool isStableResults) {
                               node_idx, operation->GetWorkBufferRequest()))) {
             init_sequence.push_back(operation);
         }
-        if (dynamic_cast<ParameterOp*>(operation.get())) {
+        if (isParam) {
             const auto paramIdx =
                 model_->get_parameter_index(std::dynamic_pointer_cast<ov::op::v0::Parameter>(node));
             params_[paramIdx] = operation;
-            params_info_[paramIdx].size_ = getTensorByteSize(*node);
+            if (!isDynamic) {
+                params_info_[paramIdx].size_ = getTensorByteSize(*node);
+                params_info_[paramIdx].shape_ = node->get_shape();
+            }
             params_info_[paramIdx].type_ = node->get_element_type();
-            params_info_[paramIdx].shape_ = node->get_shape();
-        } else if (dynamic_cast<ResultOp*>(operation.get())) {
+        } else if (isResult) {
             const auto resultIdx = model_->get_result_index(std::dynamic_pointer_cast<ov::op::v0::Result>(node));
             results_[resultIdx] = operation;
-            results_info_[resultIdx].size_ = getTensorByteSize(*node);
+            if (!isDynamic) {
+                results_info_[resultIdx].size_ = getTensorByteSize(*node);
+                results_info_[resultIdx].shape_ = node->get_shape();
+            }
             results_info_[resultIdx].type_ = node->get_element_type();
-            results_info_[resultIdx].shape_ = node->get_shape();
         }
+        node_to_exec_idx[node_idx] = static_cast<int>(exec_sequence_.size());
         exec_sequence_.push_back(operation);
     }
+    createDynamicReleaseSchedule(opBuffersExtractor, node_to_exec_idx);
     memory_manager_ = createMemoryManager(opBuffersExtractor);
     initSharedImmutableWorkbuffers(init_sequence);
+}
+
+void SubGraph::createDynamicReleaseSchedule(const OperationBuffersExtractor& opBuffersExtractor,
+                                             const std::unordered_map<int, int>& node_to_exec_idx) {
+    std::unordered_map<int, std::vector<BufferID>> release_schedule;
+    for (auto id : opBuffersExtractor.mutableBuffersIds()) {
+        if (opBuffersExtractor.mutableBufferSize(id) == 0) {
+            int end_node_idx = opBuffersExtractor.mutableBufferLifespanEnd(id);
+            auto it = node_to_exec_idx.find(end_node_idx);
+            if (it != node_to_exec_idx.end()) {
+                release_schedule[it->second].push_back(id);
+            }
+        }
+    }
+    for (auto& [exec_idx, ids] : release_schedule) {
+        if (auto* dynOp = dynamic_cast<DynamicOperation*>(exec_sequence_[exec_idx].get())) {
+            dynOp->setBuffersToRelease(std::move(ids));
+        }
+    }
 }
 
 std::unique_ptr<MemoryManager> SubGraph::createMemoryManager(const OperationBuffersExtractor& opBuffersExtractor) {

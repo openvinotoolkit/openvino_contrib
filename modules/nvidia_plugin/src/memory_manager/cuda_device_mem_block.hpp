@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cuda/runtime.hpp>
 #include <cuda_graph_context.hpp>
 #include <gsl/pointers>
@@ -58,7 +59,9 @@ public:
 
 private:
     MemoryModel::Ptr model_;
-    CUDA::DefaultAllocation device_mem_ptr_ = CUDA::DefaultStream::stream().malloc(model_->deviceMemoryBlockSize());
+    // Allocate at least 1 byte so that pointer is always valid (dynamic-only models may have block size 0)
+    CUDA::DefaultAllocation device_mem_ptr_ =
+        CUDA::DefaultStream::stream().malloc(std::max(model_->deviceMemoryBlockSize(), size_t{1}));
     CudaGraphContext cuda_graph_context_;
 };
 
