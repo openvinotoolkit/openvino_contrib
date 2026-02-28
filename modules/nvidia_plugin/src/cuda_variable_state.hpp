@@ -32,16 +32,22 @@ public:
           is_reset_(true) {
         if (!data_shape_.is_dynamic()) {
             current_shape_ = data_shape_.to_shape();
-            auto byte_size = element_type_.size() * ov::shape_size(current_shape_);
-            if (byte_size > 0) {
-                device_buffer_ = CUDA::DefaultStream::stream().malloc(byte_size);
-                current_byte_size_ = byte_size;
-                CUDA::DefaultStream::stream().memset(device_buffer_, 0, byte_size);
+        } else {
+            // For dynamic shapes, create an initial shape with 0 for dynamic dims.
+            // This preserves the rank (e.g. KV-cache: {1,32,?,64} → {1,32,0,64}).
+            current_shape_.resize(data_shape_.rank().is_static() ? data_shape_.rank().get_length() : 0);
+            for (size_t i = 0; i < current_shape_.size(); ++i) {
+                current_shape_[i] = data_shape_[i].is_static() ? data_shape_[i].get_length() : 0;
             }
         }
-        // Initialize m_state with an empty host tensor
-        auto shape = data_shape_.is_dynamic() ? ov::Shape{0} : current_shape_;
-        m_state = ov::SoPtr<ov::ITensor>{ov::make_tensor(element_type_, shape), nullptr};
+        auto byte_size = element_type_.size() * ov::shape_size(current_shape_);
+        if (byte_size > 0) {
+            device_buffer_ = CUDA::DefaultStream::stream().malloc(byte_size);
+            current_byte_size_ = byte_size;
+            CUDA::DefaultStream::stream().memset(device_buffer_, 0, byte_size);
+        }
+        // Initialize m_state with a host tensor matching current shape
+        m_state = ov::SoPtr<ov::ITensor>{ov::make_tensor(element_type_, current_shape_), nullptr};
     }
 
     void set_state(const ov::SoPtr<ov::ITensor>& state) override {

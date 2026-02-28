@@ -96,12 +96,9 @@ void SubGraph::initExecuteSequence(bool isStableParams, bool isStableResults) {
         const bool isDynamic = isDynamicOp(*node);
         const bool isParam = dynamic_cast<const ov::op::v0::Parameter*>(node.get()) != nullptr;
         const bool isResult = dynamic_cast<const ov::op::v0::Result*>(node.get()) != nullptr;
-        // ReadValue/Assign manage their own state-driven shapes, not wrapped in DynamicOperation
-        const bool isStateful = dynamic_cast<const ov::op::util::ReadValueBase*>(node.get()) != nullptr ||
-                                dynamic_cast<const ov::op::util::AssignBase*>(node.get()) != nullptr;
 
         OperationBase::Ptr operation;
-        if (isDynamic && !isStateful) {
+        if (isDynamic) {
             operation = std::make_shared<DynamicOperation>(
                 creation_context_, node, std::move(inIds), std::move(outIds));
         } else {
@@ -219,7 +216,7 @@ void SubGraph::Execute(const InferenceRequestContext& context, Inputs, Outputs, 
     executionDelegator.execute_sequence(this, memoryManager, mutableBuffer, context);
 }
 
-CudaGraphCompatibility SubGraph::GetCudaGraphCompatibility() const {
+CudaGraphCompatibility SubGraph::GetCudaGraphCompatibilityImpl() const {
     if (!is_compatibility_analyzed_) {
         graph_compatibility_ = CudaGraphCompatibility::FULL;
         for (const auto& op : exec_sequence_) {
