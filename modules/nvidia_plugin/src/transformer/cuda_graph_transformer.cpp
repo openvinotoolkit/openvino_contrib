@@ -43,6 +43,7 @@
 #include "transformations/op_conversions/mvn6_decomposition.hpp"
 #include "transformations/op_conversions/hswish_decomposition.hpp"
 #include "transformations/common_optimizations/reshape_prelu.hpp"
+#include "transformations/op_conversions/scaled_dot_product_attention_decomposition.hpp"
 
 using namespace ov::nvidia_gpu;
 
@@ -142,6 +143,10 @@ void GraphTransformer::transform(const CUDA::Device& device,
             [is_sequence_primitive_supported](const std::shared_ptr<const ov::Node> &node) -> bool {
                 return is_sequence_primitive_supported(node);
             });
+
+    // Decompose ScaledDotProductAttention into elementary operations (MatMul, Softmax, etc.)
+    // that are already supported by the plugin
+    pass_manager.register_pass<ov::pass::ScaledDotProductAttentionDecomposition>();
 
     pass_manager.register_pass<ov::nvidia_gpu::pass::ConvolutionAsymPaddingTransformation>();
     pass_manager.register_pass<ov::nvidia_gpu::pass::GroupConvolutionAsymPaddingTransformation>();
