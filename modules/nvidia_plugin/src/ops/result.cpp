@@ -71,6 +71,16 @@ std::vector<std::string> ResultOp::GetOutputTensorName(const ov::op::v0::Result&
             name += "." + std::to_string(sub_index.value());
         }
         names.push_back(name);
+    } else {
+        // For multi-output nodes, append the output port index to each fused name
+        // to ensure uniqueness across different Result ops connected to the same node
+        auto sub_index = GetOutputTensorSubIndex(input);
+        if (sub_index.has_value()) {
+            auto suffix = "." + std::to_string(sub_index.value());
+            for (auto& name : names) {
+                name += suffix;
+            }
+        }
     }
     return names;
 }
