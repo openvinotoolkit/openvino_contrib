@@ -84,7 +84,7 @@ void FusedConvolutionCuDnnDecomposed::Execute(const InferenceRequestContext& con
     }
 }
 
-CudaGraphCompatibility FusedConvolutionCuDnnDecomposed::GetCudaGraphCompatibility() const {
+CudaGraphCompatibility FusedConvolutionCuDnnDecomposed::GetCudaGraphCompatibilityImpl() const {
     return CudaGraphCompatibility::FULL;
 }
 
