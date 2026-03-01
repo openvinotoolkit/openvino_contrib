@@ -118,7 +118,7 @@ private:
     // Set by SubGraph::initExecuteSequence() based on buffer lifespan analysis.
     std::vector<BufferID> release_ids_;
 
-    static constexpr size_t kCacheCapacity = 16;
+    static constexpr size_t kCacheCapacity = 8;
     mutable std::mutex cache_mutex_;
     mutable LruCache<ShapeKey, std::shared_ptr<CachedOperation>, ShapeKeyHash> shape_cache_{kCacheCapacity};
 };
