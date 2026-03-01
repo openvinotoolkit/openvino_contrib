@@ -247,63 +247,48 @@ void DynamicOperation::executeReadValue(const ov::op::util::ReadValueBase& readV
     auto& varCtx = context.getVariableContext();
     auto variable_id = dynamic_cast<const ov::op::util::VariableExtension&>(readValueNode).get_variable_id();
     auto state = varCtx.get_variable_state(variable_id);
+    BufferID outBufId = dynamic_output_ids_[0].GetBuffer().GetId();
 
-    ov::Shape shape;
-    size_t byte_size;
-
-    if (state->is_reset_state()) {
-        // First inference or after reset
-        if (!input_ids_.empty() && !inputTensors.empty()) {
-            // Use init_value shape from the first input
-            BufferID initBufId = input_ids_[0].GetBuffer().GetId();
-            if (shapeCtx.hasShape(initBufId)) {
-                shape = shapeCtx.getShape(initBufId);
-            } else if (readValueNode.get_input_partial_shape(0).is_static()) {
-                shape = readValueNode.get_input_shape(0);
-            } else {
-                shape = state->shape();
-            }
-            byte_size = readValueNode.get_output_element_type(0).size() *
-                        std::max(ov::shape_size(shape), size_t{1});
-
-            auto alloc = stream.malloc(std::max(byte_size, size_t{1}));
-            // Copy init_value to output
-            auto dynBuf = dynBufCtx.getDynamicOutput(initBufId);
-            if (dynBuf) {
-                stream.transfer(CUDA::DevicePointer<void*>{alloc.get()},
-                                CUDA::DevicePointer<const void*>{dynBuf->get()},
-                                byte_size);
-            } else {
-                stream.transfer(CUDA::DevicePointer<void*>{alloc.get()},
-                                CUDA::DevicePointer<const void*>{inputTensors[0].get()},
-                                byte_size);
-            }
-            BufferID outBufId = dynamic_output_ids_[0].GetBuffer().GetId();
-            shapeCtx.setShape(outBufId, shape);
-            dynBufCtx.registerDynamicOutput(outBufId, std::move(alloc));
-        } else {
-            // No init_value: zero-fill
-            shape = state->shape();
-            byte_size = readValueNode.get_output_element_type(0).size() *
-                        std::max(ov::shape_size(shape), size_t{1});
-            auto alloc = stream.malloc(std::max(byte_size, size_t{1}));
-            stream.memset(alloc, 0, byte_size);
-            BufferID outBufId = dynamic_output_ids_[0].GetBuffer().GetId();
-            shapeCtx.setShape(outBufId, shape);
-            dynBufCtx.registerDynamicOutput(outBufId, std::move(alloc));
-        }
-    } else {
-        // Normal case: copy from state buffer
-        shape = state->shape();
-        byte_size = state->device_buffer_byte_size();
+    if (!state->is_reset_state()) {
+        // Subsequent inferences: copy from state buffer
+        auto shape = state->shape();
+        size_t byte_size = state->device_buffer_byte_size();
         auto alloc = stream.malloc(std::max(byte_size, size_t{1}));
         if (byte_size > 0) {
             state->read_device_state(stream, CUDA::DevicePointer<void*>{alloc.get()}, byte_size);
         }
-        BufferID outBufId = dynamic_output_ids_[0].GetBuffer().GetId();
         shapeCtx.setShape(outBufId, shape);
         dynBufCtx.registerDynamicOutput(outBufId, std::move(alloc));
+        return;
     }
+
+    // First inference or after reset: output init_value or zeros
+    bool has_init = !input_ids_.empty() && !inputTensors.empty();
+    ov::Shape shape;
+    if (has_init) {
+        BufferID initBufId = input_ids_[0].GetBuffer().GetId();
+        shape = shapeCtx.hasShape(initBufId) ? shapeCtx.getShape(initBufId)
+                                              : readValueNode.get_input_shape(0);
+    } else {
+        shape = state->shape();
+    }
+
+    auto elem_type = readValueNode.get_output_element_type(0);
+    size_t byte_size = elem_type.size() * std::max(ov::shape_size(shape), size_t{1});
+    auto alloc = stream.malloc(std::max(byte_size, size_t{1}));
+
+    if (has_init) {
+        BufferID initBufId = input_ids_[0].GetBuffer().GetId();
+        auto dynBuf = dynBufCtx.getDynamicOutput(initBufId);
+        const void* src = dynBuf ? dynBuf->get() : inputTensors[0].get();
+        stream.transfer(CUDA::DevicePointer<void*>{alloc.get()},
+                        CUDA::DevicePointer<const void*>{src}, byte_size);
+    } else {
+        stream.memset(alloc, 0, byte_size);
+    }
+
+    shapeCtx.setShape(outBufId, shape);
+    dynBufCtx.registerDynamicOutput(outBufId, std::move(alloc));
 }
 
 void DynamicOperation::executeAssign(const ov::op::util::AssignBase& assignNode,
