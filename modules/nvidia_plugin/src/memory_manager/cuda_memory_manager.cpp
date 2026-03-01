@@ -23,7 +23,7 @@ MemoryManager::InputTensors MemoryManager::inputTensorPointers(const IOperationM
     InputTensors result;
     for (auto id : operation.GetInputIds()) {
         if (dynBufCtx) {
-            auto dynBuf = dynBufCtx->getDynamicOutput(id.GetBuffer().GetId());
+            auto dynBuf = dynBufCtx->getDynamicBuffer(id.GetBuffer().GetId());
             if (dynBuf) {
                 result.emplace_back(dynBuf->get());
                 continue;
@@ -43,7 +43,7 @@ MemoryManager::OutputTensors MemoryManager::outputTensorPointers(const IOperatio
     OutputTensors result;
     for (auto id : operation.GetOutputIds()) {
         if (dynBufCtx) {
-            auto dynBuf = dynBufCtx->getDynamicOutput(id.GetBuffer().GetId());
+            auto dynBuf = dynBufCtx->getDynamicBuffer(id.GetBuffer().GetId());
             if (dynBuf) {
                 result.emplace_back(dynBuf->get());
                 continue;

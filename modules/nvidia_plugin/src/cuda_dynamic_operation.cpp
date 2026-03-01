@@ -27,28 +27,27 @@ void DynamicOperation::Execute(const InferenceRequestContext& context,
                                Inputs inputTensors,
                                Outputs /*outputTensors*/,
                                const Workbuffers& /*workbuffers*/) const {
-    auto& shapeCtx = const_cast<InferenceRequestContext&>(context).getShapeContext();
     auto& dynBufCtx = const_cast<InferenceRequestContext&>(context).getDynamicBufferContext();
     const auto& stream = context.getThreadContext().stream();
 
     if (auto paramNode = std::dynamic_pointer_cast<ov::op::v0::Parameter>(original_node_)) {
-        executeParameter(*paramNode, context, stream, shapeCtx, dynBufCtx);
+        executeParameter(*paramNode, context, stream, dynBufCtx);
         return;
     }
 
     if (auto resultNode = std::dynamic_pointer_cast<ov::op::v0::Result>(original_node_)) {
-        executeResult(*resultNode, context, stream, shapeCtx, dynBufCtx);
+        executeResult(*resultNode, context, stream, dynBufCtx);
         return;
     }
 
-    // 1. Collect actual input shapes: from ShapeContext for dynamic inputs,
+    // 1. Collect actual input shapes: from DynamicBufferContext for dynamic inputs,
     //    from the original node for static inputs (e.g. Constant).
     ShapeKey key;
     key.input_shapes.reserve(input_ids_.size());
     for (size_t i = 0; i < input_ids_.size(); ++i) {
         BufferID bufId = input_ids_[i].GetBuffer().GetId();
-        if (shapeCtx.hasShape(bufId)) {
-            key.input_shapes.push_back(shapeCtx.getShape(bufId));
+        if (dynBufCtx.hasShape(bufId)) {
+            key.input_shapes.push_back(dynBufCtx.getShape(bufId));
         } else {
             key.input_shapes.push_back(original_node_->get_input_shape(i));
         }
@@ -71,7 +70,7 @@ void DynamicOperation::Execute(const InferenceRequestContext& context,
     std::vector<CUDA::DevicePointer<const void*>> input_ptrs;
     input_ptrs.reserve(input_ids_.size());
     for (size_t i = 0; i < input_ids_.size(); ++i) {
-        auto dynBuf = dynBufCtx.getDynamicOutput(input_ids_[i].GetBuffer().GetId());
+        auto dynBuf = dynBufCtx.getDynamicBuffer(input_ids_[i].GetBuffer().GetId());
         if (dynBuf) {
             input_ptrs.emplace_back(dynBuf->get());
         } else {
@@ -111,8 +110,7 @@ void DynamicOperation::Execute(const InferenceRequestContext& context,
     // 7. Register output shapes and dynamic buffers
     for (size_t i = 0; i < dynamic_output_ids_.size(); ++i) {
         BufferID outId = dynamic_output_ids_[i].GetBuffer().GetId();
-        shapeCtx.setShape(outId, cached->output_shapes[i]);
-        dynBufCtx.registerDynamicOutput(outId, std::move(output_allocs[i]));
+        dynBufCtx.registerDynamicBuffer(outId, std::move(output_allocs[i]), cached->output_shapes[i]);
     }
 
     // 8. Release dynamic buffers whose last consumer is this operation
@@ -124,7 +122,6 @@ void DynamicOperation::Execute(const InferenceRequestContext& context,
 void DynamicOperation::executeParameter(const ov::op::v0::Parameter& paramNode,
                                          const InferenceRequestContext& context,
                                          const CUDA::Stream& stream,
-                                         ShapeContext& shapeCtx,
                                          DynamicBufferContext& dynBufCtx) const {
     auto tensor = context.getTensorMappingContext().get_input_tensor(
         ParameterOp::GetInputTensorName(paramNode));
@@ -133,21 +130,19 @@ void DynamicOperation::executeParameter(const ov::op::v0::Parameter& paramNode,
     auto alloc = stream.malloc(std::max(byte_size, size_t{1}));
     stream.upload(CUDA::DevicePointer<void*>{alloc.get()}, tensor->data(), byte_size);
     BufferID outBufId = dynamic_output_ids_[0].GetBuffer().GetId();
-    shapeCtx.setShape(outBufId, shape);
-    dynBufCtx.registerDynamicOutput(outBufId, std::move(alloc));
+    dynBufCtx.registerDynamicBuffer(outBufId, std::move(alloc), shape);
 }
 
 void DynamicOperation::executeResult(const ov::op::v0::Result& resultNode,
                                       const InferenceRequestContext& context,
                                       const CUDA::Stream& stream,
-                                      ShapeContext& shapeCtx,
                                       DynamicBufferContext& dynBufCtx) const {
     BufferID inputBufId = input_ids_[0].GetBuffer().GetId();
-    auto dynBuf = dynBufCtx.getDynamicOutput(inputBufId);
+    auto dynBuf = dynBufCtx.getDynamicBuffer(inputBufId);
     if (!dynBuf) {
         return;
     }
-    auto shape = shapeCtx.getShape(inputBufId);
+    auto shape = dynBufCtx.getShape(inputBufId);
     auto elemType = resultNode.get_output_element_type(0);
     auto names = ResultOp::GetOutputTensorName(resultNode);
     std::shared_ptr<ov::Tensor> tensor;
