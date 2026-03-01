@@ -19,7 +19,6 @@ class Result;
 }  // namespace op
 namespace nvidia_gpu {
 
-class ShapeContext;
 class DynamicBufferContext;
 
 /**
@@ -62,12 +61,11 @@ struct CachedOperation {
  * @brief Delegator operation for nodes with dynamic shapes.
  *
  * Sits in exec_sequence_ like a normal operation. On Execute():
- * 1. Reads actual input shapes from ShapeContext
+ * 1. Reads actual input shapes from DynamicBufferContext
  * 2. Looks up (or creates) a cached static operation for those shapes
  * 3. Allocates dynamic GPU memory for outputs and workbuffers
  * 4. Delegates Execute to the cached static operation
- * 5. Registers output pointers in DynamicBufferContext
- * 6. Registers output shapes in ShapeContext
+ * 5. Registers output pointers and shapes in DynamicBufferContext
  *
  * CUDA Graphs are incompatible with dynamic shapes.
  */
@@ -99,13 +97,11 @@ private:
     void executeParameter(const ov::op::v0::Parameter& paramNode,
                           const InferenceRequestContext& context,
                           const CUDA::Stream& stream,
-                          ShapeContext& shapeCtx,
                           DynamicBufferContext& dynBufCtx) const;
 
     void executeResult(const ov::op::v0::Result& resultNode,
                        const InferenceRequestContext& context,
                        const CUDA::Stream& stream,
-                       ShapeContext& shapeCtx,
                        DynamicBufferContext& dynBufCtx) const;
 
     std::shared_ptr<CachedOperation> createCachedOperation(const ShapeKey& key) const;
