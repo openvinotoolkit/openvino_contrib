@@ -54,17 +54,10 @@ void DynamicOperation::Execute(const InferenceRequestContext& context,
     }
 
     // 2. Lookup or create cached static operation
-    std::shared_ptr<CachedOperation> cached;
-    {
-        std::lock_guard<std::mutex> lock{cache_mutex_};
-        auto* found = shape_cache_.find(key);
-        if (found) {
-            cached = *found;
-        } else {
-            cached = createCachedOperation(key);
-            shape_cache_.insert(key, cached);
-        }
-    }
+    auto& cache = const_cast<InferenceRequestContext&>(context).getDynamicOperationCache();
+    auto cached = cache.getOrCreate(original_node_.get(), key, [this, &key] {
+        return createCachedOperation(key);
+    });
 
     // 3. Resolve input pointers (check DynamicBufferContext for overrides)
     std::vector<CUDA::DevicePointer<const void*>> input_ptrs;

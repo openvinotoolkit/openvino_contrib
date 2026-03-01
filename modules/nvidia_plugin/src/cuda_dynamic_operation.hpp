@@ -58,6 +58,66 @@ struct CachedOperation {
 };
 
 /**
+ * @brief Global LRU cache for dynamic shape operations.
+ *
+ * Shared across all DynamicOperation instances within a CompiledModel.
+ * Uses a composite key (operation identity + input shapes) to cache
+ * static operation variants. Thread-safe via internal mutex.
+ *
+ * Capacity 300, matching Intel GPU plugin's approach for dynamic shapes.
+ */
+class DynamicOperationCache {
+public:
+    static constexpr size_t kDefaultCapacity = 300;
+
+    explicit DynamicOperationCache(size_t capacity = kDefaultCapacity) : cache_{capacity} {}
+
+    /**
+     * Lookup or create a cached operation, avoiding duplicate creation.
+     * Uses double-checked locking: if two threads miss simultaneously,
+     * only the first insert wins; the second thread reuses the cached entry.
+     */
+    template <typename Factory>
+    std::shared_ptr<CachedOperation> getOrCreate(const void* op_id, const ShapeKey& key, Factory factory) {
+        GlobalShapeKey gkey{op_id, key};
+        {
+            std::lock_guard<std::mutex> lock{mutex_};
+            auto* found = cache_.find(gkey);
+            if (found) return *found;
+        }
+        auto op = factory();
+        {
+            std::lock_guard<std::mutex> lock{mutex_};
+            auto* found = cache_.find(gkey);
+            if (found) return *found;
+            return cache_.insert(gkey, std::move(op));
+        }
+    }
+
+private:
+    struct GlobalShapeKey {
+        const void* op_id;
+        ShapeKey shape_key;
+
+        bool operator==(const GlobalShapeKey& other) const {
+            return op_id == other.op_id && shape_key == other.shape_key;
+        }
+    };
+
+    struct GlobalShapeKeyHash {
+        size_t operator()(const GlobalShapeKey& key) const {
+            size_t seed = std::hash<const void*>{}(key.op_id);
+            ShapeKeyHash shape_hash;
+            seed ^= shape_hash(key.shape_key) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            return seed;
+        }
+    };
+
+    std::mutex mutex_;
+    LruCache<GlobalShapeKey, std::shared_ptr<CachedOperation>, GlobalShapeKeyHash> cache_;
+};
+
+/**
  * @brief Delegator operation for nodes with dynamic shapes.
  *
  * Sits in exec_sequence_ like a normal operation. On Execute():
@@ -118,9 +178,6 @@ private:
     // Set by SubGraph::initExecuteSequence() based on buffer lifespan analysis.
     std::vector<BufferID> release_ids_;
 
-    static constexpr size_t kCacheCapacity = 8;
-    mutable std::mutex cache_mutex_;
-    mutable LruCache<ShapeKey, std::shared_ptr<CachedOperation>, ShapeKeyHash> shape_cache_{kCacheCapacity};
 };
 
 }  // namespace nvidia_gpu
