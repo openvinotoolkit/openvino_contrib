@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cuda_operation_base.hpp>
 #include <cuda/graph.hpp>
+#include <cuda_dynamic_buffer_context.hpp>
 #include <kernels/insert.hpp>
 #include <kernels/slice.hpp>
 #include <openvino/op/tensor_iterator.hpp>
@@ -74,34 +75,29 @@ private:
     public:
         SliceLauncher(const TensorIteratorOp& ti, uint64_t inputIdx, uint64_t paramIdx);
 
+        uint64_t inputIdx() const { return input_idx_; }
+        uint64_t paramIdx() const { return param_idx_; }
+
         void operator()(const CUDA::Stream& stream,
-                        const IOperationExec::Inputs& inputTensors,
-                        CUDA::DevicePointer<void*> mutableBuffer,
+                        const void* src, void* dst,
                         int64_t iter) const {
-            const auto* src = inputTensors[input_idx_].get();
-            auto* dst = memory_manager_.outputTensorPointers(param_, mutableBuffer)[0].get();
             slice_(stream.get(), src, dst, start_ + iter * stride_);
         }
 
         void addKernelNode(ICudaGraphInfo& info,
                            const CUDA::Stream& stream,
-                           CUDA::DevicePointer<void*> mutableBuffer,
-                           const IOperationExec::Inputs& inputTensors);
+                           const void* src, void* dst);
 
         void updateKernelNode(ICudaGraphInfo& info,
                               std::size_t index,
-                              CUDA::DevicePointer<void*> mutableBuffer,
-                              const IOperationExec::Inputs& inputTensors,
+                              const void* src, void* dst,
                               int64_t iter) {
-            const auto* src = inputTensors[input_idx_].get();
-            auto* dst = memory_manager_.outputTensorPointers(param_, mutableBuffer)[0].get();
             info.update_kernel(index, slice_.getPropsPtr(), start_ + iter * stride_, slice_.getSize(), src, dst);
         }
 
     private:
         uint64_t input_idx_;
-        const OperationBase& param_;
-        const MemoryManager& memory_manager_;
+        uint64_t param_idx_;
         const kernel::Slice& slice_;
         size_t start_;
         int64_t stride_;
@@ -111,22 +107,21 @@ private:
     public:
         TransferLauncher(const TensorIteratorOp& ti, uint64_t resultIdx, uint64_t paramIdx);
 
-        void operator()(const CUDA::Stream& stream, CUDA::DevicePointer<void*> mutableBuffer) const {
-            const auto& paramTensors = memory_manager_.outputTensorPointers(param_, mutableBuffer);
-            const auto& resultTensors = memory_manager_.inputTensorPointers(result_, mutableBuffer);
-            auto* dst = paramTensors[0].get();
-            const auto* src = resultTensors[0].get();
+        uint64_t paramIdx() const { return param_idx_; }
+        uint64_t resultIdx() const { return result_idx_; }
+
+        void operator()(const CUDA::Stream& stream,
+                        const void* src, void* dst) const {
             throwIfError(cudaMemcpyAsync(dst, src, param_size_, cudaMemcpyDeviceToDevice, stream.get()));
         }
 
         void addTransferNode(ICudaGraphInfo& info,
                              const CUDA::Stream& stream,
-                             CUDA::DevicePointer<void*> mutableBuffer);
+                             const void* src, void* dst);
 
     private:
-        const OperationBase& param_;
-        const OperationBase& result_;
-        const MemoryManager& memory_manager_;
+        uint64_t param_idx_;
+        uint64_t result_idx_;
         std::size_t param_size_;
     };
 
@@ -134,34 +129,29 @@ private:
     public:
         InsertLauncher(const TensorIteratorOp& ti, const std::size_t resultIdx, const std::size_t outputIdx);
 
+        uint64_t outputIdx() const { return output_idx_; }
+        uint64_t resultIdx() const { return result_idx_; }
+
         void operator()(const CUDA::Stream& stream,
-                        CUDA::DevicePointer<void*> mutableBuffer,
-                        const IOperationExec::Outputs& outputTensors,
+                        const void* src, void* dst,
                         int64_t iter) const {
-            const auto* src = memory_manager_.inputTensorPointers(result_, mutableBuffer)[0].get();
-            auto* dst = outputTensors[output_idx_].get();
             insert_(stream.get(), src, dst, start_ + iter * stride_);
         }
 
         void addKernelNode(ICudaGraphInfo& info,
                            const CUDA::Stream& stream,
-                           CUDA::DevicePointer<void*> mutableBuffer,
-                           const IOperationExec::Outputs& outputTensors);
+                           const void* src, void* dst);
 
         void updateKernelNode(ICudaGraphInfo& info,
                               std::size_t index,
-                              CUDA::DevicePointer<void*> mutableBuffer,
-                              const IOperationExec::Outputs& outputTensors,
+                              const void* src, void* dst,
                               int64_t iter) {
-            const auto* src = memory_manager_.inputTensorPointers(result_, mutableBuffer)[0].get();
-            auto* dst = outputTensors[output_idx_].get();
             info.update_kernel(index, insert_.getPropsPtr(), start_ + iter * stride_, insert_.getSize(), src, dst);
         }
 
     private:
         uint64_t output_idx_;
-        const OperationBase& result_;
-        const MemoryManager& memory_manager_;
+        uint64_t result_idx_;
         size_t start_;
         int64_t stride_;
         const kernel::Insert& insert_;
@@ -190,19 +180,13 @@ private:
                            Outputs outputTensors,
                            const Workbuffers& workbuffers) const;
 
-    void transferParam(const CUDA::Stream& stream,
-                       CUDA::DevicePointer<void*> mutableBuffer,
-                       const IOperationExec::Inputs& inputTensors,
-                       std::int64_t iter,
-                       uint64_t inputIdx,
-                       uint64_t paramIdx) const;
+    struct ResolvedPointers {
+        std::vector<CUDA::DevicePointer<void*>> param_outputs;
+        std::vector<CUDA::DevicePointer<const void*>> result_inputs;
+    };
 
-    void transferResult(const CUDA::Stream& stream,
-                        CUDA::DevicePointer<void*> mutableBuffer,
-                        const IOperationExec::Outputs& outputTensors,
-                        int64_t iter,
-                        std::size_t resultIdx,
-                        std::size_t outputIdx) const;
+    ResolvedPointers resolveInternalPointers(CUDA::DevicePointer<void*> mutableBuffer,
+                                             const DynamicBufferContext& dynBufCtx) const;
 
     void updateExecSequence();
 
