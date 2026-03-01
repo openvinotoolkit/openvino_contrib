@@ -9,7 +9,6 @@
 #include "cancellation_token.hpp"
 #include "cuda_dynamic_buffer_context.hpp"
 #include "cuda_graph_context.hpp"
-#include "cuda_shape_context.hpp"
 #include "cuda_tensor_mapping_context.hpp"
 #include "cuda_thread_context.hpp"
 
@@ -71,9 +70,6 @@ public:
         return *current_cuda_graph_info_;
     }
 
-    [[nodiscard]] ShapeContext& getShapeContext() { return shape_context_; }
-    [[nodiscard]] const ShapeContext& getShapeContext() const { return shape_context_; }
-
     [[nodiscard]] DynamicBufferContext& getDynamicBufferContext() { return dynamic_buffer_context_; }
     [[nodiscard]] const DynamicBufferContext& getDynamicBufferContext() const { return dynamic_buffer_context_; }
 
@@ -85,7 +81,6 @@ private:
     CudaGraphContext& cuda_graph_context_;
     bool is_benchmark_mode_;
     ICudaGraphInfo* current_cuda_graph_info_ = nullptr;
-    ShapeContext shape_context_;
     DynamicBufferContext dynamic_buffer_context_;
 };
 
