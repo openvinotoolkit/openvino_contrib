@@ -19,15 +19,13 @@ MemoryManager::MemoryManager(DeviceMemBlock::Ptr immutableTensors,
 
 MemoryManager::InputTensors MemoryManager::inputTensorPointers(const IOperationMeta& operation,
                                                                CUDA::DevicePointer<void*> mutableBufferPtr,
-                                                               const DynamicBufferContext* dynBufCtx) const {
+                                                               const DynamicBufferContext& dynBufCtx) const {
     InputTensors result;
     for (auto id : operation.GetInputIds()) {
-        if (dynBufCtx) {
-            auto dynBuf = dynBufCtx->getDynamicBuffer(id.GetBuffer().GetId());
-            if (dynBuf) {
-                result.emplace_back(dynBuf->get());
-                continue;
-            }
+        auto dynBuf = dynBufCtx.getDynamicBuffer(id.GetBuffer().GetId());
+        if (dynBuf) {
+            result.emplace_back(dynBuf->get());
+            continue;
         }
         const void* ptr = immutable_tensors_->deviceTensorPtr(id);
         if (ptr == nullptr) ptr = mutable_tensors_model_->deviceTensorPtr(mutableBufferPtr.cast<uint8_t*>(), id);
@@ -39,15 +37,13 @@ MemoryManager::InputTensors MemoryManager::inputTensorPointers(const IOperationM
 
 MemoryManager::OutputTensors MemoryManager::outputTensorPointers(const IOperationMeta& operation,
                                                                  CUDA::DevicePointer<void*> mutableBufferPtr,
-                                                                 const DynamicBufferContext* dynBufCtx) const {
+                                                                 const DynamicBufferContext& dynBufCtx) const {
     OutputTensors result;
     for (auto id : operation.GetOutputIds()) {
-        if (dynBufCtx) {
-            auto dynBuf = dynBufCtx->getDynamicBuffer(id.GetBuffer().GetId());
-            if (dynBuf) {
-                result.emplace_back(dynBuf->get());
-                continue;
-            }
+        auto dynBuf = dynBufCtx.getDynamicBuffer(id.GetBuffer().GetId());
+        if (dynBuf) {
+            result.emplace_back(dynBuf->get());
+            continue;
         }
         void* ptr = mutable_tensors_model_->deviceTensorPtr(mutableBufferPtr.cast<uint8_t*>(), id);
         OPENVINO_ASSERT(ptr != nullptr, "Tensor not found. ID is " + to_string(id));
