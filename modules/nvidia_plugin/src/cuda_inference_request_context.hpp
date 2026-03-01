@@ -16,6 +16,7 @@ namespace ov {
 namespace nvidia_gpu {
 
 class IExecutionDelegator;
+class DynamicOperationCache;
 
 class InferenceRequestContext {
 public:
@@ -33,12 +34,14 @@ public:
                             CancellationToken& token,
                             IExecutionDelegator& executionDelegator,
                             CudaGraphContext& cudaGraphContext,
+                            DynamicOperationCache& dynamicShapeCache,
                             bool isBenchmarkMode = false)
         : threadContext{threadContext},
           token{token},
           executionDelegator{executionDelegator},
           tensor_mapping_context_{inputs, inputMapping, outputs, outputMapping},
           cuda_graph_context_{cudaGraphContext},
+          dynamic_op_cache_{dynamicShapeCache},
           is_benchmark_mode_{isBenchmarkMode} {}
 
     // don't allow storing references to temporary
@@ -73,6 +76,8 @@ public:
     [[nodiscard]] DynamicBufferContext& getDynamicBufferContext() { return dynamic_buffer_context_; }
     [[nodiscard]] const DynamicBufferContext& getDynamicBufferContext() const { return dynamic_buffer_context_; }
 
+    [[nodiscard]] DynamicOperationCache& getDynamicOperationCache() { return dynamic_op_cache_; }
+
 private:
     const ThreadContext& threadContext;
     CancellationToken& token;
@@ -81,6 +86,7 @@ private:
     CudaGraphContext& cuda_graph_context_;
     bool is_benchmark_mode_;
     ICudaGraphInfo* current_cuda_graph_info_ = nullptr;
+    DynamicOperationCache& dynamic_op_cache_;
     DynamicBufferContext dynamic_buffer_context_;
 };
 

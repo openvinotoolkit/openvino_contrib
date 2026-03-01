@@ -165,6 +165,7 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
                                                     cancellation_token_,
                                                     *executionDelegator_,
                                                     cudaGraphContext,
+                                                    compiled_model->dynamic_op_cache_,
                                                     is_benchmark_mode_};
         topology_runner.UpdateContext(inferRequestContext, memory);
         topology_runner.Run(inferRequestContext, memory);
