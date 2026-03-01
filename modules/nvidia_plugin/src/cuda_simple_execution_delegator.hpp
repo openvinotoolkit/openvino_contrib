@@ -49,9 +49,10 @@ public:
                                   const MemoryManager& memoryManager,
                                   const Workbuffers::mutable_buffer& buffer,
                                   const InferenceRequestContext& context) override {
+        const auto& dynBufCtx = context.getDynamicBufferContext();
         for (auto& op : subGraphPtr->getExecSequence()) {
-            const auto& inputTensors = memoryManager.inputTensorPointers(*op, buffer);
-            const auto& outputTensors = memoryManager.outputTensorPointers(*op, buffer);
+            const auto& inputTensors = memoryManager.inputTensorPointers(*op, buffer, dynBufCtx);
+            const auto& outputTensors = memoryManager.outputTensorPointers(*op, buffer, dynBufCtx);
             const auto& workBuffers = memoryManager.workBuffers(*op, buffer);
             op->Execute(context, inputTensors, outputTensors, workBuffers);
         }
@@ -68,9 +69,10 @@ public:
                                   const MemoryManager& memoryManager,
                                   const Workbuffers::mutable_buffer& buffer,
                                   InferenceRequestContext& context) override {
+        const auto& dynBufCtx = context.getDynamicBufferContext();
         for (auto& op : subGraphPtr->getExecSequence()) {
-            const auto& inputTensors = memoryManager.inputTensorPointers(*op, buffer);
-            const auto& outputTensors = memoryManager.outputTensorPointers(*op, buffer);
+            const auto& inputTensors = memoryManager.inputTensorPointers(*op, buffer, dynBufCtx);
+            const auto& outputTensors = memoryManager.outputTensorPointers(*op, buffer, dynBufCtx);
             const auto& workBuffers = memoryManager.workBuffers(*op, buffer);
             op->Capture(context, inputTensors, outputTensors, workBuffers);
         }
@@ -87,9 +89,10 @@ public:
                                         const MemoryManager& memoryManager,
                                         const Workbuffers::mutable_buffer& buffer,
                                         InferenceRequestContext& context) override {
+        const auto& dynBufCtx = context.getDynamicBufferContext();
         for (auto& op : subGraphPtr->getExecSequence()) {
-            const auto& inputTensors = memoryManager.inputTensorPointers(*op, buffer);
-            const auto& outputTensors = memoryManager.outputTensorPointers(*op, buffer);
+            const auto& inputTensors = memoryManager.inputTensorPointers(*op, buffer, dynBufCtx);
+            const auto& outputTensors = memoryManager.outputTensorPointers(*op, buffer, dynBufCtx);
             const auto& workBuffers = memoryManager.workBuffers(*op, buffer);
             op->ExecuteGraph(context, inputTensors, outputTensors, workBuffers);
         }

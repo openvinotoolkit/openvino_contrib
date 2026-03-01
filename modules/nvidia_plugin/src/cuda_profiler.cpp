@@ -127,9 +127,10 @@ void Profiler::execute_sequence(const SubGraph* subGraphPtr,
                                 const MemoryManager& memoryManager,
                                 const Workbuffers::mutable_buffer& buffer,
                                 const InferenceRequestContext& context) {
+    const auto& dynBufCtx = context.getDynamicBufferContext();
     for (const auto& op : create_exec_sequence(subGraphPtr)) {
-        const auto& inTensors = memoryManager.inputTensorPointers(*op, buffer);
-        const auto& outTensors = memoryManager.outputTensorPointers(*op, buffer);
+        const auto& inTensors = memoryManager.inputTensorPointers(*op, buffer, dynBufCtx);
+        const auto& outTensors = memoryManager.outputTensorPointers(*op, buffer, dynBufCtx);
         const auto& workBuffers = memoryManager.workBuffers(*op, buffer);
         op->execute(context, inTensors, outTensors, workBuffers);
     }
@@ -139,9 +140,10 @@ void Profiler::capture_sequence(const SubGraph* subGraphPtr,
                                 const MemoryManager& memoryManager,
                                 const Workbuffers::mutable_buffer& buffer,
                                 InferenceRequestContext& context) {
+    const auto& dynBufCtx = context.getDynamicBufferContext();
     for (const auto& op : create_exec_sequence(subGraphPtr)) {
-        const auto& inputTensors = memoryManager.inputTensorPointers(*op, buffer);
-        const auto& outputTensors = memoryManager.outputTensorPointers(*op, buffer);
+        const auto& inputTensors = memoryManager.inputTensorPointers(*op, buffer, dynBufCtx);
+        const auto& outputTensors = memoryManager.outputTensorPointers(*op, buffer, dynBufCtx);
         const auto& workBuffers = memoryManager.workBuffers(*op, buffer);
         op->capture(context, inputTensors, outputTensors, workBuffers);
     }
@@ -151,9 +153,10 @@ void Profiler::execute_graph_sequence(const SubGraph* subGraphPtr,
                                       const MemoryManager& memoryManager,
                                       const Workbuffers::mutable_buffer& buffer,
                                       InferenceRequestContext& context) {
+    const auto& dynBufCtx = context.getDynamicBufferContext();
     for (const auto& op : create_exec_sequence(subGraphPtr)) {
-        const auto& inTensors = memoryManager.inputTensorPointers(*op, buffer);
-        const auto& outTensors = memoryManager.outputTensorPointers(*op, buffer);
+        const auto& inTensors = memoryManager.inputTensorPointers(*op, buffer, dynBufCtx);
+        const auto& outTensors = memoryManager.outputTensorPointers(*op, buffer, dynBufCtx);
         const auto& workBuffers = memoryManager.workBuffers(*op, buffer);
         op->execute_graph(context, inTensors, outTensors, workBuffers);
     }

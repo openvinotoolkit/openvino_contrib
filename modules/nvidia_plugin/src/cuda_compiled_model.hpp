@@ -13,6 +13,7 @@
 #include "memory_manager/cuda_memory_manager.hpp"
 #include "memory_manager/cuda_memory_pool.hpp"
 #include "memory_manager/model/cuda_memory_model.hpp"
+#include "cuda_dynamic_operation.hpp"
 #include "openvino/runtime/icompiled_model.hpp"
 #include "openvino/runtime/threading/itask_executor.hpp"
 #include "ops/subgraph.hpp"
@@ -78,6 +79,7 @@ private:
     const bool loaded_from_cache_;
     bool use_cuda_graph_;
     size_t number_of_cuda_graphs_;
+    mutable DynamicOperationCache dynamic_op_cache_;
 };
 
 }  // namespace nvidia_gpu
