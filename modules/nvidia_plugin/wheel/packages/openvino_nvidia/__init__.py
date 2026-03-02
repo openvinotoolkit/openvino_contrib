@@ -17,6 +17,23 @@ def _get_lib_file_extension() -> str:
     elif platform_name == 'Darwin':
         return "dylib"
 
+def get_gpu_llm_inference_config() -> dict:
+    """
+    Returns a dictionary of OpenVINO properties optimized for LLM inference on NVIDIA GPUs.
+    This configuration aims to improve performance and stability for stateful models
+    by leveraging FP16 precision and disabling profiling.
+    """
+    # Import openvino here to ensure it's available when this function is called.
+    # Using 'ov' as an alias for consistency with typical OpenVINO usage.
+    import openvino as ov 
+    return {
+        ov.properties.hint.performance_mode: ov.properties.hint.PerformanceMode.LATENCY,
+        # Hint for FP16 precision to utilize NVIDIA Tensor Cores for LLM inference
+        ov.properties.hint.inference_precision: ov.properties.Type.f16,
+        # Disable profiling to reduce overhead and potentially prevent interference with stateful models
+        ov.properties.enable_profiling: False,
+    }
+
 
 def _register_nvidia_plugin(force=False):
     import openvino
