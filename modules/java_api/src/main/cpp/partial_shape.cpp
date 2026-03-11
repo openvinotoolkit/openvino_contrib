@@ -12,7 +12,11 @@ using namespace ov;
 JNIEXPORT jlong JNICALL Java_org_intel_openvino_PartialShape_GetDimension(JNIEnv *env, jobject obj, jlong addr, jint index) {
     JNI_METHOD("GetDimension",
         PartialShape* partial_shape = (PartialShape *)addr;
-        return (jlong) &(*partial_shape)[index];
+
+        Dimension *dim = new Dimension();
+        *dim = (*partial_shape)[index];
+
+        return (jlong)dim;
     )
     return 0;
 }
@@ -54,3 +58,7 @@ JNIEXPORT jintArray JNICALL Java_org_intel_openvino_PartialShape_GetMinShape(JNI
     )
     return 0;
 }
+
+/*  We don't use delete operator for native object because we don't own this object:
+    no new operator has been used to allocate memory for it */
+JNIEXPORT void JNICALL Java_org_intel_openvino_PartialShape_delete(JNIEnv *, jobject, jlong) {}
