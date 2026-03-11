@@ -23,4 +23,7 @@ public class Dimension extends Wrapper {
 
     /*----------------------------------- native methods -----------------------------------*/
     private static native int getLength(long addr);
+
+    @Override
+    protected native void delete(long nativeObj);
 }
