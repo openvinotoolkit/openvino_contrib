@@ -36,4 +36,7 @@ public class PartialShape extends Wrapper {
     private static native int[] GetMaxShape(long addr);
 
     private static native int[] GetMinShape(long addr);
+
+    @Override
+    protected native void delete(long nativeObj);
 }
