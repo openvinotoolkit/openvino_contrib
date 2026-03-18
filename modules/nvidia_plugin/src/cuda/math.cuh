@@ -52,6 +52,20 @@ inline __device__ T floor(T x) {
 inline __device__ float floor(float x) { return ::floorf(x); }
 /* ================================================= */
 
+/* ===================== ceil ====================== */
+template <typename T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
+inline __device__ T ceil(T x) {
+    return x;
+}
+
+template <typename T, std::enable_if_t<!std::is_integral<T>::value, bool> = true>
+inline __device__ T ceil(T x) {
+    return ::ceil(x);
+}
+
+inline __device__ float ceil(float x) { return ::ceilf(x); }
+/* ================================================= */
+
 /* ===================== trunc ===================== */
 template <typename T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
 inline __device__ T trunc(T x) {
@@ -215,6 +229,7 @@ inline __device__ __half round(__half x) {
 
 #if defined(CUDA_HAS_HALF_MATH)
 inline __device__ __half floor(__half x) { return ::hfloor(x); }
+inline __device__ __half ceil(__half x) { return ::hceil(x); }
 
 inline __device__ __half trunc(__half x) { return ::htrunc(x); }
 
@@ -251,6 +266,7 @@ inline __device__ __half log<__half>(__half x) {
 #else  // defined (CUDA_HAS_HALF_MATH)
 
 inline __device__ __half floor(__half x) { return floor(static_cast<float>(x)); }
+inline __device__ __half ceil(__half x) { return ceil(static_cast<float>(x)); }
 
 inline __device__ __half trunc(__half x) { return trunc(static_cast<float>(x)); }
 
@@ -308,6 +324,7 @@ inline __device__ __nv_bfloat16 round(__nv_bfloat16 x) {
 
 #if defined(CUDA_HAS_BF16_MATH)
 inline __device__ __nv_bfloat16 floor(__nv_bfloat16 x) { return ::hfloor(x); }
+inline __device__ __nv_bfloat16 ceil(__nv_bfloat16 x) { return ::hceil(x); }
 
 inline __device__ __nv_bfloat16 trunc(__nv_bfloat16 x) { return ::htrunc(x); }
 
@@ -344,6 +361,7 @@ inline __device__ __nv_bfloat16 log<__nv_bfloat16>(__nv_bfloat16 x) {
 #else  // defined (CUDA_HAS_BF16_MATH)
 
 inline __device__ __nv_bfloat16 floor(__nv_bfloat16 x) { return floor(static_cast<float>(x)); }
+inline __device__ __nv_bfloat16 ceil(__nv_bfloat16 x) { return ceil(static_cast<float>(x)); }
 
 inline __device__ __nv_bfloat16 trunc(__nv_bfloat16 x) { return trunc(static_cast<float>(x)); }
 
