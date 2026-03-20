@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <cuda_graph_topology_runner.hpp>
+#include <cuda_dynamic_operation.hpp>
 #include <cuda_simple_execution_delegator.hpp>
 #include <ops/parameter.hpp>
 #include <ops/result.hpp>
@@ -49,6 +50,7 @@ protected:
     ThreadContext threadContext_{{}};
     CancellationToken cancellationToken_{};
     CudaGraphContext cudaGraphContext_{};
+    DynamicOperationCache dynamicOpCache_{};
     CudaGraphTopologyRunner runner_{creationContext_, model_};
     SimpleExecutionDelegator simpleExecutionDelegator_{};
     std::vector<std::shared_ptr<ov::Tensor>> inputTensors_{PopulateTensors(model_->inputs())};
@@ -63,6 +65,7 @@ protected:
                                                  cancellationToken_,
                                                  simpleExecutionDelegator_,
                                                  cudaGraphContext_,
+                                                 dynamicOpCache_,
                                                  false};
     DeviceMemBlock deviceMemBlock_{runner_.GetSubGraph().memoryManager()->mutableTensorsMemoryModel()};
 };
@@ -110,6 +113,7 @@ TEST_F(CudaGraphTopologyRunnerTest, CheckMemcpyNodesAreUpdated) {
                                                 cancellationToken_,
                                                 simpleExecutionDelegator_,
                                                 cudaGraphContext_,
+                                                dynamicOpCache_,
                                                 false};
     runner_.UpdateContext(inferRequestContext, deviceMemBlock_);
 
@@ -143,6 +147,7 @@ TEST_F(CudaGraphTopologyRunnerTest, CheckMemcpyNodesAreNotUpdatedIfPointersUncha
                                                 cancellationToken_,
                                                 simpleExecutionDelegator_,
                                                 cudaGraphContext_,
+                                                dynamicOpCache_,
                                                 false};
     runner_.UpdateContext(inferRequestContext, deviceMemBlock_);
     cudaGraphContext_.select_current_graph(0);
