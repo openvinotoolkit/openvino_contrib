@@ -7,6 +7,7 @@
 #include <cudnn_ops_infer.h>
 #include <gtest/gtest.h>
 
+#include <cuda_dynamic_operation.hpp>
 #include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
@@ -91,6 +92,7 @@ struct PoolingTest : testing::Test {
         CancellationToken token{};
         SimpleExecutionDelegator simpleExecutionDelegator{};
         ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
+        DynamicOperationCache dynamicOpCache{};
         InferenceRequestContext context{empty_tensor,
                                         empty_mapping,
                                         empty_tensor,
@@ -98,7 +100,8 @@ struct PoolingTest : testing::Test {
                                         threadContext,
                                         token,
                                         simpleExecutionDelegator,
-                                        cudaGraphContext};
+                                        cudaGraphContext,
+                                        dynamicOpCache};
         auto& registry{OperationRegistry::getInstance()};
         auto const_input = std::make_shared<ov::op::v0::Constant>(ov::element::f32, Shape{in_shape});
         const size_t spatial_dims = in_shape.size() - 2;

@@ -5,6 +5,7 @@
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
 
+#include <cuda_dynamic_operation.hpp>
 #include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
@@ -63,6 +64,7 @@ TEST_F(ParameterTest, canExecuteSync) {
     CancellationToken token{};
     SimpleExecutionDelegator simpleExecutionDelegator{};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
+    DynamicOperationCache dynamicOpCache{};
     InferenceRequestContext context{tensors,
                                     tensors_mapping,
                                     empty_tensor,
@@ -70,7 +72,8 @@ TEST_F(ParameterTest, canExecuteSync) {
                                     threadContext,
                                     token,
                                     simpleExecutionDelegator,
-                                    cudaGraphContext};
+                                    cudaGraphContext,
+                                    dynamicOpCache};
     auto& stream = context.getThreadContext().stream();
     operation->Execute(context, inputs, outputs, {});
     auto data = std::make_unique<uint8_t[]>(size);
@@ -83,6 +86,7 @@ TEST_F(ParameterTest, canExecuteAsync) {
     CancellationToken token{};
     ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
+    DynamicOperationCache dynamicOpCache{};
     InferenceRequestContext context{tensors,
                                     tensors_mapping,
                                     empty_tensor,
@@ -90,7 +94,8 @@ TEST_F(ParameterTest, canExecuteAsync) {
                                     threadContext,
                                     token,
                                     simpleExecutionDelegator,
-                                    cudaGraphContext};
+                                    cudaGraphContext,
+                                    dynamicOpCache};
     auto& stream = context.getThreadContext().stream();
     operation->Execute(context, inputs, outputs, {});
     auto data = std::make_unique<uint8_t[]>(size);

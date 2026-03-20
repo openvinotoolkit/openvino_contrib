@@ -6,6 +6,7 @@
 #include "common_test_utils/node_builders/eltwise.hpp"
 #include "common_test_utils/node_builders/gru_cell.hpp"
 #include "common_test_utils/ov_test_utils.hpp"
+#include "cuda_dynamic_operation.hpp"
 #include "cuda_graph_topology_runner.hpp"
 #include "cuda_simple_execution_delegator.hpp"
 #include "gtest/gtest.h"
@@ -304,6 +305,7 @@ protected:
                                                                          cancellationToken_,
                                                                          simpleExecutionDelegator_,
                                                                          cudaGraphContext_,
+                                                                         dynamicOpCache_,
                                                                          false);
     }
 
@@ -329,6 +331,7 @@ protected:
     ThreadContext threadContext_{{}};
     CancellationToken cancellationToken_{};
     CudaGraphContext cudaGraphContext_{};
+    DynamicOperationCache dynamicOpCache_{};
     CudaGraphTopologyRunner runner_{creationContext_, model_};
     SimpleExecutionDelegator simpleExecutionDelegator_{};
     std::vector<std::shared_ptr<ov::Tensor>> inputTensors_{populateTensors(model_->inputs())};
@@ -345,6 +348,7 @@ protected:
                                                   cancellationToken_,
                                                   simpleExecutionDelegator_,
                                                   cudaGraphContext_,
+                                                  dynamicOpCache_,
                                                   false);
     DeviceMemBlock deviceMemBlock_{runner_.GetSubGraph().memoryManager()->mutableTensorsMemoryModel()};
 
