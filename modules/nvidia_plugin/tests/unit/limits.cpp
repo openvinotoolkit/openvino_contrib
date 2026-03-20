@@ -13,6 +13,7 @@
 #include <cuda/runtime.hpp>
 #include <cuda_config.hpp>
 #include <cuda_creation_context.hpp>
+#include <cuda_dynamic_operation.hpp>
 #include <cuda_graph_context.hpp>
 #include <cuda_inference_request_context.hpp>
 #include <cuda_operation_base.hpp>
@@ -151,6 +152,7 @@ void run_zero_div_test() {
     ov::nvidia_gpu::CancellationToken token{};
     ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext;
+    ov::nvidia_gpu::DynamicOperationCache dynamicOpCache{};
     ov::nvidia_gpu::InferenceRequestContext context{emptyTensor,
                                                     emptyMapping,
                                                     emptyTensor,
@@ -158,7 +160,8 @@ void run_zero_div_test() {
                                                     threadContext,
                                                     token,
                                                     simpleExecutionDelegator,
-                                                    cudaGraphContext};
+                                                    cudaGraphContext,
+                                                    dynamicOpCache};
     auto& stream = context.getThreadContext().stream();
     stream.upload(in1_alloc, in1.data(), size_bytes);
     stream.upload(in2_alloc, in2.data(), sizeof(T));
