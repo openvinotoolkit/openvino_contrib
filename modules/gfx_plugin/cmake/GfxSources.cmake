@@ -56,6 +56,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_args.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_signature.hpp
     ${_gfx_src_dir}/runtime/gfx_profiler.hpp
     ${_gfx_src_dir}/runtime/gpu_backend_base.hpp
     ${_gfx_src_dir}/runtime/gpu_buffer.hpp
@@ -93,11 +94,17 @@ set(GFX_RUNTIME_COMMON_SOURCES
 
 set(GFX_RUNTIME_MLIR_HEADERS
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.hpp
+    ${_gfx_src_dir}/mlir/gfx_mlir_kernel_metadata.hpp
+    ${_gfx_src_dir}/mlir/gfx_mlir_type_utils.hpp
+    ${_gfx_src_dir}/mlir/gfx_mlir_debug.hpp
+    ${_gfx_src_dir}/mlir/mlir_kernel_plan_utils.hpp
+    ${_gfx_src_dir}/mlir/mlir_stage.hpp
     ${_gfx_src_dir}/mlir/mlir_support.hpp
 )
 
 set(GFX_RUNTIME_MLIR_SOURCES
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.cpp
+    ${_gfx_src_dir}/mlir/mlir_stage.cpp
     ${_gfx_src_dir}/mlir/mlir_support.cpp
 )
 

@@ -6,10 +6,12 @@
 #include <functional>
 #include <string>
 
+#include "openvino/core/node.hpp"
 #include "openvino/core/shape.hpp"
 #include "kernel_ir/gfx_codegen_backend.hpp"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "kernel_ir/gfx_kernel_signature.hpp"
 #include "kernel_ir/gfx_kernel_dispatch.hpp"
+#include "mlir/gfx_mlir_kernel_metadata.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -57,9 +59,21 @@ public:
         return src;
     }
 
+    KernelRuntimeMetadata runtime_metadata(const KernelArgMappingInfo& mapping,
+                                           const std::shared_ptr<const ov::Node>& node,
+                                           size_t outputs_hint = 0) const {
+        return extract_kernel_runtime_metadata(m_module, mapping, node, outputs_hint);
+    }
+
     static KernelDispatch make_default_dispatch(const ov::Shape& shape,
                                                 const ICompiledKernel& kernel) {
-        return gfx_plugin::make_default_dispatch(shape, kernel.clamp_threadgroup_size(1));
+        // Linear MLIR kernels are indexed by the global invocation id, so using
+        // a reasonable workgroup size reduces dispatch group counts without
+        // changing semantics. This is required for large mobile-Vulkan tensors
+        // where a 1-thread group would overflow practical dispatch limits.
+        constexpr size_t kDefaultLinearThreadsPerGroup = 64;
+        return gfx_plugin::make_default_dispatch(shape,
+                                                 kernel.clamp_threadgroup_size(kDefaultLinearThreadsPerGroup));
     }
 
 private:
@@ -68,41 +82,10 @@ private:
     uint32_t m_arg_count = 0;
 };
 
-struct KernelFunctionSignature {
-    uint32_t inputs = 0;
-    uint32_t results = 0;
-
-    uint32_t total() const { return inputs + results; }
-};
-
-inline KernelFunctionSignature infer_kernel_signature(mlir::ModuleOp module,
-                                                      const std::string& entry_point) {
-    if (!module) {
-        return {};
-    }
-    mlir::func::FuncOp func;
-    if (!entry_point.empty()) {
-        func = module.lookupSymbol<mlir::func::FuncOp>(entry_point);
-    }
-    if (!func) {
-        module.walk([&](mlir::func::FuncOp f) {
-            if (!func) {
-                func = f;
-            }
-        });
-    }
-    if (!func) {
-        return {};
-    }
-    auto ftype = func.getFunctionType();
-    KernelFunctionSignature sig;
-    sig.inputs = static_cast<uint32_t>(ftype.getNumInputs());
-    sig.results = static_cast<uint32_t>(ftype.getNumResults());
-    return sig;
-}
-
 inline uint32_t infer_kernel_arg_count(mlir::ModuleOp module, const std::string& entry_point) {
-    return infer_kernel_signature(module, entry_point).total();
+    const auto sig = infer_kernel_signature(module, entry_point);
+    const size_t fallback = static_cast<size_t>(sig.total());
+    return static_cast<uint32_t>(infer_kernel_arg_count_from_module(module, fallback));
 }
 
 }  // namespace gfx_plugin

@@ -28,6 +28,7 @@
 #include "openvino/runtime/properties.hpp"
 #include "openvino/util/common_util.hpp"
 #include "runtime/gfx_logger.hpp"
+#include "runtime/gfx_precision.hpp"
 #include "runtime/gfx_remote_context.hpp"
 #include "transforms/pipeline.hpp"
 
@@ -54,7 +55,7 @@ Plugin::Plugin() {
     m_config[ov::num_streams.name()] = ov::streams::Num(1);
     m_config[ov::inference_num_threads.name()] = static_cast<uint32_t>(1);
     m_config[ov::log::level.name()] = ov::log::Level::INFO;
-    m_config[ov::hint::inference_precision.name()] = ov::element::f32;
+    m_config[ov::hint::inference_precision.name()] = gfx_default_inference_precision();
     m_config[ov::internal::threads_per_stream.name()] = static_cast<uint32_t>(1);
     m_config[ov::internal::exclusive_async_requests.name()] = false;
     m_config[kGfxEnableFusionProperty] = true;
@@ -110,7 +111,7 @@ std::shared_ptr<ov::ICompiledModel> Plugin::compile_model_impl(
     }
     const auto resolved = resolve_backend_for_properties(compile_properties, /*log_fallback=*/true, "Plugin");
     const auto backend_kind = resolved.backend;
-    GFX_LOG_INFO("Plugin", "Selected GFX backend: " << resolved.backend_name);
+    gfx_log_info("Plugin") << "Selected GFX backend: " << resolved.backend_name;
 
     if (!model_supported_by_backend(transformed, backend_kind)) {
         auto summary = collect_unsupported(transformed, backend_kind);
@@ -194,15 +195,13 @@ ov::SupportedOpsMap Plugin::query_model(const std::shared_ptr<const ov::Model>& 
     }
     const auto request = get_backend_request(merged);
     if (request.explicit_request && !backend_supported(request.kind)) {
-        GFX_LOG_WARN("Plugin",
-                     "query_model: requested backend '" << request.requested << "' is not supported");
+        gfx_log_warn("Plugin") << "query_model: requested backend '" << request.requested << "' is not supported";
         return {};
     }
     const auto backend_kind =
         resolve_backend_kind_from_properties(merged, /*log_fallback=*/false, "Plugin");
     if (!backend_supported(backend_kind)) {
-        GFX_LOG_WARN("Plugin",
-                     "query_model: backend '" << backend_to_string(backend_kind) << "' is not supported");
+        gfx_log_warn("Plugin") << "query_model: backend '" << backend_to_string(backend_kind) << "' is not supported";
         return {};
     }
     ov::SupportedOpsMap res;
@@ -271,7 +270,7 @@ void Plugin::set_property(const ov::AnyMap& properties) {
         } else if (kv.first == kGfxEnableFusionProperty) {
             m_config[kv.first] = parse_bool_property(kv.second, kv.first);
         } else if (kv.first == ov::hint::inference_precision.name()) {
-            m_config[kv.first] = kv.second.as<ov::element::Type>();
+            m_config[kv.first] = gfx_default_inference_precision();
         } else if (kv.first == ov::internal::threads_per_stream.name()) {
             m_config[kv.first] = kv.second.as<uint32_t>();
         } else if (kv.first == ov::hint::num_requests.name() || kv.first == ov::hint::execution_mode.name() ||
@@ -358,7 +357,7 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& argument
         if (auto it = merged.find(ov::hint::inference_precision.name()); it != merged.end()) {
             return it->second.as<ov::element::Type>();
         }
-        return ov::element::f32;
+        return gfx_default_inference_precision();
     }
 
     // Check user-provided properties preserved in m_config

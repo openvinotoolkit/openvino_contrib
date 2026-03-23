@@ -65,18 +65,26 @@ protected:
 // Fixture that compiles a model on GFX and TEMPLATE and compares outputs.
 class GfxVsTemplateFixture {
 protected:
-    std::shared_ptr<ov::Core> core = ov::test::utils::PluginCache::get().core();
+    std::shared_ptr<ov::Core> core;
     std::string device_gfx = ov::test::utils::DEVICE_GFX;
     std::string device_ref = ov::test::utils::DEVICE_REF;
     // Keep compiled models / requests alive so GFX shared outputs remain valid (no CPU copies).
     std::vector<ov::CompiledModel> keep_alive_models;
     std::vector<ov::InferRequest> keep_alive_requests;
 
+    std::shared_ptr<ov::Core> get_core() {
+        if (!core) {
+            ov::test::utils::configure_gfx_plugin_cache_from_env();
+            core = ov::test::utils::PluginCache::get().core();
+        }
+        return core;
+    }
+
     std::vector<ov::Tensor> run_on_device(const std::shared_ptr<ov::Model>& model,
                                           const std::string& device,
                                           const std::vector<ov::Tensor>& inputs,
                                           const ov::AnyMap& config = {}) {
-        auto compiled = core->compile_model(model, device, config);
+        auto compiled = get_core()->compile_model(model, device, config);
         auto req = compiled.create_infer_request();
         for (size_t i = 0; i < inputs.size(); ++i) {
             req.set_input_tensor(i, inputs[i]);

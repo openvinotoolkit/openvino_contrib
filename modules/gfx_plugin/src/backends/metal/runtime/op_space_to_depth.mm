@@ -5,7 +5,7 @@
 #import "backends/metal/runtime/op_space_to_depth.hpp"
 
 #include "backends/metal/codegen/metal_codegen_backend.hpp"
-#include "mlir/mlir_builder.hpp"
+#include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/codegen_common.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "runtime/gfx_logger.hpp"
@@ -89,7 +89,7 @@ void MetalSpaceToDepthOp::compile(MetalBufferManager* buffer_manager) {
     MetalCodegenBackend backend(m_device ? m_device : (id<MTLDevice>)buffer_manager->device());
     std::string log;
     mlir::MLIRContext ctx;
-    auto module = build_mlir_space_to_depth_from_model(make_single_op_model(m_node), ctx);
+    auto module = build_mlir_for_node(m_node, ctx);
     auto msl_desc = m_desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 

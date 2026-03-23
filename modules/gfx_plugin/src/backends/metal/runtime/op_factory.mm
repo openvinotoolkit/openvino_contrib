@@ -1351,9 +1351,9 @@ void register_ops_once() {
     });
 }
 
-std::unique_ptr<MetalOp> MetalOpFactory::create(const std::shared_ptr<const ov::Node>& node,
-                                                void* device,
-                                                void* queue) {
+__attribute__((used)) std::unique_ptr<MetalOp> MetalOpFactory::create(const std::shared_ptr<const ov::Node>& node,
+                                                                      void* device,
+                                                                      void* queue) {
     MetalDeviceHandle dev = static_cast<MetalDeviceHandle>(device);
     MetalCommandQueueHandle q = static_cast<MetalCommandQueueHandle>(queue);
     if (!node || is_input_or_output(node))
@@ -1366,13 +1366,12 @@ std::unique_ptr<MetalOp> MetalOpFactory::create(const std::shared_ptr<const ov::
         }
     }
 
-    GFX_LOG_DEBUG("OpFactory",
-                    "No MetalOp mapping for " << node->get_friendly_name()
-                                              << " (" << node->get_type_name() << ")");
+    gfx_log_debug("OpFactory") << "No MetalOp mapping for " << node->get_friendly_name()
+                                              << " (" << node->get_type_name() << ")";
     return nullptr;
 }
 
-std::unique_ptr<MetalOp> MetalOpFactory::clone(const MetalOp& op) {
+__attribute__((used)) std::unique_ptr<MetalOp> MetalOpFactory::clone(const MetalOp& op) {
     if (auto p = dynamic_cast<const MetalConvOp*>(&op))
         return std::make_unique<MetalConvOp>(*p);
     if (auto p = dynamic_cast<const MetalConv3DOp*>(&op))
@@ -1437,7 +1436,7 @@ std::unique_ptr<MetalOp> MetalOpFactory::clone(const MetalOp& op) {
         return std::make_unique<MetalReverseOp>(*p);
     if (auto p = dynamic_cast<const MetalTopKOp*>(&op))
         return std::make_unique<MetalTopKOp>(*p);
-    GFX_LOG_WARN("OpFactory", "Clone requested for unsupported MetalOp type: " << op.type());
+    gfx_log_warn("OpFactory") << "Clone requested for unsupported MetalOp type: " << op.type();
     return nullptr;
 }
 

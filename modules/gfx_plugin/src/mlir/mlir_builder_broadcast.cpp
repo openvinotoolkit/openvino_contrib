@@ -4,6 +4,8 @@
 
 #include "mlir/mlir_builder.hpp"
 
+#include "mlir/gfx_mlir_type_utils.hpp"
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -21,28 +23,6 @@ namespace ov {
 namespace gfx_plugin {
 
 namespace {
-
-mlir::Type to_mlir_type(ov::element::Type et, mlir::MLIRContext& ctx) {
-    switch (et) {
-        case ov::element::f16: return mlir::Float16Type::get(&ctx);
-        case ov::element::f32: return mlir::Float32Type::get(&ctx);
-        case ov::element::i32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
-        case ov::element::i64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Signed);
-        case ov::element::u32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Unsigned);
-        case ov::element::u64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Unsigned);
-        default: OPENVINO_THROW("Broadcast MLIR: unsupported element type");
-    }
-}
-
-mlir::SmallVector<int64_t> to_shape(const ov::PartialShape& ps) {
-    mlir::SmallVector<int64_t> dims;
-    dims.reserve(ps.rank().get_length());
-    for (const auto& d : ps) {
-        dims.push_back(d.is_dynamic() ? mlir::ShapedType::kDynamic
-                                      : static_cast<int64_t>(d.get_length()));
-    }
-    return dims;
-}
 
 std::vector<int64_t> get_const_axes(const std::shared_ptr<const ov::Node>& node) {
     auto c = ov::as_type_ptr<const ov::op::v0::Constant>(node);
@@ -89,7 +69,8 @@ mlir::ModuleOp build_mlir_broadcast_from_model(const std::shared_ptr<const ov::M
     const size_t out_rank = out_shape.size();
     OPENVINO_ASSERT(in_rank <= out_rank, "Broadcast MLIR: input rank must be <= output rank");
 
-    auto elem_ty = to_mlir_type(bc_node->get_output_element_type(0), ctx);
+    auto elem_ty = to_mlir_type(bc_node->get_output_element_type(0), ctx, /*fallback_f32=*/false,
+                                /*allow_unsigned=*/true);
     auto in_ty = mlir::RankedTensorType::get(in_shape, elem_ty);
     auto out_ty = mlir::RankedTensorType::get(out_shape, elem_ty);
 

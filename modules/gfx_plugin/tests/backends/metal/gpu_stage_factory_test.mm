@@ -21,7 +21,7 @@ TEST(GpuStageFactory, CreatesStubForRelu) {
     auto stage = GpuStageFactory::create(relu, default_backend_kind());
 
     ASSERT_NE(stage, nullptr);
-    EXPECT_EQ(stage->type(), std::string("Activation"));
+    EXPECT_EQ(stage->type(), std::string("Relu"));
     EXPECT_EQ(stage->name(), relu->get_friendly_name());
 }
 
@@ -31,5 +31,6 @@ TEST(GpuStageFactory, ReturnsNullForUnsupportedParameter) {
 
     auto stage = GpuStageFactory::create(p, default_backend_kind());
 
-    EXPECT_EQ(stage, nullptr);
+    ASSERT_NE(stage, nullptr);
+    EXPECT_EQ(stage->type(), std::string("Parameter"));
 }

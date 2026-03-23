@@ -6,15 +6,34 @@
 #include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "backends/metal/runtime/profiling/profiler.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
-#include "kernel_ir/gfx_kernel_cache.hpp"
-#include "kernel_ir/gfx_kernel_inputs.hpp"
-#include "kernel_ir/gfx_kernel_plan.hpp"
-#include "openvino/op/constant.hpp"
+#include "mlir/gfx_mlir_kernel_metadata.hpp"
+#include "mlir/gfx_mlir_kernel_builder.hpp"
+#include "mlir/mlir_kernel_plan_utils.hpp"
 
 #include <string>
 
 namespace ov {
 namespace gfx_plugin {
+
+namespace {
+inline uint32_t resolve_arg_count_from_spec(const KernelSpec& spec,
+                                            mlir::ModuleOp module,
+                                            const KernelArgMappingInfo& info) {
+    const uint32_t inferred_total =
+        static_cast<uint32_t>(infer_kernel_arg_count_from_module(module, info.signature.total()));
+    uint32_t arg_count = spec.arg_count();
+    if (arg_count == 0 && inferred_total) {
+        arg_count = inferred_total;
+    }
+    return arg_count;
+}
+
+inline void update_kernel_inputs_if_needed(std::vector<size_t>& dst, std::vector<size_t>& src) {
+    if (!src.empty() && (dst.empty() || src.size() > dst.size())) {
+        dst = std::move(src);
+    }
+}
+}  // namespace
 
 MetalOp::MetalOp(std::string name,
                  std::string type,
@@ -100,37 +119,20 @@ std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(MetalCodegenBackend
                                                              const std::string& entry_point,
                                                              std::string msl_source,
                                                              std::string* log) {
-    KernelFunctionSignature signature{};
-    if (spec.node() && module) {
-        signature = infer_kernel_signature(module, entry_point);
-        const size_t func_inputs = signature.inputs;
-        const size_t node_inputs = spec.node()->get_input_size();
-        if (func_inputs > 0 && func_inputs <= node_inputs) {
-            size_t nonconst_count = 0;
-            for (size_t i = 0; i < node_inputs; ++i) {
-                auto src = spec.node()->get_input_node_shared_ptr(i);
-                if (!ov::as_type_ptr<const ov::op::v0::Constant>(src)) {
-                    ++nonconst_count;
-                }
-            }
-            if (func_inputs >= nonconst_count) {
-                auto mapping = build_kernel_inputs(spec.node(), func_inputs, spec.name().c_str());
-                if (!mapping.kernel_inputs.empty() &&
-                    (m_kernel_inputs.empty() || mapping.kernel_inputs.size() > m_kernel_inputs.size())) {
-                    m_kernel_inputs = std::move(mapping.kernel_inputs);
-                }
-            }
-        }
-    } else if (module) {
-        signature = infer_kernel_signature(module, entry_point);
-    }
-    const uint32_t inferred_total = signature.total();
-    uint32_t arg_count = spec.arg_count();
-    if (arg_count == 0 && inferred_total) {
-        arg_count = inferred_total;
-    }
-    KernelPlan plan(module, entry_point, arg_count);
-    return backend.compile(plan.to_source_with_msl(std::move(msl_source)), log);
+    auto plan_ctx = build_mlir_kernel_plan(
+        module,
+        entry_point,
+        spec.node(),
+        /*output_args_override=*/0,
+        /*extra_inputs=*/0,
+        spec.name().c_str(),
+        "gfx_kernel",
+        [&](const KernelArgMappingInfo& info) -> size_t {
+            return resolve_arg_count_from_spec(spec, module, info);
+        });
+    auto& build_info = plan_ctx.build_info;
+    update_kernel_inputs_if_needed(m_kernel_inputs, build_info.mapping.mapping.kernel_inputs);
+    return backend.compile(build_info.plan.to_source_with_msl(std::move(msl_source)), log);
 }
 
 std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(
@@ -140,37 +142,20 @@ std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(
     const std::string& entry_point,
     std::function<std::string(mlir::ModuleOp)> msl_generator,
     std::string* log) {
-    KernelFunctionSignature signature{};
-    if (spec.node() && module) {
-        signature = infer_kernel_signature(module, entry_point);
-        const size_t func_inputs = signature.inputs;
-        const size_t node_inputs = spec.node()->get_input_size();
-        if (func_inputs > 0 && func_inputs <= node_inputs) {
-            size_t nonconst_count = 0;
-            for (size_t i = 0; i < node_inputs; ++i) {
-                auto src = spec.node()->get_input_node_shared_ptr(i);
-                if (!ov::as_type_ptr<const ov::op::v0::Constant>(src)) {
-                    ++nonconst_count;
-                }
-            }
-            if (func_inputs >= nonconst_count) {
-                auto mapping = build_kernel_inputs(spec.node(), func_inputs, spec.name().c_str());
-                if (!mapping.kernel_inputs.empty() &&
-                    (m_kernel_inputs.empty() || mapping.kernel_inputs.size() > m_kernel_inputs.size())) {
-                    m_kernel_inputs = std::move(mapping.kernel_inputs);
-                }
-            }
-        }
-    } else if (module) {
-        signature = infer_kernel_signature(module, entry_point);
-    }
-    const uint32_t inferred_total = signature.total();
-    uint32_t arg_count = spec.arg_count();
-    if (arg_count == 0 && inferred_total) {
-        arg_count = inferred_total;
-    }
-    KernelPlan plan(module, entry_point, arg_count);
-    return backend.compile(plan.to_source_with_msl_generator(std::move(msl_generator)), log);
+    auto plan_ctx = build_mlir_kernel_plan(
+        module,
+        entry_point,
+        spec.node(),
+        /*output_args_override=*/0,
+        /*extra_inputs=*/0,
+        spec.name().c_str(),
+        "gfx_kernel",
+        [&](const KernelArgMappingInfo& info) -> size_t {
+            return resolve_arg_count_from_spec(spec, module, info);
+        });
+    auto& build_info = plan_ctx.build_info;
+    update_kernel_inputs_if_needed(m_kernel_inputs, build_info.mapping.mapping.kernel_inputs);
+    return backend.compile(build_info.plan.to_source_with_msl_generator(std::move(msl_generator)), log);
 }
 
 MetalTensor& MetalOp::require_output() const {

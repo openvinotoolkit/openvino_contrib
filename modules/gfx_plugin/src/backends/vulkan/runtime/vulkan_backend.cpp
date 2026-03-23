@@ -230,13 +230,12 @@ VulkanContext::VulkanContext() {
     m_queue_family_index = selected_queue;
     vkGetDeviceQueue(m_device, m_queue_family_index, 0, &m_queue);
 
-    GFX_LOG_INFO("Vulkan", "Initialized Vulkan device: " << m_device_name);
-    GFX_LOG_INFO("Vulkan", "Features2: " << (get_features2 ? "available" : "unavailable"));
-    GFX_LOG_INFO("Vulkan",
-                 "16-bit storage: " << (enable_storage16 ? "on" : "off")
+    gfx_log_info("Vulkan") << "Initialized Vulkan device: " << m_device_name;
+    gfx_log_info("Vulkan") << "Features2: " << (get_features2 ? "available" : "unavailable");
+    gfx_log_info("Vulkan") << "16-bit storage: " << (enable_storage16 ? "on" : "off")
                                    << ", 8-bit storage: " << (enable_storage8 ? "on" : "off")
                                    << ", shader f16: " << (enable_shader_f16 ? "on" : "off")
-                                   << ", shader int8: " << (enable_shader_int8 ? "on" : "off"));
+                                   << ", shader int8: " << (enable_shader_int8 ? "on" : "off");
 }
 
 VulkanContext::~VulkanContext() {

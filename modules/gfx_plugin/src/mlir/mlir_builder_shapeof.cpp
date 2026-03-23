@@ -11,26 +11,14 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 
+#include "mlir/gfx_mlir_type_utils.hpp"
+
 #include "openvino/core/except.hpp"
 #include "openvino/core/model.hpp"
 #include "openvino/op/shape_of.hpp"
 
 namespace ov {
 namespace gfx_plugin {
-
-namespace {
-mlir::Type to_mlir_type(ov::element::Type et, mlir::MLIRContext& ctx, bool fallback_f32 = false) {
-    switch (et) {
-        case ov::element::i32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
-        case ov::element::i64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Signed);
-        case ov::element::f32: return mlir::Float32Type::get(&ctx);
-        case ov::element::f16: return mlir::Float16Type::get(&ctx);
-        default:
-            if (fallback_f32) return mlir::Float32Type::get(&ctx);
-            OPENVINO_THROW("ShapeOf MLIR: unsupported element type");
-    }
-}
-}  // namespace
 
 mlir::ModuleOp build_mlir_shapeof_from_model(const std::shared_ptr<const ov::Model>& model,
                                              mlir::MLIRContext& ctx) {

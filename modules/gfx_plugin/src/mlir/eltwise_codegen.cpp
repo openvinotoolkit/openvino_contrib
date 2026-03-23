@@ -62,7 +62,7 @@ std::string activation_expr(ActivationKind kind, float alpha) {
         case ActivationKind::Gelu:
             return "0.5f * x * (1.0f + tanh(0.79788456f * (x + 0.044715f * x * x * x)))";
         case ActivationKind::Swish:
-            return "x / (1.0f + exp(-x))";
+            return "(x >= 0.0f) ? (x / (1.0f + exp(-x))) : (x * exp(x) / (1.0f + exp(x)))";
         case ActivationKind::HSwish:
             return "x * clamp(x + 3.0f, 0.0f, 6.0f) / 6.0f";
         case ActivationKind::HSigmoid:

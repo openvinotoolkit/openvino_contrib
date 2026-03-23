@@ -4,15 +4,11 @@
 #pragma once
 
 #include <memory>
+#include <cstddef>
 #include <string>
 #include <vector>
 
-#include "runtime/gfx_activation.hpp"
-#include "runtime/gfx_batchnorm.hpp"
-#include "runtime/gfx_bias.hpp"
-#include "runtime/gpu_backend_base.hpp"
-#include "runtime/gpu_stage.hpp"
-#include "openvino/core/type/float16.hpp"
+#include "mlir/mlir_stage.hpp"
 
 namespace ov {
 class Node;
@@ -21,7 +17,15 @@ class Node;
 namespace ov {
 namespace gfx_plugin {
 
-class VulkanStage final : public GpuStage {
+struct LaunchOperandABI {
+    bool valid = false;
+    std::vector<int32_t> kinds;
+    std::vector<int32_t> arg_indices;
+    std::vector<int32_t> scalar_values;
+    std::vector<uint8_t> scalar_known;
+};
+
+class VulkanStage final : public MlirStage {
 public:
     explicit VulkanStage(const std::shared_ptr<const ov::Node>& node);
     ~VulkanStage() override;
@@ -39,58 +43,64 @@ public:
     void set_output(GpuTensor* output) override;
     void set_outputs(const std::vector<std::unique_ptr<GpuTensor>>& outputs) override;
 
-    const std::string& name() const override { return m_name; }
-    const std::string& type() const override { return m_type; }
-
     std::unique_ptr<GpuStage> clone() const override;
     bool fuse_activation(ActivationKind kind, float alpha) override;
     bool fuse_batchnorm(const BatchNormParams& params) override;
     bool fuse_bias(const BiasParams& params) override;
 
 private:
-    struct ConstBufferSet {
-        std::vector<GpuTensor> buffers;
-        std::vector<bool> present;
-        ~ConstBufferSet();
-    };
+    std::shared_ptr<ICompiledKernel> compile_kernel(const KernelSource& source,
+                                                    std::string* log) override;
+    bool is_vulkan_backend() const override { return true; }
+    KernelExecutionHooks* prepare_profiling(ProfileState& state,
+                                            KernelExecutionHooks& hooks) override;
+    void finalize_profiling(const ProfileState& state) override;
 
-    bool m_is_view_op = false;
-    std::shared_ptr<const ov::Node> m_node;
-    std::shared_ptr<ICompiledKernel> m_kernel;
-    std::string m_name;
-    std::string m_type;
-    std::vector<GpuTensor*> m_inputs;
-    std::vector<GpuTensor*> m_outputs;
-    std::vector<size_t> m_kernel_inputs;
-    size_t m_kernel_input_arg_count = 0;
-    std::vector<int32_t> m_kernel_operand_kinds;
-    std::vector<int32_t> m_kernel_operand_arg_indices;
-    std::vector<int32_t> m_kernel_scalar_args;
-    std::vector<GpuTensor> m_kernel_extra_inputs;
-    GpuTensor* m_output = nullptr;
-    std::shared_ptr<ConstBufferSet> m_const_buffers;
-    ov::Shape m_output_shape;
-    ov::Shape m_last_input_shape;
-    GpuBufferManager* m_buffer_manager = nullptr;
-    bool m_profiling_enabled = false;
-    bool m_parallel_dispatch = false;
-    size_t m_parallel_loop_dims = 0;
-    uint32_t m_dispatch_tile_h = 1;
-    uint32_t m_dispatch_tile_w = 1;
-    uint32_t m_dispatch_threads_h = 1;
-    uint32_t m_dispatch_threads_w = 1;
-    bool m_has_activation = false;
-    ActivationKind m_activation = ActivationKind::Relu;
-    float m_activation_alpha = 0.0f;
-    bool m_has_bn = false;
-    BatchNormParams m_bn_params{};
-    bool m_has_bias = false;
-    BiasParams m_bias_params{};
-    std::vector<ov::float16> m_bias_f16;
-    void* m_profiler = nullptr;
-    uint32_t m_profile_node_id = 0;
-    std::string m_profile_node_name;
-    std::string m_profile_node_type;
+    // Chunked Split support to stay within mobile descriptor limits.
+    std::shared_ptr<ICompiledKernel> m_split_single_kernel;
+    std::shared_ptr<ICompiledKernel> m_concat_single_kernel;
+    ov::element::Type m_split_elem_type{};
+    ov::element::Type m_concat_elem_type{};
+    std::shared_ptr<ICompiledKernel> m_softmax_row_kernel;
+    ov::element::Type m_softmax_elem_type{};
+    bool m_softmax_log_kernel = false;
+    std::shared_ptr<ICompiledKernel> m_conv2d_chunk_kernel;
+    ov::element::Type m_conv2d_chunk_elem_type{};
+    LaunchOperandABI m_conv2d_chunk_launch_abi;
+    std::shared_ptr<ICompiledKernel> m_linear_unary_kernel;
+    std::shared_ptr<ICompiledKernel> m_linear_binary_kernel;
+    ov::element::Type m_linear_unary_elem_type{};
+    ov::element::Type m_linear_binary_elem_type{};
+    size_t m_linear_binary_rank = 0;
+    LaunchOperandABI m_linear_unary_launch_abi;
+    std::vector<int32_t> m_linear_unary_scalar_args;
+    std::string m_linear_unary_key;
+    std::string m_linear_binary_key;
+
+    void execute_split_chunked(GpuCommandBufferHandle command_buffer);
+    void execute_concat_chunked(GpuCommandBufferHandle command_buffer);
+    void execute_softmax_chunked(GpuCommandBufferHandle command_buffer);
+    void execute_conv2d_chunked(GpuCommandBufferHandle command_buffer);
+    void execute_unary_chunked(GpuCommandBufferHandle command_buffer);
+    void execute_binary_chunked(GpuCommandBufferHandle command_buffer);
+    mlir::ModuleOp build_split_single_module(mlir::MLIRContext& ctx, const ov::element::Type& et);
+    mlir::ModuleOp build_concat_single_module(mlir::MLIRContext& ctx, const ov::element::Type& et);
+    mlir::ModuleOp build_softmax_row_module(mlir::MLIRContext& ctx,
+                                            const ov::element::Type& et,
+                                            bool log_softmax);
+    mlir::ModuleOp build_conv2d_chunk_module(mlir::MLIRContext& ctx,
+                                             const ov::element::Type& et);
+    mlir::ModuleOp build_linear_unary_module(mlir::MLIRContext& ctx,
+                                             const ov::element::Type& et,
+                                             const std::string& op_key);
+    mlir::ModuleOp build_linear_binary_module(mlir::MLIRContext& ctx,
+                                              const ov::element::Type& et,
+                                              const std::string& op_key,
+                                              size_t meta_rank);
+    bool should_use_unary_chunked() const;
+    bool should_use_softmax_chunked() const;
+    bool should_use_binary_chunked() const;
+    bool should_use_conv2d_chunked() const;
 };
 
 }  // namespace gfx_plugin

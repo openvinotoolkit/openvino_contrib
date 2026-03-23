@@ -12,7 +12,7 @@
 #include "runtime/gfx_logger.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
-#include "mlir/mlir_builder.hpp"
+#include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/codegen_common.hpp"
@@ -72,9 +72,7 @@ void MetalSoftmaxOp::compile(MetalBufferManager* buffer_manager) {
     MetalCodegenBackend backend(m_device ? m_device : (id<MTLDevice>)buffer_manager->device());
     std::string log;
     mlir::MLIRContext ctx;
-    auto model = make_single_op_model(m_node);
-    auto module = m_log_softmax ? build_mlir_logsoftmax_from_model(model, ctx)
-                                : build_mlir_softmax_from_model(model, ctx);
+    auto module = build_mlir_for_node(m_node, ctx);
     SoftmaxCodegenDesc desc{};
     desc.rows = m_desc.rows;
     desc.cols = m_desc.cols;
@@ -113,9 +111,7 @@ void MetalSoftmaxOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
         MetalCodegenBackend backend(m_device);
         std::string log;
         mlir::MLIRContext ctx;
-        auto model = make_single_op_model(m_node);
-        auto module = m_log_softmax ? build_mlir_logsoftmax_from_model(model, ctx)
-                                    : build_mlir_softmax_from_model(model, ctx);
+        auto module = build_mlir_for_node(m_node, ctx);
         SoftmaxCodegenDesc desc{};
         desc.rows = m_desc.rows;
         desc.cols = m_desc.cols;

@@ -13,7 +13,7 @@
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
-#include "mlir/mlir_builder.hpp"
+#include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/codegen_common.hpp"
@@ -89,7 +89,7 @@ void MetalTopKOp::compile(MetalBufferManager* buffer_manager) {
     MetalCodegenBackend backend(m_device ? m_device : (id<MTLDevice>)buffer_manager->device());
     std::string log;
     mlir::MLIRContext ctx;
-    auto module = build_mlir_topk_from_model(make_single_op_model_all_outputs(m_node), ctx);
+    auto module = build_mlir_for_node(m_node, ctx);
 
     TopKCodegenDesc desc{};
     desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;

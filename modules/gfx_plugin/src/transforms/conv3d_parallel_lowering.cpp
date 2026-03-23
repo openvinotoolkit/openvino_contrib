@@ -203,17 +203,14 @@ bool lower_conv3d_op(mlir::linalg::Conv3DNcdhwFcdhwOp op, mlir::IRRewriter& rewr
     const bool has_explicit_padding = (pad_d != 0 || pad_h != 0 || pad_w != 0 ||
                                        pad_end_d != 0 || pad_end_h != 0 || pad_end_w != 0 ||
                                        pad_fill_loop != nullptr || pad_copy_loop != nullptr);
-    if (!has_explicit_padding) {
-        return false;
-    }
 
     if (gfx_log_debug_enabled()) {
-        GFX_LOG_DEBUG("MLIR", "Conv3D pad detect: conv_input="
+        gfx_log_debug("MLIR") << "Conv3D pad detect: conv_input="
                                   << (using_padded_input ? "padded" : "orig")
                                   << " pad_d=" << pad_d << " pad_h=" << pad_h << " pad_w=" << pad_w
                                   << " pad_end_d=" << pad_end_d
                                   << " pad_end_h=" << pad_end_h
-                                  << " pad_end_w=" << pad_end_w);
+                                  << " pad_end_w=" << pad_end_w;
     }
 
     mlir::linalg::FillOp fill_op;
@@ -466,8 +463,8 @@ void run_conv3d_parallel_lowering(mlir::ModuleOp module) {
         }
     }
     if (gfx_log_debug_enabled()) {
-        GFX_LOG_DEBUG("MLIR", "Conv3D lowering: convs=" << convs.size()
-                                                        << " rewritten=" << rewritten);
+        gfx_log_debug("MLIR") << "Conv3D lowering: convs=" << convs.size()
+                                                        << " rewritten=" << rewritten;
     }
 }
 

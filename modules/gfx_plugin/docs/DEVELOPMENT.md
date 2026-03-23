@@ -1,0 +1,103 @@
+# Development Guide
+
+This document is for contributors working inside `modules/gfx_plugin`.
+
+## Prerequisites
+- CMake 3.13 or newer
+- an OpenVINO Developer Package build
+- Ninja recommended
+- Metal toolchain on macOS for the Metal backend
+- Vulkan SDK or system Vulkan development files for the Vulkan backend
+
+The module vendors LLVM/MLIR under `third_party/llvm-project` and can build the required MLIR pieces as part of the CMake flow.
+
+## Configure And Build
+Example configuration:
+
+```bash
+cd /path/to/gfx_plugin
+cmake -S . -B build-gfx-plugin -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DOpenVINODeveloperPackage_DIR=/path/to/openvino/install/cmake \
+  -DENABLE_TESTS=ON \
+  -DGFX_DEFAULT_BACKEND=auto
+```
+
+Build:
+
+```bash
+cmake --build build-gfx-plugin --target openvino_gfx_plugin ov_gfx_func_tests
+```
+
+Useful CMake options:
+- `GFX_ENABLE_METAL`
+- `GFX_ENABLE_VULKAN`
+- `GFX_DEFAULT_BACKEND`
+- `ENABLE_TESTS`
+
+On macOS, Vulkan is disabled by `cmake/GfxBackendConfig.cmake`.
+
+## Where To Start Reading
+Read in this order:
+1. `README.md`
+2. `docs/ARCHITECTURE.md`
+3. `src/plugin/plugin.cpp`
+4. `src/plugin/compiled_model.cpp`
+5. `include/openvino/gfx_plugin/infer_request.hpp`
+6. the backend directory you are changing
+
+For runtime execution, follow:
+- `Plugin::compile_model()`
+- `CompiledModel::build_op_pipeline()`
+- backend-specific `infer_*_impl()`
+- backend stage factory and executor code
+
+## Adding Or Extending An Op
+Typical path:
+1. Add or extend MLIR support in `src/mlir/`
+2. Ensure support probing succeeds through `mlir_supports_node()`
+3. Implement or update backend runtime/codegen handling
+4. Make sure the relevant backend stage can be created
+5. Add tests in `tests/unit/` and the relevant backend test directory
+
+If the op needs fusion support, inspect:
+- `src/transforms/`
+- `src/runtime/fused_sequence_stage.*`
+- fusion planning inside `src/plugin/compiled_model.cpp`
+
+## Properties
+Supported property lists are defined in:
+- `src/plugin/gfx_property_lists.cpp`
+- `include/openvino/gfx_plugin/properties.hpp`
+
+If you add a property:
+1. define the property key if needed
+2. add it to the supported property list
+3. parse and validate it in plugin or compiled-model code
+4. cover it with tests
+
+## Debugging
+Useful environment variables:
+- `OV_GFX_TRACE`
+- `OV_GFX_DEBUG`
+- `OV_GFX_TEST_DEBUG`
+- `OV_GFX_DEBUG_MSL`
+- `OV_GFX_SAFE_DEBUG`
+- `OV_GFX_DUMP_SPIRV_BINDINGS`
+- `OV_GFX_DUMP_SPIRV_MLIR`
+- `OV_GFX_DUMP_SPIRV_MLIR_FILTER`
+- `OV_GFX_DUMP_MLIR_PRE_SPIRV`
+
+These are implemented directly in the runtime and codegen sources; grep for `OV_GFX_` when adding new diagnostics.
+
+## Documentation Rules For This Module
+- Keep published module docs in English
+- Keep module docs inside `modules/gfx_plugin/`
+- Update `README.md` when user-visible behavior changes
+- Update `docs/ARCHITECTURE.md` when the code-truth architecture changes
+- Update `docs/TESTING.md` when test layout or commands change
+
+## What Not To Do
+- do not rely on silent CPU fallback
+- do not document removed architectures as current behavior
+- do not put primary module documentation only in repository-level files outside this directory

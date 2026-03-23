@@ -12,7 +12,7 @@
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
-#include "mlir/mlir_builder.hpp"
+#include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/codegen_common.hpp"
@@ -99,8 +99,7 @@ void MetalBatchNormOp::compile(MetalBufferManager* buffer_manager) {
     desc.W = m_desc.W;
     desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
     mlir::MLIRContext ctx;
-    auto model = make_single_op_model(m_node);
-    auto module = build_mlir_batchnorm_from_model(model, ctx);
+    auto module = build_mlir_for_node(m_node, ctx);
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 

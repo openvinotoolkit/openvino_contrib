@@ -14,6 +14,7 @@
 
 #include "runtime/gpu_stage.hpp"
 #include "runtime/execution_dispatcher.hpp"
+#include "runtime/gfx_precision.hpp"
 #include "openvino/gfx_plugin/profiling.hpp"
 
 #include "openvino/gfx_plugin/properties.hpp"
@@ -83,7 +84,7 @@ private:
     ov::AnyMap m_config;
     GpuBackend m_backend = GpuBackend::Metal;
     std::string m_backend_name{"metal"};
-    ov::element::Type m_inference_precision{ov::element::f32};
+    ov::element::Type m_inference_precision{gfx_default_inference_precision()};
     bool m_enable_profiling = false;
     ProfilingLevel m_profiling_level = ProfilingLevel::Standard;
     bool m_profiling_level_set = false;

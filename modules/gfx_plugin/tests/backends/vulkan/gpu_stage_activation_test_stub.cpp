@@ -5,7 +5,6 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
-#include <cstring>
 #include <vector>
 
 #include "openvino/op/parameter.hpp"
@@ -13,9 +12,11 @@
 #include "openvino/op/sigmoid.hpp"
 #include "openvino/op/tanh.hpp"
 #include "backends/vulkan/runtime/stage_factory.hpp"
-#include "runtime/gfx_backend_utils.hpp"
+#include "backends/vulkan/runtime/vulkan_buffer_manager.hpp"
+#include "backends/vulkan/runtime/gpu_memory.hpp"
 #include "runtime/execution_dispatcher.hpp"
-#include "backends/vulkan/runtime/vulkan_memory.hpp"
+#include "runtime/gfx_backend_utils.hpp"
+#include "runtime/memory_manager.hpp"
 
 using namespace ov::gfx_plugin;
 
@@ -40,26 +41,37 @@ void run_activation(const ActivationCase& tc) {
         const size_t bytes = tc.in.size() * sizeof(float);
         ASSERT_GT(bytes, 0u);
 
+        VulkanBufferManager buffer_manager;
+        VulkanGpuAllocator allocator(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+
         GpuTensor input{};
         input.shape = {tc.in.size()};
         input.expected_type = ov::element::f32;
-        input.buf = vulkan_allocate_buffer(bytes,
-                                           ov::element::f32,
-                                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        GpuBufferDesc input_desc{};
+        input_desc.bytes = bytes;
+        input_desc.type = ov::element::f32;
+        input_desc.usage = BufferUsage::IO;
+        input_desc.cpu_write = true;
+        input_desc.prefer_device_local = false;
+        input.buf = allocator.allocate(input_desc);
         ASSERT_TRUE(input.buf.valid());
         ASSERT_TRUE(input.buf.host_visible);
 
-        void* mapped_in = vulkan_map_buffer(input.buf);
-        ASSERT_NE(mapped_in, nullptr);
-        std::memcpy(mapped_in, tc.in.data(), bytes);
-        vulkan_unmap_buffer(input.buf);
+        gpu_copy_from_host(input.buf, tc.in.data(), bytes);
 
         GpuTensor output{};
         output.shape = {tc.in.size()};
         output.expected_type = ov::element::f32;
         output.prefer_private = false;
+        GpuBufferDesc output_desc{};
+        output_desc.bytes = bytes;
+        output_desc.type = ov::element::f32;
+        output_desc.usage = BufferUsage::IO;
+        output_desc.cpu_read = true;
+        output_desc.prefer_device_local = false;
+        output.buf = allocator.allocate(output_desc);
+        ASSERT_TRUE(output.buf.valid());
+        ASSERT_TRUE(output.buf.host_visible);
 
         auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{tc.in.size()});
         auto node = OpFactory::make_node(param);
@@ -67,26 +79,20 @@ void run_activation(const ActivationCase& tc) {
         ASSERT_NE(stage, nullptr);
         stage->set_inputs({&input});
         stage->set_output(&output);
-        stage->init(nullptr);
-        stage->compile(nullptr);
+        stage->init(&buffer_manager);
+        stage->compile(&buffer_manager);
         stage->execute(nullptr);
 
-        ASSERT_TRUE(output.buf.valid());
-        ASSERT_TRUE(output.buf.host_visible);
-
-        void* mapped_out = vulkan_map_buffer(output.buf);
-        ASSERT_NE(mapped_out, nullptr);
-        auto* data = static_cast<const float*>(mapped_out);
+        std::vector<float> data(tc.expected.size(), 0.0f);
+        gpu_copy_to_host(output.buf, data.data(), bytes);
         ASSERT_EQ(output.shape.size(), 1u);
         ASSERT_EQ(output.shape[0], tc.expected.size());
         for (size_t i = 0; i < tc.expected.size(); ++i) {
             EXPECT_NEAR(data[i], tc.expected[i], 1e-4f) << "idx=" << i;
         }
-        vulkan_unmap_buffer(output.buf);
-
-        vulkan_free_buffer(input.buf);
+        allocator.release(std::move(input.buf));
         if (output.buf.valid() && !output.buf.external) {
-            vulkan_free_buffer(output.buf);
+            allocator.release(std::move(output.buf));
         }
     } catch (const std::exception& e) {
         if (is_vulkan_unsupported_error(e.what())) {

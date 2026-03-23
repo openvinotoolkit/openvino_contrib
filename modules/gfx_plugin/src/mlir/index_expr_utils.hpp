@@ -14,18 +14,15 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Value.h"
-
-#ifndef GFX_MLIR_DEBUG
-#define GFX_MLIR_DEBUG 0
-#endif
+#include "mlir/gfx_mlir_debug.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 
 inline void mlir_codegen_log(const std::string& msg) {
-#if GFX_MLIR_DEBUG
-    fprintf(stderr, "%s\n", msg.c_str());
-#endif
+    if (gfx_mlir_debug_enabled()) {
+        fprintf(stderr, "%s\n", msg.c_str());
+    }
 }
 
 inline mlir::Value strip_memref_casts(mlir::Value v) {

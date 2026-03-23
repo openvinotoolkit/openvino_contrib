@@ -50,11 +50,29 @@ private:
 
 GfxLogStream make_gfx_log_stream(GfxLogLevel level, const char* category);
 
-#define GFX_LOGSTREAM_ERROR(cat) ::ov::gfx_plugin::make_gfx_log_stream(::ov::gfx_plugin::GfxLogLevel::Error, cat)
-#define GFX_LOGSTREAM_WARN(cat)  ::ov::gfx_plugin::make_gfx_log_stream(::ov::gfx_plugin::GfxLogLevel::Warn,  cat)
-#define GFX_LOGSTREAM_INFO(cat)  ::ov::gfx_plugin::make_gfx_log_stream(::ov::gfx_plugin::GfxLogLevel::Info,  cat)
-#define GFX_LOGSTREAM_DEBUG(cat) ::ov::gfx_plugin::make_gfx_log_stream(::ov::gfx_plugin::GfxLogLevel::Debug, cat)
-#define GFX_LOGSTREAM_TRACE(cat) ::ov::gfx_plugin::make_gfx_log_stream(::ov::gfx_plugin::GfxLogLevel::Trace, cat)
+inline GfxLogStream gfx_log_stream(GfxLogLevel level, const char* category) {
+    return make_gfx_log_stream(level, category);
+}
+
+inline GfxLogStream gfx_log_error(const char* category) {
+    return make_gfx_log_stream(GfxLogLevel::Error, category);
+}
+
+inline GfxLogStream gfx_log_warn(const char* category) {
+    return make_gfx_log_stream(GfxLogLevel::Warn, category);
+}
+
+inline GfxLogStream gfx_log_info(const char* category) {
+    return make_gfx_log_stream(GfxLogLevel::Info, category);
+}
+
+inline GfxLogStream gfx_log_debug(const char* category) {
+    return make_gfx_log_stream(GfxLogLevel::Debug, category);
+}
+
+inline GfxLogStream gfx_log_trace(const char* category) {
+    return make_gfx_log_stream(GfxLogLevel::Trace, category);
+}
 
 inline const char* gfx_log_level_str(GfxLogLevel lvl) {
     switch (lvl) {
@@ -66,19 +84,6 @@ inline const char* gfx_log_level_str(GfxLogLevel lvl) {
     }
     return "UNK";
 }
-
-#define GFX_LOG_STREAM(level, cat, stream_expr)                  \
-    do {                                                          \
-        std::ostringstream _gfx_log_ss;                           \
-        _gfx_log_ss << stream_expr;                               \
-        ::ov::gfx_plugin::gfx_log(level, cat, _gfx_log_ss.str()); \
-    } while (0)
-
-#define GFX_LOG_ERROR(cat, msg) GFX_LOG_STREAM(::ov::gfx_plugin::GfxLogLevel::Error, cat, msg)
-#define GFX_LOG_WARN(cat, msg)  GFX_LOG_STREAM(::ov::gfx_plugin::GfxLogLevel::Warn,  cat, msg)
-#define GFX_LOG_INFO(cat, msg)  GFX_LOG_STREAM(::ov::gfx_plugin::GfxLogLevel::Info,  cat, msg)
-#define GFX_LOG_DEBUG(cat, msg) GFX_LOG_STREAM(::ov::gfx_plugin::GfxLogLevel::Debug, cat, msg)
-#define GFX_LOG_TRACE(cat, msg) GFX_LOG_STREAM(::ov::gfx_plugin::GfxLogLevel::Trace, cat, msg)
 
 }  // namespace gfx_plugin
 }  // namespace ov

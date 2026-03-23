@@ -4,6 +4,8 @@
 
 #include "mlir/mlir_builder.hpp"
 
+#include "mlir/gfx_mlir_type_utils.hpp"
+
 #include "openvino/op/convolution.hpp"
 #include "openvino/core/model.hpp"
 #include "openvino/core/strides.hpp"
@@ -67,14 +69,7 @@ mlir::ModuleOp build_mlir_conv3d_from_model(const std::shared_ptr<const ov::Mode
     const auto w_shape  = conv->get_input_shape(1);   // OIDHW
     OPENVINO_ASSERT(in_shape.size() == 5 && w_shape.size() == 5, "Conv3D: rank-5 expected");
 
-    auto to_mlir_type = [&](const ov::element::Type& et) -> mlir::Type {
-        if (et == ov::element::f16)
-            return mlir::Float16Type::get(&ctx);
-        if (et == ov::element::f32)
-            return mlir::Float32Type::get(&ctx);
-        OPENVINO_THROW("Conv3D MLIR: unsupported element type");
-    };
-    auto elem_ty = to_mlir_type(conv->get_output_element_type(0));
+    auto elem_ty = to_mlir_type(conv->get_output_element_type(0), ctx);
     llvm::SmallVector<int64_t> in_dims(in_shape.begin(), in_shape.end());
     llvm::SmallVector<int64_t> w_dims(w_shape.begin(), w_shape.end());
     auto in_ty = mlir::RankedTensorType::get(in_dims, elem_ty);

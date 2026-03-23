@@ -20,6 +20,17 @@ namespace ov {
 namespace gfx_plugin {
 namespace {
 
+ov::element::Type resolve_matmul_buffer_type(const ov::element::Type& type,
+                                             const ov::element::Type& fallback) {
+    if (type != ov::element::dynamic) {
+        return type;
+    }
+    if (fallback != ov::element::dynamic) {
+        return fallback;
+    }
+    return ov::element::f32;
+}
+
 struct LoopInfo {
     int64_t lower = 0;
     int64_t upper = -1;
@@ -93,7 +104,20 @@ void validate_against_desc(const std::vector<LoopInfo>& loops, const MatMulCodeg
 }
 
 std::string emit_matmul_msl(const MatMulCodegenDesc& desc, const std::string& scalar) {
-    const bool use_half = (scalar == "half");
+    const ov::element::Type output_type = resolve_matmul_buffer_type(desc.output_type, desc.element_type);
+    const ov::element::Type input_a_type = resolve_matmul_buffer_type(desc.input_a_type, output_type);
+    const ov::element::Type input_b_type = resolve_matmul_buffer_type(desc.input_b_type, output_type);
+    const ov::element::Type bias_type = resolve_matmul_buffer_type(desc.bias_type, output_type);
+    const std::string scalar_a = msl_type_from_element(input_a_type);
+    const std::string scalar_b = msl_type_from_element(input_b_type);
+    const std::string scalar_bias = msl_type_from_element(bias_type);
+    const std::string scalar_out = msl_type_from_element(output_type);
+    const std::string compute_a = scalar_a.empty() ? "float" : scalar_a;
+    const std::string compute_b = scalar_b.empty() ? "float" : scalar_b;
+    const std::string compute_bias = scalar_bias.empty() ? "float" : scalar_bias;
+    const std::string output_scalar = scalar_out.empty() ? scalar : scalar_out;
+    const std::string accum = msl_accumulator_type_from_element(output_type);
+    const bool use_half = (output_scalar == "half");
     std::ostringstream ss;
     ss << "#include <metal_stdlib>\n";
     ss << "using namespace metal;\n";
@@ -111,13 +135,13 @@ std::string emit_matmul_msl(const MatMulCodegenDesc& desc, const std::string& sc
         ss << "constant uint BIAS_N = " << desc.bias_dims[2] << ";\n";
     }
     ss << "kernel void matmul_kernel(\n";
-    ss << "  device const " << scalar << "* A [[buffer(0)]],\n";
-    ss << "  device const " << scalar << "* B [[buffer(1)]],\n";
+    ss << "  device const " << scalar_a << "* A [[buffer(0)]],\n";
+    ss << "  device const " << scalar_b << "* B [[buffer(1)]],\n";
     if (desc.has_bias) {
-        ss << "  device const " << scalar << "* bias [[buffer(2)]],\n";
-        ss << "  device " << scalar << "* C [[buffer(3)]],\n";
+        ss << "  device const " << scalar_bias << "* bias [[buffer(2)]],\n";
+        ss << "  device " << output_scalar << "* C [[buffer(3)]],\n";
     } else {
-        ss << "  device " << scalar << "* C [[buffer(2)]],\n";
+        ss << "  device " << output_scalar << "* C [[buffer(2)]],\n";
     }
     ss << "  uint gid [[thread_position_in_grid]]) {\n";
     ss << "    uint total = BATCH * M * N;\n";
@@ -129,20 +153,22 @@ std::string emit_matmul_msl(const MatMulCodegenDesc& desc, const std::string& sc
     ss << "    if (row < M && col < N) {\n";
     ss << "        uint batch_a = (BATCH_A == 1) ? 0 : batch;\n";
     ss << "        uint batch_b = (BATCH_B == 1) ? 0 : batch;\n";
-        ss << "        device const " << scalar << "* Ap = A + batch_a * M * K;\n";
-        ss << "        device const " << scalar << "* Bp = B + batch_b * K * N;\n";
-    ss << "        float acc = 0.0f;\n";
+        ss << "        device const " << scalar_a << "* Ap = A + batch_a * M * K;\n";
+        ss << "        device const " << scalar_b << "* Bp = B + batch_b * K * N;\n";
+    ss << "        " << accum << " acc = static_cast<" << accum << ">(0.0f);\n";
     ss << "        for (uint k = 0; k < K; ++k) {\n";
-    ss << "            float a = static_cast<float>(A_TRANSPOSE ? Ap[k * M + row] : Ap[row * K + k]);\n";
-    ss << "            float b = static_cast<float>(B_IS_NK ? Bp[col * K + k] : Bp[k * N + col]);\n";
-    ss << "            acc += a * b;\n";
+    ss << "            " << compute_a << " a = static_cast<" << compute_a
+       << ">(A_TRANSPOSE ? Ap[k * M + row] : Ap[row * K + k]);\n";
+    ss << "            " << compute_b << " b = static_cast<" << compute_b
+       << ">(B_IS_NK ? Bp[col * K + k] : Bp[k * N + col]);\n";
+    ss << "            acc += static_cast<" << accum << ">(a) * static_cast<" << accum << ">(b);\n";
     ss << "        }\n";
     if (desc.has_bias) {
         ss << "        uint bb = (BIAS_B == 1) ? 0 : batch;\n";
         ss << "        uint bm = (BIAS_M == 1) ? 0 : row;\n";
         ss << "        uint bn = (BIAS_N == 1) ? 0 : col;\n";
         ss << "        uint bias_idx = (bb * BIAS_M + bm) * BIAS_N + bn;\n";
-        ss << "        acc += static_cast<float>(bias[bias_idx]);\n";
+        ss << "        acc += static_cast<" << accum << ">(static_cast<" << compute_bias << ">(bias[bias_idx]));\n";
     }
     if (desc.has_activation) {
         auto act = [&]() -> std::string {
@@ -157,7 +183,7 @@ std::string emit_matmul_msl(const MatMulCodegenDesc& desc, const std::string& sc
                 case ActivationKind::Gelu:
                     return "0.5f * x * (1.0f + tanh(0.79788456f * (x + 0.044715f * x * x * x)))";
                 case ActivationKind::Swish:
-                    return "x / (1.0f + exp(-x))";
+                    return "(x >= 0.0f) ? (x / (1.0f + exp(-x))) : (x * exp(x) / (1.0f + exp(x)))";
                 case ActivationKind::HSwish:
                     return "x * clamp(x + 3.0f, 0.0f, 6.0f) / 6.0f";
                 case ActivationKind::HSigmoid:
@@ -170,11 +196,11 @@ std::string emit_matmul_msl(const MatMulCodegenDesc& desc, const std::string& sc
                     return "x";
             }
         }();
-        ss << "        float x = acc;\n";
+        ss << "        float x = static_cast<float>(acc);\n";
         ss << "        acc = " << act << ";\n";
     }
-    if (use_half) {
-        ss << "        C[(batch * M + row) * N + col] = static_cast<" << scalar << ">(acc);\n";
+    if (use_half || accum != scalar) {
+        ss << "        C[(batch * M + row) * N + col] = static_cast<" << output_scalar << ">(acc);\n";
     } else {
         ss << "        C[(batch * M + row) * N + col] = acc;\n";
     }

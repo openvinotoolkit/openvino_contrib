@@ -59,6 +59,7 @@ const std::vector<BuilderEntry>& builder_registry() {
         {"Convert", build_mlir_convert_from_model, false},
         {"Transpose", build_mlir_transpose_from_model, false},
         {"Slice", build_mlir_slice_from_model, false},
+        {"StridedSlice", build_mlir_slice_from_model, false},
         {"Concat", build_mlir_concat_from_model, false},
         {"Split", build_mlir_split_from_model, true},
         {"VariadicSplit", build_mlir_split_from_model, true},
@@ -185,14 +186,26 @@ std::string find_entry_point(mlir::ModuleOp module) {
     return name;
 }
 
+std::string resolve_entry_point(mlir::ModuleOp module,
+                                const std::string& hint,
+                                std::string_view fallback) {
+    if (!hint.empty()) {
+        return hint;
+    }
+    if (module) {
+        std::string entry = find_entry_point(module);
+        if (!entry.empty()) {
+            return entry;
+        }
+    }
+    return std::string(fallback);
+}
+
 KernelPlan MlirKernelPlanBuilder::build_plan(const std::shared_ptr<const ov::Node>& node,
                                              mlir::MLIRContext& ctx,
                                              uint32_t arg_count) const {
     auto module = build_mlir_for_node(node, ctx);
-    std::string entry = module ? find_entry_point(module) : std::string{};
-    if (entry.empty()) {
-        entry = "gfx_kernel";
-    }
+    std::string entry = resolve_entry_point(module, {}, "gfx_kernel");
     return KernelPlan(module, std::move(entry), arg_count);
 }
 

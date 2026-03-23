@@ -15,7 +15,7 @@
 #include "backends/metal/runtime/op_utils.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
 #include "runtime/gfx_logger.hpp"
-#include "mlir/mlir_builder.hpp"
+#include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/codegen_common.hpp"
@@ -74,11 +74,7 @@ void MetalActivationOp::compile(MetalBufferManager* buffer_manager) {
     MetalCodegenBackend backend(m_device ? m_device : (id<MTLDevice>)buffer_manager->device());
     std::string log;
     mlir::MLIRContext ctx;
-    std::optional<std::pair<double, double>> clamp_range;
-    if (m_kind == ActivationKind::Clamp) {
-        clamp_range = std::make_pair(m_clamp_min, m_clamp_max);
-    }
-    auto module = build_mlir_unary_from_node(m_node, ctx, m_kind, m_alpha, clamp_range);
+    auto module = build_mlir_for_node(m_node, ctx);
     UnaryCodegenDesc desc;
     desc.activation = m_kind;
     desc.alpha = m_alpha;

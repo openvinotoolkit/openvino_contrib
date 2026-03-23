@@ -127,12 +127,11 @@ mlir::ModuleOp build_mlir_group_conv2d_from_model(const std::shared_ptr<const ov
     const auto strides    = gconv->get_strides();
     const auto dilations  = gconv->get_dilations();
     if (gfx_log_debug_enabled()) {
-        GFX_LOG_DEBUG("MLIR",
-                      "GroupConv2D in=" << in_pshape << " w=" << w_pshape << " out=" << out_pshape
+        gfx_log_debug("MLIR") << "GroupConv2D in=" << in_pshape << " w=" << w_pshape << " out=" << out_pshape
                                          << " pads_begin=(" << pads_begin[0] << "," << pads_begin[1] << ")"
                                          << " pads_end=(" << pads_end[0] << "," << pads_end[1] << ")"
                                          << " strides=(" << strides[0] << "," << strides[1] << ")"
-                                         << " dilations=(" << dilations[0] << "," << dilations[1] << ")");
+                                         << " dilations=(" << dilations[0] << "," << dilations[1] << ")";
     }
     OPENVINO_ASSERT(w_shape[0] != mlir::ShapedType::kDynamic,
                     "GroupConv2D builder: group dimension must be static");
@@ -187,7 +186,7 @@ mlir::ModuleOp build_mlir_group_conv2d_from_model(const std::shared_ptr<const ov
     }
 
     if (gfx_log_debug_enabled()) {
-        GFX_LOG_DEBUG("MLIR", "GroupConv2D depthwise path: groups=" << groups);
+        gfx_log_debug("MLIR") << "GroupConv2D depthwise path: groups=" << groups;
     }
 
     OPENVINO_ASSERT(in_c != mlir::ShapedType::kDynamic &&
@@ -212,7 +211,7 @@ mlir::ModuleOp build_mlir_group_conv2d_from_model(const std::shared_ptr<const ov
                                                      mlir::ValueRange{out_init.getResult()});
 
     if (gfx_log_debug_enabled()) {
-        GFX_LOG_DEBUG("MLIR", "GroupConv2D depthwise linalg.generic");
+        gfx_log_debug("MLIR") << "GroupConv2D depthwise linalg.generic";
     }
 
     auto d0 = b.getAffineDimExpr(0);

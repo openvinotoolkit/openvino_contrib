@@ -13,10 +13,16 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Types.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "llvm/Support/Casting.h"
 
 namespace ov {
 namespace gfx_plugin {
@@ -190,7 +196,7 @@ mlir::ModuleOp build_mlir_conv2d_from_model(const std::shared_ptr<const ov::Mode
                                             mlir::MLIRContext& ctx) {
     ctx.loadDialect<mlir::func::FuncDialect, mlir::linalg::LinalgDialect,
                     mlir::tensor::TensorDialect, mlir::arith::ArithDialect,
-                    mlir::math::MathDialect>();
+                    mlir::math::MathDialect, mlir::scf::SCFDialect>();
 
     std::shared_ptr<const ov::op::v1::Convolution> conv;
     for (const auto& node : model->get_ordered_ops()) {
@@ -300,24 +306,102 @@ mlir::ModuleOp build_mlir_conv2d_from_model(const std::shared_ptr<const ov::Mode
     push_if_dyn(3, outW);
 
     auto out_init = b.create<mlir::tensor::EmptyOp>(loc, out_shape, elem_ty, out_dyn);
-    auto zero = b.create<mlir::arith::ConstantOp>(loc, b.getFloatAttr(elem_ty, 0.0));
-    auto out_filled = b.create<mlir::linalg::FillOp>(loc,
-                                                     mlir::ValueRange{zero},
-                                                     mlir::ValueRange{out_init.getResult()});
 
-    auto padded = pad_input(b, loc, input, pads_begin, pads_end);
-    auto strides_attr = make_i64_attr(b, strides);
-    auto dil_attr = make_i64_attr(b, dilations);
-    auto conv_op = b.create<mlir::linalg::Conv2DNchwFchwOp>(loc,
-                                                            out_type,
-                                                            mlir::ValueRange{padded, weight},
-                                                            mlir::ValueRange{out_filled.getResult(0)},
-                                                            strides_attr,
-                                                            dil_attr);
-    conv_op->setAttr("gfx.pad_begin", make_i64_attr(b, pads_begin));
-    conv_op->setAttr("gfx.pad_end", make_i64_attr(b, pads_end));
+    // Build linalg.generic with explicit boundary checks (no tensor.pad, no DenseArrayAttr).
+    mlir::AffineExpr n, f, oh, ow, kh, kw, c_dim;
+    bindDims(&ctx, n, f, oh, ow, kh, kw, c_dim);
+    auto weight_map = mlir::AffineMap::get(7, 0, {f, c_dim, kh, kw}, &ctx);
+    auto output_map = mlir::AffineMap::get(7, 0, {n, f, oh, ow}, &ctx);
+    mlir::SmallVector<mlir::AffineMap> indexing_maps = {weight_map, output_map};
+    mlir::SmallVector<mlir::utils::IteratorType> iter_types = {
+        mlir::utils::IteratorType::parallel,  // n
+        mlir::utils::IteratorType::parallel,  // f
+        mlir::utils::IteratorType::parallel,  // oh
+        mlir::utils::IteratorType::parallel,  // ow
+        mlir::utils::IteratorType::reduction, // kh
+        mlir::utils::IteratorType::reduction, // kw
+        mlir::utils::IteratorType::reduction  // c
+    };
 
-    b.create<mlir::func::ReturnOp>(loc, mlir::ValueRange{conv_op.getResult(0)});
+    auto strideHVal = b.create<mlir::arith::ConstantIndexOp>(loc, strides[0]);
+    auto strideWVal = b.create<mlir::arith::ConstantIndexOp>(loc, strides[1]);
+    auto dilHVal = b.create<mlir::arith::ConstantIndexOp>(loc, dilations[0]);
+    auto dilWVal = b.create<mlir::arith::ConstantIndexOp>(loc, dilations[1]);
+    auto padTopVal = b.create<mlir::arith::ConstantIndexOp>(loc, pads_begin[0]);
+    auto padLeftVal = b.create<mlir::arith::ConstantIndexOp>(loc, pads_begin[1]);
+
+    auto generic = b.create<mlir::linalg::GenericOp>(
+        loc,
+        out_type,
+        mlir::ValueRange{weight},
+        mlir::ValueRange{out_init.getResult()},
+        indexing_maps,
+        iter_types);
+
+    {
+        auto& region = generic.getRegion();
+        region.getBlocks().clear();
+        auto* block = &region.emplaceBlock();
+        block->addArguments({elem_ty, elem_ty}, {loc, loc});  // args: weightVal, acc
+
+        mlir::OpBuilder body(block, block->begin());
+        // Indices.
+        auto idxN = body.create<mlir::linalg::IndexOp>(loc, 0);
+        auto idxF = body.create<mlir::linalg::IndexOp>(loc, 1);
+        auto idxOH = body.create<mlir::linalg::IndexOp>(loc, 2);
+        auto idxOW = body.create<mlir::linalg::IndexOp>(loc, 3);
+        auto idxKH = body.create<mlir::linalg::IndexOp>(loc, 4);
+        auto idxKW = body.create<mlir::linalg::IndexOp>(loc, 5);
+        auto idxC  = body.create<mlir::linalg::IndexOp>(loc, 6);
+
+        mlir::Value ih = body.create<mlir::arith::AddIOp>(loc,
+                                                          body.create<mlir::arith::MulIOp>(loc, idxOH, strideHVal),
+                                                          body.create<mlir::arith::MulIOp>(loc, idxKH, dilHVal)).getResult();
+        ih = body.create<mlir::arith::SubIOp>(loc, ih, padTopVal).getResult();
+        mlir::Value iw = body.create<mlir::arith::AddIOp>(loc,
+                                                          body.create<mlir::arith::MulIOp>(loc, idxOW, strideWVal),
+                                                          body.create<mlir::arith::MulIOp>(loc, idxKW, dilWVal)).getResult();
+        iw = body.create<mlir::arith::SubIOp>(loc, iw, padLeftVal).getResult();
+
+        auto zero_index = body.create<mlir::arith::ConstantIndexOp>(loc, 0).getResult();
+        auto ih_ge0 = body.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::sge, ih, zero_index).getResult();
+        auto iw_ge0 = body.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::sge, iw, zero_index).getResult();
+        auto ih_ltH = body.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::slt, ih, H).getResult();
+        auto iw_ltW = body.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::slt, iw, W).getResult();
+        auto cond = body.create<mlir::arith::AndIOp>(loc, ih_ge0, iw_ge0).getResult();
+        cond = body.create<mlir::arith::AndIOp>(loc, cond, ih_ltH).getResult();
+        cond = body.create<mlir::arith::AndIOp>(loc, cond, iw_ltW).getResult();
+
+        mlir::Value input_elem = body.create<mlir::arith::ConstantOp>(loc, b.getFloatAttr(elem_ty, 0.0)).getResult();
+        {
+            auto if_op = body.create<mlir::scf::IfOp>(loc, mlir::TypeRange{elem_ty}, cond, /*withElseRegion=*/true);
+            mlir::OpBuilder thenBuilder = if_op.getThenBodyBuilder();
+            auto val = thenBuilder.create<mlir::tensor::ExtractOp>(loc, input, mlir::ValueRange{idxN, idxC, ih, iw});
+            thenBuilder.create<mlir::scf::YieldOp>(loc, mlir::ValueRange{val});
+
+            mlir::OpBuilder elseBuilder = if_op.getElseBodyBuilder();
+            auto zero_val = elseBuilder.create<mlir::arith::ConstantOp>(loc, b.getFloatAttr(elem_ty, 0.0)).getResult();
+            elseBuilder.create<mlir::scf::YieldOp>(loc, mlir::ValueRange{zero_val});
+            input_elem = if_op.getResult(0);
+        }
+
+        auto weight_val = block->getArgument(0);
+        mlir::Value acc = block->getArgument(1);
+        mlir::Value prod;
+        if (llvm::isa<mlir::FloatType>(elem_ty)) {
+            prod = body.create<mlir::arith::MulFOp>(loc, input_elem, weight_val).getResult();
+            acc = body.create<mlir::arith::AddFOp>(loc, acc, prod).getResult();
+        } else {
+            prod = body.create<mlir::arith::MulIOp>(loc, input_elem, weight_val).getResult();
+            acc = body.create<mlir::arith::AddIOp>(loc, acc, prod).getResult();
+        }
+        body.create<mlir::linalg::YieldOp>(loc, acc);
+    }
+
+    generic->setAttr("gfx.pad_begin", make_i64_attr(b, pads_begin));
+    generic->setAttr("gfx.pad_end", make_i64_attr(b, pads_end));
+
+    b.create<mlir::func::ReturnOp>(loc, mlir::ValueRange{generic.getResult(0)});
     return module;
 }
 
@@ -353,7 +437,7 @@ mlir::ModuleOp build_mlir_conv2d_with_bias_from_model(const std::shared_ptr<cons
                                                       std::optional<std::pair<ActivationKind, float>> unary_kind) {
     ctx.loadDialect<mlir::func::FuncDialect, mlir::linalg::LinalgDialect,
                     mlir::tensor::TensorDialect, mlir::arith::ArithDialect,
-                    mlir::math::MathDialect>();
+                    mlir::math::MathDialect, mlir::scf::SCFDialect>();
 
     std::shared_ptr<const ov::op::v1::Convolution> conv;
     std::shared_ptr<const ov::op::v1::Add> add;

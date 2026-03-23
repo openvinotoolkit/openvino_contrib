@@ -4,6 +4,8 @@
 
 #include "mlir/mlir_builder.hpp"
 
+#include "mlir/gfx_mlir_type_utils.hpp"
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -17,18 +19,6 @@
 
 namespace ov {
 namespace gfx_plugin {
-
-namespace {
-mlir::Type to_mlir_type(ov::element::Type et, mlir::MLIRContext& ctx) {
-    switch (et) {
-        case ov::element::f16: return mlir::Float16Type::get(&ctx);
-        case ov::element::f32: return mlir::Float32Type::get(&ctx);
-        case ov::element::i32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
-        case ov::element::i64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Signed);
-        default: return mlir::Float32Type::get(&ctx);
-    }
-}
-}  // namespace
 
 mlir::ModuleOp build_mlir_gather_elements_from_model(const std::shared_ptr<const ov::Model>& model,
                                                      mlir::MLIRContext& ctx) {
@@ -51,9 +41,9 @@ mlir::ModuleOp build_mlir_gather_elements_from_model(const std::shared_ptr<const
     mlir::SmallVector<int64_t> idx_dims(idx_shape.begin(), idx_shape.end());
     mlir::SmallVector<int64_t> out_dims(out_shape.begin(), out_shape.end());
 
-    auto data_ty = to_mlir_type(gather->get_input_element_type(0), ctx);
-    auto idx_ty = to_mlir_type(gather->get_input_element_type(1), ctx);
-    auto out_ty = to_mlir_type(gather->get_output_element_type(0), ctx);
+    auto data_ty = to_mlir_type(gather->get_input_element_type(0), ctx, /*fallback_f32=*/true);
+    auto idx_ty = to_mlir_type(gather->get_input_element_type(1), ctx, /*fallback_f32=*/true);
+    auto out_ty = to_mlir_type(gather->get_output_element_type(0), ctx, /*fallback_f32=*/true);
 
     auto data_tensor_ty = mlir::RankedTensorType::get(data_dims, data_ty);
     auto idx_tensor_ty = mlir::RankedTensorType::get(idx_dims, idx_ty);

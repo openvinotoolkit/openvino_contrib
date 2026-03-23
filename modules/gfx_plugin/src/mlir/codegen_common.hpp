@@ -10,6 +10,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "runtime/gfx_precision.hpp"
 #include "llvm/Support/Casting.h"
 
 namespace ov {
@@ -99,6 +100,17 @@ inline std::string msl_type_from_element(const ov::element::Type& type) {
         return "bool";
     }
     return "float";
+}
+
+inline std::string msl_compute_type_from_element(const ov::element::Type& storage_type) {
+    return msl_type_from_element(gfx_compute_element_type(storage_type));
+}
+
+inline std::string msl_accumulator_type_from_element(const ov::element::Type& storage_type) {
+    if (gfx_uses_fp16_compute(storage_type)) {
+        return "float";
+    }
+    return msl_type_from_element(storage_type);
 }
 
 // Per-op emitters (MSL generation; MLIR module is used when pattern-based codegen is available).

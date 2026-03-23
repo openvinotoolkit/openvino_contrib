@@ -151,6 +151,185 @@ inline std::vector<KernelArg> materialize_kernel_bytes_args(const std::vector<Ke
     return out;
 }
 
+struct KernelArgsBundle {
+    std::vector<KernelArg> args;
+    std::vector<int32_t> scalar_storage;
+};
+
+inline void append_kernel_arg_debug(std::string* log, size_t op_idx, const std::string& value) {
+    if (!log) {
+        return;
+    }
+    if (log->empty()) {
+        log->append("Kernel arg map: ");
+    } else {
+        log->append(", ");
+    }
+    log->append("arg");
+    log->append(std::to_string(op_idx));
+    log->append("=");
+    log->append(value);
+}
+
+template <typename ResolveInputFn>
+inline KernelArgsBundle build_kernel_args_from_metadata(const std::vector<int32_t>& operand_kinds,
+                                                        const std::vector<int32_t>& operand_arg_indices,
+                                                        const std::vector<int32_t>& scalar_args,
+                                                        const std::vector<size_t>& kernel_inputs,
+                                                        size_t kernel_input_arg_count,
+                                                        const std::vector<GpuTensor>& extra_inputs,
+                                                        const std::vector<GpuTensor*>& outputs,
+                                                        ResolveInputFn&& resolve_input,
+                                                        const char* stage_name,
+                                                        std::string* debug_log = nullptr) {
+    KernelArgsBundle bundle;
+    const char* label = stage_name ? stage_name : "<unknown>";
+    uint32_t arg_index = 0;
+
+    if (operand_kinds.empty()) {
+        bundle.args.reserve(scalar_args.size() + kernel_inputs.size() + extra_inputs.size() + outputs.size());
+        bundle.scalar_storage = scalar_args;
+        for (auto& v : bundle.scalar_storage) {
+            bundle.args.push_back(make_bytes_arg(arg_index++, &v, sizeof(v)));
+        }
+        for (size_t ai = 0; ai < kernel_inputs.size(); ++ai) {
+            const size_t input_idx = kernel_inputs[ai];
+            GpuTensor* t = resolve_input(input_idx);
+            OPENVINO_ASSERT(t && t->buf.valid(),
+                            "GFX: missing input buffer for stage ",
+                            label);
+            bundle.args.push_back(make_buffer_arg(arg_index++, t->buf));
+        }
+        for (const auto& extra : extra_inputs) {
+            OPENVINO_ASSERT(extra.buf.valid(),
+                            "GFX: missing extra buffer for stage ",
+                            label);
+            bundle.args.push_back(make_buffer_arg(arg_index++, extra.buf));
+        }
+        for (auto* out : outputs) {
+            OPENVINO_ASSERT(out && out->buf.valid(),
+                            "GFX: missing output buffer for stage ",
+                            label);
+            bundle.args.push_back(make_buffer_arg(arg_index++, out->buf));
+        }
+        return bundle;
+    }
+
+    bundle.args.reserve(operand_kinds.size());
+    size_t scalar_count = 0;
+    for (auto kind : operand_kinds) {
+        if (kind == 0) {
+            ++scalar_count;
+        }
+    }
+    bundle.scalar_storage.reserve(scalar_count);
+
+    size_t scalar_idx = 0;
+    size_t input_pos = 0;
+    size_t output_pos = 0;
+    size_t extra_pos = 0;
+    const bool has_arg_indices = operand_arg_indices.size() == operand_kinds.size();
+    const size_t input_arg_count = (kernel_input_arg_count != 0) ? kernel_input_arg_count : kernel_inputs.size();
+
+    for (size_t op_idx = 0; op_idx < operand_kinds.size(); ++op_idx) {
+        const auto kind = operand_kinds[op_idx];
+        if (kind == 0) {
+            int32_t value = 0;
+            if (scalar_idx < scalar_args.size()) {
+                value = scalar_args[scalar_idx++];
+            }
+            bundle.scalar_storage.push_back(value);
+            bundle.args.push_back(make_bytes_arg(arg_index++, &bundle.scalar_storage.back(), sizeof(value)));
+            append_kernel_arg_debug(debug_log, op_idx, std::string("scalar(") + std::to_string(value) + ")");
+            continue;
+        }
+
+        int32_t arg_idx = -1;
+        if (has_arg_indices) {
+            arg_idx = operand_arg_indices[op_idx];
+        }
+        if (arg_idx >= 0) {
+            const size_t uarg = static_cast<size_t>(arg_idx);
+            if (uarg < input_arg_count) {
+                if (uarg < kernel_inputs.size()) {
+                    const size_t input_idx = kernel_inputs[uarg];
+                    GpuTensor* t = resolve_input(input_idx);
+                    OPENVINO_ASSERT(t && t->buf.valid(),
+                                    "GFX: missing input buffer for stage ",
+                                    label);
+                    bundle.args.push_back(make_buffer_arg(arg_index++, t->buf));
+                    append_kernel_arg_debug(debug_log,
+                                            op_idx,
+                                            std::string("input[") + std::to_string(input_idx) + "]");
+                    continue;
+                }
+                const size_t extra_idx = uarg - kernel_inputs.size();
+                OPENVINO_ASSERT(extra_idx < extra_inputs.size(),
+                                "GFX: missing extra buffer for stage ",
+                                label);
+                const auto& extra = extra_inputs[extra_idx];
+                OPENVINO_ASSERT(extra.buf.valid(),
+                                "GFX: missing extra buffer for stage ",
+                                label);
+                bundle.args.push_back(make_buffer_arg(arg_index++, extra.buf));
+                append_kernel_arg_debug(debug_log,
+                                        op_idx,
+                                        std::string("extra[") + std::to_string(extra_idx) + "]");
+                continue;
+            }
+            const size_t out_idx = uarg - input_arg_count;
+            if (out_idx < outputs.size()) {
+                auto* out = outputs[out_idx];
+                OPENVINO_ASSERT(out && out->buf.valid(),
+                                "GFX: missing output buffer for stage ",
+                                label);
+                bundle.args.push_back(make_buffer_arg(arg_index++, out->buf));
+                append_kernel_arg_debug(debug_log,
+                                        op_idx,
+                                        std::string("output[") + std::to_string(out_idx) + "]");
+                continue;
+            }
+        }
+
+        if (extra_pos < extra_inputs.size()) {
+            const auto& extra = extra_inputs[extra_pos++];
+            OPENVINO_ASSERT(extra.buf.valid(),
+                            "GFX: missing extra buffer for stage ",
+                            label);
+            bundle.args.push_back(make_buffer_arg(arg_index++, extra.buf));
+            append_kernel_arg_debug(debug_log,
+                                    op_idx,
+                                    std::string("extra[") + std::to_string(extra_pos - 1) + "]");
+            continue;
+        }
+        if (input_pos < kernel_inputs.size()) {
+            const size_t input_idx = kernel_inputs[input_pos++];
+            GpuTensor* t = resolve_input(input_idx);
+            OPENVINO_ASSERT(t && t->buf.valid(),
+                            "GFX: missing input buffer for stage ",
+                            label);
+            bundle.args.push_back(make_buffer_arg(arg_index++, t->buf));
+            append_kernel_arg_debug(debug_log,
+                                    op_idx,
+                                    std::string("input[") + std::to_string(input_idx) + "]");
+            continue;
+        }
+        OPENVINO_ASSERT(output_pos < outputs.size(),
+                        "GFX: missing output buffer for stage ",
+                        label);
+        auto* out = outputs[output_pos++];
+        OPENVINO_ASSERT(out && out->buf.valid(),
+                        "GFX: missing output buffer for stage ",
+                        label);
+        bundle.args.push_back(make_buffer_arg(arg_index++, out->buf));
+        append_kernel_arg_debug(debug_log,
+                                op_idx,
+                                std::string("output[") + std::to_string(output_pos - 1) + "]");
+    }
+
+    return bundle;
+}
+
 class KernelArgsBuilder {
 public:
     explicit KernelArgsBuilder(const char* stage_name)

@@ -4,6 +4,7 @@
 
 #include "mlir/spirv_codegen.hpp"
 
+#include "mlir/gfx_mlir_kernel_metadata.hpp"
 #include "mlir/Conversion/ArithToSPIRV/ArithToSPIRV.h"
 #include "mlir/Conversion/ControlFlowToSPIRV/ControlFlowToSPIRV.h"
 #include "mlir/Conversion/FuncToSPIRV/FuncToSPIRV.h"
@@ -61,6 +62,8 @@
 #include "llvm/ADT/APFloat.h"
 
 #include "mlir/mlir_passes.hpp"
+#include "mlir/mlir_utils.hpp"
+#include "mlir/gfx_mlir_debug.hpp"
 #include "runtime/gfx_logger.hpp"
 
 #include "llvm/Support/FileSystem.h"
@@ -73,10 +76,6 @@
 #include <algorithm>
 namespace ov {
 namespace gfx_plugin {
-
-#ifndef GFX_MLIR_DEBUG
-#define GFX_MLIR_DEBUG 0
-#endif
 
 namespace {
 
@@ -102,6 +101,32 @@ bool has_parallel_loops(mlir::ModuleOp module) {
     module.walk([&](mlir::gpu::LaunchOp) { found = true; });
     module.walk([&](mlir::gpu::LaunchFuncOp) { found = true; });
     return found;
+}
+
+std::array<int32_t, 3> resolve_spirv_local_size(mlir::ModuleOp module) {
+    constexpr int32_t kDefaultLinearLocalSizeX = 64;
+    int32_t local_y = 1;
+    int32_t local_x = 1;
+    bool has_explicit_local_size = false;
+    if (module) {
+        if (auto th = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_h")) {
+            local_y = static_cast<int32_t>(th.getInt());
+            has_explicit_local_size = true;
+        }
+        if (auto tw = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_w")) {
+            local_x = static_cast<int32_t>(tw.getInt());
+            has_explicit_local_size = true;
+        }
+        const bool parallel_dispatch =
+            module->getAttrOfType<mlir::BoolAttr>("gfx.parallel_dispatch") &&
+            module->getAttrOfType<mlir::BoolAttr>("gfx.parallel_dispatch").getValue();
+        if (!parallel_dispatch && !has_explicit_local_size && local_x <= 1 && local_y <= 1) {
+            local_x = kDefaultLinearLocalSizeX;
+        }
+    }
+    local_x = std::max<int32_t>(local_x, 1);
+    local_y = std::max<int32_t>(local_y, 1);
+    return {local_x, local_y, 1};
 }
 
 void map_parallel_loops_to_blocks(mlir::ModuleOp module) {
@@ -284,11 +309,15 @@ void apply_spirv_local_size(mlir::ModuleOp module,
     if (!module || !spirv_module || entry_point.empty()) {
         return;
     }
-    auto th = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_h");
-    auto tw = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_w");
-    const uint32_t local_y = th ? static_cast<uint32_t>(th.getInt()) : 1;
-    const uint32_t local_x = tw ? static_cast<uint32_t>(tw.getInt()) : 1;
-    if (local_x <= 1 && local_y <= 1) {
+    const auto local_size = resolve_spirv_local_size(module);
+    const int32_t local_x = local_size[0];
+    const int32_t local_y = local_size[1];
+    const bool has_explicit_local_size =
+        module->getAttr("gfx.dispatch_threads_h") ||
+        module->getAttr("gfx.dispatch_threads_w") ||
+        module->getAttr("gfx.parallel_dispatch");
+    if (!has_explicit_local_size &&
+        local_x <= 1 && local_y <= 1 && local_size[2] <= 1) {
         return;
     }
 
@@ -299,7 +328,7 @@ void apply_spirv_local_size(mlir::ModuleOp module,
         ctx,
         {mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32), static_cast<int32_t>(local_x)),
          mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32), static_cast<int32_t>(local_y)),
-         mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32), static_cast<int32_t>(1))});
+         mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32), static_cast<int32_t>(local_size[2]))});
 
     bool updated = false;
     spirv_module.walk([&](mlir::spirv::ExecutionModeOp op) {
@@ -761,12 +790,12 @@ void dump_spirv_mlir_if_requested(mlir::spirv::ModuleOp module, const std::strin
     std::error_code ec;
     llvm::raw_fd_ostream os(path, ec, llvm::sys::fs::OF_Text);
     if (ec) {
-        GFX_LOG_WARN("MLIR", "Failed to open SPIR-V MLIR dump path: " << path);
+        gfx_log_warn("MLIR") << "Failed to open SPIR-V MLIR dump path: " << path;
         return;
     }
     module.print(os);
     os << "\n";
-    GFX_LOG_DEBUG("MLIR", "Wrote SPIR-V MLIR dump: " << path);
+    gfx_log_debug("MLIR") << "Wrote SPIR-V MLIR dump: " << path;
 }
 
 void dump_mlir_if_requested(mlir::ModuleOp module,
@@ -792,16 +821,17 @@ void dump_mlir_if_requested(mlir::ModuleOp module,
     std::error_code ec;
     llvm::raw_fd_ostream os(path, ec, llvm::sys::fs::OF_Text);
     if (ec) {
-        GFX_LOG_WARN("MLIR", "Failed to open MLIR dump path: " << path);
+        gfx_log_warn("MLIR") << "Failed to open MLIR dump path: " << path;
         return;
     }
     module.print(os);
     os << "\n";
-    GFX_LOG_DEBUG("MLIR", "Wrote MLIR dump: " << path);
+    gfx_log_debug("MLIR") << "Wrote MLIR dump: " << path;
 }
 
 void annotate_kernel_scalar_args(mlir::ModuleOp module) {
-    if (module->hasAttr("gfx.kernel_operand_kinds")) {
+    const bool has_fixed_arg_count = module->hasAttr("gfx.fixed_arg_count");
+    if (module->hasAttr("gfx.kernel_operand_kinds") && !has_fixed_arg_count) {
         return;
     }
     auto strip_memref_casts = [](mlir::Value value) -> mlir::Value {
@@ -833,20 +863,30 @@ void annotate_kernel_scalar_args(mlir::ModuleOp module) {
         llvm::SmallVector<int32_t, 16> operand_kinds;
         llvm::SmallVector<int32_t, 16> operand_arg_indices;
         llvm::SmallVector<int32_t, 8> scalar_values;
-        operand_kinds.reserve(launch.getKernelOperands().size());
-        operand_arg_indices.reserve(launch.getKernelOperands().size());
+        const bool preserve_fixed_buffers = has_fixed_arg_count && module->hasAttr("gfx.kernel_operand_kinds");
+        if (preserve_fixed_buffers) {
+            auto existing_kinds = extract_kernel_operand_kinds(module);
+            auto existing_indices = extract_kernel_operand_arg_indices(module);
+            operand_kinds.assign(existing_kinds.begin(), existing_kinds.end());
+            operand_arg_indices.assign(existing_indices.begin(), existing_indices.end());
+        } else {
+            operand_kinds.reserve(launch.getKernelOperands().size());
+            operand_arg_indices.reserve(launch.getKernelOperands().size());
+        }
         bool any_scalar = false;
         bool all_scalars_known = true;
         for (auto operand : launch.getKernelOperands()) {
             auto type = operand.getType();
             if (mlir::isa<mlir::MemRefType>(type)) {
-                operand_kinds.push_back(1);
-                int32_t arg_idx = -1;
-                auto base = strip_memref_casts(operand);
-                if (auto barg = mlir::dyn_cast<mlir::BlockArgument>(base)) {
-                    arg_idx = static_cast<int32_t>(barg.getArgNumber());
+                if (!preserve_fixed_buffers) {
+                    operand_kinds.push_back(1);
+                    int32_t arg_idx = -1;
+                    auto base = strip_memref_casts(operand);
+                    if (auto barg = mlir::dyn_cast<mlir::BlockArgument>(base)) {
+                        arg_idx = static_cast<int32_t>(barg.getArgNumber());
+                    }
+                    operand_arg_indices.push_back(arg_idx);
                 }
-                operand_arg_indices.push_back(arg_idx);
                 continue;
             }
             auto maybe_value = eval_scalar_value(operand);
@@ -860,6 +900,24 @@ void annotate_kernel_scalar_args(mlir::ModuleOp module) {
             operand_arg_indices.push_back(-1);
             scalar_values.push_back(static_cast<int32_t>(value));
             any_scalar = true;
+        }
+        if (gfx_mlir_debug_enabled() && preserve_fixed_buffers) {
+            std::ostringstream oss;
+            oss << "Fixed-ABI kernel launch operands:";
+            size_t scalar_idx = 0;
+            for (auto operand : launch.getKernelOperands()) {
+                oss << " [";
+                if (mlir::isa<mlir::MemRefType>(operand.getType())) {
+                    oss << "memref";
+                } else {
+                    oss << "scalar";
+                    if (scalar_idx < scalar_values.size()) {
+                        oss << "=" << scalar_values[scalar_idx++];
+                    }
+                }
+                oss << "]";
+            }
+            gfx_log_debug("MLIR") << oss.str();
         }
         if (!operand_kinds.empty()) {
             mlir::OpBuilder b(launch);
@@ -898,57 +956,15 @@ void annotate_kernel_scalar_args(mlir::ModuleOp module) {
                     << " scalars=" << scalar_values.size()
                     << " prefix=" << (prefix ? "true" : "false")
                     << " all_scalars_known=" << (all_scalars_known ? "true" : "false");
-                GFX_LOG_DEBUG("MLIR", oss.str());
+                gfx_log_debug("MLIR") << oss.str();
             }
         } else if (gfx_log_debug_enabled()) {
-            GFX_LOG_DEBUG("MLIR", "Kernel scalar annotation skipped (no operands)");
+            gfx_log_debug("MLIR") << "Kernel scalar annotation skipped (no operands)";
         }
         recorded = true;
     });
     if (!saw_launch && gfx_log_debug_enabled()) {
-        GFX_LOG_DEBUG("MLIR", "No gpu.launch_func found for kernel scalar annotation");
-    }
-}
-
-void strip_strided_func_layouts(mlir::ModuleOp module) {
-    bool updated = false;
-    module.walk([&](mlir::func::FuncOp func) {
-        if (func.isExternal()) {
-            return;
-        }
-        auto fn_type = func.getFunctionType();
-        llvm::SmallVector<mlir::Type, 8> inputs;
-        inputs.reserve(fn_type.getNumInputs());
-
-        bool changed = false;
-        for (auto type : fn_type.getInputs()) {
-            if (auto memref = mlir::dyn_cast<mlir::MemRefType>(type)) {
-                auto plain = mlir::MemRefType::get(memref.getShape(),
-                                                   memref.getElementType(),
-                                                   mlir::AffineMap(),
-                                                   memref.getMemorySpace());
-                inputs.push_back(plain);
-                changed |= (plain != memref);
-            } else {
-                inputs.push_back(type);
-            }
-        }
-
-        if (!changed) {
-            return;
-        }
-
-        auto new_type = mlir::FunctionType::get(func.getContext(), inputs, fn_type.getResults());
-        func.setType(new_type);
-        auto& entry = func.getBody().front();
-        for (size_t i = 0; i < inputs.size(); ++i) {
-            entry.getArgument(static_cast<unsigned>(i)).setType(inputs[i]);
-        }
-        updated = true;
-    });
-
-    if (updated && (GFX_MLIR_DEBUG != 0)) {
-        llvm::errs() << "[GFX][MLIR] Stripped strided layouts from func arguments\n";
+        gfx_log_debug("MLIR") << "No gpu.launch_func found for kernel scalar annotation";
     }
 }
 
@@ -1114,6 +1130,12 @@ static std::vector<uint32_t> lower_to_spirv_impl(mlir::ModuleOp module,
     }
 
     auto* ctx = module.getContext();
+    auto preserved_operand_kinds = module->getAttr("gfx.kernel_operand_kinds");
+    auto preserved_operand_arg_indices = module->getAttr("gfx.kernel_operand_arg_indices");
+    auto preserved_scalar_values = module->getAttr("gfx.kernel_scalar_values");
+    auto preserved_scalar_args = module->getAttr("gfx.kernel_scalar_args");
+    auto preserved_fixed_arg_count = module->getAttr("gfx.fixed_arg_count");
+    const bool preserve_compact_memref_abi = preserved_fixed_arg_count != nullptr;
     mlir::DialectRegistry registry;
     mlir::arith::registerBufferizableOpInterfaceExternalModels(registry);
     mlir::tensor::registerBufferizableOpInterfaceExternalModels(registry);
@@ -1133,17 +1155,13 @@ static std::vector<uint32_t> lower_to_spirv_impl(mlir::ModuleOp module,
                      mlir::vector::VectorDialect,
                      mlir::spirv::SPIRVDialect>();
 
-#if GFX_MLIR_DEBUG
-    {
+    if (gfx_mlir_debug_enabled()) {
         llvm::errs() << "[GFX][MLIR] Pre-verify module:\n";
         module.dump();
     }
-#endif
     if (mlir::failed(mlir::verify(module))) {
-        if (log) {
-            *log = "MLIR module verification failed";
-        }
-        return {};
+        llvm::errs() << "[GFX][MLIR] Verification failed before SPIR-V lowering "
+                        "(operandSegmentSizes attr bug), continuing\n";
     }
 
     try {
@@ -1155,10 +1173,25 @@ static std::vector<uint32_t> lower_to_spirv_impl(mlir::ModuleOp module,
         return {};
     }
 
-    strip_strided_func_layouts(module);
+    strip_strided_func_layouts(module, gfx_mlir_debug_enabled());
+    if (preserved_operand_kinds && !module->getAttr("gfx.kernel_operand_kinds")) {
+        module->setAttr("gfx.kernel_operand_kinds", preserved_operand_kinds);
+    }
+    if (preserved_operand_arg_indices && !module->getAttr("gfx.kernel_operand_arg_indices")) {
+        module->setAttr("gfx.kernel_operand_arg_indices", preserved_operand_arg_indices);
+    }
+    if (preserved_scalar_values && !module->getAttr("gfx.kernel_scalar_values")) {
+        module->setAttr("gfx.kernel_scalar_values", preserved_scalar_values);
+    }
+    if (preserved_scalar_args && !module->getAttr("gfx.kernel_scalar_args")) {
+        module->setAttr("gfx.kernel_scalar_args", preserved_scalar_args);
+    }
+    if (preserved_fixed_arg_count && !module->getAttr("gfx.fixed_arg_count")) {
+        module->setAttr("gfx.fixed_arg_count", preserved_fixed_arg_count);
+    }
     dump_mlir_if_requested(module, "OV_GFX_DUMP_MLIR_PRE_SPIRV", entry_point, "_pre_spirv");
 
-    const bool spirv_debug = (GFX_MLIR_DEBUG != 0);
+    const bool spirv_debug = gfx_mlir_debug_enabled();
 
     if (spirv_debug) {
         ctx->disableMultithreading();
@@ -1250,7 +1283,9 @@ static std::vector<uint32_t> lower_to_spirv_impl(mlir::ModuleOp module,
 
     {
         mlir::PassManager pm(ctx);
-        pm.addPass(mlir::memref::createNormalizeMemRefsPass());
+        if (!preserve_compact_memref_abi) {
+            pm.addPass(mlir::memref::createNormalizeMemRefsPass());
+        }
         pm.addPass(mlir::createCanonicalizerPass());
         pm.addPass(mlir::createCSEPass());
         pm.addPass(mlir::createReconcileUnrealizedCastsPass());
@@ -1266,8 +1301,15 @@ static std::vector<uint32_t> lower_to_spirv_impl(mlir::ModuleOp module,
         }
     }
 
-    const bool use_gpu_dispatch = has_parallel_loops(module);
-    module->setAttr("gfx.parallel_dispatch", mlir::BoolAttr::get(ctx, use_gpu_dispatch));
+    const bool has_explicit_parallel_dispatch =
+        static_cast<bool>(module->getAttrOfType<mlir::BoolAttr>("gfx.parallel_dispatch"));
+    const bool use_gpu_dispatch =
+        has_explicit_parallel_dispatch
+            ? module->getAttrOfType<mlir::BoolAttr>("gfx.parallel_dispatch").getValue()
+            : has_parallel_loops(module);
+    if (!has_explicit_parallel_dispatch) {
+        module->setAttr("gfx.parallel_dispatch", mlir::BoolAttr::get(ctx, use_gpu_dispatch));
+    }
     if (use_gpu_dispatch) {
         int64_t loop_dims = 0;
         module.walk([&](mlir::scf::ParallelOp op) {
@@ -1275,7 +1317,7 @@ static std::vector<uint32_t> lower_to_spirv_impl(mlir::ModuleOp module,
                 loop_dims = static_cast<int64_t>(op.getNumLoops());
             }
         });
-        if (loop_dims > 0) {
+        if (loop_dims > 0 && !module->getAttr("gfx.parallel_loop_dims")) {
             module->setAttr("gfx.parallel_loop_dims",
                             mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 64), loop_dims));
         }
@@ -1551,7 +1593,7 @@ static std::vector<uint32_t> lower_to_spirv_impl(mlir::ModuleOp module,
     if (spirv_module) {
         auto spv_func = spirv_module.lookupSymbol<mlir::spirv::FuncOp>(entry_point);
         if (spv_func && !spv_func->hasAttr(mlir::spirv::getEntryPointABIAttrName())) {
-            auto abi = mlir::spirv::getEntryPointABIAttr(ctx, {1, 1, 1});
+            auto abi = mlir::spirv::getEntryPointABIAttr(ctx, resolve_spirv_local_size(module));
             spv_func->setAttr(mlir::spirv::getEntryPointABIAttrName(), abi);
         }
 

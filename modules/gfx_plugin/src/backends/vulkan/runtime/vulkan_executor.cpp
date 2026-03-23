@@ -4,711 +4,1472 @@
 
 #include "backends/vulkan/runtime/vulkan_executor.hpp"
 
-#include <algorithm>
-#include <cmath>
-#include <cstring>
-#include <sstream>
-
-#include "mlir/mlir_builder.hpp"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/raw_ostream.h"
 #include "backends/vulkan/codegen/vulkan_codegen_backend.hpp"
-#include "backends/vulkan/runtime/gpu_memory.hpp"
-#include "backends/vulkan/runtime/vulkan_memory.hpp"
-#include "runtime/memory_manager.hpp"
-#include "runtime/gfx_logger.hpp"
-#include "kernel_ir/gfx_kernel_cache.hpp"
-#include "kernel_ir/gfx_kernel_dispatch.hpp"
-#include "kernel_ir/gfx_kernel_args.hpp"
-#include "kernel_ir/gfx_kernel_inputs.hpp"
-#include "kernel_ir/gfx_kernel_plan.hpp"
-#include "kernel_ir/gfx_kernel_spec.hpp"
-#include "runtime/gfx_logger.hpp"
-#include "runtime/gfx_shape_utils.hpp"
-#include "mlir/gfx_mlir_kernel_builder.hpp"
-#include "transforms/mlir_fused_ops.hpp"
 #include "backends/vulkan/runtime/profiling/profiler.hpp"
-
-#include "openvino/core/except.hpp"
-#include "openvino/core/shape_util.hpp"
-#include "openvino/op/batch_norm.hpp"
+#include "kernel_ir/gfx_kernel_args.hpp"
+#include "kernel_ir/gfx_kernel_plan.hpp"
+#include "mlir/gfx_mlir_kernel_metadata.hpp"
+#include "mlir/gfx_mlir_type_utils.hpp"
 #include "openvino/op/constant.hpp"
-#include "openvino/op/group_conv.hpp"
+#include "openvino/op/concat.hpp"
+#include "openvino/op/convolution.hpp"
 #include "openvino/op/log_softmax.hpp"
-#include "openvino/op/matmul.hpp"
 #include "openvino/op/softmax.hpp"
 #include "openvino/op/split.hpp"
 #include "openvino/op/variadic_split.hpp"
+#include "runtime/gfx_logger.hpp"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
+#include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/MLIRContext.h"
+#include "runtime/gfx_shape_utils.hpp"
+#include "mlir/mlir_support.hpp"
+
+#include <limits>
 
 namespace ov {
 namespace gfx_plugin {
 
 namespace {
 
-mlir::func::FuncOp resolve_entry_func(mlir::ModuleOp module, const std::string& entry) {
-    if (!module) {
-        return {};
+constexpr uint32_t kLargeLinearChunkElems = 16384;
+constexpr uint32_t kLinearChunkElemsPerDispatch = 65536;
+// Keep chunked Conv2D bounded for mobile Vulkan drivers, but large enough to
+// avoid excessive per-dispatch overhead once chunks are recorded into the
+// shared infer command buffer.
+constexpr uint32_t kConv2DChunkElemsPerDispatch = 1024;
+
+ov::element::Type resolve_stage_element_type(const std::shared_ptr<const ov::Node>& node,
+                                             const GpuTensor* tensor) {
+    ov::element::Type et = ov::element::dynamic;
+    if (tensor) {
+        et = tensor->expected_type == ov::element::dynamic ? tensor->buf.type : tensor->expected_type;
     }
-    if (!entry.empty()) {
-        if (auto func = module.lookupSymbol<mlir::func::FuncOp>(entry)) {
-            return func;
+    if (et == ov::element::dynamic && node && node->get_output_size() > 0) {
+        et = node->get_output_element_type(0);
+    }
+    return et;
+}
+
+bool is_supported_linear_elem_type(const ov::element::Type& et) {
+    return et == ov::element::f16 || et == ov::element::f32;
+}
+
+std::optional<int32_t> eval_launch_scalar_value(mlir::Value value) {
+    if (!value) {
+        return std::nullopt;
+    }
+    if (auto cst = value.getDefiningOp<mlir::arith::ConstantOp>()) {
+        auto attr = cst.getValue();
+        if (auto iattr = llvm::dyn_cast<mlir::IntegerAttr>(attr)) {
+            return static_cast<int32_t>(iattr.getInt());
+        }
+        if (auto fattr = llvm::dyn_cast<mlir::FloatAttr>(attr)) {
+            if (fattr.getType().isF32()) {
+                float f = static_cast<float>(fattr.getValueAsDouble());
+                int32_t bits = 0;
+                static_assert(sizeof(bits) == sizeof(f), "f32 scalar size mismatch");
+                std::memcpy(&bits, &f, sizeof(bits));
+                return bits;
+            }
+            if (fattr.getType().isF16()) {
+                return static_cast<int32_t>(fattr.getValue().bitcastToAPInt().getZExtValue());
+            }
         }
     }
-    mlir::func::FuncOp func;
-    module.walk([&](mlir::func::FuncOp f) {
-        if (!func) {
-            func = f;
+    if (auto cidx = value.getDefiningOp<mlir::arith::ConstantIndexOp>()) {
+        return static_cast<int32_t>(cidx.value());
+    }
+    if (auto cast = value.getDefiningOp<mlir::arith::IndexCastOp>()) {
+        return eval_launch_scalar_value(cast.getIn());
+    }
+    return std::nullopt;
+}
+
+LaunchOperandABI extract_launch_operand_abi(mlir::ModuleOp module) {
+    LaunchOperandABI abi;
+    if (!module) {
+        return abi;
+    }
+    module.walk([&](mlir::gpu::LaunchFuncOp launch) {
+        if (abi.valid) {
+            return;
+        }
+        abi.valid = true;
+        abi.kinds.reserve(launch.getKernelOperands().size());
+        abi.arg_indices.reserve(launch.getKernelOperands().size());
+        for (mlir::Value operand : launch.getKernelOperands()) {
+            if (mlir::isa<mlir::MemRefType>(operand.getType())) {
+                abi.kinds.push_back(1);
+                int32_t arg_idx = -1;
+                if (auto barg = mlir::dyn_cast<mlir::BlockArgument>(operand)) {
+                    arg_idx = static_cast<int32_t>(barg.getArgNumber());
+                }
+                abi.arg_indices.push_back(arg_idx);
+                continue;
+            }
+            abi.kinds.push_back(0);
+            abi.arg_indices.push_back(-1);
+            auto value = eval_launch_scalar_value(operand);
+            abi.scalar_values.push_back(value.value_or(0));
+            abi.scalar_known.push_back(value.has_value() ? 1 : 0);
         }
     });
-    return func;
+    return abi;
 }
 
-size_t count_scalar_inputs(mlir::func::FuncOp func) {
-    if (!func) {
-        return 0;
+uint64_t tensor_elements(const ov::Shape& shape) {
+    uint64_t total = 1;
+    for (const auto dim : shape) {
+        total *= static_cast<uint64_t>(dim);
     }
-    size_t scalar_inputs = 0;
-    auto ftype = func.getFunctionType();
-    for (auto type : ftype.getInputs()) {
-        if (!mlir::isa<mlir::ShapedType>(type)) {
-            ++scalar_inputs;
-        }
-    }
-    return scalar_inputs;
+    return total;
 }
 
-size_t infer_extra_inputs_for_mapping(size_t buffer_inputs,
-                                      size_t node_inputs,
-                                      size_t extra_inputs) {
-    if (buffer_inputs <= node_inputs) {
-        return 0;
+std::string unary_chunk_key(const std::string& type) {
+    if (type == "Swish") {
+        return "swish";
     }
-    const size_t inferred = buffer_inputs - node_inputs;
-    return std::min(inferred, extra_inputs);
+    if (type == "Sigmoid") {
+        return "sigmoid";
+    }
+    if (type == "Relu") {
+        return "relu";
+    }
+    if (type == "Tanh") {
+        return "tanh";
+    }
+    return {};
 }
 
-std::vector<int32_t> extract_kernel_scalar_args(mlir::ModuleOp module) {
-    std::vector<int32_t> scalars;
-    if (!module) {
-        return scalars;
+std::string binary_chunk_key(const std::string& type) {
+    if (type == "Add") {
+        return "add";
     }
-    if (auto attr = module->getAttr("gfx.kernel_scalar_args")) {
-        if (auto attrs = mlir::dyn_cast<mlir::ArrayAttr>(attr)) {
-            scalars.reserve(attrs.size());
-            for (auto attr_val : attrs) {
-                if (auto iattr = mlir::dyn_cast<mlir::IntegerAttr>(attr_val)) {
-                    scalars.push_back(static_cast<int32_t>(iattr.getInt()));
-                }
-            }
-            return scalars;
-        }
-        if (auto dense = mlir::dyn_cast<mlir::DenseI32ArrayAttr>(attr)) {
-            auto vals = dense.asArrayRef();
-            scalars.assign(vals.begin(), vals.end());
-            return scalars;
-        }
-        if (auto dense = mlir::dyn_cast<mlir::DenseIntElementsAttr>(attr)) {
-            scalars.reserve(dense.getNumElements());
-            for (auto v : dense.getValues<int32_t>()) {
-                scalars.push_back(v);
-            }
-            return scalars;
-        }
+    if (type == "Subtract") {
+        return "sub";
     }
-    return scalars;
-}
-
-std::vector<int32_t> extract_kernel_scalar_values(mlir::ModuleOp module) {
-    if (!module) {
-        return {};
+    if (type == "Multiply") {
+        return "mul";
     }
-    if (auto attr = module->getAttr("gfx.kernel_scalar_values")) {
-        if (auto attrs = mlir::dyn_cast<mlir::ArrayAttr>(attr)) {
-            std::vector<int32_t> values;
-            values.reserve(attrs.size());
-            for (auto attr_val : attrs) {
-                if (auto iattr = mlir::dyn_cast<mlir::IntegerAttr>(attr_val)) {
-                    values.push_back(static_cast<int32_t>(iattr.getInt()));
-                }
-            }
-            return values;
-        }
-        if (auto dense = mlir::dyn_cast<mlir::DenseI32ArrayAttr>(attr)) {
-            auto vals = dense.asArrayRef();
-            return std::vector<int32_t>(vals.begin(), vals.end());
-        }
-        if (auto dense = mlir::dyn_cast<mlir::DenseIntElementsAttr>(attr)) {
-            std::vector<int32_t> values;
-            values.reserve(dense.getNumElements());
-            for (auto v : dense.getValues<int32_t>()) {
-                values.push_back(v);
-            }
-            return values;
-        }
+    if (type == "Divide") {
+        return "div";
     }
-    return extract_kernel_scalar_args(module);
-}
-
-std::vector<int32_t> extract_kernel_operand_kinds(mlir::ModuleOp module) {
-    std::vector<int32_t> kinds;
-    if (!module) {
-        return kinds;
-    }
-    if (auto attr = module->getAttr("gfx.kernel_operand_kinds")) {
-        if (auto attrs = mlir::dyn_cast<mlir::ArrayAttr>(attr)) {
-            kinds.reserve(attrs.size());
-            for (auto attr_val : attrs) {
-                if (auto iattr = mlir::dyn_cast<mlir::IntegerAttr>(attr_val)) {
-                    kinds.push_back(static_cast<int32_t>(iattr.getInt()));
-                }
-            }
-            return kinds;
-        }
-        if (auto dense = mlir::dyn_cast<mlir::DenseI32ArrayAttr>(attr)) {
-            auto vals = dense.asArrayRef();
-            kinds.assign(vals.begin(), vals.end());
-            return kinds;
-        }
-        if (auto dense = mlir::dyn_cast<mlir::DenseIntElementsAttr>(attr)) {
-            kinds.reserve(dense.getNumElements());
-            for (auto v : dense.getValues<int32_t>()) {
-                kinds.push_back(v);
-            }
-            return kinds;
-        }
-    }
-    return kinds;
-}
-
-std::vector<int32_t> extract_kernel_operand_arg_indices(mlir::ModuleOp module) {
-    std::vector<int32_t> indices;
-    if (!module) {
-        return indices;
-    }
-    if (auto attr = module->getAttr("gfx.kernel_operand_arg_indices")) {
-        if (auto attrs = mlir::dyn_cast<mlir::ArrayAttr>(attr)) {
-            indices.reserve(attrs.size());
-            for (auto attr_val : attrs) {
-                if (auto iattr = mlir::dyn_cast<mlir::IntegerAttr>(attr_val)) {
-                    indices.push_back(static_cast<int32_t>(iattr.getInt()));
-                }
-            }
-            return indices;
-        }
-        if (auto dense = mlir::dyn_cast<mlir::DenseI32ArrayAttr>(attr)) {
-            auto vals = dense.asArrayRef();
-            indices.assign(vals.begin(), vals.end());
-            return indices;
-        }
-        if (auto dense = mlir::dyn_cast<mlir::DenseIntElementsAttr>(attr)) {
-            indices.reserve(dense.getNumElements());
-            for (auto v : dense.getValues<int32_t>()) {
-                indices.push_back(v);
-            }
-            return indices;
-        }
-    }
-    return indices;
+    return {};
 }
 
 }  // namespace
 
 VulkanStage::VulkanStage(const std::shared_ptr<const ov::Node>& node)
-    : m_node(node),
-      m_name(node ? node->get_friendly_name() : std::string("vulkan_stage")),
-      m_type(node ? node->get_type_name() : std::string("Unknown")) {
-    if (node && node->get_output_partial_shape(0).is_static()) {
-        m_output_shape = node->get_output_shape(0);
-    }
-    if (m_type == "Reshape" || m_type == "Squeeze" || m_type == "Unsqueeze") {
-        m_is_view_op = true;
-    }
-}
+    : MlirStage(node) {}
 
 VulkanStage::~VulkanStage() = default;
 
-VulkanStage::ConstBufferSet::~ConstBufferSet() {
-    for (auto& tensor : buffers) {
-        if (tensor.buf.valid() && tensor.buf.owned) {
-            vulkan_free_buffer(tensor.buf);
-        }
-    }
-}
-
 void VulkanStage::init(GpuBufferManager* buffer_manager) {
-    m_buffer_manager = buffer_manager;
+    MlirStage::init(buffer_manager);
 }
 
 void VulkanStage::compile(GpuBufferManager* buffer_manager) {
-    mlir::MLIRContext ctx;
-    if (m_is_view_op) {
-        return;
-    }
-    if (m_kernel) {
-        return;
-    }
-    if (!m_buffer_manager) {
-        m_buffer_manager = buffer_manager;
-    }
-    if (m_node) {
-        if (gfx_log_debug_enabled() && m_type == "MatMul") {
-            if (auto mm = std::dynamic_pointer_cast<const ov::op::v0::MatMul>(m_node)) {
-                std::ostringstream meta;
-                meta << "MatMul ta=" << mm->get_transpose_a()
-                     << " tb=" << mm->get_transpose_b()
-                     << " A=" << mm->get_input_partial_shape(0)
-                     << " B=" << mm->get_input_partial_shape(1);
-                GFX_LOG_DEBUG("VulkanConst", meta.str());
-            }
-        }
-        const size_t in_count = m_node->get_input_size();
-        if (!m_const_buffers) {
-            m_const_buffers = std::make_shared<ConstBufferSet>();
-        }
-        if (m_const_buffers->buffers.size() < in_count) {
-            m_const_buffers->buffers.resize(in_count);
-            m_const_buffers->present.assign(in_count, false);
-        }
-        OPENVINO_ASSERT(m_buffer_manager,
-                        "GFX Vulkan: const buffer manager is required for constants (stage ",
-                        m_name,
-                        ")");
-        OPENVINO_ASSERT(m_buffer_manager->supports_const_cache(),
-                        "GFX Vulkan: const cache must be supported for stage ",
-                        m_name);
-        const bool use_const_cache = true;
-        for (size_t i = 0; i < in_count; ++i) {
-            auto c = std::dynamic_pointer_cast<const ov::op::v0::Constant>(m_node->get_input_node_shared_ptr(i));
-            if (!c) {
-                continue;
-            }
-            if (m_const_buffers->present[i] && m_const_buffers->buffers[i].buf.valid()) {
-                continue;
-            }
-            const size_t bytes = c->get_byte_size();
-            const auto et = c->get_element_type();
-            if (gfx_log_debug_enabled() && c->get_element_type() == ov::element::f32 && bytes >= sizeof(float)) {
-                const float* vals = static_cast<const float*>(c->get_data_ptr());
-                const size_t count = bytes / sizeof(float);
-                std::ostringstream oss;
-                oss << "const[" << i << "] ";
-                const size_t dump_n = std::min<size_t>(count, 6);
-                for (size_t vi = 0; vi < dump_n; ++vi) {
-                    if (vi) {
-                        oss << ", ";
-                    }
-                    oss << vals[vi];
-                }
-                GFX_LOG_DEBUG("VulkanConst", oss.str());
-            }
-            if (use_const_cache && bytes) {
-                const uint64_t hash = gfx_hash_bytes(c->get_data_ptr(), bytes);
-                std::ostringstream key;
-                key << m_name
-                    << "/const/"
-                    << i
-                    << "/"
-                    << et.get_type_name()
-                    << "/"
-                    << bytes
-                    << "/"
-                    << hash;
-                GpuBuffer buf = m_buffer_manager->wrap_const(key.str(), c->get_data_ptr(), bytes, et);
-                OPENVINO_ASSERT(buf.valid(),
-                                "GFX Vulkan: failed to wrap const buffer for stage ",
-                                m_name);
-                buf.owned = false;
-                m_const_buffers->buffers[i].buf = buf;
-            }
-            m_const_buffers->buffers[i].shape = c->get_shape();
-            m_const_buffers->buffers[i].expected_type = et;
-            m_const_buffers->present[i] = true;
-        }
-    }
-    m_kernel_extra_inputs.clear();
-    ov::element::Type out_et = ov::element::dynamic;
-    if (m_node) {
-        out_et = m_node->get_output_element_type(0);
-    }
-    if (m_has_bias) {
-        const size_t count = m_bias_params.values.size();
-        if (count) {
-            ov::element::Type bias_et = out_et == ov::element::dynamic ? m_bias_params.element_type : out_et;
-            if (bias_et == ov::element::dynamic) {
-                bias_et = ov::element::f32;
-            }
-            const std::string key = m_name + "/bias";
-            GpuBuffer buf;
-            if (bias_et == ov::element::f16) {
-                m_bias_f16.resize(count);
-                for (size_t i = 0; i < count; ++i) {
-                    m_bias_f16[i] = ov::float16(m_bias_params.values[i]);
-                }
-                buf = m_buffer_manager->wrap_const(key,
-                                                   m_bias_f16.data(),
-                                                   m_bias_f16.size() * sizeof(ov::float16),
-                                                   bias_et);
-            } else {
-                buf = m_buffer_manager->wrap_const(key,
-                                                   m_bias_params.values.data(),
-                                                   m_bias_params.values.size() * sizeof(float),
-                                                   bias_et);
-            }
-            OPENVINO_ASSERT(buf.valid(),
-                            "GFX Vulkan: failed to wrap bias buffer for stage ",
-                            m_name);
-            buf.owned = false;
-            GpuTensor tensor;
-            tensor.buf = buf;
-            tensor.expected_type = bias_et;
-            const bool conv_like = (m_type == "Convolution" || m_type == "GroupConvolution");
-            if (conv_like) {
-                tensor.shape = ov::Shape{m_bias_params.values.size()};
-            } else {
-                size_t out_rank = m_bias_params.shape.size();
-                if (m_node) {
-                    const auto& pshape = m_node->get_output_partial_shape(0);
-                    if (pshape.rank().is_static()) {
-                        out_rank = static_cast<size_t>(pshape.rank().get_length());
-                    }
-                }
-                std::vector<int64_t> aligned_shape(out_rank, 1);
-                if (out_rank >= m_bias_params.shape.size()) {
-                    const size_t offset = out_rank - m_bias_params.shape.size();
-                    for (size_t i = 0; i < m_bias_params.shape.size(); ++i) {
-                        aligned_shape[offset + i] = m_bias_params.shape[i];
-                    }
-                }
-                ov::Shape bias_shape;
-                bias_shape.reserve(aligned_shape.size());
-                for (auto dim : aligned_shape) {
-                    bias_shape.push_back(static_cast<size_t>(dim));
-                }
-                tensor.shape = std::move(bias_shape);
-            }
-            m_kernel_extra_inputs.push_back(std::move(tensor));
-        }
-    }
-    if (m_has_bn && !m_bn_params.empty()) {
-        const size_t channels = m_bn_params.gamma.size();
-        if (channels &&
-            m_bn_params.beta.size() == channels &&
-            m_bn_params.mean.size() == channels &&
-            m_bn_params.var.size() == channels) {
-            ov::element::Type bn_et = out_et == ov::element::dynamic ? ov::element::f32 : out_et;
-            std::vector<float> scale_vals(channels);
-            std::vector<float> bias_vals(channels);
-            for (size_t c = 0; c < channels; ++c) {
-                const float gamma = m_bn_params.gamma[c];
-                const float beta = m_bn_params.beta[c];
-                const float mean = m_bn_params.mean[c];
-                const float var = m_bn_params.var[c];
-                const float inv_std = 1.0f / std::sqrt(var + m_bn_params.epsilon);
-                const float scale = gamma * inv_std;
-                const float bias = beta - mean * scale;
-                scale_vals[c] = scale;
-                bias_vals[c] = bias;
-            }
-            auto wrap_bn = [&](const std::string& suffix,
-                               const std::vector<float>& vals) -> GpuTensor {
-                GpuTensor tensor;
-                const std::string key = m_name + "/" + suffix;
-                GpuBuffer buf;
-                if (bn_et == ov::element::f16) {
-                    std::vector<ov::float16> tmp(vals.size());
-                    for (size_t i = 0; i < vals.size(); ++i) {
-                        tmp[i] = ov::float16(vals[i]);
-                    }
-                    buf = m_buffer_manager->wrap_const(key,
-                                                       tmp.data(),
-                                                       tmp.size() * sizeof(ov::float16),
-                                                       bn_et);
-                } else {
-                    buf = m_buffer_manager->wrap_const(key,
-                                                       vals.data(),
-                                                       vals.size() * sizeof(float),
-                                                       bn_et);
-                }
-                OPENVINO_ASSERT(buf.valid(),
-                                "GFX Vulkan: failed to wrap batchnorm buffer for stage ",
-                                m_name);
-                buf.owned = false;
-                tensor.buf = buf;
-                tensor.expected_type = bn_et;
-                tensor.shape = ov::Shape{channels};
-                return tensor;
-            };
-            m_kernel_extra_inputs.push_back(wrap_bn("bn_scale", scale_vals));
-            m_kernel_extra_inputs.push_back(wrap_bn("bn_bias", bias_vals));
-        }
-    }
-    if (m_type == "Softmax" || m_type == "LogSoftmax" ||
-        m_type == "Split" || m_type == "VariadicSplit") {
-        return;
-    }
-    MlirKernelPlanBuilder plan_builder;
-    KernelSpec spec(m_node, 0);
-    KernelPlan plan = plan_builder.build_plan(spec, ctx);
-    auto module = plan.module();
-    auto set_parallel_pref = [&](mlir::ModuleOp mod) {
-        if (!mod) {
-            return;
-        }
-        bool conv2d = false;
-        if (m_node && (m_type == "Convolution" || m_type == "GroupConvolution")) {
-            auto in_shape = m_node->get_input_partial_shape(0);
-            if (in_shape.rank().is_static() && in_shape.rank().get_length() == 4) {
-                conv2d = true;
-            }
-        }
-        bool prefer_parallel = conv2d || (m_type == "MatMul");
-        mod->setAttr("gfx.prefer_parallel",
-                     mlir::BoolAttr::get(mod.getContext(), prefer_parallel));
-    };
-    set_parallel_pref(module);
-    if (module) {
-        if (m_has_bn) {
-            const bool applied = apply_fused_batchnorm(module, m_bn_params);
-            OPENVINO_ASSERT(applied, "GFX Vulkan: failed to apply fused batchnorm for stage ", m_name);
-        }
-        if (m_has_bias) {
-            const bool applied = apply_fused_bias(module, m_bias_params);
-            OPENVINO_ASSERT(applied, "GFX Vulkan: failed to apply fused bias for stage ", m_name);
-        }
-        if (m_has_activation) {
-            const bool conv_like = (m_type == "Convolution" || m_type == "GroupConvolution");
-            if (!conv_like) {
-                module->setAttr("gfx.post_activation_only",
-                                mlir::BoolAttr::get(module.getContext(), true));
-            }
-            const bool applied = apply_fused_activation(module, m_activation, m_activation_alpha);
-            OPENVINO_ASSERT(applied, "GFX Vulkan: failed to apply fused activation for stage ", m_name);
-        }
-    }
-    std::string entry = plan.entry_point();
-    if (module && entry.empty()) {
-        entry = find_entry_point(module);
-    }
-    if (entry.empty()) {
-        entry = "gfx_kernel";
-    }
-    const auto signature = infer_kernel_signature(module, entry);
-    size_t func_inputs = signature.inputs;
-    size_t func_results = signature.results;
-    const auto func = resolve_entry_func(module, entry);
-    const size_t scalar_inputs = count_scalar_inputs(func);
-    size_t output_args = 0;
-    if (signature.results == 0 && m_node) {
-        output_args = m_node->get_output_size();
-    }
-    size_t buffer_inputs = func_inputs;
-    if (scalar_inputs <= buffer_inputs) {
-        buffer_inputs -= scalar_inputs;
-    }
-    if (output_args <= buffer_inputs) {
-        buffer_inputs -= output_args;
-    }
-    m_kernel_input_arg_count = buffer_inputs;
-    const size_t node_inputs = m_node ? m_node->get_input_size() : 0;
-    const size_t extra_inputs_for_mapping =
-        infer_extra_inputs_for_mapping(buffer_inputs, node_inputs, m_kernel_extra_inputs.size());
-    auto mapping = build_kernel_inputs(m_node,
-                                       buffer_inputs,
-                                       m_name.c_str(),
-                                       extra_inputs_for_mapping);
-    func_inputs = mapping.func_inputs;
-    m_kernel_inputs = std::move(mapping.kernel_inputs);
-    if (gfx_log_debug_enabled()) {
-        GFX_LOG_DEBUG("VulkanExec",
-                      "Kernel signature: entry=" << entry
-                                                 << " func_inputs=" << signature.inputs
-                                                 << " func_results=" << signature.results
-                                                 << " scalar_inputs=" << scalar_inputs
-                                                 << " output_args=" << output_args
-                                                 << " buffer_inputs=" << buffer_inputs
-                                                 << " extra_inputs=" << m_kernel_extra_inputs.size()
-                                                 << " extra_inputs_map=" << extra_inputs_for_mapping
-                                                 << " kernel_inputs=" << m_kernel_inputs.size()
-                                                 << " node_inputs=" << node_inputs);
-    }
-    if (m_node && func_results == 0) {
-        func_results = m_node->get_output_size();
-    }
-    const uint32_t arg_count =
-        signature.total() ? signature.total() : static_cast<uint32_t>(func_inputs + func_results);
-    KernelPlan plan_with_count(module, entry, arg_count);
-    KernelSource src = plan_with_count.to_source();
+    MlirStage::compile(buffer_manager);
+}
 
-    VulkanCodegenBackend backend;
-    std::string log;
-    try {
-        m_kernel = backend.compile(src, &log);
-    } catch (const std::exception& e) {
-        OPENVINO_THROW("GFX Vulkan: failed to compile stage ",
-                       m_name,
-                       " (",
-                       m_type,
-                       "): ",
-                       e.what());
+void VulkanStage::execute(GpuCommandBufferHandle command_buffer) {
+    // Keep Split on a compact per-output Vulkan kernel path. The generic
+    // tensor-result lowering is correct on Metal but still unstable on
+    // mobile Vulkan drivers.
+    if (m_type == "Split" || m_type == "VariadicSplit") {
+        execute_split_chunked(command_buffer);
+        return;
     }
-    OPENVINO_ASSERT(m_kernel,
-                    "GFX Vulkan: failed to compile stage ",
-                    m_name,
-                    " (",
-                    m_type,
-                    "): ",
-                    log);
-    if (module) {
-        if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.parallel_dispatch")) {
-            m_parallel_dispatch = attr.getValue();
-        } else {
-            m_parallel_dispatch = false;
+    if (m_type == "Concat") {
+        execute_concat_chunked(command_buffer);
+        return;
+    }
+    if (should_use_softmax_chunked()) {
+        execute_softmax_chunked(command_buffer);
+        return;
+    }
+    if (should_use_conv2d_chunked()) {
+        execute_conv2d_chunked(command_buffer);
+        return;
+    }
+    if (gfx_log_debug_enabled() && (m_type == "Add" || m_type == "Swish" || m_type == "Multiply" || m_type == "Sigmoid")) {
+        GpuTensor* output = !m_outputs.empty() ? m_outputs.front() : m_output;
+        const ov::Shape& dispatch_shape = !m_output_shape.empty() ? m_output_shape : (output ? output->shape : ov::Shape{});
+        const auto elem_type = resolve_stage_element_type(m_node, output);
+        gfx_log_debug("VulkanExec") << "Chunked candidates: type=" << m_type
+                                    << " unary=" << (should_use_unary_chunked() ? "yes" : "no")
+                                    << " binary=" << (should_use_binary_chunked() ? "yes" : "no")
+                                    << " inputs=" << m_inputs.size()
+                                    << " extras=" << m_kernel_extra_inputs.size()
+                                    << " out_rank=" << dispatch_shape.size()
+                                    << " out_elems=" << (dispatch_shape.empty() ? 0 : tensor_elements(dispatch_shape))
+                                    << " elem_type=" << elem_type;
+    }
+    if (should_use_binary_chunked()) {
+        execute_binary_chunked(command_buffer);
+        return;
+    }
+    if (should_use_unary_chunked()) {
+        execute_unary_chunked(command_buffer);
+        return;
+    }
+    MlirStage::execute(command_buffer);
+}
+
+void VulkanStage::enable_profiling(bool enable) {
+    MlirStage::enable_profiling(enable);
+}
+
+void VulkanStage::set_profiler(void* profiler,
+                               uint32_t node_id,
+                               const std::string& node_name,
+                               const std::string& node_type) {
+    MlirStage::set_profiler(profiler, node_id, node_name, node_type);
+}
+
+void VulkanStage::set_inputs(const std::vector<GpuTensor*>& inputs) {
+    MlirStage::set_inputs(inputs);
+}
+
+void VulkanStage::set_output(GpuTensor* output) {
+    MlirStage::set_output(output);
+}
+
+void VulkanStage::set_outputs(const std::vector<std::unique_ptr<GpuTensor>>& outputs) {
+    MlirStage::set_outputs(outputs);
+}
+
+std::unique_ptr<GpuStage> VulkanStage::clone() const {
+    auto stage = std::make_unique<VulkanStage>(m_node);
+    clone_into(*stage);
+    return stage;
+}
+
+bool VulkanStage::fuse_activation(ActivationKind kind, float alpha) {
+    return MlirStage::fuse_activation(kind, alpha);
+}
+
+bool VulkanStage::fuse_batchnorm(const BatchNormParams& params) {
+    return MlirStage::fuse_batchnorm(params);
+}
+
+bool VulkanStage::fuse_bias(const BiasParams& params) {
+    return MlirStage::fuse_bias(params);
+}
+
+bool VulkanStage::should_use_unary_chunked() const {
+    if (unary_chunk_key(m_type).empty()) {
+        return false;
+    }
+    auto resolve_input = [&](size_t input_idx) -> GpuTensor* {
+        GpuTensor* tensor = input_idx < m_inputs.size() ? m_inputs[input_idx] : nullptr;
+        if (tensor && tensor->buf.valid()) {
+            return tensor;
         }
-        m_parallel_loop_dims = 0;
-        if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.parallel_loop_dims")) {
-            m_parallel_loop_dims = static_cast<size_t>(attr.getInt());
+        if (m_const_buffers &&
+            input_idx < m_const_buffers->buffers.size() &&
+            input_idx < m_const_buffers->present.size() &&
+            m_const_buffers->present[input_idx] &&
+            m_const_buffers->buffers[input_idx].buf.valid()) {
+            return &m_const_buffers->buffers[input_idx];
         }
-        m_dispatch_tile_h = 1;
-        m_dispatch_tile_w = 1;
-        m_dispatch_threads_h = 1;
-        m_dispatch_threads_w = 1;
-        if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_tile_h")) {
-            m_dispatch_tile_h = static_cast<uint32_t>(attr.getInt());
+        return nullptr;
+    };
+    GpuTensor* output = !m_outputs.empty() ? m_outputs.front() : m_output;
+    GpuTensor* input0 = resolve_input(0);
+    if (!input0 || !output) {
+        return false;
+    }
+    const ov::Shape& dispatch_shape = !m_output_shape.empty() ? m_output_shape : input0->shape;
+    if (dispatch_shape.empty()) {
+        return false;
+    }
+    const ov::element::Type et = resolve_stage_element_type(m_node, output);
+    return is_supported_linear_elem_type(et) &&
+           tensor_elements(dispatch_shape) >= kLargeLinearChunkElems;
+}
+
+bool VulkanStage::should_use_softmax_chunked() const {
+    if (m_type != "Softmax" && m_type != "LogSoftmax") {
+        return false;
+    }
+    GpuTensor* output = !m_outputs.empty() ? m_outputs.front() : m_output;
+    const ov::Shape& dispatch_shape =
+        !m_output_shape.empty() ? m_output_shape : (output ? output->shape : ov::Shape{});
+    if (dispatch_shape.empty()) {
+        return false;
+    }
+    const ov::element::Type et = resolve_stage_element_type(m_node, output);
+    return is_supported_linear_elem_type(et) &&
+           tensor_elements(dispatch_shape) >= kLargeLinearChunkElems;
+}
+
+bool VulkanStage::should_use_conv2d_chunked() const {
+    if (m_type != "Convolution" || m_has_bias || m_has_activation || m_has_bn) {
+        return false;
+    }
+    auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
+    if (!conv || conv->get_input_size() != 2 || conv->get_output_size() != 1) {
+        return false;
+    }
+    const auto& out_shape = conv->get_output_shape(0);
+    if (out_shape.size() != 4) {
+        return false;
+    }
+    const auto elem_type = resolve_stage_element_type(m_node, !m_outputs.empty() ? m_outputs.front() : m_output);
+    if (!is_supported_linear_elem_type(elem_type)) {
+        return false;
+    }
+    const uint64_t out_elems = tensor_elements(out_shape);
+    const uint64_t macs = out_elems *
+                          static_cast<uint64_t>(conv->get_input_shape(0).at(1)) *
+                          static_cast<uint64_t>(conv->get_input_shape(1).at(2)) *
+                          static_cast<uint64_t>(conv->get_input_shape(1).at(3));
+    return out_elems >= kLargeLinearChunkElems || macs >= (1ull << 20);
+}
+
+bool VulkanStage::should_use_binary_chunked() const {
+    if (binary_chunk_key(m_type).empty()) {
+        return false;
+    }
+    auto resolve_input = [&](size_t input_idx) -> GpuTensor* {
+        GpuTensor* tensor = input_idx < m_inputs.size() ? m_inputs[input_idx] : nullptr;
+        if (tensor && tensor->buf.valid()) {
+            return tensor;
         }
-        if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_tile_w")) {
-            m_dispatch_tile_w = static_cast<uint32_t>(attr.getInt());
+        if (m_const_buffers &&
+            input_idx < m_const_buffers->buffers.size() &&
+            input_idx < m_const_buffers->present.size() &&
+            m_const_buffers->present[input_idx] &&
+            m_const_buffers->buffers[input_idx].buf.valid()) {
+            return &m_const_buffers->buffers[input_idx];
         }
-        if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_h")) {
-            m_dispatch_threads_h = static_cast<uint32_t>(attr.getInt());
+        return nullptr;
+    };
+    GpuTensor* output = !m_outputs.empty() ? m_outputs.front() : m_output;
+    GpuTensor* input0 = resolve_input(0);
+    GpuTensor* input1 = resolve_input(1);
+    if (!input0 || !input1 || !output) {
+        return false;
+    }
+    const ov::Shape& dispatch_shape = !m_output_shape.empty() ? m_output_shape : output->shape;
+    if (dispatch_shape.empty()) {
+        return false;
+    }
+    if (m_kernel_extra_inputs.size() < 3) {
+        return false;
+    }
+    const ov::element::Type et = resolve_stage_element_type(m_node, output);
+    return is_supported_linear_elem_type(et) &&
+           tensor_elements(dispatch_shape) >= kLargeLinearChunkElems;
+}
+
+std::shared_ptr<ICompiledKernel> VulkanStage::compile_kernel(const KernelSource& source,
+                                                             std::string* log) {
+    VulkanCodegenBackend backend;
+    return backend.compile(source, log);
+}
+
+KernelExecutionHooks* VulkanStage::prepare_profiling(ProfileState& state,
+                                                     KernelExecutionHooks& hooks) {
+    auto* vk_profiler = static_cast<VulkanProfiler*>(profiler_handle());
+    if (!vk_profiler) {
+        return nullptr;
+    }
+    vk_profiler->begin_node(profile_node_id(),
+                            profile_node_name().c_str(),
+                            profile_node_type().c_str(),
+                            "GFX");
+    const auto sample = vk_profiler->reserve_samples();
+    hooks.on_begin = [vk_profiler, sample](GpuCommandEncoderHandle enc) {
+        vk_profiler->write_timestamp(reinterpret_cast<VkCommandBuffer>(enc), sample.begin);
+    };
+    hooks.on_end = [vk_profiler, sample](GpuCommandEncoderHandle enc) {
+        vk_profiler->write_timestamp(reinterpret_cast<VkCommandBuffer>(enc), sample.end);
+    };
+    hooks.on_complete = [vk_profiler, sample, node_id = profile_node_id()]() {
+        vk_profiler->end_node(node_id, sample);
+    };
+    (void)state;
+    return &hooks;
+}
+
+void VulkanStage::finalize_profiling(const ProfileState& state) {
+    (void)state;
+}
+
+mlir::ModuleOp VulkanStage::build_linear_unary_module(mlir::MLIRContext& ctx,
+                                                      const ov::element::Type& et,
+                                                      const std::string& op_key) {
+    using namespace mlir;
+    ctx.loadDialect<func::FuncDialect,
+                    scf::SCFDialect,
+                    memref::MemRefDialect,
+                    arith::ArithDialect,
+                    math::MathDialect>();
+
+    Type elem_ty;
+    switch (et) {
+        case ov::element::f16: elem_ty = Float16Type::get(&ctx); break;
+        case ov::element::f32: elem_ty = Float32Type::get(&ctx); break;
+        default: OPENVINO_THROW("GFX Vulkan unary chunked: unsupported element type ", et);
+    }
+    Type compute_ty = elem_ty;
+
+    auto mod = ModuleOp::create(UnknownLoc::get(&ctx));
+    OpBuilder b(mod.getBody(), mod.getBody()->begin());
+    mod->setAttr("gfx.dispatch_threads_h", IntegerAttr::get(IntegerType::get(&ctx, 32), 1));
+    mod->setAttr("gfx.dispatch_threads_w", IntegerAttr::get(IntegerType::get(&ctx, 32), 1));
+    mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
+    mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
+    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 3));
+    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
+        SmallVector<Attribute, 8> attrs;
+        attrs.reserve(values.size());
+        for (int32_t value : values) {
+            attrs.push_back(b.getI32IntegerAttr(value));
         }
-        if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_w")) {
-            m_dispatch_threads_w = static_cast<uint32_t>(attr.getInt());
+        return b.getArrayAttr(attrs);
+    };
+    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1}));
+    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2}));
+    auto io_ty = MemRefType::get({ShapedType::kDynamic}, elem_ty);
+    auto param_ty = MemRefType::get({2}, IntegerType::get(&ctx, 32));
+    auto fn = b.create<func::FuncOp>(UnknownLoc::get(&ctx),
+                                     "linear_unary",
+                                     b.getFunctionType(TypeRange{io_ty, param_ty, io_ty}, {}));
+    auto* entry = fn.addEntryBlock();
+    OpBuilder body(entry, entry->begin());
+    auto loc = fn.getLoc();
+    auto c0 = body.create<arith::ConstantIndexOp>(loc, 0);
+    auto c1 = body.create<arith::ConstantIndexOp>(loc, 1);
+    auto load_param = [&](int idx) -> Value {
+        auto idx_val = body.create<arith::ConstantIndexOp>(loc, idx);
+        auto v_i32 = body.create<memref::LoadOp>(loc, fn.getArgument(1), ValueRange{idx_val});
+        return body.create<arith::IndexCastOp>(loc, body.getIndexType(), v_i32);
+    };
+    auto cast_to_compute = [&](OpBuilder& builder, Value value) -> Value {
+        if (value.getType() == compute_ty) {
+            return value;
         }
-        if (m_dispatch_threads_h == 1) {
-            m_dispatch_threads_h = m_dispatch_tile_h;
+        return builder.create<arith::ExtFOp>(loc, compute_ty, value);
+    };
+    auto cast_to_output = [&](OpBuilder& builder, Value value) -> Value {
+        if (value.getType() == elem_ty) {
+            return value;
         }
-        if (m_dispatch_threads_w == 1) {
-            m_dispatch_threads_w = m_dispatch_tile_w;
+        return builder.create<arith::TruncFOp>(loc, elem_ty, value);
+    };
+    auto emit_unary = [&](OpBuilder& builder, Value x) -> Value {
+        auto xc = cast_to_compute(builder, x);
+        if (op_key == "swish") {
+            auto one = builder.create<arith::ConstantOp>(loc, FloatAttr::get(compute_ty, 1.0));
+            auto zero = builder.create<arith::ConstantOp>(loc, FloatAttr::get(compute_ty, 0.0));
+            auto cond = builder.create<arith::CmpFOp>(loc,
+                                                      arith::CmpFPredicate::OGE,
+                                                      xc,
+                                                      zero);
+            auto neg = builder.create<arith::NegFOp>(loc, xc);
+            auto exp_neg = builder.create<math::ExpOp>(loc, neg);
+            auto pos_denom = builder.create<arith::AddFOp>(loc, one, exp_neg);
+            auto pos = builder.create<arith::DivFOp>(loc, xc, pos_denom);
+            auto exp_pos = builder.create<math::ExpOp>(loc, xc);
+            auto neg_denom = builder.create<arith::AddFOp>(loc, one, exp_pos);
+            auto neg_num = builder.create<arith::MulFOp>(loc, xc, exp_pos);
+            auto neg_res = builder.create<arith::DivFOp>(loc, neg_num, neg_denom);
+            return cast_to_output(builder, builder.create<arith::SelectOp>(loc, cond, pos, neg_res));
         }
-        m_kernel_operand_kinds = extract_kernel_operand_kinds(module);
-        m_kernel_operand_arg_indices = extract_kernel_operand_arg_indices(module);
-        m_kernel_scalar_args = extract_kernel_scalar_values(module);
-        if (!m_kernel_operand_arg_indices.empty()) {
-            int32_t max_idx = -1;
-            for (auto idx : m_kernel_operand_arg_indices) {
-                if (idx > max_idx) {
-                    max_idx = idx;
-                }
-            }
-            if (max_idx >= 0) {
-                const size_t total_buffer_args = static_cast<size_t>(max_idx) + 1;
-                const size_t output_arg_count = m_node ? m_node->get_output_size() : 0;
-                if (output_arg_count <= total_buffer_args) {
-                    m_kernel_input_arg_count = total_buffer_args - output_arg_count;
-                }
-            }
+        if (op_key == "sigmoid") {
+            auto neg = builder.create<arith::NegFOp>(loc, xc);
+            auto exp = builder.create<math::ExpOp>(loc, neg);
+            auto one = builder.create<arith::ConstantOp>(loc, FloatAttr::get(compute_ty, 1.0));
+            auto denom = builder.create<arith::AddFOp>(loc, one, exp);
+            return cast_to_output(builder, builder.create<arith::DivFOp>(loc, one, denom));
         }
-        if (m_kernel_operand_kinds.empty() && scalar_inputs != 0) {
-            OPENVINO_ASSERT(m_kernel_scalar_args.size() == scalar_inputs,
-                            "GFX Vulkan: kernel scalar args mismatch for ",
-                            m_name,
-                            " (expected ",
-                            scalar_inputs,
-                            ", got ",
-                            m_kernel_scalar_args.size(),
-                            ")");
+        if (op_key == "relu") {
+            auto zero = builder.create<arith::ConstantOp>(loc, FloatAttr::get(compute_ty, 0.0));
+            return cast_to_output(builder, builder.create<arith::MaximumFOp>(loc, xc, zero));
         }
-        if (gfx_log_debug_enabled() && !m_kernel_scalar_args.empty()) {
-            std::ostringstream oss;
-            oss << "Kernel scalar args: ";
-            const size_t dump_n = std::min<size_t>(m_kernel_scalar_args.size(), 8);
-            for (size_t i = 0; i < dump_n; ++i) {
-                if (i) {
-                    oss << ", ";
-                }
-                oss << m_kernel_scalar_args[i];
-            }
-            if (m_kernel_scalar_args.size() > dump_n) {
-                oss << ", ...";
-            }
-            GFX_LOG_DEBUG("VulkanExec", oss.str());
+        if (op_key == "tanh") {
+            return cast_to_output(builder, builder.create<math::TanhOp>(loc, xc));
         }
-        if (gfx_log_debug_enabled()) {
-            const bool has_kinds = module->hasAttr("gfx.kernel_operand_kinds");
-            const bool has_scalars = module->hasAttr("gfx.kernel_scalar_values");
-            GFX_LOG_DEBUG("VulkanExec",
-                          "Kernel attrs: operand_kinds=" << (has_kinds ? "yes" : "no")
-                                                         << " scalar_values=" << (has_scalars ? "yes" : "no"));
-            GFX_LOG_DEBUG("VulkanExec",
-                          "Kernel operand kinds size=" << m_kernel_operand_kinds.size());
-            if (!m_kernel_operand_arg_indices.empty()) {
-                std::ostringstream idxs;
-                idxs << "Kernel operand arg indices: ";
-                const size_t dump_n = std::min<size_t>(m_kernel_operand_arg_indices.size(), 8);
-                for (size_t i = 0; i < dump_n; ++i) {
-                    if (i) {
-                        idxs << ", ";
+        OPENVINO_THROW("GFX Vulkan unary chunked: unsupported op ", op_key);
+    };
+
+    Value offset = load_param(0);
+    Value count = load_param(1);
+    Value chunk_elems =
+        body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(kLinearChunkElemsPerDispatch));
+    auto par_out = body.create<scf::ParallelOp>(loc,
+                                                ValueRange{c0},
+                                                ValueRange{chunk_elems},
+                                                ValueRange{c1});
+    auto loop = OpBuilder::atBlockBegin(par_out.getBody());
+    Value local_idx = par_out.getInductionVars()[0];
+    auto active =
+        loop.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, local_idx, count);
+    auto active_if = loop.create<scf::IfOp>(loc, active, /*withElseRegion=*/false);
+    {
+        auto then_builder = active_if.getThenBodyBuilder();
+        Value idx = then_builder.create<arith::AddIOp>(loc, offset, local_idx);
+        Value val = then_builder.create<memref::LoadOp>(loc, fn.getArgument(0), ValueRange{idx});
+        Value out = emit_unary(then_builder, val);
+        then_builder.create<memref::StoreOp>(loc, out, fn.getArgument(2), ValueRange{idx});
+    }
+    body.setInsertionPointAfter(par_out);
+    body.create<func::ReturnOp>(loc);
+    return mod;
+}
+
+mlir::ModuleOp VulkanStage::build_conv2d_chunk_module(mlir::MLIRContext& ctx,
+                                                      const ov::element::Type& et) {
+    using namespace mlir;
+    auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
+    OPENVINO_ASSERT(conv, "GFX Vulkan conv2d chunked: node cast failed");
+    const auto& in_shape = conv->get_input_shape(0);
+    const auto& w_shape = conv->get_input_shape(1);
+    const auto& out_shape = conv->get_output_shape(0);
+
+    ctx.loadDialect<func::FuncDialect,
+                    scf::SCFDialect,
+                    memref::MemRefDialect,
+                    arith::ArithDialect,
+                    math::MathDialect>();
+
+    Type elem_ty;
+    switch (et) {
+        case ov::element::f16: elem_ty = Float16Type::get(&ctx); break;
+        case ov::element::f32: elem_ty = Float32Type::get(&ctx); break;
+        default: OPENVINO_THROW("GFX Vulkan conv2d chunked: unsupported element type ", et);
+    }
+    Type compute_ty = elem_ty;
+
+    auto mod = ModuleOp::create(UnknownLoc::get(&ctx));
+    OpBuilder b(mod.getBody(), mod.getBody()->begin());
+    mod->setAttr("gfx.dispatch_threads_h", IntegerAttr::get(IntegerType::get(&ctx, 32), 1));
+    mod->setAttr("gfx.dispatch_threads_w", IntegerAttr::get(IntegerType::get(&ctx, 32), 1));
+    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 4));
+    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
+        SmallVector<Attribute, 8> attrs;
+        attrs.reserve(values.size());
+        for (int32_t value : values) {
+            attrs.push_back(b.getI32IntegerAttr(value));
+        }
+        return b.getArrayAttr(attrs);
+    };
+    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1, 1}));
+    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2, 3}));
+    const int64_t input_elems = static_cast<int64_t>(tensor_elements(in_shape));
+    const int64_t weight_elems = static_cast<int64_t>(tensor_elements(w_shape));
+    const int64_t output_elems = static_cast<int64_t>(tensor_elements(out_shape));
+    auto input_ty = MemRefType::get({input_elems}, elem_ty);
+    auto weight_ty = MemRefType::get({weight_elems}, elem_ty);
+    auto output_ty = MemRefType::get({output_elems}, elem_ty);
+    auto param_ty = MemRefType::get({2}, IntegerType::get(&ctx, 32));
+    auto fn = b.create<func::FuncOp>(UnknownLoc::get(&ctx),
+                                     "conv2d_chunk",
+                                     b.getFunctionType(TypeRange{input_ty, weight_ty, param_ty, output_ty}, {}));
+    auto* entry = fn.addEntryBlock();
+    OpBuilder body(entry, entry->begin());
+    auto loc = fn.getLoc();
+    auto c0 = body.create<arith::ConstantIndexOp>(loc, 0);
+    auto c1 = body.create<arith::ConstantIndexOp>(loc, 1);
+    auto load_param = [&](int idx) -> Value {
+        auto idx_val = body.create<arith::ConstantIndexOp>(loc, idx);
+        auto v_i32 = body.create<memref::LoadOp>(loc, fn.getArgument(2), ValueRange{idx_val});
+        return body.create<arith::IndexCastOp>(loc, body.getIndexType(), v_i32);
+    };
+    auto cast_to_compute = [&](OpBuilder& builder, Value value) -> Value {
+        if (value.getType() == compute_ty) {
+            return value;
+        }
+        return builder.create<arith::ExtFOp>(loc, compute_ty, value);
+    };
+    auto cast_to_output = [&](OpBuilder& builder, Value value) -> Value {
+        if (value.getType() == elem_ty) {
+            return value;
+        }
+        return builder.create<arith::TruncFOp>(loc, elem_ty, value);
+    };
+
+    Value offset = load_param(0);
+    Value count = load_param(1);
+    Value c_in = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(in_shape.at(1)));
+    Value in_h = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(in_shape.at(2)));
+    Value in_w = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(in_shape.at(3)));
+    Value c_out = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(w_shape.at(0)));
+    Value k_h = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(w_shape.at(2)));
+    Value k_w = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(w_shape.at(3)));
+    Value stride_h = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(conv->get_strides().at(0)));
+    Value stride_w = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(conv->get_strides().at(1)));
+    Value dil_h = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(conv->get_dilations().at(0)));
+    Value dil_w = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(conv->get_dilations().at(1)));
+    Value pad_top = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(conv->get_pads_begin().at(0)));
+    Value pad_left = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(conv->get_pads_begin().at(1)));
+    Value out_h = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(out_shape.at(2)));
+    Value out_w = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(out_shape.at(3)));
+    auto zero = body.create<arith::ConstantOp>(loc, FloatAttr::get(compute_ty, 0.0f));
+    const auto in_channels = static_cast<int64_t>(in_shape.at(1));
+    const auto kernel_h = static_cast<int64_t>(w_shape.at(2));
+    const auto kernel_w = static_cast<int64_t>(w_shape.at(3));
+
+    Value chunk_elems =
+        body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(kConv2DChunkElemsPerDispatch));
+    auto par_out = body.create<scf::ParallelOp>(loc,
+                                                ValueRange{c0},
+                                                ValueRange{chunk_elems},
+                                                ValueRange{c1});
+    auto b_out = OpBuilder::atBlockBegin(par_out.getBody());
+    Value local_idx = par_out.getInductionVars()[0];
+    auto active =
+        b_out.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, local_idx, count);
+    auto active_if = b_out.create<scf::IfOp>(loc, active, /*withElseRegion=*/false);
+    {
+        auto then_builder = active_if.getThenBodyBuilder();
+        Value linear_idx = then_builder.create<arith::AddIOp>(loc, offset, local_idx);
+        Value rem = linear_idx;
+        Value ow = then_builder.create<arith::RemUIOp>(loc, rem, out_w);
+        rem = then_builder.create<arith::DivUIOp>(loc, rem, out_w);
+        Value oh = then_builder.create<arith::RemUIOp>(loc, rem, out_h);
+        rem = then_builder.create<arith::DivUIOp>(loc, rem, out_h);
+        Value oc = then_builder.create<arith::RemUIOp>(loc, rem, c_out);
+        Value n = then_builder.create<arith::DivUIOp>(loc, rem, c_out);
+        Value acc = zero.getResult();
+        for (int64_t ic_idx = 0; ic_idx < in_channels; ++ic_idx) {
+            Value ic = then_builder.create<arith::ConstantIndexOp>(loc, ic_idx);
+            for (int64_t kh_idx = 0; kh_idx < kernel_h; ++kh_idx) {
+                Value kh = then_builder.create<arith::ConstantIndexOp>(loc, kh_idx);
+                for (int64_t kw_idx = 0; kw_idx < kernel_w; ++kw_idx) {
+                    Value kw = then_builder.create<arith::ConstantIndexOp>(loc, kw_idx);
+
+                    Value ih = then_builder.create<arith::AddIOp>(
+                        loc,
+                        then_builder.create<arith::MulIOp>(loc, oh, stride_h),
+                        then_builder.create<arith::MulIOp>(loc, kh, dil_h));
+                    ih = then_builder.create<arith::SubIOp>(loc, ih, pad_top);
+                    Value iw = then_builder.create<arith::AddIOp>(
+                        loc,
+                        then_builder.create<arith::MulIOp>(loc, ow, stride_w),
+                        then_builder.create<arith::MulIOp>(loc, kw, dil_w));
+                    iw = then_builder.create<arith::SubIOp>(loc, iw, pad_left);
+
+                    auto ih_ge0 = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sge, ih, c0);
+                    auto ih_lt = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, ih, in_h);
+                    auto iw_ge0 = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sge, iw, c0);
+                    auto iw_lt = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, iw, in_w);
+                    auto in_bounds = then_builder.create<arith::AndIOp>(loc, ih_ge0, ih_lt);
+                    in_bounds = then_builder.create<arith::AndIOp>(loc, in_bounds, iw_ge0);
+                    in_bounds = then_builder.create<arith::AndIOp>(loc, in_bounds, iw_lt);
+
+                    auto if_in_bounds = then_builder.create<scf::IfOp>(
+                        loc, TypeRange{compute_ty}, in_bounds, /*withElseRegion=*/true);
+                    {
+                        auto then_inner = if_in_bounds.getThenBodyBuilder();
+                        Value input_offset = then_inner.create<arith::AddIOp>(
+                            loc,
+                            then_inner.create<arith::MulIOp>(
+                                loc,
+                                then_inner.create<arith::AddIOp>(
+                                    loc,
+                                    then_inner.create<arith::MulIOp>(loc, n, c_in),
+                                    ic),
+                                then_inner.create<arith::MulIOp>(loc, in_h, in_w)),
+                            then_inner.create<arith::AddIOp>(
+                                loc,
+                                then_inner.create<arith::MulIOp>(loc, ih, in_w),
+                                iw));
+                        Value weight_offset = then_inner.create<arith::AddIOp>(
+                            loc,
+                            then_inner.create<arith::MulIOp>(
+                                loc,
+                                then_inner.create<arith::AddIOp>(
+                                    loc,
+                                    then_inner.create<arith::MulIOp>(loc, oc, c_in),
+                                    ic),
+                                then_inner.create<arith::MulIOp>(loc, k_h, k_w)),
+                            then_inner.create<arith::AddIOp>(
+                                loc,
+                                then_inner.create<arith::MulIOp>(loc, kh, k_w),
+                                kw));
+                        Value input_val = then_inner.create<memref::LoadOp>(
+                            loc,
+                            fn.getArgument(0),
+                            ValueRange{input_offset});
+                        Value weight_val = then_inner.create<memref::LoadOp>(
+                            loc,
+                            fn.getArgument(1),
+                            ValueRange{weight_offset});
+                        Value prod = then_inner.create<arith::MulFOp>(
+                            loc,
+                            cast_to_compute(then_inner, input_val),
+                            cast_to_compute(then_inner, weight_val));
+                        Value sum = then_inner.create<arith::AddFOp>(loc, prod, acc);
+                        then_inner.create<scf::YieldOp>(loc, sum);
                     }
-                    idxs << m_kernel_operand_arg_indices[i];
+                    {
+                        auto else_inner = if_in_bounds.getElseBodyBuilder();
+                        else_inner.create<scf::YieldOp>(loc, acc);
+                    }
+                    acc = if_in_bounds.getResult(0);
                 }
-                if (m_kernel_operand_arg_indices.size() > dump_n) {
-                    idxs << ", ...";
-                }
-                GFX_LOG_DEBUG("VulkanExec", idxs.str());
-            }
-            if (auto attr = module->getAttr("gfx.kernel_operand_kinds")) {
-                std::string text;
-                llvm::raw_string_ostream os(text);
-                attr.print(os);
-                GFX_LOG_DEBUG("VulkanExec", "Kernel operand_kinds attr=" << os.str());
-                GFX_LOG_DEBUG("VulkanExec",
-                              "operand_kinds isa ArrayAttr="
-                                  << (llvm::isa<mlir::ArrayAttr>(attr) ? "yes" : "no")
-                                  << " DenseI32ArrayAttr="
-                                  << (llvm::isa<mlir::DenseI32ArrayAttr>(attr) ? "yes" : "no")
-                                  << " DenseIntElementsAttr="
-                                  << (llvm::isa<mlir::DenseIntElementsAttr>(attr) ? "yes" : "no"));
             }
         }
+
+        Value output_offset = then_builder.create<arith::AddIOp>(
+            loc,
+            then_builder.create<arith::MulIOp>(
+                loc,
+                then_builder.create<arith::AddIOp>(
+                    loc,
+                    then_builder.create<arith::MulIOp>(loc, n, c_out),
+                    oc),
+                then_builder.create<arith::MulIOp>(loc, out_h, out_w)),
+            then_builder.create<arith::AddIOp>(
+                loc,
+                then_builder.create<arith::MulIOp>(loc, oh, out_w),
+                ow));
+        then_builder.create<memref::StoreOp>(loc,
+                                             cast_to_output(then_builder, acc),
+                                             fn.getArgument(3),
+                                             ValueRange{output_offset});
+    }
+    body.setInsertionPointAfter(par_out);
+    body.create<func::ReturnOp>(loc);
+    return mod;
+}
+
+mlir::ModuleOp VulkanStage::build_linear_binary_module(mlir::MLIRContext& ctx,
+                                                       const ov::element::Type& et,
+                                                       const std::string& op_key,
+                                                       size_t meta_rank) {
+    using namespace mlir;
+    ctx.loadDialect<func::FuncDialect,
+                    scf::SCFDialect,
+                    memref::MemRefDialect,
+                    arith::ArithDialect,
+                    math::MathDialect>();
+
+    Type elem_ty;
+    switch (et) {
+        case ov::element::f16: elem_ty = Float16Type::get(&ctx); break;
+        case ov::element::f32: elem_ty = Float32Type::get(&ctx); break;
+        default: OPENVINO_THROW("GFX Vulkan binary chunked: unsupported element type ", et);
+    }
+    Type compute_ty = elem_ty;
+
+    auto mod = ModuleOp::create(UnknownLoc::get(&ctx));
+    OpBuilder b(mod.getBody(), mod.getBody()->begin());
+    auto io_ty = MemRefType::get({ShapedType::kDynamic}, elem_ty);
+    auto param_ty = MemRefType::get({2}, IntegerType::get(&ctx, 32));
+    OPENVINO_ASSERT(meta_rank != 0, "GFX Vulkan binary chunked: metadata rank must be positive");
+    auto meta_ty = MemRefType::get({static_cast<int64_t>(meta_rank)}, IntegerType::get(&ctx, 32));
+    SmallVector<Type, 7> arg_types{io_ty, io_ty, param_ty, meta_ty, meta_ty, meta_ty, io_ty};
+    auto fn = b.create<func::FuncOp>(UnknownLoc::get(&ctx), "linear_binary", b.getFunctionType(arg_types, {}));
+    auto* entry = fn.addEntryBlock();
+    OpBuilder body(entry, entry->begin());
+    auto loc = fn.getLoc();
+    auto c0 = body.create<arith::ConstantIndexOp>(loc, 0);
+    auto c1 = body.create<arith::ConstantIndexOp>(loc, 1);
+    auto load_param = [&](int idx) -> Value {
+        auto idx_val = body.create<arith::ConstantIndexOp>(loc, idx);
+        auto v_i32 = body.create<memref::LoadOp>(loc, fn.getArgument(2), ValueRange{idx_val});
+        return body.create<arith::IndexCastOp>(loc, body.getIndexType(), v_i32);
+    };
+    auto cast_to_compute = [&](OpBuilder& builder, Value value) -> Value {
+        if (value.getType() == compute_ty) {
+            return value;
+        }
+        return builder.create<arith::ExtFOp>(loc, compute_ty, value);
+    };
+    auto cast_to_output = [&](OpBuilder& builder, Value value) -> Value {
+        if (value.getType() == elem_ty) {
+            return value;
+        }
+        return builder.create<arith::TruncFOp>(loc, elem_ty, value);
+    };
+    auto emit_binary = [&](OpBuilder& builder, Value lhs, Value rhs) -> Value {
+        auto a = cast_to_compute(builder, lhs);
+        auto bval = cast_to_compute(builder, rhs);
+        if (op_key == "add") {
+            return cast_to_output(builder, builder.create<arith::AddFOp>(loc, a, bval));
+        }
+        if (op_key == "sub") {
+            return cast_to_output(builder, builder.create<arith::SubFOp>(loc, a, bval));
+        }
+        if (op_key == "mul") {
+            return cast_to_output(builder, builder.create<arith::MulFOp>(loc, a, bval));
+        }
+        if (op_key == "div") {
+            return cast_to_output(builder, builder.create<arith::DivFOp>(loc, a, bval));
+        }
+        OPENVINO_THROW("GFX Vulkan binary chunked: unsupported op ", op_key);
+    };
+
+    Value offset = load_param(0);
+    Value count = load_param(1);
+    Value rank = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(meta_rank));
+    auto for_op = body.create<scf::ForOp>(loc, c0, count, c1);
+    auto loop = OpBuilder::atBlockBegin(for_op.getBody());
+    Value linear_idx = loop.create<arith::AddIOp>(loc, offset, for_op.getInductionVar());
+    auto for_dims = loop.create<scf::ForOp>(loc,
+                                            c0,
+                                            rank,
+                                            c1,
+                                            ValueRange{linear_idx, c0, c0});
+    auto dim_builder = OpBuilder::atBlockBegin(for_dims.getBody());
+    Value rev_dim = dim_builder.create<arith::SubIOp>(loc, rank, c1);
+    rev_dim = dim_builder.create<arith::SubIOp>(loc, rev_dim, for_dims.getInductionVar());
+    auto load_meta = [&](Value meta, Value index) -> Value {
+        auto loaded = dim_builder.create<memref::LoadOp>(loc, meta, ValueRange{index});
+        return dim_builder.create<arith::IndexCastOp>(loc, dim_builder.getIndexType(), loaded);
+    };
+    Value dim_size = load_meta(fn.getArgument(3), rev_dim);
+    Value coord = dim_builder.create<arith::RemUIOp>(loc, for_dims.getRegionIterArgs()[0], dim_size);
+    Value next_rem = dim_builder.create<arith::DivUIOp>(loc, for_dims.getRegionIterArgs()[0], dim_size);
+    Value stride0 = load_meta(fn.getArgument(4), rev_dim);
+    Value stride1 = load_meta(fn.getArgument(5), rev_dim);
+    Value off0 = dim_builder.create<arith::AddIOp>(
+        loc,
+        for_dims.getRegionIterArgs()[1],
+        dim_builder.create<arith::MulIOp>(loc, coord, stride0));
+    Value off1 = dim_builder.create<arith::AddIOp>(
+        loc,
+        for_dims.getRegionIterArgs()[2],
+        dim_builder.create<arith::MulIOp>(loc, coord, stride1));
+    if (!for_dims.getBody()->empty() && for_dims.getBody()->back().hasTrait<OpTrait::IsTerminator>()) {
+        for_dims.getBody()->back().erase();
+    }
+    auto dim_end = OpBuilder::atBlockEnd(for_dims.getBody());
+    dim_end.create<scf::YieldOp>(loc, ValueRange{next_rem, off0, off1});
+
+    Value lhs = loop.create<memref::LoadOp>(loc, fn.getArgument(0), ValueRange{for_dims.getResult(1)});
+    Value rhs = loop.create<memref::LoadOp>(loc, fn.getArgument(1), ValueRange{for_dims.getResult(2)});
+    Value out = emit_binary(loop, lhs, rhs);
+    OpBuilder loop_end(for_op.getBody(), for_op.getBody()->getTerminator()->getIterator());
+    loop_end.create<memref::StoreOp>(loc, out, fn.getArgument(6), ValueRange{linear_idx});
+    body.setInsertionPointAfter(for_op);
+    body.create<func::ReturnOp>(loc);
+    return mod;
+}
+
+void VulkanStage::execute_unary_chunked(GpuCommandBufferHandle command_buffer) {
+    auto resolve_input = [&](size_t input_idx) -> GpuTensor* {
+        GpuTensor* tensor = input_idx < m_inputs.size() ? m_inputs[input_idx] : nullptr;
+        if (tensor && tensor->buf.valid()) {
+            return tensor;
+        }
+        if (m_const_buffers &&
+            input_idx < m_const_buffers->buffers.size() &&
+            input_idx < m_const_buffers->present.size() &&
+            m_const_buffers->present[input_idx] &&
+            m_const_buffers->buffers[input_idx].buf.valid()) {
+            return &m_const_buffers->buffers[input_idx];
+        }
+        return nullptr;
+    };
+    GpuTensor* output = !m_outputs.empty() ? m_outputs.front() : m_output;
+    GpuTensor* input0 = resolve_input(0);
+    OPENVINO_ASSERT(input0 && output,
+                    "GFX Vulkan unary chunked: missing tensors");
+    const auto op_key = unary_chunk_key(m_type);
+    OPENVINO_ASSERT(!op_key.empty(), "GFX Vulkan unary chunked: unsupported op ", m_type);
+    const ov::element::Type elem_type = resolve_stage_element_type(m_node, output);
+    OPENVINO_ASSERT(is_supported_linear_elem_type(elem_type),
+                    "GFX Vulkan unary chunked: unsupported element type ",
+                    elem_type);
+    if (!m_linear_unary_kernel || m_linear_unary_elem_type != elem_type || m_linear_unary_key != op_key) {
+        auto& ctx = gfx_mlir_context();
+        auto module = build_linear_unary_module(ctx, elem_type, op_key);
+        KernelSource src = make_kernel_source_from_mlir(module, "linear_unary", /*arg_count=*/3);
+        VulkanCodegenBackend backend;
+        std::string log;
+        m_linear_unary_kernel = backend.compile(src, &log);
+        OPENVINO_ASSERT(m_linear_unary_kernel, "GFX Vulkan unary chunked: kernel compile failed: ", log);
+        m_linear_unary_elem_type = elem_type;
+        m_linear_unary_key = op_key;
+        m_linear_unary_launch_abi = extract_launch_operand_abi(module);
+        m_linear_unary_scalar_args = extract_kernel_scalar_values(module);
+    }
+
+    const ov::Shape& dispatch_shape = !m_output_shape.empty() ? m_output_shape : output->shape;
+    const uint32_t total = static_cast<uint32_t>(tensor_elements(dispatch_shape));
+    for (uint32_t offset = 0; offset < total; offset += kLinearChunkElemsPerDispatch) {
+        const uint32_t count = std::min<uint32_t>(kLinearChunkElemsPerDispatch, total - offset);
+        struct LinearChunkParams {
+            uint32_t offset;
+            uint32_t count;
+        } params{offset, count};
+        KernelDispatch dispatch = make_1d_dispatch(count, 1);
+        OPENVINO_ASSERT(m_linear_unary_launch_abi.valid,
+                        "GFX Vulkan unary chunked: missing launch ABI");
+        const int32_t dynamic_scalars[] = {static_cast<int32_t>(count), static_cast<int32_t>(offset)};
+        std::vector<KernelArg> args;
+        args.reserve(m_linear_unary_launch_abi.kinds.size());
+        size_t scalar_idx = 0;
+        size_t dynamic_idx = 0;
+        for (size_t i = 0; i < m_linear_unary_launch_abi.kinds.size(); ++i) {
+            if (m_linear_unary_launch_abi.kinds[i] == 1) {
+                const int32_t arg_idx = m_linear_unary_launch_abi.arg_indices[i];
+                if (arg_idx == 0) {
+                    args.push_back(make_buffer_arg(static_cast<uint32_t>(args.size()), input0->buf));
+                } else if (arg_idx == 1) {
+                    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &params, sizeof(params)));
+                } else if (arg_idx == 2) {
+                    args.push_back(make_buffer_arg(static_cast<uint32_t>(args.size()), output->buf));
+                } else {
+                    OPENVINO_THROW("GFX Vulkan unary chunked: unsupported memref arg index ", arg_idx);
+                }
+                continue;
+            }
+            OPENVINO_ASSERT(scalar_idx < m_linear_unary_launch_abi.scalar_values.size(),
+                            "GFX Vulkan unary chunked: scalar ABI mismatch");
+            int32_t scalar = m_linear_unary_launch_abi.scalar_values[scalar_idx];
+            if (scalar_idx < m_linear_unary_launch_abi.scalar_known.size() &&
+                !m_linear_unary_launch_abi.scalar_known[scalar_idx]) {
+                OPENVINO_ASSERT(dynamic_idx < std::size(dynamic_scalars),
+                                "GFX Vulkan unary chunked: too many dynamic scalars");
+                scalar = dynamic_scalars[dynamic_idx++];
+            }
+            args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &scalar, sizeof(int32_t)));
+            ++scalar_idx;
+        }
+        auto bound_args = materialize_kernel_bytes_args(args, *m_buffer_manager, m_name.c_str());
+        m_linear_unary_kernel->execute(command_buffer, dispatch, bound_args, nullptr);
     }
 }
 
-void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
-    if (gfx_log_debug_enabled()) {
-        GFX_LOG_DEBUG("VulkanExec", "Execute stage " << m_name << " (" << m_type << ")");
-    }
-    std::vector<GpuTensor*> outputs = m_outputs;
-    if (outputs.empty() && m_output) {
-        outputs.push_back(m_output);
-    }
-    if (outputs.empty()) {
-        OPENVINO_THROW("GFX Vulkan: output tensor is not bound for stage ", m_name);
-    }
-    auto resolve_input_shape = [&](size_t idx) -> ov::Shape {
-        if (idx < m_inputs.size() && m_inputs[idx] && !m_inputs[idx]->shape.empty()) {
-            return m_inputs[idx]->shape;
+void VulkanStage::execute_binary_chunked(GpuCommandBufferHandle command_buffer) {
+    auto resolve_input = [&](size_t input_idx) -> GpuTensor* {
+        GpuTensor* tensor = input_idx < m_inputs.size() ? m_inputs[input_idx] : nullptr;
+        if (tensor && tensor->buf.valid()) {
+            return tensor;
         }
-        if (m_node && m_node->get_input_partial_shape(idx).is_static()) {
-            return m_node->get_input_shape(idx);
+        if (m_const_buffers &&
+            input_idx < m_const_buffers->buffers.size() &&
+            input_idx < m_const_buffers->present.size() &&
+            m_const_buffers->present[input_idx] &&
+            m_const_buffers->buffers[input_idx].buf.valid()) {
+            return &m_const_buffers->buffers[input_idx];
         }
-        return {};
+        return nullptr;
+    };
+    GpuTensor* output = !m_outputs.empty() ? m_outputs.front() : m_output;
+    GpuTensor* input0 = resolve_input(0);
+    GpuTensor* input1 = resolve_input(1);
+    OPENVINO_ASSERT(input0 && input1 && output,
+                    "GFX Vulkan binary chunked: missing tensors");
+    OPENVINO_ASSERT(m_kernel_extra_inputs.size() >= 3,
+                    "GFX Vulkan binary chunked: missing broadcast metadata");
+    const auto op_key = binary_chunk_key(m_type);
+    OPENVINO_ASSERT(!op_key.empty(), "GFX Vulkan binary chunked: unsupported op ", m_type);
+    const ov::element::Type elem_type = resolve_stage_element_type(m_node, output);
+    OPENVINO_ASSERT(is_supported_linear_elem_type(elem_type),
+                    "GFX Vulkan binary chunked: unsupported element type ",
+                    elem_type);
+    OPENVINO_ASSERT(!m_kernel_extra_inputs[0].shape.empty(),
+                    "GFX Vulkan binary chunked: missing metadata shape");
+    const size_t meta_rank = m_kernel_extra_inputs[0].shape[0];
+    OPENVINO_ASSERT(meta_rank != 0, "GFX Vulkan binary chunked: invalid metadata rank");
+    if (!m_linear_binary_kernel || m_linear_binary_elem_type != elem_type ||
+        m_linear_binary_key != op_key || m_linear_binary_rank != meta_rank) {
+        auto& ctx = gfx_mlir_context();
+        auto module = build_linear_binary_module(ctx, elem_type, op_key, meta_rank);
+        KernelSource src = make_kernel_source_from_mlir(module, "linear_binary", /*arg_count=*/7);
+        VulkanCodegenBackend backend;
+        std::string log;
+        m_linear_binary_kernel = backend.compile(src, &log);
+        OPENVINO_ASSERT(m_linear_binary_kernel, "GFX Vulkan binary chunked: kernel compile failed: ", log);
+        m_linear_binary_elem_type = elem_type;
+        m_linear_binary_key = op_key;
+        m_linear_binary_rank = meta_rank;
+    }
+
+    const ov::Shape& dispatch_shape = !m_output_shape.empty() ? m_output_shape : output->shape;
+    const uint32_t total = static_cast<uint32_t>(tensor_elements(dispatch_shape));
+    KernelDispatch dispatch = make_1d_dispatch(1, m_linear_binary_kernel->clamp_threadgroup_size(1));
+    for (uint32_t offset = 0; offset < total; offset += kLinearChunkElemsPerDispatch) {
+        const uint32_t count = std::min<uint32_t>(kLinearChunkElemsPerDispatch, total - offset);
+        struct LinearChunkParams {
+            uint32_t offset;
+            uint32_t count;
+        } params{offset, count};
+        std::vector<KernelArg> args{
+            make_buffer_arg(0, input0->buf),
+            make_buffer_arg(1, input1->buf),
+            make_bytes_arg(2, &params, sizeof(params)),
+            make_buffer_arg(3, m_kernel_extra_inputs[0].buf),
+            make_buffer_arg(4, m_kernel_extra_inputs[1].buf),
+            make_buffer_arg(5, m_kernel_extra_inputs[2].buf),
+            make_buffer_arg(6, output->buf),
+        };
+        auto bound_args = materialize_kernel_bytes_args(args, *m_buffer_manager, m_name.c_str());
+        m_linear_binary_kernel->execute(command_buffer, dispatch, bound_args, nullptr);
+    }
+}
+
+void VulkanStage::execute_conv2d_chunked(GpuCommandBufferHandle command_buffer) {
+    auto resolve_input = [&](size_t input_idx) -> GpuTensor* {
+        GpuTensor* tensor = input_idx < m_inputs.size() ? m_inputs[input_idx] : nullptr;
+        if (tensor && tensor->buf.valid()) {
+            return tensor;
+        }
+        if (m_const_buffers &&
+            input_idx < m_const_buffers->buffers.size() &&
+            input_idx < m_const_buffers->present.size() &&
+            m_const_buffers->present[input_idx] &&
+            m_const_buffers->buffers[input_idx].buf.valid()) {
+            return &m_const_buffers->buffers[input_idx];
+        }
+        return nullptr;
+    };
+    auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
+    OPENVINO_ASSERT(conv, "GFX Vulkan conv2d chunked: node cast failed");
+    GpuTensor* input0 = resolve_input(0);
+    GpuTensor* input1 = resolve_input(1);
+    GpuTensor* output = !m_outputs.empty() ? m_outputs.front() : m_output;
+    OPENVINO_ASSERT(input0 && input1 && output,
+                    "GFX Vulkan conv2d chunked: missing tensors");
+
+    const ov::element::Type elem_type = resolve_stage_element_type(m_node, output);
+    OPENVINO_ASSERT(is_supported_linear_elem_type(elem_type),
+                    "GFX Vulkan conv2d chunked: unsupported element type ",
+                    elem_type);
+    if (!m_conv2d_chunk_kernel || m_conv2d_chunk_elem_type != elem_type) {
+        auto& ctx = gfx_mlir_context();
+        auto module = build_conv2d_chunk_module(ctx, elem_type);
+        KernelSource src = make_kernel_source_from_mlir(module, "conv2d_chunk", /*arg_count=*/4);
+        VulkanCodegenBackend backend;
+        std::string log;
+        m_conv2d_chunk_kernel = backend.compile(src, &log);
+        OPENVINO_ASSERT(m_conv2d_chunk_kernel, "GFX Vulkan conv2d chunked: kernel compile failed: ", log);
+        m_conv2d_chunk_elem_type = elem_type;
+        m_conv2d_chunk_launch_abi = extract_launch_operand_abi(module);
+    }
+
+    const auto& out_shape = conv->get_output_shape(0);
+    struct Conv2DChunkParams {
+        uint32_t offset;
+        uint32_t count;
     };
 
-    if (m_kernel_inputs.empty() && m_node) {
-        const size_t in_count = m_node->get_input_size();
-        m_kernel_inputs.reserve(in_count);
-        for (size_t i = 0; i < in_count; ++i) {
-            m_kernel_inputs.push_back(i);
+    const uint32_t total = static_cast<uint32_t>(tensor_elements(out_shape));
+    for (uint32_t offset = 0; offset < total; offset += kConv2DChunkElemsPerDispatch) {
+        Conv2DChunkParams params{};
+        params.offset = offset;
+        params.count = std::min<uint32_t>(kConv2DChunkElemsPerDispatch, total - offset);
+        KernelDispatch dispatch = make_1d_dispatch(kConv2DChunkElemsPerDispatch, 1);
+
+        OPENVINO_ASSERT(m_conv2d_chunk_launch_abi.valid,
+                        "GFX Vulkan conv2d chunked: missing launch ABI");
+        const int32_t dynamic_scalars[] = {static_cast<int32_t>(params.count), static_cast<int32_t>(params.offset)};
+        std::vector<KernelArg> args;
+        args.reserve(m_conv2d_chunk_launch_abi.kinds.size());
+        size_t scalar_idx = 0;
+        size_t dynamic_idx = 0;
+        for (size_t i = 0; i < m_conv2d_chunk_launch_abi.kinds.size(); ++i) {
+            if (m_conv2d_chunk_launch_abi.kinds[i] == 1) {
+                const int32_t arg_idx = m_conv2d_chunk_launch_abi.arg_indices[i];
+                if (arg_idx == 0) {
+                    args.push_back(make_buffer_arg(static_cast<uint32_t>(args.size()), input0->buf));
+                } else if (arg_idx == 1) {
+                    args.push_back(make_buffer_arg(static_cast<uint32_t>(args.size()), input1->buf));
+                } else if (arg_idx == 2) {
+                    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &params, sizeof(params)));
+                } else if (arg_idx == 3) {
+                    args.push_back(make_buffer_arg(static_cast<uint32_t>(args.size()), output->buf));
+                } else {
+                    OPENVINO_THROW("GFX Vulkan conv2d chunked: unsupported memref arg index ", arg_idx);
+                }
+                continue;
+            }
+            OPENVINO_ASSERT(scalar_idx < m_conv2d_chunk_launch_abi.scalar_values.size(),
+                            "GFX Vulkan conv2d chunked: scalar ABI mismatch");
+            int32_t scalar = m_conv2d_chunk_launch_abi.scalar_values[scalar_idx];
+            if (scalar_idx < m_conv2d_chunk_launch_abi.scalar_known.size() &&
+                !m_conv2d_chunk_launch_abi.scalar_known[scalar_idx]) {
+                OPENVINO_ASSERT(dynamic_idx < std::size(dynamic_scalars),
+                                "GFX Vulkan conv2d chunked: too many dynamic scalars");
+                scalar = dynamic_scalars[dynamic_idx++];
+            }
+            args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &scalar, sizeof(int32_t)));
+            ++scalar_idx;
         }
+        auto bound_args = materialize_kernel_bytes_args(args, *m_buffer_manager, m_name.c_str());
+        // Record chunked Conv2D into the caller-owned infer command buffer so
+        // the Vulkan infer path can batch submits across stages/chunks instead
+        // of forcing a queue submit/wait for every dispatch.
+        m_conv2d_chunk_kernel->execute(command_buffer, dispatch, bound_args, nullptr);
+    }
+}
+
+mlir::ModuleOp VulkanStage::build_split_single_module(mlir::MLIRContext& ctx,
+                                                      const ov::element::Type& et) {
+    using namespace mlir;
+    ctx.loadDialect<func::FuncDialect, scf::SCFDialect, memref::MemRefDialect, arith::ArithDialect>();
+
+    Type elem_ty = to_mlir_type(et, ctx, /*fallback_f32=*/true, /*allow_unsigned=*/true,
+                                /*allow_small_ints=*/true, /*allow_bf16=*/false,
+                                /*allow_boolean=*/false, /*signless_integers=*/true);
+
+    auto mod = ModuleOp::create(UnknownLoc::get(&ctx));
+    OpBuilder b(mod.getBody(), mod.getBody()->begin());
+
+    auto in_ty = MemRefType::get({ShapedType::kDynamic}, elem_ty);
+    auto param_ty = MemRefType::get({5}, IntegerType::get(&ctx, 32));
+    SmallVector<Type, 3> arg_types{in_ty, param_ty, in_ty};
+    auto fn = b.create<func::FuncOp>(UnknownLoc::get(&ctx), "split_single",
+                                     b.getFunctionType(arg_types, {}));
+    auto* entry = fn.addEntryBlock();
+    OpBuilder body(entry, entry->begin());
+    auto loc = fn.getLoc();
+
+    // params: [0]=outer, [1]=axis_total, [2]=inner, [3]=axis_offset, [4]=slice_len
+    auto c0 = body.create<arith::ConstantIndexOp>(loc, 0);
+    auto load_param = [&](int idx) -> Value {
+        auto idx_val = body.create<arith::ConstantIndexOp>(loc, idx);
+        auto v_i32 = body.create<memref::LoadOp>(loc, fn.getArgument(1), ValueRange{idx_val});
+        return body.create<arith::IndexCastOp>(loc, body.getIndexType(), v_i32);
+    };
+    Value outer = load_param(0);
+    Value axis_total = load_param(1);
+    Value inner = load_param(2);
+    Value axis_offset = load_param(3);
+    Value slice_len = load_param(4);
+
+    Value total = body.create<arith::MulIOp>(loc, outer,
+                                             body.create<arith::MulIOp>(loc, slice_len, inner));
+    auto for_op = body.create<scf::ForOp>(loc, c0, total, body.create<arith::ConstantIndexOp>(loc, 1));
+    OpBuilder loop(&for_op.getBody()->front());
+    Value idx = for_op.getInductionVar();
+
+    Value inner_idx = loop.create<arith::RemUIOp>(loc, idx, inner);
+    Value tmp = loop.create<arith::DivUIOp>(loc, idx, inner);
+    Value axis_idx = loop.create<arith::RemUIOp>(loc, tmp, slice_len);
+    Value outer_idx = loop.create<arith::DivUIOp>(loc, tmp, slice_len);
+
+    Value base0 = loop.create<arith::MulIOp>(loc, outer_idx, axis_total);
+    Value base1 = loop.create<arith::AddIOp>(loc, base0, axis_offset);
+    Value base2 = loop.create<arith::AddIOp>(loc, base1, axis_idx);
+    Value src_index = loop.create<arith::MulIOp>(loc, base2, inner);
+    src_index = loop.create<arith::AddIOp>(loc, src_index, inner_idx);
+
+    Value val = loop.create<memref::LoadOp>(loc, fn.getArgument(0), ValueRange{src_index});
+    OpBuilder loop_end(for_op.getBody(), for_op.getBody()->getTerminator()->getIterator());
+    loop_end.create<memref::StoreOp>(loc, val, fn.getArgument(2), ValueRange{idx});
+
+    body.setInsertionPointAfter(for_op);
+    body.create<func::ReturnOp>(loc);
+    return mod;
+}
+
+mlir::ModuleOp VulkanStage::build_concat_single_module(mlir::MLIRContext& ctx,
+                                                       const ov::element::Type& et) {
+    using namespace mlir;
+    ctx.loadDialect<func::FuncDialect, scf::SCFDialect, memref::MemRefDialect, arith::ArithDialect>();
+
+    Type elem_ty = to_mlir_type(et, ctx, /*fallback_f32=*/true, /*allow_unsigned=*/true,
+                                /*allow_small_ints=*/true, /*allow_bf16=*/false,
+                                /*allow_boolean=*/false, /*signless_integers=*/true);
+
+    auto mod = ModuleOp::create(UnknownLoc::get(&ctx));
+    OpBuilder b(mod.getBody(), mod.getBody()->begin());
+
+    auto io_ty = MemRefType::get({ShapedType::kDynamic}, elem_ty);
+    auto param_ty = MemRefType::get({5}, IntegerType::get(&ctx, 32));
+    SmallVector<Type, 3> arg_types{io_ty, param_ty, io_ty};
+    auto fn = b.create<func::FuncOp>(UnknownLoc::get(&ctx), "concat_single",
+                                     b.getFunctionType(arg_types, {}));
+    auto* entry = fn.addEntryBlock();
+    OpBuilder body(entry, entry->begin());
+    auto loc = fn.getLoc();
+
+    // params: [0]=outer, [1]=axis_total, [2]=inner, [3]=axis_offset, [4]=slice_len
+    auto c0 = body.create<arith::ConstantIndexOp>(loc, 0);
+    auto load_param = [&](int idx) -> Value {
+        auto idx_val = body.create<arith::ConstantIndexOp>(loc, idx);
+        auto v_i32 = body.create<memref::LoadOp>(loc, fn.getArgument(1), ValueRange{idx_val});
+        return body.create<arith::IndexCastOp>(loc, body.getIndexType(), v_i32);
+    };
+    Value outer = load_param(0);
+    Value axis_total = load_param(1);
+    Value inner = load_param(2);
+    Value axis_offset = load_param(3);
+    Value slice_len = load_param(4);
+
+    Value total = body.create<arith::MulIOp>(loc, outer,
+                                             body.create<arith::MulIOp>(loc, slice_len, inner));
+    auto for_op = body.create<scf::ForOp>(loc, c0, total, body.create<arith::ConstantIndexOp>(loc, 1));
+    OpBuilder loop(&for_op.getBody()->front());
+    Value idx = for_op.getInductionVar();
+
+    Value inner_idx = loop.create<arith::RemUIOp>(loc, idx, inner);
+    Value tmp = loop.create<arith::DivUIOp>(loc, idx, inner);
+    Value axis_idx = loop.create<arith::RemUIOp>(loc, tmp, slice_len);
+    Value outer_idx = loop.create<arith::DivUIOp>(loc, tmp, slice_len);
+
+    Value base0 = loop.create<arith::MulIOp>(loc, outer_idx, axis_total);
+    Value base1 = loop.create<arith::AddIOp>(loc, base0, axis_offset);
+    Value base2 = loop.create<arith::AddIOp>(loc, base1, axis_idx);
+    Value dst_index = loop.create<arith::MulIOp>(loc, base2, inner);
+    dst_index = loop.create<arith::AddIOp>(loc, dst_index, inner_idx);
+
+    Value val = loop.create<memref::LoadOp>(loc, fn.getArgument(0), ValueRange{idx});
+    OpBuilder loop_end(for_op.getBody(), for_op.getBody()->getTerminator()->getIterator());
+    loop_end.create<memref::StoreOp>(loc, val, fn.getArgument(2), ValueRange{dst_index});
+
+    body.setInsertionPointAfter(for_op);
+    body.create<func::ReturnOp>(loc);
+    return mod;
+}
+
+mlir::ModuleOp VulkanStage::build_softmax_row_module(mlir::MLIRContext& ctx,
+                                                     const ov::element::Type& et,
+                                                     bool log_softmax) {
+    using namespace mlir;
+    ctx.loadDialect<func::FuncDialect,
+                    scf::SCFDialect,
+                    memref::MemRefDialect,
+                    arith::ArithDialect,
+                    mlir::math::MathDialect>();
+
+    Type elem_ty;
+    switch (et) {
+        case ov::element::f16: elem_ty = Float16Type::get(&ctx); break;
+        case ov::element::f32: elem_ty = Float32Type::get(&ctx); break;
+        default: OPENVINO_THROW("GFX Vulkan Softmax: unsupported element type ", et);
+    }
+    Type compute_ty = elem_ty;
+
+    auto mod = ModuleOp::create(UnknownLoc::get(&ctx));
+    OpBuilder b(mod.getBody(), mod.getBody()->begin());
+
+    auto io_ty = MemRefType::get({ShapedType::kDynamic}, elem_ty);
+    auto param_ty = MemRefType::get({4}, IntegerType::get(&ctx, 32));
+    SmallVector<Type, 3> arg_types{io_ty, param_ty, io_ty};
+    auto fn = b.create<func::FuncOp>(UnknownLoc::get(&ctx),
+                                     log_softmax ? "logsoftmax_row" : "softmax_row",
+                                     b.getFunctionType(arg_types, {}));
+    auto* entry = fn.addEntryBlock();
+    OpBuilder body(entry, entry->begin());
+    auto loc = fn.getLoc();
+
+    auto cast_to_compute = [&](OpBuilder& builder, Value value) -> Value {
+        if (value.getType() == compute_ty) {
+            return value;
+        }
+        return builder.create<arith::ExtFOp>(loc, compute_ty, value);
+    };
+    auto cast_to_output = [&](OpBuilder& builder, Value value) -> Value {
+        if (value.getType() == elem_ty) {
+            return value;
+        }
+        return builder.create<arith::TruncFOp>(loc, elem_ty, value);
+    };
+    auto load_param = [&](int idx) -> Value {
+        auto idx_val = body.create<arith::ConstantIndexOp>(loc, idx);
+        auto v_i32 = body.create<memref::LoadOp>(loc, fn.getArgument(1), ValueRange{idx_val});
+        return body.create<arith::IndexCastOp>(loc, body.getIndexType(), v_i32);
+    };
+
+    Value row_begin = load_param(0);
+    Value row_count = load_param(1);
+    Value cols = load_param(2);
+    Value inner = load_param(3);
+    auto c0 = body.create<arith::ConstantIndexOp>(loc, 0);
+    auto c1 = body.create<arith::ConstantIndexOp>(loc, 1);
+    auto neg_inf = body.create<arith::ConstantOp>(loc,
+                                                  FloatAttr::get(compute_ty, -std::numeric_limits<float>::infinity()));
+    auto zero = body.create<arith::ConstantOp>(loc, FloatAttr::get(compute_ty, 0.0f));
+    auto for_rows = body.create<scf::ForOp>(loc, c0, row_count, c1);
+    auto brows = OpBuilder::atBlockBegin(for_rows.getBody());
+    auto flat_row = brows.create<arith::AddIOp>(loc, row_begin, for_rows.getInductionVar());
+    auto outer = brows.create<arith::DivUIOp>(loc, flat_row, inner);
+    auto inner_idx = brows.create<arith::RemUIOp>(loc, flat_row, inner);
+    Value row_base = brows.create<arith::MulIOp>(loc, outer, cols);
+    row_base = brows.create<arith::MulIOp>(loc, row_base, inner);
+    row_base = brows.create<arith::AddIOp>(loc, row_base, inner_idx);
+
+    auto for_max = brows.create<scf::ForOp>(loc, c0, cols, c1, ValueRange{neg_inf});
+    auto bmax = OpBuilder::atBlockBegin(for_max.getBody());
+    auto max_idx = bmax.create<arith::AddIOp>(
+        loc,
+        row_base,
+        bmax.create<arith::MulIOp>(loc, for_max.getInductionVar(), inner));
+    auto max_raw = bmax.create<memref::LoadOp>(loc, fn.getArgument(0), ValueRange{max_idx});
+    auto max_val = cast_to_compute(bmax, max_raw);
+    auto max_cur = for_max.getRegionIterArgs()[0];
+    auto max_cmp = bmax.create<arith::CmpFOp>(loc, arith::CmpFPredicate::OGT, max_val, max_cur);
+    auto max_sel = bmax.create<arith::SelectOp>(loc, max_cmp, max_val, max_cur);
+    if (!for_max.getBody()->empty() && for_max.getBody()->back().hasTrait<OpTrait::IsTerminator>()) {
+        for_max.getBody()->back().erase();
+    }
+    auto bmax_end = OpBuilder::atBlockEnd(for_max.getBody());
+    bmax_end.create<scf::YieldOp>(loc, max_sel.getResult());
+
+    auto for_sum = brows.create<scf::ForOp>(loc, c0, cols, c1, ValueRange{zero});
+    auto bsum = OpBuilder::atBlockBegin(for_sum.getBody());
+    auto sum_idx = bsum.create<arith::AddIOp>(
+        loc,
+        row_base,
+        bsum.create<arith::MulIOp>(loc, for_sum.getInductionVar(), inner));
+    auto sum_raw = bsum.create<memref::LoadOp>(loc, fn.getArgument(0), ValueRange{sum_idx});
+    auto sum_val = cast_to_compute(bsum, sum_raw);
+    auto sum_diff = bsum.create<arith::SubFOp>(loc, sum_val, for_max.getResult(0));
+    auto sum_exp = bsum.create<mlir::math::ExpOp>(loc, sum_diff);
+    auto sum_cur = for_sum.getRegionIterArgs()[0];
+    auto sum_next = bsum.create<arith::AddFOp>(loc, sum_cur, sum_exp);
+    if (!for_sum.getBody()->empty() && for_sum.getBody()->back().hasTrait<OpTrait::IsTerminator>()) {
+        for_sum.getBody()->back().erase();
+    }
+    auto bsum_end = OpBuilder::atBlockEnd(for_sum.getBody());
+    bsum_end.create<scf::YieldOp>(loc, sum_next.getResult());
+
+    auto for_write = brows.create<scf::ForOp>(loc, c0, cols, c1);
+    auto bwrite = OpBuilder::atBlockBegin(for_write.getBody());
+    auto out_idx = bwrite.create<arith::AddIOp>(
+        loc,
+        row_base,
+        bwrite.create<arith::MulIOp>(loc, for_write.getInductionVar(), inner));
+    auto out_raw = bwrite.create<memref::LoadOp>(loc, fn.getArgument(0), ValueRange{out_idx});
+    auto out_compute = cast_to_compute(bwrite, out_raw);
+    auto out_diff = bwrite.create<arith::SubFOp>(loc, out_compute, for_max.getResult(0));
+    Value out_value;
+    if (log_softmax) {
+        auto log_sum = bwrite.create<mlir::math::LogOp>(loc, for_sum.getResult(0));
+        out_value = bwrite.create<arith::SubFOp>(loc, out_diff, log_sum);
+    } else {
+        auto out_exp = bwrite.create<mlir::math::ExpOp>(loc, out_diff);
+        out_value = bwrite.create<arith::DivFOp>(loc, out_exp, for_sum.getResult(0));
+    }
+    auto out_cast = cast_to_output(bwrite, out_value);
+    OpBuilder bwrite_end(for_write.getBody(), for_write.getBody()->getTerminator()->getIterator());
+    bwrite_end.create<memref::StoreOp>(loc, out_cast, fn.getArgument(2), ValueRange{out_idx});
+    body.setInsertionPointAfter(for_rows);
+    body.create<func::ReturnOp>(loc);
+    return mod;
+}
+
+void VulkanStage::execute_softmax_chunked(GpuCommandBufferHandle command_buffer) {
+    OPENVINO_ASSERT(!m_inputs.empty() && m_inputs[0] && m_inputs[0]->buf.valid(),
+                    "GFX Vulkan Softmax: missing input buffer");
+    OPENVINO_ASSERT(m_node, "GFX Vulkan Softmax: node is null");
+
+    auto* input = m_inputs[0];
+    GpuTensor* output = !m_outputs.empty() ? m_outputs[0] : m_output;
+    OPENVINO_ASSERT(output && output->buf.valid(),
+                    "GFX Vulkan Softmax: missing output buffer");
+    OPENVINO_ASSERT(!input->shape.empty(), "GFX Vulkan Softmax: input shape is unknown");
+    output->shape = input->shape;
+
+    int64_t axis = -1;
+    bool log_softmax = false;
+    if (auto s1 = ov::as_type_ptr<const ov::op::v1::Softmax>(m_node)) {
+        axis = s1->get_axis();
+    } else if (auto s8 = ov::as_type_ptr<const ov::op::v8::Softmax>(m_node)) {
+        axis = s8->get_axis();
+    } else if (auto ls = ov::as_type_ptr<const ov::op::v5::LogSoftmax>(m_node)) {
+        axis = ls->get_axis();
+        log_softmax = true;
+    } else {
+        OPENVINO_THROW("GFX Vulkan Softmax: unsupported node type");
     }
 
-    auto resolve_input_tensor = [&](size_t input_idx) -> GpuTensor* {
-        GpuTensor* t = input_idx < m_inputs.size() ? m_inputs[input_idx] : nullptr;
-        if (t && t->buf.valid()) {
-            return t;
+    const auto dims = compute_softmax_dims(input->shape, axis, "GFX Vulkan Softmax");
+    const ov::element::Type elem_type =
+        input->expected_type == ov::element::dynamic ? input->buf.type : input->expected_type;
+    OPENVINO_ASSERT(elem_type == ov::element::f16 || elem_type == ov::element::f32,
+                    "GFX Vulkan Softmax: unsupported element type ",
+                    elem_type);
+
+    if (!m_softmax_row_kernel || m_softmax_elem_type != elem_type || m_softmax_log_kernel != log_softmax) {
+        m_softmax_elem_type = elem_type;
+        m_softmax_log_kernel = log_softmax;
+        auto& ctx = gfx_mlir_context();
+        auto module = build_softmax_row_module(ctx, elem_type, log_softmax);
+        KernelSource src = make_kernel_source_from_mlir(module,
+                                                        log_softmax ? "logsoftmax_row" : "softmax_row",
+                                                        /*arg_count=*/3);
+        VulkanCodegenBackend backend;
+        std::string log;
+        m_softmax_row_kernel = backend.compile(src, &log);
+        OPENVINO_ASSERT(m_softmax_row_kernel, "GFX Vulkan Softmax: kernel compile failed: ", log);
+    }
+
+    KernelDispatch dispatch = make_1d_dispatch(1, m_softmax_row_kernel->clamp_threadgroup_size(1));
+    const uint32_t cols = static_cast<uint32_t>(dims.axis_len);
+    const uint32_t inner = static_cast<uint32_t>(dims.inner == 0 ? 1 : dims.inner);
+    const uint32_t total_rows = static_cast<uint32_t>(dims.rows);
+    constexpr uint32_t kRowsPerDispatch = 256;
+    for (uint32_t row_begin = 0; row_begin < total_rows; row_begin += kRowsPerDispatch) {
+        const uint32_t row_count = std::min<uint32_t>(kRowsPerDispatch, total_rows - row_begin);
+        struct SoftmaxRowParams {
+            uint32_t row_begin;
+            uint32_t row_count;
+            uint32_t cols;
+            uint32_t inner;
+        } params{
+            row_begin,
+            row_count,
+            cols,
+            inner,
+        };
+
+        std::vector<KernelArg> args{
+            make_buffer_arg(0, input->buf),
+            make_bytes_arg(1, &params, sizeof(params)),
+            make_buffer_arg(2, output->buf),
+        };
+        auto bound_args = materialize_kernel_bytes_args(args, *m_buffer_manager, m_name.c_str());
+        m_softmax_row_kernel->execute(command_buffer, dispatch, bound_args, nullptr);
+    }
+}
+
+void VulkanStage::execute_concat_chunked(GpuCommandBufferHandle command_buffer) {
+    OPENVINO_ASSERT(m_node, "GFX Vulkan Concat: node is null");
+    auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(m_node);
+    OPENVINO_ASSERT(concat, "GFX Vulkan Concat: expected v0::Concat");
+
+    GpuTensor* output = !m_outputs.empty() ? m_outputs.front() : m_output;
+    OPENVINO_ASSERT(output && output->buf.valid(), "GFX Vulkan Concat: missing output buffer");
+
+    ov::Shape out_shape = !m_output_shape.empty() ? m_output_shape : output->shape;
+    if (out_shape.empty() && m_node->get_output_partial_shape(0).is_static()) {
+        out_shape = m_node->get_output_shape(0);
+    }
+    OPENVINO_ASSERT(!out_shape.empty(), "GFX Vulkan Concat: output shape unknown");
+    output->shape = out_shape;
+
+    const size_t rank = out_shape.size();
+    const int64_t axis_norm = normalize_axis(concat->get_axis(), rank, "GFX Vulkan Concat");
+    size_t outer = 1;
+    for (size_t i = 0; i < static_cast<size_t>(axis_norm); ++i) outer *= out_shape[i];
+    size_t inner = 1;
+    for (size_t i = static_cast<size_t>(axis_norm) + 1; i < rank; ++i) inner *= out_shape[i];
+    const size_t axis_total = out_shape[static_cast<size_t>(axis_norm)];
+
+    const ov::element::Type elem_type = resolve_stage_element_type(m_node, output);
+    if (!m_concat_single_kernel || m_concat_elem_type != elem_type) {
+        auto& ctx = gfx_mlir_context();
+        auto module = build_concat_single_module(ctx, elem_type);
+        KernelSource src = make_kernel_source_from_mlir(module, "concat_single", /*arg_count=*/3);
+        VulkanCodegenBackend backend;
+        std::string log;
+        m_concat_single_kernel = backend.compile(src, &log);
+        OPENVINO_ASSERT(m_concat_single_kernel, "GFX Vulkan Concat: kernel compile failed: ", log);
+        m_concat_elem_type = elem_type;
+    }
+
+    auto resolve_input = [&](size_t input_idx) -> GpuTensor* {
+        GpuTensor* tensor = input_idx < m_inputs.size() ? m_inputs[input_idx] : nullptr;
+        if (tensor && tensor->buf.valid()) {
+            return tensor;
         }
         if (m_const_buffers &&
             input_idx < m_const_buffers->buffers.size() &&
@@ -720,868 +1481,165 @@ void VulkanStage::execute(GpuCommandBufferHandle /*command_buffer*/) {
         return nullptr;
     };
 
-    auto ensure_output_shape = [&](size_t oi, GpuTensor* out) {
-        if (!out) {
-            return;
+    size_t axis_offset = 0;
+    for (size_t i = 0; i < concat->get_input_size(); ++i) {
+        GpuTensor* src = resolve_input(i);
+        OPENVINO_ASSERT(src && src->buf.valid(), "GFX Vulkan Concat: missing input buffer ", i);
+        ov::Shape src_shape = src->shape;
+        if (src_shape.empty() && m_node->get_input_partial_shape(i).is_static()) {
+            src_shape = m_node->get_input_shape(i);
         }
-        if (out->shape.empty() && m_node && m_node->get_output_partial_shape(oi).is_static()) {
-            out->shape = m_node->get_output_shape(oi);
-        }
-    };
+        OPENVINO_ASSERT(src_shape.size() == rank, "GFX Vulkan Concat: rank mismatch at input ", i);
+        const size_t slice = src_shape[static_cast<size_t>(axis_norm)];
 
-    if (m_type == "Softmax" || m_type == "LogSoftmax") {
-        ov::Shape in_shape = resolve_input_shape(0);
-        if (in_shape.empty()) {
-            OPENVINO_THROW("GFX Vulkan: Softmax input shape is unknown for stage ", m_name);
-        }
-        int64_t axis = -1;
-        if (auto s1 = ov::as_type_ptr<const ov::op::v1::Softmax>(m_node)) axis = s1->get_axis();
-        else if (auto s8 = ov::as_type_ptr<const ov::op::v8::Softmax>(m_node)) axis = s8->get_axis();
-        else if (auto ls = ov::as_type_ptr<const ov::op::v5::LogSoftmax>(m_node)) axis = ls->get_axis();
-        else OPENVINO_THROW("GFX Vulkan: unsupported softmax op kind");
-        const auto dims = compute_softmax_dims(in_shape, axis, "GFX Vulkan: Softmax");
-        const uint64_t total_work = dims.rows;
-        if (gfx_log_debug_enabled()) {
-            GFX_LOG_DEBUG("VulkanSoftmax",
-                          "shape_rank=" << in_shape.size()
-                                        << " axis=" << dims.axis
-                                        << " rows*inner=" << total_work
-                                        << " tiled=0");
-        }
-        for (auto* out : outputs) {
-            if (out) {
-                out->shape = in_shape;
-            }
-        }
-        if (m_node && (m_last_input_shape != in_shape || !m_kernel)) {
-            mlir::MLIRContext ctx;
-            const bool log_softmax = ov::as_type_ptr<const ov::op::v5::LogSoftmax>(m_node) != nullptr;
-            auto module = log_softmax
-                              ? build_mlir_logsoftmax_from_node(m_node, ctx, in_shape)
-                              : build_mlir_softmax_from_node(m_node, ctx, in_shape);
-            if (module) {
-                module->setAttr("gfx.prefer_parallel",
-                                mlir::BoolAttr::get(module.getContext(), false));
-            }
-            std::string entry = find_entry_point(module);
-            if (entry.empty()) {
-                entry = "softmax_main";
-            }
-            const auto signature = infer_kernel_signature(module, entry);
-            const auto func = resolve_entry_func(module, entry);
-            const size_t scalar_inputs = count_scalar_inputs(func);
-            size_t output_args = 0;
-            if (signature.results == 0 && m_node) {
-                output_args = outputs.size();
-            }
-            size_t buffer_inputs = signature.inputs;
-            if (scalar_inputs <= buffer_inputs) {
-                buffer_inputs -= scalar_inputs;
-            }
-            if (output_args <= buffer_inputs) {
-                buffer_inputs -= output_args;
-            }
-            m_kernel_input_arg_count = buffer_inputs;
-            if (m_node) {
-                const size_t node_inputs = m_node->get_input_size();
-                const size_t extra_inputs_for_mapping =
-                    infer_extra_inputs_for_mapping(buffer_inputs, node_inputs, m_kernel_extra_inputs.size());
-                auto mapping = build_kernel_inputs(m_node,
-                                                   buffer_inputs,
-                                                   m_name.c_str(),
-                                                   extra_inputs_for_mapping);
-                m_kernel_inputs = std::move(mapping.kernel_inputs);
-            }
-            const uint32_t arg_count = signature.total()
-                                           ? signature.total()
-                                           : static_cast<uint32_t>(m_kernel_inputs.size() + outputs.size());
-            KernelPlan plan(module, std::move(entry), arg_count);
-            KernelSource src = plan.to_source();
-            VulkanCodegenBackend backend;
-            std::string log;
-            try {
-                m_kernel = backend.compile(src, &log);
-            } catch (const std::exception& e) {
-                OPENVINO_THROW("GFX Vulkan: failed to compile softmax stage ",
-                               m_name,
-                               " (",
-                               m_type,
-                               "): ",
-                               e.what());
-            }
-            OPENVINO_ASSERT(m_kernel,
-                            "GFX Vulkan: failed to compile softmax stage ",
-                            m_name,
-                            " (",
-                            m_type,
-                            "): ",
-                            log);
-            if (module) {
-                if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.parallel_dispatch")) {
-                    m_parallel_dispatch = attr.getValue();
-                } else {
-                    m_parallel_dispatch = false;
-                }
-                m_parallel_loop_dims = 0;
-                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.parallel_loop_dims")) {
-                    m_parallel_loop_dims = static_cast<size_t>(attr.getInt());
-                }
-                m_dispatch_tile_h = 1;
-                m_dispatch_tile_w = 1;
-                m_dispatch_threads_h = 1;
-                m_dispatch_threads_w = 1;
-                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_tile_h")) {
-                    m_dispatch_tile_h = static_cast<uint32_t>(attr.getInt());
-                }
-                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_tile_w")) {
-                    m_dispatch_tile_w = static_cast<uint32_t>(attr.getInt());
-                }
-                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_h")) {
-                    m_dispatch_threads_h = static_cast<uint32_t>(attr.getInt());
-                }
-                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_w")) {
-                    m_dispatch_threads_w = static_cast<uint32_t>(attr.getInt());
-                }
-                if (m_dispatch_threads_h == 1) {
-                    m_dispatch_threads_h = m_dispatch_tile_h;
-                }
-                if (m_dispatch_threads_w == 1) {
-                    m_dispatch_threads_w = m_dispatch_tile_w;
-                }
-                m_kernel_operand_kinds = extract_kernel_operand_kinds(module);
-                m_kernel_operand_arg_indices = extract_kernel_operand_arg_indices(module);
-                m_kernel_scalar_args = extract_kernel_scalar_values(module);
-                if (!m_kernel_operand_arg_indices.empty()) {
-                    int32_t max_idx = -1;
-                    for (auto idx : m_kernel_operand_arg_indices) {
-                        if (idx > max_idx) {
-                            max_idx = idx;
-                        }
-                    }
-                    if (max_idx >= 0) {
-                        const size_t total_buffer_args = static_cast<size_t>(max_idx) + 1;
-                        const size_t output_arg_count = outputs.size();
-                        if (output_arg_count <= total_buffer_args) {
-                            m_kernel_input_arg_count = total_buffer_args - output_arg_count;
-                        }
-                    }
-                }
-                if (m_kernel_operand_kinds.empty() && scalar_inputs != 0) {
-                    OPENVINO_ASSERT(m_kernel_scalar_args.size() == scalar_inputs,
-                                    "GFX Vulkan: kernel scalar args mismatch for ",
-                                    m_name,
-                                    " (expected ",
-                                    scalar_inputs,
-                                    ", got ",
-                                    m_kernel_scalar_args.size(),
-                                    ")");
-                }
-            }
-            m_last_input_shape = in_shape;
-        }
-    } else if (m_type == "Split" || m_type == "VariadicSplit") {
-        ov::Shape in_shape = resolve_input_shape(0);
-        if (in_shape.empty()) {
-            OPENVINO_THROW("GFX Vulkan: Split input shape is unknown for stage ", m_name);
-        }
-        int64_t axis = 0;
-        std::vector<size_t> split_sizes;
-        size_t parts = 0;
-        bool is_split = false;
-        if (auto s = ov::as_type_ptr<const ov::op::v1::Split>(m_node)) {
-            auto axis_const = ov::as_type_ptr<const ov::op::v0::Constant>(s->input_value(1).get_node_shared_ptr());
-            OPENVINO_ASSERT(axis_const, "Split axis must be constant");
-            axis = axis_const->cast_vector<int64_t>().at(0);
-            parts = s->get_num_splits();
-            is_split = true;
-        } else if (auto vs = ov::as_type_ptr<const ov::op::v1::VariadicSplit>(m_node)) {
-            auto axis_const = ov::as_type_ptr<const ov::op::v0::Constant>(vs->input_value(1).get_node_shared_ptr());
-            OPENVINO_ASSERT(axis_const, "VariadicSplit axis must be constant");
-            axis = axis_const->cast_vector<int64_t>().at(0);
-            auto lengths_const = ov::as_type_ptr<const ov::op::v0::Constant>(vs->input_value(2).get_node_shared_ptr());
-            OPENVINO_ASSERT(lengths_const, "VariadicSplit lengths must be constant");
-            auto lengths = lengths_const->cast_vector<int64_t>();
-            split_sizes.reserve(lengths.size());
-            for (auto v : lengths) {
-                OPENVINO_ASSERT(v >= 0, "VariadicSplit negative length not supported");
-                split_sizes.push_back(static_cast<size_t>(v));
-            }
-        }
-        const int64_t axis_norm = normalize_axis(axis, in_shape.size(), "GFX Vulkan: Split");
-        const size_t axis_len = in_shape[static_cast<size_t>(axis_norm)];
-        if (is_split) {
-            OPENVINO_ASSERT(parts > 0, "Split number of splits is zero");
-            OPENVINO_ASSERT(axis_len % parts == 0, "Split dimension not divisible by parts");
-            split_sizes.assign(parts, axis_len / parts);
-        }
+        struct ConcatParams {
+            uint32_t outer;
+            uint32_t axis_total;
+            uint32_t inner;
+            uint32_t axis_offset;
+            uint32_t slice_len;
+        } params{static_cast<uint32_t>(outer),
+                 static_cast<uint32_t>(axis_total),
+                 static_cast<uint32_t>(inner == 0 ? 1 : inner),
+                 static_cast<uint32_t>(axis_offset),
+                 static_cast<uint32_t>(slice)};
+
+        const std::string key = m_name + "/concat_params/" + std::to_string(i);
+        GpuBuffer params_buf = m_buffer_manager->wrap_const(key, &params, sizeof(params), ov::element::u8);
+        OPENVINO_ASSERT(params_buf.valid(), "GFX Vulkan Concat: failed to wrap params");
+        params_buf.owned = false;
+
+        std::vector<KernelArg> args{
+            make_buffer_arg(0, src->buf),
+            make_buffer_arg(1, params_buf),
+            make_buffer_arg(2, output->buf),
+        };
+        auto bound_args = materialize_kernel_bytes_args(args, *m_buffer_manager, m_name.c_str());
+        KernelDispatch dispatch = make_1d_dispatch(1, m_concat_single_kernel->clamp_threadgroup_size(1));
+        m_concat_single_kernel->execute(command_buffer, dispatch, bound_args, nullptr);
+        axis_offset += slice;
+    }
+}
+
+void VulkanStage::execute_split_chunked(GpuCommandBufferHandle command_buffer) {
+    OPENVINO_ASSERT(!m_inputs.empty() && m_inputs[0] && m_inputs[0]->buf.valid(),
+                    "GFX Vulkan Split: missing input buffer");
+    std::vector<GpuTensor*> outputs = m_outputs;
+    if (outputs.empty() && m_output) {
+        outputs.push_back(m_output);
+    }
+    OPENVINO_ASSERT(!outputs.empty(), "GFX Vulkan Split: missing output buffers");
+    const auto& in = *m_inputs[0];
+    OPENVINO_ASSERT(!in.shape.empty(), "GFX Vulkan Split: input shape unknown");
+
+    int64_t axis = 0;
+    std::vector<size_t> split_sizes;
+    if (auto s = ov::as_type_ptr<const ov::op::v1::Split>(m_node)) {
+        auto axis_const = ov::as_type_ptr<const ov::op::v0::Constant>(s->input_value(1).get_node_shared_ptr());
+        OPENVINO_ASSERT(axis_const, "Split axis must be constant");
+        axis = axis_const->cast_vector<int64_t>()[0];
+        const auto parts = s->get_num_splits();
+        OPENVINO_ASSERT(parts > 0, "Split parts zero");
+        const size_t axis_len = in.shape.at(static_cast<size_t>(normalize_axis(axis, in.shape.size(), "GFX Vulkan Split")));
+        OPENVINO_ASSERT(axis_len % parts == 0, "Split axis not divisible");
+        split_sizes.assign(parts, axis_len / parts);
+    } else if (auto vs = ov::as_type_ptr<const ov::op::v1::VariadicSplit>(m_node)) {
+        auto axis_const = ov::as_type_ptr<const ov::op::v0::Constant>(vs->input_value(1).get_node_shared_ptr());
+        OPENVINO_ASSERT(axis_const, "VariadicSplit axis must be constant");
+        axis = axis_const->cast_vector<int64_t>()[0];
+        auto lengths_const = ov::as_type_ptr<const ov::op::v0::Constant>(vs->input_value(2).get_node_shared_ptr());
+        OPENVINO_ASSERT(lengths_const, "VariadicSplit lengths must be constant");
+        auto lengths = lengths_const->cast_vector<int64_t>();
+        split_sizes.reserve(lengths.size());
+        size_t axis_len = in.shape.at(static_cast<size_t>(normalize_axis(axis, in.shape.size(), "GFX Vulkan Split")));
         size_t sum = 0;
-        for (auto s : split_sizes) {
-            sum += s;
+        for (auto v : lengths) {
+            OPENVINO_ASSERT(v >= 0, "VariadicSplit negative length");
+            split_sizes.push_back(static_cast<size_t>(v));
+            sum += static_cast<size_t>(v);
         }
-        OPENVINO_ASSERT(sum == axis_len,
-                        "Split sizes do not sum to axis length (",
-                        sum,
-                        " vs ",
-                        axis_len,
-                        ")");
-        OPENVINO_ASSERT(!split_sizes.empty(), "Split sizes are empty");
-        OPENVINO_ASSERT(outputs.size() == split_sizes.size(),
-                        "Split output count mismatch (expected ",
-                        split_sizes.size(),
-                        ", got ",
-                        outputs.size(),
-                        ")");
-        for (size_t i = 0; i < outputs.size(); ++i) {
-            if (!outputs[i]) {
-                continue;
-            }
-            ov::Shape out_shape = in_shape;
-            out_shape[static_cast<size_t>(axis_norm)] = split_sizes[i];
-            outputs[i]->shape = out_shape;
-        }
-        if (m_node && (m_last_input_shape != in_shape || !m_kernel)) {
-            mlir::MLIRContext ctx;
-            auto module = build_mlir_split_from_node(m_node, ctx, in_shape);
-            if (module) {
-                module->setAttr("gfx.prefer_parallel",
-                                mlir::BoolAttr::get(module.getContext(), false));
-            }
-            std::string entry = find_entry_point(module);
-            if (entry.empty()) {
-                entry = "split_main";
-            }
-            const auto signature = infer_kernel_signature(module, entry);
-            size_t func_inputs = signature.inputs;
-            size_t func_results = signature.results;
-            const auto func = resolve_entry_func(module, entry);
-            const size_t scalar_inputs = count_scalar_inputs(func);
-            size_t output_args = 0;
-            if (signature.results == 0) {
-                output_args = outputs.size();
-            }
-            size_t buffer_inputs = func_inputs;
-            if (scalar_inputs <= buffer_inputs) {
-                buffer_inputs -= scalar_inputs;
-            }
-            if (output_args <= buffer_inputs) {
-                buffer_inputs -= output_args;
-            }
-            m_kernel_input_arg_count = buffer_inputs;
-            const size_t node_inputs = m_node ? m_node->get_input_size() : 0;
-            const size_t extra_inputs_for_mapping =
-                infer_extra_inputs_for_mapping(buffer_inputs, node_inputs, m_kernel_extra_inputs.size());
-            auto mapping = build_kernel_inputs(m_node,
-                                               buffer_inputs,
-                                               "Split",
-                                               extra_inputs_for_mapping);
-            func_inputs = mapping.func_inputs;
-            m_kernel_inputs = std::move(mapping.kernel_inputs);
-            if (func_results == 0) {
-                func_results = outputs.size();
-            }
-            const uint32_t arg_count =
-                signature.total() ? signature.total() : static_cast<uint32_t>(func_inputs + func_results);
-            KernelPlan plan(module, std::move(entry), arg_count);
-            KernelSource src = plan.to_source();
-            VulkanCodegenBackend backend;
-            std::string log;
-            try {
-                m_kernel = backend.compile(src, &log);
-            } catch (const std::exception& e) {
-                OPENVINO_THROW("GFX Vulkan: failed to compile split stage ",
-                               m_name,
-                               " (",
-                               m_type,
-                               "): ",
-                               e.what());
-            }
-            OPENVINO_ASSERT(m_kernel,
-                            "GFX Vulkan: failed to compile split stage ",
-                            m_name,
-                            " (",
-                            m_type,
-                            "): ",
-                            log);
-            if (module) {
-                if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.parallel_dispatch")) {
-                    m_parallel_dispatch = attr.getValue();
-                } else {
-                    m_parallel_dispatch = false;
-                }
-                m_parallel_loop_dims = 0;
-                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.parallel_loop_dims")) {
-                    m_parallel_loop_dims = static_cast<size_t>(attr.getInt());
-                }
-                m_dispatch_tile_h = 1;
-                m_dispatch_tile_w = 1;
-                m_dispatch_threads_h = 1;
-                m_dispatch_threads_w = 1;
-                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_tile_h")) {
-                    m_dispatch_tile_h = static_cast<uint32_t>(attr.getInt());
-                }
-                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_tile_w")) {
-                    m_dispatch_tile_w = static_cast<uint32_t>(attr.getInt());
-                }
-                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_h")) {
-                    m_dispatch_threads_h = static_cast<uint32_t>(attr.getInt());
-                }
-                if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_w")) {
-                    m_dispatch_threads_w = static_cast<uint32_t>(attr.getInt());
-                }
-                if (m_dispatch_threads_h == 1) {
-                    m_dispatch_threads_h = m_dispatch_tile_h;
-                }
-                if (m_dispatch_threads_w == 1) {
-                    m_dispatch_threads_w = m_dispatch_tile_w;
-                }
-                m_kernel_operand_kinds = extract_kernel_operand_kinds(module);
-                m_kernel_operand_arg_indices = extract_kernel_operand_arg_indices(module);
-                m_kernel_scalar_args = extract_kernel_scalar_values(module);
-                if (!m_kernel_operand_arg_indices.empty()) {
-                    int32_t max_idx = -1;
-                    for (auto idx : m_kernel_operand_arg_indices) {
-                        if (idx > max_idx) {
-                            max_idx = idx;
-                        }
-                    }
-                    if (max_idx >= 0) {
-                        const size_t total_buffer_args = static_cast<size_t>(max_idx) + 1;
-                        const size_t output_arg_count = outputs.size();
-                        if (output_arg_count <= total_buffer_args) {
-                            m_kernel_input_arg_count = total_buffer_args - output_arg_count;
-                        }
-                    }
-                }
-                if (m_kernel_operand_kinds.empty() && scalar_inputs != 0) {
-                    OPENVINO_ASSERT(m_kernel_scalar_args.size() == scalar_inputs,
-                                    "GFX Vulkan: kernel scalar args mismatch for ",
-                                    m_name,
-                                    " (expected ",
-                                    scalar_inputs,
-                                    ", got ",
-                                    m_kernel_scalar_args.size(),
-                                    ")");
-                }
-            }
-            m_last_input_shape = in_shape;
-        }
+        OPENVINO_ASSERT(sum == axis_len, "VariadicSplit sizes mismatch");
     } else {
-        for (size_t i = 0; i < outputs.size(); ++i) {
-            ensure_output_shape(i, outputs[i]);
-        }
+        OPENVINO_THROW("GFX Vulkan Split: unsupported node type");
     }
 
-    for (size_t i = 0; i < outputs.size(); ++i) {
-        GpuTensor* out = outputs[i];
+    const size_t rank = in.shape.size();
+    const size_t axis_norm = static_cast<size_t>(normalize_axis(axis, rank, "GFX Vulkan Split"));
+    const size_t axis_len_total = in.shape[axis_norm];
+    size_t inner = 1;
+    for (size_t d = axis_norm + 1; d < rank; ++d) inner *= in.shape[d];
+    size_t outer = 1;
+    for (size_t d = 0; d < axis_norm; ++d) outer *= in.shape[d];
+
+    for (size_t oi = 0; oi < outputs.size(); ++oi) {
+        auto* out = outputs[oi];
         if (!out) {
             continue;
         }
-        if (out->shape.empty()) {
-            OPENVINO_THROW("GFX Vulkan: output shape is not known for stage ", m_name);
-        }
-        ov::element::Type out_type = out->expected_type;
-        if (out_type == ov::element::dynamic && m_node) {
-            out_type = m_node->get_output_element_type(i);
-        }
-        const auto elem_size = out_type == ov::element::dynamic ? out->buf.type.size() : out_type.size();
-        const size_t out_bytes = ov::shape_size(out->shape) * elem_size;
-        if (m_is_view_op) {
-            out->expected_type = out_type;
-            continue;
-        }
-        if (!out->buf.valid()) {
-            OPENVINO_THROW("GFX Vulkan: output buffer is not allocated for stage ", m_name);
-        }
-        if (out->buf.size < out_bytes) {
-            OPENVINO_THROW("GFX Vulkan: output buffer too small for stage ",
-                           m_name,
-                           " (need ",
-                           out_bytes,
-                           ", have ",
-                           out->buf.size,
-                           ")");
-        }
-        out->expected_type = out_type;
+        ov::Shape out_shape = in.shape;
+        out_shape[axis_norm] = split_sizes[oi];
+        out->shape = std::move(out_shape);
     }
 
-    if (m_is_view_op) {
-        if (m_inputs.empty() || !m_inputs[0] || !m_inputs[0]->buf.valid()) {
-            OPENVINO_THROW("GFX Vulkan: missing input buffer for view op ", m_name);
-        }
-        auto* in = m_inputs[0];
-        auto* out = outputs.front();
-        const auto in_type = in->expected_type == ov::element::dynamic ? in->buf.type : in->expected_type;
-        const auto out_type = out->expected_type == ov::element::dynamic ? in_type : out->expected_type;
-        const size_t in_bytes = ov::shape_size(in->shape) * in_type.size();
-        const size_t out_bytes = ov::shape_size(out->shape) * out_type.size();
-        OPENVINO_ASSERT(in_bytes == out_bytes,
-                        "GFX Vulkan: view op byte size mismatch for ",
-                        m_name,
-                        " (",
-                        in_bytes,
-                        " vs ",
-                        out_bytes,
-                        ")");
-        out->buf = in->buf;
-        out->buf.external = true;
-        out->buf.owned = false;
-        out->expected_type = out_type;
-        return;
+    // Compile compact split kernel once per element type.
+    if (!m_split_single_kernel || m_split_elem_type != in.expected_type) {
+        m_split_elem_type = in.expected_type;
+        auto& ctx = gfx_mlir_context();
+        auto module = build_split_single_module(ctx, m_split_elem_type);
+        KernelSource src = make_kernel_source_from_mlir(module, "split_single", /*arg_count=*/3);
+        VulkanCodegenBackend backend;
+        std::string log;
+        m_split_single_kernel = backend.compile(src, &log);
+        OPENVINO_ASSERT(m_split_single_kernel, "GFX Vulkan Split: kernel compile failed: ", log);
     }
 
-    if (!m_kernel) {
-        OPENVINO_THROW("GFX Vulkan: kernel was not compiled for stage ", m_name);
-    }
+    size_t offset_along_axis = 0;
+    for (size_t oi = 0; oi < outputs.size(); ++oi) {
+        auto* out = outputs[oi];
+        OPENVINO_ASSERT(out && out->buf.valid(), "GFX Vulkan Split: missing output buffer");
+        OPENVINO_ASSERT(oi < split_sizes.size(), "GFX Vulkan Split: split size missing");
+        const size_t slice = split_sizes[oi];
 
-    VulkanProfiler* vk_profiler = nullptr;
-    if (m_profiling_enabled && m_profiler) {
-        vk_profiler = static_cast<VulkanProfiler*>(m_profiler);
-        vk_profiler->begin_node(m_profile_node_id,
-                                m_profile_node_name.c_str(),
-                                m_profile_node_type.c_str(),
-                                "GFX");
-    }
-    auto make_hooks = [&](KernelExecutionHooks& hooks) -> KernelExecutionHooks* {
-        if (!vk_profiler) {
-            return nullptr;
-        }
-        const auto sample = vk_profiler->reserve_samples();
-        hooks.on_begin = [vk_profiler, sample](GpuCommandEncoderHandle enc) {
-            vk_profiler->write_timestamp(reinterpret_cast<VkCommandBuffer>(enc), sample.begin);
-        };
-        hooks.on_end = [vk_profiler, sample](GpuCommandEncoderHandle enc) {
-            vk_profiler->write_timestamp(reinterpret_cast<VkCommandBuffer>(enc), sample.end);
-        };
-        hooks.on_complete = [vk_profiler, sample, node_id = m_profile_node_id]() {
-            vk_profiler->end_node(node_id, sample);
-        };
-        return &hooks;
-    };
+        struct SplitParams {
+            uint32_t outer;
+            uint32_t axis_total;
+            uint32_t inner;
+            uint32_t axis_offset;
+            uint32_t slice_len;
+        } params{static_cast<uint32_t>(outer),
+                 static_cast<uint32_t>(axis_len_total),
+                 static_cast<uint32_t>(inner == 0 ? 1 : inner),
+                 static_cast<uint32_t>(offset_along_axis),
+                 static_cast<uint32_t>(slice)};
 
-    std::vector<KernelArg> args;
-    if (gfx_log_debug_enabled()) {
-        GFX_LOG_DEBUG("VulkanExec", "Kernel args prep: scalars=" << m_kernel_scalar_args.size()
-                                                                 << " inputs=" << m_kernel_inputs.size()
-                                                                 << " outputs=" << outputs.size()
-                                                                 << " kinds=" << m_kernel_operand_kinds.size());
-    }
-    uint32_t arg_index = 0;
-    std::vector<int32_t> scalar_storage;
-    if (!m_kernel_operand_kinds.empty()) {
-        args.reserve(m_kernel_operand_kinds.size());
-        std::ostringstream arg_map;
-        if (gfx_log_debug_enabled()) {
-            arg_map << "Kernel arg map: ";
-        }
-        size_t scalar_count = 0;
-        for (auto kind : m_kernel_operand_kinds) {
-            if (kind == 0) {
-                ++scalar_count;
-            }
-        }
-        scalar_storage.reserve(scalar_count);
-        size_t scalar_idx = 0;
-        size_t input_pos = 0;
-        size_t output_pos = 0;
-        size_t extra_pos = 0;
-        const bool has_arg_indices =
-            m_kernel_operand_arg_indices.size() == m_kernel_operand_kinds.size();
-        const size_t input_arg_count =
-            (m_kernel_input_arg_count != 0) ? m_kernel_input_arg_count : m_kernel_inputs.size();
-        for (size_t op_idx = 0; op_idx < m_kernel_operand_kinds.size(); ++op_idx) {
-            const auto kind = m_kernel_operand_kinds[op_idx];
-            if (kind == 0) {
-                int32_t value = 0;
-                if (scalar_idx < m_kernel_scalar_args.size()) {
-                    value = m_kernel_scalar_args[scalar_idx++];
-                }
-                scalar_storage.push_back(value);
-                args.push_back(make_bytes_arg(arg_index++, &scalar_storage.back(), sizeof(value)));
-                if (gfx_log_debug_enabled()) {
-                    if (op_idx) {
-                        arg_map << ", ";
-                    }
-                    arg_map << "arg" << op_idx << "=scalar(" << value << ")";
-                }
-                continue;
-            }
-            int32_t arg_idx = -1;
-            if (has_arg_indices) {
-                arg_idx = m_kernel_operand_arg_indices[op_idx];
-            }
-            if (arg_idx >= 0) {
-                const size_t uarg = static_cast<size_t>(arg_idx);
-                if (uarg < input_arg_count) {
-                    if (uarg < m_kernel_inputs.size()) {
-                        const size_t input_idx = m_kernel_inputs[uarg];
-                        GpuTensor* t = resolve_input_tensor(input_idx);
-                        OPENVINO_ASSERT(t && t->buf.valid(),
-                                        "GFX Vulkan: missing input buffer for stage ",
-                                        m_name);
-                        args.push_back(make_buffer_arg(arg_index++, t->buf));
-                        if (gfx_log_debug_enabled()) {
-                            if (op_idx) {
-                                arg_map << ", ";
-                            }
-                            arg_map << "arg" << op_idx << "=input[" << input_idx << "]";
-                        }
-                        continue;
-                    }
-                    const size_t extra_idx = uarg - m_kernel_inputs.size();
-                    OPENVINO_ASSERT(extra_idx < m_kernel_extra_inputs.size(),
-                                    "GFX Vulkan: missing extra buffer for stage ",
-                                    m_name);
-                    auto& extra = m_kernel_extra_inputs[extra_idx];
-                    OPENVINO_ASSERT(extra.buf.valid(),
-                                    "GFX Vulkan: missing extra buffer for stage ",
-                                    m_name);
-                    args.push_back(make_buffer_arg(arg_index++, extra.buf));
-                    if (gfx_log_debug_enabled()) {
-                        if (op_idx) {
-                            arg_map << ", ";
-                        }
-                        arg_map << "arg" << op_idx << "=extra[" << extra_idx << "]";
-                    }
-                    continue;
-                }
-                const size_t out_idx = uarg - input_arg_count;
-                if (out_idx < outputs.size()) {
-                    auto* out = outputs[out_idx];
-                    OPENVINO_ASSERT(out && out->buf.valid(),
-                                    "GFX Vulkan: missing output buffer for stage ",
-                                    m_name);
-                    args.push_back(make_buffer_arg(arg_index++, out->buf));
-                    if (gfx_log_debug_enabled()) {
-                        if (op_idx) {
-                            arg_map << ", ";
-                        }
-                        arg_map << "arg" << op_idx << "=output[" << out_idx << "]";
-                    }
-                    continue;
-                }
-            }
-            if (extra_pos < m_kernel_extra_inputs.size()) {
-                auto& extra = m_kernel_extra_inputs[extra_pos++];
-                OPENVINO_ASSERT(extra.buf.valid(),
-                                "GFX Vulkan: missing extra buffer for stage ",
-                                m_name);
-                args.push_back(make_buffer_arg(arg_index++, extra.buf));
-                if (gfx_log_debug_enabled()) {
-                    if (op_idx) {
-                        arg_map << ", ";
-                    }
-                    arg_map << "arg" << op_idx << "=extra[" << (extra_pos - 1) << "]";
-                }
-                continue;
-            }
-            if (input_pos < m_kernel_inputs.size()) {
-                const size_t input_idx = m_kernel_inputs[input_pos++];
-                GpuTensor* t = resolve_input_tensor(input_idx);
-                OPENVINO_ASSERT(t && t->buf.valid(),
-                                "GFX Vulkan: missing input buffer for stage ",
-                                m_name);
-                args.push_back(make_buffer_arg(arg_index++, t->buf));
-                if (gfx_log_debug_enabled()) {
-                    if (op_idx) {
-                        arg_map << ", ";
-                    }
-                    arg_map << "arg" << op_idx << "=input[" << input_idx << "]";
-                }
-                continue;
-            }
-            OPENVINO_ASSERT(output_pos < outputs.size(),
-                            "GFX Vulkan: missing output buffer for stage ",
-                            m_name);
-            auto* out = outputs[output_pos++];
-            OPENVINO_ASSERT(out && out->buf.valid(),
-                            "GFX Vulkan: missing output buffer for stage ",
-                            m_name);
-            args.push_back(make_buffer_arg(arg_index++, out->buf));
-            if (gfx_log_debug_enabled()) {
-                if (op_idx) {
-                    arg_map << ", ";
-                }
-                arg_map << "arg" << op_idx << "=output[" << (output_pos - 1) << "]";
-            }
-        }
-        if (gfx_log_debug_enabled()) {
-            GFX_LOG_DEBUG("VulkanExec", arg_map.str());
-        }
-    } else {
-        args.reserve(m_kernel_scalar_args.size() + m_kernel_inputs.size() +
-                     m_kernel_extra_inputs.size() + outputs.size());
-        scalar_storage = m_kernel_scalar_args;
-        for (auto& v : scalar_storage) {
-            args.push_back(make_bytes_arg(arg_index++, &v, sizeof(v)));
-        }
-        for (size_t ai = 0; ai < m_kernel_inputs.size(); ++ai) {
-            const size_t input_idx = m_kernel_inputs[ai];
-            GpuTensor* t = resolve_input_tensor(input_idx);
-            OPENVINO_ASSERT(t && t->buf.valid(),
-                            "GFX Vulkan: missing input buffer for stage ",
-                            m_name);
-            args.push_back(make_buffer_arg(arg_index++, t->buf));
-        }
-        for (auto& extra : m_kernel_extra_inputs) {
-            OPENVINO_ASSERT(extra.buf.valid(),
-                            "GFX Vulkan: missing extra buffer for stage ",
-                            m_name);
-            args.push_back(make_buffer_arg(arg_index++, extra.buf));
-        }
-        for (auto* out : outputs) {
-            OPENVINO_ASSERT(out && out->buf.valid(),
-                            "GFX Vulkan: missing output buffer for stage ",
-                            m_name);
-            args.push_back(make_buffer_arg(arg_index++, out->buf));
-        }
-    }
-    auto bound_args = materialize_kernel_bytes_args(args, *m_buffer_manager, m_name.c_str());
+        const std::string key = m_name + "/split_params/" + std::to_string(oi);
+        GpuBuffer params_buf = m_buffer_manager->wrap_const(key, &params, sizeof(params), ov::element::u8);
+        OPENVINO_ASSERT(params_buf.valid(), "GFX Vulkan Split: failed to wrap params");
+        params_buf.owned = false;
+        GpuTensor params_tensor;
+        params_tensor.buf = params_buf;
+        params_tensor.shape = {5};
+        params_tensor.expected_type = ov::element::u8;
 
-    KernelDispatch dispatch{};
-    if (m_parallel_dispatch) {
-        const ov::Shape& shape = outputs.front() && !outputs.front()->shape.empty()
-                                     ? outputs.front()->shape
-                                     : m_output_shape;
-        const size_t rank = shape.size();
-        const uint64_t tile_h = m_dispatch_tile_h ? m_dispatch_tile_h : 1;
-        const uint64_t tile_w = m_dispatch_tile_w ? m_dispatch_tile_w : 1;
-        const uint64_t thread_h = m_dispatch_threads_h ? m_dispatch_threads_h : 1;
-        const uint64_t thread_w = m_dispatch_threads_w ? m_dispatch_threads_w : 1;
-        const bool wants_threads = (thread_h > 1 || thread_w > 1);
-        if (rank == 1) {
-            dispatch.grid[0] = wants_threads ? (shape[0] * thread_w) : shape[0];
-        } else if (rank == 2) {
-            dispatch.grid[0] = wants_threads ? (shape[0] * thread_w) : shape[0];
-            dispatch.grid[1] = wants_threads ? (shape[1] * thread_h) : shape[1];
-        } else if (rank >= 3) {
-            const uint64_t c = shape[rank - 3];
-            const uint64_t h = shape[rank - 2];
-            const uint64_t w = shape[rank - 1];
-            if (wants_threads && m_parallel_loop_dims >= 3) {
-                const uint64_t h_tiles = (h + tile_h - 1) / tile_h;
-                const uint64_t w_tiles = (w + tile_w - 1) / tile_w;
-                const size_t block_dims = m_parallel_loop_dims > 2 ? m_parallel_loop_dims - 2 : 0;
-                if (m_parallel_loop_dims == 3) {
-                    dispatch.grid[0] = c * thread_w;
-                    dispatch.grid[1] = h_tiles * thread_h;
-                    dispatch.grid[2] = w_tiles;
-                } else if (block_dims >= 3) {
-                    dispatch.grid[0] = c * thread_w;
-                    dispatch.grid[1] = h_tiles * thread_h;
-                    dispatch.grid[2] = w_tiles;
-                } else if (block_dims == 2) {
-                    dispatch.grid[0] = h_tiles * thread_h;
-                    dispatch.grid[1] = w_tiles * thread_w;
-                    dispatch.grid[2] = 1;
-                } else {
-                    dispatch.grid[0] = (c > 1) ? c : (h_tiles * w_tiles);
-                    dispatch.grid[1] = 1;
-                    dispatch.grid[2] = 1;
-                }
-            } else {
-                const uint64_t h_tiles = (h + tile_h - 1) / tile_h;
-                const uint64_t w_tiles = (w + tile_w - 1) / tile_w;
-                dispatch.grid[0] = c * thread_w;
-                dispatch.grid[1] = h_tiles * thread_h;
-                dispatch.grid[2] = w_tiles;
-            }
-        }
-        dispatch.threads_per_group[0] =
-            m_kernel ? m_kernel->clamp_threadgroup_size(thread_w) : thread_w;
-        dispatch.threads_per_group[1] = thread_h;
-        dispatch.threads_per_group[2] = 1;
-        if (gfx_log_debug_enabled()) {
-            GFX_LOG_DEBUG("VulkanExec",
-                          "Dispatch grid=(" << dispatch.grid[0] << ", "
-                                            << dispatch.grid[1] << ", "
-                                            << dispatch.grid[2] << ")"
-                                            << " tpg=(" << dispatch.threads_per_group[0] << ", "
-                                            << dispatch.threads_per_group[1] << ", "
-                                            << dispatch.threads_per_group[2] << ")"
-                                            << " loops=" << m_parallel_loop_dims);
-        }
-    } else {
-        dispatch.grid[0] = 1;
-        dispatch.grid[1] = 1;
-        dispatch.grid[2] = 1;
-        dispatch.threads_per_group[0] = 1;
-        dispatch.threads_per_group[1] = 1;
-        dispatch.threads_per_group[2] = 1;
-    }
+        std::vector<size_t> kernel_inputs{0};  // input tensor index in m_inputs
+        std::vector<GpuTensor> extra{params_tensor};
+        std::vector<GpuTensor*> outs{out};
 
-    KernelExecutionHooks hooks;
-    m_kernel->execute(nullptr, dispatch, bound_args, make_hooks(hooks));
-}
+        KernelArgsBundle bundle = build_kernel_args_from_metadata(
+            /*operand_kinds=*/{},
+            /*operand_arg_indices=*/{},
+            /*scalar_args=*/{},
+            kernel_inputs,
+            /*kernel_input_arg_count=*/0,
+            extra,
+            outs,
+            [&](size_t idx) { return m_inputs[idx]; },
+            m_name.c_str());
 
-void VulkanStage::set_inputs(const std::vector<GpuTensor*>& inputs) {
-    m_inputs = inputs;
-    if (!m_const_buffers) {
-        m_const_buffers = std::make_shared<ConstBufferSet>();
-        m_const_buffers->buffers.resize(inputs.size());
-        m_const_buffers->present.assign(inputs.size(), false);
+        KernelDispatch dispatch = make_1d_dispatch(1, m_split_single_kernel->clamp_threadgroup_size(1));
+        m_split_single_kernel->execute(command_buffer, dispatch, bundle.args, nullptr);
+        offset_along_axis += slice;
     }
-}
-
-void VulkanStage::set_output(GpuTensor* output) {
-    m_output = output;
-    m_outputs.clear();
-    if (output) {
-        m_outputs.push_back(output);
-    }
-}
-
-void VulkanStage::set_outputs(const std::vector<std::unique_ptr<GpuTensor>>& outputs) {
-    m_outputs.clear();
-    m_outputs.reserve(outputs.size());
-    for (const auto& o : outputs) {
-        m_outputs.push_back(o.get());
-    }
-    if (!m_outputs.empty()) {
-        m_output = m_outputs.front();
-    }
-}
-
-void VulkanStage::enable_profiling(bool enable) {
-    m_profiling_enabled = enable;
-}
-
-void VulkanStage::set_profiler(void* profiler,
-                               uint32_t node_id,
-                               const std::string& node_name,
-                               const std::string& node_type) {
-    m_profiler = profiler;
-    m_profile_node_id = node_id;
-    m_profile_node_name = node_name;
-    m_profile_node_type = node_type;
-}
-
-bool VulkanStage::fuse_activation(ActivationKind kind, float alpha) {
-    OPENVINO_ASSERT(!m_kernel, "VulkanStage: cannot fuse activation after compilation");
-    if (!m_node) {
-        return false;
-    }
-    if (m_type != "Convolution" && m_type != "GroupConvolution" &&
-        m_type != "Add" && m_type != "Multiply" && m_type != "Maximum") {
-        return false;
-    }
-    const auto et = m_node->get_output_element_type(0);
-    if (!et.is_real()) {
-        return false;
-    }
-    const auto& pshape = m_node->get_output_partial_shape(0);
-    if (pshape.rank().is_dynamic()) {
-        return false;
-    }
-    if ((m_type == "Convolution" || m_type == "GroupConvolution") && !m_has_bn) {
-        for (const auto& user : m_node->get_output_target_inputs(0)) {
-            auto user_node = user.get_node()->shared_from_this();
-            if (ov::as_type_ptr<ov::op::v5::BatchNormInference>(user_node)) {
-                return false;
-            }
-        }
-    }
-    m_has_activation = true;
-    m_activation = kind;
-    m_activation_alpha = alpha;
-    return true;
-}
-
-bool VulkanStage::fuse_batchnorm(const BatchNormParams& params) {
-    OPENVINO_ASSERT(!m_kernel, "VulkanStage: cannot fuse batchnorm after compilation");
-    if (!m_node) {
-        return false;
-    }
-    if (m_type != "Convolution" && m_type != "GroupConvolution") {
-        return false;
-    }
-    if (params.empty()) {
-        return false;
-    }
-    const auto et = m_node->get_output_element_type(0);
-    if (!et.is_real()) {
-        return false;
-    }
-    const auto& pshape = m_node->get_output_partial_shape(0);
-    if (pshape.rank().is_dynamic() || pshape.rank().get_length() < 2) {
-        return false;
-    }
-    if (pshape[1].is_static() &&
-        static_cast<size_t>(pshape[1].get_length()) != params.gamma.size()) {
-        return false;
-    }
-    m_has_bn = true;
-    m_bn_params = params;
-    return true;
-}
-
-bool VulkanStage::fuse_bias(const BiasParams& params) {
-    OPENVINO_ASSERT(!m_kernel, "VulkanStage: cannot fuse bias after compilation");
-    if (!m_node) {
-        return false;
-    }
-    if (m_type != "Convolution" && m_type != "GroupConvolution" &&
-        m_type != "MatMul" && m_type != "Add" && m_type != "Multiply" && m_type != "Maximum") {
-        return false;
-    }
-    if (params.empty()) {
-        return false;
-    }
-    if (params.element_type != ov::element::f16 && params.element_type != ov::element::f32) {
-        return false;
-    }
-    const auto& pshape = m_node->get_output_partial_shape(0);
-    if (pshape.rank().is_dynamic()) {
-        return false;
-    }
-    const size_t out_rank = static_cast<size_t>(pshape.rank().get_length());
-    if (params.shape.size() > out_rank) {
-        return false;
-    }
-    const size_t offset = out_rank - params.shape.size();
-    for (size_t i = 0; i < out_rank; ++i) {
-        const int64_t bias_dim = (i < offset) ? 1 : params.shape[i - offset];
-        if (bias_dim <= 0) {
-            return false;
-        }
-        if (pshape[i].is_static()) {
-            const int64_t out_dim = pshape[i].get_length();
-            if (bias_dim != 1 && bias_dim != out_dim) {
-                return false;
-            }
-        }
-    }
-    m_has_bias = true;
-    m_bias_params = params;
-    return true;
-}
-
-std::unique_ptr<GpuStage> VulkanStage::clone() const {
-    auto stage = std::make_unique<VulkanStage>(m_node);
-    stage->m_kernel = m_kernel;
-    stage->m_output_shape = m_output_shape;
-    stage->m_last_input_shape = m_last_input_shape;
-    stage->m_kernel_inputs = m_kernel_inputs;
-    stage->m_kernel_input_arg_count = m_kernel_input_arg_count;
-    stage->m_const_buffers = m_const_buffers;
-    stage->m_parallel_dispatch = m_parallel_dispatch;
-    stage->m_parallel_loop_dims = m_parallel_loop_dims;
-    stage->m_dispatch_tile_h = m_dispatch_tile_h;
-    stage->m_dispatch_tile_w = m_dispatch_tile_w;
-    stage->m_dispatch_threads_h = m_dispatch_threads_h;
-    stage->m_dispatch_threads_w = m_dispatch_threads_w;
-    stage->m_kernel_scalar_args = m_kernel_scalar_args;
-    stage->m_kernel_operand_kinds = m_kernel_operand_kinds;
-    stage->m_kernel_operand_arg_indices = m_kernel_operand_arg_indices;
-    stage->m_has_activation = m_has_activation;
-    stage->m_activation = m_activation;
-    stage->m_activation_alpha = m_activation_alpha;
-    stage->m_has_bn = m_has_bn;
-    stage->m_bn_params = m_bn_params;
-    stage->m_has_bias = m_has_bias;
-    stage->m_bias_params = m_bias_params;
-    stage->m_kernel_extra_inputs = m_kernel_extra_inputs;
-    stage->m_bias_f16 = m_bias_f16;
-    return stage;
 }
 
 }  // namespace gfx_plugin

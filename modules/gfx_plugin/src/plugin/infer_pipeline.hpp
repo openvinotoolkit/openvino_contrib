@@ -35,6 +35,7 @@ std::vector<InferStage> build_infer_pipeline(const std::vector<PipelineStageDesc
                                              bool profiling_enabled);
 
 void bind_remote_outputs(const std::vector<ov::Output<const ov::Node>>& outputs,
+                         const std::shared_ptr<const ov::Model>& runtime_model,
                          const std::unordered_map<const ov::Node*, size_t>& node_map,
                          const std::unordered_map<const ov::Node*, size_t>& param_map,
                          const std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_outputs,
@@ -73,6 +74,7 @@ std::vector<InferStage> build_bound_pipeline(
     GpuBufferManager* buffer_manager,
     void* profiler,
     bool profiling_enabled,
+    const std::shared_ptr<const ov::Model>& runtime_model,
     const std::vector<ov::Output<const ov::Node>>& outputs,
     const std::unordered_map<const ov::Node*, size_t>& node_map,
     const std::unordered_map<const ov::Node*, size_t>& param_map,
@@ -84,8 +86,7 @@ std::vector<InferStage> build_bound_pipeline(
 ov::Shape resolve_output_shape(const std::vector<ov::Output<const ov::Node>>& public_outputs,
                                const OutputSource& source,
                                const GpuTensor& tensor,
-                               size_t out_idx,
-                               bool allow_fallback_one);
+                               size_t out_idx);
 
 ov::element::Type resolve_output_element_type(const OutputSource& source,
                                               const GpuTensor& tensor,
@@ -99,8 +100,12 @@ OutputViewInfo resolve_output_view(const std::vector<ov::Output<const ov::Node>>
                                    const std::shared_ptr<const ov::Model>& runtime_model,
                                    GpuTensor& tensor,
                                    size_t out_idx,
-                                   bool allow_fallback_one,
                                    const char* error_prefix);
+
+GpuTensor* find_pipeline_output(std::vector<InferStage>& pipeline,
+                                const ov::Node* node,
+                                size_t port,
+                                const char* error_prefix = "GFX");
 
 template <typename DescribeOutput>
 inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
@@ -164,7 +169,6 @@ inline void for_each_output_tensor(const std::vector<ov::Output<const ov::Node>>
                                    RemoteHandler&& on_remote,
                                    LocalHandler&& on_local,
                                    bool allow_missing,
-                                   bool allow_fallback_one,
                                    const char* error_prefix = "GFX") {
     for (size_t out_idx = 0; out_idx < public_outputs.size(); ++out_idx) {
         if (out_idx < remote_outputs.size() && remote_outputs[out_idx]) {
@@ -190,7 +194,6 @@ inline void for_each_output_tensor(const std::vector<ov::Output<const ov::Node>>
                                         runtime_model,
                                         *dev,
                                         out_idx,
-                                        allow_fallback_one,
                                         error_prefix);
         auto host_override = host_override_getter(out_idx, info.type, info.shape, error_prefix);
         on_local(out_idx, *dev, info, host_override);
@@ -241,6 +244,9 @@ inline void execute_pipeline(std::vector<InferStage>& pipeline,
                                              param_map,
                                              pipeline,
                                              std::forward<InputLookup>(input_lookup));
+        if (!stage.stage) {
+            continue;
+        }
         stage.stage->set_inputs(resolved);
         on_stage(stage, resolved);
     }
@@ -267,6 +273,9 @@ inline GpuTensor* resolve_output_tensor(const std::vector<ov::Output<const ov::N
         auto& outs = pipeline[it->second].outputs;
         OPENVINO_ASSERT(src.port < outs.size(), error_prefix, ": output port out of range");
         return outs[src.port].get();
+    }
+    if (auto* tensor = find_pipeline_output(pipeline, src.node.get(), src.port, error_prefix)) {
+        return tensor;
     }
     if (auto pit = param_map.find(src.node.get()); pit != param_map.end()) {
         auto* input_tensor = input_lookup(pit->second);

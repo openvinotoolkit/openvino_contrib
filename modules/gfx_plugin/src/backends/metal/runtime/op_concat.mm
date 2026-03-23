@@ -9,7 +9,7 @@
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"
 #include "backends/metal/codegen/metal_codegen_backend.hpp"
-#include "mlir/mlir_builder.hpp"
+#include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/codegen_common.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
@@ -99,7 +99,7 @@ void MetalConcatOp::compile(MetalBufferManager* buffer_manager) {
     ConcatCodegenDesc desc{};
     desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
     mlir::MLIRContext ctx;
-    auto module = build_mlir_concat_from_model(make_single_op_model(m_node), ctx);
+    auto module = build_mlir_for_node(m_node, ctx);
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 

@@ -4,6 +4,8 @@
 
 #include "mlir/mlir_builder.hpp"
 
+#include "mlir/gfx_mlir_type_utils.hpp"
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -22,18 +24,6 @@ namespace ov {
 namespace gfx_plugin {
 
 namespace {
-
-mlir::Type to_mlir_type(ov::element::Type et, mlir::MLIRContext& ctx) {
-    switch (et) {
-        case ov::element::f16: return mlir::Float16Type::get(&ctx);
-        case ov::element::f32: return mlir::Float32Type::get(&ctx);
-        case ov::element::i32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
-        case ov::element::i64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Signed);
-        case ov::element::u32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Unsigned);
-        case ov::element::u64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Unsigned);
-        default: OPENVINO_THROW("Reverse MLIR: unsupported element type");
-    }
-}
 
 std::vector<int64_t> get_const_axes(const std::shared_ptr<const ov::Node>& node) {
     auto c = ov::as_type_ptr<const ov::op::v0::Constant>(node);
@@ -72,7 +62,8 @@ mlir::ModuleOp build_mlir_reverse_from_model(const std::shared_ptr<const ov::Mod
     auto out_shape = rev->get_output_shape(0);
     auto axes = get_const_axes(rev->get_input_node_shared_ptr(1));
 
-    auto elem_ty = to_mlir_type(rev->get_output_element_type(0), ctx);
+    auto elem_ty = to_mlir_type(rev->get_output_element_type(0), ctx, /*fallback_f32=*/false,
+                                /*allow_unsigned=*/true);
     mlir::SmallVector<int64_t> in_dims(in_shape.begin(), in_shape.end());
     mlir::SmallVector<int64_t> out_dims(out_shape.begin(), out_shape.end());
     auto in_ty = mlir::RankedTensorType::get(in_dims, elem_ty);

@@ -450,7 +450,7 @@ TEST(GfxBasicOps, MatMulSwishFusion) {
 
     ov::Tensor a{ov::element::f32, {2, 3}};
     for (size_t i = 0; i < a.get_size(); ++i) {
-        a.data<float>()[i] = static_cast<float>(i - 2);
+        a.data<float>()[i] = static_cast<float>(static_cast<int>(i) - 2);
     }
     std::vector<float> bvals(3 * 4);
     for (size_t i = 0; i < bvals.size(); ++i) {

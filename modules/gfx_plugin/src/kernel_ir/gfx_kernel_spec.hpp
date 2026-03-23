@@ -14,7 +14,7 @@ namespace gfx_plugin {
 
 class KernelSpec {
 public:
-    KernelSpec(std::shared_ptr<const ov::Node> node, uint32_t arg_count)
+    KernelSpec(std::shared_ptr<const ov::Node> node, uint32_t arg_count = 0)
         : m_node(std::move(node)),
           m_arg_count(arg_count) {
         if (m_node) {

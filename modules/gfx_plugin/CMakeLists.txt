@@ -9,6 +9,9 @@ project(OpenVINOGfxPlugin)
 find_package(OpenVINODeveloperPackage REQUIRED)
 
 option(ENABLE_GFX_MLIR "Build MLIR-based GFX backend" ON)
+if(NOT ENABLE_GFX_MLIR)
+    message(FATAL_ERROR "GFX: MLIR is required for the GFX plugin.")
+endif()
 include(cmake/GfxSources.cmake)
 include(cmake/GfxBackendConfig.cmake)
 
@@ -33,108 +36,8 @@ if(ENABLE_GFX_MLIR)
             -DANDROID_STL=${ANDROID_STL})
     endif()
 
-    set(_gfx_llvm_byproducts
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRIR.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRSupport.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libLLVMDemangle.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRPass.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRTransforms.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRBufferizationDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRBufferizationTransforms.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRFuncTransforms.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRMemRefTransforms.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRFuncDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRLinalgDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRLinalgTransforms.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRLinalgUtils.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRCallInterfaces.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRValueBoundsOpInterface.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRAnalysis.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRArithTransforms.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRComplexDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRMathDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRMathTransforms.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRSparseTensorDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRSparseTensorTransforms.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRTensorDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRArithDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRSCFDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRControlFlowDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRControlFlowInterfaces.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRIndexDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRMemRefDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRFunctionInterfaces.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRDestinationStyleOpInterface.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRShapedOpInterfaces.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRIndexingMapOpInterface.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRLoopLikeInterface.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRParallelCombiningOpInterface.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRMemorySlotInterfaces.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRCopyOpInterface.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRArithValueBoundsOpInterfaceImpl.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRTensorInferTypeOpInterfaceImpl.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRTensorTilingInterfaceImpl.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRInferIntRangeCommon.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRInferIntRangeInterface.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRInferTypeOpInterface.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRSideEffectInterfaces.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRViewLikeInterface.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRCastInterfaces.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRDataLayoutInterfaces.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRDialectUtils.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRTransformUtils.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRRewrite.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRParser.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRAsmParser.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRBytecodeReader.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRBytecodeWriter.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRBytecodeOpInterface.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRUBDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRPDLToPDLInterp.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRPDLInterpDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRPDLDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRPDLLAST.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRRewritePDL.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRSubsetOpInterface.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRReconcileUnrealizedCasts.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRSPIRVImageInterfaces.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRSPIRVBinaryUtils.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRAffineTransforms.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRAffineToStandard.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRAffineUtils.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRAffineAnalysis.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRAffineDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRTensorUtils.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRTensorTransforms.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRTensorTransformOps.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRPresburger.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRArithUtils.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRSCFTransforms.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRSCFUtils.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRMemRefUtils.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libLLVMSupport.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRVectorToSPIRV.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRVectorDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRVectorInterfaces.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRDLTIDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRGPUDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRGPUTransforms.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRSCFToGPU.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRSPIRVDialect.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRSPIRVSerialization.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRSPIRVTransforms.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRSPIRVUtils.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRSPIRVConversion.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRGPUToSPIRV.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRArithToSPIRV.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRMathToSPIRV.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRSCFToSPIRV.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRTensorToSPIRV.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRMemRefToSPIRV.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRFuncToSPIRV.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRIndexToSPIRV.a
-        ${GFX_LLVM_INSTALL_DIR}/lib/libMLIRControlFlowToSPIRV.a)
+    # Build products are shared libraries; explicit byproduct list is unnecessary.
+    set(_gfx_llvm_byproducts)
 
     ExternalProject_Add(gfx_llvm_external
         SOURCE_DIR ${GFX_LLVM_PROJECT_SOURCE_DIR}/llvm
@@ -146,7 +49,7 @@ if(ENABLE_GFX_MLIR)
             -DCMAKE_INSTALL_PREFIX=${GFX_LLVM_INSTALL_DIR}
             -DLLVM_ENABLE_PROJECTS=mlir
             -DLLVM_TARGETS_TO_BUILD=Native
-            -DBUILD_SHARED_LIBS=OFF
+            -DBUILD_SHARED_LIBS=ON
             -DLLVM_BUILD_LLVM_DYLIB=OFF
             -DLLVM_BUILD_TOOLS=OFF
             -DLLVM_BUILD_UTILS=OFF
@@ -159,7 +62,6 @@ if(ENABLE_GFX_MLIR)
             -DMLIR_ENABLE_BINDINGS_PYTHON=OFF
             -DLLVM_ENABLE_RTTI=ON
             ${_gfx_llvm_toolchain_args}
-        BUILD_BYPRODUCTS ${_gfx_llvm_byproducts}
         INSTALL_COMMAND ${CMAKE_COMMAND} --build . --target install)
 
     # Try to use installed config packages from the external build (if already present).

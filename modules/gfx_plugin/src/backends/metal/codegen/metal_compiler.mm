@@ -18,12 +18,12 @@ id<MTLComputePipelineState> MetalKernelCompiler::compile_msl_from_source(const s
     NSError* error = nil;
     MTLCompileOptions* opts = [[MTLCompileOptions alloc] init];
     if (gfx_log_config().level >= GfxLogLevel::Trace) {
-        GFX_LOG_TRACE("msl", "[GFX MSL] source dump (" << (entry_point ? entry_point : "") << "):\n" << source);
+        gfx_log_trace("msl") << "[GFX MSL] source dump (" << (entry_point ? entry_point : "") << "):\n" << source;
     }
     opts.fastMathEnabled = NO;
     const char* dump_env = std::getenv("OV_GFX_DEBUG_MSL");
     if (dump_env && std::string(dump_env) != "0") {
-        GFX_LOG_TRACE("msl", "[GFX MSL] source dump (" << (entry_point ? entry_point : "") << "):\n" << source);
+        gfx_log_trace("msl") << "[GFX MSL] source dump (" << (entry_point ? entry_point : "") << "):\n" << source;
     }
     id<MTLLibrary> lib = [m_device newLibraryWithSource:[NSString stringWithUTF8String:source.c_str()]
                                                  options:opts

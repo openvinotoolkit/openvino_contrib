@@ -4,6 +4,8 @@
 
 #include "mlir/mlir_builder.hpp"
 
+#include "mlir/gfx_mlir_type_utils.hpp"
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -18,30 +20,6 @@
 
 namespace ov {
 namespace gfx_plugin {
-
-namespace {
-mlir::Type to_mlir_type(ov::element::Type et, mlir::MLIRContext& ctx) {
-    switch (et) {
-        case ov::element::f32: return mlir::Float32Type::get(&ctx);
-        case ov::element::f16: return mlir::Float16Type::get(&ctx);
-        case ov::element::i8:
-        case ov::element::u8:  return mlir::IntegerType::get(&ctx, 8, mlir::IntegerType::Signed);
-        case ov::element::i32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
-        case ov::element::i64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Signed);
-        default: OPENVINO_THROW("Concat MLIR: unsupported element type");
-    }
-}
-
-mlir::SmallVector<int64_t> to_shape(const ov::PartialShape& ps) {
-    mlir::SmallVector<int64_t> dims;
-    dims.reserve(ps.rank().get_length());
-    for (const auto& d : ps) {
-        dims.push_back(d.is_dynamic() ? mlir::ShapedType::kDynamic
-                                      : static_cast<int64_t>(d.get_length()));
-    }
-    return dims;
-}
-}  // namespace
 
 mlir::ModuleOp build_mlir_concat_from_model(const std::shared_ptr<const ov::Model>& model,
                                             mlir::MLIRContext& ctx) {
@@ -59,7 +37,11 @@ mlir::ModuleOp build_mlir_concat_from_model(const std::shared_ptr<const ov::Mode
     const size_t rank = concat->get_output_shape(0).size();
     OPENVINO_ASSERT(rank > 0, "Concat MLIR: output rank must be static");
 
-    auto elem_ty = to_mlir_type(concat->get_output_element_type(0), ctx);
+    auto elem_ty = to_mlir_type(concat->get_output_element_type(0),
+                                ctx,
+                                /*fallback_f32=*/false,
+                                /*allow_unsigned=*/false,
+                                /*allow_small_ints=*/true);
 
     mlir::SmallVector<int64_t> out_shape(concat->get_output_shape(0).begin(),
                                          concat->get_output_shape(0).end());

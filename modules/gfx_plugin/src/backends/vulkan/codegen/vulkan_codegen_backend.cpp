@@ -7,10 +7,12 @@
 #include <algorithm>
 #include <cstring>
 #include <sstream>
+#include <iostream>
+#include <unordered_map>
 
 #include "openvino/core/except.hpp"
 
-#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/gfx_mlir_kernel_metadata.hpp"
 #include "mlir/spirv_codegen.hpp"
 
 #include "backends/vulkan/runtime/vulkan_memory.hpp"
@@ -20,6 +22,8 @@ namespace ov {
 namespace gfx_plugin {
 
 namespace {
+
+constexpr uint32_t kRecordingDescriptorSetsPerPool = 32;
 
 std::string vk_result_to_string(VkResult res) {
     switch (res) {
@@ -42,6 +46,56 @@ std::string vk_result_to_string(VkResult res) {
         break;
     }
     return "VK_ERROR_UNKNOWN";
+}
+
+// Quick scan of SPIR-V to infer max binding used in set 0.
+static uint32_t count_bindings_in_spirv(const std::vector<uint32_t>& words) {
+    if (words.size() < 5) {
+        return 0;
+    }
+    struct DecorationState {
+        bool has_binding = false;
+        bool has_set = false;
+        uint32_t binding = 0;
+        uint32_t set = 0;
+    };
+    std::unordered_map<uint32_t, DecorationState> decorations;
+    // SPIR-V header is 5 words; instructions start at word 5.
+    for (size_t i = 5; i < words.size();) {
+        uint32_t word = words[i];
+        uint16_t wcount = word >> 16;
+        uint16_t opcode = word & 0xFFFF;
+        if (wcount == 0) {
+            break;
+        }
+        if (opcode == 71 /*OpDecorate*/ && i + 3 < words.size()) {
+            uint32_t target = words[i + 1];
+            uint32_t decoration = words[i + 2];
+            uint32_t value = words[i + 3];
+            auto& state = decorations[target];
+            if (decoration == 33 /*Binding*/) {
+                state.has_binding = true;
+                state.binding = value;
+            } else if (decoration == 34 /*DescriptorSet*/) {
+                state.has_set = true;
+                state.set = value;
+            }
+        }
+        i += wcount;
+    }
+    uint32_t max_binding = 0;
+    bool found = false;
+    for (const auto& [_, state] : decorations) {
+        if (!state.has_binding) {
+            continue;
+        }
+        if (state.has_set && state.set != 0) {
+            continue;
+        }
+        found = true;
+        max_binding = std::max(max_binding, state.binding);
+    }
+    return found ? (max_binding + 1) : 0;
 }
 
 }  // namespace
@@ -93,7 +147,29 @@ size_t VulkanCompiledKernel::clamp_threadgroup_size(size_t desired) const {
     return desired == 0 ? 1 : desired;
 }
 
-void VulkanCompiledKernel::execute(GpuCommandBufferHandle /*command_buffer*/,
+void VulkanCompiledKernel::on_submission_complete() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    for (auto& pool : m_recording_desc_pools) {
+        if (pool.handle) {
+            VkResult res = vkResetDescriptorPool(m_device, pool.handle, 0);
+            if (res != VK_SUCCESS) {
+                OPENVINO_THROW("GFX Vulkan: vkResetDescriptorPool failed: ", vk_result_to_string(res));
+            }
+        }
+        pool.used_sets = 0;
+    }
+}
+
+GpuCommandBufferHandle VulkanCompiledKernel::begin_external_commands() {
+    return reinterpret_cast<GpuCommandBufferHandle>(begin_commands());
+}
+
+void VulkanCompiledKernel::end_external_commands(GpuCommandBufferHandle command_buffer) {
+    OPENVINO_ASSERT(command_buffer, "GFX Vulkan: external command buffer is null");
+    end_commands(reinterpret_cast<VkCommandBuffer>(command_buffer));
+}
+
+void VulkanCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
                                    const KernelDispatch& dispatch,
                                    const std::vector<KernelArg>& args,
                                    const KernelExecutionHooks* hooks) {
@@ -101,6 +177,8 @@ void VulkanCompiledKernel::execute(GpuCommandBufferHandle /*command_buffer*/,
     set_args_count(runtime_count);
     const uint32_t binding_count = runtime_count;
     ensure_pipeline(binding_count);
+    const bool owns_command_buffer = (command_buffer == nullptr);
+    const VkDescriptorSet desc_set = acquire_descriptor_set(!owns_command_buffer);
 
     std::vector<VkWriteDescriptorSet> writes;
     std::vector<VkDescriptorBufferInfo> buffer_infos;
@@ -132,7 +210,7 @@ void VulkanCompiledKernel::execute(GpuCommandBufferHandle /*command_buffer*/,
 
         VkWriteDescriptorSet write{};
         write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write.dstSet = m_desc_set;
+        write.dstSet = desc_set;
         write.dstBinding = arg.index;
         write.dstArrayElement = 0;
         write.descriptorCount = 1;
@@ -149,7 +227,8 @@ void VulkanCompiledKernel::execute(GpuCommandBufferHandle /*command_buffer*/,
                                nullptr);
     }
 
-    VkCommandBuffer cmd = begin_commands();
+    VkCommandBuffer cmd = owns_command_buffer ? begin_commands()
+                                              : reinterpret_cast<VkCommandBuffer>(command_buffer);
     VkCommandBuffer used_cmd = cmd;
     if (hooks && hooks->on_begin) {
         hooks->on_begin(reinterpret_cast<GpuCommandEncoderHandle>(cmd));
@@ -161,7 +240,7 @@ void VulkanCompiledKernel::execute(GpuCommandBufferHandle /*command_buffer*/,
                             m_pipeline_layout,
                             0,
                             1,
-                            &m_desc_set,
+                            &desc_set,
                             0,
                             nullptr);
 
@@ -187,7 +266,9 @@ void VulkanCompiledKernel::execute(GpuCommandBufferHandle /*command_buffer*/,
         if (hooks && hooks->on_end) {
             hooks->on_end(reinterpret_cast<GpuCommandEncoderHandle>(cmd));
         }
-        end_commands(used_cmd);
+        if (owns_command_buffer) {
+            end_commands(used_cmd);
+        }
         if (hooks && hooks->on_complete) {
             hooks->on_complete();
         }
@@ -206,7 +287,9 @@ void VulkanCompiledKernel::execute(GpuCommandBufferHandle /*command_buffer*/,
     if (hooks && hooks->on_end) {
         hooks->on_end(reinterpret_cast<GpuCommandEncoderHandle>(cmd));
     }
-    end_commands(used_cmd);
+    if (owns_command_buffer) {
+        end_commands(used_cmd);
+    }
     if (hooks && hooks->on_complete) {
         hooks->on_complete();
     }
@@ -247,7 +330,10 @@ void VulkanCompiledKernel::ensure_pipeline(uint32_t binding_count) {
     layout_create.pSetLayouts = &m_desc_layout;
     res = vkCreatePipelineLayout(m_device, &layout_create, nullptr, &m_pipeline_layout);
     if (res != VK_SUCCESS) {
-        OPENVINO_THROW("GFX Vulkan: vkCreatePipelineLayout failed: ", vk_result_to_string(res));
+        OPENVINO_THROW("GFX Vulkan: vkCreatePipelineLayout failed (bindings=",
+                       bindings.size(),
+                       "): ",
+                       vk_result_to_string(res));
     }
 
     VkComputePipelineCreateInfo pipeline_info{};
@@ -259,7 +345,10 @@ void VulkanCompiledKernel::ensure_pipeline(uint32_t binding_count) {
     pipeline_info.stage.pName = m_entry_point.c_str();
     res = vkCreateComputePipelines(m_device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_pipeline);
     if (res != VK_SUCCESS) {
-        OPENVINO_THROW("GFX Vulkan: vkCreateComputePipelines failed: ", vk_result_to_string(res));
+        OPENVINO_THROW("GFX Vulkan: vkCreateComputePipelines failed (bindings=",
+                       bindings.size(),
+                       "): ",
+                       vk_result_to_string(res));
     }
 
     VkDescriptorPoolSize pool_size{};
@@ -306,6 +395,12 @@ void VulkanCompiledKernel::destroy_pipeline_locked() {
         vkDestroyCommandPool(m_device, m_command_pool, nullptr);
         m_command_pool = VK_NULL_HANDLE;
     }
+    for (auto& pool : m_recording_desc_pools) {
+        if (pool.handle) {
+            vkDestroyDescriptorPool(m_device, pool.handle, nullptr);
+        }
+    }
+    m_recording_desc_pools.clear();
     if (m_desc_pool) {
         vkDestroyDescriptorPool(m_device, m_desc_pool, nullptr);
         m_desc_pool = VK_NULL_HANDLE;
@@ -324,6 +419,52 @@ void VulkanCompiledKernel::destroy_pipeline_locked() {
     }
     m_desc_set = VK_NULL_HANDLE;
     m_binding_count = 0;
+}
+
+VkDescriptorPool VulkanCompiledKernel::create_descriptor_pool_locked(uint32_t max_sets) const {
+    VkDescriptorPoolSize pool_size{};
+    pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    pool_size.descriptorCount = std::max<uint32_t>(1, m_binding_count) * std::max<uint32_t>(1, max_sets);
+
+    VkDescriptorPoolCreateInfo pool_info{};
+    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_info.poolSizeCount = 1;
+    pool_info.pPoolSizes = &pool_size;
+    pool_info.maxSets = std::max<uint32_t>(1, max_sets);
+    VkDescriptorPool pool = VK_NULL_HANDLE;
+    VkResult res = vkCreateDescriptorPool(m_device, &pool_info, nullptr, &pool);
+    if (res != VK_SUCCESS) {
+        OPENVINO_THROW("GFX Vulkan: vkCreateDescriptorPool failed: ", vk_result_to_string(res));
+    }
+    return pool;
+}
+
+VkDescriptorSet VulkanCompiledKernel::acquire_descriptor_set(bool unique_for_recording) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (!unique_for_recording) {
+        return m_desc_set;
+    }
+
+    if (m_recording_desc_pools.empty() ||
+        m_recording_desc_pools.back().used_sets >= kRecordingDescriptorSetsPerPool) {
+        RecordingDescriptorPool block;
+        block.handle = create_descriptor_pool_locked(kRecordingDescriptorSetsPerPool);
+        m_recording_desc_pools.push_back(block);
+    }
+
+    auto& pool = m_recording_desc_pools.back();
+    VkDescriptorSetAllocateInfo alloc_info{};
+    alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    alloc_info.descriptorPool = pool.handle;
+    alloc_info.descriptorSetCount = 1;
+    alloc_info.pSetLayouts = &m_desc_layout;
+    VkDescriptorSet desc_set = VK_NULL_HANDLE;
+    VkResult res = vkAllocateDescriptorSets(m_device, &alloc_info, &desc_set);
+    if (res != VK_SUCCESS) {
+        OPENVINO_THROW("GFX Vulkan: vkAllocateDescriptorSets failed: ", vk_result_to_string(res));
+    }
+    ++pool.used_sets;
+    return desc_set;
 }
 
 VkCommandBuffer VulkanCompiledKernel::begin_commands() {
@@ -396,12 +537,14 @@ std::shared_ptr<ICompiledKernel> VulkanCodegenBackend::compile(const KernelSourc
                        *log_ptr);
     }
 
-    uint32_t arg_count = source.signature.arg_count;
-    if (module) {
-        if (auto kinds = module->getAttrOfType<mlir::ArrayAttr>("gfx.kernel_operand_kinds")) {
-            arg_count = static_cast<uint32_t>(kinds.size());
-        } else if (auto scalars = module->getAttrOfType<mlir::ArrayAttr>("gfx.kernel_scalar_args")) {
-            arg_count = static_cast<uint32_t>(arg_count + scalars.size());
+    uint32_t arg_count = static_cast<uint32_t>(
+        infer_kernel_arg_count_from_module(module, source.signature.arg_count));
+    if (const char* dump_env = std::getenv("OV_GFX_DUMP_SPIRV_BINDINGS")) {
+        uint32_t bind_count = count_bindings_in_spirv(spirv_binary);
+        if (bind_count && bind_count != arg_count) {
+            std::cerr << "[GFX][Vulkan] entry=" << entry
+                      << " arg_count=" << arg_count
+                      << " spirv_bindings=" << bind_count << std::endl;
         }
     }
     const uintptr_t device_key = reinterpret_cast<uintptr_t>(m_device);

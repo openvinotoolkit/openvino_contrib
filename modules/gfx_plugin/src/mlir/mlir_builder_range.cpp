@@ -4,6 +4,8 @@
 
 #include "mlir/mlir_builder.hpp"
 
+#include "mlir/gfx_mlir_type_utils.hpp"
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -21,18 +23,6 @@ namespace ov {
 namespace gfx_plugin {
 
 namespace {
-
-mlir::Type to_mlir_type(ov::element::Type et, mlir::MLIRContext& ctx) {
-    switch (et) {
-        case ov::element::f16: return mlir::Float16Type::get(&ctx);
-        case ov::element::f32: return mlir::Float32Type::get(&ctx);
-        case ov::element::i32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
-        case ov::element::i64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Signed);
-        case ov::element::u32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Unsigned);
-        case ov::element::u64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Unsigned);
-        default: OPENVINO_THROW("Range MLIR: unsupported element type");
-    }
-}
 
 mlir::Value extract_scalar(mlir::OpBuilder& b, mlir::Location loc, mlir::Value tensor) {
     auto type = mlir::cast<mlir::RankedTensorType>(tensor.getType());
@@ -62,7 +52,8 @@ mlir::ModuleOp build_mlir_range_from_model(const std::shared_ptr<const ov::Model
     const auto out_shape = range_node->get_output_shape(0);
     OPENVINO_ASSERT(out_shape.size() == 1, "Range MLIR: output rank must be 1");
     const int64_t out_total = static_cast<int64_t>(ov::shape_size(out_shape));
-    auto elem_ty = to_mlir_type(range_node->get_output_element_type(0), ctx);
+    auto elem_ty = to_mlir_type(range_node->get_output_element_type(0), ctx, /*fallback_f32=*/false,
+                                /*allow_unsigned=*/true);
     auto out_ty = mlir::RankedTensorType::get({out_total}, elem_ty);
 
     mlir::SmallVector<int64_t> start_shape(range_node->get_input_shape(0).begin(),
@@ -72,9 +63,12 @@ mlir::ModuleOp build_mlir_range_from_model(const std::shared_ptr<const ov::Model
     mlir::SmallVector<int64_t> step_shape(range_node->get_input_shape(2).begin(),
                                           range_node->get_input_shape(2).end());
 
-    auto start_elem_ty = to_mlir_type(range_node->get_input_element_type(0), ctx);
-    auto stop_elem_ty = to_mlir_type(range_node->get_input_element_type(1), ctx);
-    auto step_elem_ty = to_mlir_type(range_node->get_input_element_type(2), ctx);
+    auto start_elem_ty = to_mlir_type(range_node->get_input_element_type(0), ctx, /*fallback_f32=*/false,
+                                      /*allow_unsigned=*/true);
+    auto stop_elem_ty = to_mlir_type(range_node->get_input_element_type(1), ctx, /*fallback_f32=*/false,
+                                     /*allow_unsigned=*/true);
+    auto step_elem_ty = to_mlir_type(range_node->get_input_element_type(2), ctx, /*fallback_f32=*/false,
+                                     /*allow_unsigned=*/true);
 
     auto start_ty = mlir::RankedTensorType::get(start_shape, start_elem_ty);
     auto stop_ty = mlir::RankedTensorType::get(stop_shape, stop_elem_ty);

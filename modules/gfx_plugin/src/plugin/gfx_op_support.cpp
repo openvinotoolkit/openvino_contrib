@@ -45,35 +45,35 @@ bool is_supported_node(const std::shared_ptr<const ov::Node>& node, GpuBackend b
         if (backend == GpuBackend::Metal) {
             const bool supported = metal_supports_node(node);
             if (!supported && gfx_log_debug_enabled()) {
-                GFX_LOG_DEBUG("Plugin", "Unsupported node: " << node->get_friendly_name()
-                                                             << " (" << node->get_type_name() << ")");
+                gfx_log_debug("Plugin") << "Unsupported node: " << node->get_friendly_name()
+                                                             << " (" << node->get_type_name() << ")";
             }
             return supported;
         }
         if (backend == GpuBackend::Vulkan) {
             if (gfx_log_debug_enabled()) {
-                GFX_LOG_DEBUG("Plugin", "Check node: " << node->get_friendly_name()
-                                                       << " (" << node->get_type_name() << ")");
+                gfx_log_debug("Plugin") << "Check node: " << node->get_friendly_name()
+                                                       << " (" << node->get_type_name() << ")";
             }
             const bool supported = vulkan_supports_node(node);
             if (!supported && gfx_log_debug_enabled()) {
-                GFX_LOG_DEBUG("Plugin", "Unsupported node: " << node->get_friendly_name()
-                                                             << " (" << node->get_type_name() << ")");
+                gfx_log_debug("Plugin") << "Unsupported node: " << node->get_friendly_name()
+                                                             << " (" << node->get_type_name() << ")";
             }
             return supported;
         }
         return false;
     } catch (const std::exception& e) {
         if (gfx_log_debug_enabled()) {
-            GFX_LOG_DEBUG("Plugin", "Exception probing node " << node->get_friendly_name()
+            gfx_log_debug("Plugin") << "Exception probing node " << node->get_friendly_name()
                                                               << " (" << node->get_type_name() << "): "
-                                                              << e.what());
+                                                              << e.what();
         }
         return false;
     } catch (...) {
         if (gfx_log_debug_enabled()) {
-            GFX_LOG_DEBUG("Plugin", "Unknown exception probing node " << node->get_friendly_name()
-                                                                      << " (" << node->get_type_name() << ")");
+            gfx_log_debug("Plugin") << "Unknown exception probing node " << node->get_friendly_name()
+                                                                      << " (" << node->get_type_name() << ")";
         }
         return false;
     }

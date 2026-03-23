@@ -12,6 +12,7 @@
 #include "openvino/runtime/tensor.hpp"
 #include "plugin/infer_request_state.hpp"
 #include "plugin/backend_state.hpp"
+#include "plugin/infer_io_utils.hpp"
 #include "plugin/infer_pipeline.hpp"
 #include "runtime/gfx_backend_utils.hpp"
 #include "runtime/gfx_remote_context.hpp"
@@ -191,7 +192,9 @@ const std::shared_ptr<const CompiledModel> InferRequest::get_compiled_model_type
 ov::Tensor InferRequest::resolve_host_input_tensor(size_t idx) {
     auto& state = *m_state;
     if (idx < state.bound_inputs.size() && state.bound_inputs[idx]) {
-        return state.bound_inputs[idx];
+        if (state.bound_inputs[idx].data()) {
+            return state.bound_inputs[idx];
+        }
     }
     auto impl = ov::ISyncInferRequest::get_tensor(get_inputs().at(idx));
     ov::Tensor src;
@@ -252,6 +255,77 @@ const std::vector<std::pair<std::string, ov::Tensor>>& InferRequest::get_debug_t
         return kEmpty;
     }
     return m_state->debug_tensors;
+}
+
+void InferRequest::ensure_output_staging_handles(size_t count, const char* error_prefix) {
+    OPENVINO_ASSERT(m_state && m_state->backend, error_prefix, ": infer backend state is not initialized");
+    auto& handles = m_state->backend->output_staging_handles;
+    if (handles.size() < count) {
+        handles.resize(count);
+    }
+}
+
+void InferRequest::ensure_input_handles(size_t count, bool with_staging, const char* error_prefix) {
+    OPENVINO_ASSERT(m_state && m_state->backend, error_prefix, ": infer backend state is not initialized");
+    auto& handles = m_state->backend->input_handles;
+    if (handles.size() < count) {
+        handles.resize(count);
+    }
+    if (!with_staging) {
+        return;
+    }
+    auto& staging = m_state->backend->input_staging_handles;
+    if (staging.size() < count) {
+        staging.resize(count);
+    }
+}
+
+void InferRequest::bind_inputs_for_infer(
+    GpuBackend expected_backend,
+    const std::function<void(size_t, const GpuTensor&)>& remote_handler,
+    const std::function<void(size_t, const ov::Tensor&)>& host_handler,
+    const char* error_prefix) {
+    auto& state = *m_state;
+    for_each_input_tensor(
+        get_inputs().size(),
+        state.bound_remote_inputs,
+        [&](size_t idx) {
+            return resolve_remote_input_tensor(idx, expected_backend, error_prefix);
+        },
+        [&](size_t idx) {
+            return resolve_host_input_tensor(idx);
+        },
+        remote_handler,
+        host_handler);
+}
+
+void InferRequest::bind_outputs_for_infer(
+    const std::shared_ptr<const CompiledModel>& cm,
+    std::vector<InferStage>& pipeline,
+    const std::unordered_map<const ov::Node*, size_t>& node_map,
+    const std::unordered_map<const ov::Node*, size_t>& param_map,
+    const std::function<GpuTensor*(size_t)>& output_input_lookup,
+    const std::function<void(size_t, const std::shared_ptr<GfxRemoteTensor>&)>& remote_setter,
+    const std::function<void(size_t, GpuTensor&, const OutputViewInfo&, const ov::Tensor*)>& device_setter,
+    bool allow_missing,
+    const char* error_prefix) {
+    OPENVINO_ASSERT(cm, error_prefix, ": compiled model is null");
+    auto& state = *m_state;
+    bind_outputs_common(
+        get_outputs(),
+        cm->get_runtime_model(),
+        node_map,
+        param_map,
+        pipeline,
+        output_input_lookup,
+        state.bound_remote_outputs,
+        [&](size_t idx, const ov::element::Type& type, const ov::Shape& shape, const char* err) {
+            return get_host_output_override(idx, type, shape, err);
+        },
+        remote_setter,
+        device_setter,
+        allow_missing,
+        error_prefix);
 }
 
 }  // namespace gfx_plugin

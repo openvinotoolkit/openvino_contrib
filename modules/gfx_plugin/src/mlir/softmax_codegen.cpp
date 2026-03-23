@@ -26,6 +26,8 @@ std::string emit_softmax_msl(const SoftmaxCodegenDesc& d,
                              const std::vector<std::string>& input_idx,
                              const std::vector<std::string>& output_idx,
                              uint32_t rank) {
+    const std::string compute = scalar.empty() ? "float" : scalar;
+    const std::string accum = (compute == "half") ? "float" : compute;
     const bool use_half = (scalar == "half");
     std::vector<std::string> dims;
     if (rank == 3)
@@ -51,30 +53,30 @@ std::string emit_softmax_msl(const SoftmaxCodegenDesc& d,
     ss << "    uint inner_i = row - outer * p.inner;\n";
     ss << "    uint base_outer = outer * p.cols * p.inner;\n";
     ss << "    // compute max\n";
-    ss << "    float m = -INFINITY;\n";
+    ss << "    " << accum << " m = -INFINITY;\n";
     ss << "    for (uint c = 0; c < p.cols; ++c) {\n";
     ss << "        uint idx = base_outer + c * p.inner + inner_i;\n";
-    ss << "        float v = static_cast<float>(input[idx]);\n";
+    ss << "        " << accum << " v = static_cast<" << accum << ">(static_cast<" << compute << ">(input[idx]));\n";
     ss << "        m = m > v ? m : v;\n";
     ss << "    }\n";
-    ss << "    float sum = 0.0f;\n";
+    ss << "    " << accum << " sum = 0.0f;\n";
     ss << "    for (uint c = 0; c < p.cols; ++c) {\n";
     ss << "        uint idx = base_outer + c * p.inner + inner_i;\n";
-    ss << "        float v = static_cast<float>(input[idx]);\n";
+    ss << "        " << accum << " v = static_cast<" << accum << ">(static_cast<" << compute << ">(input[idx]));\n";
     ss << "        sum += exp(v - m);\n";
     ss << "    }\n";
     ss << "    uint out_idx = base_outer + col * p.inner + inner_i;\n";
-    ss << "    float v = static_cast<float>(input[out_idx]);\n";
+    ss << "    " << accum << " v = static_cast<" << accum << ">(static_cast<" << compute << ">(input[out_idx]));\n";
     if (d.log_softmax) {
-        ss << "    float logsum = log(sum);\n";
-        if (use_half) {
+        ss << "    " << accum << " logsum = log(sum);\n";
+        if (use_half || accum != scalar) {
             ss << "    output[out_idx] = static_cast<" << scalar << ">((v - m) - logsum);\n";
         } else {
             ss << "    output[out_idx] = (v - m) - logsum;\n";
         }
     } else {
-        ss << "    float inv = 1.0f / sum;\n";
-        if (use_half) {
+        ss << "    " << accum << " inv = 1.0f / sum;\n";
+        if (use_half || accum != scalar) {
             ss << "    output[out_idx] = static_cast<" << scalar << ">(exp(v - m) * inv);\n";
         } else {
             ss << "    output[out_idx] = exp(v - m) * inv;\n";

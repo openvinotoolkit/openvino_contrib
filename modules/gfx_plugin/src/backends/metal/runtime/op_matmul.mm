@@ -14,7 +14,7 @@
 #include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
-#include "mlir/mlir_builder.hpp"
+#include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/codegen_common.hpp"
@@ -121,6 +121,9 @@ void MetalMatMulOp::fill_desc_from_node(const std::shared_ptr<const ov::Node>& n
                     "MetalMatMulOp supports only f16/f32");
 
     m_desc.element_type = m_element_type;
+    m_desc.input_a_type = node->get_input_element_type(0);
+    m_desc.input_b_type = node->get_input_element_type(1);
+    m_desc.output_type = m_element_type;
     m_desc.M = M;
     m_desc.N = N;
     m_desc.K = K_a;
@@ -162,6 +165,7 @@ bool MetalMatMulOp::fuse_bias(const BiasParams& params) {
     m_has_bias = true;
     m_bias_params = params;
     m_desc.has_bias = true;
+    m_desc.bias_type = params.element_type;
     m_desc.bias_dims = dims;
     return true;
 }
@@ -221,14 +225,19 @@ void MetalMatMulOp::compile(MetalBufferManager* buffer_manager) {
     MetalCodegenBackend backend(m_device ? m_device : (id<MTLDevice>)buffer_manager->device());
     std::string log;
     mlir::MLIRContext ctx;
-    auto model = make_single_op_model(m_node);
-    auto module = build_mlir_module_from_model(model, ctx);
+    auto module = build_mlir_for_node(m_node, ctx);
     if (m_has_activation) {
         const bool applied = apply_fused_activation(module, m_activation, m_activation_alpha);
         OPENVINO_ASSERT(applied, "MetalMatMulOp: failed to apply fused activation for ", name());
     }
     MatMulCodegenDesc desc = m_desc;
     desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
+    desc.input_a_type = m_desc.input_a_type == ov::element::dynamic ? desc.element_type : m_desc.input_a_type;
+    desc.input_b_type = m_desc.input_b_type == ov::element::dynamic ? desc.element_type : m_desc.input_b_type;
+    desc.output_type = m_node->get_output_element_type(0);
+    if (desc.bias_type == ov::element::dynamic && m_has_bias) {
+        desc.bias_type = m_bias_params.element_type;
+    }
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 

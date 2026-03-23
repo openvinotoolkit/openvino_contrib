@@ -109,6 +109,7 @@ public:
     virtual uint32_t args_count() const { return 0; }
     virtual void set_args_count(uint32_t /*count*/) {}
     virtual size_t clamp_threadgroup_size(size_t desired) const = 0;
+    virtual void on_submission_complete() {}
     virtual void execute(GpuCommandBufferHandle command_buffer,
                          const KernelDispatch& dispatch,
                          const std::vector<KernelArg>& args,

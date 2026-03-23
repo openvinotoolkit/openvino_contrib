@@ -55,7 +55,24 @@ void VulkanProfiler::begin_infer(size_t expected_samples) {
 }
 
 void VulkanProfiler::end_infer(GpuCommandBufferHandle /*command_buffer*/) {
-    // No-op: timestamps are resolved per node once command buffer completes.
+    if (!enabled()) {
+        return;
+    }
+    for (auto& rec : m_nodes) {
+        for (const auto& samples : rec.pending_samples) {
+            if (samples.begin == UINT32_MAX || samples.end == UINT32_MAX) {
+                continue;
+            }
+            const uint64_t begin = read_timestamp(samples.begin);
+            const uint64_t end = read_timestamp(samples.end);
+            if (end > begin) {
+                const double ns = static_cast<double>(end - begin) * static_cast<double>(m_timestamp_period);
+                rec.gpu_us += to_us(ns);
+                rec.dispatches += 1;
+            }
+        }
+        rec.pending_samples.clear();
+    }
 }
 
 void VulkanProfiler::begin_node(uint32_t node_id,
@@ -111,13 +128,7 @@ void VulkanProfiler::end_node(uint32_t node_id, SamplePair samples) {
     if (samples.begin == UINT32_MAX || samples.end == UINT32_MAX) {
         return;
     }
-    const uint64_t begin = read_timestamp(samples.begin);
-    const uint64_t end = read_timestamp(samples.end);
-    if (end > begin) {
-        const double ns = static_cast<double>(end - begin) * static_cast<double>(m_timestamp_period);
-        m_nodes[node_id].gpu_us += to_us(ns);
-        m_nodes[node_id].dispatches += 1;
-    }
+    m_nodes[node_id].pending_samples.push_back(samples);
 }
 
 std::vector<ov::ProfilingInfo> VulkanProfiler::export_ov() const {

@@ -81,13 +81,13 @@ std::string emit_pool2d_msl(const Pool2DCodegenDesc& d, const std::string& scala
     ss << "  uint dilationH, dilationW;\n";
     ss << "  uint padTop, padLeft, padBottom, padRight;\n";
     ss << "  uint outH, outW;\n";
-    ss << "  bool is_avg;\n";
-    ss << "  bool exclude_pad;\n";
+    ss << "  uint is_avg;\n";
+    ss << "  uint exclude_pad;\n";
     ss << "};\n";
     ss << "kernel void pool2d_kernel(\n";
     ss << "  device const " << scalar << "* input  [[buffer(0)]],\n";
-    ss << "  device " << scalar << "*       output [[buffer(1)]],\n";
-    ss << "  constant Pool2DParams& p   [[buffer(2)]],\n";
+    ss << "  constant Pool2DParams& p   [[buffer(1)]],\n";
+    ss << "  device " << scalar << "*       output [[buffer(2)]],\n";
     ss << "  uint gid [[thread_position_in_grid]]) {\n";
     ss << "  uint total = p.N * p.C;\n";
     ss << "  if (gid >= total) return;\n";

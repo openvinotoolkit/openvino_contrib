@@ -10,6 +10,7 @@
 
 #include "runtime/gfx_activation.hpp"
 #include "runtime/gfx_logger.hpp"
+#include "mlir/gfx_mlir_debug.hpp"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -97,12 +98,17 @@ mlir::Value apply_activation(mlir::OpBuilder& b,
             return mul;
         }
         case ActivationKind::Swish: {
-            auto neg = b.create<mlir::arith::NegFOp>(loc, x);
-            auto exp = b.create<mlir::math::ExpOp>(loc, neg);
             auto one = b.create<mlir::arith::ConstantOp>(loc, make_float_attr(1.0));
-            auto denom = b.create<mlir::arith::AddFOp>(loc, one, exp);
-            auto sigmoid = b.create<mlir::arith::DivFOp>(loc, one, denom);
-            return b.create<mlir::arith::MulFOp>(loc, x, sigmoid);
+            auto cond = b.create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OGE, x, zero);
+            auto neg = b.create<mlir::arith::NegFOp>(loc, x);
+            auto exp_neg = b.create<mlir::math::ExpOp>(loc, neg);
+            auto pos_denom = b.create<mlir::arith::AddFOp>(loc, one, exp_neg);
+            auto pos = b.create<mlir::arith::DivFOp>(loc, x, pos_denom);
+            auto exp_pos = b.create<mlir::math::ExpOp>(loc, x);
+            auto neg_denom = b.create<mlir::arith::AddFOp>(loc, one, exp_pos);
+            auto neg_num = b.create<mlir::arith::MulFOp>(loc, x, exp_pos);
+            auto neg_res = b.create<mlir::arith::DivFOp>(loc, neg_num, neg_denom);
+            return b.create<mlir::arith::SelectOp>(loc, cond, pos, neg_res);
         }
         case ActivationKind::HSwish:
         case ActivationKind::HSigmoid: {
@@ -247,8 +253,16 @@ mlir::Value strip_memref_casts(mlir::Value value) {
 }
 
 bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewriter) {
-    if (op.getInputs().size() < 2 || op.getOutputs().empty()) {
+    const bool debug = gfx_mlir_debug_enabled();
+    auto fail = [&](const char* reason) {
+        if (debug) {
+            llvm::errs() << "[GFX][MLIR] Conv2D lowering skip: " << reason << "\n";
+        }
         return false;
+    };
+
+    if (op.getInputs().size() < 2 || op.getOutputs().empty()) {
+        return fail("expected 2 inputs and 1 output");
     }
 
     mlir::Value input = op.getInputs()[0];
@@ -259,15 +273,15 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
     auto w_type = mlir::dyn_cast<mlir::MemRefType>(filter.getType());
     auto out_type = mlir::dyn_cast<mlir::MemRefType>(output.getType());
     if (!in_type || !w_type || !out_type) {
-        return false;  // not bufferized
+        return fail("non-memref operands (not bufferized)");
     }
     if (in_type.getRank() != 4 || w_type.getRank() != 4 || out_type.getRank() != 4) {
-        return false;
+        return fail("non-4D shapes");
     }
 
     auto elem_ty = out_type.getElementType();
     if (!mlir::isa<mlir::FloatType>(elem_ty)) {
-        return false;
+        return fail("non-float element type");
     }
 
     mlir::Value conv_input = input;
@@ -368,15 +382,21 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
     const bool has_explicit_padding = (pad_h != 0 || pad_w != 0 || pad_end_h != 0 || pad_end_w != 0 ||
                                        pad_fill_loop != nullptr || pad_copy_loop != nullptr);
     if (!prefer_parallel && !has_explicit_padding) {
-        return false;
+        return fail("prefer_parallel disabled and no padding");
     }
     if (gfx_log_debug_enabled()) {
-        GFX_LOG_DEBUG("MLIR", "Conv2D pad detect: conv_input="
+        gfx_log_debug("MLIR") << "Conv2D pad detect: conv_input="
                                   << (using_padded_input ? "padded" : "orig")
                                   << " pad_h=" << pad_h << " pad_w=" << pad_w
                                   << " pad_end_h=" << pad_end_h << " pad_end_w=" << pad_end_w
                                   << " conv_output="
-                                  << (conv_output == output ? "alloc" : "arg"));
+                                  << (conv_output == output ? "alloc" : "arg");
+    }
+    if (debug) {
+        llvm::errs() << "[GFX][MLIR] Conv2D operands: in=" << input.getType()
+                     << " w=" << filter.getType() << " out=" << output.getType()
+                     << " pad_begin=(" << pad_h << "," << pad_w << ")"
+                     << " pad_end=(" << pad_end_h << "," << pad_end_w << ")\n";
     }
 
     mlir::linalg::FillOp fill_op;
@@ -406,12 +426,12 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
     int64_t dil_h = 0, dil_w = 0;
     if (!extract_hw(op.getStrides(), stride_h, stride_w) ||
         !extract_hw(op.getDilations(), dil_h, dil_w)) {
-        return false;
+        return fail("missing strides/dilations");
     }
 
     if (op->getNumResults() > 0) {
         if (op->getNumResults() != 1 || op->getResult(0).getType() != output.getType()) {
-            return false;
+            return fail("unexpected result count/type");
         }
     }
 
@@ -760,10 +780,14 @@ void run_conv2d_parallel_lowering(mlir::ModuleOp module) {
         }
     }
     if (gfx_log_debug_enabled()) {
-        GFX_LOG_DEBUG("MLIR", "Conv2D parallel lowering: convs=" << convs.size()
-                                                                 << " rewritten=" << rewritten);
+        gfx_log_debug("MLIR") << "Conv2D parallel lowering: convs=" << convs.size()
+                                                                << " rewritten=" << rewritten;
     }
     if (!convs.empty() && rewritten == 0) {
+        if (auto skip = module->getAttrOfType<mlir::BoolAttr>("gfx.skip_conv_parallel")) {
+            if (skip.getValue())
+                return;
+        }
         throw std::runtime_error("Conv2D parallel lowering failed");
     }
 }

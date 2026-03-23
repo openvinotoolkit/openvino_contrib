@@ -17,7 +17,7 @@
 #include "backends/metal/runtime/op_utils.hpp"
 #include "backends/metal/runtime/metal_memory.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
-#include "mlir/mlir_builder.hpp"
+#include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/codegen_common.hpp"
@@ -289,72 +289,7 @@ void MetalElementwiseOp::compile_kernel(MetalBufferManager* buffer_manager,
     desc.activation = m_activation;
     desc.alpha = m_activation_alpha;
     mlir::MLIRContext ctx;
-    auto model = make_single_op_model(m_node);
-    mlir::ModuleOp module;
-    switch (m_kind) {
-        case EltwiseKind::Add:
-            module = build_mlir_add_from_model(model, ctx);
-            break;
-        case EltwiseKind::Sub:
-            module = build_mlir_sub_from_model(model, ctx);
-            break;
-        case EltwiseKind::Mul:
-            module = build_mlir_mul_from_model(model, ctx);
-            break;
-        case EltwiseKind::Div:
-            module = build_mlir_div_from_model(model, ctx);
-            break;
-        case EltwiseKind::Pow:
-            module = build_mlir_pow_from_model(model, ctx);
-            break;
-        case EltwiseKind::Mod:
-            module = build_mlir_mod_from_model(model, ctx);
-            break;
-        case EltwiseKind::FloorMod:
-            module = build_mlir_floor_mod_from_model(model, ctx);
-            break;
-        case EltwiseKind::Prelu:
-            module = build_mlir_prelu_from_model(model, ctx);
-            break;
-        case EltwiseKind::SquaredDiff:
-            module = build_mlir_squared_difference_from_model(model, ctx);
-            break;
-        case EltwiseKind::Min:
-            module = build_mlir_min_from_model(model, ctx);
-            break;
-        case EltwiseKind::Max:
-            module = build_mlir_max_from_model(model, ctx);
-            break;
-        case EltwiseKind::LogicalAnd:
-            module = build_mlir_logical_and_from_model(model, ctx);
-            break;
-        case EltwiseKind::LogicalOr:
-            module = build_mlir_logical_or_from_model(model, ctx);
-            break;
-        case EltwiseKind::LogicalXor:
-            module = build_mlir_logical_xor_from_model(model, ctx);
-            break;
-        case EltwiseKind::Equal:
-            module = build_mlir_equal_from_model(model, ctx);
-            break;
-        case EltwiseKind::NotEqual:
-            module = build_mlir_not_equal_from_model(model, ctx);
-            break;
-        case EltwiseKind::Less:
-            module = build_mlir_less_from_model(model, ctx);
-            break;
-        case EltwiseKind::Greater:
-            module = build_mlir_greater_from_model(model, ctx);
-            break;
-        case EltwiseKind::LessEqual:
-            module = build_mlir_less_equal_from_model(model, ctx);
-            break;
-        case EltwiseKind::GreaterEqual:
-            module = build_mlir_greater_equal_from_model(model, ctx);
-            break;
-        default:
-            OPENVINO_THROW("MetalElementwiseOp: unsupported MLIR builder for eltwise kind");
-    }
+    auto module = build_mlir_for_node(m_node, ctx);
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
     if (gfx_log_debug_enabled()) {
@@ -367,7 +302,7 @@ void MetalElementwiseOp::compile_kernel(MetalBufferManager* buffer_manager,
                                              (line_end == std::string::npos)
                                                  ? std::string::npos
                                                  : (line_end - line_pos));
-            GFX_LOG_DEBUG("Eltwise", "msl_signature=" << line);
+            gfx_log_debug("Eltwise") << "msl_signature=" << line;
         }
         auto b_pos = preview.find("device const", line_pos == std::string::npos ? 0 : line_pos + 1);
         if (b_pos != std::string::npos) {
@@ -376,7 +311,7 @@ void MetalElementwiseOp::compile_kernel(MetalBufferManager* buffer_manager,
                                              (line_end == std::string::npos)
                                                  ? std::string::npos
                                                  : (line_end - b_pos));
-            GFX_LOG_DEBUG("Eltwise", "msl_signature2=" << line);
+            gfx_log_debug("Eltwise") << "msl_signature2=" << line;
         }
         auto c_pos = preview.find("C[gid]");
         if (c_pos != std::string::npos) {
@@ -391,7 +326,7 @@ void MetalElementwiseOp::compile_kernel(MetalBufferManager* buffer_manager,
                                              (line_end == std::string::npos)
                                                  ? std::string::npos
                                                  : (line_end - line_start));
-            GFX_LOG_DEBUG("Eltwise", "msl_assign=" << line);
+            gfx_log_debug("Eltwise") << "msl_assign=" << line;
         }
     }
 
@@ -417,8 +352,7 @@ void MetalElementwiseOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     if (gfx_log_debug_enabled()) {
         const auto t0 = resolve_tensor_type(in0);
         const auto t1 = resolve_tensor_type(in1);
-        GFX_LOG_DEBUG("Eltwise",
-                      "name=" << name()
+        gfx_log_debug("Eltwise") << "name=" << name()
                               << " node_type=" << (m_node ? m_node->get_type_name() : "null")
                               << " m_element_type=" << m_element_type.get_type_name()
                               << " in0_type=" << t0.get_type_name()
@@ -427,22 +361,7 @@ void MetalElementwiseOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
                               << " compiled_type=" << m_compiled_type.get_type_name()
                               << " in0_buf=" << in0->buf.buffer
                               << " in1_buf=" << in1->buf.buffer
-                              << " out_buf=" << out.buf.buffer);
-        if (in1 && in1->buf.host_visible && in1->buf.buffer) {
-            void* mapped = metal_map_buffer(in1->buf);
-            if (mapped) {
-                if (t1 == ov::element::f16) {
-                    auto* h = static_cast<const ov::float16*>(mapped);
-                    const auto raw = *reinterpret_cast<const uint16_t*>(mapped);
-                    GFX_LOG_DEBUG("Eltwise", "in1_mapped_f16=" << static_cast<float>(h[0])
-                                                              << " raw=0x" << std::hex << raw << std::dec);
-                } else if (t1 == ov::element::f32) {
-                    auto* h = static_cast<const float*>(mapped);
-                    GFX_LOG_DEBUG("Eltwise", "in1_mapped_f32=" << h[0]);
-                }
-                metal_unmap_buffer(in1->buf);
-            }
-        }
+                              << " out_buf=" << out.buf.buffer;
     }
 
     // Always recompute broadcast metadata from runtime shapes to avoid stale dims for dynamic inputs.
@@ -540,7 +459,7 @@ void MetalElementwiseOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
             dims << m_stride1[i];
         }
         dims << "] num=" << m_num_elems << " rank=" << rank;
-        GFX_LOG_DEBUG("Eltwise", dims.str());
+        gfx_log_debug("Eltwise") << dims.str();
     }
 
     const NSUInteger threads_per_tg = 64;
@@ -570,23 +489,9 @@ void MetalElementwiseOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
             }
             oss << "]";
         }
-        GFX_LOG_DEBUG("Eltwise", oss.str());
+        gfx_log_debug("Eltwise") << oss.str();
     }
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
-
-    if (gfx_log_debug_enabled() && out.buf.host_visible && out.buf.buffer) {
-        void* mapped = metal_map_buffer(out.buf);
-        if (mapped) {
-            if (out_type == ov::element::f16) {
-                auto* h = static_cast<const ov::float16*>(mapped);
-                GFX_LOG_DEBUG("Eltwise", "out_mapped_f16=" << static_cast<float>(h[0]));
-            } else if (out_type == ov::element::f32) {
-                auto* h = static_cast<const float*>(mapped);
-                GFX_LOG_DEBUG("Eltwise", "out_mapped_f32=" << h[0]);
-            }
-            metal_unmap_buffer(out.buf);
-        }
-    }
 
     out.expected_type = out_type;
 }

@@ -22,6 +22,7 @@
 #include "runtime/fused_sequence_stage.hpp"
 #include "openvino/gfx_plugin/profiling.hpp"
 #include "plugin/backend_state.hpp"
+#include "runtime/gfx_precision.hpp"
 
 #include "openvino/core/except.hpp"
 #include "openvino/core/validation_util.hpp"
@@ -36,9 +37,7 @@
 #include "openvino/runtime/properties.hpp"
 #include "openvino/util/common_util.hpp"
 
-#if ENABLE_GFX_MLIR
 #include "transforms/fusion_pass.hpp"
-#endif
 
 #include <algorithm>
 #include <cstdlib>
@@ -168,10 +167,11 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
     : ov::ICompiledModel(model, plugin, context),
       m_runtime_model(model),
       m_original_model(original_model ? original_model : model) {
-    // Initialize inference precision from user-supplied properties (default: f32).
+    // GFX always computes in fp16 internally.
     if (auto it = properties.find(ov::hint::inference_precision.name()); it != properties.end()) {
-        m_inference_precision = it->second.as<ov::element::Type>();
+        (void)it;
     }
+    m_inference_precision = gfx_default_inference_precision();
     if (auto it = properties.find(ov::enable_profiling.name()); it != properties.end()) {
         m_enable_profiling = parse_bool_property(it->second, ov::enable_profiling.name());
     } else {
@@ -226,15 +226,15 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
         }
     }
     m_config[kGfxBackendProperty] = m_backend_name;
-    GFX_LOG_INFO("CompiledModel", "Creating backend state for " << m_backend_name);
+    gfx_log_info("CompiledModel") << "Creating backend state for " << m_backend_name;
     m_backend_state = create_backend_state(m_backend, properties, context);
-    GFX_LOG_INFO("CompiledModel", "Backend state created");
+    gfx_log_info("CompiledModel") << "Backend state created";
     if (m_backend == GpuBackend::Vulkan) {
-        GFX_LOG_INFO("CompiledModel", "Vulkan backend selected");
+        gfx_log_info("CompiledModel") << "Vulkan backend selected";
     }
 
     // Build GpuStage pipeline eagerly; fail early if unsupported ops encountered.
-    GFX_LOG_INFO("CompiledModel", "Building stage pipeline");
+    gfx_log_info("CompiledModel") << "Building stage pipeline";
     build_op_pipeline();
 }
 
@@ -256,7 +256,7 @@ void CompiledModel::export_model(std::ostream& model) const {
 void CompiledModel::set_property(const ov::AnyMap& properties) {
     for (const auto& kv : properties) {
         if (kv.first == ov::hint::inference_precision.name()) {
-            m_inference_precision = kv.second.as<ov::element::Type>();
+            m_inference_precision = gfx_default_inference_precision();
             m_config[kv.first] = m_inference_precision;
         } else if (apply_profiling_property(kv.first,
                                             kv.second,
@@ -343,21 +343,20 @@ std::string CompiledModel::last_profiling_report_json() const {
 
 void CompiledModel::build_op_pipeline() {
     if (!m_runtime_model) {
-        GFX_LOG_WARN("OpFactory", "Cannot build pipeline: runtime model is null");
+        gfx_log_warn("OpFactory") << "Cannot build pipeline: runtime model is null";
         return;
     }
 
     if (!backend_has_const_manager(backend_state())) {
-        GFX_LOG_WARN("OpFactory", "Cannot build pipeline: const manager is null");
+        gfx_log_warn("OpFactory") << "Cannot build pipeline: const manager is null";
         return;
     }
 
     const auto resources = get_backend_resources(backend_state());
     auto* backend_state = m_backend_state.get();
     OPENVINO_ASSERT(backend_state, "GFX: backend state is not initialized");
-    GFX_LOG_INFO("StageFactory",
-                 "Building pipeline for backend=" << m_backend_name
-                                                 << " ops=" << m_runtime_model->get_ops().size());
+    gfx_log_info("StageFactory") << "Building pipeline for backend=" << m_backend_name
+                                                 << " ops=" << m_runtime_model->get_ops().size();
     // Map Parameter nodes to input indices.
     for (size_t i = 0; i < m_runtime_model->inputs().size(); ++i) {
         m_param_index[m_runtime_model->inputs()[i].get_node()] = i;
@@ -378,10 +377,9 @@ void CompiledModel::build_op_pipeline() {
     }
 
     const auto ordered_ops = m_runtime_model->get_ordered_ops();
-    GFX_LOG_INFO("StageFactory", "Ordered ops count=" << ordered_ops.size());
+    gfx_log_info("StageFactory") << "Ordered ops count=" << ordered_ops.size();
     m_pipeline.reserve(ordered_ops.size());
 
-#if ENABLE_GFX_MLIR
     FusionPlan fusion_plan;
     std::unordered_map<size_t, const FusionGroup*> fusion_primary;
     if (m_enable_fusion) {
@@ -396,12 +394,11 @@ void CompiledModel::build_op_pipeline() {
             fusion_primary[group.node_indices.front()] = &group;
         }
         if (gfx_log_debug_enabled()) {
-            GFX_LOG_DEBUG("Fusion", "Fusion enabled: groups=" << fusion_plan.groups.size());
+            gfx_log_debug("Fusion") << "Fusion enabled: groups=" << fusion_plan.groups.size();
         }
     } else if (gfx_log_debug_enabled()) {
-        GFX_LOG_DEBUG("Fusion", "Fusion disabled via " << kGfxEnableFusionProperty);
+        gfx_log_debug("Fusion") << "Fusion disabled via " << kGfxEnableFusionProperty;
     }
-#endif
 
     std::unordered_set<size_t> fused_indices;
     fused_indices.reserve(ordered_ops.size());
@@ -428,7 +425,6 @@ void CompiledModel::build_op_pipeline() {
             continue;
         }
 
-#if ENABLE_GFX_MLIR
         auto f_it = fusion_primary.find(op_index);
         if (f_it != fusion_primary.end() && f_it->second) {
             const auto* group = f_it->second;
@@ -571,12 +567,10 @@ void CompiledModel::build_op_pipeline() {
                 }
             }
         }
-#endif
 
         if (gfx_log_debug_enabled()) {
-            GFX_LOG_DEBUG("StageFactory",
-                          "Preparing stage for " << node->get_type_name()
-                                                 << " name=" << node->get_friendly_name());
+            gfx_log_debug("StageFactory") << "Preparing stage for " << node->get_type_name()
+                                                 << " name=" << node->get_friendly_name();
         }
         auto gpu_stage = backend_state->create_stage(node);
         OPENVINO_ASSERT(gpu_stage,
@@ -604,16 +598,14 @@ void CompiledModel::build_op_pipeline() {
             stage_desc.inputs.push_back({iv.get_node_shared_ptr(), iv.get_index()});
         }
         if (gfx_log_debug_enabled()) {
-            GFX_LOG_DEBUG("StageFactory",
-                          "Created GpuStage for " << node->get_type_name()
-                                                  << " name=" << node->get_friendly_name());
+            gfx_log_debug("StageFactory") << "Created GpuStage for " << node->get_type_name()
+                                                  << " name=" << node->get_friendly_name();
         }
 
         const size_t idx = m_pipeline.size();
         m_node_to_stage[node.get()] = idx;
         m_pipeline.emplace_back(std::move(stage_desc));
 
-#if ENABLE_GFX_MLIR
         auto f_it2 = fusion_primary.find(op_index);
         if (f_it2 != fusion_primary.end() && f_it2->second) {
             const auto* group = f_it2->second;
@@ -728,7 +720,6 @@ void CompiledModel::build_op_pipeline() {
                 }
             }
         }
-#endif
     }
 
     for (auto& stage : m_pipeline) {
@@ -739,9 +730,8 @@ void CompiledModel::build_op_pipeline() {
             inputs.push_back(nullptr);  // Parameter/Constant or previous stage; not needed for compile
         }
         if (gfx_log_debug_enabled()) {
-            GFX_LOG_DEBUG("StageFactory",
-                          "Compiling stage for " << stage.node->get_type_name()
-                                                 << " name=" << stage.node->get_friendly_name());
+            gfx_log_debug("StageFactory") << "Compiling stage for " << stage.node->get_type_name()
+                                                 << " name=" << stage.node->get_friendly_name();
         }
         stage.stage->set_inputs(inputs);
         GpuBufferManager* buffer_manager = resources.const_manager;
@@ -750,8 +740,7 @@ void CompiledModel::build_op_pipeline() {
     }
 
     m_pipeline_built = true;
-    GFX_LOG_INFO("StageFactory",
-                 "Built GFX " << m_backend_name << " pipeline with " << m_pipeline.size() << " stages");
+    gfx_log_info("StageFactory") << "Built GFX " << m_backend_name << " pipeline with " << m_pipeline.size() << " stages";
 }
 
 }  // namespace gfx_plugin

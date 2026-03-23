@@ -14,7 +14,7 @@
 #include "runtime/gfx_shape_utils.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
-#include "mlir/mlir_builder.hpp"
+#include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/codegen_common.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -64,34 +64,7 @@ void MetalReduceOp::compile(MetalBufferManager* buffer_manager) {
     MetalCodegenBackend backend(m_device ? m_device : (id<MTLDevice>)buffer_manager->device());
     std::string log;
     mlir::MLIRContext ctx;
-    std::shared_ptr<ov::Model> model = make_single_op_model(m_node);
-    mlir::ModuleOp module;
-    switch (m_kind) {
-        case ReduceKind::Sum:
-            module = build_mlir_reducesum_from_model(model, ctx);
-            break;
-        case ReduceKind::Mean:
-            module = build_mlir_reducemean_from_model(model, ctx);
-            break;
-        case ReduceKind::Max:
-            module = build_mlir_reducemax_from_model(model, ctx);
-            break;
-        case ReduceKind::Min:
-            module = build_mlir_reducemin_from_model(model, ctx);
-            break;
-        case ReduceKind::Prod:
-            module = build_mlir_reduceprod_from_model(model, ctx);
-            break;
-        case ReduceKind::L1:
-            module = build_mlir_reducel1_from_model(model, ctx);
-            break;
-        case ReduceKind::L2:
-            module = build_mlir_reducel2_from_model(model, ctx);
-            break;
-        default:
-            module = build_mlir_reducesum_from_model(model, ctx);
-            break;
-    }
+    auto module = build_mlir_for_node(m_node, ctx);
     ReduceCodegenDesc desc{};
     desc.kind = m_kind;
     desc.element_type = m_element_type;

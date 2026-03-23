@@ -20,6 +20,27 @@ namespace ov {
 namespace gfx_plugin {
 
 namespace {
+ov::Shape resolve_softmax_probe_shape(const std::shared_ptr<const ov::Node>& sm) {
+    OPENVINO_ASSERT(sm, "Softmax builder: node is null");
+    const auto& pshape = sm->get_input_partial_shape(0);
+    OPENVINO_ASSERT(pshape.rank().is_static(), "Softmax builder: dynamic rank is not supported");
+    if (pshape.is_static()) {
+        return sm->get_input_shape(0);
+    }
+
+    ov::Shape shape;
+    shape.reserve(static_cast<size_t>(pshape.rank().get_length()));
+    for (const auto& dim : pshape) {
+        if (dim.is_static()) {
+            shape.push_back(static_cast<size_t>(dim.get_length()));
+            continue;
+        }
+        const auto min_len = dim.get_min_length();
+        shape.push_back(static_cast<size_t>(min_len > 0 ? min_len : 1));
+    }
+    return shape;
+}
+
 std::shared_ptr<const ov::Node> find_single_softmax(const std::shared_ptr<const ov::Model>& model) {
     for (const auto& node : model->get_ordered_ops()) {
         if (ov::is_type<const ov::op::v1::Softmax>(node) || ov::is_type<const ov::op::v8::Softmax>(node))
@@ -44,9 +65,8 @@ mlir::ModuleOp build_softmax_like_from_node(const std::shared_ptr<const ov::Node
                     mlir::memref::MemRefDialect,
                     mlir::arith::ArithDialect,
                     mlir::math::MathDialect>();
-    const ov::Shape shape = (input_shape_override && !input_shape_override->empty())
-                                ? *input_shape_override
-                                : sm->get_input_shape(0);
+    const ov::Shape shape =
+        (input_shape_override && !input_shape_override->empty()) ? *input_shape_override : resolve_softmax_probe_shape(sm);
     auto to_elem_ty = [&](ov::element::Type et) -> mlir::Type {
         switch (et) {
             case ov::element::f16: return mlir::Float16Type::get(&ctx);
@@ -67,17 +87,15 @@ mlir::ModuleOp build_softmax_like_from_node(const std::shared_ptr<const ov::Node
     else if (auto ls = ov::as_type_ptr<const ov::op::v5::LogSoftmax>(sm)) axis = ls->get_axis();
     else OPENVINO_THROW("Softmax builder: unsupported op kind");
     if (axis < 0) axis += static_cast<int64_t>(shape.size());
-    int64_t rows = 1, cols = shape.at(axis), inner = 1;
-    for (size_t i = 0; i < static_cast<size_t>(axis); ++i) rows *= shape[i];
-    for (size_t i = static_cast<size_t>(axis) + 1; i < shape.size(); ++i) inner *= shape[i];
 
-    mlir::SmallVector<int64_t> dims(shape.begin(), shape.end());
-    auto ty = mlir::MemRefType::get(dims, elem_ty);
+    auto ty = mlir::MemRefType::get({mlir::ShapedType::kDynamic}, elem_ty);
+    auto param_ty = mlir::MemRefType::get({3}, mlir::IntegerType::get(&ctx, 32));
 
     mlir::OpBuilder mb(&ctx);
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
     mb.setInsertionPointToStart(module.getBody());
-    auto func_type = mb.getFunctionType({ty, ty}, {});
+    // Arguments: input, output, params(rows, cols, inner).
+    auto func_type = mb.getFunctionType({ty, ty, param_ty}, {});
     auto func = mb.create<mlir::func::FuncOp>(mlir::UnknownLoc::get(&ctx), "softmax_main", func_type);
     func.addEntryBlock();
     mlir::OpBuilder b(func.getBody());
@@ -97,36 +115,30 @@ mlir::ModuleOp build_softmax_like_from_node(const std::shared_ptr<const ov::Node
     };
     auto c0 = b.create<mlir::arith::ConstantIndexOp>(loc, 0);
     auto c1 = b.create<mlir::arith::ConstantIndexOp>(loc, 1);
-    auto rows_c = b.create<mlir::arith::ConstantIndexOp>(loc, rows);
-    auto cols_c = b.create<mlir::arith::ConstantIndexOp>(loc, cols);
-    auto inner_c = b.create<mlir::arith::ConstantIndexOp>(loc, inner);
+    auto params = func.getArgument(2);
+    auto rows_c = b.create<mlir::arith::IndexCastOp>(
+        loc,
+        b.getIndexType(),
+        b.create<mlir::memref::LoadOp>(loc, params, mlir::ValueRange{c0}));
+    auto cols_c = b.create<mlir::arith::IndexCastOp>(
+        loc,
+        b.getIndexType(),
+        b.create<mlir::memref::LoadOp>(loc, params, mlir::ValueRange{c1}));
+    auto inner_c = b.create<mlir::arith::IndexCastOp>(
+        loc,
+        b.getIndexType(),
+        b.create<mlir::memref::LoadOp>(loc, params, mlir::ValueRange{b.create<mlir::arith::ConstantIndexOp>(loc, 2)}));
 
-    auto flat_dim = rows * cols * inner;
-    auto flat_ty = mlir::MemRefType::get({flat_dim}, elem_ty);
-    auto offset = b.getI64IntegerAttr(0);
-    mlir::SmallVector<mlir::OpFoldResult, 1> sizes{b.getI64IntegerAttr(flat_dim)};
-    mlir::SmallVector<mlir::OpFoldResult, 1> strides{b.getI64IntegerAttr(1)};
-    auto flat_in = b.create<mlir::memref::ReinterpretCastOp>(loc,
-                                                            flat_ty,
-                                                            func.getArgument(0),
-                                                            offset,
-                                                            sizes,
-                                                            strides);
-    auto flat_out = b.create<mlir::memref::ReinterpretCastOp>(loc,
-                                                             flat_ty,
-                                                             func.getArgument(1),
-                                                             offset,
-                                                             sizes,
-                                                             strides);
+    auto total = b.create<mlir::arith::MulIOp>(loc, rows_c, cols_c);
+    total = b.create<mlir::arith::MulIOp>(loc, total, inner_c);
+    auto flat_in = func.getArgument(0);
+    auto flat_out = func.getArgument(1);
 
     auto for_row = b.create<mlir::scf::ForOp>(loc, c0, rows_c, c1);
     auto brow = mlir::OpBuilder::atBlockBegin(for_row.getBody());
-    mlir::scf::ForOp for_inner;
-    if (inner > 1) {
-        for_inner = brow.create<mlir::scf::ForOp>(loc, c0, inner_c, c1);
-    }
-    auto binner = inner > 1 ? mlir::OpBuilder::atBlockBegin(for_inner.getBody()) : brow;
-    mlir::Value inner_idx = inner > 1 ? for_inner.getInductionVar() : c0;
+    auto for_inner = brow.create<mlir::scf::ForOp>(loc, c0, inner_c, c1);
+    auto binner = mlir::OpBuilder::atBlockBegin(for_inner.getBody());
+    mlir::Value inner_idx = for_inner.getInductionVar();
 
     auto compute_flat = [&](mlir::OpBuilder& bld, mlir::Value row, mlir::Value col, mlir::Value in_idx) {
         auto mul1 = bld.create<mlir::arith::MulIOp>(loc, row, cols_c);
@@ -194,9 +206,8 @@ mlir::ModuleOp build_softmax_like_from_node_tiled(const std::shared_ptr<const ov
                     mlir::memref::MemRefDialect,
                     mlir::arith::ArithDialect,
                     mlir::math::MathDialect>();
-    const ov::Shape shape = (input_shape_override && !input_shape_override->empty())
-                                ? *input_shape_override
-                                : sm->get_input_shape(0);
+    const ov::Shape shape =
+        (input_shape_override && !input_shape_override->empty()) ? *input_shape_override : resolve_softmax_probe_shape(sm);
     auto to_elem_ty = [&](ov::element::Type et) -> mlir::Type {
         switch (et) {
             case ov::element::f16: return mlir::Float16Type::get(&ctx);
@@ -221,9 +232,8 @@ mlir::ModuleOp build_softmax_like_from_node_tiled(const std::shared_ptr<const ov
     for (size_t i = 0; i < static_cast<size_t>(axis); ++i) rows *= shape[i];
     for (size_t i = static_cast<size_t>(axis) + 1; i < shape.size(); ++i) inner *= shape[i];
 
-    mlir::SmallVector<int64_t> dims(shape.begin(), shape.end());
-    auto ty = mlir::MemRefType::get(dims, elem_ty);
-    auto param_ty = mlir::MemRefType::get({2}, mlir::IndexType::get(&ctx));
+    auto ty = mlir::MemRefType::get({mlir::ShapedType::kDynamic}, elem_ty);
+    auto param_ty = mlir::MemRefType::get({3}, mlir::IntegerType::get(&ctx, 32));
 
     mlir::OpBuilder mb(&ctx);
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
@@ -250,35 +260,28 @@ mlir::ModuleOp build_softmax_like_from_node_tiled(const std::shared_ptr<const ov
 
     auto c0 = b.create<mlir::arith::ConstantIndexOp>(loc, 0);
     auto c1 = b.create<mlir::arith::ConstantIndexOp>(loc, 1);
-    auto rows_c = b.create<mlir::arith::ConstantIndexOp>(loc, rows);
-    auto cols_c = b.create<mlir::arith::ConstantIndexOp>(loc, cols);
-    auto inner_c = b.create<mlir::arith::ConstantIndexOp>(loc, inner);
-
-    auto flat_dim = rows * cols * inner;
-    auto flat_ty = mlir::MemRefType::get({flat_dim}, elem_ty);
-    auto offset = b.getI64IntegerAttr(0);
-    mlir::SmallVector<mlir::OpFoldResult, 1> sizes{b.getI64IntegerAttr(flat_dim)};
-    mlir::SmallVector<mlir::OpFoldResult, 1> strides{b.getI64IntegerAttr(1)};
-    auto flat_in = b.create<mlir::memref::ReinterpretCastOp>(loc,
-                                                            flat_ty,
-                                                            func.getArgument(0),
-                                                            offset,
-                                                            sizes,
-                                                            strides);
-    auto flat_out = b.create<mlir::memref::ReinterpretCastOp>(loc,
-                                                             flat_ty,
-                                                             func.getArgument(1),
-                                                             offset,
-                                                             sizes,
-                                                             strides);
-
     auto params = func.getArgument(2);
-    auto offset_idx = b.create<mlir::memref::LoadOp>(loc, params, mlir::ValueRange{c0});
-    auto count_idx = b.create<mlir::memref::LoadOp>(loc, params, mlir::ValueRange{c1});
+    auto rows_c = b.create<mlir::arith::IndexCastOp>(
+        loc,
+        b.getIndexType(),
+        b.create<mlir::memref::LoadOp>(loc, params, mlir::ValueRange{c0}));
+    auto cols_c = b.create<mlir::arith::IndexCastOp>(
+        loc,
+        b.getIndexType(),
+        b.create<mlir::memref::LoadOp>(loc, params, mlir::ValueRange{c1}));
+    auto inner_c = b.create<mlir::arith::IndexCastOp>(
+        loc,
+        b.getIndexType(),
+        b.create<mlir::memref::LoadOp>(loc, params, mlir::ValueRange{b.create<mlir::arith::ConstantIndexOp>(loc, 2)}));
 
-    auto for_idx = b.create<mlir::scf::ForOp>(loc, c0, count_idx, c1);
+    auto total = b.create<mlir::arith::MulIOp>(loc, rows_c, cols_c);
+    total = b.create<mlir::arith::MulIOp>(loc, total, inner_c);
+    auto flat_in = func.getArgument(0);
+    auto flat_out = func.getArgument(1);
+
+    auto for_idx = b.create<mlir::scf::ForOp>(loc, c0, total, c1);
     auto bidx = mlir::OpBuilder::atBlockBegin(for_idx.getBody());
-    auto global_idx = bidx.create<mlir::arith::AddIOp>(loc, offset_idx, for_idx.getInductionVar());
+    auto global_idx = for_idx.getInductionVar();
     auto row = bidx.create<mlir::arith::DivUIOp>(loc, global_idx, inner_c);
     auto inner_idx = bidx.create<mlir::arith::RemUIOp>(loc, global_idx, inner_c);
 

@@ -23,6 +23,16 @@ struct SliceMeta {
     std::vector<uint32_t> steps;
 };
 
+mlir::ShapedType get_ranked_shaped_type(mlir::Type type) {
+    if (auto ranked_tensor = llvm::dyn_cast<mlir::RankedTensorType>(type)) {
+        return ranked_tensor;
+    }
+    if (auto memref = llvm::dyn_cast<mlir::MemRefType>(type)) {
+        return memref;
+    }
+    return {};
+}
+
 std::vector<uint32_t> compute_stride(const std::vector<uint32_t>& shape) {
     std::vector<uint32_t> stride(shape.size(), 1);
     if (shape.empty())
@@ -101,10 +111,16 @@ bool extract_slice_meta(mlir::ModuleOp module, SliceMeta& meta) {
     if (!func)
         return false;
     auto ft = func.getFunctionType();
-    if (ft.getNumInputs() < 1 || ft.getNumResults() < 1)
+    if (ft.getNumInputs() < 2)
         return false;
-    auto in_ty = llvm::dyn_cast<mlir::RankedTensorType>(ft.getInput(0));
-    auto out_ty = llvm::dyn_cast<mlir::RankedTensorType>(ft.getResult(0));
+    auto in_ty = get_ranked_shaped_type(ft.getInput(0));
+    mlir::ShapedType out_ty;
+    if (ft.getNumResults() >= 1) {
+        out_ty = get_ranked_shaped_type(ft.getResult(0));
+    }
+    if (!out_ty && ft.getNumInputs() >= 2) {
+        out_ty = get_ranked_shaped_type(ft.getInput(1));
+    }
     if (!in_ty || !out_ty || !in_ty.hasStaticShape() || !out_ty.hasStaticShape())
         return false;
 
@@ -154,7 +170,11 @@ bool extract_slice_meta(mlir::ModuleOp module, SliceMeta& meta) {
 // Uses ConvertCodegenDesc just to carry dst_type (dtype of slice tensors).
 std::string generate_msl_for_slice_generic(const ConvertCodegenDesc& d, mlir::ModuleOp module) {
     std::string scalar_t = "float";
-    if (auto func = get_entry_func(module)) {
+    if (d.dst_type != ov::element::dynamic) {
+        scalar_t = msl_type_from_element(d.dst_type);
+    } else if (d.element_type != ov::element::dynamic) {
+        scalar_t = msl_type_from_element(d.element_type);
+    } else if (auto func = get_entry_func(module)) {
         auto ft = func.getFunctionType();
         if (ft.getNumInputs() >= 1) {
             scalar_t = msl_type_from_mlir(ft.getInput(0));
@@ -175,6 +195,11 @@ std::string generate_msl_for_slice_generic(const ConvertCodegenDesc& d, mlir::Mo
     ss << "using scalar_t = " << scalar_t << ";\n";
     if (use_static) {
         const uint32_t rank = static_cast<uint32_t>(meta.out_shape.size());
+        uint32_t total = 1;
+        for (auto dim : meta.out_shape) {
+            total *= dim;
+        }
+        ss << "constant uint TOTAL_C = " << total << ";\n";
         ss << "constant uint RANK_C = " << rank << ";\n";
         ss << "constant uint OUT_SHAPE_C[" << rank << "] = {";
         for (size_t i = 0; i < meta.out_shape.size(); ++i) {
@@ -201,23 +226,24 @@ std::string generate_msl_for_slice_generic(const ConvertCodegenDesc& d, mlir::Mo
         }
         ss << "};\n";
     }
-    ss << "kernel void slice_kernel(\n";
-    ss << "  device const scalar_t* A [[buffer(0)]],\n";
-    ss << "  device scalar_t* C [[buffer(1)]],\n";
-    ss << "  constant uint& TOTAL [[buffer(2)]],\n";
-    ss << "  constant uint& RANK [[buffer(3)]],\n";
-    ss << "  constant uint* out_shape [[buffer(4)]],\n";
-    ss << "  constant uint* in_stride [[buffer(5)]],\n";
-    ss << "  constant int* starts [[buffer(6)]],\n";
-    ss << "  constant uint* steps [[buffer(7)]],\n";
-    ss << "  uint gid [[thread_position_in_grid]]) {\n";
-    ss << "    if (gid >= TOTAL) return;\n";
     if (use_static) {
-        ss << "    (void)RANK;\n";
-        ss << "    (void)out_shape;\n";
-        ss << "    (void)in_stride;\n";
-        ss << "    (void)starts;\n";
-        ss << "    (void)steps;\n";
+        ss << "kernel void slice_kernel(\n";
+        ss << "  device const scalar_t* A [[buffer(0)]],\n";
+        ss << "  device scalar_t* C [[buffer(1)]],\n";
+        ss << "  uint gid [[thread_position_in_grid]]) {\n";
+        ss << "    if (gid >= TOTAL_C) return;\n";
+    } else {
+        ss << "kernel void slice_kernel(\n";
+        ss << "  device const scalar_t* A [[buffer(0)]],\n";
+        ss << "  device scalar_t* C [[buffer(1)]],\n";
+        ss << "  constant uint& TOTAL [[buffer(2)]],\n";
+        ss << "  constant uint& RANK [[buffer(3)]],\n";
+        ss << "  constant uint* out_shape [[buffer(4)]],\n";
+        ss << "  constant uint* in_stride [[buffer(5)]],\n";
+        ss << "  constant int* starts [[buffer(6)]],\n";
+        ss << "  constant uint* steps [[buffer(7)]],\n";
+        ss << "  uint gid [[thread_position_in_grid]]) {\n";
+        ss << "    if (gid >= TOTAL) return;\n";
     }
     ss << "    uint idx = gid;\n";
     ss << "    uint in_off = 0;\n";

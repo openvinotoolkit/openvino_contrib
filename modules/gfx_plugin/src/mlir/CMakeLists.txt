@@ -26,7 +26,9 @@ set(GFX_MLIR_SOURCES
     mlir_builder_reverse.cpp
     mlir_builder_batchnorm.cpp
     mlir_builder_conv2d.cpp
+    mlir_builder_conv2d_vulkan.cpp
     mlir_builder_group_conv2d.cpp
+    mlir_builder_group_conv2d_vulkan.cpp
     mlir_builder_conv3d.cpp
     mlir_builder_maxpool.cpp
     mlir_builder_avgpool.cpp

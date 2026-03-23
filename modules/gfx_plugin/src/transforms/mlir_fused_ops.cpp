@@ -96,12 +96,17 @@ mlir::Value emit_activation(mlir::OpBuilder& b,
             return mul;
         }
         case ActivationKind::Swish: {
-            auto neg = b.create<mlir::arith::NegFOp>(loc, x);
-            auto exp = b.create<mlir::math::ExpOp>(loc, neg);
             auto one = b.create<mlir::arith::ConstantOp>(loc, make_float_attr(1.0));
-            auto denom = b.create<mlir::arith::AddFOp>(loc, one, exp);
-            auto sigmoid = b.create<mlir::arith::DivFOp>(loc, one, denom);
-            return b.create<mlir::arith::MulFOp>(loc, x, sigmoid);
+            auto cond = b.create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OGE, x, zero);
+            auto neg = b.create<mlir::arith::NegFOp>(loc, x);
+            auto exp_neg = b.create<mlir::math::ExpOp>(loc, neg);
+            auto pos_denom = b.create<mlir::arith::AddFOp>(loc, one, exp_neg);
+            auto pos = b.create<mlir::arith::DivFOp>(loc, x, pos_denom);
+            auto exp_pos = b.create<mlir::math::ExpOp>(loc, x);
+            auto neg_denom = b.create<mlir::arith::AddFOp>(loc, one, exp_pos);
+            auto neg_num = b.create<mlir::arith::MulFOp>(loc, x, exp_pos);
+            auto neg_res = b.create<mlir::arith::DivFOp>(loc, neg_num, neg_denom);
+            return b.create<mlir::arith::SelectOp>(loc, cond, pos, neg_res);
         }
         case ActivationKind::HSwish:
         case ActivationKind::HSigmoid: {

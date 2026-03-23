@@ -53,6 +53,7 @@ private:
         std::string exec_type;
         uint64_t gpu_us = 0;
         uint32_t dispatches = 0;
+        std::vector<SamplePair> pending_samples;
     };
 
     void ensure_query_pool(size_t sample_pairs);

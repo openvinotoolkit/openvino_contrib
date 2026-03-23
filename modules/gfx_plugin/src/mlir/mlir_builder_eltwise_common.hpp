@@ -6,6 +6,8 @@
 
 #include "mlir/mlir_builder.hpp"
 
+#include "mlir/gfx_mlir_type_utils.hpp"
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -21,24 +23,6 @@
 
 namespace ov {
 namespace gfx_plugin {
-
-inline mlir::Type to_mlir_type(ov::element::Type et, mlir::MLIRContext& ctx) {
-    switch (et) {
-        case ov::element::f32: return mlir::Float32Type::get(&ctx);
-        case ov::element::f16: return mlir::Float16Type::get(&ctx);
-        case ov::element::bf16: return mlir::BFloat16Type::get(&ctx);
-        case ov::element::i8: return mlir::IntegerType::get(&ctx, 8);
-        case ov::element::u8: return mlir::IntegerType::get(&ctx, 8);
-        case ov::element::i16: return mlir::IntegerType::get(&ctx, 16);
-        case ov::element::u16: return mlir::IntegerType::get(&ctx, 16);
-        case ov::element::i32: return mlir::IntegerType::get(&ctx, 32);
-        case ov::element::u32: return mlir::IntegerType::get(&ctx, 32);
-        case ov::element::i64: return mlir::IntegerType::get(&ctx, 64);
-        case ov::element::u64: return mlir::IntegerType::get(&ctx, 64);
-        case ov::element::boolean: return mlir::IntegerType::get(&ctx, 1);
-        default: OPENVINO_THROW("Eltwise MLIR: unsupported element type");
-    }
-}
 
 template <class NodeT, class Emitter>
 mlir::ModuleOp build_mlir_binary_eltwise_from_model(const std::shared_ptr<const ov::Model>& model,
@@ -61,7 +45,14 @@ mlir::ModuleOp build_mlir_binary_eltwise_from_model(const std::shared_ptr<const 
     const auto pout = node->get_output_partial_shape(0);
     const size_t rank = pout.rank().get_length();
 
-    auto elem_ty = to_mlir_type(node->get_output_element_type(0), ctx);
+    auto elem_ty = to_mlir_type(node->get_output_element_type(0),
+                                ctx,
+                                /*fallback_f32=*/false,
+                                /*allow_unsigned=*/true,
+                                /*allow_small_ints=*/true,
+                                /*allow_bf16=*/true,
+                                /*allow_boolean=*/true,
+                                /*signless_integers=*/true);
 
     auto to_shape = [](const ov::PartialShape& ps) {
         mlir::SmallVector<int64_t> dims;

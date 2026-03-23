@@ -5,15 +5,51 @@ set(GFX_TEST_LINK_LIBS
     openvino::funcSharedTests
     openvino::runtime::dev
     openvino_gfx_plugin
-    gfx_plugin_core
-    gfx_runtime_common
     gmock
     gtest_main
-    gtest)
+    gtest
+    gfx_runtime_common
+    gfx_runtime_mlir
+    gfx_mlir
+    gfx_plugin_core
+    MLIRInferIntRangeCommon
+    MLIRInferIntRangeInterface
+    MLIRTransformUtils
+    MLIRAffineUtils
+    MLIRAffineDialect
+    MLIRAffineTransforms
+    MLIRAffineAnalysis
+    MLIRIR
+    MLIRSupport
+    MLIRCastInterfaces
+    MLIRReconcileUnrealizedCasts
+    MLIRTensorDialect
+    MLIRArithDialect
+    MLIRSCFDialect
+    MLIRMathDialect
+    MLIRComplexDialect
+    MLIRLinalgDialect
+    MLIRLinalgTransforms
+    MLIRLinalgUtils
+    MLIRFuncDialect
+    MLIRFuncTransforms
+    MLIRBufferizationTransforms
+    MLIRParser
+    MLIRInferTypeOpInterface
+    MLIRValueBoundsOpInterface
+    MLIRAnalysis
+    MLIRDialectUtils)
+
+if(NOT APPLE)
+    list(APPEND GFX_TEST_LINK_LIBS gfx_runtime_vulkan)
+endif()
 
 # Align with CPU functional tests: single target built via ov_add_test_target,
 # no custom archives or force-load.
 set(GFX_TEST_EXCLUDED_PATHS "")
+list(APPEND GFX_TEST_EXCLUDED_PATHS
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools
+)
 if(NOT GFX_BACKEND_VULKAN_AVAILABLE)
     list(APPEND GFX_TEST_EXCLUDED_PATHS
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan
@@ -56,10 +92,6 @@ target_sources(${TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_stage_test.cpp
 )
 
-if(TARGET gfx_runtime_mlir)
-    target_link_libraries(${TARGET_NAME} PRIVATE gfx_runtime_mlir)
-endif()
-
 if(APPLE)
     target_sources(${TARGET_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/memory_test.mm
@@ -69,15 +101,13 @@ if(APPLE)
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_backend_test.mm
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/vulkan_runtime_test_stub.cpp
     )
+    target_link_libraries(${TARGET_NAME} PRIVATE gfx_runtime_metal)
 else()
     target_sources(${TARGET_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../src/backends/metal/runtime/dtype.cpp
     )
 endif()
 
-if(TARGET gfx_runtime_metal)
-    target_link_libraries(${TARGET_NAME} PRIVATE gfx_runtime_metal)
-endif()
 if(GFX_BACKEND_VULKAN_AVAILABLE AND TARGET gfx_runtime_vulkan)
     target_sources(${TARGET_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/vulkan_runtime_test.cpp
@@ -88,7 +118,6 @@ if(GFX_BACKEND_VULKAN_AVAILABLE AND TARGET gfx_runtime_vulkan)
             ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/set_device_name_stub.cpp
         )
     endif()
-    target_link_libraries(${TARGET_NAME} PRIVATE gfx_runtime_vulkan)
 endif()
 
 # Device-specific bits: path to the built plugin and access to local src headers.
@@ -108,10 +137,7 @@ if(TARGET gfx_plugin_build_settings)
     target_link_libraries(${TARGET_NAME} PRIVATE gfx_plugin_build_settings)
 endif()
 
-if(ENABLE_GFX_MLIR)
-    target_include_directories(${TARGET_NAME} PRIVATE ${MLIR_INCLUDE_DIRS})
-    target_link_libraries(${TARGET_NAME} PRIVATE gfx_mlir)
-endif()
+target_include_directories(${TARGET_NAME} PRIVATE ${MLIR_INCLUDE_DIRS})
 
 if(TARGET GFX::Metal)
     target_link_libraries(${TARGET_NAME} PRIVATE GFX::Metal)
@@ -119,6 +145,18 @@ endif()
 if(TARGET GFX::Vulkan)
     target_link_libraries(${TARGET_NAME} PRIVATE GFX::Vulkan)
 endif()
-if(TARGET gfx_vulkan_mlir_deps)
-    target_link_libraries(${TARGET_NAME} PRIVATE gfx_vulkan_mlir_deps)
+
+add_executable(ov_gfx_compare_runner
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools/ov_gfx_compare_runner.cpp
+)
+target_link_libraries(ov_gfx_compare_runner PRIVATE
+    openvino::runtime
+    openvino_gfx_plugin
+    common_test_utils
+)
+if(TARGET gfx_plugin_build_settings)
+    target_link_libraries(ov_gfx_compare_runner PRIVATE gfx_plugin_build_settings)
 endif()
+target_compile_definitions(ov_gfx_compare_runner PRIVATE
+    GFX_PLUGIN_PATH="$<TARGET_FILE:openvino_gfx_plugin>"
+)

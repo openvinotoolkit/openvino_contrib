@@ -41,6 +41,7 @@ public:
                               uint32_t /*node_id*/,
                               const std::string& /*node_name*/,
                               const std::string& /*node_type*/) {}
+    virtual void on_command_buffer_complete() {}
 
     virtual const std::string& name() const = 0;
     virtual const std::string& type() const = 0;

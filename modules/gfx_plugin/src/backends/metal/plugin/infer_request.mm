@@ -28,7 +28,6 @@
 #include "runtime/memory_manager.hpp"
 #include "backends/metal/plugin/compiled_model_state.hpp"
 #include "backends/metal/runtime/gpu_memory.hpp"
-#include "runtime/gfx_tensor_utils.hpp"
 #include "backends/metal/runtime/metal_memory.hpp"
 #include "backends/metal/runtime/profiling/profiler.hpp"
 #include "backends/metal/plugin/infer_io_metal.hpp"
@@ -49,7 +48,6 @@ struct MetalInferState final : BackendInferState {
     MetalFreeList freelist;
     MetalStagingPool staging;
     MetalAllocator allocator;
-    std::vector<BufferHandle> output_staging_handles;
 
     MetalInferState(MetalAllocatorCore& core, const MetalDeviceCaps& caps_in)
         : alloc_core(&core),
@@ -143,42 +141,29 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
 
         MetalGpuAllocator gpu_alloc(allocator, *alloc_core, caps);
 
-        for_each_input_tensor(
-            get_inputs().size(),
-            state.bound_remote_inputs,
-            [&](size_t idx) {
-                return resolve_remote_input_tensor(idx, GpuBackend::Metal, "GFX");
-            },
-            [&](size_t idx) {
-                return resolve_host_input_tensor(idx);
-            },
+        bind_inputs_for_infer(
+            GpuBackend::Metal,
             [&](size_t idx, const GpuTensor& dev) {
                 tensor_map.bind_input_device(idx, dev);
             },
             [&](size_t idx, const ov::Tensor& host) {
-                ov::Tensor src = host;
-                if (!src) {
-                    ov::Shape sh = get_inputs()[idx].get_partial_shape().is_static()
-                                       ? get_inputs()[idx].get_shape()
-                                       : ov::Shape{1};
-                    src = ov::Tensor{get_inputs()[idx].get_element_type(), sh};
-                }
+                const ov::Tensor src = host;
                 if (gfx_log_debug_enabled()) {
-                    GFX_LOG_DEBUG("InferIO",
-                                  "input[" << idx << "] host_et=" << src.get_element_type().get_type_name()
-                                           << " bytes=" << src.get_byte_size()
-                                           << " ptr=" << src.data()
-                                           << " align4=" << (reinterpret_cast<uintptr_t>(src.data()) & 3u));
-                    if (src && src.get_size() > 0) {
-                        auto as_f32 = ov::gfx_plugin::to_float32_tensor(src);
-                        const float* p = as_f32.data<const float>();
-                        const size_t n = std::min<size_t>(4, as_f32.get_size());
+                    gfx_log_debug("InferIO")
+                        << "input[" << idx << "] host_et=" << src.get_element_type().get_type_name()
+                        << " bytes=" << src.get_byte_size()
+                        << " ptr=" << src.data()
+                        << " align4=" << (reinterpret_cast<uintptr_t>(src.data()) & 3u);
+                    if (src && src.get_size() > 0 && src.get_element_type() == ov::element::f32) {
+                        const float* p = src.data<const float>();
+                        const size_t n = std::min<size_t>(4, src.get_size());
                         std::ostringstream vals;
                         for (size_t i = 0; i < n; ++i) {
-                            if (i) vals << " ";
+                            if (i)
+                                vals << " ";
                             vals << p[i];
                         }
-                        GFX_LOG_DEBUG("InferIO", "input[" << idx << "] first=" << vals.str());
+                        gfx_log_debug("InferIO") << "input[" << idx << "] first=" << vals.str();
                     }
                 }
                 // Bind host -> device using zero-copy shared buffer (no memcpy).
@@ -186,7 +171,8 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                                                        &gpu_alloc,
                                                        "GFX");
                 tensor_map.bind_input_device(idx, dev);
-            });
+            },
+            "GFX");
 
     GfxProfiler* profiler = prepare_infer_profiler(*cm, state, "GFX");
     MetalProfiler* metal_profiler = profiler
@@ -228,7 +214,7 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                             ", have ", t->buf.size, ", shape=", shape_to_string(shape), ")");
         };
 
-        OPENVINO_ASSERT(cm->op_pipeline_built() && cm->op_pipeline_size() > 0,
+        OPENVINO_ASSERT(cm->op_pipeline_built(),
                         "GFX: op pipeline is not built");
         const auto& descs = cm->pipeline_desc();
         const auto& node_map = cm->node_to_stage();
@@ -243,6 +229,7 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                                                metal->const_manager.get(),
                                                stage_profiler,
                                                profiling_enabled,
+                                               cm->get_runtime_model(),
                                                get_outputs(),
                                                node_map,
                                                param_map,
@@ -312,7 +299,7 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                             oss << " out" << i << "_shape=" << shape_to_string(t->shape)
                                 << " out" << i << "_bytes=" << t->buf.size;
                         }
-                        GFX_LOG_DEBUG("PIPELINE", oss.str());
+                        gfx_log_debug("PIPELINE") << oss.str();
                     }
                     for (size_t i = 0; i < resolved.size(); ++i) {
                         if (!resolved[i])
@@ -357,9 +344,8 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
 
     run_pipeline();
 
-    if (metal_state->output_staging_handles.size() < get_outputs().size()) {
-        metal_state->output_staging_handles.resize(get_outputs().size());
-    }
+    ensure_output_staging_handles(get_outputs().size(), "GFX");
+    auto& output_handles = metal_state->output_staging_handles;
     GpuBufferPool output_pool(gpu_alloc);
 
     auto output_input_lookup = [&](size_t input_idx) -> GpuTensor* {
@@ -370,45 +356,35 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
     };
     const auto resources = cm->backend_state()->resources();
     OPENVINO_ASSERT(resources.queue, "GFX: command queue is null");
-    bind_outputs_common(
-        get_outputs(),
-        cm->get_runtime_model(),
+    bind_outputs_for_infer(
+        cm,
+        pipeline,
         cm->node_to_stage(),
         cm->parameter_index(),
-        pipeline,
         output_input_lookup,
-        state.bound_remote_outputs,
-        [&](size_t idx, const ov::element::Type& type, const ov::Shape& shape, const char* error_prefix) {
-            return get_host_output_override(idx, type, shape, error_prefix);
-        },
         [&](size_t idx, const std::shared_ptr<GfxRemoteTensor>& remote) {
             ov::ISyncInferRequest::set_tensor(get_outputs()[idx],
                                               ov::SoPtr<ov::ITensor>{remote, nullptr});
         },
-        [&](size_t idx,
-            GpuTensor& dev,
-            const OutputViewInfo& info,
-            const ov::Tensor* host_override) {
+        [&](size_t idx, GpuTensor& dev, const OutputViewInfo& info, const ov::Tensor* host_override) {
             if (gfx_log_debug_enabled()) {
-                GFX_LOG_DEBUG("InferIO",
-                              "output[" << idx << "] dev_buf=" << dev.buf.buffer
+                gfx_log_debug("InferIO") << "output[" << idx << "] dev_buf=" << dev.buf.buffer
                                         << " et=" << (dev.expected_type == ov::element::dynamic
                                                           ? dev.buf.type.get_type_name()
-                                                          : dev.expected_type.get_type_name()));
+                                                          : dev.expected_type.get_type_name());
             }
             auto bound = bind_host_output_metal(dev,
                                                 info,
                                                 host_override,
                                                 &gpu_alloc,
                                                 &output_pool,
-                                                &metal_state->output_staging_handles[idx],
+                                                &output_handles[idx],
                                                 resources.queue,
                                                 "GFX");
             tensor_map.bind_output_device(idx, bound.device_tensor);
             ov::ISyncInferRequest::set_tensor(get_outputs()[idx], ov::get_tensor_impl(bound.host_tensor));
         },
         /*allow_missing=*/false,
-        /*allow_fallback_one=*/false,
         "GFX");
 
     if (cm && cm->backend_state()) {

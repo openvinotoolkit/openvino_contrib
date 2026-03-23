@@ -13,5 +13,8 @@ namespace gfx_plugin {
 // Returns the same tensor if already f32; otherwise allocates a new buffer.
 OPENVINO_API ov::Tensor to_float32_tensor(const ov::Tensor& src);
 
+OPENVINO_API ov::Tensor convert_tensor_element_type(const ov::Tensor& src,
+                                                    const ov::element::Type& dst_type);
+
 }  // namespace gfx_plugin
 }  // namespace ov

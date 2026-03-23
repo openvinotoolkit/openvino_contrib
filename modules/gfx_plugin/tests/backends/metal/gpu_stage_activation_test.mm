@@ -54,6 +54,15 @@ void run_activation(const ActivationCase& tc) {
     output.shape = {tc.in.size()};
     output.expected_type = ov::element::f32;
     output.prefer_private = false;
+    const size_t out_bytes = tc.in.size() * sizeof(float);
+    GpuBufferDesc out_desc{};
+    out_desc.bytes = out_bytes;
+    out_desc.type = ov::element::f32;
+    out_desc.usage = BufferUsage::IO;
+    out_desc.cpu_read = true;
+    out_desc.prefer_device_local = false;
+    output.buf = mgr.allocate(out_desc);
+    ASSERT_TRUE(output.buf.valid());
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{tc.in.size()});
     auto node = OpFactory::make_node(param);

@@ -4,6 +4,8 @@
 
 #include "mlir/mlir_builder.hpp"
 
+#include "mlir/gfx_mlir_type_utils.hpp"
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -26,18 +28,6 @@ namespace ov {
 namespace gfx_plugin {
 
 namespace {
-mlir::Type to_mlir_type(ov::element::Type et, mlir::MLIRContext& ctx) {
-    switch (et) {
-        case ov::element::f16: return mlir::Float16Type::get(&ctx);
-        case ov::element::f32: return mlir::Float32Type::get(&ctx);
-        case ov::element::i32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
-        case ov::element::i64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Signed);
-        case ov::element::u32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Unsigned);
-        case ov::element::u64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Unsigned);
-        default: OPENVINO_THROW("TopK MLIR: unsupported element type");
-    }
-}
-
 mlir::Value make_init_value(mlir::OpBuilder& b,
                             mlir::Location loc,
                             mlir::Type elem_ty,
@@ -88,9 +78,12 @@ mlir::ModuleOp build_mlir_topk_from_model(const std::shared_ptr<const ov::Model>
                         topk->get_sort_type() == ov::op::TopKSortType::SORT_VALUES,
                     "TopK MLIR: only NONE or SORT_VALUES supported");
 
-    auto in_elem_ty = to_mlir_type(topk->get_input_element_type(0), ctx);
-    auto out_val_ty = to_mlir_type(topk->get_output_element_type(0), ctx);
-    auto out_idx_ty = to_mlir_type(topk->get_output_element_type(1), ctx);
+    auto in_elem_ty = to_mlir_type(topk->get_input_element_type(0), ctx, /*fallback_f32=*/false,
+                                   /*allow_unsigned=*/true);
+    auto out_val_ty = to_mlir_type(topk->get_output_element_type(0), ctx, /*fallback_f32=*/false,
+                                   /*allow_unsigned=*/true);
+    auto out_idx_ty = to_mlir_type(topk->get_output_element_type(1), ctx, /*fallback_f32=*/false,
+                                   /*allow_unsigned=*/true);
 
     mlir::SmallVector<int64_t> in_dims(in_shape.begin(), in_shape.end());
     mlir::SmallVector<int64_t> out0_dims(out0_shape.begin(), out0_shape.end());

@@ -58,6 +58,7 @@ inline std::vector<InferStage> build_pipeline_with_outputs(
     GpuBufferManager* buffer_manager,
     void* profiler,
     bool profiling_enabled,
+    const std::shared_ptr<const ov::Model>& runtime_model,
     const std::vector<ov::Output<const ov::Node>>& outputs,
     const std::unordered_map<const ov::Node*, size_t>& node_map,
     const std::unordered_map<const ov::Node*, size_t>& param_map,
@@ -73,6 +74,7 @@ inline std::vector<InferStage> build_pipeline_with_outputs(
                                          buffer_manager,
                                          profiler,
                                          profiling_enabled,
+                                         runtime_model,
                                          outputs,
                                          node_map,
                                          param_map,
@@ -105,7 +107,6 @@ inline void bind_outputs_common(const std::vector<ov::Output<const ov::Node>>& p
                                 RemoteSetterFn remote_setter,
                                 DeviceSetterFn device_setter,
                                 bool allow_missing,
-                                bool allow_fallback_one,
                                 const char* error_prefix) {
     for_each_output_tensor(public_outputs,
                            runtime_model,
@@ -118,7 +119,6 @@ inline void bind_outputs_common(const std::vector<ov::Output<const ov::Node>>& p
                            remote_setter,
                            device_setter,
                            allow_missing,
-                           allow_fallback_one,
                            error_prefix);
 }
 

@@ -24,6 +24,9 @@ struct BackendInferState {
     virtual ~BackendInferState() = default;
     std::unique_ptr<GfxProfiler> profiler;
     std::vector<std::vector<BufferHandle>> stage_output_handles;
+    std::vector<BufferHandle> input_handles;
+    std::vector<BufferHandle> input_staging_handles;
+    std::vector<BufferHandle> output_staging_handles;
 };
 
 struct InferRequestState {

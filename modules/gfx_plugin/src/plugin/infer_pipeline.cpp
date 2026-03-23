@@ -4,8 +4,77 @@
 
 #include "infer_pipeline.hpp"
 
+#include "openvino/op/constant.hpp"
+
 namespace ov {
 namespace gfx_plugin {
+
+namespace {
+
+bool append_materialized_constant_output(std::vector<InferStage>& pipeline,
+                                         GpuBufferManager* buffer_manager,
+                                         const OutputSource& source,
+                                         const char* error_prefix) {
+    auto constant = ov::as_type_ptr<const ov::op::v0::Constant>(source.node);
+    if (!constant) {
+        return false;
+    }
+    if (!buffer_manager) {
+        OPENVINO_THROW(error_prefix, ": const buffer manager is required for constant output");
+    }
+    if (find_pipeline_output(pipeline, source.node.get(), source.port, nullptr)) {
+        return true;
+    }
+
+    const auto et = constant->get_output_element_type(source.port);
+    const auto shape = constant->get_output_shape(source.port);
+    const size_t bytes = constant->get_byte_size();
+    std::string key = "gfx/output_const/";
+    key += constant->get_friendly_name();
+    key += "/";
+    key += std::to_string(source.port);
+    key += "/";
+    key += std::to_string(bytes);
+
+    GpuBuffer buf = buffer_manager->wrap_const(key, constant->get_data_ptr(), bytes, et);
+    OPENVINO_ASSERT(buf.valid(),
+                    error_prefix,
+                    ": failed to materialize constant output ",
+                    constant->get_friendly_name());
+
+    InferStage stage;
+    stage.node = source.node;
+    auto tensor = std::make_unique<GpuTensor>();
+    tensor->buf = buf;
+    tensor->shape = shape;
+    tensor->expected_type = et;
+    tensor->prefer_private = false;
+    stage.outputs.emplace_back(std::move(tensor));
+    stage.output_is_model_output.push_back(true);
+    pipeline.emplace_back(std::move(stage));
+    return true;
+}
+
+void materialize_constant_outputs(std::vector<InferStage>& pipeline,
+                                  GpuBufferManager* buffer_manager,
+                                  const std::shared_ptr<const ov::Model>& runtime_model,
+                                  const std::vector<ov::Output<const ov::Node>>& outputs,
+                                  const std::unordered_map<const ov::Node*, size_t>& node_map,
+                                  const std::unordered_map<const ov::Node*, size_t>& param_map,
+                                  const char* error_prefix) {
+    for (size_t out_idx = 0; out_idx < outputs.size(); ++out_idx) {
+        const auto source = resolve_output_source(outputs, runtime_model, out_idx);
+        if (!source.node) {
+            continue;
+        }
+        if (node_map.count(source.node.get()) || param_map.count(source.node.get())) {
+            continue;
+        }
+        append_materialized_constant_output(pipeline, buffer_manager, source, error_prefix);
+    }
+}
+
+}  // namespace
 
 bool is_view_op(const InferStage& stage) {
     if (!stage.stage) {
@@ -120,6 +189,7 @@ std::vector<InferStage> build_infer_pipeline(const std::vector<PipelineStageDesc
 }
 
 void bind_remote_outputs(const std::vector<ov::Output<const ov::Node>>& outputs,
+                         const std::shared_ptr<const ov::Model>& runtime_model,
                          const std::unordered_map<const ov::Node*, size_t>& node_map,
                          const std::unordered_map<const ov::Node*, size_t>& param_map,
                          const std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_outputs,
@@ -133,10 +203,13 @@ void bind_remote_outputs(const std::vector<ov::Output<const ov::Node>>& outputs,
         if (out_idx >= remote_outputs.size() || !remote_outputs[out_idx]) {
             continue;
         }
-        auto res_node = outputs[out_idx].get_node();
-        auto src_node = res_node->input_value(0).get_node_shared_ptr();
+        const auto source = resolve_output_source(outputs, runtime_model, out_idx);
+        auto src_node = source.node;
+        if (!src_node) {
+            OPENVINO_THROW(error_prefix, ": remote output source node is null");
+        }
         if (auto it = node_map.find(src_node.get()); it != node_map.end()) {
-            size_t src_port = res_node->input_value(0).get_index();
+            size_t src_port = source.port;
             auto& outs = pipeline[it->second].outputs;
             OPENVINO_ASSERT(src_port < outs.size(), error_prefix, ": remote output port out of range");
             auto& dst = outs[src_port];
@@ -157,6 +230,13 @@ void bind_remote_outputs(const std::vector<ov::Output<const ov::Node>>& outputs,
             }
             OPENVINO_THROW(error_prefix, ": remote output cannot be bound to non-remote input passthrough");
         }
+        if (auto* tensor = find_pipeline_output(pipeline, src_node.get(), source.port, nullptr)) {
+            const auto& src_tensor = remote_outputs[out_idx]->gpu_tensor();
+            tensor->buf = src_tensor.buf;
+            tensor->shape = src_tensor.shape;
+            tensor->expected_type = src_tensor.expected_type;
+            continue;
+        }
         OPENVINO_THROW(error_prefix, ": failed to bind remote output ", out_idx, " (pipeline incomplete)");
     }
 }
@@ -166,6 +246,7 @@ std::vector<InferStage> build_bound_pipeline(
     GpuBufferManager* buffer_manager,
     void* profiler,
     bool profiling_enabled,
+    const std::shared_ptr<const ov::Model>& runtime_model,
     const std::vector<ov::Output<const ov::Node>>& outputs,
     const std::unordered_map<const ov::Node*, size_t>& node_map,
     const std::unordered_map<const ov::Node*, size_t>& param_map,
@@ -174,8 +255,16 @@ std::vector<InferStage> build_bound_pipeline(
     GpuBackend expected_backend,
     const char* error_prefix) {
     auto pipeline = build_infer_pipeline(descs, buffer_manager, profiler, profiling_enabled);
+    materialize_constant_outputs(pipeline,
+                                 buffer_manager,
+                                 runtime_model,
+                                 outputs,
+                                 node_map,
+                                 param_map,
+                                 error_prefix);
     normalize_remote_outputs(remote_outputs, expected_backend, error_prefix);
     bind_remote_outputs(outputs,
+                        runtime_model,
                         node_map,
                         param_map,
                         remote_outputs,
@@ -188,8 +277,7 @@ std::vector<InferStage> build_bound_pipeline(
 ov::Shape resolve_output_shape(const std::vector<ov::Output<const ov::Node>>& public_outputs,
                                const OutputSource& source,
                                const GpuTensor& tensor,
-                               size_t out_idx,
-                               bool allow_fallback_one) {
+                               size_t out_idx) {
     if (!tensor.shape.empty()) {
         return tensor.shape;
     }
@@ -198,9 +286,6 @@ ov::Shape resolve_output_shape(const std::vector<ov::Output<const ov::Node>>& pu
     }
     if (out_idx < public_outputs.size() && public_outputs[out_idx].get_partial_shape().is_static()) {
         return public_outputs[out_idx].get_shape();
-    }
-    if (allow_fallback_one) {
-        return ov::Shape{1};
     }
     return {};
 }
@@ -248,11 +333,10 @@ OutputViewInfo resolve_output_view(const std::vector<ov::Output<const ov::Node>>
                                    const std::shared_ptr<const ov::Model>& runtime_model,
                                    GpuTensor& tensor,
                                    size_t out_idx,
-                                   bool allow_fallback_one,
                                    const char* error_prefix) {
     OutputViewInfo info;
     info.source = resolve_output_source(public_outputs, runtime_model, out_idx);
-    info.shape = resolve_output_shape(public_outputs, info.source, tensor, out_idx, allow_fallback_one);
+    info.shape = resolve_output_shape(public_outputs, info.source, tensor, out_idx);
     if (tensor.shape.empty() && !info.shape.empty()) {
         tensor.shape = info.shape;
     }
@@ -261,6 +345,25 @@ OutputViewInfo resolve_output_view(const std::vector<ov::Output<const ov::Node>>
         info.shape = tensor.shape;
     }
     return info;
+}
+
+GpuTensor* find_pipeline_output(std::vector<InferStage>& pipeline,
+                                const ov::Node* node,
+                                size_t port,
+                                const char* error_prefix) {
+    if (!node) {
+        return nullptr;
+    }
+    for (auto& stage : pipeline) {
+        if (!stage.node || stage.node.get() != node) {
+            continue;
+        }
+        OPENVINO_ASSERT(port < stage.outputs.size(),
+                        error_prefix ? error_prefix : "GFX",
+                        ": output port out of range");
+        return stage.outputs[port].get();
+    }
+    return nullptr;
 }
 
 }  // namespace gfx_plugin

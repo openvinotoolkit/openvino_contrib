@@ -18,9 +18,6 @@
 #include "openvino/op/result.hpp"
 
 TEST(GfxMlirTransforms, Conv3DLoweringExplicitPadding) {
-#if !ENABLE_GFX_MLIR
-    GTEST_SKIP() << "GFX MLIR is disabled";
-#else
     auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
                                                          ov::Shape{1, 3, 5, 5, 5});
     std::vector<float> weights_data(4 * 3 * 3 * 3 * 3, 0.1f);
@@ -67,5 +64,4 @@ TEST(GfxMlirTransforms, Conv3DLoweringExplicitPadding) {
     EXPECT_FALSE(has_conv) << "Conv3D should be lowered before SPIR-V";
     EXPECT_TRUE(has_for) << "Expected scf.for after lowering";
     EXPECT_FALSE(has_rank5_alloc) << "Padding alloc should be eliminated";
-#endif
 }

@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "backends/metal/runtime/op_factory.hpp"
+#include "mlir/mlir_support.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 
 bool metal_supports_node(const std::shared_ptr<const ov::Node>& node) {
-    auto op = MetalOpFactory::create(node);
-    return op != nullptr;
+    return mlir_supports_node(node);
 }
 
 }  // namespace gfx_plugin

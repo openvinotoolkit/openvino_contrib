@@ -13,6 +13,8 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
 
+#include "mlir/gfx_mlir_type_utils.hpp"
+
 #include "openvino/core/except.hpp"
 #include "openvino/core/model.hpp"
 #include "openvino/core/shape_util.hpp"
@@ -21,30 +23,6 @@
 
 namespace ov {
 namespace gfx_plugin {
-
-namespace {
-mlir::Type to_mlir_type(ov::element::Type et, mlir::MLIRContext& ctx, bool fallback_f32 = false) {
-    switch (et) {
-        case ov::element::f32: return mlir::Float32Type::get(&ctx);
-        case ov::element::f16: return mlir::Float16Type::get(&ctx);
-        case ov::element::i32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
-        case ov::element::i64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Signed);
-        default:
-            if (fallback_f32) return mlir::Float32Type::get(&ctx);
-            OPENVINO_THROW("Gather MLIR: unsupported element type");
-    }
-}
-
-mlir::SmallVector<int64_t> to_shape(const ov::PartialShape& ps) {
-    mlir::SmallVector<int64_t> dims;
-    dims.reserve(ps.rank().get_length());
-    for (const auto& d : ps) {
-        dims.push_back(d.is_dynamic() ? mlir::ShapedType::kDynamic
-                                      : static_cast<int64_t>(d.get_length()));
-    }
-    return dims;
-}
-}  // namespace
 
 mlir::ModuleOp build_mlir_gather_from_model(const std::shared_ptr<const ov::Model>& model,
                                             mlir::MLIRContext& ctx) {

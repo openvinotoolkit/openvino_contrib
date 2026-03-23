@@ -4,6 +4,8 @@
 
 #include "mlir/mlir_builder.hpp"
 
+#include "mlir/gfx_mlir_type_utils.hpp"
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -19,30 +21,6 @@
 
 namespace ov {
 namespace gfx_plugin {
-
-namespace {
-mlir::Type to_mlir_type(ov::element::Type et, mlir::MLIRContext& ctx) {
-    switch (et) {
-        case ov::element::f32: return mlir::Float32Type::get(&ctx);
-        case ov::element::f16: return mlir::Float16Type::get(&ctx);
-        case ov::element::i8:
-        case ov::element::u8:  return mlir::IntegerType::get(&ctx, 8, mlir::IntegerType::Signed);
-        case ov::element::i32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
-        case ov::element::i64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Signed);
-        default: OPENVINO_THROW("Transpose MLIR: unsupported element type");
-    }
-}
-
-mlir::SmallVector<int64_t> to_shape(const ov::PartialShape& ps) {
-    mlir::SmallVector<int64_t> dims;
-    dims.reserve(ps.rank().get_length());
-    for (const auto& d : ps) {
-        dims.push_back(d.is_dynamic() ? mlir::ShapedType::kDynamic
-                                      : static_cast<int64_t>(d.get_length()));
-    }
-    return dims;
-}
-}  // namespace
 
 mlir::ModuleOp build_mlir_transpose_from_model(const std::shared_ptr<const ov::Model>& model,
                                                mlir::MLIRContext& ctx) {
@@ -60,7 +38,11 @@ mlir::ModuleOp build_mlir_transpose_from_model(const std::shared_ptr<const ov::M
 
     auto in_shape = to_shape(tr->get_input_partial_shape(0));
     auto out_shape = to_shape(tr->get_output_partial_shape(0));
-    auto elem_ty = to_mlir_type(tr->get_output_element_type(0), ctx);
+    auto elem_ty = to_mlir_type(tr->get_output_element_type(0),
+                                ctx,
+                                /*fallback_f32=*/false,
+                                /*allow_unsigned=*/false,
+                                /*allow_small_ints=*/true);
 
     auto in_tensor_ty = mlir::RankedTensorType::get(in_shape, elem_ty);
     auto out_tensor_ty = mlir::RankedTensorType::get(out_shape, elem_ty);

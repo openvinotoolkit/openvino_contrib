@@ -13,7 +13,7 @@
 #include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
-#include "mlir/mlir_builder.hpp"
+#include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/codegen_common.hpp"
@@ -158,9 +158,7 @@ void MetalPoolOp::compile(MetalBufferManager* buffer_manager) {
     desc.is_avg = m_is_avg;
     desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
     mlir::MLIRContext ctx;
-    auto model = make_single_op_model(m_node);
-    mlir::ModuleOp module = m_is_avg ? build_mlir_avgpool_from_model(model, ctx)
-                                     : build_mlir_maxpool_from_model(model, ctx);
+    mlir::ModuleOp module = build_mlir_for_node(m_node, ctx);
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
@@ -259,8 +257,8 @@ void MetalPoolOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     KernelArgsBuilder args_builder(name().c_str());
     append_kernel_input_args(args_builder, 1, [&](size_t) { return src; }, name().c_str());
-    args_builder.add_output(&dst);
     args_builder.add_bytes(&params, sizeof(params));
+    args_builder.add_output(&dst);
 
     const auto args = args_builder.finalize(buffer_manager(), m_kernel.get());
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);

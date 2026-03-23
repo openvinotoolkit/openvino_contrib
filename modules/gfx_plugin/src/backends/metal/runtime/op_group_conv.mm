@@ -16,8 +16,11 @@
 #include "backends/metal/runtime/metal_memory.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
+#include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/codegen_common.hpp"
+#include "transforms/mlir_fused_ops.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -76,6 +79,9 @@ MetalGroupConvOp::MetalGroupConvOp(const std::shared_ptr<const ov::op::v1::Group
 
     m_element_type = m_node->get_output_element_type(0);
     m_desc.element_type = m_element_type;
+    m_desc.input_type = m_node->get_input_element_type(0);
+    m_desc.weight_type = m_node->get_input_element_type(1);
+    m_desc.output_type = m_node->get_output_element_type(0);
     m_desc.N = static_cast<uint32_t>(in_shape.at(0));
     m_desc.C_in = static_cast<uint32_t>(in_shape.at(1));
     m_desc.H = static_cast<uint32_t>(in_shape.at(2));
@@ -141,6 +147,7 @@ bool MetalGroupConvOp::fuse_batchnorm(const BatchNormParams& params) {
     m_has_bn = true;
     m_bn_params = params;
     m_desc.has_bn = true;
+    m_desc.bn_type = (m_element_type == ov::element::dynamic) ? ov::element::f32 : m_element_type;
     m_desc.epsilon = params.epsilon;
     return true;
 }
@@ -171,6 +178,7 @@ bool MetalGroupConvOp::fuse_bias(const BiasParams& params) {
     m_has_bias = true;
     m_bias_params = params;
     m_desc.has_bias = true;
+    m_desc.bias_type = (m_element_type == ov::element::dynamic) ? params.element_type : m_element_type;
     m_desc.bias_rank = static_cast<uint32_t>(params.shape.size());
     return true;
 }
@@ -190,6 +198,15 @@ void MetalGroupConvOp::compile(MetalBufferManager* buffer_manager) {
     std::string log;
     Conv2DCodegenDesc desc = m_desc;
     desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
+    desc.input_type = m_node->get_input_element_type(0);
+    desc.weight_type = m_node->get_input_element_type(1);
+    desc.output_type = m_node->get_output_element_type(0);
+    if (desc.bias_type == ov::element::dynamic && m_has_bias) {
+        desc.bias_type = desc.element_type;
+    }
+    if (desc.bn_type == ov::element::dynamic && m_has_bn) {
+        desc.bn_type = desc.element_type;
+    }
     if (m_has_activation) {
         desc.has_activation = true;
         desc.activation = m_activation;
@@ -199,7 +216,25 @@ void MetalGroupConvOp::compile(MetalBufferManager* buffer_manager) {
         desc.has_bn = true;
         desc.epsilon = m_bn_params.epsilon;
     }
-    mlir::ModuleOp module;
+    mlir::MLIRContext ctx;
+    auto module = build_mlir_for_node(m_node, ctx);
+    if (m_has_bn) {
+        const bool applied = apply_fused_batchnorm(module, m_bn_params);
+        OPENVINO_ASSERT(applied, "MetalGroupConvOp: failed to apply fused batchnorm");
+    }
+    if (m_has_bias) {
+        const bool applied = apply_fused_bias(module, m_bias_params);
+        OPENVINO_ASSERT(applied, "MetalGroupConvOp: failed to apply fused bias");
+    }
+    if (m_has_activation) {
+        const bool applied = apply_fused_activation(module, m_activation, m_activation_alpha);
+        OPENVINO_ASSERT(applied,
+                        "MetalGroupConvOp: failed to apply fused activation for ",
+                        name(),
+                        " (",
+                        type(),
+                        ")");
+    }
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
@@ -406,8 +441,8 @@ void MetalGroupConvOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     args_builder.add_optional_input_buffer(beta);
     args_builder.add_optional_input_buffer(mean);
     args_builder.add_optional_input_buffer(var);
-    args_builder.add_output(&dst_tensor);
     args_builder.add_bytes(&params, sizeof(params));
+    args_builder.add_output(&dst_tensor);
 
     const auto args = args_builder.finalize(buffer_manager(), m_kernel.get());
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);

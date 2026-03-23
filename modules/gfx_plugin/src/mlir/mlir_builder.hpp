@@ -11,6 +11,12 @@
 
 namespace ov {
 class Model;
+namespace op {
+namespace v1 {
+class Convolution;
+class GroupConvolution;
+}  // namespace v1
+}  // namespace op
 namespace gfx_plugin {
 
 // Build a minimal MLIR module that wraps a single MatMul using linalg.matmul.
@@ -80,6 +86,10 @@ mlir::ModuleOp build_mlir_conv2d_from_model(const std::shared_ptr<const ov::Mode
 mlir::ModuleOp build_mlir_conv2d_with_bias_from_model(const std::shared_ptr<const ov::Model>& model,
                                                       mlir::MLIRContext& ctx,
                                                       std::optional<std::pair<ActivationKind, float>> unary_kind);
+mlir::ModuleOp build_mlir_conv2d_vulkan(const std::shared_ptr<const ov::op::v1::Convolution>& conv,
+                                        mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_group_conv2d_vulkan(const std::shared_ptr<const ov::op::v1::GroupConvolution>& gconv,
+                                              mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_group_conv2d_from_model(const std::shared_ptr<const ov::Model>& model,
                                                   mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_conv3d_from_model(const std::shared_ptr<const ov::Model>& model,

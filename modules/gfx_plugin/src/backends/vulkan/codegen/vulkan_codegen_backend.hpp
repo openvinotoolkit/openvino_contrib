@@ -27,15 +27,25 @@ public:
     uint32_t args_count() const override { return m_args_count; }
     void set_args_count(uint32_t count) override;
     size_t clamp_threadgroup_size(size_t desired) const override;
+    void on_submission_complete() override;
+    GpuCommandBufferHandle begin_external_commands();
+    void end_external_commands(GpuCommandBufferHandle command_buffer);
     void execute(GpuCommandBufferHandle command_buffer,
                  const KernelDispatch& dispatch,
                  const std::vector<KernelArg>& args,
                  const KernelExecutionHooks* hooks = nullptr) override;
 
 private:
+    struct RecordingDescriptorPool {
+        VkDescriptorPool handle = VK_NULL_HANDLE;
+        uint32_t used_sets = 0;
+    };
+
     void ensure_pipeline(uint32_t binding_count);
     void destroy_pipeline();
     void destroy_pipeline_locked();
+    VkDescriptorSet acquire_descriptor_set(bool unique_for_recording);
+    VkDescriptorPool create_descriptor_pool_locked(uint32_t max_sets) const;
     VkCommandBuffer begin_commands();
     void end_commands(VkCommandBuffer cmd);
 
@@ -49,6 +59,7 @@ private:
     VkDescriptorPool m_desc_pool = VK_NULL_HANDLE;
     VkDescriptorSet m_desc_set = VK_NULL_HANDLE;
     VkCommandPool m_command_pool = VK_NULL_HANDLE;
+    std::vector<RecordingDescriptorPool> m_recording_desc_pools;
     uint32_t m_binding_count = 0;
     std::mutex m_mutex;
 

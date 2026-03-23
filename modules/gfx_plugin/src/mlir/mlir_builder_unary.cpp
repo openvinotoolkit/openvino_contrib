@@ -4,6 +4,8 @@
 
 #include "mlir/mlir_builder.hpp"
 
+#include "mlir/gfx_mlir_type_utils.hpp"
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -28,15 +30,14 @@ mlir::ModuleOp build_mlir_unary_from_node(const std::shared_ptr<const ov::Node>&
                     mlir::arith::ArithDialect, mlir::math::MathDialect>();
 
     const auto shape = node->get_input_shape(0);
-    mlir::Type elem_ty;
-    switch (node->get_input_element_type(0)) {
-        case ov::element::boolean: elem_ty = mlir::IntegerType::get(&ctx, 1); break;
-        case ov::element::f16: elem_ty = mlir::Float16Type::get(&ctx); break;
-        case ov::element::f32: elem_ty = mlir::Float32Type::get(&ctx); break;
-        case ov::element::i32: elem_ty = mlir::IntegerType::get(&ctx, 32); break;
-        case ov::element::i64: elem_ty = mlir::IntegerType::get(&ctx, 64); break;
-        default: elem_ty = mlir::Float32Type::get(&ctx); break;
-    }
+    auto elem_ty = to_mlir_type(node->get_input_element_type(0),
+                                ctx,
+                                /*fallback_f32=*/true,
+                                /*allow_unsigned=*/false,
+                                /*allow_small_ints=*/false,
+                                /*allow_bf16=*/false,
+                                /*allow_boolean=*/true,
+                                /*signless_integers=*/true);
     mlir::SmallVector<int64_t> dims(shape.begin(), shape.end());
     auto tensor_ty = mlir::RankedTensorType::get(dims, elem_ty);
     auto make_float_attr = [&](double v) {
@@ -143,12 +144,18 @@ mlir::ModuleOp build_mlir_unary_from_node(const std::shared_ptr<const ov::Node>&
                 break;
             }
             case ActivationKind::Swish: {
-                auto neg = body.create<mlir::arith::NegFOp>(mlir::UnknownLoc::get(&ctx), x);
-                auto exp = body.create<mlir::math::ExpOp>(mlir::UnknownLoc::get(&ctx), neg);
                 auto one = body.create<mlir::arith::ConstantOp>(mlir::UnknownLoc::get(&ctx), make_float_attr(1.0f));
-                auto denom = body.create<mlir::arith::AddFOp>(mlir::UnknownLoc::get(&ctx), one, exp);
-                auto sigmoid = body.create<mlir::arith::DivFOp>(mlir::UnknownLoc::get(&ctx), one, denom);
-                result = body.create<mlir::arith::MulFOp>(mlir::UnknownLoc::get(&ctx), x, sigmoid);
+                auto cond = body.create<mlir::arith::CmpFOp>(mlir::UnknownLoc::get(&ctx),
+                                                             mlir::arith::CmpFPredicate::OGE, x, zero);
+                auto neg = body.create<mlir::arith::NegFOp>(mlir::UnknownLoc::get(&ctx), x);
+                auto exp_neg = body.create<mlir::math::ExpOp>(mlir::UnknownLoc::get(&ctx), neg);
+                auto pos_denom = body.create<mlir::arith::AddFOp>(mlir::UnknownLoc::get(&ctx), one, exp_neg);
+                auto pos = body.create<mlir::arith::DivFOp>(mlir::UnknownLoc::get(&ctx), x, pos_denom);
+                auto exp_pos = body.create<mlir::math::ExpOp>(mlir::UnknownLoc::get(&ctx), x);
+                auto neg_denom = body.create<mlir::arith::AddFOp>(mlir::UnknownLoc::get(&ctx), one, exp_pos);
+                auto neg_num = body.create<mlir::arith::MulFOp>(mlir::UnknownLoc::get(&ctx), x, exp_pos);
+                auto neg_res = body.create<mlir::arith::DivFOp>(mlir::UnknownLoc::get(&ctx), neg_num, neg_denom);
+                result = body.create<mlir::arith::SelectOp>(mlir::UnknownLoc::get(&ctx), cond, pos, neg_res);
                 break;
             }
             case ActivationKind::HSwish:

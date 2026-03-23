@@ -17,9 +17,6 @@
 #include "openvino/op/result.hpp"
 
 TEST(GfxMlirTransforms, Conv2DParallelLowering) {
-#if !ENABLE_GFX_MLIR
-    GTEST_SKIP() << "GFX MLIR is disabled";
-#else
     auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
                                                          ov::Shape{1, 3, 8, 8});
     std::vector<float> weights_data(8 * 3 * 3 * 3, 0.1f);
@@ -58,5 +55,4 @@ TEST(GfxMlirTransforms, Conv2DParallelLowering) {
     });
     EXPECT_FALSE(has_conv) << "Conv2D should be lowered before SPIR-V";
     EXPECT_TRUE(has_parallel) << "Expected scf.parallel after lowering";
-#endif
 }

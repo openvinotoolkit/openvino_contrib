@@ -7,16 +7,20 @@
 #include <string>
 #include <vector>
 
-#include "runtime/gpu_stage.hpp"
-#include "backends/metal/runtime/op.hpp"
+#include "mlir/mlir_stage.hpp"
+#include "backends/metal/runtime/memory/buffer.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 
-// Metal-backed GpuStage implementation.
-class MetalStage final : public GpuStage {
+class MetalProfiler;
+
+// Metal-backed MlirStage implementation (pure MLIR→MSL path, no legacy ops).
+class MetalStage final : public MlirStage {
 public:
-    explicit MetalStage(std::unique_ptr<MetalOp> op);
+    MetalStage(const std::shared_ptr<const ov::Node>& node,
+               MetalDeviceHandle device,
+               MetalCommandQueueHandle queue);
 
     void init(GpuBufferManager* buffer_manager) override;
     void compile(GpuBufferManager* buffer_manager) override;
@@ -36,13 +40,17 @@ public:
                       const std::string& node_name,
                       const std::string& node_type) override;
 
-    const std::string& name() const override;
-    const std::string& type() const override;
-
     std::unique_ptr<GpuStage> clone() const override;
 
 private:
-    std::unique_ptr<MetalOp> m_op;
+    std::shared_ptr<ICompiledKernel> compile_kernel(const KernelSource& source,
+                                                    std::string* log) override;
+    KernelExecutionHooks* prepare_profiling(ProfileState& state,
+                                            KernelExecutionHooks& hooks) override;
+    void finalize_profiling(const ProfileState& state) override;
+
+    MetalDeviceHandle m_device = nullptr;
+    [[maybe_unused]] MetalCommandQueueHandle m_queue = nullptr;
 };
 
 }  // namespace gfx_plugin

@@ -15,10 +15,14 @@ namespace ov {
 namespace gfx_plugin {
 
 struct BaseCodegenDesc {
-    ov::element::Type element_type = ov::element::f32;
+    ov::element::Type element_type = ov::element::f16;
 };
 
 struct MatMulCodegenDesc : BaseCodegenDesc {
+    ov::element::Type input_a_type = ov::element::dynamic;
+    ov::element::Type input_b_type = ov::element::dynamic;
+    ov::element::Type bias_type = ov::element::dynamic;
+    ov::element::Type output_type = ov::element::dynamic;
     int64_t M = 0;
     int64_t N = 0;
     int64_t K = 0;
@@ -36,6 +40,11 @@ struct MatMulCodegenDesc : BaseCodegenDesc {
 };
 
 struct Conv2DCodegenDesc : BaseCodegenDesc {
+    ov::element::Type input_type = ov::element::dynamic;
+    ov::element::Type weight_type = ov::element::dynamic;
+    ov::element::Type bias_type = ov::element::dynamic;
+    ov::element::Type bn_type = ov::element::dynamic;
+    ov::element::Type output_type = ov::element::dynamic;
     uint32_t N = 0;
     uint32_t C_in = 0;
     uint32_t H = 0;

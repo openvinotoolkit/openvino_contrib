@@ -54,6 +54,8 @@ std::string emit_conv3d_msl(const Conv3DCodegenDesc& d,
                             const std::vector<std::string>& input_idx,
                             const std::vector<std::string>& weight_idx,
                             const std::vector<std::string>& output_idx) {
+    const std::string compute = msl_compute_type_from_element(d.element_type);
+    const std::string accum = msl_accumulator_type_from_element(d.element_type);
     const bool use_half = (scalar == "half");
     std::ostringstream ss;
     ss << "#include <metal_stdlib>\n";
@@ -84,7 +86,7 @@ std::string emit_conv3d_msl(const Conv3DCodegenDesc& d,
     ss << "      int oh_i = int(oh);\n";
     ss << "      for (uint ow = 0; ow < p.outW; ++ow) {\n";
     ss << "        int ow_i = int(ow);\n";
-    ss << "        float acc = 0.0f;\n";
+    ss << "        " << accum << " acc = static_cast<" << accum << ">(0.0f);\n";
     ss << "        for (uint ic = 0; ic < p.C_in; ++ic) {\n";
     ss << "          int ic_i = int(ic);\n";
     ss << "          for (uint kd = 0; kd < p.kD; ++kd) {\n";
@@ -99,13 +101,13 @@ std::string emit_conv3d_msl(const Conv3DCodegenDesc& d,
     ss << "                if (id < 0 || ih < 0 || iw < 0 || id >= int(p.D) || ih >= int(p.H) || iw >= int(p.W)) continue;\n";
     ss << "                uint in_idx = (((uint(n_i) * p.C_in + uint(ic_i)) * p.D + uint(id)) * p.H + uint(ih)) * p.W + uint(iw);\n";
     ss << "                uint w_idx  = (((uint(oc_i) * p.C_in + uint(ic_i)) * p.kD + uint(kd_i)) * p.kH + uint(kh_i)) * p.kW + uint(kw_i);\n";
-    ss << "                acc += static_cast<float>(input[in_idx]) * static_cast<float>(weight[w_idx]);\n";
+    ss << "                acc += static_cast<" << accum << ">(static_cast<" << compute << ">(input[in_idx])) * static_cast<" << accum << ">(static_cast<" << compute << ">(weight[w_idx]));\n";
     ss << "              }\n";
     ss << "            }\n";
     ss << "          }\n";
     ss << "        }\n";
     ss << "        uint out_idx = " << flatten_indices(output_idx, {"p.C_out", "p.outD", "p.outH", "p.outW"}) << ";\n";
-    if (use_half) {
+    if (use_half || accum != scalar) {
         ss << "        output[out_idx] = static_cast<" << scalar << ">(acc);\n";
     } else {
         ss << "        output[out_idx] = acc;\n";
@@ -260,7 +262,7 @@ std::string generate_msl_for_conv3d(const Conv3DCodegenDesc& d, mlir::ModuleOp m
         return fallback();
     }
 
-    if (GFX_MLIR_DEBUG) {
+    if (gfx_mlir_debug_enabled()) {
         auto join = [](const std::vector<std::string>& v) {
             std::string s;
             for (size_t i = 0; i < v.size(); ++i) {

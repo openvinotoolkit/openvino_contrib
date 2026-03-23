@@ -396,7 +396,7 @@ void run_matmul_parallel_lowering(mlir::ModuleOp module) {
         return;
     }
     if (gfx_log_debug_enabled()) {
-        GFX_LOG_DEBUG("MLIR", "MatMul parallel lowering pass");
+        gfx_log_debug("MLIR") << "MatMul parallel lowering pass";
     }
     auto* ctx = module.getContext();
     mlir::RewritePatternSet patterns(ctx);

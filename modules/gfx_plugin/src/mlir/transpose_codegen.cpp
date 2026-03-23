@@ -16,6 +16,16 @@ namespace ov {
 namespace gfx_plugin {
 
 namespace {
+mlir::ShapedType get_ranked_shaped_type(mlir::Type type) {
+    if (auto ranked_tensor = llvm::dyn_cast<mlir::RankedTensorType>(type)) {
+        return ranked_tensor;
+    }
+    if (auto memref = llvm::dyn_cast<mlir::MemRefType>(type)) {
+        return memref;
+    }
+    return {};
+}
+
 std::vector<uint32_t> compute_stride(const std::vector<uint32_t>& shape) {
     std::vector<uint32_t> stride(shape.size(), 1);
     if (shape.empty())
@@ -61,18 +71,18 @@ bool get_perm_from_linalg(mlir::ModuleOp module, std::vector<uint32_t>& perm_out
 }  // namespace
 
 std::string generate_msl_for_transpose(const TransposeCodegenDesc& d, mlir::ModuleOp module) {
-    std::string scalar_ty = "float";
+    std::string scalar_ty = d.element_type != ov::element::dynamic ? msl_type_from_element(d.element_type) : "float";
     std::vector<uint32_t> out_shape = d.out_shape;
     std::vector<uint32_t> in_shape = d.in_shape;
     std::vector<uint32_t> perm = d.perm;
 
     if (auto func = get_entry_func(module)) {
         auto ft = func.getFunctionType();
-        if (ft.getNumInputs() >= 1) {
+        if (d.element_type == ov::element::dynamic && ft.getNumInputs() >= 1) {
             scalar_ty = msl_type_from_mlir(ft.getInput(0));
         }
         if (ft.getNumInputs() >= 1) {
-            if (auto rt = llvm::dyn_cast<mlir::RankedTensorType>(ft.getInput(0))) {
+            if (auto rt = get_ranked_shaped_type(ft.getInput(0))) {
                 if (rt.hasStaticShape()) {
                     in_shape.clear();
                     for (auto dim : rt.getShape())
@@ -81,7 +91,15 @@ std::string generate_msl_for_transpose(const TransposeCodegenDesc& d, mlir::Modu
             }
         }
         if (ft.getNumResults() >= 1) {
-            if (auto rt = llvm::dyn_cast<mlir::RankedTensorType>(ft.getResult(0))) {
+            if (auto rt = get_ranked_shaped_type(ft.getResult(0))) {
+                if (rt.hasStaticShape()) {
+                    out_shape.clear();
+                    for (auto dim : rt.getShape())
+                        out_shape.push_back(static_cast<uint32_t>(dim));
+                }
+            }
+        } else if (ft.getNumInputs() >= 2) {
+            if (auto rt = get_ranked_shaped_type(ft.getInput(1))) {
                 if (rt.hasStaticShape()) {
                     out_shape.clear();
                     for (auto dim : rt.getShape())
@@ -100,9 +118,14 @@ std::string generate_msl_for_transpose(const TransposeCodegenDesc& d, mlir::Modu
 
     const uint32_t rank = static_cast<uint32_t>(out_shape.size());
     std::vector<uint32_t> in_stride = compute_stride(in_shape);
+    uint32_t total = 1;
+    for (auto dim : out_shape) {
+        total *= dim;
+    }
 
     std::ostringstream ss;
     ss << "#include <metal_stdlib>\nusing namespace metal;\n";
+    ss << "constant uint TOTAL_C = " << total << ";\n";
     ss << "constant uint RANK = " << rank << ";\n";
     ss << "constant uint OUT_SHAPE[" << rank << "] = {";
     for (size_t i = 0; i < out_shape.size(); ++i) {
@@ -125,9 +148,8 @@ std::string generate_msl_for_transpose(const TransposeCodegenDesc& d, mlir::Modu
     ss << "kernel void transpose_kernel(\n";
     ss << "  device const " << scalar_ty << "* A [[buffer(0)]],\n";
     ss << "  device " << scalar_ty << "* C [[buffer(1)]],\n";
-    ss << "  constant uint& NUM_ELEMS [[buffer(2)]],\n";
     ss << "  uint gid [[thread_position_in_grid]]) {\n";
-    ss << "    if (gid >= NUM_ELEMS) return;\n";
+    ss << "    if (gid >= TOTAL_C) return;\n";
     ss << "    uint idx = gid;\n";
     ss << "    uint off_in = 0;\n";
     ss << "    for (int d = (int)RANK - 1; d >= 0; --d) {\n";
