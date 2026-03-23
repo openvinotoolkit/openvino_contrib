@@ -1,9 +1,10 @@
 package ggml
 
-// #cgo CXXFLAGS: -std=c++17
+// #cgo !windows CXXFLAGS: -std=c++17
+// #cgo windows CXXFLAGS: -std=c++17
 // #cgo CPPFLAGS: -DNDEBUG -DGGML_USE_CPU
 // #cgo CPPFLAGS: -I${SRCDIR}/../include -I${SRCDIR}/ggml-cpu
-// #cgo windows LDFLAGS: -lmsvcrt -static -static-libgcc -static-libstdc++
+// #cgo windows LDFLAGS: -lmsvcrt
 // #include <stdlib.h>
 // #include "ggml-backend.h"
 // extern void sink(int level, char *text, void *user_data);

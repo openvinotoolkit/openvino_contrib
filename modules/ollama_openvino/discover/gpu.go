@@ -4,7 +4,7 @@ package discover
 
 /*
 #cgo linux LDFLAGS: -lrt -lpthread -ldl -lstdc++ -lm
-#cgo windows LDFLAGS: -lpthread
+#cgo windows LDFLAGS: 
 
 #include "gpu_info.h"
 */
