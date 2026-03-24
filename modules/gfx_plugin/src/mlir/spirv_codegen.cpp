@@ -309,13 +309,25 @@ void apply_spirv_local_size(mlir::ModuleOp module,
     if (!module || !spirv_module || entry_point.empty()) {
         return;
     }
-    const auto local_size = resolve_spirv_local_size(module);
+    auto local_size = resolve_spirv_local_size(module);
+    module.walk([&](mlir::gpu::GPUFuncOp func) {
+        if (func.getName() != entry_point) {
+            return;
+        }
+        if (auto known = func.getKnownBlockSizeAttr()) {
+            auto vals = known.asArrayRef();
+            if (vals.size() == 3) {
+                local_size = {vals[0], vals[1], vals[2]};
+            }
+        }
+    });
     const int32_t local_x = local_size[0];
     const int32_t local_y = local_size[1];
     const bool has_explicit_local_size =
         module->getAttr("gfx.dispatch_threads_h") ||
         module->getAttr("gfx.dispatch_threads_w") ||
-        module->getAttr("gfx.parallel_dispatch");
+        module->getAttr("gfx.parallel_dispatch") ||
+        local_x > 1 || local_y > 1 || local_size[2] > 1;
     if (!has_explicit_local_size &&
         local_x <= 1 && local_y <= 1 && local_size[2] <= 1) {
         return;
@@ -1401,7 +1413,21 @@ static std::vector<uint32_t> lower_to_spirv_impl(mlir::ModuleOp module,
                 return;
             }
             llvm::SmallVector<int32_t, 3> local_size{1, 1, 1};
-            if (auto known = func->getAttrOfType<mlir::ArrayAttr>("known_block_size")) {
+            if (auto known = func.getKnownBlockSizeAttr()) {
+                auto vals = known.asArrayRef();
+                if (vals.size() == 3) {
+                    for (int i = 0; i < 3; ++i) {
+                        local_size[static_cast<size_t>(i)] = vals[static_cast<size_t>(i)];
+                    }
+                }
+            } else if (auto known = func->getAttrOfType<mlir::DenseI32ArrayAttr>("known_block_size")) {
+                auto vals = known.asArrayRef();
+                if (vals.size() == 3) {
+                    for (int i = 0; i < 3; ++i) {
+                        local_size[static_cast<size_t>(i)] = vals[static_cast<size_t>(i)];
+                    }
+                }
+            } else if (auto known = func->getAttrOfType<mlir::ArrayAttr>("known_block_size")) {
                 if (known.size() == 3) {
                     for (int i = 0; i < 3; ++i) {
                         if (auto iattr = mlir::dyn_cast<mlir::IntegerAttr>(known[i])) {

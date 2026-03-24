@@ -13,6 +13,7 @@
 #include "openvino/op/squeeze.hpp"
 #include "openvino/op/unsqueeze.hpp"
 #include "runtime/gfx_logger.hpp"
+#include "runtime/gfx_stage_policy.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -22,8 +23,7 @@ bool is_view_node(const std::shared_ptr<const ov::Node>& node) {
     if (!node) {
         return false;
     }
-    const std::string type = node->get_type_name();
-    return type == "Reshape" || type == "Squeeze" || type == "Unsqueeze";
+    return select_tensor_layout_plan(node->get_type_name(), node).view_only;
 }
 
 }  // namespace

@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "runtime/gfx_input_transform.hpp"
 #include "runtime/gpu_types.hpp"
 #include "runtime/gfx_activation.hpp"
 #include "runtime/gfx_batchnorm.hpp"
@@ -14,6 +15,11 @@
 
 namespace ov {
 namespace gfx_plugin {
+
+struct GpuStageSubmitPolicy {
+    size_t weight = 1;
+    bool isolate = false;
+};
 
 // Backend-neutral execution stage interface.
 class GpuStage {
@@ -31,6 +37,7 @@ public:
             set_output(outputs.front().get());
         }
     }
+    virtual void set_input_transform(size_t /*input_idx*/, const GfxInputTransform& /*transform*/) {}
 
     virtual bool fuse_activation(ActivationKind /*kind*/, float /*alpha*/) { return false; }
     virtual bool fuse_batchnorm(const BatchNormParams& /*params*/) { return false; }
@@ -45,6 +52,7 @@ public:
 
     virtual const std::string& name() const = 0;
     virtual const std::string& type() const = 0;
+    virtual GpuStageSubmitPolicy submit_policy() const { return {}; }
 
     virtual std::unique_ptr<GpuStage> clone() const = 0;
 };

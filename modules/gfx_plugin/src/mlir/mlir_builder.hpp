@@ -4,10 +4,12 @@
 #pragma once
 
 #include <memory>
+#include <vector>
 
 #include "mlir/IR/BuiltinOps.h"
 #include "openvino/core/node.hpp"
 #include "runtime/gfx_activation.hpp"
+#include "runtime/gfx_input_transform.hpp"
 
 namespace ov {
 class Model;
@@ -18,6 +20,8 @@ class GroupConvolution;
 }  // namespace v1
 }  // namespace op
 namespace gfx_plugin {
+
+using MlirInputTransformDesc = GfxInputTransform;
 
 // Build a minimal MLIR module that wraps a single MatMul using linalg.matmul.
 mlir::ModuleOp build_mlir_module_from_model(const std::shared_ptr<const ov::Model>& model,
@@ -32,6 +36,9 @@ mlir::ModuleOp build_mlir_unary_from_node(const std::shared_ptr<const ov::Node>&
 
 // Build MLIR modules for binary eltwise ops with broadcast & dynamic shapes.
 mlir::ModuleOp build_mlir_add_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_add_from_node(const std::shared_ptr<const ov::Node>& node,
+                                        mlir::MLIRContext& ctx,
+                                        const std::vector<MlirInputTransformDesc>& input_transforms);
 mlir::ModuleOp build_mlir_sub_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_mul_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_div_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
@@ -78,6 +85,9 @@ mlir::ModuleOp build_mlir_avgpool_from_model(const std::shared_ptr<const ov::Mod
                                              mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_conv2d_from_model(const std::shared_ptr<const ov::Model>& model,
                                             mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_conv2d_from_node(const std::shared_ptr<const ov::op::v1::Convolution>& conv,
+                                           mlir::MLIRContext& ctx,
+                                           const MlirInputTransformDesc* input_transform = nullptr);
 // Fused variant: applies unary activation (if any) inside the same tensor function.
 mlir::ModuleOp build_mlir_conv2d_from_model(const std::shared_ptr<const ov::Model>& model,
                                             mlir::MLIRContext& ctx,
@@ -92,6 +102,9 @@ mlir::ModuleOp build_mlir_group_conv2d_vulkan(const std::shared_ptr<const ov::op
                                               mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_group_conv2d_from_model(const std::shared_ptr<const ov::Model>& model,
                                                   mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_group_conv2d_from_node(const std::shared_ptr<const ov::op::v1::GroupConvolution>& gconv,
+                                                 mlir::MLIRContext& ctx,
+                                                 const MlirInputTransformDesc* input_transform = nullptr);
 mlir::ModuleOp build_mlir_conv3d_from_model(const std::shared_ptr<const ov::Model>& model,
                                             mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_batchnorm_from_model(const std::shared_ptr<const ov::Model>& model,
@@ -109,7 +122,8 @@ mlir::ModuleOp build_mlir_split_from_model(const std::shared_ptr<const ov::Model
 // Build MLIR module for a Split/VariadicSplit node using the provided input shape.
 mlir::ModuleOp build_mlir_split_from_node(const std::shared_ptr<const ov::Node>& node,
                                           mlir::MLIRContext& ctx,
-                                          const ov::Shape& input_shape);
+                                          const ov::Shape& input_shape,
+                                          const MlirInputTransformDesc* input_transform = nullptr);
 mlir::ModuleOp build_mlir_interpolate_from_model(const std::shared_ptr<const ov::Model>& model,
                                                  mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_gather_from_model(const std::shared_ptr<const ov::Model>& model,

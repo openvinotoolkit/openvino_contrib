@@ -29,6 +29,13 @@ MetalDeviceCaps query_metal_device_caps(MetalDeviceHandle device) {
     // Policy defaults.
     caps.prefer_private_intermediates = true;
     caps.prefer_shared_io = caps.has_unified_memory;
+    // Metal does not expose thread execution width on MTLDevice directly.
+    // Keep a device-derived conservative profile here and refine per-kernel later.
+    caps.preferred_simd_width = 32;
+    caps.max_total_threads_per_threadgroup = caps.has_unified_memory ? 1024u : 512u;
+    caps.max_threads_per_threadgroup_x = caps.max_total_threads_per_threadgroup;
+    caps.max_threads_per_threadgroup_y = caps.max_total_threads_per_threadgroup;
+    caps.max_threads_per_threadgroup_z = 64u;
     return caps;
 }
 

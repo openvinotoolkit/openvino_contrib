@@ -3,6 +3,7 @@
 //
 
 #include "mlir/mlir_passes.hpp"
+#include "mlir/gfx_mlir_transform_pipeline.hpp"
 
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
@@ -31,6 +32,8 @@
 
 #include "transforms/conv_parallel_lowering.hpp"
 #include "transforms/conv3d_parallel_lowering.hpp"
+#include "transforms/conv_im2col_matmul_rewrite.hpp"
+#include "transforms/conv_im2col_parallel_lowering.hpp"
 #include "transforms/matmul_parallel_lowering.hpp"
 #include "transforms/parallel_fill_fusion.hpp"
 #include "transforms/parallel_post_fusion.hpp"
@@ -592,23 +595,25 @@ void run_mlir_pipeline(mlir::ModuleOp module, bool use_alloca, bool use_parallel
         module.dump();
     }
     run_pass_manager_with_guard(ctx, module, "pre-bufferization", [&](mlir::PassManager& pm_pre) {
-        // Canonicalize and CSE before fusion to expose larger elementwise regions.
-        pm_pre.addPass(mlir::createCanonicalizerPass());
-        pm_pre.addPass(mlir::createCSEPass());
+        populate_gfx_pre_bufferization_pipeline(pm_pre);
 
         // Fuse conv -> eltwise chains (bias/add/unary) at the tensor level.
         // Run it directly before bufferization to maximize fusion opportunities.
         // (Runs outside the pass manager to avoid plugin RTTI issues.)
         // Generic linalg elementwise fusion still happens via the standard pass.
         runConvEltwiseFusion(module);
-        pm_pre.addPass(mlir::createLinalgElementwiseOpFusionPass());
+        pm_pre.addPass(mlir::createCanonicalizerPass());
+        pm_pre.addPass(mlir::createCSEPass());
 
         if (debug_pre) {
             llvm::errs() << "[GFX][MLIR] Module before bufferization:\n";
             module.dump();
         }
 
-        // Run cleanup again to simplify the fused op bodies prior to bufferization.
+        run_conv_im2col_matmul_rewrite(module);
+        // The im2col rewrite introduces fresh tensor.collapse/expand and linalg ops.
+        // Canonicalize them before bufferization so both backends see the same
+        // normalized MLIR contract.
         pm_pre.addPass(mlir::createCanonicalizerPass());
         pm_pre.addPass(mlir::createCSEPass());
         mlir::bufferization::OneShotBufferizePassOptions opts;
@@ -625,22 +630,20 @@ void run_mlir_pipeline(mlir::ModuleOp module, bool use_alloca, bool use_parallel
     run_conv2d_parallel_lowering(module);
     run_conv3d_parallel_lowering(module);
     run_matmul_parallel_lowering(module);
+    run_conv_im2col_parallel_lowering(module);
+    run_pass_manager_with_guard(ctx, module, "post-manual-lowering-cleanup", [&](mlir::PassManager& cleanup_pm) {
+        cleanup_pm.addPass(mlir::createCanonicalizerPass());
+        cleanup_pm.addPass(mlir::createCSEPass());
+    });
     run_with_operand_segments_guard(ctx, "verify-post-linalg-lowering", [&]() {
         return mlir::verify(module);
     });
 
     run_pass_manager_with_guard(ctx, module, "post-bufferization", [&](mlir::PassManager& pm_post) {
-        if (use_parallel_loops) {
-            pm_post.addPass(mlir::createConvertLinalgToParallelLoopsPass());
-        } else if (!use_parallel_loops) {
-            pm_post.addPass(mlir::createConvertLinalgToLoopsPass());
-        }
-        pm_post.addPass(mlir::createLowerAffinePass());
-        if (!preserve_compact_memref_abi) {
-            pm_post.addPass(mlir::memref::createNormalizeMemRefsPass());
-        }
-        pm_post.addPass(mlir::createCanonicalizerPass());
-        pm_post.addPass(mlir::createCSEPass());
+        GfxMlirTransformPipelineOptions options;
+        options.use_parallel_loops = use_parallel_loops;
+        options.preserve_compact_memref_abi = preserve_compact_memref_abi;
+        populate_gfx_post_bufferization_pipeline(pm_post, options);
     });
     if (use_parallel_loops) {
         run_parallel_fill_fusion(module);
@@ -664,8 +667,7 @@ void run_mlir_pipeline(mlir::ModuleOp module, bool use_alloca, bool use_parallel
     fix_shape_cast_memory_spaces(module);
     inline_simple_subviews(module);
     run_pass_manager_with_guard(ctx, module, "post-normalization-cleanup", [&](mlir::PassManager& cleanup_pm) {
-        cleanup_pm.addPass(mlir::createCanonicalizerPass());
-        cleanup_pm.addPass(mlir::createCSEPass());
+        populate_gfx_post_normalization_cleanup_pipeline(cleanup_pm);
     });
     fix_subview_memory_spaces(module);
     fix_shape_cast_memory_spaces(module);

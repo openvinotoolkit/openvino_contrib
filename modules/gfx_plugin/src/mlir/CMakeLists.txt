@@ -62,16 +62,21 @@ set(GFX_MLIR_SOURCES
     ../transforms/fusion_conv_bias_activation.cpp
     ../transforms/fusion_conv_bias_swish.cpp
     ../transforms/fusion_conv_bias.cpp
+    ../transforms/fusion_conv_scale_activation.cpp
+    ../transforms/fusion_conv_scale.cpp
     ../transforms/fusion_eltwise_bias_activation.cpp
     ../transforms/fusion_eltwise_bias.cpp
     ../transforms/mlir_fused_ops.cpp
     ../transforms/fusion_attention.cpp
     ../transforms/fusion_attention_scale_mask.cpp
+    ../transforms/conv_im2col_matmul_rewrite.cpp
+    ../transforms/conv_im2col_parallel_lowering.cpp
     ../transforms/conv_parallel_lowering.cpp
     ../transforms/conv3d_parallel_lowering.cpp
     ../transforms/matmul_parallel_lowering.cpp
     ../transforms/parallel_fill_fusion.cpp
     ../transforms/parallel_post_fusion.cpp
+    gfx_mlir_transform_pipeline.cpp
     mlir_passes.cpp
     mlir_utils.cpp)
 

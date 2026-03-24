@@ -5,6 +5,7 @@
 #include "infer_pipeline.hpp"
 
 #include "openvino/op/constant.hpp"
+#include "runtime/gfx_stage_policy.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -80,8 +81,7 @@ bool is_view_op(const InferStage& stage) {
     if (!stage.stage) {
         return false;
     }
-    const auto& type = stage.stage->type();
-    return (type == "Reshape" || type == "Squeeze" || type == "Unsqueeze");
+    return select_tensor_layout_plan(stage.stage->type(), stage.node).view_only;
 }
 
 ov::Shape ensure_stage_output_shape(InferStage& stage, size_t out_idx) {

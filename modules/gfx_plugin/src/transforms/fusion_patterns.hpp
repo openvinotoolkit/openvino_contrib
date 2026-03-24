@@ -41,6 +41,10 @@ void add_conv_bias_swish_fusion_patterns(mlir::RewritePatternSet& patterns,
                                          const FusionConfig& config);
 void add_conv_bias_fusion_patterns(mlir::RewritePatternSet& patterns,
                                    const FusionConfig& config);
+void add_conv_scale_activation_fusion_patterns(mlir::RewritePatternSet& patterns,
+                                               const FusionConfig& config);
+void add_conv_scale_fusion_patterns(mlir::RewritePatternSet& patterns,
+                                    const FusionConfig& config);
 void add_attention_fusion_patterns(mlir::RewritePatternSet& patterns,
                                    const FusionConfig& config);
 void add_attention_scale_mask_fusion_patterns(mlir::RewritePatternSet& patterns,

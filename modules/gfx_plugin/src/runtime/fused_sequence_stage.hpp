@@ -54,6 +54,7 @@ public:
 
     const std::string& name() const override { return m_name; }
     const std::string& type() const override { return m_type; }
+    GpuStageSubmitPolicy submit_policy() const override;
 
     std::unique_ptr<GpuStage> clone() const override;
 

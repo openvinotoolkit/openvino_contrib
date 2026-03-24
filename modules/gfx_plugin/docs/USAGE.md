@@ -53,6 +53,8 @@ The compiled model reports the resolved backend:
 std::string actual_backend = compiled.get_property("GFX_BACKEND").as<std::string>();
 ```
 
+The selected backend affects both support probing and runtime route selection. In particular, Vulkan may enable specialized direct or chunked execution paths that are not available on Metal for the same graph.
+
 ## Compiling A Model
 ```cpp
 auto model = core.read_model("/path/to/model.xml");
@@ -107,6 +109,8 @@ The plugin intentionally rejects unsupported models during compilation:
 - there is no silent partial CPU fallback
 - backend-specific capability differences surface through exceptions
 - `query_model()` and `compile_model()` follow aligned support logic
+
+For deployment, treat backend acceptance as backend-specific: a model accepted on one backend is not automatically guaranteed to compile on the other if a required optimized route, shape restriction, or device capability is missing.
 
 For architectural and contributor details, continue with:
 - `../README.md`

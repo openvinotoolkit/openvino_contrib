@@ -27,6 +27,64 @@ uint32_t find_memory_type(VkPhysicalDevice phys,
     return UINT32_MAX;
 }
 
+struct UploadContext {
+    VkDevice device = VK_NULL_HANDLE;
+    uint32_t queue_family = 0;
+    VkCommandPool pool = VK_NULL_HANDLE;
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+
+    ~UploadContext() {
+        reset();
+    }
+
+    void reset() {
+        if (cmd && pool && device) {
+            vkFreeCommandBuffers(device, pool, 1, &cmd);
+        }
+        cmd = VK_NULL_HANDLE;
+        if (pool && device) {
+            vkDestroyCommandPool(device, pool, nullptr);
+        }
+        pool = VK_NULL_HANDLE;
+        device = VK_NULL_HANDLE;
+        queue_family = 0;
+    }
+
+    void ensure(VkDevice target_device, uint32_t target_queue_family) {
+        if (device == target_device && pool && cmd && queue_family == target_queue_family) {
+            return;
+        }
+        reset();
+        device = target_device;
+        queue_family = target_queue_family;
+
+        VkCommandPoolCreateInfo pool_info{};
+        pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        pool_info.queueFamilyIndex = queue_family;
+        pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        VkResult res = vkCreateCommandPool(device, &pool_info, nullptr, &pool);
+        if (res != VK_SUCCESS) {
+            OPENVINO_THROW("GFX Vulkan: vkCreateCommandPool failed");
+        }
+
+        VkCommandBufferAllocateInfo alloc{};
+        alloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        alloc.commandPool = pool;
+        alloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        alloc.commandBufferCount = 1;
+        res = vkAllocateCommandBuffers(device, &alloc, &cmd);
+        if (res != VK_SUCCESS) {
+            reset();
+            OPENVINO_THROW("GFX Vulkan: vkAllocateCommandBuffers failed");
+        }
+    }
+};
+
+UploadContext& upload_context() {
+    thread_local UploadContext ctx;
+    return ctx;
+}
+
 }  // namespace
 
 GpuBuffer vulkan_allocate_buffer(size_t bytes,
@@ -198,35 +256,19 @@ void vulkan_copy_buffer(const GpuBuffer& src, const GpuBuffer& dst, size_t bytes
     }
     auto& ctx = VulkanContext::instance();
     VkDevice device = ctx.device();
-    VkCommandPool pool = VK_NULL_HANDLE;
-    VkCommandPoolCreateInfo pool_info{};
-    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    pool_info.queueFamilyIndex = ctx.queue_family_index();
-    pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-    VkResult res = vkCreateCommandPool(device, &pool_info, nullptr, &pool);
-    if (res != VK_SUCCESS) {
-        OPENVINO_THROW("GFX Vulkan: vkCreateCommandPool failed");
-    }
+    auto& upload = upload_context();
+    upload.ensure(device, ctx.queue_family_index());
 
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    VkCommandBufferAllocateInfo alloc{};
-    alloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    alloc.commandPool = pool;
-    alloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    alloc.commandBufferCount = 1;
-    res = vkAllocateCommandBuffers(device, &alloc, &cmd);
+    VkResult res = vkResetCommandPool(device, upload.pool, 0);
     if (res != VK_SUCCESS) {
-        vkDestroyCommandPool(device, pool, nullptr);
-        OPENVINO_THROW("GFX Vulkan: vkAllocateCommandBuffers failed");
+        OPENVINO_THROW("GFX Vulkan: vkResetCommandPool failed");
     }
 
     VkCommandBufferBeginInfo begin{};
     begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    res = vkBeginCommandBuffer(cmd, &begin);
+    res = vkBeginCommandBuffer(upload.cmd, &begin);
     if (res != VK_SUCCESS) {
-        vkFreeCommandBuffers(device, pool, 1, &cmd);
-        vkDestroyCommandPool(device, pool, nullptr);
         OPENVINO_THROW("GFX Vulkan: vkBeginCommandBuffer failed");
     }
 
@@ -234,28 +276,22 @@ void vulkan_copy_buffer(const GpuBuffer& src, const GpuBuffer& dst, size_t bytes
     region.srcOffset = 0;
     region.dstOffset = 0;
     region.size = bytes;
-    vkCmdCopyBuffer(cmd, vk_buffer_from_gpu(src), vk_buffer_from_gpu(dst), 1, &region);
+    vkCmdCopyBuffer(upload.cmd, vk_buffer_from_gpu(src), vk_buffer_from_gpu(dst), 1, &region);
 
-    res = vkEndCommandBuffer(cmd);
+    res = vkEndCommandBuffer(upload.cmd);
     if (res != VK_SUCCESS) {
-        vkFreeCommandBuffers(device, pool, 1, &cmd);
-        vkDestroyCommandPool(device, pool, nullptr);
         OPENVINO_THROW("GFX Vulkan: vkEndCommandBuffer failed");
     }
 
     VkSubmitInfo submit{};
     submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit.commandBufferCount = 1;
-    submit.pCommandBuffers = &cmd;
+    submit.pCommandBuffers = &upload.cmd;
     res = vkQueueSubmit(ctx.queue(), 1, &submit, VK_NULL_HANDLE);
     if (res != VK_SUCCESS) {
-        vkFreeCommandBuffers(device, pool, 1, &cmd);
-        vkDestroyCommandPool(device, pool, nullptr);
         OPENVINO_THROW("GFX Vulkan: vkQueueSubmit failed");
     }
     vkQueueWaitIdle(ctx.queue());
-    vkFreeCommandBuffers(device, pool, 1, &cmd);
-    vkDestroyCommandPool(device, pool, nullptr);
 }
 
 GpuBuffer vulkan_upload_device_buffer(const void* src,

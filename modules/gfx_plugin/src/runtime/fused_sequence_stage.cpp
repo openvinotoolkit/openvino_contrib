@@ -72,6 +72,19 @@ void FusedSequenceStage::set_profiler(void* /*profiler*/,
     // Intentionally no-op: sub-stages execute within a single pipeline slot.
 }
 
+GpuStageSubmitPolicy FusedSequenceStage::submit_policy() const {
+    GpuStageSubmitPolicy policy{};
+    for (const auto& info : m_stages) {
+        if (!info.stage) {
+            continue;
+        }
+        const auto child = info.stage->submit_policy();
+        policy.weight += child.weight > 0 ? (child.weight - 1) : 0;
+        policy.isolate = policy.isolate || child.isolate;
+    }
+    return policy;
+}
+
 void FusedSequenceStage::execute(GpuCommandBufferHandle command_buffer) {
     if (m_outputs.size() < m_stages.size()) {
         OPENVINO_THROW("GFX: fused stage outputs are not fully bound (",

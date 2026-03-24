@@ -39,6 +39,13 @@ inline void validate_gpu_buffer_desc(const GpuBufferDesc& desc, const char* erro
     case BufferUsage::IO:
         break;
     case BufferUsage::Const:
+        OPENVINO_ASSERT(!desc.cpu_read,
+                        error_prefix,
+                        ": const buffers are not expected to be CPU-readable");
+        OPENVINO_ASSERT(desc.prefer_device_local || desc.cpu_write,
+                        error_prefix,
+                        ": const buffers must be device-local or host-uploadable");
+        break;
     case BufferUsage::Intermediate:
     case BufferUsage::Temp:
         OPENVINO_ASSERT(desc.prefer_device_local,

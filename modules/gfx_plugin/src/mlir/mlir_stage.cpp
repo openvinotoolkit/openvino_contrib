@@ -19,7 +19,9 @@
 #include "mlir/mlir_builder.hpp"
 #include "mlir/mlir_kernel_plan_utils.hpp"
 #include "runtime/gfx_logger.hpp"
+#include "runtime/gfx_parallelism.hpp"
 #include "runtime/gfx_shape_utils.hpp"
+#include "runtime/gfx_stage_policy.hpp"
 #include "transforms/mlir_fused_ops.hpp"
 
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -127,6 +129,106 @@ namespace ov {
 namespace gfx_plugin {
 
 namespace {
+
+const char* stage_archetype_attr(GfxStageArchetype archetype) {
+    switch (archetype) {
+        case GfxStageArchetype::Convolution:
+            return "convolution";
+        case GfxStageArchetype::GroupConvolution:
+            return "group_convolution";
+        case GfxStageArchetype::MatMul:
+            return "matmul";
+        case GfxStageArchetype::UnaryElementwise:
+            return "unary_elementwise";
+        case GfxStageArchetype::BinaryElementwise:
+            return "binary_elementwise";
+        case GfxStageArchetype::Reduction:
+            return "reduction";
+        case GfxStageArchetype::Layout:
+            return "layout";
+        case GfxStageArchetype::Convert:
+            return "convert";
+        case GfxStageArchetype::SplitConcat:
+            return "split_concat";
+        default:
+            return "unknown";
+    }
+}
+
+const char* tensor_layout_kind_attr(GfxTensorLayoutKind kind) {
+    switch (kind) {
+        case GfxTensorLayoutKind::Materialized:
+            return "materialized";
+        case GfxTensorLayoutKind::ViewOnly:
+            return "view_only";
+        default:
+            return "unknown";
+    }
+}
+
+const char* conv_route_kind_attr(GfxConvRouteKind kind) {
+    switch (kind) {
+        case GfxConvRouteKind::Direct1x1:
+            return "direct_1x1";
+        case GfxConvRouteKind::Direct3x3:
+            return "direct_3x3";
+        case GfxConvRouteKind::Chunked:
+            return "chunked";
+        case GfxConvRouteKind::GroupChunked:
+            return "group_chunked";
+        default:
+            return "none";
+    }
+}
+
+const char* conv_family_attr(GfxConvFamily family) {
+    switch (family) {
+        case GfxConvFamily::Pointwise1x1:
+            return "pointwise_1x1";
+        case GfxConvFamily::Spatial3x3:
+            return "spatial_3x3";
+        case GfxConvFamily::Depthwise:
+            return "depthwise";
+        case GfxConvFamily::Grouped:
+            return "grouped";
+        case GfxConvFamily::General:
+            return "general";
+        default:
+            return "unknown";
+    }
+}
+
+const char* conv_algorithm_kind_attr(GfxConvAlgorithmKind kind) {
+    switch (kind) {
+        case GfxConvAlgorithmKind::Direct1x1:
+            return "direct_1x1";
+        case GfxConvAlgorithmKind::Direct3x3Stride1:
+            return "direct_3x3_stride1";
+        case GfxConvAlgorithmKind::Direct3x3Stride2:
+            return "direct_3x3_stride2";
+        case GfxConvAlgorithmKind::DepthwiseDirect:
+            return "depthwise_direct";
+        case GfxConvAlgorithmKind::ChunkedDirect:
+            return "chunked_direct";
+        case GfxConvAlgorithmKind::Im2ColMatMul:
+            return "im2col_matmul";
+        case GfxConvAlgorithmKind::Indirect:
+            return "indirect";
+        default:
+            return "none";
+    }
+}
+
+uint64_t shape_batch_product_prefix(const ov::Shape& shape) {
+    if (shape.size() <= 2) {
+        return 1;
+    }
+    uint64_t batch = 1;
+    for (size_t i = 0; i + 2 < shape.size(); ++i) {
+        batch *= static_cast<uint64_t>(shape[i]);
+    }
+    return batch;
+}
 
 std::optional<ov::Tensor> evaluate_constant_source_tensor(const ov::Output<ov::Node>& source) {
     auto node = source.get_node_shared_ptr();
@@ -275,28 +377,6 @@ void build_slice_runtime_spec(const std::shared_ptr<const ov::Node>& node,
     }
 }
 
-inline std::vector<int32_t> compute_broadcast_strides(const ov::Shape& in_shape,
-                                                      const ov::Shape& out_shape,
-                                                      size_t /*elem_size*/) {
-    const size_t out_rank = out_shape.size();
-    const size_t in_rank = in_shape.size();
-    std::vector<int64_t> aligned(out_rank, 1);
-    if (in_rank <= out_rank) {
-        const size_t off = out_rank - in_rank;
-        for (size_t i = 0; i < in_rank; ++i) {
-            aligned[off + i] = static_cast<int64_t>(in_shape[i]);
-        }
-    }
-    std::vector<int32_t> strides(out_rank, 0);
-    int64_t stride = 1;  // element strides
-    for (int64_t i = static_cast<int64_t>(out_rank) - 1; i >= 0; --i) {
-        const int64_t dim = aligned[static_cast<size_t>(i)];
-        strides[static_cast<size_t>(i)] = (dim == 1) ? 0 : static_cast<int32_t>(stride);
-        stride *= dim;
-    }
-    return strides;
-}
-
 inline mlir::ArrayAttr make_i32_array_attr(mlir::OpBuilder& b, const std::vector<int32_t>& vals) {
     llvm::SmallVector<mlir::Attribute, 8> attrs;
     attrs.reserve(vals.size());
@@ -440,9 +520,7 @@ MlirStage::MlirStage(const std::shared_ptr<const ov::Node>& node)
     if (node && node->get_output_partial_shape(0).is_static()) {
         m_output_shape = node->get_output_shape(0);
     }
-    if (m_type == "Reshape" || m_type == "Squeeze" || m_type == "Unsqueeze") {
-        m_is_view_op = true;
-    }
+    m_is_view_op = select_tensor_layout_plan(m_type, m_node).view_only;
 }
 
 void MlirStage::apply_kernel_metadata(const KernelRuntimeMetadata& meta,
@@ -633,16 +711,23 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
             return;
         }
         const ov::Shape out_shape = m_node->get_output_shape(0);
-        const ov::Shape in0_shape = m_node->get_input_shape(0);
-        const ov::Shape in1_shape = m_node->get_input_shape(1);
+        const ov::Shape in0_shape = compile_time_input_shape(0);
+        const ov::Shape in1_shape = compile_time_input_shape(1);
         const auto elem_size = m_node->get_output_element_type(0).size();
         const auto dims_i32 = [&]() {
             std::vector<int32_t> v(out_shape.size());
             for (size_t i = 0; i < out_shape.size(); ++i) v[i] = static_cast<int32_t>(out_shape[i]);
             return v;
         }();
-        const auto stride0 = compute_broadcast_strides(in0_shape, out_shape, elem_size);
-        const auto stride1 = compute_broadcast_strides(in1_shape, out_shape, elem_size);
+        (void)elem_size;
+        auto stride0 = compile_time_broadcast_strides(0, out_shape);
+        auto stride1 = compile_time_broadcast_strides(1, out_shape);
+        if (stride0.empty() && m_node) {
+            stride0 = compute_broadcast_element_strides(m_node->get_input_shape(0), out_shape);
+        }
+        if (stride1.empty() && m_node) {
+            stride1 = compute_broadcast_element_strides(m_node->get_input_shape(1), out_shape);
+        }
 
         auto wrap_vec = [&](const char* suffix, const std::vector<int32_t>& vec) -> GpuTensor {
             GpuTensor t;
@@ -934,6 +1019,10 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
         std::vector<float> beta(channels, 0.0f);
         std::vector<float> mean(channels, 0.0f);
         std::vector<float> var(channels, 1.0f);
+        if (m_has_bias && !m_bias_params.values.empty()) {
+            const size_t bias_count = std::min(channels, m_bias_params.values.size());
+            std::copy_n(m_bias_params.values.begin(), bias_count, bias.begin());
+        }
         if (m_has_bn && !m_bn_params.gamma.empty()) {
             gamma = m_bn_params.gamma;
             beta = m_bn_params.beta;
@@ -1062,10 +1151,31 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
         m_type == "Split" || m_type == "VariadicSplit") {
         return;
     }
-    MlirKernelPlanBuilder plan_builder;
-    KernelSpec spec(m_node, 0);
-    KernelPlan plan = plan_builder.build_plan(spec, ctx);
+    const auto optimization_plan = stage_optimization_plan();
+    KernelPlan plan = [&]() {
+        if (m_type == "Add" && has_absorbed_input_transpose()) {
+            auto module = build_mlir_add_from_node(m_node, ctx, m_input_transforms);
+            return KernelPlan(module, resolve_entry_point(module, {}, "gfx_kernel"), 0);
+        }
+        if (m_type == "Convolution" && has_absorbed_input_transpose()) {
+            auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
+            OPENVINO_ASSERT(conv, "GFX MLIR: expected Convolution node for absorbed transpose");
+            auto module = build_mlir_conv2d_from_node(conv, ctx, input_transform(0));
+            return KernelPlan(module, resolve_entry_point(module, {}, "conv2d_main"), 0);
+        }
+        if (m_type == "GroupConvolution" && has_absorbed_input_transpose()) {
+            auto gconv = ov::as_type_ptr<const ov::op::v1::GroupConvolution>(m_node);
+            OPENVINO_ASSERT(gconv, "GFX MLIR: expected GroupConvolution node for absorbed transpose");
+            auto module = build_mlir_group_conv2d_from_node(gconv, ctx, input_transform(0));
+            return KernelPlan(module, resolve_entry_point(module, {}, "group_conv2d_main"), 0);
+        }
+        MlirKernelPlanBuilder plan_builder;
+        KernelSpec spec(m_node, 0);
+        return plan_builder.build_plan(spec, ctx);
+    }();
     auto module = plan.module();
+    apply_stage_optimization_attrs(module, optimization_plan);
+    apply_input_transform_attrs(module);
     set_parallel_preference(module);
     apply_fused_operations(module);
     auto plan_ctx = build_mlir_kernel_plan(
@@ -1113,17 +1223,21 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
     const bool use_manual_conv2d_vulkan =
         (is_vulkan_backend() &&
          m_type == "Convolution" &&
+         !has_absorbed_input_transpose() &&
          !m_has_bias &&
          !m_has_activation &&
          !m_has_bn &&
          m_node &&
          m_node->get_input_size() == 2 &&
          m_node->get_output_size() == 1 &&
+         optimization_plan.conv.algorithm.kind != GfxConvAlgorithmKind::Im2ColMatMul &&
+         optimization_plan.conv.algorithm.kind != GfxConvAlgorithmKind::Indirect &&
          m_node->get_input_partial_shape(0).rank().is_static() &&
          m_node->get_input_partial_shape(0).rank().get_length() == 4);
     const bool use_manual_group_conv2d_vulkan =
         (is_vulkan_backend() &&
          m_type == "GroupConvolution" &&
+         !has_absorbed_input_transpose() &&
          !m_has_bias &&
          !m_has_activation &&
          !m_has_bn &&
@@ -1137,6 +1251,7 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
             module = build_mlir_conv2d_vulkan(conv, ctx);
             m_force_single_dispatch = true;
             mlir::OpBuilder b(module->getContext());
+            apply_stage_optimization_attrs(module, optimization_plan);
             module->setAttr("gfx.skip_conv_parallel", mlir::BoolAttr::get(module.getContext(), true));
             module->setAttr("gfx.prefer_parallel", mlir::BoolAttr::get(module.getContext(), true));
             m_kernel_extra_inputs.clear();
@@ -1167,6 +1282,7 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
             module = build_mlir_group_conv2d_vulkan(gconv, ctx);
             m_force_single_dispatch = true;
             mlir::OpBuilder b(module->getContext());
+            apply_stage_optimization_attrs(module, optimization_plan);
             module->setAttr("gfx.skip_conv_parallel", mlir::BoolAttr::get(module.getContext(), true));
             module->setAttr("gfx.prefer_parallel", mlir::BoolAttr::get(module.getContext(), false));
             m_kernel_extra_inputs.clear();
@@ -1547,7 +1663,9 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                 out->shape = out_shape;
             }
         }
-        {
+        const bool use_runtime_interpolate_params = !is_vulkan_backend();
+        m_kernel_extra_inputs.clear();
+        if (use_runtime_interpolate_params) {
             const std::string key = m_name + "/interpolate_params";
             GpuBuffer buf = m_buffer_manager->wrap_const(key, &params, sizeof(params), ov::element::u8);
             OPENVINO_ASSERT(buf.valid(), "GFX MLIR: failed to wrap interpolate params buffer for ", m_name);
@@ -1556,7 +1674,6 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
             t.buf = buf;
             t.expected_type = ov::element::u8;
             t.shape = ov::Shape{sizeof(params)};
-            m_kernel_extra_inputs.clear();
             m_kernel_extra_inputs.push_back(std::move(t));
         }
         if (m_node && (m_last_input_shape != in_shape || !m_kernel)) {
@@ -1564,8 +1681,10 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
             auto module = build_mlir_for_node(m_node, ctx);
             if (module) {
                 mlir::OpBuilder b(module.getContext());
-                std::vector<int32_t> kinds{1, 1, 1};
-                std::vector<int32_t> arg_idx{0, 1, 2};
+                std::vector<int32_t> kinds = use_runtime_interpolate_params ? std::vector<int32_t>{1, 1, 1}
+                                                                            : std::vector<int32_t>{1, 1};
+                std::vector<int32_t> arg_idx = use_runtime_interpolate_params ? std::vector<int32_t>{0, 1, 2}
+                                                                              : std::vector<int32_t>{0, 1};
                 module->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr(b, kinds));
                 module->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr(b, arg_idx));
             }
@@ -1583,10 +1702,13 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                                ? sig.total()
                                : (info.mapping.kernel_inputs.size() + outputs.size() + m_kernel_extra_inputs.size());
                 });
-            plan_ctx.build_info.plan = KernelPlan(module, plan_ctx.build_info.plan.entry_point(), 3);
+            plan_ctx.build_info.plan =
+                KernelPlan(module, plan_ctx.build_info.plan.entry_point(), use_runtime_interpolate_params ? 3u : 2u);
             compile_from_plan(plan_ctx, module, "interpolate");
-            m_kernel_operand_kinds = {1, 1, 1};
-            m_kernel_operand_arg_indices = {0, 1, 2};
+            m_kernel_operand_kinds = use_runtime_interpolate_params ? std::vector<int32_t>{1, 1, 1}
+                                                                   : std::vector<int32_t>{1, 1};
+            m_kernel_operand_arg_indices = use_runtime_interpolate_params ? std::vector<int32_t>{0, 1, 2}
+                                                                         : std::vector<int32_t>{0, 1};
             m_kernel_inputs = {0};
             m_kernel_input_arg_count = 1;
             m_last_input_shape = in_shape;
@@ -1681,27 +1803,32 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
             m_last_input_shape = in_shape;
         }
     } else if (m_type == "Split" || m_type == "VariadicSplit") {
-        ov::Shape in_shape = resolve_input_shape(0);
-        if (in_shape.empty()) {
+        ov::Shape stage_input_shape = resolve_input_shape(0);
+        if (stage_input_shape.empty()) {
             OPENVINO_THROW("GFX MLIR: Split input shape is unknown for stage ", m_name);
         }
-        const auto plan = make_split_plan(m_node, in_shape, outputs);
+        ov::Shape logical_input_shape = m_node ? m_node->get_input_shape(0) : stage_input_shape;
+        if (logical_input_shape.empty()) {
+            logical_input_shape = stage_input_shape;
+        }
+        const auto plan = make_split_plan(m_node, logical_input_shape, outputs);
         for (size_t i = 0; i < outputs.size(); ++i) {
             if (!outputs[i]) {
                 continue;
             }
-            ov::Shape out_shape = in_shape;
+            ov::Shape out_shape = logical_input_shape;
             out_shape[static_cast<size_t>(plan.axis_norm)] = plan.split_sizes[i];
             outputs[i]->shape = out_shape;
         }
-        m_output_shape = in_shape;  // use full input size for dispatch
+        m_output_shape = logical_input_shape;
         bool compiled_split = false;
-        if (m_node && (m_last_input_shape != in_shape || !m_kernel)) {
+        const bool has_input_transform = has_absorbed_input_transpose();
+        if (!has_input_transform && m_node && (m_last_input_shape != stage_input_shape || !m_kernel)) {
             const ov::element::Type out_et = m_node ? m_node->get_output_element_type(0)
                                                     : (outputs.empty() ? ov::element::f32
                                                                         : outputs.front()->expected_type);
             KernelSource src = make_split_msl_kernel(out_et,
-                                                     in_shape,
+                                                     logical_input_shape,
                                                      plan.split_sizes,
                                                      plan.axis_len,
                                                      plan.inner_stride);
@@ -1725,7 +1852,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                 compiled_split = false;
             }
             if (compiled_split) {
-                m_last_input_shape = in_shape;
+                m_last_input_shape = stage_input_shape;
             } else {
                 m_kernel.reset();
                 m_kernel_operand_kinds.clear();
@@ -1734,9 +1861,12 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                 m_kernel_input_arg_count = 0;
             }
         }
-        if (!compiled_split && (m_last_input_shape != in_shape || !m_kernel)) {
+        if (!compiled_split && (m_last_input_shape != stage_input_shape || !m_kernel)) {
             auto& ctx = gfx_mlir_context();
-            auto module = build_mlir_split_from_node(m_node, ctx, in_shape);
+            auto module = build_mlir_split_from_node(m_node,
+                                                     ctx,
+                                                     stage_input_shape,
+                                                     input_transform(0));
             auto plan_ctx = build_mlir_kernel_plan(
                 module,
                 "split_main",
@@ -1752,7 +1882,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                                : (info.mapping.kernel_inputs.size() + outputs.size());
                 });
             compile_from_plan(plan_ctx, module, "split");
-            m_last_input_shape = in_shape;
+            m_last_input_shape = stage_input_shape;
         }
     } else {
         for (size_t i = 0; i < outputs.size(); ++i) {
@@ -1967,6 +2097,14 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
     ov::Shape dispatch_shape = (outputs.front() && !outputs.front()->shape.empty())
                                    ? outputs.front()->shape
                                    : m_output_shape;
+    if (m_type == "MatMul" && dispatch_shape.size() > 3) {
+        ov::Shape collapsed;
+        collapsed.reserve(3);
+        collapsed.push_back(shape_batch_product_prefix(dispatch_shape));
+        collapsed.push_back(dispatch_shape[dispatch_shape.size() - 2]);
+        collapsed.push_back(dispatch_shape[dispatch_shape.size() - 1]);
+        dispatch_shape = std::move(collapsed);
+    }
     if ((m_type == "Split" || m_type == "VariadicSplit") && !m_output_shape.empty()) {
         dispatch_shape = m_output_shape;
     }
@@ -2039,6 +2177,13 @@ void MlirStage::set_outputs(const std::vector<std::unique_ptr<GpuTensor>>& outpu
     }
 }
 
+void MlirStage::set_input_transform(size_t input_idx, const GfxInputTransform& transform) {
+    if (m_input_transforms.size() <= input_idx) {
+        m_input_transforms.resize(input_idx + 1);
+    }
+    m_input_transforms[input_idx] = transform;
+}
+
 void MlirStage::enable_profiling(bool enable) {
     m_profiling_enabled = enable;
 }
@@ -2060,13 +2205,22 @@ void MlirStage::on_command_buffer_complete() {
 }
 
 bool MlirStage::fuse_activation(ActivationKind kind, float alpha) {
-    // Disable activation fusion for now to keep MLIR graph semantics intact
-    // (MSL generators do not yet consume fused activation metadata).
-    return false;
+    if (!allow_stage_activation_fusion(backend_kind(), m_type, kind) ||
+        !stage_optimization_plan().execution.fusion.allow_activation) {
+        return false;
+    }
+    OPENVINO_ASSERT(!m_kernel, "MlirStage: cannot fuse activation after compilation");
+    m_has_activation = true;
+    m_activation = kind;
+    m_activation_alpha = alpha;
+    return true;
 }
 
 bool MlirStage::fuse_batchnorm(const BatchNormParams& params) {
     OPENVINO_ASSERT(!m_kernel, "MlirStage: cannot fuse batchnorm after compilation");
+    if (!stage_optimization_plan().execution.fusion.allow_batchnorm) {
+        return false;
+    }
     if (!m_node) {
         return false;
     }
@@ -2094,10 +2248,60 @@ bool MlirStage::fuse_batchnorm(const BatchNormParams& params) {
 }
 
 bool MlirStage::fuse_bias(const BiasParams& params) {
-    (void)params;
-    // Bias fusion remains off in the shared MLIR stage. Large Vulkan post-ops
-    // use dedicated chunked kernels instead of relying on graph fusion here.
-    return false;
+    if (!stage_optimization_plan().execution.fusion.allow_bias) {
+        return false;
+    }
+    OPENVINO_ASSERT(!m_kernel, "MlirStage: cannot fuse bias after compilation");
+    if (params.empty()) {
+        return false;
+    }
+    m_has_bias = true;
+    m_bias_params = params;
+    return true;
+}
+
+const GfxInputTransform* MlirStage::input_transform(size_t input_idx) const {
+    if (input_idx >= m_input_transforms.size() || !m_input_transforms[input_idx].has_transpose()) {
+        return nullptr;
+    }
+    return &m_input_transforms[input_idx];
+}
+
+ov::Shape MlirStage::compile_time_input_shape(size_t input_idx) const {
+    if (const auto* transform = input_transform(input_idx)) {
+        return transform->source_shape;
+    }
+    if (m_node) {
+        try {
+            return m_node->get_input_shape(input_idx);
+        } catch (const std::exception&) {
+        }
+    }
+    return {};
+}
+
+std::vector<int32_t> MlirStage::compile_time_broadcast_strides(size_t input_idx, const ov::Shape& out_shape) const {
+    const auto in_shape = compile_time_input_shape(input_idx);
+    if (in_shape.empty()) {
+        return {};
+    }
+    if (const auto* transform = input_transform(input_idx)) {
+        OPENVINO_ASSERT(m_node && m_node->get_input_partial_shape(input_idx).is_static(),
+                        "GFX MLIR: absorbed transpose requires static consumer input shape for stage ",
+                        m_name);
+        return compute_permuted_broadcast_element_strides(transform->source_shape,
+                                                          m_node->get_input_shape(input_idx),
+                                                          transform->transpose_permutation,
+                                                          out_shape,
+                                                          "GFX MLIR");
+    }
+    return compute_broadcast_element_strides(in_shape, out_shape);
+}
+
+bool MlirStage::has_absorbed_input_transpose() const {
+    return std::any_of(m_input_transforms.begin(),
+                       m_input_transforms.end(),
+                       [](const GfxInputTransform& transform) { return transform.has_transpose(); });
 }
 
 KernelExecutionHooks* MlirStage::prepare_profiling(ProfileState&, KernelExecutionHooks&) {
@@ -2107,10 +2311,23 @@ KernelExecutionHooks* MlirStage::prepare_profiling(ProfileState&, KernelExecutio
 void MlirStage::finalize_profiling(const ProfileState&) {
 }
 
+GfxStageOptimizationPlan MlirStage::stage_optimization_plan() const {
+    return select_stage_optimization_plan(m_buffer_manager,
+                                          backend_kind(),
+                                          m_type,
+                                          m_node,
+                                          m_node ? m_node->get_output_element_type(0) : ov::element::dynamic,
+                                          m_has_bias,
+                                          m_has_activation,
+                                          m_has_bn,
+                                          GfxStageRuntimeTraits{});
+}
+
 void MlirStage::clone_into(MlirStage& dst) const {
     dst.m_kernel = m_kernel;
     dst.m_output_shape = m_output_shape;
     dst.m_last_input_shape = m_last_input_shape;
+    dst.m_input_transforms = m_input_transforms;
     dst.m_kernel_inputs = m_kernel_inputs;
     dst.m_kernel_input_arg_count = m_kernel_input_arg_count;
     dst.m_const_buffers = m_const_buffers;
@@ -2138,10 +2355,63 @@ bool MlirStage::is_matmul_like() const {
     return m_type == "MatMul";
 }
 
+void MlirStage::apply_stage_optimization_attrs(mlir::ModuleOp module,
+                                               const GfxStageOptimizationPlan& plan) {
+    if (!module) {
+        return;
+    }
+    auto* ctx = module.getContext();
+    module->setAttr("gfx.stage_archetype",
+                    mlir::StringAttr::get(ctx, stage_archetype_attr(plan.archetype)));
+    module->setAttr("gfx.tensor_layout_kind",
+                    mlir::StringAttr::get(ctx, tensor_layout_kind_attr(plan.layout.kind)));
+    module->setAttr("gfx.tensor_view_only",
+                    mlir::BoolAttr::get(ctx, plan.layout.view_only));
+    module->setAttr("gfx.post_bias_allowed",
+                    mlir::BoolAttr::get(ctx, plan.post_ops.bias));
+    module->setAttr("gfx.post_activation_allowed",
+                    mlir::BoolAttr::get(ctx, plan.post_ops.activation));
+    module->setAttr("gfx.post_batchnorm_allowed",
+                    mlir::BoolAttr::get(ctx, plan.post_ops.batchnorm));
+    module->setAttr("gfx.submit_weight",
+                    mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                           static_cast<int32_t>(plan.execution.submit.weight)));
+    module->setAttr("gfx.conv_route_kind",
+                    mlir::StringAttr::get(ctx, conv_route_kind_attr(plan.conv.kind)));
+    module->setAttr("gfx.conv_family",
+                    mlir::StringAttr::get(ctx, conv_family_attr(plan.conv.family)));
+    module->setAttr("gfx.conv_algorithm_kind",
+                    mlir::StringAttr::get(ctx, conv_algorithm_kind_attr(plan.conv.algorithm.kind)));
+    module->setAttr("gfx.conv_variant",
+                    mlir::StringAttr::get(ctx, plan.conv.algorithm.variant));
+}
+
+void MlirStage::apply_input_transform_attrs(mlir::ModuleOp module) const {
+    if (!module) {
+        return;
+    }
+    auto* ctx = module.getContext();
+    mlir::OpBuilder b(ctx);
+    for (size_t input_idx = 0; input_idx < m_input_transforms.size(); ++input_idx) {
+        const auto* transform = input_transform(input_idx);
+        if (!transform) {
+            continue;
+        }
+        llvm::SmallVector<mlir::Attribute> attrs;
+        attrs.reserve(transform->transpose_permutation.size());
+        for (int64_t axis : transform->transpose_permutation) {
+            attrs.push_back(b.getI64IntegerAttr(axis));
+        }
+        const std::string attr_name = "gfx.absorbed_input" + std::to_string(input_idx) + "_perm";
+        module->setAttr(attr_name, b.getArrayAttr(attrs));
+    }
+}
+
 void MlirStage::set_parallel_preference(mlir::ModuleOp module) {
     if (!module) {
         return;
     }
+    auto* ctx = module.getContext();
     bool conv2d = false;
     if (m_node && is_conv_like()) {
         auto in_shape = m_node->get_input_partial_shape(0);
@@ -2150,9 +2420,52 @@ void MlirStage::set_parallel_preference(mlir::ModuleOp module) {
             conv2d = true;
         }
     }
-    const bool prefer_parallel = conv2d || is_matmul_like();
-    module->setAttr("gfx.prefer_parallel",
-                    mlir::BoolAttr::get(module.getContext(), prefer_parallel));
+    bool prefer_parallel = conv2d;
+    const auto optimization_plan = stage_optimization_plan();
+    if (conv2d && optimization_plan.conv.algorithm.kind == GfxConvAlgorithmKind::Im2ColMatMul) {
+        auto matmul_shape = m_output_shape;
+        if (matmul_shape.size() == 4) {
+            const uint64_t batch = static_cast<uint64_t>(std::max<size_t>(1, matmul_shape[0]));
+            const uint64_t spatial =
+                static_cast<uint64_t>(std::max<size_t>(1, matmul_shape[2])) *
+                static_cast<uint64_t>(std::max<size_t>(1, matmul_shape[3]));
+            const uint64_t channels = static_cast<uint64_t>(std::max<size_t>(1, matmul_shape[1]));
+            if (batch == 1) {
+                matmul_shape = ov::Shape{channels, spatial};
+            } else {
+                matmul_shape = ov::Shape{batch, spatial, channels};
+            }
+        }
+        const auto caps = query_parallelism_caps(m_buffer_manager);
+        const auto plan = select_matmul_parallelism(caps, matmul_shape);
+        prefer_parallel = prefer_parallel || plan.prefer_parallel;
+        if (plan.prefer_parallel) {
+            module->setAttr("gfx.dispatch_tile_h",
+                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), plan.dispatch.tile_h));
+            module->setAttr("gfx.dispatch_tile_w",
+                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), plan.dispatch.tile_w));
+            module->setAttr("gfx.dispatch_threads_h",
+                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), plan.dispatch.threads_h));
+            module->setAttr("gfx.dispatch_threads_w",
+                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), plan.dispatch.threads_w));
+        }
+    }
+    if (is_matmul_like()) {
+        const auto caps = query_parallelism_caps(m_buffer_manager);
+        const auto plan = select_matmul_parallelism(caps, m_output_shape);
+        prefer_parallel = prefer_parallel || plan.prefer_parallel;
+        if (plan.prefer_parallel) {
+            module->setAttr("gfx.dispatch_tile_h",
+                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), plan.dispatch.tile_h));
+            module->setAttr("gfx.dispatch_tile_w",
+                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), plan.dispatch.tile_w));
+            module->setAttr("gfx.dispatch_threads_h",
+                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), plan.dispatch.threads_h));
+            module->setAttr("gfx.dispatch_threads_w",
+                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), plan.dispatch.threads_w));
+        }
+    }
+    module->setAttr("gfx.prefer_parallel", mlir::BoolAttr::get(ctx, prefer_parallel));
 }
 
 void MlirStage::apply_fused_operations(mlir::ModuleOp module) {

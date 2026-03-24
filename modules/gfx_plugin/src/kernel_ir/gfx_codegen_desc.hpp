@@ -224,6 +224,8 @@ struct SplitCodegenDesc : BaseCodegenDesc {
     uint64_t inner = 1;
     uint64_t outer = 1;
     std::vector<int64_t> input_shape;
+    std::vector<int64_t> source_input_shape;
+    std::vector<int64_t> input_permutation;
     std::vector<size_t> split_sizes;
 };
 

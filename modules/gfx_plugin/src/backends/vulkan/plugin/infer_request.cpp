@@ -279,6 +279,16 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
     auto submission = begin_vulkan_infer_commands();
     size_t recorded_stage_count = 0;
     size_t recorded_output_bytes = 0;
+    auto flush_submission = [&]() {
+        if (recorded_stage_count == 0) {
+            return;
+        }
+        submit_vulkan_infer_commands(submission);
+        notify_pipeline_submission_complete(pipeline);
+        restart_vulkan_infer_commands(submission);
+        recorded_stage_count = 0;
+        recorded_output_bytes = 0;
+    };
     execute_pipeline(
         pipeline,
         node_map,
@@ -290,20 +300,21 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
             return nullptr;
         },
         [&](InferStage& stage, const std::vector<GpuTensor*>& /*resolved*/) {
+            const auto policy = stage.stage->submit_policy();
+            if (policy.isolate && recorded_stage_count > 0) {
+                flush_submission();
+            }
             stage.stage->execute(reinterpret_cast<GpuCommandBufferHandle>(submission.cmd));
-            ++recorded_stage_count;
+            recorded_stage_count += std::max<size_t>(policy.weight, 1);
             for (const auto& out : stage.outputs) {
                 if (out && out->buf.valid()) {
                     recorded_output_bytes += out->buf.size;
                 }
             }
-            if (recorded_stage_count >= kStagesPerSubmit ||
+            if (policy.isolate ||
+                recorded_stage_count >= kStagesPerSubmit ||
                 recorded_output_bytes >= kMaxOutputBytesPerSubmit) {
-                submit_vulkan_infer_commands(submission);
-                notify_pipeline_submission_complete(pipeline);
-                restart_vulkan_infer_commands(submission);
-                recorded_stage_count = 0;
-                recorded_output_bytes = 0;
+                flush_submission();
             }
         });
     if (recorded_stage_count > 0) {

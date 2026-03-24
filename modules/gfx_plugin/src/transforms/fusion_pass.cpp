@@ -4,6 +4,7 @@
 
 #include "transforms/fusion_pass.hpp"
 
+#include <algorithm>
 #include <unordered_map>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -17,8 +18,12 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
+#include "openvino/core/type/float16.hpp"
+#include "openvino/op/add.hpp"
+#include "openvino/op/batch_norm.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/elu.hpp"
+#include "openvino/op/multiply.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/prelu.hpp"
 #include "openvino/op/result.hpp"
@@ -29,6 +34,183 @@ namespace ov {
 namespace gfx_plugin {
 
 namespace {
+
+bool read_const_f32(const std::shared_ptr<const ov::op::v0::Constant>& constant,
+                    std::vector<float>& out) {
+    if (!constant) {
+        return false;
+    }
+    const auto et = constant->get_element_type();
+    const size_t count = shape_size(constant->get_shape());
+    out.resize(count);
+    if (count == 0) {
+        return false;
+    }
+    if (et == ov::element::f32) {
+        const float* src = constant->get_data_ptr<float>();
+        std::copy(src, src + count, out.begin());
+        return true;
+    }
+    if (et == ov::element::f16) {
+        const ov::float16* src = constant->get_data_ptr<ov::float16>();
+        for (size_t i = 0; i < count; ++i) {
+            out[i] = static_cast<float>(src[i]);
+        }
+        return true;
+    }
+    return false;
+}
+
+bool extract_bias_params(const std::shared_ptr<const ov::Node>& node, BiasParams& out) {
+    auto add = ov::as_type_ptr<const ov::op::v1::Add>(node);
+    if (!add) {
+        return false;
+    }
+
+    std::shared_ptr<const ov::op::v0::Constant> bias_const;
+    if (auto c = std::dynamic_pointer_cast<const ov::op::v0::Constant>(add->get_input_node_shared_ptr(0))) {
+        bias_const = c;
+    } else if (auto c = std::dynamic_pointer_cast<const ov::op::v0::Constant>(add->get_input_node_shared_ptr(1))) {
+        bias_const = c;
+    } else {
+        return false;
+    }
+
+    BiasParams params{};
+    if (!read_const_f32(bias_const, params.values)) {
+        return false;
+    }
+    params.element_type = bias_const->get_element_type();
+    params.shape.clear();
+    const auto& shape = bias_const->get_shape();
+    params.shape.reserve(shape.size());
+    for (auto dim : shape) {
+        params.shape.push_back(static_cast<int64_t>(dim));
+    }
+    if (params.values.empty()) {
+        return false;
+    }
+    if (shape_size(shape) != params.values.size()) {
+        return false;
+    }
+    out = std::move(params);
+    return true;
+}
+
+bool extract_batchnorm_params(const std::shared_ptr<const ov::Node>& node, BatchNormParams& out) {
+    auto bn = ov::as_type_ptr<const ov::op::v5::BatchNormInference>(node);
+    if (!bn) {
+        return false;
+    }
+
+    auto gamma = std::dynamic_pointer_cast<const ov::op::v0::Constant>(bn->get_input_node_shared_ptr(1));
+    auto beta = std::dynamic_pointer_cast<const ov::op::v0::Constant>(bn->get_input_node_shared_ptr(2));
+    auto mean = std::dynamic_pointer_cast<const ov::op::v0::Constant>(bn->get_input_node_shared_ptr(3));
+    auto var = std::dynamic_pointer_cast<const ov::op::v0::Constant>(bn->get_input_node_shared_ptr(4));
+    if (!gamma || !beta || !mean || !var) {
+        return false;
+    }
+
+    BatchNormParams params{};
+    if (!read_const_f32(gamma, params.gamma) ||
+        !read_const_f32(beta, params.beta) ||
+        !read_const_f32(mean, params.mean) ||
+        !read_const_f32(var, params.var)) {
+        return false;
+    }
+
+    const size_t channels = params.gamma.size();
+    if (channels == 0 || params.beta.size() != channels || params.mean.size() != channels ||
+        params.var.size() != channels) {
+        return false;
+    }
+
+    if (bn->get_input_partial_shape(0).rank().is_static()) {
+        const auto& in_shape = bn->get_input_partial_shape(0);
+        if (in_shape.rank().get_length() >= 2 && in_shape[1].is_static()) {
+            const size_t expected = static_cast<size_t>(in_shape[1].get_length());
+            if (expected != channels) {
+                return false;
+            }
+        }
+    }
+
+    params.epsilon = static_cast<float>(bn->get_eps_value());
+    out = std::move(params);
+    return true;
+}
+
+bool extract_scale_as_batchnorm_params(const std::shared_ptr<const ov::Node>& scale_node,
+                                       const std::shared_ptr<const ov::Node>& producer_node,
+                                       BatchNormParams& out) {
+    auto mul = ov::as_type_ptr<const ov::op::v1::Multiply>(scale_node);
+    if (!mul || !producer_node) {
+        return false;
+    }
+
+    std::shared_ptr<const ov::op::v0::Constant> scale_const;
+    if (mul->get_input_node_shared_ptr(0) == producer_node) {
+        scale_const = std::dynamic_pointer_cast<const ov::op::v0::Constant>(mul->get_input_node_shared_ptr(1));
+    } else if (mul->get_input_node_shared_ptr(1) == producer_node) {
+        scale_const = std::dynamic_pointer_cast<const ov::op::v0::Constant>(mul->get_input_node_shared_ptr(0));
+    } else {
+        return false;
+    }
+    if (!scale_const) {
+        return false;
+    }
+
+    std::vector<float> raw_values;
+    if (!read_const_f32(scale_const, raw_values) || raw_values.empty()) {
+        return false;
+    }
+
+    const auto& out_pshape = producer_node->get_output_partial_shape(0);
+    if (!out_pshape.rank().is_static() || out_pshape.rank().get_length() < 2 || !out_pshape[1].is_static()) {
+        return false;
+    }
+    const size_t channels = static_cast<size_t>(out_pshape[1].get_length());
+    if (channels == 0) {
+        return false;
+    }
+
+    std::vector<float> gamma(channels, 1.0f);
+    const auto scale_shape = scale_const->get_shape();
+    if (raw_values.size() == 1) {
+        std::fill(gamma.begin(), gamma.end(), raw_values.front());
+    } else {
+        const size_t out_rank = static_cast<size_t>(out_pshape.rank().get_length());
+        if (scale_shape.size() > out_rank) {
+            return false;
+        }
+        std::vector<size_t> aligned_shape(out_rank, 1);
+        const size_t offset = out_rank - scale_shape.size();
+        for (size_t i = 0; i < scale_shape.size(); ++i) {
+            aligned_shape[offset + i] = scale_shape[i];
+        }
+        for (size_t axis = 0; axis < out_rank; ++axis) {
+            if (axis == 1) {
+                continue;
+            }
+            if (aligned_shape[axis] != 1) {
+                return false;
+            }
+        }
+        if (aligned_shape[1] != channels || raw_values.size() != channels) {
+            return false;
+        }
+        gamma = std::move(raw_values);
+    }
+
+    BatchNormParams params;
+    params.gamma = std::move(gamma);
+    params.beta.assign(channels, 0.0f);
+    params.mean.assign(channels, 0.0f);
+    params.var.assign(channels, 1.0f);
+    params.epsilon = 0.0f;
+    out = std::move(params);
+    return true;
+}
 
 mlir::Type to_mlir_element_type(mlir::MLIRContext& ctx, const ov::element::Type& et) {
     switch (et) {
@@ -258,6 +440,8 @@ void run_fusion_passes(mlir::ModuleOp module, const FusionConfig& config) {
     add_conv_bias_swish_fusion_patterns(patterns, config);
     add_conv_bias_activation_fusion_patterns(patterns, config);
     add_conv_bias_fusion_patterns(patterns, config);
+    add_conv_scale_activation_fusion_patterns(patterns, config);
+    add_conv_scale_fusion_patterns(patterns, config);
     add_conv_swish_fusion_patterns(patterns, config);
     add_conv_activation_fusion_patterns(patterns, config);
     add_eltwise_activation_fusion_patterns(patterns, config);
@@ -316,6 +500,49 @@ FusionPlan extract_plan(mlir::ModuleOp module) {
     return plan;
 }
 
+void materialize_post_op_payloads(const std::shared_ptr<const ov::Model>& model, FusionPlan& plan) {
+    if (!model || plan.groups.empty()) {
+        return;
+    }
+    const auto ordered_ops = model->get_ordered_ops();
+    for (auto& group : plan.groups) {
+        if (group.node_indices.size() < 2) {
+            continue;
+        }
+        const size_t post_op_idx = group.node_indices[1];
+        if (post_op_idx >= ordered_ops.size()) {
+            continue;
+        }
+        const size_t primary_idx = group.node_indices.front();
+        if (primary_idx >= ordered_ops.size()) {
+            continue;
+        }
+        if (group.kind == "ConvBatchNorm" || group.kind == "ConvBatchNormAct") {
+            BatchNormParams params{};
+            if (extract_batchnorm_params(ordered_ops[post_op_idx], params)) {
+                group.batchnorm = std::move(params);
+            }
+            continue;
+        }
+        if (group.kind == "ConvScale" || group.kind == "ConvScaleActivation") {
+            BatchNormParams params{};
+            if (extract_scale_as_batchnorm_params(ordered_ops[post_op_idx], ordered_ops[primary_idx], params)) {
+                group.batchnorm = std::move(params);
+            }
+            continue;
+        }
+        if (group.kind == "ConvBias" || group.kind == "ConvBiasActivation" ||
+            group.kind == "EltwiseBias" || group.kind == "EltwiseBiasActivation" ||
+            group.kind == "MatMulBias" || group.kind == "MatMulBiasActivation") {
+            BiasParams params{};
+            if (extract_bias_params(ordered_ops[post_op_idx], params)) {
+                group.bias = std::move(params);
+            }
+            continue;
+        }
+    }
+}
+
 }  // namespace
 
 FusionPlan build_fusion_plan(const std::shared_ptr<const ov::Model>& model,
@@ -346,6 +573,7 @@ FusionPlan build_fusion_plan(const std::shared_ptr<const ov::Model>& model,
     }
 
     plan = extract_plan(module);
+    materialize_post_op_payloads(model, plan);
     return plan;
 }
 

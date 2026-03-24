@@ -90,6 +90,8 @@ ov_add_test_target(
 # Add ObjC++ runtime tests for memory manager.
 target_sources(${TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_stage_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_parallelism_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/layout_cleanup_test.cpp
 )
 
 if(APPLE)

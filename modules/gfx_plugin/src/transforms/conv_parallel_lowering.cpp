@@ -19,6 +19,7 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/PatternMatch.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace ov {
 namespace gfx_plugin {
@@ -46,6 +47,21 @@ std::optional<ActivationKind> parse_activation_kind(mlir::Operation* op) {
     if (name == "Abs") return ActivationKind::Abs;
     if (name == "Sign") return ActivationKind::Sign;
     return std::nullopt;
+}
+
+std::optional<llvm::StringRef> module_string_attr(mlir::Operation* op, llvm::StringRef name) {
+    if (!op) {
+        return std::nullopt;
+    }
+    auto module = op->getParentOfType<mlir::ModuleOp>();
+    if (!module) {
+        return std::nullopt;
+    }
+    auto attr = module->getAttrOfType<mlir::StringAttr>(name);
+    if (!attr) {
+        return std::nullopt;
+    }
+    return attr.getValue();
 }
 
 mlir::Value apply_activation(mlir::OpBuilder& b,
@@ -439,11 +455,33 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
     rewriter.setInsertionPoint(op);
     auto c0 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 0);
     auto c1 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 1);
-    constexpr int64_t kThreadH = 4;
-    constexpr int64_t kThreadW = 4;
-    // Keep micro-tiling minimal to reduce SPIR-V kernel complexity for Vulkan.
+    int64_t thread_h = 4;
+    int64_t thread_w = 4;
+    // Keep micro-tiling minimal unless a shared algorithm plan explicitly
+    // tells lowering that a wider structural family is selected.
     int64_t micro_h = 1;
     int64_t micro_w = 1;
+    if (auto kind = module_string_attr(op, "gfx.conv_algorithm_kind")) {
+        if (*kind == "direct_1x1") {
+            thread_h = 8;
+            thread_w = 8;
+        } else if (*kind == "direct_3x3_stride2") {
+            thread_h = 4;
+            thread_w = 8;
+        } else if (*kind == "depthwise_direct") {
+            thread_h = 8;
+            thread_w = 4;
+        }
+    }
+    if (auto variant = module_string_attr(op, "gfx.conv_variant")) {
+        if (variant->contains("xy32x2")) {
+            micro_w = 2;
+        } else if (variant->contains("xy16x4")) {
+            micro_h = 2;
+        }
+    }
+    const int64_t kThreadH = thread_h;
+    const int64_t kThreadW = thread_w;
     const int64_t tile_h = kThreadH * micro_h;
     const int64_t tile_w = kThreadW * micro_w;
     if (auto module = op->getParentOfType<mlir::ModuleOp>()) {

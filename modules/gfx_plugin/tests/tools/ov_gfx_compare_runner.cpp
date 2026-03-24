@@ -16,6 +16,7 @@
 #include <numeric>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "common_test_utils/ov_plugin_cache.hpp"
@@ -194,18 +195,26 @@ struct CompareOptions {
     bool print_ops = false;
     bool time_per_op = false;
     size_t start_op = 0;
+    size_t window_size = 1;
     std::optional<size_t> stop_after_op;
     double abs_threshold = 1e-4;
     double rel_threshold = 1e-4;
 };
 
-ov::AnyMap make_compile_config();
+ov::AnyMap make_compile_config(bool for_gfx);
 ov::InferRequest make_request(ov::CompiledModel& compiled_model,
                               const std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>>& inputs);
 
-ov::AnyMap make_compile_config() {
+ov::AnyMap make_compile_config(bool for_gfx) {
     ov::AnyMap config;
     config[ov::hint::inference_precision.name()] = ov::element::f16;
+    if (for_gfx) {
+        if (const char* disable_fusion = std::getenv("OV_GFX_DISABLE_FUSION")) {
+        if (std::string(disable_fusion) != "0" && !std::string(disable_fusion).empty()) {
+            config["GFX_ENABLE_FUSION"] = false;
+        }
+        }
+    }
     return config;
 }
 
@@ -364,8 +373,11 @@ std::optional<ov::Tensor> evaluate_source_tensor_with_reference(
 
     ov::OutputVector outputs;
     outputs.push_back(std::make_shared<ov::op::v0::Result>(source));
-    auto submodel = std::make_shared<ov::Model>(outputs, params, source.get_any_name());
-    auto compiled = core.compile_model(submodel, ref_device, make_compile_config());
+    auto source_node = source.get_node_shared_ptr();
+    const std::string submodel_name = source_node ? (source_node->get_friendly_name() + "/out_" + std::to_string(source.get_index()))
+                                                  : std::string("ref_source");
+    auto submodel = std::make_shared<ov::Model>(outputs, params, submodel_name);
+    auto compiled = core.compile_model(submodel, ref_device, make_compile_config(false));
     auto request = make_request(compiled, inputs);
     request.infer();
     return request.get_tensor(compiled.output(0));
@@ -473,6 +485,17 @@ int run_per_op_compare(ov::Core& core,
                        const CompareOptions& options) {
     const auto ordered_ops = model->get_ordered_ops();
     const auto ref_device = reference_device(core);
+    std::vector<size_t> relevant_indices;
+    relevant_indices.reserve(ordered_ops.size());
+    std::unordered_map<const ov::Node*, size_t> relevant_pos;
+    for (size_t idx = 0; idx < ordered_ops.size(); ++idx) {
+        const auto& node = ordered_ops[idx];
+        if (is_debug_skippable_node(node)) {
+            continue;
+        }
+        relevant_pos.emplace(node.get(), relevant_indices.size());
+        relevant_indices.push_back(idx);
+    }
     size_t checked = 0;
     for (size_t idx = 0; idx < ordered_ops.size(); ++idx) {
         const auto& node = ordered_ops[idx];
@@ -486,18 +509,115 @@ int run_per_op_compare(ov::Core& core,
             break;
         }
 
+        struct OutputKey {
+            const ov::Node* node = nullptr;
+            size_t port = 0;
+            bool operator==(const OutputKey& other) const {
+                return node == other.node && port == other.port;
+            }
+        };
+        struct OutputKeyHash {
+            size_t operator()(const OutputKey& key) const {
+                size_t h1 = std::hash<const ov::Node*>()(key.node);
+                size_t h2 = std::hash<size_t>()(key.port);
+                return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
+            }
+        };
+
+        const auto pos_it = relevant_pos.find(node.get());
+        OPENVINO_ASSERT(pos_it != relevant_pos.end(), "per-op debug: node position missing");
+        const size_t pos = pos_it->second;
+        const size_t window_begin_pos = (options.window_size > 0 && pos + 1 > options.window_size)
+                                            ? (pos + 1 - options.window_size)
+                                            : 0;
+
+        ov::ParameterVector isolated_params;
+        std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>> isolated_input_tensors;
+        std::unordered_map<OutputKey, ov::Output<ov::Node>, OutputKeyHash> cloned_outputs;
+        std::unordered_map<OutputKey, ov::Output<ov::Node>, OutputKeyHash> external_values;
+        std::shared_ptr<ov::Node> cloned_target;
+
+        auto materialize_external = [&](const ov::Output<ov::Node>& source) -> std::optional<ov::Output<ov::Node>> {
+            OutputKey key{source.get_node(), source.get_index()};
+            if (auto it = external_values.find(key); it != external_values.end()) {
+                return it->second;
+            }
+            if (auto const_tensor = evaluate_constant_source_tensor(source)) {
+                auto constant = std::make_shared<ov::op::v0::Constant>(const_tensor->get_element_type(),
+                                                                       const_tensor->get_shape(),
+                                                                       const_tensor->data());
+                constant->set_friendly_name((source.get_node_shared_ptr() ? source.get_node_shared_ptr()->get_friendly_name()
+                                                                          : std::string("const")) +
+                                            "/isolated_const_" + std::to_string(source.get_index()));
+                auto out = constant->output(0);
+                external_values.emplace(key, out);
+                return out;
+            }
+            auto tensor = evaluate_source_tensor(source, inputs);
+            if (!tensor.has_value()) {
+                tensor = evaluate_source_tensor_with_reference(core, ref_device, source, inputs);
+            }
+            if (!tensor.has_value()) {
+                return std::nullopt;
+            }
+            auto param = std::make_shared<ov::op::v0::Parameter>(tensor->get_element_type(), tensor->get_shape());
+            param->set_friendly_name((source.get_node_shared_ptr() ? source.get_node_shared_ptr()->get_friendly_name()
+                                                                   : std::string("param")) +
+                                     "/isolated_input_" + std::to_string(source.get_index()));
+            isolated_params.push_back(param);
+            isolated_input_tensors.emplace_back(param->output(0), *tensor);
+            auto out = param->output(0);
+            external_values.emplace(key, out);
+            return out;
+        };
+
+        bool missing_input = false;
+        for (size_t p = window_begin_pos; p <= pos; ++p) {
+            const auto& stage_node = ordered_ops[relevant_indices[p]];
+            ov::OutputVector cloned_inputs;
+            cloned_inputs.reserve(stage_node->get_input_size());
+            for (const auto& source : stage_node->input_values()) {
+                OutputKey key{source.get_node(), source.get_index()};
+                if (auto it = cloned_outputs.find(key); it != cloned_outputs.end()) {
+                    cloned_inputs.push_back(it->second);
+                    continue;
+                }
+                auto ext = materialize_external(source);
+                if (!ext.has_value()) {
+                    std::cout << "[op " << idx << "] " << node->get_friendly_name() << " (" << node->get_type_name()
+                              << ") infer_skip=failed to materialize isolated input from "
+                              << stage_node->get_friendly_name() << '\n';
+                    missing_input = true;
+                    break;
+                }
+                cloned_inputs.push_back(*ext);
+            }
+            if (missing_input) {
+                break;
+            }
+            auto cloned = stage_node->clone_with_new_inputs(cloned_inputs);
+            for (size_t out_idx = 0; out_idx < cloned->get_output_size(); ++out_idx) {
+                cloned_outputs[{stage_node.get(), out_idx}] = cloned->output(out_idx);
+            }
+            cloned_target = cloned;
+        }
+        if (missing_input) {
+            ++checked;
+            continue;
+        }
+        OPENVINO_ASSERT(cloned_target, "per-op debug: isolated target is null");
         ov::OutputVector outputs;
-        outputs.reserve(node->get_output_size());
-        for (const auto& output : node->outputs()) {
+        outputs.reserve(cloned_target->get_output_size());
+        for (const auto& output : cloned_target->outputs()) {
             outputs.push_back(std::make_shared<ov::op::v0::Result>(output));
         }
-        auto submodel = std::make_shared<ov::Model>(outputs, model->get_parameters(), node->get_friendly_name());
+        auto submodel = std::make_shared<ov::Model>(outputs, isolated_params, node->get_friendly_name());
 
         ov::CompiledModel ref_submodel;
         ov::CompiledModel gfx_submodel;
         try {
-            ref_submodel = core.compile_model(submodel, ref_device, make_compile_config());
-            gfx_submodel = core.compile_model(submodel, "GFX", make_compile_config());
+            ref_submodel = core.compile_model(submodel, ref_device, make_compile_config(false));
+            gfx_submodel = core.compile_model(submodel, "GFX", make_compile_config(true));
         } catch (const std::exception& ex) {
             std::cout << "[op " << idx << "] " << node->get_friendly_name() << " (" << node->get_type_name()
                       << ") compile_skip=" << ex.what() << '\n';
@@ -507,7 +627,7 @@ int run_per_op_compare(ov::Core& core,
 
         DiffStats stats;
         try {
-            stats = compare_model_outputs(ref_submodel, gfx_submodel, inputs, false);
+            stats = compare_model_outputs(ref_submodel, gfx_submodel, isolated_input_tensors, false);
         } catch (const std::exception& ex) {
             std::cout << "[op " << idx << "] " << node->get_friendly_name() << " (" << node->get_type_name()
                       << ") infer_skip=" << ex.what() << '\n';
@@ -519,8 +639,8 @@ int run_per_op_compare(ov::Core& core,
                   << ") max_abs_diff=" << std::setprecision(10) << stats.max_abs_diff
                   << " max_rel_diff=" << stats.max_rel_diff;
         if (options.time_per_op) {
-            auto ref_req = make_request(ref_submodel, inputs);
-            auto gfx_req = make_request(gfx_submodel, inputs);
+            auto ref_req = make_request(ref_submodel, isolated_input_tensors);
+            auto gfx_req = make_request(gfx_submodel, isolated_input_tensors);
             const double ref_ms = benchmark_request(ref_req, options.iterations);
             const double gfx_ms = benchmark_request(gfx_req, options.iterations);
             std::cout << " ref_ms=" << ref_ms
@@ -549,6 +669,7 @@ int main(int argc, char** argv) try {
     if (argc < 2) {
         std::cerr << "usage: ov_gfx_compare_runner <model.xml> [iterations] [--per-op] [--print-ops] "
                      "[--time-per-op] [--start-op N] "
+                     "[--window-size N] "
                      "[--stop-after-op N] [--abs-threshold V] [--rel-threshold V]\n";
         return 2;
     }
@@ -575,6 +696,13 @@ int main(int argc, char** argv) try {
                 throw std::runtime_error("--start-op requires a value");
             }
             options.start_op = static_cast<size_t>(std::stoul(argv[++i]));
+            continue;
+        }
+        if (arg == "--window-size") {
+            if (i + 1 >= argc) {
+                throw std::runtime_error("--window-size requires a value");
+            }
+            options.window_size = std::max<size_t>(1, static_cast<size_t>(std::stoul(argv[++i])));
             continue;
         }
         if (arg == "--stop-after-op") {
@@ -632,8 +760,8 @@ int main(int argc, char** argv) try {
     }
 
     const auto ref_device = reference_device(core);
-    auto ref_model = core.compile_model(model, ref_device, make_compile_config());
-    auto gfx_model = core.compile_model(model, "GFX", make_compile_config());
+    auto ref_model = core.compile_model(model, ref_device, make_compile_config(false));
+    auto gfx_model = core.compile_model(model, "GFX", make_compile_config(true));
     auto ref_req = make_request(ref_model, inputs);
     auto gfx_req = make_request(gfx_model, inputs);
 

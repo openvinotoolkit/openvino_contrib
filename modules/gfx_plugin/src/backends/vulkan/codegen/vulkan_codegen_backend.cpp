@@ -547,20 +547,12 @@ std::shared_ptr<ICompiledKernel> VulkanCodegenBackend::compile(const KernelSourc
                       << " spirv_bindings=" << bind_count << std::endl;
         }
     }
-    const uintptr_t device_key = reinterpret_cast<uintptr_t>(m_device);
-    const void* code_ptr = spirv_binary.empty() ? nullptr : spirv_binary.data();
-    const size_t code_bytes = spirv_binary.size() * sizeof(uint32_t);
-    return lookup_or_compile_kernel(GpuBackend::Vulkan,
-                                    device_key,
-                                    code_ptr,
-                                    code_bytes,
-                                    entry,
-                                    arg_count,
-                                    [&]() -> std::shared_ptr<ICompiledKernel> {
-                                        return std::make_shared<VulkanCompiledKernel>(std::move(spirv_binary),
-                                                                                     std::move(entry),
-                                                                                     arg_count);
-                                    });
+    // VulkanCompiledKernel owns mutable execution state (descriptor pools/sets and
+    // command pools), so reusing one instance across unrelated compiled models is
+    // unsafe even when the SPIR-V bytecode matches.
+    return std::make_shared<VulkanCompiledKernel>(std::move(spirv_binary),
+                                                  std::move(entry),
+                                                  arg_count);
 }
 
 }  // namespace gfx_plugin

@@ -316,6 +316,58 @@ void fill_broadcast_strides(const ov::Shape& out,
     }
 }
 
+ov::Shape shape_from_entry_argument(mlir::ModuleOp module, size_t arg_idx, const ov::Shape& fallback) {
+    if (!module) {
+        return fallback;
+    }
+    auto func = get_entry_func(module);
+    if (!func || arg_idx >= func.getNumArguments()) {
+        return fallback;
+    }
+    auto type = func.getArgument(arg_idx).getType();
+    if (auto ranked = llvm::dyn_cast<mlir::RankedTensorType>(type)) {
+        if (!ranked.hasStaticShape()) {
+            return fallback;
+        }
+        ov::Shape shape;
+        shape.reserve(ranked.getRank());
+        for (int64_t dim : ranked.getShape()) {
+            shape.push_back(static_cast<size_t>(dim));
+        }
+        return shape;
+    }
+    if (auto memref = llvm::dyn_cast<mlir::MemRefType>(type)) {
+        if (!memref.hasStaticShape()) {
+            return fallback;
+        }
+        ov::Shape shape;
+        shape.reserve(memref.getRank());
+        for (int64_t dim : memref.getShape()) {
+            shape.push_back(static_cast<size_t>(dim));
+        }
+        return shape;
+    }
+    return fallback;
+}
+
+std::vector<int64_t> read_absorbed_input_permutation(mlir::ModuleOp module, size_t input_idx) {
+    std::vector<int64_t> permutation;
+    if (!module) {
+        return permutation;
+    }
+    auto attr = module->getAttrOfType<mlir::ArrayAttr>("gfx.absorbed_input" + std::to_string(input_idx) + "_perm");
+    if (!attr) {
+        return permutation;
+    }
+    permutation.reserve(attr.size());
+    for (auto value : attr) {
+        auto int_attr = llvm::dyn_cast<mlir::IntegerAttr>(value);
+        OPENVINO_ASSERT(int_attr, "GFX Metal: absorbed input permutation attr must be integer");
+        permutation.push_back(int_attr.getInt());
+    }
+    return permutation;
+}
+
 EltwiseKind eltwise_kind_from_node(const ov::Node& node) {
     const std::string t = node.get_type_name();
     if (t == "Add") return EltwiseKind::Add;
@@ -718,11 +770,32 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
         const auto out_shape = node->get_output_shape(0);
         d.out_shape = to_i64_shape(out_shape);
         d.num_elements = static_cast<uint32_t>(shape_size(out_shape));
-        const auto a_shape = node->get_input_shape(0);
-        const auto b_shape = node->get_input_shape(1);
-        d.is_broadcast = (a_shape != b_shape);
-        fill_broadcast_strides(out_shape, a_shape, d.stride0);
-        fill_broadcast_strides(out_shape, b_shape, d.stride1);
+        const auto a_shape = shape_from_entry_argument(src.module, 0, node->get_input_shape(0));
+        const auto b_shape = shape_from_entry_argument(src.module, 1, node->get_input_shape(1));
+        const auto perm0 = read_absorbed_input_permutation(src.module, 0);
+        const auto perm1 = read_absorbed_input_permutation(src.module, 1);
+        d.is_broadcast = !perm0.empty() || !perm1.empty() || (a_shape != b_shape) ||
+                         (a_shape != out_shape) || (b_shape != out_shape);
+        if (!perm0.empty()) {
+            auto strides = compute_permuted_broadcast_element_strides(a_shape,
+                                                                      node->get_input_shape(0),
+                                                                      perm0,
+                                                                      out_shape,
+                                                                      "GFX Metal");
+            d.stride0.assign(strides.begin(), strides.end());
+        } else {
+            fill_broadcast_strides(out_shape, a_shape, d.stride0);
+        }
+        if (!perm1.empty()) {
+            auto strides = compute_permuted_broadcast_element_strides(b_shape,
+                                                                      node->get_input_shape(1),
+                                                                      perm1,
+                                                                      out_shape,
+                                                                      "GFX Metal");
+            d.stride1.assign(strides.begin(), strides.end());
+        } else {
+            fill_broadcast_strides(out_shape, b_shape, d.stride1);
+        }
         // Keep entry point aligned with MLIR metadata and provide operand mapping
         // so kernel args match MSL signature:
         //   buffer0=A, buffer1=B, buffer2=Out, scalar3=NUM_ELEMS, scalar4=RANK,
@@ -775,6 +848,8 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
         const auto in_shape = s->get_input_shape(0);
         const auto out_shape = s->get_output_shape(0);
         d.input_shape = to_i64_shape(in_shape);
+        d.source_input_shape = to_i64_shape(shape_from_entry_argument(src.module, 0, in_shape));
+        d.input_permutation = read_absorbed_input_permutation(src.module, 0);
         const size_t axis = static_cast<size_t>(d.axis < 0 ? d.axis + in_shape.size() : d.axis);
         d.split_sizes.assign(s->get_output_size(), out_shape[axis]);
         uint64_t inner = 1, outer = 1;
@@ -792,6 +867,8 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
         d.axis = axis_c->cast_vector<int64_t>().at(0);
         const auto in_shape = vs->get_input_shape(0);
         d.input_shape = to_i64_shape(in_shape);
+        d.source_input_shape = to_i64_shape(shape_from_entry_argument(src.module, 0, in_shape));
+        d.input_permutation = read_absorbed_input_permutation(src.module, 0);
         auto lengths_c = ov::as_type_ptr<const ov::op::v0::Constant>(vs->input_value(2).get_node_shared_ptr());
         OPENVINO_ASSERT(lengths_c, "VariadicSplit lengths must be constant");
         auto lengths = lengths_c->cast_vector<int64_t>();

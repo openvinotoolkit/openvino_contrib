@@ -4,6 +4,8 @@
 
 #include "transforms/pipeline.hpp"
 
+#include "transforms/gfx_layout_cleanup.hpp"
+
 #include "openvino/pass/manager.hpp"
 #include "transformations/common_optimizations/common_optimizations.hpp"
 #include "transformations/control_flow/unroll_if.hpp"
@@ -27,6 +29,8 @@ std::shared_ptr<const ov::Model> run_pipeline(const std::shared_ptr<const ov::Mo
     ov::pass::Manager manager("Plugin:GFX");
     // Common optimizations from OpenVINO transformations library.
     manager.register_pass<ov::pass::CommonOptimizations>();
+    // Plugin-local structural cleanup before stage selection / MLIR lowering.
+    manager.register_pass<ov::gfx_plugin::transforms::GfxLayoutCleanup>();
 
     // Align behaviour with template plugin: disable a few transformations that can be harmful for backend mapping.
     auto pass_config = manager.get_pass_config();

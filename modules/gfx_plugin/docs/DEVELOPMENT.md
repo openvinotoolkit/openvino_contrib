@@ -52,6 +52,11 @@ For runtime execution, follow:
 - backend-specific `infer_*_impl()`
 - backend stage factory and executor code
 
+If the behavior depends on route or scheduling selection, also read:
+- `src/runtime/gfx_stage_policy.*`
+- `src/runtime/gfx_parallelism.*`
+- the active backend executor, especially under `src/backends/vulkan/runtime/`
+
 ## Adding Or Extending An Op
 Typical path:
 1. Add or extend MLIR support in `src/mlir/`
@@ -59,6 +64,12 @@ Typical path:
 3. Implement or update backend runtime/codegen handling
 4. Make sure the relevant backend stage can be created
 5. Add tests in `tests/unit/` and the relevant backend test directory
+
+For the current codebase, also check whether the op should participate in:
+- absorbed input transforms through `GfxInputTransform`
+- stage policy selection in `src/runtime/gfx_stage_policy.*`
+- MLIR parallel lowering or cleanup passes
+- backend-specialized fast paths such as Vulkan direct or chunked routes
 
 If the op needs fusion support, inspect:
 - `src/transforms/`
@@ -90,6 +101,8 @@ Useful environment variables:
 
 These are implemented directly in the runtime and codegen sources; grep for `OV_GFX_` when adding new diagnostics.
 
+For functional comparison against a reference backend, build and run `tests/tools/ov_gfx_compare_runner.cpp`. It is useful when a new path changes numerics or when you need a per-op comparison window instead of only a gtest suite.
+
 ## Documentation Rules For This Module
 - Keep published module docs in English
 - Keep module docs inside `modules/gfx_plugin/`
@@ -101,3 +114,4 @@ These are implemented directly in the runtime and codegen sources; grep for `OV_
 - do not rely on silent CPU fallback
 - do not document removed architectures as current behavior
 - do not put primary module documentation only in repository-level files outside this directory
+- do not leave backend-specific route changes undocumented when they affect supported shapes, layout assumptions, or profiling behavior

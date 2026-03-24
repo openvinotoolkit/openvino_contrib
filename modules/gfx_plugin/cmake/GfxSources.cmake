@@ -21,6 +21,7 @@ set(GFX_PLUGIN_SOURCES
     ${_gfx_src_dir}/plugin/model_serialization.cpp
     ${_gfx_src_dir}/plugin/plugin.cpp
     ${_gfx_src_dir}/plugin/remote_context_support.cpp
+    ${_gfx_src_dir}/transforms/gfx_layout_cleanup.cpp
     ${_gfx_src_dir}/transforms/pipeline.cpp
 )
 
@@ -37,6 +38,7 @@ set(GFX_PLUGIN_HEADERS
     ${_gfx_src_dir}/plugin/infer_pipeline.hpp
     ${_gfx_src_dir}/plugin/model_serialization.hpp
     ${_gfx_src_dir}/plugin/remote_context_support.hpp
+    ${_gfx_src_dir}/transforms/gfx_layout_cleanup.hpp
     ${_gfx_src_dir}/transforms/pipeline.hpp
     ${_gfx_src_dir}/../include/openvino/gfx_plugin/plugin.hpp
     ${_gfx_src_dir}/../include/openvino/gfx_plugin/compiled_model.hpp
@@ -71,8 +73,10 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_spec.hpp
     ${_gfx_src_dir}/runtime/gfx_logger.hpp
     ${_gfx_src_dir}/runtime/gfx_op_utils.hpp
+    ${_gfx_src_dir}/runtime/gfx_parallelism.hpp
     ${_gfx_src_dir}/runtime/gfx_remote_context.hpp
     ${_gfx_src_dir}/runtime/gfx_remote_tensor.hpp
+    ${_gfx_src_dir}/runtime/gfx_stage_policy.hpp
     ${_gfx_src_dir}/runtime/gfx_tensor_utils.hpp
 )
 
@@ -87,8 +91,10 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/memory_manager.cpp
     ${_gfx_src_dir}/runtime/gfx_logger.cpp
     ${_gfx_src_dir}/runtime/gfx_op_utils.cpp
+    ${_gfx_src_dir}/runtime/gfx_parallelism.cpp
     ${_gfx_src_dir}/runtime/gfx_remote_context.cpp
     ${_gfx_src_dir}/runtime/gfx_remote_tensor.cpp
+    ${_gfx_src_dir}/runtime/gfx_stage_policy.cpp
     ${_gfx_src_dir}/runtime/gfx_tensor_utils.cpp
 )
 

@@ -19,6 +19,10 @@ The codebase uses a shared frontend and a stage-based runtime:
 3. `CompiledModel` builds a pipeline of `GpuStage` objects
 4. Backend-specific infer requests bind tensors and execute the stage pipeline
 
+Recent runtime work extends this model in two directions:
+- compile-time stage planning now picks layout, fusion, and execution policy per stage
+- backend runtimes, especially Vulkan, can choose specialized direct or chunked execution routes for selected ops
+
 This is not the old monolithic `MlirBackend` architecture that earlier design notes experimented with.
 
 ## Current Status
@@ -58,6 +62,7 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 - backend state creation
 - stage pipeline construction in `build_op_pipeline()`
 - optional fusion of compatible stages through `FusedSequenceStage`
+- absorption of selected transpose inputs into downstream stages through `GfxInputTransform`
 
 ### InferRequest
 `include/openvino/gfx_plugin/infer_request.hpp` plus backend-specific implementation files own:
@@ -70,8 +75,13 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 `src/runtime/` contains:
 - `GpuStage`: execution-stage interface
 - `GpuStageFactory` / `ExecutionDispatcher`: backend-specific stage dispatch
+- `gfx_stage_policy.*`: runtime route, fusion, and submit-policy selection
 - shared remote context/tensor abstractions
-- common tensor, buffer, and logging helpers
+- common tensor, buffer, logging, and parallelism helpers
+
+`GpuStage` now exposes two hooks that affect real runtime behavior:
+- `set_input_transform()`: lets a stage consume an absorbed transpose as metadata instead of materializing a separate runtime stage
+- `submit_policy()`: lets a stage communicate scheduling weight or isolation requirements to the infer pipeline
 
 ## Backend Selection
 The plugin has two layers of backend choice:
@@ -99,6 +109,11 @@ Important constraints:
 - many paths require static rank or static shape
 - many ops require constant attributes
 - backend parity is not guaranteed between Metal and Vulkan
+
+Current lowering/runtime special cases:
+- selected transpose inputs can be absorbed into Add, Conv2D, GroupConv2D, and Split lowering instead of staying as standalone runtime stages
+- Vulkan contains specialized direct or chunked paths for unary, binary, softmax, split/concat, transpose, convert, Conv2D, and GroupConv2D cases
+- some Conv2D shapes may be lowered through an explicit MLIR `im2col + matmul` route when the selected execution policy prefers it
 
 ## Public And Internal Properties
 Commonly used properties:
@@ -198,6 +213,12 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 
 The helper tool `ov_gfx_compare_runner` is also built from `tests/tools/`.
 
+Recent regression coverage includes:
+- canonical Conv2D MLIR lowering checks
+- im2col rewrite coverage, including the batch-1 plain-matmul route
+- absorbed input-transform tests for Add, Conv2D, GroupConv2D, and Split
+- Vulkan runtime regression coverage in `tests/backends/vulkan/`
+
 ## Debugging And Instrumentation
 Useful environment variables from the current codebase:
 - `OV_GFX_TRACE`: trace logging
@@ -207,6 +228,8 @@ Useful environment variables from the current codebase:
 - `OV_GFX_SAFE_DEBUG`: enable additional Metal memory safety checks
 - `OV_GFX_DUMP_SPIRV_BINDINGS`: dump Vulkan binding information
 - `OV_GFX_DUMP_SPIRV_MLIR`, `OV_GFX_DUMP_SPIRV_MLIR_FILTER`, `OV_GFX_DUMP_MLIR_PRE_SPIRV`: Vulkan/MLIR dump controls
+
+For output-quality checks against a reference backend, use `ov_gfx_compare_runner`. It can register a local plugin build, run repeated inference, compare tensor diffs, and narrow investigation to per-op windows.
 
 ## Integration Notes
 - `query_model()` follows the same backend-specific support checks as compilation, so external schedulers see actual backend capability rather than an optimistic superset.
@@ -230,3 +253,4 @@ If you add new documentation meant for published consumers of this module, keep 
 - There is no partial CPU fallback path.
 - Remote tensor support exists but is not yet a fully polished cross-platform feature set.
 - Backend coverage and runtime maturity differ between Metal and Vulkan.
+- Some optimized Vulkan paths depend on device capabilities such as subgroup size and compute workgroup limits.

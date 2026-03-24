@@ -17,8 +17,6 @@
 #include "plugin/model_serialization.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_backend_utils.hpp"
-#include "runtime/gfx_batchnorm.hpp"
-#include "runtime/gfx_bias.hpp"
 #include "runtime/fused_sequence_stage.hpp"
 #include "openvino/gfx_plugin/profiling.hpp"
 #include "plugin/backend_state.hpp"
@@ -27,12 +25,14 @@
 #include "openvino/core/except.hpp"
 #include "openvino/core/validation_util.hpp"
 #include "openvino/core/shape_util.hpp"
-#include "openvino/core/type/float16.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/constant.hpp"
-#include "openvino/op/batch_norm.hpp"
+#include "openvino/op/group_conv.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/result.hpp"
+#include "openvino/op/split.hpp"
+#include "openvino/op/transpose.hpp"
+#include "openvino/op/variadic_split.hpp"
 #include "openvino/runtime/exec_model_info.hpp"
 #include "openvino/runtime/properties.hpp"
 #include "openvino/util/common_util.hpp"
@@ -49,111 +49,50 @@ namespace gfx_plugin {
 
 namespace {
 
-bool read_const_f32(const std::shared_ptr<const ov::op::v0::Constant>& constant,
-                    std::vector<float>& out) {
-    if (!constant) {
-        return false;
+std::vector<int64_t> evaluate_constant_i64(const ov::Output<ov::Node>& value) {
+    auto constant = ov::as_type_ptr<const ov::op::v0::Constant>(value.get_node_shared_ptr());
+    OPENVINO_ASSERT(constant, "GFX: expected constant input");
+    return constant->cast_vector<int64_t>();
+}
+
+bool is_supported_absorbing_consumer(const std::shared_ptr<const ov::Node>& node) {
+    return ov::is_type<ov::op::v1::Add>(node.get()) ||
+           ov::is_type<ov::op::v1::GroupConvolution>(node.get());
+}
+
+bool is_supported_absorbing_input(const std::shared_ptr<const ov::Node>& node, size_t input_idx) {
+    if (ov::is_type<ov::op::v1::Add>(node.get())) {
+        return input_idx < 2;
     }
-    const auto et = constant->get_element_type();
-    const size_t count = shape_size(constant->get_shape());
-    out.resize(count);
-    if (count == 0) {
-        return false;
-    }
-    if (et == ov::element::f32) {
-        const float* src = constant->get_data_ptr<float>();
-        std::copy(src, src + count, out.begin());
-        return true;
-    }
-    if (et == ov::element::f16) {
-        const ov::float16* src = constant->get_data_ptr<ov::float16>();
-        for (size_t i = 0; i < count; ++i) {
-            out[i] = static_cast<float>(src[i]);
-        }
-        return true;
+    if (ov::is_type<ov::op::v1::GroupConvolution>(node.get())) {
+        return input_idx == 0;
     }
     return false;
 }
 
-bool extract_bias_params(const std::shared_ptr<const ov::Node>& node, BiasParams& out) {
-    auto add = ov::as_type_ptr<const ov::op::v1::Add>(node);
-    if (!add) {
+bool is_absorbable_transpose_candidate(const std::shared_ptr<const ov::Node>& node,
+                                       const std::unordered_map<const ov::Node*, std::vector<bool>>& model_outputs,
+                                       const std::unordered_set<const ov::Node*>& fused_nodes) {
+    auto transpose = ov::as_type_ptr<const ov::op::v1::Transpose>(node);
+    if (!transpose || transpose->get_output_size() != 1) {
         return false;
     }
-
-    std::shared_ptr<const ov::op::v0::Constant> bias_const;
-    if (auto c = std::dynamic_pointer_cast<const ov::op::v0::Constant>(add->get_input_node_shared_ptr(0))) {
-        bias_const = c;
-    } else if (auto c = std::dynamic_pointer_cast<const ov::op::v0::Constant>(add->get_input_node_shared_ptr(1))) {
-        bias_const = c;
-    } else {
+    if (fused_nodes.count(node.get()) != 0) {
         return false;
     }
-
-    BiasParams params{};
-    if (!read_const_f32(bias_const, params.values)) {
-        return false;
-    }
-    params.element_type = bias_const->get_element_type();
-    params.shape.clear();
-    const auto& shape = bias_const->get_shape();
-    params.shape.reserve(shape.size());
-    for (auto dim : shape) {
-        params.shape.push_back(static_cast<int64_t>(dim));
-    }
-    if (params.values.empty()) {
-        return false;
-    }
-    const size_t expected = shape_size(shape);
-    if (expected != params.values.size()) {
-        return false;
-    }
-    out = std::move(params);
-    return true;
-}
-
-bool extract_batchnorm_params(const std::shared_ptr<const ov::Node>& node, BatchNormParams& out) {
-    auto bn = ov::as_type_ptr<const ov::op::v5::BatchNormInference>(node);
-    if (!bn) {
-        return false;
-    }
-
-    auto gamma = std::dynamic_pointer_cast<const ov::op::v0::Constant>(bn->get_input_node_shared_ptr(1));
-    auto beta = std::dynamic_pointer_cast<const ov::op::v0::Constant>(bn->get_input_node_shared_ptr(2));
-    auto mean = std::dynamic_pointer_cast<const ov::op::v0::Constant>(bn->get_input_node_shared_ptr(3));
-    auto var = std::dynamic_pointer_cast<const ov::op::v0::Constant>(bn->get_input_node_shared_ptr(4));
-    if (!gamma || !beta || !mean || !var) {
-        return false;
-    }
-
-    BatchNormParams params{};
-    if (!read_const_f32(gamma, params.gamma) ||
-        !read_const_f32(beta, params.beta) ||
-        !read_const_f32(mean, params.mean) ||
-        !read_const_f32(var, params.var)) {
-        return false;
-    }
-
-    const size_t channels = params.gamma.size();
-    if (channels == 0 ||
-        params.beta.size() != channels ||
-        params.mean.size() != channels ||
-        params.var.size() != channels) {
-        return false;
-    }
-
-    if (bn->get_input_partial_shape(0).rank().is_static()) {
-        const auto& in_shape = bn->get_input_partial_shape(0);
-        if (in_shape.rank().get_length() >= 2 && in_shape[1].is_static()) {
-            const size_t expected = static_cast<size_t>(in_shape[1].get_length());
-            if (expected != channels) {
-                return false;
-            }
+    if (auto it = model_outputs.find(node.get()); it != model_outputs.end()) {
+        if (std::any_of(it->second.begin(), it->second.end(), [](bool value) { return value; })) {
+            return false;
         }
     }
-
-    params.epsilon = static_cast<float>(bn->get_eps_value());
-    out = std::move(params);
+    if (!transpose->get_input_partial_shape(0).is_static() ||
+        !transpose->get_output_partial_shape(0).is_static()) {
+        return false;
+    }
+    auto source = transpose->input_value(0).get_node_shared_ptr();
+    if (!source || ov::is_type<ov::op::v0::Constant>(source.get())) {
+        return false;
+    }
     return true;
 }
 
@@ -382,6 +321,7 @@ void CompiledModel::build_op_pipeline() {
 
     FusionPlan fusion_plan;
     std::unordered_map<size_t, const FusionGroup*> fusion_primary;
+    std::unordered_set<const ov::Node*> fused_nodes;
     if (m_enable_fusion) {
         FusionConfig fusion_cfg;
         fusion_cfg.enable_fusion = true;
@@ -392,6 +332,11 @@ void CompiledModel::build_op_pipeline() {
                 continue;
             }
             fusion_primary[group.node_indices.front()] = &group;
+            for (const auto node_idx : group.node_indices) {
+                if (node_idx < ordered_ops.size()) {
+                    fused_nodes.insert(ordered_ops[node_idx].get());
+                }
+            }
         }
         if (gfx_log_debug_enabled()) {
             gfx_log_debug("Fusion") << "Fusion enabled: groups=" << fusion_plan.groups.size();
@@ -413,11 +358,48 @@ void CompiledModel::build_op_pipeline() {
         }
     };
 
+    std::unordered_map<const ov::Node*, std::unordered_map<size_t, GfxInputTransform>> absorbed_input_transforms;
+    std::unordered_set<const ov::Node*> absorbed_transpose_nodes;
+    for (const auto& node : ordered_ops) {
+        if (!is_absorbable_transpose_candidate(node, model_outputs, fused_nodes)) {
+            continue;
+        }
+        OPENVINO_ASSERT(node->get_output_size() == 1, "GFX: transpose absorption expects single-output transpose");
+        const auto& consumers = node->output(0).get_target_inputs();
+        if (consumers.size() != 1) {
+            continue;
+        }
+        const auto& consumer_input = *consumers.begin();
+        auto consumer = consumer_input.get_node()->shared_from_this();
+        if (!consumer || !is_supported_absorbing_consumer(consumer) ||
+            !is_supported_absorbing_input(consumer, consumer_input.get_index()) ||
+            fused_nodes.count(consumer.get()) != 0) {
+            continue;
+        }
+        auto source = node->input_value(0).get_node_shared_ptr();
+        if (!source || !node->input_value(0).get_partial_shape().is_static()) {
+            continue;
+        }
+        auto permutation = evaluate_constant_i64(node->input_value(1));
+        if (permutation.size() != node->get_input_shape(0).size()) {
+            continue;
+        }
+        GfxInputTransform transform;
+        transform.source_shape = node->get_input_shape(0);
+        transform.transpose_permutation = std::move(permutation);
+        absorbed_input_transforms[consumer.get()][consumer_input.get_index()] = std::move(transform);
+        absorbed_transpose_nodes.insert(node.get());
+    }
+
     for (size_t op_index = 0; op_index < ordered_ops.size(); ++op_index) {
         const auto& node = ordered_ops[op_index];
         if (ov::as_type_ptr<ov::op::v0::Parameter>(node) ||
             ov::as_type_ptr<ov::op::v0::Result>(node) ||
             ov::as_type_ptr<ov::op::v0::Constant>(node)) {
+            continue;
+        }
+
+        if (absorbed_transpose_nodes.count(node.get()) != 0) {
             continue;
         }
 
@@ -594,8 +576,24 @@ void CompiledModel::build_op_pipeline() {
             stage_desc.outputs.emplace_back(std::move(out_desc));
         }
         merge_model_outputs(stage_desc, node.get());
-        for (const auto& iv : node->input_values()) {
-            stage_desc.inputs.push_back({iv.get_node_shared_ptr(), iv.get_index()});
+        const auto absorbed_it = absorbed_input_transforms.find(node.get());
+        for (size_t input_idx = 0; input_idx < node->get_input_size(); ++input_idx) {
+            const auto& iv = node->input_value(input_idx);
+            auto linked_node = iv.get_node_shared_ptr();
+            size_t linked_port = iv.get_index();
+            if (absorbed_it != absorbed_input_transforms.end()) {
+                auto transform_it = absorbed_it->second.find(input_idx);
+                if (transform_it != absorbed_it->second.end()) {
+                    auto transpose = ov::as_type_ptr<const ov::op::v1::Transpose>(linked_node);
+                    OPENVINO_ASSERT(transpose,
+                                    "GFX: absorbed transpose input is not a transpose for ",
+                                    node->get_friendly_name());
+                    linked_node = transpose->input_value(0).get_node_shared_ptr();
+                    linked_port = transpose->input_value(0).get_index();
+                    stage_desc.stage->set_input_transform(input_idx, transform_it->second);
+                }
+            }
+            stage_desc.inputs.push_back({linked_node, linked_port});
         }
         if (gfx_log_debug_enabled()) {
             gfx_log_debug("StageFactory") << "Created GpuStage for " << node->get_type_name()
@@ -625,98 +623,30 @@ void CompiledModel::build_op_pipeline() {
                     mark_fused(group->node_indices[i]);
                 }
             };
-            if (group->kind == "ConvBatchNorm" || group->kind == "ConvBatchNormAct") {
-                if (group->node_indices.size() >= 2) {
-                    const size_t bn_idx = group->node_indices[1];
-                    if (bn_idx < ordered_ops.size()) {
-                        BatchNormParams bn_params{};
-                        const bool bn_fused = extract_batchnorm_params(ordered_ops[bn_idx], bn_params) &&
-                                              stage.stage->fuse_batchnorm(bn_params);
-                        if (bn_fused) {
-                            mark_fused(bn_idx);
-                        }
-                        if (bn_fused && group->kind == "ConvBatchNormAct" &&
-                            group->activation.has_value() && group->node_indices.size() >= 3) {
-                            if (stage.stage->fuse_activation(*group->activation, group->activation_alpha)) {
-                                mark_fused_tail(2);
-                            }
-                        }
-                    }
+            size_t next_post_op_idx = 1;
+            bool post_ops_ok = true;
+            if (group->batchnorm.has_value()) {
+                if (group->node_indices.size() <= next_post_op_idx ||
+                    !stage.stage->fuse_batchnorm(*group->batchnorm)) {
+                    post_ops_ok = false;
+                } else {
+                    mark_fused(group->node_indices[next_post_op_idx]);
+                    ++next_post_op_idx;
                 }
-            } else if (group->kind == "ConvBias" || group->kind == "ConvBiasActivation") {
-                bool bias_fused = false;
-                if (group->node_indices.size() >= 2) {
-                    const size_t add_idx = group->node_indices[1];
-                    if (add_idx < ordered_ops.size()) {
-                        BiasParams bias_params{};
-                        if (extract_bias_params(ordered_ops[add_idx], bias_params) &&
-                            stage.stage->fuse_bias(bias_params)) {
-                            bias_fused = true;
-                            mark_fused(add_idx);
-                        }
-                    }
+            }
+            if (post_ops_ok && group->bias.has_value()) {
+                if (group->node_indices.size() <= next_post_op_idx ||
+                    !stage.stage->fuse_bias(*group->bias)) {
+                    post_ops_ok = false;
+                } else {
+                    mark_fused(group->node_indices[next_post_op_idx]);
+                    ++next_post_op_idx;
                 }
-                if (bias_fused && group->kind == "ConvBiasActivation" &&
-                    group->activation.has_value() && group->node_indices.size() >= 3) {
-                    if (stage.stage->fuse_activation(*group->activation, group->activation_alpha)) {
-                        mark_fused_tail(2);
-                    }
-                }
-            } else if (group->kind == "ConvActivation") {
-                if (group->activation.has_value() && group->node_indices.size() >= 2) {
-                    if (stage.stage->fuse_activation(*group->activation, group->activation_alpha)) {
-                        mark_fused_tail(1);
-                    }
-                }
-            } else if (group->kind == "EltwiseBias" || group->kind == "EltwiseBiasActivation") {
-                bool bias_fused = false;
-                if (group->node_indices.size() >= 2) {
-                    const size_t add_idx = group->node_indices[1];
-                    if (add_idx < ordered_ops.size()) {
-                        BiasParams bias_params{};
-                        if (extract_bias_params(ordered_ops[add_idx], bias_params) &&
-                            stage.stage->fuse_bias(bias_params)) {
-                            bias_fused = true;
-                            mark_fused(add_idx);
-                        }
-                    }
-                }
-                if (bias_fused && group->kind == "EltwiseBiasActivation" &&
-                    group->activation.has_value() && group->node_indices.size() >= 3) {
-                    if (stage.stage->fuse_activation(*group->activation, group->activation_alpha)) {
-                        mark_fused_tail(2);
-                    }
-                }
-            } else if (group->kind == "EltwiseActivation") {
-                if (group->activation.has_value() && group->node_indices.size() >= 2) {
-                    if (stage.stage->fuse_activation(*group->activation, group->activation_alpha)) {
-                        mark_fused_tail(1);
-                    }
-                }
-            } else if (group->kind == "MatMulBias" || group->kind == "MatMulBiasActivation") {
-                bool bias_fused = false;
-                if (group->node_indices.size() >= 2) {
-                    const size_t add_idx = group->node_indices[1];
-                    if (add_idx < ordered_ops.size()) {
-                        BiasParams bias_params{};
-                        if (extract_bias_params(ordered_ops[add_idx], bias_params) &&
-                            stage.stage->fuse_bias(bias_params)) {
-                            bias_fused = true;
-                            mark_fused(add_idx);
-                        }
-                    }
-                }
-                if (bias_fused && group->kind == "MatMulBiasActivation" &&
-                    group->activation.has_value() && group->node_indices.size() >= 3) {
-                    if (stage.stage->fuse_activation(*group->activation, group->activation_alpha)) {
-                        mark_fused_tail(2);
-                    }
-                }
-            } else if (group->kind == "MatMulActivation") {
-                if (group->activation.has_value() && group->node_indices.size() >= 2) {
-                    if (stage.stage->fuse_activation(*group->activation, group->activation_alpha)) {
-                        mark_fused_tail(1);
-                    }
+            }
+            if (post_ops_ok && group->activation.has_value() &&
+                group->node_indices.size() > next_post_op_idx) {
+                if (stage.stage->fuse_activation(*group->activation, group->activation_alpha)) {
+                    mark_fused_tail(next_post_op_idx);
                 }
             }
         }

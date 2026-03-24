@@ -2333,6 +2333,55 @@ TEST(GfxTransforms, MlirFusionConvBiasPlan) {
     EXPECT_TRUE(found);
 }
 
+TEST(GfxTransforms, MlirFusionConvScalePlan) {
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});
+    auto weights = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                          ov::Shape{2, 3, 3, 3},
+                                                          std::vector<float>(2 * 3 * 3 * 3, 1.f));
+    auto scale = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                        ov::Shape{1, 2, 1, 1},
+                                                        std::vector<float>{0.5f, 2.0f});
+    auto conv = std::make_shared<ov::op::v1::Convolution>(param,
+                                                          weights,
+                                                          ov::Strides{1, 1},
+                                                          ov::CoordinateDiff{1, 1},
+                                                          ov::CoordinateDiff{1, 1},
+                                                          ov::Strides{1, 1});
+    auto mul = std::make_shared<ov::op::v1::Multiply>(conv, scale);
+    auto res = std::make_shared<ov::op::v0::Result>(mul);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "conv_scale");
+
+    ov::gfx_plugin::FusionConfig cfg;
+    cfg.enable_fusion = true;
+    auto plan = ov::gfx_plugin::build_fusion_plan(model, cfg);
+    ASSERT_FALSE(plan.groups.empty());
+
+    bool found = false;
+    const auto ordered = model->get_ordered_ops();
+    for (const auto& group : plan.groups) {
+        if (group.kind != "ConvScale" || group.node_indices.size() != 2 || !group.batchnorm.has_value()) {
+            continue;
+        }
+        const auto conv_idx = group.node_indices[0];
+        const auto mul_idx = group.node_indices[1];
+        ASSERT_LT(conv_idx, ordered.size());
+        ASSERT_LT(mul_idx, ordered.size());
+        const auto& conv_node = ordered[conv_idx];
+        const auto& mul_node = ordered[mul_idx];
+        if (ov::as_type_ptr<const ov::op::v1::Convolution>(conv_node) &&
+            ov::as_type_ptr<const ov::op::v1::Multiply>(mul_node)) {
+            ASSERT_EQ(group.batchnorm->gamma.size(), 2u);
+            EXPECT_FLOAT_EQ(group.batchnorm->gamma[0], 0.5f);
+            EXPECT_FLOAT_EQ(group.batchnorm->gamma[1], 2.0f);
+            EXPECT_FLOAT_EQ(group.batchnorm->beta[0], 0.0f);
+            EXPECT_FLOAT_EQ(group.batchnorm->beta[1], 0.0f);
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
 TEST(GfxTransforms, MlirFusionAddBiasReluPlan) {
     auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});
     auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 4, 4});

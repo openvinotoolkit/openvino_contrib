@@ -69,6 +69,18 @@ bool has_extension(const std::vector<VkExtensionProperties>& exts, const char* n
     return false;
 }
 
+template <typename T>
+T* find_in_pnext_chain(void* pnext) {
+    auto* base = reinterpret_cast<VkBaseOutStructure*>(pnext);
+    while (base) {
+        if (base->sType == T::structureType) {
+            return reinterpret_cast<T*>(base);
+        }
+        base = base->pNext;
+    }
+    return nullptr;
+}
+
 }  // namespace
 
 VulkanContext::VulkanContext() {
@@ -135,6 +147,10 @@ VulkanContext::VulkanContext() {
     vkGetPhysicalDeviceProperties(m_physical_device, &props);
     m_device_name = props.deviceName;
     m_noncoherent_atom_size = static_cast<size_t>(props.limits.nonCoherentAtomSize);
+    m_max_compute_workgroup_invocations = props.limits.maxComputeWorkGroupInvocations;
+    m_max_compute_workgroup_size = {props.limits.maxComputeWorkGroupSize[0],
+                                    props.limits.maxComputeWorkGroupSize[1],
+                                    props.limits.maxComputeWorkGroupSize[2]};
 
     std::vector<VkExtensionProperties> dev_exts;
     uint32_t dev_ext_count = 0;
@@ -212,6 +228,26 @@ VulkanContext::VulkanContext() {
         features2.pNext = nullptr;
         storage16.pNext = nullptr;
         storage8.pNext = nullptr;
+    }
+
+    VkPhysicalDeviceProperties2 props2{};
+    props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    VkPhysicalDeviceSubgroupProperties subgroup_props{};
+    subgroup_props.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
+    props2.pNext = &subgroup_props;
+    PFN_vkGetPhysicalDeviceProperties2 get_props2 =
+        reinterpret_cast<PFN_vkGetPhysicalDeviceProperties2>(vkGetInstanceProcAddr(m_instance,
+                                                                                   "vkGetPhysicalDeviceProperties2"));
+    if (!get_props2) {
+        auto get_props2_khr =
+            reinterpret_cast<PFN_vkGetPhysicalDeviceProperties2KHR>(vkGetInstanceProcAddr(
+                m_instance,
+                "vkGetPhysicalDeviceProperties2KHR"));
+        get_props2 = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties2>(get_props2_khr);
+    }
+    if (get_props2) {
+        get_props2(m_physical_device, &props2);
+        m_subgroup_size = subgroup_props.subgroupSize ? subgroup_props.subgroupSize : 1u;
     }
 
     VkDeviceCreateInfo device_info{};

@@ -33,6 +33,12 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 - `tests/shared_tests_instances/`: OpenVINO shared test wiring
 - `tests/tools/`: helper tools such as `ov_gfx_compare_runner`
 
+Recent additions in the tree include:
+- `tests/unit/mlir_conv_parallel_test.cpp` for canonical Conv2D lowering, im2col rewrite coverage, and absorbed-input-transform regression checks
+- `tests/unit/gfx_parallelism_test.cpp` for backend-neutral parallelism-plan selection
+- `tests/unit/layout_cleanup_test.cpp` for MLIR layout-cleanup behavior
+- `tests/backends/vulkan/vulkan_runtime_test.cpp` for Vulkan runtime regressions
+
 ## Typical Test Suites
 Examples already present in the tree:
 - `GfxBasicOps`
@@ -48,6 +54,8 @@ Add or update tests when you change:
 - remote context / remote tensor behavior
 - stage fusion behavior
 - MLIR support probing
+- stage policy, parallelism selection, or input-transform absorption
+- backend-specialized routes such as chunked or direct Vulkan execution
 
 ## Practical Strategy
 - run the narrowest relevant gtest filter first
@@ -58,7 +66,10 @@ If you change backend-specific code, prefer adding at least:
 - one unit or focused regression test
 - one end-to-end backend test when behavior is externally visible
 
+If you change MLIR lowering, prefer a unit test that inspects the emitted IR for the expected operation family or attributes, not only a runtime smoke test.
+
 ## Helpful Notes
 - Some tests skip when the corresponding backend is unavailable on the current machine
 - Metal tests require a valid Metal runtime environment
 - Vulkan tests depend on Vulkan being enabled and available in the build
+- `ov_gfx_compare_runner` is useful for numeric diffs and per-op narrowing when a failure is hard to isolate from the full suite

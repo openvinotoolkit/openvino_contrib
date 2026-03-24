@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "mlir/mlir_stage.hpp"
+#include "runtime/gfx_stage_policy.hpp"
 
 namespace ov {
 class Node;
@@ -47,6 +48,7 @@ public:
     bool fuse_activation(ActivationKind kind, float alpha) override;
     bool fuse_batchnorm(const BatchNormParams& params) override;
     bool fuse_bias(const BiasParams& params) override;
+    GpuStageSubmitPolicy submit_policy() const override;
 
 private:
     std::shared_ptr<ICompiledKernel> compile_kernel(const KernelSource& source,
@@ -64,32 +66,73 @@ private:
     std::shared_ptr<ICompiledKernel> m_softmax_row_kernel;
     ov::element::Type m_softmax_elem_type{};
     bool m_softmax_log_kernel = false;
+    std::shared_ptr<ICompiledKernel> m_conv2d_1x1_kernel;
+    ov::element::Type m_conv2d_1x1_elem_type{};
+    std::shared_ptr<ICompiledKernel> m_conv2d_3x3_direct_kernel;
+    ov::element::Type m_conv2d_3x3_direct_elem_type{};
+    uint32_t m_conv2d_3x3_direct_oc_block = 1;
+    uint32_t m_conv2d_3x3_direct_threads_per_group = 64;
+    std::string m_conv2d_3x3_direct_variant;
     std::shared_ptr<ICompiledKernel> m_conv2d_chunk_kernel;
     ov::element::Type m_conv2d_chunk_elem_type{};
     LaunchOperandABI m_conv2d_chunk_launch_abi;
+    std::shared_ptr<ICompiledKernel> m_group_conv2d_kernel;
+    ov::element::Type m_group_conv2d_elem_type{};
+    std::shared_ptr<ICompiledKernel> m_transpose_kernel;
+    ov::element::Type m_transpose_elem_type{};
+    std::shared_ptr<ICompiledKernel> m_convert_linear_kernel;
+    ov::element::Type m_convert_src_elem_type{};
+    ov::element::Type m_convert_dst_elem_type{};
     std::shared_ptr<ICompiledKernel> m_linear_unary_kernel;
     std::shared_ptr<ICompiledKernel> m_linear_binary_kernel;
+    std::shared_ptr<ICompiledKernel> m_linear_binary_same_shape_kernel;
+    std::shared_ptr<ICompiledKernel> m_binary_bias_add_kernel;
     ov::element::Type m_linear_unary_elem_type{};
     ov::element::Type m_linear_binary_elem_type{};
+    ov::element::Type m_linear_binary_same_shape_elem_type{};
+    ov::element::Type m_binary_bias_add_elem_type{};
     size_t m_linear_binary_rank = 0;
     LaunchOperandABI m_linear_unary_launch_abi;
+    LaunchOperandABI m_linear_binary_launch_abi;
     std::vector<int32_t> m_linear_unary_scalar_args;
     std::string m_linear_unary_key;
     std::string m_linear_binary_key;
+    std::string m_linear_binary_same_shape_key;
 
     void execute_split_chunked(GpuCommandBufferHandle command_buffer);
     void execute_concat_chunked(GpuCommandBufferHandle command_buffer);
     void execute_softmax_chunked(GpuCommandBufferHandle command_buffer);
+    void execute_conv2d_1x1_chunked(GpuCommandBufferHandle command_buffer);
+    void execute_conv2d_3x3_direct(GpuCommandBufferHandle command_buffer);
     void execute_conv2d_chunked(GpuCommandBufferHandle command_buffer);
+    void execute_group_conv2d_chunked(GpuCommandBufferHandle command_buffer);
+    void execute_transpose_chunked(GpuCommandBufferHandle command_buffer);
+    void execute_convert_chunked(GpuCommandBufferHandle command_buffer);
     void execute_unary_chunked(GpuCommandBufferHandle command_buffer);
     void execute_binary_chunked(GpuCommandBufferHandle command_buffer);
+    void execute_binary_same_shape(GpuCommandBufferHandle command_buffer);
+    void execute_binary_bias_add(GpuCommandBufferHandle command_buffer);
     mlir::ModuleOp build_split_single_module(mlir::MLIRContext& ctx, const ov::element::Type& et);
     mlir::ModuleOp build_concat_single_module(mlir::MLIRContext& ctx, const ov::element::Type& et);
     mlir::ModuleOp build_softmax_row_module(mlir::MLIRContext& ctx,
                                             const ov::element::Type& et,
                                             bool log_softmax);
+    mlir::ModuleOp build_conv2d_1x1_module(mlir::MLIRContext& ctx,
+                                           const ov::element::Type& et);
+    mlir::ModuleOp build_conv2d_3x3_direct_module(mlir::MLIRContext& ctx,
+                                                  const ov::element::Type& et,
+                                                  uint32_t output_channel_block,
+                                                  uint32_t threads_per_group,
+                                                  const std::string& variant);
+    mlir::ModuleOp build_transpose_module(mlir::MLIRContext& ctx,
+                                          const ov::element::Type& et);
+    mlir::ModuleOp build_convert_linear_module(mlir::MLIRContext& ctx,
+                                               const ov::element::Type& src_et,
+                                               const ov::element::Type& dst_et);
     mlir::ModuleOp build_conv2d_chunk_module(mlir::MLIRContext& ctx,
                                              const ov::element::Type& et);
+    mlir::ModuleOp build_group_conv2d_chunk_module(mlir::MLIRContext& ctx,
+                                                   const ov::element::Type& et);
     mlir::ModuleOp build_linear_unary_module(mlir::MLIRContext& ctx,
                                              const ov::element::Type& et,
                                              const std::string& op_key);
@@ -97,10 +140,24 @@ private:
                                               const ov::element::Type& et,
                                               const std::string& op_key,
                                               size_t meta_rank);
+    mlir::ModuleOp build_linear_binary_same_shape_module(mlir::MLIRContext& ctx,
+                                                         const ov::element::Type& et,
+                                                         const std::string& op_key);
+    mlir::ModuleOp build_binary_bias_add_module(mlir::MLIRContext& ctx,
+                                                const ov::element::Type& et);
     bool should_use_unary_chunked() const;
     bool should_use_softmax_chunked() const;
+    bool should_use_binary_same_shape() const;
     bool should_use_binary_chunked() const;
+    bool should_use_binary_bias_add() const;
+    bool should_use_conv2d_1x1_chunked() const;
+    bool should_use_conv2d_3x3_direct() const;
     bool should_use_conv2d_chunked() const;
+    bool should_use_group_conv2d_chunked() const;
+    GfxStageOptimizationPlan optimization_plan() const;
+    GfxConvRoutePlan conv_route_plan() const;
+    bool should_use_transpose_chunked() const;
+    bool should_use_convert_chunked() const;
 };
 
 }  // namespace gfx_plugin

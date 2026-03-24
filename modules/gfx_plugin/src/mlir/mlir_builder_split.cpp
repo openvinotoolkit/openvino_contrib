@@ -8,7 +8,9 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
@@ -65,11 +67,34 @@ std::vector<size_t> extract_split_sizes(const std::shared_ptr<const ov::Node>& n
     }
     OPENVINO_THROW("Split MLIR: unsupported node type");
 }
+
+std::vector<int64_t> invert_permutation(const std::vector<int64_t>& permutation) {
+    std::vector<int64_t> inverse(permutation.size(), -1);
+    for (size_t i = 0; i < permutation.size(); ++i) {
+        const auto axis = permutation[i];
+        OPENVINO_ASSERT(axis >= 0 && axis < static_cast<int64_t>(permutation.size()),
+                        "Split MLIR: permutation axis out of range");
+        OPENVINO_ASSERT(inverse[static_cast<size_t>(axis)] < 0,
+                        "Split MLIR: permutation axis repeated");
+        inverse[static_cast<size_t>(axis)] = static_cast<int64_t>(i);
+    }
+    return inverse;
+}
+
+mlir::ArrayAttr make_i64_array_attr(mlir::OpBuilder& builder, const std::vector<int64_t>& values) {
+    mlir::SmallVector<mlir::Attribute> attrs;
+    attrs.reserve(values.size());
+    for (auto value : values) {
+        attrs.push_back(builder.getI64IntegerAttr(value));
+    }
+    return builder.getArrayAttr(attrs);
+}
 }  // namespace
 
 mlir::ModuleOp build_mlir_split_from_model(const std::shared_ptr<const ov::Model>& model,
                                            mlir::MLIRContext& ctx) {
-    ctx.loadDialect<mlir::func::FuncDialect, mlir::tensor::TensorDialect, mlir::arith::ArithDialect>();
+    ctx.loadDialect<mlir::func::FuncDialect, mlir::tensor::TensorDialect, mlir::arith::ArithDialect,
+                    mlir::linalg::LinalgDialect>();
 
     std::shared_ptr<const ov::Node> split_node;
     for (const auto& node : model->get_ordered_ops()) {
@@ -158,13 +183,22 @@ mlir::ModuleOp build_mlir_split_from_model(const std::shared_ptr<const ov::Model
 
 mlir::ModuleOp build_mlir_split_from_node(const std::shared_ptr<const ov::Node>& node,
                                           mlir::MLIRContext& ctx,
-                                          const ov::Shape& input_shape) {
-    ctx.loadDialect<mlir::func::FuncDialect, mlir::tensor::TensorDialect, mlir::arith::ArithDialect>();
+                                          const ov::Shape& input_shape,
+                                          const MlirInputTransformDesc* input_transform) {
+    ctx.loadDialect<mlir::func::FuncDialect, mlir::tensor::TensorDialect, mlir::arith::ArithDialect,
+                    mlir::linalg::LinalgDialect>();
     OPENVINO_ASSERT(node, "Split MLIR builder: node is null");
 
     int64_t axis = 0;
-    ov::Shape resolved_shape;
-    auto split_sizes = extract_split_sizes(node, axis, resolved_shape, &input_shape);
+    ov::Shape logical_shape;
+    auto split_sizes = extract_split_sizes(node, axis, logical_shape, nullptr);
+    const ov::Shape source_shape =
+        (input_transform && input_transform->has_transpose()) ? input_transform->source_shape : input_shape;
+    const bool has_input_transform = input_transform && input_transform->has_transpose();
+    if (!has_input_transform) {
+        logical_shape = input_shape;
+        split_sizes = extract_split_sizes(node, axis, logical_shape, &logical_shape);
+    }
     auto elem_ty = to_mlir_type(node->get_output_element_type(0),
                                 ctx,
                                 /*fallback_f32=*/false,
@@ -172,17 +206,17 @@ mlir::ModuleOp build_mlir_split_from_node(const std::shared_ptr<const ov::Node>&
                                 /*allow_small_ints=*/true);
 
     mlir::SmallVector<int64_t> in_shape_vec;
-    in_shape_vec.reserve(resolved_shape.size());
-    for (auto v : resolved_shape) in_shape_vec.push_back(static_cast<int64_t>(v));
+    in_shape_vec.reserve(source_shape.size());
+    for (auto v : source_shape) in_shape_vec.push_back(static_cast<int64_t>(v));
     auto in_tensor_ty = mlir::RankedTensorType::get(in_shape_vec, elem_ty);
 
     mlir::SmallVector<mlir::Type> out_types;
     out_types.reserve(split_sizes.size());
     int64_t axis_norm = axis;
     if (axis_norm < 0)
-        axis_norm += static_cast<int64_t>(resolved_shape.size());
+        axis_norm += static_cast<int64_t>(logical_shape.size());
     for (size_t i = 0; i < split_sizes.size(); ++i) {
-        ov::Shape out_shape = resolved_shape;
+        ov::Shape out_shape = logical_shape;
         out_shape[static_cast<size_t>(axis_norm)] = split_sizes[i];
         mlir::SmallVector<int64_t> out_shape_vec;
         out_shape_vec.reserve(out_shape.size());
@@ -202,34 +236,122 @@ mlir::ModuleOp build_mlir_split_from_node(const std::shared_ptr<const ov::Node>&
     auto loc = mlir::UnknownLoc::get(&ctx);
     b.setInsertionPointToStart(&func.getBody().front());
 
-    OPENVINO_ASSERT(axis_norm >= 0 && static_cast<size_t>(axis_norm) < resolved_shape.size(),
+    OPENVINO_ASSERT(axis_norm >= 0 && static_cast<size_t>(axis_norm) < logical_shape.size(),
                     "Split MLIR: axis out of range");
 
     mlir::SmallVector<mlir::Value> results;
     results.reserve(split_sizes.size());
     int64_t axis_offset = 0;
+    std::vector<int64_t> inverse_permutation;
+    if (has_input_transform) {
+        OPENVINO_ASSERT(input_transform->transpose_permutation.size() == logical_shape.size(),
+                        "Split MLIR: transform permutation rank mismatch");
+        OPENVINO_ASSERT(source_shape.size() == logical_shape.size(),
+                        "Split MLIR: source/logical rank mismatch");
+        inverse_permutation = invert_permutation(input_transform->transpose_permutation);
+        b.setInsertionPointToStart(module.getBody());
+        module->setAttr("gfx.absorbed_input0_perm",
+                        make_i64_array_attr(b, input_transform->transpose_permutation));
+        b.setInsertionPointToStart(&func.getBody().front());
+    }
     for (size_t i = 0; i < split_sizes.size(); ++i) {
-        mlir::SmallVector<mlir::OpFoldResult> offsets;
-        mlir::SmallVector<mlir::OpFoldResult> sizes;
-        mlir::SmallVector<mlir::OpFoldResult> strides;
-        offsets.reserve(resolved_shape.size());
-        sizes.reserve(resolved_shape.size());
-        strides.reserve(resolved_shape.size());
-        for (size_t d = 0; d < resolved_shape.size(); ++d) {
-            int64_t off = (d == static_cast<size_t>(axis_norm)) ? axis_offset : 0;
-            int64_t sz = (d == static_cast<size_t>(axis_norm))
-                             ? static_cast<int64_t>(split_sizes[i])
-                             : static_cast<int64_t>(resolved_shape[d]);
-            offsets.push_back(b.getIndexAttr(off));
-            sizes.push_back(b.getIndexAttr(sz));
-            strides.push_back(b.getIndexAttr(1));
+        ov::Shape out_shape = logical_shape;
+        out_shape[static_cast<size_t>(axis_norm)] = split_sizes[i];
+        if (!has_input_transform) {
+            mlir::SmallVector<mlir::OpFoldResult> offsets;
+            mlir::SmallVector<mlir::OpFoldResult> sizes;
+            mlir::SmallVector<mlir::OpFoldResult> strides;
+            offsets.reserve(logical_shape.size());
+            sizes.reserve(logical_shape.size());
+            strides.reserve(logical_shape.size());
+            for (size_t d = 0; d < logical_shape.size(); ++d) {
+                int64_t off = (d == static_cast<size_t>(axis_norm)) ? axis_offset : 0;
+                int64_t sz = (d == static_cast<size_t>(axis_norm))
+                                 ? static_cast<int64_t>(split_sizes[i])
+                                 : static_cast<int64_t>(logical_shape[d]);
+                offsets.push_back(b.getIndexAttr(off));
+                sizes.push_back(b.getIndexAttr(sz));
+                strides.push_back(b.getIndexAttr(1));
+            }
+            auto slice = b.create<mlir::tensor::ExtractSliceOp>(loc,
+                                                                func.getArgument(0),
+                                                                offsets,
+                                                                sizes,
+                                                                strides);
+            results.push_back(slice.getResult());
+        } else {
+            const auto source_axis = static_cast<size_t>(input_transform->transpose_permutation[static_cast<size_t>(axis_norm)]);
+            OPENVINO_ASSERT(source_axis < source_shape.size(),
+                            "Split MLIR: transformed source axis out of range");
+
+            mlir::SmallVector<mlir::OpFoldResult> slice_offsets;
+            mlir::SmallVector<mlir::OpFoldResult> slice_sizes;
+            mlir::SmallVector<mlir::OpFoldResult> slice_strides;
+            slice_offsets.reserve(source_shape.size());
+            slice_sizes.reserve(source_shape.size());
+            slice_strides.reserve(source_shape.size());
+            mlir::SmallVector<int64_t> slice_shape_vec;
+            slice_shape_vec.reserve(source_shape.size());
+            for (size_t d = 0; d < source_shape.size(); ++d) {
+                const int64_t off = (d == source_axis) ? axis_offset : 0;
+                const int64_t sz = (d == source_axis) ? static_cast<int64_t>(split_sizes[i])
+                                                      : static_cast<int64_t>(source_shape[d]);
+                slice_offsets.push_back(b.getIndexAttr(off));
+                slice_sizes.push_back(b.getIndexAttr(sz));
+                slice_strides.push_back(b.getIndexAttr(1));
+                slice_shape_vec.push_back(sz);
+            }
+            auto slice = b.create<mlir::tensor::ExtractSliceOp>(loc,
+                                                                func.getArgument(0),
+                                                                slice_offsets,
+                                                                slice_sizes,
+                                                                slice_strides);
+
+            mlir::SmallVector<int64_t> out_shape_vec;
+            out_shape_vec.reserve(out_shape.size());
+            for (auto dim : out_shape) {
+                out_shape_vec.push_back(static_cast<int64_t>(dim));
+            }
+            auto out_ty = mlir::RankedTensorType::get(out_shape_vec, elem_ty);
+            auto empty = b.create<mlir::tensor::EmptyOp>(loc, out_shape_vec, elem_ty);
+
+            mlir::SmallVector<mlir::AffineExpr> input_exprs;
+            input_exprs.reserve(slice_shape_vec.size());
+            for (size_t src_dim = 0; src_dim < slice_shape_vec.size(); ++src_dim) {
+                const auto target_dim = static_cast<size_t>(inverse_permutation[src_dim]);
+                input_exprs.push_back(mlir::getAffineDimExpr(static_cast<unsigned>(target_dim), &ctx));
+            }
+            mlir::SmallVector<mlir::AffineExpr> output_exprs;
+            output_exprs.reserve(out_shape.size());
+            for (size_t d = 0; d < out_shape.size(); ++d) {
+                output_exprs.push_back(mlir::getAffineDimExpr(static_cast<unsigned>(d), &ctx));
+            }
+            auto input_map = mlir::AffineMap::get(static_cast<int64_t>(out_shape.size()),
+                                                  0,
+                                                  input_exprs,
+                                                  &ctx);
+            auto output_map = mlir::AffineMap::getMultiDimIdentityMap(static_cast<unsigned>(out_shape.size()), &ctx);
+            llvm::SmallVector<mlir::utils::IteratorType> iterators(
+                out_shape.size(),
+                mlir::utils::IteratorType::parallel);
+
+            auto generic = b.create<mlir::linalg::GenericOp>(
+                loc,
+                out_ty,
+                mlir::ValueRange{slice.getResult()},
+                mlir::ValueRange{empty.getResult()},
+                mlir::ArrayRef<mlir::AffineMap>{input_map, output_map},
+                mlir::ArrayRef<mlir::utils::IteratorType>(iterators));
+            {
+                auto& region = generic.getRegion();
+                region.getBlocks().clear();
+                auto* block = &region.emplaceBlock();
+                block->addArguments({elem_ty, elem_ty}, {loc, loc});
+                mlir::OpBuilder body(block, block->begin());
+                body.create<mlir::linalg::YieldOp>(loc, block->getArgument(0));
+            }
+            results.push_back(generic.getResult(0));
         }
-        auto slice = b.create<mlir::tensor::ExtractSliceOp>(loc,
-                                                            func.getArgument(0),
-                                                            offsets,
-                                                            sizes,
-                                                            strides);
-        results.push_back(slice.getResult());
         axis_offset += static_cast<int64_t>(split_sizes[i]);
     }
 

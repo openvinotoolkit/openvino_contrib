@@ -56,6 +56,16 @@ The runtime is stage-based.
 
 The pipeline may fuse multiple nodes into a `FusedSequenceStage` when fusion logic decides that a combined execution path is valid.
 
+Two interface points are important in the current code:
+- `set_input_transform()`: a stage can consume metadata about an absorbed upstream transpose instead of requiring a separate materialized transpose stage
+- `submit_policy()`: a stage reports scheduling weight and isolation hints used by backend infer paths during command-buffer submission
+
+`src/runtime/gfx_stage_policy.*` selects runtime policy from node shape, element type, backend, and backend capabilities. The policy layer currently decides:
+- whether a stage should use direct or chunked execution
+- whether bias, activation, or batchnorm can be fused
+- how expensive a stage is for submission ordering
+- which convolution family or algorithm should be preferred
+
 ## MLIR Role
 MLIR lives in `src/mlir/` and is shared infrastructure, not a separate monolithic backend object.
 
@@ -63,6 +73,10 @@ It is used for:
 - support probing through `mlir_supports_node()`
 - node lowering via `mlir_builder_*.cpp`
 - backend code generation helpers such as MSL or SPIR-V preparation
+
+Current lowering also supports absorbed input transforms. `CompiledModel` detects selected transpose patterns and forwards them as `GfxInputTransform` metadata to builders such as Add, Conv2D, GroupConv2D, and Split. This keeps the runtime pipeline smaller while preserving the original layout semantics.
+
+The MLIR pass pipeline also contains parallel-lowering and cleanup steps used by current Vulkan codegen, including Conv2D parallel lowering, Conv2D im2col rewrite/lowering, matmul parallel lowering, and post-fusion cleanup passes.
 
 ## Metal Backend
 `src/backends/metal/` contains:
@@ -79,6 +93,12 @@ Direct Metal API usage lives in Objective-C++ files (`.mm`).
 - `codegen/`: SPIR-V / Vulkan codegen helpers
 
 This backend is built only when Vulkan support is available and enabled in CMake.
+
+The current Vulkan runtime also:
+- records physical-device limits such as subgroup size and compute workgroup limits in `VulkanContext`
+- uses those limits when selecting parallelism and stage execution policy
+- contains specialized execution routes for chunked unary/binary/softmax/layout ops and for multiple Conv2D or GroupConv2D cases
+- supports direct handling of some common binary patterns such as same-shape and bias-add style cases
 
 ## Remote Contexts And Tensors
 The shared abstractions are:
@@ -98,3 +118,4 @@ This is model serialization, not compiled-kernel caching.
 - backend parity is not guaranteed
 - many ops still require static rank, static shape, or constant attributes
 - the plugin remains experimental
+- some lowering and runtime optimizations are intentionally backend-specific, so architecture docs should describe the shared model first and backend specialization second
