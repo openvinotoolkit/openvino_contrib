@@ -25,7 +25,7 @@ jobs:
     defaults:
       run:
         shell: bash
-    runs-on: 'macos-13-large'
+    runs-on: 'macos-15-large'
     env:
       CMAKE_BUILD_TYPE: 'Release'
       MACOSX_DEPLOYMENT_TARGET: '11.0'

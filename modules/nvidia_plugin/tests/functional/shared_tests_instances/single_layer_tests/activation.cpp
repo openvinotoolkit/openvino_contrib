@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2024 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -47,14 +47,14 @@ const std::map<ActivationTypes, std::vector<std::vector<float>>> activationTypes
         {ActivationTypes::Sqrt,                  {}},
         {ActivationTypes::Tan,                   {}},
         {ActivationTypes::Elu,                   {{0.1f}}},
-        // {ActivationTypes::Erf,                   {}},
+        {ActivationTypes::Erf,                   {}},
         // {ActivationTypes::HardSigmoid,           {{0.2f, 0.5f}}},
         // {ActivationTypes::Selu,                  {{1.6732f, 1.0507f}}},
-        // {ActivationTypes::Ceiling,               {}},
+        {ActivationTypes::Ceiling,               {}},
         {ActivationTypes::Mish,                  {}},
         {ActivationTypes::HSwish,                {}},
-        // {ActivationTypes::SoftPlus,              {}},
-        // {ActivationTypes::HSigmoid,              {}},
+        {ActivationTypes::SoftPlus,              {}},
+        {ActivationTypes::HSigmoid,              {}},
         {ActivationTypes::Swish,                 {{0.5f}}},
         // {ActivationTypes::RoundHalfToEven,       {}},
         // {ActivationTypes::RoundHalfAwayFromZero, {}},
@@ -69,7 +69,7 @@ const std::map<ActivationTypes, std::vector<std::vector<float>>> bigRankActivati
         {ActivationTypes::Log,                   {}},
         {ActivationTypes::Abs,                   {}},
         {ActivationTypes::Clamp,                 {{-2.0f, 2.0f}}},
-        // {ActivationTypes::Ceiling,               {}},
+        {ActivationTypes::Ceiling,               {}},
         {ActivationTypes::Swish,                 {{0.5f}}},
 };
 
