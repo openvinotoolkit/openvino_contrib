@@ -23,12 +23,48 @@ HostInputBinding prepare_host_input_binding(const ov::Tensor& host,
     return binding;
 }
 
+void prepare_reusable_host_output_plan(PreparedInferHostOutputPlan& plan,
+                                       const PreparedInferOutputPlan& output_plan,
+                                       const std::vector<ov::Tensor>& bound_output_hosts) {
+    if (plan.outputs.size() != output_plan.outputs.size()) {
+        plan.outputs.assign(output_plan.outputs.size(), {});
+    }
+
+    for (size_t idx = 0; idx < output_plan.outputs.size(); ++idx) {
+        auto& prepared_host = plan.outputs[idx];
+        const auto& prepared_output = output_plan.outputs[idx];
+        const bool has_bound_host = idx < bound_output_hosts.size() && bound_output_hosts[idx];
+        if (has_bound_host || prepared_output.static_shape.empty() ||
+            prepared_output.static_type == ov::element::dynamic) {
+            prepared_host.shape.clear();
+            prepared_host.type = ov::element::dynamic;
+            prepared_host.host = {};
+            continue;
+        }
+
+        prepared_host.shape = prepared_output.static_shape;
+        prepared_host.type = prepared_output.static_type;
+        if (!prepared_host.host ||
+            prepared_host.host.get_shape() != prepared_host.shape ||
+            prepared_host.host.get_element_type() != prepared_host.type) {
+            prepared_host.host = ov::Tensor(prepared_host.type, prepared_host.shape);
+        }
+    }
+}
+
 HostOutputBinding prepare_host_output_binding(const OutputViewInfo& info,
-                                              const ov::Tensor* host_override) {
+                                              const ov::Tensor* host_override,
+                                              const ov::Tensor* reusable_host) {
     HostOutputBinding binding{};
     binding.bytes = tensor_byte_size(info.shape, info.type);
     if (host_override && *host_override) {
         binding.host = *host_override;
+    } else if (reusable_host && *reusable_host) {
+        OPENVINO_ASSERT(reusable_host->get_element_type() == info.type,
+                        "GFX: reusable output tensor type mismatch");
+        OPENVINO_ASSERT(reusable_host->get_shape() == info.shape,
+                        "GFX: reusable output tensor shape mismatch");
+        binding.host = *reusable_host;
     } else {
         binding.host = ov::Tensor(info.type, info.shape);
     }

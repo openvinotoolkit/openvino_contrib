@@ -29,12 +29,27 @@ struct HostOutputBinding {
     size_t bytes = 0;
 };
 
+struct PreparedHostOutputBinding {
+    ov::Shape shape;
+    ov::element::Type type = ov::element::dynamic;
+    ov::Tensor host;
+};
+
+struct PreparedInferHostOutputPlan {
+    std::vector<PreparedHostOutputBinding> outputs;
+};
+
 HostInputBinding prepare_host_input_binding(const ov::Tensor& host,
                                             GpuBackend backend,
                                             const char* error_prefix);
 
+void prepare_reusable_host_output_plan(PreparedInferHostOutputPlan& plan,
+                                       const PreparedInferOutputPlan& output_plan,
+                                       const std::vector<ov::Tensor>& bound_output_hosts);
+
 HostOutputBinding prepare_host_output_binding(const OutputViewInfo& info,
-                                              const ov::Tensor* host_override);
+                                              const ov::Tensor* host_override,
+                                              const ov::Tensor* reusable_host = nullptr);
 
 bool init_stage_output_desc(GpuBackend backend,
                             InferStage& stage,
@@ -167,6 +182,7 @@ inline void bind_outputs_common(const std::vector<ov::Output<const ov::Node>>& p
                                 HostOverrideFn host_override,
                                 RemoteSetterFn remote_setter,
                                 DeviceSetterFn device_setter,
+                                const PreparedInferOutputPlan* prepared_plan,
                                 bool allow_missing,
                                 const char* error_prefix) {
     for_each_output_tensor(public_outputs,
@@ -179,6 +195,7 @@ inline void bind_outputs_common(const std::vector<ov::Output<const ov::Node>>& p
                            host_override,
                            remote_setter,
                            device_setter,
+                           prepared_plan,
                            allow_missing,
                            error_prefix);
 }

@@ -12,6 +12,7 @@
 #include "openvino/runtime/tensor.hpp"
 
 #include "openvino/gfx_plugin/profiling.hpp"
+#include "plugin/infer_io_utils.hpp"
 #include "plugin/infer_pipeline.hpp"
 #include "runtime/gfx_profiler.hpp"
 #include "runtime/gpu_buffer.hpp"
@@ -26,6 +27,8 @@ struct BackendInferState {
     std::unique_ptr<GfxProfiler> profiler;
     std::vector<InferStage> reusable_pipeline;
     PreparedInferExecutionPlan reusable_execution_plan;
+    PreparedInferOutputPlan reusable_output_plan;
+    PreparedInferHostOutputPlan reusable_host_output_plan;
     std::vector<std::vector<BufferHandle>> stage_output_handles;
     std::vector<BufferHandle> input_handles;
     std::vector<BufferHandle> input_staging_handles;

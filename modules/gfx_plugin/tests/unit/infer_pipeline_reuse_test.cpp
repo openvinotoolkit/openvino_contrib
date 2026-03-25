@@ -8,6 +8,7 @@
 #include "openvino/op/add.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
+#include "openvino/op/result.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -282,6 +283,113 @@ TEST(InferPipelineReuseTest, ReusesPreparedExecutionInputsAcrossInferences) {
     EXPECT_EQ(tracking->last_inputs[0], pipeline[0].outputs[0].get());
     EXPECT_EQ(tracking->last_inputs[1], &external_b);
     EXPECT_EQ(tracking->last_inputs_data, first_inputs_data);
+}
+
+TEST(InferPipelineReuseTest, ReusesPreparedOutputResolutionAcrossInferences) {
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 4});
+    auto relu = std::make_shared<ov::op::v0::Relu>(param);
+    auto result = std::make_shared<ov::op::v0::Result>(relu);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{result}, ov::ParameterVector{param});
+
+    std::vector<InferStage> pipeline(1);
+    pipeline[0].node = relu;
+    pipeline[0].stage = std::make_unique<TrackingStage>();
+    pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
+    pipeline[0].outputs[0]->shape = {1, 4};
+    pipeline[0].outputs[0]->expected_type = ov::element::f16;
+    pipeline[0].outputs[0]->buf.buffer = reinterpret_cast<GpuBufferHandle>(0x1234);
+    pipeline[0].outputs[0]->buf.size = 8;
+    pipeline[0].outputs[0]->buf.type = ov::element::f16;
+
+    const std::unordered_map<const ov::Node*, size_t> node_map = {
+        {relu.get(), 0},
+    };
+    const std::unordered_map<const ov::Node*, size_t> param_map;
+    const auto model_outputs = model->outputs();
+    const std::vector<ov::Output<const ov::Node>> public_outputs(model_outputs.begin(), model_outputs.end());
+
+    PreparedInferOutputPlan output_plan;
+    prepare_reusable_output_plan(output_plan,
+                                 public_outputs,
+                                 model,
+                                 pipeline,
+                                 node_map,
+                                 param_map,
+                                 "test");
+    ASSERT_EQ(output_plan.outputs.size(), 1u);
+    EXPECT_EQ(output_plan.outputs[0].kind, PreparedOutputSourceKind::StageOutput);
+    EXPECT_EQ(output_plan.outputs[0].index, 0u);
+    EXPECT_EQ(output_plan.outputs[0].port, 0u);
+    EXPECT_EQ(output_plan.outputs[0].static_shape, (ov::Shape{1, 4}));
+    EXPECT_EQ(output_plan.outputs[0].static_type, ov::element::f16);
+
+    std::vector<std::shared_ptr<GfxRemoteTensor>> remote_outputs;
+    GpuTensor* resolved_output = nullptr;
+    OutputViewInfo resolved_info;
+    size_t host_override_calls = 0;
+
+    bind_outputs_common(
+        public_outputs,
+        model,
+        node_map,
+        param_map,
+        pipeline,
+        [](size_t) -> GpuTensor* {
+            return nullptr;
+        },
+        remote_outputs,
+        [&](size_t idx, const ov::element::Type& type, const ov::Shape& shape, const char*) -> const ov::Tensor* {
+            ++host_override_calls;
+            EXPECT_EQ(idx, 0u);
+            EXPECT_EQ(type, ov::element::f16);
+            EXPECT_EQ(shape, (ov::Shape{1, 4}));
+            return nullptr;
+        },
+        [](size_t, const std::shared_ptr<GfxRemoteTensor>&) {
+            FAIL() << "unexpected remote output binding";
+        },
+        [&](size_t idx, GpuTensor& dev, const OutputViewInfo& info, const ov::Tensor*) {
+            EXPECT_EQ(idx, 0u);
+            resolved_output = &dev;
+            resolved_info = info;
+        },
+        &output_plan,
+        /*allow_missing=*/false,
+        "test");
+
+    EXPECT_EQ(host_override_calls, 1u);
+    EXPECT_EQ(resolved_output, pipeline[0].outputs[0].get());
+    EXPECT_EQ(resolved_info.shape, (ov::Shape{1, 4}));
+    EXPECT_EQ(resolved_info.type, ov::element::f16);
+    ASSERT_TRUE(resolved_info.source.node);
+    EXPECT_EQ(resolved_info.source.node.get(), relu.get());
+    EXPECT_EQ(resolved_info.source.port, 0u);
+}
+
+TEST(InferPipelineReuseTest, ReusesPreparedHostOutputsAcrossInferences) {
+    PreparedInferOutputPlan output_plan;
+    output_plan.outputs.resize(1);
+    output_plan.outputs[0].static_shape = {1, 4};
+    output_plan.outputs[0].static_type = ov::element::f16;
+
+    PreparedInferHostOutputPlan host_plan;
+    std::vector<ov::Tensor> bound_output_hosts(1);
+
+    prepare_reusable_host_output_plan(host_plan, output_plan, bound_output_hosts);
+    ASSERT_EQ(host_plan.outputs.size(), 1u);
+    ASSERT_TRUE(host_plan.outputs[0].host);
+    EXPECT_EQ(host_plan.outputs[0].host.get_shape(), (ov::Shape{1, 4}));
+    EXPECT_EQ(host_plan.outputs[0].host.get_element_type(), ov::element::f16);
+    auto* first_ptr = host_plan.outputs[0].host.data();
+    ASSERT_NE(first_ptr, nullptr);
+
+    prepare_reusable_host_output_plan(host_plan, output_plan, bound_output_hosts);
+    ASSERT_TRUE(host_plan.outputs[0].host);
+    EXPECT_EQ(host_plan.outputs[0].host.data(), first_ptr);
+
+    bound_output_hosts[0] = ov::Tensor(ov::element::f16, ov::Shape{1, 4});
+    prepare_reusable_host_output_plan(host_plan, output_plan, bound_output_hosts);
+    EXPECT_FALSE(host_plan.outputs[0].host);
 }
 
 }  // namespace

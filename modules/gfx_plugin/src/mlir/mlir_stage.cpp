@@ -591,6 +591,7 @@ void MlirStage::compile_from_plan(MlirKernelPlanContext& plan_ctx,
                     m_type,
                     "): ",
                     log);
+    m_kernel->prepare_runtime_artifacts();
     if (module) {
         auto runtime_meta = build_info.runtime_metadata(m_node, plan_ctx.output_args);
         apply_kernel_metadata(runtime_meta, scalar_inputs);

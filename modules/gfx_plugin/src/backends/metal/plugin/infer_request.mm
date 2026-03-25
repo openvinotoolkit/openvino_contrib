@@ -408,9 +408,17 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                                                           ? dev.buf.type.get_type_name()
                                                           : dev.expected_type.get_type_name());
             }
+            const ov::Tensor* reusable_host = nullptr;
+            if (idx < metal_state->reusable_host_output_plan.outputs.size()) {
+                auto& prepared = metal_state->reusable_host_output_plan.outputs[idx];
+                if (prepared.host) {
+                    reusable_host = &prepared.host;
+                }
+            }
             auto bound = bind_host_output_metal(dev,
                                                 info,
                                                 host_override,
+                                                reusable_host,
                                                 &gpu_alloc,
                                                 &output_pool,
                                                 &output_handles[idx],

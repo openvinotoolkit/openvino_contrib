@@ -74,6 +74,8 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 
 The current infer path is not a naive "execute one stage, submit immediately" loop. `src/plugin/infer_submission.*` and `src/plugin/infer_pipeline.*` now provide:
 - reusable bound pipelines and prepared input-resolution plans
+- prepared output-resolution plans for stage outputs, passthrough parameters, and materialized constant outputs
+- reusable host output tensors for static output signatures when the user does not bind explicit output storage
 - submission windows driven by stage submit policy, stage count, and output-byte thresholds
 - backend-specific submission sessions for Metal and Vulkan
 
@@ -93,6 +95,7 @@ The current infer path is not a naive "execute one stage, submit immediately" lo
 The runtime also has explicit reuse layers:
 - immutable constant payloads can be cached as device buffers through backend const-cache implementations
 - compiled kernels can reuse prepared binding tables through shared backend-neutral cache helpers in `gpu_backend_base.hpp`
+- infer requests can reuse prepared output bindings and preallocated host output tensors across repeated executions
 
 ## Backend Selection
 The plugin has two layers of backend choice:
@@ -232,6 +235,7 @@ Recent regression coverage includes:
 - absorbed input-transform tests for Add, Conv2D, GroupConv2D, and Split
 - Vulkan runtime regression coverage in `tests/backends/vulkan/`
 - infer submission, prepared-pipeline reuse, immutable-const-cache reuse, and shared kernel-binding reuse tests
+- reusable output-resolution and reusable host-output coverage in `tests/unit/infer_pipeline_reuse_test.cpp`
 
 ## Debugging And Instrumentation
 Useful environment variables from the current codebase:
@@ -252,6 +256,7 @@ For output-quality checks against a reference backend, use `ov_gfx_compare_runne
 - `export_model()` writes model data, not a serialized GPU pipeline cache.
 - Remote contexts and remote tensors are available, but practical capabilities still depend on the active backend implementation.
 - Runtime submissions and constant-buffer reuse are backend-aware internals; they improve execution behavior but do not change the plugin's external OpenVINO contract.
+- Output binding now has a reusable internal planning layer for stage outputs, passthrough outputs, and constant outputs, but the public infer-request API remains standard OpenVINO.
 
 ## Developer Documentation
 All developer-facing documentation intended for publication from this directory lives under `docs/`:

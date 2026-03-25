@@ -311,6 +311,17 @@ void InferRequest::bind_outputs_for_infer(
     const char* error_prefix) {
     OPENVINO_ASSERT(cm, error_prefix, ": compiled model is null");
     auto& state = *m_state;
+    OPENVINO_ASSERT(state.backend, error_prefix, ": infer backend state is not initialized");
+    prepare_reusable_output_plan(state.backend->reusable_output_plan,
+                                 get_outputs(),
+                                 cm->get_runtime_model(),
+                                 pipeline,
+                                 node_map,
+                                 param_map,
+                                 error_prefix);
+    prepare_reusable_host_output_plan(state.backend->reusable_host_output_plan,
+                                      state.backend->reusable_output_plan,
+                                      state.bound_output_hosts);
     bind_outputs_common(
         get_outputs(),
         cm->get_runtime_model(),
@@ -324,6 +335,7 @@ void InferRequest::bind_outputs_for_infer(
         },
         remote_setter,
         device_setter,
+        &state.backend->reusable_output_plan,
         allow_missing,
         error_prefix);
 }

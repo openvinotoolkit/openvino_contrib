@@ -49,7 +49,7 @@ Responsibilities:
 - wire the compiled stage pipeline to actual buffers
 - execute the pipeline and collect profiling data
 
-The infer path now has an explicit submission layer. `src/plugin/infer_submission.*` abstracts command-buffer recording and submission windows, while `src/plugin/infer_pipeline.*` can pre-resolve reusable stage-input bindings and reusable output handles for repeated requests.
+The infer path now has an explicit submission layer. `src/plugin/infer_submission.*` abstracts command-buffer recording and submission windows, while `src/plugin/infer_pipeline.*` can pre-resolve reusable stage-input bindings, reusable output bindings, and reusable output handles for repeated requests.
 
 ## Pipeline Model
 The runtime is stage-based.
@@ -76,6 +76,12 @@ During inference, `execute_pipeline_with_submission()` groups recorded stages in
 
 This lets Metal and Vulkan keep different submission mechanics while sharing the same stage-level batching logic.
 
+The reusable infer pipeline layer now has two precomputed plans:
+- `PreparedInferExecutionPlan` for stage inputs that resolve to parameters or previous stage outputs
+- `PreparedInferOutputPlan` for public outputs that resolve to stage outputs, passthrough parameters, or synthetic pipeline entries created for constant outputs
+
+When output shape and element type are statically known, infer requests may also keep reusable host output tensors in backend infer state to avoid recreating host tensors on each execution.
+
 ## MLIR Role
 MLIR lives in `src/mlir/` and is shared infrastructure, not a separate monolithic backend object.
 
@@ -91,6 +97,8 @@ The MLIR pass pipeline also contains parallel-lowering and cleanup steps used by
 Lowered kernels also rely on backend-neutral argument and binding helpers:
 - `src/kernel_ir/gfx_kernel_args.hpp` materializes runtime kernel arguments and can turn scalar byte payloads into cached immutable device buffers
 - `src/runtime/gpu_backend_base.hpp` provides shared prepared-binding caches reused across compatible compiled-kernel wrappers
+
+Outside kernel execution, `src/plugin/infer_pipeline.cpp` can also materialize constant graph outputs into synthetic pipeline tensors so output resolution stays uniform even when the public output does not come from a runtime stage.
 
 ## Metal Backend
 `src/backends/metal/` contains:

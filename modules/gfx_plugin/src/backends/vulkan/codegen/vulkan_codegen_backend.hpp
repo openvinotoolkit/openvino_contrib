@@ -30,6 +30,7 @@ public:
     ~VulkanCompiledKernel() override;
 
     size_t clamp_threadgroup_size(size_t desired) const override;
+    void prepare_runtime_artifacts() override;
     std::shared_ptr<ICompiledKernel> fork() const override;
     void on_submission_complete() override;
     GpuCommandBufferHandle begin_external_commands();

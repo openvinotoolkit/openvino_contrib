@@ -15,11 +15,12 @@ GpuTensor bind_host_input_vulkan(const ov::Tensor& host,
                                  const char* error_prefix);
 
 OutputBindingResult bind_host_output_vulkan(const GpuTensor& dev,
-                                           const OutputViewInfo& info,
-                                           const ov::Tensor* host_override,
-                                           GpuBufferPool* pool,
-                                           BufferHandle* staging_handle,
-                                           const char* error_prefix);
+                                            const OutputViewInfo& info,
+                                            const ov::Tensor* host_override,
+                                            const ov::Tensor* reusable_host,
+                                            GpuBufferPool* pool,
+                                            BufferHandle* staging_handle,
+                                            const char* error_prefix);
 
 }  // namespace gfx_plugin
 }  // namespace ov

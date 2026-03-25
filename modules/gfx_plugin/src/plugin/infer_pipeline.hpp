@@ -48,6 +48,30 @@ struct PreparedInferExecutionPlan {
     std::vector<PreparedStageExecution> stages;
 };
 
+struct OutputSource {
+    std::shared_ptr<const ov::Node> node;
+    size_t port = 0;
+};
+
+enum class PreparedOutputSourceKind {
+    None,
+    Parameter,
+    StageOutput,
+};
+
+struct PreparedOutputBinding {
+    PreparedOutputSourceKind kind = PreparedOutputSourceKind::None;
+    size_t index = 0;
+    size_t port = 0;
+    OutputSource source;
+    ov::Shape static_shape;
+    ov::element::Type static_type = ov::element::dynamic;
+};
+
+struct PreparedInferOutputPlan {
+    std::vector<PreparedOutputBinding> outputs;
+};
+
 bool is_view_op(const InferStage& stage);
 
 std::vector<InferStage> build_infer_pipeline(const std::vector<PipelineStageDesc>& descs,
@@ -70,11 +94,6 @@ ov::element::Type resolve_stage_output_type(const InferStage& stage,
                                             const GpuTensor& out,
                                             size_t out_idx,
                                             const char* error_prefix = "GFX");
-
-struct OutputSource {
-    std::shared_ptr<const ov::Node> node;
-    size_t port = 0;
-};
 
 struct OutputViewInfo {
     OutputSource source;
@@ -109,6 +128,15 @@ void prepare_reusable_execution_plan(
     const std::vector<InferStage>& pipeline,
     const std::unordered_map<const ov::Node*, size_t>& node_map,
     const std::unordered_map<const ov::Node*, size_t>& param_map);
+
+void prepare_reusable_output_plan(
+    PreparedInferOutputPlan& plan,
+    const std::vector<ov::Output<const ov::Node>>& public_outputs,
+    const std::shared_ptr<const ov::Model>& runtime_model,
+    const std::vector<InferStage>& pipeline,
+    const std::unordered_map<const ov::Node*, size_t>& node_map,
+    const std::unordered_map<const ov::Node*, size_t>& param_map,
+    const char* error_prefix = "GFX");
 
 ov::Shape resolve_output_shape(const std::vector<ov::Output<const ov::Node>>& public_outputs,
                                const OutputSource& source,
@@ -195,8 +223,67 @@ inline void for_each_output_tensor(const std::vector<ov::Output<const ov::Node>>
                                    HostOverrideGetter&& host_override_getter,
                                    RemoteHandler&& on_remote,
                                    LocalHandler&& on_local,
+                                   const PreparedInferOutputPlan* prepared_plan,
                                    bool allow_missing,
                                    const char* error_prefix = "GFX") {
+    auto resolve_prepared_output_tensor =
+        [&](const PreparedOutputBinding& prepared) -> GpuTensor* {
+        switch (prepared.kind) {
+        case PreparedOutputSourceKind::Parameter:
+            return input_lookup(prepared.index);
+        case PreparedOutputSourceKind::StageOutput:
+            if (prepared.index >= pipeline.size()) {
+                return nullptr;
+            }
+            if (prepared.port >= pipeline[prepared.index].outputs.size()) {
+                return nullptr;
+            }
+            return pipeline[prepared.index].outputs[prepared.port].get();
+        case PreparedOutputSourceKind::None:
+        default:
+            return nullptr;
+        }
+    };
+
+    auto fill_prepared_output_view =
+        [&](OutputViewInfo& info, const PreparedOutputBinding& prepared, GpuTensor& tensor, size_t out_idx) {
+            info.source = prepared.source;
+            info.shape = !prepared.static_shape.empty()
+                             ? prepared.static_shape
+                             : resolve_output_shape(public_outputs, prepared.source, tensor, out_idx);
+            if (tensor.shape.empty() && !info.shape.empty()) {
+                tensor.shape = info.shape;
+            }
+            info.type = prepared.static_type != ov::element::dynamic
+                            ? prepared.static_type
+                            : resolve_output_element_type(prepared.source, tensor, error_prefix);
+            if (!tensor.shape.empty()) {
+                info.shape = tensor.shape;
+            }
+        };
+
+    if (prepared_plan && prepared_plan->outputs.size() == public_outputs.size()) {
+        for (size_t out_idx = 0; out_idx < public_outputs.size(); ++out_idx) {
+            if (out_idx < remote_outputs.size() && remote_outputs[out_idx]) {
+                on_remote(out_idx, remote_outputs[out_idx]);
+                continue;
+            }
+            const auto& prepared = prepared_plan->outputs[out_idx];
+            auto* dev = resolve_prepared_output_tensor(prepared);
+            if (!dev || !dev->buf.valid()) {
+                if (allow_missing) {
+                    continue;
+                }
+                OPENVINO_THROW(error_prefix, ": output tensor missing (prepared pipeline incomplete)");
+            }
+            OutputViewInfo info;
+            fill_prepared_output_view(info, prepared, *dev, out_idx);
+            auto host_override = host_override_getter(out_idx, info.type, info.shape, error_prefix);
+            on_local(out_idx, *dev, info, host_override);
+        }
+        return;
+    }
+
     for (size_t out_idx = 0; out_idx < public_outputs.size(); ++out_idx) {
         if (out_idx < remote_outputs.size() && remote_outputs[out_idx]) {
             on_remote(out_idx, remote_outputs[out_idx]);

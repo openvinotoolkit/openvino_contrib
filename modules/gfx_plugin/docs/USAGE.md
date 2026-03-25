@@ -100,6 +100,8 @@ The exact type returned by `GFX_MEM_STATS` depends on the active backend impleme
 
 Current runtime implementations also reuse some immutable device resources internally, such as constant buffers or prepared kernel bindings. These caches are internal optimization layers and do not require extra user API calls.
 
+For static output signatures, infer requests may also reuse internal host output tensors when the application does not bind explicit output storage. If the application sets its own output tensor with `set_tensor()`, that user-provided tensor remains authoritative.
+
 ## Remote Contexts And Tensors
 The plugin implements remote context and remote tensor interfaces, but effective capabilities remain backend-specific. If your integration depends on remote memory workflows, inspect:
 - `src/runtime/gfx_remote_context.*`

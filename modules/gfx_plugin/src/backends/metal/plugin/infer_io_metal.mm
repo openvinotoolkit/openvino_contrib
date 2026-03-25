@@ -32,6 +32,7 @@ GpuTensor bind_host_input_metal(const ov::Tensor& host,
 OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
                                           const OutputViewInfo& info,
                                           const ov::Tensor* host_override,
+                                          const ov::Tensor* reusable_host,
                                           IGpuAllocator* allocator,
                                           GpuBufferPool* pool,
                                           BufferHandle* staging_handle,
@@ -40,14 +41,13 @@ OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
     OutputBindingResult result{};
     result.device_tensor = dev;
 
-    HostOutputBinding host_binding = prepare_host_output_binding(info, host_override);
-    size_t bytes = host_binding.bytes;
-
     OPENVINO_ASSERT(allocator, error_prefix, ": GPU allocator is not available");
     OPENVINO_ASSERT(pool, error_prefix, ": GPU buffer pool is not available");
     OPENVINO_ASSERT(staging_handle, error_prefix, ": staging handle is not available");
 
     if (host_override && *host_override) {
+        HostOutputBinding host_binding = prepare_host_output_binding(info, host_override, reusable_host);
+        const size_t bytes = host_binding.bytes;
         pool->release(*staging_handle);
         GpuBuffer shared = allocator->wrap_shared(const_cast<void*>(host_override->data()), bytes, info.type);
         if (bytes && dev.buf.buffer != shared.buffer) {
@@ -75,6 +75,8 @@ OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
         return result;
     }
 
+    HostOutputBinding host_binding = prepare_host_output_binding(info, host_override, reusable_host);
+    size_t bytes = host_binding.bytes;
     if (bytes) {
         GpuBufferDesc desc;
         desc.bytes = bytes;

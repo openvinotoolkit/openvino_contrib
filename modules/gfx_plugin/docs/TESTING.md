@@ -39,7 +39,7 @@ Recent additions in the tree include:
 - `tests/unit/layout_cleanup_test.cpp` for MLIR layout-cleanup behavior
 - `tests/backends/vulkan/vulkan_runtime_test.cpp` for Vulkan runtime regressions
 - `tests/unit/infer_submission_test.cpp` for submission-window behavior
-- `tests/unit/infer_pipeline_reuse_test.cpp` for reusable pipeline and prepared-input plans
+- `tests/unit/infer_pipeline_reuse_test.cpp` for reusable pipeline, prepared-input plans, prepared-output plans, and reusable host-output coverage
 - `tests/unit/gpu_const_cache_test.cpp`, `tests/unit/kernel_arg_reuse_test.cpp`, and `tests/unit/gpu_backend_base_test.cpp` for cache and binding reuse layers
 
 ## Typical Test Suites
@@ -61,6 +61,7 @@ Add or update tests when you change:
 - backend-specialized routes such as chunked or direct Vulkan execution
 - infer submission thresholds, submission ordering, or command-buffer lifecycle
 - immutable const-cache behavior or prepared-binding reuse
+- output-resolution planning, passthrough-output handling, or reusable host-output allocation
 
 ## Practical Strategy
 - run the narrowest relevant gtest filter first

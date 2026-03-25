@@ -55,15 +55,16 @@ GpuTensor bind_host_input_vulkan(const ov::Tensor& host,
 }
 
 OutputBindingResult bind_host_output_vulkan(const GpuTensor& dev,
-                                           const OutputViewInfo& info,
-                                           const ov::Tensor* host_override,
-                                           GpuBufferPool* pool,
-                                           BufferHandle* staging_handle,
-                                           const char* error_prefix) {
+                                            const OutputViewInfo& info,
+                                            const ov::Tensor* host_override,
+                                            const ov::Tensor* reusable_host,
+                                            GpuBufferPool* pool,
+                                            BufferHandle* staging_handle,
+                                            const char* error_prefix) {
     OutputBindingResult result{};
     result.device_tensor = dev;
 
-    HostOutputBinding host_binding = prepare_host_output_binding(info, host_override);
+    HostOutputBinding host_binding = prepare_host_output_binding(info, host_override, reusable_host);
     size_t bytes = host_binding.bytes;
 
     OPENVINO_ASSERT(pool && staging_handle,

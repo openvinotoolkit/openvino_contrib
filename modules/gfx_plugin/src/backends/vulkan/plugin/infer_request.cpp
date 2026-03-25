@@ -376,9 +376,17 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
                                               ov::SoPtr<ov::ITensor>{remote, nullptr});
         },
         [&](size_t idx, GpuTensor& dev, const OutputViewInfo& info, const ov::Tensor* host_override) {
+            const ov::Tensor* reusable_host = nullptr;
+            if (idx < vk_state->reusable_host_output_plan.outputs.size()) {
+                auto& prepared = vk_state->reusable_host_output_plan.outputs[idx];
+                if (prepared.host) {
+                    reusable_host = &prepared.host;
+                }
+            }
             auto bound = bind_host_output_vulkan(dev,
                                                  info,
                                                  host_override,
+                                                 reusable_host,
                                                  &pool,
                                                  &output_handles[idx],
                                                  "GFX Vulkan");

@@ -75,6 +75,24 @@ void materialize_constant_outputs(std::vector<InferStage>& pipeline,
     }
 }
 
+size_t find_pipeline_stage_index(const std::vector<InferStage>& pipeline,
+                                 const ov::Node* node,
+                                 size_t port) {
+    if (!node) {
+        return pipeline.size();
+    }
+    for (size_t stage_idx = 0; stage_idx < pipeline.size(); ++stage_idx) {
+        const auto& stage = pipeline[stage_idx];
+        if (!stage.node || stage.node.get() != node) {
+            continue;
+        }
+        if (port < stage.outputs.size()) {
+            return stage_idx;
+        }
+    }
+    return pipeline.size();
+}
+
 }  // namespace
 
 bool is_view_op(const InferStage& stage) {
@@ -321,6 +339,71 @@ void prepare_reusable_execution_plan(
             prepared.input_refs.push_back(ref);
             prepared.resolved_inputs.push_back(resolved);
         }
+    }
+}
+
+void prepare_reusable_output_plan(
+    PreparedInferOutputPlan& plan,
+    const std::vector<ov::Output<const ov::Node>>& public_outputs,
+    const std::shared_ptr<const ov::Model>& runtime_model,
+    const std::vector<InferStage>& pipeline,
+    const std::unordered_map<const ov::Node*, size_t>& node_map,
+    const std::unordered_map<const ov::Node*, size_t>& param_map,
+    const char* error_prefix) {
+    if (plan.outputs.size() == public_outputs.size()) {
+        bool compatible = true;
+        for (size_t out_idx = 0; out_idx < public_outputs.size(); ++out_idx) {
+            const auto source = resolve_output_source(public_outputs, runtime_model, out_idx);
+            const auto& prepared = plan.outputs[out_idx];
+            if (prepared.source.node != source.node || prepared.source.port != source.port) {
+                compatible = false;
+                break;
+            }
+        }
+        if (compatible) {
+            return;
+        }
+    }
+
+    plan.outputs.assign(public_outputs.size(), {});
+    for (size_t out_idx = 0; out_idx < public_outputs.size(); ++out_idx) {
+        auto& prepared = plan.outputs[out_idx];
+        prepared.source = resolve_output_source(public_outputs, runtime_model, out_idx);
+        if (!prepared.source.node) {
+            continue;
+        }
+
+        if (auto it = node_map.find(prepared.source.node.get()); it != node_map.end()) {
+            prepared.kind = PreparedOutputSourceKind::StageOutput;
+            prepared.index = it->second;
+            prepared.port = prepared.source.port;
+        } else if (auto stage_idx = find_pipeline_stage_index(pipeline,
+                                                              prepared.source.node.get(),
+                                                              prepared.source.port);
+                   stage_idx < pipeline.size()) {
+            prepared.kind = PreparedOutputSourceKind::StageOutput;
+            prepared.index = stage_idx;
+            prepared.port = prepared.source.port;
+        } else if (auto pit = param_map.find(prepared.source.node.get()); pit != param_map.end()) {
+            prepared.kind = PreparedOutputSourceKind::Parameter;
+            prepared.index = pit->second;
+        }
+
+        if (prepared.kind == PreparedOutputSourceKind::StageOutput && prepared.index < pipeline.size() &&
+            prepared.port < pipeline[prepared.index].outputs.size() &&
+            pipeline[prepared.index].outputs[prepared.port]) {
+            const auto& tensor = *pipeline[prepared.index].outputs[prepared.port];
+            prepared.static_shape = resolve_output_shape(public_outputs, prepared.source, tensor, out_idx);
+            prepared.static_type = resolve_output_element_type(prepared.source, tensor, error_prefix);
+            continue;
+        }
+
+        if (prepared.source.node->get_output_partial_shape(prepared.source.port).is_static()) {
+            prepared.static_shape = prepared.source.node->get_output_shape(prepared.source.port);
+        } else if (out_idx < public_outputs.size() && public_outputs[out_idx].get_partial_shape().is_static()) {
+            prepared.static_shape = public_outputs[out_idx].get_shape();
+        }
+        prepared.static_type = prepared.source.node->get_output_element_type(prepared.source.port);
     }
 }
 

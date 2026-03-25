@@ -522,6 +522,15 @@ size_t VulkanCompiledKernel::clamp_threadgroup_size(size_t desired) const {
     return desired == 0 ? 1 : desired;
 }
 
+void VulkanCompiledKernel::prepare_runtime_artifacts() {
+    try {
+        (void)m_program->pipeline_handles();
+    } catch (const std::exception&) {
+        // Some pipelines still require lazy materialization on-device.
+        // Keep compile-time prewarm best-effort and preserve the proven runtime path.
+    }
+}
+
 std::shared_ptr<ICompiledKernel> VulkanCompiledKernel::fork() const {
     return std::make_shared<VulkanCompiledKernel>(m_program, binding_plan(), prepared_binding_cache());
 }

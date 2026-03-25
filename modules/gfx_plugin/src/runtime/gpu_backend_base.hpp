@@ -324,6 +324,7 @@ public:
     virtual uint32_t args_count() const { return 0; }
     virtual void set_args_count(uint32_t /*count*/) {}
     virtual size_t clamp_threadgroup_size(size_t desired) const = 0;
+    virtual void prepare_runtime_artifacts() {}
     // Return a kernel instance that can safely participate in another infer/model.
     // Immutable kernels may return themselves; kernels with mutable execution state
     // must return a fresh wrapper sharing only immutable program artifacts.

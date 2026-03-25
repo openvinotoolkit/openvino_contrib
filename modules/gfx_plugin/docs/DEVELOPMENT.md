@@ -62,6 +62,7 @@ If the change touches infer-request throughput or resource reuse, also read:
 - `src/plugin/infer_pipeline.*`
 - `src/runtime/immutable_gpu_buffer_cache.*`
 - `src/runtime/gpu_backend_base.hpp`
+- `src/plugin/infer_io_utils.*`
 
 ## Adding Or Extending An Op
 Typical path:
@@ -117,6 +118,11 @@ For reuse and submission changes, prefer the focused unit tests under:
 - `tests/unit/kernel_arg_reuse_test.cpp`
 - `tests/unit/gpu_backend_base_test.cpp`
 
+`tests/unit/infer_pipeline_reuse_test.cpp` now also covers:
+- prepared output-resolution plans
+- reusable host output tensors for static outputs
+- reuse of pre-resolved input vectors across repeated executes
+
 ## Documentation Rules For This Module
 - Keep published module docs in English
 - Keep module docs inside `modules/gfx_plugin/`
@@ -130,3 +136,4 @@ For reuse and submission changes, prefer the focused unit tests under:
 - do not put primary module documentation only in repository-level files outside this directory
 - do not leave backend-specific route changes undocumented when they affect supported shapes, layout assumptions, or profiling behavior
 - do not add ad-hoc backend caches before checking whether `ImmutableGpuBufferCache` or the shared prepared-binding cache already solves the problem
+- do not bypass reusable output planning when changing infer I/O paths; keep stage outputs, passthrough outputs, and constant outputs on the same documented resolution path
