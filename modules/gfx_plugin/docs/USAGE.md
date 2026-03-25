@@ -98,6 +98,8 @@ auto mem_stats = compiled.get_property("GFX_MEM_STATS");
 
 The exact type returned by `GFX_MEM_STATS` depends on the active backend implementation and the headers visible to the caller.
 
+Current runtime implementations also reuse some immutable device resources internally, such as constant buffers or prepared kernel bindings. These caches are internal optimization layers and do not require extra user API calls.
+
 ## Remote Contexts And Tensors
 The plugin implements remote context and remote tensor interfaces, but effective capabilities remain backend-specific. If your integration depends on remote memory workflows, inspect:
 - `src/runtime/gfx_remote_context.*`

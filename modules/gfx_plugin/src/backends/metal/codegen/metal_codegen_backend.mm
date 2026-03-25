@@ -5,6 +5,8 @@
 #import "backends/metal/codegen/metal_codegen_backend.hpp"
 
 #include <exception>
+#include <mutex>
+#include <unordered_map>
 #include <vector>
 
 #include "backends/metal/codegen/metal_compiler.hpp"
@@ -16,13 +18,90 @@
 namespace ov {
 namespace gfx_plugin {
 
+class MetalBindingSchema final {
+public:
+    explicit MetalBindingSchema(uint32_t arg_count) : m_arg_count(arg_count) {}
+
+    uint32_t arg_count() const {
+        return m_arg_count;
+    }
+
+private:
+    uint32_t m_arg_count = 0;
+};
+
+class MetalDeviceReuseContext final {
+public:
+    explicit MetalDeviceReuseContext(MetalDeviceHandle device) : m_device(device) {}
+
+    std::shared_ptr<MetalBindingSchema> acquire_binding_schema(uint32_t arg_count) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (auto it = m_binding_schemas.find(arg_count); it != m_binding_schemas.end()) {
+            if (auto schema = it->second.lock()) {
+                return schema;
+            }
+        }
+        auto schema = std::make_shared<MetalBindingSchema>(arg_count);
+        m_binding_schemas[arg_count] = schema;
+        return schema;
+    }
+
+private:
+    MetalDeviceHandle m_device = nullptr;
+    std::mutex m_mutex;
+    std::unordered_map<uint32_t, std::weak_ptr<MetalBindingSchema>> m_binding_schemas;
+};
+
+class MetalDeviceReuseRegistry final {
+public:
+    static MetalDeviceReuseRegistry& instance() {
+        static MetalDeviceReuseRegistry registry;
+        return registry;
+    }
+
+    std::shared_ptr<MetalDeviceReuseContext> acquire(MetalDeviceHandle device) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        const auto key = reinterpret_cast<uintptr_t>(device);
+        if (auto it = m_contexts.find(key); it != m_contexts.end()) {
+            if (auto context = it->second.lock()) {
+                return context;
+            }
+        }
+        auto context = std::make_shared<MetalDeviceReuseContext>(device);
+        m_contexts[key] = context;
+        return context;
+    }
+
+private:
+    std::mutex m_mutex;
+    std::unordered_map<uintptr_t, std::weak_ptr<MetalDeviceReuseContext>> m_contexts;
+};
+
 namespace {
 inline id<MTLBuffer> to_mtl(const GpuBuffer& buf) {
     return (__bridge id<MTLBuffer>)buf.buffer;
 }
+
+class MetalPreparedState final {
+public:
+    explicit MetalPreparedState(const KernelBindingTable& table) {
+        const auto& bindings = table.buffers;
+        buffers.reserve(bindings.size());
+        offsets.reserve(bindings.size());
+        for (const auto& binding : bindings) {
+            buffers.push_back(to_mtl(binding.buffer));
+            offsets.push_back(binding.offset);
+        }
+    }
+
+    std::vector<id<MTLBuffer>> buffers;
+    std::vector<size_t> offsets;
+};
 }  // namespace
 
-MetalCodegenBackend::MetalCodegenBackend(MetalDeviceHandle device) : m_device(device) {}
+MetalCodegenBackend::MetalCodegenBackend(MetalDeviceHandle device)
+    : m_device(device),
+      m_reuse_context(MetalDeviceReuseRegistry::instance().acquire(device)) {}
 
 std::shared_ptr<ICompiledKernel> MetalCodegenBackend::compile(const KernelSource& source,
                                                               std::string* log) {
@@ -44,6 +123,8 @@ std::shared_ptr<ICompiledKernel> MetalCodegenBackend::compile(const KernelSource
 
     const uint32_t arg_count = source.signature.arg_count;
     const uintptr_t device_key = reinterpret_cast<uintptr_t>(m_device);
+    auto shared_prepared_cache = acquire_shared_prepared_binding_cache(GpuBackend::Metal, device_key, arg_count);
+    auto binding_schema = m_reuse_context->acquire_binding_schema(arg_count);
     return lookup_or_compile_kernel(GpuBackend::Metal,
                                     device_key,
                                     msl.data(),
@@ -61,33 +142,47 @@ std::shared_ptr<ICompiledKernel> MetalCodegenBackend::compile(const KernelSource
                                         if (!pipeline) {
                                             return nullptr;
                                         }
+                                        auto binding_plan = std::make_shared<KernelBindingPlan>(arg_count);
                                         return std::make_shared<MetalCompiledKernel>(m_device,
                                                                                      (void*)pipeline,
-                                                                                     arg_count);
+                                                                                     std::move(binding_plan),
+                                                                                     shared_prepared_cache,
+                                                                                     binding_schema);
                                     });
 }
 
 MetalCompiledKernel::MetalCompiledKernel(MetalDeviceHandle device, void* pipeline, uint32_t arg_count)
-    : m_device(device), m_pipeline(pipeline), m_args_count(arg_count) {}
+    : CompiledKernelBase(arg_count), m_device(device), m_pipeline(pipeline) {}
 
-void MetalCompiledKernel::set_args_count(uint32_t count) {
-    if (count == 0) {
-        return;
-    }
-    if (m_args_count == 0) {
-        m_args_count = count;
-        return;
-    }
-    OPENVINO_ASSERT(m_args_count == count,
-                    "MetalCompiledKernel: arg count mismatch (expected ",
-                    m_args_count,
-                    ", got ",
-                    count,
-                    ")");
-}
+MetalCompiledKernel::MetalCompiledKernel(MetalDeviceHandle device,
+                                         void* pipeline,
+                                         std::shared_ptr<const KernelBindingPlan> binding_plan)
+    : CompiledKernelBase(std::move(binding_plan)), m_device(device), m_pipeline(pipeline) {}
+
+MetalCompiledKernel::MetalCompiledKernel(MetalDeviceHandle device,
+                                         void* pipeline,
+                                         std::shared_ptr<const KernelBindingPlan> binding_plan,
+                                         std::shared_ptr<void> prepared_binding_cache,
+                                         std::shared_ptr<MetalBindingSchema> binding_schema)
+    : CompiledKernelBase(std::move(binding_plan), std::move(prepared_binding_cache)),
+      m_device(device),
+      m_pipeline(pipeline),
+      m_binding_schema(std::move(binding_schema)) {}
 
 size_t MetalCompiledKernel::clamp_threadgroup_size(size_t desired) const {
     return metal_clamp_tg_size(m_pipeline, desired);
+}
+
+std::shared_ptr<ICompiledKernel> MetalCompiledKernel::fork() const {
+    return std::make_shared<MetalCompiledKernel>(m_device,
+                                                 m_pipeline,
+                                                 binding_plan(),
+                                                 prepared_binding_cache(),
+                                                 m_binding_schema);
+}
+
+const void* MetalCompiledKernel::shared_binding_schema_identity() const {
+    return m_binding_schema.get();
 }
 
 void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
@@ -97,16 +192,18 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
     id<MTLCommandBuffer> cb = static_cast<id<MTLCommandBuffer>>(command_buffer);
     OPENVINO_ASSERT(cb, "MetalCompiledKernel: command buffer is null");
     OPENVINO_ASSERT(m_pipeline, "MetalCompiledKernel: pipeline is null");
-    const uint32_t runtime_count = ensure_kernel_args_dense(args, "MetalCompiledKernel");
-    set_args_count(runtime_count);
+    auto prepared_base = get_or_create_prepared_bindings(args, "MetalCompiledKernel");
+    auto prepared = prepared_base->get_or_create_backend_state<MetalPreparedState>(
+        reinterpret_cast<uintptr_t>(m_binding_schema.get() ? m_binding_schema.get() : m_device),
+        [&]() {
+            return std::make_shared<MetalPreparedState>(prepared_base->binding_table());
+        });
 
     id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
     [enc setComputePipelineState:(id<MTLComputePipelineState>)m_pipeline];
 
-    for (const auto& arg : args) {
-        OPENVINO_ASSERT(arg.kind == KernelArg::Kind::Buffer,
-                        "MetalCompiledKernel: bytes arguments must be materialized into buffers");
-        [enc setBuffer:to_mtl(arg.buffer) offset:arg.offset atIndex:arg.index];
+    for (size_t index = 0; index < prepared->buffers.size(); ++index) {
+        [enc setBuffer:prepared->buffers[index] offset:prepared->offsets[index] atIndex:index];
     }
 
     if (hooks && hooks->on_begin) {

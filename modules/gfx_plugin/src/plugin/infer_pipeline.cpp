@@ -274,6 +274,56 @@ std::vector<InferStage> build_bound_pipeline(
     return pipeline;
 }
 
+void prepare_reusable_execution_plan(
+    PreparedInferExecutionPlan& plan,
+    const std::vector<InferStage>& pipeline,
+    const std::unordered_map<const ov::Node*, size_t>& node_map,
+    const std::unordered_map<const ov::Node*, size_t>& param_map) {
+    if (plan.stages.size() == pipeline.size()) {
+        bool compatible = true;
+        for (size_t stage_idx = 0; stage_idx < pipeline.size(); ++stage_idx) {
+            if (plan.stages[stage_idx].input_refs.size() != pipeline[stage_idx].inputs.size()) {
+                compatible = false;
+                break;
+            }
+        }
+        if (compatible) {
+            return;
+        }
+    }
+
+    plan.stages.assign(pipeline.size(), {});
+    for (size_t stage_idx = 0; stage_idx < pipeline.size(); ++stage_idx) {
+        const auto& stage = pipeline[stage_idx];
+        auto& prepared = plan.stages[stage_idx];
+        prepared.input_refs.clear();
+        prepared.input_refs.reserve(stage.inputs.size());
+        prepared.resolved_inputs.clear();
+        prepared.resolved_inputs.reserve(stage.inputs.size());
+
+        for (const auto& link : stage.inputs) {
+            PreparedStageInputRef ref{};
+            GpuTensor* resolved = nullptr;
+            if (!link.node) {
+                ref.kind = PreparedStageInputKind::None;
+            } else if (auto pit = param_map.find(link.node.get()); pit != param_map.end()) {
+                ref.kind = PreparedStageInputKind::Parameter;
+                ref.index = pit->second;
+            } else if (auto it = node_map.find(link.node.get()); it != node_map.end()) {
+                ref.kind = PreparedStageInputKind::StageOutput;
+                ref.index = it->second;
+                ref.port = link.port;
+                const auto& src_stage = pipeline[it->second];
+                if (link.port < src_stage.outputs.size()) {
+                    resolved = src_stage.outputs[link.port].get();
+                }
+            }
+            prepared.input_refs.push_back(ref);
+            prepared.resolved_inputs.push_back(resolved);
+        }
+    }
+}
+
 ov::Shape resolve_output_shape(const std::vector<ov::Output<const ov::Node>>& public_outputs,
                                const OutputSource& source,
                                const GpuTensor& tensor,

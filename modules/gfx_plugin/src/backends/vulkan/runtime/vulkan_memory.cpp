@@ -32,6 +32,7 @@ struct UploadContext {
     uint32_t queue_family = 0;
     VkCommandPool pool = VK_NULL_HANDLE;
     VkCommandBuffer cmd = VK_NULL_HANDLE;
+    VkFence fence = VK_NULL_HANDLE;
 
     ~UploadContext() {
         reset();
@@ -42,6 +43,10 @@ struct UploadContext {
             vkFreeCommandBuffers(device, pool, 1, &cmd);
         }
         cmd = VK_NULL_HANDLE;
+        if (fence && device) {
+            vkDestroyFence(device, fence, nullptr);
+        }
+        fence = VK_NULL_HANDLE;
         if (pool && device) {
             vkDestroyCommandPool(device, pool, nullptr);
         }
@@ -76,6 +81,14 @@ struct UploadContext {
         if (res != VK_SUCCESS) {
             reset();
             OPENVINO_THROW("GFX Vulkan: vkAllocateCommandBuffers failed");
+        }
+
+        VkFenceCreateInfo fence_info{};
+        fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        res = vkCreateFence(device, &fence_info, nullptr, &fence);
+        if (res != VK_SUCCESS) {
+            reset();
+            OPENVINO_THROW("GFX Vulkan: vkCreateFence failed");
         }
     }
 };
@@ -149,6 +162,7 @@ GpuBuffer vulkan_allocate_buffer(size_t bytes,
     buf.external = false;
     buf.backend = GpuBackend::Vulkan;
     buf.host_visible = (properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
+    buf.allocation_uid = allocate_gpu_buffer_uid();
     return buf;
 }
 
@@ -287,11 +301,18 @@ void vulkan_copy_buffer(const GpuBuffer& src, const GpuBuffer& dst, size_t bytes
     submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit.commandBufferCount = 1;
     submit.pCommandBuffers = &upload.cmd;
-    res = vkQueueSubmit(ctx.queue(), 1, &submit, VK_NULL_HANDLE);
+    res = vkResetFences(device, 1, &upload.fence);
+    if (res != VK_SUCCESS) {
+        OPENVINO_THROW("GFX Vulkan: vkResetFences failed");
+    }
+    res = vkQueueSubmit(ctx.queue(), 1, &submit, upload.fence);
     if (res != VK_SUCCESS) {
         OPENVINO_THROW("GFX Vulkan: vkQueueSubmit failed");
     }
-    vkQueueWaitIdle(ctx.queue());
+    res = vkWaitForFences(device, 1, &upload.fence, VK_TRUE, UINT64_MAX);
+    if (res != VK_SUCCESS) {
+        OPENVINO_THROW("GFX Vulkan: vkWaitForFences failed");
+    }
 }
 
 GpuBuffer vulkan_upload_device_buffer(const void* src,

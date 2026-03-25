@@ -4,11 +4,10 @@
 #pragma once
 
 #include <cstddef>
-#include <mutex>
-#include <string>
-#include <unordered_map>
+#include <memory>
 
 #include "runtime/gpu_buffer_manager.hpp"
+#include "runtime/immutable_gpu_buffer_cache.hpp"
 #include "backends/vulkan/runtime/gpu_memory.hpp"
 
 namespace ov {
@@ -24,18 +23,10 @@ public:
                          const void* data,
                          size_t bytes,
                          ov::element::Type type) override;
+    const void* shared_const_cache_identity() const;
 
 private:
-    struct ConstEntry {
-        GpuBuffer buffer{};
-        size_t bytes = 0;
-        ov::element::Type type = ov::element::dynamic;
-    };
-
-    mutable std::mutex m_mutex;
-    std::unordered_map<std::string, ConstEntry> m_cache;
-    VulkanGpuAllocator m_device_alloc;
-    VulkanGpuAllocator m_staging_alloc;
+    std::shared_ptr<void> m_reuse_context;
 };
 
 }  // namespace gfx_plugin

@@ -25,6 +25,7 @@
 #include "plugin/infer_profiling_utils.hpp"
 #include "plugin/infer_request_state.hpp"
 #include "plugin/compiled_model_backend_resources.hpp"
+#include "plugin/infer_submission.hpp"
 #include "runtime/gfx_remote_context.hpp"
 #include "plugin/infer_pipeline.hpp"
 #include "plugin/infer_io_utils.hpp"
@@ -57,6 +58,24 @@ inline void release_buffer_handles(std::vector<BufferHandle>& handles, VulkanGpu
     }
 }
 
+struct VulkanCommandSubmission {
+    VkDevice device = VK_NULL_HANDLE;
+    VkQueue queue = VK_NULL_HANDLE;
+    VkCommandPool pool = VK_NULL_HANDLE;
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+    VkFence fence = VK_NULL_HANDLE;
+    bool fence_pending = false;
+
+    ~VulkanCommandSubmission() {
+        if (fence && device) {
+            vkDestroyFence(device, fence, nullptr);
+        }
+        if (pool && device) {
+            vkDestroyCommandPool(device, pool, nullptr);
+        }
+    }
+};
+
 struct VulkanInferState final : BackendInferState {
     ~VulkanInferState() override {
         VulkanGpuAllocator allocator;
@@ -67,6 +86,8 @@ struct VulkanInferState final : BackendInferState {
         }
         release_buffer_handles(output_staging_handles, allocator);
     }
+
+    std::unique_ptr<VulkanCommandSubmission> submission;
 };
 
 VulkanInferState* get_vulkan_state(InferRequestState& state) {
@@ -77,56 +98,70 @@ const VulkanInferState* get_vulkan_state(const InferRequestState& state) {
     return dynamic_cast<const VulkanInferState*>(state.backend.get());
 }
 
-struct VulkanCommandSubmission {
-    VkDevice device = VK_NULL_HANDLE;
-    VkQueue queue = VK_NULL_HANDLE;
-    VkCommandPool pool = VK_NULL_HANDLE;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
+void begin_vulkan_command_buffer(VulkanCommandSubmission& submission) {
+    OPENVINO_ASSERT(submission.device && submission.pool,
+                    "GFX Vulkan: infer command submission is not initialized");
+    OPENVINO_ASSERT(submission.cmd, "GFX Vulkan: infer command buffer is not allocated");
 
-    ~VulkanCommandSubmission() {
-        if (cmd && pool && device) {
-            vkFreeCommandBuffers(device, pool, 1, &cmd);
-        }
-        if (pool && device) {
-            vkDestroyCommandPool(device, pool, nullptr);
-        }
+    VkCommandBufferBeginInfo begin{};
+    begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    VkResult res = vkBeginCommandBuffer(submission.cmd, &begin);
+    if (res != VK_SUCCESS) {
+        OPENVINO_THROW("GFX Vulkan: vkBeginCommandBuffer failed for infer command buffer");
     }
-};
+}
 
-VulkanCommandSubmission begin_vulkan_infer_commands() {
-    VulkanCommandSubmission submission;
+std::unique_ptr<VulkanCommandSubmission> create_vulkan_infer_submission() {
+    auto submission = std::make_unique<VulkanCommandSubmission>();
     auto& ctx = VulkanContext::instance();
-    submission.device = ctx.device();
-    submission.queue = ctx.queue();
+    submission->device = ctx.device();
+    submission->queue = ctx.queue();
 
     VkCommandPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     pool_info.queueFamilyIndex = ctx.queue_family_index();
-    pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-    VkResult res = vkCreateCommandPool(submission.device, &pool_info, nullptr, &submission.pool);
+    pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    VkResult res = vkCreateCommandPool(submission->device, &pool_info, nullptr, &submission->pool);
     if (res != VK_SUCCESS) {
         OPENVINO_THROW("GFX Vulkan: vkCreateCommandPool failed for infer command buffer");
     }
 
     VkCommandBufferAllocateInfo alloc{};
     alloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    alloc.commandPool = submission.pool;
+    alloc.commandPool = submission->pool;
     alloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     alloc.commandBufferCount = 1;
-    res = vkAllocateCommandBuffers(submission.device, &alloc, &submission.cmd);
+    res = vkAllocateCommandBuffers(submission->device, &alloc, &submission->cmd);
     if (res != VK_SUCCESS) {
         OPENVINO_THROW("GFX Vulkan: vkAllocateCommandBuffers failed for infer command buffer");
     }
 
-    VkCommandBufferBeginInfo begin{};
-    begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    res = vkBeginCommandBuffer(submission.cmd, &begin);
+    VkFenceCreateInfo fence_info{};
+    fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    res = vkCreateFence(submission->device, &fence_info, nullptr, &submission->fence);
     if (res != VK_SUCCESS) {
-        OPENVINO_THROW("GFX Vulkan: vkBeginCommandBuffer failed for infer command buffer");
+        OPENVINO_THROW("GFX Vulkan: vkCreateFence failed for infer command buffer: ",
+                       vk_result_to_string(res));
     }
 
     return submission;
+}
+
+void begin_vulkan_infer_commands(VulkanCommandSubmission& submission) {
+    OPENVINO_ASSERT(submission.device && submission.pool,
+                    "GFX Vulkan: infer command submission is not initialized");
+    OPENVINO_ASSERT(submission.cmd, "GFX Vulkan: infer command buffer is not allocated");
+    OPENVINO_ASSERT(submission.fence, "GFX Vulkan: infer fence is not initialized");
+    OPENVINO_ASSERT(!submission.fence_pending,
+                    "GFX Vulkan: infer fence is still pending before beginning a new recording");
+
+    VkResult res = vkResetCommandPool(submission.device, submission.pool, 0);
+    if (res != VK_SUCCESS) {
+        OPENVINO_THROW("GFX Vulkan: vkResetCommandPool failed for infer command buffer: ",
+                       vk_result_to_string(res));
+    }
+    begin_vulkan_command_buffer(submission);
 }
 
 void submit_vulkan_infer_commands(VulkanCommandSubmission& submission) {
@@ -141,43 +176,72 @@ void submit_vulkan_infer_commands(VulkanCommandSubmission& submission) {
     submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit.commandBufferCount = 1;
     submit.pCommandBuffers = &submission.cmd;
-    res = vkQueueSubmit(submission.queue, 1, &submit, VK_NULL_HANDLE);
+    res = vkQueueSubmit(submission.queue, 1, &submit, submission.fence);
     if (res != VK_SUCCESS) {
         OPENVINO_THROW("GFX Vulkan: vkQueueSubmit failed for infer command buffer: ",
                        vk_result_to_string(res));
     }
-    res = vkQueueWaitIdle(submission.queue);
+    submission.fence_pending = true;
+}
+
+void wait_vulkan_infer_commands(VulkanCommandSubmission& submission) {
+    if (!submission.fence_pending) {
+        return;
+    }
+    VkResult res = vkWaitForFences(submission.device, 1, &submission.fence, VK_TRUE, UINT64_MAX);
     if (res != VK_SUCCESS) {
-        OPENVINO_THROW("GFX Vulkan: vkQueueWaitIdle failed for infer command buffer: ",
+        OPENVINO_THROW("GFX Vulkan: vkWaitForFences failed for infer command buffer: ",
                        vk_result_to_string(res));
     }
 }
 
-void notify_pipeline_submission_complete(std::vector<InferStage>& pipeline) {
-    for (auto& stage : pipeline) {
-        if (stage.stage) {
-            stage.stage->on_command_buffer_complete();
+void reset_vulkan_infer_fence(VulkanCommandSubmission& submission) {
+    if (!submission.fence_pending) {
+        return;
+    }
+    VkResult res = vkResetFences(submission.device, 1, &submission.fence);
+    if (res != VK_SUCCESS) {
+        OPENVINO_THROW("GFX Vulkan: vkResetFences failed for infer command buffer: ",
+                       vk_result_to_string(res));
+    }
+    submission.fence_pending = false;
+}
+
+class VulkanInferSubmissionSession final : public SingleFlightInferSubmissionSession {
+public:
+    explicit VulkanInferSubmissionSession(VulkanInferState& state) : m_state(state) {}
+
+protected:
+    void prepare_submission_slot() override {
+        if (!m_state.submission) {
+            m_state.submission = create_vulkan_infer_submission();
         }
     }
-}
 
-void restart_vulkan_infer_commands(VulkanCommandSubmission& submission) {
-    OPENVINO_ASSERT(submission.device && submission.pool && submission.cmd,
-                    "GFX Vulkan: infer command submission is not initialized");
-    VkResult res = vkResetCommandPool(submission.device, submission.pool, 0);
-    if (res != VK_SUCCESS) {
-        OPENVINO_THROW("GFX Vulkan: vkResetCommandPool failed for infer command buffer: ",
-                       vk_result_to_string(res));
+    GpuCommandBufferHandle begin_recording_on_slot() override {
+        OPENVINO_ASSERT(m_state.submission, "GFX Vulkan: infer submission is not initialized");
+        begin_vulkan_infer_commands(*m_state.submission);
+        return reinterpret_cast<GpuCommandBufferHandle>(m_state.submission->cmd);
     }
-    VkCommandBufferBeginInfo begin{};
-    begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    res = vkBeginCommandBuffer(submission.cmd, &begin);
-    if (res != VK_SUCCESS) {
-        OPENVINO_THROW("GFX Vulkan: vkBeginCommandBuffer failed for infer command buffer restart: ",
-                       vk_result_to_string(res));
+
+    void submit_recorded_on_slot(GpuCommandBufferHandle /*command_buffer*/, bool continue_recording) override {
+        OPENVINO_ASSERT(m_state.submission, "GFX Vulkan: infer submission is not initialized");
+        submit_vulkan_infer_commands(*m_state.submission);
+        if (continue_recording) {
+            wait_vulkan_infer_commands(*m_state.submission);
+            reset_vulkan_infer_fence(*m_state.submission);
+        }
     }
-}
+
+    void finish_submission_slot() override {
+        OPENVINO_ASSERT(m_state.submission, "GFX Vulkan: infer submission is not initialized");
+        wait_vulkan_infer_commands(*m_state.submission);
+        reset_vulkan_infer_fence(*m_state.submission);
+    }
+
+private:
+    VulkanInferState& m_state;
+};
 
 }  // namespace
 
@@ -213,7 +277,8 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
     void* stage_profiler = profiler ? profiler->native_handle() : nullptr;
     VulkanGpuAllocator allocator;
     GpuBufferPool pool(allocator);
-    auto pipeline = build_pipeline_with_outputs(
+    auto& pipeline = prepare_reusable_pipeline_with_outputs(
+        vk_state->reusable_pipeline,
         descs,
         resources.const_manager,
         stage_profiler,
@@ -253,6 +318,7 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
                                           error_prefix);
         },
         "GFX Vulkan");
+    prepare_reusable_execution_plan(vk_state->reusable_execution_plan, pipeline, node_map, param_map);
 
     // Create device buffers for inputs (or use remote buffers when provided).
     std::vector<GpuTensor> input_tensors(get_inputs().size());
@@ -273,23 +339,8 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
         },
         "GFX Vulkan");
 
-    // Execute pipeline.
-    constexpr size_t kStagesPerSubmit = 16;
-    constexpr size_t kMaxOutputBytesPerSubmit = 16u * 1024u * 1024u;
-    auto submission = begin_vulkan_infer_commands();
-    size_t recorded_stage_count = 0;
-    size_t recorded_output_bytes = 0;
-    auto flush_submission = [&]() {
-        if (recorded_stage_count == 0) {
-            return;
-        }
-        submit_vulkan_infer_commands(submission);
-        notify_pipeline_submission_complete(pipeline);
-        restart_vulkan_infer_commands(submission);
-        recorded_stage_count = 0;
-        recorded_output_bytes = 0;
-    };
-    execute_pipeline(
+    VulkanInferSubmissionSession submission(*vk_state);
+    execute_pipeline_with_submission(
         pipeline,
         node_map,
         param_map,
@@ -299,34 +350,11 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
             }
             return nullptr;
         },
-        [&](InferStage& stage, const std::vector<GpuTensor*>& /*resolved*/) {
-            const auto policy = stage.stage->submit_policy();
-            if (policy.isolate && recorded_stage_count > 0) {
-                flush_submission();
-            }
-            stage.stage->execute(reinterpret_cast<GpuCommandBufferHandle>(submission.cmd));
-            recorded_stage_count += std::max<size_t>(policy.weight, 1);
-            for (const auto& out : stage.outputs) {
-                if (out && out->buf.valid()) {
-                    recorded_output_bytes += out->buf.size;
-                }
-            }
-            if (policy.isolate ||
-                recorded_stage_count >= kStagesPerSubmit ||
-                recorded_output_bytes >= kMaxOutputBytesPerSubmit) {
-                flush_submission();
-            }
-        });
-    if (recorded_stage_count > 0) {
-        submit_vulkan_infer_commands(submission);
-        notify_pipeline_submission_complete(pipeline);
-    }
+        submission,
+        {},
+        &vk_state->reusable_execution_plan);
 
-    finalize_infer_profiling("vulkan",
-                             cm,
-                             state,
-                             profiler,
-                             reinterpret_cast<GpuCommandBufferHandle>(submission.cmd));
+    finalize_infer_profiling("vulkan", cm, state, profiler, nullptr);
 
     // Copy outputs back to host tensors via host-visible staging buffers.
     ensure_output_staging_handles(get_outputs().size(), "GFX Vulkan");

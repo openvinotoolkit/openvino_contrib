@@ -23,7 +23,7 @@ namespace gfx_plugin {
 
 namespace {
 
-constexpr uint32_t kRecordingDescriptorSetsPerPool = 32;
+constexpr uint32_t kCachedDescriptorSetsPerPool = 32;
 
 std::string vk_result_to_string(VkResult res) {
     switch (res) {
@@ -98,66 +98,444 @@ static uint32_t count_bindings_in_spirv(const std::vector<uint32_t>& words) {
     return found ? (max_binding + 1) : 0;
 }
 
+class VulkanBindingSchema final {
+public:
+    struct PipelineLayoutHandles {
+        VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
+        VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
+    };
+
+    VulkanBindingSchema(VkDevice device, uint32_t binding_count)
+        : m_device(device), m_binding_count(binding_count) {
+        std::vector<VkDescriptorSetLayoutBinding> bindings;
+        bindings.reserve(m_binding_count);
+        for (uint32_t i = 0; i < m_binding_count; ++i) {
+            VkDescriptorSetLayoutBinding binding{};
+            binding.binding = i;
+            binding.descriptorCount = 1;
+            binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+            bindings.push_back(binding);
+        }
+
+        VkDescriptorSetLayoutCreateInfo layout_info{};
+        layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layout_info.bindingCount = static_cast<uint32_t>(bindings.size());
+        layout_info.pBindings = bindings.empty() ? nullptr : bindings.data();
+        VkResult res = vkCreateDescriptorSetLayout(m_device, &layout_info, nullptr, &m_desc_layout);
+        if (res != VK_SUCCESS) {
+            OPENVINO_THROW("GFX Vulkan: vkCreateDescriptorSetLayout failed: ", vk_result_to_string(res));
+        }
+
+        VkPipelineLayoutCreateInfo layout_create{};
+        layout_create.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layout_create.setLayoutCount = 1;
+        layout_create.pSetLayouts = &m_desc_layout;
+        res = vkCreatePipelineLayout(m_device, &layout_create, nullptr, &m_pipeline_layout);
+        if (res != VK_SUCCESS) {
+            OPENVINO_THROW("GFX Vulkan: vkCreatePipelineLayout failed (bindings=",
+                           m_binding_count,
+                           "): ",
+                           vk_result_to_string(res));
+        }
+    }
+
+    ~VulkanBindingSchema() {
+        std::lock_guard<std::mutex> lock(m_descriptor_mutex);
+        for (auto& pool : m_cached_desc_pools) {
+            if (pool.handle) {
+                vkDestroyDescriptorPool(m_device, pool.handle, nullptr);
+            }
+        }
+        m_cached_desc_pools.clear();
+        m_descriptor_set_cache.clear();
+        if (m_pipeline_layout) {
+            vkDestroyPipelineLayout(m_device, m_pipeline_layout, nullptr);
+            m_pipeline_layout = VK_NULL_HANDLE;
+        }
+        if (m_desc_layout) {
+            vkDestroyDescriptorSetLayout(m_device, m_desc_layout, nullptr);
+            m_desc_layout = VK_NULL_HANDLE;
+        }
+    }
+
+    PipelineLayoutHandles pipeline_layout_handles() const {
+        return {m_desc_layout, m_pipeline_layout};
+    }
+
+    size_t cached_descriptor_set_count() const {
+        std::lock_guard<std::mutex> lock(m_descriptor_mutex);
+        return m_descriptor_set_cache.size();
+    }
+
+    VkDescriptorSet acquire_descriptor_set(const KernelBindingTable& bindings,
+                                           const std::vector<VkDescriptorBufferInfo>& buffer_infos) const {
+        std::lock_guard<std::mutex> lock(m_descriptor_mutex);
+        if (auto it = m_descriptor_set_cache.find(bindings); it != m_descriptor_set_cache.end()) {
+            return it->second;
+        }
+
+        if (m_cached_desc_pools.empty() ||
+            m_cached_desc_pools.back().used_sets >= kCachedDescriptorSetsPerPool) {
+            CachedDescriptorPool block;
+            block.handle = create_descriptor_pool_locked(kCachedDescriptorSetsPerPool);
+            m_cached_desc_pools.push_back(block);
+        }
+
+        auto& pool = m_cached_desc_pools.back();
+        VkDescriptorSetAllocateInfo alloc_info{};
+        alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        alloc_info.descriptorPool = pool.handle;
+        alloc_info.descriptorSetCount = 1;
+        alloc_info.pSetLayouts = &m_desc_layout;
+        VkDescriptorSet desc_set = VK_NULL_HANDLE;
+        VkResult res = vkAllocateDescriptorSets(m_device, &alloc_info, &desc_set);
+        if (res != VK_SUCCESS) {
+            OPENVINO_THROW("GFX Vulkan: vkAllocateDescriptorSets failed: ", vk_result_to_string(res));
+        }
+
+        if (!buffer_infos.empty()) {
+            std::vector<VkWriteDescriptorSet> writes;
+            writes.reserve(buffer_infos.size());
+            for (size_t index = 0; index < buffer_infos.size(); ++index) {
+                VkWriteDescriptorSet write{};
+                write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                write.dstSet = desc_set;
+                write.dstBinding = static_cast<uint32_t>(index);
+                write.dstArrayElement = 0;
+                write.descriptorCount = 1;
+                write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                write.pBufferInfo = &buffer_infos[index];
+                writes.push_back(write);
+            }
+            vkUpdateDescriptorSets(m_device,
+                                   static_cast<uint32_t>(writes.size()),
+                                   writes.data(),
+                                   0,
+                                   nullptr);
+        }
+
+        ++pool.used_sets;
+        m_descriptor_set_cache.emplace(bindings, desc_set);
+        return desc_set;
+    }
+
+private:
+    struct CachedDescriptorPool {
+        VkDescriptorPool handle = VK_NULL_HANDLE;
+        uint32_t used_sets = 0;
+    };
+
+    VkDescriptorPool create_descriptor_pool_locked(uint32_t max_sets) const {
+        VkDescriptorPoolSize pool_size{};
+        pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        pool_size.descriptorCount = std::max<uint32_t>(1, m_binding_count) * std::max<uint32_t>(1, max_sets);
+
+        VkDescriptorPoolCreateInfo pool_info{};
+        pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        pool_info.poolSizeCount = 1;
+        pool_info.pPoolSizes = &pool_size;
+        pool_info.maxSets = std::max<uint32_t>(1, max_sets);
+        VkDescriptorPool pool = VK_NULL_HANDLE;
+        VkResult res = vkCreateDescriptorPool(m_device, &pool_info, nullptr, &pool);
+        if (res != VK_SUCCESS) {
+            OPENVINO_THROW("GFX Vulkan: vkCreateDescriptorPool failed: ", vk_result_to_string(res));
+        }
+        return pool;
+    }
+
+    VkDevice m_device = VK_NULL_HANDLE;
+    const uint32_t m_binding_count = 0;
+    VkDescriptorSetLayout m_desc_layout = VK_NULL_HANDLE;
+    VkPipelineLayout m_pipeline_layout = VK_NULL_HANDLE;
+    mutable std::vector<CachedDescriptorPool> m_cached_desc_pools;
+    mutable std::unordered_map<KernelBindingTable, VkDescriptorSet, KernelBindingTableHash> m_descriptor_set_cache;
+    mutable std::mutex m_descriptor_mutex;
+};
+
+class VulkanDeviceReuseContext final {
+public:
+    explicit VulkanDeviceReuseContext(VkDevice device) : m_device(device) {
+        VkPipelineCacheCreateInfo cache_info{};
+        cache_info.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+        VkResult res = vkCreatePipelineCache(m_device, &cache_info, nullptr, &m_pipeline_cache);
+        if (res != VK_SUCCESS) {
+            OPENVINO_THROW("GFX Vulkan: vkCreatePipelineCache failed: ", vk_result_to_string(res));
+        }
+    }
+
+    ~VulkanDeviceReuseContext() {
+        if (m_pipeline_cache) {
+            vkDestroyPipelineCache(m_device, m_pipeline_cache, nullptr);
+            m_pipeline_cache = VK_NULL_HANDLE;
+        }
+    }
+
+    VkPipelineCache pipeline_cache() const {
+        return m_pipeline_cache;
+    }
+
+    VkPipeline create_compute_pipeline(const VkComputePipelineCreateInfo& pipeline_info) {
+        std::lock_guard<std::mutex> lock(m_pipeline_mutex);
+        VkPipeline pipeline = VK_NULL_HANDLE;
+        VkResult res = vkCreateComputePipelines(m_device, m_pipeline_cache, 1, &pipeline_info, nullptr, &pipeline);
+        if (res != VK_SUCCESS) {
+            OPENVINO_THROW("GFX Vulkan: vkCreateComputePipelines failed: ", vk_result_to_string(res));
+        }
+        return pipeline;
+    }
+
+    std::shared_ptr<VulkanBindingSchema> acquire_binding_schema(uint32_t binding_count) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (auto it = m_binding_schemas.find(binding_count); it != m_binding_schemas.end()) {
+            if (auto schema = it->second.lock()) {
+                return schema;
+            }
+        }
+        auto schema = std::make_shared<VulkanBindingSchema>(m_device, binding_count);
+        m_binding_schemas[binding_count] = schema;
+        return schema;
+    }
+
+private:
+    VkDevice m_device = VK_NULL_HANDLE;
+    VkPipelineCache m_pipeline_cache = VK_NULL_HANDLE;
+    std::mutex m_mutex;
+    std::mutex m_pipeline_mutex;
+    std::unordered_map<uint32_t, std::weak_ptr<VulkanBindingSchema>> m_binding_schemas;
+};
+
+class VulkanDeviceReuseRegistry final {
+public:
+    static VulkanDeviceReuseRegistry& instance() {
+        static VulkanDeviceReuseRegistry registry;
+        return registry;
+    }
+
+    std::shared_ptr<VulkanDeviceReuseContext> acquire(VkDevice device) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        const auto key = reinterpret_cast<uintptr_t>(device);
+        if (auto it = m_contexts.find(key); it != m_contexts.end()) {
+            if (auto context = it->second.lock()) {
+                return context;
+            }
+        }
+        auto context = std::make_shared<VulkanDeviceReuseContext>(device);
+        m_contexts[key] = context;
+        return context;
+    }
+
+private:
+    std::mutex m_mutex;
+    std::unordered_map<uintptr_t, std::weak_ptr<VulkanDeviceReuseContext>> m_contexts;
+};
+
 }  // namespace
 
-VulkanCompiledKernel::VulkanCompiledKernel(std::vector<uint32_t> spirv,
-                                           std::string entry_point,
-                                           uint32_t arg_count)
-    : m_spirv(std::move(spirv)), m_entry_point(std::move(entry_point)), m_args_count(arg_count) {
-    auto& ctx = VulkanContext::instance();
-    m_device = ctx.device();
-    m_queue = ctx.queue();
-    m_queue_family = ctx.queue_family_index();
+class VulkanKernelProgram final {
+public:
+    struct PipelineHandles {
+        VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
+        VkPipeline pipeline = VK_NULL_HANDLE;
+        VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
+    };
 
-    VkShaderModuleCreateInfo shader_info{};
-    shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    shader_info.codeSize = m_spirv.size() * sizeof(uint32_t);
-    shader_info.pCode = m_spirv.data();
-    VkResult res = vkCreateShaderModule(m_device, &shader_info, nullptr, &m_shader_module);
-    if (res != VK_SUCCESS) {
-        OPENVINO_THROW("GFX Vulkan: vkCreateShaderModule failed: ", vk_result_to_string(res));
+    VulkanKernelProgram(std::vector<uint32_t> spirv,
+                        std::string entry_point,
+                        uint32_t binding_count,
+                        std::shared_ptr<VulkanDeviceReuseContext> reuse_context)
+        : m_spirv(std::move(spirv)),
+          m_entry_point(std::move(entry_point)),
+          m_binding_count(binding_count),
+          m_reuse_context(std::move(reuse_context)) {
+        auto& ctx = VulkanContext::instance();
+        m_device = ctx.device();
+        m_queue = ctx.queue();
+        m_queue_family = ctx.queue_family_index();
+        OPENVINO_ASSERT(m_reuse_context, "GFX Vulkan: device reuse context is null");
+        m_binding_schema = m_reuse_context->acquire_binding_schema(m_binding_count);
+
+        VkShaderModuleCreateInfo shader_info{};
+        shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        shader_info.codeSize = m_spirv.size() * sizeof(uint32_t);
+        shader_info.pCode = m_spirv.data();
+        VkResult res = vkCreateShaderModule(m_device, &shader_info, nullptr, &m_shader_module);
+        if (res != VK_SUCCESS) {
+            OPENVINO_THROW("GFX Vulkan: vkCreateShaderModule failed: ", vk_result_to_string(res));
+        }
     }
+
+    ~VulkanKernelProgram() {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        destroy_pipeline_locked();
+        if (m_shader_module) {
+            vkDestroyShaderModule(m_device, m_shader_module, nullptr);
+            m_shader_module = VK_NULL_HANDLE;
+        }
+    }
+
+    VkDevice device() const {
+        return m_device;
+    }
+
+    VkQueue queue() const {
+        return m_queue;
+    }
+
+    uint32_t queue_family() const {
+        return m_queue_family;
+    }
+
+    const std::string& entry_point() const {
+        return m_entry_point;
+    }
+
+    PipelineHandles pipeline_handles() const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (!m_pipeline || !m_pipeline_layout || !m_desc_layout) {
+            create_pipeline_locked();
+        }
+        return {m_pipeline_layout, m_pipeline, m_desc_layout};
+    }
+
+    uint32_t binding_count() const {
+        return m_binding_count;
+    }
+
+    size_t cached_descriptor_set_count() const {
+        return m_binding_schema->cached_descriptor_set_count();
+    }
+
+    VkDescriptorSet acquire_descriptor_set(const KernelBindingTable& bindings,
+                                           const std::vector<VkDescriptorBufferInfo>& buffer_infos) const {
+        return m_binding_schema->acquire_descriptor_set(bindings, buffer_infos);
+    }
+
+    std::shared_ptr<VulkanBindingSchema> binding_schema() const {
+        return m_binding_schema;
+    }
+
+    const void* binding_schema_identity() const {
+        return m_binding_schema.get();
+    }
+
+private:
+    void create_pipeline_locked() const {
+        const auto shared_layout = m_binding_schema->pipeline_layout_handles();
+        m_desc_layout = shared_layout.descriptor_set_layout;
+        m_pipeline_layout = shared_layout.pipeline_layout;
+
+        VkComputePipelineCreateInfo pipeline_info{};
+        pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        pipeline_info.layout = m_pipeline_layout;
+        pipeline_info.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        pipeline_info.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        pipeline_info.stage.module = m_shader_module;
+        pipeline_info.stage.pName = m_entry_point.c_str();
+        m_pipeline = m_reuse_context->create_compute_pipeline(pipeline_info);
+    }
+
+    void destroy_pipeline_locked() const {
+        if (m_pipeline) {
+            vkDestroyPipeline(m_device, m_pipeline, nullptr);
+            m_pipeline = VK_NULL_HANDLE;
+        }
+        m_desc_layout = VK_NULL_HANDLE;
+        m_pipeline_layout = VK_NULL_HANDLE;
+    }
+
+    VkDevice m_device = VK_NULL_HANDLE;
+    VkQueue m_queue = VK_NULL_HANDLE;
+    uint32_t m_queue_family = 0;
+    std::vector<uint32_t> m_spirv;
+    std::string m_entry_point;
+    VkShaderModule m_shader_module = VK_NULL_HANDLE;
+    mutable VkPipelineLayout m_pipeline_layout = VK_NULL_HANDLE;
+    mutable VkPipeline m_pipeline = VK_NULL_HANDLE;
+    mutable VkDescriptorSetLayout m_desc_layout = VK_NULL_HANDLE;
+    const uint32_t m_binding_count = 0;
+    std::shared_ptr<VulkanDeviceReuseContext> m_reuse_context;
+    std::shared_ptr<VulkanBindingSchema> m_binding_schema;
+    mutable std::mutex m_mutex;
+};
+
+class VulkanPreparedState final {
+public:
+    VulkanPreparedState(const KernelBindingTable& table, std::shared_ptr<VulkanBindingSchema> binding_schema)
+        : m_binding_schema(std::move(binding_schema)) {
+        OPENVINO_ASSERT(m_binding_schema, "GFX Vulkan: prepared state binding schema is null");
+        const auto& bindings = table.buffers;
+        buffer_infos.reserve(bindings.size());
+        for (size_t index = 0; index < bindings.size(); ++index) {
+            const auto& binding = bindings[index];
+            VkBuffer buffer = vk_buffer_from_gpu(binding.buffer);
+            OPENVINO_ASSERT(buffer, "GFX Vulkan: missing VkBuffer for prepared arg ", index);
+
+            VkDescriptorBufferInfo info{};
+            info.buffer = buffer;
+            info.offset = binding.offset;
+            info.range = binding.buffer.size ? binding.buffer.size - binding.offset : VK_WHOLE_SIZE;
+            buffer_infos.push_back(info);
+        }
+        descriptor_set = m_binding_schema->acquire_descriptor_set(table, buffer_infos);
+    }
+
+    VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
+    std::vector<VkDescriptorBufferInfo> buffer_infos;
+
+private:
+    std::shared_ptr<VulkanBindingSchema> m_binding_schema;
+};
+
+VulkanCompiledKernel::VulkanCompiledKernel(std::shared_ptr<VulkanKernelProgram> program, uint32_t arg_count)
+    : CompiledKernelBase(arg_count), m_program(std::move(program)) {
+    OPENVINO_ASSERT(m_program, "GFX Vulkan: compiled kernel program is null");
+    m_device = m_program->device();
+    m_queue = m_program->queue();
+    m_queue_family = m_program->queue_family();
+}
+
+VulkanCompiledKernel::VulkanCompiledKernel(std::shared_ptr<VulkanKernelProgram> program,
+                                           std::shared_ptr<const KernelBindingPlan> binding_plan)
+    : CompiledKernelBase(std::move(binding_plan)), m_program(std::move(program)) {
+    OPENVINO_ASSERT(m_program, "GFX Vulkan: compiled kernel program is null");
+    m_device = m_program->device();
+    m_queue = m_program->queue();
+    m_queue_family = m_program->queue_family();
+}
+
+VulkanCompiledKernel::VulkanCompiledKernel(std::shared_ptr<VulkanKernelProgram> program,
+                                           std::shared_ptr<const KernelBindingPlan> binding_plan,
+                                           std::shared_ptr<void> prepared_binding_cache)
+    : CompiledKernelBase(std::move(binding_plan), std::move(prepared_binding_cache)), m_program(std::move(program)) {
+    OPENVINO_ASSERT(m_program, "GFX Vulkan: compiled kernel program is null");
+    m_device = m_program->device();
+    m_queue = m_program->queue();
+    m_queue_family = m_program->queue_family();
 }
 
 VulkanCompiledKernel::~VulkanCompiledKernel() {
-    destroy_pipeline();
-    if (m_shader_module) {
-        vkDestroyShaderModule(m_device, m_shader_module, nullptr);
-        m_shader_module = VK_NULL_HANDLE;
-    }
-}
-
-void VulkanCompiledKernel::set_args_count(uint32_t count) {
-    if (count == 0) {
-        return;
-    }
-    if (m_args_count == 0) {
-        m_args_count = count;
-        return;
-    }
-    OPENVINO_ASSERT(m_args_count == count,
-                    "GFX Vulkan: arg count mismatch (expected ",
-                    m_args_count,
-                    ", got ",
-                    count,
-                    ")");
+    destroy_execution_state();
 }
 
 size_t VulkanCompiledKernel::clamp_threadgroup_size(size_t desired) const {
     return desired == 0 ? 1 : desired;
 }
 
+std::shared_ptr<ICompiledKernel> VulkanCompiledKernel::fork() const {
+    return std::make_shared<VulkanCompiledKernel>(m_program, binding_plan(), prepared_binding_cache());
+}
+
+size_t VulkanCompiledKernel::cached_descriptor_set_count() {
+    return m_program->cached_descriptor_set_count();
+}
+
+const void* VulkanCompiledKernel::shared_binding_schema_identity() const {
+    return m_program->binding_schema_identity();
+}
+
 void VulkanCompiledKernel::on_submission_complete() {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    for (auto& pool : m_recording_desc_pools) {
-        if (pool.handle) {
-            VkResult res = vkResetDescriptorPool(m_device, pool.handle, 0);
-            if (res != VK_SUCCESS) {
-                OPENVINO_THROW("GFX Vulkan: vkResetDescriptorPool failed: ", vk_result_to_string(res));
-            }
-        }
-        pool.used_sets = 0;
-    }
+    // Descriptor sets are cached across submissions using immutable binding keys.
 }
 
 GpuCommandBufferHandle VulkanCompiledKernel::begin_external_commands() {
@@ -173,59 +551,15 @@ void VulkanCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
                                    const KernelDispatch& dispatch,
                                    const std::vector<KernelArg>& args,
                                    const KernelExecutionHooks* hooks) {
-    const uint32_t runtime_count = ensure_kernel_args_dense(args, "GFX Vulkan");
-    set_args_count(runtime_count);
-    const uint32_t binding_count = runtime_count;
-    ensure_pipeline(binding_count);
+    auto prepared_base = get_or_create_prepared_bindings(args, "GFX Vulkan");
+    const auto pipeline = m_program->pipeline_handles();
     const bool owns_command_buffer = (command_buffer == nullptr);
-    const VkDescriptorSet desc_set = acquire_descriptor_set(!owns_command_buffer);
-
-    std::vector<VkWriteDescriptorSet> writes;
-    std::vector<VkDescriptorBufferInfo> buffer_infos;
-    writes.reserve(args.size());
-    buffer_infos.reserve(args.size());
-
-    for (const auto& arg : args) {
-        OPENVINO_ASSERT(arg.kind == KernelArg::Kind::Buffer,
-                        "GFX Vulkan: bytes arguments must be materialized into buffers");
-        VkBuffer buffer = VK_NULL_HANDLE;
-        size_t size = 0;
-        size_t offset = arg.offset;
-
-        buffer = vk_buffer_from_gpu(arg.buffer);
-        size = arg.buffer.size;
-
-        OPENVINO_ASSERT(buffer,
-                        "GFX Vulkan: missing VkBuffer for arg ",
-                        arg.index,
-                        " (kernel ",
-                        m_entry_point,
-                        ")");
-
-        VkDescriptorBufferInfo info{};
-        info.buffer = buffer;
-        info.offset = offset;
-        info.range = size ? size - offset : VK_WHOLE_SIZE;
-        buffer_infos.push_back(info);
-
-        VkWriteDescriptorSet write{};
-        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write.dstSet = desc_set;
-        write.dstBinding = arg.index;
-        write.dstArrayElement = 0;
-        write.descriptorCount = 1;
-        write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        write.pBufferInfo = &buffer_infos.back();
-        writes.push_back(write);
-    }
-
-    if (!writes.empty()) {
-        vkUpdateDescriptorSets(m_device,
-                               static_cast<uint32_t>(writes.size()),
-                               writes.data(),
-                               0,
-                               nullptr);
-    }
+    auto prepared = prepared_base->get_or_create_backend_state<VulkanPreparedState>(
+        reinterpret_cast<uintptr_t>(m_program->binding_schema_identity()),
+        [&]() {
+            return std::make_shared<VulkanPreparedState>(prepared_base->binding_table(), m_program->binding_schema());
+        });
+    const VkDescriptorSet desc_set = prepared->descriptor_set;
 
     VkCommandBuffer cmd = owns_command_buffer ? begin_commands()
                                               : reinterpret_cast<VkCommandBuffer>(command_buffer);
@@ -234,10 +568,10 @@ void VulkanCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
         hooks->on_begin(reinterpret_cast<GpuCommandEncoderHandle>(cmd));
     }
 
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_pipeline);
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.pipeline);
     vkCmdBindDescriptorSets(cmd,
                             VK_PIPELINE_BIND_POINT_COMPUTE,
-                            m_pipeline_layout,
+                            pipeline.pipeline_layout,
                             0,
                             1,
                             &desc_set,
@@ -295,179 +629,34 @@ void VulkanCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
     }
 }
 
-void VulkanCompiledKernel::ensure_pipeline(uint32_t binding_count) {
+void VulkanCompiledKernel::destroy_execution_state() {
     std::lock_guard<std::mutex> lock(m_mutex);
-    if (m_pipeline && binding_count == m_binding_count) {
-        return;
-    }
-
-    destroy_pipeline_locked();
-
-    m_binding_count = binding_count;
-    std::vector<VkDescriptorSetLayoutBinding> bindings;
-    bindings.reserve(binding_count);
-    for (uint32_t i = 0; i < binding_count; ++i) {
-        VkDescriptorSetLayoutBinding binding{};
-        binding.binding = i;
-        binding.descriptorCount = 1;
-        binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        bindings.push_back(binding);
-    }
-
-    VkDescriptorSetLayoutCreateInfo layout_info{};
-    layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layout_info.bindingCount = static_cast<uint32_t>(bindings.size());
-    layout_info.pBindings = bindings.empty() ? nullptr : bindings.data();
-    VkResult res = vkCreateDescriptorSetLayout(m_device, &layout_info, nullptr, &m_desc_layout);
-    if (res != VK_SUCCESS) {
-        OPENVINO_THROW("GFX Vulkan: vkCreateDescriptorSetLayout failed: ", vk_result_to_string(res));
-    }
-
-    VkPipelineLayoutCreateInfo layout_create{};
-    layout_create.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    layout_create.setLayoutCount = 1;
-    layout_create.pSetLayouts = &m_desc_layout;
-    res = vkCreatePipelineLayout(m_device, &layout_create, nullptr, &m_pipeline_layout);
-    if (res != VK_SUCCESS) {
-        OPENVINO_THROW("GFX Vulkan: vkCreatePipelineLayout failed (bindings=",
-                       bindings.size(),
-                       "): ",
-                       vk_result_to_string(res));
-    }
-
-    VkComputePipelineCreateInfo pipeline_info{};
-    pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-    pipeline_info.layout = m_pipeline_layout;
-    pipeline_info.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    pipeline_info.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    pipeline_info.stage.module = m_shader_module;
-    pipeline_info.stage.pName = m_entry_point.c_str();
-    res = vkCreateComputePipelines(m_device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_pipeline);
-    if (res != VK_SUCCESS) {
-        OPENVINO_THROW("GFX Vulkan: vkCreateComputePipelines failed (bindings=",
-                       bindings.size(),
-                       "): ",
-                       vk_result_to_string(res));
-    }
-
-    VkDescriptorPoolSize pool_size{};
-    pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    pool_size.descriptorCount = std::max<uint32_t>(1, binding_count);
-
-    VkDescriptorPoolCreateInfo pool_info{};
-    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_info.poolSizeCount = 1;
-    pool_info.pPoolSizes = &pool_size;
-    pool_info.maxSets = 1;
-    res = vkCreateDescriptorPool(m_device, &pool_info, nullptr, &m_desc_pool);
-    if (res != VK_SUCCESS) {
-        OPENVINO_THROW("GFX Vulkan: vkCreateDescriptorPool failed: ", vk_result_to_string(res));
-    }
-
-    VkDescriptorSetAllocateInfo alloc_info{};
-    alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    alloc_info.descriptorPool = m_desc_pool;
-    alloc_info.descriptorSetCount = 1;
-    alloc_info.pSetLayouts = &m_desc_layout;
-    res = vkAllocateDescriptorSets(m_device, &alloc_info, &m_desc_set);
-    if (res != VK_SUCCESS) {
-        OPENVINO_THROW("GFX Vulkan: vkAllocateDescriptorSets failed: ", vk_result_to_string(res));
-    }
-
-    VkCommandPoolCreateInfo pool_ci{};
-    pool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    pool_ci.queueFamilyIndex = m_queue_family;
-    pool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    res = vkCreateCommandPool(m_device, &pool_ci, nullptr, &m_command_pool);
-    if (res != VK_SUCCESS) {
-        OPENVINO_THROW("GFX Vulkan: vkCreateCommandPool failed: ", vk_result_to_string(res));
-    }
+    destroy_execution_state_locked();
 }
 
-void VulkanCompiledKernel::destroy_pipeline() {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    destroy_pipeline_locked();
-}
-
-void VulkanCompiledKernel::destroy_pipeline_locked() {
+void VulkanCompiledKernel::destroy_execution_state_locked() {
     if (m_command_pool) {
         vkDestroyCommandPool(m_device, m_command_pool, nullptr);
         m_command_pool = VK_NULL_HANDLE;
     }
-    for (auto& pool : m_recording_desc_pools) {
-        if (pool.handle) {
-            vkDestroyDescriptorPool(m_device, pool.handle, nullptr);
-        }
-    }
-    m_recording_desc_pools.clear();
-    if (m_desc_pool) {
-        vkDestroyDescriptorPool(m_device, m_desc_pool, nullptr);
-        m_desc_pool = VK_NULL_HANDLE;
-    }
-    if (m_desc_layout) {
-        vkDestroyDescriptorSetLayout(m_device, m_desc_layout, nullptr);
-        m_desc_layout = VK_NULL_HANDLE;
-    }
-    if (m_pipeline) {
-        vkDestroyPipeline(m_device, m_pipeline, nullptr);
-        m_pipeline = VK_NULL_HANDLE;
-    }
-    if (m_pipeline_layout) {
-        vkDestroyPipelineLayout(m_device, m_pipeline_layout, nullptr);
-        m_pipeline_layout = VK_NULL_HANDLE;
-    }
-    m_desc_set = VK_NULL_HANDLE;
-    m_binding_count = 0;
-}
-
-VkDescriptorPool VulkanCompiledKernel::create_descriptor_pool_locked(uint32_t max_sets) const {
-    VkDescriptorPoolSize pool_size{};
-    pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    pool_size.descriptorCount = std::max<uint32_t>(1, m_binding_count) * std::max<uint32_t>(1, max_sets);
-
-    VkDescriptorPoolCreateInfo pool_info{};
-    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_info.poolSizeCount = 1;
-    pool_info.pPoolSizes = &pool_size;
-    pool_info.maxSets = std::max<uint32_t>(1, max_sets);
-    VkDescriptorPool pool = VK_NULL_HANDLE;
-    VkResult res = vkCreateDescriptorPool(m_device, &pool_info, nullptr, &pool);
-    if (res != VK_SUCCESS) {
-        OPENVINO_THROW("GFX Vulkan: vkCreateDescriptorPool failed: ", vk_result_to_string(res));
-    }
-    return pool;
-}
-
-VkDescriptorSet VulkanCompiledKernel::acquire_descriptor_set(bool unique_for_recording) {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    if (!unique_for_recording) {
-        return m_desc_set;
-    }
-
-    if (m_recording_desc_pools.empty() ||
-        m_recording_desc_pools.back().used_sets >= kRecordingDescriptorSetsPerPool) {
-        RecordingDescriptorPool block;
-        block.handle = create_descriptor_pool_locked(kRecordingDescriptorSetsPerPool);
-        m_recording_desc_pools.push_back(block);
-    }
-
-    auto& pool = m_recording_desc_pools.back();
-    VkDescriptorSetAllocateInfo alloc_info{};
-    alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    alloc_info.descriptorPool = pool.handle;
-    alloc_info.descriptorSetCount = 1;
-    alloc_info.pSetLayouts = &m_desc_layout;
-    VkDescriptorSet desc_set = VK_NULL_HANDLE;
-    VkResult res = vkAllocateDescriptorSets(m_device, &alloc_info, &desc_set);
-    if (res != VK_SUCCESS) {
-        OPENVINO_THROW("GFX Vulkan: vkAllocateDescriptorSets failed: ", vk_result_to_string(res));
-    }
-    ++pool.used_sets;
-    return desc_set;
 }
 
 VkCommandBuffer VulkanCompiledKernel::begin_commands() {
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (!m_command_pool) {
+            VkCommandPoolCreateInfo pool_ci{};
+            pool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+            pool_ci.queueFamilyIndex = m_queue_family;
+            pool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+            VkResult create_res = vkCreateCommandPool(m_device, &pool_ci, nullptr, &m_command_pool);
+            if (create_res != VK_SUCCESS) {
+                OPENVINO_THROW("GFX Vulkan: vkCreateCommandPool failed: ",
+                               vk_result_to_string(create_res));
+            }
+        }
+    }
+
     VkCommandBufferAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     alloc_info.commandPool = m_command_pool;
@@ -500,13 +689,23 @@ void VulkanCompiledKernel::end_commands(VkCommandBuffer cmd) {
     submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit_info.commandBufferCount = 1;
     submit_info.pCommandBuffers = &cmd;
-    res = vkQueueSubmit(m_queue, 1, &submit_info, VK_NULL_HANDLE);
+    VkFenceCreateInfo fence_info{};
+    fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    VkFence fence = VK_NULL_HANDLE;
+    res = vkCreateFence(m_device, &fence_info, nullptr, &fence);
     if (res != VK_SUCCESS) {
+        vkFreeCommandBuffers(m_device, m_command_pool, 1, &cmd);
+        OPENVINO_THROW("GFX Vulkan: vkCreateFence failed: ", vk_result_to_string(res));
+    }
+    res = vkQueueSubmit(m_queue, 1, &submit_info, fence);
+    if (res != VK_SUCCESS) {
+        vkDestroyFence(m_device, fence, nullptr);
         OPENVINO_THROW("GFX Vulkan: vkQueueSubmit failed: ", vk_result_to_string(res));
     }
-    res = vkQueueWaitIdle(m_queue);
+    res = vkWaitForFences(m_device, 1, &fence, VK_TRUE, UINT64_MAX);
+    vkDestroyFence(m_device, fence, nullptr);
     if (res != VK_SUCCESS) {
-        OPENVINO_THROW("GFX Vulkan: vkQueueWaitIdle failed: ", vk_result_to_string(res));
+        OPENVINO_THROW("GFX Vulkan: vkWaitForFences failed: ", vk_result_to_string(res));
     }
 
     vkFreeCommandBuffers(m_device, m_command_pool, 1, &cmd);
@@ -518,6 +717,7 @@ VulkanCodegenBackend::VulkanCodegenBackend(VulkanDeviceHandle device) : m_device
         m_device = ctx.device();
         m_physical_device = ctx.physical_device();
     }
+    m_reuse_context = VulkanDeviceReuseRegistry::instance().acquire(static_cast<VkDevice>(m_device));
 }
 
 std::shared_ptr<ICompiledKernel> VulkanCodegenBackend::compile(const KernelSource& source, std::string* log) {
@@ -539,20 +739,34 @@ std::shared_ptr<ICompiledKernel> VulkanCodegenBackend::compile(const KernelSourc
 
     uint32_t arg_count = static_cast<uint32_t>(
         infer_kernel_arg_count_from_module(module, source.signature.arg_count));
+    const uint32_t spirv_binding_count = count_bindings_in_spirv(spirv_binary);
+    const uint32_t binding_count = arg_count != 0 ? arg_count : spirv_binding_count;
     if (const char* dump_env = std::getenv("OV_GFX_DUMP_SPIRV_BINDINGS")) {
-        uint32_t bind_count = count_bindings_in_spirv(spirv_binary);
-        if (bind_count && bind_count != arg_count) {
+        if (spirv_binding_count && spirv_binding_count != arg_count) {
             std::cerr << "[GFX][Vulkan] entry=" << entry
                       << " arg_count=" << arg_count
-                      << " spirv_bindings=" << bind_count << std::endl;
+                      << " spirv_bindings=" << spirv_binding_count << std::endl;
         }
     }
-    // VulkanCompiledKernel owns mutable execution state (descriptor pools/sets and
-    // command pools), so reusing one instance across unrelated compiled models is
-    // unsafe even when the SPIR-V bytecode matches.
-    return std::make_shared<VulkanCompiledKernel>(std::move(spirv_binary),
-                                                  std::move(entry),
-                                                  arg_count);
+    const uintptr_t device_key = reinterpret_cast<uintptr_t>(m_device);
+    auto shared_prepared_cache = acquire_shared_prepared_binding_cache(GpuBackend::Vulkan, device_key, arg_count);
+    return lookup_or_compile_kernel(GpuBackend::Vulkan,
+                                    device_key,
+                                    spirv_binary.data(),
+                                    spirv_binary.size() * sizeof(uint32_t),
+                                    entry,
+                                    arg_count,
+                                    [&]() -> std::shared_ptr<ICompiledKernel> {
+                                        auto program =
+                                            std::make_shared<VulkanKernelProgram>(std::move(spirv_binary),
+                                                                                  entry,
+                                                                                  binding_count,
+                                                                                  std::static_pointer_cast<VulkanDeviceReuseContext>(m_reuse_context));
+                                        auto binding_plan = std::make_shared<KernelBindingPlan>(arg_count);
+                                        return std::make_shared<VulkanCompiledKernel>(std::move(program),
+                                                                                      std::move(binding_plan),
+                                                                                      shared_prepared_cache);
+                                    });
 }
 
 }  // namespace gfx_plugin

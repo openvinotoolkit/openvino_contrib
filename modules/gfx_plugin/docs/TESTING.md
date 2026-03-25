@@ -38,6 +38,9 @@ Recent additions in the tree include:
 - `tests/unit/gfx_parallelism_test.cpp` for backend-neutral parallelism-plan selection
 - `tests/unit/layout_cleanup_test.cpp` for MLIR layout-cleanup behavior
 - `tests/backends/vulkan/vulkan_runtime_test.cpp` for Vulkan runtime regressions
+- `tests/unit/infer_submission_test.cpp` for submission-window behavior
+- `tests/unit/infer_pipeline_reuse_test.cpp` for reusable pipeline and prepared-input plans
+- `tests/unit/gpu_const_cache_test.cpp`, `tests/unit/kernel_arg_reuse_test.cpp`, and `tests/unit/gpu_backend_base_test.cpp` for cache and binding reuse layers
 
 ## Typical Test Suites
 Examples already present in the tree:
@@ -56,6 +59,8 @@ Add or update tests when you change:
 - MLIR support probing
 - stage policy, parallelism selection, or input-transform absorption
 - backend-specialized routes such as chunked or direct Vulkan execution
+- infer submission thresholds, submission ordering, or command-buffer lifecycle
+- immutable const-cache behavior or prepared-binding reuse
 
 ## Practical Strategy
 - run the narrowest relevant gtest filter first
@@ -73,3 +78,4 @@ If you change MLIR lowering, prefer a unit test that inspects the emitted IR for
 - Metal tests require a valid Metal runtime environment
 - Vulkan tests depend on Vulkan being enabled and available in the build
 - `ov_gfx_compare_runner` is useful for numeric diffs and per-op narrowing when a failure is hard to isolate from the full suite
+- Reuse-related regressions are often easier to catch with focused unit tests than with full end-to-end backend suites

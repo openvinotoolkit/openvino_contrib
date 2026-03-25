@@ -112,7 +112,7 @@ inline std::shared_ptr<ICompiledKernel> lookup_or_compile_kernel(GpuBackend back
                                                      entry,
                                                      arg_count);
     if (auto cached = GfxKernelCache::instance().lookup(key)) {
-        return cached;
+        return cached->fork();
     }
     auto kernel = std::forward<CompileFn>(compile_fn)();
     if (kernel) {

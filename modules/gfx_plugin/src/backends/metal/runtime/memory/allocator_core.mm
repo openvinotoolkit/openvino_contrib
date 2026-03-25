@@ -58,6 +58,7 @@ MetalBuffer MetalAllocatorCore::create_buffer(const BufferDesc& desc) {
     out.persistent = false;
     out.backend = GpuBackend::Metal;
     out.host_visible = (out.storage_mode == static_cast<uint32_t>(MTLStorageModeShared));
+    out.allocation_uid = allocate_gpu_buffer_uid();
 #else
     (void)desc;
     OPENVINO_THROW("MetalAllocatorCore::create_buffer requires Objective-C++ (Metal)");
@@ -85,6 +86,7 @@ MetalBuffer MetalAllocatorCore::create_buffer_from_heap(MetalHeapHandle heap, co
     out.persistent = false;
     out.backend = GpuBackend::Metal;
     out.host_visible = (out.storage_mode == static_cast<uint32_t>(MTLStorageModeShared));
+    out.allocation_uid = allocate_gpu_buffer_uid();
 #else
     (void)heap;
     (void)desc;
@@ -137,6 +139,7 @@ MetalBuffer MetalAllocatorCore::wrap_shared(void* ptr, size_t bytes, ov::element
     out.from_handle = true;
     out.backend = GpuBackend::Metal;
     out.host_visible = true;
+    out.allocation_uid = allocate_gpu_buffer_uid();
 #else
     (void)ptr;
     (void)bytes;

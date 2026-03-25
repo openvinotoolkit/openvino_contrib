@@ -49,6 +49,8 @@ Responsibilities:
 - wire the compiled stage pipeline to actual buffers
 - execute the pipeline and collect profiling data
 
+The infer path now has an explicit submission layer. `src/plugin/infer_submission.*` abstracts command-buffer recording and submission windows, while `src/plugin/infer_pipeline.*` can pre-resolve reusable stage-input bindings and reusable output handles for repeated requests.
+
 ## Pipeline Model
 The runtime is stage-based.
 
@@ -66,6 +68,14 @@ Two interface points are important in the current code:
 - how expensive a stage is for submission ordering
 - which convolution family or algorithm should be preferred
 
+During inference, `execute_pipeline_with_submission()` groups recorded stages into submission windows. The current grouping rules use:
+- `GpuStageSubmitPolicy`
+- maximum stages per submit
+- maximum recorded output bytes per submit
+- backend support for incremental submit versus single-flight submit
+
+This lets Metal and Vulkan keep different submission mechanics while sharing the same stage-level batching logic.
+
 ## MLIR Role
 MLIR lives in `src/mlir/` and is shared infrastructure, not a separate monolithic backend object.
 
@@ -78,6 +88,10 @@ Current lowering also supports absorbed input transforms. `CompiledModel` detect
 
 The MLIR pass pipeline also contains parallel-lowering and cleanup steps used by current Vulkan codegen, including Conv2D parallel lowering, Conv2D im2col rewrite/lowering, matmul parallel lowering, and post-fusion cleanup passes.
 
+Lowered kernels also rely on backend-neutral argument and binding helpers:
+- `src/kernel_ir/gfx_kernel_args.hpp` materializes runtime kernel arguments and can turn scalar byte payloads into cached immutable device buffers
+- `src/runtime/gpu_backend_base.hpp` provides shared prepared-binding caches reused across compatible compiled-kernel wrappers
+
 ## Metal Backend
 `src/backends/metal/` contains:
 - `plugin/`: backend state creation, infer request, remote context, remote tensor
@@ -85,6 +99,8 @@ The MLIR pass pipeline also contains parallel-lowering and cleanup steps used by
 - `codegen/`: Metal shader compilation helpers
 
 Direct Metal API usage lives in Objective-C++ files (`.mm`).
+
+The current Metal backend also shares immutable constant-buffer state across compatible requests through `MetalConstCache` and the backend-neutral immutable buffer cache helper.
 
 ## Vulkan Backend
 `src/backends/vulkan/` mirrors the same broad split:
@@ -99,6 +115,7 @@ The current Vulkan runtime also:
 - uses those limits when selecting parallelism and stage execution policy
 - contains specialized execution routes for chunked unary/binary/softmax/layout ops and for multiple Conv2D or GroupConv2D cases
 - supports direct handling of some common binary patterns such as same-shape and bias-add style cases
+- reuses immutable constant buffers and prepared descriptor bindings across compatible submissions
 
 ## Remote Contexts And Tensors
 The shared abstractions are:

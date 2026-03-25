@@ -126,6 +126,25 @@ TEST_F(GfxBufferManagerTest, PersistentAndPerInferAreSeparated) {
     EXPECT_EQ(p_ptr, static_cast<id<MTLBuffer>>(persist.buffer));
 }
 
+TEST_F(GfxBufferManagerTest, ConstCacheContextIsSharedAcrossCacheInstances) {
+    MetalConstCache second_cache(*allocator, queue);
+    EXPECT_EQ(const_cache->shared_cache_identity(), second_cache.shared_cache_identity());
+
+    const uint32_t values[4] = {1u, 2u, 3u, 4u};
+    BufferDesc desc;
+    desc.bytes = sizeof(values);
+    desc.type = ov::element::u32;
+    desc.storage = MetalStorage::Private;
+    desc.usage = BufferUsage::Const;
+
+    auto first = const_cache->get_or_create("shared_weights", values, sizeof(values), desc);
+    auto second = second_cache.get_or_create("shared_weights", values, sizeof(values), desc);
+
+    ASSERT_TRUE(first.valid());
+    ASSERT_TRUE(second.valid());
+    EXPECT_EQ(first.buffer, second.buffer);
+}
+
 class GfxTensorMapTest : public ::testing::Test {
 protected:
     id<MTLDevice> device = nil;

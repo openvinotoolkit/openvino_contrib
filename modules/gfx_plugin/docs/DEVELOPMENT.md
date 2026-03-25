@@ -57,6 +57,12 @@ If the behavior depends on route or scheduling selection, also read:
 - `src/runtime/gfx_parallelism.*`
 - the active backend executor, especially under `src/backends/vulkan/runtime/`
 
+If the change touches infer-request throughput or resource reuse, also read:
+- `src/plugin/infer_submission.*`
+- `src/plugin/infer_pipeline.*`
+- `src/runtime/immutable_gpu_buffer_cache.*`
+- `src/runtime/gpu_backend_base.hpp`
+
 ## Adding Or Extending An Op
 Typical path:
 1. Add or extend MLIR support in `src/mlir/`
@@ -70,6 +76,7 @@ For the current codebase, also check whether the op should participate in:
 - stage policy selection in `src/runtime/gfx_stage_policy.*`
 - MLIR parallel lowering or cleanup passes
 - backend-specialized fast paths such as Vulkan direct or chunked routes
+- reusable bytes-arg materialization or immutable const-buffer caching
 
 If the op needs fusion support, inspect:
 - `src/transforms/`
@@ -103,6 +110,13 @@ These are implemented directly in the runtime and codegen sources; grep for `OV_
 
 For functional comparison against a reference backend, build and run `tests/tools/ov_gfx_compare_runner.cpp`. It is useful when a new path changes numerics or when you need a per-op comparison window instead of only a gtest suite.
 
+For reuse and submission changes, prefer the focused unit tests under:
+- `tests/unit/infer_submission_test.cpp`
+- `tests/unit/infer_pipeline_reuse_test.cpp`
+- `tests/unit/gpu_const_cache_test.cpp`
+- `tests/unit/kernel_arg_reuse_test.cpp`
+- `tests/unit/gpu_backend_base_test.cpp`
+
 ## Documentation Rules For This Module
 - Keep published module docs in English
 - Keep module docs inside `modules/gfx_plugin/`
@@ -115,3 +129,4 @@ For functional comparison against a reference backend, build and run `tests/tool
 - do not document removed architectures as current behavior
 - do not put primary module documentation only in repository-level files outside this directory
 - do not leave backend-specific route changes undocumented when they affect supported shapes, layout assumptions, or profiling behavior
+- do not add ad-hoc backend caches before checking whether `ImmutableGpuBufferCache` or the shared prepared-binding cache already solves the problem

@@ -4,37 +4,27 @@
 #pragma once
 
 #include <cstddef>
+#include <memory>
 #include <string>
-#include <unordered_map>
-#include <vector>
-
 #include "backends/metal/runtime/memory/allocator.hpp"
+#include "runtime/immutable_gpu_buffer_cache.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 
-struct ConstKey {
-    std::string id;
-    bool operator==(const ConstKey& other) const { return id == other.id; }
-};
-
-struct ConstKeyHash {
-    size_t operator()(const ConstKey& k) const { return std::hash<std::string>{}(k.id); }
-};
+class MetalConstCacheContext;
 
 class MetalConstCache {
 public:
     MetalConstCache(MetalAllocator& persistent_alloc, MetalCommandQueueHandle queue);
     ~MetalConstCache();
 
-    const MetalBuffer& get_or_create(const ConstKey& key, const void* data, size_t bytes, const BufferDesc& desc);
-    size_t total_bytes() const { return m_total_bytes; }
+    MetalBuffer get_or_create(const std::string& key, const void* data, size_t bytes, const BufferDesc& desc);
+    size_t total_bytes() const;
+    const void* shared_cache_identity() const;
 
 private:
-    MetalAllocator& m_alloc;
-    MetalCommandQueueHandle m_queue = nullptr;
-    std::unordered_map<ConstKey, MetalBuffer, ConstKeyHash> m_cache;
-    size_t m_total_bytes = 0;
+    std::shared_ptr<MetalConstCacheContext> m_context;
 };
 
 }  // namespace gfx_plugin

@@ -22,6 +22,7 @@ The codebase uses a shared frontend and a stage-based runtime:
 Recent runtime work extends this model in two directions:
 - compile-time stage planning now picks layout, fusion, and execution policy per stage
 - backend runtimes, especially Vulkan, can choose specialized direct or chunked execution routes for selected ops
+- infer execution can batch stage recording into submission windows and reuse prepared bindings or immutable device buffers across requests
 
 This is not the old monolithic `MlirBackend` architecture that earlier design notes experimented with.
 
@@ -71,17 +72,27 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 - command submission
 - profiling collection
 
+The current infer path is not a naive "execute one stage, submit immediately" loop. `src/plugin/infer_submission.*` and `src/plugin/infer_pipeline.*` now provide:
+- reusable bound pipelines and prepared input-resolution plans
+- submission windows driven by stage submit policy, stage count, and output-byte thresholds
+- backend-specific submission sessions for Metal and Vulkan
+
 ### Backend-neutral runtime
 `src/runtime/` contains:
 - `GpuStage`: execution-stage interface
 - `GpuStageFactory` / `ExecutionDispatcher`: backend-specific stage dispatch
 - `gfx_stage_policy.*`: runtime route, fusion, and submit-policy selection
+- `immutable_gpu_buffer_cache.*`: backend-neutral cache for immutable device buffers
 - shared remote context/tensor abstractions
-- common tensor, buffer, logging, and parallelism helpers
+- common tensor, buffer, logging, kernel-binding, and parallelism helpers
 
 `GpuStage` now exposes two hooks that affect real runtime behavior:
 - `set_input_transform()`: lets a stage consume an absorbed transpose as metadata instead of materializing a separate runtime stage
 - `submit_policy()`: lets a stage communicate scheduling weight or isolation requirements to the infer pipeline
+
+The runtime also has explicit reuse layers:
+- immutable constant payloads can be cached as device buffers through backend const-cache implementations
+- compiled kernels can reuse prepared binding tables through shared backend-neutral cache helpers in `gpu_backend_base.hpp`
 
 ## Backend Selection
 The plugin has two layers of backend choice:
@@ -124,6 +135,7 @@ Commonly used properties:
 - `GFX_MEM_STATS`
 - `ov::device::id`
 - `ov::enable_profiling`
+- `ov::loaded_from_cache`
 - legacy `PERF_COUNT`
 
 See `src/plugin/gfx_property_lists.cpp` for the exact supported property sets exposed by the plugin and by compiled models.
@@ -135,6 +147,7 @@ Practical meanings:
 - `GFX_PROFILING_REPORT`: fetch the latest profiling report from a compiled model
 - `GFX_MEM_STATS`: fetch backend memory statistics from a compiled model
 - `ov::device::id`: select a device index when the active backend supports it
+- `ov::loaded_from_cache`: report whether the OpenVINO model-cache path loaded this compiled model
 
 ## Build
 Assuming an OpenVINO Developer Package is available:
@@ -218,6 +231,7 @@ Recent regression coverage includes:
 - im2col rewrite coverage, including the batch-1 plain-matmul route
 - absorbed input-transform tests for Add, Conv2D, GroupConv2D, and Split
 - Vulkan runtime regression coverage in `tests/backends/vulkan/`
+- infer submission, prepared-pipeline reuse, immutable-const-cache reuse, and shared kernel-binding reuse tests
 
 ## Debugging And Instrumentation
 Useful environment variables from the current codebase:
@@ -237,6 +251,7 @@ For output-quality checks against a reference backend, use `ov_gfx_compare_runne
 - `import_model()` re-creates an OpenVINO model and recompiles it for the resolved backend.
 - `export_model()` writes model data, not a serialized GPU pipeline cache.
 - Remote contexts and remote tensors are available, but practical capabilities still depend on the active backend implementation.
+- Runtime submissions and constant-buffer reuse are backend-aware internals; they improve execution behavior but do not change the plugin's external OpenVINO contract.
 
 ## Developer Documentation
 All developer-facing documentation intended for publication from this directory lives under `docs/`:

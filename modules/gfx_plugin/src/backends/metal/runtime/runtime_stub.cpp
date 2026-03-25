@@ -160,17 +160,24 @@ void MetalAllocator::release(MetalBuffer&& /*buf*/) {}
 
 void MetalAllocator::set_profiler(MetalProfiler* /*profiler*/, bool /*detailed*/) {}
 
-MetalConstCache::MetalConstCache(MetalAllocator& persistent_alloc, MetalCommandQueueHandle /*queue*/)
-    : m_alloc(persistent_alloc) {
+MetalConstCache::MetalConstCache(MetalAllocator& /*persistent_alloc*/, MetalCommandQueueHandle /*queue*/) {
     throw_metal_unavailable();
 }
 
 MetalConstCache::~MetalConstCache() = default;
 
-const MetalBuffer& MetalConstCache::get_or_create(const ConstKey& /*key*/,
-                                                  const void* /*data*/,
-                                                  size_t /*bytes*/,
-                                                  const BufferDesc& /*desc*/) {
+MetalBuffer MetalConstCache::get_or_create(const std::string& /*key*/,
+                                           const void* /*data*/,
+                                           size_t /*bytes*/,
+                                           const BufferDesc& /*desc*/) {
+    throw_metal_unavailable();
+}
+
+size_t MetalConstCache::total_bytes() const {
+    throw_metal_unavailable();
+}
+
+const void* MetalConstCache::shared_cache_identity() const {
     throw_metal_unavailable();
 }
 

@@ -474,11 +474,11 @@ MetalBuffer MetalBufferManager::wrap_const(const std::string& key,
     desc.usage = BufferUsage::Const;
     OPENVINO_ASSERT(m_const_cache, "GFX: const cache is required for Metal constants");
     if (aligned == bytes) {
-        return m_const_cache->get_or_create(ConstKey{key}, data, bytes, desc);
+        return m_const_cache->get_or_create(key, data, bytes, desc);
     }
     std::vector<uint8_t> padded(aligned, 0);
     std::memcpy(padded.data(), data, bytes);
-    return m_const_cache->get_or_create(ConstKey{key}, padded.data(), aligned, desc);
+    return m_const_cache->get_or_create(key, padded.data(), aligned, desc);
 }
 
 }  // namespace gfx_plugin

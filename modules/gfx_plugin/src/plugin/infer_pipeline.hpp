@@ -27,6 +27,27 @@ struct InferStage {
     std::vector<PipelineStageDesc::InputLink> inputs;
 };
 
+enum class PreparedStageInputKind {
+    None,
+    Parameter,
+    StageOutput,
+};
+
+struct PreparedStageInputRef {
+    PreparedStageInputKind kind = PreparedStageInputKind::None;
+    size_t index = 0;
+    size_t port = 0;
+};
+
+struct PreparedStageExecution {
+    std::vector<PreparedStageInputRef> input_refs;
+    std::vector<GpuTensor*> resolved_inputs;
+};
+
+struct PreparedInferExecutionPlan {
+    std::vector<PreparedStageExecution> stages;
+};
+
 bool is_view_op(const InferStage& stage);
 
 std::vector<InferStage> build_infer_pipeline(const std::vector<PipelineStageDesc>& descs,
@@ -82,6 +103,12 @@ std::vector<InferStage> build_bound_pipeline(
     const std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_inputs,
     GpuBackend expected_backend,
     const char* error_prefix = "GFX");
+
+void prepare_reusable_execution_plan(
+    PreparedInferExecutionPlan& plan,
+    const std::vector<InferStage>& pipeline,
+    const std::unordered_map<const ov::Node*, size_t>& node_map,
+    const std::unordered_map<const ov::Node*, size_t>& param_map);
 
 ov::Shape resolve_output_shape(const std::vector<ov::Output<const ov::Node>>& public_outputs,
                                const OutputSource& source,
@@ -237,7 +264,38 @@ inline void execute_pipeline(std::vector<InferStage>& pipeline,
                              const std::unordered_map<const ov::Node*, size_t>& node_map,
                              const std::unordered_map<const ov::Node*, size_t>& param_map,
                              InputLookup&& input_lookup,
-                             StageFn&& on_stage) {
+                             StageFn&& on_stage,
+                             PreparedInferExecutionPlan* prepared_plan = nullptr) {
+    auto resolve_prepared_inputs = [&](PreparedStageExecution& prepared) -> std::vector<GpuTensor*>& {
+        for (size_t input_idx = 0; input_idx < prepared.input_refs.size(); ++input_idx) {
+            const auto& ref = prepared.input_refs[input_idx];
+            auto& resolved = prepared.resolved_inputs[input_idx];
+            switch (ref.kind) {
+            case PreparedStageInputKind::Parameter:
+                resolved = input_lookup(ref.index);
+                break;
+            case PreparedStageInputKind::StageOutput:
+            case PreparedStageInputKind::None:
+            default:
+                break;
+            }
+        }
+        return prepared.resolved_inputs;
+    };
+
+    if (prepared_plan && prepared_plan->stages.size() == pipeline.size()) {
+        for (size_t stage_idx = 0; stage_idx < pipeline.size(); ++stage_idx) {
+            auto& stage = pipeline[stage_idx];
+            auto& resolved = resolve_prepared_inputs(prepared_plan->stages[stage_idx]);
+            if (!stage.stage) {
+                continue;
+            }
+            stage.stage->set_inputs(resolved);
+            on_stage(stage, resolved);
+        }
+        return;
+    }
+
     for (auto& stage : pipeline) {
         auto resolved = resolve_stage_inputs(stage,
                                              node_map,

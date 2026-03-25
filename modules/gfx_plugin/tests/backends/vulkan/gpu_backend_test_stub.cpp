@@ -13,10 +13,14 @@ namespace {
 
 TEST(GfxBackendTest, CompileAndExecuteKernel) {
     std::string log;
-    auto spirv = build_stub_spirv("gfx_stub", &log);
-    ASSERT_FALSE(spirv.empty()) << log;
+    VulkanCodegenBackend backend;
+    KernelSource src;
+    src.entry_point = "gfx_stub";
+    src.signature.arg_count = 0;
+    src.spirv_binary = build_stub_spirv("gfx_stub", &log);
+    ASSERT_FALSE(src.spirv_binary.empty()) << log;
 
-    auto kernel = std::make_shared<VulkanCompiledKernel>(std::move(spirv), "gfx_stub", 0);
+    auto kernel = backend.compile(src);
     ASSERT_TRUE(kernel);
 
     KernelDispatch dispatch;

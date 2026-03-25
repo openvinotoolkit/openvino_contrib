@@ -65,6 +65,43 @@ bool init_stage_output_desc(GpuBackend backend,
     return true;
 }
 
+void reset_reusable_pipeline_outputs(std::vector<InferStage>& pipeline) {
+    for (auto& stage : pipeline) {
+        if (!stage.stage) {
+            continue;
+        }
+        for (auto& out : stage.outputs) {
+            if (!out) {
+                continue;
+            }
+            out->buf = {};
+        }
+    }
+}
+
+void configure_pipeline_profiling(std::vector<InferStage>& pipeline,
+                                  void* profiler,
+                                  bool profiling_enabled) {
+    for (size_t stage_id = 0; stage_id < pipeline.size(); ++stage_id) {
+        auto& stage = pipeline[stage_id];
+        if (!stage.stage) {
+            continue;
+        }
+        stage.stage->enable_profiling(profiling_enabled);
+        if (!profiling_enabled || !profiler) {
+            continue;
+        }
+        const std::string node_name =
+            stage.node ? stage.node->get_friendly_name() : stage.stage->name();
+        const std::string node_type =
+            stage.node ? stage.node->get_type_name() : stage.stage->type();
+        stage.stage->set_profiler(profiler,
+                                  static_cast<uint32_t>(stage_id),
+                                  node_name,
+                                  node_type);
+    }
+}
+
 void release_stage_output_handles(std::vector<BufferHandle>& handles, GpuBufferPool& pool) {
     for (auto& handle : handles) {
         pool.release(handle);

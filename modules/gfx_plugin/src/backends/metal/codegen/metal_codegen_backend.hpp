@@ -16,6 +16,9 @@
 namespace ov {
 namespace gfx_plugin {
 
+class MetalBindingSchema;
+class MetalDeviceReuseContext;
+
 class MetalCodegenBackend final : public ICodegenBackend {
 public:
     explicit MetalCodegenBackend(MetalDeviceHandle device);
@@ -25,24 +28,34 @@ public:
 
 private:
     MetalDeviceHandle m_device = nullptr;
+    std::shared_ptr<MetalDeviceReuseContext> m_reuse_context;
 };
 
-class MetalCompiledKernel final : public ICompiledKernel {
+class MetalCompiledKernel final : public CompiledKernelBase,
+                                  public std::enable_shared_from_this<MetalCompiledKernel> {
 public:
     explicit MetalCompiledKernel(MetalDeviceHandle device, void* pipeline, uint32_t arg_count = 0);
+    MetalCompiledKernel(MetalDeviceHandle device,
+                        void* pipeline,
+                        std::shared_ptr<const KernelBindingPlan> binding_plan);
+    MetalCompiledKernel(MetalDeviceHandle device,
+                        void* pipeline,
+                        std::shared_ptr<const KernelBindingPlan> binding_plan,
+                        std::shared_ptr<void> prepared_binding_cache,
+                        std::shared_ptr<MetalBindingSchema> binding_schema);
 
-    uint32_t args_count() const override { return m_args_count; }
-    void set_args_count(uint32_t count) override;
     size_t clamp_threadgroup_size(size_t desired) const override;
+    std::shared_ptr<ICompiledKernel> fork() const override;
     void execute(GpuCommandBufferHandle command_buffer,
                  const KernelDispatch& dispatch,
                  const std::vector<KernelArg>& args,
                  const KernelExecutionHooks* hooks = nullptr) override;
+    const void* shared_binding_schema_identity() const;
 
 private:
     MetalDeviceHandle m_device = nullptr;
     void* m_pipeline = nullptr;
-    uint32_t m_args_count = 0;
+    std::shared_ptr<MetalBindingSchema> m_binding_schema;
 };
 
 }  // namespace gfx_plugin

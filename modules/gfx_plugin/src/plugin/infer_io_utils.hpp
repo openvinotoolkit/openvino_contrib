@@ -45,6 +45,12 @@ bool init_stage_output_desc(GpuBackend backend,
                             bool skip_view_ops,
                             const char* error_prefix);
 
+void reset_reusable_pipeline_outputs(std::vector<InferStage>& pipeline);
+
+void configure_pipeline_profiling(std::vector<InferStage>& pipeline,
+                                  void* profiler,
+                                  bool profiling_enabled);
+
 void release_stage_output_handles(std::vector<BufferHandle>& handles, GpuBufferPool& pool);
 
 void prepare_stage_output_handles(std::vector<std::vector<BufferHandle>>& stage_handles,
@@ -90,6 +96,61 @@ inline std::vector<InferStage> build_pipeline_with_outputs(
                            std::forward<DescribeOutputFn>(describe_output),
                            error_prefix);
     return pipeline;
+}
+
+template <typename PostBuildFn, typename DescribeOutputFn>
+inline std::vector<InferStage>& prepare_reusable_pipeline_with_outputs(
+    std::vector<InferStage>& reusable_pipeline,
+    const std::vector<PipelineStageDesc>& descs,
+    GpuBufferManager* buffer_manager,
+    void* profiler,
+    bool profiling_enabled,
+    const std::shared_ptr<const ov::Model>& runtime_model,
+    const std::vector<ov::Output<const ov::Node>>& outputs,
+    const std::unordered_map<const ov::Node*, size_t>& node_map,
+    const std::unordered_map<const ov::Node*, size_t>& param_map,
+    std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_outputs,
+    const std::vector<std::shared_ptr<GfxRemoteTensor>>& remote_inputs,
+    GpuBackend expected_backend,
+    GpuBufferPool& pool,
+    std::vector<std::vector<BufferHandle>>& stage_handles,
+    PostBuildFn&& post_build,
+    DescribeOutputFn&& describe_output,
+    const char* error_prefix) {
+    if (reusable_pipeline.empty()) {
+        reusable_pipeline = build_bound_pipeline(descs,
+                                                buffer_manager,
+                                                profiler,
+                                                profiling_enabled,
+                                                runtime_model,
+                                                outputs,
+                                                node_map,
+                                                param_map,
+                                                remote_outputs,
+                                                remote_inputs,
+                                                expected_backend,
+                                                error_prefix);
+    }
+
+    configure_pipeline_profiling(reusable_pipeline, profiler, profiling_enabled);
+    reset_reusable_pipeline_outputs(reusable_pipeline);
+    normalize_remote_outputs(remote_outputs, expected_backend, error_prefix);
+    bind_remote_outputs(outputs,
+                        runtime_model,
+                        node_map,
+                        param_map,
+                        remote_outputs,
+                        remote_inputs,
+                        reusable_pipeline,
+                        error_prefix);
+    post_build(reusable_pipeline);
+    prepare_stage_output_handles(stage_handles, reusable_pipeline, pool, /*release_view_only=*/true);
+    allocate_stage_outputs(reusable_pipeline,
+                           stage_handles,
+                           pool,
+                           std::forward<DescribeOutputFn>(describe_output),
+                           error_prefix);
+    return reusable_pipeline;
 }
 
 template <typename OutputLookupFn,

@@ -166,6 +166,45 @@ TEST(GfxTransforms, SinkTransposeThroughReluAndEliminatePair) {
     EXPECT_EQ(folded_relu->get_output_partial_shape(0), ov::PartialShape({1, 4, 16, 8400}));
 }
 
+TEST(GfxTransforms, DeduplicateEquivalentTransposeReshapeBranches) {
+    auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{4, 2, 32, 400});
+
+    auto perm = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{4}, {0, 3, 1, 2});
+    auto reshape_shape = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{4}, {1, 40, 40, 64});
+
+    auto transpose0 = std::make_shared<ov::op::v1::Transpose>(input, perm);
+    auto reshape0 = std::make_shared<ov::op::v1::Reshape>(transpose0, reshape_shape, true);
+    auto relu0 = std::make_shared<ov::op::v0::Relu>(reshape0);
+
+    auto transpose1 = std::make_shared<ov::op::v1::Transpose>(input, perm);
+    auto reshape1 = std::make_shared<ov::op::v1::Reshape>(transpose1, reshape_shape, true);
+    auto softmax1 = std::make_shared<ov::op::v8::Softmax>(reshape1, 3);
+
+    auto result0 = std::make_shared<ov::op::v0::Result>(relu0);
+    auto result1 = std::make_shared<ov::op::v0::Result>(softmax1);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{result0, result1}, ov::ParameterVector{input}, "dedup_transpose_reshape");
+
+    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
+    ASSERT_TRUE(transformed);
+
+    int transpose_count = 0;
+    int reshape_count = 0;
+    std::shared_ptr<ov::op::v1::Reshape> shared_reshape;
+    for (const auto& node : transformed->get_ordered_ops()) {
+        if (ov::as_type_ptr<ov::op::v1::Transpose>(node)) {
+            ++transpose_count;
+        }
+        if (auto reshape_node = ov::as_type_ptr<ov::op::v1::Reshape>(node)) {
+            ++reshape_count;
+            shared_reshape = reshape_node;
+        }
+    }
+
+    EXPECT_EQ(transpose_count, 1);
+    EXPECT_EQ(reshape_count, 1);
+    ASSERT_TRUE(shared_reshape);
+}
+
 TEST(GfxTransforms, FoldDflSoftmaxExpectationToReduceSum) {
     auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 64, 8400});
     auto reshape_shape = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{4}, {1, 4, 16, 8400});

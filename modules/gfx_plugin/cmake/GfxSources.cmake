@@ -18,6 +18,7 @@ set(GFX_PLUGIN_SOURCES
     ${_gfx_src_dir}/plugin/infer_request_common.cpp
     ${_gfx_src_dir}/plugin/infer_io_utils.cpp
     ${_gfx_src_dir}/plugin/infer_pipeline.cpp
+    ${_gfx_src_dir}/plugin/infer_submission.cpp
     ${_gfx_src_dir}/plugin/model_serialization.cpp
     ${_gfx_src_dir}/plugin/plugin.cpp
     ${_gfx_src_dir}/plugin/remote_context_support.cpp
@@ -36,6 +37,7 @@ set(GFX_PLUGIN_HEADERS
     ${_gfx_src_dir}/plugin/gfx_property_lists.hpp
     ${_gfx_src_dir}/plugin/infer_request_state.hpp
     ${_gfx_src_dir}/plugin/infer_pipeline.hpp
+    ${_gfx_src_dir}/plugin/infer_submission.hpp
     ${_gfx_src_dir}/plugin/model_serialization.hpp
     ${_gfx_src_dir}/plugin/remote_context_support.hpp
     ${_gfx_src_dir}/transforms/gfx_layout_cleanup.hpp
@@ -65,6 +67,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/gpu_buffer_pool.hpp
     ${_gfx_src_dir}/runtime/gpu_stage.hpp
     ${_gfx_src_dir}/runtime/execution_dispatcher.hpp
+    ${_gfx_src_dir}/runtime/immutable_gpu_buffer_cache.hpp
     ${_gfx_src_dir}/runtime/gpu_tensor.hpp
     ${_gfx_src_dir}/runtime/gpu_types.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_codegen_backend.hpp
@@ -88,6 +91,7 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.cpp
     ${_gfx_src_dir}/runtime/execution_dispatcher.cpp
+    ${_gfx_src_dir}/runtime/immutable_gpu_buffer_cache.cpp
     ${_gfx_src_dir}/runtime/memory_manager.cpp
     ${_gfx_src_dir}/runtime/gfx_logger.cpp
     ${_gfx_src_dir}/runtime/gfx_op_utils.cpp

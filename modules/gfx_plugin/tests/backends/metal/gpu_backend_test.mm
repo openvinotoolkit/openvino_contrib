@@ -103,6 +103,54 @@ kernel void add1(device float* data [[buffer(0)]],
     }
 }
 
+TEST(GfxBackendTest, BindingSchemaIsSharedAcrossDistinctProgramsWithSameAbi) {
+    id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+    ASSERT_NE(device, nil);
+
+    const char* source = R"MSL(
+#include <metal_stdlib>
+using namespace metal;
+kernel void add1(device float* data [[buffer(0)]],
+                 constant uint& n [[buffer(1)]],
+                 uint gid [[thread_position_in_grid]]) {
+  if (gid >= n) return;
+  data[gid] += 1.0f;
+}
+kernel void add2(device float* data [[buffer(0)]],
+                 constant uint& n [[buffer(1)]],
+                 uint gid [[thread_position_in_grid]]) {
+  if (gid >= n) return;
+  data[gid] += 2.0f;
+}
+)MSL";
+
+    mlir::MLIRContext ctx;
+    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+
+    KernelSource first_ks;
+    first_ks.module = module;
+    first_ks.entry_point = "add1";
+    first_ks.msl_source = source;
+    first_ks.signature.arg_count = 2;
+
+    KernelSource second_ks = first_ks;
+    second_ks.entry_point = "add2";
+
+    MetalCodegenBackend backend((MetalDeviceHandle)device);
+    std::string log;
+    auto first = backend.compile(first_ks, &log);
+    ASSERT_TRUE(first) << log;
+    auto second = backend.compile(second_ks, &log);
+    ASSERT_TRUE(second) << log;
+
+    auto* first_metal = dynamic_cast<MetalCompiledKernel*>(first.get());
+    auto* second_metal = dynamic_cast<MetalCompiledKernel*>(second.get());
+    ASSERT_NE(first_metal, nullptr);
+    ASSERT_NE(second_metal, nullptr);
+    EXPECT_EQ(first_metal->shared_binding_schema_identity(),
+              second_metal->shared_binding_schema_identity());
+}
+
 }  // namespace
 }  // namespace gfx_plugin
 }  // namespace ov

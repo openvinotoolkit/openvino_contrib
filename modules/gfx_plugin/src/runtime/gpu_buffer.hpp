@@ -3,6 +3,7 @@
 //
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
@@ -23,6 +24,11 @@ enum class GpuBackend { Metal, Vulkan };
 
 enum class BufferUsage { IO, Const, Intermediate, Temp, Staging };
 
+inline uint64_t allocate_gpu_buffer_uid() {
+    static std::atomic<uint64_t> next_uid{1};
+    return next_uid.fetch_add(1, std::memory_order_relaxed);
+}
+
 struct GpuBuffer {
     GpuBufferHandle buffer = nullptr;
     size_t size = 0;                // bytes (aligned)
@@ -38,6 +44,7 @@ struct GpuBuffer {
     uint32_t options_mask = 0;  // backend-specific resource options mask
     GpuBackend backend = GpuBackend::Metal;
     bool host_visible = false;
+    uint64_t allocation_uid = 0;
 
     bool valid() const { return buffer != nullptr; }
 };

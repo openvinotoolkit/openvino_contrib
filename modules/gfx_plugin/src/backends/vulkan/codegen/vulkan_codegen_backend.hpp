@@ -6,6 +6,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <vulkan/vulkan.h>
@@ -16,17 +17,20 @@
 namespace ov {
 namespace gfx_plugin {
 
-class VulkanCompiledKernel final : public ICompiledKernel {
+class VulkanKernelProgram;
+
+class VulkanCompiledKernel final : public CompiledKernelBase {
 public:
-    VulkanCompiledKernel(std::vector<uint32_t> spirv, std::string entry_point, uint32_t arg_count = 0);
+    explicit VulkanCompiledKernel(std::shared_ptr<VulkanKernelProgram> program, uint32_t arg_count = 0);
+    VulkanCompiledKernel(std::shared_ptr<VulkanKernelProgram> program,
+                         std::shared_ptr<const KernelBindingPlan> binding_plan);
+    VulkanCompiledKernel(std::shared_ptr<VulkanKernelProgram> program,
+                         std::shared_ptr<const KernelBindingPlan> binding_plan,
+                         std::shared_ptr<void> prepared_binding_cache);
     ~VulkanCompiledKernel() override;
 
-    const std::vector<uint32_t>& spirv() const { return m_spirv; }
-    const std::string& entry_point() const { return m_entry_point; }
-
-    uint32_t args_count() const override { return m_args_count; }
-    void set_args_count(uint32_t count) override;
     size_t clamp_threadgroup_size(size_t desired) const override;
+    std::shared_ptr<ICompiledKernel> fork() const override;
     void on_submission_complete() override;
     GpuCommandBufferHandle begin_external_commands();
     void end_external_commands(GpuCommandBufferHandle command_buffer);
@@ -34,38 +38,22 @@ public:
                  const KernelDispatch& dispatch,
                  const std::vector<KernelArg>& args,
                  const KernelExecutionHooks* hooks = nullptr) override;
+    const void* shared_program_identity() const { return m_program.get(); }
+    const void* shared_binding_schema_identity() const;
+    size_t cached_descriptor_set_count();
 
 private:
-    struct RecordingDescriptorPool {
-        VkDescriptorPool handle = VK_NULL_HANDLE;
-        uint32_t used_sets = 0;
-    };
-
-    void ensure_pipeline(uint32_t binding_count);
-    void destroy_pipeline();
-    void destroy_pipeline_locked();
-    VkDescriptorSet acquire_descriptor_set(bool unique_for_recording);
-    VkDescriptorPool create_descriptor_pool_locked(uint32_t max_sets) const;
+    void destroy_execution_state();
+    void destroy_execution_state_locked();
     VkCommandBuffer begin_commands();
     void end_commands(VkCommandBuffer cmd);
 
+    std::shared_ptr<VulkanKernelProgram> m_program;
     VkDevice m_device = VK_NULL_HANDLE;
     VkQueue m_queue = VK_NULL_HANDLE;
     uint32_t m_queue_family = 0;
-    VkShaderModule m_shader_module = VK_NULL_HANDLE;
-    VkPipelineLayout m_pipeline_layout = VK_NULL_HANDLE;
-    VkPipeline m_pipeline = VK_NULL_HANDLE;
-    VkDescriptorSetLayout m_desc_layout = VK_NULL_HANDLE;
-    VkDescriptorPool m_desc_pool = VK_NULL_HANDLE;
-    VkDescriptorSet m_desc_set = VK_NULL_HANDLE;
     VkCommandPool m_command_pool = VK_NULL_HANDLE;
-    std::vector<RecordingDescriptorPool> m_recording_desc_pools;
-    uint32_t m_binding_count = 0;
     std::mutex m_mutex;
-
-    std::vector<uint32_t> m_spirv;
-    std::string m_entry_point;
-    uint32_t m_args_count = 0;
 };
 
 class VulkanCodegenBackend final : public ICodegenBackend {
@@ -81,6 +69,7 @@ public:
 private:
     VulkanDeviceHandle m_device = VK_NULL_HANDLE;
     VulkanPhysicalDeviceHandle m_physical_device = VK_NULL_HANDLE;
+    std::shared_ptr<void> m_reuse_context;
 };
 
 }  // namespace gfx_plugin

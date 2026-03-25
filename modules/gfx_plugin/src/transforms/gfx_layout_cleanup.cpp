@@ -125,6 +125,14 @@ std::shared_ptr<ov::op::v0::Constant> get_constant_from_source_local(const ov::O
     return std::make_shared<ov::op::v0::Constant>(outputs.front());
 }
 
+std::optional<std::vector<int64_t>> get_constant_i64_values(const ov::Output<ov::Node>& source) {
+    const auto constant = get_constant_from_source_local(source);
+    if (!constant || constant->get_element_type() != ov::element::i64) {
+        return std::nullopt;
+    }
+    return constant->cast_vector<int64_t>();
+}
+
 std::optional<int64_t> perfect_square_root(int64_t value) {
     if (value <= 0) {
         return std::nullopt;
@@ -397,6 +405,66 @@ bool fold_transpose_unary_transpose(const std::shared_ptr<ov::Node>& node) {
     return true;
 }
 
+bool deduplicate_transpose_reshape_branch(const std::shared_ptr<ov::Node>& node) {
+    auto reshape = ov::as_type_ptr<ov::op::v1::Reshape>(node);
+    if (!reshape || reshape->get_input_size() != 2 || reshape->get_output_size() != 1) {
+        return false;
+    }
+
+    auto transpose = ov::as_type_ptr<ov::op::v1::Transpose>(reshape->input_value(0).get_node_shared_ptr());
+    if (!transpose || transpose->get_input_size() != 2 || transpose->get_output_size() != 1 ||
+        transpose->output(0).get_target_inputs().size() != 1) {
+        return false;
+    }
+
+    const auto permutation = get_constant_permutation(transpose->input_value(1));
+    const auto reshape_pattern = get_constant_i64_values(reshape->input_value(1));
+    if (!permutation || !reshape_pattern) {
+        return false;
+    }
+
+    auto source = transpose->input_value(0).get_node_shared_ptr();
+    if (!source) {
+        return false;
+    }
+
+    const size_t source_port = transpose->input_value(0).get_index();
+    auto canonical = reshape;
+    for (const auto& target_input : source->output(source_port).get_target_inputs()) {
+        auto sibling_transpose = ov::as_type_ptr<ov::op::v1::Transpose>(target_input.get_node()->shared_from_this());
+        if (!sibling_transpose || sibling_transpose == transpose ||
+            sibling_transpose->get_input_size() != 2 || sibling_transpose->get_output_size() != 1 ||
+            sibling_transpose->output(0).get_target_inputs().size() != 1) {
+            continue;
+        }
+        const auto sibling_perm = get_constant_permutation(sibling_transpose->input_value(1));
+        if (!sibling_perm || *sibling_perm != *permutation) {
+            continue;
+        }
+        auto sibling_reshape = ov::as_type_ptr<ov::op::v1::Reshape>(
+            sibling_transpose->output(0).get_target_inputs().begin()->get_node()->shared_from_this());
+        if (!sibling_reshape || sibling_reshape == reshape ||
+            sibling_reshape->get_input_size() != 2 || sibling_reshape->get_output_size() != 1) {
+            continue;
+        }
+        const auto sibling_pattern = get_constant_i64_values(sibling_reshape->input_value(1));
+        if (!sibling_pattern || *sibling_pattern != *reshape_pattern) {
+            continue;
+        }
+        if (sibling_reshape->get_special_zero() != reshape->get_special_zero()) {
+            continue;
+        }
+        if (sibling_reshape->get_friendly_name() < canonical->get_friendly_name()) {
+            canonical = sibling_reshape;
+        }
+    }
+
+    if (canonical == reshape) {
+        return false;
+    }
+    return ov::replace_output_update_name(reshape->output(0), canonical->output(0));
+}
+
 bool eliminate_noop_reshape(const std::shared_ptr<ov::Node>& node) {
     auto reshape = ov::as_type_ptr<ov::op::v1::Reshape>(node);
     if (!reshape || reshape->get_input_size() < 1 || reshape->get_output_size() != 1) {
@@ -603,6 +671,7 @@ bool GfxLayoutCleanup::run_on_model(const std::shared_ptr<ov::Model>& model) {
             }
             if (fold_transpose_softmax_transpose(node) ||
                 fold_transpose_unary_transpose(node) ||
+                deduplicate_transpose_reshape_branch(node) ||
                 eliminate_identity_transpose(node) ||
                 eliminate_noop_reshape(node) ||
                 eliminate_noop_squeeze_or_unsqueeze(node) || eliminate_single_input_concat(node) ||

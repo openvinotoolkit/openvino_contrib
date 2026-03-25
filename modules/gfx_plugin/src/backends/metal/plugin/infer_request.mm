@@ -36,6 +36,7 @@
 #include "plugin/infer_profiling_utils.hpp"
 #include "plugin/infer_pipeline.hpp"
 #include "plugin/infer_io_utils.hpp"
+#include "plugin/infer_submission.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -67,6 +68,40 @@ MetalInferState* get_metal_state(InferRequestState& state) {
 const MetalInferState* get_metal_state(const InferRequestState& state) {
     return dynamic_cast<const MetalInferState*>(state.backend.get());
 }
+
+class MetalInferSubmissionSession final : public SingleFlightInferSubmissionSession {
+public:
+    explicit MetalInferSubmissionSession(id<MTLCommandQueue> command_queue) : m_command_queue(command_queue) {}
+
+    bool supports_incremental_submit() const override {
+        return false;
+    }
+
+protected:
+    GpuCommandBufferHandle begin_recording_on_slot() override {
+        OPENVINO_ASSERT(m_command_queue, "GFX: command queue is null");
+        m_command_buffer = [m_command_queue commandBuffer];
+        return reinterpret_cast<GpuCommandBufferHandle>(m_command_buffer);
+    }
+
+    void submit_recorded_on_slot(GpuCommandBufferHandle /*command_buffer*/, bool /*continue_recording*/) override {
+        // Metal path records the whole inference into a single command buffer.
+    }
+
+    void finish_submission_slot() override {
+        if (!m_command_buffer) {
+            return;
+        }
+        [m_command_buffer commit];
+        [m_command_buffer waitUntilCompleted];
+        set_completed_command_buffer(reinterpret_cast<GpuCommandBufferHandle>(m_command_buffer));
+        m_command_buffer = nil;
+    }
+
+private:
+    id<MTLCommandQueue> m_command_queue = nil;
+    id<MTLCommandBuffer> m_command_buffer = nil;
+};
 
 }  // namespace
 
@@ -181,7 +216,6 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
     const bool detailed = (state.profiler_cfg.level == ProfilingLevel::Detailed);
     allocator.set_profiler(metal_profiler, detailed);
 
-    std::vector<InferStage> pipeline;
     auto run_pipeline = [&]() {
         auto shape_to_string = [](const ov::Shape& shape) {
             std::ostringstream ss;
@@ -225,58 +259,61 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
         auto* metal = dynamic_cast<const MetalBackendState*>(cm->backend_state());
         OPENVINO_ASSERT(metal && metal->const_manager, "GFX: Metal buffer manager is not initialized");
         GpuBufferPool pool(gpu_alloc);
-        pipeline = build_pipeline_with_outputs(descs,
-                                               metal->const_manager.get(),
-                                               stage_profiler,
-                                               profiling_enabled,
-                                               cm->get_runtime_model(),
-                                               get_outputs(),
-                                               node_map,
-                                               param_map,
-                                               state.bound_remote_outputs,
-                                               state.bound_remote_inputs,
-                                               GpuBackend::Metal,
-                                               pool,
-                                               metal_state->stage_output_handles,
-                                               [](std::vector<InferStage>&) {},
-                                               [&](InferStage& stage,
-                                                   size_t oi,
-                                                   GpuTensor& out_ref,
-                                                   GpuBufferDesc& desc,
-                                                   const char* error_prefix) {
-                                                   const bool is_model_output =
-                                                       (oi < stage.output_is_model_output.size()) &&
-                                                       stage.output_is_model_output[oi];
-                                                   return init_stage_output_desc(GpuBackend::Metal,
-                                                                                 stage,
-                                                                                 oi,
-                                                                                 out_ref,
-                                                                                 desc,
-                                                                                 is_model_output,
-                                                                                 /*skip_view_ops=*/true,
-                                                                                 error_prefix);
-                                               },
-                                               "GFX");
+        auto& pipeline = prepare_reusable_pipeline_with_outputs(metal_state->reusable_pipeline,
+                                                                descs,
+                                                                metal->const_manager.get(),
+                                                                stage_profiler,
+                                                                profiling_enabled,
+                                                                cm->get_runtime_model(),
+                                                                get_outputs(),
+                                                                node_map,
+                                                                param_map,
+                                                                state.bound_remote_outputs,
+                                                                state.bound_remote_inputs,
+                                                                GpuBackend::Metal,
+                                                                pool,
+                                                                metal_state->stage_output_handles,
+                                                                [](std::vector<InferStage>&) {},
+                                                                [&](InferStage& stage,
+                                                                    size_t oi,
+                                                                    GpuTensor& out_ref,
+                                                                    GpuBufferDesc& desc,
+                                                                    const char* error_prefix) {
+                                                                    const bool is_model_output =
+                                                                        (oi < stage.output_is_model_output.size()) &&
+                                                                        stage.output_is_model_output[oi];
+                                                                    return init_stage_output_desc(GpuBackend::Metal,
+                                                                                                  stage,
+                                                                                                  oi,
+                                                                                                  out_ref,
+                                                                                                  desc,
+                                                                                                  is_model_output,
+                                                                                                  /*skip_view_ops=*/true,
+                                                                                                  error_prefix);
+                                                                },
+                                                                "GFX");
+        prepare_reusable_execution_plan(metal_state->reusable_execution_plan, pipeline, node_map, param_map);
 
         if (profiler) {
             const size_t expected_samples = pipeline.size() * 4;
             profiler->begin_infer(expected_samples);
         }
 
-        // Create a single command buffer for the entire pipeline.
         OPENVINO_ASSERT(metal && metal->command_queue, "GFX: command queue is null");
         id<MTLCommandQueue> cq = static_cast<id<MTLCommandQueue>>(metal->command_queue);
         OPENVINO_ASSERT(cq, "GFX: command queue is null");
-        id<MTLCommandBuffer> cb = [cq commandBuffer];
-
-        execute_pipeline(
+        MetalInferSubmissionSession submission(cq);
+        execute_pipeline_with_submission(
             pipeline,
             node_map,
             param_map,
             [&](size_t input_idx) -> GpuTensor* {
                 return &tensor_map.get_input_device(input_idx);
             },
-            [&](InferStage& stage, const std::vector<GpuTensor*>& resolved) {
+            submission,
+            {},
+            &metal_state->reusable_execution_plan,
+            [&](InferStage& stage, const std::vector<GpuTensor*>& resolved, GpuCommandBufferHandle command_buffer) {
                 if (gfx_log_debug_enabled() || metal_safe_debug_enabled()) {
                     const std::string node_name =
                         stage.node ? stage.node->get_friendly_name() : stage.stage->name();
@@ -325,17 +362,14 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                                    false);
                     }
                 }
-                stage.stage->execute(cb);
+                stage.stage->execute(command_buffer);
             });
-
-        [cb commit];
-        [cb waitUntilCompleted];
 
         finalize_infer_profiling("metal",
                                  cm,
                                  state,
                                  profiler,
-                                 reinterpret_cast<GpuCommandBufferHandle>(cb),
+                                 submission.completed_command_buffer(),
                                  [&]() {
                                      const auto stats = allocator.stats();
                                      metal_profiler->set_memory_stats(stats);
@@ -343,6 +377,7 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
     };
 
     run_pipeline();
+    auto& pipeline = metal_state->reusable_pipeline;
 
     ensure_output_staging_handles(get_outputs().size(), "GFX");
     auto& output_handles = metal_state->output_staging_handles;
