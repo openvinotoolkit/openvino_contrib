@@ -1,6 +1,6 @@
 {
   "name": "openvino-langchain",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "OpenVINO Generative AI integration for LangChain.js",
   "type": "module",
   "engines": {
@@ -23,12 +23,12 @@
   },
   "license": "Apache-2.0",
   "dependencies": {
-    "openvino-genai-node": "^2025.3.0",
-    "openvino-node": "^2025.3.0",
-    "openvino-tokenizers-node": "^2025.3.0"
+    "openvino-genai-node": "^2026.0.0",
+    "openvino-node": "^2026.0.0",
+    "openvino-tokenizers-node": "^2026.0.0"
   },
   "peerDependencies": {
-    "@langchain/core": ">=0.3.17 <0.4.0"
+    "@langchain/core": "^1.1.36"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
