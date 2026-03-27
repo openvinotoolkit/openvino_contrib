@@ -340,6 +340,11 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
         "GFX Vulkan");
 
     VulkanInferSubmissionSession submission(*vk_state);
+    InferSubmissionConfig submission_cfg{};
+    // Keep Vulkan on a chunked multi-submit path, but batch far more work per
+    // submit than the backend-neutral default to reduce Android driver overhead.
+    submission_cfg.max_stages_per_submit = 64;
+    submission_cfg.max_output_bytes_per_submit = 64u * 1024u * 1024u;
     execute_pipeline_with_submission(
         pipeline,
         node_map,
@@ -351,7 +356,7 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
             return nullptr;
         },
         submission,
-        {},
+        submission_cfg,
         &vk_state->reusable_execution_plan);
 
     finalize_infer_profiling("vulkan", cm, state, profiler, nullptr);

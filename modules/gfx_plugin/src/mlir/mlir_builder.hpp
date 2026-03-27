@@ -60,7 +60,7 @@ mlir::ModuleOp build_mlir_greater_equal_from_model(const std::shared_ptr<const o
 mlir::ModuleOp build_mlir_squared_difference_from_model(const std::shared_ptr<const ov::Model>& model,
                                                         mlir::MLIRContext& ctx);
 
-// Build MLIR module for Softmax (currently last-axis only).
+// Build MLIR module for Softmax over an arbitrary normalized axis.
 mlir::ModuleOp build_mlir_softmax_from_model(const std::shared_ptr<const ov::Model>& model,
                                              mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_logsoftmax_from_model(const std::shared_ptr<const ov::Model>& model,

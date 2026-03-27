@@ -44,6 +44,15 @@ function(_gfx_check_metal_backend out_var)
         return()
     endif()
 
+    foreach(_gfx_metal_cache_var
+            GFX_METAL_LIBRARY
+            GFX_FOUNDATION_LIBRARY
+            GFX_METAL_INCLUDE_DIR)
+        if(DEFINED ${_gfx_metal_cache_var} AND NOT EXISTS "${${_gfx_metal_cache_var}}")
+            unset(${_gfx_metal_cache_var} CACHE)
+        endif()
+    endforeach()
+
     unset(GFX_METAL_COMPILES CACHE)
 
     set(_gfx_framework_paths

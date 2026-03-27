@@ -181,7 +181,7 @@ void MetalTransposeOp::compile(MetalBufferManager* buffer_manager) {
     for (auto v : m_desc.in_shape) desc.in_shape.push_back(static_cast<uint32_t>(v));
     for (auto v : m_desc.out_shape) desc.out_shape.push_back(static_cast<uint32_t>(v));
     for (auto v : m_desc.perm) desc.perm.push_back(static_cast<uint32_t>(v));
-    mlir::MLIRContext ctx;
+    auto& ctx = gfx_mlir_context();
     auto module = build_mlir_for_node(m_node, ctx);
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };

@@ -13,15 +13,6 @@
 #include <unordered_map>
 #include <vector>
 
-#if GFX_BACKEND_METAL_AVAILABLE
-#    include "backends/metal/runtime/metal_memory.hpp"
-#    include "backends/metal/runtime/memory/device_caps.hpp"
-#endif
-#if GFX_BACKEND_VULKAN_AVAILABLE
-#    include "backends/vulkan/runtime/vulkan_backend.hpp"
-#    include "backends/vulkan/runtime/vulkan_buffer_manager.hpp"
-#endif
-
 namespace ov {
 namespace gfx_plugin {
 
@@ -252,51 +243,45 @@ Conv2DDirectCacheKey make_conv2d_direct_cache_key(const GfxParallelismCaps& caps
     return key;
 }
 
+GfxParallelismCaps make_caps_from_device_info(const GpuExecutionDeviceInfo& info) {
+    GfxParallelismCaps caps{};
+    caps.backend = info.backend;
+    caps.device_key = info.device_key;
+    caps.preferred_simd_width = std::max<uint32_t>(info.preferred_simd_width, 1u);
+    caps.subgroup_size = std::max<uint32_t>(info.subgroup_size, 1u);
+    caps.max_total_threads_per_group = std::max<uint32_t>(info.max_total_threads_per_group, 1u);
+    caps.max_threads_per_group = {std::max<uint32_t>(info.max_threads_per_group[0], 1u),
+                                  std::max<uint32_t>(info.max_threads_per_group[1], 1u),
+                                  std::max<uint32_t>(info.max_threads_per_group[2], 1u)};
+    return caps;
+}
+
+GfxParallelismCaps make_default_caps(GpuBackend backend) {
+    GfxParallelismCaps caps{};
+    caps.backend = backend;
+    caps.preferred_simd_width = 32;
+    caps.subgroup_size = 32;
+    if (backend == GpuBackend::Vulkan) {
+        caps.device_key = "vulkan:default";
+        caps.max_total_threads_per_group = 128;
+        caps.max_threads_per_group = {128, 128, 64};
+    } else {
+        caps.device_key = "metal:default";
+        caps.max_total_threads_per_group = 64;
+        caps.max_threads_per_group = {64, 64, 64};
+    }
+    return caps;
+}
+
 }  // namespace
 
 GfxParallelismCaps query_parallelism_caps(const GpuBufferManager* buffer_manager) {
-    GfxParallelismCaps caps{};
-#if GFX_BACKEND_METAL_AVAILABLE
-    if (auto* metal = dynamic_cast<const MetalBufferManager*>(buffer_manager)) {
-        const auto metal_caps = query_metal_device_caps(metal->device());
-        caps.backend = GpuBackend::Metal;
-        {
-            std::ostringstream os;
-            os << "metal:" << metal->device() << ':' << metal_caps.preferred_simd_width << ':'
-               << metal_caps.max_total_threads_per_threadgroup;
-            caps.device_key = os.str();
+    if (buffer_manager) {
+        if (const auto info = buffer_manager->query_execution_device_info()) {
+            return make_caps_from_device_info(*info);
         }
-        caps.preferred_simd_width = std::max<uint32_t>(metal_caps.preferred_simd_width, 1u);
-        caps.subgroup_size = caps.preferred_simd_width;
-        caps.max_total_threads_per_group = std::max<uint32_t>(metal_caps.max_total_threads_per_threadgroup, 1u);
-        caps.max_threads_per_group = {std::max<uint32_t>(metal_caps.max_threads_per_threadgroup_x, 1u),
-                                      std::max<uint32_t>(metal_caps.max_threads_per_threadgroup_y, 1u),
-                                      std::max<uint32_t>(metal_caps.max_threads_per_threadgroup_z, 1u)};
-        return caps;
     }
-#endif
-#if GFX_BACKEND_VULKAN_AVAILABLE
-    if (dynamic_cast<const VulkanBufferManager*>(buffer_manager)) {
-        const auto& vk = VulkanContext::instance();
-        caps.backend = GpuBackend::Vulkan;
-        {
-            std::ostringstream os;
-            os << "vulkan:" << vk.device_name() << ':' << vk.subgroup_size() << ':'
-               << vk.max_compute_workgroup_invocations();
-            caps.device_key = os.str();
-        }
-        caps.preferred_simd_width = std::max<uint32_t>(vk.subgroup_size(), 1u);
-        caps.subgroup_size = std::max<uint32_t>(vk.subgroup_size(), 1u);
-        caps.max_total_threads_per_group = std::max<uint32_t>(vk.max_compute_workgroup_invocations(), 1u);
-        caps.max_threads_per_group = vk.max_compute_workgroup_size();
-        return caps;
-    }
-#endif
-    caps.preferred_simd_width = 32;
-    caps.subgroup_size = 32;
-    caps.max_total_threads_per_group = 64;
-    caps.max_threads_per_group = {64, 64, 64};
-    return caps;
+    return make_default_caps(GpuBackend::Metal);
 }
 
 std::vector<MatMulParallelismPlan> enumerate_matmul_parallelism_candidates(const GfxParallelismCaps& caps,

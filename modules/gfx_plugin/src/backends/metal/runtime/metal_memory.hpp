@@ -119,6 +119,7 @@ public:
         return wrap_shared(const_cast<void*>(ptr), bytes, type);
     }
     bool supports_const_cache() const override { return m_const_cache != nullptr; }
+    std::optional<GpuExecutionDeviceInfo> query_execution_device_info() const override;
     MetalBuffer wrap_const(const std::string& key,
                            const void* data,
                            size_t bytes,

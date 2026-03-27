@@ -106,7 +106,7 @@ void MetalConv3DOp::compile(MetalBufferManager* buffer_manager) {
 
     MetalCodegenBackend backend(m_device);
     std::string log;
-    mlir::MLIRContext ctx;
+    auto& ctx = gfx_mlir_context();
     auto module = build_mlir_for_node(m_node, ctx);
     Conv3DCodegenDesc desc = m_desc;
     desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;

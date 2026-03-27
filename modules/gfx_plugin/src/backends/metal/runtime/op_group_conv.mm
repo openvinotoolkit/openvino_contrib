@@ -216,7 +216,7 @@ void MetalGroupConvOp::compile(MetalBufferManager* buffer_manager) {
         desc.has_bn = true;
         desc.epsilon = m_bn_params.epsilon;
     }
-    mlir::MLIRContext ctx;
+    auto& ctx = gfx_mlir_context();
     auto module = build_mlir_for_node(m_node, ctx);
     if (m_has_bn) {
         const bool applied = apply_fused_batchnorm(module, m_bn_params);

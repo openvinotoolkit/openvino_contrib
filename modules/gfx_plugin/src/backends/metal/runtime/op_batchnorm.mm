@@ -98,7 +98,7 @@ void MetalBatchNormOp::compile(MetalBufferManager* buffer_manager) {
     desc.H = m_desc.H;
     desc.W = m_desc.W;
     desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
-    mlir::MLIRContext ctx;
+    auto& ctx = gfx_mlir_context();
     auto module = build_mlir_for_node(m_node, ctx);
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };

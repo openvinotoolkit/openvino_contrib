@@ -80,6 +80,47 @@ set(GFX_MLIR_SOURCES
     mlir_passes.cpp
     mlir_utils.cpp)
 
+function(_gfx_resolve_mlir_libs out_var)
+    set(_gfx_resolved_libs "")
+    set(_gfx_mlir_lib_dir "")
+    if(DEFINED MLIR_DIR)
+        get_filename_component(_gfx_mlir_cmake_dir "${MLIR_DIR}" DIRECTORY)
+        get_filename_component(_gfx_mlir_lib_dir "${_gfx_mlir_cmake_dir}" DIRECTORY)
+    endif()
+    foreach(_gfx_mlir_lib IN LISTS ARGN)
+        if(TARGET ${_gfx_mlir_lib})
+            list(APPEND _gfx_resolved_libs ${_gfx_mlir_lib})
+        elseif(_gfx_mlir_lib_dir)
+            set(_gfx_mlir_lib_path "${_gfx_mlir_lib_dir}/lib${_gfx_mlir_lib}.a")
+            if(EXISTS "${_gfx_mlir_lib_path}")
+                list(APPEND _gfx_resolved_libs "${_gfx_mlir_lib_path}")
+            else()
+                list(APPEND _gfx_resolved_libs ${_gfx_mlir_lib})
+            endif()
+            unset(_gfx_mlir_lib_path)
+        else()
+            list(APPEND _gfx_resolved_libs ${_gfx_mlir_lib})
+        endif()
+    endforeach()
+    set(${out_var} "${_gfx_resolved_libs}" PARENT_SCOPE)
+    unset(_gfx_mlir_lib)
+    unset(_gfx_mlir_cmake_dir)
+    unset(_gfx_mlir_lib_dir)
+    unset(_gfx_resolved_libs)
+endfunction()
+
+set(GFX_COMMON_MLIR_LIBS
+    ${GFX_MLIR_COMPONENT_LIBS}
+    ${GFX_LLVM_COMPONENT_LIBS})
+_gfx_resolve_mlir_libs(GFX_COMMON_MLIR_LINK_LIBS ${GFX_COMMON_MLIR_LIBS})
+if(UNIX AND NOT APPLE AND NOT (DEFINED LLVM_FOUND AND LLVM_FOUND AND DEFINED MLIR_FOUND AND MLIR_FOUND))
+    list(JOIN GFX_COMMON_MLIR_LINK_LIBS "," GFX_COMMON_MLIR_LIBS_JOINED)
+    set(GFX_COMMON_MLIR_LINK_LIBS "$<LINK_GROUP:RESCAN,${GFX_COMMON_MLIR_LIBS_JOINED}>")
+endif()
+
+add_library(gfx_common_mlir_deps INTERFACE)
+target_link_libraries(gfx_common_mlir_deps INTERFACE ${GFX_COMMON_MLIR_LINK_LIBS})
+
 add_library(gfx_mlir STATIC ${GFX_MLIR_SOURCES})
 
 target_include_directories(gfx_mlir
@@ -92,41 +133,7 @@ target_include_directories(gfx_mlir
 target_link_libraries(gfx_mlir
     PUBLIC
         openvino::runtime::dev
-        MLIRIR
-        MLIRSupport
-        MLIRPass
-        MLIRTransforms
-        MLIRBufferizationDialect
-        MLIRBufferizationTransforms
-        MLIRFuncTransforms
-        MLIRMemRefTransforms
-        MLIRFuncDialect
-        MLIRLinalgDialect
-        MLIRLinalgTransforms
-        MLIRLinalgUtils
-        MLIRGPUDialect
-        MLIRGPUTransforms
-        MLIRSCFToGPU
-        MLIRVectorDialect
-        MLIRVectorInterfaces
-        MLIRSubsetOpInterface
-        MLIRSCFTransforms
-        MLIRDLTIDialect
-        MLIRReconcileUnrealizedCasts
-        MLIRCallInterfaces
-        MLIRValueBoundsOpInterface
-        MLIRAnalysis
-        MLIRArithTransforms
-        MLIRComplexDialect
-        MLIRMathDialect
-        MLIRMathTransforms
-        MLIRSparseTensorDialect
-        MLIRSparseTensorTransforms
-        MLIRTensorDialect
-        MLIRArithDialect
-        MLIRSCFDialect
-        LLVMSupport
-        LLVMDemangle)
+        gfx_common_mlir_deps)
 
 if(DEFINED GFX_LLVM_EXTERNAL_TARGET)
     add_dependencies(gfx_mlir ${GFX_LLVM_EXTERNAL_TARGET})

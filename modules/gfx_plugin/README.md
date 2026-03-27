@@ -23,6 +23,7 @@ Recent runtime work extends this model in two directions:
 - compile-time stage planning now picks layout, fusion, and execution policy per stage
 - backend runtimes, especially Vulkan, can choose specialized direct or chunked execution routes for selected ops
 - infer execution can batch stage recording into submission windows and reuse prepared bindings or immutable device buffers across requests
+- device-aware scheduling now uses backend-reported execution limits through shared `gfx_parallelism.*` and `gfx_partitioning.*` helpers
 
 This is not the old monolithic `MlirBackend` architecture that earlier design notes experimented with.
 
@@ -47,6 +48,7 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 - `src/kernel_ir/`: shared kernel metadata and planning structures
 - `tests/`: unit, integration, backend, and tooling coverage
 - `third_party/llvm-project/`: vendored LLVM/MLIR used by the build
+- `third_party/Vulkan-Headers/`: vendored Vulkan headers used by the Raspberry Pi Vulkan toolchain flow
 
 ## Main Runtime Components
 ### Plugin
@@ -84,6 +86,7 @@ The current infer path is not a naive "execute one stage, submit immediately" lo
 - `GpuStage`: execution-stage interface
 - `GpuStageFactory` / `ExecutionDispatcher`: backend-specific stage dispatch
 - `gfx_stage_policy.*`: runtime route, fusion, and submit-policy selection
+- `gfx_parallelism.*` and `gfx_partitioning.*`: backend-neutral device-capability and workgroup planning helpers
 - `immutable_gpu_buffer_cache.*`: backend-neutral cache for immutable device buffers
 - shared remote context/tensor abstractions
 - common tensor, buffer, logging, kernel-binding, and parallelism helpers
@@ -96,6 +99,11 @@ The runtime also has explicit reuse layers:
 - immutable constant payloads can be cached as device buffers through backend const-cache implementations
 - compiled kernels can reuse prepared binding tables through shared backend-neutral cache helpers in `gpu_backend_base.hpp`
 - infer requests can reuse prepared output bindings and preallocated host output tensors across repeated executions
+
+Backend-neutral planning now consumes device info exported by the active buffer manager:
+- Metal and Vulkan buffer managers report subgroup width and workgroup limits through `GpuExecutionDeviceInfo`
+- `gfx_parallelism.*` converts that into execution-policy caps
+- `gfx_partitioning.*` derives 1D and 2D workgroup shapes from the same data
 
 ## Backend Selection
 The plugin has two layers of backend choice:
@@ -128,6 +136,7 @@ Current lowering/runtime special cases:
 - selected transpose inputs can be absorbed into Add, Conv2D, GroupConv2D, and Split lowering instead of staying as standalone runtime stages
 - Vulkan contains specialized direct or chunked paths for unary, binary, softmax, split/concat, transpose, convert, Conv2D, and GroupConv2D cases
 - some Conv2D shapes may be lowered through an explicit MLIR `im2col + matmul` route when the selected execution policy prefers it
+- Softmax lowering now supports arbitrary normalized axes instead of only the last axis
 
 ## Public And Internal Properties
 Commonly used properties:
@@ -163,12 +172,19 @@ cmake -S . -B build-gfx-plugin -G Ninja \
   -DENABLE_TESTS=ON \
   -DGFX_DEFAULT_BACKEND=auto
 cmake --build build-gfx-plugin --target openvino_gfx_plugin ov_gfx_func_tests
+cmake --build build-gfx-plugin --target ov_gfx_unit_tests
 ```
 
 Useful options:
 - `-DGFX_ENABLE_METAL=ON|OFF`
 - `-DGFX_ENABLE_VULKAN=ON|OFF`
 - `-DGFX_DEFAULT_BACKEND=auto|metal|vulkan`
+
+Build notes:
+- vendored LLVM/MLIR is now built as a static external toolchain under `third_party/llvm-project`
+- Android and generic cross-compiling flows forward toolchain settings into that external LLVM/MLIR build
+- `cmake/GfxAndroidRuntimeBundle.cmake.in` provides helper copy logic for Android-side runtime dependency bundling
+- `tools/gfx_rpi_vulkan_toolchain_builder.py` can assemble a hermetic Raspberry Pi Vulkan cross-toolchain bundle for `aarch64` Bookworm-style targets
 
 The build produces the `openvino_gfx_plugin` shared library. On Unix-like builds this is typically emitted as `libopenvino_gfx_plugin.so`; the `.so` suffix is also forced on macOS for OpenVINO plugin loading compatibility.
 
@@ -219,23 +235,30 @@ Run the labeled suite:
 ctest --test-dir build-gfx-plugin --output-on-failure -L GFX
 ```
 
-Locate and run the main gtest binary directly:
+Locate and run the gtest binaries directly:
 
 ```bash
 find build-gfx-plugin -name ov_gfx_func_tests -type f
 DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
   <path-to-ov_gfx_func_tests> --gtest_filter=MetalBasicOps.*
+
+find build-gfx-plugin -name ov_gfx_unit_tests -type f
+DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
+  <path-to-ov_gfx_unit_tests> --gtest_filter=GfxMlirTransforms.*
 ```
 
-The helper tool `ov_gfx_compare_runner` is also built from `tests/tools/`.
+`ov_gfx_func_tests` now covers plugin-facing and functional behavior, while `ov_gfx_unit_tests` carries focused runtime, MLIR, backend, and cache regressions. The helper tool `ov_gfx_compare_runner` is also built from `tests/tools/`.
 
 Recent regression coverage includes:
 - canonical Conv2D MLIR lowering checks
 - im2col rewrite coverage, including the batch-1 plain-matmul route
+- linear matmul parallel-lowering coverage
 - absorbed input-transform tests for Add, Conv2D, GroupConv2D, and Split
 - Vulkan runtime regression coverage in `tests/backends/vulkan/`
 - infer submission, prepared-pipeline reuse, immutable-const-cache reuse, and shared kernel-binding reuse tests
 - reusable output-resolution and reusable host-output coverage in `tests/unit/infer_pipeline_reuse_test.cpp`
+- internal transform and plugin coverage in `tests/unit/basic_ops_internal_test.cpp`
+- backend memory/device integration coverage in `tests/unit/memory_device_integration_test.mm`
 
 ## Debugging And Instrumentation
 Useful environment variables from the current codebase:

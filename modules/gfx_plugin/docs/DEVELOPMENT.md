@@ -27,6 +27,7 @@ Build:
 
 ```bash
 cmake --build build-gfx-plugin --target openvino_gfx_plugin ov_gfx_func_tests
+cmake --build build-gfx-plugin --target ov_gfx_unit_tests
 ```
 
 Useful CMake options:
@@ -36,6 +37,56 @@ Useful CMake options:
 - `ENABLE_TESTS`
 
 On macOS, Vulkan is disabled by `cmake/GfxBackendConfig.cmake`.
+
+Current build-system notes:
+- vendored LLVM/MLIR is built as a static external toolchain under `third_party/llvm-project`
+- the module now reuses installed package exports when present and otherwise falls back to build-tree exports during bootstrap
+- Android and generic cross-compiling flows forward toolchain settings into the vendored LLVM/MLIR configure step
+- `cmake/GfxAndroidRuntimeBundle.cmake.in` is used to copy Android runtime-side dependencies next to deployed plugin artifacts
+
+## Hermetic RPi Vulkan Toolchain
+To build a Raspberry Pi Vulkan cross-toolchain bundle for this module, use:
+
+```bash
+python3 modules/gfx_plugin/tools/gfx_rpi_vulkan_toolchain_builder.py \
+  --output-dir /path/to/build-gfx-plugin-rpi-toolchain
+```
+
+The script builds host LLVM tools from the vendored
+`modules/gfx_plugin/third_party/llvm-project`, assembles a generic
+Raspberry Pi 5 Bookworm arm64 sysroot, copies Vulkan headers from the
+vendored `modules/gfx_plugin/third_party/Vulkan-Headers` tree, and generates:
+
+```text
+/path/to/build-gfx-plugin-rpi-toolchain/cmake/gfx-rpi-vulkan-aarch64.toolchain.cmake
+```
+
+Use that generated file directly with a normal CMake configure command:
+
+```bash
+cmake -S /path/to/openvino -B /path/to/build-gfx-plugin-rpi \
+  -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE=/path/to/build-gfx-plugin-rpi-toolchain/cmake/gfx-rpi-vulkan-aarch64.toolchain.cmake \
+  -DOPENVINO_EXTRA_MODULES=/path/to/openvino_contrib/modules/gfx_plugin \
+  -DGFX_ENABLE_METAL=OFF \
+  -DGFX_ENABLE_VULKAN=ON \
+  -DGFX_DEFAULT_BACKEND=vulkan
+```
+
+The builder is host-generic and is intended to work on Linux, macOS, and
+Windows. If needed, you can override the generic sysroot source with:
+- `--sysroot-dir /path/to/extracted-rootfs`
+- `--sysroot-tarball /path/to/rootfs.tar.xz`
+
+Before running the builder, prepare the vendored Vulkan headers dependency in:
+
+```text
+modules/gfx_plugin/third_party/Vulkan-Headers
+```
+
+The toolchain builder expects that directory to contain the upstream
+`Vulkan-Headers` snapshot currently pinned by the module for Raspberry Pi 5
+Bookworm compatibility: `v1.3.239`.
 
 ## Where To Start Reading
 Read in this order:
@@ -55,6 +106,7 @@ For runtime execution, follow:
 If the behavior depends on route or scheduling selection, also read:
 - `src/runtime/gfx_stage_policy.*`
 - `src/runtime/gfx_parallelism.*`
+- `src/runtime/gfx_partitioning.*`
 - the active backend executor, especially under `src/backends/vulkan/runtime/`
 
 If the change touches infer-request throughput or resource reuse, also read:
@@ -62,6 +114,7 @@ If the change touches infer-request throughput or resource reuse, also read:
 - `src/plugin/infer_pipeline.*`
 - `src/runtime/immutable_gpu_buffer_cache.*`
 - `src/runtime/gpu_backend_base.hpp`
+- `src/runtime/gpu_buffer_manager.hpp`
 - `src/plugin/infer_io_utils.*`
 
 ## Adding Or Extending An Op
@@ -75,7 +128,7 @@ Typical path:
 For the current codebase, also check whether the op should participate in:
 - absorbed input transforms through `GfxInputTransform`
 - stage policy selection in `src/runtime/gfx_stage_policy.*`
-- MLIR parallel lowering or cleanup passes
+- MLIR parallel lowering, cleanup passes, or public-signature rewrites in the pass pipeline
 - backend-specialized fast paths such as Vulkan direct or chunked routes
 - reusable bytes-arg materialization or immutable const-buffer caching
 
@@ -117,6 +170,9 @@ For reuse and submission changes, prefer the focused unit tests under:
 - `tests/unit/gpu_const_cache_test.cpp`
 - `tests/unit/kernel_arg_reuse_test.cpp`
 - `tests/unit/gpu_backend_base_test.cpp`
+- `tests/unit/gfx_parallelism_test.cpp`
+- `tests/unit/mlir_matmul_parallel_test.cpp`
+- `tests/unit/basic_ops_internal_test.cpp`
 
 `tests/unit/infer_pipeline_reuse_test.cpp` now also covers:
 - prepared output-resolution plans

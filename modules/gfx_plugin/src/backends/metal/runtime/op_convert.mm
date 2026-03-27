@@ -48,7 +48,7 @@ void MetalConvertOp::compile(MetalBufferManager* buffer_manager) {
     desc.src_type = m_src_type;
     desc.dst_type = m_dst_type;
     desc.element_type = m_dst_type == ov::element::dynamic ? ov::element::f32 : m_dst_type;
-    mlir::MLIRContext ctx;
+    auto& ctx = gfx_mlir_context();
     auto module = build_mlir_for_node(m_node, ctx);
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };

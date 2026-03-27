@@ -161,6 +161,21 @@ bool has_inplace_elementwise_consumer(mlir::Operation* producer, mlir::Value out
     return false;
 }
 
+bool should_lower_linear_matmul(mlir::ModuleOp module) {
+    if (!module) {
+        return true;
+    }
+    if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.linear_matmul_parallel")) {
+        if (attr.getValue()) {
+            return true;
+        }
+    }
+    if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.prefer_parallel")) {
+        return attr.getValue();
+    }
+    return true;
+}
+
 mlir::linalg::FillOp find_zero_fill(mlir::Operation* op, mlir::Value output) {
     if (!op || !output) {
         return nullptr;
@@ -233,18 +248,24 @@ struct MatMulLoweringPattern final : public mlir::OpRewritePattern<mlir::linalg:
             }
         }
         auto module = op->getParentOfType<mlir::ModuleOp>();
-        if (module) {
-            if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.prefer_parallel")) {
-                if (!attr.getValue()) {
-                    return mlir::failure();
-                }
-            }
-        }
 
         auto output = strip_memref_casts(op.getDpsInits()[0]);
         auto output_type = mlir::dyn_cast<mlir::MemRefType>(output.getType());
         if (!output_type || output_type.getRank() != 3) {
             return mlir::failure();
+        }
+        const bool force_linear_matmul =
+            module && module->getAttrOfType<mlir::BoolAttr>("gfx.linear_matmul_parallel") &&
+            module->getAttrOfType<mlir::BoolAttr>("gfx.linear_matmul_parallel").getValue() &&
+            output_type.getDimSize(0) == 1;
+        if (!force_linear_matmul) {
+            if (module) {
+                if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.prefer_parallel")) {
+                    if (!attr.getValue()) {
+                        return mlir::failure();
+                    }
+                }
+            }
         }
         if (has_inplace_elementwise_consumer(op.getOperation(), output)) {
             return mlir::failure();
@@ -406,12 +427,8 @@ struct MatmulOpLoweringPattern final : public mlir::OpRewritePattern<mlir::linal
             return mlir::failure();
         }
         auto module = op->getParentOfType<mlir::ModuleOp>();
-        if (module) {
-            if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.prefer_parallel")) {
-                if (!attr.getValue()) {
-                    return mlir::failure();
-                }
-            }
+        if (!should_lower_linear_matmul(module)) {
+            return mlir::failure();
         }
 
         auto output = strip_memref_casts(op.getDpsInits()[0]);

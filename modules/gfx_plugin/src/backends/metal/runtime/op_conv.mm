@@ -191,7 +191,7 @@ void MetalConvOp::compile(MetalBufferManager* buffer_manager) {
     OPENVINO_ASSERT(m_device, "MetalConvOp: Metal device is null");
     MetalCodegenBackend backend(m_device);
     std::string log;
-    mlir::MLIRContext ctx;
+    auto& ctx = gfx_mlir_context();
     auto module = build_mlir_for_node(m_node, ctx);
     if (m_has_bn) {
         const bool applied = apply_fused_batchnorm(module, m_bn_params);

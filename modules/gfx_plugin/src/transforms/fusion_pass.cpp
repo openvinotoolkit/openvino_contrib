@@ -16,6 +16,7 @@
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/mlir_support.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/core/type/float16.hpp"
@@ -554,7 +555,7 @@ FusionPlan build_fusion_plan(const std::shared_ptr<const ov::Model>& model,
     if (!config.enable_fusion) {
         return plan;
     }
-    mlir::MLIRContext ctx;
+    auto& ctx = gfx_mlir_context();
     GraphBuilder builder(model, ctx);
     auto module = builder.build();
 

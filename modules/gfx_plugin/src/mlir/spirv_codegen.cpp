@@ -62,6 +62,7 @@
 #include "llvm/ADT/APFloat.h"
 
 #include "mlir/mlir_passes.hpp"
+#include "mlir/mlir_support.hpp"
 #include "mlir/mlir_utils.hpp"
 #include "mlir/gfx_mlir_debug.hpp"
 #include "runtime/gfx_logger.hpp"
@@ -1105,7 +1106,7 @@ std::vector<uint32_t> serialize_spirv(mlir::spirv::ModuleOp spirv_module, std::s
 }  // namespace
 
 std::vector<uint32_t> build_stub_spirv(const std::string& entry_point, std::string* log) {
-    mlir::MLIRContext stub_ctx;
+    auto& stub_ctx = gfx_mlir_context();
     stub_ctx.loadDialect<mlir::spirv::SPIRVDialect, mlir::func::FuncDialect>();
     const std::string entry = entry_point.empty() ? "gfx_stub" : entry_point;
     const std::string text =
@@ -1359,7 +1360,7 @@ static std::vector<uint32_t> lower_to_spirv_impl(mlir::ModuleOp module,
 
         if (!entry_point.empty()) {
             module.walk([&](mlir::gpu::LaunchOp launch) {
-                launch.setKernelFuncAttr(mlir::SymbolRefAttr::get(ctx, entry_point));
+                launch.setFunctionAttr(mlir::SymbolRefAttr::get(ctx, entry_point));
             });
         }
 

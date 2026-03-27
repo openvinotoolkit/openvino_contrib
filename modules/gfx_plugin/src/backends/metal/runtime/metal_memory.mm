@@ -4,9 +4,11 @@
 
 #include "backends/metal/runtime/metal_memory.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -457,6 +459,25 @@ const MetalMemoryStats& MetalBufferManager::stats() const {
 
 MetalBuffer MetalBufferManager::wrap_shared(void* ptr, size_t bytes, ov::element::Type type) {
     return m_core.wrap_shared(ptr, bytes, type);
+}
+
+std::optional<GpuExecutionDeviceInfo> MetalBufferManager::query_execution_device_info() const {
+    GpuExecutionDeviceInfo info{};
+    const auto caps = query_metal_device_caps(m_core.device());
+    info.backend = GpuBackend::Metal;
+    info.preferred_simd_width = std::max<uint32_t>(caps.preferred_simd_width, 1u);
+    info.subgroup_size = info.preferred_simd_width;
+    info.max_total_threads_per_group = std::max<uint32_t>(caps.max_total_threads_per_threadgroup, 1u);
+    info.max_threads_per_group = {std::max<uint32_t>(caps.max_threads_per_threadgroup_x, 1u),
+                                  std::max<uint32_t>(caps.max_threads_per_threadgroup_y, 1u),
+                                  std::max<uint32_t>(caps.max_threads_per_threadgroup_z, 1u)};
+
+    std::ostringstream os;
+    os << "metal:" << m_core.device() << ':' << info.preferred_simd_width << ':' << info.max_total_threads_per_group
+       << ':' << info.max_threads_per_group[0] << ':' << info.max_threads_per_group[1] << ':'
+       << info.max_threads_per_group[2];
+    info.device_key = os.str();
+    return info;
 }
 
 MetalBuffer MetalBufferManager::wrap_const(const std::string& key,

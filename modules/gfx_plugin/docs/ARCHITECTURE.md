@@ -68,6 +68,12 @@ Two interface points are important in the current code:
 - how expensive a stage is for submission ordering
 - which convolution family or algorithm should be preferred
 
+`src/runtime/gfx_parallelism.*` and `src/runtime/gfx_partitioning.*` now sit next to the policy layer. They use backend-reported execution-device limits to derive:
+- backend-neutral parallelism caps
+- preferred 1D thread counts
+- ranked 2D workgroup shapes for partitioned execution
+- stable device keys used by runtime planning caches
+
 During inference, `execute_pipeline_with_submission()` groups recorded stages into submission windows. The current grouping rules use:
 - `GpuStageSubmitPolicy`
 - maximum stages per submit
@@ -94,6 +100,11 @@ Current lowering also supports absorbed input transforms. `CompiledModel` detect
 
 The MLIR pass pipeline also contains parallel-lowering and cleanup steps used by current Vulkan codegen, including Conv2D parallel lowering, Conv2D im2col rewrite/lowering, matmul parallel lowering, and post-fusion cleanup passes.
 
+Recent MLIR-specific changes reflected in the current code:
+- Softmax lowering handles arbitrary normalized axes
+- buffer-results-to-out-params promotion now allows public function signatures to be rewritten when required by the lowering pipeline
+- shared helpers now prefer the common `gfx_mlir_context()` path instead of ad-hoc local MLIR contexts in selected code paths
+
 Lowered kernels also rely on backend-neutral argument and binding helpers:
 - `src/kernel_ir/gfx_kernel_args.hpp` materializes runtime kernel arguments and can turn scalar byte payloads into cached immutable device buffers
 - `src/runtime/gpu_backend_base.hpp` provides shared prepared-binding caches reused across compatible compiled-kernel wrappers
@@ -109,6 +120,7 @@ Outside kernel execution, `src/plugin/infer_pipeline.cpp` can also materialize c
 Direct Metal API usage lives in Objective-C++ files (`.mm`).
 
 The current Metal backend also shares immutable constant-buffer state across compatible requests through `MetalConstCache` and the backend-neutral immutable buffer cache helper.
+It now also reports execution-device limits through `GpuExecutionDeviceInfo`, so backend-neutral planning code can use real Metal subgroup and threadgroup limits.
 
 ## Vulkan Backend
 `src/backends/vulkan/` mirrors the same broad split:
@@ -124,6 +136,8 @@ The current Vulkan runtime also:
 - contains specialized execution routes for chunked unary/binary/softmax/layout ops and for multiple Conv2D or GroupConv2D cases
 - supports direct handling of some common binary patterns such as same-shape and bias-add style cases
 - reuses immutable constant buffers and prepared descriptor bindings across compatible submissions
+- increases per-submit batching thresholds in the infer path to reduce Android-oriented driver overhead
+- reports execution-device limits through `GpuExecutionDeviceInfo`, matching the Metal path and removing backend-specific probing from shared planning code
 
 ## Remote Contexts And Tensors
 The shared abstractions are:

@@ -66,6 +66,16 @@ add_library(gfx_plugin_build_settings INTERFACE)
 target_compile_definitions(gfx_plugin_build_settings INTERFACE
     GFX_BACKEND_METAL_AVAILABLE=$<BOOL:${GFX_BACKEND_METAL_AVAILABLE}>
     GFX_BACKEND_VULKAN_AVAILABLE=$<BOOL:${GFX_BACKEND_VULKAN_AVAILABLE}>)
+if(ANDROID)
+    target_compile_options(gfx_plugin_build_settings INTERFACE
+        -ffunction-sections
+        -fdata-sections
+        -fvisibility=hidden
+        -fvisibility-inlines-hidden)
+    target_link_options(gfx_plugin_build_settings INTERFACE
+        -Wl,--gc-sections
+        -Wl,--icf=safe)
+endif()
 
 # Public headers are exposed to consumers via include/.
 add_library(gfx_plugin_public_headers INTERFACE)
@@ -246,7 +256,6 @@ if(GFX_BACKEND_VULKAN_AVAILABLE)
         MLIRLoopLikeInterface
         MLIRParallelCombiningOpInterface
         MLIRMemorySlotInterfaces
-        MLIRCopyOpInterface
         MLIRArithValueBoundsOpInterfaceImpl
         MLIRTensorInferTypeOpInterfaceImpl
         MLIRTensorTilingInterfaceImpl
@@ -311,7 +320,7 @@ if(GFX_BACKEND_VULKAN_AVAILABLE)
             list(APPEND GFX_VULKAN_MLIR_LINK_LIBS ${_gfx_mlir_lib})
         endif()
     endforeach()
-    if(UNIX AND NOT APPLE)
+    if(UNIX AND NOT APPLE AND NOT (DEFINED LLVM_FOUND AND LLVM_FOUND AND DEFINED MLIR_FOUND AND MLIR_FOUND))
         list(JOIN GFX_VULKAN_MLIR_LINK_LIBS "," GFX_VULKAN_MLIR_LIBS_JOINED)
         set(GFX_VULKAN_MLIR_LINK_LIBS "$<LINK_GROUP:RESCAN,${GFX_VULKAN_MLIR_LIBS_JOINED}>")
     endif()

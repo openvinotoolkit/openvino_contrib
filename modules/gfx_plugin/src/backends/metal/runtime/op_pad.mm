@@ -57,7 +57,7 @@ void MetalPadOp::compile(MetalBufferManager* buffer_manager) {
 
     MetalCodegenBackend backend(m_device ? m_device : (id<MTLDevice>)buffer_manager->device());
     std::string log;
-    mlir::MLIRContext ctx;
+    auto& ctx = gfx_mlir_context();
     auto module = build_mlir_for_node(m_node, ctx);
     PadCodegenDesc desc{};
     desc.element_type = m_element_type;

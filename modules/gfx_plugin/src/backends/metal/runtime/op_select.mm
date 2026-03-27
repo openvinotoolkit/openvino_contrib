@@ -49,7 +49,7 @@ void MetalSelectOp::compile(MetalBufferManager* buffer_manager) {
 
     MetalCodegenBackend backend(m_device ? m_device : (id<MTLDevice>)buffer_manager->device());
     std::string log;
-    mlir::MLIRContext ctx;
+    auto& ctx = gfx_mlir_context();
     auto module = build_mlir_for_node(m_node, ctx);
     const auto msl_type = m_element_type;
     auto msl_generator = [msl_type](mlir::ModuleOp mod) { return generate_msl_for_select(mod, msl_type); };

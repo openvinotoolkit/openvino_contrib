@@ -18,6 +18,7 @@ public:
     VulkanBufferManager();
     ~VulkanBufferManager() override;
 
+    std::optional<GpuExecutionDeviceInfo> query_execution_device_info() const override;
     bool supports_const_cache() const override { return true; }
     GpuBuffer wrap_const(const std::string& key,
                          const void* data,

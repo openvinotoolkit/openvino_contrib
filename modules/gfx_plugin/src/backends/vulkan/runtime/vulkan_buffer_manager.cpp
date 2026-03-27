@@ -8,8 +8,10 @@
 #include "openvino/core/except.hpp"
 #include "runtime/memory_manager.hpp"
 
+#include <algorithm>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <unordered_map>
 
 namespace ov {
@@ -120,6 +122,22 @@ VulkanBufferManager::VulkanBufferManager()
     : m_reuse_context(VulkanConstBufferReuseRegistry::instance().acquire(VulkanContext::instance().device())) {}
 
 VulkanBufferManager::~VulkanBufferManager() = default;
+
+std::optional<GpuExecutionDeviceInfo> VulkanBufferManager::query_execution_device_info() const {
+    GpuExecutionDeviceInfo info{};
+    const auto& vk = VulkanContext::instance();
+    info.backend = GpuBackend::Vulkan;
+    info.preferred_simd_width = std::max<uint32_t>(vk.subgroup_size(), 1u);
+    info.subgroup_size = std::max<uint32_t>(vk.subgroup_size(), 1u);
+    info.max_total_threads_per_group = std::max<uint32_t>(vk.max_compute_workgroup_invocations(), 1u);
+    info.max_threads_per_group = vk.max_compute_workgroup_size();
+
+    std::ostringstream os;
+    os << "vulkan:" << vk.device_name() << ':' << info.subgroup_size << ':' << info.max_total_threads_per_group << ':'
+       << info.max_threads_per_group[0] << ':' << info.max_threads_per_group[1] << ':' << info.max_threads_per_group[2];
+    info.device_key = os.str();
+    return info;
+}
 
 GpuBuffer VulkanBufferManager::wrap_const(const std::string& key,
                                           const void* data,

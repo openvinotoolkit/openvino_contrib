@@ -219,6 +219,10 @@ MetalBuffer MetalBufferManager::wrap_shared(void* /*ptr*/, size_t /*bytes*/, ov:
     throw_metal_unavailable();
 }
 
+std::optional<GpuExecutionDeviceInfo> MetalBufferManager::query_execution_device_info() const {
+    return std::nullopt;
+}
+
 MetalBuffer MetalBufferManager::wrap_const(const std::string& /*key*/,
                                            const void* /*data*/,
                                            size_t /*bytes*/,

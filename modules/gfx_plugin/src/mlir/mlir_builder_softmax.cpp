@@ -129,16 +129,13 @@ mlir::ModuleOp build_softmax_like_from_node(const std::shared_ptr<const ov::Node
         b.getIndexType(),
         b.create<mlir::memref::LoadOp>(loc, params, mlir::ValueRange{b.create<mlir::arith::ConstantIndexOp>(loc, 2)}));
 
-    auto total = b.create<mlir::arith::MulIOp>(loc, rows_c, cols_c);
-    total = b.create<mlir::arith::MulIOp>(loc, total, inner_c);
     auto flat_in = func.getArgument(0);
     auto flat_out = func.getArgument(1);
 
     auto for_row = b.create<mlir::scf::ForOp>(loc, c0, rows_c, c1);
     auto brow = mlir::OpBuilder::atBlockBegin(for_row.getBody());
-    auto for_inner = brow.create<mlir::scf::ForOp>(loc, c0, inner_c, c1);
-    auto binner = mlir::OpBuilder::atBlockBegin(for_inner.getBody());
-    mlir::Value inner_idx = for_inner.getInductionVar();
+    auto row_outer = brow.create<mlir::arith::DivUIOp>(loc, for_row.getInductionVar(), inner_c);
+    auto row_inner = brow.create<mlir::arith::RemUIOp>(loc, for_row.getInductionVar(), inner_c);
 
     auto compute_flat = [&](mlir::OpBuilder& bld, mlir::Value row, mlir::Value col, mlir::Value in_idx) {
         auto mul1 = bld.create<mlir::arith::MulIOp>(loc, row, cols_c);
@@ -147,13 +144,14 @@ mlir::ModuleOp build_softmax_like_from_node(const std::shared_ptr<const ov::Node
         return bld.create<mlir::arith::AddIOp>(loc, mul2, in_idx);
     };
 
-    // Compute max for this (row, inner) slice.
-    auto neg_inf = binner.create<mlir::arith::ConstantOp>(
+    // Each logical row already spans outer*inner. Recover the original
+    // outer and inner coordinates before walking the softmax axis.
+    auto neg_inf = brow.create<mlir::arith::ConstantOp>(
         loc,
         mlir::FloatAttr::get(compute_ty, -std::numeric_limits<float>::infinity()));
-    auto for_col_max = binner.create<mlir::scf::ForOp>(loc, c0, cols_c, c1, neg_inf.getResult());
+    auto for_col_max = brow.create<mlir::scf::ForOp>(loc, c0, cols_c, c1, neg_inf.getResult());
     auto bmax = mlir::OpBuilder::atBlockBegin(for_col_max.getBody());
-    auto flat_max = compute_flat(bmax, for_row.getInductionVar(), for_col_max.getInductionVar(), inner_idx);
+    auto flat_max = compute_flat(bmax, row_outer, for_col_max.getInductionVar(), row_inner);
     auto val_max_raw = bmax.create<mlir::memref::LoadOp>(loc, flat_in, mlir::ValueRange{flat_max});
     auto val_max = cast_to_compute(bmax, val_max_raw);
     auto cur_max = for_col_max.getRegionIterArgs()[0];
@@ -162,11 +160,10 @@ mlir::ModuleOp build_softmax_like_from_node(const std::shared_ptr<const ov::Node
     bmax.create<mlir::scf::YieldOp>(loc, sel_max.getResult());
     auto max_val = for_col_max.getResult(0);
 
-    // Compute sum of exp(x - max).
-    auto zero = binner.create<mlir::arith::ConstantOp>(loc, mlir::FloatAttr::get(compute_ty, 0.0f));
-    auto for_col_sum = binner.create<mlir::scf::ForOp>(loc, c0, cols_c, c1, zero.getResult());
+    auto zero = brow.create<mlir::arith::ConstantOp>(loc, mlir::FloatAttr::get(compute_ty, 0.0f));
+    auto for_col_sum = brow.create<mlir::scf::ForOp>(loc, c0, cols_c, c1, zero.getResult());
     auto bsum = mlir::OpBuilder::atBlockBegin(for_col_sum.getBody());
-    auto flat_sum = compute_flat(bsum, for_row.getInductionVar(), for_col_sum.getInductionVar(), inner_idx);
+    auto flat_sum = compute_flat(bsum, row_outer, for_col_sum.getInductionVar(), row_inner);
     auto val_sum_raw = bsum.create<mlir::memref::LoadOp>(loc, flat_in, mlir::ValueRange{flat_sum});
     auto val_sum = cast_to_compute(bsum, val_sum_raw);
     auto diff = bsum.create<mlir::arith::SubFOp>(loc, val_sum, max_val);
@@ -176,10 +173,9 @@ mlir::ModuleOp build_softmax_like_from_node(const std::shared_ptr<const ov::Node
     bsum.create<mlir::scf::YieldOp>(loc, new_sum.getResult());
     auto sum_val = for_col_sum.getResult(0);
 
-    // Write output.
-    auto for_col = binner.create<mlir::scf::ForOp>(loc, c0, cols_c, c1);
+    auto for_col = brow.create<mlir::scf::ForOp>(loc, c0, cols_c, c1);
     auto bcol = mlir::OpBuilder::atBlockBegin(for_col.getBody());
-    auto flat_out_idx = compute_flat(bcol, for_row.getInductionVar(), for_col.getInductionVar(), inner_idx);
+    auto flat_out_idx = compute_flat(bcol, row_outer, for_col.getInductionVar(), row_inner);
     auto val_raw = bcol.create<mlir::memref::LoadOp>(loc, flat_in, mlir::ValueRange{flat_out_idx});
     auto val = cast_to_compute(bcol, val_raw);
     auto diff_out = bcol.create<mlir::arith::SubFOp>(loc, val, max_val);
@@ -274,16 +270,13 @@ mlir::ModuleOp build_softmax_like_from_node_tiled(const std::shared_ptr<const ov
         b.getIndexType(),
         b.create<mlir::memref::LoadOp>(loc, params, mlir::ValueRange{b.create<mlir::arith::ConstantIndexOp>(loc, 2)}));
 
-    auto total = b.create<mlir::arith::MulIOp>(loc, rows_c, cols_c);
-    total = b.create<mlir::arith::MulIOp>(loc, total, inner_c);
     auto flat_in = func.getArgument(0);
     auto flat_out = func.getArgument(1);
 
-    auto for_idx = b.create<mlir::scf::ForOp>(loc, c0, total, c1);
+    auto for_idx = b.create<mlir::scf::ForOp>(loc, c0, rows_c, c1);
     auto bidx = mlir::OpBuilder::atBlockBegin(for_idx.getBody());
-    auto global_idx = for_idx.getInductionVar();
-    auto row = bidx.create<mlir::arith::DivUIOp>(loc, global_idx, inner_c);
-    auto inner_idx = bidx.create<mlir::arith::RemUIOp>(loc, global_idx, inner_c);
+    auto row_outer = bidx.create<mlir::arith::DivUIOp>(loc, for_idx.getInductionVar(), inner_c);
+    auto row_inner = bidx.create<mlir::arith::RemUIOp>(loc, for_idx.getInductionVar(), inner_c);
 
     auto compute_flat = [&](mlir::OpBuilder& bld, mlir::Value row_v, mlir::Value col_v, mlir::Value in_idx) {
         auto mul1 = bld.create<mlir::arith::MulIOp>(loc, row_v, cols_c);
@@ -298,7 +291,7 @@ mlir::ModuleOp build_softmax_like_from_node_tiled(const std::shared_ptr<const ov
         mlir::FloatAttr::get(compute_ty, -std::numeric_limits<float>::infinity()));
     auto for_col_max = bidx.create<mlir::scf::ForOp>(loc, c0, cols_c, c1, neg_inf.getResult());
     auto bmax = mlir::OpBuilder::atBlockBegin(for_col_max.getBody());
-    auto flat_max = compute_flat(bmax, row, for_col_max.getInductionVar(), inner_idx);
+    auto flat_max = compute_flat(bmax, row_outer, for_col_max.getInductionVar(), row_inner);
     auto val_max_raw = bmax.create<mlir::memref::LoadOp>(loc, flat_in, mlir::ValueRange{flat_max});
     auto val_max = cast_to_compute(bmax, val_max_raw);
     auto cur_max = for_col_max.getRegionIterArgs()[0];
@@ -311,7 +304,7 @@ mlir::ModuleOp build_softmax_like_from_node_tiled(const std::shared_ptr<const ov
     auto zero = bidx.create<mlir::arith::ConstantOp>(loc, mlir::FloatAttr::get(compute_ty, 0.0f));
     auto for_col_sum = bidx.create<mlir::scf::ForOp>(loc, c0, cols_c, c1, zero.getResult());
     auto bsum = mlir::OpBuilder::atBlockBegin(for_col_sum.getBody());
-    auto flat_sum = compute_flat(bsum, row, for_col_sum.getInductionVar(), inner_idx);
+    auto flat_sum = compute_flat(bsum, row_outer, for_col_sum.getInductionVar(), row_inner);
     auto val_sum_raw = bsum.create<mlir::memref::LoadOp>(loc, flat_in, mlir::ValueRange{flat_sum});
     auto val_sum = cast_to_compute(bsum, val_sum_raw);
     auto diff = bsum.create<mlir::arith::SubFOp>(loc, val_sum, max_val);
@@ -324,7 +317,7 @@ mlir::ModuleOp build_softmax_like_from_node_tiled(const std::shared_ptr<const ov
     // Write output.
     auto for_col = bidx.create<mlir::scf::ForOp>(loc, c0, cols_c, c1);
     auto bcol = mlir::OpBuilder::atBlockBegin(for_col.getBody());
-    auto flat_out_idx = compute_flat(bcol, row, for_col.getInductionVar(), inner_idx);
+    auto flat_out_idx = compute_flat(bcol, row_outer, for_col.getInductionVar(), row_inner);
     auto val_raw = bcol.create<mlir::memref::LoadOp>(loc, flat_in, mlir::ValueRange{flat_out_idx});
     auto val = cast_to_compute(bcol, val_raw);
     auto diff_out = bcol.create<mlir::arith::SubFOp>(loc, val, max_val);

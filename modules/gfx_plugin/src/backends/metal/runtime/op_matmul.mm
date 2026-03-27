@@ -224,7 +224,7 @@ void MetalMatMulOp::compile(MetalBufferManager* buffer_manager) {
 
     MetalCodegenBackend backend(m_device ? m_device : (id<MTLDevice>)buffer_manager->device());
     std::string log;
-    mlir::MLIRContext ctx;
+    auto& ctx = gfx_mlir_context();
     auto module = build_mlir_for_node(m_node, ctx);
     if (m_has_activation) {
         const bool applied = apply_fused_activation(module, m_activation, m_activation_alpha);

@@ -653,6 +653,7 @@ void run_mlir_pipeline(mlir::ModuleOp module, bool use_alloca, bool use_parallel
     {
         mlir::bufferization::BufferResultsToOutParamsOpts out_opts;
         out_opts.hoistStaticAllocs = true;
+        out_opts.modifyPublicFunctions = true;
         if (mlir::failed(mlir::bufferization::promoteBufferResultsToOutParams(module, out_opts))) {
             throw std::runtime_error("MLIR buffer results to out params failed");
         }

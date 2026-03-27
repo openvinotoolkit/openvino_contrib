@@ -8,6 +8,7 @@
 #include <string_view>
 #include <utility>
 
+#include "mlir/mlir_support.hpp"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "openvino/core/node.hpp"

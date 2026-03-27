@@ -71,7 +71,7 @@ void MetalSoftmaxOp::compile(MetalBufferManager* buffer_manager) {
     }
     MetalCodegenBackend backend(m_device ? m_device : (id<MTLDevice>)buffer_manager->device());
     std::string log;
-    mlir::MLIRContext ctx;
+    auto& ctx = gfx_mlir_context();
     auto module = build_mlir_for_node(m_node, ctx);
     SoftmaxCodegenDesc desc{};
     desc.rows = m_desc.rows;
@@ -110,7 +110,7 @@ void MetalSoftmaxOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
         m_desc.inner = static_cast<int64_t>(dims.inner);
         MetalCodegenBackend backend(m_device);
         std::string log;
-        mlir::MLIRContext ctx;
+        auto& ctx = gfx_mlir_context();
         auto module = build_mlir_for_node(m_node, ctx);
         SoftmaxCodegenDesc desc{};
         desc.rows = m_desc.rows;

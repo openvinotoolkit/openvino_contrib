@@ -288,7 +288,7 @@ void MetalElementwiseOp::compile_kernel(MetalBufferManager* buffer_manager,
     desc.has_activation = m_has_activation;
     desc.activation = m_activation;
     desc.alpha = m_activation_alpha;
-    mlir::MLIRContext ctx;
+    auto& ctx = gfx_mlir_context();
     auto module = build_mlir_for_node(m_node, ctx);
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };

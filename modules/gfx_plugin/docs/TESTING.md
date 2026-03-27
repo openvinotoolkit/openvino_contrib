@@ -2,13 +2,16 @@
 
 This document summarizes how testing is organized for `modules/gfx_plugin`.
 
-## Main Test Target
-The primary test executable is `ov_gfx_func_tests`, created in `tests/CMakeLists.txt`.
+## Main Test Targets
+The module now builds two main test executables from `tests/CMakeLists.txt`:
+- `ov_gfx_func_tests` for plugin-facing and functional behavior
+- `ov_gfx_unit_tests` for focused runtime, MLIR, cache, and backend regressions
 
 Build it with:
 
 ```bash
 cmake --build build-gfx-plugin --target ov_gfx_func_tests
+cmake --build build-gfx-plugin --target ov_gfx_unit_tests
 ```
 
 Run the CTest label:
@@ -23,6 +26,10 @@ Run the gtest binary directly:
 find build-gfx-plugin -name ov_gfx_func_tests -type f
 DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
   <path-to-ov_gfx_func_tests> --gtest_filter=MetalBasicOps.*
+
+find build-gfx-plugin -name ov_gfx_unit_tests -type f
+DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
+  <path-to-ov_gfx_unit_tests> --gtest_filter=GfxMlirTransforms.*
 ```
 
 ## Test Layout
@@ -36,8 +43,11 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 Recent additions in the tree include:
 - `tests/unit/mlir_conv_parallel_test.cpp` for canonical Conv2D lowering, im2col rewrite coverage, and absorbed-input-transform regression checks
 - `tests/unit/gfx_parallelism_test.cpp` for backend-neutral parallelism-plan selection
+- `tests/unit/mlir_matmul_parallel_test.cpp` for linear matmul parallel-lowering behavior
+- `tests/unit/basic_ops_internal_test.cpp` for internal transform, fusion, and plugin regression coverage
 - `tests/unit/layout_cleanup_test.cpp` for MLIR layout-cleanup behavior
 - `tests/backends/vulkan/vulkan_runtime_test.cpp` for Vulkan runtime regressions
+- `tests/unit/memory_device_integration_test.mm` for Metal memory/device integration behavior
 - `tests/unit/infer_submission_test.cpp` for submission-window behavior
 - `tests/unit/infer_pipeline_reuse_test.cpp` for reusable pipeline, prepared-input plans, prepared-output plans, and reusable host-output coverage
 - `tests/unit/gpu_const_cache_test.cpp`, `tests/unit/kernel_arg_reuse_test.cpp`, and `tests/unit/gpu_backend_base_test.cpp` for cache and binding reuse layers
@@ -65,6 +75,8 @@ Add or update tests when you change:
 
 ## Practical Strategy
 - run the narrowest relevant gtest filter first
+- prefer `ov_gfx_unit_tests` for focused runtime, MLIR, cache, and backend changes
+- use `ov_gfx_func_tests` when validating plugin-facing behavior or full request execution
 - then run the broader backend suite
 - then run `ctest -L GFX` before finalizing a change
 
