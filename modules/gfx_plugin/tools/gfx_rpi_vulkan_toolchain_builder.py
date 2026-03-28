@@ -10,6 +10,7 @@ import hashlib
 import io
 import json
 import lzma
+import os
 from pathlib import Path
 import platform
 import shutil
@@ -112,6 +113,31 @@ def ensure_dir(path: Path, *, dry_run: bool) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
+def normalize_absolute_sysroot_symlinks(sysroot_dir: Path, *, dry_run: bool) -> None:
+    rewritten = 0
+    for link_path in sysroot_dir.rglob("*"):
+        if not link_path.is_symlink():
+            continue
+        target = os.readlink(link_path)
+        if not target.startswith("/"):
+            continue
+
+        resolved_target = sysroot_dir / target.lstrip("/")
+        if not resolved_target.exists():
+            continue
+
+        relative_target = os.path.relpath(resolved_target, start=link_path.parent)
+        print(f"rewrite symlink {link_path} -> {relative_target} (was {target})")
+        rewritten += 1
+        if dry_run:
+            continue
+        link_path.unlink()
+        link_path.symlink_to(relative_target)
+
+    if rewritten:
+        print(f"rewrote {rewritten} absolute sysroot symlink(s)")
+
+
 def write_text(path: Path, content: str, *, executable: bool = False, dry_run: bool) -> None:
     print(f"write {path}")
     if dry_run:
@@ -142,7 +168,7 @@ def extract_archive(archive_path: Path, destination: Path, *, dry_run: bool) -> 
 
 def find_vulkan_include_root(source_root: Path) -> Path:
     for candidate in source_root.rglob("include/vulkan/vulkan.h"):
-        return candidate.parent
+        return candidate.parent.parent
     raise RuntimeError(f"Failed to locate include/vulkan/vulkan.h under {source_root}")
 
 
@@ -268,6 +294,8 @@ def build_generic_sysroot_from_packages(
     if not vulkan_loader.exists() and vulkan_soname.exists():
         vulkan_loader.symlink_to("libvulkan.so.1")
 
+    normalize_absolute_sysroot_symlinks(sysroot_dir, dry_run=dry_run)
+
 
 def copy_user_sysroot(sysroot_source: Path, sysroot_dir: Path, *, dry_run: bool) -> None:
     print(f"copy sysroot {sysroot_source} -> {sysroot_dir}")
@@ -276,6 +304,7 @@ def copy_user_sysroot(sysroot_source: Path, sysroot_dir: Path, *, dry_run: bool)
     if sysroot_dir.exists():
         shutil.rmtree(sysroot_dir)
     shutil.copytree(sysroot_source, sysroot_dir, symlinks=True)
+    normalize_absolute_sysroot_symlinks(sysroot_dir, dry_run=dry_run)
 
 
 def materialize_sysroot(args: argparse.Namespace, output_dir: Path, profile: dict[str, object], *, dry_run: bool) -> None:
@@ -297,6 +326,7 @@ def materialize_sysroot(args: argparse.Namespace, output_dir: Path, profile: dic
         sysroot_dir.mkdir(parents=True, exist_ok=True)
         with tarfile.open(archive_path, "r:*") as archive:
             archive.extractall(sysroot_dir)
+        normalize_absolute_sysroot_symlinks(sysroot_dir, dry_run=dry_run)
         return
 
     build_generic_sysroot_from_packages(output_dir, sysroot_dir, profile, args.debian_mirror, dry_run=dry_run)
@@ -345,14 +375,19 @@ def install_vulkan_headers(sysroot_dir: Path, *, dry_run: bool) -> None:
             f"Expected {VULKAN_HEADERS_ROOT} prepared from the upstream {VULKAN_HEADERS_RELEASE} release."
         )
     include_root = find_vulkan_include_root(VULKAN_HEADERS_ROOT)
-    target_dir = sysroot_dir / "usr" / "include" / "vulkan"
-    print(f"copy Vulkan headers {include_root} -> {target_dir}")
+    target_include_dir = sysroot_dir / "usr" / "include"
+    print(f"copy Vulkan headers {include_root} -> {target_include_dir}")
     if dry_run:
         return
-    if target_dir.exists():
-        shutil.rmtree(target_dir)
-    target_dir.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(include_root, target_dir)
+    target_include_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("vulkan", "vk_video"):
+        source_dir = include_root / name
+        if not source_dir.exists():
+            continue
+        destination_dir = target_include_dir / name
+        if destination_dir.exists():
+            shutil.rmtree(destination_dir)
+        shutil.copytree(source_dir, destination_dir)
 
 
 def create_python_wrappers(output_dir: Path, profile: dict[str, object], *, dry_run: bool) -> None:
@@ -387,15 +422,17 @@ COMMON_ARGS = [
     str(CLANG) + EXE_SUFFIX,
     f"--target={{TRIPLE}}",
     f"--sysroot={{SYSROOT}}",
-    "-fuse-ld=lld",
     f"-mcpu={{CPU}}",
     f"-B{{GCC_LIB}}",
     f"-B{{ALT_GCC_LIB}}",
+    f"-isystem{{SYSROOT / 'usr' / 'include' / TRIPLE}}",
+]
+LINK_ARGS = [
+    "-fuse-ld=lld",
     f"-L{{GCC_LIB}}",
     f"-L{{ALT_GCC_LIB}}",
     f"-L{{SYSROOT / 'usr' / 'lib' / TRIPLE}}",
     f"-L{{SYSROOT / 'lib' / TRIPLE}}",
-    f"-isystem{{SYSROOT / 'usr' / 'include' / TRIPLE}}",
 ]
 
 if MODE == "cxx":
@@ -409,7 +446,11 @@ if MODE == "cxx":
         f"-isystem{{SYSROOT / 'usr' / 'include' / TRIPLE / 'c++' / cxx_ver}}",
     ])
 
-sys.exit(subprocess.call(COMMON_ARGS + sys.argv[1:]))
+compile_only_flags = {{"-c", "-E", "-S", "-fsyntax-only"}}
+user_args = sys.argv[1:]
+is_compile_only = any(arg in compile_only_flags for arg in user_args)
+args = COMMON_ARGS + ([] if is_compile_only else LINK_ARGS) + user_args
+sys.exit(subprocess.call(args))
 """
     pkg_config_driver = f"""#!/usr/bin/env python3
 from __future__ import annotations
@@ -426,14 +467,25 @@ SYSROOT = ROOT / "sysroot"
 pkg_config = shutil.which("pkg-config") or shutil.which("pkgconf")
 if not pkg_config:
     raise SystemExit("pkg-config or pkgconf is required on the host")
+user_args = sys.argv[1:]
+pc_file_args = [
+    Path(arg) for arg in user_args
+    if not arg.startswith("-") and Path(arg).suffix == ".pc"
+]
+
 env = dict(os.environ)
-env["PKG_CONFIG_SYSROOT_DIR"] = str(SYSROOT)
-env["PKG_CONFIG_LIBDIR"] = ":".join([
-    str(SYSROOT / "usr" / "lib" / "{triple}" / "pkgconfig"),
-    str(SYSROOT / "usr" / "lib" / "pkgconfig"),
-    str(SYSROOT / "usr" / "share" / "pkgconfig"),
-])
-sys.exit(subprocess.call([pkg_config] + sys.argv[1:], env=env))
+if pc_file_args:
+    # Direct validation of a concrete .pc file must not be sysroot-prefixed.
+    env.pop("PKG_CONFIG_SYSROOT_DIR", None)
+    env.pop("PKG_CONFIG_LIBDIR", None)
+else:
+    env["PKG_CONFIG_SYSROOT_DIR"] = str(SYSROOT)
+    env["PKG_CONFIG_LIBDIR"] = ":".join([
+        str(SYSROOT / "usr" / "lib" / "{triple}" / "pkgconfig"),
+        str(SYSROOT / "usr" / "lib" / "pkgconfig"),
+        str(SYSROOT / "usr" / "share" / "pkgconfig"),
+    ])
+sys.exit(subprocess.call([pkg_config] + user_args, env=env))
 """
     write_text(bin_dir / "compiler_driver.py", compiler_driver, executable=True, dry_run=dry_run)
     write_text(bin_dir / "pkg_config_driver.py", pkg_config_driver, executable=True, dry_run=dry_run)

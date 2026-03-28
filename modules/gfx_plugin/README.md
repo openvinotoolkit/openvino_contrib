@@ -137,6 +137,7 @@ Current lowering/runtime special cases:
 - Vulkan contains specialized direct or chunked paths for unary, binary, softmax, split/concat, transpose, convert, Conv2D, and GroupConv2D cases
 - some Conv2D shapes may be lowered through an explicit MLIR `im2col + matmul` route when the selected execution policy prefers it
 - Softmax lowering now supports arbitrary normalized axes instead of only the last axis
+- Slice lowering now prefers `tensor.extract_slice`; generic slice metadata extraction still accepts the older generic form when needed
 
 ## Public And Internal Properties
 Commonly used properties:
@@ -182,9 +183,11 @@ Useful options:
 
 Build notes:
 - vendored LLVM/MLIR is now built as a static external toolchain under `third_party/llvm-project`
+- the external LLVM bootstrap now injects a tiny local dummy fuzzing-engine archive so `mlir-parser-fuzzer` configure paths do not break the bundled llvmorg-22.1.2 flow
 - Android and generic cross-compiling flows forward toolchain settings into that external LLVM/MLIR build
+- the module build treats compiler warnings as errors by default through `-Werror` on Clang/GCC and `/WX` on MSVC
 - `cmake/GfxAndroidRuntimeBundle.cmake.in` provides helper copy logic for Android-side runtime dependency bundling
-- `tools/gfx_rpi_vulkan_toolchain_builder.py` can assemble a hermetic Raspberry Pi Vulkan cross-toolchain bundle for `aarch64` Bookworm-style targets
+- `tools/gfx_rpi_vulkan_toolchain_builder.py` can assemble a hermetic Raspberry Pi Vulkan cross-toolchain bundle for `aarch64` Bookworm-style targets, normalize absolute sysroot symlinks, and install both `vulkan/` and `vk_video/` headers into the generated sysroot
 
 The build produces the `openvino_gfx_plugin` shared library. On Unix-like builds this is typically emitted as `libopenvino_gfx_plugin.so`; the `.so` suffix is also forced on macOS for OpenVINO plugin loading compatibility.
 
@@ -270,7 +273,7 @@ Useful environment variables from the current codebase:
 - `OV_GFX_DUMP_SPIRV_BINDINGS`: dump Vulkan binding information
 - `OV_GFX_DUMP_SPIRV_MLIR`, `OV_GFX_DUMP_SPIRV_MLIR_FILTER`, `OV_GFX_DUMP_MLIR_PRE_SPIRV`: Vulkan/MLIR dump controls
 
-For output-quality checks against a reference backend, use `ov_gfx_compare_runner`. It can register a local plugin build, run repeated inference, compare tensor diffs, and narrow investigation to per-op windows.
+For output-quality checks against a reference backend, use `ov_gfx_compare_runner`. It is an accuracy-only helper: it registers local plugin builds, compares tensor diffs, can run per-op windows or full-graph per-op output scans, and can also emit `GFX`-only output summaries for quick debugging. For performance numbers, use `benchmark_app` instead of the compare tool.
 
 ## Integration Notes
 - `query_model()` follows the same backend-specific support checks as compilation, so external schedulers see actual backend capability rather than an optimistic superset.

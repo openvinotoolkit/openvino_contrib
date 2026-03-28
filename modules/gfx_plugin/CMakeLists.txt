@@ -70,6 +70,7 @@ if(ENABLE_GFX_MLIR)
         MLIRControlFlowInterfaces
         MLIRIndexDialect
         MLIRMemRefDialect
+        MLIRMemOpInterfaces
         MLIRFunctionInterfaces
         MLIRDestinationStyleOpInterface
         MLIRShapedOpInterfaces
@@ -204,12 +205,42 @@ if(ENABLE_GFX_MLIR)
         set(_gfx_llvm_targets_to_build "Native")
     endif()
 
-    # Build products are shared libraries; explicit byproduct list is unnecessary.
-    set(_gfx_llvm_byproducts)
+    # llvmorg-22.1.2 unconditionally enters mlir-parser-fuzzer from mlir/tools,
+    # but the fuzzer subdirs assume add_llvm_fuzzer created a target. Supplying
+    # a tiny local fuzzing engine archive keeps llvm-project pristine while
+    # allowing the external MLIR build to configure cleanly.
+    set(_gfx_llvm_fuzzing_engine_dir "${CMAKE_CURRENT_BINARY_DIR}/gfx_llvm_support")
+    file(MAKE_DIRECTORY "${_gfx_llvm_fuzzing_engine_dir}")
+    add_library(gfx_llvm_fuzzing_engine_stub STATIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/gfx_dummy_fuzzing_engine.c)
+    set_target_properties(gfx_llvm_fuzzing_engine_stub PROPERTIES
+        ARCHIVE_OUTPUT_DIRECTORY "${_gfx_llvm_fuzzing_engine_dir}"
+        OUTPUT_NAME "gfx_dummy_fuzzing_engine")
+    set(_gfx_llvm_fuzzing_engine_archive
+        "${_gfx_llvm_fuzzing_engine_dir}/${CMAKE_STATIC_LIBRARY_PREFIX}gfx_dummy_fuzzing_engine${CMAKE_STATIC_LIBRARY_SUFFIX}")
+
+    set(_gfx_llvm_byproducts
+        "${GFX_LLVM_INSTALL_DIR}/lib/cmake/llvm/LLVMConfig.cmake"
+        "${GFX_LLVM_INSTALL_DIR}/lib/cmake/mlir/MLIRConfig.cmake"
+        "${GFX_LLVM_BUILD_DIR}/lib/cmake/llvm/LLVMConfig.cmake"
+        "${GFX_LLVM_BUILD_DIR}/lib/cmake/mlir/MLIRConfig.cmake")
+    foreach(_gfx_llvm_component IN LISTS GFX_LLVM_COMPONENT_LIBS)
+        list(APPEND _gfx_llvm_byproducts
+            "${GFX_LLVM_INSTALL_DIR}/lib/lib${_gfx_llvm_component}.a"
+            "${GFX_LLVM_BUILD_DIR}/lib/lib${_gfx_llvm_component}.a")
+    endforeach()
+    foreach(_gfx_mlir_component IN LISTS GFX_MLIR_COMPONENT_LIBS)
+        list(APPEND _gfx_llvm_byproducts
+            "${GFX_LLVM_INSTALL_DIR}/lib/lib${_gfx_mlir_component}.a"
+            "${GFX_LLVM_BUILD_DIR}/lib/lib${_gfx_mlir_component}.a")
+    endforeach()
 
     ExternalProject_Add(gfx_llvm_external
         SOURCE_DIR ${GFX_LLVM_PROJECT_SOURCE_DIR}/llvm
         BINARY_DIR ${GFX_LLVM_BUILD_DIR}
+        DEPENDS gfx_llvm_fuzzing_engine_stub
+        BUILD_BYPRODUCTS
+            ${_gfx_llvm_byproducts}
         CMAKE_ARGS
             -G ${CMAKE_GENERATOR}
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
@@ -217,10 +248,27 @@ if(ENABLE_GFX_MLIR)
             -DCMAKE_INSTALL_PREFIX=${GFX_LLVM_INSTALL_DIR}
             -DLLVM_ENABLE_PROJECTS=mlir
             -DLLVM_TARGETS_TO_BUILD=${_gfx_llvm_targets_to_build}
+            -DLLVM_LIB_FUZZING_ENGINE=${_gfx_llvm_fuzzing_engine_archive}
             -DBUILD_SHARED_LIBS=OFF
             -DLLVM_BUILD_LLVM_DYLIB=OFF
             -DLLVM_BUILD_TOOLS=OFF
             -DLLVM_BUILD_UTILS=OFF
+            -DLLVM_TOOL_LTO_BUILD=OFF
+            -DLLVM_TOOL_LLVM_AS_FUZZER_BUILD=OFF
+            -DLLVM_TOOL_LLVM_DIS_FUZZER_BUILD=OFF
+            -DLLVM_TOOL_LLVM_DLANG_DEMANGLE_FUZZER_BUILD=OFF
+            -DLLVM_TOOL_LLVM_DWARFDUMP_BUILD=OFF
+            -DLLVM_TOOL_LLVM_ISEL_FUZZER_BUILD=OFF
+            -DLLVM_TOOL_LLVM_ITANIUM_DEMANGLE_FUZZER_BUILD=OFF
+            -DLLVM_TOOL_LLVM_MC_ASSEMBLE_FUZZER_BUILD=OFF
+            -DLLVM_TOOL_LLVM_MC_DISASSEMBLE_FUZZER_BUILD=OFF
+            -DLLVM_TOOL_LLVM_MICROSOFT_DEMANGLE_FUZZER_BUILD=OFF
+            -DLLVM_TOOL_LLVM_OPT_FUZZER_BUILD=OFF
+            -DLLVM_TOOL_LLVM_RUST_DEMANGLE_FUZZER_BUILD=OFF
+            -DLLVM_TOOL_LLVM_SPECIAL_CASE_LIST_FUZZER_BUILD=OFF
+            -DLLVM_TOOL_LLVM_YAML_NUMERIC_PARSER_FUZZER_BUILD=OFF
+            -DLLVM_TOOL_LLVM_YAML_PARSER_FUZZER_BUILD=OFF
+            -DLLVM_TOOL_VFABI_DEMANGLE_FUZZER_BUILD=OFF
             -DLLVM_ENABLE_BINDINGS=OFF
             -DLLVM_INCLUDE_BENCHMARKS=OFF
             -DLLVM_INCLUDE_DOCS=OFF

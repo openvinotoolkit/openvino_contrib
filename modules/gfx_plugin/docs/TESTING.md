@@ -90,5 +90,6 @@ If you change MLIR lowering, prefer a unit test that inspects the emitted IR for
 - Some tests skip when the corresponding backend is unavailable on the current machine
 - Metal tests require a valid Metal runtime environment
 - Vulkan tests depend on Vulkan being enabled and available in the build
-- `ov_gfx_compare_runner` is useful for numeric diffs and per-op narrowing when a failure is hard to isolate from the full suite
+- `ov_gfx_compare_runner` is useful for numeric diffs and per-op narrowing when a failure is hard to isolate from the full suite; it also supports `--per-op-all`, `--reference-device`, `--reference-plugin`, and `--gfx-only`
+- keep `ov_gfx_compare_runner` accuracy-only and use `benchmark_app` for perf
 - Reuse-related regressions are often easier to catch with focused unit tests than with full end-to-end backend suites

@@ -102,6 +102,7 @@ The MLIR pass pipeline also contains parallel-lowering and cleanup steps used by
 
 Recent MLIR-specific changes reflected in the current code:
 - Softmax lowering handles arbitrary normalized axes
+- Slice lowering now prefers `tensor.extract_slice`, while slice metadata extraction still accepts both `tensor.extract_slice` and the older `linalg.generic` form
 - buffer-results-to-out-params promotion now allows public function signatures to be rewritten when required by the lowering pipeline
 - shared helpers now prefer the common `gfx_mlir_context()` path instead of ad-hoc local MLIR contexts in selected code paths
 

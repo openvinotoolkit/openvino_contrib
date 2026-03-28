@@ -45,16 +45,32 @@ void register_gfx_plugin(ov::Core& core) {
     }
 }
 
-std::string reference_device(const ov::Core& core) {
-    try {
-        ov::test::utils::register_template_plugin(const_cast<ov::Core&>(core));
-    } catch (...) {
+void register_reference_plugin(ov::Core& core,
+                               const std::string& reference_device_name,
+                               const std::string& reference_plugin_path) {
+    if (!reference_plugin_path.empty()) {
+        const auto devices = core.get_available_devices();
+        if (std::find(devices.begin(), devices.end(), reference_device_name) == devices.end()) {
+            core.register_plugin(reference_plugin_path, reference_device_name);
+        }
+    }
+    if (reference_device_name == "TEMPLATE") {
+        try {
+            ov::test::utils::register_template_plugin(core);
+        } catch (...) {
+        }
+    }
+}
+
+std::string reference_device(const ov::Core& core, const std::string& requested_device) {
+    if (requested_device == "CPU") {
+        throw std::runtime_error("CPU reference device is not supported; use TEMPLATE");
     }
     const auto devices = core.get_available_devices();
-    if (std::find(devices.begin(), devices.end(), "TEMPLATE") != devices.end()) {
-        return "TEMPLATE";
+    if (std::find(devices.begin(), devices.end(), requested_device) != devices.end()) {
+        return requested_device;
     }
-    throw std::runtime_error("TEMPLATE reference device not available");
+    throw std::runtime_error(requested_device + " reference device not available");
 }
 
 template <typename T>
@@ -143,18 +159,6 @@ DiffStats compare_tensors(const ov::Tensor& a, const ov::Tensor& b) {
     }
 }
 
-double median_ms(std::vector<double> values) {
-    if (values.empty()) {
-        return 0.0;
-    }
-    std::sort(values.begin(), values.end());
-    const size_t mid = values.size() / 2;
-    if ((values.size() & 1u) != 0u) {
-        return values[mid];
-    }
-    return 0.5 * (values[mid - 1] + values[mid]);
-}
-
 ov::Shape make_static_shape(const ov::PartialShape& ps, int64_t fallback = 1) {
     if (ps.is_static()) {
         return ps.to_shape();
@@ -172,28 +176,18 @@ ov::Shape make_static_shape(const ov::PartialShape& ps, int64_t fallback = 1) {
     return shape;
 }
 
-double benchmark_request(ov::InferRequest& request, size_t iterations) {
-    std::vector<double> samples;
-    samples.reserve(iterations);
-    for (size_t i = 0; i < iterations; ++i) {
-        const auto t0 = std::chrono::steady_clock::now();
-        request.infer();
-        const auto t1 = std::chrono::steady_clock::now();
-        samples.push_back(std::chrono::duration<double, std::milli>(t1 - t0).count());
-    }
-    return median_ms(samples);
-}
-
 bool is_debug_skippable_node(const std::shared_ptr<ov::Node>& node) {
     return ov::is_type<ov::op::v0::Parameter>(node) || ov::is_type<ov::op::v0::Constant>(node) ||
            ov::is_type<ov::op::v0::Result>(node);
 }
 
 struct CompareOptions {
-    size_t iterations = 10;
     bool per_op = false;
+    bool per_op_all = false;
     bool print_ops = false;
-    bool time_per_op = false;
+    bool gfx_only = false;
+    std::string reference_device = "TEMPLATE";
+    std::string reference_plugin_path;
     size_t start_op = 0;
     size_t window_size = 1;
     std::optional<size_t> stop_after_op;
@@ -201,9 +195,36 @@ struct CompareOptions {
     double rel_threshold = 1e-4;
 };
 
+struct OutputKey {
+    const ov::Node* node = nullptr;
+    size_t port = 0;
+    bool operator==(const OutputKey& other) const {
+        return node == other.node && port == other.port;
+    }
+};
+
+struct OutputKeyHash {
+    size_t operator()(const OutputKey& key) const {
+        size_t h1 = std::hash<const ov::Node*>()(key.node);
+        size_t h2 = std::hash<size_t>()(key.port);
+        return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
+    }
+};
+
 ov::AnyMap make_compile_config(bool for_gfx);
 ov::InferRequest make_request(ov::CompiledModel& compiled_model,
                               const std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>>& inputs);
+
+struct TensorSummary {
+    size_t elements = 0;
+    size_t finite_count = 0;
+    size_t nan_count = 0;
+    size_t inf_count = 0;
+    double min = 0.0;
+    double max = 0.0;
+    double mean = 0.0;
+    double l2 = 0.0;
+};
 
 ov::AnyMap make_compile_config(bool for_gfx) {
     ov::AnyMap config;
@@ -227,6 +248,71 @@ ov::InferRequest make_request(ov::CompiledModel& compiled_model,
     return request;
 }
 
+template <typename T>
+TensorSummary summarize_typed_tensor(const ov::Tensor& tensor) {
+    const T* data = tensor.data<const T>();
+    TensorSummary summary;
+    summary.elements = tensor.get_size();
+    if (summary.elements == 0) {
+        return summary;
+    }
+
+    double min_value = 0.0;
+    double max_value = 0.0;
+    double sum = 0.0;
+    double sum_sq = 0.0;
+    bool initialized = false;
+    for (size_t i = 0; i < summary.elements; ++i) {
+        const double value = static_cast<double>(data[i]);
+        if (std::isnan(value)) {
+            ++summary.nan_count;
+            continue;
+        }
+        if (!std::isfinite(value)) {
+            ++summary.inf_count;
+            continue;
+        }
+        ++summary.finite_count;
+        if (!initialized) {
+            min_value = value;
+            max_value = value;
+            initialized = true;
+        } else {
+            min_value = std::min(min_value, value);
+            max_value = std::max(max_value, value);
+        }
+        sum += value;
+        sum_sq += value * value;
+    }
+
+    if (initialized) {
+        summary.min = min_value;
+        summary.max = max_value;
+    }
+    if (summary.finite_count > 0) {
+        summary.mean = sum / static_cast<double>(summary.finite_count);
+        summary.l2 = std::sqrt(sum_sq);
+    }
+    return summary;
+}
+
+TensorSummary summarize_tensor(const ov::Tensor& tensor) {
+    switch (tensor.get_element_type()) {
+        case ov::element::f32:
+            return summarize_typed_tensor<float>(tensor);
+        case ov::element::f16:
+            return summarize_typed_tensor<ov::float16>(tensor);
+        case ov::element::i32:
+            return summarize_typed_tensor<int32_t>(tensor);
+        case ov::element::i64:
+            return summarize_typed_tensor<int64_t>(tensor);
+        case ov::element::u8:
+            return summarize_typed_tensor<uint8_t>(tensor);
+        default:
+            throw std::runtime_error("unsupported output type: " + tensor.get_element_type().to_string());
+    }
+}
+
 std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>> make_inputs(const std::shared_ptr<ov::Model>& model) {
     std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>> inputs;
     inputs.reserve(model->inputs().size());
@@ -241,7 +327,8 @@ std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>> make_inputs(const
 DiffStats compare_model_outputs(ov::CompiledModel& ref_model,
                                 ov::CompiledModel& gfx_model,
                                 const std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>>& inputs,
-                                bool print_outputs) {
+                                bool print_outputs,
+                                std::vector<ov::Tensor>* ref_outputs = nullptr) {
     auto ref_req = make_request(ref_model, inputs);
     auto gfx_req = make_request(gfx_model, inputs);
 
@@ -249,9 +336,16 @@ DiffStats compare_model_outputs(ov::CompiledModel& ref_model,
     gfx_req.infer();
 
     DiffStats total;
+    if (ref_outputs) {
+        ref_outputs->clear();
+        ref_outputs->reserve(ref_model.outputs().size());
+    }
     for (size_t i = 0; i < ref_model.outputs().size(); ++i) {
         const auto ref_tensor = ref_req.get_tensor(ref_model.output(i));
         const auto gfx_tensor = gfx_req.get_tensor(gfx_model.output(i));
+        if (ref_outputs) {
+            ref_outputs->push_back(ref_tensor);
+        }
         const auto stats = compare_tensors(ref_tensor, gfx_tensor);
         if (stats.max_abs_diff > total.max_abs_diff) {
             total.max_abs_diff = stats.max_abs_diff;
@@ -479,12 +573,73 @@ void print_conv_probe(ov::Core& core,
               << '\n';
 }
 
+struct FullGraphOutputDesc {
+    size_t op_index = 0;
+    std::string name;
+    std::string type;
+};
+
+std::shared_ptr<ov::Model> make_full_graph_debug_model(const std::shared_ptr<ov::Model>& model,
+                                                       std::vector<FullGraphOutputDesc>& output_descs) {
+    auto cloned_model = model->clone();
+    const auto cloned_ops = cloned_model->get_ordered_ops();
+    ov::ResultVector results;
+    output_descs.clear();
+    for (size_t idx = 0; idx < cloned_ops.size(); ++idx) {
+        const auto& node = cloned_ops[idx];
+        if (is_debug_skippable_node(node)) {
+            continue;
+        }
+        for (size_t port = 0; port < node->get_output_size(); ++port) {
+            results.push_back(std::make_shared<ov::op::v0::Result>(node->output(port)));
+            FullGraphOutputDesc desc;
+            desc.op_index = idx;
+            desc.type = node->get_type_name();
+            desc.name = node->get_friendly_name();
+            if (node->get_output_size() > 1) {
+                desc.name += "/out_" + std::to_string(port);
+            }
+            output_descs.push_back(std::move(desc));
+        }
+    }
+    return std::make_shared<ov::Model>(results, cloned_model->get_parameters(), cloned_model->get_friendly_name() + "_per_op");
+}
+
+int run_full_graph_per_op_compare(ov::Core& core,
+                                  const std::shared_ptr<ov::Model>& model,
+                                  const CompareOptions& options) {
+    const auto ref_device = reference_device(core, options.reference_device);
+    std::vector<FullGraphOutputDesc> output_descs;
+    auto debug_model = make_full_graph_debug_model(model, output_descs);
+    const auto inputs = make_inputs(debug_model);
+
+    auto ref_model = core.compile_model(debug_model, ref_device, make_compile_config(false));
+    auto gfx_model = core.compile_model(debug_model, "GFX", make_compile_config(true));
+    auto ref_req = make_request(ref_model, inputs);
+    auto gfx_req = make_request(gfx_model, inputs);
+
+    ref_req.infer();
+    gfx_req.infer();
+
+    for (size_t i = 0; i < output_descs.size(); ++i) {
+        const auto ref_tensor = ref_req.get_tensor(ref_model.output(i));
+        const auto gfx_tensor = gfx_req.get_tensor(gfx_model.output(i));
+        const auto stats = compare_tensors(ref_tensor, gfx_tensor);
+        const auto& desc = output_descs[i];
+        std::cout << "[op " << desc.op_index << "] " << desc.name << " (" << desc.type << ")"
+                  << " max_abs_diff=" << std::setprecision(10) << stats.max_abs_diff
+                  << " max_rel_diff=" << stats.max_rel_diff << '\n';
+    }
+    std::cout << "PER_OP_MATCH\n";
+    return 0;
+}
+
 int run_per_op_compare(ov::Core& core,
                        const std::shared_ptr<ov::Model>& model,
                        const std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>>& inputs,
                        const CompareOptions& options) {
     const auto ordered_ops = model->get_ordered_ops();
-    const auto ref_device = reference_device(core);
+    const auto ref_device = reference_device(core, options.reference_device);
     std::vector<size_t> relevant_indices;
     relevant_indices.reserve(ordered_ops.size());
     std::unordered_map<const ov::Node*, size_t> relevant_pos;
@@ -497,6 +652,7 @@ int run_per_op_compare(ov::Core& core,
         relevant_indices.push_back(idx);
     }
     size_t checked = 0;
+    std::unordered_map<OutputKey, ov::Tensor, OutputKeyHash> cached_reference_outputs;
     for (size_t idx = 0; idx < ordered_ops.size(); ++idx) {
         const auto& node = ordered_ops[idx];
         if (idx < options.start_op) {
@@ -508,21 +664,6 @@ int run_per_op_compare(ov::Core& core,
         if (options.stop_after_op.has_value() && checked >= *options.stop_after_op) {
             break;
         }
-
-        struct OutputKey {
-            const ov::Node* node = nullptr;
-            size_t port = 0;
-            bool operator==(const OutputKey& other) const {
-                return node == other.node && port == other.port;
-            }
-        };
-        struct OutputKeyHash {
-            size_t operator()(const OutputKey& key) const {
-                size_t h1 = std::hash<const ov::Node*>()(key.node);
-                size_t h2 = std::hash<size_t>()(key.port);
-                return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
-            }
-        };
 
         const auto pos_it = relevant_pos.find(node.get());
         OPENVINO_ASSERT(pos_it != relevant_pos.end(), "per-op debug: node position missing");
@@ -553,13 +694,20 @@ int run_per_op_compare(ov::Core& core,
                 external_values.emplace(key, out);
                 return out;
             }
-            auto tensor = evaluate_source_tensor(source, inputs);
+            auto cached_it = cached_reference_outputs.find(key);
+            std::optional<ov::Tensor> tensor;
+            if (cached_it != cached_reference_outputs.end()) {
+                tensor = cached_it->second;
+            } else {
+                tensor = evaluate_source_tensor(source, inputs);
+            }
             if (!tensor.has_value()) {
                 tensor = evaluate_source_tensor_with_reference(core, ref_device, source, inputs);
             }
             if (!tensor.has_value()) {
                 return std::nullopt;
             }
+            cached_reference_outputs.insert_or_assign(key, *tensor);
             auto param = std::make_shared<ov::op::v0::Parameter>(tensor->get_element_type(), tensor->get_shape());
             param->set_friendly_name((source.get_node_shared_ptr() ? source.get_node_shared_ptr()->get_friendly_name()
                                                                    : std::string("param")) +
@@ -626,28 +774,24 @@ int run_per_op_compare(ov::Core& core,
         }
 
         DiffStats stats;
+        std::vector<ov::Tensor> ref_outputs;
         try {
-            stats = compare_model_outputs(ref_submodel, gfx_submodel, isolated_input_tensors, false);
+            stats = compare_model_outputs(ref_submodel, gfx_submodel, isolated_input_tensors, false, &ref_outputs);
         } catch (const std::exception& ex) {
             std::cout << "[op " << idx << "] " << node->get_friendly_name() << " (" << node->get_type_name()
                       << ") infer_skip=" << ex.what() << '\n';
             ++checked;
             continue;
         }
+        for (size_t out_idx = 0; out_idx < ref_outputs.size(); ++out_idx) {
+            cached_reference_outputs.insert_or_assign({node.get(), out_idx}, ref_outputs[out_idx]);
+        }
 
         std::cout << "[op " << idx << "] " << node->get_friendly_name() << " (" << node->get_type_name()
                   << ") max_abs_diff=" << std::setprecision(10) << stats.max_abs_diff
                   << " max_rel_diff=" << stats.max_rel_diff;
-        if (options.time_per_op) {
-            auto ref_req = make_request(ref_submodel, isolated_input_tensors);
-            auto gfx_req = make_request(gfx_submodel, isolated_input_tensors);
-            const double ref_ms = benchmark_request(ref_req, options.iterations);
-            const double gfx_ms = benchmark_request(gfx_req, options.iterations);
-            std::cout << " ref_ms=" << ref_ms
-                      << " gfx_ms=" << gfx_ms;
-        }
         std::cout << '\n';
-        if (stats.max_abs_diff > options.abs_threshold && stats.max_rel_diff > options.rel_threshold) {
+        if (!options.per_op_all && stats.max_abs_diff > options.abs_threshold && stats.max_rel_diff > options.rel_threshold) {
             print_conv_probe(core, ref_device, node, inputs, stats);
             std::cout << "FIRST_MISMATCH op_index=" << idx
                       << " name=" << node->get_friendly_name()
@@ -667,8 +811,9 @@ int run_per_op_compare(ov::Core& core,
 
 int main(int argc, char** argv) try {
     if (argc < 2) {
-        std::cerr << "usage: ov_gfx_compare_runner <model.xml> [iterations] [--per-op] [--print-ops] "
-                     "[--time-per-op] [--start-op N] "
+        std::cerr << "usage: ov_gfx_compare_runner <model.xml> [--per-op] [--per-op-all] [--print-ops] [--gfx-only] "
+                     "[--reference-device NAME] [--reference-plugin PATH] "
+                     "[--start-op N] "
                      "[--window-size N] "
                      "[--stop-after-op N] [--abs-threshold V] [--rel-threshold V]\n";
         return 2;
@@ -676,19 +821,37 @@ int main(int argc, char** argv) try {
 
     const std::string model_path = argv[1];
     CompareOptions options;
-    bool positional_iterations_consumed = false;
     for (int i = 2; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--per-op") {
             options.per_op = true;
             continue;
         }
+        if (arg == "--per-op-all") {
+            options.per_op = true;
+            options.per_op_all = true;
+            continue;
+        }
         if (arg == "--print-ops") {
             options.print_ops = true;
             continue;
         }
-        if (arg == "--time-per-op") {
-            options.time_per_op = true;
+        if (arg == "--gfx-only") {
+            options.gfx_only = true;
+            continue;
+        }
+        if (arg == "--reference-device") {
+            if (i + 1 >= argc) {
+                throw std::runtime_error("--reference-device requires a value");
+            }
+            options.reference_device = argv[++i];
+            continue;
+        }
+        if (arg == "--reference-plugin") {
+            if (i + 1 >= argc) {
+                throw std::runtime_error("--reference-plugin requires a value");
+            }
+            options.reference_plugin_path = argv[++i];
             continue;
         }
         if (arg == "--start-op") {
@@ -726,17 +889,15 @@ int main(int argc, char** argv) try {
             options.rel_threshold = std::stod(argv[++i]);
             continue;
         }
-        if (!positional_iterations_consumed) {
-            options.iterations = static_cast<size_t>(std::stoul(arg));
-            positional_iterations_consumed = true;
-            continue;
-        }
         throw std::runtime_error("unknown argument: " + arg);
     }
 
     ov::Core core;
     register_gfx_plugin(core);
-    ov::test::utils::register_template_plugin(core);
+    if (options.reference_device == "CPU") {
+        throw std::runtime_error("CPU reference device is not supported; use TEMPLATE");
+    }
+    register_reference_plugin(core, options.reference_device, options.reference_plugin_path);
 
     auto model = core.read_model(model_path);
     const auto inputs = make_inputs(model);
@@ -755,11 +916,39 @@ int main(int argc, char** argv) try {
         return 0;
     }
 
+    if (options.per_op_all) {
+        return run_full_graph_per_op_compare(core, model, options);
+    }
+
     if (options.per_op) {
         return run_per_op_compare(core, model, inputs, options);
     }
 
-    const auto ref_device = reference_device(core);
+    if (options.gfx_only) {
+        auto gfx_model = core.compile_model(model, "GFX", make_compile_config(true));
+        auto gfx_req = make_request(gfx_model, inputs);
+        gfx_req.infer();
+
+        std::cout << "GFX_ONLY\n";
+        for (const auto& output : model->outputs()) {
+            const auto tensor = gfx_req.get_tensor(output.get_any_name());
+            const auto summary = summarize_tensor(tensor);
+            std::cout << output.get_any_name()
+                      << " elements=" << summary.elements
+                      << " finite=" << summary.finite_count
+                      << " nan=" << summary.nan_count
+                      << " inf=" << summary.inf_count
+                      << " min=" << std::setprecision(10) << summary.min
+                      << " max=" << summary.max
+                      << " mean=" << summary.mean
+                      << " l2=" << summary.l2
+                      << '\n';
+        }
+        return 0;
+    }
+
+    const auto ref_device = reference_device(core, options.reference_device);
+    std::cout << "REFERENCE device=" << ref_device << '\n';
     auto ref_model = core.compile_model(model, ref_device, make_compile_config(false));
     auto gfx_model = core.compile_model(model, "GFX", make_compile_config(true));
     auto ref_req = make_request(ref_model, inputs);
@@ -783,18 +972,8 @@ int main(int argc, char** argv) try {
                   << '\n';
     }
 
-    const double ref_ms = benchmark_request(ref_req, options.iterations);
-    const double gfx_ms = benchmark_request(gfx_req, options.iterations);
-    const double ref_fps = ref_ms > 0.0 ? (1000.0 / ref_ms) : 0.0;
-    const double gfx_fps = gfx_ms > 0.0 ? (1000.0 / gfx_ms) : 0.0;
-
     std::cout << "GLOBAL max_abs_diff=" << std::setprecision(10) << global_max_abs
               << " max_rel_diff=" << global_max_rel << '\n';
-    std::cout << "REF[" << ref_device << "] median_ms=" << ref_ms << " fps=" << ref_fps << '\n';
-    std::cout << "GFX median_ms=" << gfx_ms << " fps=" << gfx_fps << '\n';
-    if (gfx_ms > 0.0) {
-        std::cout << "speedup_vs_ref=" << (ref_ms / gfx_ms) << '\n';
-    }
     return 0;
 } catch (const std::exception& ex) {
     std::cerr << "ERROR: " << ex.what() << '\n';

@@ -66,6 +66,11 @@ add_library(gfx_plugin_build_settings INTERFACE)
 target_compile_definitions(gfx_plugin_build_settings INTERFACE
     GFX_BACKEND_METAL_AVAILABLE=$<BOOL:${GFX_BACKEND_METAL_AVAILABLE}>
     GFX_BACKEND_VULKAN_AVAILABLE=$<BOOL:${GFX_BACKEND_VULKAN_AVAILABLE}>)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(gfx_plugin_build_settings INTERFACE -Werror)
+elseif(MSVC)
+    target_compile_options(gfx_plugin_build_settings INTERFACE /WX)
+endif()
 if(ANDROID)
     target_compile_options(gfx_plugin_build_settings INTERFACE
         -ffunction-sections
@@ -249,6 +254,7 @@ if(GFX_BACKEND_VULKAN_AVAILABLE)
         MLIRDLTIDialect
         MLIRIndexDialect
         MLIRMemRefDialect
+        MLIRMemOpInterfaces
         MLIRFunctionInterfaces
         MLIRDestinationStyleOpInterface
         MLIRShapedOpInterfaces

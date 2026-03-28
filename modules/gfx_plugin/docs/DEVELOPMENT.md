@@ -40,8 +40,10 @@ On macOS, Vulkan is disabled by `cmake/GfxBackendConfig.cmake`.
 
 Current build-system notes:
 - vendored LLVM/MLIR is built as a static external toolchain under `third_party/llvm-project`
+- the external LLVM bootstrap injects a tiny local dummy fuzzing-engine archive so the bundled llvmorg-22.1.2 MLIR configure path does not fail in `mlir-parser-fuzzer`
 - the module now reuses installed package exports when present and otherwise falls back to build-tree exports during bootstrap
 - Android and generic cross-compiling flows forward toolchain settings into the vendored LLVM/MLIR configure step
+- the module build treats warnings as errors by default through `-Werror` on Clang/GCC and `/WX` on MSVC
 - `cmake/GfxAndroidRuntimeBundle.cmake.in` is used to copy Android runtime-side dependencies next to deployed plugin artifacts
 
 ## Hermetic RPi Vulkan Toolchain
@@ -54,8 +56,9 @@ python3 modules/gfx_plugin/tools/gfx_rpi_vulkan_toolchain_builder.py \
 
 The script builds host LLVM tools from the vendored
 `modules/gfx_plugin/third_party/llvm-project`, assembles a generic
-Raspberry Pi 5 Bookworm arm64 sysroot, copies Vulkan headers from the
-vendored `modules/gfx_plugin/third_party/Vulkan-Headers` tree, and generates:
+Raspberry Pi 5 Bookworm arm64 sysroot, normalizes absolute sysroot symlinks,
+copies both `vulkan/` and `vk_video/` headers from the vendored
+`modules/gfx_plugin/third_party/Vulkan-Headers` tree, and generates:
 
 ```text
 /path/to/build-gfx-plugin-rpi-toolchain/cmake/gfx-rpi-vulkan-aarch64.toolchain.cmake
@@ -132,6 +135,8 @@ For the current codebase, also check whether the op should participate in:
 - backend-specialized fast paths such as Vulkan direct or chunked routes
 - reusable bytes-arg materialization or immutable const-buffer caching
 
+For Slice-like work, note that the current lowering prefers `tensor.extract_slice` instead of synthesizing a `linalg.generic` copy. Shared metadata extraction in `src/mlir/slice_generic_codegen.cpp` still accepts both forms so older paths and debug flows remain readable.
+
 If the op needs fusion support, inspect:
 - `src/transforms/`
 - `src/runtime/fused_sequence_stage.*`
@@ -162,7 +167,7 @@ Useful environment variables:
 
 These are implemented directly in the runtime and codegen sources; grep for `OV_GFX_` when adding new diagnostics.
 
-For functional comparison against a reference backend, build and run `tests/tools/ov_gfx_compare_runner.cpp`. It is useful when a new path changes numerics or when you need a per-op comparison window instead of only a gtest suite.
+For functional comparison against a reference backend, build and run `tests/tools/ov_gfx_compare_runner.cpp`. It is an accuracy-only tool for numeric diffs, per-op narrowing, full-graph per-op output scans, and `GFX`-only output summaries. Useful switches now include `--reference-device`, `--reference-plugin`, `--per-op`, `--per-op-all`, and `--gfx-only`. Do not use it for performance numbers; use `benchmark_app` for that.
 
 For reuse and submission changes, prefer the focused unit tests under:
 - `tests/unit/infer_submission_test.cpp`

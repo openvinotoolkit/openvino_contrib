@@ -5,6 +5,7 @@
 #include "mlir/codegen_common.hpp"
 
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
 
 #include <sstream>
@@ -138,6 +139,25 @@ bool extract_slice_meta(mlir::ModuleOp module, SliceMeta& meta) {
     meta.in_stride = compute_stride(in_shape_u);
     meta.starts.assign(out_shape.size(), 0);
     meta.steps.assign(out_shape.size(), 1);
+
+    mlir::tensor::ExtractSliceOp extract_slice = nullptr;
+    func.walk([&](mlir::tensor::ExtractSliceOp op) {
+        if (!extract_slice)
+            extract_slice = op;
+    });
+    if (extract_slice) {
+        auto offsets = extract_slice.getStaticOffsets();
+        auto strides = extract_slice.getStaticStrides();
+        if (offsets.size() != out_shape.size() || strides.size() != out_shape.size())
+            return false;
+        for (size_t i = 0; i < offsets.size(); ++i) {
+            if (offsets[i] == mlir::ShapedType::kDynamic || strides[i] == mlir::ShapedType::kDynamic)
+                return false;
+            meta.starts[i] = static_cast<int32_t>(offsets[i]);
+            meta.steps[i] = static_cast<uint32_t>(strides[i]);
+        }
+        return true;
+    }
 
     mlir::linalg::GenericOp generic = nullptr;
     func.walk([&](mlir::linalg::GenericOp op) {
