@@ -40,6 +40,7 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 - `tests/backends/vulkan/`: Vulkan-specific runtime and behavior coverage
 - `tests/shared_tests_instances/`: OpenVINO shared test wiring
 - `tests/tools/`: helper tools such as `ov_gfx_compare_runner` and `ov_gfx_microbench`
+- `bench/`: ad-hoc evaluation helpers such as `gfx_eval.py` for local or remote compare-runner orchestration
 - `tools/`: developer automation scripts for profiling workflows, calibration diffs, and smoke checks
 
 Recent additions in the tree include:
