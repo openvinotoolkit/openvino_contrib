@@ -9,9 +9,10 @@ This directory is intended to be self-contained. Start here, then read:
 - `docs/USAGE.md` for integration examples
 
 ## What The Plugin Does
-GFX is an OpenVINO runtime plugin that compiles an `ov::Model` into a backend-specific GPU execution pipeline. The current implementation supports:
+GFX is an OpenVINO runtime plugin that compiles an `ov::Model` into a backend-specific GPU execution pipeline.
+The current direction is mobile-class GPU execution rather than large datacenter GPUs:
 - Metal on macOS
-- Vulkan on non-Apple builds when Vulkan is available at configure time
+- Vulkan on non-Apple builds when Vulkan is available at configure time, with current focus on Android Adreno-class and Raspberry Pi Vulkan targets
 
 The codebase uses a shared frontend and a stage-based runtime:
 1. OpenVINO graph transformations run in `src/transforms/`
@@ -30,7 +31,12 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 ## Current Status
 - Device name: `GFX`
 - Backends: `metal`, `vulkan`
+- Target class: mobile and embedded GPUs
 - Supported OpenVINO version: `2026.0.0` Developer Package builds
+- Tested on:
+  - Apple M1 Pro via Metal
+  - Samsung Galaxy S25 via Vulkan
+  - Raspberry Pi 5B via Vulkan
 - No partial CPU fallback: unsupported models fail during `compile_model()`
 - `query_model()` is backend-aware and follows the same support probing path as compilation
 - `import_model()` reloads an OpenVINO model and recompiles it
