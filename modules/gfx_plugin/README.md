@@ -32,7 +32,7 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 - Device name: `GFX`
 - Backends: `metal`, `vulkan`
 - Target class: mobile and embedded GPUs
-- Supported OpenVINO version: `2026.0.0` Developer Package builds
+- Expected integration: recent OpenVINO Developer Package builds
 - Tested on:
   - Apple M1 Pro via Metal
   - Samsung Galaxy S25 via Vulkan
