@@ -50,7 +50,7 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 - `tools/`: developer scripts for profiling workflows, microbench smoke checks, and report post-processing
 - `docs/`: local module docs, including profiling and microbench references
 - `third_party/llvm-project/`: vendored LLVM/MLIR used by the build
-- `third_party/Vulkan-Headers/`: vendored Vulkan headers used by the Raspberry Pi Vulkan toolchain flow
+- `third_party/Vulkan-Headers/`: Vulkan-Headers git submodule used by the Raspberry Pi Vulkan toolchain flow
 
 ## Main Runtime Components
 ### Plugin
@@ -195,6 +195,7 @@ Build notes:
 - Android and generic cross-compiling flows forward toolchain settings into that external LLVM/MLIR build
 - the module build treats compiler warnings as errors by default through `-Werror` on Clang/GCC and `/WX` on MSVC
 - `cmake/GfxAndroidRuntimeBundle.cmake.in` provides helper copy logic for Android-side runtime dependency bundling
+- `third_party/Vulkan-Headers` is tracked as a git submodule pinned to the module-tested upstream release
 - `tools/gfx_rpi_vulkan_toolchain_builder.py` can assemble a hermetic Raspberry Pi Vulkan cross-toolchain bundle for `aarch64` Bookworm-style targets, normalize absolute sysroot symlinks, and install both `vulkan/` and `vk_video/` headers into the generated sysroot
 
 The build produces the `openvino_gfx_plugin` shared library. On Unix-like builds this is typically emitted as `libopenvino_gfx_plugin.so`; the `.so` suffix is also forced on macOS for OpenVINO plugin loading compatibility.

@@ -617,7 +617,7 @@ def main() -> int:
 
     print(f"toolchain bundle root: {output_dir}")
     print(f"sysroot profile: {args.sysroot_profile} - {profile['description']}")
-    print(f"vendored Vulkan headers: {VULKAN_HEADERS_ROOT} ({VULKAN_HEADERS_RELEASE})")
+    print(f"Vulkan-Headers submodule: {VULKAN_HEADERS_ROOT} ({VULKAN_HEADERS_RELEASE})")
     ensure_dir(output_dir, dry_run=args.dry_run)
 
     llvm_bin_dir = build_host_llvm_tools(output_dir, args.cmake_generator, args.llvm_build_type, dry_run=args.dry_run)

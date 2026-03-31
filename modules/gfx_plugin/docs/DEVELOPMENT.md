@@ -10,6 +10,7 @@ This document is for contributors working inside `modules/gfx_plugin`.
 - Vulkan SDK or system Vulkan development files for the Vulkan backend
 
 The module vendors LLVM/MLIR under `third_party/llvm-project` and can build the required MLIR pieces as part of the CMake flow.
+`third_party/Vulkan-Headers` is tracked separately as a git submodule for the Raspberry Pi Vulkan flow.
 
 ## Configure And Build
 Example configuration:
@@ -81,14 +82,20 @@ Windows. If needed, you can override the generic sysroot source with:
 - `--sysroot-dir /path/to/extracted-rootfs`
 - `--sysroot-tarball /path/to/rootfs.tar.xz`
 
-Before running the builder, prepare the vendored Vulkan headers dependency in:
+Before running the builder, prepare the Vulkan-Headers submodule dependency in:
 
 ```text
 modules/gfx_plugin/third_party/Vulkan-Headers
 ```
 
-The toolchain builder expects that directory to contain the upstream
-`Vulkan-Headers` snapshot currently pinned by the module for Raspberry Pi 5
+Initialize that dependency with git submodules, for example:
+
+```bash
+git submodule update --init modules/gfx_plugin/third_party/Vulkan-Headers
+```
+
+The toolchain builder expects that submodule to be checked out at the upstream
+`Vulkan-Headers` release currently pinned by the module for Raspberry Pi 5
 Bookworm compatibility: `v1.3.239`.
 
 ## Where To Start Reading
