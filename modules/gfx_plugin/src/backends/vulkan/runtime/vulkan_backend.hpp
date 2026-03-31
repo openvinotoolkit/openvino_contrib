@@ -9,6 +9,8 @@
 
 #include <vulkan/vulkan.h>
 
+#include "runtime/gpu_buffer_manager.hpp"
+
 namespace ov {
 namespace gfx_plugin {
 
@@ -33,6 +35,9 @@ public:
     VulkanQueueHandle queue() const { return m_queue; }
     uint32_t queue_family_index() const { return m_queue_family_index; }
     const std::string& device_name() const { return m_device_name; }
+    uint32_t vendor_id() const { return m_vendor_id; }
+    uint32_t device_id() const { return m_device_id; }
+    GpuDeviceFamily device_family() const { return m_device_family; }
     size_t noncoherent_atom_size() const { return m_noncoherent_atom_size; }
     uint32_t max_compute_workgroup_invocations() const { return m_max_compute_workgroup_invocations; }
     const std::array<uint32_t, 3>& max_compute_workgroup_size() const { return m_max_compute_workgroup_size; }
@@ -45,6 +50,9 @@ private:
     VulkanQueueHandle m_queue = VK_NULL_HANDLE;
     uint32_t m_queue_family_index = 0;
     std::string m_device_name;
+    uint32_t m_vendor_id = 0;
+    uint32_t m_device_id = 0;
+    GpuDeviceFamily m_device_family = GpuDeviceFamily::Generic;
     size_t m_noncoherent_atom_size = 1;
     uint32_t m_max_compute_workgroup_invocations = 1;
     std::array<uint32_t, 3> m_max_compute_workgroup_size{{1, 1, 1}};

@@ -14,8 +14,32 @@
 namespace ov {
 namespace gfx_plugin {
 
+class GfxProfiler;
+
+enum class GpuDeviceFamily {
+    Generic,
+    Apple,
+    QualcommAdreno,
+    BroadcomV3D,
+};
+
+inline const char* gpu_device_family_name(GpuDeviceFamily family) {
+    switch (family) {
+    case GpuDeviceFamily::Apple:
+        return "apple";
+    case GpuDeviceFamily::QualcommAdreno:
+        return "adreno";
+    case GpuDeviceFamily::BroadcomV3D:
+        return "broadcom_v3d";
+    case GpuDeviceFamily::Generic:
+    default:
+        return "generic";
+    }
+}
+
 struct GpuExecutionDeviceInfo {
     GpuBackend backend = GpuBackend::Metal;
+    GpuDeviceFamily device_family = GpuDeviceFamily::Generic;
     std::string device_key;
     uint32_t preferred_simd_width = 1;
     uint32_t subgroup_size = 1;
@@ -39,6 +63,10 @@ public:
                                  ov::element::Type /*type*/) {
         return {};
     }
+    virtual void begin_const_upload_batch() {}
+    virtual void flush_const_upload_batch(GpuCommandBufferHandle /*command_buffer*/,
+                                          GfxProfiler* /*profiler*/) {}
+    virtual void end_const_upload_batch() {}
 };
 
 }  // namespace gfx_plugin

@@ -24,7 +24,7 @@ Recent runtime work extends this model in two directions:
 - compile-time stage planning now picks layout, fusion, and execution policy per stage
 - backend runtimes, especially Vulkan, can choose specialized direct or chunked execution routes for selected ops
 - infer execution can batch stage recording into submission windows and reuse prepared bindings or immutable device buffers across requests
-- device-aware scheduling now uses backend-reported execution limits through shared `gfx_parallelism.*` and `gfx_partitioning.*` helpers
+- device-aware scheduling now uses backend-reported execution limits and device-family classification through shared `gfx_parallelism.*` and `gfx_partitioning.*` helpers
 
 This is not the old monolithic `MlirBackend` architecture that earlier design notes experimented with.
 
@@ -113,9 +113,15 @@ Profiling now also has two layers:
 - infer-time node, segment, transfer, allocation, and counter reporting through `gfx_profiling_report.*`
 
 Backend-neutral planning now consumes device info exported by the active buffer manager:
-- Metal and Vulkan buffer managers report subgroup width and workgroup limits through `GpuExecutionDeviceInfo`
+- Metal and Vulkan buffer managers report subgroup width, workgroup limits, and device family through `GpuExecutionDeviceInfo`
 - `gfx_parallelism.*` converts that into execution-policy caps
 - `gfx_partitioning.*` derives 1D and 2D workgroup shapes from the same data
+
+Current family-aware planning distinguishes at least:
+- `apple` for Metal
+- `adreno` for Qualcomm Vulkan devices
+- `broadcom_v3d` for Raspberry Pi Vulkan devices
+- `generic` as the fallback class
 
 ## Backend Selection
 The plugin has two layers of backend choice:
@@ -274,6 +280,7 @@ Recent regression coverage includes:
 - absorbed input-transform tests for Add, Conv2D, GroupConv2D, and Split
 - Vulkan runtime regression coverage in `tests/backends/vulkan/`
 - infer submission, prepared-pipeline reuse, immutable-const-cache reuse, and shared kernel-binding reuse tests
+- Vulkan batched constant-upload behavior through the shared infer command buffer path
 - reusable output-resolution and reusable host-output coverage in `tests/unit/infer_pipeline_reuse_test.cpp`
 - internal transform and plugin coverage in `tests/unit/basic_ops_internal_test.cpp`
 - backend memory/device integration coverage in `tests/unit/memory_device_integration_test.mm`

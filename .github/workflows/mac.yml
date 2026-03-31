@@ -103,6 +103,7 @@ jobs:
             -DBUILD_nvidia_plugin=OFF \
             -DBUILD_ollama_openvino=OFF \
             -DBUILD_llama_cpp_plugin=OFF \
+            -DBUILD_gfx_plugin=OFF \
             -DOPENVINO_EXTRA_MODULES=${{ env.OPENVINO_CONTRIB_REPO }}/modules \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=${{ env.MACOSX_DEPLOYMENT_TARGET }} \
             -DCMAKE_OSX_ARCHITECTURES=${{ env.OSX_ARCHITECTURES }} \

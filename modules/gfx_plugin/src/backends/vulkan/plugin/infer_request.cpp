@@ -284,6 +284,33 @@ struct PreparedVulkanOutputReadback {
     VulkanOutputBindingResult local_binding{};
 };
 
+class ScopedConstUploadBatch final {
+public:
+    explicit ScopedConstUploadBatch(GpuBufferManager* manager) : m_manager(manager) {
+        if (m_manager) {
+            m_manager->begin_const_upload_batch();
+        }
+    }
+
+    ~ScopedConstUploadBatch() {
+        if (m_manager) {
+            m_manager->end_const_upload_batch();
+        }
+    }
+
+    void flush(GpuCommandBufferHandle command_buffer, GfxProfiler* profiler) {
+        if (m_manager) {
+            m_manager->flush_const_upload_batch(command_buffer, profiler);
+        }
+    }
+
+    ScopedConstUploadBatch(const ScopedConstUploadBatch&) = delete;
+    ScopedConstUploadBatch& operator=(const ScopedConstUploadBatch&) = delete;
+
+private:
+    GpuBufferManager* m_manager = nullptr;
+};
+
 VulkanInferState* get_vulkan_state(InferRequestState& state) {
     return dynamic_cast<VulkanInferState*>(state.backend.get());
 }
@@ -637,6 +664,7 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
                                                   : std::chrono::steady_clock::time_point{};
     VulkanGpuAllocator allocator;
     GpuBufferPool pool(allocator);
+    ScopedConstUploadBatch const_upload_batch(resources.const_manager);
     auto& pipeline = prepare_reusable_pipeline_with_outputs(
         vk_state->reusable_pipeline,
         descs,
@@ -706,6 +734,7 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
     }
     VulkanInferSubmissionSession submission(*vk_state, submission_tuning.slot_count, profiler);
     submission.begin_recording();
+    const_upload_batch.flush(submission.current_command_buffer(), profiler);
 
     // Create device buffers for inputs (or use remote buffers when provided).
     std::vector<GpuTensor> input_tensors(get_inputs().size());

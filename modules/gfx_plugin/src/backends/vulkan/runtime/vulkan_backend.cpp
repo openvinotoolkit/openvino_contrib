@@ -5,6 +5,7 @@
 #include "backends/vulkan/runtime/vulkan_backend.hpp"
 
 #include <cstring>
+#include <iomanip>
 #include <vector>
 
 #include "openvino/core/except.hpp"
@@ -69,16 +70,14 @@ bool has_extension(const std::vector<VkExtensionProperties>& exts, const char* n
     return false;
 }
 
-template <typename T>
-T* find_in_pnext_chain(void* pnext) {
-    auto* base = reinterpret_cast<VkBaseOutStructure*>(pnext);
-    while (base) {
-        if (base->sType == T::structureType) {
-            return reinterpret_cast<T*>(base);
-        }
-        base = base->pNext;
+GpuDeviceFamily classify_vulkan_device_family(uint32_t vendor_id, const std::string& device_name) {
+    if (vendor_id == 0x5143 || device_name.find("Adreno") != std::string::npos) {
+        return GpuDeviceFamily::QualcommAdreno;
     }
-    return nullptr;
+    if (vendor_id == 0x14E4 || device_name.find("V3D") != std::string::npos) {
+        return GpuDeviceFamily::BroadcomV3D;
+    }
+    return GpuDeviceFamily::Generic;
 }
 
 }  // namespace
@@ -146,6 +145,9 @@ VulkanContext::VulkanContext() {
     VkPhysicalDeviceProperties props{};
     vkGetPhysicalDeviceProperties(m_physical_device, &props);
     m_device_name = props.deviceName;
+    m_vendor_id = props.vendorID;
+    m_device_id = props.deviceID;
+    m_device_family = classify_vulkan_device_family(m_vendor_id, m_device_name);
     m_noncoherent_atom_size = static_cast<size_t>(props.limits.nonCoherentAtomSize);
     m_max_compute_workgroup_invocations = props.limits.maxComputeWorkGroupInvocations;
     m_max_compute_workgroup_size = {props.limits.maxComputeWorkGroupSize[0],
@@ -267,6 +269,9 @@ VulkanContext::VulkanContext() {
     vkGetDeviceQueue(m_device, m_queue_family_index, 0, &m_queue);
 
     gfx_log_info("Vulkan") << "Initialized Vulkan device: " << m_device_name;
+    gfx_log_info("Vulkan") << "Device family: " << gpu_device_family_name(m_device_family)
+                           << ", vendor=0x" << std::hex << m_vendor_id
+                           << ", device=0x" << m_device_id << std::dec;
     gfx_log_info("Vulkan") << "Features2: " << (get_features2 ? "available" : "unavailable");
     gfx_log_info("Vulkan") << "16-bit storage: " << (enable_storage16 ? "on" : "off")
                                    << ", 8-bit storage: " << (enable_storage8 ? "on" : "off")

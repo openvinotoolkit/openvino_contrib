@@ -24,6 +24,10 @@ public:
                          const void* data,
                          size_t bytes,
                          ov::element::Type type) override;
+    void begin_const_upload_batch() override;
+    void flush_const_upload_batch(GpuCommandBufferHandle command_buffer,
+                                  GfxProfiler* profiler) override;
+    void end_const_upload_batch() override;
     const void* shared_const_cache_identity() const;
 
 private:

@@ -191,7 +191,8 @@ bool supports_candidate(const GfxParallelismCaps& caps, uint32_t h, uint32_t w) 
 
 std::string make_device_key_fallback(const GfxParallelismCaps& caps) {
     std::ostringstream os;
-    os << static_cast<int>(caps.backend) << ':' << caps.preferred_simd_width << ':' << caps.subgroup_size << ':'
+    os << static_cast<int>(caps.backend) << ':' << gpu_device_family_name(caps.device_family) << ':'
+       << caps.preferred_simd_width << ':' << caps.subgroup_size << ':'
        << caps.max_total_threads_per_group << ':' << caps.max_threads_per_group[0] << ':' << caps.max_threads_per_group[1]
        << ':' << caps.max_threads_per_group[2];
     return os.str();
@@ -250,6 +251,7 @@ Conv2DDirectCacheKey make_conv2d_direct_cache_key(const GfxParallelismCaps& caps
 GfxParallelismCaps make_caps_from_device_info(const GpuExecutionDeviceInfo& info) {
     GfxParallelismCaps caps{};
     caps.backend = info.backend;
+    caps.device_family = info.device_family;
     caps.device_key = info.device_key;
     caps.preferred_simd_width = std::max<uint32_t>(info.preferred_simd_width, 1u);
     caps.subgroup_size = std::max<uint32_t>(info.subgroup_size, 1u);
@@ -263,6 +265,7 @@ GfxParallelismCaps make_caps_from_device_info(const GpuExecutionDeviceInfo& info
 GfxParallelismCaps make_default_caps(GpuBackend backend) {
     GfxParallelismCaps caps{};
     caps.backend = backend;
+    caps.device_family = backend == GpuBackend::Metal ? GpuDeviceFamily::Apple : GpuDeviceFamily::Generic;
     caps.preferred_simd_width = 32;
     caps.subgroup_size = 32;
     if (backend == GpuBackend::Vulkan) {
@@ -277,19 +280,8 @@ GfxParallelismCaps make_default_caps(GpuBackend backend) {
     return caps;
 }
 
-}  // namespace
-
-GfxParallelismCaps query_parallelism_caps(const GpuBufferManager* buffer_manager) {
-    if (buffer_manager) {
-        if (const auto info = buffer_manager->query_execution_device_info()) {
-            return make_caps_from_device_info(*info);
-        }
-    }
-    return make_default_caps(GpuBackend::Metal);
-}
-
-std::vector<MatMulParallelismPlan> enumerate_matmul_parallelism_candidates(const GfxParallelismCaps& caps,
-                                                                           const ov::Shape& output_shape) {
+std::vector<MatMulParallelismPlan> enumerate_matmul_parallelism_candidates_generic(const GfxParallelismCaps& caps,
+                                                                                   const ov::Shape& output_shape) {
     std::vector<MatMulParallelismPlan> plans;
     if (output_shape.size() < 2) {
         return plans;
@@ -339,36 +331,10 @@ std::vector<MatMulParallelismPlan> enumerate_matmul_parallelism_candidates(const
     return plans;
 }
 
-MatMulParallelismPlan select_matmul_parallelism(const GfxParallelismCaps& caps, const ov::Shape& output_shape) {
-    const auto key = make_cache_key(caps, output_shape);
-    if (auto cached = MatMulTuningCache::instance().find(key)) {
-        return *cached;
-    }
-
-    const auto plans = enumerate_matmul_parallelism_candidates(caps, output_shape);
-    if (plans.empty()) {
-        return {};
-    }
-    const auto& chosen = plans.front();
-    MatMulTuningCache::instance().store(key, chosen);
-    return chosen;
-}
-
-void remember_matmul_parallelism(const GfxParallelismCaps& caps,
-                                 const ov::Shape& output_shape,
-                                 const MatMulParallelismPlan& plan) {
-    MatMulTuningCache::instance().store(make_cache_key(caps, output_shape), plan);
-}
-
-ChunkDispatchPlan select_chunk_dispatch_plan(const GfxParallelismCaps& caps,
-                                             const std::string& op_kind,
-                                             uint64_t total_elems,
-                                             uint64_t work_per_elem) {
-    const auto key = make_chunk_cache_key(caps, op_kind, total_elems, work_per_elem);
-    if (auto cached = ChunkTuningCache::instance().find(key)) {
-        return *cached;
-    }
-
+ChunkDispatchPlan select_chunk_dispatch_plan_generic(const GfxParallelismCaps& caps,
+                                                     const std::string& op_kind,
+                                                     uint64_t total_elems,
+                                                     uint64_t work_per_elem) {
     ChunkDispatchPlan plan;
     const uint32_t wave = std::max<uint32_t>(1u, std::max(caps.subgroup_size, caps.preferred_simd_width));
     plan.threads_per_group = std::min<uint32_t>(std::max<uint32_t>(wave, 64u),
@@ -382,10 +348,6 @@ ChunkDispatchPlan select_chunk_dispatch_plan(const GfxParallelismCaps& caps,
         max_elems = 16384;
         target_dispatches = work_per_elem >= 256 ? 8u : 12u;
     } else {
-        // After moving Vulkan onto a shared infer command buffer, overly small
-        // chunks mostly add descriptor/metadata overhead. Bias towards fewer,
-        // fatter dispatches on large stages while keeping an upper bound that
-        // remains friendly to mobile drivers.
         if (work_per_elem >= 1024) {
             elems = 4096;
             max_elems = 16384;
@@ -416,22 +378,15 @@ ChunkDispatchPlan select_chunk_dispatch_plan(const GfxParallelismCaps& caps,
 
     plan.elems_per_dispatch = elems;
     plan.variant = op_kind + "_chunk_" + std::to_string(plan.elems_per_dispatch);
-    ChunkTuningCache::instance().store(key, plan);
     return plan;
 }
 
-Conv2DDirectPlan select_conv2d_direct_plan(const GfxParallelismCaps& caps,
-                                           const ov::Shape& output_shape,
-                                           uint64_t input_channels,
-                                           uint64_t output_channels,
-                                           uint64_t kernel_work,
-                                           bool stride2) {
-    const auto key =
-        make_conv2d_direct_cache_key(caps, output_shape, input_channels, output_channels, kernel_work, stride2);
-    if (auto cached = Conv2DDirectTuningCache::instance().find(key)) {
-        return *cached;
-    }
-
+Conv2DDirectPlan select_conv2d_direct_plan_generic(const GfxParallelismCaps& caps,
+                                                   const ov::Shape& output_shape,
+                                                   uint64_t input_channels,
+                                                   uint64_t output_channels,
+                                                   uint64_t kernel_work,
+                                                   bool stride2) {
     Conv2DDirectPlan plan;
     const uint32_t wave = std::max<uint32_t>(1u, std::max(caps.subgroup_size, caps.preferred_simd_width));
     plan.threads_per_group = std::min<uint32_t>(std::max<uint32_t>(wave, 64u),
@@ -494,9 +449,6 @@ Conv2DDirectPlan select_conv2d_direct_plan(const GfxParallelismCaps& caps,
                 plan.variant = "conv2d_direct_xy8x8";
             }
         }
-        // Adreno regresses badly on large feature maps with the wider OC-block
-        // kernel. Keep the variant available, but only allow it on small late
-        // layers until real autotuning is wired on top of this selector.
         if (prefer_oc2_variant && plan.variant.rfind("conv2d_direct_xy", 0) != 0) {
             plan.output_channel_block = 2;
             plan.variant = "conv2d_direct_oc2_tg" + std::to_string(plan.threads_per_group);
@@ -513,7 +465,206 @@ Conv2DDirectPlan select_conv2d_direct_plan(const GfxParallelismCaps& caps,
     if (plan.output_channel_block == 1 && plan.variant.rfind("conv2d_direct_xy", 0) != 0) {
         plan.variant = "conv2d_direct_oc1_tg" + std::to_string(plan.threads_per_group);
     }
+    return plan;
+}
 
+class ParallelismStrategy {
+public:
+    virtual ~ParallelismStrategy() = default;
+
+    virtual std::vector<MatMulParallelismPlan> enumerate_matmul(const GfxParallelismCaps& caps,
+                                                                const ov::Shape& output_shape) const {
+        return enumerate_matmul_parallelism_candidates_generic(caps, output_shape);
+    }
+
+    virtual ChunkDispatchPlan select_chunk_dispatch(const GfxParallelismCaps& caps,
+                                                    const std::string& op_kind,
+                                                    uint64_t total_elems,
+                                                    uint64_t work_per_elem) const = 0;
+
+    virtual Conv2DDirectPlan select_conv2d_direct(const GfxParallelismCaps& caps,
+                                                  const ov::Shape& output_shape,
+                                                  uint64_t input_channels,
+                                                  uint64_t output_channels,
+                                                  uint64_t kernel_work,
+                                                  bool stride2) const = 0;
+};
+
+class MetalParallelismStrategy final : public ParallelismStrategy {
+public:
+    ChunkDispatchPlan select_chunk_dispatch(const GfxParallelismCaps& caps,
+                                            const std::string& op_kind,
+                                            uint64_t total_elems,
+                                            uint64_t work_per_elem) const override {
+        return select_chunk_dispatch_plan_generic(caps, op_kind, total_elems, work_per_elem);
+    }
+
+    Conv2DDirectPlan select_conv2d_direct(const GfxParallelismCaps& caps,
+                                          const ov::Shape& output_shape,
+                                          uint64_t input_channels,
+                                          uint64_t output_channels,
+                                          uint64_t kernel_work,
+                                          bool stride2) const override {
+        return select_conv2d_direct_plan_generic(caps,
+                                                 output_shape,
+                                                 input_channels,
+                                                 output_channels,
+                                                 kernel_work,
+                                                 stride2);
+    }
+};
+
+class VulkanParallelismStrategyBase : public ParallelismStrategy {
+public:
+    std::vector<MatMulParallelismPlan> enumerate_matmul(const GfxParallelismCaps& caps,
+                                                        const ov::Shape& output_shape) const final {
+        auto plans = enumerate_matmul_parallelism_candidates_generic(caps, output_shape);
+        tune_matmul_candidates(caps, output_shape, plans);
+        return plans;
+    }
+
+    ChunkDispatchPlan select_chunk_dispatch(const GfxParallelismCaps& caps,
+                                            const std::string& op_kind,
+                                            uint64_t total_elems,
+                                            uint64_t work_per_elem) const final {
+        auto plan = select_chunk_dispatch_plan_generic(caps, op_kind, total_elems, work_per_elem);
+        tune_chunk_dispatch(caps, op_kind, total_elems, work_per_elem, plan);
+        return plan;
+    }
+
+    Conv2DDirectPlan select_conv2d_direct(const GfxParallelismCaps& caps,
+                                          const ov::Shape& output_shape,
+                                          uint64_t input_channels,
+                                          uint64_t output_channels,
+                                          uint64_t kernel_work,
+                                          bool stride2) const final {
+        auto plan = select_conv2d_direct_plan_generic(caps,
+                                                      output_shape,
+                                                      input_channels,
+                                                      output_channels,
+                                                      kernel_work,
+                                                      stride2);
+        tune_conv2d_direct(caps, output_shape, input_channels, output_channels, kernel_work, stride2, plan);
+        return plan;
+    }
+
+protected:
+    virtual void tune_matmul_candidates(const GfxParallelismCaps& /*caps*/,
+                                        const ov::Shape& /*output_shape*/,
+                                        std::vector<MatMulParallelismPlan>& /*plans*/) const {}
+
+    virtual void tune_chunk_dispatch(const GfxParallelismCaps& /*caps*/,
+                                     const std::string& /*op_kind*/,
+                                     uint64_t /*total_elems*/,
+                                     uint64_t /*work_per_elem*/,
+                                     ChunkDispatchPlan& /*plan*/) const {}
+
+    virtual void tune_conv2d_direct(const GfxParallelismCaps& /*caps*/,
+                                    const ov::Shape& /*output_shape*/,
+                                    uint64_t /*input_channels*/,
+                                    uint64_t /*output_channels*/,
+                                    uint64_t /*kernel_work*/,
+                                    bool /*stride2*/,
+                                    Conv2DDirectPlan& /*plan*/) const {}
+};
+
+class GenericVulkanParallelismStrategy final : public VulkanParallelismStrategyBase {};
+
+class AdrenoVulkanParallelismStrategy final : public VulkanParallelismStrategyBase {};
+
+class BroadcomV3DParallelismStrategy final : public VulkanParallelismStrategyBase {};
+
+const ParallelismStrategy& select_parallelism_strategy(const GfxParallelismCaps& caps) {
+    static const MetalParallelismStrategy metal_strategy{};
+    static const GenericVulkanParallelismStrategy generic_vulkan_strategy{};
+    static const AdrenoVulkanParallelismStrategy adreno_vulkan_strategy{};
+    static const BroadcomV3DParallelismStrategy broadcom_v3d_strategy{};
+
+    if (caps.backend == GpuBackend::Metal) {
+        return metal_strategy;
+    }
+    switch (caps.device_family) {
+    case GpuDeviceFamily::QualcommAdreno:
+        return adreno_vulkan_strategy;
+    case GpuDeviceFamily::BroadcomV3D:
+        return broadcom_v3d_strategy;
+    case GpuDeviceFamily::Apple:
+    case GpuDeviceFamily::Generic:
+    default:
+        return generic_vulkan_strategy;
+    }
+}
+
+}  // namespace
+
+GfxParallelismCaps query_parallelism_caps(const GpuBufferManager* buffer_manager) {
+    if (buffer_manager) {
+        if (const auto info = buffer_manager->query_execution_device_info()) {
+            return make_caps_from_device_info(*info);
+        }
+    }
+    return make_default_caps(GpuBackend::Metal);
+}
+
+std::vector<MatMulParallelismPlan> enumerate_matmul_parallelism_candidates(const GfxParallelismCaps& caps,
+                                                                           const ov::Shape& output_shape) {
+    return select_parallelism_strategy(caps).enumerate_matmul(caps, output_shape);
+}
+
+MatMulParallelismPlan select_matmul_parallelism(const GfxParallelismCaps& caps, const ov::Shape& output_shape) {
+    const auto key = make_cache_key(caps, output_shape);
+    if (auto cached = MatMulTuningCache::instance().find(key)) {
+        return *cached;
+    }
+
+    const auto plans = enumerate_matmul_parallelism_candidates(caps, output_shape);
+    if (plans.empty()) {
+        return {};
+    }
+    const auto& chosen = plans.front();
+    MatMulTuningCache::instance().store(key, chosen);
+    return chosen;
+}
+
+void remember_matmul_parallelism(const GfxParallelismCaps& caps,
+                                 const ov::Shape& output_shape,
+                                 const MatMulParallelismPlan& plan) {
+    MatMulTuningCache::instance().store(make_cache_key(caps, output_shape), plan);
+}
+
+ChunkDispatchPlan select_chunk_dispatch_plan(const GfxParallelismCaps& caps,
+                                             const std::string& op_kind,
+                                             uint64_t total_elems,
+                                             uint64_t work_per_elem) {
+    const auto key = make_chunk_cache_key(caps, op_kind, total_elems, work_per_elem);
+    if (auto cached = ChunkTuningCache::instance().find(key)) {
+        return *cached;
+    }
+
+    ChunkDispatchPlan plan =
+        select_parallelism_strategy(caps).select_chunk_dispatch(caps, op_kind, total_elems, work_per_elem);
+    ChunkTuningCache::instance().store(key, plan);
+    return plan;
+}
+
+Conv2DDirectPlan select_conv2d_direct_plan(const GfxParallelismCaps& caps,
+                                           const ov::Shape& output_shape,
+                                           uint64_t input_channels,
+                                           uint64_t output_channels,
+                                           uint64_t kernel_work,
+                                           bool stride2) {
+    const auto key =
+        make_conv2d_direct_cache_key(caps, output_shape, input_channels, output_channels, kernel_work, stride2);
+    if (auto cached = Conv2DDirectTuningCache::instance().find(key)) {
+        return *cached;
+    }
+
+    Conv2DDirectPlan plan = select_parallelism_strategy(caps).select_conv2d_direct(caps,
+                                                                                    output_shape,
+                                                                                    input_channels,
+                                                                                    output_channels,
+                                                                                    kernel_work,
+                                                                                    stride2);
     Conv2DDirectTuningCache::instance().store(key, plan);
     return plan;
 }

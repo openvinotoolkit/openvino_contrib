@@ -75,6 +75,12 @@ Two interface points are important in the current code:
 - ranked 2D workgroup shapes for partitioned execution
 - stable device keys used by runtime planning caches
 
+Those caps are no longer purely backend-wide defaults. The current runtime tags devices by family through `GpuDeviceFamily` and feeds that into planning and cache keys. Current families include:
+- `apple`
+- `adreno`
+- `broadcom_v3d`
+- `generic`
+
 During inference, `execute_pipeline_with_submission()` groups recorded stages into submission windows. The current grouping rules use:
 - `GpuStageSubmitPolicy`
 - maximum stages per submit
@@ -84,6 +90,7 @@ During inference, `execute_pipeline_with_submission()` groups recorded stages in
 This lets Metal and Vulkan keep different submission mechanics while sharing the same stage-level batching logic.
 
 Submission tuning is no longer a fixed constant table. The current infer path derives per-backend submit-window sizing from backend capability snapshots and records the selected tuning into the profiling path when profiling is enabled.
+Vulkan infer paths can also batch immutable constant uploads through the shared infer command buffer path instead of forcing one upload submit per constant buffer materialization.
 
 The reusable infer pipeline layer now has two precomputed plans:
 - `PreparedInferExecutionPlan` for stage inputs that resolve to parameters or previous stage outputs
@@ -146,10 +153,12 @@ This backend is built only when Vulkan support is available and enabled in CMake
 
 The current Vulkan runtime also:
 - records physical-device limits such as subgroup size and compute workgroup limits in `VulkanContext`
+- classifies devices into families such as `adreno` and `broadcom_v3d`
 - uses those limits when selecting parallelism and stage execution policy
 - contains specialized execution routes for chunked unary/binary/softmax/layout ops and for multiple Conv2D or GroupConv2D cases
 - supports direct handling of some common binary patterns such as same-shape and bias-add style cases
 - reuses immutable constant buffers and prepared descriptor bindings across compatible submissions
+- batches pending constant-buffer uploads before the main infer recording path begins
 - increases per-submit batching thresholds in the infer path to reduce Android-oriented driver overhead
 - persists Vulkan pipeline-cache data under `ov::cache_dir` when a cache directory is supplied through standard OpenVINO properties
 - reports execution-device limits through `GpuExecutionDeviceInfo`, matching the Metal path and removing backend-specific probing from shared planning code

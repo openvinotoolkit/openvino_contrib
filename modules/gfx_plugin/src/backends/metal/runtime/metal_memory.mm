@@ -511,6 +511,7 @@ std::optional<GpuExecutionDeviceInfo> MetalBufferManager::query_execution_device
     GpuExecutionDeviceInfo info{};
     const auto caps = query_metal_device_caps(m_core.device());
     info.backend = GpuBackend::Metal;
+    info.device_family = GpuDeviceFamily::Apple;
     info.preferred_simd_width = std::max<uint32_t>(caps.preferred_simd_width, 1u);
     info.subgroup_size = info.preferred_simd_width;
     info.max_total_threads_per_group = std::max<uint32_t>(caps.max_total_threads_per_threadgroup, 1u);
@@ -519,7 +520,8 @@ std::optional<GpuExecutionDeviceInfo> MetalBufferManager::query_execution_device
                                   std::max<uint32_t>(caps.max_threads_per_threadgroup_z, 1u)};
 
     std::ostringstream os;
-    os << "metal:" << m_core.device() << ':' << info.preferred_simd_width << ':' << info.max_total_threads_per_group
+    os << "metal:" << gpu_device_family_name(info.device_family) << ':' << m_core.device() << ':'
+       << info.preferred_simd_width << ':' << info.max_total_threads_per_group
        << ':' << info.max_threads_per_group[0] << ':' << info.max_threads_per_group[1] << ':'
        << info.max_threads_per_group[2];
     info.device_key = os.str();

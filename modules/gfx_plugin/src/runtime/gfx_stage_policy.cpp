@@ -236,6 +236,7 @@ GfxParallelismCaps query_stage_caps(const GpuBufferManager* buffer_manager, GpuB
     }
     GfxParallelismCaps caps{};
     caps.backend = backend;
+    caps.device_family = backend == GpuBackend::Metal ? GpuDeviceFamily::Apple : GpuDeviceFamily::Generic;
     if (backend == GpuBackend::Vulkan) {
         caps.preferred_simd_width = 32;
         caps.subgroup_size = 32;
@@ -516,7 +517,6 @@ GfxConvRoutePlan select_conv_route_plan(const GpuBufferManager* /*buffer_manager
                         conv->get_dilations().at(0) == 1 && conv->get_dilations().at(1) == 1;
     if (is_3x3 && out_elems >= 16384) {
         const bool stride2 = conv->get_strides().at(0) == 2 && conv->get_strides().at(1) == 2;
-        const uint64_t kernel_work = static_cast<uint64_t>(in_shape.at(1)) * 9ull;
         const bool can_use_im2col = backend == GpuBackend::Vulkan &&
                                     is_compile_safe_im2col_spatial3x3_bucket(in_shape, w_shape, out_shape, stride2);
         if (can_use_im2col) {

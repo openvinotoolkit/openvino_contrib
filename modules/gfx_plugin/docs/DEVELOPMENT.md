@@ -117,6 +117,7 @@ If the behavior depends on route or scheduling selection, also read:
 - `src/runtime/gfx_stage_policy.*`
 - `src/runtime/gfx_parallelism.*`
 - `src/runtime/gfx_partitioning.*`
+- `src/runtime/gpu_buffer_manager.hpp` for `GpuDeviceFamily` and backend-reported execution-device info
 - the active backend executor, especially under `src/backends/vulkan/runtime/`
 - `src/runtime/gfx_profiling_report.*` when the change affects counters, trace sinks, or JSON report shape
 
@@ -127,6 +128,7 @@ If the change touches infer-request throughput or resource reuse, also read:
 - `src/runtime/gpu_backend_base.hpp`
 - `src/runtime/gpu_buffer_manager.hpp`
 - `src/plugin/infer_io_utils.*`
+- `src/backends/vulkan/runtime/vulkan_buffer_manager.*` when Vulkan const-upload batching or shared upload-recording behavior changes
 
 ## Adding Or Extending An Op
 Typical path:
