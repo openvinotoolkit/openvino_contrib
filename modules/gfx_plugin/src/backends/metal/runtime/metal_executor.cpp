@@ -295,6 +295,30 @@ std::vector<int64_t> make_strides(const ov::Shape& s) {
     return strides;
 }
 
+std::string generate_bias_broadcast_add_msl(const std::shared_ptr<const ov::Node>& node) {
+    OPENVINO_ASSERT(node, "GFX Metal: bias-broadcast add node is null");
+    OPENVINO_ASSERT(is_bias_broadcast_add(node), "GFX Metal: expected bias-broadcast Add");
+    const auto out_shape = node->get_output_shape(0);
+    OPENVINO_ASSERT(out_shape.size() == 4, "GFX Metal: bias-broadcast Add expects rank-4 output");
+    const auto scalar_t = msl_type_from_element(node->get_output_element_type(0));
+    const uint32_t total = static_cast<uint32_t>(shape_size(out_shape));
+    const uint32_t channels = static_cast<uint32_t>(out_shape[1]);
+    const uint32_t hw = static_cast<uint32_t>(out_shape[2] * out_shape[3]);
+
+    std::ostringstream ss;
+    ss << "#include <metal_stdlib>\nusing namespace metal;\n";
+    ss << "kernel void binary_bias_add(\n";
+    ss << "  device const " << scalar_t << "* A [[buffer(0)]],\n";
+    ss << "  device const " << scalar_t << "* B [[buffer(1)]],\n";
+    ss << "  device " << scalar_t << "* C [[buffer(2)]],\n";
+    ss << "  uint gid [[thread_position_in_grid]]) {\n";
+    ss << "  if (gid >= " << total << "u) return;\n";
+    ss << "  uint c = (gid / " << hw << "u) % " << channels << "u;\n";
+    ss << "  C[gid] = A[gid] + B[c];\n";
+    ss << "}\n";
+    return ss.str();
+}
+
 void fill_broadcast_strides(const ov::Shape& out,
                             const ov::Shape& in,
                             std::vector<int64_t>& strides) {
@@ -764,6 +788,14 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
     if (std::dynamic_pointer_cast<const ov::op::util::BinaryElementwiseArithmetic>(node) ||
         std::dynamic_pointer_cast<const ov::op::util::BinaryElementwiseLogical>(node) ||
         std::dynamic_pointer_cast<const ov::op::util::BinaryElementwiseComparison>(node)) {
+        if (type == "Add" && is_bias_broadcast_add(node)) {
+            src.entry_point = "binary_bias_add";
+            src.signature.arg_count = 3;
+            src.msl_generator = [node](mlir::ModuleOp) {
+                return generate_bias_broadcast_add_msl(node);
+            };
+            return;
+        }
         EltwiseCodegenDesc d{};
         d.element_type = node->get_output_element_type(0);
         d.eltwise_kind = eltwise_kind_from_node(*node);
@@ -1423,6 +1455,34 @@ KernelExecutionHooks* MetalStage::prepare_profiling(ProfileState& state,
     };
     hooks.on_end = [profiler, &state](GpuCommandEncoderHandle enc) {
         state.sample_end = profiler->gpu_sample_end(static_cast<MetalCommandEncoderHandle>(enc));
+    };
+    hooks.on_counter = [profiler](std::string_view name, uint64_t delta) {
+        profiler->increment_counter(name, delta);
+    };
+    hooks.on_segment = [profiler](std::string_view phase,
+                                  std::string_view name,
+                                  std::chrono::microseconds cpu_us,
+                                  uint64_t gpu_us,
+                                  uint32_t dispatches,
+                                  uint64_t bytes_in,
+                                  uint64_t bytes_out,
+                                  uint64_t macs_est,
+                                  uint64_t flops_est,
+                                  int64_t inflight_slot,
+                                  uint64_t queue_id,
+                                  uint64_t cmd_buffer_id) {
+        profiler->record_segment(phase,
+                                 name,
+                                 cpu_us,
+                                 gpu_us,
+                                 dispatches,
+                                 bytes_in,
+                                 bytes_out,
+                                 macs_est,
+                                 flops_est,
+                                 inflight_slot,
+                                 queue_id,
+                                 cmd_buffer_id);
     };
     return &hooks;
 }

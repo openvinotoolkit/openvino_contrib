@@ -51,8 +51,22 @@ void vulkan_free_buffer(GpuBuffer& buf) {
     throw_vulkan_unavailable();
 }
 
-void vulkan_copy_buffer(const GpuBuffer& src, const GpuBuffer& dst, size_t bytes) {
+void vulkan_copy_buffer(GpuCommandQueueHandle /*execution_context*/,
+                        const GpuBuffer& src,
+                        const GpuBuffer& dst,
+                        size_t bytes) {
     if (!src.buffer || !dst.buffer || bytes == 0) {
+        return;
+    }
+    throw_vulkan_unavailable();
+}
+
+void vulkan_copy_buffer_regions(GpuCommandQueueHandle /*execution_context*/,
+                                const GpuBuffer& src,
+                                const GpuBuffer& dst,
+                                const GpuBufferCopyRegion* regions,
+                                size_t region_count) {
+    if (!src.buffer || !dst.buffer || !regions || region_count == 0) {
         return;
     }
     throw_vulkan_unavailable();
@@ -66,10 +80,17 @@ const GpuMemoryOps& vulkan_memory_ops() {
         /*invalidate*/ [](const GpuBuffer& buf, size_t bytes, size_t offset) {
             vulkan_invalidate_buffer(buf, bytes, offset);
         },
-        /*copy*/ [](GpuCommandQueueHandle /*queue*/,
+        /*copy*/ [](GpuCommandQueueHandle execution_context,
                     const GpuBuffer& src,
                     const GpuBuffer& dst,
-                    size_t bytes) { vulkan_copy_buffer(src, dst, bytes); }};
+                    size_t bytes) { vulkan_copy_buffer(execution_context, src, dst, bytes); },
+        /*copy_regions*/ [](GpuCommandQueueHandle execution_context,
+                            const GpuBuffer& src,
+                            const GpuBuffer& dst,
+                            const GpuBufferCopyRegion* regions,
+                            size_t region_count) {
+            vulkan_copy_buffer_regions(execution_context, src, dst, regions, region_count);
+        }};
     return ops;
 }
 

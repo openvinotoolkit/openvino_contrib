@@ -4,10 +4,11 @@
 
 #include "mlir/mlir_builder.hpp"
 
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
-#include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Builders.h"
@@ -21,6 +22,7 @@ namespace ov {
 namespace gfx_plugin {
 
 namespace {
+
 std::shared_ptr<const ov::op::v0::MatMul> find_single_matmul(const std::shared_ptr<const ov::Model>& model) {
     std::shared_ptr<const ov::op::v0::MatMul> matmul;
     for (const auto& node : model->get_ordered_ops()) {
@@ -46,29 +48,96 @@ int64_t batch_product(const ov::Shape& shape) {
 
 mlir::Type to_elem_ty(ov::element::Type et, mlir::MLIRContext& ctx) {
     switch (et) {
-        case ov::element::f16: return mlir::Float16Type::get(&ctx);
-        case ov::element::f32: return mlir::Float32Type::get(&ctx);
-        case ov::element::i32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
-        case ov::element::i64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Signed);
-        case ov::element::u32: return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Unsigned);
-        case ov::element::u64: return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Unsigned);
-        default: return mlir::Float32Type::get(&ctx);
+        case ov::element::f16:
+            return mlir::Float16Type::get(&ctx);
+        case ov::element::f32:
+            return mlir::Float32Type::get(&ctx);
+        case ov::element::i32:
+            return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
+        case ov::element::i64:
+            return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Signed);
+        case ov::element::u32:
+            return mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Unsigned);
+        case ov::element::u64:
+            return mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Unsigned);
+        default:
+            return mlir::Float32Type::get(&ctx);
     }
+}
+
+mlir::Value make_zero_scalar(mlir::OpBuilder& builder,
+                             mlir::Location loc,
+                             mlir::MLIRContext& ctx,
+                             mlir::Type elem_ty) {
+    if (auto ft = mlir::dyn_cast<mlir::FloatType>(elem_ty)) {
+        return builder.create<mlir::arith::ConstantOp>(loc, mlir::FloatAttr::get(ft, 0.0)).getResult();
+    }
+    if (auto it = mlir::dyn_cast<mlir::IntegerType>(elem_ty)) {
+        return builder.create<mlir::arith::ConstantOp>(loc, mlir::IntegerAttr::get(it, 0)).getResult();
+    }
+    return builder.create<mlir::arith::ConstantOp>(loc, mlir::FloatAttr::get(mlir::Float32Type::get(&ctx), 0.0))
+        .getResult();
+}
+
+mlir::Value make_index_const(mlir::OpBuilder& builder, mlir::Location loc, int64_t value) {
+    return builder.create<mlir::arith::ConstantIndexOp>(loc, value);
+}
+
+mlir::Value build_tensor_permutation(mlir::OpBuilder& builder,
+                                     mlir::Location loc,
+                                     mlir::Value input,
+                                     llvm::ArrayRef<int64_t> output_dims,
+                                     llvm::ArrayRef<unsigned> permutation,
+                                     mlir::Type elem_ty,
+                                     mlir::MLIRContext& ctx) {
+    OPENVINO_ASSERT(permutation.size() == output_dims.size(), "MatMul permutation rank mismatch");
+    auto output_ty = mlir::RankedTensorType::get(output_dims, elem_ty);
+    auto empty = builder.create<mlir::tensor::EmptyOp>(loc, output_dims, elem_ty).getResult();
+
+    llvm::SmallVector<mlir::AffineExpr> in_exprs;
+    llvm::SmallVector<mlir::AffineExpr> out_exprs;
+    in_exprs.reserve(permutation.size());
+    out_exprs.reserve(permutation.size());
+    for (size_t i = 0; i < permutation.size(); ++i) {
+        in_exprs.push_back(mlir::getAffineDimExpr(static_cast<unsigned>(permutation[i]), &ctx));
+        out_exprs.push_back(mlir::getAffineDimExpr(static_cast<unsigned>(i), &ctx));
+    }
+
+    llvm::SmallVector<mlir::utils::IteratorType> iterators(
+        permutation.size(), mlir::utils::IteratorType::parallel);
+    auto generic = builder.create<mlir::linalg::GenericOp>(
+        loc,
+        mlir::TypeRange{output_ty},
+        mlir::ValueRange{input},
+        mlir::ValueRange{empty},
+        mlir::ArrayRef<mlir::AffineMap>{
+            mlir::AffineMap::get(static_cast<unsigned>(permutation.size()), 0, in_exprs, &ctx),
+            mlir::AffineMap::get(static_cast<unsigned>(permutation.size()), 0, out_exprs, &ctx),
+        },
+        iterators,
+        [&](mlir::OpBuilder& nested_builder, mlir::Location nested_loc, mlir::ValueRange args) {
+            OPENVINO_ASSERT(args.size() == 2, "MatMul permutation body expects input and output");
+            nested_builder.create<mlir::linalg::YieldOp>(nested_loc, args[0]);
+        });
+    return generic.getResult(0);
 }
 
 }  // namespace
 
 mlir::ModuleOp build_mlir_module_from_model(const std::shared_ptr<const ov::Model>& model,
                                             mlir::MLIRContext& ctx) {
-    ctx.loadDialect<mlir::func::FuncDialect, mlir::linalg::LinalgDialect, mlir::tensor::TensorDialect,
-                    mlir::arith::ArithDialect, mlir::math::MathDialect>();
+    ctx.loadDialect<mlir::func::FuncDialect,
+                    mlir::tensor::TensorDialect,
+                    mlir::arith::ArithDialect,
+                    mlir::linalg::LinalgDialect,
+                    mlir::scf::SCFDialect>();
 
     auto matmul = find_single_matmul(model);
     const auto shape_a = matmul->get_input_shape(0);
     const auto shape_b = matmul->get_input_shape(1);
     OPENVINO_ASSERT(!shape_a.empty() && !shape_b.empty(), "MatMul: shapes required");
-    OPENVINO_ASSERT(shape_a.size() >= 2 && shape_a.size() <= 4, "MatMul supports ranks 2–4");
-    OPENVINO_ASSERT(shape_b.size() >= 2 && shape_b.size() <= 4, "MatMul supports ranks 2–4");
+    OPENVINO_ASSERT(shape_a.size() >= 2 && shape_a.size() <= 4, "MatMul supports ranks 2-4");
+    OPENVINO_ASSERT(shape_b.size() >= 2 && shape_b.size() <= 4, "MatMul supports ranks 2-4");
 
     const bool ta = matmul->get_transpose_a();
     const bool tb = matmul->get_transpose_b();
@@ -113,83 +182,97 @@ mlir::ModuleOp build_mlir_module_from_model(const std::shared_ptr<const ov::Mode
     auto loc = mlir::UnknownLoc::get(&ctx);
     b.setInsertionPointToStart(&func.getBody().front());
 
-    mlir::Value a3 = func.getArgument(0);
-    mlir::Value b3 = func.getArgument(1);
+    auto empty = b.create<mlir::tensor::EmptyOp>(loc, mlir::ArrayRef<int64_t>({batch, M, N}), elem_ty).getResult();
+    auto zero = make_zero_scalar(b, loc, ctx, elem_ty);
+    auto init = b.create<mlir::linalg::FillOp>(loc, mlir::ValueRange{zero}, mlir::ValueRange{empty});
 
-    auto out3d_ty = type_out;
-    auto empty = b.create<mlir::tensor::EmptyOp>(loc, mlir::ArrayRef<int64_t>({batch, M, N}), elem_ty);
+    if (batch_a == batch_b) {
+        mlir::Value lhs = func.getArgument(0);
+        mlir::Value rhs = func.getArgument(1);
 
-    mlir::Value zero;
-    if (auto ft = mlir::dyn_cast<mlir::FloatType>(elem_ty)) {
-        zero = b.create<mlir::arith::ConstantOp>(loc, mlir::FloatAttr::get(ft, 0.0)).getResult();
-    } else if (auto it = mlir::dyn_cast<mlir::IntegerType>(elem_ty)) {
-        zero = b.create<mlir::arith::ConstantOp>(loc, mlir::IntegerAttr::get(it, 0)).getResult();
-    } else {
-        zero = b.create<mlir::arith::ConstantOp>(loc, mlir::FloatAttr::get(mlir::Float32Type::get(&ctx), 0.0))
-                   .getResult();
+        if (ta) {
+            lhs = build_tensor_permutation(b,
+                                           loc,
+                                           lhs,
+                                           llvm::ArrayRef<int64_t>({batch, M, K}),
+                                           llvm::ArrayRef<unsigned>({0u, 2u, 1u}),
+                                           elem_ty,
+                                           ctx);
+        }
+
+        if (tb) {
+            auto batch_matmul = b.create<mlir::linalg::BatchMatmulTransposeBOp>(
+                loc,
+                mlir::TypeRange{type_out},
+                mlir::ValueRange{lhs, rhs},
+                mlir::ValueRange{init.getResult(0)},
+                mlir::ArrayRef<mlir::NamedAttribute>{});
+            b.create<mlir::func::ReturnOp>(loc, batch_matmul.getResult(0));
+        } else {
+            auto batch_matmul = b.create<mlir::linalg::BatchMatmulOp>(
+                loc,
+                mlir::TypeRange{type_out},
+                mlir::ValueRange{lhs, rhs},
+                mlir::ValueRange{init.getResult(0)},
+                mlir::ArrayRef<mlir::NamedAttribute>{});
+            b.create<mlir::func::ReturnOp>(loc, batch_matmul.getResult(0));
+        }
+        return module;
     }
 
-    auto filled = b.create<mlir::linalg::FillOp>(loc,
-                                                 mlir::ValueRange{zero},
-                                                 mlir::ValueRange{empty.getResult()});
+    auto d0 = mlir::getAffineDimExpr(0, &ctx);
+    auto d1 = mlir::getAffineDimExpr(1, &ctx);
+    auto d2 = mlir::getAffineDimExpr(2, &ctx);
+    auto d3 = mlir::getAffineDimExpr(3, &ctx);
+    auto const0 = mlir::getAffineConstantExpr(0, &ctx);
 
-    auto b_expr = mlir::getAffineDimExpr(0, &ctx);
-    auto m_expr = mlir::getAffineDimExpr(1, &ctx);
-    auto n_expr = mlir::getAffineDimExpr(2, &ctx);
-    auto k_expr = mlir::getAffineDimExpr(3, &ctx);
-    auto zero_expr = mlir::getAffineConstantExpr(0, &ctx);
+    mlir::SmallVector<mlir::AffineMap> indexing_maps;
+    indexing_maps.reserve(3);
+    indexing_maps.push_back(mlir::AffineMap::get(
+        /*dimCount=*/4,
+        /*symbolCount=*/0,
+        {batch_a == 1 ? const0 : d0, ta ? d3 : d1, ta ? d1 : d3},
+        &ctx));
+    indexing_maps.push_back(mlir::AffineMap::get(
+        /*dimCount=*/4,
+        /*symbolCount=*/0,
+        {batch_b == 1 ? const0 : d0, tb ? d2 : d3, tb ? d3 : d2},
+        &ctx));
+    indexing_maps.push_back(mlir::AffineMap::get(
+        /*dimCount=*/4,
+        /*symbolCount=*/0,
+        {d0, d1, d2},
+        &ctx));
 
-    auto a_batch_expr = (batch_a == 1) ? zero_expr : b_expr;
-    auto b_batch_expr = (batch_b == 1) ? zero_expr : b_expr;
-
-    auto a_map = mlir::AffineMap::get(4,
-                                      0,
-                                      {a_batch_expr, ta ? k_expr : m_expr, ta ? m_expr : k_expr},
-                                      &ctx);
-    auto b_map = mlir::AffineMap::get(4,
-                                      0,
-                                      {b_batch_expr, tb ? n_expr : k_expr, tb ? k_expr : n_expr},
-                                      &ctx);
-    auto c_map = mlir::AffineMap::get(4, 0, {b_expr, m_expr, n_expr}, &ctx);
-
-    llvm::SmallVector<mlir::utils::IteratorType> iterators = {
+    mlir::SmallVector<mlir::utils::IteratorType> iterators = {
         mlir::utils::IteratorType::parallel,
         mlir::utils::IteratorType::parallel,
         mlir::utils::IteratorType::parallel,
-        mlir::utils::IteratorType::reduction
+        mlir::utils::IteratorType::reduction,
     };
 
     auto generic = b.create<mlir::linalg::GenericOp>(
         loc,
-        out3d_ty,
-        mlir::ValueRange{a3, b3},
-        mlir::ValueRange{filled.getResult(0)},
-        mlir::ArrayRef<mlir::AffineMap>{a_map, b_map, c_map},
-        mlir::ArrayRef<mlir::utils::IteratorType>(iterators));
-    {
-        auto& region = generic.getRegion();
-        region.getBlocks().clear();
-        auto* block = &region.emplaceBlock();
-        block->addArguments({elem_ty, elem_ty, elem_ty}, {loc, loc, loc});
-        mlir::OpBuilder body(block, block->begin());
-        auto lhs = block->getArgument(0);
-        auto rhs = block->getArgument(1);
-        auto acc = block->getArgument(2);
-        mlir::Value mul;
-        mlir::Value sum;
-        if (mlir::isa<mlir::FloatType>(elem_ty)) {
-            mul = body.create<mlir::arith::MulFOp>(loc, lhs, rhs);
-            sum = body.create<mlir::arith::AddFOp>(loc, acc, mul);
-        } else {
-            mul = body.create<mlir::arith::MulIOp>(loc, lhs, rhs);
-            sum = body.create<mlir::arith::AddIOp>(loc, acc, mul);
-        }
-        body.create<mlir::linalg::YieldOp>(loc, sum);
-    }
+        mlir::TypeRange{type_out},
+        mlir::ValueRange{func.getArgument(0), func.getArgument(1)},
+        mlir::ValueRange{init.getResult(0)},
+        indexing_maps,
+        iterators,
+        [&](mlir::OpBuilder& nested_builder, mlir::Location nested_loc, mlir::ValueRange args) {
+            OPENVINO_ASSERT(args.size() == 3, "MatMul generic body expects lhs, rhs, acc");
+            mlir::Value mul;
+            mlir::Value sum;
+            if (mlir::isa<mlir::FloatType>(elem_ty)) {
+                mul = nested_builder.create<mlir::arith::MulFOp>(nested_loc, args[0], args[1]).getResult();
+                sum = nested_builder.create<mlir::arith::AddFOp>(nested_loc, args[2], mul).getResult();
+            } else {
+                mul = nested_builder.create<mlir::arith::MulIOp>(nested_loc, args[0], args[1]).getResult();
+                sum = nested_builder.create<mlir::arith::AddIOp>(nested_loc, args[2], mul).getResult();
+            }
+            nested_builder.create<mlir::linalg::YieldOp>(nested_loc, sum);
+        });
 
-    mlir::Value out3d = generic.getResult(0);
-    b.create<mlir::func::ReturnOp>(loc, out3d);
-
+    b.create<mlir::func::ReturnOp>(loc, generic.getResult(0));
     return module;
 }
 

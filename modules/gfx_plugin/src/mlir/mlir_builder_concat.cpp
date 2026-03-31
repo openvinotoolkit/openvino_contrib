@@ -9,6 +9,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
@@ -36,6 +37,7 @@ mlir::ModuleOp build_mlir_concat_from_model(const std::shared_ptr<const ov::Mode
 
     const size_t rank = concat->get_output_shape(0).size();
     OPENVINO_ASSERT(rank > 0, "Concat MLIR: output rank must be static");
+    const ov::Shape out_shape = concat->get_output_shape(0);
 
     auto elem_ty = to_mlir_type(concat->get_output_element_type(0),
                                 ctx,
@@ -43,9 +45,8 @@ mlir::ModuleOp build_mlir_concat_from_model(const std::shared_ptr<const ov::Mode
                                 /*allow_unsigned=*/false,
                                 /*allow_small_ints=*/true);
 
-    mlir::SmallVector<int64_t> out_shape(concat->get_output_shape(0).begin(),
-                                         concat->get_output_shape(0).end());
-    auto out_tensor_ty = mlir::RankedTensorType::get(out_shape, elem_ty);
+    mlir::SmallVector<int64_t> out_shape_vec(out_shape.begin(), out_shape.end());
+    auto out_tensor_ty = mlir::RankedTensorType::get(out_shape_vec, elem_ty);
 
     mlir::SmallVector<mlir::Type> input_types;
     input_types.reserve(concat->get_input_size());
@@ -65,34 +66,30 @@ mlir::ModuleOp build_mlir_concat_from_model(const std::shared_ptr<const ov::Mode
     mlir::OpBuilder b(func.getBody());
     auto loc = mlir::UnknownLoc::get(&ctx);
     b.setInsertionPointToStart(&func.getBody().front());
-    mlir::Value result = b.create<mlir::tensor::EmptyOp>(loc, out_shape, elem_ty);
 
     int64_t axis = concat->get_axis();
     if (axis < 0) axis += static_cast<int64_t>(rank);
     OPENVINO_ASSERT(axis >= 0 && static_cast<size_t>(axis) < rank, "Concat MLIR: axis out of range");
 
+    mlir::Value result = b.create<mlir::tensor::EmptyOp>(loc, out_shape_vec, elem_ty);
+
     int64_t axis_offset = 0;
     for (size_t i = 0; i < concat->get_input_size(); ++i) {
         auto in_shape = concat->get_input_shape(i);
+        mlir::Value src = func.getArgument(static_cast<unsigned>(i));
         mlir::SmallVector<mlir::OpFoldResult> offsets;
         mlir::SmallVector<mlir::OpFoldResult> sizes;
         mlir::SmallVector<mlir::OpFoldResult> strides;
         offsets.reserve(rank);
         sizes.reserve(rank);
         strides.reserve(rank);
-        for (size_t d = 0; d < rank; ++d) {
-            int64_t off = (d == static_cast<size_t>(axis)) ? axis_offset : 0;
-            offsets.push_back(b.getIndexAttr(off));
-            sizes.push_back(b.getIndexAttr(static_cast<int64_t>(in_shape[d])));
+        for (size_t dim = 0; dim < rank; ++dim) {
+            const int64_t offset = static_cast<int64_t>(dim) == axis ? axis_offset : 0;
+            offsets.push_back(b.getIndexAttr(offset));
+            sizes.push_back(b.getIndexAttr(static_cast<int64_t>(in_shape[dim])));
             strides.push_back(b.getIndexAttr(1));
         }
-        result = b.create<mlir::tensor::InsertSliceOp>(loc,
-                                                       func.getArgument(static_cast<unsigned>(i)),
-                                                       result,
-                                                       offsets,
-                                                       sizes,
-                                                       strides)
-                     .getResult();
+        result = b.create<mlir::tensor::InsertSliceOp>(loc, src, result, offsets, sizes, strides).getResult();
         axis_offset += static_cast<int64_t>(in_shape[static_cast<size_t>(axis)]);
     }
 

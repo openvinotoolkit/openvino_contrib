@@ -24,6 +24,7 @@ namespace gfx_plugin {
 
 class Plugin;
 class InferRequest;
+class GfxProfilingTrace;
 struct BackendState;
 struct OutputDesc {
     ov::Shape shape;
@@ -71,12 +72,14 @@ public:
     const std::unordered_map<const ov::Node*, size_t>& parameter_index() const { return m_param_index; }
     void update_last_profiling_report_json(std::string report_json) const;
     std::string last_profiling_report_json() const;
+    void update_compile_profiling_report_json(std::string report_json) const;
+    std::string compile_profiling_report_json() const;
 
 protected:
     std::shared_ptr<ov::ISyncInferRequest> create_sync_infer_request() const override;
 
 private:
-    void build_op_pipeline();
+    void build_op_pipeline(GfxProfilingTrace* compile_trace = nullptr);
 
     std::unique_ptr<BackendState> m_backend_state;
     std::shared_ptr<const ov::Model> m_runtime_model;
@@ -96,6 +99,7 @@ private:
     std::unordered_map<const ov::Node*, size_t> m_param_index;
     mutable std::mutex m_report_mutex;
     mutable std::string m_last_report_json;
+    mutable std::string m_compile_report_json;
 };
 
 }  // namespace gfx_plugin

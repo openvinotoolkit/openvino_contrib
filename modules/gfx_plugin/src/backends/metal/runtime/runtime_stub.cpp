@@ -54,6 +54,14 @@ void metal_copy_buffer(MetalCommandQueueHandle /*queue*/,
     throw_metal_unavailable();
 }
 
+void metal_copy_buffer_regions(MetalCommandQueueHandle /*execution_context*/,
+                               const MetalBuffer& /*src*/,
+                               const MetalBuffer& /*dst*/,
+                               const GpuBufferCopyRegion* /*regions*/,
+                               size_t /*region_count*/) {
+    throw_metal_unavailable();
+}
+
 const GpuMemoryOps& metal_memory_ops() {
     static const GpuMemoryOps ops{
         /*map*/ [](const GpuBuffer& /*buf*/) -> void* {
@@ -68,7 +76,12 @@ const GpuMemoryOps& metal_memory_ops() {
         /*copy*/ [](GpuCommandQueueHandle /*queue*/,
                     const GpuBuffer& /*src*/,
                     const GpuBuffer& /*dst*/,
-                    size_t /*bytes*/) { throw_metal_unavailable(); }};
+                    size_t /*bytes*/) { throw_metal_unavailable(); },
+        /*copy_regions*/ [](GpuCommandQueueHandle /*execution_context*/,
+                            const GpuBuffer& /*src*/,
+                            const GpuBuffer& /*dst*/,
+                            const GpuBufferCopyRegion* /*regions*/,
+                            size_t /*region_count*/) { throw_metal_unavailable(); }};
     return ops;
 }
 

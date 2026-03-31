@@ -43,17 +43,17 @@ void FusedSequenceStage::set_output(GpuTensor* output) {
     }
 }
 
+void FusedSequenceStage::set_output_refs(const std::vector<GpuTensor*>& outputs) {
+    m_outputs = outputs;
+}
+
 void FusedSequenceStage::set_outputs(const std::vector<std::unique_ptr<GpuTensor>>& outputs) {
-    m_outputs.clear();
-    m_outputs.reserve(outputs.size());
-    for (const auto& out : outputs) {
-        m_outputs.push_back(out.get());
+    std::vector<GpuTensor*> refs;
+    refs.reserve(outputs.size());
+    for (const auto& output : outputs) {
+        refs.push_back(output.get());
     }
-    for (auto& info : m_stages) {
-        if (info.stage && info.output_index < m_outputs.size()) {
-            info.stage->set_output(m_outputs[info.output_index]);
-        }
-    }
+    set_output_refs(refs);
 }
 
 void FusedSequenceStage::enable_profiling(bool enable) {
@@ -119,10 +119,57 @@ void FusedSequenceStage::execute(GpuCommandBufferHandle command_buffer) {
             }
         }
         info.stage->set_inputs(resolved_inputs);
-        if (info.output_index < m_outputs.size()) {
-            info.stage->set_output(m_outputs[info.output_index]);
+        std::vector<GpuTensor*> resolved_outputs;
+        resolved_outputs.reserve(info.output_indices.size());
+        for (size_t output_index : info.output_indices) {
+            resolved_outputs.push_back(output_index < m_outputs.size() ? m_outputs[output_index] : nullptr);
         }
+        info.stage->set_output_refs(resolved_outputs);
         info.stage->execute(command_buffer);
+    }
+}
+
+void FusedSequenceStage::prewarm_runtime_state() {
+    if (m_outputs.size() < m_stages.size()) {
+        OPENVINO_THROW("GFX: fused stage outputs are not fully bound (",
+                       m_outputs.size(),
+                       " < ",
+                       m_stages.size(),
+                       ")");
+    }
+
+    for (auto& info : m_stages) {
+        if (!info.stage) {
+            continue;
+        }
+        std::vector<GpuTensor*> resolved_inputs;
+        resolved_inputs.reserve(info.inputs.size());
+        for (const auto& binding : info.inputs) {
+            switch (binding.kind) {
+                case FusedInputKind::External:
+                    resolved_inputs.push_back(binding.index < m_inputs.size()
+                                                  ? m_inputs[binding.index]
+                                                  : nullptr);
+                    break;
+                case FusedInputKind::Output:
+                    resolved_inputs.push_back(binding.index < m_outputs.size()
+                                                  ? m_outputs[binding.index]
+                                                  : nullptr);
+                    break;
+                case FusedInputKind::None:
+                default:
+                    resolved_inputs.push_back(nullptr);
+                    break;
+            }
+        }
+        info.stage->set_inputs(resolved_inputs);
+        std::vector<GpuTensor*> resolved_outputs;
+        resolved_outputs.reserve(info.output_indices.size());
+        for (size_t output_index : info.output_indices) {
+            resolved_outputs.push_back(output_index < m_outputs.size() ? m_outputs[output_index] : nullptr);
+        }
+        info.stage->set_output_refs(resolved_outputs);
+        info.stage->prewarm_runtime_state();
     }
 }
 
@@ -135,7 +182,7 @@ std::unique_ptr<GpuStage> FusedSequenceStage::clone() const {
             copy.stage = info.stage->clone();
         }
         copy.inputs = info.inputs;
-        copy.output_index = info.output_index;
+        copy.output_indices = info.output_indices;
         stages.emplace_back(std::move(copy));
     }
     auto cloned = std::make_unique<FusedSequenceStage>(std::move(stages), m_name, m_type);

@@ -5,8 +5,10 @@
 #include "mlir/codegen_common.hpp"
 
 #include <sstream>
+#include <vector>
 
 #include "openvino/core/except.hpp"
+#include "llvm/Support/Casting.h"
 
 namespace ov {
 namespace gfx_plugin {
@@ -22,6 +24,65 @@ ov::element::Type resolve_conv_buffer_type(const ov::element::Type& type,
         return fallback;
     }
     return ov::element::f32;
+}
+
+std::vector<int64_t> read_entry_argument_shape(mlir::ModuleOp module, size_t arg_idx) {
+    std::vector<int64_t> shape;
+    auto func = get_entry_func(module);
+    if (!func) {
+        return shape;
+    }
+    if (arg_idx >= func.getNumArguments()) {
+        return shape;
+    }
+
+    auto type = func.getArgument(arg_idx).getType();
+    if (auto ranked = llvm::dyn_cast<mlir::RankedTensorType>(type)) {
+        if (!ranked.hasStaticShape()) {
+            return {};
+        }
+        shape.assign(ranked.getShape().begin(), ranked.getShape().end());
+        return shape;
+    }
+    if (auto memref = llvm::dyn_cast<mlir::MemRefType>(type)) {
+        if (!memref.hasStaticShape()) {
+            return {};
+        }
+        shape.assign(memref.getShape().begin(), memref.getShape().end());
+        return shape;
+    }
+    return shape;
+}
+
+std::vector<int64_t> read_absorbed_input_permutation(mlir::ModuleOp module, size_t input_idx) {
+    std::vector<int64_t> permutation;
+    if (!module) {
+        return permutation;
+    }
+    auto attr = module->getAttrOfType<mlir::ArrayAttr>("gfx.absorbed_input" + std::to_string(input_idx) + "_perm");
+    if (!attr) {
+        return permutation;
+    }
+    permutation.reserve(attr.size());
+    for (auto value : attr) {
+        auto int_attr = llvm::dyn_cast<mlir::IntegerAttr>(value);
+        OPENVINO_ASSERT(int_attr, "Conv2D codegen: absorbed input permutation attr must be integer");
+        permutation.push_back(int_attr.getInt());
+    }
+    return permutation;
+}
+
+std::vector<int64_t> invert_permutation(const std::vector<int64_t>& permutation) {
+    std::vector<int64_t> inverse(permutation.size(), -1);
+    for (size_t logical_axis = 0; logical_axis < permutation.size(); ++logical_axis) {
+        const int64_t source_axis = permutation[logical_axis];
+        OPENVINO_ASSERT(source_axis >= 0 && source_axis < static_cast<int64_t>(permutation.size()),
+                        "Conv2D codegen: permutation axis out of range");
+        OPENVINO_ASSERT(inverse[static_cast<size_t>(source_axis)] < 0,
+                        "Conv2D codegen: permutation axis repeated");
+        inverse[static_cast<size_t>(source_axis)] = static_cast<int64_t>(logical_axis);
+    }
+    return inverse;
 }
 
 }  // namespace
@@ -70,6 +131,25 @@ std::string generate_msl_for_conv2d(const Conv2DCodegenDesc& d, mlir::ModuleOp m
     if (outW == 0) {
         int64_t eff_kw = static_cast<int64_t>(d.dilationW) * (static_cast<int64_t>(d.kW) - 1) + 1;
         outW = static_cast<uint32_t>((static_cast<int64_t>(d.W) + d.padLeft + d.padRight - eff_kw) / d.strideW + 1);
+    }
+
+    const auto input_permutation = read_absorbed_input_permutation(module, 0);
+    const auto source_input_shape = read_entry_argument_shape(module, 0);
+    const bool has_absorbed_input_transform = !input_permutation.empty();
+    std::vector<int64_t> inverse_input_permutation;
+    std::vector<uint64_t> source_input_strides;
+    if (has_absorbed_input_transform) {
+        OPENVINO_ASSERT(source_input_shape.size() == 4,
+                        "Conv2D codegen: absorbed transpose expects rank-4 source input shape");
+        OPENVINO_ASSERT(input_permutation.size() == 4,
+                        "Conv2D codegen: absorbed transpose expects rank-4 permutation");
+        inverse_input_permutation = invert_permutation(input_permutation);
+        source_input_strides.assign(source_input_shape.size(), 1);
+        for (int64_t i = static_cast<int64_t>(source_input_shape.size()) - 2; i >= 0; --i) {
+            source_input_strides[static_cast<size_t>(i)] =
+                source_input_strides[static_cast<size_t>(i + 1)] *
+                static_cast<uint64_t>(source_input_shape[static_cast<size_t>(i + 1)]);
+        }
     }
 
     std::ostringstream ss;
@@ -143,7 +223,16 @@ std::string generate_msl_for_conv2d(const Conv2DCodegenDesc& d, mlir::ModuleOp m
     ss << "                int iw = in_w0 + int(kw) * int(p.dilationW);\n";
     ss << "                if (iw < 0 || iw >= int(p.W)) continue;\n";
     ss << "                uint ci_global = (p.groups == 0 || p.groups == 1) ? ci : g * p.C_in_pg + ci;\n";
-    ss << "                uint in_idx = ((n * p.C_in + ci_global) * p.H + uint(ih)) * p.W + uint(iw);\n";
+    if (!has_absorbed_input_transform) {
+        ss << "                uint in_idx = ((n * p.C_in + ci_global) * p.H + uint(ih)) * p.W + uint(iw);\n";
+    } else {
+        ss << "                uint logical_idx[4] = {n, ci_global, uint(ih), uint(iw)};\n";
+        ss << "                uint in_idx = 0u;\n";
+        for (size_t src_dim = 0; src_dim < source_input_shape.size(); ++src_dim) {
+            ss << "                in_idx += logical_idx[" << inverse_input_permutation[src_dim] << "] * "
+               << static_cast<uint32_t>(source_input_strides[src_dim]) << "u;\n";
+        }
+    }
     ss << "                uint w_idx = (((g * p.C_out_pg + co_g) * p.C_in_pg + ci) * p.kH + kh) * p.kW + kw;\n";
     ss << "                acc += static_cast<" << accum << ">(static_cast<" << input_compute << ">(in0[in_idx])) * "
           "static_cast<" << accum << ">(static_cast<" << weight_compute << ">(w[w_idx]));\n";

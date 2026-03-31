@@ -17,6 +17,94 @@ namespace ov {
 namespace gfx_plugin {
 namespace {
 
+bool is_identity_pointwise_conv(const std::shared_ptr<const ov::Node>& node) {
+    auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(node);
+    if (!conv || conv->get_input_size() != 2 || conv->get_output_size() != 1) {
+        return false;
+    }
+    const auto& in_shape = conv->get_input_shape(0);
+    const auto& w_shape = conv->get_input_shape(1);
+    const auto& out_shape = conv->get_output_shape(0);
+    if (in_shape.size() != 4 || w_shape.size() != 4 || out_shape.size() != 4) {
+        return false;
+    }
+    return w_shape[2] == 1 && w_shape[3] == 1 &&
+           conv->get_strides().at(0) == 1 && conv->get_strides().at(1) == 1 &&
+           conv->get_dilations().at(0) == 1 && conv->get_dilations().at(1) == 1 &&
+           conv->get_pads_begin().at(0) == 0 && conv->get_pads_begin().at(1) == 0 &&
+           conv->get_pads_end().at(0) == 0 && conv->get_pads_end().at(1) == 0 &&
+           in_shape[2] == out_shape[2] && in_shape[3] == out_shape[3];
+}
+
+bool has_input_type(const std::shared_ptr<const ov::Node>& node, std::string_view type_name) {
+    if (!node) {
+        return false;
+    }
+    for (const auto& input : node->input_values()) {
+        const auto src = input.get_node_shared_ptr();
+        if (src && src->get_type_name() == type_name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool has_consumer_type(const std::shared_ptr<const ov::Node>& node, std::string_view type_name) {
+    if (!node) {
+        return false;
+    }
+    for (const auto& output : node->outputs()) {
+        for (const auto& target_input : output.get_target_inputs()) {
+            const auto consumer = target_input.get_node()->shared_from_this();
+            if (consumer && consumer->get_type_name() == type_name) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool has_adjacent_type(const std::shared_ptr<const ov::Node>& node, std::string_view type_name) {
+    return has_input_type(node, type_name) || has_consumer_type(node, type_name);
+}
+
+bool has_any_adjacent_type(const std::shared_ptr<const ov::Node>& node,
+                           std::initializer_list<std::string_view> type_names) {
+    for (const auto type_name : type_names) {
+        if (has_adjacent_type(node, type_name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool is_attention_score_stage(const std::shared_ptr<const ov::Node>& node) {
+    if (!node) {
+        return false;
+    }
+    const std::string_view type_name = node->get_type_name();
+    if (type_name == "Softmax" || type_name == "LogSoftmax") {
+        return has_input_type(node, "MatMul") || has_input_type(node, "Multiply") || has_consumer_type(node, "MatMul");
+    }
+    if (type_name == "Multiply") {
+        return has_input_type(node, "MatMul") || has_consumer_type(node, "Softmax") || has_consumer_type(node, "MatMul");
+    }
+    return false;
+}
+
+bool is_chainable_mobile_conv(const std::shared_ptr<const ov::Node>& node) {
+    if (!node) {
+        return false;
+    }
+    if (has_adjacent_type(node, "Concat")) {
+        return false;
+    }
+    if (has_any_adjacent_type(node, {"MatMul", "Softmax", "LogSoftmax", "Transpose", "Reshape", "Split", "VariadicSplit"})) {
+        return false;
+    }
+    return has_any_adjacent_type(node, {"Convolution", "GroupConvolution", "Add", "Multiply", "Relu", "Sigmoid", "Gelu"});
+}
+
 bool is_conv_like(std::string_view stage_type) {
     return stage_type == "Convolution" || stage_type == "GroupConvolution";
 }
@@ -131,6 +219,17 @@ bool is_compile_safe_im2col_spatial3x3_bucket(const ov::Shape& in_shape,
     return false;
 }
 
+uint64_t output_elements(const std::shared_ptr<const ov::Node>& node) {
+    if (!node || node->get_output_size() == 0) {
+        return 0;
+    }
+    const auto& pshape = node->get_output_partial_shape(0);
+    if (!pshape.is_static()) {
+        return 0;
+    }
+    return shape_elements(node->get_output_shape(0));
+}
+
 GfxParallelismCaps query_stage_caps(const GpuBufferManager* buffer_manager, GpuBackend backend) {
     if (buffer_manager) {
         return query_parallelism_caps(buffer_manager);
@@ -155,7 +254,7 @@ GfxParallelismCaps query_stage_caps(const GpuBufferManager* buffer_manager, GpuB
 
 bool allow_stage_bias_fusion(GpuBackend backend, const std::string& stage_type) {
     if (backend == GpuBackend::Vulkan) {
-        return false;
+        return stage_type == "Convolution";
     }
     return is_conv_like(stage_type);
 }
@@ -171,7 +270,7 @@ bool allow_stage_activation_fusion(GpuBackend backend,
         return false;
     }
     if (backend == GpuBackend::Vulkan) {
-        return false;
+        return stage_type == "Convolution" && kind == ActivationKind::Relu;
     }
     return is_conv_like(stage_type);
 }
@@ -244,22 +343,93 @@ GfxStageOptimizationPlan select_stage_optimization_plan(const GpuBufferManager* 
 
     const auto caps = query_stage_caps(buffer_manager, backend);
     const uint32_t wave = std::max<uint32_t>(1u, std::max(caps.subgroup_size, caps.preferred_simd_width));
+    const uint64_t out_elems = output_elements(node);
+    constexpr uint64_t kLargeMobileChunkedOutputElems = 262144ull;
+    constexpr uint64_t kChainableConvOutputElems = 1048576ull;
+    const bool constrained_vulkan_submit = caps.max_total_threads_per_group <= 256u && wave < 32u;
+    const uint64_t large_chunked_output_elems =
+        constrained_vulkan_submit ? (kLargeMobileChunkedOutputElems * 4ull) : kLargeMobileChunkedOutputElems;
+    const bool chainable_mobile_conv = is_chainable_mobile_conv(node) && out_elems > 0 && out_elems <= kChainableConvOutputElems;
 
+    if (plan.archetype == GfxStageArchetype::MatMul) {
+        plan.execution.submit.weight = wave >= 64 ? 10 : 8;
+        // Keep MatMul inside the adaptive submit window so tightly-coupled
+        // layout/split epilogues can stay in the same command buffer when the
+        // budget allows it. On mobile Vulkan stacks the extra cross-submit hop
+        // between producer chains and MatMul tends to be more fragile and more
+        // expensive than a slightly wider window.
+        plan.execution.submit.isolate = false;
+        return plan;
+    }
+
+    if (plan.conv.algorithm.kind == GfxConvAlgorithmKind::Im2ColMatMul) {
+        plan.execution.submit.weight = wave >= 64 ? 10 : 8;
+        plan.execution.submit.isolate = true;
+        return plan;
+    }
+
+    if ((traits.binary_chunked || traits.binary_same_shape || traits.binary_bias_add) &&
+        is_attention_score_stage(node)) {
+        // Attention score scaling is tightly coupled to the following Softmax
+        // and MatMul. On mobile Vulkan stacks, forcing these stages into
+        // separate submit windows is more fragile than a slightly wider window.
+        plan.execution.submit.weight = 4;
+        plan.execution.submit.isolate = false;
+        return plan;
+    }
     if (traits.binary_chunked || traits.binary_same_shape || traits.binary_bias_add) {
         plan.execution.submit.weight = 8;
+        plan.execution.submit.isolate = out_elems >= large_chunked_output_elems;
+        return plan;
+    }
+    if ((traits.unary_chunked || traits.softmax_chunked) &&
+        is_attention_score_stage(node)) {
+        plan.execution.submit.weight = 4;
+        plan.execution.submit.isolate = false;
         return plan;
     }
     if (traits.unary_chunked || traits.softmax_chunked) {
         plan.execution.submit.weight = 6;
+        plan.execution.submit.isolate = out_elems >= large_chunked_output_elems;
         return plan;
     }
     if (plan.conv.kind == GfxConvRouteKind::Direct1x1 || plan.conv.kind == GfxConvRouteKind::Direct3x3 ||
         plan.conv.kind == GfxConvRouteKind::Chunked || plan.conv.kind == GfxConvRouteKind::GroupChunked) {
         plan.execution.submit.weight = wave >= 64 ? 10 : 8;
+        plan.execution.submit.isolate = !chainable_mobile_conv;
+        return plan;
+    }
+    if ((plan.archetype == GfxStageArchetype::Convolution ||
+         plan.archetype == GfxStageArchetype::GroupConvolution) &&
+        plan.conv.kind == GfxConvRouteKind::None) {
+        // Shared MLIR convolution lowering remains the most portable Vulkan
+        // path, but on mobile-class drivers it is still a heavy stage and
+        // should not be mixed into wide multi-op submit windows, except for
+        // safe pointwise 1x1 stages where extra submit/barrier churn tends to
+        // dominate more than the kernel itself on mobile GPUs.
+        plan.execution.submit.weight = wave >= 64 ? 10 : 8;
+        if (plan.archetype == GfxStageArchetype::Convolution && is_identity_pointwise_conv(node)) {
+            // Keep shared 1x1 convolutions light enough to co-reside with the
+            // following unary/binary/layout epilogue stages in one submit
+            // window. Profiling on mobile Vulkan stacks shows that extra
+            // cross-submit barriers are more expensive here than slightly
+            // wider windows.
+            plan.execution.submit.weight = 4;
+            plan.execution.submit.isolate = false;
+        } else if (chainable_mobile_conv) {
+            plan.execution.submit.isolate = false;
+        } else {
+            plan.execution.submit.isolate = true;
+        }
         return plan;
     }
     if (traits.transpose_chunked || traits.split_concat_chunked) {
         plan.execution.submit.weight = 4;
+        if (traits.split_concat_chunked &&
+            out_elems >= large_chunked_output_elems) {
+            plan.execution.submit.weight = 8;
+            plan.execution.submit.isolate = true;
+        }
         return plan;
     }
     if (traits.convert_chunked) {
@@ -293,7 +463,7 @@ GfxConvRoutePlan select_conv_route_plan(const GpuBufferManager* /*buffer_manager
                                         bool has_activation,
                                         bool has_batchnorm) {
     GfxConvRoutePlan plan{};
-    if (backend != GpuBackend::Vulkan || !node || has_bias || has_activation || has_batchnorm) {
+    if (backend != GpuBackend::Vulkan || !node || has_batchnorm) {
         return plan;
     }
     if (element_type != ov::element::f16 && element_type != ov::element::f32) {
@@ -301,6 +471,9 @@ GfxConvRoutePlan select_conv_route_plan(const GpuBufferManager* /*buffer_manager
     }
 
     if (auto gconv = ov::as_type_ptr<const ov::op::v1::GroupConvolution>(node)) {
+        if (has_bias || has_activation) {
+            return plan;
+        }
         const auto& in_shape = gconv->get_input_shape(0);
         const auto& w_shape = gconv->get_input_shape(1);
         const auto& out_shape = gconv->get_output_shape(0);
@@ -329,17 +502,13 @@ GfxConvRoutePlan select_conv_route_plan(const GpuBufferManager* /*buffer_manager
     }
 
     const uint64_t out_elems = shape_elements(out_shape);
-    const bool is_1x1_s1 = w_shape[2] == 1 && w_shape[3] == 1 &&
-                           conv->get_strides().at(0) == 1 && conv->get_strides().at(1) == 1 &&
-                           conv->get_dilations().at(0) == 1 && conv->get_dilations().at(1) == 1 &&
-                           conv->get_pads_begin().at(0) == 0 && conv->get_pads_begin().at(1) == 0 &&
-                           conv->get_pads_end().at(0) == 0 && conv->get_pads_end().at(1) == 0 &&
-                           in_shape[2] == out_shape[2] && in_shape[3] == out_shape[3];
-    if (is_1x1_s1 && out_elems >= 16384) {
-        plan.kind = GfxConvRouteKind::Direct1x1;
-        plan.family = GfxConvFamily::Pointwise1x1;
-        plan.algorithm.kind = GfxConvAlgorithmKind::Direct1x1;
-        plan.algorithm.variant = "direct_1x1";
+    const bool is_1x1_s1 = is_identity_pointwise_conv(node);
+    if (is_1x1_s1) {
+        // Keep 1x1 convolutions on the shared MLIR lowering path for Vulkan.
+        // Both dedicated direct and specialized chunked pointwise routes have
+        // shown driver instability on current mobile-class Vulkan stacks.
+        // The generic MLIR/SPIR-V path stays fully on-GPU, preserves a single
+        // backend contract, and avoids multiplying specialized variants.
         return plan;
     }
 
@@ -357,15 +526,11 @@ GfxConvRoutePlan select_conv_route_plan(const GpuBufferManager* /*buffer_manager
             plan.algorithm.variant = "im2col_matmul";
             return plan;
         }
-        const bool prefer_direct = stride2 || kernel_work >= 288 || w_shape[0] >= 64;
-        if (prefer_direct) {
-            plan.kind = GfxConvRouteKind::Direct3x3;
-            plan.family = GfxConvFamily::Spatial3x3;
-            plan.algorithm.kind = stride2 ? GfxConvAlgorithmKind::Direct3x3Stride2
-                                          : GfxConvAlgorithmKind::Direct3x3Stride1;
-            plan.algorithm.variant = stride2 ? "direct_3x3_s2" : "direct_3x3";
-            return plan;
-        }
+        // Keep spatial 3x3 convolutions on the shared MLIR/SPIR-V path for
+        // now. The dedicated Vulkan direct-3x3 route is backend-specific and
+        // has shown correctness issues on current mobile-class stacks, while
+        // the shared lowering keeps a single portable contract across targets.
+        return plan;
     }
 
     const uint64_t macs = out_elems *

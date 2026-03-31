@@ -263,6 +263,8 @@ void Plugin::set_property(const ov::AnyMap& properties) {
             } catch (const std::exception& e) {
                 OPENVINO_THROW("Unsupported device id");
             }
+        } else if (kv.first == ov::cache_dir.name()) {
+            m_config[kv.first] = kv.second.as<std::string>();
         } else if (kv.first == kGfxBackendProperty) {
             ov::AnyMap tmp{{kGfxBackendProperty, kv.second}};
             const auto backend = resolve_backend_name_from_properties(tmp, /*log_fallback=*/true, "Plugin");
@@ -335,6 +337,11 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& argument
         return m_performance_mode;
     } else if (ov::enable_profiling == name) {
         return m_enable_profiling;
+    } else if (ov::cache_dir == name) {
+        if (auto it = merged.find(ov::cache_dir.name()); it != merged.end()) {
+            return it->second.as<std::string>();
+        }
+        return std::string{};
     } else if (name == kGfxProfilingLevelProperty) {
         if (m_profiling_level_set) {
             return static_cast<int>(m_profiling_level);

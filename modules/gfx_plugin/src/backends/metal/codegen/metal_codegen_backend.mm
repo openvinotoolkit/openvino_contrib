@@ -4,6 +4,7 @@
 
 #import "backends/metal/codegen/metal_codegen_backend.hpp"
 
+#include <chrono>
 #include <exception>
 #include <mutex>
 #include <unordered_map>
@@ -14,6 +15,8 @@
 #include "openvino/core/except.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "kernel_ir/gfx_kernel_cache.hpp"
+#include "runtime/gfx_compile_profiling.hpp"
+#include "runtime/gfx_logger.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -107,9 +110,32 @@ std::shared_ptr<ICompiledKernel> MetalCodegenBackend::compile(const KernelSource
                                                               std::string* log) {
     std::string local_log;
     std::string* log_ptr = log ? log : &local_log;
+    if (gfx_log_debug_enabled()) {
+        gfx_log_debug("MetalCodegen") << "compile entry=" << source.entry_point
+                                       << " arg_count=" << source.signature.arg_count
+                                       << " has_module=" << (source.module ? "yes" : "no")
+                                       << " has_msl=" << (!source.msl_source.empty() ? "yes" : "no")
+                                       << " has_generator=" << (source.msl_generator ? "yes" : "no");
+    }
     if (source.module && source.msl_source.empty() && source.msl_generator) {
+        const auto mlir_preprocess_start = current_compile_trace() ? std::chrono::steady_clock::now()
+                                                                   : std::chrono::steady_clock::time_point{};
         try {
+            if (gfx_log_debug_enabled()) {
+                gfx_log_debug("MetalCodegen") << "before run_mlir_pipeline entry=" << source.entry_point;
+            }
             run_mlir_pipeline(source.module, /*use_alloca=*/true, /*use_parallel_loops=*/false);
+            if (gfx_log_debug_enabled()) {
+                gfx_log_debug("MetalCodegen") << "after run_mlir_pipeline entry=" << source.entry_point;
+            }
+            if (current_compile_trace()) {
+                increment_compile_counter("metal_mlir_preprocess_count");
+                add_compile_segment(
+                    "metal_mlir_preprocess",
+                    static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                              std::chrono::steady_clock::now() - mlir_preprocess_start)
+                                              .count()));
+            }
         } catch (const std::exception& e) {
             if (log_ptr) {
                 *log_ptr = std::string("MLIR preprocessing failed: ") + e.what();
@@ -117,7 +143,24 @@ std::shared_ptr<ICompiledKernel> MetalCodegenBackend::compile(const KernelSource
             return nullptr;
         }
     }
+    const auto resolve_msl_start =
+        current_compile_trace() ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+    if (gfx_log_debug_enabled()) {
+        gfx_log_debug("MetalCodegen") << "before resolve_msl_source entry=" << source.entry_point;
+    }
     std::string msl = resolve_msl_source(source, log_ptr);
+    if (gfx_log_debug_enabled()) {
+        gfx_log_debug("MetalCodegen") << "after resolve_msl_source entry=" << source.entry_point
+                                       << " msl_size=" << msl.size();
+    }
+    if (current_compile_trace()) {
+        increment_compile_counter("metal_resolve_msl_count");
+        add_compile_segment(
+            "metal_resolve_msl",
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                      std::chrono::steady_clock::now() - resolve_msl_start)
+                                      .count()));
+    }
     OPENVINO_ASSERT(!msl.empty(), "MetalCodegenBackend: missing MSL source");
     OPENVINO_ASSERT(!source.entry_point.empty(), "MetalCodegenBackend: missing entry point");
 
@@ -135,10 +178,22 @@ std::shared_ptr<ICompiledKernel> MetalCodegenBackend::compile(const KernelSource
                                         MetalKernelCompiler compiler((id<MTLDevice>)m_device);
                                         std::string local_log;
                                         std::string& compile_log = log ? *log : local_log;
+                                        const auto backend_compile_start = current_compile_trace()
+                                                                               ? std::chrono::steady_clock::now()
+                                                                               : std::chrono::steady_clock::time_point{};
                                         id<MTLComputePipelineState> pipeline =
                                             compiler.compile_msl_from_source(msl,
                                                                              source.entry_point.c_str(),
                                                                              compile_log);
+                                        if (current_compile_trace()) {
+                                            increment_compile_counter("metal_backend_compile_count");
+                                            add_compile_segment(
+                                                "metal_backend_compile",
+                                                static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                                                          std::chrono::steady_clock::now() -
+                                                                          backend_compile_start)
+                                                                          .count()));
+                                        }
                                         if (!pipeline) {
                                             return nullptr;
                                         }
@@ -185,6 +240,15 @@ const void* MetalCompiledKernel::shared_binding_schema_identity() const {
     return m_binding_schema.get();
 }
 
+void MetalCompiledKernel::prewarm_bindings(const std::vector<KernelArg>& args) {
+    auto prepared_base = get_or_create_prepared_bindings(args, "MetalCompiledKernel prewarm");
+    (void)prepared_base->get_or_create_backend_state<MetalPreparedState>(
+        reinterpret_cast<uintptr_t>(m_binding_schema.get() ? m_binding_schema.get() : m_device),
+        [&]() {
+            return std::make_shared<MetalPreparedState>(prepared_base->binding_table());
+        });
+}
+
 void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
                                   const KernelDispatch& dispatch,
                                   const std::vector<KernelArg>& args,
@@ -193,17 +257,106 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
     OPENVINO_ASSERT(cb, "MetalCompiledKernel: command buffer is null");
     OPENVINO_ASSERT(m_pipeline, "MetalCompiledKernel: pipeline is null");
     auto prepared_base = get_or_create_prepared_bindings(args, "MetalCompiledKernel");
+    const bool trace_bindings = hooks && (hooks->on_segment || hooks->on_counter);
+    const auto binding_start = trace_bindings ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+    bool prepared_state_created = false;
     auto prepared = prepared_base->get_or_create_backend_state<MetalPreparedState>(
         reinterpret_cast<uintptr_t>(m_binding_schema.get() ? m_binding_schema.get() : m_device),
         [&]() {
+            prepared_state_created = true;
             return std::make_shared<MetalPreparedState>(prepared_base->binding_table());
         });
+    if (trace_bindings && prepared_state_created) {
+        const auto binding_cpu_us = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - binding_start);
+        if (hooks->on_counter) {
+            hooks->on_counter("binding_prepare_count", 1);
+            hooks->on_counter("buffer_bind_count", static_cast<uint64_t>(prepared->buffers.size()));
+        }
+        if (hooks->on_segment) {
+            hooks->on_segment("binding_prepare",
+                              "metal_prepared_state",
+                              binding_cpu_us,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              -1,
+                              0,
+                              reinterpret_cast<uint64_t>(cb));
+        }
+    } else if (hooks && hooks->on_counter) {
+        hooks->on_counter("prepared_binding_cache_hit_count", 1);
+    }
 
+    const bool trace_encoder_setup = hooks && (hooks->on_segment || hooks->on_counter);
+    const auto encoder_setup_start =
+        trace_encoder_setup ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+    const auto pipeline_bind_start =
+        trace_encoder_setup ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     [enc setComputePipelineState:(id<MTLComputePipelineState>)m_pipeline];
+    const auto after_pipeline_bind =
+        trace_encoder_setup ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
 
+    const auto buffer_bind_start =
+        trace_encoder_setup ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     for (size_t index = 0; index < prepared->buffers.size(); ++index) {
         [enc setBuffer:prepared->buffers[index] offset:prepared->offsets[index] atIndex:index];
+    }
+    if (trace_encoder_setup) {
+        const auto encoder_cpu_us = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - encoder_setup_start);
+        const auto pipeline_bind_cpu_us =
+            std::chrono::duration_cast<std::chrono::microseconds>(after_pipeline_bind - pipeline_bind_start);
+        const auto buffer_bind_cpu_us =
+            std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - buffer_bind_start);
+        if (hooks->on_counter) {
+            hooks->on_counter("encoder_setup_count", 1);
+            hooks->on_counter("pipeline_bind_count", 1);
+        }
+        if (hooks->on_segment) {
+            hooks->on_segment("descriptor_update",
+                              "metal_pipeline_bind",
+                              pipeline_bind_cpu_us,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              -1,
+                              0,
+                              reinterpret_cast<uint64_t>(cb));
+            hooks->on_segment("descriptor_update",
+                              "metal_buffer_bind",
+                              buffer_bind_cpu_us,
+                              0,
+                              static_cast<uint32_t>(prepared->buffers.size()),
+                              0,
+                              0,
+                              0,
+                              0,
+                              -1,
+                              0,
+                              reinterpret_cast<uint64_t>(cb));
+            if (encoder_cpu_us > pipeline_bind_cpu_us + buffer_bind_cpu_us) {
+                hooks->on_segment("descriptor_update",
+                                  "metal_encoder_setup_overhead",
+                                  encoder_cpu_us - pipeline_bind_cpu_us - buffer_bind_cpu_us,
+                                  0,
+                                  0,
+                                  0,
+                                  0,
+                                  0,
+                                  0,
+                                  -1,
+                                  0,
+                                  reinterpret_cast<uint64_t>(cb));
+            }
+        }
     }
 
     if (hooks && hooks->on_begin) {

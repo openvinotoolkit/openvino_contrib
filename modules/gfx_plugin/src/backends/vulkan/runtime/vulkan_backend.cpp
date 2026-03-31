@@ -286,8 +286,8 @@ VulkanContext::~VulkanContext() {
 }
 
 VulkanContext& VulkanContext::instance() {
-    static VulkanContext ctx;
-    return ctx;
+    static auto* ctx = new VulkanContext();
+    return *ctx;
 }
 
 

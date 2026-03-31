@@ -99,7 +99,8 @@ mlir::ModuleOp build_mlir_conv2d_with_bias_from_model(const std::shared_ptr<cons
 mlir::ModuleOp build_mlir_conv2d_vulkan(const std::shared_ptr<const ov::op::v1::Convolution>& conv,
                                         mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_group_conv2d_vulkan(const std::shared_ptr<const ov::op::v1::GroupConvolution>& gconv,
-                                              mlir::MLIRContext& ctx);
+                                              mlir::MLIRContext& ctx,
+                                              const MlirInputTransformDesc* input_transform = nullptr);
 mlir::ModuleOp build_mlir_group_conv2d_from_model(const std::shared_ptr<const ov::Model>& model,
                                                   mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_group_conv2d_from_node(const std::shared_ptr<const ov::op::v1::GroupConvolution>& gconv,

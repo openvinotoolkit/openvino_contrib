@@ -3,12 +3,14 @@
 //
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <algorithm>
 #include <functional>
 #include <list>
 #include <memory>
 #include <mutex>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -30,6 +32,7 @@ struct KernelArg {
 
 struct KernelSignature {
     uint32_t arg_count = 0;
+    uint32_t output_arg_count = 0;
 };
 
 inline KernelArg make_buffer_arg(uint32_t index, const GpuBuffer& buffer, size_t offset = 0) {
@@ -59,6 +62,20 @@ struct KernelExecutionHooks {
     std::function<void(GpuCommandEncoderHandle)> on_begin;
     std::function<void(GpuCommandEncoderHandle)> on_end;
     std::function<void()> on_complete;
+    std::function<void(std::string_view)> on_event;
+    std::function<void(std::string_view, uint64_t)> on_counter;
+    std::function<void(std::string_view,
+                       std::string_view,
+                       std::chrono::microseconds,
+                       uint64_t,
+                       uint32_t,
+                       uint64_t,
+                       uint64_t,
+                       uint64_t,
+                       uint64_t,
+                       int64_t,
+                       uint64_t,
+                       uint64_t)> on_segment;
 };
 
 inline uint32_t kernel_args_count(const std::vector<KernelArg>& args) {
@@ -108,7 +125,9 @@ inline uint32_t ensure_kernel_args_dense(const std::vector<KernelArg>& args, con
 
 class KernelBindingPlan {
 public:
-    explicit KernelBindingPlan(uint32_t arg_count = 0) : m_arg_count(arg_count) {}
+    explicit KernelBindingPlan(uint32_t arg_count = 0, uint32_t output_arg_count = 0)
+        : m_arg_count(arg_count),
+          m_output_arg_count(output_arg_count) {}
 
     uint32_t arg_count() const {
         return m_arg_count;
@@ -129,8 +148,13 @@ public:
         return m_arg_count;
     }
 
+    uint32_t output_arg_count() const {
+        return m_output_arg_count;
+    }
+
 private:
     uint32_t m_arg_count = 0;
+    uint32_t m_output_arg_count = 0;
 };
 
 struct KernelBufferBinding {
@@ -250,8 +274,8 @@ public:
 class PreparedBindingCacheRegistry {
 public:
     static PreparedBindingCacheRegistry& instance() {
-        static PreparedBindingCacheRegistry registry;
-        return registry;
+        static auto* registry = new PreparedBindingCacheRegistry();
+        return *registry;
     }
 
     std::shared_ptr<void> acquire(GpuBackend backend, uintptr_t device, uint32_t arg_count) {
@@ -300,7 +324,16 @@ inline KernelBindingTable materialize_runtime_bindings(const KernelBindingPlan& 
                         arg.index,
                         " exceeds binding ABI size ",
                         table.buffers.size());
-        table.buffers[arg.index] = KernelBufferBinding{arg.buffer, arg.offset};
+        OPENVINO_ASSERT(arg.offset <= arg.buffer.size,
+                        label ? label : "GFX",
+                        ": kernel arg offset ",
+                        arg.offset,
+                        " exceeds buffer size ",
+                        arg.buffer.size);
+        GpuBuffer normalized = arg.buffer;
+        normalized.offset += arg.offset;
+        normalized.size -= arg.offset;
+        table.buffers[arg.index] = KernelBufferBinding{normalized, normalized.offset};
     }
     return table;
 }
@@ -313,7 +346,16 @@ inline KernelBindingTable materialize_kernel_binding_table(const std::vector<Ker
         OPENVINO_ASSERT(arg.kind == KernelArg::Kind::Buffer,
                         label ? label : "GFX",
                         ": bytes arguments must be materialized into buffers");
-        table.buffers[arg.index] = KernelBufferBinding{arg.buffer, arg.offset};
+        OPENVINO_ASSERT(arg.offset <= arg.buffer.size,
+                        label ? label : "GFX",
+                        ": kernel arg offset ",
+                        arg.offset,
+                        " exceeds buffer size ",
+                        arg.buffer.size);
+        GpuBuffer normalized = arg.buffer;
+        normalized.offset += arg.offset;
+        normalized.size -= arg.offset;
+        table.buffers[arg.index] = KernelBufferBinding{normalized, normalized.offset};
     }
     return table;
 }
@@ -325,6 +367,7 @@ public:
     virtual void set_args_count(uint32_t /*count*/) {}
     virtual size_t clamp_threadgroup_size(size_t desired) const = 0;
     virtual void prepare_runtime_artifacts() {}
+    virtual void prewarm_bindings(const std::vector<KernelArg>& /*args*/) {}
     // Return a kernel instance that can safely participate in another infer/model.
     // Immutable kernels may return themselves; kernels with mutable execution state
     // must return a fresh wrapper sharing only immutable program artifacts.

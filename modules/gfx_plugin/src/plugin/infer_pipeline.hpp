@@ -398,6 +398,24 @@ inline void execute_pipeline(std::vector<InferStage>& pipeline,
 }
 
 template <typename InputLookup>
+inline void prewarm_pipeline_runtime_state(std::vector<InferStage>& pipeline,
+                                           const std::unordered_map<const ov::Node*, size_t>& node_map,
+                                           const std::unordered_map<const ov::Node*, size_t>& param_map,
+                                           InputLookup&& input_lookup,
+                                           PreparedInferExecutionPlan* prepared_plan = nullptr) {
+    execute_pipeline(pipeline,
+                     node_map,
+                     param_map,
+                     std::forward<InputLookup>(input_lookup),
+                     [](InferStage& stage, const std::vector<GpuTensor*>&) {
+                         if (stage.stage) {
+                             stage.stage->prewarm_runtime_state();
+                         }
+                     },
+                     prepared_plan);
+}
+
+template <typename InputLookup>
 inline GpuTensor* resolve_output_tensor(const std::vector<ov::Output<const ov::Node>>& public_outputs,
                                         const std::shared_ptr<const ov::Model>& runtime_model,
                                         const std::unordered_map<const ov::Node*, size_t>& node_map,

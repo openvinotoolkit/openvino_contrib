@@ -3,15 +3,16 @@
 This document summarizes how testing is organized for `modules/gfx_plugin`.
 
 ## Main Test Targets
-The module now builds two main test executables from `tests/CMakeLists.txt`:
+The module now builds three main test executables from `tests/CMakeLists.txt`:
 - `ov_gfx_func_tests` for plugin-facing and functional behavior
 - `ov_gfx_unit_tests` for focused runtime, MLIR, cache, and backend regressions
+- `ov_gfx_runtime_micro_tests` for smaller runtime-subgraph regression checks
 
 Build it with:
 
 ```bash
 cmake --build build-gfx-plugin --target ov_gfx_func_tests
-cmake --build build-gfx-plugin --target ov_gfx_unit_tests
+cmake --build build-gfx-plugin --target ov_gfx_unit_tests ov_gfx_runtime_micro_tests ov_gfx_microbench
 ```
 
 Run the CTest label:
@@ -38,7 +39,8 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 - `tests/backends/metal/`: Metal-specific runtime and behavior coverage
 - `tests/backends/vulkan/`: Vulkan-specific runtime and behavior coverage
 - `tests/shared_tests_instances/`: OpenVINO shared test wiring
-- `tests/tools/`: helper tools such as `ov_gfx_compare_runner`
+- `tests/tools/`: helper tools such as `ov_gfx_compare_runner` and `ov_gfx_microbench`
+- `tools/`: developer automation scripts for profiling workflows, calibration diffs, and smoke checks
 
 Recent additions in the tree include:
 - `tests/unit/mlir_conv_parallel_test.cpp` for canonical Conv2D lowering, im2col rewrite coverage, and absorbed-input-transform regression checks
@@ -50,6 +52,9 @@ Recent additions in the tree include:
 - `tests/unit/memory_device_integration_test.mm` for Metal memory/device integration behavior
 - `tests/unit/infer_submission_test.cpp` for submission-window behavior
 - `tests/unit/infer_pipeline_reuse_test.cpp` for reusable pipeline, prepared-input plans, prepared-output plans, and reusable host-output coverage
+- `tests/unit/gfx_profiling_report_test.cpp` for compile/infer profiling JSON assembly and merge behavior
+- `tests/unit/gfx_stage_policy_test.cpp` for submit-weight and route-policy heuristics
+- `tests/unit/runtime_subgraph_test.cpp` for targeted runtime subgraph execution checks through `ov_gfx_runtime_micro_tests`
 - `tests/unit/gpu_const_cache_test.cpp`, `tests/unit/kernel_arg_reuse_test.cpp`, and `tests/unit/gpu_backend_base_test.cpp` for cache and binding reuse layers
 
 ## Typical Test Suites
@@ -92,4 +97,8 @@ If you change MLIR lowering, prefer a unit test that inspects the emitted IR for
 - Vulkan tests depend on Vulkan being enabled and available in the build
 - `ov_gfx_compare_runner` is useful for numeric diffs and per-op narrowing when a failure is hard to isolate from the full suite; it also supports `--per-op-all`, `--reference-device`, `--reference-plugin`, and `--gfx-only`
 - keep `ov_gfx_compare_runner` accuracy-only and use `benchmark_app` for perf
+- use `ov_gfx_microbench` for `MB0` to `MB3`, calibration artifacts, and profiling triage rather than for acceptance perf numbers
+- for the full profiling workflow and external tracing commands, use `PROFILING_RUNBOOK.md`
+- for the microbench JSON and calibration-artifact contract, use `MICROBENCH_SCHEMA.md`
+- for optional automation around those flows, use `tools/gfx_profile_runbook.py`, `tools/gfx_microbench_smoke.py`, `tools/gfx_calibration_diff.py`, and `tools/gfx_external_trace_summary.py`
 - Reuse-related regressions are often easier to catch with focused unit tests than with full end-to-end backend suites

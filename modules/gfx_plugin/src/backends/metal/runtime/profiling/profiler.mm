@@ -36,12 +36,14 @@ void MetalProfiler::set_config(const GfxProfilerConfig& cfg) {
 
 void MetalProfiler::begin_infer(size_t expected_samples) {
     m_nodes.clear();
-    m_allocations.clear();
     m_total_gpu_us = 0;
     m_total_cpu_us = 0;
     m_total_wall_us = 0;
     m_wall_start = std::chrono::steady_clock::now();
     m_counters_used = false;
+    m_trace.reset(m_cfg.level);
+    m_trace.set_backend("metal");
+    m_trace.set_counter_capability(m_counters_supported, false);
 
     if (m_use_timestamps) {
         m_timestamps.begin_frame(expected_samples);
@@ -50,6 +52,7 @@ void MetalProfiler::begin_infer(size_t expected_samples) {
             m_use_timestamps = false;
         }
     }
+    m_trace.set_counter_capability(m_counters_supported, m_counters_used);
 }
 
 void MetalProfiler::end_infer(GpuCommandBufferHandle command_buffer) {
@@ -75,6 +78,53 @@ void MetalProfiler::end_infer(GpuCommandBufferHandle command_buffer) {
         }
         m_total_gpu_us = sum_gpu;
     }
+
+    m_trace.set_total_gpu_us(m_total_gpu_us);
+    m_trace.set_total_cpu_us(m_total_cpu_us);
+    m_trace.set_total_wall_us(m_total_wall_us);
+    m_trace.set_counter_capability(m_counters_supported, m_counters_used);
+}
+
+void MetalProfiler::record_segment(std::string_view phase,
+                                   std::string_view name,
+                                   std::chrono::microseconds cpu_us,
+                                   uint64_t gpu_us,
+                                   uint32_t dispatches,
+                                   uint64_t bytes_in,
+                                   uint64_t bytes_out,
+                                   uint64_t macs_est,
+                                   uint64_t flops_est,
+                                   int64_t inflight_slot,
+                                   uint64_t queue_id,
+                                   uint64_t cmd_buffer_id) {
+    m_trace.add_segment(phase,
+                        name,
+                        static_cast<uint64_t>(cpu_us.count()),
+                        gpu_us,
+                        dispatches,
+                        bytes_in,
+                        bytes_out,
+                        macs_est,
+                        flops_est,
+                        inflight_slot,
+                        queue_id,
+                        cmd_buffer_id);
+}
+
+void MetalProfiler::record_transfer(const char* tag,
+                                    uint64_t bytes,
+                                    bool h2d,
+                                    std::chrono::microseconds cpu_us,
+                                    uint64_t gpu_us) {
+    m_trace.add_transfer(tag, bytes, h2d, static_cast<uint64_t>(cpu_us.count()), gpu_us);
+}
+
+void MetalProfiler::increment_counter(std::string_view name, uint64_t delta) {
+    m_trace.increment_counter(name, delta);
+}
+
+void MetalProfiler::set_counter(std::string_view name, uint64_t value) {
+    m_trace.set_counter(name, value);
 }
 
 void MetalProfiler::begin_node(uint32_t node_id,
@@ -128,18 +178,25 @@ MetalGpuTimestamps::SampleIndex MetalProfiler::gpu_sample_end(MetalCommandEncode
 
 void MetalProfiler::set_memory_stats(const MetalMemoryStats& stats) {
     m_memory_stats = stats;
+    m_trace.set_counter("bytes_allocated_total", stats.bytes_allocated_total);
+    m_trace.set_counter("bytes_in_freelist", stats.bytes_in_freelist);
+    m_trace.set_counter("bytes_live_transient", stats.bytes_live_transient);
+    m_trace.set_counter("bytes_live_handles", stats.bytes_live_handles);
+    m_trace.set_counter("bytes_persistent", stats.bytes_persistent);
+    m_trace.set_counter("peak_live", stats.peak_live);
+    m_trace.set_counter("num_alloc_calls", stats.num_alloc_calls);
+    m_trace.set_counter("num_reuse_hits", stats.num_reuse_hits);
+    m_trace.set_counter("h2d_bytes_counter", stats.h2d_bytes);
+    m_trace.set_counter("d2h_bytes_counter", stats.d2h_bytes);
+    m_trace.set_counter("h2d_ops", stats.h2d_ops);
+    m_trace.set_counter("d2h_ops", stats.d2h_ops);
 }
 
 void MetalProfiler::record_alloc(const char* tag, size_t bytes, bool reused, std::chrono::microseconds cpu_us) {
     if (!m_cfg.include_allocations) {
         return;
     }
-    MetalProfilingAllocEntry entry;
-    entry.tag = tag ? tag : "";
-    entry.bytes = static_cast<uint64_t>(bytes);
-    entry.cpu_us = static_cast<uint64_t>(cpu_us.count());
-    entry.reused = reused;
-    m_allocations.push_back(std::move(entry));
+    m_trace.add_allocation(tag, static_cast<uint64_t>(bytes), reused, static_cast<uint64_t>(cpu_us.count()));
 }
 
 void MetalProfiler::compute_gpu_times() {
@@ -204,23 +261,15 @@ std::vector<ov::ProfilingInfo> MetalProfiler::export_ov() const {
     return out;
 }
 
-MetalProfilingReport MetalProfiler::export_extended() const {
-    MetalProfilingReport report;
-    report.level = m_cfg.level;
-    report.counters_supported = m_counters_supported;
-    report.counters_used = m_counters_used;
-    report.total_gpu_us = m_total_gpu_us;
-    report.total_cpu_us = m_total_cpu_us;
-    report.total_wall_us = m_total_wall_us;
-    report.total_h2d_bytes = m_memory_stats.h2d_bytes;
-    report.total_d2h_bytes = m_memory_stats.d2h_bytes;
-    report.memory_stats = m_memory_stats;
-
-    report.nodes.reserve(m_nodes.size());
+GfxProfilingReport MetalProfiler::export_extended() const {
+    auto report = m_trace.report();
+    report.total_h2d_bytes = std::max<uint64_t>(report.total_h2d_bytes, m_memory_stats.h2d_bytes);
+    report.total_d2h_bytes = std::max<uint64_t>(report.total_d2h_bytes, m_memory_stats.d2h_bytes);
+    report.nodes.reserve(report.nodes.size() + m_nodes.size());
     for (const auto& rec : m_nodes) {
         if (rec.node_name.empty())
             continue;
-        MetalProfilingNodeEntry entry;
+        GfxProfilingNodeEntry entry;
         entry.node_id = rec.node_id;
         entry.node_name = rec.node_name;
         entry.node_type = rec.node_type;
@@ -231,55 +280,15 @@ MetalProfilingReport MetalProfiler::export_extended() const {
         report.nodes.push_back(std::move(entry));
     }
 
-    if (m_cfg.include_allocations) {
-        report.allocations = m_allocations;
-        std::unordered_map<std::string, MetalProfilingAllocSummaryEntry> summary;
-        summary.reserve(m_allocations.size());
-        for (const auto& entry : m_allocations) {
-            auto& agg = summary[entry.tag];
-            if (agg.tag.empty()) {
-                agg.tag = entry.tag;
-            }
-            agg.bytes += entry.bytes;
-            agg.cpu_us += entry.cpu_us;
-            if (entry.reused) {
-                agg.reuse_count += 1;
-            } else {
-                agg.alloc_count += 1;
-            }
-        }
-        report.alloc_summary.reserve(summary.size());
-        for (auto& kv : summary) {
-            report.alloc_summary.push_back(std::move(kv.second));
-        }
-    }
-
-    if (m_cfg.include_segments) {
-        if (m_total_gpu_us > 0) {
-            MetalProfilingSegmentEntry seg;
-            seg.tag = "command_buffer";
-            seg.gpu_us = m_total_gpu_us;
-            seg.cpu_us = 0;
-            seg.dispatches = 0;
-            report.segments.push_back(std::move(seg));
-        }
-        for (const auto& rec : m_nodes) {
-            if (rec.node_name.empty())
-                continue;
-            MetalProfilingSegmentEntry seg;
-            seg.tag = rec.node_name;
-            seg.gpu_us = rec.gpu_us;
-            seg.cpu_us = rec.cpu_us;
-            seg.dispatches = rec.dispatches;
-            report.segments.push_back(std::move(seg));
-        }
-    }
-
     return report;
 }
 
 std::string MetalProfiler::export_extended_json() const {
     return export_extended().to_json();
+}
+
+GfxProfilingReport MetalProfiler::export_extended_report() const {
+    return export_extended();
 }
 
 }  // namespace gfx_plugin

@@ -1,5 +1,6 @@
 set(TARGET_NAME ov_gfx_func_tests)
 set(UNIT_TARGET_NAME ov_gfx_unit_tests)
+set(RUNTIME_MICRO_TARGET_NAME ov_gfx_runtime_micro_tests)
 
 set(GFX_TEST_DEPENDENCIES openvino_gfx_plugin)
 set(GFX_TEST_LINK_LIBS
@@ -145,7 +146,10 @@ target_sources(${UNIT_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/kernel_arg_reuse_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/infer_submission_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/infer_pipeline_reuse_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_profiling_report_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/ov_gfx_microbench_calibration_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_stage_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_stage_policy_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_parallelism_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/basic_ops_internal_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/layout_cleanup_test.cpp
@@ -205,6 +209,35 @@ endif()
 add_test(NAME ${UNIT_TARGET_NAME} COMMAND ${UNIT_TARGET_NAME})
 set_tests_properties(${UNIT_TARGET_NAME} PROPERTIES LABELS "OV;GFX")
 
+add_executable(${RUNTIME_MICRO_TARGET_NAME})
+add_dependencies(${RUNTIME_MICRO_TARGET_NAME} ${GFX_TEST_DEPENDENCIES})
+target_sources(${RUNTIME_MICRO_TARGET_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_subgraph_test.cpp)
+target_link_libraries(${RUNTIME_MICRO_TARGET_NAME} PRIVATE
+    openvino::runtime::dev
+    openvino::runtime
+    common_test_utils
+    gmock
+    gtest_main
+    gtest)
+target_compile_definitions(${RUNTIME_MICRO_TARGET_NAME} PRIVATE
+    GFX_PLUGIN_PATH="$<TARGET_FILE:openvino_gfx_plugin>"
+    GFX_BACKEND_METAL_AVAILABLE=$<BOOL:${GFX_BACKEND_METAL_AVAILABLE}>
+    GFX_BACKEND_VULKAN_AVAILABLE=$<BOOL:${GFX_BACKEND_VULKAN_AVAILABLE}>)
+target_include_directories(${RUNTIME_MICRO_TARGET_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${OpenVINO_SOURCE_DIR}/src
+    ${OpenVINO_SOURCE_DIR}/src/tests/test_utils/common_test_utils/include
+    ${OpenVINO_SOURCE_DIR}/src/tests/test_utils/functional_test_utils/include
+    ${OpenVINO_SOURCE_DIR}/src/tests/functional/plugin/shared/include
+    ${OpenVINO_SOURCE_DIR}/src/tests/functional/base_func_tests/include)
+if(TARGET gfx_plugin_build_settings)
+    target_link_libraries(${RUNTIME_MICRO_TARGET_NAME} PRIVATE gfx_plugin_build_settings)
+endif()
+add_test(NAME ${RUNTIME_MICRO_TARGET_NAME} COMMAND ${RUNTIME_MICRO_TARGET_NAME})
+set_tests_properties(${RUNTIME_MICRO_TARGET_NAME} PROPERTIES LABELS "OV;GFX")
+
 add_executable(ov_gfx_compare_runner
     ${CMAKE_CURRENT_SOURCE_DIR}/tools/ov_gfx_compare_runner.cpp
 )
@@ -217,4 +250,42 @@ if(TARGET gfx_plugin_build_settings)
 endif()
 target_compile_definitions(ov_gfx_compare_runner PRIVATE
     GFX_PLUGIN_PATH="$<TARGET_FILE:openvino_gfx_plugin>"
+)
+
+add_executable(ov_gfx_microbench
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools/ov_gfx_microbench.cpp
+)
+if(APPLE)
+    target_sources(ov_gfx_microbench PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools/ov_gfx_microbench_metal.mm
+    )
+endif()
+target_link_libraries(ov_gfx_microbench PRIVATE
+    openvino::runtime
+    gfx_runtime_common
+)
+if(APPLE)
+    target_link_libraries(ov_gfx_microbench PRIVATE gfx_runtime_metal)
+else()
+    target_link_libraries(ov_gfx_microbench PRIVATE gfx_runtime_vulkan)
+endif()
+if(TARGET GFX::Metal)
+    target_link_libraries(ov_gfx_microbench PRIVATE GFX::Metal)
+endif()
+if(TARGET GFX::Vulkan)
+    target_link_libraries(ov_gfx_microbench PRIVATE GFX::Vulkan)
+endif()
+if(TARGET gfx_plugin_build_settings)
+    target_link_libraries(ov_gfx_microbench PRIVATE gfx_plugin_build_settings)
+endif()
+target_compile_definitions(ov_gfx_microbench PRIVATE
+    GFX_PLUGIN_PATH="$<TARGET_FILE:openvino_gfx_plugin>"
+)
+target_include_directories(ov_gfx_microbench PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    ${CMAKE_CURRENT_BINARY_DIR}/../src
+    ${OpenVINO_SOURCE_DIR}/src
+    ${OpenVINO_SOURCE_DIR}/src/plugins/template/include
 )

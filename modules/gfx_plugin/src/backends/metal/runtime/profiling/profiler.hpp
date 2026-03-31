@@ -12,7 +12,6 @@
 #include "backends/metal/runtime/memory/device_caps.hpp"
 #include "backends/metal/runtime/memory/memory_stats.hpp"
 #include "backends/metal/runtime/profiling/gpu_timestamps.hpp"
-#include "backends/metal/runtime/profiling/profiling_report.hpp"
 #include "runtime/gfx_profiler.hpp"
 
 namespace ov {
@@ -34,6 +33,25 @@ public:
 
     void begin_infer(size_t expected_samples) override;
     void end_infer(GpuCommandBufferHandle command_buffer) override;
+    void record_segment(std::string_view phase,
+                        std::string_view name,
+                        std::chrono::microseconds cpu_us,
+                        uint64_t gpu_us = 0,
+                        uint32_t dispatches = 0,
+                        uint64_t bytes_in = 0,
+                        uint64_t bytes_out = 0,
+                        uint64_t macs_est = 0,
+                        uint64_t flops_est = 0,
+                        int64_t inflight_slot = -1,
+                        uint64_t queue_id = 0,
+                        uint64_t cmd_buffer_id = 0) override;
+    void record_transfer(const char* tag,
+                         uint64_t bytes,
+                         bool h2d,
+                         std::chrono::microseconds cpu_us,
+                         uint64_t gpu_us = 0) override;
+    void increment_counter(std::string_view name, uint64_t delta = 1) override;
+    void set_counter(std::string_view name, uint64_t value) override;
 
     void begin_node(uint32_t node_id, const char* node_name, const char* node_type, const char* exec_type);
     void end_node(uint32_t node_id,
@@ -48,8 +66,9 @@ public:
     void record_alloc(const char* tag, size_t bytes, bool reused, std::chrono::microseconds cpu_us);
 
     std::vector<ov::ProfilingInfo> export_ov() const override;
-    MetalProfilingReport export_extended() const;
+    GfxProfilingReport export_extended() const;
     std::string export_extended_json() const override;
+    GfxProfilingReport export_extended_report() const override;
     void* native_handle() override { return this; }
 
 private:
@@ -84,7 +103,7 @@ private:
 
     std::vector<NodeRecord> m_nodes;
     MetalMemoryStats m_memory_stats{};
-    std::vector<MetalProfilingAllocEntry> m_allocations;
+    GfxProfilingTrace m_trace;
 
     bool m_counters_supported = false;
     bool m_counters_used = false;

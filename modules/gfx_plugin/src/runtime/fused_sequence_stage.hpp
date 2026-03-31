@@ -28,7 +28,7 @@ struct FusedInputBinding {
 struct FusedStageInfo {
     std::unique_ptr<GpuStage> stage;
     std::vector<FusedInputBinding> inputs;
-    size_t output_index = 0;
+    std::vector<size_t> output_indices;
 };
 
 // Executes a fixed sequence of stages inside a single pipeline slot.
@@ -41,9 +41,11 @@ public:
     void init(GpuBufferManager* buffer_manager) override;
     void compile(GpuBufferManager* buffer_manager) override;
     void execute(GpuCommandBufferHandle command_buffer) override;
+    void prewarm_runtime_state() override;
 
     void set_inputs(const std::vector<GpuTensor*>& inputs) override;
     void set_output(GpuTensor* output) override;
+    void set_output_refs(const std::vector<GpuTensor*>& outputs) override;
     void set_outputs(const std::vector<std::unique_ptr<GpuTensor>>& outputs) override;
 
     void enable_profiling(bool enable) override;

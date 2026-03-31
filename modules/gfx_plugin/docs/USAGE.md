@@ -28,6 +28,7 @@ Useful properties include:
 - `GFX_PROFILING_REPORT`
 - `GFX_MEM_STATS`
 - `ov::device::id`
+- `ov::cache_dir`
 - `ov::enable_profiling`
 - `PERF_COUNT`
 
@@ -97,6 +98,106 @@ auto mem_stats = compiled.get_property("GFX_MEM_STATS");
 ```
 
 The exact type returned by `GFX_MEM_STATS` depends on the active backend implementation and the headers visible to the caller.
+
+`GFX_PROFILING_REPORT` returns a JSON string. When profiling is enabled, the report may contain:
+- a `compile` section with compile-time stage creation and compilation timings
+  compile may also include kernel-cache and backend compiler subphases such as MSL/SPIR-V resolution, backend compilation, and shader/pipeline creation
+- a node-level `nodes` section for standard OpenVINO profiling output
+- an `extended` section with backend/runtime segments, counters, transfer totals, roofline heuristics, and diagnostics
+
+`GFX_PROFILING_LEVEL` controls the amount of collected data:
+- `0`: off
+- `1`: standard infer and node-level profiling
+- `2`: detailed profiling with extended runtime segments and counters
+
+The profiling fast path stays disabled when profiling is off. The plugin does not collect runtime timestamps or extended counters unless profiling is explicitly enabled.
+
+### Optional Trace Sinks
+Detailed profiling can also expose an optional trace sink for external timeline analysis.
+
+Current implementation uses the `OV_GFX_PROFILE_TRACE` environment variable:
+- `perfetto` or `trace_event`: adds a `traceEvents` array to `GFX_PROFILING_REPORT`
+- `signpost` or `os_signpost`: emits live `os_signpost` events on macOS
+
+If `OV_GFX_PROFILE_TRACE_FILE` is set together with `OV_GFX_PROFILE_TRACE=perfetto`, the plugin also writes a merged Perfetto-compatible trace file that combines available compile and infer `traceEvents`.
+
+The trace payload may include:
+- segment spans for compile, submit, wait, upload, infer, download, and backend-specific hazard phases
+- transfer spans for H2D and D2H activity
+- allocation spans when allocation profiling is enabled
+- backend binding/setup spans such as descriptor pool/create-write activity on Vulkan and pipeline/buffer binding on Metal
+- final counter snapshots as Perfetto counter events
+
+The extended JSON summary also includes lightweight roofline-style heuristics derived from recorded `flops_est`, `macs_est`, `bytes_in`, and `bytes_out`:
+- per-phase arithmetic intensity and estimated achieved TFLOPS / GB/s
+- an infer-level `roofline` aggregate
+- a heuristic `dominant_regime` of `memory`, `mixed`, `compute`, or `unknown`
+
+These values are inferential rather than hardware-calibrated peaks; they are intended for quick triage, not as a substitute for AGI, Perfetto, or vendor counters.
+
+Example:
+
+```bash
+OV_GFX_PROFILE_TRACE=perfetto \
+OV_GFX_PROFILE_TRACE_FILE=/tmp/gfx-trace.json \
+./your_app
+```
+
+This sink selection is currently an internal activation path. The plugin does not expose a separate public property for trace sink selection.
+
+### Vulkan Pipeline Cache Persistence
+On Vulkan, the plugin can reuse the standard OpenVINO cache directory for backend pipeline-cache persistence:
+
+```cpp
+ov::CompiledModel compiled = core.compile_model(
+    model,
+    "GFX",
+    {
+        {"GFX_BACKEND", "vulkan"},
+        {ov::cache_dir.name(), "/path/to/cache_dir"},
+    });
+```
+
+This does not change `export_model()` semantics. It only gives the Vulkan backend a stable directory for native pipeline-cache files.
+
+### Microbench Suite
+`ov_gfx_microbench` provides the `MB0` to `MB3` suite used by the local profiling workflow docs.
+
+- `MB0`: raw backend empty submit or empty Metal command-buffer commit with sync
+- `MB1`: synthetic FP16 `Relu` model as a copy+dispatch approximation
+- `MB2`: synthetic FP16 `Add` model as a bandwidth-pressure approximation
+- `MB3`: synthetic FP16 `MatMul` model as a compute-pressure approximation
+
+Example:
+
+```bash
+./ov_gfx_microbench \
+  --backend metal \
+  --warmup 3 \
+  --iterations 10 \
+  --output gfx-microbench.json \
+  --calibration-output gfx-calibration.json
+```
+
+Assumptions:
+- `MB1` to `MB3` reuse the normal GFX plugin path with `ov::enable_profiling=true` and `GFX_PROFILING_LEVEL=2`
+- `MB1` to `MB3` are synthetic OpenVINO graphs, not backend-specific handwritten kernels
+- each synthetic benchmark embeds the raw `GFX_PROFILING_REPORT` JSON so the same diagnostics pipeline can be reused on macOS, Android, and Raspberry Pi
+
+The microbench JSON also includes a derived `analysis` section plus per-benchmark `workload`, `derived`, and `profile_digest` blocks:
+- `device_key = vendor_id:device_id:driver_version` for device-keyed autotuning caches
+- `fixed_overhead_us` from `MB0`
+- `bandwidth_estimate_gbps` from `MB2`
+- `compute_estimate_tflops` from `MB3`
+- per-benchmark overhead-subtracted throughput estimates and lightweight hints such as `sync_heavy`, `transfer_heavy`, `binding_or_descriptor_churn`, or `compute_pressure_candidate`
+
+These values are explicit heuristics from the synthetic suite. They are intended for quick per-device triage and autotuning seeds, not as calibrated peak hardware measurements.
+
+For the complete contract and the reduced calibration artifact format, see:
+- `MICROBENCH_SCHEMA.md`
+
+For the cross-device profiling workflow, external trace capture, validation layers, and `perf` commands, see:
+- `PROFILING_RUNBOOK.md`
 
 Current runtime implementations also reuse some immutable device resources internally, such as constant buffers or prepared kernel bindings. These caches are internal optimization layers and do not require extra user API calls.
 

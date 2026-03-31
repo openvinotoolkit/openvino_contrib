@@ -37,6 +37,7 @@ Responsibilities:
 - create a backend state via `create_backend_state()`
 - build the execution pipeline in `build_op_pipeline()`
 - expose compiled-model properties and profiling state
+- thread `ov::cache_dir` into Vulkan pipeline-cache persistence when the active backend is Vulkan
 
 The compiled pipeline is represented as `PipelineStageDesc` entries that wrap backend-specific `GpuStage` objects.
 
@@ -82,6 +83,8 @@ During inference, `execute_pipeline_with_submission()` groups recorded stages in
 
 This lets Metal and Vulkan keep different submission mechanics while sharing the same stage-level batching logic.
 
+Submission tuning is no longer a fixed constant table. The current infer path derives per-backend submit-window sizing from backend capability snapshots and records the selected tuning into the profiling path when profiling is enabled.
+
 The reusable infer pipeline layer now has two precomputed plans:
 - `PreparedInferExecutionPlan` for stage inputs that resolve to parameters or previous stage outputs
 - `PreparedInferOutputPlan` for public outputs that resolve to stage outputs, passthrough parameters, or synthetic pipeline entries created for constant outputs
@@ -112,6 +115,16 @@ Lowered kernels also rely on backend-neutral argument and binding helpers:
 
 Outside kernel execution, `src/plugin/infer_pipeline.cpp` can also materialize constant graph outputs into synthetic pipeline tensors so output resolution stays uniform even when the public output does not come from a runtime stage.
 
+## Profiling Stack
+Profiling is split into compile-time and infer-time collection.
+
+- `src/runtime/gfx_compile_profiling.hpp` provides thread-local compile scopes used while `CompiledModel` creates backend state, builds stages, and compiles kernels
+- `src/runtime/gfx_profiling_report.*` owns the JSON-ready report model for nodes, segments, transfers, allocations, and counters
+- backend profilers under `src/backends/*/runtime/profiling/` populate runtime timing and backend-specific counters
+- `src/plugin/gfx_profiling_utils.hpp` merges compile and infer reports into the final `GFX_PROFILING_REPORT` JSON and can optionally emit Perfetto-style trace payloads
+
+When profiling is disabled, these paths stay out of the fast path.
+
 ## Metal Backend
 `src/backends/metal/` contains:
 - `plugin/`: backend state creation, infer request, remote context, remote tensor
@@ -138,7 +151,10 @@ The current Vulkan runtime also:
 - supports direct handling of some common binary patterns such as same-shape and bias-add style cases
 - reuses immutable constant buffers and prepared descriptor bindings across compatible submissions
 - increases per-submit batching thresholds in the infer path to reduce Android-oriented driver overhead
+- persists Vulkan pipeline-cache data under `ov::cache_dir` when a cache directory is supplied through standard OpenVINO properties
 - reports execution-device limits through `GpuExecutionDeviceInfo`, matching the Metal path and removing backend-specific probing from shared planning code
+
+The current policy layer also deliberately prefers the shared MLIR/SPIR-V convolution path over older dedicated Vulkan 1x1 and 3x3 direct routes on current mobile-class stacks, keeping the backend contract more stable for Android and Raspberry Pi flows.
 
 ## Remote Contexts And Tensors
 The shared abstractions are:

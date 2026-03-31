@@ -654,10 +654,9 @@ bool GfxLayoutCleanup::run_on_model(const std::shared_ptr<ov::Model>& model) {
                 ov::as_type_ptr<ov::op::v0::Result>(node)) {
                 continue;
             }
-            if (fold_dfl_softmax_expectation(node)) {
-                local_change = true;
-                changed = true;
-            }
+            // Disabled for now: the sparse DFL expectation rewrite changes the
+            // YOLO DFL tail to a synthetic 1x1 convolution path that is
+            // numerically unstable on current Android Vulkan.
         }
         if (local_change) {
             model->validate_nodes_and_infer_types();

@@ -8,8 +8,8 @@ namespace ov {
 namespace gfx_plugin {
 
 GfxKernelCache& GfxKernelCache::instance() {
-    static GfxKernelCache cache;
-    return cache;
+    static auto* cache = new GfxKernelCache();
+    return *cache;
 }
 
 std::shared_ptr<ICompiledKernel> GfxKernelCache::lookup(const KernelCacheKey& key) {

@@ -27,7 +27,7 @@ Build:
 
 ```bash
 cmake --build build-gfx-plugin --target openvino_gfx_plugin ov_gfx_func_tests
-cmake --build build-gfx-plugin --target ov_gfx_unit_tests
+cmake --build build-gfx-plugin --target ov_gfx_unit_tests ov_gfx_runtime_micro_tests ov_gfx_microbench
 ```
 
 Useful CMake options:
@@ -111,6 +111,7 @@ If the behavior depends on route or scheduling selection, also read:
 - `src/runtime/gfx_parallelism.*`
 - `src/runtime/gfx_partitioning.*`
 - the active backend executor, especially under `src/backends/vulkan/runtime/`
+- `src/runtime/gfx_profiling_report.*` when the change affects counters, trace sinks, or JSON report shape
 
 If the change touches infer-request throughput or resource reuse, also read:
 - `src/plugin/infer_submission.*`
@@ -169,6 +170,15 @@ These are implemented directly in the runtime and codegen sources; grep for `OV_
 
 For functional comparison against a reference backend, build and run `tests/tools/ov_gfx_compare_runner.cpp`. It is an accuracy-only tool for numeric diffs, per-op narrowing, full-graph per-op output scans, and `GFX`-only output summaries. Useful switches now include `--reference-device`, `--reference-plugin`, `--per-op`, `--per-op-all`, and `--gfx-only`. Do not use it for performance numbers; use `benchmark_app` for that.
 
+For profiling workflows, calibration artifacts, and cross-device trace correlation, use:
+- `tests/tools/ov_gfx_microbench.cpp`
+- `docs/MICROBENCH_SCHEMA.md`
+- `docs/PROFILING_RUNBOOK.md`
+- `tools/gfx_profile_runbook.py`
+- `tools/gfx_microbench_smoke.py`
+- `tools/gfx_calibration_diff.py`
+- `tools/gfx_external_trace_summary.py`
+
 For reuse and submission changes, prefer the focused unit tests under:
 - `tests/unit/infer_submission_test.cpp`
 - `tests/unit/infer_pipeline_reuse_test.cpp`
@@ -178,6 +188,9 @@ For reuse and submission changes, prefer the focused unit tests under:
 - `tests/unit/gfx_parallelism_test.cpp`
 - `tests/unit/mlir_matmul_parallel_test.cpp`
 - `tests/unit/basic_ops_internal_test.cpp`
+- `tests/unit/gfx_profiling_report_test.cpp`
+- `tests/unit/gfx_stage_policy_test.cpp`
+- `tests/unit/runtime_subgraph_test.cpp`
 
 `tests/unit/infer_pipeline_reuse_test.cpp` now also covers:
 - prepared output-resolution plans

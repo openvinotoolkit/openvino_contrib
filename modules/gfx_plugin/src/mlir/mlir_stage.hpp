@@ -34,6 +34,7 @@ public:
     void init(GpuBufferManager* buffer_manager) override;
     void compile(GpuBufferManager* buffer_manager) override;
     void execute(GpuCommandBufferHandle command_buffer) override;
+    void prewarm_runtime_state() override;
     void enable_profiling(bool enable) override;
     void set_profiler(void* profiler,
                       uint32_t node_id,
@@ -43,6 +44,7 @@ public:
 
     void set_inputs(const std::vector<GpuTensor*>& inputs) override;
     void set_output(GpuTensor* output) override;
+    void set_output_refs(const std::vector<GpuTensor*>& outputs) override;
     void set_outputs(const std::vector<std::unique_ptr<GpuTensor>>& outputs) override;
     void set_input_transform(size_t input_idx, const GfxInputTransform& transform) override;
 
@@ -69,6 +71,8 @@ protected:
     virtual std::shared_ptr<ICompiledKernel> compile_kernel(const KernelSource& source,
                                                             std::string* log) = 0;
     virtual bool is_vulkan_backend() const { return false; }
+    virtual bool prefer_specialized_concat_execution() const { return false; }
+    virtual bool should_skip_generic_kernel_compile(const GfxStageOptimizationPlan& /*plan*/) const { return false; }
     GpuBackend backend_kind() const { return is_vulkan_backend() ? GpuBackend::Vulkan : GpuBackend::Metal; }
     virtual KernelExecutionHooks* prepare_profiling(ProfileState& state,
                                                     KernelExecutionHooks& hooks);
@@ -105,6 +109,9 @@ protected:
     bool m_profiling_enabled = false;
     ParallelDispatchConfig m_parallel_cfg{};
     bool m_force_single_dispatch = false;
+    bool m_matmul_safe_retry_attempted = false;
+    bool m_matmul_serial_retry_attempted = false;
+    bool m_vulkan_conv_serial_retry_attempted = false;
     bool m_has_activation = false;
     ActivationKind m_activation = ActivationKind::Relu;
     float m_activation_alpha = 0.0f;
@@ -119,6 +126,7 @@ protected:
     std::string m_profile_node_type;
 
 private:
+    std::vector<KernelArg> materialize_bound_kernel_args(const std::vector<GpuTensor*>& outputs) const;
     void apply_kernel_metadata(const KernelRuntimeMetadata& meta,
                                size_t scalar_inputs);
     void compile_from_plan(MlirKernelPlanContext& plan_ctx,

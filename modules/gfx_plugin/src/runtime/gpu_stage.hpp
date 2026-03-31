@@ -29,13 +29,22 @@ public:
     virtual void init(GpuBufferManager* buffer_manager) = 0;
     virtual void compile(GpuBufferManager* buffer_manager) = 0;
     virtual void execute(GpuCommandBufferHandle command_buffer) = 0;
+    virtual void prewarm_runtime_state() {}
 
     virtual void set_inputs(const std::vector<GpuTensor*>& inputs) = 0;
     virtual void set_output(GpuTensor* output) = 0;
-    virtual void set_outputs(const std::vector<std::unique_ptr<GpuTensor>>& outputs) {
+    virtual void set_output_refs(const std::vector<GpuTensor*>& outputs) {
         if (!outputs.empty()) {
-            set_output(outputs.front().get());
+            set_output(outputs.front());
         }
+    }
+    virtual void set_outputs(const std::vector<std::unique_ptr<GpuTensor>>& outputs) {
+        std::vector<GpuTensor*> refs;
+        refs.reserve(outputs.size());
+        for (const auto& output : outputs) {
+            refs.push_back(output.get());
+        }
+        set_output_refs(refs);
     }
     virtual void set_input_transform(size_t /*input_idx*/, const GfxInputTransform& /*transform*/) {}
 

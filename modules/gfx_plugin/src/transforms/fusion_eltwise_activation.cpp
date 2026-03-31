@@ -17,14 +17,7 @@ using fusion_utils::has_single_user;
 using fusion_utils::is_supported_activation_op;
 
 bool is_constant_op(mlir::Value value) {
-    if (!value) {
-        return false;
-    }
-    auto* def = value.getDefiningOp();
-    if (!def) {
-        return false;
-    }
-    return def->getName().getStringRef() == "gfx.Constant";
+    return fusion_utils::is_constant_like_value(value);
 }
 
 bool is_supported_eltwise_op(mlir::Operation* op) {

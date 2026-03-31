@@ -46,6 +46,7 @@ public:
 
     size_t clamp_threadgroup_size(size_t desired) const override;
     std::shared_ptr<ICompiledKernel> fork() const override;
+    void prewarm_bindings(const std::vector<KernelArg>& args) override;
     void execute(GpuCommandBufferHandle command_buffer,
                  const KernelDispatch& dispatch,
                  const std::vector<KernelArg>& args,

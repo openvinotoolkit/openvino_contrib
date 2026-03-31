@@ -16,6 +16,10 @@ uint64_t to_us(double ns) {
     }
     return static_cast<uint64_t>(ns / 1000.0);
 }
+
+uint64_t to_us(std::chrono::steady_clock::duration d) {
+    return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(d).count());
+}
 }  // namespace
 
 VulkanProfiler::VulkanProfiler(VkDevice device,
@@ -48,31 +52,107 @@ void VulkanProfiler::set_config(const GfxProfilerConfig& cfg) {
 void VulkanProfiler::begin_infer(size_t expected_samples) {
     m_nodes.clear();
     m_next_query = 0;
+    m_trace.reset(m_cfg.level);
+    m_trace.set_backend("vulkan");
+    m_trace.set_counter_capability(m_supported, m_supported);
+    m_wall_start = std::chrono::steady_clock::now();
     if (!enabled()) {
         return;
     }
-    ensure_query_pool(expected_samples);
+    if (m_supported) {
+        ensure_query_pool(expected_samples);
+    }
 }
 
 void VulkanProfiler::end_infer(GpuCommandBufferHandle /*command_buffer*/) {
     if (!enabled()) {
         return;
     }
-    for (auto& rec : m_nodes) {
-        for (const auto& samples : rec.pending_samples) {
-            if (samples.begin == UINT32_MAX || samples.end == UINT32_MAX) {
-                continue;
+    uint64_t total_gpu_us = 0;
+    if (m_supported) {
+        for (auto& rec : m_nodes) {
+            for (const auto& samples : rec.pending_samples) {
+                if (samples.begin == UINT32_MAX || samples.end == UINT32_MAX) {
+                    continue;
+                }
+                const uint64_t begin = read_timestamp(samples.begin);
+                const uint64_t end = read_timestamp(samples.end);
+                if (end > begin) {
+                    const double ns = static_cast<double>(end - begin) * static_cast<double>(m_timestamp_period);
+                    rec.gpu_us += to_us(ns);
+                    rec.dispatches += 1;
+                }
             }
-            const uint64_t begin = read_timestamp(samples.begin);
-            const uint64_t end = read_timestamp(samples.end);
-            if (end > begin) {
-                const double ns = static_cast<double>(end - begin) * static_cast<double>(m_timestamp_period);
-                rec.gpu_us += to_us(ns);
-                rec.dispatches += 1;
-            }
+            rec.pending_samples.clear();
+            total_gpu_us += rec.gpu_us;
         }
-        rec.pending_samples.clear();
+    } else {
+        for (auto& rec : m_nodes) {
+            rec.pending_samples.clear();
+        }
     }
+    uint64_t total_cpu_us = 0;
+    for (const auto& seg : m_trace.report().segments) {
+        total_cpu_us += seg.cpu_us;
+    }
+    m_trace.set_total_gpu_us(total_gpu_us);
+    m_trace.set_total_cpu_us(total_cpu_us);
+    m_trace.set_total_wall_us(to_us(std::chrono::steady_clock::now() - m_wall_start));
+    m_trace.set_counter_capability(m_supported, m_supported);
+}
+
+void VulkanProfiler::record_segment(std::string_view phase,
+                                    std::string_view name,
+                                    std::chrono::microseconds cpu_us,
+                                    uint64_t gpu_us,
+                                    uint32_t dispatches,
+                                    uint64_t bytes_in,
+                                    uint64_t bytes_out,
+                                    uint64_t macs_est,
+                                    uint64_t flops_est,
+                                    int64_t inflight_slot,
+                                    uint64_t queue_id,
+                                    uint64_t cmd_buffer_id) {
+    if (!enabled()) {
+        return;
+    }
+    m_trace.add_segment(phase,
+                        name,
+                        static_cast<uint64_t>(cpu_us.count()),
+                        gpu_us,
+                        dispatches,
+                        bytes_in,
+                        bytes_out,
+                        macs_est,
+                        flops_est,
+                        inflight_slot,
+                        queue_id,
+                        cmd_buffer_id);
+}
+
+void VulkanProfiler::record_transfer(const char* tag,
+                                     uint64_t bytes,
+                                     bool h2d,
+                                     std::chrono::microseconds cpu_us,
+                                     uint64_t gpu_us) {
+    if (!enabled()) {
+        return;
+    }
+    m_trace.add_transfer(tag, bytes, h2d, static_cast<uint64_t>(cpu_us.count()), gpu_us);
+}
+
+void VulkanProfiler::increment_counter(std::string_view name, uint64_t delta) {
+    if (!enabled()) {
+        return;
+    }
+    m_trace.increment_counter(name, delta);
+}
+
+void VulkanProfiler::set_counter(std::string_view name, uint64_t value) {
+    if (!enabled()) {
+        return;
+    }
+    m_trace.set_counter(name, value);
 }
 
 void VulkanProfiler::begin_node(uint32_t node_id,
@@ -146,16 +226,39 @@ std::vector<ov::ProfilingInfo> VulkanProfiler::export_ov() const {
         info.node_type = rec.node_type;
         info.exec_type = rec.exec_type.empty() ? std::string{"GFX"} : rec.exec_type;
         info.status = ov::ProfilingInfo::Status::EXECUTED;
-        const auto us = std::chrono::microseconds{static_cast<int64_t>(rec.gpu_us)};
-        info.real_time = us;
-        info.cpu_time = us;
+        info.real_time = std::chrono::microseconds{static_cast<int64_t>(rec.gpu_us)};
+        info.cpu_time = std::chrono::microseconds{0};
         out.push_back(std::move(info));
     }
     return out;
 }
 
+std::string VulkanProfiler::export_extended_json() const {
+    return export_extended_report().to_json();
+}
+
+GfxProfilingReport VulkanProfiler::export_extended_report() const {
+    auto report = m_trace.report();
+    report.nodes.reserve(report.nodes.size() + m_nodes.size());
+    for (const auto& rec : m_nodes) {
+        if (rec.node_name.empty()) {
+            continue;
+        }
+        GfxProfilingNodeEntry entry;
+        entry.node_id = rec.node_id;
+        entry.node_name = rec.node_name;
+        entry.node_type = rec.node_type;
+        entry.exec_type = rec.exec_type.empty() ? std::string{"GFX"} : rec.exec_type;
+        entry.gpu_us = rec.gpu_us;
+        entry.cpu_us = 0;
+        entry.dispatches = rec.dispatches;
+        report.nodes.push_back(std::move(entry));
+    }
+    return report;
+}
+
 void VulkanProfiler::ensure_query_pool(size_t sample_pairs) {
-    if (!enabled()) {
+    if (!enabled() || !m_supported) {
         return;
     }
     const uint32_t desired = sample_pairs == 0 ? 0u : static_cast<uint32_t>(sample_pairs * 2);
@@ -179,7 +282,7 @@ void VulkanProfiler::ensure_query_pool(size_t sample_pairs) {
 }
 
 uint64_t VulkanProfiler::read_timestamp(uint32_t query_index) const {
-    if (!enabled() || !m_query_pool) {
+    if (!enabled() || !m_supported || !m_query_pool) {
         return 0;
     }
     uint64_t value = 0;

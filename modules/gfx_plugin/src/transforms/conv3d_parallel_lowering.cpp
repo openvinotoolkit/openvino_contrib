@@ -307,14 +307,13 @@ bool lower_conv3d_op(mlir::linalg::Conv3DNcdhwFcdhwOp op, mlir::IRRewriter& rewr
                                     b4.create<mlir::scf::ForOp>(
                                         loc4, c0, W_out, c1, mlir::ValueRange{},
                                         [&](mlir::OpBuilder& b5, mlir::Location loc5, mlir::Value iv_ow, mlir::ValueRange) {
-                                            mlir::Value acc_init;
-                                            if (zero_init) {
-                                                acc_init = zero_init;
-                                            } else {
-                                                acc_init = b5.create<mlir::memref::LoadOp>(
-                                                    loc5, conv_output,
-                                                    mlir::ValueRange{iv_n, iv_oc, iv_od, iv_oh, iv_ow}).getResult();
-                                            }
+                                            // Convolution reduction starts from
+                                            // a zero seed; do not reload the
+                                            // destination buffer, which may
+                                            // carry stale data after reuse.
+                                            auto zero = b5.create<mlir::arith::ConstantOp>(
+                                                loc5, elem_ty, b5.getFloatAttr(elem_ty, 0.0));
+                                            mlir::Value acc_init = zero;
                                             auto for_ic = b5.create<mlir::scf::ForOp>(
                                                 loc5, c0, C_in, c1, mlir::ValueRange{acc_init},
                                                 [&](mlir::OpBuilder& b6, mlir::Location loc6, mlir::Value iv_ic, mlir::ValueRange acc_ic_range) {

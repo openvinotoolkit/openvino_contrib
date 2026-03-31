@@ -11,17 +11,10 @@ namespace ov {
 namespace gfx_plugin {
 namespace {
 
-using fusion_utils::has_single_user;
+using fusion_utils::has_single_forward_user;
 
 bool is_constant_op(mlir::Value value) {
-    if (!value) {
-        return false;
-    }
-    auto* def = value.getDefiningOp();
-    if (!def) {
-        return false;
-    }
-    return def->getName().getStringRef() == "gfx.Constant";
+    return fusion_utils::is_constant_like_value(value);
 }
 
 bool is_scale_op(mlir::Operation* op, mlir::Value input, mlir::Value& scale_operand) {
@@ -50,6 +43,46 @@ bool is_scale_op(mlir::Operation* op, mlir::Value input, mlir::Value& scale_oper
     return false;
 }
 
+bool match_prescaled_operand(mlir::Value value,
+                             mlir::Operation* consumer,
+                             mlir::Value& source_operand,
+                             mlir::Operation*& scale_op,
+                             mlir::Value& scale_operand) {
+    source_operand = value;
+    scale_op = nullptr;
+    scale_operand = {};
+    auto* def = value.getDefiningOp();
+    if (!def || def->getNumResults() != 1) {
+        return false;
+    }
+    const auto name = def->getName().getStringRef();
+    if (name == "gfx.Multiply") {
+        if (is_constant_op(def->getOperand(1)) && !is_constant_op(def->getOperand(0))) {
+            scale_operand = def->getOperand(1);
+            source_operand = def->getOperand(0);
+        } else if (is_constant_op(def->getOperand(0)) && !is_constant_op(def->getOperand(1))) {
+            scale_operand = def->getOperand(0);
+            source_operand = def->getOperand(1);
+        } else {
+            return false;
+        }
+    } else if (name == "gfx.Divide") {
+        if (!is_constant_op(def->getOperand(1)) || is_constant_op(def->getOperand(0))) {
+            return false;
+        }
+        scale_operand = def->getOperand(1);
+        source_operand = def->getOperand(0);
+    } else {
+        return false;
+    }
+    mlir::Operation* user = nullptr;
+    if (!has_single_forward_user(def->getResult(0), user) || user != consumer) {
+        return false;
+    }
+    scale_op = def;
+    return source_operand != nullptr;
+}
+
 struct AttentionScaleMaskFusionPattern final : public mlir::RewritePattern {
     AttentionScaleMaskFusionPattern(mlir::MLIRContext* ctx, FusionConfig config)
         : mlir::RewritePattern("gfx.MatMul", /*benefit=*/5, ctx), m_config(config) {}
@@ -64,7 +97,7 @@ struct AttentionScaleMaskFusionPattern final : public mlir::RewritePattern {
         }
 
         mlir::Operation* next = nullptr;
-        if (!has_single_user(op->getResult(0), next)) {
+        if (!has_single_forward_user(op->getResult(0), next)) {
             return mlir::failure();
         }
 
@@ -72,6 +105,15 @@ struct AttentionScaleMaskFusionPattern final : public mlir::RewritePattern {
         mlir::Operation* add = nullptr;
         mlir::Operation* softmax = nullptr;
         mlir::Operation* matmul2 = nullptr;
+
+        mlir::Operation* pre_scale_lhs = nullptr;
+        mlir::Operation* pre_scale_rhs = nullptr;
+        mlir::Value lhs = op->getOperand(0);
+        mlir::Value rhs = op->getOperand(1);
+        mlir::Value lhs_scale_operand;
+        mlir::Value rhs_scale_operand;
+        (void)match_prescaled_operand(lhs, op, lhs, pre_scale_lhs, lhs_scale_operand);
+        (void)match_prescaled_operand(rhs, op, rhs, pre_scale_rhs, rhs_scale_operand);
 
         mlir::Value score = op->getResult(0);
         mlir::Value scale_operand;
@@ -81,7 +123,7 @@ struct AttentionScaleMaskFusionPattern final : public mlir::RewritePattern {
             }
             scale = next;
             score = scale->getResult(0);
-            if (!has_single_user(score, next)) {
+            if (!has_single_forward_user(score, next)) {
                 return mlir::failure();
             }
         }
@@ -97,7 +139,7 @@ struct AttentionScaleMaskFusionPattern final : public mlir::RewritePattern {
             add = next;
             add_input = score;
             score = add->getResult(0);
-            if (!has_single_user(score, softmax)) {
+            if (!has_single_forward_user(score, softmax)) {
                 return mlir::failure();
             }
         } else {
@@ -111,7 +153,7 @@ struct AttentionScaleMaskFusionPattern final : public mlir::RewritePattern {
             return mlir::failure();
         }
 
-        if (!has_single_user(softmax->getResult(0), matmul2)) {
+        if (!has_single_forward_user(softmax->getResult(0), matmul2)) {
             return mlir::failure();
         }
         if (matmul2->getName().getStringRef() != "gfx.MatMul" || matmul2->getNumOperands() != 2) {
@@ -132,13 +174,27 @@ struct AttentionScaleMaskFusionPattern final : public mlir::RewritePattern {
         }
 
         auto mm1_idx = op->getAttrOfType<mlir::IntegerAttr>("gfx.node_index");
+        auto lhs_scale_idx =
+            pre_scale_lhs ? pre_scale_lhs->getAttrOfType<mlir::IntegerAttr>("gfx.node_index") : mlir::IntegerAttr{};
+        auto rhs_scale_idx =
+            pre_scale_rhs ? pre_scale_rhs->getAttrOfType<mlir::IntegerAttr>("gfx.node_index") : mlir::IntegerAttr{};
         auto sm_idx = softmax->getAttrOfType<mlir::IntegerAttr>("gfx.node_index");
         auto mm2_idx = matmul2->getAttrOfType<mlir::IntegerAttr>("gfx.node_index");
-        if (!mm1_idx || !sm_idx || !mm2_idx) {
+        if (!mm1_idx || !sm_idx || !mm2_idx || (pre_scale_lhs && !lhs_scale_idx) ||
+            (pre_scale_rhs && !rhs_scale_idx)) {
             return mlir::failure();
         }
 
-        mlir::SmallVector<int64_t, 5> fused_nodes;
+        mlir::SmallVector<int64_t, 7> fused_nodes;
+        llvm::SmallVector<int64_t, 2> prescale_nodes;
+        if (pre_scale_lhs) {
+            prescale_nodes.push_back(lhs_scale_idx.getInt());
+        }
+        if (pre_scale_rhs) {
+            prescale_nodes.push_back(rhs_scale_idx.getInt());
+        }
+        llvm::sort(prescale_nodes);
+        fused_nodes.append(prescale_nodes.begin(), prescale_nodes.end());
         fused_nodes.push_back(mm1_idx.getInt());
         if (scale) {
             auto scale_idx = scale->getAttrOfType<mlir::IntegerAttr>("gfx.node_index");
@@ -158,7 +214,14 @@ struct AttentionScaleMaskFusionPattern final : public mlir::RewritePattern {
         fused_nodes.push_back(mm2_idx.getInt());
 
         mlir::OperationState state(matmul2->getLoc(), "gfx.FusedAttentionScaleMask");
-        state.addOperands(op->getOperands());
+        state.addOperands(lhs);
+        state.addOperands(rhs);
+        if (pre_scale_lhs) {
+            state.addOperands(lhs_scale_operand);
+        }
+        if (pre_scale_rhs) {
+            state.addOperands(rhs_scale_operand);
+        }
         if (scale) {
             state.addOperands(scale_operand);
         }
@@ -187,6 +250,12 @@ struct AttentionScaleMaskFusionPattern final : public mlir::RewritePattern {
         }
         if (scale) {
             rewriter.eraseOp(scale);
+        }
+        if (pre_scale_lhs) {
+            rewriter.eraseOp(pre_scale_lhs);
+        }
+        if (pre_scale_rhs && pre_scale_rhs != pre_scale_lhs) {
+            rewriter.eraseOp(pre_scale_rhs);
         }
         rewriter.eraseOp(op);
         return mlir::success();

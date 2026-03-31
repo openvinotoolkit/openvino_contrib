@@ -30,6 +30,7 @@ struct KernelOperandMetadata {
 struct KernelRuntimeMetadata {
     bool valid = false;
     ParallelDispatchConfig dispatch;
+    bool force_single_dispatch = false;
     KernelOperandMetadata operands;
     size_t kernel_input_arg_count = 0;
 };
@@ -122,6 +123,16 @@ inline ParallelDispatchConfig extract_kernel_dispatch_metadata(mlir::ModuleOp mo
         meta.threads_w = meta.tile_w;
     }
     return meta;
+}
+
+inline bool extract_kernel_force_single_dispatch(mlir::ModuleOp module) {
+    if (!module) {
+        return false;
+    }
+    if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.force_single_dispatch")) {
+        return attr.getValue();
+    }
+    return false;
 }
 
 inline std::vector<int32_t> extract_kernel_scalar_args(mlir::ModuleOp module) {
@@ -355,6 +366,7 @@ inline KernelRuntimeMetadata extract_kernel_runtime_metadata(mlir::ModuleOp modu
     }
     meta.valid = true;
     meta.dispatch = extract_kernel_dispatch_metadata(module);
+    meta.force_single_dispatch = extract_kernel_force_single_dispatch(module);
     meta.operands = extract_kernel_operand_metadata(module);
     meta.kernel_input_arg_count =
         infer_kernel_input_arg_count_from_operand_indices(meta.operands.operand_arg_indices,
@@ -375,15 +387,6 @@ inline size_t infer_kernel_arg_count_from_module(mlir::ModuleOp module, size_t f
     if (!module) {
         return fallback;
     }
-    size_t launch_operand_count = 0;
-    module.walk([&](mlir::gpu::LaunchFuncOp launch) {
-        if (launch_operand_count == 0) {
-            launch_operand_count = launch.getKernelOperands().size();
-        }
-    });
-    if (launch_operand_count != 0) {
-        return launch_operand_count;
-    }
     if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.fixed_arg_count")) {
         const auto value = attr.getInt();
         if (value > 0) {
@@ -399,6 +402,15 @@ inline size_t infer_kernel_arg_count_from_module(mlir::ModuleOp module, size_t f
     auto scalars = extract_kernel_scalar_args(module);
     if (!scalars.empty()) {
         return fallback + scalars.size();
+    }
+    size_t launch_operand_count = 0;
+    module.walk([&](mlir::gpu::LaunchFuncOp launch) {
+        if (launch_operand_count == 0) {
+            launch_operand_count = launch.getKernelOperands().size();
+        }
+    });
+    if (launch_operand_count != 0) {
+        return launch_operand_count;
     }
     return fallback;
 }

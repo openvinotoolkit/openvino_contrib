@@ -214,6 +214,7 @@ struct OutputKeyHash {
 ov::AnyMap make_compile_config(bool for_gfx);
 ov::InferRequest make_request(ov::CompiledModel& compiled_model,
                               const std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>>& inputs);
+void maybe_print_gfx_profile(const ov::CompiledModel& compiled_model);
 
 struct TensorSummary {
     size_t elements = 0;
@@ -230,6 +231,13 @@ ov::AnyMap make_compile_config(bool for_gfx) {
     ov::AnyMap config;
     config[ov::hint::inference_precision.name()] = ov::element::f16;
     if (for_gfx) {
+        if (const char* profiling_level = std::getenv("OV_GFX_PROFILING_LEVEL")) {
+            if (*profiling_level) {
+                config["GFX_PROFILING_LEVEL"] = std::string(profiling_level);
+                config[ov::enable_profiling.name()] = true;
+                config["PERF_COUNT"] = true;
+            }
+        }
         if (const char* disable_fusion = std::getenv("OV_GFX_DISABLE_FUSION")) {
         if (std::string(disable_fusion) != "0" && !std::string(disable_fusion).empty()) {
             config["GFX_ENABLE_FUSION"] = false;
@@ -246,6 +254,19 @@ ov::InferRequest make_request(ov::CompiledModel& compiled_model,
         request.set_tensor(port, tensor);
     }
     return request;
+}
+
+void maybe_print_gfx_profile(const ov::CompiledModel& compiled_model) {
+    const char* dump_profile = std::getenv("OV_GFX_DUMP_PROFILE");
+    if (!dump_profile || !*dump_profile) {
+        return;
+    }
+    try {
+        const auto profile_json = compiled_model.get_property("GFX_PROFILING_REPORT").as<std::string>();
+        std::cout << "GFX_PROFILE " << profile_json << '\n';
+    } catch (const std::exception& ex) {
+        std::cout << "GFX_PROFILE_ERROR " << ex.what() << '\n';
+    }
 }
 
 template <typename T>
@@ -928,6 +949,7 @@ int main(int argc, char** argv) try {
         auto gfx_model = core.compile_model(model, "GFX", make_compile_config(true));
         auto gfx_req = make_request(gfx_model, inputs);
         gfx_req.infer();
+        maybe_print_gfx_profile(gfx_model);
 
         std::cout << "GFX_ONLY\n";
         for (const auto& output : model->outputs()) {
@@ -956,6 +978,7 @@ int main(int argc, char** argv) try {
 
     ref_req.infer();
     gfx_req.infer();
+    maybe_print_gfx_profile(gfx_model);
 
     double global_max_abs = 0.0;
     double global_max_rel = 0.0;

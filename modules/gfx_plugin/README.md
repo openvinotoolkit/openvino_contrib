@@ -47,6 +47,8 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 - `src/transforms/`: OpenVINO graph passes and fusion logic
 - `src/kernel_ir/`: shared kernel metadata and planning structures
 - `tests/`: unit, integration, backend, and tooling coverage
+- `tools/`: developer scripts for profiling workflows, microbench smoke checks, and report post-processing
+- `docs/`: local module docs, including profiling and microbench references
 - `third_party/llvm-project/`: vendored LLVM/MLIR used by the build
 - `third_party/Vulkan-Headers/`: vendored Vulkan headers used by the Raspberry Pi Vulkan toolchain flow
 
@@ -100,6 +102,10 @@ The runtime also has explicit reuse layers:
 - compiled kernels can reuse prepared binding tables through shared backend-neutral cache helpers in `gpu_backend_base.hpp`
 - infer requests can reuse prepared output bindings and preallocated host output tensors across repeated executions
 
+Profiling now also has two layers:
+- compile-time tracing stored as a JSON `compile` section inside `GFX_PROFILING_REPORT`
+- infer-time node, segment, transfer, allocation, and counter reporting through `gfx_profiling_report.*`
+
 Backend-neutral planning now consumes device info exported by the active buffer manager:
 - Metal and Vulkan buffer managers report subgroup width and workgroup limits through `GpuExecutionDeviceInfo`
 - `gfx_parallelism.*` converts that into execution-policy caps
@@ -147,6 +153,7 @@ Commonly used properties:
 - `GFX_PROFILING_REPORT`
 - `GFX_MEM_STATS`
 - `ov::device::id`
+- `ov::cache_dir`
 - `ov::enable_profiling`
 - `ov::loaded_from_cache`
 - legacy `PERF_COUNT`
@@ -157,9 +164,10 @@ Practical meanings:
 - `GFX_BACKEND`: request `metal` or `vulkan`
 - `GFX_ENABLE_FUSION`: enable stage fusion during pipeline construction
 - `GFX_PROFILING_LEVEL`: control profiling detail level
-- `GFX_PROFILING_REPORT`: fetch the latest profiling report from a compiled model
+- `GFX_PROFILING_REPORT`: fetch the latest profiling report, including compile and infer sections when profiling is enabled
 - `GFX_MEM_STATS`: fetch backend memory statistics from a compiled model
 - `ov::device::id`: select a device index when the active backend supports it
+- `ov::cache_dir`: reuse the standard OpenVINO cache directory for Vulkan pipeline-cache persistence
 - `ov::loaded_from_cache`: report whether the OpenVINO model-cache path loaded this compiled model
 
 ## Build
@@ -173,7 +181,7 @@ cmake -S . -B build-gfx-plugin -G Ninja \
   -DENABLE_TESTS=ON \
   -DGFX_DEFAULT_BACKEND=auto
 cmake --build build-gfx-plugin --target openvino_gfx_plugin ov_gfx_func_tests
-cmake --build build-gfx-plugin --target ov_gfx_unit_tests
+cmake --build build-gfx-plugin --target ov_gfx_unit_tests ov_gfx_runtime_micro_tests ov_gfx_microbench
 ```
 
 Useful options:
@@ -250,7 +258,7 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
   <path-to-ov_gfx_unit_tests> --gtest_filter=GfxMlirTransforms.*
 ```
 
-`ov_gfx_func_tests` now covers plugin-facing and functional behavior, while `ov_gfx_unit_tests` carries focused runtime, MLIR, backend, and cache regressions. The helper tool `ov_gfx_compare_runner` is also built from `tests/tools/`.
+`ov_gfx_func_tests` covers plugin-facing and functional behavior, `ov_gfx_unit_tests` carries focused runtime, MLIR, backend, and cache regressions, and `ov_gfx_runtime_micro_tests` is used for smaller runtime subgraph checks. Helper tools `ov_gfx_compare_runner` and `ov_gfx_microbench` are also built from `tests/tools/`.
 
 Recent regression coverage includes:
 - canonical Conv2D MLIR lowering checks
@@ -274,6 +282,8 @@ Useful environment variables from the current codebase:
 - `OV_GFX_DUMP_SPIRV_MLIR`, `OV_GFX_DUMP_SPIRV_MLIR_FILTER`, `OV_GFX_DUMP_MLIR_PRE_SPIRV`: Vulkan/MLIR dump controls
 
 For output-quality checks against a reference backend, use `ov_gfx_compare_runner`. It is an accuracy-only helper: it registers local plugin builds, compares tensor diffs, can run per-op windows or full-graph per-op output scans, and can also emit `GFX`-only output summaries for quick debugging. For performance numbers, use `benchmark_app` instead of the compare tool.
+
+For profiling-driven triage, use `ov_gfx_microbench` plus the local references in `docs/MICROBENCH_SCHEMA.md` and `docs/PROFILING_RUNBOOK.md`.
 
 ## Integration Notes
 - `query_model()` follows the same backend-specific support checks as compilation, so external schedulers see actual backend capability rather than an optimistic superset.

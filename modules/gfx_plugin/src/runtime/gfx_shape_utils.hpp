@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "openvino/core/except.hpp"
+#include "openvino/core/node.hpp"
 #include "openvino/core/shape.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/core/type/element_type.hpp"
@@ -76,6 +77,26 @@ inline std::vector<int32_t> compute_broadcast_element_strides(const ov::Shape& i
         stride *= dim;
     }
     return strides;
+}
+
+inline bool is_nchw_channel_bias_broadcast(const ov::Shape& bias_shape, const ov::Shape& out_shape) {
+    return out_shape.size() == 4 && bias_shape.size() == 4 && bias_shape[0] == 1 &&
+           bias_shape[1] == out_shape[1] && bias_shape[2] == 1 && bias_shape[3] == 1;
+}
+
+inline bool is_bias_broadcast_add(const std::shared_ptr<const ov::Node>& node) {
+    if (!node || node->get_input_size() != 2 || node->get_output_size() != 1) {
+        return false;
+    }
+    if (!node->get_input_partial_shape(0).is_static() || !node->get_input_partial_shape(1).is_static() ||
+        !node->get_output_partial_shape(0).is_static()) {
+        return false;
+    }
+    const ov::Shape out_shape = node->get_output_shape(0);
+    const ov::Shape in0_shape = node->get_input_shape(0);
+    const ov::Shape in1_shape = node->get_input_shape(1);
+    return (in0_shape == out_shape && is_nchw_channel_bias_broadcast(in1_shape, out_shape)) ||
+           (in1_shape == out_shape && is_nchw_channel_bias_broadcast(in0_shape, out_shape));
 }
 
 inline std::vector<int32_t> compute_permuted_broadcast_element_strides(

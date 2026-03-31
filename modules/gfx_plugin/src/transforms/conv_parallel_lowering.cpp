@@ -625,26 +625,10 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
                 b.setInsertionPointToStart(&if_tile.getThenRegion().front());
                 auto zero = b.create<mlir::arith::ConstantOp>(
                     body_loc, elem_ty, b.getFloatAttr(elem_ty, 0.0));
+                // Convolution accumulates into a fresh zero-initialized tile.
+                // Reloading the destination buffer here can leak stale values
+                // once larger execution windows start reusing GPU buffers.
                 llvm::SmallVector<mlir::Value, 8> acc_init(static_cast<size_t>(lane_count), zero);
-                if (!zero_init) {
-                    for (int64_t i = 0; i < lane_count; ++i) {
-                        auto if_acc = b.create<mlir::scf::IfOp>(
-                            body_loc, acc_init[i].getType(), lane_in[i], /*withElse=*/true);
-                        {
-                            mlir::OpBuilder::InsertionGuard guard(b);
-                            b.setInsertionPointToStart(&if_acc.getThenRegion().front());
-                            auto v = b.create<mlir::memref::LoadOp>(
-                                body_loc, conv_output, mlir::ValueRange{iv_n, iv_oc, lane_oh[i], lane_ow[i]}).getResult();
-                            b.create<mlir::scf::YieldOp>(body_loc, mlir::ValueRange{v});
-                        }
-                        {
-                            mlir::OpBuilder::InsertionGuard guard(b);
-                            b.setInsertionPointToStart(&if_acc.getElseRegion().front());
-                            b.create<mlir::scf::YieldOp>(body_loc, mlir::ValueRange{zero});
-                        }
-                        acc_init[i] = if_acc.getResult(0);
-                    }
-                }
 
                 auto for_ic = b.create<mlir::scf::ForOp>(
                     body_loc, c0, C_in, c1, acc_init,
@@ -802,6 +786,14 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
 void run_conv2d_parallel_lowering(mlir::ModuleOp module) {
     if (!module) {
         return;
+    }
+    if (auto skip = module->getAttrOfType<mlir::BoolAttr>("gfx.skip_conv_parallel")) {
+        if (skip.getValue()) {
+            if (gfx_log_debug_enabled()) {
+                gfx_log_debug("MLIR") << "Conv2D parallel lowering skipped by module attr";
+            }
+            return;
+        }
     }
     mlir::IRRewriter rewriter(module.getContext());
     llvm::SmallVector<mlir::linalg::Conv2DNchwFchwOp, 8> convs;

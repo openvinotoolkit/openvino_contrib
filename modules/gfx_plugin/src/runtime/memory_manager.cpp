@@ -88,5 +88,26 @@ void gpu_copy_buffer(GpuCommandQueueHandle queue,
     }
 }
 
+void gpu_copy_buffer_regions(GpuCommandQueueHandle execution_context,
+                             const GpuBuffer& src,
+                             const GpuBuffer& dst,
+                             const GpuBufferCopyRegion* regions,
+                             size_t region_count) {
+    if (!src.buffer || !dst.buffer || !regions || region_count == 0) {
+        return;
+    }
+    OPENVINO_ASSERT(src.backend == dst.backend, "GFX: cannot copy between different backends");
+    const auto& ops = memory_ops_for_backend(src.backend);
+    if (ops.copy_regions) {
+        ops.copy_regions(execution_context, src, dst, regions, region_count);
+        return;
+    }
+    if (region_count == 1 && ops.copy && regions[0].src_offset == 0 && regions[0].dst_offset == 0) {
+        ops.copy(execution_context, src, dst, regions[0].bytes);
+        return;
+    }
+    OPENVINO_THROW("GFX: backend does not support region copies");
+}
+
 }  // namespace gfx_plugin
 }  // namespace ov

@@ -24,6 +24,7 @@ std::vector<ov::PropertyName> gfx_plugin_supported_properties() {
     };
     std::vector<ov::PropertyName> rw{
         ov::device::id,
+        ov::cache_dir,
         ov::enable_profiling,
         ov::PropertyName{kGfxProfilingLevelProperty, ov::PropertyMutability::RW},
         ov::PropertyName{kGfxEnableFusionProperty, ov::PropertyMutability::RW},
@@ -79,6 +80,7 @@ std::vector<ov::PropertyName> gfx_compiled_model_supported_properties() {
     auto props = gfx_compiled_model_default_ro_properties();
     props.push_back(ov::PropertyName{ov::hint::inference_precision.name(), ov::PropertyMutability::RW});
     props.push_back(ov::PropertyName{ov::enable_profiling.name(), ov::PropertyMutability::RW});
+    props.push_back(ov::PropertyName{ov::cache_dir.name(), ov::PropertyMutability::RW});
     props.push_back(ov::PropertyName{"PERF_COUNT", ov::PropertyMutability::RW});
     props.push_back(ov::PropertyName{kGfxProfilingLevelProperty, ov::PropertyMutability::RW});
     props.push_back(ov::PropertyName{kGfxEnableFusionProperty, ov::PropertyMutability::RW});

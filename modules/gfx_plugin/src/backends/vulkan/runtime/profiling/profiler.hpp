@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdint>
+#include <chrono>
 #include <string>
 #include <vector>
 
@@ -28,10 +29,30 @@ public:
 
     void set_config(const GfxProfilerConfig& cfg) override;
     const GfxProfilerConfig& config() const override { return m_cfg; }
-    bool enabled() const { return m_enabled && m_supported; }
+    bool enabled() const { return m_enabled; }
+    bool timestamps_supported() const { return m_supported; }
 
     void begin_infer(size_t expected_samples) override;
     void end_infer(GpuCommandBufferHandle command_buffer) override;
+    void record_segment(std::string_view phase,
+                        std::string_view name,
+                        std::chrono::microseconds cpu_us,
+                        uint64_t gpu_us = 0,
+                        uint32_t dispatches = 0,
+                        uint64_t bytes_in = 0,
+                        uint64_t bytes_out = 0,
+                        uint64_t macs_est = 0,
+                        uint64_t flops_est = 0,
+                        int64_t inflight_slot = -1,
+                        uint64_t queue_id = 0,
+                        uint64_t cmd_buffer_id = 0) override;
+    void record_transfer(const char* tag,
+                         uint64_t bytes,
+                         bool h2d,
+                         std::chrono::microseconds cpu_us,
+                         uint64_t gpu_us = 0) override;
+    void increment_counter(std::string_view name, uint64_t delta = 1) override;
+    void set_counter(std::string_view name, uint64_t value) override;
 
     void begin_node(uint32_t node_id,
                     const char* node_name,
@@ -43,6 +64,8 @@ public:
     void write_timestamp(VkCommandBuffer cmd, uint32_t query_index) const;
 
     std::vector<ov::ProfilingInfo> export_ov() const override;
+    std::string export_extended_json() const override;
+    GfxProfilingReport export_extended_report() const override;
     void* native_handle() override { return this; }
 
 private:
@@ -69,6 +92,8 @@ private:
     bool m_supported = false;
     bool m_enabled = false;
     GfxProfilerConfig m_cfg{};
+    std::chrono::steady_clock::time_point m_wall_start{};
+    GfxProfilingTrace m_trace;
 
     std::vector<NodeRec> m_nodes;
 };

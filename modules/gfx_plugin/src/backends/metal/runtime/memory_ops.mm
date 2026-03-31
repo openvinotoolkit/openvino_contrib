@@ -18,6 +18,13 @@ GpuMemoryOps make_metal_ops() {
                   const GpuBuffer& src,
                   const GpuBuffer& dst,
                   size_t bytes) { metal_copy_buffer(queue, src, dst, bytes); };
+    ops.copy_regions = [](GpuCommandQueueHandle execution_context,
+                          const GpuBuffer& src,
+                          const GpuBuffer& dst,
+                          const GpuBufferCopyRegion* regions,
+                          size_t region_count) {
+        metal_copy_buffer_regions(execution_context, src, dst, regions, region_count);
+    };
     return ops;
 }
 }  // namespace

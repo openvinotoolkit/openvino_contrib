@@ -17,10 +17,13 @@
 #include "plugin/model_serialization.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_backend_utils.hpp"
+#include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/fused_sequence_stage.hpp"
 #include "openvino/gfx_plugin/profiling.hpp"
 #include "plugin/backend_state.hpp"
 #include "runtime/gfx_precision.hpp"
+#include "runtime/gfx_profiling_report.hpp"
+#include "runtime/gfx_vulkan_pipeline_cache_scope.hpp"
 
 #include "openvino/core/except.hpp"
 #include "openvino/core/validation_util.hpp"
@@ -40,6 +43,7 @@
 #include "transforms/fusion_pass.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <string>
 #include <unordered_map>
@@ -149,6 +153,17 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
     }
     m_backend = resolved.backend;
     m_backend_name = resolved.backend_name;
+    const bool capture_compile_profile = m_enable_profiling && profiling_level() != ProfilingLevel::Off;
+    GfxProfilingTrace compile_trace;
+    GfxProfilingTrace* compile_trace_ptr = capture_compile_profile ? &compile_trace : nullptr;
+    const auto compile_wall_start =
+        capture_compile_profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+    if (compile_trace_ptr) {
+        compile_trace_ptr->reset(profiling_level());
+        compile_trace_ptr->set_backend(m_backend_name);
+        compile_trace_ptr->set_counter_capability(false, false);
+        compile_trace_ptr->set_counter("loaded_from_cache", m_loaded_from_cache ? 1 : 0);
+    }
 
     // Preserve user properties; store inference_precision as ov::element::Type.
     for (const auto& kv : resolved_props) {
@@ -166,7 +181,18 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
     }
     m_config[kGfxBackendProperty] = m_backend_name;
     gfx_log_info("CompiledModel") << "Creating backend state for " << m_backend_name;
+    const auto backend_state_start =
+        compile_trace_ptr ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     m_backend_state = create_backend_state(m_backend, properties, context);
+    if (compile_trace_ptr) {
+        compile_trace_ptr->increment_counter("backend_state_create_count");
+        compile_trace_ptr->add_segment(
+            "compile",
+            "create_backend_state",
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                      std::chrono::steady_clock::now() - backend_state_start)
+                                      .count()));
+    }
     gfx_log_info("CompiledModel") << "Backend state created";
     if (m_backend == GpuBackend::Vulkan) {
         gfx_log_info("CompiledModel") << "Vulkan backend selected";
@@ -174,7 +200,32 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
 
     // Build GpuStage pipeline eagerly; fail early if unsupported ops encountered.
     gfx_log_info("CompiledModel") << "Building stage pipeline";
-    build_op_pipeline();
+    const auto cache_dir_it = resolved_props.find(ov::cache_dir.name());
+    const bool has_vulkan_pipeline_cache_dir =
+        m_backend == GpuBackend::Vulkan && cache_dir_it != resolved_props.end() && cache_dir_it->second.is<std::string>() &&
+        !cache_dir_it->second.as<std::string>().empty();
+    if (has_vulkan_pipeline_cache_dir) {
+        ScopedVulkanPipelineCacheDir cache_scope(cache_dir_it->second.as<std::string>());
+        build_op_pipeline(compile_trace_ptr);
+    } else {
+        build_op_pipeline(compile_trace_ptr);
+    }
+    if (compile_trace_ptr) {
+        uint64_t total_cpu_us = 0;
+        for (const auto& segment : compile_trace_ptr->report().segments) {
+            total_cpu_us += segment.cpu_us;
+        }
+        compile_trace_ptr->set_total_cpu_us(total_cpu_us);
+        compile_trace_ptr->set_total_gpu_us(0);
+        compile_trace_ptr->set_total_wall_us(
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                      std::chrono::steady_clock::now() - compile_wall_start)
+                                      .count()));
+        const auto compile_json = compile_trace_ptr->to_json();
+        update_compile_profiling_report_json(compile_json);
+        update_last_profiling_report_json(
+            build_profiling_report_json(m_backend_name, profiling_level(), {}, {}, compile_json));
+    }
 }
 
 CompiledModel::~CompiledModel() {
@@ -204,6 +255,8 @@ void CompiledModel::set_property(const ov::AnyMap& properties) {
                                             m_profiling_level_set,
                                             m_config)) {
             // handled
+        } else if (kv.first == ov::cache_dir.name()) {
+            m_config[kv.first] = kv.second.as<std::string>();
         } else if (kv.first == kGfxEnableFusionProperty) {
             m_enable_fusion = parse_bool_property(kv.second, kv.first);
             m_config[kv.first] = m_enable_fusion;
@@ -245,6 +298,12 @@ ov::Any CompiledModel::get_property(const std::string& name) const {
     if (name == "PERF_COUNT") {
         return m_enable_profiling;
     }
+    if (name == ov::cache_dir.name()) {
+        if (auto it = m_config.find(name); it != m_config.end()) {
+            return it->second;
+        }
+        return std::string{};
+    }
 
     if (auto it = m_config.find(name); it != m_config.end()) {
         return it->second;
@@ -280,7 +339,17 @@ std::string CompiledModel::last_profiling_report_json() const {
     return m_last_report_json;
 }
 
-void CompiledModel::build_op_pipeline() {
+void CompiledModel::update_compile_profiling_report_json(std::string report_json) const {
+    std::lock_guard<std::mutex> lock(m_report_mutex);
+    m_compile_report_json = std::move(report_json);
+}
+
+std::string CompiledModel::compile_profiling_report_json() const {
+    std::lock_guard<std::mutex> lock(m_report_mutex);
+    return m_compile_report_json;
+}
+
+void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
     if (!m_runtime_model) {
         gfx_log_warn("OpFactory") << "Cannot build pipeline: runtime model is null";
         return;
@@ -296,6 +365,11 @@ void CompiledModel::build_op_pipeline() {
     OPENVINO_ASSERT(backend_state, "GFX: backend state is not initialized");
     gfx_log_info("StageFactory") << "Building pipeline for backend=" << m_backend_name
                                                  << " ops=" << m_runtime_model->get_ops().size();
+    const auto build_start =
+        compile_trace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+    if (compile_trace) {
+        compile_trace->set_counter("runtime_model_op_count", static_cast<uint64_t>(m_runtime_model->get_ops().size()));
+    }
     // Map Parameter nodes to input indices.
     for (size_t i = 0; i < m_runtime_model->inputs().size(); ++i) {
         m_param_index[m_runtime_model->inputs()[i].get_node()] = i;
@@ -325,11 +399,33 @@ void CompiledModel::build_op_pipeline() {
     if (m_enable_fusion) {
         FusionConfig fusion_cfg;
         fusion_cfg.enable_fusion = true;
+        fusion_cfg.debug_dump_ir = gfx_log_debug_enabled();
         fusion_plan = build_fusion_plan(m_runtime_model, fusion_cfg);
+        if (compile_trace) {
+            compile_trace->set_counter("fusion_group_count", static_cast<uint64_t>(fusion_plan.groups.size()));
+        }
         fusion_primary.reserve(fusion_plan.groups.size());
         for (const auto& group : fusion_plan.groups) {
             if (group.node_indices.size() < 2) {
                 continue;
+            }
+            if (gfx_log_debug_enabled()) {
+                std::string node_list;
+                for (size_t i = 0; i < group.node_indices.size(); ++i) {
+                    const auto node_idx = group.node_indices[i];
+                    if (node_idx >= ordered_ops.size()) {
+                        continue;
+                    }
+                    const auto& fused_node = ordered_ops[node_idx];
+                    if (!node_list.empty()) {
+                        node_list += " | ";
+                    }
+                    node_list += "[" + std::to_string(node_idx) + "] " + fused_node->get_friendly_name() + " (" +
+                                 fused_node->get_type_name() + ")";
+                }
+                gfx_log_debug("Fusion") << "group kind=" << group.kind
+                                        << " size=" << group.node_indices.size()
+                                        << " nodes=" << node_list;
             }
             fusion_primary[group.node_indices.front()] = &group;
             for (const auto node_idx : group.node_indices) {
@@ -410,7 +506,7 @@ void CompiledModel::build_op_pipeline() {
         auto f_it = fusion_primary.find(op_index);
         if (f_it != fusion_primary.end() && f_it->second) {
             const auto* group = f_it->second;
-            if (group->kind == "Attention" || group->kind == "AttentionScaleMask") {
+            if (group->kind == "Attention" || group->kind == "AttentionScale" || group->kind == "AttentionScaleMask") {
                 const size_t stage_count = group->node_indices.size();
                 if (stage_count >= 3) {
                     struct InputKey {
@@ -437,18 +533,34 @@ void CompiledModel::build_op_pipeline() {
                         }
                     }
 
-                    std::vector<size_t> stage_output_index(stage_count, 0);
+                    bool can_fuse = true;
+                    std::vector<std::vector<size_t>> stage_output_slots(stage_count);
+                    size_t fused_output_count = 1;
                     for (size_t i = 0; i < stage_count; ++i) {
-                        stage_output_index[i] = (i + 1);
+                        const size_t idx = group->node_indices[i];
+                        if (idx >= ordered_ops.size()) {
+                            can_fuse = false;
+                            break;
+                        }
+                        const auto& stage_node = ordered_ops[idx];
+                        stage_output_slots[i].reserve(stage_node->get_output_size());
+                        for (size_t port = 0; port < stage_node->get_output_size(); ++port) {
+                            if (i + 1 == stage_count && port == 0) {
+                                stage_output_slots[i].push_back(0);
+                            } else {
+                                stage_output_slots[i].push_back(fused_output_count++);
+                            }
+                        }
                     }
-                    stage_output_index[stage_count - 1] = 0;
+                    if (!can_fuse) {
+                        continue;
+                    }
 
                     std::unordered_map<InputKey, size_t, InputKeyHash> external_map;
                     std::vector<PipelineStageDesc::InputLink> fused_inputs;
                     std::vector<FusedStageInfo> fused_stages;
                     fused_stages.reserve(stage_count);
 
-                    bool can_fuse = true;
                     for (size_t i = 0; i < stage_count; ++i) {
                         const size_t idx = group->node_indices[i];
                         if (idx >= ordered_ops.size()) {
@@ -457,6 +569,9 @@ void CompiledModel::build_op_pipeline() {
                         }
                         const auto& stage_node = ordered_ops[idx];
                         auto stage = backend_state->create_stage(stage_node);
+                        if (compile_trace) {
+                            compile_trace->increment_counter("stage_create_count");
+                        }
                         if (!stage) {
                             can_fuse = false;
                             break;
@@ -464,15 +579,19 @@ void CompiledModel::build_op_pipeline() {
 
                         FusedStageInfo info;
                         info.stage = std::move(stage);
-                        info.output_index = stage_output_index[i];
+                        info.output_indices = stage_output_slots[i];
                         info.inputs.reserve(stage_node->get_input_size());
                         for (const auto& iv : stage_node->input_values()) {
                             auto src_node = iv.get_node();
                             const auto it_stage = stage_index.find(src_node);
                             if (it_stage != stage_index.end()) {
                                 const size_t src_stage = it_stage->second;
-                                info.inputs.push_back({FusedInputKind::Output,
-                                                       stage_output_index[src_stage]});
+                                if (iv.get_index() >= stage_output_slots[src_stage].size()) {
+                                    can_fuse = false;
+                                    break;
+                                }
+                                info.inputs.push_back(
+                                    {FusedInputKind::Output, stage_output_slots[src_stage][iv.get_index()]});
                                 continue;
                             }
                             if (ov::as_type_ptr<const ov::op::v0::Constant>(iv.get_node_shared_ptr())) {
@@ -491,48 +610,50 @@ void CompiledModel::build_op_pipeline() {
                             }
                             info.inputs.push_back({FusedInputKind::External, ext_idx});
                         }
+                        if (!can_fuse) {
+                            break;
+                        }
                         fused_stages.emplace_back(std::move(info));
                     }
 
                     if (can_fuse && fused_stages.size() == stage_count) {
                         PipelineStageDesc stage_desc;
                         const auto& final_node = ordered_ops[group->node_indices.back()];
+                        if (compile_trace) {
+                            compile_trace->increment_counter("fused_stage_count");
+                            compile_trace->increment_counter("fused_node_count", static_cast<uint64_t>(stage_count));
+                        }
                         stage_desc.node = final_node;
                         stage_desc.stage = std::make_unique<FusedSequenceStage>(
                             std::move(fused_stages),
                             final_node ? final_node->get_friendly_name() : std::string("fused_attention"),
                             "FusedAttention");
                         stage_desc.inputs = std::move(fused_inputs);
-                        stage_desc.outputs.reserve(stage_count);
+                        stage_desc.outputs.resize(fused_output_count);
 
-                        auto is_model_output = [&](const ov::Node* n) -> bool {
+                        auto is_model_output = [&](const ov::Node* n, size_t port) -> bool {
                             auto it = model_outputs.find(n);
                             if (it == model_outputs.end() || it->second.empty()) {
                                 return false;
                             }
-                            return it->second[0];
+                            return port < it->second.size() ? it->second[port] : false;
                         };
 
-                        for (size_t out_idx = 0; out_idx < stage_count; ++out_idx) {
-                            const ov::Node* out_node = nullptr;
-                            if (out_idx == 0) {
-                                out_node = final_node.get();
-                            } else {
-                                const size_t stage_idx = out_idx - 1;
-                                const size_t node_idx = group->node_indices[stage_idx];
-                                if (node_idx < ordered_ops.size()) {
-                                    out_node = ordered_ops[node_idx].get();
+                        for (size_t stage_idx = 0; stage_idx < stage_count; ++stage_idx) {
+                            const size_t node_idx = group->node_indices[stage_idx];
+                            if (node_idx >= ordered_ops.size()) {
+                                continue;
+                            }
+                            const auto& out_node = ordered_ops[node_idx];
+                            for (size_t port = 0; port < out_node->get_output_size(); ++port) {
+                                const size_t slot = stage_output_slots[stage_idx][port];
+                                auto& out_desc = stage_desc.outputs[slot];
+                                if (out_node->get_output_partial_shape(port).is_static()) {
+                                    out_desc.shape = out_node->get_output_shape(port);
                                 }
+                                out_desc.type = out_node->get_output_element_type(port);
+                                out_desc.is_model_output = is_model_output(out_node.get(), port);
                             }
-                            OutputDesc out_desc{};
-                            if (out_node && out_node->get_output_partial_shape(0).is_static()) {
-                                out_desc.shape = out_node->get_output_shape(0);
-                            }
-                            if (out_node) {
-                                out_desc.type = out_node->get_output_element_type(0);
-                                out_desc.is_model_output = is_model_output(out_node);
-                            }
-                            stage_desc.outputs.emplace_back(std::move(out_desc));
                         }
 
                         const size_t idx = m_pipeline.size();
@@ -555,6 +676,9 @@ void CompiledModel::build_op_pipeline() {
                                                  << " name=" << node->get_friendly_name();
         }
         auto gpu_stage = backend_state->create_stage(node);
+        if (compile_trace) {
+            compile_trace->increment_counter("stage_create_count");
+        }
         OPENVINO_ASSERT(gpu_stage,
                         "GFX: unsupported op in MLIR pipeline: ",
                         node->get_friendly_name(),
@@ -666,10 +790,32 @@ void CompiledModel::build_op_pipeline() {
         stage.stage->set_inputs(inputs);
         GpuBufferManager* buffer_manager = resources.const_manager;
         stage.stage->init(buffer_manager);
+        const auto stage_compile_start =
+            compile_trace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+        const auto compile_scope_name = stage.node ? stage.node->get_friendly_name() : stage.stage->name();
+        ScopedCompileProfilingContext compile_scope(compile_trace, compile_scope_name);
         stage.stage->compile(buffer_manager);
+        if (compile_trace) {
+            compile_trace->increment_counter("stage_compile_count");
+            compile_trace->add_segment(
+                "compile",
+                stage.node ? stage.node->get_friendly_name() : stage.stage->name(),
+                static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                          std::chrono::steady_clock::now() - stage_compile_start)
+                                          .count()));
+        }
     }
 
     m_pipeline_built = true;
+    if (compile_trace) {
+        compile_trace->set_counter("pipeline_stage_count", static_cast<uint64_t>(m_pipeline.size()));
+        compile_trace->add_segment(
+            "compile",
+            "build_op_pipeline",
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                      std::chrono::steady_clock::now() - build_start)
+                                      .count()));
+    }
     gfx_log_info("StageFactory") << "Built GFX " << m_backend_name << " pipeline with " << m_pipeline.size() << " stages";
 }
 

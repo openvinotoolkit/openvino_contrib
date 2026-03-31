@@ -74,3 +74,38 @@ TEST(GfxParallelism, SelectMatMulParallelismPrefersWideTilesForWideOutputs) {
     EXPECT_GT(plan.dispatch.threads_h, 0u);
     EXPECT_GT(plan.dispatch.threads_w, 0u);
 }
+
+TEST(GfxParallelism, RememberMatMulParallelismAllowsSerialFallbackOverride) {
+    const auto caps = make_caps();
+    const ov::Shape output_shape{1, 256, 256};
+
+    const auto initial = ov::gfx_plugin::select_matmul_parallelism(caps, output_shape);
+    ASSERT_TRUE(initial.prefer_parallel);
+
+    ov::gfx_plugin::MatMulParallelismPlan serial_plan;
+    serial_plan.prefer_parallel = false;
+    serial_plan.variant = "serial";
+
+    ov::gfx_plugin::remember_matmul_parallelism(caps, output_shape, serial_plan);
+
+    const auto overridden = ov::gfx_plugin::select_matmul_parallelism(caps, output_shape);
+    EXPECT_FALSE(overridden.prefer_parallel);
+    EXPECT_EQ(overridden.variant, "serial");
+    EXPECT_FALSE(overridden.dispatch.enabled);
+}
+
+TEST(GfxParallelism, SelectChunkDispatchPlanUsesLargeSingleDispatchForMidSizeVulkanWorkloads) {
+    const auto plan = ov::gfx_plugin::select_chunk_dispatch_plan(make_caps(), "conv2d", 8192, 576);
+
+    EXPECT_EQ(plan.threads_per_group, 64u);
+    EXPECT_EQ(plan.elems_per_dispatch, 8192u);
+    EXPECT_EQ(plan.variant, "conv2d_chunk_8192");
+}
+
+TEST(GfxParallelism, SelectChunkDispatchPlanCapsLargeVulkanWorkloadsToFewDispatches) {
+    const auto plan = ov::gfx_plugin::select_chunk_dispatch_plan(make_caps(), "conv2d", 131072, 1152);
+
+    EXPECT_EQ(plan.threads_per_group, 64u);
+    EXPECT_EQ(plan.elems_per_dispatch, 16384u);
+    EXPECT_EQ(plan.variant, "conv2d_chunk_16384");
+}

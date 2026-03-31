@@ -44,8 +44,8 @@ void gfx_log(GfxLogLevel level, const char* category, const std::string& msg) {
     const auto& cfg = gfx_log_config();
     if (level > cfg.level && !(cfg.test_debug && level <= GfxLogLevel::Debug))
         return;
-    static std::mutex log_mutex;
-    std::lock_guard<std::mutex> lock(log_mutex);
+    static auto* log_mutex = new std::mutex();
+    std::lock_guard<std::mutex> lock(*log_mutex);
     std::cerr << "[GFX][" << category << "][" << gfx_log_level_str(level) << "] "
               << msg << std::endl;
 }

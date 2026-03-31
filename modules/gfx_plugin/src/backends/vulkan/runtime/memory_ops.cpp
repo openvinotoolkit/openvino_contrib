@@ -20,10 +20,17 @@ GpuMemoryOps make_vulkan_ops() {
     ops.invalidate = [](const GpuBuffer& buf, size_t bytes, size_t offset) {
         vulkan_invalidate_buffer(buf, bytes, offset);
     };
-    ops.copy = [](GpuCommandQueueHandle /*queue*/,
+    ops.copy = [](GpuCommandQueueHandle execution_context,
                   const GpuBuffer& src,
                   const GpuBuffer& dst,
-                  size_t bytes) { vulkan_copy_buffer(src, dst, bytes); };
+                  size_t bytes) { vulkan_copy_buffer(execution_context, src, dst, bytes); };
+    ops.copy_regions = [](GpuCommandQueueHandle execution_context,
+                          const GpuBuffer& src,
+                          const GpuBuffer& dst,
+                          const GpuBufferCopyRegion* regions,
+                          size_t region_count) {
+        vulkan_copy_buffer_regions(execution_context, src, dst, regions, region_count);
+    };
     return ops;
 }
 }  // namespace

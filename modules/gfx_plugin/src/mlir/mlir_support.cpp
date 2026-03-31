@@ -51,6 +51,7 @@ mlir::MLIRContext& gfx_mlir_context() {
                         mlir::spirv::SPIRVDialect>();
 
         auto* c = new mlir::MLIRContext(registry);
+        c->disableMultithreading();
         c->allowUnregisteredDialects();
         // Ensure all built-in and dependent dialects are fully registered (including attr storages).
         c->loadAllAvailableDialects();

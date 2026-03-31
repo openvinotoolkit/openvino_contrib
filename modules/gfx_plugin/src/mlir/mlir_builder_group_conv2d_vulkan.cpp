@@ -16,6 +16,19 @@ namespace gfx_plugin {
 
 namespace {
 
+llvm::SmallVector<int64_t> invert_permutation(const std::vector<int64_t>& permutation) {
+    llvm::SmallVector<int64_t> inverse(permutation.size(), -1);
+    for (size_t logical_axis = 0; logical_axis < permutation.size(); ++logical_axis) {
+        const int64_t source_axis = permutation[logical_axis];
+        OPENVINO_ASSERT(source_axis >= 0 && source_axis < static_cast<int64_t>(permutation.size()),
+                        "GroupConv2D Vulkan builder: permutation axis out of range");
+        OPENVINO_ASSERT(inverse[static_cast<size_t>(source_axis)] < 0,
+                        "GroupConv2D Vulkan builder: permutation axis repeated");
+        inverse[static_cast<size_t>(source_axis)] = static_cast<int64_t>(logical_axis);
+    }
+    return inverse;
+}
+
 mlir::Type to_elem_type(ov::element::Type element_type, mlir::MLIRContext& ctx) {
     switch (element_type) {
         case ov::element::f16:
@@ -40,10 +53,22 @@ mlir::MemRefType to_memref_type(const ov::PartialShape& pshape,
     return mlir::MemRefType::get(dims, to_elem_type(element_type, ctx));
 }
 
+mlir::MemRefType to_memref_type(const ov::Shape& shape,
+                                ov::element::Type element_type,
+                                mlir::MLIRContext& ctx) {
+    mlir::SmallVector<int64_t> dims;
+    dims.reserve(shape.size());
+    for (size_t dim : shape) {
+        dims.push_back(static_cast<int64_t>(dim));
+    }
+    return mlir::MemRefType::get(dims, to_elem_type(element_type, ctx));
+}
+
 }  // namespace
 
 mlir::ModuleOp build_mlir_group_conv2d_vulkan(const std::shared_ptr<const ov::op::v1::GroupConvolution>& gconv,
-                                              mlir::MLIRContext& ctx) {
+                                              mlir::MLIRContext& ctx,
+                                              const MlirInputTransformDesc* input_transform) {
     OPENVINO_ASSERT(gconv, "GroupConv2D Vulkan builder: null op");
 
     const auto& in_pshape = gconv->get_input_partial_shape(0);
@@ -55,6 +80,14 @@ mlir::ModuleOp build_mlir_group_conv2d_vulkan(const std::shared_ptr<const ov::op
                     "GroupConv2D Vulkan builder expects rank-5 weights");
     OPENVINO_ASSERT(out_pshape.rank().is_static() && out_pshape.rank().get_length() == 4,
                     "GroupConv2D Vulkan builder expects rank-4 output");
+    const bool has_input_transform = input_transform && input_transform->has_transpose();
+    OPENVINO_ASSERT(!has_input_transform ||
+                        (input_transform->source_shape.size() == 4 &&
+                         input_transform->transpose_permutation.size() == 4),
+                    "GroupConv2D Vulkan builder: transformed input expects rank-4 source shape and permutation");
+    const auto inverse_permutation =
+        has_input_transform ? invert_permutation(input_transform->transpose_permutation)
+                            : llvm::SmallVector<int64_t>{};
 
     const auto& pads_begin = gconv->get_pads_begin();
     const auto& strides = gconv->get_strides();
@@ -78,7 +111,10 @@ mlir::ModuleOp build_mlir_group_conv2d_vulkan(const std::shared_ptr<const ov::op
                     mlir::scf::SCFDialect,
                     mlir::arith::ArithDialect>();
 
-    auto input_ty = to_memref_type(in_pshape, gconv->get_input_element_type(0), ctx);
+    auto input_ty = has_input_transform ? to_memref_type(input_transform->source_shape,
+                                                         gconv->get_input_element_type(0),
+                                                         ctx)
+                                        : to_memref_type(in_pshape, gconv->get_input_element_type(0), ctx);
     auto weight_ty = to_memref_type(w_pshape, gconv->get_input_element_type(1), ctx);
     auto output_ty = to_memref_type(out_pshape, gconv->get_output_element_type(0), ctx);
     auto elem_ty = output_ty.getElementType();
@@ -126,8 +162,8 @@ mlir::ModuleOp build_mlir_group_conv2d_vulkan(const std::shared_ptr<const ov::op
     auto out_c_dim = b.create<mlir::memref::DimOp>(loc, output, 1);
     auto out_h = b.create<mlir::memref::DimOp>(loc, output, 2);
     auto out_w = b.create<mlir::memref::DimOp>(loc, output, 3);
-    auto in_h = b.create<mlir::memref::DimOp>(loc, input, 2);
-    auto in_w = b.create<mlir::memref::DimOp>(loc, input, 3);
+    auto in_h = b.create<mlir::arith::ConstantIndexOp>(loc, in_pshape[2].get_length());
+    auto in_w = b.create<mlir::arith::ConstantIndexOp>(loc, in_pshape[3].get_length());
     auto ker_h = b.create<mlir::arith::ConstantIndexOp>(loc, kernel_h);
     auto ker_w = b.create<mlir::arith::ConstantIndexOp>(loc, kernel_w);
     auto zero = b.create<mlir::arith::ConstantOp>(loc, mlir::FloatAttr::get(compute_ty, 0.0));
@@ -171,10 +207,20 @@ mlir::ModuleOp build_mlir_group_conv2d_vulkan(const std::shared_ptr<const ov::op
         b_kw.create<mlir::scf::IfOp>(loc, mlir::TypeRange{compute_ty}, in_bounds, /*withElseRegion=*/true);
     {
         auto then_builder = if_in_bounds.getThenBodyBuilder();
-        auto input_val = then_builder.create<mlir::memref::LoadOp>(
-            loc,
-            input,
-            mlir::ValueRange{for_n.getInductionVar(), for_c.getInductionVar(), ih, iw});
+        mlir::SmallVector<mlir::Value, 4> input_indices{for_n.getInductionVar(),
+                                                        for_c.getInductionVar(),
+                                                        ih,
+                                                        iw};
+        if (has_input_transform) {
+            mlir::SmallVector<mlir::Value, 4> source_indices;
+            source_indices.reserve(input_transform->source_shape.size());
+            for (size_t source_axis = 0; source_axis < input_transform->source_shape.size(); ++source_axis) {
+                const auto logical_axis = static_cast<size_t>(inverse_permutation[source_axis]);
+                source_indices.push_back(input_indices[logical_axis]);
+            }
+            input_indices = std::move(source_indices);
+        }
+        auto input_val = then_builder.create<mlir::memref::LoadOp>(loc, input, input_indices);
         auto weight_val = then_builder.create<mlir::memref::LoadOp>(
             loc,
             weight,

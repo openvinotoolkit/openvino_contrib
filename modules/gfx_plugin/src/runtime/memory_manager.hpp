@@ -7,6 +7,7 @@
 
 #include "openvino/core/except.hpp"
 #include "openvino/core/type/element_type.hpp"
+#include "runtime/gpu_memory_ops.hpp"
 #include "runtime/gpu_types.hpp"
 
 namespace ov {
@@ -78,6 +79,11 @@ void gpu_copy_buffer(GpuCommandQueueHandle queue,
                      const GpuBuffer& src,
                      const GpuBuffer& dst,
                      size_t bytes);
+void gpu_copy_buffer_regions(GpuCommandQueueHandle execution_context,
+                             const GpuBuffer& src,
+                             const GpuBuffer& dst,
+                             const GpuBufferCopyRegion* regions,
+                             size_t region_count);
 bool gpu_host_visible(const GpuBuffer& buf);
 
 }  // namespace gfx_plugin

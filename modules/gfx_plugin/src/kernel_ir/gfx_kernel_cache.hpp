@@ -10,8 +10,10 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <chrono>
 
 #include "runtime/gpu_backend_base.hpp"
+#include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gpu_buffer.hpp"
 
 namespace ov {
@@ -111,12 +113,30 @@ inline std::shared_ptr<ICompiledKernel> lookup_or_compile_kernel(GpuBackend back
                                                      code_bytes,
                                                      entry,
                                                      arg_count);
+    const auto lookup_start = current_compile_trace() ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     if (auto cached = GfxKernelCache::instance().lookup(key)) {
+        if (current_compile_trace()) {
+            increment_compile_counter("kernel_cache_hit_count");
+            add_compile_segment(
+                "kernel_cache_lookup_hit",
+                static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                          std::chrono::steady_clock::now() - lookup_start)
+                                          .count()));
+        }
         return cached->fork();
+    }
+    if (current_compile_trace()) {
+        increment_compile_counter("kernel_cache_miss_count");
+        add_compile_segment(
+            "kernel_cache_lookup_miss",
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                      std::chrono::steady_clock::now() - lookup_start)
+                                      .count()));
     }
     auto kernel = std::forward<CompileFn>(compile_fn)();
     if (kernel) {
         GfxKernelCache::instance().store(key, kernel);
+        increment_compile_counter("kernel_cache_store_count");
     }
     return kernel;
 }

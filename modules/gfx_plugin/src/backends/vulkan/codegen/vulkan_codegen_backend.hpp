@@ -19,6 +19,8 @@ namespace gfx_plugin {
 
 class VulkanKernelProgram;
 
+void vulkan_reset_command_buffer_access_tracker(VkCommandBuffer command_buffer);
+
 class VulkanCompiledKernel final : public CompiledKernelBase {
 public:
     explicit VulkanCompiledKernel(std::shared_ptr<VulkanKernelProgram> program, uint32_t arg_count = 0);
@@ -32,6 +34,7 @@ public:
     size_t clamp_threadgroup_size(size_t desired) const override;
     void prepare_runtime_artifacts() override;
     std::shared_ptr<ICompiledKernel> fork() const override;
+    void prewarm_bindings(const std::vector<KernelArg>& args) override;
     void on_submission_complete() override;
     GpuCommandBufferHandle begin_external_commands();
     void end_external_commands(GpuCommandBufferHandle command_buffer);
@@ -54,6 +57,8 @@ private:
     VkQueue m_queue = VK_NULL_HANDLE;
     uint32_t m_queue_family = 0;
     VkCommandPool m_command_pool = VK_NULL_HANDLE;
+    VkCommandBuffer m_command_buffer = VK_NULL_HANDLE;
+    VkFence m_submission_fence = VK_NULL_HANDLE;
     std::mutex m_mutex;
 };
 

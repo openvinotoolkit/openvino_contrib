@@ -12,10 +12,14 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
+#include "openvino/core/except.hpp"
+
 #include "runtime/gfx_logger.hpp"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/STLExtras.h"
+
+#include <optional>
 
 namespace ov {
 namespace gfx_plugin {
@@ -119,6 +123,135 @@ bool is_zero_fill(mlir::linalg::FillOp fill_op) {
         return iattr.getInt() == 0;
     }
     return false;
+}
+
+bool is_passthrough_copy_body(mlir::linalg::GenericOp op) {
+    auto& body = op.getRegion().front();
+    if (body.getNumArguments() != 2) {
+        return false;
+    }
+    auto yield = mlir::dyn_cast<mlir::linalg::YieldOp>(body.getTerminator());
+    return yield && yield.getNumOperands() == 1 && yield.getOperand(0) == body.getArgument(0);
+}
+
+bool force_zero_init(mlir::Operation* op) {
+    if (!op) {
+        return false;
+    }
+    if (auto attr = op->getAttrOfType<mlir::BoolAttr>("gfx.zero_init_output")) {
+        return attr.getValue();
+    }
+    return false;
+}
+
+struct TransposeProducerInfo {
+    mlir::Value source;
+    llvm::SmallVector<unsigned, 4> source_indices_from_output;
+    mlir::linalg::GenericOp producer;
+    mlir::Value temp_buffer;
+};
+
+std::optional<TransposeProducerInfo> match_transpose_copy_producer(mlir::Operation* consumer, mlir::Value buffer) {
+    buffer = strip_memref_casts(buffer);
+    auto buffer_type = mlir::dyn_cast<mlir::MemRefType>(buffer.getType());
+    if (!consumer || !buffer || !buffer_type) {
+        return std::nullopt;
+    }
+
+    for (auto* user : buffer.getUsers()) {
+        auto gen = mlir::dyn_cast<mlir::linalg::GenericOp>(user);
+        if (!gen || !gen->isBeforeInBlock(consumer) || gen.getNumDpsInputs() != 1 || gen.getNumDpsInits() != 1) {
+            continue;
+        }
+        if (strip_memref_casts(gen.getDpsInits()[0]) != buffer) {
+            continue;
+        }
+        if (!is_passthrough_copy_body(gen)) {
+            continue;
+        }
+
+        auto source = strip_memref_casts(gen.getDpsInputs()[0]);
+        auto source_type = mlir::dyn_cast<mlir::MemRefType>(source.getType());
+        if (!source_type || source_type.getRank() != buffer_type.getRank()) {
+            continue;
+        }
+
+        const auto maps = gen.getIndexingMapsArray();
+        if (maps.size() != 2) {
+            continue;
+        }
+        auto in_map = maps[0];
+        auto out_map = maps[1];
+        if (in_map.getNumResults() != static_cast<int64_t>(source_type.getRank()) ||
+            out_map.getNumResults() != static_cast<int64_t>(buffer_type.getRank())) {
+            continue;
+        }
+
+        llvm::SmallVector<unsigned, 4> permutation;
+        permutation.reserve(static_cast<size_t>(source_type.getRank()));
+        bool valid = true;
+        for (int64_t i = 0; i < out_map.getNumResults(); ++i) {
+            auto dim = mlir::dyn_cast<mlir::AffineDimExpr>(out_map.getResult(i));
+            if (!dim || dim.getPosition() != static_cast<unsigned>(i)) {
+                valid = false;
+                break;
+            }
+        }
+        if (!valid) {
+            continue;
+        }
+        llvm::SmallDenseSet<unsigned, 4> seen;
+        for (auto expr : in_map.getResults()) {
+            auto dim = mlir::dyn_cast<mlir::AffineDimExpr>(expr);
+            if (!dim || !seen.insert(dim.getPosition()).second) {
+                valid = false;
+                break;
+            }
+            permutation.push_back(dim.getPosition());
+        }
+        if (!valid || permutation.size() != static_cast<size_t>(source_type.getRank())) {
+            continue;
+        }
+        return TransposeProducerInfo{source, permutation, gen, buffer};
+    }
+    return std::nullopt;
+}
+
+llvm::SmallVector<mlir::Value, 4> permute_indices(llvm::ArrayRef<mlir::Value> logical_indices,
+                                                  llvm::ArrayRef<unsigned> permutation) {
+    llvm::SmallVector<mlir::Value, 4> result;
+    result.reserve(permutation.size());
+    for (auto pos : permutation) {
+        OPENVINO_ASSERT(pos < logical_indices.size(), "MatMul transpose permutation index out of range");
+        result.push_back(logical_indices[pos]);
+    }
+    return result;
+}
+
+void cleanup_dead_transpose_buffers(mlir::ModuleOp module) {
+    if (!module) {
+        return;
+    }
+
+    llvm::SmallVector<mlir::Operation*, 16> ops_to_erase;
+    module.walk([&](mlir::linalg::GenericOp gen) {
+        if (!is_passthrough_copy_body(gen) || !gen->use_empty()) {
+            return;
+        }
+        ops_to_erase.push_back(gen.getOperation());
+        auto out = strip_memref_casts(gen.getDpsInits()[0]);
+        if (out && out.use_empty()) {
+            if (auto* def = out.getDefiningOp()) {
+                ops_to_erase.push_back(def);
+            }
+        }
+    });
+
+    for (auto* op : llvm::reverse(ops_to_erase)) {
+        if (op && op->use_empty()) {
+            op->erase();
+        }
+    }
 }
 
 bool has_inplace_elementwise_consumer(mlir::Operation* producer, mlir::Value output) {
@@ -583,9 +716,36 @@ struct BatchMatMulLoweringPattern final : public mlir::OpRewritePattern<mlir::li
         if (!output_type || output_type.getRank() != 3) {
             return mlir::failure();
         }
+        auto maps = op.getIndexingMapsArray();
+        if (maps.size() != 3) {
+            return mlir::failure();
+        }
+        const auto a_map = maps[0];
+        const auto b_map = maps[1];
+        const int64_t k_dim = find_k_dim(a_map);
+        if (k_dim < 0) {
+            return mlir::failure();
+        }
 
-        auto input_a = strip_memref_casts(op.getDpsInputs()[0]);
-        auto input_b = strip_memref_casts(op.getDpsInputs()[1]);
+        auto logical_input_a = strip_memref_casts(op.getDpsInputs()[0]);
+        auto logical_input_b = strip_memref_casts(op.getDpsInputs()[1]);
+        auto logical_input_a_type = mlir::dyn_cast<mlir::MemRefType>(logical_input_a.getType());
+        auto logical_input_b_type = mlir::dyn_cast<mlir::MemRefType>(logical_input_b.getType());
+        if (!logical_input_a_type || !logical_input_b_type ||
+            logical_input_a_type.getRank() != 3 || logical_input_b_type.getRank() != 3) {
+            return mlir::failure();
+        }
+
+        auto input_a = logical_input_a;
+        auto input_b = logical_input_b;
+        auto input_a_transpose = match_transpose_copy_producer(op.getOperation(), input_a);
+        auto input_b_transpose = match_transpose_copy_producer(op.getOperation(), input_b);
+        if (input_a_transpose) {
+            input_a = input_a_transpose->source;
+        }
+        if (input_b_transpose) {
+            input_b = input_b_transpose->source;
+        }
         auto input_a_type = mlir::dyn_cast<mlir::MemRefType>(input_a.getType());
         auto input_b_type = mlir::dyn_cast<mlir::MemRefType>(input_b.getType());
         if (!input_a_type || !input_b_type || input_a_type.getRank() != 3 || input_b_type.getRank() != 3) {
@@ -596,6 +756,7 @@ struct BatchMatMulLoweringPattern final : public mlir::OpRewritePattern<mlir::li
         }
 
         auto zero_fill = find_zero_fill(op.getOperation(), output);
+        const bool zero_init = static_cast<bool>(zero_fill) || force_zero_init(op.getOperation());
         const auto loc = op.getLoc();
         rewriter.setInsertionPoint(op);
 
@@ -635,7 +796,7 @@ struct BatchMatMulLoweringPattern final : public mlir::OpRewritePattern<mlir::li
         auto B = get_dim(rewriter, loc, output, 0);
         auto M = get_dim(rewriter, loc, output, 1);
         auto N = get_dim(rewriter, loc, output, 2);
-        auto K = get_dim(rewriter, loc, input_a, 2);
+        auto K = get_dim(rewriter, loc, logical_input_a, k_dim);
 
         auto h_tiles_num = rewriter.create<mlir::arith::AddIOp>(loc, M, tileH_minus1);
         auto w_tiles_num = rewriter.create<mlir::arith::AddIOp>(loc, N, tileW_minus1);
@@ -669,7 +830,7 @@ struct BatchMatMulLoweringPattern final : public mlir::OpRewritePattern<mlir::li
             return mlir::failure();
         }
         mlir::Value init_val;
-        if (zero_fill) {
+        if (zero_init) {
             if (auto ft = mlir::dyn_cast<mlir::FloatType>(elem_ty)) {
                 init_val = rewriter.create<mlir::arith::ConstantOp>(loc, mlir::FloatAttr::get(ft, 0.0));
             } else if (auto it = mlir::dyn_cast<mlir::IntegerType>(elem_ty)) {
@@ -686,11 +847,207 @@ struct BatchMatMulLoweringPattern final : public mlir::OpRewritePattern<mlir::li
             rewriter.setInsertionPointToStart(k_for.getBody());
             auto iv_k = k_for.getInductionVar();
             auto acc = k_for.getRegionIterArgs()[0];
-
+            const llvm::SmallVector<mlir::Value, 4> dims = {iv_b, iv_m, iv_n, iv_k};
+            llvm::SmallVector<mlir::Value, 4> lhs_logical_indices;
+            llvm::SmallVector<mlir::Value, 4> rhs_logical_indices;
+            build_affine_indices(rewriter, loc, a_map, dims, lhs_logical_indices);
+            build_affine_indices(rewriter, loc, b_map, dims, rhs_logical_indices);
             auto lhs = rewriter.create<mlir::memref::LoadOp>(
-                loc, input_a, mlir::ValueRange{iv_b, iv_m, iv_k});
+                loc,
+                input_a,
+                input_a_transpose ? permute_indices(lhs_logical_indices, input_a_transpose->source_indices_from_output)
+                                  : llvm::SmallVector<mlir::Value, 4>(lhs_logical_indices.begin(),
+                                                                       lhs_logical_indices.end()));
             auto rhs = rewriter.create<mlir::memref::LoadOp>(
-                loc, input_b, mlir::ValueRange{iv_b, iv_k, iv_n});
+                loc,
+                input_b,
+                input_b_transpose ? permute_indices(rhs_logical_indices, input_b_transpose->source_indices_from_output)
+                                  : llvm::SmallVector<mlir::Value, 4>(rhs_logical_indices.begin(),
+                                                                       rhs_logical_indices.end()));
+
+            mlir::Value mul;
+            mlir::Value sum;
+            if (mlir::isa<mlir::FloatType>(elem_ty)) {
+                mul = rewriter.create<mlir::arith::MulFOp>(loc, lhs, rhs);
+                sum = rewriter.create<mlir::arith::AddFOp>(loc, acc, mul);
+            } else {
+                mul = rewriter.create<mlir::arith::MulIOp>(loc, lhs, rhs);
+                sum = rewriter.create<mlir::arith::AddIOp>(loc, acc, mul);
+            }
+            rewriter.create<mlir::scf::YieldOp>(loc, sum);
+        }
+
+        auto acc_val = k_for.getResult(0);
+        rewriter.create<mlir::memref::StoreOp>(loc, acc_val, output, mlir::ValueRange{iv_b, iv_m, iv_n});
+
+        if (op->getNumResults() > 0) {
+            op.getResult(0).replaceAllUsesWith(op.getDpsInits()[0]);
+        }
+        if (zero_fill) {
+            rewriter.eraseOp(zero_fill);
+        }
+        rewriter.eraseOp(op);
+        return mlir::success();
+    }
+};
+
+struct BatchMatMulTransposeBLoweringPattern final : public mlir::OpRewritePattern<mlir::linalg::BatchMatmulTransposeBOp> {
+    using mlir::OpRewritePattern<mlir::linalg::BatchMatmulTransposeBOp>::OpRewritePattern;
+
+    mlir::LogicalResult matchAndRewrite(mlir::linalg::BatchMatmulTransposeBOp op,
+                                        mlir::PatternRewriter& rewriter) const override {
+        if (op.getNumDpsInputs() != 2 || op.getNumDpsInits() != 1) {
+            return mlir::failure();
+        }
+        auto module = op->getParentOfType<mlir::ModuleOp>();
+        if (module) {
+            if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.prefer_parallel")) {
+                if (!attr.getValue()) {
+                    return mlir::failure();
+                }
+            }
+        }
+
+        auto output = strip_memref_casts(op.getDpsInits()[0]);
+        auto output_type = mlir::dyn_cast<mlir::MemRefType>(output.getType());
+        if (!output_type || output_type.getRank() != 3) {
+            return mlir::failure();
+        }
+
+        auto logical_input_a = strip_memref_casts(op.getDpsInputs()[0]);
+        auto logical_input_b = strip_memref_casts(op.getDpsInputs()[1]);
+        auto logical_input_a_type = mlir::dyn_cast<mlir::MemRefType>(logical_input_a.getType());
+        auto logical_input_b_type = mlir::dyn_cast<mlir::MemRefType>(logical_input_b.getType());
+        if (!logical_input_a_type || !logical_input_b_type ||
+            logical_input_a_type.getRank() != 3 || logical_input_b_type.getRank() != 3) {
+            return mlir::failure();
+        }
+
+        auto input_a = logical_input_a;
+        auto input_b = logical_input_b;
+        auto input_a_transpose = match_transpose_copy_producer(op.getOperation(), input_a);
+        auto input_b_transpose = match_transpose_copy_producer(op.getOperation(), input_b);
+        if (input_a_transpose) {
+            input_a = input_a_transpose->source;
+        }
+        if (input_b_transpose) {
+            input_b = input_b_transpose->source;
+        }
+        auto input_a_type = mlir::dyn_cast<mlir::MemRefType>(input_a.getType());
+        auto input_b_type = mlir::dyn_cast<mlir::MemRefType>(input_b.getType());
+        if (!input_a_type || !input_b_type || input_a_type.getRank() != 3 || input_b_type.getRank() != 3) {
+            return mlir::failure();
+        }
+        if (has_inplace_elementwise_consumer(op.getOperation(), output)) {
+            return mlir::failure();
+        }
+
+        auto zero_fill = find_zero_fill(op.getOperation(), output);
+        const bool zero_init = static_cast<bool>(zero_fill) || force_zero_init(op.getOperation());
+        const auto loc = op.getLoc();
+        rewriter.setInsertionPoint(op);
+
+        int64_t kThreadH = 8;
+        int64_t kThreadW = 8;
+        if (module) {
+            if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_h")) {
+                kThreadH = std::max<int64_t>(1, attr.getInt());
+            }
+            if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_w")) {
+                kThreadW = std::max<int64_t>(1, attr.getInt());
+            }
+        }
+        const int64_t tile_h = kThreadH;
+        const int64_t tile_w = kThreadW;
+        if (module) {
+            auto* ctx = module.getContext();
+            module->setAttr("gfx.dispatch_tile_h",
+                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), tile_h));
+            module->setAttr("gfx.dispatch_tile_w",
+                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), tile_w));
+            module->setAttr("gfx.dispatch_threads_h",
+                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), kThreadH));
+            module->setAttr("gfx.dispatch_threads_w",
+                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), kThreadW));
+        }
+
+        auto c0 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 0);
+        auto c1 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 1);
+        auto tileH = rewriter.create<mlir::arith::ConstantIndexOp>(loc, tile_h);
+        auto tileW = rewriter.create<mlir::arith::ConstantIndexOp>(loc, tile_w);
+        auto threadH = rewriter.create<mlir::arith::ConstantIndexOp>(loc, kThreadH);
+        auto threadW = rewriter.create<mlir::arith::ConstantIndexOp>(loc, kThreadW);
+        auto tileH_minus1 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, tile_h - 1);
+        auto tileW_minus1 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, tile_w - 1);
+
+        auto B = get_dim(rewriter, loc, output, 0);
+        auto M = get_dim(rewriter, loc, output, 1);
+        auto N = get_dim(rewriter, loc, output, 2);
+        auto K = get_dim(rewriter, loc, logical_input_a, 2);
+
+        auto h_tiles_num = rewriter.create<mlir::arith::AddIOp>(loc, M, tileH_minus1);
+        auto w_tiles_num = rewriter.create<mlir::arith::AddIOp>(loc, N, tileW_minus1);
+        auto H_tiles = rewriter.create<mlir::arith::DivSIOp>(loc, h_tiles_num, tileH);
+        auto W_tiles = rewriter.create<mlir::arith::DivSIOp>(loc, w_tiles_num, tileW);
+
+        auto par = rewriter.create<mlir::scf::ParallelOp>(
+            loc,
+            mlir::ValueRange{c0, c0, c0, c0, c0},
+            mlir::ValueRange{B, H_tiles, W_tiles, threadH, threadW},
+            mlir::ValueRange{c1, c1, c1, c1, c1});
+
+        mlir::OpBuilder::InsertionGuard guard(rewriter);
+        rewriter.setInsertionPoint(par.getBody()->getTerminator());
+
+        auto ivs = par.getInductionVars();
+        auto iv_b = ivs[0];
+        auto iv_m_base = rewriter.create<mlir::arith::MulIOp>(loc, ivs[1], tileH);
+        auto iv_n_base = rewriter.create<mlir::arith::MulIOp>(loc, ivs[2], tileW);
+        auto iv_m = rewriter.create<mlir::arith::AddIOp>(loc, iv_m_base, ivs[3]);
+        auto iv_n = rewriter.create<mlir::arith::AddIOp>(loc, iv_n_base, ivs[4]);
+
+        auto m_in = rewriter.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::slt, iv_m, M);
+        auto n_in = rewriter.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::slt, iv_n, N);
+        auto in_bounds = rewriter.create<mlir::arith::AndIOp>(loc, m_in, n_in);
+        auto if_op = rewriter.create<mlir::scf::IfOp>(loc, in_bounds, /*withElseRegion=*/false);
+
+        rewriter.setInsertionPointToStart(if_op.thenBlock());
+        auto elem_ty = output_type.getElementType();
+        if (!mlir::isa<mlir::FloatType, mlir::IntegerType>(elem_ty)) {
+            return mlir::failure();
+        }
+        mlir::Value init_val;
+        if (zero_init) {
+            if (auto ft = mlir::dyn_cast<mlir::FloatType>(elem_ty)) {
+                init_val = rewriter.create<mlir::arith::ConstantOp>(loc, mlir::FloatAttr::get(ft, 0.0));
+            } else if (auto it = mlir::dyn_cast<mlir::IntegerType>(elem_ty)) {
+                init_val = rewriter.create<mlir::arith::ConstantOp>(loc, mlir::IntegerAttr::get(it, 0));
+            }
+        } else {
+            init_val = rewriter.create<mlir::memref::LoadOp>(
+                loc, output, mlir::ValueRange{iv_b, iv_m, iv_n});
+        }
+
+        auto k_for = rewriter.create<mlir::scf::ForOp>(loc, c0, K, c1, mlir::ValueRange{init_val});
+        {
+            mlir::OpBuilder::InsertionGuard loop_guard(rewriter);
+            rewriter.setInsertionPointToStart(k_for.getBody());
+            auto iv_k = k_for.getInductionVar();
+            auto acc = k_for.getRegionIterArgs()[0];
+            const llvm::SmallVector<mlir::Value, 4> lhs_logical_indices = {iv_b, iv_m, iv_k};
+            const llvm::SmallVector<mlir::Value, 4> rhs_logical_indices = {iv_b, iv_n, iv_k};
+            auto lhs = rewriter.create<mlir::memref::LoadOp>(
+                loc,
+                input_a,
+                input_a_transpose ? permute_indices(lhs_logical_indices, input_a_transpose->source_indices_from_output)
+                                  : llvm::SmallVector<mlir::Value, 4>(lhs_logical_indices.begin(),
+                                                                       lhs_logical_indices.end()));
+            auto rhs = rewriter.create<mlir::memref::LoadOp>(
+                loc,
+                input_b,
+                input_b_transpose ? permute_indices(rhs_logical_indices, input_b_transpose->source_indices_from_output)
+                                  : llvm::SmallVector<mlir::Value, 4>(rhs_logical_indices.begin(),
+                                                                       rhs_logical_indices.end()));
 
             mlir::Value mul;
             mlir::Value sum;
@@ -737,7 +1094,9 @@ void run_matmul_parallel_lowering(mlir::ModuleOp module) {
     patterns.add<MatMulLoweringPattern>(ctx);
     patterns.add<MatmulOpLoweringPattern>(ctx);
     patterns.add<BatchMatMulLoweringPattern>(ctx);
+    patterns.add<BatchMatMulTransposeBLoweringPattern>(ctx);
     (void)mlir::applyPatternsGreedily(module, std::move(patterns));
+    cleanup_dead_transpose_buffers(module);
 }
 
 }  // namespace gfx_plugin

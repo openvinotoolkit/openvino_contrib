@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -23,11 +24,16 @@
 #include "openvino/op/add.hpp"
 #include "openvino/op/batch_norm.hpp"
 #include "openvino/op/constant.hpp"
+#include "openvino/op/convert.hpp"
 #include "openvino/op/elu.hpp"
 #include "openvino/op/multiply.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/prelu.hpp"
+#include "openvino/op/reshape.hpp"
 #include "openvino/op/result.hpp"
+#include "openvino/op/split.hpp"
+#include "openvino/op/variadic_split.hpp"
+#include "openvino/op/transpose.hpp"
 #include "transforms/fusion_patterns.hpp"
 #include "llvm/Support/raw_ostream.h"
 
@@ -211,6 +217,143 @@ bool extract_scale_as_batchnorm_params(const std::shared_ptr<const ov::Node>& sc
     params.epsilon = 0.0f;
     out = std::move(params);
     return true;
+}
+
+bool is_attention_group_kind(const std::string& kind) {
+    return kind == "Attention" || kind == "AttentionScale" || kind == "AttentionScaleMask";
+}
+
+bool is_attention_layout_node(const std::shared_ptr<const ov::Node>& node) {
+    return static_cast<bool>(ov::as_type_ptr<const ov::op::v0::Convert>(node)) ||
+           static_cast<bool>(ov::as_type_ptr<const ov::op::v1::Transpose>(node)) ||
+           static_cast<bool>(ov::as_type_ptr<const ov::op::v1::Reshape>(node)) ||
+           static_cast<bool>(ov::as_type_ptr<const ov::op::v1::Split>(node)) ||
+           static_cast<bool>(ov::as_type_ptr<const ov::op::v1::VariadicSplit>(node));
+}
+
+std::unordered_map<const ov::Node*, std::vector<bool>> collect_model_outputs(const std::shared_ptr<const ov::Model>& model) {
+    std::unordered_map<const ov::Node*, std::vector<bool>> model_outputs;
+    if (!model) {
+        return model_outputs;
+    }
+    for (const auto& result : model->get_results()) {
+        auto src = result->input_value(0).get_node_shared_ptr();
+        const size_t port = result->input_value(0).get_index();
+        auto& flags = model_outputs[src.get()];
+        if (flags.empty()) {
+            flags.resize(src->get_output_size(), false);
+        }
+        if (port < flags.size()) {
+            flags[port] = true;
+        }
+    }
+    return model_outputs;
+}
+
+bool node_consumed_only_inside_group(
+    const std::shared_ptr<const ov::Node>& node,
+    const std::unordered_map<const ov::Node*, size_t>& node_index,
+    const std::unordered_set<size_t>& group_nodes,
+    const std::unordered_map<const ov::Node*, std::vector<bool>>& model_outputs) {
+    if (!node || model_outputs.count(node.get()) != 0) {
+        return false;
+    }
+    bool has_internal_consumer = false;
+    for (size_t port = 0; port < node->get_output_size(); ++port) {
+        const auto& targets = node->output(port).get_target_inputs();
+        if (targets.empty()) {
+            return false;
+        }
+        for (const auto& target_input : targets) {
+            auto consumer = target_input.get_node()->shared_from_this();
+            if (!consumer) {
+                return false;
+            }
+            const auto it = node_index.find(consumer.get());
+            if (it == node_index.end() || group_nodes.count(it->second) == 0) {
+                return false;
+            }
+            has_internal_consumer = true;
+        }
+    }
+    return has_internal_consumer;
+}
+
+void expand_attention_groups(const std::shared_ptr<const ov::Model>& model, FusionPlan& plan) {
+    if (!model || plan.groups.empty()) {
+        return;
+    }
+
+    const auto ordered_ops = model->get_ordered_ops();
+    std::unordered_map<const ov::Node*, size_t> node_index;
+    node_index.reserve(ordered_ops.size());
+    for (size_t i = 0; i < ordered_ops.size(); ++i) {
+        node_index.emplace(ordered_ops[i].get(), i);
+    }
+    const auto model_outputs = collect_model_outputs(model);
+
+    for (auto& group : plan.groups) {
+        if (!is_attention_group_kind(group.kind) || group.node_indices.size() < 3) {
+            continue;
+        }
+
+        std::unordered_set<size_t> group_nodes(group.node_indices.begin(), group.node_indices.end());
+
+        bool changed = true;
+        while (changed) {
+            changed = false;
+            std::vector<size_t> current(group_nodes.begin(), group_nodes.end());
+            std::sort(current.begin(), current.end());
+            for (size_t idx : current) {
+                if (idx >= ordered_ops.size()) {
+                    continue;
+                }
+                const auto& node = ordered_ops[idx];
+                for (const auto& input : node->input_values()) {
+                    auto producer = input.get_node_shared_ptr();
+                    if (!producer || ov::as_type_ptr<const ov::op::v0::Parameter>(producer) ||
+                        ov::as_type_ptr<const ov::op::v0::Constant>(producer) ||
+                        !is_attention_layout_node(producer)) {
+                        continue;
+                    }
+                    const auto it = node_index.find(producer.get());
+                    if (it == node_index.end() || group_nodes.count(it->second) != 0) {
+                        continue;
+                    }
+                    if (!node_consumed_only_inside_group(producer, node_index, group_nodes, model_outputs)) {
+                        continue;
+                    }
+                    group_nodes.insert(it->second);
+                    changed = true;
+                }
+            }
+        }
+
+        size_t tail_idx = *std::max_element(group_nodes.begin(), group_nodes.end());
+        while (tail_idx < ordered_ops.size()) {
+            const auto& tail = ordered_ops[tail_idx];
+            if (tail->get_output_size() != 1) {
+                break;
+            }
+            const auto& targets = tail->output(0).get_target_inputs();
+            if (targets.size() != 1) {
+                break;
+            }
+            auto consumer = targets.begin()->get_node()->shared_from_this();
+            if (!consumer || ov::as_type_ptr<const ov::op::v0::Result>(consumer) || !is_attention_layout_node(consumer)) {
+                break;
+            }
+            const auto it = node_index.find(consumer.get());
+            if (it == node_index.end() || group_nodes.count(it->second) != 0) {
+                break;
+            }
+            group_nodes.insert(it->second);
+            tail_idx = it->second;
+        }
+
+        group.node_indices.assign(group_nodes.begin(), group_nodes.end());
+        std::sort(group.node_indices.begin(), group.node_indices.end());
+    }
 }
 
 mlir::Type to_mlir_element_type(mlir::MLIRContext& ctx, const ov::element::Type& et) {
@@ -575,6 +718,7 @@ FusionPlan build_fusion_plan(const std::shared_ptr<const ov::Model>& model,
 
     plan = extract_plan(module);
     materialize_post_op_payloads(model, plan);
+    expand_attention_groups(model, plan);
     return plan;
 }
 

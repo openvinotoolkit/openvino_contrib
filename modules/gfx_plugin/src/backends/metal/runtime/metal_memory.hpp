@@ -16,6 +16,7 @@
 #include "openvino/runtime/tensor.hpp"
 
 #include "runtime/gpu_buffer_manager.hpp"
+#include "runtime/gpu_memory_ops.hpp"
 #include "runtime/memory_manager.hpp"
 #include "runtime/gpu_tensor.hpp"
 #include "backends/metal/runtime/memory/allocator.hpp"
@@ -51,6 +52,11 @@ void metal_copy_buffer(MetalCommandQueueHandle queue,
                        const MetalBuffer& src,
                        const MetalBuffer& dst,
                        size_t bytes);
+void metal_copy_buffer_regions(MetalCommandQueueHandle execution_context,
+                               const MetalBuffer& src,
+                               const MetalBuffer& dst,
+                               const GpuBufferCopyRegion* regions,
+                               size_t region_count);
 void ensure_metal_memory_ops_registered();
 
 class MetalTensorMap {

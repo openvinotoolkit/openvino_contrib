@@ -4,6 +4,7 @@
 
 #include "openvino/gfx_plugin/infer_request.hpp"
 
+#include <chrono>
 #include <iostream>
 #include <algorithm>
 #include <sstream>
@@ -71,7 +72,9 @@ const MetalInferState* get_metal_state(const InferRequestState& state) {
 
 class MetalInferSubmissionSession final : public SingleFlightInferSubmissionSession {
 public:
-    explicit MetalInferSubmissionSession(id<MTLCommandQueue> command_queue) : m_command_queue(command_queue) {}
+    explicit MetalInferSubmissionSession(id<MTLCommandQueue> command_queue, GfxProfiler* profiler)
+        : m_command_queue(command_queue),
+          m_profiler(profiler) {}
 
     bool supports_incremental_submit() const override {
         return false;
@@ -92,8 +95,47 @@ protected:
         if (!m_command_buffer) {
             return;
         }
+        const bool profiling = (m_profiler != nullptr);
+        const auto commit_start = profiling ? std::chrono::steady_clock::now()
+                                            : std::chrono::steady_clock::time_point{};
         [m_command_buffer commit];
+        if (profiling) {
+            const auto commit_cpu_us =
+                std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - commit_start);
+            m_profiler->record_segment("submit",
+                                       "metal_commit",
+                                       commit_cpu_us,
+                                       0,
+                                       0,
+                                       0,
+                                       0,
+                                       0,
+                                       0,
+                                       -1,
+                                       0,
+                                       reinterpret_cast<uint64_t>(m_command_buffer));
+            m_profiler->increment_counter("metal_commit_count");
+        }
+        const auto wait_start = profiling ? std::chrono::steady_clock::now()
+                                          : std::chrono::steady_clock::time_point{};
         [m_command_buffer waitUntilCompleted];
+        if (profiling) {
+            const auto wait_cpu_us =
+                std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - wait_start);
+            m_profiler->record_segment("wait",
+                                       "metal_wait_until_completed",
+                                       wait_cpu_us,
+                                       0,
+                                       0,
+                                       0,
+                                       0,
+                                       0,
+                                       0,
+                                       -1,
+                                       0,
+                                       reinterpret_cast<uint64_t>(m_command_buffer));
+            m_profiler->increment_counter("metal_wait_count");
+        }
         set_completed_command_buffer(reinterpret_cast<GpuCommandBufferHandle>(m_command_buffer));
         m_command_buffer = nil;
     }
@@ -101,6 +143,7 @@ protected:
 private:
     id<MTLCommandQueue> m_command_queue = nil;
     id<MTLCommandBuffer> m_command_buffer = nil;
+    GfxProfiler* m_profiler = nullptr;
 };
 
 }  // namespace
@@ -176,6 +219,19 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
 
         MetalGpuAllocator gpu_alloc(allocator, *alloc_core, caps);
 
+        GfxProfiler* profiler = prepare_infer_profiler(*cm, state, "GFX");
+        MetalProfiler* metal_profiler = profiler
+                                            ? static_cast<MetalProfiler*>(profiler->native_handle())
+                                            : nullptr;
+        const bool detailed = (state.profiler_cfg.level == ProfilingLevel::Detailed);
+        allocator.set_profiler(metal_profiler, detailed);
+        const bool profiling = (profiler != nullptr);
+        if (profiler) {
+            profiler->begin_infer(cm->pipeline_desc().size());
+        }
+        const auto bind_inputs_start = profiling ? std::chrono::steady_clock::now()
+                                                 : std::chrono::steady_clock::time_point{};
+
         bind_inputs_for_infer(
             GpuBackend::Metal,
             [&](size_t idx, const GpuTensor& dev) {
@@ -204,17 +260,17 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                 // Bind host -> device using zero-copy shared buffer (no memcpy).
                 const auto dev = bind_host_input_metal(src,
                                                        &gpu_alloc,
+                                                       profiler,
                                                        "GFX");
                 tensor_map.bind_input_device(idx, dev);
             },
             "GFX");
-
-    GfxProfiler* profiler = prepare_infer_profiler(*cm, state, "GFX");
-    MetalProfiler* metal_profiler = profiler
-                                        ? static_cast<MetalProfiler*>(profiler->native_handle())
-                                        : nullptr;
-    const bool detailed = (state.profiler_cfg.level == ProfilingLevel::Detailed);
-    allocator.set_profiler(metal_profiler, detailed);
+        if (profiling) {
+            profiler->record_segment("upload",
+                                     "bind_inputs_for_infer",
+                                     std::chrono::duration_cast<std::chrono::microseconds>(
+                                         std::chrono::steady_clock::now() - bind_inputs_start));
+        }
 
     auto run_pipeline = [&]() {
         auto shape_to_string = [](const ov::Shape& shape) {
@@ -259,6 +315,8 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
         auto* metal = dynamic_cast<const MetalBackendState*>(cm->backend_state());
         OPENVINO_ASSERT(metal && metal->const_manager, "GFX: Metal buffer manager is not initialized");
         GpuBufferPool pool(gpu_alloc);
+        const auto pipeline_prepare_start = profiling ? std::chrono::steady_clock::now()
+                                                      : std::chrono::steady_clock::time_point{};
         auto& pipeline = prepare_reusable_pipeline_with_outputs(metal_state->reusable_pipeline,
                                                                 descs,
                                                                 metal->const_manager.get(),
@@ -293,16 +351,58 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                                                                 },
                                                                 "GFX");
         prepare_reusable_execution_plan(metal_state->reusable_execution_plan, pipeline, node_map, param_map);
-
-        if (profiler) {
-            const size_t expected_samples = pipeline.size() * 4;
-            profiler->begin_infer(expected_samples);
+        if (!metal_state->reusable_pipeline_runtime_prewarmed) {
+            const auto prewarm_start = profiling ? std::chrono::steady_clock::now()
+                                                 : std::chrono::steady_clock::time_point{};
+            prewarm_pipeline_runtime_state(
+                pipeline,
+                node_map,
+                param_map,
+                [&](size_t input_idx) -> GpuTensor* {
+                    return &tensor_map.get_input_device(input_idx);
+                },
+                &metal_state->reusable_execution_plan);
+            metal_state->reusable_pipeline_runtime_prewarmed = true;
+            if (profiling) {
+                profiler->record_segment("compile",
+                                         "prewarm_reusable_pipeline",
+                                         std::chrono::duration_cast<std::chrono::microseconds>(
+                                             std::chrono::steady_clock::now() - prewarm_start));
+            }
+        }
+        if (profiling) {
+            profiler->record_segment("compile",
+                                     "prepare_reusable_pipeline",
+                                     std::chrono::duration_cast<std::chrono::microseconds>(
+                                         std::chrono::steady_clock::now() - pipeline_prepare_start));
         }
 
         OPENVINO_ASSERT(metal && metal->command_queue, "GFX: command queue is null");
         id<MTLCommandQueue> cq = static_cast<id<MTLCommandQueue>>(metal->command_queue);
         OPENVINO_ASSERT(cq, "GFX: command queue is null");
-        MetalInferSubmissionSession submission(cq);
+        MetalInferSubmissionSession submission(cq, profiler);
+        InferSubmissionTuningCaps submission_caps{};
+        submission_caps.backend = GpuBackend::Metal;
+        submission_caps.preferred_simd_width = std::max<uint32_t>(caps.preferred_simd_width, 1u);
+        submission_caps.subgroup_size = std::max<uint32_t>(caps.preferred_simd_width, 1u);
+        submission_caps.max_total_threads_per_group =
+            std::max<uint32_t>(caps.max_total_threads_per_threadgroup, 1u);
+        submission_caps.supports_incremental_submit = submission.supports_incremental_submit();
+        const auto submission_tuning = select_infer_submission_tuning(submission_caps, pipeline.size());
+        record_infer_submission_tuning_counters(submission_tuning, submission_caps, profiler);
+        if (gfx_log_debug_enabled()) {
+            gfx_log_debug("InferSubmit") << "Metal submission tuning: slots=" << submission_tuning.slot_count
+                                         << " max_stages=" << submission_tuning.config.max_stages_per_submit
+                                         << " max_output_bytes="
+                                         << submission_tuning.config.max_output_bytes_per_submit
+                                         << " simd=" << submission_caps.preferred_simd_width
+                                         << " max_threads=" << submission_caps.max_total_threads_per_group
+                                         << " incremental="
+                                         << (submission_caps.supports_incremental_submit ? "yes" : "no")
+                                         << " pipeline_stages=" << pipeline.size();
+        }
+        const auto infer_start = profiling ? std::chrono::steady_clock::now()
+                                           : std::chrono::steady_clock::time_point{};
         execute_pipeline_with_submission(
             pipeline,
             node_map,
@@ -311,7 +411,8 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                 return &tensor_map.get_input_device(input_idx);
             },
             submission,
-            {},
+            submission_tuning.config,
+            profiler,
             &metal_state->reusable_execution_plan,
             [&](InferStage& stage, const std::vector<GpuTensor*>& resolved, GpuCommandBufferHandle command_buffer) {
                 if (gfx_log_debug_enabled() || metal_safe_debug_enabled()) {
@@ -364,19 +465,16 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                 }
                 stage.stage->execute(command_buffer);
             });
-
-        finalize_infer_profiling("metal",
-                                 cm,
-                                 state,
-                                 profiler,
-                                 submission.completed_command_buffer(),
-                                 [&]() {
-                                     const auto stats = allocator.stats();
-                                     metal_profiler->set_memory_stats(stats);
-                                 });
+        if (profiling) {
+            profiler->record_segment("infer",
+                                     "execute_pipeline_with_submission",
+                                     std::chrono::duration_cast<std::chrono::microseconds>(
+                                         std::chrono::steady_clock::now() - infer_start));
+        }
+        return submission.completed_command_buffer();
     };
 
-    run_pipeline();
+    auto completed_command_buffer = run_pipeline();
     auto& pipeline = metal_state->reusable_pipeline;
 
     ensure_output_staging_handles(get_outputs().size(), "GFX");
@@ -391,6 +489,8 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
     };
     const auto resources = cm->backend_state()->resources();
     OPENVINO_ASSERT(resources.queue, "GFX: command queue is null");
+    const auto bind_outputs_start = profiling ? std::chrono::steady_clock::now()
+                                              : std::chrono::steady_clock::time_point{};
     bind_outputs_for_infer(
         cm,
         pipeline,
@@ -423,12 +523,31 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                                                 &output_pool,
                                                 &output_handles[idx],
                                                 resources.queue,
+                                                profiler,
                                                 "GFX");
             tensor_map.bind_output_device(idx, bound.device_tensor);
             ov::ISyncInferRequest::set_tensor(get_outputs()[idx], ov::get_tensor_impl(bound.host_tensor));
         },
         /*allow_missing=*/false,
         "GFX");
+    if (profiling) {
+        profiler->record_segment("download",
+                                 "bind_outputs_for_infer",
+                                 std::chrono::duration_cast<std::chrono::microseconds>(
+                                     std::chrono::steady_clock::now() - bind_outputs_start));
+    }
+
+    finalize_infer_profiling("metal",
+                             cm,
+                             state,
+                             profiler,
+                             completed_command_buffer,
+                             [&]() {
+                                 if (metal_profiler) {
+                                     const auto stats = allocator.stats();
+                                     metal_profiler->set_memory_stats(stats);
+                                 }
+                             });
 
     if (cm && cm->backend_state()) {
         cm->backend_state()->set_mem_stats(ov::Any{allocator.stats()});

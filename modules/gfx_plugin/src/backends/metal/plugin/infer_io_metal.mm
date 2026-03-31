@@ -4,6 +4,8 @@
 
 #include "backends/metal/plugin/infer_io_metal.hpp"
 
+#include <chrono>
+
 #include "openvino/core/except.hpp"
 #include "runtime/memory_manager.hpp"
 #include "runtime/gfx_shape_utils.hpp"
@@ -13,6 +15,7 @@ namespace gfx_plugin {
 
 GpuTensor bind_host_input_metal(const ov::Tensor& host,
                                 IGpuAllocator* allocator,
+                                GfxProfiler* profiler,
                                 const char* error_prefix) {
     HostInputBinding binding = prepare_host_input_binding(host, GpuBackend::Metal, error_prefix);
     GpuTensor tensor = binding.tensor;
@@ -22,10 +25,19 @@ GpuTensor bind_host_input_metal(const ov::Tensor& host,
     }
 
     OPENVINO_ASSERT(allocator, error_prefix, ": GPU allocator is null");
+    const bool profiling = (profiler != nullptr);
+    const auto transfer_start = profiling ? std::chrono::steady_clock::now()
+                                          : std::chrono::steady_clock::time_point{};
     tensor.buf = allocator->wrap_shared(const_cast<void*>(host.data()), bytes, host.get_element_type());
     tensor.buf.backend = allocator->backend();
     tensor.buf.host_visible = true;
     tensor.prefer_private = false;
+    if (profiling) {
+        const auto cpu_us =
+            std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - transfer_start);
+        profiler->record_transfer("input_h2d", bytes, true, cpu_us);
+        profiler->increment_counter("h2d_transfer_count");
+    }
     return tensor;
 }
 
@@ -37,6 +49,7 @@ OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
                                           GpuBufferPool* pool,
                                           BufferHandle* staging_handle,
                                           GpuCommandQueueHandle metal_queue,
+                                          GfxProfiler* profiler,
                                           const char* error_prefix) {
     OutputBindingResult result{};
     result.device_tensor = dev;
@@ -49,9 +62,18 @@ OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
         HostOutputBinding host_binding = prepare_host_output_binding(info, host_override, reusable_host);
         const size_t bytes = host_binding.bytes;
         pool->release(*staging_handle);
+        const bool profiling = (profiler != nullptr);
+        const auto transfer_start = profiling ? std::chrono::steady_clock::now()
+                                              : std::chrono::steady_clock::time_point{};
         GpuBuffer shared = allocator->wrap_shared(const_cast<void*>(host_override->data()), bytes, info.type);
         if (bytes && dev.buf.buffer != shared.buffer) {
             gpu_copy_buffer(metal_queue, dev.buf, shared, bytes);
+        }
+        if (profiling) {
+            const auto cpu_us =
+                std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - transfer_start);
+            profiler->record_transfer("output_d2h", bytes, false, cpu_us);
+            profiler->increment_counter("d2h_transfer_count");
         }
         result.device_tensor = dev;
         result.device_tensor.buf = shared;
@@ -64,8 +86,18 @@ OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
 
     if (dev.buf.host_visible && dev.buf.buffer) {
         pool->release(*staging_handle);
+        const bool profiling = (profiler != nullptr);
+        const auto transfer_start = profiling ? std::chrono::steady_clock::now()
+                                              : std::chrono::steady_clock::time_point{};
+        const size_t bytes = info.shape.empty() ? dev.buf.size : tensor_byte_size(info.shape, info.type);
         void* ptr = gpu_map_buffer(dev.buf);
         OPENVINO_ASSERT(ptr, error_prefix, ": shared output buffer has no CPU pointer");
+        if (profiling) {
+            const auto cpu_us =
+                std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - transfer_start);
+            profiler->record_transfer("output_d2h", bytes, false, cpu_us);
+            profiler->increment_counter("d2h_transfer_count");
+        }
         result.host_tensor = ov::Tensor(info.type, info.shape, ptr);
         result.device_tensor.expected_type = info.type;
         if (result.device_tensor.shape.empty()) {
@@ -78,6 +110,9 @@ OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
     HostOutputBinding host_binding = prepare_host_output_binding(info, host_override, reusable_host);
     size_t bytes = host_binding.bytes;
     if (bytes) {
+        const bool profiling = (profiler != nullptr);
+        const auto transfer_start = profiling ? std::chrono::steady_clock::now()
+                                              : std::chrono::steady_clock::time_point{};
         GpuBufferDesc desc;
         desc.bytes = bytes;
         desc.type = info.type;
@@ -95,6 +130,12 @@ OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
         void* ptr = gpu_map_buffer(shared);
         OPENVINO_ASSERT(ptr, error_prefix, ": shared output buffer has no CPU pointer");
         result.host_tensor = ov::Tensor(info.type, info.shape, ptr);
+        if (profiling) {
+            const auto cpu_us =
+                std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - transfer_start);
+            profiler->record_transfer("output_d2h", bytes, false, cpu_us);
+            profiler->increment_counter("d2h_transfer_count");
+        }
         return result;
     }
 

@@ -200,30 +200,76 @@ void metal_unmap_buffer(const MetalBuffer& /*buf*/) {
     // No-op for Metal; buffer contents are persistently mapped.
 }
 
+namespace {
+#ifdef __OBJC__
+id<MTLCommandBuffer> resolve_command_buffer_from_handle(MetalCommandQueueHandle execution_context, bool* owns_command_buffer) {
+    if (owns_command_buffer) {
+        *owns_command_buffer = false;
+    }
+    if (!execution_context) {
+        return nil;
+    }
+    id object = static_cast<id>(execution_context);
+    if ([object conformsToProtocol:@protocol(MTLCommandBuffer)]) {
+        return static_cast<id<MTLCommandBuffer>>(object);
+    }
+    if ([object conformsToProtocol:@protocol(MTLCommandQueue)]) {
+        if (owns_command_buffer) {
+            *owns_command_buffer = true;
+        }
+        return [static_cast<id<MTLCommandQueue>>(object) commandBuffer];
+    }
+    return nil;
+}
+#endif
+}  // namespace
+
 void metal_copy_buffer(MetalCommandQueueHandle queue,
                        const MetalBuffer& src,
                        const MetalBuffer& dst,
                        size_t bytes) {
+    GpuBufferCopyRegion region{};
+    region.bytes = bytes;
+    metal_copy_buffer_regions(queue, src, dst, &region, 1);
+}
+
+void metal_copy_buffer_regions(MetalCommandQueueHandle execution_context,
+                               const MetalBuffer& src,
+                               const MetalBuffer& dst,
+                               const GpuBufferCopyRegion* regions,
+                               size_t region_count) {
 #ifdef __OBJC__
-    if (!queue || !src.buffer || !dst.buffer || bytes == 0) {
+    if (!execution_context || !src.buffer || !dst.buffer || !regions || region_count == 0) {
         return;
     }
-    id<MTLCommandQueue> cq = static_cast<id<MTLCommandQueue>>(queue);
-    id<MTLCommandBuffer> cb = [cq commandBuffer];
+    bool owns_command_buffer = false;
+    id<MTLCommandBuffer> cb = resolve_command_buffer_from_handle(execution_context, &owns_command_buffer);
+    if (!cb) {
+        return;
+    }
     id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
-    [blit copyFromBuffer:static_cast<id<MTLBuffer>>(src.buffer)
-           sourceOffset:0
-               toBuffer:static_cast<id<MTLBuffer>>(dst.buffer)
-      destinationOffset:0
-                    size:bytes];
+    for (size_t i = 0; i < region_count; ++i) {
+        const auto& region = regions[i];
+        if (region.bytes == 0) {
+            continue;
+        }
+        [blit copyFromBuffer:static_cast<id<MTLBuffer>>(src.buffer)
+               sourceOffset:src.offset + region.src_offset
+                   toBuffer:static_cast<id<MTLBuffer>>(dst.buffer)
+          destinationOffset:dst.offset + region.dst_offset
+                        size:region.bytes];
+    }
     [blit endEncoding];
-    [cb commit];
-    [cb waitUntilCompleted];
+    if (owns_command_buffer) {
+        [cb commit];
+        [cb waitUntilCompleted];
+    }
 #else
-    (void)queue;
+    (void)execution_context;
     (void)src;
     (void)dst;
-    (void)bytes;
+    (void)regions;
+    (void)region_count;
 #endif
 }
 

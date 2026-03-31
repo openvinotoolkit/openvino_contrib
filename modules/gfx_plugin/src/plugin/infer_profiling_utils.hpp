@@ -34,7 +34,7 @@ inline void finalize_infer_profiling(std::string_view backend,
         const auto level = profiler ? cm->profiling_level() : ProfilingLevel::Off;
         const auto extended = profiler ? profiler->export_extended_json() : std::string{};
         cm->update_last_profiling_report_json(
-            build_profiling_report_json(backend, level, state.last_profiling, extended));
+            build_profiling_report_json(backend, level, state.last_profiling, extended, cm->compile_profiling_report_json()));
     }
 }
 

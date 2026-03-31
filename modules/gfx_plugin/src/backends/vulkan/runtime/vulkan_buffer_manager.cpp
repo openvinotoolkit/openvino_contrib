@@ -92,8 +92,8 @@ private:
 class VulkanConstBufferReuseRegistry {
 public:
     static VulkanConstBufferReuseRegistry& instance() {
-        static VulkanConstBufferReuseRegistry registry;
-        return registry;
+        static auto* registry = new VulkanConstBufferReuseRegistry();
+        return *registry;
     }
 
     std::shared_ptr<VulkanConstBufferReuseContext> acquire(VkDevice device) {

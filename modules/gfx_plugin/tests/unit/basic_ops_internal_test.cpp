@@ -4,15 +4,13 @@
 
 #include <gtest/gtest.h>
 
-#include <algorithm>
-#include <cmath>
-#include <cstdlib>
 #include <string>
 #include <vector>
 
 #include "openvino/openvino.hpp"
 #include "openvino/core/graph_util.hpp"
 #include "openvino/op/constant.hpp"
+#include "openvino/op/convert.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/multiply.hpp"
 #include "openvino/op/maximum.hpp"
@@ -29,7 +27,9 @@
 #include "openvino/op/gelu.hpp"
 #include "openvino/op/hsigmoid.hpp"
 #include "openvino/op/hswish.hpp"
-#include "../gfx_test_utils.hpp"
+#include "openvino/op/reshape.hpp"
+#include "openvino/op/split.hpp"
+#include "openvino/op/transpose.hpp"
 #define HAS_OV_LAYER_NORM 0
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
@@ -38,115 +38,15 @@
 #include "transforms/pipeline.hpp"
 #include "transforms/fusion_pass.hpp"
 #include "plugin/gfx_backend_config.hpp"
-#include "common_test_utils/ov_plugin_cache.hpp"
-
-namespace {
-
-inline void gfx_try_catch_fail(const std::function<void()>& fn) {
-    try {
-        fn();
-    } catch (const ov::Exception& e) {
-        const std::string msg = e.what();
-        if (msg.find("device-only") != std::string::npos ||
-            msg.find("output tensors are device-only") != std::string::npos) {
-            FAIL() << "GFX outputs are device-only; host readback required for test";
-        }
-        if (msg.find("GFX Vulkan") != std::string::npos ||
-            msg.find("SPIR-V") != std::string::npos ||
-            msg.find("spirv") != std::string::npos ||
-            msg.find("vulkan") != std::string::npos) {
-            FAIL() << "Vulkan backend did not support this case: " << msg;
-            return;
-        }
-        throw;
-    }
-}
-
-std::string gfx_skip_reason;
-
-bool register_gfx_plugin(ov::Core& core) {
-    gfx_skip_reason.clear();
-    // Always require GFX plugin to be available; fail fast if not.
-    try {
-#ifdef GFX_PLUGIN_PATH
-        const char* env_path = std::getenv("GFX_PLUGIN_PATH");
-        const char* path = (env_path && *env_path) ? env_path : GFX_PLUGIN_PATH;
-        core.register_plugin(path, "GFX");
-#else
-        // Assume default discovery if path macro is absent.
+#include "mlir/gfx_mlir_kernel_builder.hpp"
+#include "mlir/gfx_mlir_kernel_metadata.hpp"
+#include "mlir/mlir_kernel_plan_utils.hpp"
+#include "mlir/mlir_support.hpp"
+#include "mlir/codegen_common.hpp"
+#include "mlir/mlir_passes.hpp"
+#if GFX_BACKEND_VULKAN_AVAILABLE
+#    include "mlir/spirv_codegen.hpp"
 #endif
-    } catch (const std::exception& e) {
-        const std::string msg = e.what();
-        if (msg.find("already registered") == std::string::npos) {
-            throw std::runtime_error(std::string("GFX plugin unavailable: ") + e.what());
-        }
-    }
-    try {
-        const auto backend = core.get_property("GFX", "GFX_BACKEND").as<std::string>();
-        if (backend.empty()) {
-            gfx_skip_reason = "GFX backend not available";
-            return false;
-        }
-    } catch (const std::exception& e) {
-        gfx_skip_reason = std::string("GFX backend property unavailable: ") + e.what();
-        return false;
-    }
-    try {
-        ov::test::utils::register_template_plugin(core);
-    } catch (const std::exception& e) {
-        gfx_skip_reason = std::string("TEMPLATE plugin unavailable: ") + e.what();
-        return false;
-    }
-    return true;
-}
-
-std::string reference_device(const ov::Core& core) {
-    const auto devices = core.get_available_devices();
-    if (std::find(devices.begin(), devices.end(), "TEMPLATE") != devices.end()) {
-        return "TEMPLATE";
-    }
-    throw std::runtime_error("TEMPLATE reference device not available");
-}
-
-void expect_allclose(const ov::Tensor& a, const ov::Tensor& b, float atol = 1e-5f, float rtol = 0.f) {
-    ASSERT_EQ(a.get_element_type(), ov::element::f32);
-    ASSERT_EQ(b.get_element_type(), ov::element::f32);
-    ASSERT_EQ(a.get_byte_size(), b.get_byte_size());
-    auto* pa = a.data<const float>();
-    auto* pb = b.data<const float>();
-    size_t count = a.get_size();
-    for (size_t i = 0; i < count; ++i) {
-        float diff = std::abs(pa[i] - pb[i]);
-        float thresh = std::max(atol, rtol * std::abs(pa[i]));
-        ASSERT_LE(diff, thresh) << "Mismatch at index " << i << ": " << pa[i] << " vs " << pb[i];
-    }
-    return true;
-}
-
-void expect_finite(const ov::Tensor& t) {
-    const float* p = t.data<const float>();
-    for (size_t i = 0; i < t.get_size(); ++i) {
-        ASSERT_TRUE(std::isfinite(p[i])) << "Non-finite at " << i << ": " << p[i];
-    }
-    return true;
-}
-
-void expect_shape_type(const ov::Tensor& t, const ov::Shape& shape, ov::element::Type type = ov::element::f32) {
-    ASSERT_EQ(t.get_element_type(), type);
-    ASSERT_EQ(t.get_shape(), shape);
-}
-
-ov::Tensor get_output_or_skip(ov::InferRequest& req, size_t idx = 0) {
-    return req.get_output_tensor(idx);
-}
-
-
-
-inline void expect_or_skip_allclose(const ov::Tensor& a, const ov::Tensor& b, float atol, float rtol, const char* /*msg*/) {
-    expect_allclose(a, b, atol, rtol);
-}
-
-}  // namespace
 TEST(GfxTransforms, MlirFusionConvReluPlan) {
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});
     auto weights = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
@@ -651,6 +551,391 @@ TEST(GfxTransforms, MlirFusionAttentionScaleMaskPlan) {
         }
     }
     EXPECT_TRUE(found);
+}
+
+TEST(GfxTransforms, MlirFusionAttentionScalePlanWithConvertedConstant) {
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4});
+    auto w1 = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                     ov::Shape{4, 4},
+                                                     std::vector<float>(16, 0.5f));
+    auto w2 = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                     ov::Shape{4, 4},
+                                                     std::vector<float>(16, 0.25f));
+    auto scale_const = std::make_shared<ov::op::v0::Constant>(ov::element::f16,
+                                                              ov::Shape{1},
+                                                              std::vector<ov::float16>{ov::float16(0.5f)});
+    auto scale = std::make_shared<ov::op::v0::Convert>(scale_const, ov::element::f32);
+    auto mm1 = std::make_shared<ov::op::v0::MatMul>(param, w1, false, false);
+    auto scaled = std::make_shared<ov::op::v1::Multiply>(mm1, scale);
+    auto sm = std::make_shared<ov::op::v1::Softmax>(scaled, 1);
+    auto mm2 = std::make_shared<ov::op::v0::MatMul>(sm, w2, false, false);
+    auto res = std::make_shared<ov::op::v0::Result>(mm2);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "attn_scale");
+
+    ov::gfx_plugin::FusionConfig cfg;
+    cfg.enable_fusion = true;
+    auto plan = ov::gfx_plugin::build_fusion_plan(model, cfg);
+    ASSERT_FALSE(plan.groups.empty());
+
+    bool found = false;
+    const auto ordered = model->get_ordered_ops();
+    for (const auto& group : plan.groups) {
+        if (group.kind != "AttentionScale" && group.kind != "AttentionScaleMask") {
+            continue;
+        }
+        bool has_convert = false;
+        for (const auto idx : group.node_indices) {
+            ASSERT_LT(idx, ordered.size());
+            has_convert = has_convert ||
+                          static_cast<bool>(ov::as_type_ptr<const ov::op::v0::Convert>(ordered[idx]));
+        }
+        if (has_convert) {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(GfxTransforms, MlirFusionAttentionScaleMaskPlanWithConvertedConstants) {
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4});
+    auto w1 = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                     ov::Shape{4, 4},
+                                                     std::vector<float>(16, 0.5f));
+    auto w2 = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                     ov::Shape{4, 4},
+                                                     std::vector<float>(16, 0.25f));
+    auto scale_const = std::make_shared<ov::op::v0::Constant>(ov::element::f16,
+                                                              ov::Shape{1},
+                                                              std::vector<ov::float16>{ov::float16(0.5f)});
+    auto mask_const = std::make_shared<ov::op::v0::Constant>(ov::element::f16,
+                                                             ov::Shape{1, 4},
+                                                             std::vector<ov::float16>(4, ov::float16(-1.0f)));
+    auto scale = std::make_shared<ov::op::v0::Convert>(scale_const, ov::element::f32);
+    auto mask = std::make_shared<ov::op::v0::Convert>(mask_const, ov::element::f32);
+    auto mm1 = std::make_shared<ov::op::v0::MatMul>(param, w1, false, false);
+    auto scaled = std::make_shared<ov::op::v1::Multiply>(mm1, scale);
+    auto add = std::make_shared<ov::op::v1::Add>(scaled, mask);
+    auto sm = std::make_shared<ov::op::v1::Softmax>(add, 1);
+    auto mm2 = std::make_shared<ov::op::v0::MatMul>(sm, w2, false, false);
+    auto res = std::make_shared<ov::op::v0::Result>(mm2);
+    auto model =
+        std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "attn_scale_mask_convert");
+
+    ov::gfx_plugin::FusionConfig cfg;
+    cfg.enable_fusion = true;
+    auto plan = ov::gfx_plugin::build_fusion_plan(model, cfg);
+    ASSERT_FALSE(plan.groups.empty());
+
+    bool found = false;
+    const auto ordered = model->get_ordered_ops();
+    for (const auto& group : plan.groups) {
+        if (group.kind != "AttentionScaleMask") {
+            continue;
+        }
+        size_t convert_count = 0;
+        for (const auto idx : group.node_indices) {
+            ASSERT_LT(idx, ordered.size());
+            if (ov::as_type_ptr<const ov::op::v0::Convert>(ordered[idx])) {
+                ++convert_count;
+            }
+        }
+        if (convert_count >= 2) {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(GfxTransforms, MlirFusionAttentionScalePlanExpandsLayoutWindow) {
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});
+    auto perm = std::make_shared<ov::op::v0::Constant>(ov::element::i64,
+                                                       ov::Shape{4},
+                                                       std::vector<int64_t>{0, 1, 3, 2});
+    auto transposed = std::make_shared<ov::op::v1::Transpose>(param, perm);
+    auto axis = std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{}, std::vector<int64_t>{1});
+    auto split = std::make_shared<ov::op::v1::Split>(transposed, axis, 3);
+    auto scale = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                        ov::Shape{1},
+                                                        std::vector<float>{0.5f});
+    auto qk = std::make_shared<ov::op::v0::MatMul>(split->output(0), split->output(1), false, true);
+    auto scaled = std::make_shared<ov::op::v1::Multiply>(qk, scale);
+    auto softmax = std::make_shared<ov::op::v1::Softmax>(scaled, 3);
+    auto attn = std::make_shared<ov::op::v0::MatMul>(softmax, split->output(2), false, false);
+    auto post_transpose = std::make_shared<ov::op::v1::Transpose>(attn, perm);
+    auto shape = std::make_shared<ov::op::v0::Constant>(ov::element::i64,
+                                                        ov::Shape{3},
+                                                        std::vector<int64_t>{1, 4, 4});
+    auto reshaped = std::make_shared<ov::op::v1::Reshape>(post_transpose, shape, false);
+    auto res = std::make_shared<ov::op::v0::Result>(reshaped);
+    auto model =
+        std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "attn_layout_window");
+
+    ov::gfx_plugin::FusionConfig cfg;
+    cfg.enable_fusion = true;
+    auto plan = ov::gfx_plugin::build_fusion_plan(model, cfg);
+    ASSERT_FALSE(plan.groups.empty());
+
+    bool found = false;
+    const auto ordered = model->get_ordered_ops();
+    for (const auto& group : plan.groups) {
+        if ((group.kind != "AttentionScale" && group.kind != "AttentionScaleMask") ||
+            group.node_indices.size() < 7) {
+            continue;
+        }
+        bool has_split = false;
+        bool has_pre_transpose = false;
+        bool has_post_reshape = false;
+        for (const auto idx : group.node_indices) {
+            ASSERT_LT(idx, ordered.size());
+            const auto& node = ordered[idx];
+            has_split = has_split || static_cast<bool>(ov::as_type_ptr<const ov::op::v1::Split>(node));
+            has_pre_transpose = has_pre_transpose || static_cast<bool>(ov::as_type_ptr<const ov::op::v1::Transpose>(node));
+            has_post_reshape = has_post_reshape || static_cast<bool>(ov::as_type_ptr<const ov::op::v1::Reshape>(node));
+        }
+        if (has_split && has_pre_transpose && has_post_reshape) {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(GfxTransforms, MlirFusionAttentionPreScalePlanExpandsLayoutWindow) {
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 3, 4, 4});
+    auto perm = std::make_shared<ov::op::v0::Constant>(ov::element::i64,
+                                                       ov::Shape{4},
+                                                       std::vector<int64_t>{0, 1, 3, 2});
+    auto transposed = std::make_shared<ov::op::v1::Transpose>(param, perm);
+    auto axis = std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{}, std::vector<int64_t>{1});
+    auto split = std::make_shared<ov::op::v1::Split>(transposed, axis, 3);
+    auto scale = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                        ov::Shape{1},
+                                                        std::vector<float>{0.5f});
+    auto pre_scaled_q = std::make_shared<ov::op::v1::Multiply>(split->output(1), scale);
+    auto qk = std::make_shared<ov::op::v0::MatMul>(split->output(0), pre_scaled_q, false, true);
+    auto softmax = std::make_shared<ov::op::v1::Softmax>(qk, 3);
+    auto attn = std::make_shared<ov::op::v0::MatMul>(split->output(2), softmax, false, false);
+    auto post_transpose = std::make_shared<ov::op::v1::Transpose>(attn, perm);
+    auto shape = std::make_shared<ov::op::v0::Constant>(ov::element::i64,
+                                                        ov::Shape{3},
+                                                        std::vector<int64_t>{1, 4, 4});
+    auto reshaped = std::make_shared<ov::op::v1::Reshape>(post_transpose, shape, false);
+    auto res = std::make_shared<ov::op::v0::Result>(reshaped);
+    auto model =
+        std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "attn_prescale_layout_window");
+
+    ov::gfx_plugin::FusionConfig cfg;
+    cfg.enable_fusion = true;
+    auto plan = ov::gfx_plugin::build_fusion_plan(model, cfg);
+    ASSERT_FALSE(plan.groups.empty());
+
+    bool found = false;
+    const auto ordered = model->get_ordered_ops();
+    for (const auto& group : plan.groups) {
+        if (group.kind != "AttentionScale" || group.node_indices.size() < 8) {
+            continue;
+        }
+        bool has_split = false;
+        bool has_pre_scale = false;
+        bool has_matmul = false;
+        bool has_post_reshape = false;
+        for (const auto idx : group.node_indices) {
+            ASSERT_LT(idx, ordered.size());
+            const auto& node = ordered[idx];
+            has_split = has_split || static_cast<bool>(ov::as_type_ptr<const ov::op::v1::Split>(node));
+            has_pre_scale = has_pre_scale || static_cast<bool>(ov::as_type_ptr<const ov::op::v1::Multiply>(node));
+            has_matmul = has_matmul || static_cast<bool>(ov::as_type_ptr<const ov::op::v0::MatMul>(node));
+            has_post_reshape = has_post_reshape || static_cast<bool>(ov::as_type_ptr<const ov::op::v1::Reshape>(node));
+        }
+        if (has_split && has_pre_scale && has_matmul && has_post_reshape) {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(GfxMlir, MatMulBuilderProducesModule) {
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 2});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 2});
+    auto matmul = std::make_shared<ov::op::v0::MatMul>(lhs, rhs, false, true);
+
+    auto& ctx = ov::gfx_plugin::gfx_mlir_context();
+    auto module = ov::gfx_plugin::build_mlir_for_node(matmul, ctx);
+    ASSERT_TRUE(module);
+    auto func = module.lookupSymbol<mlir::func::FuncOp>("matmul_main");
+    ASSERT_TRUE(static_cast<bool>(func));
+    const auto func_type = func.getFunctionType();
+    ASSERT_EQ(func_type.getNumInputs(), 2u);
+    ASSERT_EQ(func_type.getNumResults(), 1u);
+}
+
+TEST(GfxMlir, MatMulCodegenProducesMsl) {
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 2});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 2});
+    auto matmul = std::make_shared<ov::op::v0::MatMul>(lhs, rhs, false, true);
+
+    auto& ctx = ov::gfx_plugin::gfx_mlir_context();
+    auto module = ov::gfx_plugin::build_mlir_for_node(matmul, ctx);
+    ASSERT_TRUE(module);
+
+    ov::gfx_plugin::MatMulCodegenDesc desc{};
+    desc.element_type = ov::element::f32;
+    desc.input_a_type = ov::element::f32;
+    desc.input_b_type = ov::element::f32;
+    desc.output_type = ov::element::f32;
+    desc.batch = 1;
+    desc.batch_a = 1;
+    desc.batch_b = 1;
+    desc.M = 4;
+    desc.N = 4;
+    desc.K = 2;
+    desc.a_transpose = false;
+    desc.b_transpose = true;
+    desc.b_is_nk_layout = true;
+
+    const auto msl = ov::gfx_plugin::generate_msl_from_mlir(module, desc);
+    ASSERT_FALSE(msl.empty());
+    ASSERT_NE(msl.find("kernel void matmul_kernel"), std::string::npos);
+}
+
+TEST(GfxMlir, MatMulPipelineSucceeds) {
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 2});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 2});
+    auto matmul = std::make_shared<ov::op::v0::MatMul>(lhs, rhs, false, true);
+
+    auto& ctx = ov::gfx_plugin::gfx_mlir_context();
+    auto module = ov::gfx_plugin::build_mlir_for_node(matmul, ctx);
+    ASSERT_TRUE(module);
+    ASSERT_NO_THROW(ov::gfx_plugin::run_mlir_pipeline(module, /*use_alloca=*/true, /*use_parallel_loops=*/false));
+}
+
+TEST(GfxMlir, MatMulKernelPlanPipelineSucceeds) {
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 2});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 2});
+    auto matmul = std::make_shared<ov::op::v0::MatMul>(lhs, rhs, false, true);
+
+    auto& ctx = ov::gfx_plugin::gfx_mlir_context();
+    auto module = ov::gfx_plugin::build_mlir_for_node(matmul, ctx);
+    ASSERT_TRUE(module);
+
+    auto plan_ctx = ov::gfx_plugin::build_mlir_kernel_plan(
+        module,
+        std::string{},
+        matmul,
+        /*output_args_override=*/0,
+        /*extra_inputs=*/0,
+        "matmul_plan_test",
+        "gfx_kernel",
+        [&](const ov::gfx_plugin::KernelArgMappingInfo& info) -> size_t {
+            size_t func_results = info.func_results;
+            if (func_results == 0) {
+                func_results = matmul->get_output_size();
+            }
+            const auto sig = info.signature;
+            return sig.total() ? sig.total() : (info.func_inputs + func_results);
+        });
+    auto src = plan_ctx.build_info.plan.to_source();
+    ASSERT_TRUE(src.module);
+    ASSERT_NO_THROW(ov::gfx_plugin::run_mlir_pipeline(src.module, /*use_alloca=*/true, /*use_parallel_loops=*/false));
+}
+
+TEST(GfxMlir, MatMulPipelineSucceedsAfterFusionPlan) {
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 2});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 2});
+    auto matmul = std::make_shared<ov::op::v0::MatMul>(lhs, rhs, false, true);
+    auto res = std::make_shared<ov::op::v0::Result>(matmul);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{lhs, rhs}, "matmul_fusion_ctx");
+
+    ov::gfx_plugin::FusionConfig fusion_cfg;
+    fusion_cfg.enable_fusion = true;
+    auto plan = ov::gfx_plugin::build_fusion_plan(model, fusion_cfg);
+    EXPECT_TRUE(plan.groups.empty());
+
+    auto& ctx = ov::gfx_plugin::gfx_mlir_context();
+    auto module = ov::gfx_plugin::build_mlir_for_node(matmul, ctx);
+    ASSERT_TRUE(module);
+    ASSERT_NO_THROW(ov::gfx_plugin::run_mlir_pipeline(module, /*use_alloca=*/true, /*use_parallel_loops=*/false));
+}
+
+#if GFX_BACKEND_VULKAN_AVAILABLE
+TEST(GfxMlir, BinaryBiasAddSpirvLoweringSucceeds) {
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 17, 5, 4});
+    std::vector<float> bias_vals(17, 0.0f);
+    for (size_t i = 0; i < bias_vals.size(); ++i) {
+        bias_vals[i] = static_cast<float>((static_cast<int>(i % 13) - 6)) * 0.125f;
+    }
+    auto bias = std::make_shared<ov::op::v0::Constant>(ov::element::f32,
+                                                       ov::Shape{1, 17, 1, 1},
+                                                       bias_vals);
+    auto add = std::make_shared<ov::op::v1::Add>(param, bias);
+
+    auto& ctx = ov::gfx_plugin::gfx_mlir_context();
+    auto module = ov::gfx_plugin::build_mlir_for_node(add, ctx);
+    ASSERT_TRUE(module);
+
+    std::string log;
+    const auto spirv = ov::gfx_plugin::lower_to_spirv(module, "binary_bias_add", &log);
+    ASSERT_FALSE(spirv.empty()) << log;
+}
+
+TEST(GfxMlir, MatMulCompactAbiSpirvLoweringExpandsOperandMetadata) {
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{4, 2, 32, 400});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{4, 2, 32, 400});
+    auto matmul = std::make_shared<ov::op::v0::MatMul>(lhs, rhs, true, false);
+
+    auto& ctx = ov::gfx_plugin::gfx_mlir_context();
+    auto module = ov::gfx_plugin::build_mlir_for_node(matmul, ctx);
+    ASSERT_TRUE(module);
+
+    auto func = ov::gfx_plugin::get_entry_func(module);
+    ASSERT_TRUE(func);
+    ASSERT_GE(func.getNumArguments(), 3u);
+    for (unsigned arg_idx = 0; arg_idx < 2; ++arg_idx) {
+        func.setArgAttr(arg_idx,
+                        "gfx.kernel_runtime_arg_index",
+                        mlir::IntegerAttr::get(mlir::IntegerType::get(module.getContext(), 32),
+                                               static_cast<int32_t>(arg_idx)));
+    }
+    mlir::Builder b(module.getContext());
+    module->setAttr("gfx.fixed_arg_count", b.getI32IntegerAttr(3));
+    module->setAttr("gfx.kernel_output_arg_count", b.getI32IntegerAttr(1));
+
+    std::string log;
+    const auto spirv = ov::gfx_plugin::lower_to_spirv(module, "gfx_kernel", &log);
+    ASSERT_FALSE(spirv.empty()) << log;
+
+    const auto kinds = ov::gfx_plugin::extract_kernel_operand_kinds(module);
+    const auto arg_indices = ov::gfx_plugin::extract_kernel_operand_arg_indices(module);
+    const auto scalar_values = ov::gfx_plugin::extract_kernel_scalar_values(module);
+
+    ASSERT_EQ(kinds.size(), 9u);
+    ASSERT_EQ(arg_indices.size(), 9u);
+    ASSERT_EQ(scalar_values.size(), 6u);
+
+    EXPECT_EQ(kinds, std::vector<int32_t>({0, 0, 0, 0, 1, 1, 0, 0, 1}));
+    EXPECT_EQ(arg_indices, std::vector<int32_t>({-1, -1, -1, -1, 0, 1, -1, -1, 2}));
+    EXPECT_EQ(scalar_values, std::vector<int32_t>({1, 0, 8, 400, 32, 0}));
+}
+#endif
+
+TEST(GfxMlir, BinaryBiasAddI32MlirLoweringSucceeds) {
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::i32, ov::Shape{2, 17, 5, 4});
+    std::vector<int32_t> bias_vals(17, 0);
+    for (size_t i = 0; i < bias_vals.size(); ++i) {
+        bias_vals[i] = static_cast<int32_t>(i) - 8;
+    }
+    auto bias = std::make_shared<ov::op::v0::Constant>(ov::element::i32,
+                                                       ov::Shape{1, 17, 1, 1},
+                                                       bias_vals);
+    auto add = std::make_shared<ov::op::v1::Add>(param, bias);
+
+    auto& ctx = ov::gfx_plugin::gfx_mlir_context();
+    auto module = ov::gfx_plugin::build_mlir_for_node(add, ctx);
+    ASSERT_TRUE(module);
+    ASSERT_NO_THROW(ov::gfx_plugin::run_mlir_pipeline(module, /*use_alloca=*/true, /*use_parallel_loops=*/false));
 }
 
 TEST(GfxTransforms, MlirFusionConvBatchNormReluPlan) {

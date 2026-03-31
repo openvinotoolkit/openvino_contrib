@@ -96,6 +96,11 @@ public:
     void init(GpuBufferManager*) override {}
     void compile(GpuBufferManager*) override {}
     void execute(GpuCommandBufferHandle) override {}
+    void prewarm_runtime_state() override {
+        ++prewarm_count;
+        prewarm_inputs = last_inputs;
+        prewarm_inputs_data = last_inputs_data;
+    }
 
     void set_inputs(const std::vector<GpuTensor*>& inputs) override {
         last_inputs = inputs;
@@ -122,6 +127,9 @@ public:
     std::vector<GpuTensor*> last_inputs;
     const GpuTensor* const* last_inputs_data = nullptr;
     size_t set_inputs_count = 0;
+    std::vector<GpuTensor*> prewarm_inputs;
+    const GpuTensor* const* prewarm_inputs_data = nullptr;
+    size_t prewarm_count = 0;
 };
 
 TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparations) {
@@ -283,6 +291,47 @@ TEST(InferPipelineReuseTest, ReusesPreparedExecutionInputsAcrossInferences) {
     EXPECT_EQ(tracking->last_inputs[0], pipeline[0].outputs[0].get());
     EXPECT_EQ(tracking->last_inputs[1], &external_b);
     EXPECT_EQ(tracking->last_inputs_data, first_inputs_data);
+}
+
+TEST(InferPipelineReuseTest, PrewarmPipelineUsesPreparedExecutionInputs) {
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 4});
+    auto relu = std::make_shared<ov::op::v0::Relu>(param);
+
+    std::vector<InferStage> pipeline(1);
+    pipeline[0].node = relu;
+    pipeline[0].stage = std::make_unique<TrackingStage>();
+    pipeline[0].inputs.push_back({param, 0});
+    pipeline[0].outputs.push_back(std::make_unique<GpuTensor>());
+    pipeline[0].outputs[0]->shape = {1, 4};
+    pipeline[0].outputs[0]->expected_type = ov::element::f16;
+
+    const std::unordered_map<const ov::Node*, size_t> node_map = {
+        {relu.get(), 0},
+    };
+    const std::unordered_map<const ov::Node*, size_t> param_map = {
+        {param.get(), 0},
+    };
+
+    PreparedInferExecutionPlan plan;
+    prepare_reusable_execution_plan(plan, pipeline, node_map, param_map);
+
+    GpuTensor external;
+    external.shape = {1, 4};
+    external.expected_type = ov::element::f16;
+    prewarm_pipeline_runtime_state(
+        pipeline,
+        node_map,
+        param_map,
+        [&](size_t idx) -> GpuTensor* {
+            return idx == 0 ? &external : nullptr;
+        },
+        &plan);
+
+    auto* tracking = static_cast<TrackingStage*>(pipeline[0].stage.get());
+    ASSERT_EQ(tracking->prewarm_count, 1u);
+    ASSERT_EQ(tracking->prewarm_inputs.size(), 1u);
+    EXPECT_EQ(tracking->prewarm_inputs[0], &external);
+    EXPECT_EQ(tracking->prewarm_inputs_data, plan.stages[0].resolved_inputs.data());
 }
 
 TEST(InferPipelineReuseTest, ReusesPreparedOutputResolutionAcrossInferences) {

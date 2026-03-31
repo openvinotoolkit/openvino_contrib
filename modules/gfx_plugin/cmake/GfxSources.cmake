@@ -62,6 +62,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_signature.hpp
     ${_gfx_src_dir}/runtime/gfx_profiler.hpp
+    ${_gfx_src_dir}/runtime/gfx_profiling_report.hpp
     ${_gfx_src_dir}/runtime/gpu_backend_base.hpp
     ${_gfx_src_dir}/runtime/gpu_buffer.hpp
     ${_gfx_src_dir}/runtime/gpu_buffer_pool.hpp
@@ -96,6 +97,7 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/gfx_logger.cpp
     ${_gfx_src_dir}/runtime/gfx_op_utils.cpp
     ${_gfx_src_dir}/runtime/gfx_parallelism.cpp
+    ${_gfx_src_dir}/runtime/gfx_profiling_report.cpp
     ${_gfx_src_dir}/runtime/gfx_remote_context.cpp
     ${_gfx_src_dir}/runtime/gfx_remote_tensor.cpp
     ${_gfx_src_dir}/runtime/gfx_stage_policy.cpp

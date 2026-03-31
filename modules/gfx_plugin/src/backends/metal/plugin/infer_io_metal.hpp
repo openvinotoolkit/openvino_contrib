@@ -4,6 +4,7 @@
 #pragma once
 
 #include "plugin/infer_io_utils.hpp"
+#include "runtime/gfx_profiler.hpp"
 #include "runtime/gpu_buffer_pool.hpp"
 #include "runtime/memory_manager.hpp"
 
@@ -12,6 +13,7 @@ namespace gfx_plugin {
 
 GpuTensor bind_host_input_metal(const ov::Tensor& host,
                                 IGpuAllocator* allocator,
+                                GfxProfiler* profiler,
                                 const char* error_prefix);
 
 OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
@@ -22,6 +24,7 @@ OutputBindingResult bind_host_output_metal(const GpuTensor& dev,
                                           GpuBufferPool* pool,
                                           BufferHandle* staging_handle,
                                           GpuCommandQueueHandle metal_queue,
+                                          GfxProfiler* profiler,
                                           const char* error_prefix);
 
 }  // namespace gfx_plugin

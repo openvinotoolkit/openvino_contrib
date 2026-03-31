@@ -81,6 +81,58 @@ static void runConvEltwiseFusion(mlir::ModuleOp module) {
     }
 }
 
+static mlir::LogicalResult promote_compact_memref_results_to_trailing_out_params(mlir::ModuleOp module) {
+    for (auto func : module.getOps<mlir::func::FuncOp>()) {
+        if (func.isExternal()) {
+            continue;
+        }
+        auto fn_type = func.getFunctionType();
+        if (fn_type.getNumResults() == 0) {
+            continue;
+        }
+
+        llvm::SmallVector<mlir::Type, 8> input_types(fn_type.getInputs().begin(), fn_type.getInputs().end());
+        llvm::SmallVector<mlir::MemRefType, 4> result_types;
+        result_types.reserve(fn_type.getNumResults());
+        for (auto result_type : fn_type.getResults()) {
+            auto memref_type = mlir::dyn_cast<mlir::MemRefType>(result_type);
+            if (!memref_type) {
+                return mlir::failure();
+            }
+            result_types.push_back(memref_type);
+            input_types.push_back(memref_type);
+        }
+
+        auto& entry = func.getBody().front();
+        const unsigned old_input_count = fn_type.getNumInputs();
+        for (auto result_type : result_types) {
+            entry.addArgument(result_type, func.getLoc());
+        }
+
+        auto new_type = mlir::FunctionType::get(func.getContext(), input_types, {});
+        func.setType(new_type);
+
+        llvm::SmallVector<mlir::func::ReturnOp, 4> returns;
+        func.walk([&](mlir::func::ReturnOp ret) {
+            returns.push_back(ret);
+        });
+        for (auto ret : returns) {
+            mlir::OpBuilder builder(ret);
+            for (unsigned result_idx = 0; result_idx < ret.getNumOperands(); ++result_idx) {
+                auto from = ret.getOperand(result_idx);
+                auto to = entry.getArgument(old_input_count + result_idx);
+                if (from == to) {
+                    continue;
+                }
+                mlir::memref::CopyOp::create(builder, ret.getLoc(), from, to);
+            }
+            mlir::func::ReturnOp::create(builder, ret.getLoc());
+            ret.erase();
+        }
+    }
+    return mlir::success();
+}
+
 static void fix_subview_memory_spaces(mlir::ModuleOp module) {
     module.walk([&](mlir::memref::SubViewOp subview) {
         auto src_type = mlir::dyn_cast<mlir::MemRefType>(subview.getSource().getType());
@@ -154,7 +206,49 @@ static void fix_subview_memory_spaces(mlir::ModuleOp module) {
 // Minimal post-bufferization fix for AttrSizedOperandSegments attrs.
 static void normalize_operand_segment_sizes_simple(mlir::ModuleOp module) {
     if (!module) return;
-    auto* ctx = module.getContext();
+    mlir::Builder b(module.getContext());
+    auto make_i32_array_attr = [&](llvm::ArrayRef<int32_t> values) -> mlir::ArrayAttr {
+        llvm::SmallVector<mlir::Attribute, 8> attrs;
+        attrs.reserve(values.size());
+        for (int32_t value : values) {
+            attrs.push_back(b.getI32IntegerAttr(value));
+        }
+        return b.getArrayAttr(attrs);
+    };
+    auto append_i32_values = [&](llvm::SmallVectorImpl<int32_t>& dst, mlir::Attribute a) {
+        if (!a) {
+            return;
+        }
+        if (auto dense = llvm::dyn_cast<mlir::DenseI32ArrayAttr>(a)) {
+            dst.append(dense.asArrayRef().begin(), dense.asArrayRef().end());
+            return;
+        }
+        if (auto dense = llvm::dyn_cast<mlir::DenseArrayAttr>(a)) {
+            if (auto ity = llvm::dyn_cast<mlir::IntegerType>(dense.getElementType())) {
+                if (ity.isInteger(32)) {
+                    auto raw = dense.getRawData();
+                    auto ptr = reinterpret_cast<const int32_t*>(raw.data());
+                    dst.append(ptr, ptr + dense.getSize());
+                    return;
+                }
+                if (ity.isIndex() || ity.getWidth() == 64) {
+                    auto raw = dense.getRawData();
+                    auto ptr = reinterpret_cast<const int64_t*>(raw.data());
+                    for (int64_t i = 0; i < dense.getSize(); ++i) {
+                        dst.push_back(static_cast<int32_t>(ptr[i]));
+                    }
+                    return;
+                }
+            }
+        }
+        if (auto arr = llvm::dyn_cast<mlir::ArrayAttr>(a)) {
+            for (mlir::Attribute elem : arr) {
+                if (auto int_attr = llvm::dyn_cast<mlir::IntegerAttr>(elem)) {
+                    dst.push_back(static_cast<int32_t>(int_attr.getInt()));
+                }
+            }
+        }
+    };
     module.walk([&](mlir::Operation* op) {
         auto attr = op->getAttr("operandSegmentSizes");
         auto snake = op->getAttr("operand_segment_sizes");
@@ -164,41 +258,20 @@ static void normalize_operand_segment_sizes_simple(mlir::ModuleOp module) {
         // For memref.alloc/alloca: default segment is all operands, no results.
         if (llvm::isa<mlir::memref::AllocOp, mlir::memref::AllocaOp>(op)) {
             const int32_t ops = static_cast<int32_t>(op->getNumOperands());
-            auto dense = mlir::DenseI32ArrayAttr::get(ctx, {ops, 0});
-            op->setAttr("operandSegmentSizes", dense);
-            op->setAttr("operand_segment_sizes", dense);
+            auto segments = make_i32_array_attr({ops, 0});
+            op->setAttr("operandSegmentSizes", segments);
+            op->setAttr("operand_segment_sizes", segments);
             return;
         }
         llvm::SmallVector<int32_t> vals;
-        auto toDenseI32 = [&](mlir::Attribute a) -> mlir::DenseI32ArrayAttr {
-            if (!a) return {};
-            if (auto d = llvm::dyn_cast<mlir::DenseI32ArrayAttr>(a)) return d;
-            if (auto da = llvm::dyn_cast<mlir::DenseArrayAttr>(a)) {
-                if (auto ity = llvm::dyn_cast<mlir::IntegerType>(da.getElementType())) {
-                    llvm::SmallVector<int32_t> v;
-                    if (ity.isInteger(32)) {
-                        auto raw = da.getRawData();
-                        auto ptr = reinterpret_cast<const int32_t*>(raw.data());
-                        v.append(ptr, ptr + da.getSize());
-                    } else if (ity.isIndex() || ity.getWidth() == 64) {
-                        auto raw = da.getRawData();
-                        auto ptr = reinterpret_cast<const int64_t*>(raw.data());
-                        for (int64_t i = 0; i < da.getSize(); ++i) v.push_back(static_cast<int32_t>(ptr[i]));
-                    }
-                    if (!v.empty()) return mlir::DenseI32ArrayAttr::get(ctx, v);
-                }
-            }
-            return {};
-        };
-
-        if (auto d = toDenseI32(attr ? attr : snake)) {
-            vals.append(d.asArrayRef().begin(), d.asArrayRef().end());
-        } else if (auto props = op->getPropertiesAsAttribute()) {
+        append_i32_values(vals, attr ? attr : snake);
+        if (vals.empty()) {
+            if (auto props = op->getPropertiesAsAttribute()) {
             if (auto dict = llvm::dyn_cast<mlir::DictionaryAttr>(props)) {
-                if (auto d = toDenseI32(dict.get("operandSegmentSizes"))) {
-                    vals.append(d.asArrayRef().begin(), d.asArrayRef().end());
-                } else if (auto d2 = toDenseI32(dict.get("operand_segment_sizes"))) {
-                    vals.append(d2.asArrayRef().begin(), d2.asArrayRef().end());
+                    append_i32_values(vals, dict.get("operandSegmentSizes"));
+                    if (vals.empty()) {
+                        append_i32_values(vals, dict.get("operand_segment_sizes"));
+                    }
                 }
             }
         }
@@ -230,9 +303,9 @@ static void normalize_operand_segment_sizes_simple(mlir::ModuleOp module) {
         if (vals.empty()) {
             return;
         }
-        auto dense = mlir::DenseI32ArrayAttr::get(ctx, vals);
-        op->setAttr("operandSegmentSizes", dense);
-        op->setAttr("operand_segment_sizes", dense);
+        auto segments = make_i32_array_attr(vals);
+        op->setAttr("operandSegmentSizes", segments);
+        op->setAttr("operand_segment_sizes", segments);
     });
 }
 
@@ -631,10 +704,18 @@ void run_mlir_pipeline(mlir::ModuleOp module, bool use_alloca, bool use_parallel
     run_conv3d_parallel_lowering(module);
     run_matmul_parallel_lowering(module);
     run_conv_im2col_parallel_lowering(module);
+    if (debug) {
+        llvm::errs() << "[GFX][MLIR] Module after manual lowerings:\n";
+        module.dump();
+    }
     run_pass_manager_with_guard(ctx, module, "post-manual-lowering-cleanup", [&](mlir::PassManager& cleanup_pm) {
         cleanup_pm.addPass(mlir::createCanonicalizerPass());
         cleanup_pm.addPass(mlir::createCSEPass());
     });
+    if (debug) {
+        llvm::errs() << "[GFX][MLIR] Module after post-manual-lowering cleanup:\n";
+        module.dump();
+    }
     run_with_operand_segments_guard(ctx, "verify-post-linalg-lowering", [&]() {
         return mlir::verify(module);
     });
@@ -645,12 +726,24 @@ void run_mlir_pipeline(mlir::ModuleOp module, bool use_alloca, bool use_parallel
         options.preserve_compact_memref_abi = preserve_compact_memref_abi;
         populate_gfx_post_bufferization_pipeline(pm_post, options);
     });
+    if (debug) {
+        llvm::errs() << "[GFX][MLIR] Module after post-bufferization pipeline:\n";
+        module.dump();
+    }
     if (use_parallel_loops) {
         run_parallel_fill_fusion(module);
         run_parallel_post_fusion(module);
+        if (debug) {
+            llvm::errs() << "[GFX][MLIR] Module after parallel fusion cleanup:\n";
+            module.dump();
+        }
     }
 
-    {
+    if (preserve_compact_memref_abi) {
+        if (mlir::failed(promote_compact_memref_results_to_trailing_out_params(module))) {
+            throw std::runtime_error("MLIR compact memref ABI rewrite failed");
+        }
+    } else {
         mlir::bufferization::BufferResultsToOutParamsOpts out_opts;
         out_opts.hoistStaticAllocs = true;
         out_opts.modifyPublicFunctions = true;
@@ -658,11 +751,18 @@ void run_mlir_pipeline(mlir::ModuleOp module, bool use_alloca, bool use_parallel
             throw std::runtime_error("MLIR buffer results to out params failed");
         }
     }
+    if (debug) {
+        llvm::errs() << "[GFX][MLIR] Module after out-param promotion:\n";
+        module.dump();
+    }
 
+    // Fold alloc -> copy -> out-param before stack-lowering. Once allocs are
+    // rewritten to function-memory alloca, the memory-space mismatch prevents
+    // this canonicalization and large result buffers stay on the stack.
+    fold_out_param_allocs(module);
     if (use_alloca) {
         lower_allocs_to_alloca(module);
     }
-    fold_out_param_allocs(module);
     lower_memref_copies_to_loops(module);
     fix_subview_memory_spaces(module);
     fix_shape_cast_memory_spaces(module);
@@ -674,6 +774,7 @@ void run_mlir_pipeline(mlir::ModuleOp module, bool use_alloca, bool use_parallel
     fix_shape_cast_memory_spaces(module);
 
     if (debug) {
+        llvm::errs() << "[GFX][MLIR] Final module after normalization cleanup:\n";
         module.dump();
     }
 }

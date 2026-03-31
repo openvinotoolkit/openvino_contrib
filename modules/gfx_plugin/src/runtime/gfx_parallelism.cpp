@@ -42,8 +42,8 @@ struct MatMulCacheKeyHash {
 class MatMulTuningCache {
 public:
     static MatMulTuningCache& instance() {
-        static MatMulTuningCache cache;
-        return cache;
+        static auto* cache = new MatMulTuningCache();
+        return *cache;
     }
 
     std::optional<MatMulParallelismPlan> find(const MatMulCacheKey& key) const {
@@ -92,8 +92,8 @@ struct ChunkCacheKeyHash {
 class ChunkTuningCache {
 public:
     static ChunkTuningCache& instance() {
-        static ChunkTuningCache cache;
-        return cache;
+        static auto* cache = new ChunkTuningCache();
+        return *cache;
     }
 
     std::optional<ChunkDispatchPlan> find(const ChunkCacheKey& key) const {
@@ -149,8 +149,8 @@ struct Conv2DDirectCacheKeyHash {
 class Conv2DDirectTuningCache {
 public:
     static Conv2DDirectTuningCache& instance() {
-        static Conv2DDirectTuningCache cache;
-        return cache;
+        static auto* cache = new Conv2DDirectTuningCache();
+        return *cache;
     }
 
     std::optional<Conv2DDirectPlan> find(const Conv2DDirectCacheKey& key) const {
@@ -211,6 +211,10 @@ uint64_t bucketize(uint64_t value) {
         bucket <<= 1;
     }
     return bucket;
+}
+
+uint64_t ceil_div_u64(uint64_t value, uint64_t divisor) {
+    return divisor == 0 ? 0 : ((value + divisor - 1) / divisor);
 }
 
 ChunkCacheKey make_chunk_cache_key(const GfxParallelismCaps& caps,
@@ -353,9 +357,6 @@ MatMulParallelismPlan select_matmul_parallelism(const GfxParallelismCaps& caps, 
 void remember_matmul_parallelism(const GfxParallelismCaps& caps,
                                  const ov::Shape& output_shape,
                                  const MatMulParallelismPlan& plan) {
-    if (!plan.prefer_parallel) {
-        return;
-    }
     MatMulTuningCache::instance().store(make_cache_key(caps, output_shape), plan);
 }
 
@@ -369,26 +370,49 @@ ChunkDispatchPlan select_chunk_dispatch_plan(const GfxParallelismCaps& caps,
     }
 
     ChunkDispatchPlan plan;
-    plan.threads_per_group = std::min<uint32_t>(64u, std::max<uint32_t>(1u, caps.max_total_threads_per_group));
+    const uint32_t wave = std::max<uint32_t>(1u, std::max(caps.subgroup_size, caps.preferred_simd_width));
+    plan.threads_per_group = std::min<uint32_t>(std::max<uint32_t>(wave, 64u),
+                                                std::max<uint32_t>(1u, caps.max_total_threads_per_group));
 
     uint32_t elems = 1024;
+    uint32_t max_elems = 16384;
+    uint32_t target_dispatches = 16;
     if (caps.backend == GpuBackend::Metal) {
         elems = work_per_elem >= 256 ? 4096 : 8192;
+        max_elems = 16384;
+        target_dispatches = work_per_elem >= 256 ? 8u : 12u;
     } else {
-        if (work_per_elem >= 512) {
-            elems = 1024;
-        } else if (work_per_elem >= 128) {
-            elems = 2048;
-        } else {
+        // After moving Vulkan onto a shared infer command buffer, overly small
+        // chunks mostly add descriptor/metadata overhead. Bias towards fewer,
+        // fatter dispatches on large stages while keeping an upper bound that
+        // remains friendly to mobile drivers.
+        if (work_per_elem >= 1024) {
             elems = 4096;
+            max_elems = 16384;
+            target_dispatches = 8;
+        } else if (work_per_elem >= 256) {
+            elems = 8192;
+            max_elems = 32768;
+            target_dispatches = 8;
+        } else if (work_per_elem >= 64) {
+            elems = 16384;
+            max_elems = 32768;
+            target_dispatches = 12;
+        } else {
+            elems = 32768;
+            max_elems = 65536;
+            target_dispatches = 16;
         }
     }
 
-    if (total_elems <= 4096) {
+    if (total_elems <= 16384) {
         elems = static_cast<uint32_t>(std::max<uint64_t>(1024, bucketize(total_elems)));
-    } else if (total_elems <= 16384) {
-        elems = std::min<uint32_t>(elems, 4096u);
+    } else {
+        const uint64_t min_elems_for_budget = bucketize(ceil_div_u64(total_elems, target_dispatches));
+        elems = std::max<uint32_t>(elems,
+                                   static_cast<uint32_t>(std::min<uint64_t>(max_elems, min_elems_for_budget)));
     }
+    elems = std::min<uint32_t>(elems, max_elems);
 
     plan.elems_per_dispatch = elems;
     plan.variant = op_kind + "_chunk_" + std::to_string(plan.elems_per_dispatch);

@@ -53,7 +53,27 @@ public:
 private:
     std::shared_ptr<ICompiledKernel> compile_kernel(const KernelSource& source,
                                                     std::string* log) override;
+    std::shared_ptr<ICompiledKernel> compile_specialized_kernel_from_mlir(mlir::ModuleOp module,
+                                                                          const std::string& entry_name,
+                                                                          uint32_t arg_count,
+                                                                          const char* error_prefix);
+    void prepare_specialized_kernels();
+    void prepare_unary_kernel();
+    void prepare_binary_kernel();
+    void prepare_binary_same_shape_kernel();
+    void prepare_binary_bias_add_kernel();
+    void prepare_conv2d_1x1_kernel();
+    void prepare_conv2d_3x3_direct_kernel();
+    void prepare_conv2d_chunk_kernel();
+    void prepare_group_conv2d_kernel();
+    void prepare_softmax_kernel();
+    void prepare_concat_kernel();
+    void prepare_split_kernel();
+    void prepare_interpolate_kernel();
+    void prepare_transpose_kernel();
+    void prepare_convert_kernel();
     bool is_vulkan_backend() const override { return true; }
+    bool prefer_specialized_concat_execution() const override { return true; }
     KernelExecutionHooks* prepare_profiling(ProfileState& state,
                                             KernelExecutionHooks& hooks) override;
     void finalize_profiling(const ProfileState& state) override;
@@ -68,16 +88,21 @@ private:
     bool m_softmax_log_kernel = false;
     std::shared_ptr<ICompiledKernel> m_conv2d_1x1_kernel;
     ov::element::Type m_conv2d_1x1_elem_type{};
+    bool m_conv2d_1x1_force_chunked_fallback = false;
     std::shared_ptr<ICompiledKernel> m_conv2d_3x3_direct_kernel;
     ov::element::Type m_conv2d_3x3_direct_elem_type{};
     uint32_t m_conv2d_3x3_direct_oc_block = 1;
     uint32_t m_conv2d_3x3_direct_threads_per_group = 64;
     std::string m_conv2d_3x3_direct_variant;
+    bool m_conv2d_3x3_force_safe_variant = false;
+    bool m_conv2d_3x3_force_chunked_fallback = false;
     std::shared_ptr<ICompiledKernel> m_conv2d_chunk_kernel;
     ov::element::Type m_conv2d_chunk_elem_type{};
     LaunchOperandABI m_conv2d_chunk_launch_abi;
     std::shared_ptr<ICompiledKernel> m_group_conv2d_kernel;
     ov::element::Type m_group_conv2d_elem_type{};
+    std::shared_ptr<ICompiledKernel> m_interpolate_kernel;
+    ov::element::Type m_interpolate_elem_type{};
     std::shared_ptr<ICompiledKernel> m_transpose_kernel;
     ov::element::Type m_transpose_elem_type{};
     std::shared_ptr<ICompiledKernel> m_convert_linear_kernel;
@@ -106,6 +131,7 @@ private:
     void execute_conv2d_3x3_direct(GpuCommandBufferHandle command_buffer);
     void execute_conv2d_chunked(GpuCommandBufferHandle command_buffer);
     void execute_group_conv2d_chunked(GpuCommandBufferHandle command_buffer);
+    void execute_interpolate_chunked(GpuCommandBufferHandle command_buffer);
     void execute_transpose_chunked(GpuCommandBufferHandle command_buffer);
     void execute_convert_chunked(GpuCommandBufferHandle command_buffer);
     void execute_unary_chunked(GpuCommandBufferHandle command_buffer);
@@ -117,6 +143,8 @@ private:
     mlir::ModuleOp build_softmax_row_module(mlir::MLIRContext& ctx,
                                             const ov::element::Type& et,
                                             bool log_softmax);
+    mlir::ModuleOp build_interpolate_module(mlir::MLIRContext& ctx,
+                                            const ov::element::Type& et);
     mlir::ModuleOp build_conv2d_1x1_module(mlir::MLIRContext& ctx,
                                            const ov::element::Type& et);
     mlir::ModuleOp build_conv2d_3x3_direct_module(mlir::MLIRContext& ctx,
@@ -146,6 +174,7 @@ private:
     mlir::ModuleOp build_binary_bias_add_module(mlir::MLIRContext& ctx,
                                                 const ov::element::Type& et);
     bool should_use_unary_chunked() const;
+    bool should_use_concat_chunked() const;
     bool should_use_softmax_chunked() const;
     bool should_use_binary_same_shape() const;
     bool should_use_binary_chunked() const;
@@ -156,8 +185,10 @@ private:
     bool should_use_group_conv2d_chunked() const;
     GfxStageOptimizationPlan optimization_plan() const;
     GfxConvRoutePlan conv_route_plan() const;
+    bool should_use_interpolate_chunked() const;
     bool should_use_transpose_chunked() const;
     bool should_use_convert_chunked() const;
+    bool should_skip_generic_kernel_compile(const GfxStageOptimizationPlan& plan) const override;
 };
 
 }  // namespace gfx_plugin
