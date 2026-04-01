@@ -114,7 +114,7 @@ TEST(GfxParallelism, SelectBroadcomConvParallelismUsesDenserStride1Threadgroups)
 
     ASSERT_TRUE(plan.prefer_parallel);
     EXPECT_TRUE(plan.dispatch.enabled);
-    EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 32u);
+    EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 64u);
 }
 
 TEST(GfxParallelism, SelectBroadcomConvParallelismUsesDenserStride2Threadgroups) {

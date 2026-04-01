@@ -127,6 +127,7 @@ Family-aware tuning is now used for more than cache keys. The current code inclu
 - Broadcom V3D-specific matmul and convolution parallelism choices for Raspberry Pi-style Vulkan devices
 - Vulkan chunk/direct convolution kernels compiled with the selected `threads_per_group` instead of a fixed block-size assumption
 - MLIR convolution lowering that can honor explicit dispatch tile and thread attributes emitted by the planning path
+- MLIR convolution lowering that now uses a faster full-tile path for interior tiles and falls back to lane guards only on edge tiles
 
 ## Backend Selection
 The plugin has two layers of backend choice:
@@ -286,6 +287,7 @@ Recent regression coverage includes:
 - Vulkan runtime regression coverage in `tests/backends/vulkan/`
 - infer submission, prepared-pipeline reuse, immutable-const-cache reuse, and shared kernel-binding reuse tests
 - Vulkan batched constant-upload behavior through the shared infer command buffer path
+- Broadcom-oriented dense stride-1 convolution tuning coverage in `tests/unit/gfx_parallelism_test.cpp`
 - reusable output-resolution and reusable host-output coverage in `tests/unit/infer_pipeline_reuse_test.cpp`
 - internal transform and plugin coverage in `tests/unit/basic_ops_internal_test.cpp`
 - backend memory/device integration coverage in `tests/unit/memory_device_integration_test.mm`

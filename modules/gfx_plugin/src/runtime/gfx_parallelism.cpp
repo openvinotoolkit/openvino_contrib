@@ -1042,7 +1042,11 @@ protected:
         const bool compute_dense = kernel_work >= 288 && input_channels >= wave * 2u && output_channels >= wave * 2u;
         if (!depthwise && compute_dense && spatial >= 1024) {
             default_threads = clamp_threadgroup_candidate(caps, stride2 ? wave * 4u : wave * 2u);
-            if (!stride2 && kernel_work >= 1024 && spatial >= 4096) {
+            if (!stride2 &&
+                kernel_work >= 512 &&
+                spatial >= 4096 &&
+                input_channels >= wave * 4u &&
+                output_channels >= wave * 4u) {
                 default_threads = clamp_threadgroup_candidate(caps, wave * 4u);
             }
         }

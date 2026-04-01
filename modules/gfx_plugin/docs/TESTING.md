@@ -59,6 +59,9 @@ Recent additions in the tree include:
 - `tests/unit/runtime_subgraph_test.cpp` for targeted runtime subgraph execution checks through `ov_gfx_runtime_micro_tests`
 - `tests/unit/gpu_const_cache_test.cpp`, `tests/unit/kernel_arg_reuse_test.cpp`, and `tests/unit/gpu_backend_base_test.cpp` for cache and binding reuse layers
 
+Recent focused updates in existing tests include:
+- stronger Broadcom V3D expectations for dense stride-1 convolution threadgroup selection in `tests/unit/gfx_parallelism_test.cpp`
+
 ## Typical Test Suites
 Examples already present in the tree:
 - `GfxBasicOps`

@@ -415,21 +415,6 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
     if (!prefer_parallel && !has_explicit_padding) {
         return fail("prefer_parallel disabled and no padding");
     }
-    if (gfx_log_debug_enabled()) {
-        gfx_log_debug("MLIR") << "Conv2D pad detect: conv_input="
-                                  << (using_padded_input ? "padded" : "orig")
-                                  << " pad_h=" << pad_h << " pad_w=" << pad_w
-                                  << " pad_end_h=" << pad_end_h << " pad_end_w=" << pad_end_w
-                                  << " conv_output="
-                                  << (conv_output == output ? "alloc" : "arg");
-    }
-    if (debug) {
-        llvm::errs() << "[GFX][MLIR] Conv2D operands: in=" << input.getType()
-                     << " w=" << filter.getType() << " out=" << output.getType()
-                     << " pad_begin=(" << pad_h << "," << pad_w << ")"
-                     << " pad_end=(" << pad_end_h << "," << pad_end_w << ")\n";
-    }
-
     mlir::linalg::FillOp fill_op;
     mlir::Value zero_init;
     for (auto* user : output_base.getUsers()) {
@@ -458,6 +443,21 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
     if (!extract_hw(op.getStrides(), stride_h, stride_w) ||
         !extract_hw(op.getDilations(), dil_h, dil_w)) {
         return fail("missing strides/dilations");
+    }
+
+    if (gfx_log_debug_enabled()) {
+        gfx_log_debug("MLIR") << "Conv2D pad detect: conv_input="
+                                  << (using_padded_input ? "padded" : "orig")
+                                  << " pad_h=" << pad_h << " pad_w=" << pad_w
+                                  << " pad_end_h=" << pad_end_h << " pad_end_w=" << pad_end_w
+                                  << " conv_output="
+                                  << (conv_output == output ? "alloc" : "arg");
+    }
+    if (debug) {
+        llvm::errs() << "[GFX][MLIR] Conv2D operands: in=" << input.getType()
+                     << " w=" << filter.getType() << " out=" << output.getType()
+                     << " pad_begin=(" << pad_h << "," << pad_w << ")"
+                     << " pad_end=(" << pad_end_h << "," << pad_end_w << ")\n";
     }
 
     if (op->getNumResults() > 0) {
@@ -645,19 +645,16 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
                 tile_in = b.create<mlir::arith::OrIOp>(body_loc, tile_in, lane_in[i]);
             }
 
-            auto if_tile = b.create<mlir::scf::IfOp>(body_loc, tile_in, /*withElse=*/false);
-            {
-                mlir::OpBuilder::InsertionGuard guard(b);
-                b.setInsertionPointToStart(&if_tile.getThenRegion().front());
+            auto emit_tile_body = [&](mlir::OpBuilder& b_tile, mlir::Location tile_loc, bool guard_lanes) {
                 auto zero = b.create<mlir::arith::ConstantOp>(
-                    body_loc, elem_ty, b.getFloatAttr(elem_ty, 0.0));
+                    tile_loc, elem_ty, b_tile.getFloatAttr(elem_ty, 0.0));
                 // Convolution accumulates into a fresh zero-initialized tile.
                 // Reloading the destination buffer here can leak stale values
                 // once larger execution windows start reusing GPU buffers.
                 llvm::SmallVector<mlir::Value, 8> acc_init(static_cast<size_t>(lane_count), zero);
 
-                auto for_ic = b.create<mlir::scf::ForOp>(
-                    body_loc, c0, C_in, c1, acc_init,
+                auto for_ic = b_tile.create<mlir::scf::ForOp>(
+                    tile_loc, c0, C_in, c1, acc_init,
                     [&](mlir::OpBuilder& b3, mlir::Location loc3, mlir::Value iv_ic, mlir::ValueRange iter_args) {
                         llvm::SmallVector<mlir::Value, 8> acc_ic(iter_args.begin(), iter_args.end());
                         auto for_kh = b3.create<mlir::scf::ForOp>(
@@ -679,49 +676,56 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
                                             auto ow_mul = b5.create<mlir::arith::MulIOp>(loc5, lane_ow[i], strideW);
                                             mlir::Value ih_padded = b5.create<mlir::arith::AddIOp>(loc5, oh_mul, kh_mul).getResult();
                                             mlir::Value iw_padded = b5.create<mlir::arith::AddIOp>(loc5, ow_mul, kw_mul).getResult();
+                                            auto accumulate_lane = [&](mlir::OpBuilder& b_acc, mlir::Location acc_loc, mlir::Value acc_value) {
+                                                if (needs_bounds) {
+                                                    auto ih = b_acc.create<mlir::arith::SubIOp>(acc_loc, ih_padded, padH).getResult();
+                                                    auto iw = b_acc.create<mlir::arith::SubIOp>(acc_loc, iw_padded, padW).getResult();
+                                                    auto ge_h = b_acc.create<mlir::arith::CmpIOp>(
+                                                        acc_loc, mlir::arith::CmpIPredicate::sge, ih, c0);
+                                                    auto lt_h = b_acc.create<mlir::arith::CmpIOp>(
+                                                        acc_loc, mlir::arith::CmpIPredicate::slt, ih, H_in);
+                                                    auto ge_w = b_acc.create<mlir::arith::CmpIOp>(
+                                                        acc_loc, mlir::arith::CmpIPredicate::sge, iw, c0);
+                                                    auto lt_w = b_acc.create<mlir::arith::CmpIOp>(
+                                                        acc_loc, mlir::arith::CmpIPredicate::slt, iw, W_in);
+                                                    auto in_h2 = b_acc.create<mlir::arith::AndIOp>(acc_loc, ge_h, lt_h);
+                                                    auto in_w2 = b_acc.create<mlir::arith::AndIOp>(acc_loc, ge_w, lt_w);
+                                                    auto in_bounds2 = b_acc.create<mlir::arith::AndIOp>(acc_loc, in_h2, in_w2);
+                                                    auto ifop2 = b_acc.create<mlir::scf::IfOp>(
+                                                        acc_loc, acc_value.getType(), in_bounds2, /*withElse=*/true);
+                                                    {
+                                                        mlir::OpBuilder::InsertionGuard guard(b_acc);
+                                                        b_acc.setInsertionPointToStart(&ifop2.getThenRegion().front());
+                                                        auto in_val = b_acc.create<mlir::memref::LoadOp>(
+                                                            acc_loc, conv_input, mlir::ValueRange{iv_n, iv_ic, ih, iw}).getResult();
+                                                        auto mul = b_acc.create<mlir::arith::MulFOp>(acc_loc, in_val, w_val);
+                                                        auto add = b_acc.create<mlir::arith::AddFOp>(acc_loc, acc_value, mul).getResult();
+                                                        b_acc.create<mlir::scf::YieldOp>(acc_loc, mlir::ValueRange{add});
+                                                    }
+                                                    {
+                                                        mlir::OpBuilder::InsertionGuard guard(b_acc);
+                                                        b_acc.setInsertionPointToStart(&ifop2.getElseRegion().front());
+                                                        b_acc.create<mlir::scf::YieldOp>(acc_loc, mlir::ValueRange{acc_value});
+                                                    }
+                                                    return ifop2.getResult(0);
+                                                }
+                                                auto in_val = b_acc.create<mlir::memref::LoadOp>(
+                                                    acc_loc, conv_input, mlir::ValueRange{iv_n, iv_ic, ih_padded, iw_padded}).getResult();
+                                                auto mul = b_acc.create<mlir::arith::MulFOp>(acc_loc, in_val, w_val);
+                                                return b_acc.create<mlir::arith::AddFOp>(acc_loc, acc_value, mul).getResult();
+                                            };
+
+                                            if (!guard_lanes) {
+                                                next_accs.push_back(accumulate_lane(b5, loc5, acc_kw[i]));
+                                                continue;
+                                            }
+
                                             auto if_lane = b5.create<mlir::scf::IfOp>(
                                                 loc5, acc_kw[i].getType(), lane_in[i], /*withElse=*/true);
                                             {
                                                 mlir::OpBuilder::InsertionGuard guard(b5);
                                                 b5.setInsertionPointToStart(&if_lane.getThenRegion().front());
-                                                mlir::Value acc_next = acc_kw[i];
-                                                if (needs_bounds) {
-                                                    auto ih = b5.create<mlir::arith::SubIOp>(loc5, ih_padded, padH).getResult();
-                                                    auto iw = b5.create<mlir::arith::SubIOp>(loc5, iw_padded, padW).getResult();
-                                                    auto ge_h = b5.create<mlir::arith::CmpIOp>(
-                                                        loc5, mlir::arith::CmpIPredicate::sge, ih, c0);
-                                                    auto lt_h = b5.create<mlir::arith::CmpIOp>(
-                                                        loc5, mlir::arith::CmpIPredicate::slt, ih, H_in);
-                                                    auto ge_w = b5.create<mlir::arith::CmpIOp>(
-                                                        loc5, mlir::arith::CmpIPredicate::sge, iw, c0);
-                                                    auto lt_w = b5.create<mlir::arith::CmpIOp>(
-                                                        loc5, mlir::arith::CmpIPredicate::slt, iw, W_in);
-                                                    auto in_h2 = b5.create<mlir::arith::AndIOp>(loc5, ge_h, lt_h);
-                                                    auto in_w2 = b5.create<mlir::arith::AndIOp>(loc5, ge_w, lt_w);
-                                                    auto in_bounds2 = b5.create<mlir::arith::AndIOp>(loc5, in_h2, in_w2);
-                                                    auto ifop2 = b5.create<mlir::scf::IfOp>(
-                                                        loc5, acc_kw[i].getType(), in_bounds2, /*withElse=*/true);
-                                                    {
-                                                        mlir::OpBuilder::InsertionGuard guard(b5);
-                                                        b5.setInsertionPointToStart(&ifop2.getThenRegion().front());
-                                                        auto in_val = b5.create<mlir::memref::LoadOp>(
-                                                            loc5, conv_input, mlir::ValueRange{iv_n, iv_ic, ih, iw}).getResult();
-                                                        auto mul = b5.create<mlir::arith::MulFOp>(loc5, in_val, w_val);
-                                                        auto add = b5.create<mlir::arith::AddFOp>(loc5, acc_kw[i], mul).getResult();
-                                                        b5.create<mlir::scf::YieldOp>(loc5, mlir::ValueRange{add});
-                                                    }
-                                                    {
-                                                        mlir::OpBuilder::InsertionGuard guard(b5);
-                                                        b5.setInsertionPointToStart(&ifop2.getElseRegion().front());
-                                                        b5.create<mlir::scf::YieldOp>(loc5, mlir::ValueRange{acc_kw[i]});
-                                                    }
-                                                    acc_next = ifop2.getResult(0);
-                                                } else {
-                                                    auto in_val = b5.create<mlir::memref::LoadOp>(
-                                                        loc5, conv_input, mlir::ValueRange{iv_n, iv_ic, ih_padded, iw_padded}).getResult();
-                                                    auto mul = b5.create<mlir::arith::MulFOp>(loc5, in_val, w_val);
-                                                    acc_next = b5.create<mlir::arith::AddFOp>(loc5, acc_kw[i], mul).getResult();
-                                                }
+                                                auto acc_next = accumulate_lane(b5, loc5, acc_kw[i]);
                                                 b5.create<mlir::scf::YieldOp>(loc5, mlir::ValueRange{acc_next});
                                             }
                                             {
@@ -764,15 +768,48 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
                     acc_final[i] = apply_post(acc_final[i]);
                 }
 
-                for (int64_t i = 0; i < lane_count; ++i) {
-                    auto if_store = b.create<mlir::scf::IfOp>(
-                        body_loc, lane_in[i], /*withElse=*/false);
-                    {
-                        mlir::OpBuilder::InsertionGuard guard(b);
-                        b.setInsertionPointToStart(&if_store.getThenRegion().front());
-                        b.create<mlir::memref::StoreOp>(
-                            body_loc, acc_final[i], conv_output, mlir::ValueRange{iv_n, iv_oc, lane_oh[i], lane_ow[i]});
+                if (!guard_lanes) {
+                    for (int64_t i = 0; i < lane_count; ++i) {
+                        b_tile.create<mlir::memref::StoreOp>(
+                            tile_loc, acc_final[i], conv_output, mlir::ValueRange{iv_n, iv_oc, lane_oh[i], lane_ow[i]});
                     }
+                    return;
+                }
+
+                for (int64_t i = 0; i < lane_count; ++i) {
+                    auto if_store = b_tile.create<mlir::scf::IfOp>(
+                        tile_loc, lane_in[i], /*withElse=*/false);
+                    {
+                        mlir::OpBuilder::InsertionGuard guard(b_tile);
+                        b_tile.setInsertionPointToStart(&if_store.getThenRegion().front());
+                        b_tile.create<mlir::memref::StoreOp>(
+                            tile_loc, acc_final[i], conv_output, mlir::ValueRange{iv_n, iv_oc, lane_oh[i], lane_ow[i]});
+                    }
+                }
+            };
+
+            const auto oh_tile_end = b.create<mlir::arith::AddIOp>(body_loc, iv_oh_base, tileH).getResult();
+            const auto ow_tile_end = b.create<mlir::arith::AddIOp>(body_loc, iv_ow_base, tileW).getResult();
+            const auto full_tile_h = b.create<mlir::arith::CmpIOp>(
+                body_loc, mlir::arith::CmpIPredicate::sle, oh_tile_end, H_out).getResult();
+            const auto full_tile_w = b.create<mlir::arith::CmpIOp>(
+                body_loc, mlir::arith::CmpIPredicate::sle, ow_tile_end, W_out).getResult();
+            const auto full_tile = b.create<mlir::arith::AndIOp>(body_loc, full_tile_h, full_tile_w).getResult();
+            auto if_full_tile = b.create<mlir::scf::IfOp>(body_loc, full_tile, /*withElse=*/true);
+            {
+                mlir::OpBuilder::InsertionGuard guard(b);
+                b.setInsertionPointToStart(&if_full_tile.getThenRegion().front());
+                // Most tiles are interior tiles, so skip lane-level bounds checks on the fast path.
+                emit_tile_body(b, body_loc, /*guard_lanes=*/false);
+            }
+            {
+                mlir::OpBuilder::InsertionGuard guard(b);
+                b.setInsertionPointToStart(&if_full_tile.getElseRegion().front());
+                auto if_tile = b.create<mlir::scf::IfOp>(body_loc, tile_in, /*withElse=*/false);
+                {
+                    mlir::OpBuilder::InsertionGuard inner_guard(b);
+                    b.setInsertionPointToStart(&if_tile.getThenRegion().front());
+                    emit_tile_body(b, body_loc, /*guard_lanes=*/true);
                 }
             }
             b.create<mlir::scf::YieldOp>(body_loc);

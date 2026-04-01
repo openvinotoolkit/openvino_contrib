@@ -126,6 +126,10 @@ The current planning path is no longer just backend-wide. It includes family-spe
 - Qualcomm Adreno Vulkan devices
 - explicit convolution dispatch attrs forwarded into MLIR lowering
 
+For current convolution work, there are now two important lowering details to keep in mind:
+- full interior tiles in conv parallel lowering can skip lane-level bounds guards on the fast path
+- Vulkan specialized kernel compilation may re-resolve effective argument count from final SPIR-V bindings instead of trusting only pre-SPIR-V metadata
+
 If the change touches infer-request throughput or resource reuse, also read:
 - `src/plugin/infer_submission.*`
 - `src/plugin/infer_pipeline.*`

@@ -1458,9 +1458,14 @@ std::shared_ptr<ICompiledKernel> VulkanCodegenBackend::compile(const KernelSourc
                        *log_ptr);
     }
 
-    uint32_t arg_count = static_cast<uint32_t>(
-        infer_kernel_arg_count_from_module(module, source.signature.arg_count));
     const uint32_t spirv_binding_count = count_bindings_in_spirv(spirv_binary);
+    uint32_t arg_count = static_cast<uint32_t>(
+        infer_kernel_arg_count_from_module(module,
+                                           spirv_binding_count != 0 ? spirv_binding_count
+                                                                    : source.signature.arg_count));
+    if (spirv_binding_count != 0 && spirv_binding_count != arg_count) {
+        arg_count = spirv_binding_count;
+    }
     const uint32_t binding_count = arg_count != 0 ? arg_count : spirv_binding_count;
     if (const char* dump_env = std::getenv("OV_GFX_DUMP_SPIRV_BINDINGS")) {
         if (spirv_binding_count && spirv_binding_count != arg_count) {
