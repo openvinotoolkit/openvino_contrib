@@ -140,19 +140,18 @@ func addIndexToDuplicates(input []string) []string {
 
 // NewGenaiServer will run a server
 func NewGenaiServer(gpus discover.GpuInfoList, model string, modelname string, inferdevice string, f *ggml.GGML, adapters, projectors []string, opts api.Options, numParallel int) (GenaiServer, error) {
+	fmt.Println("🚀 FORCING GENAI RUNNER — NewGenaiServer called for model:", modelname)
 	systemInfo := discover.GetSystemInfo()
 	systemTotalMemory := systemInfo.System.TotalMemory
 	systemFreeMemory := systemInfo.System.FreeMemory
 	systemSwapFreeMemory := systemInfo.System.FreeSwap
 	slog.Info("system memory", "total", format.HumanBytes2(systemTotalMemory), "free", format.HumanBytes2(systemFreeMemory), "free_swap", format.HumanBytes2(systemSwapFreeMemory))
 
-	genai_device := genai.GetGenaiAvailableDevices()
-	var genai_device_list []string
-	for i := 0; i < int(len(genai_device)); i++ {
-		genai_device_list = append(genai_device_list, genai_device[i]["device_name"])
+	resolvedDevice, err := genai.ResolveDeviceOrFallback(inferdevice)
+	if err != nil {
+		return nil, fmt.Errorf("resolving OpenVINO device %q: %w", inferdevice, err)
 	}
-	genai_device_list = addIndexToDuplicates(genai_device_list)
-	inferdevice = SelectDevice(inferdevice, genai_device_list)
+	inferdevice = resolvedDevice
 
 	params := []string{
 		"--model", model,
@@ -214,6 +213,7 @@ func NewGenaiServer(gpus discover.GpuInfoList, model string, modelname string, i
 		if err != nil {
 			return nil, fmt.Errorf("unable to evaluate symlinks for executable path: %w", err)
 		}
+		fmt.Println("🚀 EXEC CMD:", exe, finalParams)
 		s := &GenaillmServer{
 			port:      port,
 			cmd:       exec.Command(exe, finalParams...),
@@ -267,6 +267,7 @@ func NewGenaiServer(gpus discover.GpuInfoList, model string, modelname string, i
 			s.cmd.Env = append(s.cmd.Env, visibleDevicesEnv+"="+visibleDevicesEnvVal)
 		}
 
+		fmt.Println("EXECUTING:", exe, strings.Join(finalParams, " "))
 		slog.Info("starting llama server", "cmd", s.cmd.String())
 
 		if err = s.cmd.Start(); err != nil {
@@ -484,6 +485,10 @@ type completion struct {
 	}
 }
 
+type completionError struct {
+	Error string `json:"error"`
+}
+
 func (s *GenaillmServer) Completion(ctx context.Context, req llamaserver.CompletionRequest, fn func(llamaserver.CompletionResponse)) error {
 	request := map[string]any{
 		"prompt":            req.Prompt,
@@ -612,6 +617,11 @@ func (s *GenaillmServer) Completion(ctx context.Context, req llamaserver.Complet
 				evt = line
 			}
 
+			var cerr completionError
+			if err := json.Unmarshal(evt, &cerr); err == nil && cerr.Error != "" {
+				return fmt.Errorf("OpenVINO completion failed: %s", cerr.Error)
+			}
+
 			var c completion
 			if err := json.Unmarshal(evt, &c); err != nil {
 				return fmt.Errorf("error unmarshalling llm prediction response: %v", err)
@@ -674,13 +684,10 @@ func (s *GenaillmServer) Completion(ctx context.Context, req llamaserver.Complet
 }
 
 func (s *GenaillmServer) Clear(mname string) error {
-	var err error
-	ov_ir_dir := strings.ReplaceAll(mname, ":", "_")
-	modelDir := filepath.Join("/tmp", ov_ir_dir)
-	err = os.RemoveAll(modelDir)
-	if err != nil {
+	ovIRDir := strings.ReplaceAll(mname, ":", "_")
+	modelDir := filepath.Join(os.TempDir(), ovIRDir)
+	if err := os.RemoveAll(modelDir); err != nil {
 		fmt.Println("Error removing directory:", err)
-		return nil
 	}
 	return nil
 }

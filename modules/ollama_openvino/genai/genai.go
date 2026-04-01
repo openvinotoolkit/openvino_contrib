@@ -1,13 +1,13 @@
 package genai
 
 /*
-#cgo CFLAGS: -std=c11
-#cgo CXXFLAGS: -std=c++17
+#cgo !windows CFLAGS: -std=c11
+#cgo windows CFLAGS: -std=c11
+#cgo !windows CXXFLAGS: -std=c++17
+#cgo windows CXXFLAGS: -std=c++17
 
-#cgo LDFLAGS: -lopenvino_genai
-#cgo LDFLAGS: -lopenvino
-#cgo LDFLAGS: -lopenvino_c
-#cgo LDFLAGS: -lopenvino_genai_c
+#cgo !windows LDFLAGS: -lopenvino_genai -lopenvino -lopenvino_c -lopenvino_genai_c
+#cgo windows LDFLAGS: -lopenvino_genai -lopenvino -lopenvino_c -lopenvino_genai_c
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,13 +26,28 @@ extern int goCallbackBridge(char* input, void* ptr);
 static ov_status_e ov_genai_llm_pipeline_create_npu_output_2048(const char* models_path,
 																  const char* device,
                                                                   ov_genai_llm_pipeline** pipe) {
-	return 	ov_genai_llm_pipeline_create(models_path, "NPU", 4, pipe, "MAX_PROMPT_LEN", "2048", "MIN_RESPONSE_LEN", "256");
+	return 	ov_genai_llm_pipeline_create(models_path, "NPU", 4, pipe, "MAX_PROMPT_LEN", "2048", "MIN_RESPONSE_LEN", "2048");
 }
 
 static ov_status_e ov_genai_llm_pipeline_create_cgo(const char* models_path,
 																  const char* device,
                                                                   ov_genai_llm_pipeline** pipe) {
 	return 	ov_genai_llm_pipeline_create(models_path, device, 0, pipe);
+}
+
+static ov_status_e ov_genai_llm_pipeline_generate_cgo(ov_genai_llm_pipeline* pipeline,
+                                                                  const char* input,
+                                                                  ov_genai_generation_config* config,
+                                                                  streamer_callback* callback,
+                                                                  ov_genai_decoded_results** result) {
+	ov_genai_llm_pipeline_start_chat(pipeline);
+	ov_status_e status = ov_genai_llm_pipeline_generate(pipeline, input, config, callback, result);
+	ov_genai_llm_pipeline_finish_chat(pipeline);
+	return status;
+}
+
+static void ov_genai_generation_config_free_cgo(ov_genai_generation_config* config) {
+	if (config) ov_genai_generation_config_free(config);
 }
 
 */
@@ -48,7 +63,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime/cgo"
 	"strconv"
+	"strings"
 	"unsafe"
 )
 
@@ -63,11 +80,137 @@ type SamplingParams struct {
 	RepeatLastN   int
 }
 
-// type Model struct {
-// 	pipe *C.LLMPipelineHandle
-// }
-
 type Model *C.ov_genai_llm_pipeline
+
+func ovStatusError(op string, status C.ov_status_e) error {
+	if int(status) == 0 {
+		return nil
+	}
+
+	return fmt.Errorf("%s failed with OpenVINO status code %d", op, int(status))
+}
+
+func normalizeDeviceName(device string) string {
+	return strings.ToUpper(strings.TrimSpace(device))
+}
+
+func devicePluginName(device string) string {
+	normalized := normalizeDeviceName(device)
+	if idx := strings.Index(normalized, "."); idx >= 0 {
+		return normalized[:idx]
+	}
+
+	return normalized
+}
+
+func getAvailableDeviceNames() ([]string, error) {
+	var core *C.ov_core_t
+	status := C.ov_core_create(&core)
+	if err := ovStatusError("creating OpenVINO core", status); err != nil {
+		return nil, err
+	}
+	if core == nil {
+		return nil, fmt.Errorf("creating OpenVINO core returned a nil core")
+	}
+	defer C.ov_core_free(core)
+
+	var devices C.ov_available_devices_t
+	status = C.ov_core_get_available_devices(core, &devices)
+	if err := ovStatusError("getting OpenVINO available devices", status); err != nil {
+		return nil, err
+	}
+	defer C.ov_available_devices_free(&devices)
+
+	available := make([]string, 0, int(devices.size))
+	cString := devices.devices
+	for i := 0; i < int(devices.size); i++ {
+		available = append(available, C.GoString(*cString))
+		cString = (**C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(cString)) + unsafe.Sizeof(*cString)))
+	}
+
+	return available, nil
+}
+
+func hasAvailableDevice(availableDevices []string, requested string) bool {
+	requested = normalizeDeviceName(requested)
+	if requested == "" {
+		return false
+	}
+
+	requestsSpecificID := strings.Contains(requested, ".")
+	for _, availableDevice := range availableDevices {
+		normalizedAvailable := normalizeDeviceName(availableDevice)
+		if normalizedAvailable == requested {
+			return true
+		}
+		if !requestsSpecificID && devicePluginName(normalizedAvailable) == requested {
+			return true
+		}
+	}
+
+	return false
+}
+
+func fallbackDevice(availableDevices []string) string {
+	switch {
+	case hasAvailableDevice(availableDevices, "CPU"):
+		return "CPU"
+	case hasAvailableDevice(availableDevices, "GPU"):
+		return "GPU"
+	case len(availableDevices) > 0:
+		return normalizeDeviceName(availableDevices[0])
+	default:
+		return ""
+	}
+}
+
+func defaultDevice(availableDevices []string) string {
+	switch {
+	case hasAvailableDevice(availableDevices, "GPU"):
+		return "GPU"
+	case hasAvailableDevice(availableDevices, "CPU"):
+		return "CPU"
+	case len(availableDevices) > 0:
+		return normalizeDeviceName(availableDevices[0])
+	default:
+		return ""
+	}
+}
+
+func ResolveDeviceOrFallback(device string) (string, error) {
+	availableDevices, err := getAvailableDeviceNames()
+	if err != nil {
+		return "", err
+	}
+	if len(availableDevices) == 0 {
+		return "", fmt.Errorf("OpenVINO reported no available devices")
+	}
+
+	requestedDevice := normalizeDeviceName(device)
+	if requestedDevice == "" {
+		resolved := defaultDevice(availableDevices)
+		if resolved == "" {
+			return "", fmt.Errorf("OpenVINO reported no default device (available: %s)", strings.Join(availableDevices, ", "))
+		}
+
+		return resolved, nil
+	}
+
+	if hasAvailableDevice(availableDevices, requestedDevice) {
+		return requestedDevice, nil
+	}
+
+	resolved := fallbackDevice(availableDevices)
+	if resolved == "" {
+		return "", fmt.Errorf("OpenVINO device %q is not available and no fallback device was found (available: %s)", requestedDevice, strings.Join(availableDevices, ", "))
+	}
+
+	log.Printf("OpenVINO device %q is not available (available: %s); falling back to %q", requestedDevice, strings.Join(availableDevices, ", "), resolved)
+	if requestedDevice == "NPU" && resolved == "CPU" {
+		fmt.Println("NPU is not available, falling back to CPU")
+	}
+	return resolved, nil
+}
 
 func IsGGUF(filePath string) (bool, error) {
 	file, err := os.Open(filePath)
@@ -185,22 +328,36 @@ func UnpackTarGz(tarGzPath string, destDir string) error {
 	return nil
 }
 
-func CreatePipeline(modelsPath string, device string) *C.ov_genai_llm_pipeline {
+func CreatePipeline(modelsPath string, device string) (*C.ov_genai_llm_pipeline, error) {
+	resolvedDevice, err := ResolveDeviceOrFallback(device)
+	if err != nil {
+		return nil, fmt.Errorf("resolving OpenVINO device %q: %w", device, err)
+	}
+
 	cModelsPath := C.CString(modelsPath)
-	cDevice := C.CString(device)
+	cDevice := C.CString(resolvedDevice)
 
 	var pipeline *C.ov_genai_llm_pipeline
+	var status C.ov_status_e
 
 	defer C.free(unsafe.Pointer(cModelsPath))
 	defer C.free(unsafe.Pointer(cDevice))
 
-	// C.ov_genai_llm_pipeline_create(cModelsPath, cDevice, &pipeline)
-	if device == "NPU" {
-		C.ov_genai_llm_pipeline_create_npu_output_2048(cModelsPath, cDevice, &pipeline)
+	if resolvedDevice == "NPU" {
+		status = C.ov_genai_llm_pipeline_create_npu_output_2048(cModelsPath, cDevice, &pipeline)
 	} else {
-		C.ov_genai_llm_pipeline_create_cgo(cModelsPath, cDevice, &pipeline)
+		status = C.ov_genai_llm_pipeline_create_cgo(cModelsPath, cDevice, &pipeline)
 	}
-	return pipeline
+
+	if err := ovStatusError("creating OpenVINO GenAI pipeline", status); err != nil {
+		return nil, fmt.Errorf("%w for %q on %s", err, modelsPath, resolvedDevice)
+	}
+
+	if pipeline == nil {
+		return nil, fmt.Errorf("creating OpenVINO GenAI pipeline returned a nil pipeline for %q on %s", modelsPath, resolvedDevice)
+	}
+
+	return pipeline, nil
 }
 
 func PrintGenaiMetrics(metrics *C.ov_genai_perf_metrics) {
@@ -214,27 +371,27 @@ func PrintGenaiMetrics(metrics *C.ov_genai_perf_metrics) {
 	var gen_mean C.float
 	var gen_std C.float
 	C.ov_genai_perf_metrics_get_inference_duration(metrics, &gen_mean, &gen_std)
-	log.Printf("Generate time: %.2f ± %.2f ms\n", gen_mean, gen_std)
+	log.Printf("Generate time: %.2f +/- %.2f ms\n", gen_mean, gen_std)
 
 	var token_mean C.float
 	var token_std C.float
 	C.ov_genai_perf_metrics_get_tokenization_duration(metrics, &token_mean, &token_std)
-	log.Printf("Tokenization time: %.2f ± %.2f ms\n", token_mean, token_std)
+	log.Printf("Tokenization time: %.2f +/- %.2f ms\n", token_mean, token_std)
 
 	var detoken_mean C.float
 	var detoken_std C.float
 	C.ov_genai_perf_metrics_get_detokenization_duration(metrics, &detoken_mean, &detoken_std)
-	log.Printf("Detokenization time: %.2f ± %.2f ms\n", detoken_mean, detoken_std)
+	log.Printf("Detokenization time: %.2f +/- %.2f ms\n", detoken_mean, detoken_std)
 
 	var ttft_mean C.float
 	var ttft_std C.float
 	C.ov_genai_perf_metrics_get_ttft(metrics, &ttft_mean, &ttft_std)
-	log.Printf("TTFT: %.2f ± %.2f ms\n", ttft_mean, ttft_std)
+	log.Printf("TTFT: %.2f +/- %.2f ms\n", ttft_mean, ttft_std)
 
 	var tpot_mean C.float
 	var tpot_std C.float
 	C.ov_genai_perf_metrics_get_tpot(metrics, &tpot_mean, &tpot_std)
-	log.Printf("TPOT: %.2f ± %.2f ms/token\n", tpot_mean, tpot_std)
+	log.Printf("TPOT: %.2f +/- %.2f ms/token\n", tpot_mean, tpot_std)
 
 	var num_generation_tokens C.size_t
 	C.ov_genai_perf_metrics_get_num_generation_tokens(metrics, &num_generation_tokens)
@@ -243,7 +400,7 @@ func PrintGenaiMetrics(metrics *C.ov_genai_perf_metrics) {
 	var tput_mean C.float
 	var tput_std C.float
 	C.ov_genai_perf_metrics_get_throughput(metrics, &tput_mean, &tput_std)
-	log.Printf("Throughput: %.2f ± %.2f tokens/s\n", tput_mean, tput_std)
+	log.Printf("Throughput: %.2f +/- %.2f tokens/s\n", tput_mean, tput_std)
 }
 
 func SetSamplingParams(samplingparameters *SamplingParams) *C.ov_genai_generation_config {
@@ -294,24 +451,47 @@ func SetSamplingParams(samplingparameters *SamplingParams) *C.ov_genai_generatio
 	return cConfig
 }
 
-func GenerateTextWithMetrics(pipeline *C.ov_genai_llm_pipeline, input string, samplingparameters *SamplingParams, seq *Sequence) string {
+func GenerateTextWithMetrics(pipeline *C.ov_genai_llm_pipeline, input string, samplingparameters *SamplingParams, seq *Sequence) (string, error) {
+	fmt.Println("GENERATION STARTED - input length:", len(input))
+	if pipeline == nil {
+		return "", fmt.Errorf("OpenVINO pipeline is not initialized")
+	}
+
 	cInput := C.CString(input)
 	defer C.free(unsafe.Pointer(cInput))
 
 	cConfig := SetSamplingParams(samplingparameters)
+	defer C.ov_genai_generation_config_free_cgo(cConfig)
 	var result *C.ov_genai_decoded_results
 
 	output_size := C.size_t(0)
 
-	// 创建 streamer_callback
+	handle := cgo.NewHandle(seq)
+	defer handle.Delete()
+
+	cHandle := C.malloc(C.size_t(unsafe.Sizeof(C.uintptr_t(0))))
+	defer C.free(cHandle)
+	*(*C.uintptr_t)(cHandle) = C.uintptr_t(handle)
+
+	// Create streamer_callback
 	var streamer_callback C.streamer_callback
 	streamer_callback.callback_func = (C.callback_function)(unsafe.Pointer(C.goCallbackBridge))
+	streamer_callback.args = cHandle
 
-	streamer_callback.args = unsafe.Pointer(seq)
+	status := C.ov_genai_llm_pipeline_generate_cgo(
+		pipeline,
+		cInput,
+		(*C.ov_genai_generation_config)(cConfig),
+		&streamer_callback,
+		&result,
+	)
+	if err := ovStatusError("generating text with OpenVINO GenAI", status); err != nil {
+		return "", err
+	}
 
-	C.ov_genai_llm_pipeline_start_chat(pipeline)
-	C.ov_genai_llm_pipeline_generate(pipeline, cInput, (*C.ov_genai_generation_config)(cConfig), &streamer_callback, &result)
-	C.ov_genai_llm_pipeline_finish_chat(pipeline)
+	if result == nil {
+		return "", fmt.Errorf("OpenVINO GenAI generate returned no decoded result")
+	}
 
 	C.ov_genai_decoded_results_get_string(result, (*C.char)(nil), &output_size)
 	cOutput := C.malloc(output_size)
@@ -322,12 +502,30 @@ func GenerateTextWithMetrics(pipeline *C.ov_genai_llm_pipeline, input string, sa
 	var metrics *C.ov_genai_perf_metrics
 	C.ov_genai_decoded_results_get_perf_metrics(result, &metrics)
 
-	PrintGenaiMetrics(metrics)
+	defer C.ov_genai_decoded_results_free(result)
 
-	return C.GoString((*C.char)(cOutput))
+	// Declare output first, then use it
+	output := C.GoString((*C.char)(cOutput))
+
+	var generatedTokens C.size_t
+	C.ov_genai_perf_metrics_get_num_generation_tokens(metrics, &generatedTokens)
+
+	if strings.TrimSpace(output) == "" && generatedTokens == 0 {
+		log.Println("Warning: Empty output from OpenVINO")
+	}
+
+	if strings.TrimSpace(output) == "" && generatedTokens == 0 && strings.TrimSpace(input) != "" {
+		return "", fmt.Errorf("OpenVINO GenAI returned an empty completion with 0 generated tokens")
+	}
+
+	return output, nil
 }
 
-func GenerateText(pipeline *C.ov_genai_llm_pipeline, input string, streamer_callback C.streamer_callback) string {
+func GenerateText(pipeline *C.ov_genai_llm_pipeline, input string, streamer_callback C.streamer_callback) (string, error) {
+	if pipeline == nil {
+		return "", fmt.Errorf("OpenVINO pipeline is not initialized")
+	}
+
 	cInput := C.CString(input)
 	defer C.free(unsafe.Pointer(cInput))
 
@@ -335,16 +533,20 @@ func GenerateText(pipeline *C.ov_genai_llm_pipeline, input string, streamer_call
 
 	var result *C.ov_genai_decoded_results
 
-	C.ov_genai_llm_pipeline_start_chat(pipeline)
-	C.ov_genai_llm_pipeline_generate(pipeline, cInput, (*C.ov_genai_generation_config)(nil), &streamer_callback, &result)
-	C.ov_genai_llm_pipeline_finish_chat(pipeline)
+	status := C.ov_genai_llm_pipeline_generate_cgo(pipeline, cInput, (*C.ov_genai_generation_config)(nil), &streamer_callback, &result)
+	if err := ovStatusError("generating text with OpenVINO GenAI", status); err != nil {
+		return "", err
+	}
+	if result == nil {
+		return "", fmt.Errorf("OpenVINO GenAI generate returned no decoded result")
+	}
 
 	C.ov_genai_decoded_results_get_string(result, (*C.char)(nil), &output_size)
 	cOutput := C.malloc(output_size)
 	defer C.free(cOutput)
 
 	C.ov_genai_decoded_results_get_string(result, (*C.char)(cOutput), &output_size)
-	return C.GoString((*C.char)(cOutput))
+	return C.GoString((*C.char)(cOutput)), nil
 }
 
 func FreeModel(model Model) {
@@ -352,38 +554,55 @@ func FreeModel(model Model) {
 }
 
 func GetGenaiAvailableDevices() []map[string]string {
-	var core *(C.ov_core_t)
+	var core *C.ov_core_t
+	status := C.ov_core_create(&core)
+	if err := ovStatusError("creating OpenVINO core", status); err != nil {
+		log.Printf("Failed to enumerate OpenVINO devices: %v", err)
+		return nil
+	}
+	if core == nil {
+		log.Printf("Failed to enumerate OpenVINO devices: creating OpenVINO core returned a nil core")
+		return nil
+	}
 	defer C.ov_core_free(core)
 
-	C.ov_core_create(&core)
-
 	var devices C.ov_available_devices_t
-	C.ov_core_get_available_devices(core, &devices)
+	status = C.ov_core_get_available_devices(core, &devices)
+	if err := ovStatusError("getting OpenVINO available devices", status); err != nil {
+		log.Printf("Failed to enumerate OpenVINO devices: %v", err)
+		return nil
+	}
+	defer C.ov_available_devices_free(&devices)
 
-	// goDevice := make(map[string]map[string][]string)
 	var goDevices []map[string]string
 
 	cString := devices.devices
 	for i := 0; i < int(devices.size); i++ {
-		var version_list C.ov_core_version_list_t
+		availableDeviceName := C.GoString(*cString)
+		var versionList C.ov_core_version_list_t
 
-		C.ov_core_get_versions_by_device_name(core, (*C.char)(*cString), &version_list)
+		status = C.ov_core_get_versions_by_device_name(core, (*C.char)(*cString), &versionList)
+		if err := ovStatusError("getting OpenVINO device version", status); err != nil {
+			goDevices = append(goDevices, map[string]string{"device_name": availableDeviceName})
+			cString = (**C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(cString)) + unsafe.Sizeof(*cString)))
+			continue
+		}
 
-		cversion_list := version_list
-		for i := 0; i < int(version_list.size); i++ {
-			version := (*C.ov_core_version_t)(unsafe.Pointer(uintptr(unsafe.Pointer(cversion_list.versions)) + uintptr(i)*unsafe.Sizeof(*cversion_list.versions)))
-			deviceName := C.GoString(version.device_name) // 获取 device_name
+		if versionList.size == 0 {
+			goDevices = append(goDevices, map[string]string{"device_name": availableDeviceName})
+		}
+
+		for j := 0; j < int(versionList.size); j++ {
+			version := (*C.ov_core_version_t)(unsafe.Pointer(uintptr(unsafe.Pointer(versionList.versions)) + uintptr(j)*unsafe.Sizeof(*versionList.versions)))
 			buildNumber := C.GoString(version.version.buildNumber)
 			description := C.GoString(version.version.description)
 
-			item := map[string]string{"device_name": deviceName, "buildNumber": buildNumber, "description": description}
+			item := map[string]string{"device_name": availableDeviceName, "buildNumber": buildNumber, "description": description}
 			goDevices = append(goDevices, item)
 		}
 
 		cString = (**C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(cString)) + unsafe.Sizeof(*cString)))
-
 	}
-	defer C.ov_available_devices_free(&devices)
 
 	return goDevices
 }
@@ -401,58 +620,23 @@ func GetOvVersion() {
 //export goCallbackBridge
 func goCallbackBridge(args *C.char, gen_result unsafe.Pointer) C.int {
 	if args != nil {
-		// 将 unsafe.Pointer 转换回结构体指针
-		result := (*Sequence)(gen_result)
+		if gen_result == nil {
+			return C.OV_GENAI_STREAMING_STATUS_STOP
+		}
 
-		// 将 C 字符串转换为 Go 字符串并追加到切片中
+		handle := cgo.Handle(*(*C.uintptr_t)(gen_result))
+		result, ok := handle.Value().(*Sequence)
+		if !ok || result == nil {
+			return C.OV_GENAI_STREAMING_STATUS_STOP
+		}
+
 		goStr := C.GoString(args)
 		result.AppendPendingResponse(goStr)
 
-		// fmt.Printf("%s", goStr)
-		// os.Stdout.Sync()
-		FlushPending((*Sequence)(result))
-		return C.OV_GENAI_STREAMMING_STATUS_RUNNING
+		FlushPending(result)
+		return C.OV_GENAI_STREAMING_STATUS_RUNNING
 	} else {
 		fmt.Println("Callback executed with NULL message!")
-		return C.OV_GENAI_STREAMMING_STATUS_STOP
+		return C.OV_GENAI_STREAMING_STATUS_STOP
 	}
 }
-
-// func main() {
-// 	// 使用 createPipeline 函数创建 pipeline
-// 	// log.Printf(GetGenaiAvailableDevices()[0]["device_name"])
-// 	GetOvVersion()
-// 	pipeline := CreatePipeline("/home/hongbo/ollama_model/TinyLlama-1.1B-Chat-v1.0-int4-ov", "CPU")
-// 	if pipeline == nil {
-// 		fmt.Println("创建 pipeline 失败")
-// 		return
-// 	}
-// 	fmt.Println("成功创建 pipeline")
-
-// 	// 创建 streamer_callback
-// 	var streamer_callback C.streamer_callback
-// 	streamer_callback.callback_func = (C.callback_function)(unsafe.Pointer(C.goCallbackBridge))
-
-// 	// 初始化 gena_result 结构体
-// 	gena_result := &gen_result_struct{
-// 		pendingResponses: make([]string, 0),
-// 	}
-
-// 	// 使用 runtime.Pinner 固定指针
-// 	var pinner runtime.Pinner
-// 	pinner.Pin(gena_result)
-// 	defer pinner.Unpin()
-
-// 	streamer_callback.args = unsafe.Pointer(gena_result)
-
-// 	result := GenerateText(pipeline, "who you are?", streamer_callback)
-// 	fmt.Println("生成的结果 result:", result)
-
-// 	if gena_result != nil && len(gena_result.pendingResponses) > 0 {
-// 		fmt.Println("生成的结果 gen_result:", gena_result.pendingResponses)
-// 	} else {
-// 		fmt.Println("生成的结果 gen_result: 无响应")
-// 	}
-// 	// 释放 pipeline 资源
-// 	FreeModel(pipeline)
-// }
