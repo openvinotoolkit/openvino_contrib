@@ -43,6 +43,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -185,22 +186,49 @@ func UnpackTarGz(tarGzPath string, destDir string) error {
 	return nil
 }
 
-func CreatePipeline(modelsPath string, device string) *C.ov_genai_llm_pipeline {
+// IsDeviceAvailable checks if a specific device is available
+func IsDeviceAvailable(device string) bool {
+	devices := GetGenaiAvailableDevices()
+	for _, d := range devices {
+		if d["device_name"] == device {
+			return true
+		}
+	}
+	return false
+}
+
+func CreatePipeline(modelsPath string, device string) (*C.ov_genai_llm_pipeline, error) {
+	// Check if device is available
+	if !IsDeviceAvailable(device) {
+		return nil, fmt.Errorf("device '%s' is not available on this system. Available devices: %v",
+			device, GetAvailableDeviceNames())
+	}
+
 	cModelsPath := C.CString(modelsPath)
 	cDevice := C.CString(device)
 
 	var pipeline *C.ov_genai_llm_pipeline
+	var status C.ov_status_e
 
 	defer C.free(unsafe.Pointer(cModelsPath))
 	defer C.free(unsafe.Pointer(cDevice))
 
-	// C.ov_genai_llm_pipeline_create(cModelsPath, cDevice, &pipeline)
 	if device == "NPU" {
-		C.ov_genai_llm_pipeline_create_npu_output_2048(cModelsPath, cDevice, &pipeline)
+		status = C.ov_genai_llm_pipeline_create_npu_output_2048(cModelsPath, cDevice, &pipeline)
 	} else {
-		C.ov_genai_llm_pipeline_create_cgo(cModelsPath, cDevice, &pipeline)
+		status = C.ov_genai_llm_pipeline_create_cgo(cModelsPath, cDevice, &pipeline)
 	}
-	return pipeline
+
+	if status != C.OV_STATUS_OK {
+		return nil, fmt.Errorf("failed to create pipeline for device '%s': status code %d", device, status)
+	}
+
+	if pipeline == nil {
+		return nil, fmt.Errorf("pipeline creation returned nil for device '%s'", device)
+	}
+
+	log.Printf("Successfully created pipeline for device: %s", device)
+	return pipeline, nil
 }
 
 func PrintGenaiMetrics(metrics *C.ov_genai_perf_metrics) {
@@ -294,7 +322,11 @@ func SetSamplingParams(samplingparameters *SamplingParams) *C.ov_genai_generatio
 	return cConfig
 }
 
-func GenerateTextWithMetrics(pipeline *C.ov_genai_llm_pipeline, input string, samplingparameters *SamplingParams, seq *Sequence) string {
+func GenerateTextWithMetrics(pipeline *C.ov_genai_llm_pipeline, input string, samplingparameters *SamplingParams, seq *Sequence) error {
+	if pipeline == nil {
+		return errors.New("pipeline is nil")
+	}
+
 	cInput := C.CString(input)
 	defer C.free(unsafe.Pointer(cInput))
 
@@ -306,14 +338,41 @@ func GenerateTextWithMetrics(pipeline *C.ov_genai_llm_pipeline, input string, sa
 	// 创建 streamer_callback
 	var streamer_callback C.streamer_callback
 	streamer_callback.callback_func = (C.callback_function)(unsafe.Pointer(C.goCallbackBridge))
-
 	streamer_callback.args = unsafe.Pointer(seq)
 
-	C.ov_genai_llm_pipeline_start_chat(pipeline)
-	C.ov_genai_llm_pipeline_generate(pipeline, cInput, (*C.ov_genai_generation_config)(cConfig), &streamer_callback, &result)
-	C.ov_genai_llm_pipeline_finish_chat(pipeline)
+	// Start chat
+	status := C.ov_genai_llm_pipeline_start_chat(pipeline)
+	if status != C.OV_STATUS_OK {
+		return fmt.Errorf("failed to start chat: status code %d", status)
+	}
 
+	// Generate
+	status = C.ov_genai_llm_pipeline_generate(pipeline, cInput, (*C.ov_genai_generation_config)(cConfig), &streamer_callback, &result)
+	if status != C.OV_STATUS_OK {
+		C.ov_genai_llm_pipeline_finish_chat(pipeline)
+		return fmt.Errorf("failed to generate text: status code %d", status)
+	}
+
+	// Check if result is valid
+	if result == nil {
+		C.ov_genai_llm_pipeline_finish_chat(pipeline)
+		return errors.New("generation returned nil result")
+	}
+
+	// Finish chat
+	status = C.ov_genai_llm_pipeline_finish_chat(pipeline)
+	if status != C.OV_STATUS_OK {
+		log.Printf("Warning: failed to finish chat: status code %d", status)
+	}
+
+	// Get output string
 	C.ov_genai_decoded_results_get_string(result, (*C.char)(nil), &output_size)
+
+	if output_size == 0 {
+		log.Printf("Warning: generation completed but output size is 0")
+		return nil
+	}
+
 	cOutput := C.malloc(output_size)
 	defer C.free(cOutput)
 
@@ -324,10 +383,21 @@ func GenerateTextWithMetrics(pipeline *C.ov_genai_llm_pipeline, input string, sa
 
 	PrintGenaiMetrics(metrics)
 
-	return C.GoString((*C.char)(cOutput))
+	output := C.GoString((*C.char)(cOutput))
+
+	// Verify we actually got output
+	if len(output) == 0 {
+		log.Printf("Warning: generation completed but output string is empty")
+	}
+
+	return nil
 }
 
-func GenerateText(pipeline *C.ov_genai_llm_pipeline, input string, streamer_callback C.streamer_callback) string {
+func GenerateText(pipeline *C.ov_genai_llm_pipeline, input string, streamer_callback C.streamer_callback) (string, error) {
+	if pipeline == nil {
+		return "", errors.New("pipeline is nil")
+	}
+
 	cInput := C.CString(input)
 	defer C.free(unsafe.Pointer(cInput))
 
@@ -335,20 +405,54 @@ func GenerateText(pipeline *C.ov_genai_llm_pipeline, input string, streamer_call
 
 	var result *C.ov_genai_decoded_results
 
-	C.ov_genai_llm_pipeline_start_chat(pipeline)
-	C.ov_genai_llm_pipeline_generate(pipeline, cInput, (*C.ov_genai_generation_config)(nil), &streamer_callback, &result)
-	C.ov_genai_llm_pipeline_finish_chat(pipeline)
+	status := C.ov_genai_llm_pipeline_start_chat(pipeline)
+	if status != C.OV_STATUS_OK {
+		return "", fmt.Errorf("failed to start chat: status code %d", status)
+	}
+
+	status = C.ov_genai_llm_pipeline_generate(pipeline, cInput, (*C.ov_genai_generation_config)(nil), &streamer_callback, &result)
+	if status != C.OV_STATUS_OK {
+		C.ov_genai_llm_pipeline_finish_chat(pipeline)
+		return "", fmt.Errorf("failed to generate text: status code %d", status)
+	}
+
+	status = C.ov_genai_llm_pipeline_finish_chat(pipeline)
+	if status != C.OV_STATUS_OK {
+		log.Printf("Warning: failed to finish chat: status code %d", status)
+	}
+
+	if result == nil {
+		return "", errors.New("generation returned nil result")
+	}
 
 	C.ov_genai_decoded_results_get_string(result, (*C.char)(nil), &output_size)
 	cOutput := C.malloc(output_size)
 	defer C.free(cOutput)
 
 	C.ov_genai_decoded_results_get_string(result, (*C.char)(cOutput), &output_size)
-	return C.GoString((*C.char)(cOutput))
+	return C.GoString((*C.char)(cOutput)), nil
 }
 
 func FreeModel(model Model) {
-	C.ov_genai_llm_pipeline_free(model)
+	if model != nil {
+		C.ov_genai_llm_pipeline_free(model)
+	}
+}
+
+// GetAvailableDeviceNames returns a list of available device names
+func GetAvailableDeviceNames() []string {
+	devices := GetGenaiAvailableDevices()
+	names := make([]string, 0, len(devices))
+	seen := make(map[string]bool)
+
+	for _, d := range devices {
+		name := d["device_name"]
+		if !seen[name] {
+			names = append(names, name)
+			seen[name] = true
+		}
+	}
+	return names
 }
 
 func GetGenaiAvailableDevices() []map[string]string {
