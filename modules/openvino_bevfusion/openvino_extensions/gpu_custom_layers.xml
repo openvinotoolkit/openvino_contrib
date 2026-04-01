@@ -1,0 +1,90 @@
+<!--
+  OpenVINO Custom GPU Kernel Configuration
+  Combined config for all BEVFusion custom operations.
+-->
+
+<!-- ═══ BEVPool: fused softmax + scatter (backward-compatible) ═══ -->
+<CustomLayer name="BEVPool" type="SimpleGPU" version="1">
+    <Kernel entry="bevpool_fused">
+        <Source filename="bev_pool_gpu.cl"/>
+        <Define name="NX"         type="int" param="nx"         default="360"/>
+        <Define name="NY"         type="int" param="ny"         default="360"/>
+        <Define name="NZ"         type="int" param="nz"         default="1"/>
+        <Define name="NUM_CAMS"   type="int" param="num_cams"   default="6"/>
+        <Define name="DEPTH_BINS" type="int" param="depth_bins" default="118"/>
+        <Define name="CHANNELS"   type="int" param="channels"   default="80"/>
+        <Define name="FEAT_H"     type="int" param="feat_h"     default="32"/>
+        <Define name="FEAT_W"     type="int" param="feat_w"     default="88"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="input"  port-index="1" format="BFYX"/>
+        <Tensor arg-index="2" type="input"  port-index="2" format="BFYX"/>
+        <Tensor arg-index="3" type="output" port-index="0" format="BFYX"/>
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable -cl-fast-relaxed-math -cl-no-signed-zeros"/>
+    <WorkSizes dim="input" global="B*F*Y*X,1,1" local=""/>
+</CustomLayer>
+
+<!-- ═══ BEVPoolScatter: int32 native atomic scatter (fast path) ═══ -->
+<CustomLayer name="BEVPoolScatter" type="SimpleGPU" version="1">
+    <Kernel entry="bevpool_scatter">
+        <Source filename="bev_pool_scatter.cl"/>
+        <Define name="NX"         type="int" param="nx"         default="360"/>
+        <Define name="NY"         type="int" param="ny"         default="360"/>
+        <Define name="NZ"         type="int" param="nz"         default="1"/>
+        <Define name="NUM_CAMS"   type="int" param="num_cams"   default="6"/>
+        <Define name="DEPTH_BINS" type="int" param="depth_bins" default="118"/>
+        <Define name="CHANNELS"   type="int" param="channels"   default="80"/>
+        <Define name="FEAT_H"     type="int" param="feat_h"     default="32"/>
+        <Define name="FEAT_W"     type="int" param="feat_w"     default="88"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="input"  port-index="1" format="BFYX"/>
+        <Tensor arg-index="2" type="input"  port-index="2" format="BFYX"/>
+        <Tensor arg-index="3" type="output" port-index="0" format="BFYX"/>
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable -cl-fast-relaxed-math"/>
+    <WorkSizes global="31899648,1,1" local="16,1,1"/>
+</CustomLayer>
+
+<!-- ═══ BEVPoolConvert: int32 → float32 conversion ═══ -->
+<CustomLayer name="BEVPoolConvert" type="SimpleGPU" version="1">
+    <Kernel entry="bevpool_convert">
+        <Source filename="bev_pool_convert.cl"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="output" port-index="0" format="BFYX"/>
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable"/>
+    <WorkSizes dim="output" global="B*F*Y*X,1,1" local=""/>
+</CustomLayer>
+
+<!-- ═══ VoxelizeScatter: GPU hash-table voxelization (single WG) ═══ -->
+<CustomLayer name="VoxelizeScatter" type="SimpleGPU" version="1">
+    <Kernel entry="voxelize_scatter">
+        <Source filename="voxelize_scatter.cl"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="input"  port-index="1" format="BFYX"/>
+        <Tensor arg-index="2" type="output" port-index="0" format="BFYX"/>
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable"/>
+    <WorkSizes global="1024,1,1" local="1024,1,1"/>
+</CustomLayer>
+
+<!-- ═══ VoxelizeMean: int32 → float32 mean features (single WG) ═══ -->
+<CustomLayer name="VoxelizeMean" type="SimpleGPU" version="1">
+    <Kernel entry="voxelize_mean">
+        <Source filename="voxelize_mean.cl"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="output" port-index="0" format="BFYX"/>
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable"/>
+    <WorkSizes global="1024,1,1" local="1024,1,1"/>
+</CustomLayer>
