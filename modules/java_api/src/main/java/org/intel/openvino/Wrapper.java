@@ -25,9 +25,18 @@ public class Wrapper implements AutoCloseable {
         return nativeObj;
     }
 
+    /**
+     * Check if the native resources have been released.
+     *
+     * @return true if close() has been called, false otherwise
+     */
+    public boolean isClosed() {
+        return closed.get();
+    }
+
     @Override
     public void close() {
-        if (!closed.compareAndSet(false, true)) {
+        if (closed.compareAndSet(false, true)) {
             delete(nativeObj);
         }
     }
