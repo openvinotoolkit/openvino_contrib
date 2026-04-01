@@ -123,6 +123,11 @@ Current family-aware planning distinguishes at least:
 - `broadcom_v3d` for Raspberry Pi Vulkan devices
 - `generic` as the fallback class
 
+Family-aware tuning is now used for more than cache keys. The current code includes:
+- Broadcom V3D-specific matmul and convolution parallelism choices for Raspberry Pi-style Vulkan devices
+- Vulkan chunk/direct convolution kernels compiled with the selected `threads_per_group` instead of a fixed block-size assumption
+- MLIR convolution lowering that can honor explicit dispatch tile and thread attributes emitted by the planning path
+
 ## Backend Selection
 The plugin has two layers of backend choice:
 - Build-time availability via CMake:

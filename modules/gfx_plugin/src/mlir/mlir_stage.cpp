@@ -568,15 +568,6 @@ void MlirStage::apply_kernel_metadata(const KernelRuntimeMetadata& meta,
     if (meta.force_single_dispatch) {
         m_force_single_dispatch = true;
     }
-    if (is_vulkan_backend() && m_type == "Convolution" && m_parallel_cfg.enabled &&
-        m_parallel_cfg.loop_dims >= 3 &&
-        m_parallel_cfg.threads_h <= 1 && m_parallel_cfg.threads_w <= 1) {
-        constexpr uint32_t kDefaultConvThreads = 4;
-        m_parallel_cfg.tile_h = kDefaultConvThreads;
-        m_parallel_cfg.tile_w = kDefaultConvThreads;
-        m_parallel_cfg.threads_h = kDefaultConvThreads;
-        m_parallel_cfg.threads_w = kDefaultConvThreads;
-    }
     m_kernel_operand_kinds = std::move(meta.operands.operand_kinds);
     m_kernel_operand_arg_indices = std::move(meta.operands.operand_arg_indices);
     m_kernel_scalar_args = std::move(meta.operands.scalar_args);
@@ -2945,6 +2936,41 @@ void MlirStage::set_parallel_preference(mlir::ModuleOp module) {
                             mlir::IntegerAttr::get(mlir::IndexType::get(ctx), plan.dispatch.threads_h));
             module->setAttr("gfx.dispatch_threads_w",
                             mlir::IntegerAttr::get(mlir::IndexType::get(ctx), plan.dispatch.threads_w));
+        }
+    } else if (conv2d && m_type == "Convolution") {
+        auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
+        if (conv && conv->get_input_size() == 2 && conv->get_output_size() == 1) {
+            const auto& in_shape = conv->get_input_shape(0);
+            const auto& w_shape = conv->get_input_shape(1);
+            if (in_shape.size() == 4 && w_shape.size() == 4) {
+                const auto caps = query_parallelism_caps(m_buffer_manager);
+                const uint64_t input_channels = static_cast<uint64_t>(std::max<size_t>(1, in_shape[1]));
+                const uint64_t output_channels = static_cast<uint64_t>(std::max<size_t>(1, w_shape[0]));
+                const uint64_t kernel_work =
+                    input_channels * static_cast<uint64_t>(std::max<size_t>(1, w_shape[2])) *
+                    static_cast<uint64_t>(std::max<size_t>(1, w_shape[3]));
+                const bool stride2 = conv->get_strides().at(0) > 1 || conv->get_strides().at(1) > 1;
+                const bool depthwise =
+                    optimization_plan.conv.algorithm.kind == GfxConvAlgorithmKind::DepthwiseDirect;
+                const auto plan = select_conv_parallelism(caps,
+                                                          m_output_shape,
+                                                          input_channels,
+                                                          output_channels,
+                                                          kernel_work,
+                                                          stride2,
+                                                          depthwise);
+                prefer_parallel = prefer_parallel || plan.prefer_parallel;
+                if (plan.prefer_parallel) {
+                    module->setAttr("gfx.dispatch_tile_h",
+                                    mlir::IntegerAttr::get(mlir::IndexType::get(ctx), plan.dispatch.tile_h));
+                    module->setAttr("gfx.dispatch_tile_w",
+                                    mlir::IntegerAttr::get(mlir::IndexType::get(ctx), plan.dispatch.tile_w));
+                    module->setAttr("gfx.dispatch_threads_h",
+                                    mlir::IntegerAttr::get(mlir::IndexType::get(ctx), plan.dispatch.threads_h));
+                    module->setAttr("gfx.dispatch_threads_w",
+                                    mlir::IntegerAttr::get(mlir::IndexType::get(ctx), plan.dispatch.threads_w));
+                }
+            }
         }
     }
     if (is_matmul_like()) {

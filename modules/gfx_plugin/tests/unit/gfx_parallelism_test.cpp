@@ -34,6 +34,15 @@ ov::gfx_plugin::GfxParallelismCaps make_caps() {
     return caps;
 }
 
+ov::gfx_plugin::GfxParallelismCaps make_broadcom_caps() {
+    auto caps = make_caps();
+    caps.device_key = "test:broadcom";
+    caps.device_family = ov::gfx_plugin::GpuDeviceFamily::BroadcomV3D;
+    caps.preferred_simd_width = 16;
+    caps.subgroup_size = 16;
+    return caps;
+}
+
 }  // namespace
 
 TEST(GfxParallelism, SelectMatMulParallelismPrefersSquareTilesForSquareOutputs) {
@@ -73,6 +82,53 @@ TEST(GfxParallelism, SelectMatMulParallelismPrefersWideTilesForWideOutputs) {
     EXPECT_TRUE(plan.dispatch.enabled);
     EXPECT_GT(plan.dispatch.threads_h, 0u);
     EXPECT_GT(plan.dispatch.threads_w, 0u);
+    EXPECT_GE(plan.dispatch.threads_w, plan.dispatch.threads_h);
+}
+
+TEST(GfxParallelism, SelectMatMulParallelismUsesSkinnyTilesForWideBroadcomOutputs) {
+    const auto plan = ov::gfx_plugin::select_matmul_parallelism(make_broadcom_caps(), ov::Shape{128, 1600});
+
+    ASSERT_TRUE(plan.prefer_parallel);
+    EXPECT_TRUE(plan.dispatch.enabled);
+    EXPECT_LE(plan.dispatch.threads_h, 2u);
+    EXPECT_GE(plan.dispatch.threads_w, 8u);
+}
+
+TEST(GfxParallelism, SelectMatMulParallelismKeepsBroadcomSquareOutputsDense) {
+    const auto plan = ov::gfx_plugin::select_matmul_parallelism(make_broadcom_caps(), ov::Shape{1, 1024, 1024});
+
+    ASSERT_TRUE(plan.prefer_parallel);
+    EXPECT_TRUE(plan.dispatch.enabled);
+    EXPECT_EQ(plan.dispatch.threads_h, plan.dispatch.threads_w);
+    EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 32u);
+}
+
+TEST(GfxParallelism, SelectBroadcomConvParallelismUsesDenserStride1Threadgroups) {
+    const auto plan = ov::gfx_plugin::select_conv_parallelism(make_broadcom_caps(),
+                                                              ov::Shape{1, 64, 80, 80},
+                                                              64,
+                                                              64,
+                                                              64 * 3 * 3,
+                                                              false,
+                                                              false);
+
+    ASSERT_TRUE(plan.prefer_parallel);
+    EXPECT_TRUE(plan.dispatch.enabled);
+    EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 32u);
+}
+
+TEST(GfxParallelism, SelectBroadcomConvParallelismUsesDenserStride2Threadgroups) {
+    const auto plan = ov::gfx_plugin::select_conv_parallelism(make_broadcom_caps(),
+                                                              ov::Shape{1, 64, 80, 80},
+                                                              64,
+                                                              64,
+                                                              64 * 3 * 3,
+                                                              true,
+                                                              false);
+
+    ASSERT_TRUE(plan.prefer_parallel);
+    EXPECT_TRUE(plan.dispatch.enabled);
+    EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 64u);
 }
 
 TEST(GfxParallelism, RememberMatMulParallelismAllowsSerialFallbackOverride) {

@@ -88,6 +88,7 @@ private:
     bool m_softmax_log_kernel = false;
     std::shared_ptr<ICompiledKernel> m_conv2d_1x1_kernel;
     ov::element::Type m_conv2d_1x1_elem_type{};
+    uint32_t m_conv2d_1x1_threads_per_group = 1;
     bool m_conv2d_1x1_force_chunked_fallback = false;
     std::shared_ptr<ICompiledKernel> m_conv2d_3x3_direct_kernel;
     ov::element::Type m_conv2d_3x3_direct_elem_type{};
@@ -98,9 +99,11 @@ private:
     bool m_conv2d_3x3_force_chunked_fallback = false;
     std::shared_ptr<ICompiledKernel> m_conv2d_chunk_kernel;
     ov::element::Type m_conv2d_chunk_elem_type{};
+    uint32_t m_conv2d_chunk_threads_per_group = 1;
     LaunchOperandABI m_conv2d_chunk_launch_abi;
     std::shared_ptr<ICompiledKernel> m_group_conv2d_kernel;
     ov::element::Type m_group_conv2d_elem_type{};
+    uint32_t m_group_conv2d_threads_per_group = 1;
     std::shared_ptr<ICompiledKernel> m_interpolate_kernel;
     ov::element::Type m_interpolate_elem_type{};
     std::shared_ptr<ICompiledKernel> m_transpose_kernel;
@@ -146,7 +149,8 @@ private:
     mlir::ModuleOp build_interpolate_module(mlir::MLIRContext& ctx,
                                             const ov::element::Type& et);
     mlir::ModuleOp build_conv2d_1x1_module(mlir::MLIRContext& ctx,
-                                           const ov::element::Type& et);
+                                           const ov::element::Type& et,
+                                           uint32_t threads_per_group);
     mlir::ModuleOp build_conv2d_3x3_direct_module(mlir::MLIRContext& ctx,
                                                   const ov::element::Type& et,
                                                   uint32_t output_channel_block,
@@ -158,9 +162,11 @@ private:
                                                const ov::element::Type& src_et,
                                                const ov::element::Type& dst_et);
     mlir::ModuleOp build_conv2d_chunk_module(mlir::MLIRContext& ctx,
-                                             const ov::element::Type& et);
+                                             const ov::element::Type& et,
+                                             uint32_t threads_per_group);
     mlir::ModuleOp build_group_conv2d_chunk_module(mlir::MLIRContext& ctx,
-                                                   const ov::element::Type& et);
+                                                   const ov::element::Type& et,
+                                                   uint32_t threads_per_group);
     mlir::ModuleOp build_linear_unary_module(mlir::MLIRContext& ctx,
                                              const ov::element::Type& et,
                                              const std::string& op_key);

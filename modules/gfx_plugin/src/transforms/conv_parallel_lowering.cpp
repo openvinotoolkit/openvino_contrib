@@ -64,6 +64,21 @@ std::optional<llvm::StringRef> module_string_attr(mlir::Operation* op, llvm::Str
     return attr.getValue();
 }
 
+std::optional<int64_t> module_int_attr(mlir::Operation* op, llvm::StringRef name) {
+    if (!op) {
+        return std::nullopt;
+    }
+    auto module = op->getParentOfType<mlir::ModuleOp>();
+    if (!module) {
+        return std::nullopt;
+    }
+    auto attr = module->getAttrOfType<mlir::IntegerAttr>(name);
+    if (!attr) {
+        return std::nullopt;
+    }
+    return attr.getInt();
+}
+
 mlir::Value apply_activation(mlir::OpBuilder& b,
                              mlir::Location loc,
                              mlir::Value x,
@@ -455,33 +470,44 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
     rewriter.setInsertionPoint(op);
     auto c0 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 0);
     auto c1 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 1);
-    int64_t thread_h = 4;
-    int64_t thread_w = 4;
+    const auto explicit_thread_h = module_int_attr(op, "gfx.dispatch_threads_h");
+    const auto explicit_thread_w = module_int_attr(op, "gfx.dispatch_threads_w");
+    const auto explicit_tile_h = module_int_attr(op, "gfx.dispatch_tile_h");
+    const auto explicit_tile_w = module_int_attr(op, "gfx.dispatch_tile_w");
+    const bool has_explicit_dispatch = explicit_thread_h.has_value() && explicit_thread_w.has_value();
+    int64_t thread_h = explicit_thread_h.value_or(4);
+    int64_t thread_w = explicit_thread_w.value_or(4);
     // Keep micro-tiling minimal unless a shared algorithm plan explicitly
     // tells lowering that a wider structural family is selected.
     int64_t micro_h = 1;
     int64_t micro_w = 1;
-    if (auto kind = module_string_attr(op, "gfx.conv_algorithm_kind")) {
-        if (*kind == "direct_1x1") {
-            thread_h = 8;
-            thread_w = 8;
-        } else if (*kind == "direct_3x3_stride2") {
-            thread_h = 4;
-            thread_w = 8;
-        } else if (*kind == "depthwise_direct") {
-            thread_h = 8;
-            thread_w = 4;
+    if (!has_explicit_dispatch) {
+        if (auto kind = module_string_attr(op, "gfx.conv_algorithm_kind")) {
+            if (*kind == "direct_1x1") {
+                thread_h = 8;
+                thread_w = 8;
+            } else if (*kind == "direct_3x3_stride2") {
+                thread_h = 4;
+                thread_w = 8;
+            } else if (*kind == "depthwise_direct") {
+                thread_h = 8;
+                thread_w = 4;
+            }
         }
-    }
-    if (auto variant = module_string_attr(op, "gfx.conv_variant")) {
-        if (variant->contains("xy32x2")) {
-            micro_w = 2;
-        } else if (variant->contains("xy16x4")) {
-            micro_h = 2;
+        if (auto variant = module_string_attr(op, "gfx.conv_variant")) {
+            if (variant->contains("xy32x2")) {
+                micro_w = 2;
+            } else if (variant->contains("xy16x4")) {
+                micro_h = 2;
+            }
         }
     }
     const int64_t kThreadH = thread_h;
     const int64_t kThreadW = thread_w;
+    const int64_t requested_tile_h = std::max<int64_t>(explicit_tile_h.value_or(kThreadH * micro_h), kThreadH);
+    const int64_t requested_tile_w = std::max<int64_t>(explicit_tile_w.value_or(kThreadW * micro_w), kThreadW);
+    micro_h = std::max<int64_t>(1, (requested_tile_h + kThreadH - 1) / kThreadH);
+    micro_w = std::max<int64_t>(1, (requested_tile_w + kThreadW - 1) / kThreadW);
     const int64_t tile_h = kThreadH * micro_h;
     const int64_t tile_w = kThreadW * micro_w;
     if (auto module = op->getParentOfType<mlir::ModuleOp>()) {

@@ -83,8 +83,8 @@ bool is_vulkan_pipeline_creation_failure(const std::exception& ex) {
 Conv2DDirectPlan make_safe_conv2d_direct_plan(const GfxParallelismCaps& caps) {
     Conv2DDirectPlan plan;
     plan.output_channel_block = 1;
-    plan.threads_per_group =
-        std::min<uint32_t>(64u, std::max<uint32_t>(1u, caps.max_total_threads_per_group));
+    plan.threads_per_group = std::max<uint32_t>(1u, std::min(std::max<uint32_t>(caps.subgroup_size, caps.preferred_simd_width),
+                                                             caps.max_total_threads_per_group));
     plan.variant = "conv2d_direct_oc1_tg" + std::to_string(plan.threads_per_group);
     return plan;
 }
@@ -386,21 +386,29 @@ void VulkanStage::prepare_binary_bias_add_kernel() {
 }
 
 void VulkanStage::prepare_conv2d_1x1_kernel() {
+    auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
+    OPENVINO_ASSERT(conv, "GFX Vulkan conv2d 1x1: node cast failed");
     const ov::element::Type elem_type = resolve_stage_element_type(m_node, !m_outputs.empty() ? m_outputs.front() : m_output);
     OPENVINO_ASSERT(is_supported_linear_elem_type(elem_type),
                     "GFX Vulkan conv2d 1x1: unsupported element type ",
                     elem_type);
-    if (m_conv2d_1x1_kernel && m_conv2d_1x1_elem_type == elem_type) {
+    const auto caps = query_parallelism_caps(m_buffer_manager);
+    const auto total = static_cast<uint64_t>(tensor_elements(conv->get_output_shape(0)));
+    const auto launch_plan =
+        select_chunk_dispatch_plan(caps, "conv2d_1x1", total, static_cast<uint64_t>(conv->get_input_shape(0).at(1)));
+    if (m_conv2d_1x1_kernel && m_conv2d_1x1_elem_type == elem_type &&
+        m_conv2d_1x1_threads_per_group == launch_plan.threads_per_group) {
         return;
     }
     auto& ctx = gfx_mlir_context();
-    auto module = build_conv2d_1x1_module(ctx, elem_type);
+    auto module = build_conv2d_1x1_module(ctx, elem_type, launch_plan.threads_per_group);
     m_conv2d_1x1_kernel =
         compile_specialized_kernel_from_mlir(module,
                                              "conv2d_1x1",
                                              m_has_bias ? 5 : 4,
                                              "GFX Vulkan conv2d 1x1: kernel compile failed: ");
     m_conv2d_1x1_elem_type = elem_type;
+    m_conv2d_1x1_threads_per_group = launch_plan.threads_per_group;
 }
 
 void VulkanStage::prepare_conv2d_3x3_direct_kernel() {
@@ -451,14 +459,24 @@ void VulkanStage::prepare_conv2d_chunk_kernel() {
     OPENVINO_ASSERT(is_supported_linear_elem_type(elem_type),
                     "GFX Vulkan conv2d chunked: unsupported element type ",
                     elem_type);
-    if (m_conv2d_chunk_kernel && m_conv2d_chunk_elem_type == elem_type) {
+    auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
+    OPENVINO_ASSERT(conv, "GFX Vulkan conv2d chunked: node cast failed");
+    const auto caps = query_parallelism_caps(m_buffer_manager);
+    const auto total = static_cast<uint64_t>(tensor_elements(conv->get_output_shape(0)));
+    const auto work_per_elem =
+        static_cast<uint64_t>(conv->get_input_shape(0).at(1)) * static_cast<uint64_t>(conv->get_input_shape(1).at(2)) *
+        static_cast<uint64_t>(conv->get_input_shape(1).at(3));
+    const auto launch_plan = select_chunk_dispatch_plan(caps, "conv2d", total, work_per_elem);
+    if (m_conv2d_chunk_kernel && m_conv2d_chunk_elem_type == elem_type &&
+        m_conv2d_chunk_threads_per_group == launch_plan.threads_per_group) {
         return;
     }
     auto& ctx = gfx_mlir_context();
-    auto module = build_conv2d_chunk_module(ctx, elem_type);
+    auto module = build_conv2d_chunk_module(ctx, elem_type, launch_plan.threads_per_group);
     m_conv2d_chunk_kernel =
         compile_specialized_kernel_from_mlir(module, "conv2d_chunk", 4, "GFX Vulkan conv2d chunked: kernel compile failed: ");
     m_conv2d_chunk_elem_type = elem_type;
+    m_conv2d_chunk_threads_per_group = launch_plan.threads_per_group;
     m_conv2d_chunk_launch_abi = extract_launch_operand_abi(module);
 }
 
@@ -467,17 +485,26 @@ void VulkanStage::prepare_group_conv2d_kernel() {
     OPENVINO_ASSERT(is_supported_linear_elem_type(elem_type),
                     "GFX Vulkan group_conv2d chunked: unsupported element type ",
                     elem_type);
-    if (m_group_conv2d_kernel && m_group_conv2d_elem_type == elem_type) {
+    auto gconv = ov::as_type_ptr<const ov::op::v1::GroupConvolution>(m_node);
+    OPENVINO_ASSERT(gconv, "GFX Vulkan group_conv2d chunked: node cast failed");
+    const auto caps = query_parallelism_caps(m_buffer_manager);
+    const auto total = static_cast<uint64_t>(tensor_elements(gconv->get_output_shape(0)));
+    const auto work_per_elem =
+        static_cast<uint64_t>(gconv->get_input_shape(1).at(3)) * static_cast<uint64_t>(gconv->get_input_shape(1).at(4));
+    const auto launch_plan = select_chunk_dispatch_plan(caps, "group_conv2d", total, work_per_elem);
+    if (m_group_conv2d_kernel && m_group_conv2d_elem_type == elem_type &&
+        m_group_conv2d_threads_per_group == launch_plan.threads_per_group) {
         return;
     }
     auto& ctx = gfx_mlir_context();
-    auto module = build_group_conv2d_chunk_module(ctx, elem_type);
+    auto module = build_group_conv2d_chunk_module(ctx, elem_type, launch_plan.threads_per_group);
     m_group_conv2d_kernel = compile_specialized_kernel_from_mlir(
         module,
         "group_conv2d_direct",
         3,
         "GFX Vulkan group_conv2d chunked: kernel compile failed: ");
     m_group_conv2d_elem_type = elem_type;
+    m_group_conv2d_threads_per_group = launch_plan.threads_per_group;
 }
 
 void VulkanStage::prepare_softmax_kernel() {
@@ -1192,7 +1219,8 @@ mlir::ModuleOp VulkanStage::build_linear_unary_module(mlir::MLIRContext& ctx,
 }
 
 mlir::ModuleOp VulkanStage::build_conv2d_1x1_module(mlir::MLIRContext& ctx,
-                                                    const ov::element::Type& et) {
+                                                    const ov::element::Type& et,
+                                                    uint32_t threads_per_group) {
     using namespace mlir;
     auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
     OPENVINO_ASSERT(conv, "GFX Vulkan conv2d 1x1: node cast failed");
@@ -1249,7 +1277,7 @@ mlir::ModuleOp VulkanStage::build_conv2d_1x1_module(mlir::MLIRContext& ctx,
                                                  TypeRange{},
                                                  TypeRange{});
     fn->setAttr(gpu::GPUDialect::getKernelFuncAttrName(), b.getUnitAttr());
-    fn.setKnownBlockSizeAttr(mlir::DenseI32ArrayAttr::get(&ctx, {64, 1, 1}));
+    fn.setKnownBlockSizeAttr(mlir::DenseI32ArrayAttr::get(&ctx, {static_cast<int32_t>(std::max<uint32_t>(1u, threads_per_group)), 1, 1}));
 
     auto* entry = &fn.getBody().front();
     OpBuilder body(entry, entry->begin());
@@ -1626,7 +1654,8 @@ mlir::ModuleOp VulkanStage::build_conv2d_3x3_direct_module(mlir::MLIRContext& ct
 }
 
 mlir::ModuleOp VulkanStage::build_conv2d_chunk_module(mlir::MLIRContext& ctx,
-                                                      const ov::element::Type& et) {
+                                                      const ov::element::Type& et,
+                                                      uint32_t threads_per_group) {
     using namespace mlir;
     auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
     OPENVINO_ASSERT(conv, "GFX Vulkan conv2d chunked: node cast failed");
@@ -1680,7 +1709,7 @@ mlir::ModuleOp VulkanStage::build_conv2d_chunk_module(mlir::MLIRContext& ctx,
                                                  TypeRange{},
                                                  TypeRange{});
     fn->setAttr(gpu::GPUDialect::getKernelFuncAttrName(), b.getUnitAttr());
-    fn.setKnownBlockSizeAttr(mlir::DenseI32ArrayAttr::get(&ctx, {64, 1, 1}));
+    fn.setKnownBlockSizeAttr(mlir::DenseI32ArrayAttr::get(&ctx, {static_cast<int32_t>(std::max<uint32_t>(1u, threads_per_group)), 1, 1}));
     auto* entry = &fn.getBody().front();
     OpBuilder body(entry, entry->begin());
     auto loc = fn.getLoc();
@@ -1848,7 +1877,8 @@ mlir::ModuleOp VulkanStage::build_conv2d_chunk_module(mlir::MLIRContext& ctx,
 }
 
 mlir::ModuleOp VulkanStage::build_group_conv2d_chunk_module(mlir::MLIRContext& ctx,
-                                                            const ov::element::Type& et) {
+                                                            const ov::element::Type& et,
+                                                            uint32_t threads_per_group) {
     using namespace mlir;
     auto gconv = ov::as_type_ptr<const ov::op::v1::GroupConvolution>(m_node);
     OPENVINO_ASSERT(gconv, "GFX Vulkan group_conv2d chunked: node cast failed");
@@ -1906,7 +1936,9 @@ mlir::ModuleOp VulkanStage::build_group_conv2d_chunk_module(mlir::MLIRContext& c
                                                  TypeRange{},
                                                  TypeRange{});
     fn->setAttr(gpu::GPUDialect::getKernelFuncAttrName(), b.getUnitAttr());
-    fn.setKnownBlockSizeAttr(DenseI32ArrayAttr::get(&ctx, {64, 1, 1}));
+    fn.setKnownBlockSizeAttr(DenseI32ArrayAttr::get(
+        &ctx,
+        {static_cast<int32_t>(std::max<uint32_t>(1u, threads_per_group)), 1, 1}));
 
     auto* entry = &fn.getBody().front();
     OpBuilder body(entry, entry->begin());
@@ -2747,9 +2779,14 @@ void VulkanStage::execute_conv2d_1x1_chunked(GpuCommandBufferHandle command_buff
     OPENVINO_ASSERT(is_supported_linear_elem_type(elem_type),
                     "GFX Vulkan conv2d 1x1: unsupported element type ",
                     elem_type);
-    if (!m_conv2d_1x1_kernel || m_conv2d_1x1_elem_type != elem_type) {
+    const auto caps = query_parallelism_caps(m_buffer_manager);
+    const auto total = static_cast<uint64_t>(tensor_elements(conv->get_output_shape(0)));
+    const auto launch_plan =
+        select_chunk_dispatch_plan(caps, "conv2d_1x1", total, static_cast<uint64_t>(conv->get_input_shape(0).at(1)));
+    if (!m_conv2d_1x1_kernel || m_conv2d_1x1_elem_type != elem_type ||
+        m_conv2d_1x1_threads_per_group != launch_plan.threads_per_group) {
         auto& ctx = gfx_mlir_context();
-        auto module = build_conv2d_1x1_module(ctx, elem_type);
+        auto module = build_conv2d_1x1_module(ctx, elem_type, launch_plan.threads_per_group);
         if (gfx_log_debug_enabled()) {
             std::string module_text;
             llvm::raw_string_ostream os(module_text);
@@ -2764,10 +2801,13 @@ void VulkanStage::execute_conv2d_1x1_chunked(GpuCommandBufferHandle command_buff
         OPENVINO_ASSERT(m_conv2d_1x1_kernel, "GFX Vulkan conv2d 1x1: kernel compile failed: ", log);
         m_conv2d_1x1_kernel->prepare_runtime_artifacts();
         m_conv2d_1x1_elem_type = elem_type;
+        m_conv2d_1x1_threads_per_group = launch_plan.threads_per_group;
     }
 
-    const uint32_t total = static_cast<uint32_t>(tensor_elements(conv->get_output_shape(0)));
-    const size_t tg = std::min<size_t>(total, std::max<size_t>(1, m_conv2d_1x1_kernel->clamp_threadgroup_size(64)));
+    const size_t tg = std::min<size_t>(total,
+                                       std::max<size_t>(1,
+                                                        m_conv2d_1x1_kernel->clamp_threadgroup_size(
+                                                            launch_plan.threads_per_group)));
     KernelDispatch dispatch = make_1d_dispatch(total, tg);
     const auto& in_shape = conv->get_input_shape(0);
     const auto& out_shape = conv->get_output_shape(0);
@@ -2973,9 +3013,19 @@ void VulkanStage::execute_conv2d_chunked(GpuCommandBufferHandle command_buffer) 
     OPENVINO_ASSERT(is_supported_linear_elem_type(elem_type),
                     "GFX Vulkan conv2d chunked: unsupported element type ",
                     elem_type);
-    if (!m_conv2d_chunk_kernel || m_conv2d_chunk_elem_type != elem_type) {
+    const auto& out_shape = conv->get_output_shape(0);
+    const auto& in_shape = conv->get_input_shape(0);
+    const auto& w_shape = conv->get_input_shape(1);
+    const uint32_t total = static_cast<uint32_t>(tensor_elements(out_shape));
+    const uint64_t work_per_elem = static_cast<uint64_t>(in_shape.at(1)) *
+                                   static_cast<uint64_t>(w_shape.at(2)) *
+                                   static_cast<uint64_t>(w_shape.at(3));
+    const auto caps = query_parallelism_caps(m_buffer_manager);
+    const auto chunk_plan = select_chunk_dispatch_plan(caps, "conv2d", total, work_per_elem);
+    if (!m_conv2d_chunk_kernel || m_conv2d_chunk_elem_type != elem_type ||
+        m_conv2d_chunk_threads_per_group != chunk_plan.threads_per_group) {
         auto& ctx = gfx_mlir_context();
-        auto module = build_conv2d_chunk_module(ctx, elem_type);
+        auto module = build_conv2d_chunk_module(ctx, elem_type, chunk_plan.threads_per_group);
         if (gfx_log_debug_enabled()) {
             std::string module_text;
             llvm::raw_string_ostream os(module_text);
@@ -2990,23 +3040,15 @@ void VulkanStage::execute_conv2d_chunked(GpuCommandBufferHandle command_buffer) 
         OPENVINO_ASSERT(m_conv2d_chunk_kernel, "GFX Vulkan conv2d chunked: kernel compile failed: ", log);
         m_conv2d_chunk_kernel->prepare_runtime_artifacts();
         m_conv2d_chunk_elem_type = elem_type;
+        m_conv2d_chunk_threads_per_group = chunk_plan.threads_per_group;
         m_conv2d_chunk_launch_abi = extract_launch_operand_abi(module);
     }
 
-    const auto& out_shape = conv->get_output_shape(0);
-    const auto& in_shape = conv->get_input_shape(0);
-    const auto& w_shape = conv->get_input_shape(1);
     struct Conv2DChunkParams {
         uint32_t offset;
         uint32_t count;
     };
 
-    const uint32_t total = static_cast<uint32_t>(tensor_elements(out_shape));
-    const uint64_t work_per_elem = static_cast<uint64_t>(in_shape.at(1)) *
-                                   static_cast<uint64_t>(w_shape.at(2)) *
-                                   static_cast<uint64_t>(w_shape.at(3));
-    const auto caps = query_parallelism_caps(m_buffer_manager);
-    const auto chunk_plan = select_chunk_dispatch_plan(caps, "conv2d", total, work_per_elem);
     const uint32_t elems_per_dispatch =
         std::max<uint32_t>(kConv2DChunkElemsPerDispatch, chunk_plan.elems_per_dispatch);
     for (uint32_t offset = 0; offset < total; offset += elems_per_dispatch) {
@@ -3014,7 +3056,9 @@ void VulkanStage::execute_conv2d_chunked(GpuCommandBufferHandle command_buffer) 
         params.offset = offset;
         params.count = std::min<uint32_t>(elems_per_dispatch, total - offset);
         const size_t tg = std::min<size_t>(params.count,
-                                           std::max<size_t>(1, m_conv2d_chunk_kernel->clamp_threadgroup_size(64)));
+                                           std::max<size_t>(1,
+                                                            m_conv2d_chunk_kernel->clamp_threadgroup_size(
+                                                                chunk_plan.threads_per_group)));
         KernelDispatch dispatch = make_1d_dispatch(params.count, tg);
         std::vector<KernelArg> args;
         if (!m_conv2d_chunk_launch_abi.valid) {
@@ -3093,9 +3137,18 @@ void VulkanStage::execute_group_conv2d_chunked(GpuCommandBufferHandle command_bu
     OPENVINO_ASSERT(is_supported_linear_elem_type(elem_type),
                     "GFX Vulkan group_conv2d chunked: unsupported element type ",
                     elem_type);
-    if (!m_group_conv2d_kernel || m_group_conv2d_elem_type != elem_type) {
+    const auto& out_shape = gconv->get_output_shape(0);
+    const auto& w_shape = gconv->get_input_shape(1);
+    const auto caps = query_parallelism_caps(m_buffer_manager);
+    const auto launch_plan = select_chunk_dispatch_plan(caps,
+                                                        "group_conv2d",
+                                                        static_cast<uint64_t>(tensor_elements(out_shape)),
+                                                        static_cast<uint64_t>(w_shape[3]) *
+                                                            static_cast<uint64_t>(w_shape[4]));
+    if (!m_group_conv2d_kernel || m_group_conv2d_elem_type != elem_type ||
+        m_group_conv2d_threads_per_group != launch_plan.threads_per_group) {
         auto& ctx = gfx_mlir_context();
-        auto module = build_group_conv2d_chunk_module(ctx, elem_type);
+        auto module = build_group_conv2d_chunk_module(ctx, elem_type, launch_plan.threads_per_group);
         KernelSource src = make_kernel_source_from_mlir(module, "group_conv2d_direct", /*arg_count=*/3);
         src.signature.output_arg_count = 1;
         VulkanCodegenBackend backend;
@@ -3106,6 +3159,7 @@ void VulkanStage::execute_group_conv2d_chunked(GpuCommandBufferHandle command_bu
                         log);
         m_group_conv2d_kernel->prepare_runtime_artifacts();
         m_group_conv2d_elem_type = elem_type;
+        m_group_conv2d_threads_per_group = launch_plan.threads_per_group;
     }
 
     output->shape = gconv->get_output_shape(0);
@@ -3116,7 +3170,7 @@ void VulkanStage::execute_group_conv2d_chunked(GpuCommandBufferHandle command_bu
         make_buffer_arg(2, output->buf),
     };
     auto bound_args = materialize_kernel_bytes_args(args, *m_buffer_manager, m_name.c_str());
-    const uint32_t tg = m_group_conv2d_kernel->clamp_threadgroup_size(64);
+    const uint32_t tg = m_group_conv2d_kernel->clamp_threadgroup_size(launch_plan.threads_per_group);
     KernelDispatch dispatch = make_1d_dispatch(total, tg);
     m_group_conv2d_kernel->execute(command_buffer, dispatch, bound_args, nullptr);
 }

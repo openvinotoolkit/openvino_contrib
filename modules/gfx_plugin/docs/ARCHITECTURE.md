@@ -115,6 +115,7 @@ Recent MLIR-specific changes reflected in the current code:
 - Slice lowering now prefers `tensor.extract_slice`, while slice metadata extraction still accepts both `tensor.extract_slice` and the older `linalg.generic` form
 - buffer-results-to-out-params promotion now allows public function signatures to be rewritten when required by the lowering pipeline
 - shared helpers now prefer the common `gfx_mlir_context()` path instead of ad-hoc local MLIR contexts in selected code paths
+- convolution parallel lowering can now consume explicit module-level dispatch attrs such as `gfx.dispatch_threads_*` and `gfx.dispatch_tile_*` instead of relying only on coarse algorithm variants
 
 Lowered kernels also rely on backend-neutral argument and binding helpers:
 - `src/kernel_ir/gfx_kernel_args.hpp` materializes runtime kernel arguments and can turn scalar byte payloads into cached immutable device buffers
@@ -162,6 +163,7 @@ The current Vulkan runtime also:
 - increases per-submit batching thresholds in the infer path to reduce Android-oriented driver overhead
 - persists Vulkan pipeline-cache data under `ov::cache_dir` when a cache directory is supplied through standard OpenVINO properties
 - reports execution-device limits through `GpuExecutionDeviceInfo`, matching the Metal path and removing backend-specific probing from shared planning code
+- recompiles selected specialized Conv2D and GroupConv2D kernels when the chosen `threads_per_group` changes, so launch shape and kernel metadata stay aligned
 
 The current policy layer also deliberately prefers the shared MLIR/SPIR-V convolution path over older dedicated Vulkan 1x1 and 3x3 direct routes on current mobile-class stacks, keeping the backend contract more stable for Android and Raspberry Pi flows.
 

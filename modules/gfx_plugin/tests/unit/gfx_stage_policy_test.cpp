@@ -285,7 +285,14 @@ TEST(GfxStagePolicyTest, VulkanLargeConcatUsesIsolatedSubmitWindow) {
 }
 
 TEST(GfxStagePolicyTest, VulkanConstrainedLargeBinaryChunkedStageCanShareSubmitWindow) {
-    FakeDeviceInfoBufferManager buffer_manager({GpuBackend::Vulkan, "test-rpi", 16u, 16u, 256u, {256u, 256u, 64u}});
+    GpuExecutionDeviceInfo info;
+    info.backend = GpuBackend::Vulkan;
+    info.device_key = "test-rpi";
+    info.preferred_simd_width = 16u;
+    info.subgroup_size = 16u;
+    info.max_total_threads_per_group = 256u;
+    info.max_threads_per_group = {256u, 256u, 64u};
+    FakeDeviceInfoBufferManager buffer_manager(info);
     const auto add = make_large_add_node();
     GfxStageRuntimeTraits traits{};
     traits.binary_chunked = true;
@@ -305,7 +312,14 @@ TEST(GfxStagePolicyTest, VulkanConstrainedLargeBinaryChunkedStageCanShareSubmitW
 }
 
 TEST(GfxStagePolicyTest, VulkanConstrainedLargeConcatCanShareSubmitWindow) {
-    FakeDeviceInfoBufferManager buffer_manager({GpuBackend::Vulkan, "test-rpi", 16u, 16u, 256u, {256u, 256u, 64u}});
+    GpuExecutionDeviceInfo info;
+    info.backend = GpuBackend::Vulkan;
+    info.device_key = "test-rpi";
+    info.preferred_simd_width = 16u;
+    info.subgroup_size = 16u;
+    info.max_total_threads_per_group = 256u;
+    info.max_threads_per_group = {256u, 256u, 64u};
+    FakeDeviceInfoBufferManager buffer_manager(info);
     const auto concat = make_large_concat_node();
     GfxStageRuntimeTraits traits{};
     traits.split_concat_chunked = true;

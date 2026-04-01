@@ -121,6 +121,11 @@ If the behavior depends on route or scheduling selection, also read:
 - the active backend executor, especially under `src/backends/vulkan/runtime/`
 - `src/runtime/gfx_profiling_report.*` when the change affects counters, trace sinks, or JSON report shape
 
+The current planning path is no longer just backend-wide. It includes family-specific tuning hooks, especially for:
+- Broadcom V3D Vulkan devices
+- Qualcomm Adreno Vulkan devices
+- explicit convolution dispatch attrs forwarded into MLIR lowering
+
 If the change touches infer-request throughput or resource reuse, also read:
 - `src/plugin/infer_submission.*`
 - `src/plugin/infer_pipeline.*`
@@ -200,6 +205,8 @@ For reuse and submission changes, prefer the focused unit tests under:
 - `tests/unit/gfx_profiling_report_test.cpp`
 - `tests/unit/gfx_stage_policy_test.cpp`
 - `tests/unit/runtime_subgraph_test.cpp`
+
+`tests/unit/gfx_parallelism_test.cpp` now also covers Broadcom-oriented matmul and convolution tuning choices, while `tests/unit/gfx_stage_policy_test.cpp` continues to cover submit-window policy decisions against synthetic device-info snapshots.
 
 `tests/unit/infer_pipeline_reuse_test.cpp` now also covers:
 - prepared output-resolution plans

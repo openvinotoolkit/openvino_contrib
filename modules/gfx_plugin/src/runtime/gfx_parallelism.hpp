@@ -29,6 +29,12 @@ struct MatMulParallelismPlan {
     ParallelDispatchConfig dispatch{};
 };
 
+struct ConvParallelismPlan {
+    bool prefer_parallel = false;
+    std::string variant;
+    ParallelDispatchConfig dispatch{};
+};
+
 struct ChunkDispatchPlan {
     std::string variant;
     uint32_t elems_per_dispatch = 0;
@@ -48,6 +54,13 @@ MatMulParallelismPlan select_matmul_parallelism(const GfxParallelismCaps& caps, 
 void remember_matmul_parallelism(const GfxParallelismCaps& caps,
                                  const ov::Shape& output_shape,
                                  const MatMulParallelismPlan& plan);
+ConvParallelismPlan select_conv_parallelism(const GfxParallelismCaps& caps,
+                                            const ov::Shape& output_shape,
+                                            uint64_t input_channels,
+                                            uint64_t output_channels,
+                                            uint64_t kernel_work,
+                                            bool stride2,
+                                            bool depthwise);
 ChunkDispatchPlan select_chunk_dispatch_plan(const GfxParallelismCaps& caps,
                                              const std::string& op_kind,
                                              uint64_t total_elems,
