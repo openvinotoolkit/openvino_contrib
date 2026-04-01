@@ -39,7 +39,7 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override {}
 
-    CudaGraphCompatibility GetCudaGraphCompatibility() const override { return CudaGraphCompatibility::FULL; }
+    CudaGraphCompatibility GetCudaGraphCompatibilityImpl() const override { return CudaGraphCompatibility::FULL; }
 };
 
 }  // namespace nvidia_gpu

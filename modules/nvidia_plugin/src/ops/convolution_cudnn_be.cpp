@@ -147,7 +147,7 @@ void ConvolutionCuDnnBE::Execute(const InferenceRequestContext& context,
     throwIfError(::cudnnBackendExecute(context.getThreadContext().dnnHandle().get(), plan->get(), variantPack->get()));
 }
 
-CudaGraphCompatibility ConvolutionCuDnnBE::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::NONE; }
+CudaGraphCompatibility ConvolutionCuDnnBE::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::NONE; }
 
 std::shared_ptr<CUDA::DnnBETensorDescriptor> ConvolutionCuDnnBE::MakeTensorDescriptor(int64_t id,
                                                                                       cudnnDataType_t element_type,

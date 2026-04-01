@@ -150,6 +150,9 @@ public:
      */
     template <typename TNode>
     static std::size_t GetTensorByteSize(const TNode& node) {
+        if (node.get_partial_shape().is_dynamic()) {
+            return 0;
+        }
         return node.get_element_type().size() * std::max(std::size_t(1), shape_size(node.get_shape()));
     }
 
@@ -242,6 +245,11 @@ private:
      * Checks whether the given node is a result node
      */
     static bool IsResultNode(const ov::Node& node);
+
+    /**
+     * Checks whether the given node is an Assign (Sink) node
+     */
+    static bool IsAssignNode(const ov::Node& node);
 
     /**
      * Checks whether the given node is a constant node

@@ -77,7 +77,7 @@ void FusedConvolutionBackpropDataOp::Execute(const InferenceRequestContext& cont
                                                 outputs[ArgIndices3Ins::dinput].get()));
 }
 
-CudaGraphCompatibility FusedConvolutionBackpropDataOp::GetCudaGraphCompatibility() const {
+CudaGraphCompatibility FusedConvolutionBackpropDataOp::GetCudaGraphCompatibilityImpl() const {
     return CudaGraphCompatibility::FULL;
 }
 

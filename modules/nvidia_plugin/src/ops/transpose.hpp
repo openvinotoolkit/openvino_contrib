@@ -24,7 +24,7 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
-    CudaGraphCompatibility GetCudaGraphCompatibility() const override;
+    CudaGraphCompatibility GetCudaGraphCompatibilityImpl() const override;
 
 private:
     using ExtentsMap = std::unordered_map<int, std::int64_t>;

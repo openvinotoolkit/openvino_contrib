@@ -30,7 +30,7 @@ void MaxPoolOp::Execute(const InferenceRequestContext& context,
                   outputs[PoolingImpl::output_index].get());
 }
 
-CudaGraphCompatibility MaxPoolOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility MaxPoolOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 OPERATION_REGISTER(MaxPoolOp, MaxPool);
 
