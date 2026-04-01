@@ -23,6 +23,20 @@ typedef int (*callback_function)(const char*, void*);
 
 extern int goCallbackBridge(char* input, void* ptr);
 
+// Backward compatibility: older headers used the misspelled STREAMMING constants.
+#ifndef OV_GENAI_STREAMING_STATUS_RUNNING
+#define OV_GENAI_STREAMING_STATUS_RUNNING OV_GENAI_STREAMMING_STATUS_RUNNING
+#endif
+#ifndef OV_GENAI_STREAMING_STATUS_STOP
+#define OV_GENAI_STREAMING_STATUS_STOP OV_GENAI_STREAMMING_STATUS_STOP
+#endif
+#ifndef OV_GENAI_STREAMMING_STATUS_RUNNING
+#define OV_GENAI_STREAMMING_STATUS_RUNNING OV_GENAI_STREAMING_STATUS_RUNNING
+#endif
+#ifndef OV_GENAI_STREAMMING_STATUS_STOP
+#define OV_GENAI_STREAMMING_STATUS_STOP OV_GENAI_STREAMING_STATUS_STOP
+#endif
+
 static ov_status_e ov_genai_llm_pipeline_create_npu_output_2048(const char* models_path,
 																  const char* device,
                                                                   ov_genai_llm_pipeline** pipe) {
@@ -49,6 +63,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"runtime/cgo"
 	"unsafe"
 )
 
@@ -307,7 +322,10 @@ func GenerateTextWithMetrics(pipeline *C.ov_genai_llm_pipeline, input string, sa
 	var streamer_callback C.streamer_callback
 	streamer_callback.callback_func = (C.callback_function)(unsafe.Pointer(C.goCallbackBridge))
 
-	streamer_callback.args = unsafe.Pointer(seq)
+	// Use cgo.Handle to safely pass Go pointer through C without violating cgo rules.
+	handle := cgo.NewHandle(seq)
+	defer handle.Delete()
+	streamer_callback.args = unsafe.Pointer(uintptr(handle))
 
 	C.ov_genai_llm_pipeline_start_chat(pipeline)
 	C.ov_genai_llm_pipeline_generate(pipeline, cInput, (*C.ov_genai_generation_config)(cConfig), &streamer_callback, &result)
@@ -402,7 +420,8 @@ func GetOvVersion() {
 func goCallbackBridge(args *C.char, gen_result unsafe.Pointer) C.int {
 	if args != nil {
 		// 将 unsafe.Pointer 转换回结构体指针
-		result := (*Sequence)(gen_result)
+		handle := cgo.Handle(uintptr(gen_result))
+		result := handle.Value().(*Sequence)
 
 		// 将 C 字符串转换为 Go 字符串并追加到切片中
 		goStr := C.GoString(args)
@@ -411,10 +430,12 @@ func goCallbackBridge(args *C.char, gen_result unsafe.Pointer) C.int {
 		// fmt.Printf("%s", goStr)
 		// os.Stdout.Sync()
 		FlushPending((*Sequence)(result))
-		return C.OV_GENAI_STREAMMING_STATUS_RUNNING
+
+		return C.OV_GENAI_STREAMING_STATUS_RUNNING
 	} else {
 		fmt.Println("Callback executed with NULL message!")
-		return C.OV_GENAI_STREAMMING_STATUS_STOP
+
+		return C.OV_GENAI_STREAMING_STATUS_STOP
 	}
 }
 
