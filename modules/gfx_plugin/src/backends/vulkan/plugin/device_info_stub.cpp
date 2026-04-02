@@ -10,6 +10,7 @@ namespace gfx_plugin {
 void fill_vulkan_device_info(GfxDeviceInfo& info, const ov::AnyMap& /*properties*/) {
     info.device_name = "GFX (Vulkan)";
     info.full_name = "GFX (Vulkan)";
+    info.available_devices = {"0"};
 }
 
 }  // namespace gfx_plugin

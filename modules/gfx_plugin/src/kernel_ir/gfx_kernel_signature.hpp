@@ -3,6 +3,7 @@
 //
 #pragma once
 
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 
@@ -21,25 +22,39 @@ inline KernelFunctionSignature infer_kernel_signature(mlir::ModuleOp module,
     if (!module) {
         return {};
     }
-    mlir::func::FuncOp func;
+    auto build_signature = [](mlir::FunctionType type) {
+        KernelFunctionSignature sig;
+        sig.inputs = static_cast<uint32_t>(type.getNumInputs());
+        sig.results = static_cast<uint32_t>(type.getNumResults());
+        return sig;
+    };
     if (!entry_point.empty()) {
-        func = module.lookupSymbol<mlir::func::FuncOp>(entry_point);
+        if (auto func = module.lookupSymbol<mlir::func::FuncOp>(entry_point)) {
+            return build_signature(func.getFunctionType());
+        }
+        if (auto gpu_func = module.lookupSymbol<mlir::gpu::GPUFuncOp>(entry_point)) {
+            return build_signature(gpu_func.getFunctionType());
+        }
     }
-    if (!func) {
-        module.walk([&](mlir::func::FuncOp f) {
-            if (!func) {
-                func = f;
-            }
-        });
+    mlir::gpu::GPUFuncOp gpu_func;
+    module.walk([&](mlir::gpu::GPUFuncOp f) {
+        if (!gpu_func) {
+            gpu_func = f;
+        }
+    });
+    if (gpu_func) {
+        return build_signature(gpu_func.getFunctionType());
     }
-    if (!func) {
-        return {};
+    mlir::func::FuncOp func;
+    module.walk([&](mlir::func::FuncOp f) {
+        if (!func) {
+            func = f;
+        }
+    });
+    if (func) {
+        return build_signature(func.getFunctionType());
     }
-    auto ftype = func.getFunctionType();
-    KernelFunctionSignature sig;
-    sig.inputs = static_cast<uint32_t>(ftype.getNumInputs());
-    sig.results = static_cast<uint32_t>(ftype.getNumResults());
-    return sig;
+    return {};
 }
 
 }  // namespace gfx_plugin

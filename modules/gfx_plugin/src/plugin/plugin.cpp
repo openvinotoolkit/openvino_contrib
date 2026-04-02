@@ -314,7 +314,7 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& argument
     } else if (ov::available_devices == name) {
         const auto info = device_info();
         if (info.available_devices.empty()) {
-            return decltype(ov::available_devices)::value_type{{get_device_name()}};
+            return decltype(ov::available_devices)::value_type{{""}};
         }
         return decltype(ov::available_devices)::value_type{info.available_devices.begin(),
                                                            info.available_devices.end()};

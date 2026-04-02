@@ -139,6 +139,7 @@ The current planning path is no longer just backend-wide. It includes family-spe
 For current convolution work, there are now two important lowering details to keep in mind:
 - full interior tiles in conv parallel lowering can skip lane-level bounds guards on the fast path
 - Vulkan specialized kernel compilation may re-resolve effective argument count from final SPIR-V bindings instead of trusting only pre-SPIR-V metadata
+- manual Vulkan Conv2D building can emit `gpu.func` batch-1 parallel entry points with explicit `gfx.dispatch_*` attrs and falls back to a serial path for larger batches
 
 If the change touches infer-request throughput or resource reuse, also read:
 - `src/plugin/infer_submission.*`
@@ -181,6 +182,11 @@ If you add a property:
 2. add it to the supported property list
 3. parse and validate it in plugin or compiled-model code
 4. cover it with tests
+
+Current device-selection contract:
+- `ov::available_devices` exposes numeric ids such as `"0"` instead of backend-reported human-readable names
+- `ov::device::full_name` remains the right property for user-facing device naming
+- `ov::device::id` should be validated against those numeric ids
 
 ## Debugging
 Useful environment variables:

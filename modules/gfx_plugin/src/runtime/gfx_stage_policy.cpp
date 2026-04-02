@@ -470,7 +470,6 @@ GfxConvRoutePlan select_conv_route_plan(const GpuBufferManager* /*buffer_manager
     if (element_type != ov::element::f16 && element_type != ov::element::f32) {
         return plan;
     }
-
     if (auto gconv = ov::as_type_ptr<const ov::op::v1::GroupConvolution>(node)) {
         if (has_bias || has_activation) {
             return plan;

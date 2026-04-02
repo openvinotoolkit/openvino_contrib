@@ -144,6 +144,51 @@ bool force_zero_init(mlir::Operation* op) {
     return false;
 }
 
+struct DispatchTileConfig {
+    int64_t tile_h = 8;
+    int64_t tile_w = 8;
+    int64_t threads_h = 8;
+    int64_t threads_w = 8;
+};
+
+DispatchTileConfig resolve_dispatch_tile_config(mlir::ModuleOp module) {
+    DispatchTileConfig cfg;
+    if (module) {
+        if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_h")) {
+            cfg.threads_h = std::max<int64_t>(1, attr.getInt());
+        }
+        if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_w")) {
+            cfg.threads_w = std::max<int64_t>(1, attr.getInt());
+        }
+        cfg.tile_h = cfg.threads_h;
+        cfg.tile_w = cfg.threads_w;
+        if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_tile_h")) {
+            cfg.tile_h = std::max<int64_t>(cfg.threads_h, attr.getInt());
+        }
+        if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_tile_w")) {
+            cfg.tile_w = std::max<int64_t>(cfg.threads_w, attr.getInt());
+        }
+    }
+    cfg.tile_h = ((cfg.tile_h + cfg.threads_h - 1) / cfg.threads_h) * cfg.threads_h;
+    cfg.tile_w = ((cfg.tile_w + cfg.threads_w - 1) / cfg.threads_w) * cfg.threads_w;
+    return cfg;
+}
+
+void persist_dispatch_tile_config(mlir::ModuleOp module, const DispatchTileConfig& cfg) {
+    if (!module) {
+        return;
+    }
+    auto* ctx = module.getContext();
+    module->setAttr("gfx.dispatch_tile_h",
+                    mlir::IntegerAttr::get(mlir::IndexType::get(ctx), cfg.tile_h));
+    module->setAttr("gfx.dispatch_tile_w",
+                    mlir::IntegerAttr::get(mlir::IndexType::get(ctx), cfg.tile_w));
+    module->setAttr("gfx.dispatch_threads_h",
+                    mlir::IntegerAttr::get(mlir::IndexType::get(ctx), cfg.threads_h));
+    module->setAttr("gfx.dispatch_threads_w",
+                    mlir::IntegerAttr::get(mlir::IndexType::get(ctx), cfg.threads_w));
+}
+
 struct TransposeProducerInfo {
     mlir::Value source;
     llvm::SmallVector<unsigned, 4> source_indices_from_output;
@@ -583,29 +628,12 @@ struct MatmulOpLoweringPattern final : public mlir::OpRewritePattern<mlir::linal
         const auto loc = op.getLoc();
         rewriter.setInsertionPoint(op);
 
-        int64_t kThreadH = 8;
-        int64_t kThreadW = 8;
-        if (module) {
-            if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_h")) {
-                kThreadH = std::max<int64_t>(1, attr.getInt());
-            }
-            if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_w")) {
-                kThreadW = std::max<int64_t>(1, attr.getInt());
-            }
-        }
-        const int64_t tile_h = kThreadH;
-        const int64_t tile_w = kThreadW;
-        if (module) {
-            auto* ctx = module.getContext();
-            module->setAttr("gfx.dispatch_tile_h",
-                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), tile_h));
-            module->setAttr("gfx.dispatch_tile_w",
-                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), tile_w));
-            module->setAttr("gfx.dispatch_threads_h",
-                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), kThreadH));
-            module->setAttr("gfx.dispatch_threads_w",
-                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), kThreadW));
-        }
+        const auto dispatch_cfg = resolve_dispatch_tile_config(module);
+        const int64_t kThreadH = dispatch_cfg.threads_h;
+        const int64_t kThreadW = dispatch_cfg.threads_w;
+        const int64_t tile_h = dispatch_cfg.tile_h;
+        const int64_t tile_w = dispatch_cfg.tile_w;
+        persist_dispatch_tile_config(module, dispatch_cfg);
 
         auto c0 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 0);
         auto c1 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 1);
@@ -703,18 +731,23 @@ struct BatchMatMulLoweringPattern final : public mlir::OpRewritePattern<mlir::li
             return mlir::failure();
         }
         auto module = op->getParentOfType<mlir::ModuleOp>();
-        if (module) {
-            if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.prefer_parallel")) {
-                if (!attr.getValue()) {
-                    return mlir::failure();
-                }
-            }
-        }
-
         auto output = strip_memref_casts(op.getDpsInits()[0]);
         auto output_type = mlir::dyn_cast<mlir::MemRefType>(output.getType());
         if (!output_type || output_type.getRank() != 3) {
             return mlir::failure();
+        }
+        const bool force_linear_matmul =
+            module && module->getAttrOfType<mlir::BoolAttr>("gfx.linear_matmul_parallel") &&
+            module->getAttrOfType<mlir::BoolAttr>("gfx.linear_matmul_parallel").getValue() &&
+            output_type.getDimSize(0) == 1;
+        if (!force_linear_matmul) {
+            if (module) {
+                if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.prefer_parallel")) {
+                    if (!attr.getValue()) {
+                        return mlir::failure();
+                    }
+                }
+            }
         }
         auto maps = op.getIndexingMapsArray();
         if (maps.size() != 3) {
@@ -760,29 +793,12 @@ struct BatchMatMulLoweringPattern final : public mlir::OpRewritePattern<mlir::li
         const auto loc = op.getLoc();
         rewriter.setInsertionPoint(op);
 
-        int64_t kThreadH = 8;
-        int64_t kThreadW = 8;
-        if (module) {
-            if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_h")) {
-                kThreadH = std::max<int64_t>(1, attr.getInt());
-            }
-            if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_w")) {
-                kThreadW = std::max<int64_t>(1, attr.getInt());
-            }
-        }
-        const int64_t tile_h = kThreadH;
-        const int64_t tile_w = kThreadW;
-        if (module) {
-            auto* ctx = module.getContext();
-            module->setAttr("gfx.dispatch_tile_h",
-                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), tile_h));
-            module->setAttr("gfx.dispatch_tile_w",
-                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), tile_w));
-            module->setAttr("gfx.dispatch_threads_h",
-                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), kThreadH));
-            module->setAttr("gfx.dispatch_threads_w",
-                            mlir::IntegerAttr::get(mlir::IndexType::get(ctx), kThreadW));
-        }
+        const auto dispatch_cfg = resolve_dispatch_tile_config(module);
+        const int64_t kThreadH = dispatch_cfg.threads_h;
+        const int64_t kThreadW = dispatch_cfg.threads_w;
+        const int64_t tile_h = dispatch_cfg.tile_h;
+        const int64_t tile_w = dispatch_cfg.tile_w;
+        persist_dispatch_tile_config(module, dispatch_cfg);
 
         auto c0 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 0);
         auto c1 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 1);
@@ -900,18 +916,23 @@ struct BatchMatMulTransposeBLoweringPattern final : public mlir::OpRewritePatter
             return mlir::failure();
         }
         auto module = op->getParentOfType<mlir::ModuleOp>();
-        if (module) {
-            if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.prefer_parallel")) {
-                if (!attr.getValue()) {
-                    return mlir::failure();
-                }
-            }
-        }
-
         auto output = strip_memref_casts(op.getDpsInits()[0]);
         auto output_type = mlir::dyn_cast<mlir::MemRefType>(output.getType());
         if (!output_type || output_type.getRank() != 3) {
             return mlir::failure();
+        }
+        const bool force_linear_matmul =
+            module && module->getAttrOfType<mlir::BoolAttr>("gfx.linear_matmul_parallel") &&
+            module->getAttrOfType<mlir::BoolAttr>("gfx.linear_matmul_parallel").getValue() &&
+            output_type.getDimSize(0) == 1;
+        if (!force_linear_matmul) {
+            if (module) {
+                if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.prefer_parallel")) {
+                    if (!attr.getValue()) {
+                        return mlir::failure();
+                    }
+                }
+            }
         }
 
         auto logical_input_a = strip_memref_casts(op.getDpsInputs()[0]);

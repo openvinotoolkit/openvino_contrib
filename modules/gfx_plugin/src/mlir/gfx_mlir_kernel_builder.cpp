@@ -9,6 +9,7 @@
 #include "mlir/mlir_builder.hpp"
 #include "runtime/gfx_op_utils.hpp"
 
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "openvino/core/except.hpp"
 #include "openvino/op/clamp.hpp"
@@ -178,6 +179,11 @@ mlir::ModuleOp build_mlir_for_node(const std::shared_ptr<const ov::Node>& node,
 
 std::string find_entry_point(mlir::ModuleOp module) {
     std::string name;
+    module.walk([&](mlir::gpu::GPUFuncOp func) {
+        if (name.empty()) {
+            name = func.getName().str();
+        }
+    });
     module.walk([&](mlir::func::FuncOp func) {
         if (name.empty()) {
             name = func.getName().str();

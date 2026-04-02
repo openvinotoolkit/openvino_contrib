@@ -38,6 +38,7 @@
 #include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/BufferizableOpInterfaceImpl.h"
@@ -1042,7 +1043,28 @@ void rebuild_compact_memref_operand_indices(mlir::ModuleOp module, const std::st
     if (!module || !module->hasAttr("gfx.fixed_arg_count")) {
         return;
     }
-    auto func = resolve_entry_func(module, entry_point);
+    mlir::FunctionOpInterface func;
+    if (!entry_point.empty()) {
+        if (auto f = module.lookupSymbol<mlir::func::FuncOp>(entry_point)) {
+            func = f;
+        } else if (auto f = module.lookupSymbol<mlir::gpu::GPUFuncOp>(entry_point)) {
+            func = f;
+        }
+    }
+    if (!func) {
+        module.walk([&](mlir::gpu::GPUFuncOp f) {
+            if (!func) {
+                func = f;
+            }
+        });
+    }
+    if (!func) {
+        module.walk([&](mlir::func::FuncOp f) {
+            if (!func) {
+                func = f;
+            }
+        });
+    }
     if (!func) {
         return;
     }

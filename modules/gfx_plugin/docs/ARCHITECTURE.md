@@ -117,6 +117,8 @@ Recent MLIR-specific changes reflected in the current code:
 - shared helpers now prefer the common `gfx_mlir_context()` path instead of ad-hoc local MLIR contexts in selected code paths
 - convolution parallel lowering can now consume explicit module-level dispatch attrs such as `gfx.dispatch_threads_*` and `gfx.dispatch_tile_*` instead of relying only on coarse algorithm variants
 - convolution parallel lowering now has a separate interior-tile fast path that skips lane guards for full tiles and keeps guarded edge handling only where needed
+- manual Vulkan Conv2D MLIR building can now emit `gpu.func` entry points for batch-1 parallel dispatch plans and keep a serial `func.func` entry path for larger batches
+- kernel-signature and metadata helpers now resolve `gpu.func` entry points before falling back to plain `func.func`, so Vulkan launch metadata stays aligned with GPU-entry modules
 
 Lowered kernels also rely on backend-neutral argument and binding helpers:
 - `src/kernel_ir/gfx_kernel_args.hpp` materializes runtime kernel arguments and can turn scalar byte payloads into cached immutable device buffers
@@ -164,7 +166,7 @@ The current Vulkan runtime also:
 - increases per-submit batching thresholds in the infer path to reduce Android-oriented driver overhead
 - persists Vulkan pipeline-cache data under `ov::cache_dir` when a cache directory is supplied through standard OpenVINO properties
 - reports execution-device limits through `GpuExecutionDeviceInfo`, matching the Metal path and removing backend-specific probing from shared planning code
-- recompiles selected specialized Conv2D and GroupConv2D kernels when the chosen `threads_per_group` changes, so launch shape and kernel metadata stay aligned
+- recompiles selected specialized Conv2D and GroupConv2D kernels when the chosen dispatch workgroup shape changes, so launch shape and kernel metadata stay aligned
 - prefers SPIR-V-observed binding counts when reconciling compiled-kernel argument metadata, reducing drift between MLIR-side arg inference and final Vulkan shader bindings
 
 The current policy layer also deliberately prefers the shared MLIR/SPIR-V convolution path over older dedicated Vulkan 1x1 and 3x3 direct routes on current mobile-class stacks, keeping the backend contract more stable for Android and Raspberry Pi flows.

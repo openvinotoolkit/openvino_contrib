@@ -16,6 +16,8 @@ If the plugin is packaged into an OpenVINO deployment with plugin discovery meta
 
 ## Reading Device Properties
 ```cpp
+auto available_devices = core.get_property("GFX", ov::available_devices);
+std::string selected_device_id = core.get_property("GFX", ov::device::id).as<std::string>();
 std::string backend = core.get_property("GFX", "GFX_BACKEND").as<std::string>();
 std::string full_name = core.get_property("GFX", ov::device::full_name).as<std::string>();
 auto capabilities = core.get_property("GFX", ov::device::capabilities);
@@ -27,16 +29,26 @@ Useful properties include:
 - `GFX_PROFILING_LEVEL`
 - `GFX_PROFILING_REPORT`
 - `GFX_MEM_STATS`
+- `ov::available_devices`
 - `ov::device::id`
 - `ov::cache_dir`
 - `ov::enable_profiling`
 - `PERF_COUNT`
+
+`ov::available_devices` now exposes stable numeric ids such as `"0"`. Use
+`ov::device::full_name` when you need the human-readable backend device name.
 
 ## Selecting The Backend
 The backend can be selected globally for the device:
 
 ```cpp
 core.set_property("GFX", {{"GFX_BACKEND", "metal"}});
+```
+
+Device selection is separate from backend selection:
+
+```cpp
+core.set_property("GFX", {{ov::device::id.name(), "0"}});
 ```
 
 Or per compilation request:

@@ -125,7 +125,8 @@ Current family-aware planning distinguishes at least:
 
 Family-aware tuning is now used for more than cache keys. The current code includes:
 - Broadcom V3D-specific matmul and convolution parallelism choices for Raspberry Pi-style Vulkan devices
-- Vulkan chunk/direct convolution kernels compiled with the selected `threads_per_group` instead of a fixed block-size assumption
+- Vulkan chunk/direct convolution kernels compiled with the selected 2D dispatch workgroup shape instead of a fixed 1D block-size assumption
+- manual Vulkan Conv2D MLIR building can emit a parallel GPU launch path for batch-1 shapes and falls back to the serial entry path for larger batches
 - MLIR convolution lowering that can honor explicit dispatch tile and thread attributes emitted by the planning path
 - MLIR convolution lowering that now uses a faster full-tile path for interior tiles and falls back to lane guards only on edge tiles
 
@@ -170,6 +171,7 @@ Commonly used properties:
 - `GFX_PROFILING_LEVEL`
 - `GFX_PROFILING_REPORT`
 - `GFX_MEM_STATS`
+- `ov::available_devices`
 - `ov::device::id`
 - `ov::cache_dir`
 - `ov::enable_profiling`
@@ -184,7 +186,8 @@ Practical meanings:
 - `GFX_PROFILING_LEVEL`: control profiling detail level
 - `GFX_PROFILING_REPORT`: fetch the latest profiling report, including compile and infer sections when profiling is enabled
 - `GFX_MEM_STATS`: fetch backend memory statistics from a compiled model
-- `ov::device::id`: select a device index when the active backend supports it
+- `ov::available_devices`: expose stable numeric device ids such as `"0"`; use `ov::device::full_name` for the human-readable backend device name
+- `ov::device::id`: select one of the numeric device ids exposed through `ov::available_devices`
 - `ov::cache_dir`: reuse the standard OpenVINO cache directory for Vulkan pipeline-cache persistence
 - `ov::loaded_from_cache`: report whether the OpenVINO model-cache path loaded this compiled model
 
@@ -282,6 +285,7 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 
 Recent regression coverage includes:
 - canonical Conv2D MLIR lowering checks
+- strict interior-tile bounds checks plus Vulkan batch-1 parallel-launch and batch>1 serial-fallback checks in `tests/unit/mlir_conv_parallel_test.cpp`
 - im2col rewrite coverage, including the batch-1 plain-matmul route
 - linear matmul parallel-lowering coverage
 - absorbed input-transform tests for Add, Conv2D, GroupConv2D, and Split
@@ -292,6 +296,7 @@ Recent regression coverage includes:
 - reusable output-resolution and reusable host-output coverage in `tests/unit/infer_pipeline_reuse_test.cpp`
 - internal transform and plugin coverage in `tests/unit/basic_ops_internal_test.cpp`
 - backend memory/device integration coverage in `tests/unit/memory_device_integration_test.mm`
+- plugin property coverage for numeric `available_devices` / `ov::device::id` behavior in `tests/unit/plugin_tests.cpp`
 
 ## Debugging And Instrumentation
 Useful environment variables from the current codebase:

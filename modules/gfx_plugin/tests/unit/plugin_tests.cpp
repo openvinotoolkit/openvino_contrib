@@ -5,7 +5,9 @@
 #include <gtest/gtest.h>
 
 #include <cstdlib>
+#include <cctype>
 #include <string>
+#include <vector>
 
 #include "openvino/openvino.hpp"
 #include "plugin/gfx_backend_config.hpp"
@@ -164,4 +166,21 @@ TEST(GfxBackendProperty, LogsBackendSelection) {
     } else {
         ::unsetenv("OV_GFX_TRACE");
     }
+}
+
+TEST(GfxDeviceProperties, AvailableDevicesExposeIds) {
+    ov::Core core;
+    register_gfx_plugin(core);
+
+    const auto available = core.get_property("GFX", ov::available_devices);
+    ASSERT_FALSE(available.empty());
+    for (const auto& entry : available) {
+        EXPECT_FALSE(entry.empty());
+        EXPECT_TRUE(std::all_of(entry.begin(), entry.end(), [](unsigned char ch) { return std::isdigit(ch) != 0; }))
+            << "available_devices must expose numeric device ids, got '" << entry << "'";
+    }
+
+    const auto default_device_id = core.get_property("GFX", ov::device::id);
+    EXPECT_EQ(default_device_id, "0");
+    EXPECT_EQ(available.front(), "0");
 }

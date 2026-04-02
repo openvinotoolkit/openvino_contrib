@@ -1447,25 +1447,72 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
     }
     if (use_manual_conv2d_vulkan) {
         if (auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node)) {
-            module = build_mlir_conv2d_vulkan(conv, ctx);
-            m_force_single_dispatch = true;
-            mlir::OpBuilder b(module->getContext());
+            ParallelDispatchConfig manual_dispatch_cfg{};
+            bool use_parallel_manual_vulkan_conv = false;
+            const auto& in_shape = conv->get_input_shape(0);
+            const auto& w_shape = conv->get_input_shape(1);
+            const auto& out_shape = conv->get_output_shape(0);
+            if (in_shape.size() == 4 && w_shape.size() == 4 && out_shape.size() == 4 && out_shape[0] == 1) {
+                const auto caps = query_parallelism_caps(m_buffer_manager);
+                const uint64_t input_channels = static_cast<uint64_t>(std::max<size_t>(1, in_shape[1]));
+                const uint64_t output_channels = static_cast<uint64_t>(std::max<size_t>(1, w_shape[0]));
+                const uint64_t kernel_work =
+                    input_channels * static_cast<uint64_t>(std::max<size_t>(1, w_shape[2])) *
+                    static_cast<uint64_t>(std::max<size_t>(1, w_shape[3]));
+                const bool stride2 = conv->get_strides().at(0) > 1 || conv->get_strides().at(1) > 1;
+                const auto parallel_plan = select_conv_parallelism(caps,
+                                                                   out_shape,
+                                                                   input_channels,
+                                                                   output_channels,
+                                                                   kernel_work,
+                                                                   stride2,
+                                                                   /*depthwise=*/false);
+                if (parallel_plan.prefer_parallel &&
+                    parallel_plan.dispatch.threads_h > 0 &&
+                    parallel_plan.dispatch.threads_w > 0) {
+                    manual_dispatch_cfg = parallel_plan.dispatch;
+                    use_parallel_manual_vulkan_conv = true;
+                }
+            }
+            module = build_mlir_conv2d_vulkan(conv,
+                                              ctx,
+                                              use_parallel_manual_vulkan_conv ? &manual_dispatch_cfg : nullptr);
+            m_force_single_dispatch = !use_parallel_manual_vulkan_conv;
+            mlir::OpBuilder b(module.getContext());
             apply_stage_optimization_attrs(module, optimization_plan);
             module->setAttr("gfx.skip_conv_parallel", mlir::BoolAttr::get(module.getContext(), true));
-            module->setAttr("gfx.prefer_parallel", mlir::BoolAttr::get(module.getContext(), true));
+            module->setAttr("gfx.prefer_parallel",
+                            mlir::BoolAttr::get(module.getContext(), use_parallel_manual_vulkan_conv));
+            if (use_parallel_manual_vulkan_conv) {
+                module->setAttr("gfx.parallel_dispatch", mlir::BoolAttr::get(module.getContext(), true));
+                module->setAttr("gfx.dispatch_tile_h",
+                                mlir::IntegerAttr::get(mlir::IndexType::get(module.getContext()),
+                                                       manual_dispatch_cfg.tile_h));
+                module->setAttr("gfx.dispatch_tile_w",
+                                mlir::IntegerAttr::get(mlir::IndexType::get(module.getContext()),
+                                                       manual_dispatch_cfg.tile_w));
+                module->setAttr("gfx.dispatch_threads_h",
+                                mlir::IntegerAttr::get(mlir::IndexType::get(module.getContext()),
+                                                       manual_dispatch_cfg.threads_h));
+                module->setAttr("gfx.dispatch_threads_w",
+                                mlir::IntegerAttr::get(mlir::IndexType::get(module.getContext()),
+                                                       manual_dispatch_cfg.threads_w));
+            }
             m_kernel_extra_inputs.clear();
             std::vector<int32_t> kinds = {1, 1, 1};
             std::vector<int32_t> arg_idx = {0, 1, 2};
             module->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr(b, kinds));
             module->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr(b, arg_idx));
+            const std::string manual_entry =
+                use_parallel_manual_vulkan_conv ? "conv2d_kernel" : "conv2d_main";
             plan_ctx = build_mlir_kernel_plan(
                 module,
-                "conv2d_main",
+                manual_entry,
                 m_node,
                 /*output_args_override=*/0,
                 /*extra_inputs=*/0,
                 m_name.c_str(),
-                "conv2d_main",
+                manual_entry,
                 [&](const KernelArgMappingInfo& info) -> size_t {
                     size_t func_results = info.func_results;
                     if (m_node && func_results == 0) {

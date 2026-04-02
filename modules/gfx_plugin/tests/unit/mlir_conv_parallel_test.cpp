@@ -7,8 +7,10 @@
 #include "mlir/codegen_common.hpp"
 #include "mlir/mlir_builder.hpp"
 #include "mlir/mlir_passes.hpp"
+#include "transforms/conv_parallel_lowering.hpp"
 #include "transforms/conv_im2col_matmul_rewrite.hpp"
 
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -64,6 +66,116 @@ TEST(GfxMlirTransforms, Conv2DParallelLowering) {
     });
     EXPECT_FALSE(has_conv) << "Conv2D should be lowered before SPIR-V";
     EXPECT_TRUE(has_parallel) << "Expected scf.parallel after lowering";
+}
+
+TEST(GfxMlirTransforms, Conv2DInteriorTileInputWindowCheckIsStrictlyBoundsSafe) {
+    EXPECT_FALSE(ov::gfx_plugin::detail::is_conv_tile_input_h_interior(
+        /*oh_base=*/0,
+        /*tile_h=*/8,
+        /*stride_h=*/1,
+        /*dil_h=*/1,
+        /*kernel_h=*/3,
+        /*pad_h=*/1,
+        /*input_h=*/80));
+    EXPECT_TRUE(ov::gfx_plugin::detail::is_conv_tile_input_h_interior(
+        /*oh_base=*/8,
+        /*tile_h=*/8,
+        /*stride_h=*/1,
+        /*dil_h=*/1,
+        /*kernel_h=*/3,
+        /*pad_h=*/1,
+        /*input_h=*/80));
+    EXPECT_FALSE(ov::gfx_plugin::detail::is_conv_tile_input_w_interior(
+        /*ow_base=*/0,
+        /*tile_w=*/8,
+        /*stride_w=*/1,
+        /*dil_w=*/1,
+        /*kernel_w=*/3,
+        /*pad_w=*/1,
+        /*input_w=*/80));
+    EXPECT_TRUE(ov::gfx_plugin::detail::is_conv_tile_input_w_interior(
+        /*ow_base=*/8,
+        /*tile_w=*/8,
+        /*stride_w=*/1,
+        /*dil_w=*/1,
+        /*kernel_w=*/3,
+        /*pad_w=*/1,
+        /*input_w=*/80));
+    EXPECT_FALSE(ov::gfx_plugin::detail::is_conv_tile_input_interior(
+        /*oh_base=*/0,
+        /*ow_base=*/0,
+        /*tile_h=*/8,
+        /*tile_w=*/8,
+        /*stride_h=*/1,
+        /*stride_w=*/1,
+        /*dil_h=*/1,
+        /*dil_w=*/1,
+        /*kernel_h=*/3,
+        /*kernel_w=*/3,
+        /*pad_h=*/1,
+        /*pad_w=*/1,
+        /*input_h=*/80,
+        /*input_w=*/80));
+    EXPECT_TRUE(ov::gfx_plugin::detail::is_conv_tile_input_interior(
+        /*oh_base=*/8,
+        /*ow_base=*/8,
+        /*tile_h=*/8,
+        /*tile_w=*/8,
+        /*stride_h=*/1,
+        /*stride_w=*/1,
+        /*dil_h=*/1,
+        /*dil_w=*/1,
+        /*kernel_h=*/3,
+        /*kernel_w=*/3,
+        /*pad_h=*/1,
+        /*pad_w=*/1,
+        /*input_h=*/80,
+        /*input_w=*/80));
+    EXPECT_FALSE(ov::gfx_plugin::detail::is_conv_tile_input_interior(
+        /*oh_base=*/0,
+        /*ow_base=*/0,
+        /*tile_h=*/8,
+        /*tile_w=*/8,
+        /*stride_h=*/2,
+        /*stride_w=*/2,
+        /*dil_h=*/1,
+        /*dil_w=*/1,
+        /*kernel_h=*/3,
+        /*kernel_w=*/3,
+        /*pad_h=*/1,
+        /*pad_w=*/1,
+        /*input_h=*/160,
+        /*input_w=*/160));
+    EXPECT_TRUE(ov::gfx_plugin::detail::is_conv_tile_input_interior(
+        /*oh_base=*/8,
+        /*ow_base=*/8,
+        /*tile_h=*/8,
+        /*tile_w=*/8,
+        /*stride_h=*/2,
+        /*stride_w=*/2,
+        /*dil_h=*/1,
+        /*dil_w=*/1,
+        /*kernel_h=*/3,
+        /*kernel_w=*/3,
+        /*pad_h=*/1,
+        /*pad_w=*/1,
+        /*input_h=*/160,
+        /*input_w=*/160));
+    EXPECT_TRUE(ov::gfx_plugin::detail::is_conv_tile_input_interior(
+        /*oh_base=*/15,
+        /*ow_base=*/15,
+        /*tile_h=*/4,
+        /*tile_w=*/4,
+        /*stride_h=*/1,
+        /*stride_w=*/1,
+        /*dil_h=*/1,
+        /*dil_w=*/1,
+        /*kernel_h=*/3,
+        /*kernel_w=*/3,
+        /*pad_h=*/1,
+        /*pad_w=*/1,
+        /*input_h=*/20,
+        /*input_w=*/20));
 }
 
 TEST(GfxMlirTransforms, Conv2DBuilderUsesCanonicalConvOp) {
@@ -186,6 +298,101 @@ TEST(GfxMlirTransforms, Conv2DIm2ColRewriteUsesPlainMatmulForBatchOne) {
     EXPECT_FALSE(has_batch_matmul) << "Batch-1 im2col route should avoid batch matmul";
     EXPECT_TRUE(has_expand_shape) << "Default batch-1 im2col route should use view-like expand_shape";
     EXPECT_FALSE(has_restore_output) << "Default batch-1 im2col route should avoid restore_output stage";
+}
+
+TEST(GfxMlirTransforms, VulkanConv2DBuilderUsesParallelGpuLaunchForBatchOne) {
+    auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                         ov::Shape{1, 128, 40, 40});
+    std::vector<float> weights_data(256 * 128 * 3 * 3, 0.1f);
+    auto weights = ov::op::v0::Constant::create(ov::element::f32,
+                                                ov::Shape{256, 128, 3, 3},
+                                                weights_data);
+    auto conv = std::make_shared<ov::op::v1::Convolution>(
+        input,
+        weights,
+        ov::Strides{2, 2},
+        ov::CoordinateDiff{1, 1},
+        ov::CoordinateDiff{1, 1},
+        ov::Strides{1, 1});
+
+    ov::gfx_plugin::ParallelDispatchConfig dispatch{};
+    dispatch.enabled = true;
+    dispatch.tile_h = 8;
+    dispatch.tile_w = 8;
+    dispatch.threads_h = 8;
+    dispatch.threads_w = 8;
+
+    mlir::MLIRContext ctx;
+    auto module = ov::gfx_plugin::build_mlir_conv2d_vulkan(conv, ctx, &dispatch);
+    ASSERT_TRUE(module);
+
+    auto func = module.lookupSymbol<mlir::func::FuncOp>("conv2d_main");
+    ASSERT_TRUE(func);
+
+    bool has_launch = false;
+    bool has_gpu_func = false;
+    bool has_thread_id = false;
+    module.walk([&](mlir::gpu::LaunchFuncOp) {
+        has_launch = true;
+    });
+    module.walk([&](mlir::gpu::GPUFuncOp) {
+        has_gpu_func = true;
+    });
+    module.walk([&](mlir::gpu::ThreadIdOp) {
+        has_thread_id = true;
+    });
+
+    auto parallel_dispatch = module->getAttrOfType<mlir::BoolAttr>("gfx.parallel_dispatch");
+    auto threads_h = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_h");
+    auto threads_w = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_w");
+    ASSERT_TRUE(parallel_dispatch);
+    ASSERT_TRUE(threads_h);
+    ASSERT_TRUE(threads_w);
+    EXPECT_TRUE(parallel_dispatch.getValue());
+    EXPECT_EQ(threads_h.getInt(), 8);
+    EXPECT_EQ(threads_w.getInt(), 8);
+    EXPECT_TRUE(has_launch);
+    EXPECT_TRUE(has_gpu_func);
+    EXPECT_TRUE(has_thread_id);
+}
+
+TEST(GfxMlirTransforms, VulkanConv2DBuilderFallsBackToSerialForBatchGreaterThanOne) {
+    auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                         ov::Shape{2, 64, 20, 20});
+    std::vector<float> weights_data(64 * 64 * 3 * 3, 0.1f);
+    auto weights = ov::op::v0::Constant::create(ov::element::f32,
+                                                ov::Shape{64, 64, 3, 3},
+                                                weights_data);
+    auto conv = std::make_shared<ov::op::v1::Convolution>(
+        input,
+        weights,
+        ov::Strides{1, 1},
+        ov::CoordinateDiff{1, 1},
+        ov::CoordinateDiff{1, 1},
+        ov::Strides{1, 1});
+
+    ov::gfx_plugin::ParallelDispatchConfig dispatch{};
+    dispatch.enabled = true;
+    dispatch.tile_h = 8;
+    dispatch.tile_w = 8;
+    dispatch.threads_h = 8;
+    dispatch.threads_w = 8;
+
+    mlir::MLIRContext ctx;
+    auto module = ov::gfx_plugin::build_mlir_conv2d_vulkan(conv, ctx, &dispatch);
+    ASSERT_TRUE(module);
+
+    bool has_launch = false;
+    bool has_parallel_dispatch_attr = false;
+    module.walk([&](mlir::gpu::LaunchFuncOp) {
+        has_launch = true;
+    });
+    if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.parallel_dispatch")) {
+        has_parallel_dispatch_attr = attr.getValue();
+    }
+
+    EXPECT_FALSE(has_launch);
+    EXPECT_FALSE(has_parallel_dispatch_attr);
 }
 
 TEST(GfxMlirTransforms, GroupConv2DBuilderSetsPadAttrsForGroupsOne) {

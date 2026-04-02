@@ -99,8 +99,8 @@ private:
     bool m_conv2d_3x3_force_chunked_fallback = false;
     std::shared_ptr<ICompiledKernel> m_conv2d_chunk_kernel;
     ov::element::Type m_conv2d_chunk_elem_type{};
-    uint32_t m_conv2d_chunk_threads_per_group = 1;
-    LaunchOperandABI m_conv2d_chunk_launch_abi;
+    uint32_t m_conv2d_chunk_threads_h = 1;
+    uint32_t m_conv2d_chunk_threads_w = 1;
     std::shared_ptr<ICompiledKernel> m_group_conv2d_kernel;
     ov::element::Type m_group_conv2d_elem_type{};
     uint32_t m_group_conv2d_threads_per_group = 1;
@@ -163,7 +163,8 @@ private:
                                                const ov::element::Type& dst_et);
     mlir::ModuleOp build_conv2d_chunk_module(mlir::MLIRContext& ctx,
                                              const ov::element::Type& et,
-                                             uint32_t threads_per_group);
+                                             uint32_t threads_h,
+                                             uint32_t threads_w);
     mlir::ModuleOp build_group_conv2d_chunk_module(mlir::MLIRContext& ctx,
                                                    const ov::element::Type& et,
                                                    uint32_t threads_per_group);

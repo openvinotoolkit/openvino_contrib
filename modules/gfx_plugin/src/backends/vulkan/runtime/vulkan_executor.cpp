@@ -51,11 +51,6 @@ namespace {
 
 constexpr uint32_t kLargeLinearChunkElems = 16384;
 constexpr uint32_t kLinearChunkElemsPerDispatch = 65536;
-// Keep chunked Conv2D bounded for mobile Vulkan drivers, but large enough to
-// avoid excessive per-dispatch overhead once chunks are recorded into the
-// shared infer command buffer.
-constexpr uint32_t kConv2DChunkElemsPerDispatch = 1024;
-
 ov::element::Type resolve_stage_element_type(const std::shared_ptr<const ov::Node>& node,
                                              const GpuTensor* tensor) {
     ov::element::Type et = ov::element::dynamic;
@@ -462,22 +457,34 @@ void VulkanStage::prepare_conv2d_chunk_kernel() {
     auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
     OPENVINO_ASSERT(conv, "GFX Vulkan conv2d chunked: node cast failed");
     const auto caps = query_parallelism_caps(m_buffer_manager);
-    const auto total = static_cast<uint64_t>(tensor_elements(conv->get_output_shape(0)));
+    const auto& out_shape = conv->get_output_shape(0);
+    const auto& in_shape = conv->get_input_shape(0);
+    const auto& w_shape = conv->get_input_shape(1);
     const auto work_per_elem =
-        static_cast<uint64_t>(conv->get_input_shape(0).at(1)) * static_cast<uint64_t>(conv->get_input_shape(1).at(2)) *
-        static_cast<uint64_t>(conv->get_input_shape(1).at(3));
-    const auto launch_plan = select_chunk_dispatch_plan(caps, "conv2d", total, work_per_elem);
+        static_cast<uint64_t>(in_shape.at(1)) * static_cast<uint64_t>(w_shape.at(2)) *
+        static_cast<uint64_t>(w_shape.at(3));
+    const bool stride2 = conv->get_strides().at(0) > 1 || conv->get_strides().at(1) > 1;
+    const auto spatial_plan = select_conv_parallelism(caps,
+                                                      out_shape,
+                                                      static_cast<uint64_t>(in_shape.at(1)),
+                                                      static_cast<uint64_t>(w_shape.at(0)),
+                                                      work_per_elem,
+                                                      stride2,
+                                                      /*depthwise=*/false);
+    const uint32_t threads_h = std::max<uint32_t>(1u, spatial_plan.dispatch.threads_h);
+    const uint32_t threads_w = std::max<uint32_t>(1u, spatial_plan.dispatch.threads_w);
     if (m_conv2d_chunk_kernel && m_conv2d_chunk_elem_type == elem_type &&
-        m_conv2d_chunk_threads_per_group == launch_plan.threads_per_group) {
+        m_conv2d_chunk_threads_h == threads_h &&
+        m_conv2d_chunk_threads_w == threads_w) {
         return;
     }
     auto& ctx = gfx_mlir_context();
-    auto module = build_conv2d_chunk_module(ctx, elem_type, launch_plan.threads_per_group);
+    auto module = build_conv2d_chunk_module(ctx, elem_type, threads_h, threads_w);
     m_conv2d_chunk_kernel =
-        compile_specialized_kernel_from_mlir(module, "conv2d_chunk", 4, "GFX Vulkan conv2d chunked: kernel compile failed: ");
+        compile_specialized_kernel_from_mlir(module, "conv2d_chunk", 3, "GFX Vulkan conv2d chunked: kernel compile failed: ");
     m_conv2d_chunk_elem_type = elem_type;
-    m_conv2d_chunk_threads_per_group = launch_plan.threads_per_group;
-    m_conv2d_chunk_launch_abi = extract_launch_operand_abi(module);
+    m_conv2d_chunk_threads_h = threads_h;
+    m_conv2d_chunk_threads_w = threads_w;
 }
 
 void VulkanStage::prepare_group_conv2d_kernel() {
@@ -1655,7 +1662,8 @@ mlir::ModuleOp VulkanStage::build_conv2d_3x3_direct_module(mlir::MLIRContext& ct
 
 mlir::ModuleOp VulkanStage::build_conv2d_chunk_module(mlir::MLIRContext& ctx,
                                                       const ov::element::Type& et,
-                                                      uint32_t threads_per_group) {
+                                                      uint32_t threads_h,
+                                                      uint32_t threads_w) {
     using namespace mlir;
     auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
     OPENVINO_ASSERT(conv, "GFX Vulkan conv2d chunked: node cast failed");
@@ -1683,7 +1691,7 @@ mlir::ModuleOp VulkanStage::build_conv2d_chunk_module(mlir::MLIRContext& ctx,
     mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
     mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
     mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 4));
+    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 3));
     auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
         SmallVector<Attribute, 8> attrs;
         attrs.reserve(values.size());
@@ -1692,34 +1700,41 @@ mlir::ModuleOp VulkanStage::build_conv2d_chunk_module(mlir::MLIRContext& ctx,
         }
         return b.getArrayAttr(attrs);
     };
-    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2, 3}));
-    const int64_t input_elems = static_cast<int64_t>(tensor_elements(in_shape));
-    const int64_t weight_elems = static_cast<int64_t>(tensor_elements(w_shape));
-    const int64_t output_elems = static_cast<int64_t>(tensor_elements(out_shape));
-    auto input_ty = MemRefType::get({input_elems}, elem_ty);
-    auto weight_ty = MemRefType::get({weight_elems}, elem_ty);
-    auto output_ty = MemRefType::get({output_elems}, elem_ty);
-    auto param_ty = MemRefType::get({2}, IntegerType::get(&ctx, 32));
+    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1}));
+    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2}));
+    auto input_ty = MemRefType::get({static_cast<int64_t>(in_shape.at(0)),
+                                     static_cast<int64_t>(in_shape.at(1)),
+                                     static_cast<int64_t>(in_shape.at(2)),
+                                     static_cast<int64_t>(in_shape.at(3))},
+                                    elem_ty);
+    auto weight_ty = MemRefType::get({static_cast<int64_t>(w_shape.at(0)),
+                                      static_cast<int64_t>(w_shape.at(1)),
+                                      static_cast<int64_t>(w_shape.at(2)),
+                                      static_cast<int64_t>(w_shape.at(3))},
+                                     elem_ty);
+    auto output_ty = MemRefType::get({static_cast<int64_t>(out_shape.at(0)),
+                                      static_cast<int64_t>(out_shape.at(1)),
+                                      static_cast<int64_t>(out_shape.at(2)),
+                                      static_cast<int64_t>(out_shape.at(3))},
+                                     elem_ty);
     auto gpu_mod = b.create<gpu::GPUModuleOp>(UnknownLoc::get(&ctx), "gfx_kernels");
     OpBuilder gpu_builder = OpBuilder::atBlockBegin(gpu_mod.getBody());
     auto fn = gpu_builder.create<gpu::GPUFuncOp>(UnknownLoc::get(&ctx),
                                                  "conv2d_chunk",
-                                                 b.getFunctionType(TypeRange{input_ty, weight_ty, param_ty, output_ty}, {}),
+                                                 b.getFunctionType(TypeRange{input_ty, weight_ty, output_ty}, {}),
                                                  TypeRange{},
                                                  TypeRange{});
     fn->setAttr(gpu::GPUDialect::getKernelFuncAttrName(), b.getUnitAttr());
-    fn.setKnownBlockSizeAttr(mlir::DenseI32ArrayAttr::get(&ctx, {static_cast<int32_t>(std::max<uint32_t>(1u, threads_per_group)), 1, 1}));
+    fn.setKnownBlockSizeAttr(
+        mlir::DenseI32ArrayAttr::get(&ctx,
+                                     {static_cast<int32_t>(std::max<uint32_t>(1u, threads_w)),
+                                      static_cast<int32_t>(std::max<uint32_t>(1u, threads_h)),
+                                      1}));
     auto* entry = &fn.getBody().front();
     OpBuilder body(entry, entry->begin());
     auto loc = fn.getLoc();
     auto c0 = body.create<arith::ConstantIndexOp>(loc, 0);
     auto c1 = body.create<arith::ConstantIndexOp>(loc, 1);
-    auto load_param = [&](int idx) -> Value {
-        auto idx_val = body.create<arith::ConstantIndexOp>(loc, idx);
-        auto v_i32 = body.create<memref::LoadOp>(loc, fn.getArgument(2), ValueRange{idx_val});
-        return body.create<arith::IndexCastOp>(loc, body.getIndexType(), v_i32);
-    };
     auto cast_to_compute = [&](OpBuilder& builder, Value value) -> Value {
         if (value.getType() == compute_ty) {
             return value;
@@ -1733,8 +1748,7 @@ mlir::ModuleOp VulkanStage::build_conv2d_chunk_module(mlir::MLIRContext& ctx,
         return builder.create<arith::TruncFOp>(loc, elem_ty, value);
     };
 
-    Value offset = load_param(0);
-    Value count = load_param(1);
+    Value batch = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(out_shape.at(0)));
     Value c_in = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(in_shape.at(1)));
     Value in_h = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(in_shape.at(2)));
     Value in_w = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(in_shape.at(3)));
@@ -1753,43 +1767,43 @@ mlir::ModuleOp VulkanStage::build_conv2d_chunk_module(mlir::MLIRContext& ctx,
     const auto in_channels = static_cast<int64_t>(in_shape.at(1));
     const auto kernel_h = static_cast<int64_t>(w_shape.at(2));
     const auto kernel_w = static_cast<int64_t>(w_shape.at(3));
-    Value bid = body.create<gpu::BlockIdOp>(loc, gpu::Dimension::x);
-    Value bdim = body.create<gpu::BlockDimOp>(loc, gpu::Dimension::x);
-    Value tid = body.create<gpu::ThreadIdOp>(loc, gpu::Dimension::x);
-    Value global_idx = body.create<arith::AddIOp>(loc,
-                                                  body.create<arith::MulIOp>(loc, bid, bdim),
-                                                  tid);
-    auto active = body.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, global_idx, count);
+    Value bid_x = body.create<gpu::BlockIdOp>(loc, gpu::Dimension::x);
+    Value bid_y = body.create<gpu::BlockIdOp>(loc, gpu::Dimension::y);
+    Value bid_z = body.create<gpu::BlockIdOp>(loc, gpu::Dimension::z);
+    Value bdim_x = body.create<gpu::BlockDimOp>(loc, gpu::Dimension::x);
+    Value bdim_y = body.create<gpu::BlockDimOp>(loc, gpu::Dimension::y);
+    Value tid_x = body.create<gpu::ThreadIdOp>(loc, gpu::Dimension::x);
+    Value tid_y = body.create<gpu::ThreadIdOp>(loc, gpu::Dimension::y);
+    Value ow = body.create<arith::AddIOp>(loc, body.create<arith::MulIOp>(loc, bid_x, bdim_x), tid_x);
+    Value oh = body.create<arith::AddIOp>(loc, body.create<arith::MulIOp>(loc, bid_y, bdim_y), tid_y);
+    Value oc = body.create<arith::RemUIOp>(loc, bid_z, c_out);
+    Value n = body.create<arith::DivUIOp>(loc, bid_z, c_out);
+    auto ow_valid = body.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, ow, out_w);
+    auto oh_valid = body.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, oh, out_h);
+    auto n_valid = body.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, n, batch);
+    auto active = body.create<arith::AndIOp>(loc, ow_valid, oh_valid);
+    active = body.create<arith::AndIOp>(loc, active, n_valid);
     auto active_if = body.create<scf::IfOp>(loc, active, /*withElseRegion=*/false);
     {
         auto then_builder = active_if.getThenBodyBuilder();
-        Value local_idx = global_idx;
-        Value linear_idx = then_builder.create<arith::AddIOp>(loc, offset, local_idx);
-        Value rem = linear_idx;
-        Value ow = then_builder.create<arith::RemUIOp>(loc, rem, out_w);
-        rem = then_builder.create<arith::DivUIOp>(loc, rem, out_w);
-        Value oh = then_builder.create<arith::RemUIOp>(loc, rem, out_h);
-        rem = then_builder.create<arith::DivUIOp>(loc, rem, out_h);
-        Value oc = then_builder.create<arith::RemUIOp>(loc, rem, c_out);
-        Value n = then_builder.create<arith::DivUIOp>(loc, rem, c_out);
         Value acc = zero.getResult();
+        Value base_ih = then_builder.create<arith::SubIOp>(
+            loc, then_builder.create<arith::MulIOp>(loc, oh, stride_h), pad_top);
+        Value base_iw = then_builder.create<arith::SubIOp>(
+            loc, then_builder.create<arith::MulIOp>(loc, ow, stride_w), pad_left);
+        auto one = then_builder.create<arith::ConstantOp>(loc, FloatAttr::get(compute_ty, 1.0f));
+        Value in_h_last = then_builder.create<arith::SubIOp>(loc, in_h, c1);
+        Value in_w_last = then_builder.create<arith::SubIOp>(loc, in_w, c1);
         for (int64_t ic_idx = 0; ic_idx < in_channels; ++ic_idx) {
             Value ic = then_builder.create<arith::ConstantIndexOp>(loc, ic_idx);
             for (int64_t kh_idx = 0; kh_idx < kernel_h; ++kh_idx) {
                 Value kh = then_builder.create<arith::ConstantIndexOp>(loc, kh_idx);
                 for (int64_t kw_idx = 0; kw_idx < kernel_w; ++kw_idx) {
                     Value kw = then_builder.create<arith::ConstantIndexOp>(loc, kw_idx);
-
                     Value ih = then_builder.create<arith::AddIOp>(
-                        loc,
-                        then_builder.create<arith::MulIOp>(loc, oh, stride_h),
-                        then_builder.create<arith::MulIOp>(loc, kh, dil_h));
-                    ih = then_builder.create<arith::SubIOp>(loc, ih, pad_top);
+                        loc, base_ih, then_builder.create<arith::MulIOp>(loc, kh, dil_h));
                     Value iw = then_builder.create<arith::AddIOp>(
-                        loc,
-                        then_builder.create<arith::MulIOp>(loc, ow, stride_w),
-                        then_builder.create<arith::MulIOp>(loc, kw, dil_w));
-                    iw = then_builder.create<arith::SubIOp>(loc, iw, pad_left);
+                        loc, base_iw, then_builder.create<arith::MulIOp>(loc, kw, dil_w));
 
                     auto ih_ge0 = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sge, ih, c0);
                     auto ih_lt = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, ih, in_h);
@@ -1799,77 +1813,31 @@ mlir::ModuleOp VulkanStage::build_conv2d_chunk_module(mlir::MLIRContext& ctx,
                     in_bounds = then_builder.create<arith::AndIOp>(loc, in_bounds, iw_ge0);
                     in_bounds = then_builder.create<arith::AndIOp>(loc, in_bounds, iw_lt);
 
-                    auto if_in_bounds = then_builder.create<scf::IfOp>(
-                        loc, TypeRange{compute_ty}, in_bounds, /*withElseRegion=*/true);
-                    {
-                        auto then_inner = if_in_bounds.getThenBodyBuilder();
-                        Value input_offset = then_inner.create<arith::AddIOp>(
-                            loc,
-                            then_inner.create<arith::MulIOp>(
-                                loc,
-                                then_inner.create<arith::AddIOp>(
-                                    loc,
-                                    then_inner.create<arith::MulIOp>(loc, n, c_in),
-                                    ic),
-                                then_inner.create<arith::MulIOp>(loc, in_h, in_w)),
-                            then_inner.create<arith::AddIOp>(
-                                loc,
-                                then_inner.create<arith::MulIOp>(loc, ih, in_w),
-                                iw));
-                        Value weight_offset = then_inner.create<arith::AddIOp>(
-                            loc,
-                            then_inner.create<arith::MulIOp>(
-                                loc,
-                                then_inner.create<arith::AddIOp>(
-                                    loc,
-                                    then_inner.create<arith::MulIOp>(loc, oc, c_in),
-                                    ic),
-                                then_inner.create<arith::MulIOp>(loc, k_h, k_w)),
-                            then_inner.create<arith::AddIOp>(
-                                loc,
-                                then_inner.create<arith::MulIOp>(loc, kh, k_w),
-                                kw));
-                        Value input_val = then_inner.create<memref::LoadOp>(
-                            loc,
-                            fn.getArgument(0),
-                            ValueRange{input_offset});
-                        Value weight_val = then_inner.create<memref::LoadOp>(
-                            loc,
-                            fn.getArgument(1),
-                            ValueRange{weight_offset});
-                        Value prod = then_inner.create<arith::MulFOp>(
-                            loc,
-                            cast_to_compute(then_inner, input_val),
-                            cast_to_compute(then_inner, weight_val));
-                        Value sum = then_inner.create<arith::AddFOp>(loc, prod, acc);
-                        then_inner.create<scf::YieldOp>(loc, sum);
-                    }
-                    {
-                        auto else_inner = if_in_bounds.getElseBodyBuilder();
-                        else_inner.create<scf::YieldOp>(loc, acc);
-                    }
-                    acc = if_in_bounds.getResult(0);
+                    Value ih_nonneg = then_builder.create<arith::SelectOp>(loc, ih_ge0, ih, c0);
+                    Value iw_nonneg = then_builder.create<arith::SelectOp>(loc, iw_ge0, iw, c0);
+                    auto ih_bounded =
+                        then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, ih_nonneg, in_h);
+                    auto iw_bounded =
+                        then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, iw_nonneg, in_w);
+                    Value ih_safe = then_builder.create<arith::SelectOp>(loc, ih_bounded, ih_nonneg, in_h_last);
+                    Value iw_safe = then_builder.create<arith::SelectOp>(loc, iw_bounded, iw_nonneg, in_w_last);
+                    Value input_val = then_builder.create<memref::LoadOp>(
+                        loc, fn.getArgument(0), ValueRange{n, ic, ih_safe, iw_safe});
+                    Value weight_val = then_builder.create<memref::LoadOp>(
+                        loc, fn.getArgument(1), ValueRange{oc, ic, kh, kw});
+                    Value input_comp = cast_to_compute(then_builder, input_val);
+                    Value mask = then_builder.create<arith::SelectOp>(loc, in_bounds, one, zero);
+                    Value masked_input = then_builder.create<arith::MulFOp>(loc, input_comp, mask);
+                    Value prod = then_builder.create<arith::MulFOp>(
+                        loc, masked_input, cast_to_compute(then_builder, weight_val));
+                    acc = then_builder.create<arith::AddFOp>(loc, acc, prod);
                 }
             }
         }
-
-        Value output_offset = then_builder.create<arith::AddIOp>(
-            loc,
-            then_builder.create<arith::MulIOp>(
-                loc,
-                then_builder.create<arith::AddIOp>(
-                    loc,
-                    then_builder.create<arith::MulIOp>(loc, n, c_out),
-                    oc),
-                then_builder.create<arith::MulIOp>(loc, out_h, out_w)),
-            then_builder.create<arith::AddIOp>(
-                loc,
-                then_builder.create<arith::MulIOp>(loc, oh, out_w),
-                ow));
         then_builder.create<memref::StoreOp>(loc,
                                              cast_to_output(then_builder, acc),
-                                             fn.getArgument(3),
-                                             ValueRange{output_offset});
+                                             fn.getArgument(2),
+                                             ValueRange{n, oc, oh, ow});
     }
     body.setInsertionPointAfter(active_if);
     body.create<gpu::ReturnOp>(loc);
@@ -3016,23 +2984,32 @@ void VulkanStage::execute_conv2d_chunked(GpuCommandBufferHandle command_buffer) 
     const auto& out_shape = conv->get_output_shape(0);
     const auto& in_shape = conv->get_input_shape(0);
     const auto& w_shape = conv->get_input_shape(1);
-    const uint32_t total = static_cast<uint32_t>(tensor_elements(out_shape));
     const uint64_t work_per_elem = static_cast<uint64_t>(in_shape.at(1)) *
                                    static_cast<uint64_t>(w_shape.at(2)) *
                                    static_cast<uint64_t>(w_shape.at(3));
     const auto caps = query_parallelism_caps(m_buffer_manager);
-    const auto chunk_plan = select_chunk_dispatch_plan(caps, "conv2d", total, work_per_elem);
+    const bool stride2 = conv->get_strides().at(0) > 1 || conv->get_strides().at(1) > 1;
+    const auto spatial_plan = select_conv_parallelism(caps,
+                                                      out_shape,
+                                                      static_cast<uint64_t>(in_shape.at(1)),
+                                                      static_cast<uint64_t>(w_shape.at(0)),
+                                                      work_per_elem,
+                                                      stride2,
+                                                      /*depthwise=*/false);
+    const uint32_t threads_h = std::max<uint32_t>(1u, spatial_plan.dispatch.threads_h);
+    const uint32_t threads_w = std::max<uint32_t>(1u, spatial_plan.dispatch.threads_w);
     if (!m_conv2d_chunk_kernel || m_conv2d_chunk_elem_type != elem_type ||
-        m_conv2d_chunk_threads_per_group != chunk_plan.threads_per_group) {
+        m_conv2d_chunk_threads_h != threads_h ||
+        m_conv2d_chunk_threads_w != threads_w) {
         auto& ctx = gfx_mlir_context();
-        auto module = build_conv2d_chunk_module(ctx, elem_type, chunk_plan.threads_per_group);
+        auto module = build_conv2d_chunk_module(ctx, elem_type, threads_h, threads_w);
         if (gfx_log_debug_enabled()) {
             std::string module_text;
             llvm::raw_string_ostream os(module_text);
             module.print(os);
             gfx_log_debug("VulkanExec") << "conv2d_chunk module:\n" << module_text;
         }
-        KernelSource src = make_kernel_source_from_mlir(module, "conv2d_chunk", /*arg_count=*/4);
+        KernelSource src = make_kernel_source_from_mlir(module, "conv2d_chunk", /*arg_count=*/3);
         src.signature.output_arg_count = 1;
         VulkanCodegenBackend backend;
         std::string log;
@@ -3040,74 +3017,25 @@ void VulkanStage::execute_conv2d_chunked(GpuCommandBufferHandle command_buffer) 
         OPENVINO_ASSERT(m_conv2d_chunk_kernel, "GFX Vulkan conv2d chunked: kernel compile failed: ", log);
         m_conv2d_chunk_kernel->prepare_runtime_artifacts();
         m_conv2d_chunk_elem_type = elem_type;
-        m_conv2d_chunk_threads_per_group = chunk_plan.threads_per_group;
-        m_conv2d_chunk_launch_abi = extract_launch_operand_abi(module);
+        m_conv2d_chunk_threads_h = threads_h;
+        m_conv2d_chunk_threads_w = threads_w;
     }
-
-    struct Conv2DChunkParams {
-        uint32_t offset;
-        uint32_t count;
+    std::vector<KernelArg> args{
+        make_buffer_arg(0, input0->buf),
+        make_buffer_arg(1, input1->buf),
+        make_buffer_arg(2, output->buf),
     };
-
-    const uint32_t elems_per_dispatch =
-        std::max<uint32_t>(kConv2DChunkElemsPerDispatch, chunk_plan.elems_per_dispatch);
-    for (uint32_t offset = 0; offset < total; offset += elems_per_dispatch) {
-        Conv2DChunkParams params{};
-        params.offset = offset;
-        params.count = std::min<uint32_t>(elems_per_dispatch, total - offset);
-        const size_t tg = std::min<size_t>(params.count,
-                                           std::max<size_t>(1,
-                                                            m_conv2d_chunk_kernel->clamp_threadgroup_size(
-                                                                chunk_plan.threads_per_group)));
-        KernelDispatch dispatch = make_1d_dispatch(params.count, tg);
-        std::vector<KernelArg> args;
-        if (!m_conv2d_chunk_launch_abi.valid) {
-            args = {
-                make_buffer_arg(0, input0->buf),
-                make_buffer_arg(1, input1->buf),
-                make_bytes_arg(2, &params, sizeof(params)),
-                make_buffer_arg(3, output->buf),
-            };
-        } else {
-            const int32_t dynamic_scalars[] = {static_cast<int32_t>(params.count), static_cast<int32_t>(params.offset)};
-            args.reserve(m_conv2d_chunk_launch_abi.kinds.size());
-            size_t scalar_idx = 0;
-            size_t dynamic_idx = 0;
-            for (size_t i = 0; i < m_conv2d_chunk_launch_abi.kinds.size(); ++i) {
-                if (m_conv2d_chunk_launch_abi.kinds[i] == 1) {
-                    const int32_t arg_idx = m_conv2d_chunk_launch_abi.arg_indices[i];
-                    if (arg_idx == 0) {
-                        args.push_back(make_buffer_arg(static_cast<uint32_t>(args.size()), input0->buf));
-                    } else if (arg_idx == 1) {
-                        args.push_back(make_buffer_arg(static_cast<uint32_t>(args.size()), input1->buf));
-                    } else if (arg_idx == 2) {
-                        args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &params, sizeof(params)));
-                    } else if (arg_idx == 3) {
-                        args.push_back(make_buffer_arg(static_cast<uint32_t>(args.size()), output->buf));
-                    } else {
-                        OPENVINO_THROW("GFX Vulkan conv2d chunked: unsupported memref arg index ", arg_idx);
-                    }
-                    continue;
-                }
-                OPENVINO_ASSERT(scalar_idx < m_conv2d_chunk_launch_abi.scalar_values.size(),
-                                "GFX Vulkan conv2d chunked: scalar ABI mismatch");
-                int32_t scalar = m_conv2d_chunk_launch_abi.scalar_values[scalar_idx];
-                if (scalar_idx < m_conv2d_chunk_launch_abi.scalar_known.size() &&
-                    !m_conv2d_chunk_launch_abi.scalar_known[scalar_idx]) {
-                    OPENVINO_ASSERT(dynamic_idx < std::size(dynamic_scalars),
-                                    "GFX Vulkan conv2d chunked: too many dynamic scalars");
-                    scalar = dynamic_scalars[dynamic_idx++];
-                }
-                args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &scalar, sizeof(int32_t)));
-                ++scalar_idx;
-            }
-        }
-        auto bound_args = materialize_kernel_bytes_args(args, *m_buffer_manager, m_name.c_str());
-        // Record chunked Conv2D into the caller-owned infer command buffer so
-        // the Vulkan infer path can batch submits across stages/chunks instead
-        // of forcing a queue submit/wait for every dispatch.
-        m_conv2d_chunk_kernel->execute(command_buffer, dispatch, bound_args, nullptr);
-    }
+    auto bound_args = materialize_kernel_bytes_args(args, *m_buffer_manager, m_name.c_str());
+    KernelDispatch dispatch = make_3d_dispatch(out_shape.at(3),
+                                               out_shape.at(2),
+                                               out_shape.at(0) * out_shape.at(1),
+                                               threads_w,
+                                               threads_h,
+                                               1);
+    // Record chunked Conv2D into the caller-owned infer command buffer so the
+    // infer path keeps a single queue submit while the kernel maps threads
+    // directly to output [W, H, N*C] coordinates.
+    m_conv2d_chunk_kernel->execute(command_buffer, dispatch, bound_args, nullptr);
 }
 
 void VulkanStage::execute_group_conv2d_chunked(GpuCommandBufferHandle command_buffer) {

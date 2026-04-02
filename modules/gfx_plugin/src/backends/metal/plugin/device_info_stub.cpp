@@ -10,6 +10,7 @@ namespace gfx_plugin {
 void fill_metal_device_info(GfxDeviceInfo& info, const ov::AnyMap& /*properties*/) {
     info.device_name = "GFX (Metal)";
     info.full_name = "GFX (Metal)";
+    info.available_devices = {"0"};
 }
 
 }  // namespace gfx_plugin

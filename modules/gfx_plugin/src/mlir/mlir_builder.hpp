@@ -6,6 +6,7 @@
 #include <memory>
 #include <vector>
 
+#include "kernel_ir/gfx_kernel_dispatch.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "openvino/core/node.hpp"
 #include "runtime/gfx_activation.hpp"
@@ -97,7 +98,8 @@ mlir::ModuleOp build_mlir_conv2d_with_bias_from_model(const std::shared_ptr<cons
                                                       mlir::MLIRContext& ctx,
                                                       std::optional<std::pair<ActivationKind, float>> unary_kind);
 mlir::ModuleOp build_mlir_conv2d_vulkan(const std::shared_ptr<const ov::op::v1::Convolution>& conv,
-                                        mlir::MLIRContext& ctx);
+                                        mlir::MLIRContext& ctx,
+                                        const ParallelDispatchConfig* dispatch_cfg = nullptr);
 mlir::ModuleOp build_mlir_group_conv2d_vulkan(const std::shared_ptr<const ov::op::v1::GroupConvolution>& gconv,
                                               mlir::MLIRContext& ctx,
                                               const MlirInputTransformDesc* input_transform = nullptr);

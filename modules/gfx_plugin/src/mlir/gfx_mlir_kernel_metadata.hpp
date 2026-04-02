@@ -37,7 +37,6 @@ struct KernelRuntimeMetadata {
 
 struct KernelSignatureInfo {
     KernelFunctionSignature signature;
-    mlir::func::FuncOp func;
     size_t scalar_inputs = 0;
 };
 
@@ -51,32 +50,13 @@ struct KernelArgMappingInfo {
     KernelInputMapping mapping;
 };
 
-inline mlir::func::FuncOp resolve_entry_func(mlir::ModuleOp module, const std::string& entry) {
-    if (!module) {
-        return {};
-    }
-    if (!entry.empty()) {
-        if (auto func = module.lookupSymbol<mlir::func::FuncOp>(entry)) {
-            return func;
-        }
-    }
-    mlir::func::FuncOp func;
-    module.walk([&](mlir::func::FuncOp f) {
-        if (!func) {
-            func = f;
-        }
-    });
-    return func;
-}
-
-inline size_t count_scalar_inputs(mlir::func::FuncOp func) {
-    if (!func) {
+inline size_t count_scalar_inputs(mlir::FunctionType type) {
+    if (!type) {
         return 0;
     }
     size_t scalar_inputs = 0;
-    auto ftype = func.getFunctionType();
-    for (auto type : ftype.getInputs()) {
-        if (!mlir::isa<mlir::ShapedType>(type)) {
+    for (auto input_type : type.getInputs()) {
+        if (!mlir::isa<mlir::ShapedType>(input_type)) {
             ++scalar_inputs;
         }
     }
@@ -263,8 +243,38 @@ inline KernelSignatureInfo extract_kernel_signature_info(mlir::ModuleOp module,
                                                          const std::string& entry) {
     KernelSignatureInfo info;
     info.signature = infer_kernel_signature(module, entry);
-    info.func = resolve_entry_func(module, entry);
-    info.scalar_inputs = count_scalar_inputs(info.func);
+    if (!module) {
+        return info;
+    }
+    if (!entry.empty()) {
+        if (auto func = module.lookupSymbol<mlir::func::FuncOp>(entry)) {
+            info.scalar_inputs = count_scalar_inputs(func.getFunctionType());
+            return info;
+        }
+        if (auto gpu_func = module.lookupSymbol<mlir::gpu::GPUFuncOp>(entry)) {
+            info.scalar_inputs = count_scalar_inputs(gpu_func.getFunctionType());
+            return info;
+        }
+    }
+    mlir::gpu::GPUFuncOp gpu_func;
+    module.walk([&](mlir::gpu::GPUFuncOp f) {
+        if (!gpu_func) {
+            gpu_func = f;
+        }
+    });
+    if (gpu_func) {
+        info.scalar_inputs = count_scalar_inputs(gpu_func.getFunctionType());
+        return info;
+    }
+    mlir::func::FuncOp func;
+    module.walk([&](mlir::func::FuncOp f) {
+        if (!func) {
+            func = f;
+        }
+    });
+    if (func) {
+        info.scalar_inputs = count_scalar_inputs(func.getFunctionType());
+    }
     return info;
 }
 
