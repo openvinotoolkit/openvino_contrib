@@ -43,6 +43,13 @@ ov::gfx_plugin::GfxParallelismCaps make_broadcom_caps() {
     return caps;
 }
 
+ov::gfx_plugin::GfxParallelismCaps make_large_broadcom_caps() {
+    auto caps = make_broadcom_caps();
+    caps.max_total_threads_per_group = 256;
+    caps.max_threads_per_group = {256, 256, 1};
+    return caps;
+}
+
 }  // namespace
 
 TEST(GfxParallelism, SelectMatMulParallelismPrefersSquareTilesForSquareOutputs) {
@@ -129,6 +136,34 @@ TEST(GfxParallelism, SelectBroadcomConvParallelismUsesDenserStride2Threadgroups)
     ASSERT_TRUE(plan.prefer_parallel);
     EXPECT_TRUE(plan.dispatch.enabled);
     EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 64u);
+}
+
+TEST(GfxParallelism, SelectBroadcomConvParallelismUsesWiderThreadgroupsForHugeSpatialOutputs) {
+    const auto plan = ov::gfx_plugin::select_conv_parallelism(make_large_broadcom_caps(),
+                                                              ov::Shape{1, 16, 320, 320},
+                                                              16,
+                                                              32,
+                                                              16 * 3 * 3,
+                                                              false,
+                                                              false);
+
+    ASSERT_TRUE(plan.prefer_parallel);
+    EXPECT_TRUE(plan.dispatch.enabled);
+    EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 64u);
+}
+
+TEST(GfxParallelism, SelectBroadcomConvParallelismUsesHardwareCapForUltraDenseWorkloads) {
+    const auto plan = ov::gfx_plugin::select_conv_parallelism(make_large_broadcom_caps(),
+                                                              ov::Shape{1, 256, 80, 80},
+                                                              256,
+                                                              256,
+                                                              256 * 3 * 3,
+                                                              false,
+                                                              false);
+
+    ASSERT_TRUE(plan.prefer_parallel);
+    EXPECT_TRUE(plan.dispatch.enabled);
+    EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 128u);
 }
 
 TEST(GfxParallelism, RememberMatMulParallelismAllowsSerialFallbackOverride) {

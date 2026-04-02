@@ -44,6 +44,7 @@ Current build-system notes:
 - the external LLVM bootstrap injects a tiny local dummy fuzzing-engine archive so the bundled llvmorg-22.1.2 MLIR configure path does not fail in `mlir-parser-fuzzer`
 - the module now reuses installed package exports when present and otherwise falls back to build-tree exports during bootstrap
 - Android and generic cross-compiling flows forward toolchain settings into the vendored LLVM/MLIR configure step
+- that bootstrap path also forwards `CMAKE_C_FLAGS`, `CMAKE_CXX_FLAGS`, and the executable/shared/module linker flag families into the nested LLVM configure step
 - the module build treats warnings as errors by default through `-Werror` on Clang/GCC and `/WX` on MSVC
 - `cmake/GfxAndroidRuntimeBundle.cmake.in` is used to copy Android runtime-side dependencies next to deployed plugin artifacts
 
@@ -57,7 +58,7 @@ python3 modules/gfx_plugin/tools/gfx_rpi_vulkan_toolchain_builder.py \
 
 The script builds host LLVM tools from the vendored
 `modules/gfx_plugin/third_party/llvm-project`, assembles a generic
-Raspberry Pi 5 Bookworm arm64 sysroot, normalizes absolute sysroot symlinks,
+Raspberry Pi 4/5 Bookworm arm64 sysroot, normalizes absolute sysroot symlinks,
 copies both `vulkan/` and `vk_video/` headers from the vendored
 `modules/gfx_plugin/third_party/Vulkan-Headers` tree, and generates:
 
@@ -82,6 +83,11 @@ Windows. If needed, you can override the generic sysroot source with:
 - `--sysroot-dir /path/to/extracted-rootfs`
 - `--sysroot-tarball /path/to/rootfs.tar.xz`
 
+The generated compiler wrappers and toolchain file now use portable
+`-march=armv8-a` flags instead of a Raspberry Pi 5-only `-mcpu=` default, so
+the same bundle can be reused more safely across Raspberry Pi 4/5 class Vulkan
+targets.
+
 Before running the builder, prepare the Vulkan-Headers submodule dependency in:
 
 ```text
@@ -95,7 +101,7 @@ git submodule update --init modules/gfx_plugin/third_party/Vulkan-Headers
 ```
 
 The toolchain builder expects that submodule to be checked out at the upstream
-`Vulkan-Headers` release currently pinned by the module for Raspberry Pi 5
+`Vulkan-Headers` release currently pinned by the module for Raspberry Pi 4/5
 Bookworm compatibility: `v1.3.239`.
 
 ## Where To Start Reading
@@ -116,6 +122,10 @@ For runtime execution, follow:
 If the behavior depends on route or scheduling selection, also read:
 - `src/runtime/gfx_stage_policy.*`
 - `src/runtime/gfx_parallelism.*`
+
+`tests/unit/gfx_parallelism_test.cpp` now covers Broadcom-oriented matmul
+selection plus dense stride-1, huge-spatial, and ultra-dense convolution
+threadgroup decisions.
 - `src/runtime/gfx_partitioning.*`
 - `src/runtime/gpu_buffer_manager.hpp` for `GpuDeviceFamily` and backend-reported execution-device info
 - the active backend executor, especially under `src/backends/vulkan/runtime/`

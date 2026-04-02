@@ -211,10 +211,11 @@ Build notes:
 - vendored LLVM/MLIR is now built as a static external toolchain under `third_party/llvm-project`
 - the external LLVM bootstrap now injects a tiny local dummy fuzzing-engine archive so `mlir-parser-fuzzer` configure paths do not break the bundled llvmorg-22.1.2 flow
 - Android and generic cross-compiling flows forward toolchain settings into that external LLVM/MLIR build
+- that external LLVM bootstrap also forwards `CMAKE_C_FLAGS`, `CMAKE_CXX_FLAGS`, and the executable/shared/module linker flag families into the nested LLVM configure step
 - the module build treats compiler warnings as errors by default through `-Werror` on Clang/GCC and `/WX` on MSVC
 - `cmake/GfxAndroidRuntimeBundle.cmake.in` provides helper copy logic for Android-side runtime dependency bundling
 - `third_party/Vulkan-Headers` is tracked as a git submodule pinned to the module-tested upstream release
-- `tools/gfx_rpi_vulkan_toolchain_builder.py` can assemble a hermetic Raspberry Pi Vulkan cross-toolchain bundle for `aarch64` Bookworm-style targets, normalize absolute sysroot symlinks, and install both `vulkan/` and `vk_video/` headers into the generated sysroot
+- `tools/gfx_rpi_vulkan_toolchain_builder.py` can assemble a hermetic Raspberry Pi Vulkan cross-toolchain bundle for Raspberry Pi 4/5 class `aarch64` Bookworm-style targets, normalize absolute sysroot symlinks, install both `vulkan/` and `vk_video/` headers into the generated sysroot, and emit portable `-march=armv8-a` compile flags in the generated wrappers and toolchain file
 
 The build produces the `openvino_gfx_plugin` shared library. On Unix-like builds this is typically emitted as `libopenvino_gfx_plugin.so`; the `.so` suffix is also forced on macOS for OpenVINO plugin loading compatibility.
 
@@ -287,7 +288,7 @@ Recent regression coverage includes:
 - Vulkan runtime regression coverage in `tests/backends/vulkan/`
 - infer submission, prepared-pipeline reuse, immutable-const-cache reuse, and shared kernel-binding reuse tests
 - Vulkan batched constant-upload behavior through the shared infer command buffer path
-- Broadcom-oriented dense stride-1 convolution tuning coverage in `tests/unit/gfx_parallelism_test.cpp`
+- Broadcom-oriented dense stride-1, huge-spatial, and ultra-dense convolution tuning coverage in `tests/unit/gfx_parallelism_test.cpp`
 - reusable output-resolution and reusable host-output coverage in `tests/unit/infer_pipeline_reuse_test.cpp`
 - internal transform and plugin coverage in `tests/unit/basic_ops_internal_test.cpp`
 - backend memory/device integration coverage in `tests/unit/memory_device_integration_test.mm`
