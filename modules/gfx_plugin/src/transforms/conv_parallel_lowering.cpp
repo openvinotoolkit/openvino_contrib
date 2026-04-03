@@ -713,7 +713,6 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
                 // Reloading the destination buffer here can leak stale values
                 // once larger execution windows start reusing GPU buffers.
                 llvm::SmallVector<mlir::Value, 8> acc_init(static_cast<size_t>(lane_count), zero);
-
                 auto for_ic = b_tile.create<mlir::scf::ForOp>(
                     tile_loc, c0, C_in, c1, acc_init,
                     [&](mlir::OpBuilder& b3, mlir::Location loc3, mlir::Value iv_ic, mlir::ValueRange iter_args) {
@@ -963,6 +962,40 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
 
 namespace detail {
 
+bool is_conv_tile_input_h_interior(int64_t oh_base,
+                                   int64_t tile_h,
+                                   int64_t stride_h,
+                                   int64_t dil_h,
+                                   int64_t kernel_h,
+                                   int64_t pad_h,
+                                   int64_t input_h) {
+    if (!is_positive_extent(tile_h) || !is_positive_extent(stride_h) || !is_positive_extent(dil_h) ||
+        !is_positive_extent(kernel_h) || !is_positive_extent(input_h)) {
+        return false;
+    }
+    const int64_t oh_last = oh_base + tile_h - 1;
+    const int64_t ih_min = oh_base * stride_h - pad_h;
+    const int64_t ih_max = oh_last * stride_h + (kernel_h - 1) * dil_h - pad_h;
+    return ih_min >= 0 && ih_max < input_h;
+}
+
+bool is_conv_tile_input_w_interior(int64_t ow_base,
+                                   int64_t tile_w,
+                                   int64_t stride_w,
+                                   int64_t dil_w,
+                                   int64_t kernel_w,
+                                   int64_t pad_w,
+                                   int64_t input_w) {
+    if (!is_positive_extent(tile_w) || !is_positive_extent(stride_w) || !is_positive_extent(dil_w) ||
+        !is_positive_extent(kernel_w) || !is_positive_extent(input_w)) {
+        return false;
+    }
+    const int64_t ow_last = ow_base + tile_w - 1;
+    const int64_t iw_min = ow_base * stride_w - pad_w;
+    const int64_t iw_max = ow_last * stride_w + (kernel_w - 1) * dil_w - pad_w;
+    return iw_min >= 0 && iw_max < input_w;
+}
+
 bool is_conv_tile_input_interior(int64_t oh_base,
                                  int64_t ow_base,
                                  int64_t tile_h,
@@ -983,13 +1016,8 @@ bool is_conv_tile_input_interior(int64_t oh_base,
         !is_positive_extent(input_w)) {
         return false;
     }
-    const int64_t oh_last = oh_base + tile_h - 1;
-    const int64_t ow_last = ow_base + tile_w - 1;
-    const int64_t ih_min = oh_base * stride_h - pad_h;
-    const int64_t iw_min = ow_base * stride_w - pad_w;
-    const int64_t ih_max = oh_last * stride_h + (kernel_h - 1) * dil_h - pad_h;
-    const int64_t iw_max = ow_last * stride_w + (kernel_w - 1) * dil_w - pad_w;
-    return ih_min >= 0 && iw_min >= 0 && ih_max < input_h && iw_max < input_w;
+    return is_conv_tile_input_h_interior(oh_base, tile_h, stride_h, dil_h, kernel_h, pad_h, input_h) &&
+           is_conv_tile_input_w_interior(ow_base, tile_w, stride_w, dil_w, kernel_w, pad_w, input_w);
 }
 
 }  // namespace detail

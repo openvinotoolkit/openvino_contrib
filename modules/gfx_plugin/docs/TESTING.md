@@ -44,7 +44,7 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 - `tools/`: developer automation scripts for profiling workflows, calibration diffs, and smoke checks
 
 Recent additions in the tree include:
-- `tests/unit/mlir_conv_parallel_test.cpp` for canonical Conv2D lowering, interior-tile bounds checks, Vulkan batch-1 parallel-launch coverage, batch>1 serial-fallback coverage, im2col rewrite coverage, and absorbed-input-transform regression checks
+- `tests/unit/mlir_conv_parallel_test.cpp` for canonical Conv2D lowering, per-axis and combined interior-tile bounds checks, Vulkan batch-1 parallel-launch coverage, batch>1 serial-fallback coverage, im2col rewrite coverage, and absorbed-input-transform regression checks
 - `tests/unit/gfx_parallelism_test.cpp` for backend-neutral parallelism-plan selection
 - `tests/unit/mlir_matmul_parallel_test.cpp` for linear matmul parallel-lowering behavior
 - `tests/unit/basic_ops_internal_test.cpp` for internal transform, fusion, and plugin regression coverage
