@@ -122,6 +122,7 @@ jobs:
             -DBUILD_nvidia_plugin=OFF \
             -DBUILD_ollama_openvino=OFF \
             -DBUILD_llama_cpp_plugin=OFF \
+            -DBUILD_gfx_plugin=OFF \
             -DENABLE_INTEL_GPU=OFF \
             -DENABLE_OV_TF_FRONTEND=OFF \
             -DENABLE_OV_PADDLE_FRONTEND=OFF \
