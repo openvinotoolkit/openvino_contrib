@@ -43,7 +43,7 @@ def run_test(ref_inputs, ref_res, test_onnx=False, threshold=1e-5):
 def test_fft(shape, inverse, centered, test_onnx, dims):
     from examples.fft.export_model import export
 
-    if len(shape) == 3 and dims != [1] or \
+    if len(shape) == 3 or \
        len(shape) == 4 and dims in ([1, 2], [2, 3]) or \
        len(shape) == 5 and dims in ([1], [1, 2], [2, 3]) or \
        centered and len(dims) != 2:
