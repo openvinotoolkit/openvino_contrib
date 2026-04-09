@@ -1,7 +1,1 @@
-.idea/
 .vscode/
-
-**/*.png
-**/*.jar
-
-__pycache__/

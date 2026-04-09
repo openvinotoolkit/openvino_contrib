@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2020 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -131,7 +131,7 @@ public:
 protected:
     std::string node_name_;
     std::string type_name_;
-    ov::element::Type runtime_precision_ = ov::element::undefined;
+    ov::element::Type runtime_precision_ = ov::element::dynamic;
     const IndexCollection input_ids_;
     const IndexCollection output_ids_;
     WorkbufferIds workbuffer_ids_;

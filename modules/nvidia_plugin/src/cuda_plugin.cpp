@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2024 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include <fmt/format.h>
@@ -14,6 +14,7 @@
 #include "openvino/runtime/internal_properties.hpp"
 #include "openvino/runtime/core.hpp"
 #include "openvino/runtime/properties.hpp"
+#include "openvino/runtime/shared_buffer.hpp"
 #include "openvino/runtime/threading/executor_manager.hpp"
 #include "transformations/rt_info/fused_names_attribute.hpp"
 
@@ -75,6 +76,20 @@ std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(const std::shared_ptr<
                                                           false);
     return compiled_model;
 }
+
+std::shared_ptr<ov::ICompiledModel> Plugin::import_model(const ov::Tensor& model, const ov::AnyMap& properties) const {
+    ov::SharedStreamBuffer buffer{model.data(), model.get_byte_size()};
+    std::istream stream{&buffer};
+    return import_model(stream, properties);
+};
+
+std::shared_ptr<ov::ICompiledModel> Plugin::import_model(const ov::Tensor& model,
+                                                         const ov::SoPtr<ov::IRemoteContext>& context,
+                                                         const ov::AnyMap& properties) const {
+    ov::SharedStreamBuffer buffer{model.data(), model.get_byte_size()};
+    std::istream stream{&buffer};
+    return import_model(stream, context, properties);
+};
 
 std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model_stream,
                                                          const ov::AnyMap& properties) const {

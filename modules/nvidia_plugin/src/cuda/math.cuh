@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2024 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -52,6 +52,20 @@ inline __device__ T floor(T x) {
 inline __device__ float floor(float x) { return ::floorf(x); }
 /* ================================================= */
 
+/* ===================== ceil ====================== */
+template <typename T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
+inline __device__ T ceil(T x) {
+    return x;
+}
+
+template <typename T, std::enable_if_t<!std::is_integral<T>::value, bool> = true>
+inline __device__ T ceil(T x) {
+    return ::ceil(x);
+}
+
+inline __device__ float ceil(float x) { return ::ceilf(x); }
+/* ================================================= */
+
 /* ===================== trunc ===================== */
 template <typename T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
 inline __device__ T trunc(T x) {
@@ -97,6 +111,11 @@ inline __device__ T abs(T a) {
 }
 
 template <typename T>
+inline __device__ T tan(T a) {
+    return static_cast<T>(::tanf(static_cast<float>(a)));
+}
+
+template <typename T>
 inline __device__ T tanh(T a) {
     return static_cast<T>(::tanhf(static_cast<float>(a)));
 }
@@ -117,6 +136,16 @@ inline __device__ T sinh(T a) {
 }
 
 template <typename T>
+inline __device__ T asin(T a) {
+    return static_cast<T>(::asinf(static_cast<float>(a)));
+}
+
+template <typename T>
+inline __device__ T asinh(T a) {
+    return static_cast<T>(::asinhf(static_cast<float>(a)));
+}
+
+template <typename T>
 inline __device__ T cos(T a) {
     return static_cast<T>(::cosf(static_cast<float>(a)));
 }
@@ -127,8 +156,68 @@ inline __device__ T cosh(T a) {
 }
 
 template <typename T>
+inline __device__ T acos(T a) {
+    return static_cast<T>(::acosf(static_cast<float>(a)));
+}
+
+template <typename T>
+inline __device__ T acosh(T a) {
+    return static_cast<T>(::acoshf(static_cast<float>(a)));
+}
+
+template <typename T>
+inline __device__ T atan(T a) {
+    return static_cast<T>(::atanf(static_cast<float>(a)));
+}
+
+template <typename T>
+inline __device__ T atanh(T a) {
+    return static_cast<T>(::atanhf(static_cast<float>(a)));
+}
+
+template <typename T>
 inline __device__ T log(T a) {
     return static_cast<T>(::logf(static_cast<float>(a)));
+}
+
+template <typename T>
+inline __device__ T sign_float(T x) {
+    static_assert(std::is_floating_point<T>::value, "T should be floating_point type");
+    if (x < 0.0f) return -1.0f;
+    if (x > 0.0f) return 1.0f;
+    return 0.0f;
+}
+
+template <>
+inline __device__ __half sign_float<__half>(__half x) {
+    const __half zero = __float2half(0.0f);
+    if (x < zero) return __half(-1.0f);
+    if (x > zero) return __half(1.0f);
+    return zero;
+}
+
+#ifdef CUDA_HAS_BF16_TYPE
+template <>
+inline __device__ __nv_bfloat16 sign_float<__nv_bfloat16>(__nv_bfloat16 x) {
+    const __nv_bfloat16 zero = __float2bfloat16(0.0f);
+    if (x < zero) return __nv_bfloat16(-1.0f);
+    if (x > zero) return __nv_bfloat16(1.0f);
+    return zero;
+}
+#endif
+
+template <typename T>
+inline __device__ T sign_int(T x) {
+    static_assert(std::is_integral<T>::value && !std::is_unsigned<T>::value,
+                  "T should be integer type");
+    return static_cast<T>((x > 0) - (x < 0));
+}
+
+template <typename T>
+inline __device__ T sign_uint(T x) {
+    static_assert(std::is_integral<T>::value && std::is_unsigned<T>::value,
+                  "T should be unsigned integer type");
+    return static_cast<T>(x > 0);
 }
 
 #ifdef __CUDACC__
@@ -140,6 +229,7 @@ inline __device__ __half round(__half x) {
 
 #if defined(CUDA_HAS_HALF_MATH)
 inline __device__ __half floor(__half x) { return ::hfloor(x); }
+inline __device__ __half ceil(__half x) { return ::hceil(x); }
 
 inline __device__ __half trunc(__half x) { return ::htrunc(x); }
 
@@ -176,6 +266,7 @@ inline __device__ __half log<__half>(__half x) {
 #else  // defined (CUDA_HAS_HALF_MATH)
 
 inline __device__ __half floor(__half x) { return floor(static_cast<float>(x)); }
+inline __device__ __half ceil(__half x) { return ceil(static_cast<float>(x)); }
 
 inline __device__ __half trunc(__half x) { return trunc(static_cast<float>(x)); }
 
@@ -233,6 +324,7 @@ inline __device__ __nv_bfloat16 round(__nv_bfloat16 x) {
 
 #if defined(CUDA_HAS_BF16_MATH)
 inline __device__ __nv_bfloat16 floor(__nv_bfloat16 x) { return ::hfloor(x); }
+inline __device__ __nv_bfloat16 ceil(__nv_bfloat16 x) { return ::hceil(x); }
 
 inline __device__ __nv_bfloat16 trunc(__nv_bfloat16 x) { return ::htrunc(x); }
 
@@ -269,6 +361,7 @@ inline __device__ __nv_bfloat16 log<__nv_bfloat16>(__nv_bfloat16 x) {
 #else  // defined (CUDA_HAS_BF16_MATH)
 
 inline __device__ __nv_bfloat16 floor(__nv_bfloat16 x) { return floor(static_cast<float>(x)); }
+inline __device__ __nv_bfloat16 ceil(__nv_bfloat16 x) { return ceil(static_cast<float>(x)); }
 
 inline __device__ __nv_bfloat16 trunc(__nv_bfloat16 x) { return trunc(static_cast<float>(x)); }
 

@@ -25,7 +25,7 @@ TEST(TransformationTests, cuda_transformations_f16) {
         auto divide_constant = ov::op::v0::Constant::create(ov::element::f32, ov::Shape{1}, {2});
         auto divide = std::make_shared<ov::op::v1::Divide>(data, divide_constant);
 
-        model = std::make_shared<ov::Model>(ov::NodeVector{divide}, ov::ParameterVector{data});
+        model = std::make_shared<ov::Model>(ov::OutputVector{divide}, ov::ParameterVector{data});
 
         // Run transformation
         const CUDA::Device device{};
@@ -48,7 +48,7 @@ TEST(TransformationTests, cuda_transformations_f16) {
         auto mul = std::make_shared<ov::op::v1::Multiply>(convert_f16, mul_constant);
         auto convert_f32 = std::make_shared<ov::op::v0::Convert>(mul, ov::element::f32);
 
-        model_ref = std::make_shared<ov::Model>(ov::NodeVector{convert_f32}, ov::ParameterVector{data});
+        model_ref = std::make_shared<ov::Model>(ov::OutputVector{convert_f32}, ov::ParameterVector{data});
     }
     auto res = compare_functions(model, model_ref);
     ASSERT_TRUE(res.first) << res.second;

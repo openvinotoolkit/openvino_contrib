@@ -33,7 +33,7 @@ __global__ void elementwise_unary(const T* in, size_t num_elements, T* out, Args
 
 #endif  // __CUDACC__
 
-template <typename ElementTypes, template <typename> typename OP>
+template <typename ElementTypes, template <typename... TArgs> typename OP>
 class ElementwiseUnary {
 public:
     ElementwiseUnary(Type_t element_type, size_t max_threads_per_block, size_t num_elements)

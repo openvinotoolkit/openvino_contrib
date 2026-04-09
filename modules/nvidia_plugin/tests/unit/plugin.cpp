@@ -40,13 +40,13 @@ TEST_F(PluginTest, CompileModel_Success) {
 }
 
 TEST_F(PluginTest, CompileModel_NegativeId_Failed) {
-    auto dummyFunction = std::make_shared<ov::Model>(ov::NodeVector{}, ov::ParameterVector{});
+    auto dummyFunction = std::make_shared<ov::Model>(ov::OutputVector{}, ov::ParameterVector{});
     auto plugin = std::make_shared<Plugin>();
     ASSERT_THROW(plugin->compile_model(dummyFunction, {{ov::device::id.name(), "-1"}}), ov::Exception);
 }
 
 TEST_F(PluginTest, CompileModel_OutRangeId_Failed) {
-    auto dummyFunction = std::make_shared<ov::Model>(ov::NodeVector{}, ov::ParameterVector{});
+    auto dummyFunction = std::make_shared<ov::Model>(ov::OutputVector{}, ov::ParameterVector{});
     auto plugin = std::make_shared<Plugin>();
     ASSERT_THROW(plugin->compile_model(dummyFunction, {{ov::device::id.name(), std::to_string(CUDA::Device::count())}}),
                  ov::Exception);

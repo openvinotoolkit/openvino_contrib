@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2022 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -29,7 +29,9 @@
 #    include "fft.hpp"
 #    define FFT_EXT                                                                                    \
             std::make_shared<ov::OpExtension<TemplateExtension::FFT>>(),                               \
-            std::make_shared<ov::frontend::OpExtension<TemplateExtension::FFT>>(),
+            std::make_shared<ov::frontend::OpExtension<TemplateExtension::FFT>>(                       \
+                "DFT",                                                                                 \
+                std::map<std::string, std::string>{ {"centered", "onesided"}, {"inverse", "inverse"} }),
 #else
 #    define FFT_EXT
 #endif

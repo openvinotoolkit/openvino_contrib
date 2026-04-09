@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -36,7 +36,6 @@ SplitOp::SplitOp(const CreationContext& context,
     OPENVINO_ASSERT(splitOp->get_output_size() == num_splits_, "Node name: ", GetName());
     OPENVINO_ASSERT(input_element_type == output_element_type, "Node name: ", GetName());
     switch (input_element_type) {
-        case ov::element::Type_t::undefined:
         case ov::element::Type_t::dynamic:
         case ov::element::Type_t::u1:
             throw_ov_exception(

@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2022 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -21,7 +21,7 @@ std::shared_ptr<ov::Node> CalculateGrid::clone_with_new_inputs(const ov::OutputV
 }
 
 bool CalculateGrid::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
-    const float* inpPos = reinterpret_cast<float*>(inputs[0].data());
+    const float *inpPos = reinterpret_cast<const float *>(inputs[0].data());
     float* out = reinterpret_cast<float*>(outputs[0].data());
 
     std::set<std::tuple<int, int, int> > outPos;

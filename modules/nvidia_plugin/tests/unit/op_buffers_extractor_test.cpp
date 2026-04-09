@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "cuda_op_buffers_extractor.hpp"
+#include "openvino/core/model.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/multiply.hpp"
@@ -72,7 +73,7 @@ class OperationBufferExtractorTest : public testing::Test {
         auto reshape = std::make_shared<ov::op::v1::Reshape>(add_1, reshape_pattern, true);
 
         ov::ParameterVector inputs{input};
-        ov::NodeVector outputs{reshape};
+        ov::OutputVector outputs{reshape};
         model_ = std::make_unique<ov::Model>(outputs, inputs, "SimpleGraph");
 
         exec_sequence_ = model_->get_ordered_ops();
@@ -345,7 +346,7 @@ class OperationBufferExtractorConcatOptimizedTest : public testing::Test {
         auto reshape = std::make_shared<ov::op::v1::Reshape>(add_1, reshape_pattern, true);
 
         ov::ParameterVector inputs{input};
-        ov::NodeVector outputs{reshape};
+        ov::OutputVector outputs{reshape};
         model_ = std::make_unique<ov::Model>(outputs, inputs, "ConcatOptimizedGraph");
 
         exec_sequence_ = model_->get_ordered_ops();
@@ -481,7 +482,7 @@ class OperationBufferExtractorConcatOptimizedV2Test : public testing::Test {
         auto reshape1 = std::make_shared<ov::op::v1::Reshape>(add_1, reshape_pattern, true);
 
         ov::ParameterVector inputs{input};
-        ov::NodeVector outputs{reshape1};
+        ov::OutputVector outputs{reshape1};
         model_ = std::make_unique<ov::Model>(outputs, inputs, "ConcatOptimizedGraph");
 
         exec_sequence_ = model_->get_ordered_ops();
