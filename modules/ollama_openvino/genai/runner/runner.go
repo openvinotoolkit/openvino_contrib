@@ -133,11 +133,8 @@ func (s *Server) processBatch() error {
 	defer s.mu.Unlock()
 
 	seqIdx := s.nextSeq - 1
-	for i, seq := range s.seqs {
-		if seq == nil {
-			continue
-		}
-
+processLoop:
+	for range s.seqs {
 		seqIdx = (seqIdx + 1) % len(s.seqs)
 		seq := s.seqs[seqIdx]
 
@@ -147,11 +144,18 @@ func (s *Server) processBatch() error {
 
 		seq.SetStartGenerationTime(time.Now())
 		for _, input := range seq.GetInputs() {
-			genai.GenerateTextWithMetrics(s.model, input.GetPrompt(), seq.GetSamplingParameters(), seq)
-			// log.Printf("gen result: ", seq.GetpendingResponses())
+			if _, err := genai.GenerateTextWithMetrics(s.model, input.GetPrompt(), seq.GetSamplingParameters(), seq); err != nil {
+				log.Printf("OpenVINO generation failed: %v", err)
+				seq.SetError(err)
+				s.removeSequence(seqIdx, "error")
+				continue processLoop
+			}
 		}
-		s.removeSequence(i, "")
+		log.Printf("TOKENS: %d decoded for sequence %d", seq.GetNumDecoded(), seqIdx)
+		s.removeSequence(seqIdx, "")
 	}
+
+	s.nextSeq = seqIdx + 1
 	return nil
 }
 
@@ -256,6 +260,19 @@ func (s *Server) completion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tokenLimit := req.MaxNewToken
+	if tokenLimit <= 0 {
+		tokenLimit = req.NumPredict
+	}
+	if tokenLimit <= 0 {
+		tokenLimit = 128
+		log.Printf("Invalid generation limit (n_predict=%d, max_new_token=%d); defaulting to %d", req.NumPredict, req.MaxNewToken, tokenLimit)
+	}
+	req.MaxNewToken = tokenLimit
+	if req.NumPredict <= 0 {
+		req.NumPredict = tokenLimit
+	}
+
 	var samplingParams genai.SamplingParams
 	samplingParams.TopK = req.TopK
 	samplingParams.TopP = req.TopP
@@ -312,6 +329,16 @@ func (s *Server) completion(w http.ResponseWriter, r *http.Request) {
 
 				flusher.Flush()
 			} else {
+				if seqErr := seq.GetError(); seqErr != nil {
+					if err := json.NewEncoder(w).Encode(map[string]string{
+						"error": seqErr.Error(),
+					}); err != nil {
+						http.Error(w, fmt.Sprintf("failed to encode error response: %v", err), http.StatusInternalServerError)
+					}
+
+					return
+				}
+
 				// Send the final response
 				if err := json.NewEncoder(w).Encode(&CompletionResponse{
 					Stop:         true,
@@ -378,63 +405,70 @@ func (m *multiLPath) String() string {
 }
 
 func (s *Server) loadModel(mpath string, mname string, device string) {
-	var err error
-	ov_ir_dir := strings.ReplaceAll(mname, ":", "_")
-	tempDir := filepath.Join("/tmp", ov_ir_dir)
-	ov_model_path := ""
+	if err := s.doLoadModel(mpath, mname, device); err != nil {
+		log.Printf("Failed to load model: %v", err)
+		s.status = ServerStatusError
+		s.ready.Done()
+	}
+}
+
+func (s *Server) doLoadModel(mpath string, mname string, device string) error {
+	ovIRDir := strings.ReplaceAll(mname, ":", "_")
+	tempDir := filepath.Join(os.TempDir(), ovIRDir)
+	ovModelPath := ""
 
 	isGGUF, err := genai.IsGGUF(mpath)
 	if err != nil {
-		fmt.Printf("Error checking file: %v\n", err)
-		panic(err)
+		return fmt.Errorf("checking GGUF format: %w", err)
 	}
 	if isGGUF {
 		log.Printf("The model is a GGUF file.")
-		ov_model_path = filepath.Join(tempDir, "tmp.gguf")
-		// for GGUF reader
+		ovModelPath = filepath.Join(tempDir, "tmp.gguf")
 		if _, err := os.Stat(tempDir); os.IsNotExist(err) {
-			err := os.MkdirAll(tempDir, 0755)
-			if err != nil {
-				fmt.Errorf("Error creating dir: %v", err)
-				panic(err)
+			if err := os.MkdirAll(tempDir, 0755); err != nil {
+				return fmt.Errorf("creating temp dir: %w", err)
 			}
-			err = genai.CopyFile(mpath, ov_model_path)
-			if err != nil {
-				panic(err)
+			if err := genai.CopyFile(mpath, ovModelPath); err != nil {
+				return fmt.Errorf("copying GGUF file: %w", err)
 			}
 		}
 	}
 
 	isGzip, err := genai.IsGzipByMagicBytes(mpath)
 	if err != nil {
-		fmt.Printf("Error checking file: %v\n", err)
+		return fmt.Errorf("checking gzip format: %w", err)
 	}
 	if isGzip {
 		log.Printf("The model is a OpenVINO IR file.")
-		// for OpenVINO IR
-		_, err = os.Stat(tempDir)
-		if os.IsNotExist(err) {
-			err = genai.UnpackTarGz(mpath, tempDir)
-			if err != nil {
-				panic(err)
+		if _, err = os.Stat(tempDir); os.IsNotExist(err) {
+			if err = genai.UnpackTarGz(mpath, tempDir); err != nil {
+				return fmt.Errorf("unpacking model archive: %w", err)
 			}
 		}
-
-		entries, _ := os.ReadDir(tempDir)
+		entries, err := os.ReadDir(tempDir)
+		if err != nil {
+			return fmt.Errorf("reading unpacked model dir: %w", err)
+		}
 		var subdirs []string
 		for _, entry := range entries {
 			if entry.IsDir() {
 				subdirs = append(subdirs, entry.Name())
 			}
 		}
-
-		ov_model_path = filepath.Join(tempDir, subdirs[0])
+		if len(subdirs) == 0 {
+			return fmt.Errorf("no subdirectory found in unpacked model archive at %s", tempDir)
+		}
+		ovModelPath = filepath.Join(tempDir, subdirs[0])
 	}
 
-	s.model = genai.CreatePipeline(ov_model_path, device)
-	log.Printf("The model had been load by GenAI, ov_model_path: %s , %s", ov_model_path, device)
+	s.model, err = genai.CreatePipeline(ovModelPath, device)
+	if err != nil {
+		return fmt.Errorf("creating pipeline: %w", err)
+	}
+	log.Printf("Model loaded by GenAI: path=%s device=%s", ovModelPath, device)
 	s.status = ServerStatusReady
 	s.ready.Done()
+	return nil
 }
 
 func Execute(args []string) error {

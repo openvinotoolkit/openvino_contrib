@@ -1,8 +1,10 @@
 package llama
 
 /*
-#cgo CFLAGS: -std=c11
-#cgo CXXFLAGS: -std=c++17
+#cgo !windows CFLAGS: -std=c11
+#cgo windows CFLAGS: -std=c11
+#cgo !windows CXXFLAGS: -std=c++17
+#cgo windows CXXFLAGS: -std=c++17
 #cgo CPPFLAGS: -I${SRCDIR}/llama.cpp/include
 #cgo CPPFLAGS: -I${SRCDIR}/llama.cpp/common
 #cgo CPPFLAGS: -I${SRCDIR}/llama.cpp/examples/llava

@@ -197,6 +197,7 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 		caps = append(caps, CapabilityInsert)
 	}
 
+	fmt.Println("[RUNNER GATE] model.Type =", model.Type, "| model =", name.String())
 	if model.Type != "OpenVINO" {
 		r, m, opts, err := s.scheduleRunner(c.Request.Context(), name.String(), model.Type, caps, req.Options, req.KeepAlive)
 
