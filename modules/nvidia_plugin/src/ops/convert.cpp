@@ -55,7 +55,7 @@ void ConvertOp::Execute(const InferenceRequestContext& context,
     (*convert_kernel_)(stream.get(), outputs[0].get(), inputs[0].get());
 }
 
-CudaGraphCompatibility ConvertOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility ConvertOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 OPERATION_REGISTER(ConvertOp, Convert);
 

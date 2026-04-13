@@ -103,7 +103,7 @@ void StridedSliceOp<T>::Execute(const InferenceRequestContext& context,
 }
 
 template <typename T>
-CudaGraphCompatibility StridedSliceOp<T>::GetCudaGraphCompatibility() const {
+CudaGraphCompatibility StridedSliceOp<T>::GetCudaGraphCompatibilityImpl() const {
     return CudaGraphCompatibility::FULL;
 }
 

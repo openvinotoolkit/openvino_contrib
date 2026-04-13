@@ -43,7 +43,7 @@ void ConvBackpropDataOp<T>::Execute(const InferenceRequestContext& context,
 }
 
 template <typename T>
-CudaGraphCompatibility ConvBackpropDataOp<T>::GetCudaGraphCompatibility() const {
+CudaGraphCompatibility ConvBackpropDataOp<T>::GetCudaGraphCompatibilityImpl() const {
     return CudaGraphCompatibility::FULL;
 }
 

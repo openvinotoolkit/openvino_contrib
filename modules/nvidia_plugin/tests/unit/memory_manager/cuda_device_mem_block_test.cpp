@@ -25,9 +25,9 @@ TEST(DeviceMemBlock, ZeroSizeMemoryBlock) {
 
     // The only allocation is of zero size. Zero size tensors are forbidden
     // by MemoryModel builder's implementations and this will never happen
-    // in runtime.
-    // However this case verifies that device side address is not allocated
-    // if requested memory block size is zero.
+    // in runtime for static models.
+    // For dynamic-only models, the block size may be 0 but DeviceMemBlock
+    // still allocates at least 1 byte to ensure a valid device pointer.
     {
         const BufferID buffer_id = 1;
         const ptrdiff_t offset = 0;
@@ -37,7 +37,8 @@ TEST(DeviceMemBlock, ZeroSizeMemoryBlock) {
         ASSERT_EQ(model->deviceMemoryBlockSize(), 0);
 
         auto mem_block = std::make_unique<DeviceMemBlock>(model);
-        ASSERT_TRUE(mem_block->deviceTensorPtr(TensorID{buffer_id}) == nullptr);
+        // DeviceMemBlock allocates max(size, 1) bytes, so pointer is valid
+        ASSERT_TRUE(mem_block->deviceTensorPtr(TensorID{buffer_id}) != nullptr);
     }
 }
 

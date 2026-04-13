@@ -226,7 +226,7 @@ void MatMulOp::Execute(const InferenceRequestContext& context,
                                             CUBLAS_GEMM_DEFAULT));
 }
 
-CudaGraphCompatibility MatMulOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility MatMulOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 OPERATION_REGISTER(MatMulOp, MatMul);
 }  // namespace nvidia_gpu

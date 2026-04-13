@@ -93,9 +93,13 @@ GatherOp::GatherOp(const CreationContext& context,
     const unsigned data_length =
         std::accumulate(dict_shape.cbegin() + axis + 1, dict_shape.cend(), 1, std::multiplies<unsigned>());
 
-    if (data_length == 0) {
-        throw_ov_exception("data_length == 0: incorrect input parameters dimension!");
+    // data_length == 0 can happen with KV-cache Gather when sequence length is 0.
+    // In this case, the output is empty and no kernel launch is needed.
+    if (data_length == 0 || ov::shape_size(out_shape) == 0) {
+        is_empty_ = true;
+        return;
     }
+    is_empty_ = false;
 
     const unsigned indices_size =
         std::accumulate(indices_shape.cbegin() + batch_dims, indices_shape.cend(), 1, std::multiplies<unsigned>());
@@ -174,10 +178,12 @@ void GatherOp::Execute(const InferenceRequestContext& context,
     OPENVINO_ASSERT(inputs.size() == 3, "Node name: ", GetName());
     OPENVINO_ASSERT(outputs.size() == 1, "Node name: ", GetName());
 
+    if (is_empty_) return;  // Empty output (e.g. KV-cache with seq_len=0)
+
     (*gather_kernel_)(context.getThreadContext().stream().get(), inputs[0].get(), inputs[1].get(), outputs[0].get());
 }
 
-CudaGraphCompatibility GatherOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility GatherOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 OPERATION_REGISTER(GatherOp, Gather);
 }  // namespace nvidia_gpu

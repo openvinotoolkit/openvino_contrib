@@ -32,7 +32,7 @@ void ParameterOp::Execute(const InferenceRequestContext& context,
     context.getThreadContext().stream().upload(outputs[0], tensor->data(), tensor->get_byte_size());
 }
 
-CudaGraphCompatibility ParameterOp::GetCudaGraphCompatibility() const { return CudaGraphCompatibility::FULL; }
+CudaGraphCompatibility ParameterOp::GetCudaGraphCompatibilityImpl() const { return CudaGraphCompatibility::FULL; }
 
 std::string ParameterOp::GetInputTensorName(const ov::Node& node) { return node.get_friendly_name(); }
 
