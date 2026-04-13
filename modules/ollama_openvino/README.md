@@ -582,9 +582,12 @@ Getting started with large language models and using the [GenAI](https://github.
 </div>
 
 We provide two ways to download the executable file of Ollama, one is to download it from Google Drive, and the other is to download it from Baidu Drive:
-## Google Driver
+## Google Drive
 ### Windows
-[Download exe](https://drive.google.com/file/d/12eXPdCSSNx53fmK7KnEZ3WFMSiaX2M-Y/view?usp=sharing) + [Download OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.3.0.0.dev20250630/openvino_genai_windows_2025.3.0.0.dev20250630_x86_64.zip)
+[Download exe](https://drive.google.com/file/d/12eXPdCSSNx53fmK7KnEZ3WFMSiaX2M-Y/view?usp=sharing)
+
+Download OpenVINO GenAI from official sources (nightly links may be unstable or unavailable):
+https://github.com/openvinotoolkit/openvino
 
 ### Linux(Ubuntu 22.04)
 [Download](https://drive.google.com/file/d/11-Gmk9nEMsr7lrUV2E_gFOAhxXErLsoh/view?usp=sharing) + [Donwload OpenVINO GenAI](https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/nightly/2025.3.0.0.dev20250630/openvino_genai_ubuntu22_2025.3.0.0.dev20250630_x86_64.tar.gz)
