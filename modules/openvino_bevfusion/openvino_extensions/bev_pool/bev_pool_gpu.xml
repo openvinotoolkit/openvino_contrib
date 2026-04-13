@@ -1,0 +1,77 @@
+<!--
+  OpenVINO Custom GPU Kernel Configuration for BEVPool Operations
+
+  Three CustomLayer types:
+    1. BEVPool:        fused softmax + scatter (float CAS atomics) — fallback
+    2. BEVPoolScatter: int32 atomic scatter (pre-computed softmax) — fast path
+    3. BEVPoolConvert: int32 fixed-point → float32 conversion
+-->
+
+<!-- ═══ BEVPool: fused softmax + scatter (backward-compatible) ═══ -->
+<CustomLayer name="BEVPool" type="SimpleGPU" version="1">
+    <Kernel entry="bevpool_fused">
+        <Source filename="bev_pool_gpu.cl"/>
+        <Define name="NX"         type="int" param="nx"         default="360"/>
+        <Define name="NY"         type="int" param="ny"         default="360"/>
+        <Define name="NZ"         type="int" param="nz"         default="1"/>
+        <Define name="NUM_CAMS"   type="int" param="num_cams"   default="6"/>
+        <Define name="DEPTH_BINS" type="int" param="depth_bins" default="118"/>
+        <Define name="CHANNELS"   type="int" param="channels"   default="80"/>
+        <Define name="FEAT_H"     type="int" param="feat_h"     default="32"/>
+        <Define name="FEAT_W"     type="int" param="feat_w"     default="88"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="input"  port-index="1" format="BFYX"/>
+        <Tensor arg-index="2" type="input"  port-index="2" format="BFYX"/>
+        <Tensor arg-index="3" type="output" port-index="0" format="BFYX"/>
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable -cl-fast-relaxed-math -cl-no-signed-zeros"/>
+    <WorkSizes dim="input" global="B*F*Y*X,1,1" local=""/>
+</CustomLayer>
+
+<!-- ═══ BEVPoolScatter: int32 native atomic scatter (fast path) ═══ -->
+<CustomLayer name="BEVPoolScatter" type="SimpleGPU" version="1">
+    <Kernel entry="bevpool_scatter">
+        <Source filename="bev_pool_scatter.cl"/>
+        <Define name="NX"         type="int" param="nx"         default="360"/>
+        <Define name="NY"         type="int" param="ny"         default="360"/>
+        <Define name="NZ"         type="int" param="nz"         default="1"/>
+        <Define name="NUM_CAMS"   type="int" param="num_cams"   default="6"/>
+        <Define name="DEPTH_BINS" type="int" param="depth_bins" default="118"/>
+        <Define name="CHANNELS"   type="int" param="channels"   default="80"/>
+        <Define name="FEAT_H"     type="int" param="feat_h"     default="32"/>
+        <Define name="FEAT_W"     type="int" param="feat_w"     default="88"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="input"  port-index="1" format="BFYX"/>
+        <Tensor arg-index="2" type="input"  port-index="2" format="BFYX"/>
+        <Tensor arg-index="3" type="output" port-index="0" format="BFYX"/>
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable -cl-fast-relaxed-math"/>
+    <!--
+      Per-pixel work sizing: one work-group per pixel (cam, h, w).
+      total_pixels = NUM_CAMS * FEAT_H * FEAT_W = 6 * 32 * 88 = 16,896
+      local = CHANNELS = 80 (one WI per output channel)
+      global = 16896 * 80 = 1,351,680
+    -->
+    <WorkSizes global="1351680,1,1" local="80,1,1"/>
+</CustomLayer>
+
+<!-- ═══ BEVPoolConvert: int32 → float32 conversion ═══ -->
+<CustomLayer name="BEVPoolConvert" type="SimpleGPU" version="1">
+    <Kernel entry="bevpool_convert">
+        <Source filename="bev_pool_convert.cl"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input"  port-index="0" format="BFYX"/>
+        <Tensor arg-index="1" type="output" port-index="0" format="BFYX"/>
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable"/>
+    <!--
+      Work sizing: one work-item per output element.
+      Output is [1, 80, 360, 360] = 10,368,000 elements.
+    -->
+    <WorkSizes dim="output" global="B*F*Y*X,1,1" local=""/>
+</CustomLayer>
