@@ -148,6 +148,7 @@ Support is driven by MLIR builders in `src/mlir/` and backend runtime implementa
 - Add, Sub, Mul, Div, Pow, Mod, FloorMod
 - compare, logical, and select operations
 - unary activations and elementwise transforms
+- reduction ops such as ReduceSum, ReduceMean, ReduceMax, ReduceMin, ReduceProd, ReduceL1, and ReduceL2
 - MaxPool, AvgPool, Softmax, BatchNormInference
 - Concat, Split, Slice, Transpose, Reshape, Convert, Interpolate
 - Gather, GatherND, GatherElements, Scatter updates, ShapeOf, Range, Tile, TopK, SpaceToDepth, DepthToSpace
@@ -162,7 +163,9 @@ Current lowering/runtime special cases:
 - Vulkan contains specialized direct or chunked paths for unary, binary, softmax, split/concat, transpose, convert, Conv2D, and GroupConv2D cases
 - some Conv2D shapes may be lowered through an explicit MLIR `im2col + matmul` route when the selected execution policy prefers it
 - Softmax lowering now supports arbitrary normalized axes instead of only the last axis
+- Reduce lowering now extracts axes and `keep_dims` through concrete Reduce op types instead of relying on a generic reduction base path
 - Slice lowering now prefers `tensor.extract_slice`; generic slice metadata extraction still accepts the older generic form when needed
+- layout cleanup can fold the DFL softmax expectation tail into a value-preserving `Softmax -> MatMul -> Reshape/Transpose` path instead of the older synthetic convolution rewrite
 
 ## Public And Internal Properties
 Commonly used properties:
@@ -288,6 +291,7 @@ Recent regression coverage includes:
 - strict interior-tile bounds checks plus Vulkan batch-1 parallel-launch and batch>1 serial-fallback checks in `tests/unit/mlir_conv_parallel_test.cpp`
 - im2col rewrite coverage, including the batch-1 plain-matmul route
 - linear matmul parallel-lowering coverage
+- ReduceSum builder coverage in `tests/unit/basic_ops_internal_test.cpp`
 - absorbed input-transform tests for Add, Conv2D, GroupConv2D, and Split
 - Vulkan runtime regression coverage in `tests/backends/vulkan/`
 - infer submission, prepared-pipeline reuse, immutable-const-cache reuse, and shared kernel-binding reuse tests
@@ -295,6 +299,7 @@ Recent regression coverage includes:
 - Broadcom-oriented dense stride-1, huge-spatial, and ultra-dense convolution tuning coverage in `tests/unit/gfx_parallelism_test.cpp`
 - reusable output-resolution and reusable host-output coverage in `tests/unit/infer_pipeline_reuse_test.cpp`
 - internal transform and plugin coverage in `tests/unit/basic_ops_internal_test.cpp`
+- DFL softmax expectation rewrite coverage, including value-preservation checks for the MatMul form, in `tests/unit/layout_cleanup_test.cpp`
 - backend memory/device integration coverage in `tests/unit/memory_device_integration_test.mm`
 - plugin property coverage for numeric `available_devices` / `ov::device::id` behavior in `tests/unit/plugin_tests.cpp`
 

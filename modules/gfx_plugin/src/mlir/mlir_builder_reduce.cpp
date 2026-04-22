@@ -37,6 +37,11 @@ namespace {
 
 enum class ReduceKind { Sum, Mean, Max, Min, Prod, L1, L2 };
 
+struct ReduceOpInfo {
+    ov::AxisSet axes;
+    bool keep_dims = false;
+};
+
 std::vector<int64_t> compute_strides(const ov::Shape& shape) {
     std::vector<int64_t> strides(shape.size(), 1);
     int64_t acc = 1;
@@ -166,11 +171,42 @@ mlir::ModuleOp build_reduce_impl(const std::shared_ptr<const ov::Model>& model,
     }
     OPENVINO_ASSERT(reduce_node, "Reduce MLIR builder: Reduce op not found");
 
-    auto base = ov::as_type_ptr<const ov::op::util::ReductionBase>(reduce_node);
-    OPENVINO_ASSERT(base, "Reduce MLIR: invalid reduce op");
-    OPENVINO_ASSERT(base->reduction_axes_constant(), "Reduce MLIR: reduction axes must be constant");
-    const auto axes_set = base->get_reduction_axes();
-    const bool keep_dims = base->get_keep_dims();
+    auto get_reduce_info = [&](const std::shared_ptr<const ov::Node>& node) -> std::optional<ReduceOpInfo> {
+        if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceSum>(node)) {
+            OPENVINO_ASSERT(reduce->reduction_axes_constant(), "Reduce MLIR: reduction axes must be constant");
+            return ReduceOpInfo{reduce->get_reduction_axes(), reduce->get_keep_dims()};
+        }
+        if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceMean>(node)) {
+            OPENVINO_ASSERT(reduce->reduction_axes_constant(), "Reduce MLIR: reduction axes must be constant");
+            return ReduceOpInfo{reduce->get_reduction_axes(), reduce->get_keep_dims()};
+        }
+        if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceMax>(node)) {
+            OPENVINO_ASSERT(reduce->reduction_axes_constant(), "Reduce MLIR: reduction axes must be constant");
+            return ReduceOpInfo{reduce->get_reduction_axes(), reduce->get_keep_dims()};
+        }
+        if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceMin>(node)) {
+            OPENVINO_ASSERT(reduce->reduction_axes_constant(), "Reduce MLIR: reduction axes must be constant");
+            return ReduceOpInfo{reduce->get_reduction_axes(), reduce->get_keep_dims()};
+        }
+        if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceProd>(node)) {
+            OPENVINO_ASSERT(reduce->reduction_axes_constant(), "Reduce MLIR: reduction axes must be constant");
+            return ReduceOpInfo{reduce->get_reduction_axes(), reduce->get_keep_dims()};
+        }
+        if (auto reduce = ov::as_type_ptr<const ov::op::v4::ReduceL1>(node)) {
+            OPENVINO_ASSERT(reduce->reduction_axes_constant(), "Reduce MLIR: reduction axes must be constant");
+            return ReduceOpInfo{reduce->get_reduction_axes(), reduce->get_keep_dims()};
+        }
+        if (auto reduce = ov::as_type_ptr<const ov::op::v4::ReduceL2>(node)) {
+            OPENVINO_ASSERT(reduce->reduction_axes_constant(), "Reduce MLIR: reduction axes must be constant");
+            return ReduceOpInfo{reduce->get_reduction_axes(), reduce->get_keep_dims()};
+        }
+        return std::nullopt;
+    };
+
+    const auto info = get_reduce_info(reduce_node);
+    OPENVINO_ASSERT(info.has_value(), "Reduce MLIR: invalid reduce op");
+    const auto axes_set = info->axes;
+    const bool keep_dims = info->keep_dims;
 
     auto in_shape = reduce_node->get_input_shape(0);
     auto out_shape = reduce_node->get_output_shape(0);

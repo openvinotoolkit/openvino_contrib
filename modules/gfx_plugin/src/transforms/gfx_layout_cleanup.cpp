@@ -15,6 +15,7 @@
 #include "openvino/op/constant.hpp"
 #include "openvino/op/convolution.hpp"
 #include "openvino/op/group_conv.hpp"
+#include "openvino/op/matmul.hpp"
 #include "openvino/op/pad.hpp"
 #include "openvino/op/reshape.hpp"
 #include "openvino/op/softmax.hpp"
@@ -308,47 +309,50 @@ bool fold_dfl_softmax_expectation(const std::shared_ptr<ov::Node>& node) {
         return false;
     }
 
-    auto new_softmax = std::make_shared<ov::op::v8::Softmax>(transpose_before->input_value(0), 2);
-
     const auto weights_values = weights_const->cast_vector<float>();
-    auto flatten_shape = ov::op::v0::Constant::create(ov::element::i64,
-                                                       ov::Shape{4},
-                                                       std::vector<int64_t>{static_cast<int64_t>(source_shape[0]),
-                                                                            static_cast<int64_t>(source_shape[1] *
-                                                                                                 source_shape[2]),
-                                                                            static_cast<int64_t>(1),
-                                                                            static_cast<int64_t>(source_shape[3])});
-    auto flatten = std::make_shared<ov::op::v1::Reshape>(new_softmax, flatten_shape, false);
-
-    const size_t coord_count = static_cast<size_t>(source_shape[1]);
-    const size_t bins_per_coord = weights_values.size();
-    const size_t flattened_channels = coord_count * bins_per_coord;
-    std::vector<float> sparse_weights_values(coord_count * flattened_channels, 0.0f);
-    for (size_t coord = 0; coord < coord_count; ++coord) {
-        const size_t channel_offset = coord * bins_per_coord;
-        const size_t row_offset = coord * flattened_channels;
-        for (size_t bin = 0; bin < bins_per_coord; ++bin) {
-            sparse_weights_values[row_offset + channel_offset + bin] = weights_values[bin];
-        }
+    const auto bins_per_coord = weights_values.size();
+    if (source_shape[2] != bins_per_coord) {
+        return false;
     }
-    ov::Shape sparse_weights_shape{coord_count, flattened_channels, 1, 1};
-    auto sparse_weights = ov::op::v0::Constant::create(weights_const->get_element_type(),
-                                                       sparse_weights_shape,
-                                                       sparse_weights_values);
-    auto sparse_conv = std::make_shared<ov::op::v1::Convolution>(flatten,
-                                                                 sparse_weights,
-                                                                 ov::Strides{1, 1},
-                                                                 ov::CoordinateDiff{0, 0},
-                                                                 ov::CoordinateDiff{0, 0},
-                                                                 ov::Strides{1, 1},
-                                                                 ov::op::PadType::EXPLICIT);
-    auto new_reshape =
-        std::make_shared<ov::op::v1::Reshape>(sparse_conv, final_reshape->input_value(1), final_reshape->get_special_zero());
 
-    new_reshape->set_friendly_name(final_reshape->get_friendly_name());
-    ov::copy_runtime_info(ov::NodeVector{transpose_before, softmax_node, transpose_after, conv, final_reshape},
-                          ov::NodeVector{new_softmax, flatten_shape, flatten, sparse_weights, sparse_conv, new_reshape});
-    ov::replace_node(final_reshape, new_reshape);
+    const int64_t batch = static_cast<int64_t>(source_shape[0]);
+    const int64_t coord_count = static_cast<int64_t>(source_shape[1]);
+    const int64_t positions = static_cast<int64_t>(source_shape[3]);
+    auto flatten_shape = ov::op::v0::Constant::create(ov::element::i64,
+                                                      ov::Shape{2},
+                                                      std::vector<int64_t>{batch * positions * coord_count,
+                                                                           static_cast<int64_t>(bins_per_coord)});
+    auto flatten = std::make_shared<ov::op::v1::Reshape>(softmax_node->output(0), flatten_shape, false);
+    auto expectation_weights =
+        ov::op::v0::Constant::create(weights_const->get_element_type(), ov::Shape{bins_per_coord, 1}, weights_values);
+    auto expectation = std::make_shared<ov::op::v0::MatMul>(flatten, expectation_weights, false, false);
+    auto restore_shape = ov::op::v0::Constant::create(ov::element::i64,
+                                                      ov::Shape{3},
+                                                      std::vector<int64_t>{batch, positions, coord_count});
+    auto restore = std::make_shared<ov::op::v1::Reshape>(expectation, restore_shape, false);
+    auto final_transpose_perm = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{3}, {0, 2, 1});
+    auto final_transpose = std::make_shared<ov::op::v1::Transpose>(restore, final_transpose_perm);
+
+    std::shared_ptr<ov::Node> replacement = final_transpose;
+    if (final_transpose->get_output_partial_shape(0) != final_reshape->get_output_partial_shape(0)) {
+        replacement =
+            std::make_shared<ov::op::v1::Reshape>(final_transpose,
+                                                  final_reshape->input_value(1),
+                                                  final_reshape->get_special_zero());
+    }
+
+    replacement->set_friendly_name(final_reshape->get_friendly_name());
+    ov::copy_runtime_info(ov::NodeVector{softmax_node, transpose_after, conv, final_reshape},
+                          ov::NodeVector{flatten_shape,
+                                         flatten,
+                                         expectation_weights,
+                                         expectation,
+                                         restore_shape,
+                                         restore,
+                                         final_transpose_perm,
+                                         final_transpose,
+                                         replacement});
+    ov::replace_node(final_reshape, replacement);
     return true;
 }
 
@@ -654,9 +658,10 @@ bool GfxLayoutCleanup::run_on_model(const std::shared_ptr<ov::Model>& model) {
                 ov::as_type_ptr<ov::op::v0::Result>(node)) {
                 continue;
             }
-            // Disabled for now: the sparse DFL expectation rewrite changes the
-            // YOLO DFL tail to a synthetic 1x1 convolution path that is
-            // numerically unstable on current Android Vulkan.
+            if (fold_dfl_softmax_expectation(node)) {
+                local_change = true;
+                changed = true;
+            }
         }
         if (local_change) {
             model->validate_nodes_and_infer_types();

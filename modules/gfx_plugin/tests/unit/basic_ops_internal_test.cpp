@@ -24,6 +24,7 @@
 #include "openvino/op/sigmoid.hpp"
 #include "openvino/op/elu.hpp"
 #include "openvino/op/prelu.hpp"
+#include "openvino/op/reduce_sum.hpp"
 #include "openvino/op/gelu.hpp"
 #include "openvino/op/hsigmoid.hpp"
 #include "openvino/op/hswish.hpp"
@@ -770,6 +771,19 @@ TEST(GfxMlir, MatMulBuilderProducesModule) {
     const auto func_type = func.getFunctionType();
     ASSERT_EQ(func_type.getNumInputs(), 2u);
     ASSERT_EQ(func_type.getNumResults(), 1u);
+}
+
+TEST(GfxMlir, ReduceSumBuilderProducesModule) {
+    auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 8400, 4, 16});
+    auto axes = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{1}, {3});
+    auto reduce = std::make_shared<ov::op::v1::ReduceSum>(input, axes, false);
+
+    auto& ctx = ov::gfx_plugin::gfx_mlir_context();
+    auto module = ov::gfx_plugin::build_mlir_for_node(reduce, ctx);
+    ASSERT_TRUE(module);
+    ASSERT_TRUE(static_cast<bool>(module.lookupSymbol<mlir::func::FuncOp>("reduce_main")));
+    EXPECT_TRUE(ov::gfx_plugin::mlir_supports_node(reduce));
+    ASSERT_NO_THROW(ov::gfx_plugin::run_mlir_pipeline(module, /*use_alloca=*/true, /*use_parallel_loops=*/false));
 }
 
 TEST(GfxMlir, MatMulCodegenProducesMsl) {

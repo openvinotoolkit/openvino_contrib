@@ -112,6 +112,7 @@ The MLIR pass pipeline also contains parallel-lowering and cleanup steps used by
 
 Recent MLIR-specific changes reflected in the current code:
 - Softmax lowering handles arbitrary normalized axes
+- Reduce lowering now resolves axes and `keep_dims` through concrete Reduce op types instead of a generic reduction-base lookup
 - Slice lowering now prefers `tensor.extract_slice`, while slice metadata extraction still accepts both `tensor.extract_slice` and the older `linalg.generic` form
 - buffer-results-to-out-params promotion now allows public function signatures to be rewritten when required by the lowering pipeline
 - shared helpers now prefer the common `gfx_mlir_context()` path instead of ad-hoc local MLIR contexts in selected code paths
@@ -120,6 +121,7 @@ Recent MLIR-specific changes reflected in the current code:
 - interior-tile eligibility is now factored through separate height and width window checks before the combined 2D interior fast path is selected
 - manual Vulkan Conv2D MLIR building can now emit `gpu.func` entry points for batch-1 parallel dispatch plans and keep a serial `func.func` entry path for larger batches
 - kernel-signature and metadata helpers now resolve `gpu.func` entry points before falling back to plain `func.func`, so Vulkan launch metadata stays aligned with GPU-entry modules
+- layout cleanup can now fold the DFL softmax expectation tail into a `Softmax -> MatMul -> Reshape/Transpose` form that preserves output values without the older synthetic convolution path
 
 Lowered kernels also rely on backend-neutral argument and binding helpers:
 - `src/kernel_ir/gfx_kernel_args.hpp` materializes runtime kernel arguments and can turn scalar byte payloads into cached immutable device buffers

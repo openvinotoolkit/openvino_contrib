@@ -47,8 +47,8 @@ Recent additions in the tree include:
 - `tests/unit/mlir_conv_parallel_test.cpp` for canonical Conv2D lowering, per-axis and combined interior-tile bounds checks, Vulkan batch-1 parallel-launch coverage, batch>1 serial-fallback coverage, im2col rewrite coverage, and absorbed-input-transform regression checks
 - `tests/unit/gfx_parallelism_test.cpp` for backend-neutral parallelism-plan selection
 - `tests/unit/mlir_matmul_parallel_test.cpp` for linear matmul parallel-lowering behavior
-- `tests/unit/basic_ops_internal_test.cpp` for internal transform, fusion, and plugin regression coverage
-- `tests/unit/layout_cleanup_test.cpp` for MLIR layout-cleanup behavior
+- `tests/unit/basic_ops_internal_test.cpp` for internal transform, fusion, plugin regression coverage, and focused builder coverage such as ReduceSum
+- `tests/unit/layout_cleanup_test.cpp` for MLIR layout-cleanup behavior, including DFL softmax expectation rewrites
 - `tests/backends/vulkan/vulkan_runtime_test.cpp` for Vulkan runtime regressions
 - `tests/unit/memory_device_integration_test.mm` for Metal memory/device integration behavior
 - `tests/unit/infer_submission_test.cpp` for submission-window behavior
@@ -62,6 +62,7 @@ Recent additions in the tree include:
 Recent focused updates in existing tests include:
 - stronger Broadcom V3D expectations for dense stride-1, huge-spatial, and ultra-dense convolution threadgroup selection in `tests/unit/gfx_parallelism_test.cpp`
 - plugin property checks that `ov::available_devices` and `ov::device::id` expose numeric ids in `tests/unit/plugin_tests.cpp`
+- MatMul-based DFL softmax expectation rewrite checks, including value-preservation against the template plugin, in `tests/unit/layout_cleanup_test.cpp`
 
 ## Typical Test Suites
 Examples already present in the tree:

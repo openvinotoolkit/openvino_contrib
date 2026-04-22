@@ -4,11 +4,15 @@
 
 #include "gtest/gtest.h"
 
+#include "common_test_utils/ov_plugin_cache.hpp"
+#include "openvino/openvino.hpp"
+
 #include "transforms/pipeline.hpp"
 
 #include "openvino/core/model.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/convolution.hpp"
+#include "openvino/op/matmul.hpp"
 #include "openvino/op/pad.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
@@ -16,6 +20,19 @@
 #include "openvino/op/result.hpp"
 #include "openvino/op/softmax.hpp"
 #include "openvino/op/transpose.hpp"
+
+namespace {
+
+ov::Tensor infer_with_template(const std::shared_ptr<const ov::Model>& model) {
+    ov::Core core;
+    ov::test::utils::register_template_plugin(core);
+    auto compiled = core.compile_model(model, "TEMPLATE");
+    auto request = compiled.create_infer_request();
+    request.infer();
+    return request.get_output_tensor(0);
+}
+
+}  // namespace
 
 TEST(GfxTransforms, MergeZeroPadIntoConvolution) {
     auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 3, 8, 8});
@@ -205,7 +222,7 @@ TEST(GfxTransforms, DeduplicateEquivalentTransposeReshapeBranches) {
     ASSERT_TRUE(shared_reshape);
 }
 
-TEST(GfxTransforms, FoldDflSoftmaxExpectationToReduceSum) {
+TEST(GfxTransforms, FoldDflSoftmaxExpectationToMatMul) {
     auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 64, 8400});
     auto reshape_shape = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{4}, {1, 4, 16, 8400});
     auto reshape0 = std::make_shared<ov::op::v1::Reshape>(input, reshape_shape, true);
@@ -238,7 +255,8 @@ TEST(GfxTransforms, FoldDflSoftmaxExpectationToReduceSum) {
 
     int transpose_count = 0;
     int conv_count = 0;
-    std::shared_ptr<ov::op::v8::Softmax> folded_softmax;
+    int matmul_count = 0;
+    std::shared_ptr<ov::Node> folded_softmax;
     for (const auto& node : transformed->get_ordered_ops()) {
         if (ov::as_type_ptr<ov::op::v1::Transpose>(node)) {
             ++transpose_count;
@@ -246,14 +264,72 @@ TEST(GfxTransforms, FoldDflSoftmaxExpectationToReduceSum) {
         if (ov::as_type_ptr<ov::op::v1::Convolution>(node)) {
             ++conv_count;
         }
-        if (auto softmax_node = ov::as_type_ptr<ov::op::v8::Softmax>(node)) {
-            folded_softmax = softmax_node;
+        if (ov::as_type_ptr<ov::op::v0::MatMul>(node)) {
+            ++matmul_count;
+        }
+        if (ov::as_type_ptr<ov::op::v8::Softmax>(node) || ov::as_type_ptr<ov::op::v1::Softmax>(node)) {
+            folded_softmax = node;
         }
     }
 
-    EXPECT_EQ(transpose_count, 0);
-    EXPECT_EQ(conv_count, 1);
+    EXPECT_EQ(transpose_count, 2);
+    EXPECT_EQ(conv_count, 0);
+    EXPECT_EQ(matmul_count, 1);
     ASSERT_TRUE(folded_softmax);
-    EXPECT_EQ(folded_softmax->get_axis(), 2);
+    if (auto softmax_v8 = ov::as_type_ptr<ov::op::v8::Softmax>(folded_softmax)) {
+        EXPECT_EQ(softmax_v8->get_axis(), 3);
+    } else {
+        auto softmax_v1 = ov::as_type_ptr<ov::op::v1::Softmax>(folded_softmax);
+        ASSERT_TRUE(softmax_v1);
+        EXPECT_EQ(softmax_v1->get_axis(), 3);
+    }
     EXPECT_EQ(transformed->output(0).get_partial_shape(), ov::PartialShape({1, 4, 8400}));
+}
+
+TEST(GfxTransforms, FoldDflSoftmaxExpectationMatMulPreservesValues) {
+    std::vector<float> input_data(1 * 64 * 8);
+    for (size_t i = 0; i < input_data.size(); ++i) {
+        input_data[i] = static_cast<float>((static_cast<int>(i % 13) - 6) * 0.25f);
+    }
+    auto input = ov::op::v0::Constant::create(ov::element::f32, ov::Shape{1, 64, 8}, input_data);
+    auto reshape_shape = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{4}, {1, 4, 16, 8});
+    auto reshape0 = std::make_shared<ov::op::v1::Reshape>(input, reshape_shape, true);
+
+    auto perm0 = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{4}, {0, 3, 1, 2});
+    auto transpose0 = std::make_shared<ov::op::v1::Transpose>(reshape0, perm0);
+    auto softmax = std::make_shared<ov::op::v8::Softmax>(transpose0, 3);
+    auto perm1 = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{4}, {0, 3, 2, 1});
+    auto transpose1 = std::make_shared<ov::op::v1::Transpose>(softmax, perm1);
+
+    std::vector<float> weights_data(16);
+    for (size_t i = 0; i < weights_data.size(); ++i) {
+        weights_data[i] = static_cast<float>(i);
+    }
+    auto weights = ov::op::v0::Constant::create(ov::element::f32, ov::Shape{1, 16, 1, 1}, weights_data);
+    auto conv = std::make_shared<ov::op::v1::Convolution>(transpose1,
+                                                           weights,
+                                                           ov::Strides{1, 1},
+                                                           ov::CoordinateDiff{0, 0},
+                                                           ov::CoordinateDiff{0, 0},
+                                                           ov::Strides{1, 1},
+                                                           ov::op::PadType::EXPLICIT);
+    auto final_shape = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{3}, {1, 4, 8});
+    auto reshape1 = std::make_shared<ov::op::v1::Reshape>(conv, final_shape, true);
+    auto result = std::make_shared<ov::op::v0::Result>(reshape1);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{result}, ov::ParameterVector{}, "dfl_expectation_values");
+
+    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
+    ASSERT_TRUE(transformed);
+
+    const auto expected = infer_with_template(model);
+    const auto actual = infer_with_template(transformed);
+    ASSERT_EQ(expected.get_shape(), actual.get_shape());
+
+    const auto* expected_data = expected.data<const float>();
+    const auto* actual_data = actual.data<const float>();
+    ASSERT_NE(expected_data, nullptr);
+    ASSERT_NE(actual_data, nullptr);
+    for (size_t i = 0; i < expected.get_size(); ++i) {
+        EXPECT_NEAR(expected_data[i], actual_data[i], 1e-5f) << "index=" << i;
+    }
 }
