@@ -154,6 +154,7 @@ For each function call, return a json object with function name and ` +
             name: toolCall.name,
             args: toolCall.arguments,
             type: 'tool_call',
+            id: toolCall.id ?? `call_${toolCalls.length}`,
           });
         } catch(error: any) {
           // Ignore errors and continue
