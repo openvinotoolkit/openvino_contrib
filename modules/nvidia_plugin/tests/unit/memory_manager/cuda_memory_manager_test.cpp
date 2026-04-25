@@ -9,6 +9,7 @@
 #include <memory>
 #include <vector>
 
+#include "cuda_dynamic_buffer_context.hpp"
 #include "cuda_operation_base.hpp"
 #include "memory_manager/cuda_immutable_memory_block_builder.hpp"
 #include "memory_manager/model/cuda_memory_model_builder.hpp"
@@ -47,6 +48,7 @@ public:
     std::shared_ptr<ov::nvidia_gpu::DeviceMemBlock> immutableTensors_;
     ov::nvidia_gpu::MemoryModel::Ptr immutableMemoryModel_;
     ov::nvidia_gpu::MemoryModel::Ptr mutableMemoryModel_;
+    ov::nvidia_gpu::DynamicBufferContext dynBufCtx_;
 
 public:  // ov::nvidia_gpu::IOperationMeta
     std::vector<ov::nvidia_gpu::TensorID> inputIds_;
@@ -77,7 +79,7 @@ TEST_F(MemoryManagerTest, InputTensorPointersAndTheirOrder) {
     auto allocation = CUDA::DefaultStream::stream().malloc(immutableTensors_->memoryModel()->deviceMemoryBlockSize() +
                                                            mutableMemoryModel_->deviceMemoryBlockSize());
     // Request device side input pointers providing previously set tensor identifiers
-    auto inputTensorPointers = memory_manager->inputTensorPointers(*this, allocation);
+    auto inputTensorPointers = memory_manager->inputTensorPointers(*this, allocation, dynBufCtx_);
 
     // Verify device side pointers and their order
     EXPECT_TRUE(inputIds_.size() == inputTensorPointers.size());
@@ -113,7 +115,7 @@ TEST_F(MemoryManagerTest, OutputTensorPointersAndTheirOrder) {
     auto allocation = CUDA::DefaultStream::stream().malloc(immutableTensors_->memoryModel()->deviceMemoryBlockSize() +
                                                            mutableMemoryModel_->deviceMemoryBlockSize());
     // Request device side output pointers providing previously set tensor identifiers
-    auto outputTensorPointers = memory_manager->outputTensorPointers(*this, allocation);
+    auto outputTensorPointers = memory_manager->outputTensorPointers(*this, allocation, dynBufCtx_);
 
     // Verify device side pointers and their order
     EXPECT_TRUE(outputIds_.size() == outputTensorPointers.size());
@@ -141,7 +143,7 @@ TEST_F(MemoryManagerTest, OperationHasNoInputs) {
     inputIds_ = {};
     auto allocation = CUDA::DefaultStream::stream().malloc(immutableTensors_->memoryModel()->deviceMemoryBlockSize() +
                                                            mutableMemoryModel_->deviceMemoryBlockSize());
-    auto inputTensorPointers = memory_manager->inputTensorPointers(*this, allocation);
+    auto inputTensorPointers = memory_manager->inputTensorPointers(*this, allocation, dynBufCtx_);
 
     EXPECT_TRUE(inputTensorPointers.empty());
 }
@@ -152,7 +154,7 @@ TEST_F(MemoryManagerTest, OperationHasNoOutputs) {
     outputIds_ = {};
     auto allocation = CUDA::DefaultStream::stream().malloc(immutableTensors_->memoryModel()->deviceMemoryBlockSize() +
                                                            mutableMemoryModel_->deviceMemoryBlockSize());
-    auto outputTensorPointers = memory_manager->outputTensorPointers(*this, allocation);
+    auto outputTensorPointers = memory_manager->outputTensorPointers(*this, allocation, dynBufCtx_);
 
     EXPECT_TRUE(outputTensorPointers.empty());
 }
@@ -170,7 +172,7 @@ TEST_F(MemoryManagerTest, InvalidInputTensorID) {
 
     auto allocation = CUDA::DefaultStream::stream().malloc(immutableTensors_->memoryModel()->deviceMemoryBlockSize() +
                                                            mutableMemoryModel_->deviceMemoryBlockSize());
-    ASSERT_THROW(memory_manager->inputTensorPointers(*this, allocation), ov::Exception);
+    ASSERT_THROW(memory_manager->inputTensorPointers(*this, allocation, dynBufCtx_), ov::Exception);
 }
 
 TEST_F(MemoryManagerTest, InvalidOutputTensorID) {
@@ -186,7 +188,7 @@ TEST_F(MemoryManagerTest, InvalidOutputTensorID) {
 
     auto allocation = CUDA::DefaultStream::stream().malloc(immutableTensors_->memoryModel()->deviceMemoryBlockSize() +
                                                            mutableMemoryModel_->deviceMemoryBlockSize());
-    ASSERT_THROW(memory_manager->outputTensorPointers(*this, allocation), ov::Exception);
+    ASSERT_THROW(memory_manager->outputTensorPointers(*this, allocation, dynBufCtx_), ov::Exception);
 }
 
 TEST_F(MemoryManagerTest, ConstantsCanNotBeOutputs) {
@@ -198,5 +200,5 @@ TEST_F(MemoryManagerTest, ConstantsCanNotBeOutputs) {
 
     auto allocation = CUDA::DefaultStream::stream().malloc(immutableTensors_->memoryModel()->deviceMemoryBlockSize() +
                                                            mutableMemoryModel_->deviceMemoryBlockSize());
-    ASSERT_THROW(memory_manager->outputTensorPointers(*this, allocation), ov::Exception);
+    ASSERT_THROW(memory_manager->outputTensorPointers(*this, allocation, dynBufCtx_), ov::Exception);
 }

@@ -8,6 +8,7 @@
 #include <array>
 #include <chrono>
 #include <cuda_config.hpp>
+#include <cuda_dynamic_operation.hpp>
 #include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
@@ -55,6 +56,7 @@ TEST_F(SigmoidTest, DISABLED_benchmark) {
     ov::nvidia_gpu::CancellationToken token{};
     ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
+    ov::nvidia_gpu::DynamicOperationCache dynamicOpCache{};
     ov::nvidia_gpu::InferenceRequestContext context{emptyTensor,
                                                     emptyMapping,
                                                     emptyTensor,
@@ -62,7 +64,8 @@ TEST_F(SigmoidTest, DISABLED_benchmark) {
                                                     threadContext,
                                                     token,
                                                     simpleExecutionDelegator,
-                                                    cudaGraphContext};
+                                                    cudaGraphContext,
+                                                    dynamicOpCache};
     auto& stream = context.getThreadContext().stream();
     std::array<ElementType, length> in;
     std::random_device r_device;
