@@ -24,7 +24,7 @@ namespace CUDA {
 
 class CuTensorHandle : public Handle<cutensorHandle_t> {
 public:
-    CuTensorHandle() : Handle(cutensorInit, nullptr) {}
+    CuTensorHandle() : Handle(cutensorCreate, cutensorDestroy) {}
 };
 
 }  // namespace CUDA
