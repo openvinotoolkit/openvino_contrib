@@ -45,7 +45,12 @@ mlir::ModuleOp build_mlir_scatter_nd_update_from_model(const std::shared_ptr<con
     mlir::SmallVector<int64_t> out_dims(out_shape.begin(), out_shape.end());
 
     auto data_ty = to_mlir_type(scatter->get_input_element_type(0), ctx, /*fallback_f32=*/true);
-    auto idx_ty = to_mlir_type(scatter->get_input_element_type(1), ctx, /*fallback_f32=*/true);
+    auto idx_ty = to_mlir_type(scatter->get_input_element_type(1), ctx, /*fallback_f32=*/true,
+                               /*allow_unsigned=*/true,
+                               /*allow_small_ints=*/true,
+                               /*allow_bf16=*/false,
+                               /*allow_boolean=*/false,
+                               /*signless_integers=*/true);
     auto upd_ty = to_mlir_type(scatter->get_input_element_type(2), ctx, /*fallback_f32=*/true);
     auto out_ty = to_mlir_type(scatter->get_output_element_type(0), ctx, /*fallback_f32=*/true);
 

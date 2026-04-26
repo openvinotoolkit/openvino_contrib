@@ -7,6 +7,7 @@
 #include <chrono>
 #include <exception>
 #include <mutex>
+#include <sstream>
 #include <unordered_map>
 #include <vector>
 
@@ -17,6 +18,8 @@
 #include "kernel_ir/gfx_kernel_cache.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gfx_logger.hpp"
+
+#include "llvm/Support/raw_ostream.h"
 
 namespace ov {
 namespace gfx_plugin {
@@ -85,6 +88,54 @@ inline id<MTLBuffer> to_mtl(const GpuBuffer& buf) {
     return (__bridge id<MTLBuffer>)buf.buffer;
 }
 
+std::string make_resolved_msl_cache_key(const KernelSource& source) {
+    if (!source.module) {
+        return {};
+    }
+    std::string module_text;
+    llvm::raw_string_ostream os(module_text);
+    auto module = source.module;
+    module.print(os);
+    os.flush();
+
+    std::ostringstream key;
+    key << source.entry_point << '\n'
+        << source.signature.arg_count << ':'
+        << source.signature.output_arg_count << '\n'
+        << module_text;
+    return key.str();
+}
+
+class MetalResolvedMslCache final {
+public:
+    static MetalResolvedMslCache& instance() {
+        static MetalResolvedMslCache cache;
+        return cache;
+    }
+
+    bool lookup(const std::string& key, std::string& msl) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        auto it = m_cache.find(key);
+        if (it == m_cache.end()) {
+            return false;
+        }
+        msl = it->second;
+        return true;
+    }
+
+    void store(std::string key, std::string msl) {
+        if (key.empty() || msl.empty()) {
+            return;
+        }
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_cache.emplace(std::move(key), std::move(msl));
+    }
+
+private:
+    std::mutex m_mutex;
+    std::unordered_map<std::string, std::string> m_cache;
+};
+
 class MetalPreparedState final {
 public:
     explicit MetalPreparedState(const KernelBindingTable& table) {
@@ -117,7 +168,29 @@ std::shared_ptr<ICompiledKernel> MetalCodegenBackend::compile(const KernelSource
                                        << " has_msl=" << (!source.msl_source.empty() ? "yes" : "no")
                                        << " has_generator=" << (source.msl_generator ? "yes" : "no");
     }
-    if (source.module && source.msl_source.empty() && source.msl_generator) {
+    std::string msl;
+    std::string resolved_msl_cache_key;
+    const bool can_cache_resolved_msl = source.module && source.msl_source.empty() && source.msl_generator;
+    if (can_cache_resolved_msl) {
+        const auto cache_key_start = current_compile_trace() ? std::chrono::steady_clock::now()
+                                                             : std::chrono::steady_clock::time_point{};
+        resolved_msl_cache_key = make_resolved_msl_cache_key(source);
+        if (current_compile_trace()) {
+            add_compile_segment(
+                "metal_resolved_msl_cache_key",
+                static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                          std::chrono::steady_clock::now() - cache_key_start)
+                                          .count()));
+        }
+        if (MetalResolvedMslCache::instance().lookup(resolved_msl_cache_key, msl)) {
+            if (current_compile_trace()) {
+                increment_compile_counter("metal_resolved_msl_cache_hit_count");
+                add_compile_segment("metal_resolved_msl_cache_hit", 0);
+            }
+        }
+    }
+
+    if (msl.empty() && source.module && source.msl_source.empty() && source.msl_generator) {
         const auto mlir_preprocess_start = current_compile_trace() ? std::chrono::steady_clock::now()
                                                                    : std::chrono::steady_clock::time_point{};
         try {
@@ -143,23 +216,28 @@ std::shared_ptr<ICompiledKernel> MetalCodegenBackend::compile(const KernelSource
             return nullptr;
         }
     }
-    const auto resolve_msl_start =
-        current_compile_trace() ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    if (gfx_log_debug_enabled()) {
-        gfx_log_debug("MetalCodegen") << "before resolve_msl_source entry=" << source.entry_point;
-    }
-    std::string msl = resolve_msl_source(source, log_ptr);
-    if (gfx_log_debug_enabled()) {
-        gfx_log_debug("MetalCodegen") << "after resolve_msl_source entry=" << source.entry_point
-                                       << " msl_size=" << msl.size();
-    }
-    if (current_compile_trace()) {
-        increment_compile_counter("metal_resolve_msl_count");
-        add_compile_segment(
-            "metal_resolve_msl",
-            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
-                                      std::chrono::steady_clock::now() - resolve_msl_start)
-                                      .count()));
+    if (msl.empty()) {
+        const auto resolve_msl_start =
+            current_compile_trace() ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+        if (gfx_log_debug_enabled()) {
+            gfx_log_debug("MetalCodegen") << "before resolve_msl_source entry=" << source.entry_point;
+        }
+        msl = resolve_msl_source(source, log_ptr);
+        if (gfx_log_debug_enabled()) {
+            gfx_log_debug("MetalCodegen") << "after resolve_msl_source entry=" << source.entry_point
+                                           << " msl_size=" << msl.size();
+        }
+        if (current_compile_trace()) {
+            increment_compile_counter("metal_resolve_msl_count");
+            add_compile_segment(
+                "metal_resolve_msl",
+                static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                          std::chrono::steady_clock::now() - resolve_msl_start)
+                                          .count()));
+        }
+        if (can_cache_resolved_msl && !resolved_msl_cache_key.empty()) {
+            MetalResolvedMslCache::instance().store(std::move(resolved_msl_cache_key), msl);
+        }
     }
     OPENVINO_ASSERT(!msl.empty(), "MetalCodegenBackend: missing MSL source");
     OPENVINO_ASSERT(!source.entry_point.empty(), "MetalCodegenBackend: missing entry point");

@@ -64,12 +64,12 @@ void MetalGatherOp::parse_gather(const std::shared_ptr<const ov::Node>& node) {
     OPENVINO_ASSERT(!data_shape.empty(), "Gather: data shape must be static");
     OPENVINO_ASSERT(!idx_shape.empty(), "Gather: indices shape must be static");
 
-    const int64_t axis_norm = normalize_axis(axis, data_shape.size(), "Gather");
-    m_axis = axis_norm;
-    m_axis_dim = static_cast<uint64_t>(data_shape[static_cast<size_t>(axis_norm)]);
-    m_outer = shape_product(data_shape, 0, static_cast<size_t>(axis_norm));
-    m_inner = shape_product(data_shape, static_cast<size_t>(axis_norm) + 1, data_shape.size());
-    m_indices_count = ov::shape_size(idx_shape);
+    const auto dims = compute_gather_linear_dims(data_shape, idx_shape, axis, "Gather");
+    m_axis = dims.axis;
+    m_axis_dim = dims.axis_dim;
+    m_outer = dims.outer;
+    m_inner = dims.inner;
+    m_indices_count = dims.indices_count;
 
     m_element_type = node->get_output_element_type(0);
     OPENVINO_ASSERT(m_element_type == ov::element::f16 || m_element_type == ov::element::f32 ||
@@ -148,7 +148,7 @@ void MetalGatherOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     MetalTensor& dst = require_output();
     ov::Shape out_shape = !output_shape().empty() ? output_shape() : ov::Shape{};
     if (out_shape.empty()) {
-        out_shape = ov::Shape{static_cast<size_t>(m_outer), static_cast<size_t>(m_indices_count)};
+        out_shape = compute_gather_output_shape(data_shape, indices->shape, m_axis, "Gather");
     }
 
     const size_t bytes = ov::shape_size(out_shape) * m_element_type.size();

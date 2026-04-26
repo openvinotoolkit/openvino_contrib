@@ -8,6 +8,7 @@
 
 #include "openvino/pass/manager.hpp"
 #include "transformations/common_optimizations/common_optimizations.hpp"
+#include "transformations/common_optimizations/rms_fusion.hpp"
 #include "transformations/control_flow/unroll_if.hpp"
 #include "transformations/fp16_compression/convert_compression_only_to_legacy.hpp"
 #include "transformations/fp16_compression/mark_decompression_convert_constant_folding.hpp"
@@ -15,7 +16,6 @@
 #include "transformations/op_conversions/convert_maxpool_downgrade.hpp"
 #include "transformations/op_conversions/convert_mod.hpp"
 #include "transformations/op_conversions/convert_reduce_to_pooling.hpp"
-#include "transformations/op_conversions/scaled_dot_product_attention_decomposition.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -29,6 +29,9 @@ std::shared_ptr<const ov::Model> run_pipeline(const std::shared_ptr<const ov::Mo
     ov::pass::Manager manager("Plugin:GFX");
     // Common optimizations from OpenVINO transformations library.
     manager.register_pass<ov::pass::CommonOptimizations>();
+    // LLM RMSNorm frequently arrives as Power->ReduceMean->Add->Sqrt/Divide->Multiply->Multiply.
+    // Fuse both no-tail-convert and Divide variants into one backend-lowerable op.
+    manager.register_pass<ov::pass::RMSFusion>(false, true);
     // Plugin-local structural cleanup before stage selection / MLIR lowering.
     manager.register_pass<ov::gfx_plugin::transforms::GfxLayoutCleanup>();
 
@@ -43,9 +46,6 @@ std::shared_ptr<const ov::Model> run_pipeline(const std::shared_ptr<const ov::Mo
     // Allow FP16 converts to be folded and decompression converts to be upgraded back to FP32.
     pass_config->disable<ov::pass::DisableDecompressionConvertConstantFolding>();
     pass_config->disable<ov::pass::ConvertCompressedOnlyToLegacy>();
-
-    // Keep SDPA as-is (GFX has its own lowering path later).
-    pass_config->disable<ov::pass::ScaledDotProductAttentionDecomposition>();
 
     manager.run_passes(cloned);
     return cloned;

@@ -30,6 +30,15 @@ std::vector<int64_t> get_const_axes(const std::shared_ptr<const ov::Node>& node)
     return c->cast_vector<int64_t>();
 }
 
+mlir::Value cast_scalar_to_index(mlir::OpBuilder& b, mlir::Location loc, mlir::Value value) {
+    if (value.getType().isIndex()) {
+        return value;
+    }
+    auto int_ty = mlir::dyn_cast<mlir::IntegerType>(value.getType());
+    OPENVINO_ASSERT(int_ty, "Broadcast MLIR: target_shape values must be integer");
+    return b.create<mlir::arith::IndexCastOp>(loc, b.getIndexType(), value).getResult();
+}
+
 }  // namespace
 
 mlir::ModuleOp build_mlir_broadcast_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx) {
@@ -57,10 +66,15 @@ mlir::ModuleOp build_mlir_broadcast_from_model(const std::shared_ptr<const ov::M
 
     const auto in_pshape = bc_node->get_input_partial_shape(0);
     const auto out_pshape = bc_node->get_output_partial_shape(0);
-    OPENVINO_ASSERT(out_pshape.is_static(), "Broadcast MLIR: requires static output shape");
+    OPENVINO_ASSERT(in_pshape.rank().is_static() && out_pshape.rank().is_static(),
+                    "Broadcast MLIR: input/output ranks must be static");
+    const bool dynamic_output = !out_pshape.is_static();
+    const bool dynamic_target_shape = bc_node->get_input_size() > 1 &&
+                                      !ov::as_type_ptr<const ov::op::v0::Constant>(bc_node->get_input_node_shared_ptr(1));
     if (bc_node->get_input_size() > 1) {
         auto shape_const = ov::as_type_ptr<const ov::op::v0::Constant>(bc_node->get_input_node_shared_ptr(1));
-        OPENVINO_ASSERT(shape_const, "Broadcast MLIR: target_shape must be Constant");
+        OPENVINO_ASSERT(shape_const || dynamic_output,
+                        "Broadcast MLIR: non-constant target_shape requires dynamic output rank metadata");
     }
     const auto in_shape = to_shape(in_pshape);
     const auto out_shape = to_shape(out_pshape);
@@ -70,9 +84,24 @@ mlir::ModuleOp build_mlir_broadcast_from_model(const std::shared_ptr<const ov::M
     OPENVINO_ASSERT(in_rank <= out_rank, "Broadcast MLIR: input rank must be <= output rank");
 
     auto elem_ty = to_mlir_type(bc_node->get_output_element_type(0), ctx, /*fallback_f32=*/false,
-                                /*allow_unsigned=*/true);
+                                /*allow_unsigned=*/true,
+                                /*allow_small_ints=*/true,
+                                /*allow_bf16=*/false,
+                                /*allow_boolean=*/true);
     auto in_ty = mlir::RankedTensorType::get(in_shape, elem_ty);
     auto out_ty = mlir::RankedTensorType::get(out_shape, elem_ty);
+    llvm::SmallVector<mlir::Type> func_inputs{in_ty};
+    if (dynamic_target_shape) {
+        const auto target_pshape = bc_node->get_input_partial_shape(1);
+        OPENVINO_ASSERT(target_pshape.rank().is_static(), "Broadcast MLIR: target_shape rank must be static");
+        auto target_elem_ty = to_mlir_type(bc_node->get_input_element_type(1), ctx, /*fallback_f32=*/false,
+                                           /*allow_unsigned=*/true,
+                                           /*allow_small_ints=*/false,
+                                           /*allow_bf16=*/false,
+                                           /*allow_boolean=*/false,
+                                           /*signless_integers=*/true);
+        func_inputs.push_back(mlir::RankedTensorType::get(to_shape(target_pshape), target_elem_ty));
+    }
 
     std::vector<int64_t> axes_mapping;
     bool explicit_axes = false;
@@ -101,7 +130,7 @@ mlir::ModuleOp build_mlir_broadcast_from_model(const std::shared_ptr<const ov::M
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
     mb.setInsertionPointToStart(module.getBody());
 
-    auto func_type = mb.getFunctionType({in_ty}, {out_ty});
+    auto func_type = mb.getFunctionType(func_inputs, {out_ty});
     auto func = mb.create<mlir::func::FuncOp>(mlir::UnknownLoc::get(&ctx), "broadcast_main", func_type);
     func.addEntryBlock();
 
@@ -109,7 +138,32 @@ mlir::ModuleOp build_mlir_broadcast_from_model(const std::shared_ptr<const ov::M
     auto loc = mlir::UnknownLoc::get(&ctx);
     b.setInsertionPointToStart(&func.getBody().front());
 
-    auto empty = b.create<mlir::tensor::EmptyOp>(loc, out_shape, elem_ty);
+    llvm::SmallVector<mlir::Value> out_dyn_dims;
+    out_dyn_dims.reserve(out_shape.size());
+    if (dynamic_output) {
+        for (size_t i = 0; i < out_shape.size(); ++i) {
+            if (out_shape[i] != mlir::ShapedType::kDynamic) {
+                continue;
+            }
+            if (dynamic_target_shape) {
+                auto idx = b.create<mlir::arith::ConstantIndexOp>(loc, static_cast<int64_t>(i));
+                auto dim = b.create<mlir::tensor::ExtractOp>(loc, func.getArgument(1), mlir::ValueRange{idx}).getResult();
+                out_dyn_dims.push_back(cast_scalar_to_index(b, loc, dim));
+            } else if (i >= out_rank - in_rank) {
+                const size_t input_dim = i - (out_rank - in_rank);
+                if (in_shape[input_dim] == mlir::ShapedType::kDynamic) {
+                    out_dyn_dims.push_back(
+                        b.create<mlir::tensor::DimOp>(loc, func.getArgument(0), static_cast<int64_t>(input_dim))
+                            .getResult());
+                } else {
+                    out_dyn_dims.push_back(b.create<mlir::arith::ConstantIndexOp>(loc, in_shape[input_dim]));
+                }
+            } else {
+                OPENVINO_THROW("Broadcast MLIR: dynamic output dim requires runtime target_shape");
+            }
+        }
+    }
+    auto empty = b.create<mlir::tensor::EmptyOp>(loc, out_shape, elem_ty, out_dyn_dims);
 
     llvm::SmallVector<mlir::utils::IteratorType> iters(out_rank, mlir::utils::IteratorType::parallel);
     llvm::SmallVector<mlir::AffineExpr> in_exprs;

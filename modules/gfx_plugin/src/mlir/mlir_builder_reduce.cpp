@@ -208,14 +208,15 @@ mlir::ModuleOp build_reduce_impl(const std::shared_ptr<const ov::Model>& model,
     const auto axes_set = info->axes;
     const bool keep_dims = info->keep_dims;
 
-    auto in_shape = reduce_node->get_input_shape(0);
-    auto out_shape = reduce_node->get_output_shape(0);
-    OPENVINO_ASSERT(!in_shape.empty(), "Reduce MLIR: input shape must be static");
+    const auto in_pshape = reduce_node->get_input_partial_shape(0);
+    const auto out_pshape = reduce_node->get_output_partial_shape(0);
+    OPENVINO_ASSERT(in_pshape.rank().is_static() && out_pshape.rank().is_static(),
+                    "Reduce MLIR: ranks must be static");
 
     std::vector<size_t> axes(axes_set.begin(), axes_set.end());
     std::sort(axes.begin(), axes.end());
 
-    const size_t in_rank = in_shape.size();
+    const size_t in_rank = static_cast<size_t>(in_pshape.rank().get_length());
     for (auto axis : axes) {
         OPENVINO_ASSERT(axis < in_rank, "Reduce MLIR: axis out of range");
     }
@@ -223,14 +224,15 @@ mlir::ModuleOp build_reduce_impl(const std::shared_ptr<const ov::Model>& model,
     auto elem_ty = to_mlir_type(reduce_node->get_output_element_type(0),
                                 ctx,
                                 /*fallback_f32=*/false,
-                                /*allow_unsigned=*/true);
-    mlir::SmallVector<int64_t> in_dims(in_shape.begin(), in_shape.end());
-    mlir::SmallVector<int64_t> out_dims(out_shape.begin(), out_shape.end());
+                                /*allow_unsigned=*/true,
+                                /*allow_small_ints=*/true,
+                                /*allow_bf16=*/false,
+                                /*allow_boolean=*/false,
+                                /*signless_integers=*/true);
+    mlir::SmallVector<int64_t> in_dims = to_shape(in_pshape);
+    mlir::SmallVector<int64_t> out_dims = to_shape(out_pshape);
     auto in_ty = mlir::RankedTensorType::get(in_dims, elem_ty);
     auto out_ty = mlir::RankedTensorType::get(out_dims, elem_ty);
-
-    auto in_strides = compute_strides(in_shape);
-    auto out_strides = compute_strides(out_shape);
 
     std::vector<size_t> non_reduced_axes;
     for (size_t i = 0; i < in_rank; ++i) {
@@ -238,15 +240,6 @@ mlir::ModuleOp build_reduce_impl(const std::shared_ptr<const ov::Model>& model,
             non_reduced_axes.push_back(i);
         }
     }
-
-    std::vector<int64_t> reduce_shape;
-    reduce_shape.reserve(axes.size());
-    for (auto axis : axes) {
-        reduce_shape.push_back(static_cast<int64_t>(in_shape[axis]));
-    }
-    auto reduce_strides = compute_strides(ov::Shape(reduce_shape.begin(), reduce_shape.end()));
-    const int64_t reduce_total = reduce_shape.empty() ? 1 : static_cast<int64_t>(ov::shape_size(reduce_shape));
-    const int64_t out_total = static_cast<int64_t>(ov::shape_size(out_shape));
 
     mlir::OpBuilder mb(&ctx);
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
@@ -258,104 +251,90 @@ mlir::ModuleOp build_reduce_impl(const std::shared_ptr<const ov::Model>& model,
     mlir::OpBuilder b(func.getBody());
     auto loc = mlir::UnknownLoc::get(&ctx);
     b.setInsertionPointToStart(&func.getBody().front());
-
-    auto out_flat_ty = mlir::RankedTensorType::get({out_total}, elem_ty);
-    auto in_flat_ty = mlir::RankedTensorType::get({static_cast<int64_t>(ov::shape_size(in_shape))}, elem_ty);
-
-    auto collapse = [&](size_t rank) {
-        mlir::SmallVector<mlir::ReassociationIndices> reassoc;
-        mlir::ReassociationIndices group;
-        for (size_t i = 0; i < rank; ++i)
-            group.push_back(static_cast<int64_t>(i));
-        reassoc.push_back(group);
-        return reassoc;
-    };
-
-    mlir::Value in_flat = func.getArgument(0);
-    if (in_shape.size() > 1) {
-        in_flat = b.create<mlir::tensor::CollapseShapeOp>(loc, in_flat_ty, in_flat, collapse(in_shape.size()));
+    llvm::SmallVector<mlir::Value> out_dyn_dims;
+    out_dyn_dims.reserve(out_dims.size());
+    size_t out_pos = 0;
+    for (size_t i = 0; i < in_rank; ++i) {
+        if (std::binary_search(axes.begin(), axes.end(), i)) {
+            continue;
+        }
+        size_t od = keep_dims ? i : out_pos++;
+        if (out_dims[od] == mlir::ShapedType::kDynamic) {
+            out_dyn_dims.push_back(b.create<mlir::tensor::DimOp>(loc, func.getArgument(0), static_cast<int64_t>(i)).getResult());
+        }
     }
-    mlir::Value out_flat = b.create<mlir::tensor::EmptyOp>(loc, mlir::ArrayRef<int64_t>{out_total}, elem_ty);
 
-    auto c0 = b.create<mlir::arith::ConstantIndexOp>(loc, 0);
-    auto c1 = b.create<mlir::arith::ConstantIndexOp>(loc, 1);
-    auto c_out = b.create<mlir::arith::ConstantIndexOp>(loc, out_total);
+    auto generated = mlir::tensor::GenerateOp::create(
+        b,
+        loc,
+        out_ty,
+        out_dyn_dims,
+        [&](mlir::OpBuilder& gb, mlir::Location gen_loc, mlir::ValueRange out_indices) {
+            auto c0 = gb.create<mlir::arith::ConstantIndexOp>(gen_loc, 0).getResult();
+            auto c1 = gb.create<mlir::arith::ConstantIndexOp>(gen_loc, 1).getResult();
 
-    auto loop = b.create<mlir::scf::ForOp>(loc, c0, c_out, c1, mlir::ValueRange{out_flat});
-    {
-        auto* body = loop.getBody();
-        mlir::OpBuilder lb(body, body->begin());
-        auto iv = loop.getInductionVar();
-        auto acc_tensor = loop.getRegionIterArgs()[0];
-
-        mlir::Value idx = iv;
-        std::vector<mlir::Value> out_indices;
-        out_indices.reserve(out_shape.size());
-        for (size_t d = 0; d < out_shape.size(); ++d) {
-            auto stride = lb.create<mlir::arith::ConstantIndexOp>(loc, out_strides[d]);
-            auto out_i = lb.create<mlir::arith::DivUIOp>(loc, idx, stride).getResult();
-            idx = lb.create<mlir::arith::RemUIOp>(loc, idx, stride).getResult();
-            out_indices.push_back(out_i);
-        }
-
-        mlir::Value base = lb.create<mlir::arith::ConstantIndexOp>(loc, 0);
-        size_t out_pos = 0;
-        for (size_t i = 0; i < in_rank; ++i) {
-            if (std::binary_search(axes.begin(), axes.end(), i)) {
-                continue;
-            }
-            size_t od = keep_dims ? i : out_pos++;
-            auto in_stride = lb.create<mlir::arith::ConstantIndexOp>(loc, in_strides[i]);
-            auto scaled = lb.create<mlir::arith::MulIOp>(loc, out_indices[od], in_stride).getResult();
-            base = lb.create<mlir::arith::AddIOp>(loc, base, scaled).getResult();
-        }
-
-        auto init = make_init_value(lb, loc, elem_ty, kind);
-        auto c_red = lb.create<mlir::arith::ConstantIndexOp>(loc, reduce_total);
-        auto red_loop = lb.create<mlir::scf::ForOp>(loc, c0, c_red, c1, mlir::ValueRange{init});
-        {
-            auto* rbody = red_loop.getBody();
-            mlir::OpBuilder rb(rbody, rbody->begin());
-            auto r_iv = red_loop.getInductionVar();
-            auto r_acc = red_loop.getRegionIterArgs()[0];
-
-            mlir::Value r_idx = r_iv;
-            mlir::Value in_linear = base;
-            for (size_t j = 0; j < axes.size(); ++j) {
-                auto stride = rb.create<mlir::arith::ConstantIndexOp>(loc, reduce_strides[j]);
-                auto r_i = rb.create<mlir::arith::DivUIOp>(loc, r_idx, stride).getResult();
-                r_idx = rb.create<mlir::arith::RemUIOp>(loc, r_idx, stride).getResult();
-                auto in_stride = rb.create<mlir::arith::ConstantIndexOp>(loc, in_strides[axes[j]]);
-                auto scaled = rb.create<mlir::arith::MulIOp>(loc, r_i, in_stride).getResult();
-                in_linear = rb.create<mlir::arith::AddIOp>(loc, in_linear, scaled).getResult();
+            llvm::SmallVector<mlir::Value> base_indices(in_rank, c0);
+            size_t output_pos = 0;
+            for (size_t i = 0; i < in_rank; ++i) {
+                if (std::binary_search(axes.begin(), axes.end(), i)) {
+                    continue;
+                }
+                size_t od = keep_dims ? i : output_pos++;
+                base_indices[i] = out_indices[od];
             }
 
-            auto val = rb.create<mlir::tensor::ExtractOp>(loc, in_flat, mlir::ValueRange{in_linear}).getResult();
-            auto updated = reduce_update(rb, loc, elem_ty, kind, r_acc, val);
-            rb.create<mlir::scf::YieldOp>(loc, updated);
-        }
-        mlir::Value reduced = red_loop.getResults()[0];
+            auto reduce_recursive =
+                [&](auto&& self, mlir::OpBuilder& rb, size_t axis_pos, llvm::SmallVector<mlir::Value> indices, mlir::Value acc)
+                    -> mlir::Value {
+                if (axis_pos == axes.size()) {
+                    auto val = rb.create<mlir::tensor::ExtractOp>(gen_loc, func.getArgument(0), indices).getResult();
+                    return reduce_update(rb, gen_loc, elem_ty, kind, acc, val);
+                }
 
-        if (kind == ReduceKind::Mean) {
-            OPENVINO_ASSERT(mlir::isa<mlir::FloatType>(elem_ty), "ReduceMean MLIR: only float supported");
-            auto denom = lb.create<mlir::arith::ConstantOp>(loc, mlir::FloatAttr::get(elem_ty, static_cast<double>(reduce_total)));
-            reduced = lb.create<mlir::arith::DivFOp>(loc, reduced, denom).getResult();
-        } else if (kind == ReduceKind::L2) {
-            OPENVINO_ASSERT(mlir::isa<mlir::FloatType>(elem_ty), "ReduceL2 MLIR: only float supported");
-            reduced = lb.create<mlir::math::SqrtOp>(loc, reduced).getResult();
-        }
+                auto upper =
+                    rb.create<mlir::tensor::DimOp>(gen_loc, func.getArgument(0), static_cast<int64_t>(axes[axis_pos]))
+                        .getResult();
+                auto loop = rb.create<mlir::scf::ForOp>(gen_loc, c0, upper, c1, mlir::ValueRange{acc});
+                {
+                    auto* body = loop.getBody();
+                    mlir::OpBuilder lb(body, body->begin());
+                    auto next_indices = indices;
+                    next_indices[axes[axis_pos]] = loop.getInductionVar();
+                    auto updated =
+                        self(self, lb, axis_pos + 1, next_indices, loop.getRegionIterArgs()[0]);
+                    lb.create<mlir::scf::YieldOp>(gen_loc, updated);
+                }
+                return loop.getResult(0);
+            };
 
-        auto updated_out = lb.create<mlir::tensor::InsertOp>(loc, reduced, acc_tensor, mlir::ValueRange{iv}).getResult();
-        lb.create<mlir::scf::YieldOp>(loc, updated_out);
-    }
-    out_flat = loop.getResults()[0];
+            auto reduced = reduce_recursive(reduce_recursive,
+                                            gb,
+                                            0,
+                                            base_indices,
+                                            make_init_value(gb, gen_loc, elem_ty, kind));
 
-    mlir::Value out_val = out_flat;
-    if (out_shape.size() > 1) {
-        out_val = b.create<mlir::tensor::ExpandShapeOp>(loc, out_ty, out_flat, collapse(out_shape.size()));
-    }
+            if (kind == ReduceKind::Mean) {
+                OPENVINO_ASSERT(mlir::isa<mlir::FloatType>(elem_ty), "ReduceMean MLIR: only float supported");
+                mlir::Value denom_idx = c1;
+                for (auto axis : axes) {
+                    auto dim = gb.create<mlir::tensor::DimOp>(gen_loc, func.getArgument(0), static_cast<int64_t>(axis))
+                                   .getResult();
+                    denom_idx = gb.create<mlir::arith::MulIOp>(gen_loc, denom_idx, dim).getResult();
+                }
+                auto denom_i64 =
+                    gb.create<mlir::arith::IndexCastOp>(gen_loc, mlir::IntegerType::get(&ctx, 64), denom_idx).getResult();
+                auto denom =
+                    gb.create<mlir::arith::SIToFPOp>(gen_loc, elem_ty, denom_i64).getResult();
+                reduced = gb.create<mlir::arith::DivFOp>(gen_loc, reduced, denom).getResult();
+            } else if (kind == ReduceKind::L2) {
+                OPENVINO_ASSERT(mlir::isa<mlir::FloatType>(elem_ty), "ReduceL2 MLIR: only float supported");
+                reduced = gb.create<mlir::math::SqrtOp>(gen_loc, reduced).getResult();
+            }
 
-    b.create<mlir::func::ReturnOp>(loc, out_val);
+            mlir::tensor::YieldOp::create(gb, gen_loc, reduced);
+        });
+
+    b.create<mlir::func::ReturnOp>(loc, generated.getResult());
     return module;
 }
 

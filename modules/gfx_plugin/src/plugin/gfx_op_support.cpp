@@ -12,6 +12,7 @@
 #include "openvino/op/reshape.hpp"
 #include "openvino/op/squeeze.hpp"
 #include "openvino/op/unsqueeze.hpp"
+#include "openvino/op/util/assign_base.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 
@@ -34,7 +35,8 @@ bool vulkan_supports_node(const std::shared_ptr<const ov::Node>& node);
 bool is_supported_node(const std::shared_ptr<const ov::Node>& node, GpuBackend backend) {
     if (ov::as_type_ptr<const ov::op::v0::Parameter>(node) ||
         ov::as_type_ptr<const ov::op::v0::Constant>(node) ||
-        ov::as_type_ptr<const ov::op::v0::Result>(node)) {
+        ov::as_type_ptr<const ov::op::v0::Result>(node) ||
+        ov::as_type_ptr<const ov::op::util::AssignBase>(node)) {
         return true;
     }
     if (is_view_node(node)) {

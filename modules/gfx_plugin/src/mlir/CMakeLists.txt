@@ -3,6 +3,7 @@
 
 set(GFX_MLIR_SOURCES
     mlir_builder.cpp
+    rms_codegen.cpp
     mlir_builder_matmul.cpp
     mlir_builder_unary.cpp
     mlir_builder_add.cpp
@@ -18,6 +19,7 @@ set(GFX_MLIR_SOURCES
     mlir_builder_compare.cpp
     mlir_builder_select.cpp
     mlir_builder_reduce.cpp
+    mlir_builder_rms.cpp
     mlir_builder_pad.cpp
     mlir_builder_tile.cpp
     mlir_builder_broadcast.cpp
@@ -45,6 +47,7 @@ set(GFX_MLIR_SOURCES
     mlir_builder_depth_to_space.cpp
     mlir_builder_space_to_depth.cpp
     mlir_builder_scatter_elements_update.cpp
+    mlir_builder_scatter_update.cpp
     mlir_builder_scatter_nd_update.cpp
     mlir_builder_shapeof.cpp
     ../transforms/fusion_pass.cpp

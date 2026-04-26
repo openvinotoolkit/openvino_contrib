@@ -15,6 +15,7 @@
 #include <iostream>
 #include <numeric>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -154,6 +155,8 @@ DiffStats compare_tensors(const ov::Tensor& a, const ov::Tensor& b) {
             return compare_typed<int64_t>(a, b);
         case ov::element::u8:
             return compare_typed<uint8_t>(a, b);
+        case ov::element::boolean:
+            return compare_typed<uint8_t>(a, b);
         default:
             throw std::runtime_error("unsupported output type: " + a.get_element_type().to_string());
     }
@@ -191,8 +194,10 @@ struct CompareOptions {
     size_t start_op = 0;
     size_t window_size = 1;
     std::optional<size_t> stop_after_op;
+    std::optional<size_t> single_output_op;
     double abs_threshold = 1e-4;
     double rel_threshold = 1e-4;
+    bool tinyllama_prompt_inputs = false;
 };
 
 struct OutputKey {
@@ -215,6 +220,14 @@ ov::AnyMap make_compile_config(bool for_gfx);
 ov::InferRequest make_request(ov::CompiledModel& compiled_model,
                               const std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>>& inputs);
 void maybe_print_gfx_profile(const ov::CompiledModel& compiled_model);
+std::optional<ov::Tensor> evaluate_source_tensor(
+    const ov::Output<ov::Node>& source,
+    const std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>>& inputs);
+std::optional<ov::Tensor> evaluate_source_tensor_with_reference(
+    ov::Core& core,
+    const std::string& ref_device,
+    const ov::Output<ov::Node>& source,
+    const std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>>& inputs);
 
 struct TensorSummary {
     size_t elements = 0;
@@ -329,17 +342,164 @@ TensorSummary summarize_tensor(const ov::Tensor& tensor) {
             return summarize_typed_tensor<int64_t>(tensor);
         case ov::element::u8:
             return summarize_typed_tensor<uint8_t>(tensor);
+        case ov::element::boolean:
+            return summarize_typed_tensor<uint8_t>(tensor);
         default:
             throw std::runtime_error("unsupported output type: " + tensor.get_element_type().to_string());
     }
 }
 
-std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>> make_inputs(const std::shared_ptr<ov::Model>& model) {
+std::string shape_to_string(const ov::Shape& shape) {
+    std::ostringstream os;
+    os << '[';
+    for (size_t i = 0; i < shape.size(); ++i) {
+        if (i) {
+            os << ',';
+        }
+        os << shape[i];
+    }
+    os << ']';
+    return os.str();
+}
+
+size_t broadcast_offset_for_flat_index(size_t flat_index, const ov::Shape& input_shape, const ov::Shape& output_shape) {
+    const size_t rank = output_shape.size();
+    if (input_shape.empty()) {
+        return 0;
+    }
+    std::vector<size_t> input_strides(input_shape.size(), 1);
+    for (size_t i = input_shape.size(); i-- > 1;) {
+        input_strides[i - 1] = input_strides[i] * input_shape[i];
+    }
+    size_t input_offset = 0;
+    size_t remaining = flat_index;
+    for (size_t rev = 0; rev < rank; ++rev) {
+        const size_t out_dim = output_shape[rank - 1 - rev];
+        const size_t coord = out_dim == 0 ? 0 : remaining % out_dim;
+        remaining = out_dim == 0 ? 0 : remaining / out_dim;
+        if (rev < input_shape.size()) {
+            const size_t input_dim_index = input_shape.size() - 1 - rev;
+            if (input_shape[input_dim_index] != 1) {
+                input_offset += coord * input_strides[input_dim_index];
+            }
+        }
+    }
+    return input_offset;
+}
+
+double tensor_value_as_double(const ov::Tensor& tensor, size_t index) {
+    switch (tensor.get_element_type()) {
+        case ov::element::boolean:
+        case ov::element::u8:
+            return static_cast<double>(tensor.data<const uint8_t>()[index]);
+        case ov::element::f32:
+            return static_cast<double>(tensor.data<const float>()[index]);
+        case ov::element::f16:
+            return static_cast<double>(tensor.data<const ov::float16>()[index]);
+        case ov::element::i32:
+            return static_cast<double>(tensor.data<const int32_t>()[index]);
+        case ov::element::i64:
+            return static_cast<double>(tensor.data<const int64_t>()[index]);
+        default:
+            return 0.0;
+    }
+}
+
+void print_select_mismatch_probe(ov::Core& core,
+                                 const std::string& ref_device,
+                                 const std::shared_ptr<ov::Node>& node,
+                                 const std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>>& inputs,
+                                 const DiffStats& stats,
+                                 const ov::Shape& runtime_output_shape) {
+    if (std::string(node->get_type_name()) != "Select" || node->get_input_size() != 3) {
+        return;
+    }
+    const auto& out_shape = runtime_output_shape;
+    std::cout << "SELECT_PROBE output_shape=" << shape_to_string(out_shape)
+              << " max_index=" << stats.max_index << '\n';
+    for (size_t i = 0; i < 3; ++i) {
+        auto tensor = evaluate_source_tensor(node->input_value(i), inputs);
+        if (!tensor.has_value()) {
+            tensor = evaluate_source_tensor_with_reference(core, ref_device, node->input_value(i), inputs);
+        }
+        if (!tensor.has_value()) {
+            std::cout << "SELECT_PROBE input[" << i << "] unavailable\n";
+            continue;
+        }
+        const size_t offset = broadcast_offset_for_flat_index(stats.max_index, tensor->get_shape(), out_shape);
+        std::cout << "SELECT_PROBE input[" << i << "]"
+                  << " type=" << tensor->get_element_type()
+                  << " shape=" << shape_to_string(tensor->get_shape())
+                  << " offset=" << offset
+                  << " value=" << std::setprecision(10) << tensor_value_as_double(*tensor, offset)
+                  << '\n';
+        if (tensor->get_element_type() == ov::element::boolean) {
+            const auto* data = tensor->data<const uint8_t>();
+            const size_t limit = std::min<size_t>(tensor->get_size(), 16);
+            std::cout << "SELECT_PROBE input[" << i << "] first_bytes=";
+            for (size_t j = 0; j < limit; ++j) {
+                if (j) {
+                    std::cout << ',';
+                }
+                std::cout << static_cast<unsigned>(data[j]);
+            }
+            std::cout << '\n';
+        }
+    }
+}
+
+std::vector<int64_t> tinyllama_prompt_ids() {
+    return {1, 1724, 338, 4673, 29963, 1177, 29949, 29973, 673, 297, 697, 3273, 10541, 29889};
+}
+
+void fill_tinyllama_prompt_tensor(const std::string& name, ov::Tensor& tensor) {
+    if (name == "input_ids") {
+        const auto ids = tinyllama_prompt_ids();
+        std::copy(ids.begin(), ids.end(), tensor.data<int64_t>());
+        return;
+    }
+    if (name == "attention_mask") {
+        std::fill_n(tensor.data<int64_t>(), tensor.get_size(), int64_t{1});
+        return;
+    }
+    if (name == "position_ids") {
+        auto* data = tensor.data<int64_t>();
+        for (size_t i = 0; i < tensor.get_size(); ++i) {
+            data[i] = static_cast<int64_t>(i);
+        }
+        return;
+    }
+    if (name == "beam_idx") {
+        std::fill_n(tensor.data<int32_t>(), tensor.get_size(), int32_t{0});
+        return;
+    }
+    fill_tensor(tensor);
+}
+
+ov::Shape make_input_shape(const ov::Output<const ov::Node>& input, const CompareOptions& options) {
+    const std::string name = input.get_any_name();
+    if (options.tinyllama_prompt_inputs) {
+        if (name == "input_ids" || name == "attention_mask" || name == "position_ids") {
+            return {1, tinyllama_prompt_ids().size()};
+        }
+        if (name == "beam_idx") {
+            return {1};
+        }
+    }
+    return make_static_shape(input.get_partial_shape());
+}
+
+std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>> make_inputs(const std::shared_ptr<ov::Model>& model,
+                                                                           const CompareOptions& options) {
     std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>> inputs;
     inputs.reserve(model->inputs().size());
     for (const auto& input : model->inputs()) {
-        ov::Tensor tensor(input.get_element_type(), make_static_shape(input.get_partial_shape()));
-        fill_tensor(tensor);
+        ov::Tensor tensor(input.get_element_type(), make_input_shape(input, options));
+        if (options.tinyllama_prompt_inputs) {
+            fill_tinyllama_prompt_tensor(input.get_any_name(), tensor);
+        } else {
+            fill_tensor(tensor);
+        }
         inputs.emplace_back(input, std::move(tensor));
     }
     return inputs;
@@ -632,7 +792,7 @@ int run_full_graph_per_op_compare(ov::Core& core,
     const auto ref_device = reference_device(core, options.reference_device);
     std::vector<FullGraphOutputDesc> output_descs;
     auto debug_model = make_full_graph_debug_model(model, output_descs);
-    const auto inputs = make_inputs(debug_model);
+    const auto inputs = make_inputs(debug_model, options);
 
     auto ref_model = core.compile_model(debug_model, ref_device, make_compile_config(false));
     auto gfx_model = core.compile_model(debug_model, "GFX", make_compile_config(true));
@@ -814,6 +974,9 @@ int run_per_op_compare(ov::Core& core,
         std::cout << '\n';
         if (!options.per_op_all && stats.max_abs_diff > options.abs_threshold && stats.max_rel_diff > options.rel_threshold) {
             print_conv_probe(core, ref_device, node, inputs, stats);
+            if (!ref_outputs.empty()) {
+                print_select_mismatch_probe(core, ref_device, node, inputs, stats, ref_outputs.front().get_shape());
+            }
             std::cout << "FIRST_MISMATCH op_index=" << idx
                       << " name=" << node->get_friendly_name()
                       << " type=" << node->get_type_name()
@@ -836,7 +999,7 @@ int main(int argc, char** argv) try {
                      "[--reference-device NAME] [--reference-plugin PATH] "
                      "[--start-op N] "
                      "[--window-size N] "
-                     "[--stop-after-op N] [--abs-threshold V] [--rel-threshold V]\n";
+                     "[--stop-after-op N] [--abs-threshold V] [--rel-threshold V] [--tinyllama-prompt-inputs]\n";
         return 2;
     }
 
@@ -896,6 +1059,13 @@ int main(int argc, char** argv) try {
             options.stop_after_op = static_cast<size_t>(std::stoul(argv[++i]));
             continue;
         }
+        if (arg == "--single-op-output") {
+            if (i + 1 >= argc) {
+                throw std::runtime_error("--single-op-output requires a value");
+            }
+            options.single_output_op = static_cast<size_t>(std::stoul(argv[++i]));
+            continue;
+        }
         if (arg == "--abs-threshold") {
             if (i + 1 >= argc) {
                 throw std::runtime_error("--abs-threshold requires a value");
@@ -910,6 +1080,10 @@ int main(int argc, char** argv) try {
             options.rel_threshold = std::stod(argv[++i]);
             continue;
         }
+        if (arg == "--tinyllama-prompt-inputs") {
+            options.tinyllama_prompt_inputs = true;
+            continue;
+        }
         throw std::runtime_error("unknown argument: " + arg);
     }
 
@@ -921,7 +1095,7 @@ int main(int argc, char** argv) try {
     register_reference_plugin(core, options.reference_device, options.reference_plugin_path);
 
     auto model = core.read_model(model_path);
-    const auto inputs = make_inputs(model);
+    const auto inputs = make_inputs(model, options);
 
     if (options.print_ops) {
         const auto ordered_ops = model->get_ordered_ops();
@@ -935,6 +1109,32 @@ int main(int argc, char** argv) try {
                       << " (" << node->get_type_name() << ")\n";
         }
         return 0;
+    }
+
+    if (options.single_output_op.has_value()) {
+        const auto ordered_ops = model->get_ordered_ops();
+        if (*options.single_output_op >= ordered_ops.size()) {
+            throw std::runtime_error("--single-op-output is out of range");
+        }
+        const auto& node = ordered_ops[*options.single_output_op];
+        if (node->get_output_size() == 0) {
+            throw std::runtime_error("--single-op-output selected node has no outputs");
+        }
+        auto debug_model = std::make_shared<ov::Model>(
+            ov::OutputVector{std::make_shared<ov::op::v0::Result>(node->output(0))},
+            model->get_parameters(),
+            node->get_friendly_name() + "_debug_output");
+        const auto debug_inputs = make_inputs(debug_model, options);
+        const auto ref_device = reference_device(core, options.reference_device);
+        auto ref_model = core.compile_model(debug_model, ref_device, make_compile_config(false));
+        auto gfx_model = core.compile_model(debug_model, "GFX", make_compile_config(true));
+        std::cout << "SINGLE_OP_OUTPUT op_index=" << *options.single_output_op
+                  << " name=" << node->get_friendly_name()
+                  << " type=" << node->get_type_name() << '\n';
+        const auto stats = compare_model_outputs(ref_model, gfx_model, debug_inputs, true);
+        std::cout << "GLOBAL max_abs_diff=" << std::setprecision(10) << stats.max_abs_diff
+                  << " max_rel_diff=" << stats.max_rel_diff << '\n';
+        return (stats.max_abs_diff > options.abs_threshold && stats.max_rel_diff > options.rel_threshold) ? 3 : 0;
     }
 
     if (options.per_op_all) {

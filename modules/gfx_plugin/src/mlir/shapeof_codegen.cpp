@@ -12,7 +12,9 @@ namespace gfx_plugin {
 std::string generate_msl_for_shapeof(const ShapeOfCodegenDesc& d, mlir::ModuleOp module) {
     std::ostringstream ss;
     std::string scalar_t = "int";
-    if (auto func = get_entry_func(module)) {
+    if (d.element_type != ov::element::dynamic) {
+        scalar_t = msl_type_from_element(d.element_type);
+    } else if (auto func = get_entry_func(module)) {
         auto ft = func.getFunctionType();
         if (ft.getNumResults() >= 1) {
             scalar_t = msl_type_from_mlir(ft.getResult(0));

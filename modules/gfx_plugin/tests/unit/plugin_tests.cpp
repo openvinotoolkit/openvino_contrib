@@ -13,6 +13,13 @@
 #include "plugin/gfx_backend_config.hpp"
 
 #include "openvino/op/parameter.hpp"
+#include "openvino/op/broadcast.hpp"
+#include "openvino/op/concat.hpp"
+#include "openvino/op/constant.hpp"
+#include "openvino/op/range.hpp"
+#include "openvino/op/shape_of.hpp"
+#include "openvino/op/select.hpp"
+#include "openvino/op/strided_slice.hpp"
 #include "openvino/op/relu.hpp"
 #include "openvino/op/result.hpp"
 
@@ -183,4 +190,89 @@ TEST(GfxDeviceProperties, AvailableDevicesExposeIds) {
     const auto default_device_id = core.get_property("GFX", ov::device::id);
     EXPECT_EQ(default_device_id, "0");
     EXPECT_EQ(available.front(), "0");
+}
+
+TEST(GfxDynamicShapeSupport, CompileModelWithDynamicShapeOf) {
+    ov::Core core;
+    register_gfx_plugin(core);
+
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::PartialShape{1, -1, 64});
+    auto shape_of = std::make_shared<ov::op::v3::ShapeOf>(param, ov::element::i64);
+    auto res = std::make_shared<ov::op::v0::Result>(shape_of);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "dynamic_shapeof");
+
+    try {
+        auto cm = core.compile_model(model, "GFX");
+        EXPECT_EQ(cm.get_runtime_model()->get_results().size(), 1);
+    } catch (const std::exception& e) {
+        FAIL() << "compile_model(dynamic ShapeOf) failed: " << e.what();
+    }
+}
+
+TEST(GfxDynamicShapeSupport, QueryModelWithDynamicShapeOf) {
+    ov::Core core;
+    register_gfx_plugin(core);
+
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::PartialShape{1, -1, 64});
+    auto shape_of = std::make_shared<ov::op::v3::ShapeOf>(param, ov::element::i64);
+    shape_of->set_friendly_name("shapeof_dyn");
+    auto res = std::make_shared<ov::op::v0::Result>(shape_of);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param}, "dynamic_shapeof");
+
+    EXPECT_NO_THROW({
+        const auto supported = core.query_model(model, "GFX");
+        EXPECT_TRUE(supported.count("shapeof_dyn") != 0);
+    });
+}
+
+TEST(GfxDynamicShapeSupport, QueryModelWithDynamicShapeDataMovementOps) {
+    ov::Core core;
+    register_gfx_plugin(core);
+
+    auto data0 = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::PartialShape{1, -1, 4});
+    auto data1 = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::PartialShape{1, -1, 4});
+    auto cond = std::make_shared<ov::op::v0::Parameter>(ov::element::boolean, ov::PartialShape{1, -1, 4});
+    auto target_shape = std::make_shared<ov::op::v0::Parameter>(ov::element::i64, ov::PartialShape{3});
+    auto slice_end = std::make_shared<ov::op::v0::Parameter>(ov::element::i64, ov::PartialShape{3});
+    auto range_stop = std::make_shared<ov::op::v0::Parameter>(ov::element::i64, ov::PartialShape{});
+
+    auto concat = std::make_shared<ov::op::v0::Concat>(ov::OutputVector{data0, data1}, 1);
+    concat->set_friendly_name("dyn_concat");
+    auto broadcast = std::make_shared<ov::op::v3::Broadcast>(data0, target_shape, ov::op::BroadcastType::BIDIRECTIONAL);
+    broadcast->set_friendly_name("dyn_broadcast");
+    auto select = std::make_shared<ov::op::v1::Select>(cond, data0, data1);
+    select->set_friendly_name("dyn_select");
+
+    auto begin = ov::op::v0::Constant::create(ov::element::i64, {3}, {0, 0, 0});
+    auto strides = ov::op::v0::Constant::create(ov::element::i64, {3}, {1, 1, 1});
+    auto slice = std::make_shared<ov::op::v1::StridedSlice>(data0,
+                                                            begin,
+                                                            slice_end,
+                                                            strides,
+                                                            std::vector<int64_t>{0, 0, 0},
+                                                            std::vector<int64_t>{0, 0, 0});
+    slice->set_friendly_name("dyn_slice");
+
+    auto range_start = ov::op::v0::Constant::create(ov::element::i64, {}, {0});
+    auto range_step = ov::op::v0::Constant::create(ov::element::i64, {}, {1});
+    auto range = std::make_shared<ov::op::v4::Range>(range_start, range_stop, range_step, ov::element::i64);
+    range->set_friendly_name("dyn_range");
+
+    auto model = std::make_shared<ov::Model>(
+        ov::ResultVector{std::make_shared<ov::op::v0::Result>(concat),
+                         std::make_shared<ov::op::v0::Result>(broadcast),
+                         std::make_shared<ov::op::v0::Result>(select),
+                         std::make_shared<ov::op::v0::Result>(slice),
+                         std::make_shared<ov::op::v0::Result>(range)},
+        ov::ParameterVector{data0, data1, cond, target_shape, slice_end, range_stop},
+        "dynamic_data_movement");
+
+    EXPECT_NO_THROW({
+        const auto supported = core.query_model(model, "GFX");
+        EXPECT_TRUE(supported.count("dyn_concat") != 0);
+        EXPECT_TRUE(supported.count("dyn_broadcast") != 0);
+        EXPECT_TRUE(supported.count("dyn_select") != 0);
+        EXPECT_TRUE(supported.count("dyn_slice") != 0);
+        EXPECT_TRUE(supported.count("dyn_range") != 0);
+    });
 }

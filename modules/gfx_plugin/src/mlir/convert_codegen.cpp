@@ -11,35 +11,19 @@ namespace gfx_plugin {
 
 std::string generate_msl_for_convert(const ConvertCodegenDesc& d, mlir::ModuleOp module) {
     std::ostringstream ss;
-    std::string src_t = "float";
-    std::string dst_t = "float";
-    if (auto func = get_entry_func(module)) {
-        auto ft = func.getFunctionType();
-        if (ft.getNumInputs() >= 1) {
-            src_t = msl_type_from_mlir(ft.getInput(0));
-        }
-        if (ft.getNumResults() >= 1) {
-            dst_t = msl_type_from_mlir(ft.getResult(0));
-        }
-    } else {
-        // Fallback to descriptor types if MLIR module is not provided.
-        switch (d.src_type) {
-            case ov::element::f16: src_t = "half"; break;
-            case ov::element::f32: src_t = "float"; break;
-            case ov::element::i32: src_t = "int"; break;
-            case ov::element::i64: src_t = "long"; break;
-            case ov::element::u8:  src_t = "uchar"; break;
-            case ov::element::i8:  src_t = "char"; break;
-            default: break;
-        }
-        switch (d.dst_type) {
-            case ov::element::f16: dst_t = "half"; break;
-            case ov::element::f32: dst_t = "float"; break;
-            case ov::element::i32: dst_t = "int"; break;
-            case ov::element::i64: dst_t = "long"; break;
-            case ov::element::u8:  dst_t = "uchar"; break;
-            case ov::element::i8:  dst_t = "char"; break;
-            default: break;
+    std::string src_t = msl_type_from_element(d.src_type);
+    std::string dst_t = msl_type_from_element(d.dst_type);
+    if ((d.src_type == ov::element::dynamic || d.dst_type == ov::element::dynamic) && module) {
+        // Descriptor types are authoritative for Convert. The MLIR module may
+        // already be lowered for backend legality when MSL is emitted.
+        if (auto func = get_entry_func(module)) {
+            auto ft = func.getFunctionType();
+            if (ft.getNumInputs() >= 1) {
+                src_t = msl_type_from_mlir(ft.getInput(0));
+            }
+            if (ft.getNumResults() >= 1) {
+                dst_t = msl_type_from_mlir(ft.getResult(0));
+            }
         }
     }
     ss << "#include <metal_stdlib>\nusing namespace metal;\n";

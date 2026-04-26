@@ -21,7 +21,7 @@ struct SliceMeta {
     std::vector<uint32_t> out_shape;
     std::vector<uint32_t> in_stride;
     std::vector<int32_t> starts;
-    std::vector<uint32_t> steps;
+    std::vector<int32_t> steps;
 };
 
 mlir::ShapedType get_ranked_shaped_type(mlir::Type type) {
@@ -138,7 +138,7 @@ bool extract_slice_meta(mlir::ModuleOp module, SliceMeta& meta) {
         in_shape_u.push_back(static_cast<uint32_t>(d));
     meta.in_stride = compute_stride(in_shape_u);
     meta.starts.assign(out_shape.size(), 0);
-    meta.steps.assign(out_shape.size(), 1);
+        meta.steps.assign(out_shape.size(), 1);
 
     mlir::tensor::ExtractSliceOp extract_slice = nullptr;
     func.walk([&](mlir::tensor::ExtractSliceOp op) {
@@ -154,7 +154,7 @@ bool extract_slice_meta(mlir::ModuleOp module, SliceMeta& meta) {
             if (offsets[i] == mlir::ShapedType::kDynamic || strides[i] == mlir::ShapedType::kDynamic)
                 return false;
             meta.starts[i] = static_cast<int32_t>(offsets[i]);
-            meta.steps[i] = static_cast<uint32_t>(strides[i]);
+            meta.steps[i] = static_cast<int32_t>(strides[i]);
         }
         return true;
     }
@@ -239,7 +239,7 @@ std::string generate_msl_for_slice_generic(const ConvertCodegenDesc& d, mlir::Mo
             ss << meta.starts[i];
         }
         ss << "};\n";
-        ss << "constant uint STEPS_C[" << rank << "] = {";
+        ss << "constant int STEPS_C[" << rank << "] = {";
         for (size_t i = 0; i < meta.steps.size(); ++i) {
             if (i) ss << ", ";
             ss << meta.steps[i];
@@ -261,22 +261,22 @@ std::string generate_msl_for_slice_generic(const ConvertCodegenDesc& d, mlir::Mo
         ss << "  constant uint* out_shape [[buffer(4)]],\n";
         ss << "  constant uint* in_stride [[buffer(5)]],\n";
         ss << "  constant int* starts [[buffer(6)]],\n";
-        ss << "  constant uint* steps [[buffer(7)]],\n";
+        ss << "  constant int* steps [[buffer(7)]],\n";
         ss << "  uint gid [[thread_position_in_grid]]) {\n";
         ss << "    if (gid >= TOTAL) return;\n";
     }
     ss << "    uint idx = gid;\n";
-    ss << "    uint in_off = 0;\n";
+    ss << "    int in_off = 0;\n";
     if (use_static) {
         ss << "    for (int d = (int)RANK_C - 1; d >= 0; --d) {\n";
         ss << "        uint coord = idx % OUT_SHAPE_C[d];\n";
         ss << "        idx /= OUT_SHAPE_C[d];\n";
-        ss << "        in_off += (uint)((int)STARTS_C[d] + (int)(coord * STEPS_C[d])) * IN_STRIDE_C[d];\n";
+        ss << "        in_off += (STARTS_C[d] + int(coord) * STEPS_C[d]) * int(IN_STRIDE_C[d]);\n";
     } else {
         ss << "    for (int d = (int)RANK - 1; d >= 0; --d) {\n";
         ss << "        uint coord = idx % out_shape[d];\n";
         ss << "        idx /= out_shape[d];\n";
-        ss << "        in_off += (uint)((int)starts[d] + (int)(coord * steps[d])) * in_stride[d];\n";
+        ss << "        in_off += (starts[d] + int(coord) * steps[d]) * int(in_stride[d]);\n";
     }
     ss << "    }\n";
     ss << "    C[gid] = A[in_off];\n";

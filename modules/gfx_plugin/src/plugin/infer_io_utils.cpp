@@ -54,16 +54,17 @@ void prepare_reusable_host_output_plan(PreparedInferHostOutputPlan& plan,
 
 HostOutputBinding prepare_host_output_binding(const OutputViewInfo& info,
                                               const ov::Tensor* host_override,
-                                              const ov::Tensor* reusable_host) {
+                                              ov::Tensor* reusable_host) {
     HostOutputBinding binding{};
     binding.bytes = tensor_byte_size(info.shape, info.type);
     if (host_override && *host_override) {
         binding.host = *host_override;
-    } else if (reusable_host && *reusable_host) {
-        OPENVINO_ASSERT(reusable_host->get_element_type() == info.type,
-                        "GFX: reusable output tensor type mismatch");
-        OPENVINO_ASSERT(reusable_host->get_shape() == info.shape,
-                        "GFX: reusable output tensor shape mismatch");
+    } else if (reusable_host) {
+        if (!*reusable_host ||
+            reusable_host->get_element_type() != info.type ||
+            reusable_host->get_shape() != info.shape) {
+            *reusable_host = ov::Tensor(info.type, info.shape);
+        }
         binding.host = *reusable_host;
     } else {
         binding.host = ov::Tensor(info.type, info.shape);
@@ -106,11 +107,20 @@ void reset_reusable_pipeline_outputs(std::vector<InferStage>& pipeline) {
         if (!stage.stage) {
             continue;
         }
-        for (auto& out : stage.outputs) {
+        for (size_t out_idx = 0; out_idx < stage.outputs.size(); ++out_idx) {
+            auto& out = stage.outputs[out_idx];
             if (!out) {
                 continue;
             }
             out->buf = {};
+            out->i64_values.clear();
+            if (stage.node && out_idx < stage.node->get_output_size()) {
+                if (stage.node->get_output_partial_shape(out_idx).is_static()) {
+                    out->shape = stage.node->get_output_shape(out_idx);
+                } else {
+                    out->shape.clear();
+                }
+            }
         }
     }
 }

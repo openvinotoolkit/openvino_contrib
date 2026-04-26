@@ -72,11 +72,14 @@ std::string activation_expr(ActivationKind kind, float alpha) {
 }
 
 std::string emit_eltwise_msl(const EltwiseCodegenDesc& d,
-                             const std::string& scalar_ty,
+                             const std::string& input_ty,
+                             const std::string& output_ty,
                              bool is_int,
                              bool is_unsigned,
                              bool use_half,
-                             bool is_bf16) {
+                             bool is_bf16,
+                             bool input_is_bool,
+                             bool output_is_bool) {
     std::ostringstream ss;
     ss << "#include <metal_stdlib>\n";
     ss << "using namespace metal;\n";
@@ -94,15 +97,15 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d,
     }
     if (is_int && d.eltwise_kind == EltwiseKind::Pow) {
         const std::string exp_ty =
-            (scalar_ty == "long" || scalar_ty == "ulong") ? (is_unsigned ? "ulong" : "long")
-                                                          : (is_unsigned ? "uint" : "int");
-        ss << "inline " << scalar_ty << " ipow(" << scalar_ty << " base, " << scalar_ty
+            (input_ty == "long" || input_ty == "ulong") ? (is_unsigned ? "ulong" : "long")
+                                                        : (is_unsigned ? "uint" : "int");
+        ss << "inline " << input_ty << " ipow(" << input_ty << " base, " << input_ty
            << " exp) {\n";
         if (!is_unsigned) {
             ss << "    if (exp < 0) return 0;\n";
         }
-        ss << "    " << scalar_ty << " result = 1;\n";
-        ss << "    " << scalar_ty << " b = base;\n";
+        ss << "    " << input_ty << " result = 1;\n";
+        ss << "    " << input_ty << " b = base;\n";
         ss << "    " << exp_ty << " e = static_cast<" << exp_ty << ">(exp);\n";
         ss << "    while (e > 0) {\n";
         ss << "        if (e & 1) result *= b;\n";
@@ -113,6 +116,9 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d,
         ss << "}\n";
     }
     auto load = [&](const std::string& ptr, const std::string& idx) -> std::string {
+        if (input_is_bool) {
+            return "(" + ptr + "[" + idx + "] != 0)";
+        }
         if (is_bf16) {
             return "bf16_to_float(" + ptr + "[" + idx + "])";
         }
@@ -120,6 +126,10 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d,
     };
     const bool use_activation = d.has_activation && !is_int;
     auto emit_assign = [&](const std::string& dst, const std::string& value) {
+        if (output_is_bool) {
+            ss << "    " << dst << " = (" << value << ") ? uchar(1) : uchar(0);\n";
+            return;
+        }
         if (!use_activation) {
             if (is_bf16) {
                 ss << "    " << dst << " = float_to_bf16(" << value << ");\n";
@@ -132,10 +142,10 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d,
         ss << "    float y = " << activation_expr(d.activation, d.alpha) << ";\n";
         if (is_bf16) {
             ss << "    " << dst << " = float_to_bf16(y);\n";
-        } else if (scalar_ty == "half") {
+        } else if (output_ty == "half") {
             ss << "    " << dst << " = half(y);\n";
         } else {
-            ss << "    " << dst << " = static_cast<" << scalar_ty << ">(y);\n";
+            ss << "    " << dst << " = static_cast<" << output_ty << ">(y);\n";
         }
     };
     auto emit_op = [&](const std::string& a, const std::string& b) -> std::string {
@@ -176,9 +186,9 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d,
     auto emit_floor_mod_block = [&](const std::string& a, const std::string& b, const std::string& dst) {
         // FloorMod: result has the sign of the divisor (numpy/TF semantics).
         if (is_int) {
-            ss << "    " << scalar_ty << " _a = " << a << ";\n";
-            ss << "    " << scalar_ty << " _b = " << b << ";\n";
-            ss << "    " << scalar_ty << " _r = _a % _b;\n";
+            ss << "    " << input_ty << " _a = " << a << ";\n";
+            ss << "    " << input_ty << " _b = " << b << ";\n";
+            ss << "    " << input_ty << " _r = _a % _b;\n";
             ss << "    if (_r != 0 && ((_r < 0) != (_b < 0))) _r += _b;\n";
             emit_assign(dst, "_r");
         } else {
@@ -193,9 +203,9 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d,
     auto emit_mod_block = [&](const std::string& a, const std::string& b, const std::string& dst) {
         // Mod (fmod) semantics: result keeps the sign of the dividend (C/C++ fmod/%).
         if (is_int) {
-            ss << "    " << scalar_ty << " _a = " << a << ";\n";
-            ss << "    " << scalar_ty << " _b = " << b << ";\n";
-            ss << "    " << scalar_ty << " _r = _a % _b;\n";
+            ss << "    " << input_ty << " _a = " << a << ";\n";
+            ss << "    " << input_ty << " _b = " << b << ";\n";
+            ss << "    " << input_ty << " _r = _a % _b;\n";
             emit_assign(dst, "_r");
         } else {
             ss << "    float _a = " << a << ";\n";
@@ -206,9 +216,9 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d,
     };
 
     ss << "kernel void eltwise_kernel(\n";
-    ss << "  device const " << scalar_ty << "* A [[buffer(0)]],\n";
-    ss << "  device const " << scalar_ty << "* B [[buffer(1)]],\n";
-    ss << "  device " << scalar_ty << "* C [[buffer(2)]],\n";
+    ss << "  device const " << input_ty << "* A [[buffer(0)]],\n";
+    ss << "  device const " << input_ty << "* B [[buffer(1)]],\n";
+    ss << "  device " << output_ty << "* C [[buffer(2)]],\n";
     ss << "  constant uint& NUM_ELEMS [[buffer(3)]],\n";
     ss << "  constant uint& RANK [[buffer(4)]],\n";
     ss << "  constant int* out_dims [[buffer(5)]],\n";
@@ -226,7 +236,7 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d,
             ss << "    half b = half(" << load("B", "gid") << ");\n";
             emit_assign("C[gid]", "float(a / b)");
         } else if (is_int && d.eltwise_kind == EltwiseKind::Div) {
-            ss << "    " << scalar_ty << " b = " << load("B", "gid") << ";\n";
+            ss << "    " << input_ty << " b = " << load("B", "gid") << ";\n";
             emit_assign("C[gid]", "b == 0 ? 0 : (" + load("A", "gid") + " / b)");
         } else {
             emit_assign("C[gid]", emit_op(load("A", "gid"), load("B", "gid")));
@@ -251,7 +261,7 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d,
         ss << "    half b = half(" << load("B", "off1") << ");\n";
         emit_assign("C[gid]", "float(a / b)");
     } else if (is_int && d.eltwise_kind == EltwiseKind::Div) {
-        ss << "    " << scalar_ty << " b = " << load("B", "off1") << ";\n";
+        ss << "    " << input_ty << " b = " << load("B", "off1") << ";\n";
         emit_assign("C[gid]", "b == 0 ? 0 : (" + load("A", "off0") + " / b)");
     } else {
         emit_assign("C[gid]", emit_op(load("A", "off0"), load("B", "off1")));
@@ -263,35 +273,68 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d,
 }  // namespace
 
 std::string generate_msl_for_eltwise(const EltwiseCodegenDesc& d, mlir::ModuleOp module) {
-    std::string scalar_ty = "float";
-    if (auto func = get_entry_func(module)) {
+    auto storage_ty = [](std::string ty) {
+        return ty == "bool" ? std::string("uchar") : ty;
+    };
+    auto storage_ty_from_element = [&](const ov::element::Type& type) {
+        return storage_ty(msl_type_from_element(type));
+    };
+    std::string input_ty = "float";
+    std::string output_ty = "float";
+    if (d.input0_type != ov::element::dynamic) {
+        input_ty = storage_ty_from_element(d.input0_type);
+    }
+    if (d.output_type != ov::element::dynamic) {
+        output_ty = storage_ty_from_element(d.output_type);
+    } else if (d.element_type != ov::element::dynamic) {
+        output_ty = storage_ty_from_element(d.element_type);
+    }
+    if ((d.input0_type == ov::element::dynamic || d.output_type == ov::element::dynamic) && get_entry_func(module)) {
+        auto func = get_entry_func(module);
         auto ft = func.getFunctionType();
-        if (ft.getNumInputs() >= 1) {
-            scalar_ty = msl_type_from_mlir(ft.getInput(0));
+        if (d.input0_type == ov::element::dynamic && ft.getNumInputs() >= 1) {
+            input_ty = storage_ty(msl_type_from_mlir(ft.getInput(0)));
         }
-    } else {
+        if (d.output_type == ov::element::dynamic && ft.getNumResults() >= 1) {
+            output_ty = storage_ty(msl_type_from_mlir(ft.getResult(0)));
+        } else if (d.output_type == ov::element::dynamic) {
+            output_ty = input_ty;
+        }
+    } else if (d.input0_type == ov::element::dynamic && d.output_type == ov::element::dynamic) {
         const bool is_int32 = d.element_type == ov::element::i32;
         const bool is_int64 = d.element_type == ov::element::i64;
         const bool is_f16 = d.element_type == ov::element::f16;
-        scalar_ty = is_int64 ? "long" : (is_int32 ? "int" : (is_f16 ? "half" : "float"));
+        output_ty = d.element_type == ov::element::boolean
+                        ? "uchar"
+                        : (is_int64 ? "long" : (is_int32 ? "int" : (is_f16 ? "half" : "float")));
+        input_ty = output_ty;
     }
     const bool is_bf16 = (d.element_type == ov::element::bf16);
     if (is_bf16) {
-        scalar_ty = "ushort";
+        input_ty = "ushort";
+        output_ty = "ushort";
     }
     bool is_int = false;
     bool is_unsigned = false;
-    if (d.element_type != ov::element::dynamic) {
-        is_int = d.element_type.is_integral_number() && d.element_type != ov::element::boolean;
-        is_unsigned = is_int && !d.element_type.is_signed();
-    } else {
-        is_int = (scalar_ty == "char" || scalar_ty == "uchar" || scalar_ty == "short" ||
-                  scalar_ty == "ushort" || scalar_ty == "int" || scalar_ty == "uint" ||
-                  scalar_ty == "long" || scalar_ty == "ulong");
-        is_unsigned = (scalar_ty == "uchar" || scalar_ty == "ushort" || scalar_ty == "uint" ||
-                       scalar_ty == "ulong");
-    }
-    const bool use_half = !is_bf16 && (d.use_half_compute || (scalar_ty == "half"));
+    const bool input_is_bool = input_ty == "uchar" && (d.eltwise_kind == EltwiseKind::LogicalAnd ||
+                                                       d.eltwise_kind == EltwiseKind::LogicalOr ||
+                                                       d.eltwise_kind == EltwiseKind::LogicalXor);
+    const bool output_is_bool = output_ty == "uchar" &&
+                                (d.eltwise_kind == EltwiseKind::LogicalAnd ||
+                                 d.eltwise_kind == EltwiseKind::LogicalOr ||
+                                 d.eltwise_kind == EltwiseKind::LogicalXor ||
+                                 d.eltwise_kind == EltwiseKind::Equal ||
+                                 d.eltwise_kind == EltwiseKind::NotEqual ||
+                                 d.eltwise_kind == EltwiseKind::Less ||
+                                 d.eltwise_kind == EltwiseKind::Greater ||
+                                 d.eltwise_kind == EltwiseKind::LessEqual ||
+                                 d.eltwise_kind == EltwiseKind::GreaterEqual);
+    is_int = (input_ty == "char" || input_ty == "uchar" || input_ty == "short" ||
+              input_ty == "ushort" || input_ty == "int" || input_ty == "uint" ||
+              input_ty == "long" || input_ty == "ulong") && !input_is_bool;
+    is_unsigned = (input_ty == "uchar" || input_ty == "ushort" || input_ty == "uint" ||
+                   input_ty == "ulong") && !input_is_bool;
+    const bool use_half = !is_bf16 && (d.use_half_compute || (input_ty == "half"));
     if (module) {
         auto func_it = module.getOps<mlir::func::FuncOp>().begin();
         if (func_it != module.getOps<mlir::func::FuncOp>().end()) {
@@ -299,7 +342,15 @@ std::string generate_msl_for_eltwise(const EltwiseCodegenDesc& d, mlir::ModuleOp
             (void)pat;
         }
     }
-    return emit_eltwise_msl(d, scalar_ty, is_int, is_unsigned, use_half, is_bf16);
+    return emit_eltwise_msl(d,
+                            input_ty,
+                            output_ty,
+                            is_int,
+                            is_unsigned,
+                            use_half,
+                            is_bf16,
+                            input_is_bool,
+                            output_is_bool);
 }
 
 }  // namespace gfx_plugin

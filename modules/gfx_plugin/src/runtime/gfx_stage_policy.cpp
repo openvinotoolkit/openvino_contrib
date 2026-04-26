@@ -22,6 +22,12 @@ bool is_identity_pointwise_conv(const std::shared_ptr<const ov::Node>& node) {
     if (!conv || conv->get_input_size() != 2 || conv->get_output_size() != 1) {
         return false;
     }
+    const auto& in_pshape = conv->get_input_partial_shape(0);
+    const auto& w_pshape = conv->get_input_partial_shape(1);
+    const auto& out_pshape = conv->get_output_partial_shape(0);
+    if (!in_pshape.is_static() || !w_pshape.is_static() || !out_pshape.is_static()) {
+        return false;
+    }
     const auto& in_shape = conv->get_input_shape(0);
     const auto& w_shape = conv->get_input_shape(1);
     const auto& out_shape = conv->get_output_shape(0);
@@ -180,9 +186,14 @@ bool is_identity_permutation(const std::shared_ptr<const ov::Node>& node) {
         return false;
     }
     const auto perm = perm_const->cast_vector<int64_t>();
-    const auto& in_shape = transpose->get_input_shape(0);
-    const auto& out_shape = transpose->get_output_shape(0);
-    if (perm.size() != in_shape.size() || perm.size() != out_shape.size()) {
+    const auto& in_pshape = transpose->get_input_partial_shape(0);
+    const auto& out_pshape = transpose->get_output_partial_shape(0);
+    if (!in_pshape.rank().is_static() || !out_pshape.rank().is_static()) {
+        return false;
+    }
+    const auto in_rank = static_cast<size_t>(in_pshape.rank().get_length());
+    const auto out_rank = static_cast<size_t>(out_pshape.rank().get_length());
+    if (perm.size() != in_rank || perm.size() != out_rank) {
         return false;
     }
     for (size_t i = 0; i < perm.size(); ++i) {
@@ -190,7 +201,7 @@ bool is_identity_permutation(const std::shared_ptr<const ov::Node>& node) {
             return false;
         }
     }
-    return in_shape == out_shape;
+    return true;
 }
 
 uint64_t shape_elements(const ov::Shape& shape) {
@@ -296,7 +307,10 @@ GfxStagePostOpSupport select_stage_post_op_support(GpuBackend backend,
 GfxTensorLayoutPlan select_tensor_layout_plan(const std::string& stage_type,
                                               const std::shared_ptr<const ov::Node>& node) {
     GfxTensorLayoutPlan plan{};
-    if (stage_type == "Reshape" || stage_type == "Squeeze" || stage_type == "Unsqueeze") {
+    if (stage_type == "ReadValue" ||
+        stage_type == "Reshape" ||
+        stage_type == "Squeeze" ||
+        stage_type == "Unsqueeze") {
         plan.kind = GfxTensorLayoutKind::ViewOnly;
         plan.view_only = true;
         return plan;
@@ -474,6 +488,14 @@ GfxConvRoutePlan select_conv_route_plan(const GpuBufferManager* /*buffer_manager
         if (has_bias || has_activation) {
             return plan;
         }
+        const auto& in_pshape = gconv->get_input_partial_shape(0);
+        const auto& w_pshape = gconv->get_input_partial_shape(1);
+        const auto& out_pshape = gconv->get_output_partial_shape(0);
+        if (!in_pshape.is_static() || !w_pshape.is_static() || !out_pshape.is_static()) {
+            plan.family = GfxConvFamily::Grouped;
+            plan.algorithm.kind = GfxConvAlgorithmKind::Indirect;
+            return plan;
+        }
         const auto& in_shape = gconv->get_input_shape(0);
         const auto& w_shape = gconv->get_input_shape(1);
         const auto& out_shape = gconv->get_output_shape(0);
@@ -492,6 +514,14 @@ GfxConvRoutePlan select_conv_route_plan(const GpuBufferManager* /*buffer_manager
 
     auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(node);
     if (!conv || conv->get_input_size() != 2 || conv->get_output_size() != 1) {
+        return plan;
+    }
+    const auto& in_pshape = conv->get_input_partial_shape(0);
+    const auto& w_pshape = conv->get_input_partial_shape(1);
+    const auto& out_pshape = conv->get_output_partial_shape(0);
+    if (!in_pshape.is_static() || !w_pshape.is_static() || !out_pshape.is_static()) {
+        plan.family = GfxConvFamily::General;
+        plan.algorithm.kind = GfxConvAlgorithmKind::Indirect;
         return plan;
     }
     const auto& in_shape = conv->get_input_shape(0);

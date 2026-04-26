@@ -17,7 +17,6 @@
 
 #include "openvino/core/except.hpp"
 #include "openvino/core/model.hpp"
-#include "openvino/core/shape_util.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/gather.hpp"
 
@@ -40,12 +39,39 @@ mlir::ModuleOp build_mlir_gather_from_model(const std::shared_ptr<const ov::Mode
     }
     OPENVINO_ASSERT(gather_node, "Gather MLIR builder: Gather op not found");
 
-    auto in_shape = to_shape(gather_node->get_input_partial_shape(0));
-    auto idx_shape = to_shape(gather_node->get_input_partial_shape(1));
-    auto out_shape = to_shape(gather_node->get_output_partial_shape(0));
+    int64_t batch_dims = 0;
+    if (auto gather_v7 = ov::as_type_ptr<const ov::op::v7::Gather>(gather_node)) {
+        batch_dims = gather_v7->get_batch_dims();
+    } else if (auto gather_v8 = ov::as_type_ptr<const ov::op::v8::Gather>(gather_node)) {
+        batch_dims = gather_v8->get_batch_dims();
+    }
+    OPENVINO_ASSERT(batch_dims == 0, "Gather MLIR: batch_dims not supported");
 
-    auto elem_ty = to_mlir_type(gather_node->get_output_element_type(0), ctx);
-    auto idx_ty = to_mlir_type(gather_node->get_input_element_type(1), ctx, /*fallback_f32=*/true);
+    const auto in_pshape = gather_node->get_input_partial_shape(0);
+    const auto idx_pshape = gather_node->get_input_partial_shape(1);
+    const auto out_pshape = gather_node->get_output_partial_shape(0);
+    OPENVINO_ASSERT(in_pshape.rank().is_static() && idx_pshape.rank().is_static() && out_pshape.rank().is_static(),
+                    "Gather MLIR: ranks must be static");
+
+    auto in_shape = to_shape(in_pshape);
+    auto idx_shape = to_shape(idx_pshape);
+    auto out_shape = to_shape(out_pshape);
+
+    auto elem_ty = to_mlir_type(gather_node->get_output_element_type(0),
+                                ctx,
+                                /*fallback_f32=*/false,
+                                /*allow_unsigned=*/true,
+                                /*allow_small_ints=*/true,
+                                /*allow_bf16=*/false,
+                                /*allow_boolean=*/true);
+    auto idx_ty = to_mlir_type(gather_node->get_input_element_type(1),
+                               ctx,
+                               /*fallback_f32=*/true,
+                               /*allow_unsigned=*/true,
+                               /*allow_small_ints=*/true,
+                               /*allow_bf16=*/false,
+                               /*allow_boolean=*/false,
+                               /*signless_integers=*/true);
 
     auto in_tensor_ty = mlir::RankedTensorType::get(in_shape, elem_ty);
     auto idx_tensor_ty = mlir::RankedTensorType::get(idx_shape, idx_ty);
@@ -63,17 +89,10 @@ mlir::ModuleOp build_mlir_gather_from_model(const std::shared_ptr<const ov::Mode
     auto loc = mlir::UnknownLoc::get(&ctx);
     b.setInsertionPointToStart(&func.getBody().front());
 
-    auto empty_out = b.create<mlir::tensor::EmptyOp>(loc, out_shape, elem_ty);
-
-    // Use a flattened implementation for gather:
-    // out_flat[gid] = data_flat[outer*axis_dim*inner + idx*inner + inner_idx]
-    auto rank_data = gather_node->get_input_shape(0).size();
-    OPENVINO_ASSERT(rank_data > 0, "Gather MLIR: input rank must be static");
-    auto data_shape = gather_node->get_input_shape(0);
-    auto idx_shape_static = gather_node->get_input_shape(1);
-    auto out_shape_static = gather_node->get_output_shape(0);
-    OPENVINO_ASSERT(!data_shape.empty() && !idx_shape_static.empty() && !out_shape_static.empty(),
-                    "Gather MLIR: requires static shapes");
+    const auto rank_data = static_cast<size_t>(in_pshape.rank().get_length());
+    const auto rank_idx = static_cast<size_t>(idx_pshape.rank().get_length());
+    const auto rank_out = static_cast<size_t>(out_pshape.rank().get_length());
+    OPENVINO_ASSERT(rank_data > 0, "Gather MLIR: input rank must be positive");
 
     auto axis_c = ov::as_type_ptr<const ov::op::v0::Constant>(gather_node->get_input_node_shared_ptr(2));
     OPENVINO_ASSERT(axis_c, "Gather MLIR: axis must be constant");
@@ -81,116 +100,93 @@ mlir::ModuleOp build_mlir_gather_from_model(const std::shared_ptr<const ov::Mode
     OPENVINO_ASSERT(axis_v.size() == 1, "Gather MLIR: axis must be scalar");
     int64_t axis = axis_v[0];
     if (axis < 0)
-        axis += static_cast<int64_t>(data_shape.size());
-    OPENVINO_ASSERT(axis >= 0 && static_cast<size_t>(axis) < data_shape.size(), "Gather MLIR: axis out of range");
+        axis += static_cast<int64_t>(rank_data);
+    OPENVINO_ASSERT(axis >= 0 && static_cast<size_t>(axis) < rank_data, "Gather MLIR: axis out of range");
 
-    auto product = [](const ov::Shape& s, size_t start, size_t end) {
-        uint64_t prod = 1;
-        for (size_t i = start; i < end; ++i) prod *= s[i];
-        return prod;
-    };
-    uint64_t outer = product(data_shape, 0, static_cast<size_t>(axis));
-    uint64_t inner = product(data_shape, static_cast<size_t>(axis) + 1, data_shape.size());
-    uint64_t axis_dim = data_shape[static_cast<size_t>(axis)];
-    uint64_t indices_count = ov::shape_size(idx_shape_static);
-    uint64_t total = outer * indices_count * inner;
-
-    auto idx_flat_ty = mlir::RankedTensorType::get({static_cast<int64_t>(indices_count)}, idx_ty);
-    auto data_flat_ty = mlir::RankedTensorType::get({static_cast<int64_t>(outer * axis_dim * inner)}, elem_ty);
-    auto out_flat_ty = mlir::RankedTensorType::get({static_cast<int64_t>(total)}, elem_ty);
-
-    auto collapse_reassoc = [&](size_t rank) {
-        mlir::SmallVector<mlir::ReassociationIndices> reassoc;
-        mlir::ReassociationIndices group;
-        for (size_t i = 0; i < rank; ++i) group.push_back(static_cast<int64_t>(i));
-        reassoc.push_back(group);
-        return reassoc;
-    };
-
-    mlir::Value data_flat = func.getArgument(0);
-    if (rank_data > 1) {
-        data_flat = b.create<mlir::tensor::CollapseShapeOp>(loc, data_flat_ty, func.getArgument(0),
-                                                            collapse_reassoc(rank_data));
-    }
-    mlir::Value idx_flat = func.getArgument(1);
-    if (idx_shape_static.size() > 1) {
-        idx_flat = b.create<mlir::tensor::CollapseShapeOp>(loc, idx_flat_ty, func.getArgument(1),
-                                                           collapse_reassoc(idx_shape_static.size()));
-    }
-    mlir::Value out_flat = b.create<mlir::tensor::EmptyOp>(loc, mlir::ArrayRef<int64_t>({static_cast<int64_t>(total)}),
-                                                           elem_ty);
-
-    auto c0 = b.create<mlir::arith::ConstantIndexOp>(loc, 0);
-    auto c1 = b.create<mlir::arith::ConstantIndexOp>(loc, 1);
-    auto c_total = b.create<mlir::arith::ConstantIndexOp>(loc, static_cast<int64_t>(total));
-    auto c_inner = b.create<mlir::arith::ConstantIndexOp>(loc, static_cast<int64_t>(inner));
-    auto c_indices = b.create<mlir::arith::ConstantIndexOp>(loc, static_cast<int64_t>(indices_count));
-    auto c_axis_dim = b.create<mlir::arith::ConstantIndexOp>(loc, static_cast<int64_t>(axis_dim));
-
-    auto loop = b.create<mlir::scf::ForOp>(loc, c0, c_total, c1, mlir::ValueRange{out_flat});
-    {
-        auto* body = loop.getBody();
-        mlir::OpBuilder lb(body, body->begin());
-        auto iv = loop.getInductionVar();
-        auto acc = loop.getRegionIterArgs()[0];
-
-        auto inner_idx = lb.create<mlir::arith::RemUIOp>(loc, iv, c_inner).getResult();
-        auto tmp = lb.create<mlir::arith::DivUIOp>(loc, iv, c_inner).getResult();
-        auto idx_idx = lb.create<mlir::arith::RemUIOp>(loc, tmp, c_indices).getResult();
-        auto outer_idx = lb.create<mlir::arith::DivUIOp>(loc, tmp, c_indices).getResult();
-
-        auto idx_val = lb.create<mlir::tensor::ExtractOp>(loc, idx_flat, mlir::ValueRange{idx_idx}).getResult();
-        mlir::Value idx_i64 = idx_val;
-        if (idx_val.getType().isInteger(32)) {
-            idx_i64 = lb.create<mlir::arith::ExtSIOp>(loc, mlir::IntegerType::get(&ctx, 64), idx_val).getResult();
+    llvm::SmallVector<mlir::Value> out_dyn_dims;
+    out_dyn_dims.reserve(rank_out);
+    for (size_t i = 0; i < rank_out; ++i) {
+        if (out_shape[i] != mlir::ShapedType::kDynamic) {
+            continue;
         }
-
-        auto axis_dim_i64 =
-            lb.create<mlir::arith::ConstantIntOp>(loc, static_cast<int64_t>(axis_dim), 64).getResult();
-        auto zero_i64 = lb.create<mlir::arith::ConstantIntOp>(loc, 0, 64).getResult();
-        auto max_i64 =
-            lb.create<mlir::arith::ConstantIntOp>(loc, static_cast<int64_t>(axis_dim - 1), 64).getResult();
-
-        auto neg_pred =
-            lb.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::slt, idx_i64, zero_i64).getResult();
-        auto idx_plus = lb.create<mlir::arith::AddIOp>(loc, idx_i64, axis_dim_i64).getResult();
-        auto idx_fixed = lb.create<mlir::arith::SelectOp>(loc, neg_pred, idx_plus, idx_i64).getResult();
-
-        auto lt0 =
-            lb.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::slt, idx_fixed, zero_i64).getResult();
-        auto gtmax =
-            lb.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::sgt, idx_fixed, max_i64).getResult();
-        auto idx_clamped = lb.create<mlir::arith::SelectOp>(loc, lt0, zero_i64, idx_fixed).getResult();
-        idx_clamped = lb.create<mlir::arith::SelectOp>(loc, gtmax, max_i64, idx_clamped).getResult();
-
-        auto idx_index =
-            lb.create<mlir::arith::IndexCastOp>(loc, lb.getIndexType(), idx_clamped).getResult();
-
-        auto outer_mul =
-            lb.create<mlir::arith::MulIOp>(loc, outer_idx,
-                                           lb.create<mlir::arith::MulIOp>(loc, c_axis_dim, c_inner).getResult())
-                .getResult();
-        auto axis_mul = lb.create<mlir::arith::MulIOp>(loc, idx_index, c_inner).getResult();
-        auto in_index =
-            lb.create<mlir::arith::AddIOp>(loc, outer_mul,
-                                           lb.create<mlir::arith::AddIOp>(loc, axis_mul, inner_idx).getResult())
-                .getResult();
-
-        auto data_val =
-            lb.create<mlir::tensor::ExtractOp>(loc, data_flat, mlir::ValueRange{in_index}).getResult();
-        auto updated =
-            lb.create<mlir::tensor::InsertOp>(loc, data_val, acc, mlir::ValueRange{iv}).getResult();
-        lb.create<mlir::scf::YieldOp>(loc, updated);
-    }
-    out_flat = loop.getResults()[0];
-
-    mlir::Value final_out = out_flat;
-    if (out_shape_static.size() > 1) {
-        auto reassoc = collapse_reassoc(out_shape_static.size());
-        final_out = b.create<mlir::tensor::ExpandShapeOp>(loc, out_tensor_ty, out_flat, reassoc);
+        if (i < static_cast<size_t>(axis)) {
+            out_dyn_dims.push_back(b.create<mlir::tensor::DimOp>(loc, func.getArgument(0), static_cast<int64_t>(i)).getResult());
+        } else if (i < static_cast<size_t>(axis) + rank_idx) {
+            out_dyn_dims.push_back(
+                b.create<mlir::tensor::DimOp>(loc, func.getArgument(1), static_cast<int64_t>(i - static_cast<size_t>(axis)))
+                    .getResult());
+        } else {
+            out_dyn_dims.push_back(
+                b.create<mlir::tensor::DimOp>(loc,
+                                              func.getArgument(0),
+                                              static_cast<int64_t>(i - rank_idx + 1))
+                    .getResult());
+        }
     }
 
-    b.create<mlir::func::ReturnOp>(loc, final_out);
+    auto generated = mlir::tensor::GenerateOp::create(
+        b,
+        loc,
+        out_tensor_ty,
+        out_dyn_dims,
+        [&](mlir::OpBuilder& gb, mlir::Location gen_loc, mlir::ValueRange out_indices) {
+            llvm::SmallVector<mlir::Value> idx_indices;
+            idx_indices.reserve(rank_idx);
+            for (size_t i = 0; i < rank_idx; ++i) {
+                idx_indices.push_back(out_indices[static_cast<size_t>(axis) + i]);
+            }
+
+            auto idx_val = gb.create<mlir::tensor::ExtractOp>(gen_loc, func.getArgument(1), idx_indices).getResult();
+            mlir::Value idx_i64 = idx_val;
+            if (idx_val.getType().isInteger(32)) {
+                idx_i64 = gb.create<mlir::arith::ExtSIOp>(gen_loc, mlir::IntegerType::get(&ctx, 64), idx_val).getResult();
+            } else if (!idx_val.getType().isInteger(64)) {
+                OPENVINO_THROW("Gather MLIR: only i32/i64 indices are supported");
+            }
+
+            auto axis_dim = gb.create<mlir::tensor::DimOp>(gen_loc, func.getArgument(0), axis).getResult();
+            auto axis_dim_i64 = gb.create<mlir::arith::IndexCastOp>(gen_loc, mlir::IntegerType::get(&ctx, 64), axis_dim)
+                                    .getResult();
+            auto zero_i64 = gb.create<mlir::arith::ConstantIntOp>(gen_loc, 0, 64).getResult();
+            auto one_i64 = gb.create<mlir::arith::ConstantIntOp>(gen_loc, 1, 64).getResult();
+            auto max_i64 = gb.create<mlir::arith::SubIOp>(gen_loc, axis_dim_i64, one_i64).getResult();
+
+            auto neg_pred =
+                gb.create<mlir::arith::CmpIOp>(gen_loc, mlir::arith::CmpIPredicate::slt, idx_i64, zero_i64).getResult();
+            auto idx_plus = gb.create<mlir::arith::AddIOp>(gen_loc, idx_i64, axis_dim_i64).getResult();
+            auto idx_fixed = gb.create<mlir::arith::SelectOp>(gen_loc, neg_pred, idx_plus, idx_i64).getResult();
+
+            auto lt0 = gb.create<mlir::arith::CmpIOp>(gen_loc,
+                                                      mlir::arith::CmpIPredicate::slt,
+                                                      idx_fixed,
+                                                      zero_i64)
+                           .getResult();
+            auto gtmax = gb.create<mlir::arith::CmpIOp>(gen_loc,
+                                                        mlir::arith::CmpIPredicate::sgt,
+                                                        idx_fixed,
+                                                        max_i64)
+                             .getResult();
+            auto idx_clamped = gb.create<mlir::arith::SelectOp>(gen_loc, lt0, zero_i64, idx_fixed).getResult();
+            idx_clamped = gb.create<mlir::arith::SelectOp>(gen_loc, gtmax, max_i64, idx_clamped).getResult();
+            auto idx_index = gb.create<mlir::arith::IndexCastOp>(gen_loc, gb.getIndexType(), idx_clamped).getResult();
+
+            llvm::SmallVector<mlir::Value> data_indices;
+            data_indices.reserve(rank_data);
+            for (size_t i = 0; i < rank_data; ++i) {
+                if (i < static_cast<size_t>(axis)) {
+                    data_indices.push_back(out_indices[i]);
+                } else if (i == static_cast<size_t>(axis)) {
+                    data_indices.push_back(idx_index);
+                } else {
+                    data_indices.push_back(out_indices[i + rank_idx - 1]);
+                }
+            }
+
+            auto data_val = gb.create<mlir::tensor::ExtractOp>(gen_loc, func.getArgument(0), data_indices).getResult();
+            mlir::tensor::YieldOp::create(gb, gen_loc, data_val);
+        });
+
+    b.create<mlir::func::ReturnOp>(loc, generated.getResult());
     return module;
 }
 

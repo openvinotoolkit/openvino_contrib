@@ -77,6 +77,32 @@ std::vector<LoopInfo> collect_loop_nest(mlir::scf::ForOp root) {
     return loops;
 }
 
+std::string activation_expr(ActivationKind activation, float alpha) {
+    switch (activation) {
+        case ActivationKind::Relu: return "max(x, 0.0f)";
+        case ActivationKind::Sigmoid: return "1.0f / (1.0f + exp(-x))";
+        case ActivationKind::Tanh: return "tanh(x)";
+        case ActivationKind::Elu:
+            return "(x >= 0.0f) ? x : " + std::to_string(alpha) + " * (exp(x) - 1.0f)";
+        case ActivationKind::Prelu:
+            return "(x >= 0.0f) ? x : x * " + std::to_string(alpha);
+        case ActivationKind::Gelu:
+            return "0.5f * x * (1.0f + tanh(0.79788456f * (x + 0.044715f * x * x * x)))";
+        case ActivationKind::Swish:
+            return "(x >= 0.0f) ? (x / (1.0f + exp(-x))) : (x * exp(x) / (1.0f + exp(x)))";
+        case ActivationKind::HSwish:
+            return "x * clamp(x + 3.0f, 0.0f, 6.0f) / 6.0f";
+        case ActivationKind::HSigmoid:
+            return "clamp(x + 3.0f, 0.0f, 6.0f) / 6.0f";
+        case ActivationKind::Abs:
+            return "fabs(x)";
+        case ActivationKind::Sign:
+            return "(x > 0.0f) ? 1.0f : ((x < 0.0f) ? -1.0f : 0.0f)";
+        default:
+            return "x";
+    }
+}
+
 mlir::func::FuncOp find_kernel_func(mlir::ModuleOp module) {
     if (auto func = module.lookupSymbol<mlir::func::FuncOp>("matmul_main"))
         return func;
@@ -101,6 +127,95 @@ void validate_against_desc(const std::vector<LoopInfo>& loops, const MatMulCodeg
     check_dim(0, desc.M);
     check_dim(1, desc.N);
     check_dim(2, desc.K);
+}
+
+std::string emit_matmul_parallel_reduction_msl(const MatMulCodegenDesc& desc,
+                                               const std::string& scalar,
+                                               uint32_t reduction_threads) {
+    const ov::element::Type output_type = resolve_matmul_buffer_type(desc.output_type, desc.element_type);
+    const ov::element::Type input_a_type = resolve_matmul_buffer_type(desc.input_a_type, output_type);
+    const ov::element::Type input_b_type = resolve_matmul_buffer_type(desc.input_b_type, output_type);
+    const ov::element::Type bias_type = resolve_matmul_buffer_type(desc.bias_type, output_type);
+    const std::string scalar_a = msl_type_from_element(input_a_type);
+    const std::string scalar_b = msl_type_from_element(input_b_type);
+    const std::string scalar_bias = msl_type_from_element(bias_type);
+    const std::string scalar_out = msl_type_from_element(output_type);
+    const std::string compute_a = scalar_a.empty() ? "float" : scalar_a;
+    const std::string compute_b = scalar_b.empty() ? "float" : scalar_b;
+    const std::string compute_bias = scalar_bias.empty() ? "float" : scalar_bias;
+    const std::string output_scalar = scalar_out.empty() ? scalar : scalar_out;
+
+    std::ostringstream ss;
+    ss << "#include <metal_stdlib>\n";
+    ss << "using namespace metal;\n";
+    ss << "constant uint M = " << desc.M << ";\n";
+    ss << "constant uint N = " << desc.N << ";\n";
+    ss << "constant uint K = " << desc.K << ";\n";
+    ss << "constant uint BATCH = " << desc.batch << ";\n";
+    ss << "constant uint BATCH_A = " << desc.batch_a << ";\n";
+    ss << "constant uint BATCH_B = " << desc.batch_b << ";\n";
+    ss << "constant bool B_IS_NK = " << (desc.b_is_nk_layout ? "true" : "false") << ";\n";
+    ss << "constant bool A_TRANSPOSE = " << (desc.a_transpose ? "true" : "false") << ";\n";
+    ss << "constant uint REDUCE_THREADS = " << reduction_threads << ";\n";
+    if (desc.has_bias) {
+        ss << "constant uint BIAS_B = " << desc.bias_dims[0] << ";\n";
+        ss << "constant uint BIAS_M = " << desc.bias_dims[1] << ";\n";
+        ss << "constant uint BIAS_N = " << desc.bias_dims[2] << ";\n";
+    }
+    ss << "kernel void matmul_kernel(\n";
+    ss << "  device const " << scalar_a << "* A [[buffer(0)]],\n";
+    ss << "  device const " << scalar_b << "* B [[buffer(1)]],\n";
+    if (desc.has_bias) {
+        ss << "  device const " << scalar_bias << "* bias [[buffer(2)]],\n";
+        ss << "  device " << output_scalar << "* C [[buffer(3)]],\n";
+    } else {
+        ss << "  device " << output_scalar << "* C [[buffer(2)]],\n";
+    }
+    ss << "  uint gid [[thread_position_in_grid]],\n";
+    ss << "  uint lane [[thread_index_in_threadgroup]]) {\n";
+    ss << "    threadgroup float partial[" << reduction_threads << "];\n";
+    ss << "    uint output_total = BATCH * M * N;\n";
+    ss << "    uint out_id = gid / REDUCE_THREADS;\n";
+    ss << "    if (out_id >= output_total) return;\n";
+    ss << "    uint batch = out_id / (M * N);\n";
+    ss << "    uint idx = out_id - batch * M * N;\n";
+    ss << "    uint row = idx / N;\n";
+    ss << "    uint col = idx - row * N;\n";
+    ss << "    uint batch_a = (BATCH_A == 1) ? 0 : batch;\n";
+    ss << "    uint batch_b = (BATCH_B == 1) ? 0 : batch;\n";
+    ss << "    device const " << scalar_a << "* Ap = A + batch_a * M * K;\n";
+    ss << "    device const " << scalar_b << "* Bp = B + batch_b * K * N;\n";
+    ss << "    float acc = 0.0f;\n";
+    ss << "    for (uint k = lane; k < K; k += REDUCE_THREADS) {\n";
+    ss << "        " << compute_a << " a = static_cast<" << compute_a
+       << ">(A_TRANSPOSE ? Ap[k * M + row] : Ap[row * K + k]);\n";
+    ss << "        " << compute_b << " b = static_cast<" << compute_b
+       << ">(B_IS_NK ? Bp[col * K + k] : Bp[k * N + col]);\n";
+    ss << "        acc += static_cast<float>(a) * static_cast<float>(b);\n";
+    ss << "    }\n";
+    ss << "    partial[lane] = acc;\n";
+    ss << "    threadgroup_barrier(mem_flags::mem_threadgroup);\n";
+    ss << "    for (uint stride = " << (reduction_threads / 2) << "; stride > 0; stride >>= 1) {\n";
+    ss << "        if (lane < stride) partial[lane] += partial[lane + stride];\n";
+    ss << "        threadgroup_barrier(mem_flags::mem_threadgroup);\n";
+    ss << "    }\n";
+    ss << "    if (lane == 0) {\n";
+    ss << "        float out = partial[0];\n";
+    if (desc.has_bias) {
+        ss << "        uint bb = (BIAS_B == 1) ? 0 : batch;\n";
+        ss << "        uint bm = (BIAS_M == 1) ? 0 : row;\n";
+        ss << "        uint bn = (BIAS_N == 1) ? 0 : col;\n";
+        ss << "        uint bias_idx = (bb * BIAS_M + bm) * BIAS_N + bn;\n";
+        ss << "        out += static_cast<float>(static_cast<" << compute_bias << ">(bias[bias_idx]));\n";
+    }
+    if (desc.has_activation) {
+        ss << "        float x = out;\n";
+        ss << "        out = " << activation_expr(desc.activation, desc.alpha) << ";\n";
+    }
+    ss << "        C[out_id] = static_cast<" << output_scalar << ">(out);\n";
+    ss << "    }\n";
+    ss << "}\n";
+    return ss.str();
 }
 
 std::string emit_matmul_msl(const MatMulCodegenDesc& desc, const std::string& scalar) {
@@ -214,13 +329,20 @@ std::string emit_matmul_msl(const MatMulCodegenDesc& desc, const std::string& sc
 std::string generate_msl_for_matmul(const MatMulCodegenDesc& desc, mlir::ModuleOp module) {
     OPENVINO_ASSERT(desc.M > 0 && desc.N > 0 && desc.K > 0, "MatMul dims must be positive");
     std::string scalar = "float";
-    if (auto func = get_entry_func(module)) {
+    if (module) {
+        if (auto func = get_entry_func(module)) {
         auto ft = func.getFunctionType();
         if (ft.getNumInputs() >= 1) {
             scalar = msl_type_from_mlir(ft.getInput(0));
         }
-    } else {
+        }
+    }
+    if (!module) {
         scalar = (desc.element_type == ov::element::f16) ? "half" : "float";
+    }
+    const uint32_t reduction_threads = gfx_matmul_parallel_reduction_threads(desc);
+    if (reduction_threads > 1) {
+        return emit_matmul_parallel_reduction_msl(desc, scalar, reduction_threads);
     }
     if (!module) {
         return emit_matmul_msl(desc, scalar);

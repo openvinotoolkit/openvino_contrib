@@ -34,23 +34,29 @@ mlir::ModuleOp build_mlir_shapeof_from_model(const std::shared_ptr<const ov::Mod
     }
     OPENVINO_ASSERT(shapeof, "ShapeOf MLIR builder: ShapeOf op not found");
 
-    const auto in_shape = shapeof->get_input_shape(0);
-    auto out_elem_ty = to_mlir_type(shapeof->get_output_element_type(0), ctx);
-
-    mlir::SmallVector<int64_t> in_shape_vec;
-    in_shape_vec.reserve(in_shape.size());
-    for (auto v : in_shape) in_shape_vec.push_back(static_cast<int64_t>(v));
+    const auto in_pshape = shapeof->get_input_partial_shape(0);
+    OPENVINO_ASSERT(in_pshape.rank().is_static(), "ShapeOf MLIR builder: input rank must be static");
+    auto out_elem_ty = to_mlir_type(shapeof->get_output_element_type(0),
+                                    ctx,
+                                    /*fallback_f32=*/false,
+                                    /*allow_unsigned=*/false,
+                                    /*allow_small_ints=*/false,
+                                    /*allow_bf16=*/false,
+                                    /*allow_boolean=*/false,
+                                    /*signless_integers=*/true);
+    const auto in_shape_vec = to_shape(in_pshape);
+    const auto rank = static_cast<int64_t>(in_pshape.rank().get_length());
     auto in_tensor_ty = mlir::RankedTensorType::get(in_shape_vec,
                                                     to_mlir_type(shapeof->get_input_element_type(0), ctx,
                                                                  /*fallback_f32=*/true));
-    auto out_tensor_ty =
-        mlir::RankedTensorType::get({static_cast<int64_t>(in_shape.size())}, out_elem_ty);
+    auto out_tensor_ty = mlir::RankedTensorType::get({rank}, out_elem_ty);
+    auto shape_tensor_ty = mlir::RankedTensorType::get({rank}, out_elem_ty);
 
     mlir::OpBuilder mb(&ctx);
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
     mb.setInsertionPointToStart(module.getBody());
 
-    auto func_type = mb.getFunctionType({in_tensor_ty}, {out_tensor_ty});
+    auto func_type = mb.getFunctionType({in_tensor_ty, shape_tensor_ty}, {out_tensor_ty});
     auto func = mb.create<mlir::func::FuncOp>(mlir::UnknownLoc::get(&ctx), "shapeof_main", func_type);
     func.addEntryBlock();
 
@@ -58,16 +64,8 @@ mlir::ModuleOp build_mlir_shapeof_from_model(const std::shared_ptr<const ov::Mod
     auto loc = mlir::UnknownLoc::get(&ctx);
     b.setInsertionPointToStart(&func.getBody().front());
 
-    llvm::SmallVector<mlir::Value> dims;
-    dims.reserve(in_shape.size());
-    auto out_int_ty = mlir::cast<mlir::IntegerType>(out_elem_ty);
-    for (size_t i = 0; i < in_shape.size(); ++i) {
-        auto dim_idx = b.create<mlir::tensor::DimOp>(loc, func.getArgument(0), i).getResult();
-        auto dim_val = b.create<mlir::arith::IndexCastOp>(loc, out_int_ty, dim_idx).getResult();
-        dims.push_back(dim_val);
-    }
-    auto from = b.create<mlir::tensor::FromElementsOp>(loc, out_tensor_ty, dims);
-    b.create<mlir::func::ReturnOp>(loc, from.getResult());
+    (void)loc;
+    b.create<mlir::func::ReturnOp>(mlir::UnknownLoc::get(&ctx), func.getArgument(1));
     return module;
 }
 

@@ -4,7 +4,10 @@
 
 #include "runtime/fused_sequence_stage.hpp"
 
+#include <sstream>
+
 #include "openvino/core/except.hpp"
+#include "runtime/gfx_logger.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -100,6 +103,37 @@ void FusedSequenceStage::execute(GpuCommandBufferHandle command_buffer) {
         }
         std::vector<GpuTensor*> resolved_inputs;
         resolved_inputs.reserve(info.inputs.size());
+        if (gfx_log_debug_enabled()) {
+            std::ostringstream oss;
+            oss << "child=" << info.stage->name() << " [" << info.stage->type() << "] inputs=";
+            for (size_t input_idx = 0; input_idx < info.inputs.size(); ++input_idx) {
+                if (input_idx) {
+                    oss << ",";
+                }
+                const auto& binding = info.inputs[input_idx];
+                switch (binding.kind) {
+                    case FusedInputKind::External:
+                        oss << "ext";
+                        break;
+                    case FusedInputKind::Output:
+                        oss << "out";
+                        break;
+                    case FusedInputKind::None:
+                    default:
+                        oss << "none";
+                        break;
+                }
+                oss << binding.index;
+            }
+            oss << " outputs=";
+            for (size_t output_idx = 0; output_idx < info.output_indices.size(); ++output_idx) {
+                if (output_idx) {
+                    oss << ",";
+                }
+                oss << info.output_indices[output_idx];
+            }
+            gfx_log_debug("FusedSequence") << oss.str();
+        }
         for (const auto& binding : info.inputs) {
             switch (binding.kind) {
                 case FusedInputKind::External:

@@ -23,6 +23,8 @@
 #include "openvino/core/type/float16.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/batch_norm.hpp"
+#include "openvino/op/broadcast.hpp"
+#include "openvino/op/concat.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/convert.hpp"
 #include "openvino/op/elu.hpp"
@@ -31,7 +33,11 @@
 #include "openvino/op/prelu.hpp"
 #include "openvino/op/reshape.hpp"
 #include "openvino/op/result.hpp"
+#include "openvino/op/slice.hpp"
 #include "openvino/op/split.hpp"
+#include "openvino/op/squeeze.hpp"
+#include "openvino/op/strided_slice.hpp"
+#include "openvino/op/unsqueeze.hpp"
 #include "openvino/op/variadic_split.hpp"
 #include "openvino/op/transpose.hpp"
 #include "transforms/fusion_patterns.hpp"
@@ -225,8 +231,15 @@ bool is_attention_group_kind(const std::string& kind) {
 
 bool is_attention_layout_node(const std::shared_ptr<const ov::Node>& node) {
     return static_cast<bool>(ov::as_type_ptr<const ov::op::v0::Convert>(node)) ||
+           static_cast<bool>(ov::as_type_ptr<const ov::op::v1::Broadcast>(node)) ||
+           static_cast<bool>(ov::as_type_ptr<const ov::op::v3::Broadcast>(node)) ||
            static_cast<bool>(ov::as_type_ptr<const ov::op::v1::Transpose>(node)) ||
            static_cast<bool>(ov::as_type_ptr<const ov::op::v1::Reshape>(node)) ||
+           static_cast<bool>(ov::as_type_ptr<const ov::op::v0::Concat>(node)) ||
+           static_cast<bool>(ov::as_type_ptr<const ov::op::v0::Squeeze>(node)) ||
+           static_cast<bool>(ov::as_type_ptr<const ov::op::v0::Unsqueeze>(node)) ||
+           static_cast<bool>(ov::as_type_ptr<const ov::op::v8::Slice>(node)) ||
+           static_cast<bool>(ov::as_type_ptr<const ov::op::v1::StridedSlice>(node)) ||
            static_cast<bool>(ov::as_type_ptr<const ov::op::v1::Split>(node)) ||
            static_cast<bool>(ov::as_type_ptr<const ov::op::v1::VariadicSplit>(node));
 }

@@ -130,6 +130,12 @@ public:
                            const void* data,
                            size_t bytes,
                            ov::element::Type type) override;
+    GpuBuffer allocate_temp(const GpuBufferDesc& desc) override {
+        return allocate(desc, false);
+    }
+    void release_temp(GpuBuffer&& buf) override {
+        release(std::move(buf));
+    }
     bool has_const_cache() const { return supports_const_cache(); }
 
     MetalDeviceHandle device() const { return m_core.device(); }

@@ -5,6 +5,7 @@
 #include "backends/vulkan/runtime/stage_factory.hpp"
 
 #include "backends/vulkan/runtime/vulkan_executor.hpp"
+#include "plugin/stateful_stage.hpp"
 #include "runtime/execution_dispatcher.hpp"
 
 namespace ov {
@@ -13,6 +14,9 @@ namespace gfx_plugin {
 std::unique_ptr<GpuStage> create_vulkan_stage(const std::shared_ptr<const ov::Node>& node,
                                               void*,
                                               void*) {
+    if (auto stateful = create_stateful_stage(node)) {
+        return stateful;
+    }
     return std::make_unique<VulkanStage>(node);
 }
 

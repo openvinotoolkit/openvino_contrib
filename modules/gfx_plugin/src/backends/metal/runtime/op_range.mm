@@ -59,6 +59,10 @@ void MetalRangeOp::compile(MetalBufferManager* buffer_manager) {
     auto module = build_mlir_for_node(m_node, ctx);
     RangeCodegenDesc desc{};
     desc.element_type = m_element_type;
+    desc.output_type = m_node->get_output_element_type(0);
+    desc.start_type = m_node->get_input_element_type(0);
+    desc.stop_type = m_node->get_input_element_type(1);
+    desc.step_type = m_node->get_input_element_type(2);
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 

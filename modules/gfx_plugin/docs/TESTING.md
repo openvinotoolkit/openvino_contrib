@@ -62,6 +62,7 @@ Recent additions in the tree include:
 Recent focused updates in existing tests include:
 - stronger Broadcom V3D expectations for dense stride-1, huge-spatial, and ultra-dense convolution threadgroup selection in `tests/unit/gfx_parallelism_test.cpp`
 - plugin property checks that `ov::available_devices` and `ov::device::id` expose numeric ids in `tests/unit/plugin_tests.cpp`
+- dynamic-shape compile/query coverage for `ShapeOf` and query-time support coverage for `Concat`, `Broadcast`, `Select`, `StridedSlice`, and `Range` in `tests/unit/plugin_tests.cpp`
 - MatMul-based DFL softmax expectation rewrite checks, including value-preservation against the template plugin, in `tests/unit/layout_cleanup_test.cpp`
 
 ## Typical Test Suites
@@ -103,6 +104,7 @@ If you change MLIR lowering, prefer a unit test that inspects the emitted IR for
 - Metal tests require a valid Metal runtime environment
 - Vulkan tests depend on Vulkan being enabled and available in the build
 - `ov_gfx_compare_runner` is useful for numeric diffs and per-op narrowing when a failure is hard to isolate from the full suite; it also supports `--per-op-all`, `--reference-device`, `--reference-plugin`, and `--gfx-only`
+- `ov_gfx_compare_runner` also supports boolean tensors, `--single-op-output`, `--tinyllama-prompt-inputs`, and an extra `Select` mismatch probe for harder data-dependent failures
 - keep `ov_gfx_compare_runner` accuracy-only and use `benchmark_app` for perf
 - use `ov_gfx_microbench` for `MB0` to `MB3`, calibration artifacts, and profiling triage rather than for acceptance perf numbers
 - for the full profiling workflow and external tracing commands, use `PROFILING_RUNBOOK.md`

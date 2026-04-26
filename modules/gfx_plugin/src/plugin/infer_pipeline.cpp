@@ -108,6 +108,7 @@ ov::Shape ensure_stage_output_shape(InferStage& stage, size_t out_idx) {
     }
     auto& out = stage.outputs[out_idx];
     if (out->shape.empty() && stage.node &&
+        out_idx < stage.node->get_output_size() &&
         stage.node->get_output_partial_shape(out_idx).is_static()) {
         out->shape = stage.node->get_output_shape(out_idx);
     }
@@ -121,7 +122,7 @@ ov::element::Type resolve_stage_output_type(const InferStage& stage,
     if (out.expected_type != ov::element::dynamic) {
         return out.expected_type;
     }
-    if (stage.node) {
+    if (stage.node && out_idx < stage.node->get_output_size()) {
         return stage.node->get_output_element_type(out_idx);
     }
     OPENVINO_THROW(error_prefix, ": stage output type is not known");

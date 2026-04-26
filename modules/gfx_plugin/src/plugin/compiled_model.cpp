@@ -395,6 +395,7 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
 
     FusionPlan fusion_plan;
     std::unordered_map<size_t, const FusionGroup*> fusion_primary;
+    std::unordered_set<size_t> planned_fused_indices;
     std::unordered_set<const ov::Node*> fused_nodes;
     if (m_enable_fusion) {
         FusionConfig fusion_cfg;
@@ -427,10 +428,18 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
                                         << " size=" << group.node_indices.size()
                                         << " nodes=" << node_list;
             }
-            fusion_primary[group.node_indices.front()] = &group;
+            const bool attention_group = group.kind == "Attention" ||
+                                         group.kind == "AttentionScale" ||
+                                         group.kind == "AttentionScaleMask";
+            const size_t primary_idx = attention_group ? group.node_indices.back()
+                                                       : group.node_indices.front();
+            fusion_primary[primary_idx] = &group;
             for (const auto node_idx : group.node_indices) {
                 if (node_idx < ordered_ops.size()) {
                     fused_nodes.insert(ordered_ops[node_idx].get());
+                    if (attention_group && node_idx != primary_idx) {
+                        planned_fused_indices.insert(node_idx);
+                    }
                 }
             }
         }
@@ -500,6 +509,9 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
         }
 
         if (fused_indices.count(op_index)) {
+            continue;
+        }
+        if (planned_fused_indices.count(op_index) && fusion_primary.find(op_index) == fusion_primary.end()) {
             continue;
         }
 

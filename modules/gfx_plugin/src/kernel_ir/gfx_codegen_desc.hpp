@@ -39,6 +39,29 @@ struct MatMulCodegenDesc : BaseCodegenDesc {
     float alpha = 0.0f;
 };
 
+inline bool gfx_matmul_float_like_type(const ov::element::Type& type) {
+    return type == ov::element::dynamic || type == ov::element::f16 || type == ov::element::f32;
+}
+
+inline uint32_t gfx_matmul_parallel_reduction_threads(const MatMulCodegenDesc& desc) {
+    if (desc.M != 1 || desc.N < 16 || desc.K < 512) {
+        return 1;
+    }
+    if (!gfx_matmul_float_like_type(desc.input_a_type) ||
+        !gfx_matmul_float_like_type(desc.input_b_type) ||
+        !gfx_matmul_float_like_type(desc.output_type)) {
+        return 1;
+    }
+    return desc.K >= 1024 ? 256u : 128u;
+}
+
+inline uint64_t gfx_matmul_dispatch_items(const MatMulCodegenDesc& desc) {
+    const uint64_t outputs = static_cast<uint64_t>(desc.batch) *
+                             static_cast<uint64_t>(desc.M) *
+                             static_cast<uint64_t>(desc.N);
+    return outputs * gfx_matmul_parallel_reduction_threads(desc);
+}
+
 struct Conv2DCodegenDesc : BaseCodegenDesc {
     ov::element::Type input_type = ov::element::dynamic;
     ov::element::Type weight_type = ov::element::dynamic;
@@ -142,6 +165,9 @@ enum class TopKSortType {
 };
 
 struct EltwiseCodegenDesc : BaseCodegenDesc {
+    ov::element::Type input0_type{ov::element::dynamic};
+    ov::element::Type input1_type{ov::element::dynamic};
+    ov::element::Type output_type{ov::element::dynamic};
     EltwiseKind eltwise_kind{EltwiseKind::Add};
     uint32_t num_elements = 0;
     bool is_broadcast = false;
@@ -340,13 +366,41 @@ struct ReduceCodegenDesc : BaseCodegenDesc {
     ReduceKind kind{ReduceKind::Sum};
 };
 
+struct RmsCodegenDesc : BaseCodegenDesc {
+    ov::element::Type input_type{ov::element::dynamic};
+    ov::element::Type gamma_type{ov::element::dynamic};
+    ov::element::Type output_type{ov::element::dynamic};
+    uint32_t hidden = 0;
+    uint32_t gamma_size = 0;
+    uint32_t reduction_threads = 1;
+    float epsilon = 0.0f;
+};
+
+inline uint32_t gfx_rms_parallel_reduction_threads(uint32_t hidden) {
+    if (hidden >= 1024) {
+        return 256u;
+    }
+    if (hidden >= 256) {
+        return 128u;
+    }
+    if (hidden >= 64) {
+        return 64u;
+    }
+    return 1u;
+}
+
 struct PadCodegenDesc : BaseCodegenDesc {
     double pad_value = 0.0;
 };
 
 struct TileCodegenDesc : BaseCodegenDesc {};
 struct BroadcastCodegenDesc : BaseCodegenDesc {};
-struct RangeCodegenDesc : BaseCodegenDesc {};
+struct RangeCodegenDesc : BaseCodegenDesc {
+    ov::element::Type start_type{ov::element::dynamic};
+    ov::element::Type stop_type{ov::element::dynamic};
+    ov::element::Type step_type{ov::element::dynamic};
+    ov::element::Type output_type{ov::element::dynamic};
+};
 struct ReverseCodegenDesc : BaseCodegenDesc {
     static constexpr size_t kMaxDims = 8;
     uint32_t rank = 0;

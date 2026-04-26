@@ -4,11 +4,33 @@
 
 #include "kernel_ir/gfx_kernel_inputs.hpp"
 
+#include <algorithm>
+
 #include "openvino/core/except.hpp"
+#include "openvino/core/validation_util.hpp"
 #include "openvino/op/constant.hpp"
+#include "openvino/op/broadcast.hpp"
+#include "openvino/op/slice.hpp"
+#include "openvino/op/strided_slice.hpp"
 
 namespace ov {
 namespace gfx_plugin {
+
+namespace {
+
+bool is_constant_like_input(const ov::Output<ov::Node>& source) {
+    return ov::util::get_constant_from_source(source) != nullptr;
+}
+
+bool is_shape_control_input(const std::shared_ptr<const ov::Node>& node, size_t input_idx) {
+    if (input_idx == 0 || !node) {
+        return false;
+    }
+    return ov::is_type<const ov::op::v8::Slice>(node) || ov::is_type<const ov::op::v1::StridedSlice>(node) ||
+           ov::is_type<const ov::op::v1::Broadcast>(node) || ov::is_type<const ov::op::v3::Broadcast>(node);
+}
+
+}  // namespace
 
 KernelInputMapping build_kernel_inputs(const std::shared_ptr<const ov::Node>& node,
                                        size_t func_inputs,
@@ -32,10 +54,16 @@ KernelInputMapping build_kernel_inputs(const std::shared_ptr<const ov::Node>& no
     if (mapped_inputs == 0) {
         mapped_inputs = node_inputs;
     }
+    size_t mappable_inputs = 0;
+    for (size_t i = 0; i < node_inputs; ++i) {
+        if (!is_shape_control_input(node, i)) {
+            ++mappable_inputs;
+        }
+    }
+    mapped_inputs = std::min(mapped_inputs, mappable_inputs);
     size_t nonconst_count = 0;
     for (size_t i = 0; i < node_inputs; ++i) {
-        auto src = node->get_input_node_shared_ptr(i);
-        if (!ov::as_type_ptr<const ov::op::v0::Constant>(src)) {
+        if (!is_shape_control_input(node, i) && !is_constant_like_input(node->input_value(i))) {
             ++nonconst_count;
         }
     }
@@ -46,8 +74,10 @@ KernelInputMapping build_kernel_inputs(const std::shared_ptr<const ov::Node>& no
     size_t const_added = 0;
     mapping.kernel_inputs.reserve(mapped_inputs);
     for (size_t i = 0; i < node_inputs; ++i) {
-        auto src = node->get_input_node_shared_ptr(i);
-        const bool is_const = ov::as_type_ptr<const ov::op::v0::Constant>(src) != nullptr;
+        if (is_shape_control_input(node, i)) {
+            continue;
+        }
+        const bool is_const = is_constant_like_input(node->input_value(i));
         if (is_const) {
             if (const_added < need_consts) {
                 mapping.kernel_inputs.push_back(i);

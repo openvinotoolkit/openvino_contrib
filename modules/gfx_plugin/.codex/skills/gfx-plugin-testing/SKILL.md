@@ -50,6 +50,7 @@ Prefer:
 - `tests/unit/plugin_tests.cpp`
 - property-list and device-selection checks
 - compiled-model property checks when relevant
+- dynamic-shape query/compile checks when support boundaries moved for `ShapeOf`, `Concat`, `Broadcast`, `Select`, `StridedSlice`, or `Range`
 
 ### Backend runtime changes
 
@@ -86,6 +87,8 @@ ctest --test-dir build-gfx-plugin --output-on-failure -L GFX
 ## Compare And Profiling Tools
 
 - Use `ov_gfx_compare_runner` for numeric diffs, per-op narrowing, and `GFX`-only summaries.
+- Reach for `--single-op-output` when one node output needs isolated compare coverage, and `--tinyllama-prompt-inputs` when the graph expects LLM prompt-shaped integer inputs.
+- Remember that the current compare runner also handles boolean outputs and prints a targeted `Select` mismatch probe.
 - Do not use `ov_gfx_compare_runner` for performance numbers.
 - Use `ov_gfx_microbench` plus `docs/MICROBENCH_SCHEMA.md` and `docs/PROFILING_RUNBOOK.md` for profiling triage.
 - Use `tools/gfx_profile_runbook.py`, `tools/gfx_microbench_smoke.py`, `tools/gfx_calibration_diff.py`, and `tools/gfx_external_trace_summary.py` when the task is operational rather than purely code-level.

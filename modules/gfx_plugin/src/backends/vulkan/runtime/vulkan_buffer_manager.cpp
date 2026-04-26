@@ -109,6 +109,15 @@ public:
         });
     }
 
+    GpuBuffer allocate_temp(const GpuBufferDesc& desc) {
+        validate_gpu_buffer_desc(desc, "GFX Vulkan");
+        return m_device_alloc.allocate(desc);
+    }
+
+    void release_temp(GpuBuffer&& buf) {
+        m_device_alloc.release(std::move(buf));
+    }
+
 private:
     struct PendingUpload {
         GpuBuffer staging;
@@ -360,6 +369,18 @@ GpuBuffer VulkanBufferManager::wrap_const(const std::string& key,
     auto context = std::static_pointer_cast<VulkanConstBufferReuseContext>(m_reuse_context);
     OPENVINO_ASSERT(context, "GFX Vulkan: missing const buffer reuse context");
     return context->wrap_const(key, data, bytes, type);
+}
+
+GpuBuffer VulkanBufferManager::allocate_temp(const GpuBufferDesc& desc) {
+    auto context = std::static_pointer_cast<VulkanConstBufferReuseContext>(m_reuse_context);
+    OPENVINO_ASSERT(context, "GFX Vulkan: missing const buffer reuse context");
+    return context->allocate_temp(desc);
+}
+
+void VulkanBufferManager::release_temp(GpuBuffer&& buf) {
+    auto context = std::static_pointer_cast<VulkanConstBufferReuseContext>(m_reuse_context);
+    OPENVINO_ASSERT(context, "GFX Vulkan: missing const buffer reuse context");
+    context->release_temp(std::move(buf));
 }
 
 void VulkanBufferManager::begin_const_upload_batch() {

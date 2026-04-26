@@ -21,6 +21,7 @@
 #include "openvino/op/strided_slice.hpp"
 
 #include <numeric>
+#include <optional>
 
 namespace ov {
 namespace gfx_plugin {
@@ -29,6 +30,14 @@ namespace {
 std::vector<int64_t> get_const_i64(const ov::Output<ov::Node>& source, const char* what) {
     auto c = ov::util::get_constant_from_source(source);
     OPENVINO_ASSERT(c, "Slice MLIR: ", what, " must be Constant");
+    return c->cast_vector<int64_t>();
+}
+
+std::optional<std::vector<int64_t>> get_optional_const_i64(const ov::Output<ov::Node>& source) {
+    auto c = ov::util::get_constant_from_source(source);
+    if (!c) {
+        return std::nullopt;
+    }
     return c->cast_vector<int64_t>();
 }
 
@@ -47,11 +56,23 @@ int64_t normalize_index(int64_t index, int64_t dim, bool is_begin) {
     return std::clamp<int64_t>(index, -1, dim);
 }
 
+int64_t normalize_strided_slice_start(int64_t index, int64_t dim, int64_t step) {
+    if (index < 0) {
+        index += dim;
+    }
+    if (step < 0) {
+        return std::clamp<int64_t>(index, -1, dim - 1);
+    }
+    return std::clamp<int64_t>(index, 0, dim);
+}
+
 SliceSpec build_slice_spec(const std::shared_ptr<const ov::Node>& node,
-                           const ov::Shape& in_shape,
-                           const ov::Shape& out_shape) {
-    const size_t rank = in_shape.size();
-    OPENVINO_ASSERT(rank == out_shape.size(),
+                           const ov::PartialShape& in_pshape,
+                           const ov::PartialShape& out_pshape) {
+    OPENVINO_ASSERT(in_pshape.rank().is_static() && out_pshape.rank().is_static(),
+                    "Slice MLIR: input/output ranks must be static");
+    const size_t rank = static_cast<size_t>(in_pshape.rank().get_length());
+    OPENVINO_ASSERT(rank == static_cast<size_t>(out_pshape.rank().get_length()),
                     "Slice MLIR: rank-changing slice is not supported");
 
     SliceSpec spec;
@@ -77,9 +98,19 @@ SliceSpec build_slice_spec(const std::shared_ptr<const ov::Node>& node,
                 axis += static_cast<int64_t>(rank);
             }
             OPENVINO_ASSERT(axis >= 0 && static_cast<size_t>(axis) < rank, "Slice MLIR: axis out of range");
-            OPENVINO_ASSERT(steps[i] > 0, "Slice MLIR: only positive steps supported");
-            const auto dim = static_cast<int64_t>(in_shape[static_cast<size_t>(axis)]);
-            spec.starts_full[static_cast<size_t>(axis)] = normalize_index(starts[i], dim, true);
+            OPENVINO_ASSERT(steps[i] != 0, "Slice MLIR: zero step is not supported");
+            if (in_pshape[static_cast<size_t>(axis)].is_dynamic()) {
+                if (starts[i] < 0 || steps[i] < 0) {
+                    spec.starts_full[static_cast<size_t>(axis)] = 0;
+                    spec.steps_full[static_cast<size_t>(axis)] = 1;
+                    continue;
+                }
+                spec.starts_full[static_cast<size_t>(axis)] = starts[i];
+            } else {
+                const auto dim = static_cast<int64_t>(in_pshape[static_cast<size_t>(axis)].get_length());
+                spec.starts_full[static_cast<size_t>(axis)] =
+                    normalize_strided_slice_start(starts[i], dim, steps[i]);
+            }
             spec.steps_full[static_cast<size_t>(axis)] = steps[i];
         }
         return spec;
@@ -100,27 +131,43 @@ SliceSpec build_slice_spec(const std::shared_ptr<const ov::Node>& node,
                     "Slice MLIR: StridedSlice ellipsis_mask is not supported");
 
     auto begin = get_const_i64(ss->input_value(1), "StridedSlice begin");
-    auto end = get_const_i64(ss->input_value(2), "StridedSlice end");
+    auto end_const = get_optional_const_i64(ss->input_value(2));
+    std::vector<int64_t> end = end_const.value_or(std::vector<int64_t>{});
     std::vector<int64_t> strides(rank, 1);
     if (ss->get_input_size() > 3) {
         auto values = get_const_i64(ss->input_value(3), "StridedSlice strides");
         OPENVINO_ASSERT(values.size() <= rank, "Slice MLIR: StridedSlice strides rank mismatch");
         std::copy(values.begin(), values.end(), strides.begin());
     }
-    OPENVINO_ASSERT(begin.size() <= rank && end.size() <= rank, "Slice MLIR: StridedSlice begin/end rank mismatch");
+    OPENVINO_ASSERT(begin.size() <= rank && (!end_const || end.size() <= rank),
+                    "Slice MLIR: StridedSlice begin/end rank mismatch");
     for (size_t axis = 0; axis < rank; ++axis) {
-        const auto dim = static_cast<int64_t>(in_shape[axis]);
         const bool masked_begin = axis < begin_mask.size() && begin_mask[axis] != 0;
         const bool masked_end = axis < end_mask.size() && end_mask[axis] != 0;
         const int64_t step = strides[axis];
-        OPENVINO_ASSERT(step > 0, "Slice MLIR: StridedSlice only positive steps supported");
+        OPENVINO_ASSERT(step != 0, "Slice MLIR: StridedSlice zero step is not supported");
         int64_t start = axis < begin.size() ? begin[axis] : 0;
-        int64_t finish = axis < end.size() ? end[axis] : dim;
-        start = masked_begin ? 0 : normalize_index(start, dim, true);
-        finish = masked_end ? dim : normalize_index(finish, dim, false);
-        (void)finish;
+        if (in_pshape[axis].is_dynamic()) {
+            if (step < 0 || (!masked_begin && start < 0) ||
+                (end_const && !masked_end && axis < end.size() && end[axis] < 0)) {
+                // Dynamic backward slices are resolved by runtime metadata in MlirStage.
+                // Keep the carrier MLIR op structurally valid; codegen ignores these
+                // placeholder offsets/strides when runtime slice arguments are enabled.
+                start = 0;
+                spec.steps_full[axis] = 1;
+                continue;
+            }
+            start = masked_begin ? 0 : start;
+        } else {
+            const auto dim = static_cast<int64_t>(in_pshape[axis].get_length());
+            int64_t finish = end_const && axis < end.size() ? end[axis] : dim;
+            start = masked_begin ? (step < 0 ? dim - 1 : 0)
+                                 : normalize_strided_slice_start(start, dim, step);
+            finish = masked_end ? (step < 0 ? -1 : dim) : normalize_index(finish, dim, false);
+            (void)finish;
+        }
         spec.starts_full[axis] = start;
-        spec.steps_full[axis] = step;
+        spec.steps_full[axis] = step < 0 ? 1 : step;
     }
     return spec;
 }
@@ -139,11 +186,13 @@ mlir::ModuleOp build_mlir_slice_from_model(const std::shared_ptr<const ov::Model
     }
     OPENVINO_ASSERT(slice_node, "Slice MLIR builder: Slice/StridedSlice op not found");
 
-    const auto in_shape_ov = slice_node->get_input_shape(0);
-    const auto out_shape_ov = slice_node->get_output_shape(0);
-    const auto rank = in_shape_ov.size();
-    auto in_shape = to_shape(slice_node->get_input_partial_shape(0));
-    auto out_shape = to_shape(slice_node->get_output_partial_shape(0));
+    const auto in_pshape = slice_node->get_input_partial_shape(0);
+    const auto out_pshape = slice_node->get_output_partial_shape(0);
+    OPENVINO_ASSERT(in_pshape.rank().is_static() && out_pshape.rank().is_static(),
+                    "Slice MLIR: input/output ranks must be static");
+    const auto rank = static_cast<size_t>(in_pshape.rank().get_length());
+    auto in_shape = to_shape(in_pshape);
+    auto out_shape = to_shape(out_pshape);
 
     auto elem_ty = to_mlir_type(slice_node->get_output_element_type(0),
                                 ctx,
@@ -152,7 +201,7 @@ mlir::ModuleOp build_mlir_slice_from_model(const std::shared_ptr<const ov::Model
                                 /*allow_small_ints=*/true);
     auto in_tensor_ty = mlir::RankedTensorType::get(in_shape, elem_ty);
     auto out_tensor_ty = mlir::RankedTensorType::get(out_shape, elem_ty);
-    auto spec = build_slice_spec(slice_node, in_shape_ov, out_shape_ov);
+    auto spec = build_slice_spec(slice_node, in_pshape, out_pshape);
 
     mlir::OpBuilder mb(&ctx);
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
@@ -173,7 +222,11 @@ mlir::ModuleOp build_mlir_slice_from_model(const std::shared_ptr<const ov::Model
     strides.reserve(rank);
     for (size_t i = 0; i < rank; ++i) {
         offsets.push_back(b.getIndexAttr(spec.starts_full[i]));
-        sizes.push_back(b.getIndexAttr(static_cast<int64_t>(out_shape_ov[i])));
+        if (out_shape[i] == mlir::ShapedType::kDynamic) {
+            sizes.push_back(b.create<mlir::tensor::DimOp>(loc, func.getArgument(0), static_cast<int64_t>(i)).getResult());
+        } else {
+            sizes.push_back(b.getIndexAttr(out_shape[i]));
+        }
         strides.push_back(b.getIndexAttr(spec.steps_full[i]));
     }
     auto slice = b.create<mlir::tensor::ExtractSliceOp>(loc,

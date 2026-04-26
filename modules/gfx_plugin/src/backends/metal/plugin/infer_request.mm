@@ -38,6 +38,7 @@
 #include "plugin/infer_pipeline.hpp"
 #include "plugin/infer_io_utils.hpp"
 #include "plugin/infer_submission.hpp"
+#include "plugin/stateful_execution.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -415,6 +416,9 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
             profiler,
             &metal_state->reusable_execution_plan,
             [&](InferStage& stage, const std::vector<GpuTensor*>& resolved, GpuCommandBufferHandle command_buffer) {
+                if (execute_stateful_stage(state, stage, resolved, pool, command_buffer)) {
+                    return;
+                }
                 if (gfx_log_debug_enabled() || metal_safe_debug_enabled()) {
                     const std::string node_name =
                         stage.node ? stage.node->get_friendly_name() : stage.stage->name();
@@ -429,6 +433,12 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                             const auto& t = *resolved[i];
                             oss << " in" << i << "_shape=" << shape_to_string(t.shape)
                                 << " in" << i << "_bytes=" << t.buf.size;
+                            if (stage.stage && stage.stage->has_internal_input_bindings() &&
+                                i < stage.inputs.size() && stage.inputs[i].node) {
+                                oss << " in" << i << "_src="
+                                    << stage.inputs[i].node->get_friendly_name()
+                                    << ":" << stage.inputs[i].port;
+                            }
                         }
                         for (size_t i = 0; i < stage.outputs.size(); ++i) {
                             const auto& t = stage.outputs[i];
@@ -439,21 +449,29 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                         }
                         gfx_log_debug("PIPELINE") << oss.str();
                     }
+                    const bool internal_input_bindings =
+                        stage.stage && stage.stage->has_internal_input_bindings();
                     for (size_t i = 0; i < resolved.size(); ++i) {
                         if (!resolved[i])
                             continue;
                         ov::Shape in_shape = resolved[i]->shape;
-                        if (in_shape.empty() && stage.node &&
+                        if (!internal_input_bindings &&
+                            in_shape.empty() && stage.node &&
+                            i < stage.node->get_input_size() &&
                             stage.node->get_input_partial_shape(i).is_static()) {
                             in_shape = stage.node->get_input_shape(i);
                         }
-                        safe_check(("input" + std::to_string(i)).c_str(), resolved[i], in_shape, true);
+                        safe_check(("input" + std::to_string(i)).c_str(),
+                                   resolved[i],
+                                   in_shape,
+                                   !internal_input_bindings);
                     }
                     for (size_t i = 0; i < stage.outputs.size(); ++i) {
                         if (!stage.outputs[i])
                             continue;
                         ov::Shape out_shape = stage.outputs[i]->shape;
                         if (out_shape.empty() && stage.node &&
+                            i < stage.node->get_output_size() &&
                             stage.node->get_output_partial_shape(i).is_static()) {
                             out_shape = stage.node->get_output_shape(i);
                         }
@@ -508,7 +526,7 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                                                           ? dev.buf.type.get_type_name()
                                                           : dev.expected_type.get_type_name());
             }
-            const ov::Tensor* reusable_host = nullptr;
+            ov::Tensor* reusable_host = nullptr;
             if (idx < metal_state->reusable_host_output_plan.outputs.size()) {
                 auto& prepared = metal_state->reusable_host_output_plan.outputs[idx];
                 if (prepared.host) {

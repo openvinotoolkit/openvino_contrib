@@ -40,7 +40,10 @@ Additional operational docs:
    - property semantics
    - backend-specific route selection
    - supported-shape or dispatch constraints
+   - stateful execution semantics for `ReadValue` / `Assign`
+   - dedicated lowering families such as `RMS` or `ScatterUpdate`
    - test layout or regression coverage
+   - compare-runner CLI or debug workflow
    - profiling or microbench workflows
 3. Patch only the files whose contract changed.
 4. Keep wording concrete and tied to actual code behavior.

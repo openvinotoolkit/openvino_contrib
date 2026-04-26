@@ -6,6 +6,7 @@
 
 #include "backends/metal/runtime/metal_executor.hpp"
 #include "backends/metal/runtime/op_factory.hpp"
+#include "plugin/stateful_stage.hpp"
 #include "runtime/execution_dispatcher.hpp"
 
 namespace ov {
@@ -28,6 +29,9 @@ std::unique_ptr<GpuStage> create_metal_stage(const std::shared_ptr<const ov::Nod
                                              void* device,
                                              void* queue) {
     keep_metal_op_factory_symbols();
+    if (auto stateful = create_stateful_stage(node)) {
+        return stateful;
+    }
     return std::make_unique<MetalStage>(node, device, queue);
 }
 

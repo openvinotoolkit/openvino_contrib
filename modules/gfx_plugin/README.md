@@ -25,6 +25,7 @@ Recent runtime work extends this model in two directions:
 - backend runtimes, especially Vulkan, can choose specialized direct or chunked execution routes for selected ops
 - infer execution can batch stage recording into submission windows and reuse prepared bindings or immutable device buffers across requests
 - device-aware scheduling now uses backend-reported execution limits and device-family classification through shared `gfx_parallelism.*` and `gfx_partitioning.*` helpers
+- infer requests can also keep per-request stateful variable buffers for `ReadValue` / `Assign` style subgraphs instead of treating them as ordinary stateless stage edges
 
 This is not the old monolithic `MlirBackend` architecture that earlier design notes experimented with.
 
@@ -81,6 +82,7 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 - per-request backend state
 - command submission
 - profiling collection
+- per-request stateful variable storage for `ReadValue` / `Assign`
 
 The current infer path is not a naive "execute one stage, submit immediately" loop. `src/plugin/infer_submission.*` and `src/plugin/infer_pipeline.*` now provide:
 - reusable bound pipelines and prepared input-resolution plans
@@ -88,6 +90,7 @@ The current infer path is not a naive "execute one stage, submit immediately" lo
 - reusable host output tensors for static output signatures when the user does not bind explicit output storage
 - submission windows driven by stage submit policy, stage count, and output-byte thresholds
 - backend-specific submission sessions for Metal and Vulkan
+- self-healing reusable host outputs that are recreated if a cached host tensor no longer matches the required type or shape
 
 ### Backend-neutral runtime
 `src/runtime/` contains:
@@ -148,10 +151,12 @@ Support is driven by MLIR builders in `src/mlir/` and backend runtime implementa
 - Add, Sub, Mul, Div, Pow, Mod, FloorMod
 - compare, logical, and select operations
 - unary activations and elementwise transforms
+- RMSNorm-style lowered `RMS`
 - reduction ops such as ReduceSum, ReduceMean, ReduceMax, ReduceMin, ReduceProd, ReduceL1, and ReduceL2
 - MaxPool, AvgPool, Softmax, BatchNormInference
 - Concat, Split, Slice, Transpose, Reshape, Convert, Interpolate
-- Gather, GatherND, GatherElements, Scatter updates, ShapeOf, Range, Tile, TopK, SpaceToDepth, DepthToSpace
+- Gather, GatherND, GatherElements, ScatterUpdate, ScatterElementsUpdate, ScatterNDUpdate, ShapeOf, Range, Tile, TopK, SpaceToDepth, DepthToSpace
+- stateful graph ops through `ReadValue` / `Assign`
 
 Important constraints:
 - many paths require static rank or static shape
@@ -164,7 +169,11 @@ Current lowering/runtime special cases:
 - some Conv2D shapes may be lowered through an explicit MLIR `im2col + matmul` route when the selected execution policy prefers it
 - Softmax lowering now supports arbitrary normalized axes instead of only the last axis
 - Reduce lowering now extracts axes and `keep_dims` through concrete Reduce op types instead of relying on a generic reduction base path
+- transform cleanup now runs OpenVINO `RMSFusion` before plugin-local cleanup, so common RMSNorm tails can reach dedicated `RMS` lowering and backend codegen
+- `ScatterUpdate` now has a dedicated MLIR lowering path instead of falling back to the older scatter-family builders
 - Slice lowering now prefers `tensor.extract_slice`; generic slice metadata extraction still accepts the older generic form when needed
+- dynamic-shape support now covers `ShapeOf` compile/query flow and query-time acceptance for selected data-movement ops such as `Concat`, `Broadcast`, `Select`, `StridedSlice`, and `Range`
+- `ReadValue` is treated as a view-style stage, while `Assign` is intercepted by a stateful execution layer that persists the variable buffer inside infer-request state
 - layout cleanup can fold the DFL softmax expectation tail into a value-preserving `Softmax -> MatMul -> Reshape/Transpose` path instead of the older synthetic convolution rewrite
 
 ## Public And Internal Properties

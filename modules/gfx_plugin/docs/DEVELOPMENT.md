@@ -145,11 +145,15 @@ For current convolution work, there are now two important lowering details to ke
 If the change touches infer-request throughput or resource reuse, also read:
 - `src/plugin/infer_submission.*`
 - `src/plugin/infer_pipeline.*`
+- `src/plugin/stateful_execution.*`
+- `src/plugin/stateful_stage.*`
 - `src/runtime/immutable_gpu_buffer_cache.*`
 - `src/runtime/gpu_backend_base.hpp`
 - `src/runtime/gpu_buffer_manager.hpp`
 - `src/plugin/infer_io_utils.*`
 - `src/backends/vulkan/runtime/vulkan_buffer_manager.*` when Vulkan const-upload batching or shared upload-recording behavior changes
+
+If the change touches stateful graphs, read `src/plugin/infer_request_state.hpp` as well. `ReadValue` and `Assign` are no longer just generic ops flowing through the normal stateless path: infer-request state now owns persistent variable buffers keyed by OpenVINO variable id.
 
 ## Adding Or Extending An Op
 Typical path:
@@ -165,8 +169,13 @@ For the current codebase, also check whether the op should participate in:
 - MLIR parallel lowering, cleanup passes, or public-signature rewrites in the pass pipeline
 - backend-specialized fast paths such as Vulkan direct or chunked routes
 - reusable bytes-arg materialization or immutable const-buffer caching
+- stateful execution interception through `src/plugin/stateful_execution.*` when the graph uses `ReadValue` / `Assign`
 
 For Reduce-like work, prefer the existing typed reduction extraction in `src/mlir/mlir_builder_reduce.cpp`. The current builder reads axes and `keep_dims` from concrete Reduce op classes such as `ReduceSum`, `ReduceMean`, `ReduceMax`, `ReduceMin`, `ReduceProd`, `ReduceL1`, and `ReduceL2` instead of relying on a looser generic reduction-base path.
+
+For RMSNorm-style work, remember that `src/transforms/pipeline.cpp` now runs OpenVINO `RMSFusion` before plugin-local cleanup. The current intended path is fused RMSNorm graph patterns lowering into the dedicated `RMS` builder and backend codegen, not preserving only the unfused arithmetic tail.
+
+For `ScatterUpdate`, use the dedicated builder in `src/mlir/mlir_builder_scatter_update.cpp`. The current path expects a constant scalar `axis`, static ranks, and normalized negative indices in the generated kernel path.
 
 For Slice-like work, note that the current lowering prefers `tensor.extract_slice` instead of synthesizing a `linalg.generic` copy. Shared metadata extraction in `src/mlir/slice_generic_codegen.cpp` still accepts both forms so older paths and debug flows remain readable.
 
@@ -207,7 +216,7 @@ Useful environment variables:
 
 These are implemented directly in the runtime and codegen sources; grep for `OV_GFX_` when adding new diagnostics.
 
-For functional comparison against a reference backend, build and run `tests/tools/ov_gfx_compare_runner.cpp`. It is an accuracy-only tool for numeric diffs, per-op narrowing, full-graph per-op output scans, and `GFX`-only output summaries. Useful switches now include `--reference-device`, `--reference-plugin`, `--per-op`, `--per-op-all`, and `--gfx-only`. Do not use it for performance numbers; use `benchmark_app` for that.
+For functional comparison against a reference backend, build and run `tests/tools/ov_gfx_compare_runner.cpp`. It is an accuracy-only tool for numeric diffs, per-op narrowing, full-graph per-op output scans, and `GFX`-only output summaries. Useful switches now include `--reference-device`, `--reference-plugin`, `--per-op`, `--per-op-all`, `--single-op-output`, `--tinyllama-prompt-inputs`, and `--gfx-only`. The current tool also understands boolean tensors and prints an extra mismatch probe for `Select` failures. Do not use it for performance numbers; use `benchmark_app` for that.
 
 For profiling workflows, calibration artifacts, and cross-device trace correlation, use:
 - `tests/tools/ov_gfx_microbench.cpp`

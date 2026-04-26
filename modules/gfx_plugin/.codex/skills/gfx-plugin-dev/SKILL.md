@@ -40,6 +40,7 @@ Then read the relevant code path:
 - Prefer extending `gfx_parallelism.*`, `gfx_partitioning.*`, `gfx_stage_policy.*`, or shared caches before adding new special-purpose plumbing.
 - For MLIR changes, keep compile-time support probing, lowering, and runtime behavior aligned.
 - When changing plugin-visible behavior, also check properties, `query_model()`, and compiled-model/runtime property exposure.
+- When changing stateful graph behavior, treat `ReadValue` / `Assign` as a dedicated infer-request-state path, not just generic stateless runtime stages.
 
 ## Common Workflows
 
@@ -51,12 +52,25 @@ Then read the relevant code path:
 4. Add or update focused unit tests.
 5. Update docs if supported shapes, route selection, or backend behavior changed.
 
+Check whether the change belongs to one of the current special families:
+
+- dynamic-shape data movement and shape ops such as `ShapeOf`, `Concat`, `Broadcast`, `Select`, `StridedSlice`, and `Range`
+- dedicated lowered ops such as `RMS` and `ScatterUpdate`
+- stateful `ReadValue` / `Assign` handling through infer-request variable storage
+- backend-specialized launch paths that now depend on final runtime shape or final shader binding counts
+
 ### Runtime or backend scheduling change
 
 1. Inspect `src/runtime/gfx_stage_policy.*`, `gfx_parallelism.*`, and `gfx_partitioning.*`.
 2. Check whether the change is backend-neutral or family-specific.
 3. Verify interaction with infer submission, immutable const caches, and prepared binding reuse when applicable.
 4. Add tests in `tests/unit/` and backend tests when behavior is externally visible.
+
+### Stateful or reusable infer-path change
+
+1. Inspect `src/plugin/infer_request_state.hpp`, `src/plugin/infer_pipeline.*`, `src/plugin/infer_io_utils.*`, and `src/plugin/stateful_execution.*`.
+2. Keep variable-buffer lifetime, reusable host-output lifetime, and stage-output shape/type recovery aligned.
+3. Treat `ReadValue` as a view-style stage and `Assign` as a persisted copy/update path unless the code explicitly changes that contract.
 
 ### Property or device-selection change
 

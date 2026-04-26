@@ -30,6 +30,7 @@
 #include "plugin/infer_request_state.hpp"
 #include "plugin/compiled_model_backend_resources.hpp"
 #include "plugin/infer_submission.hpp"
+#include "plugin/stateful_execution.hpp"
 #include "runtime/gfx_remote_context.hpp"
 #include "plugin/infer_pipeline.hpp"
 #include "plugin/infer_io_utils.hpp"
@@ -827,7 +828,7 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
                 prepared_output_readbacks[idx].remote_tensor = remote;
             },
             [&](size_t idx, GpuTensor& dev, const OutputViewInfo& info, const ov::Tensor* host_override) {
-                const ov::Tensor* reusable_host = nullptr;
+                ov::Tensor* reusable_host = nullptr;
                 if (idx < vk_state->reusable_host_output_plan.outputs.size()) {
                     auto& prepared = vk_state->reusable_host_output_plan.outputs[idx];
                     if (prepared.host) {
@@ -875,6 +876,9 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
         profiler,
         &vk_state->reusable_execution_plan,
         [&](InferStage& stage, const std::vector<GpuTensor*>& resolved_inputs, GpuCommandBufferHandle command_buffer) {
+            if (execute_stateful_stage(state, stage, resolved_inputs, pool, command_buffer)) {
+                return;
+            }
             submission.prepare_stage_submission(stage, resolved_inputs, command_buffer);
             stage.stage->execute(command_buffer);
             submission.finish_stage_submission(stage);

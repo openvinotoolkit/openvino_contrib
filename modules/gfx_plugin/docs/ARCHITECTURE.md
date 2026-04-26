@@ -51,6 +51,7 @@ Responsibilities:
 - execute the pipeline and collect profiling data
 
 The infer path now has an explicit submission layer. `src/plugin/infer_submission.*` abstracts command-buffer recording and submission windows, while `src/plugin/infer_pipeline.*` can pre-resolve reusable stage-input bindings, reusable output bindings, and reusable output handles for repeated requests.
+`src/plugin/stateful_execution.*` adds a second interception layer for stateful graphs: `ReadValue` can source a persisted variable tensor from infer-request state, while `Assign` copies the latest value into a persistent backend buffer owned by that request.
 
 ## Pipeline Model
 The runtime is stage-based.
@@ -97,6 +98,7 @@ The reusable infer pipeline layer now has two precomputed plans:
 - `PreparedInferOutputPlan` for public outputs that resolve to stage outputs, passthrough parameters, or synthetic pipeline entries created for constant outputs
 
 When output shape and element type are statically known, infer requests may also keep reusable host output tensors in backend infer state to avoid recreating host tensors on each execution.
+If a reusable host output no longer matches the expected static type or shape, the infer path now recreates it instead of treating that mismatch as a hard internal error.
 
 ## MLIR Role
 MLIR lives in `src/mlir/` and is shared infrastructure, not a separate monolithic backend object.
@@ -111,9 +113,12 @@ Current lowering also supports absorbed input transforms. `CompiledModel` detect
 The MLIR pass pipeline also contains parallel-lowering and cleanup steps used by current Vulkan codegen, including Conv2D parallel lowering, Conv2D im2col rewrite/lowering, matmul parallel lowering, and post-fusion cleanup passes.
 
 Recent MLIR-specific changes reflected in the current code:
+- OpenVINO `RMSFusion` now runs before plugin-local cleanup so common RMSNorm tails reach a dedicated `RMS` lowering path
 - Softmax lowering handles arbitrary normalized axes
 - Reduce lowering now resolves axes and `keep_dims` through concrete Reduce op types instead of a generic reduction-base lookup
+- dedicated builders now exist for `RMS` and `ScatterUpdate` instead of relying only on more generic lowering families
 - Slice lowering now prefers `tensor.extract_slice`, while slice metadata extraction still accepts both `tensor.extract_slice` and the older `linalg.generic` form
+- shape and data-movement lowering is now more permissive for dynamic shapes in paths such as `ShapeOf`, `Concat`, `Broadcast`, `Select`, `StridedSlice`, and `Range`
 - buffer-results-to-out-params promotion now allows public function signatures to be rewritten when required by the lowering pipeline
 - shared helpers now prefer the common `gfx_mlir_context()` path instead of ad-hoc local MLIR contexts in selected code paths
 - convolution parallel lowering can now consume explicit module-level dispatch attrs such as `gfx.dispatch_threads_*` and `gfx.dispatch_tile_*` instead of relying only on coarse algorithm variants
@@ -149,6 +154,7 @@ Direct Metal API usage lives in Objective-C++ files (`.mm`).
 
 The current Metal backend also shares immutable constant-buffer state across compatible requests through `MetalConstCache` and the backend-neutral immutable buffer cache helper.
 It now also reports execution-device limits through `GpuExecutionDeviceInfo`, so backend-neutral planning code can use real Metal subgroup and threadgroup limits.
+The current Metal executor also contains runtime-specialized codegen paths for dynamically shaped `Softmax`, `Select`, `ScatterUpdate`, `RMS`, and more permissive slice handling, including negative-step `StridedSlice`.
 
 ## Vulkan Backend
 `src/backends/vulkan/` mirrors the same broad split:
@@ -171,6 +177,7 @@ The current Vulkan runtime also:
 - reports execution-device limits through `GpuExecutionDeviceInfo`, matching the Metal path and removing backend-specific probing from shared planning code
 - recompiles selected specialized Conv2D and GroupConv2D kernels when the chosen dispatch workgroup shape changes, so launch shape and kernel metadata stay aligned
 - prefers SPIR-V-observed binding counts when reconciling compiled-kernel argument metadata, reducing drift between MLIR-side arg inference and final Vulkan shader bindings
+- broadens specialized handling for boolean, compare, select, range, broadcast, gather, slice, and reduction-style kernels used in dynamic-shape-heavy graphs
 
 The current policy layer also deliberately prefers the shared MLIR/SPIR-V convolution path over older dedicated Vulkan 1x1 and 3x3 direct routes on current mobile-class stacks, keeping the backend contract more stable for Android and Raspberry Pi flows.
 

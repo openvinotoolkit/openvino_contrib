@@ -141,6 +141,8 @@ mlir::ModuleOp build_mlir_space_to_depth_from_model(const std::shared_ptr<const 
                                                     mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_scatter_elements_update_from_model(const std::shared_ptr<const ov::Model>& model,
                                                              mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_scatter_update_from_model(const std::shared_ptr<const ov::Model>& model,
+                                                    mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_scatter_nd_update_from_model(const std::shared_ptr<const ov::Model>& model,
                                                        mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_shapeof_from_model(const std::shared_ptr<const ov::Model>& model,
@@ -154,6 +156,7 @@ mlir::ModuleOp build_mlir_reducemin_from_model(const std::shared_ptr<const ov::M
 mlir::ModuleOp build_mlir_reduceprod_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_reducel1_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_reducel2_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_rms_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_pad_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_tile_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_broadcast_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);

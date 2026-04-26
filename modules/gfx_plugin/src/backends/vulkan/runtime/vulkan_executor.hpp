@@ -69,9 +69,16 @@ private:
     void prepare_softmax_kernel();
     void prepare_concat_kernel();
     void prepare_split_kernel();
+    void prepare_slice_kernel();
     void prepare_interpolate_kernel();
     void prepare_transpose_kernel();
     void prepare_convert_kernel();
+    void prepare_gather_linear_kernel();
+    void prepare_gather_embedding_kernel();
+    void prepare_reduce_last_axis_kernel();
+    void prepare_matmul_linear_kernel();
+    void prepare_broadcast_kernel();
+    void prepare_select_kernel();
     bool is_vulkan_backend() const override { return true; }
     bool prefer_specialized_concat_execution() const override { return true; }
     KernelExecutionHooks* prepare_profiling(ProfileState& state,
@@ -83,6 +90,8 @@ private:
     std::shared_ptr<ICompiledKernel> m_concat_single_kernel;
     ov::element::Type m_split_elem_type{};
     ov::element::Type m_concat_elem_type{};
+    std::shared_ptr<ICompiledKernel> m_slice_linear_kernel;
+    ov::element::Type m_slice_elem_type{};
     std::shared_ptr<ICompiledKernel> m_softmax_row_kernel;
     ov::element::Type m_softmax_elem_type{};
     bool m_softmax_log_kernel = false;
@@ -111,13 +120,39 @@ private:
     std::shared_ptr<ICompiledKernel> m_convert_linear_kernel;
     ov::element::Type m_convert_src_elem_type{};
     ov::element::Type m_convert_dst_elem_type{};
+    std::shared_ptr<ICompiledKernel> m_gather_linear_kernel;
+    ov::element::Type m_gather_linear_data_elem_type{};
+    ov::element::Type m_gather_linear_index_elem_type{};
+    std::shared_ptr<ICompiledKernel> m_gather_embedding_kernel;
+    ov::element::Type m_gather_data_elem_type{};
+    ov::element::Type m_gather_index_elem_type{};
+    size_t m_gather_hidden = 0;
+    size_t m_gather_vocab = 0;
+    std::shared_ptr<ICompiledKernel> m_reduce_last_axis_kernel;
+    ov::element::Type m_reduce_last_axis_elem_type{};
+    std::string m_reduce_last_axis_key;
+    std::shared_ptr<ICompiledKernel> m_matmul_linear_kernel;
+    ov::element::Type m_matmul_linear_elem_type{};
+    bool m_matmul_linear_transpose_a = false;
+    bool m_matmul_linear_transpose_b = false;
+    std::shared_ptr<ICompiledKernel> m_broadcast_kernel;
+    ov::element::Type m_broadcast_elem_type{};
+    size_t m_broadcast_rank = 0;
+    std::shared_ptr<ICompiledKernel> m_select_kernel;
+    ov::element::Type m_select_cond_elem_type{};
+    ov::element::Type m_select_data_elem_type{};
+    size_t m_select_rank = 0;
     std::shared_ptr<ICompiledKernel> m_linear_unary_kernel;
     std::shared_ptr<ICompiledKernel> m_linear_binary_kernel;
     std::shared_ptr<ICompiledKernel> m_linear_binary_same_shape_kernel;
     std::shared_ptr<ICompiledKernel> m_binary_bias_add_kernel;
     ov::element::Type m_linear_unary_elem_type{};
-    ov::element::Type m_linear_binary_elem_type{};
-    ov::element::Type m_linear_binary_same_shape_elem_type{};
+    ov::element::Type m_linear_binary_src0_elem_type{};
+    ov::element::Type m_linear_binary_src1_elem_type{};
+    ov::element::Type m_linear_binary_dst_elem_type{};
+    ov::element::Type m_linear_binary_same_shape_src0_elem_type{};
+    ov::element::Type m_linear_binary_same_shape_src1_elem_type{};
+    ov::element::Type m_linear_binary_same_shape_dst_elem_type{};
     ov::element::Type m_binary_bias_add_elem_type{};
     size_t m_linear_binary_rank = 0;
     LaunchOperandABI m_linear_unary_launch_abi;
@@ -129,6 +164,7 @@ private:
 
     void execute_split_chunked(GpuCommandBufferHandle command_buffer);
     void execute_concat_chunked(GpuCommandBufferHandle command_buffer);
+    void execute_slice_chunked(GpuCommandBufferHandle command_buffer);
     void execute_softmax_chunked(GpuCommandBufferHandle command_buffer);
     void execute_conv2d_1x1_chunked(GpuCommandBufferHandle command_buffer);
     void execute_conv2d_3x3_direct(GpuCommandBufferHandle command_buffer);
@@ -137,12 +173,19 @@ private:
     void execute_interpolate_chunked(GpuCommandBufferHandle command_buffer);
     void execute_transpose_chunked(GpuCommandBufferHandle command_buffer);
     void execute_convert_chunked(GpuCommandBufferHandle command_buffer);
+    void execute_gather_linear(GpuCommandBufferHandle command_buffer);
+    void execute_gather_embedding(GpuCommandBufferHandle command_buffer);
+    void execute_reduce_last_axis(GpuCommandBufferHandle command_buffer);
+    void execute_matmul_linear(GpuCommandBufferHandle command_buffer);
+    void execute_broadcast_chunked(GpuCommandBufferHandle command_buffer);
+    void execute_select_chunked(GpuCommandBufferHandle command_buffer);
     void execute_unary_chunked(GpuCommandBufferHandle command_buffer);
     void execute_binary_chunked(GpuCommandBufferHandle command_buffer);
     void execute_binary_same_shape(GpuCommandBufferHandle command_buffer);
     void execute_binary_bias_add(GpuCommandBufferHandle command_buffer);
     mlir::ModuleOp build_split_single_module(mlir::MLIRContext& ctx, const ov::element::Type& et);
     mlir::ModuleOp build_concat_single_module(mlir::MLIRContext& ctx, const ov::element::Type& et);
+    mlir::ModuleOp build_slice_linear_module(mlir::MLIRContext& ctx, const ov::element::Type& et);
     mlir::ModuleOp build_softmax_row_module(mlir::MLIRContext& ctx,
                                             const ov::element::Type& et,
                                             bool log_softmax);
@@ -161,6 +204,28 @@ private:
     mlir::ModuleOp build_convert_linear_module(mlir::MLIRContext& ctx,
                                                const ov::element::Type& src_et,
                                                const ov::element::Type& dst_et);
+    mlir::ModuleOp build_gather_linear_module(mlir::MLIRContext& ctx,
+                                              const ov::element::Type& data_et,
+                                              const ov::element::Type& idx_et);
+    mlir::ModuleOp build_gather_embedding_module(mlir::MLIRContext& ctx,
+                                                 const ov::element::Type& data_et,
+                                                 const ov::element::Type& idx_et,
+                                                 size_t vocab,
+                                                 size_t hidden);
+    mlir::ModuleOp build_reduce_last_axis_module(mlir::MLIRContext& ctx,
+                                                 const ov::element::Type& et,
+                                                 const std::string& op_key);
+    mlir::ModuleOp build_matmul_linear_module(mlir::MLIRContext& ctx,
+                                              const ov::element::Type& et,
+                                              bool transpose_a,
+                                              bool transpose_b);
+    mlir::ModuleOp build_broadcast_module(mlir::MLIRContext& ctx,
+                                          const ov::element::Type& et,
+                                          size_t rank);
+    mlir::ModuleOp build_select_module(mlir::MLIRContext& ctx,
+                                       const ov::element::Type& cond_et,
+                                       const ov::element::Type& data_et,
+                                       size_t rank);
     mlir::ModuleOp build_conv2d_chunk_module(mlir::MLIRContext& ctx,
                                              const ov::element::Type& et,
                                              uint32_t threads_h,
@@ -172,16 +237,21 @@ private:
                                              const ov::element::Type& et,
                                              const std::string& op_key);
     mlir::ModuleOp build_linear_binary_module(mlir::MLIRContext& ctx,
-                                              const ov::element::Type& et,
+                                              const ov::element::Type& src0_et,
+                                              const ov::element::Type& src1_et,
+                                              const ov::element::Type& dst_et,
                                               const std::string& op_key,
                                               size_t meta_rank);
     mlir::ModuleOp build_linear_binary_same_shape_module(mlir::MLIRContext& ctx,
-                                                         const ov::element::Type& et,
+                                                         const ov::element::Type& src0_et,
+                                                         const ov::element::Type& src1_et,
+                                                         const ov::element::Type& dst_et,
                                                          const std::string& op_key);
     mlir::ModuleOp build_binary_bias_add_module(mlir::MLIRContext& ctx,
                                                 const ov::element::Type& et);
     bool should_use_unary_chunked() const;
     bool should_use_concat_chunked() const;
+    bool should_use_slice_chunked() const;
     bool should_use_softmax_chunked() const;
     bool should_use_binary_same_shape() const;
     bool should_use_binary_chunked() const;
@@ -195,6 +265,12 @@ private:
     bool should_use_interpolate_chunked() const;
     bool should_use_transpose_chunked() const;
     bool should_use_convert_chunked() const;
+    bool should_use_gather_linear() const;
+    bool should_use_gather_embedding() const;
+    bool should_use_reduce_last_axis() const;
+    bool should_use_matmul_linear() const;
+    bool should_use_broadcast_chunked() const;
+    bool should_use_select_chunked() const;
     bool should_skip_generic_kernel_compile(const GfxStageOptimizationPlan& plan) const override;
 };
 

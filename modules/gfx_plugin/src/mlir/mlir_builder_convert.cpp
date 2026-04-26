@@ -23,7 +23,8 @@ namespace gfx_plugin {
 
 namespace {
 bool is_unsigned(ov::element::Type et) {
-    return et == ov::element::u8;
+    return et == ov::element::boolean || et == ov::element::u8 || et == ov::element::u16 ||
+           et == ov::element::u32 || et == ov::element::u64;
 }
 
 bool is_signed(ov::element::Type et) {
@@ -56,7 +57,7 @@ mlir::ModuleOp build_mlir_convert_from_model(const std::shared_ptr<const ov::Mod
                               /*allow_unsigned=*/true,
                               /*allow_small_ints=*/true,
                               /*allow_bf16=*/false,
-                              /*allow_boolean=*/false,
+                              /*allow_boolean=*/true,
                               /*signless_integers=*/true);
     auto out_ty = to_mlir_type(out_et,
                                ctx,
@@ -64,7 +65,7 @@ mlir::ModuleOp build_mlir_convert_from_model(const std::shared_ptr<const ov::Mod
                                /*allow_unsigned=*/true,
                                /*allow_small_ints=*/true,
                                /*allow_bf16=*/false,
-                               /*allow_boolean=*/false,
+                               /*allow_boolean=*/true,
                                /*signless_integers=*/true);
 
     auto in_tensor_ty = mlir::RankedTensorType::get(in_shape, in_ty);
@@ -82,7 +83,8 @@ mlir::ModuleOp build_mlir_convert_from_model(const std::shared_ptr<const ov::Mod
     auto loc = mlir::UnknownLoc::get(&ctx);
     b.setInsertionPointToStart(&func.getBody().front());
 
-    auto empty = b.create<mlir::tensor::EmptyOp>(loc, out_shape, out_ty);
+    auto out_dyn_dims = materialize_dynamic_dims_from_tensor(b, loc, func.getArgument(0), out_shape);
+    auto empty = b.create<mlir::tensor::EmptyOp>(loc, out_shape, out_ty, out_dyn_dims);
     auto map = mlir::AffineMap::getMultiDimIdentityMap(out_shape.size(), &ctx);
     llvm::SmallVector<mlir::utils::IteratorType> iters(out_shape.size(), mlir::utils::IteratorType::parallel);
 

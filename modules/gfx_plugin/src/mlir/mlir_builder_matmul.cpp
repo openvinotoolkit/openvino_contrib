@@ -35,13 +35,16 @@ std::shared_ptr<const ov::op::v0::MatMul> find_single_matmul(const std::shared_p
     return matmul;
 }
 
-int64_t batch_product(const ov::Shape& shape) {
-    if (shape.size() <= 2) {
+int64_t batch_product(const ov::PartialShape& shape) {
+    if (shape.rank().get_length() <= 2) {
         return 1;
     }
     int64_t batch = 1;
-    for (size_t i = 0; i + 2 < shape.size(); ++i) {
-        batch *= static_cast<int64_t>(shape[i]);
+    for (size_t i = 0; i + 2 < static_cast<size_t>(shape.rank().get_length()); ++i) {
+        if (shape[i].is_dynamic()) {
+            return mlir::ShapedType::kDynamic;
+        }
+        batch *= static_cast<int64_t>(shape[i].get_length());
     }
     return batch;
 }
@@ -133,11 +136,12 @@ mlir::ModuleOp build_mlir_module_from_model(const std::shared_ptr<const ov::Mode
                     mlir::scf::SCFDialect>();
 
     auto matmul = find_single_matmul(model);
-    const auto shape_a = matmul->get_input_shape(0);
-    const auto shape_b = matmul->get_input_shape(1);
-    OPENVINO_ASSERT(!shape_a.empty() && !shape_b.empty(), "MatMul: shapes required");
-    OPENVINO_ASSERT(shape_a.size() >= 2 && shape_a.size() <= 4, "MatMul supports ranks 2-4");
-    OPENVINO_ASSERT(shape_b.size() >= 2 && shape_b.size() <= 4, "MatMul supports ranks 2-4");
+    const auto shape_a = matmul->get_input_partial_shape(0);
+    const auto shape_b = matmul->get_input_partial_shape(1);
+    OPENVINO_ASSERT(shape_a.rank().is_static() && shape_b.rank().is_static(),
+                    "MatMul: ranks must be static");
+    OPENVINO_ASSERT(shape_a.rank().get_length() >= 2 && shape_a.rank().get_length() <= 4, "MatMul supports ranks 2-4");
+    OPENVINO_ASSERT(shape_b.rank().get_length() >= 2 && shape_b.rank().get_length() <= 4, "MatMul supports ranks 2-4");
 
     const bool ta = matmul->get_transpose_a();
     const bool tb = matmul->get_transpose_b();
@@ -148,16 +152,24 @@ mlir::ModuleOp build_mlir_module_from_model(const std::shared_ptr<const ov::Mode
     OPENVINO_ASSERT(batch_a == batch_b || batch_a == 1 || batch_b == 1,
                     "MatMul batch dims are not broadcastable");
 
-    const int64_t a_dim1 = static_cast<int64_t>(shape_a[shape_a.size() - 2]);
-    const int64_t a_dim2 = static_cast<int64_t>(shape_a[shape_a.size() - 1]);
-    const int64_t b_dim1 = static_cast<int64_t>(shape_b[shape_b.size() - 2]);
-    const int64_t b_dim2 = static_cast<int64_t>(shape_b[shape_b.size() - 1]);
+    const auto rank_a = static_cast<size_t>(shape_a.rank().get_length());
+    const auto rank_b = static_cast<size_t>(shape_b.rank().get_length());
+    auto dim_or_dynamic = [](const ov::PartialShape& shape, size_t idx) -> int64_t {
+        return shape[idx].is_dynamic() ? mlir::ShapedType::kDynamic
+                                       : static_cast<int64_t>(shape[idx].get_length());
+    };
+
+    const int64_t a_dim1 = dim_or_dynamic(shape_a, rank_a - 2);
+    const int64_t a_dim2 = dim_or_dynamic(shape_a, rank_a - 1);
+    const int64_t b_dim1 = dim_or_dynamic(shape_b, rank_b - 2);
+    const int64_t b_dim2 = dim_or_dynamic(shape_b, rank_b - 1);
 
     const int64_t M = ta ? a_dim2 : a_dim1;
     const int64_t K_a = ta ? a_dim1 : a_dim2;
     const int64_t K_b = tb ? b_dim2 : b_dim1;
     const int64_t N = tb ? b_dim1 : b_dim2;
-    OPENVINO_ASSERT(K_a == K_b, "MatMul K dimension mismatch");
+    OPENVINO_ASSERT(K_a == mlir::ShapedType::kDynamic || K_b == mlir::ShapedType::kDynamic || K_a == K_b,
+                    "MatMul K dimension mismatch");
     const int64_t K = K_a;
 
     auto elem_ty = to_elem_ty(matmul->get_output_element_type(0), ctx);
@@ -182,7 +194,38 @@ mlir::ModuleOp build_mlir_module_from_model(const std::shared_ptr<const ov::Mode
     auto loc = mlir::UnknownLoc::get(&ctx);
     b.setInsertionPointToStart(&func.getBody().front());
 
-    auto empty = b.create<mlir::tensor::EmptyOp>(loc, mlir::ArrayRef<int64_t>({batch, M, N}), elem_ty).getResult();
+    llvm::SmallVector<mlir::Value> out_dyn_dims;
+    out_dyn_dims.reserve(dims_out.size());
+    for (size_t i = 0; i < dims_out.size(); ++i) {
+        if (dims_out[i] != mlir::ShapedType::kDynamic) {
+            continue;
+        }
+        if (i < dims_a.size() && dims_a[i] == mlir::ShapedType::kDynamic) {
+            out_dyn_dims.push_back(b.create<mlir::tensor::DimOp>(loc, func.getArgument(0), static_cast<int64_t>(i)).getResult());
+            continue;
+        }
+        if (i < dims_b.size() && dims_b[i] == mlir::ShapedType::kDynamic) {
+            out_dyn_dims.push_back(b.create<mlir::tensor::DimOp>(loc, func.getArgument(1), static_cast<int64_t>(i)).getResult());
+            continue;
+        }
+        if (i + 1 == dims_out.size() && b_dim2 == mlir::ShapedType::kDynamic && !tb) {
+            out_dyn_dims.push_back(b.create<mlir::tensor::DimOp>(loc, func.getArgument(1), static_cast<int64_t>(rank_b - 1)).getResult());
+            continue;
+        }
+        if (i + 1 == dims_out.size() && b_dim1 == mlir::ShapedType::kDynamic && tb) {
+            out_dyn_dims.push_back(b.create<mlir::tensor::DimOp>(loc, func.getArgument(1), static_cast<int64_t>(rank_b - 2)).getResult());
+            continue;
+        }
+        if (i + 2 == dims_out.size() && a_dim2 == mlir::ShapedType::kDynamic && ta) {
+            out_dyn_dims.push_back(b.create<mlir::tensor::DimOp>(loc, func.getArgument(0), static_cast<int64_t>(rank_a - 1)).getResult());
+            continue;
+        }
+        if (i + 2 == dims_out.size() && a_dim1 == mlir::ShapedType::kDynamic && !ta) {
+            out_dyn_dims.push_back(b.create<mlir::tensor::DimOp>(loc, func.getArgument(0), static_cast<int64_t>(rank_a - 2)).getResult());
+            continue;
+        }
+    }
+    auto empty = b.create<mlir::tensor::EmptyOp>(loc, dims_out, elem_ty, out_dyn_dims).getResult();
     auto zero = make_zero_scalar(b, loc, ctx, elem_ty);
     auto init = b.create<mlir::linalg::FillOp>(loc, mlir::ValueRange{zero}, mlir::ValueRange{empty});
 

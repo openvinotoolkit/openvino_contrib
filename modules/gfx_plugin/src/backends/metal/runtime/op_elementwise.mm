@@ -281,6 +281,9 @@ void MetalElementwiseOp::compile_kernel(MetalBufferManager* buffer_manager,
     EltwiseCodegenDesc desc{};
     desc.eltwise_kind = m_kind;
     desc.element_type = elem_type;
+    desc.input0_type = m_node->get_input_element_type(0);
+    desc.input1_type = m_node->get_input_element_type(1);
+    desc.output_type = m_node->get_output_element_type(0);
     desc.is_broadcast = is_broadcast;
     desc.out_shape.assign(m_out_dims.begin(), m_out_dims.end());
     desc.stride0.assign(m_stride0.begin(), m_stride0.end());

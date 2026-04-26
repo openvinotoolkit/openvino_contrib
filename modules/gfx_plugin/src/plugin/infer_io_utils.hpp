@@ -49,7 +49,7 @@ void prepare_reusable_host_output_plan(PreparedInferHostOutputPlan& plan,
 
 HostOutputBinding prepare_host_output_binding(const OutputViewInfo& info,
                                               const ov::Tensor* host_override,
-                                              const ov::Tensor* reusable_host = nullptr);
+                                              ov::Tensor* reusable_host = nullptr);
 
 bool init_stage_output_desc(GpuBackend backend,
                             InferStage& stage,

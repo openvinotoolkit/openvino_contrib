@@ -72,7 +72,15 @@ mlir::ModuleOp build_mlir_transpose_from_model(const std::shared_ptr<const ov::M
     mlir::OpBuilder b(func.getBody());
     auto loc = mlir::UnknownLoc::get(&ctx);
     b.setInsertionPointToStart(&func.getBody().front());
-    auto empty = b.create<mlir::tensor::EmptyOp>(loc, out_shape, elem_ty);
+    llvm::SmallVector<mlir::Value> out_dyn_dims;
+    out_dyn_dims.reserve(out_shape.size());
+    for (size_t i = 0; i < out_shape.size(); ++i) {
+        if (out_shape[i] == mlir::ShapedType::kDynamic) {
+            out_dyn_dims.push_back(
+                b.create<mlir::tensor::DimOp>(loc, func.getArgument(0), perm[i]).getResult());
+        }
+    }
+    auto empty = b.create<mlir::tensor::EmptyOp>(loc, out_shape, elem_ty, out_dyn_dims);
 
     llvm::SmallVector<mlir::AffineExpr> in_exprs;
     in_exprs.reserve(rank);

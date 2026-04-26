@@ -116,47 +116,73 @@ std::string generate_msl_for_transpose(const TransposeCodegenDesc& d, mlir::Modu
         else if (d.use_int) scalar_ty = "int";
     }
 
-    const uint32_t rank = static_cast<uint32_t>(out_shape.size());
-    std::vector<uint32_t> in_stride = compute_stride(in_shape);
+    const bool use_runtime_params =
+        out_shape.empty() || in_shape.empty() || perm.empty() || out_shape.size() != perm.size() || in_shape.size() != perm.size();
+
+    const uint32_t rank = static_cast<uint32_t>(use_runtime_params ? perm.size() : out_shape.size());
+    std::vector<uint32_t> in_stride = use_runtime_params ? std::vector<uint32_t>{} : compute_stride(in_shape);
     uint32_t total = 1;
-    for (auto dim : out_shape) {
-        total *= dim;
+    if (!use_runtime_params) {
+        for (auto dim : out_shape) {
+            total *= dim;
+        }
     }
 
     std::ostringstream ss;
     ss << "#include <metal_stdlib>\nusing namespace metal;\n";
-    ss << "constant uint TOTAL_C = " << total << ";\n";
-    ss << "constant uint RANK = " << rank << ";\n";
-    ss << "constant uint OUT_SHAPE[" << rank << "] = {";
-    for (size_t i = 0; i < out_shape.size(); ++i) {
-        if (i) ss << ", ";
-        ss << out_shape[i];
+    if (!use_runtime_params) {
+        ss << "constant uint TOTAL_C = " << total << ";\n";
+        ss << "constant uint RANK = " << rank << ";\n";
+        ss << "constant uint OUT_SHAPE[" << rank << "] = {";
+        for (size_t i = 0; i < out_shape.size(); ++i) {
+            if (i) ss << ", ";
+            ss << out_shape[i];
+        }
+        ss << "};\n";
+        ss << "constant uint PERM[" << rank << "] = {";
+        for (size_t i = 0; i < perm.size(); ++i) {
+            if (i) ss << ", ";
+            ss << perm[i];
+        }
+        ss << "};\n";
+        ss << "constant uint IN_STRIDE[" << rank << "] = {";
+        for (size_t i = 0; i < in_stride.size(); ++i) {
+            if (i) ss << ", ";
+            ss << in_stride[i];
+        }
+        ss << "};\n";
     }
-    ss << "};\n";
-    ss << "constant uint PERM[" << rank << "] = {";
-    for (size_t i = 0; i < perm.size(); ++i) {
-        if (i) ss << ", ";
-        ss << perm[i];
-    }
-    ss << "};\n";
-    ss << "constant uint IN_STRIDE[" << rank << "] = {";
-    for (size_t i = 0; i < in_stride.size(); ++i) {
-        if (i) ss << ", ";
-        ss << in_stride[i];
-    }
-    ss << "};\n";
     ss << "kernel void transpose_kernel(\n";
     ss << "  device const " << scalar_ty << "* A [[buffer(0)]],\n";
     ss << "  device " << scalar_ty << "* C [[buffer(1)]],\n";
+    if (use_runtime_params) {
+        ss << "  constant uint& TOTAL [[buffer(2)]],\n";
+        ss << "  constant uint& RANK_RT [[buffer(3)]],\n";
+        ss << "  constant uint* OUT_SHAPE_RT [[buffer(4)]],\n";
+        ss << "  constant uint* PERM_RT [[buffer(5)]],\n";
+        ss << "  constant uint* IN_STRIDE_RT [[buffer(6)]],\n";
+    }
     ss << "  uint gid [[thread_position_in_grid]]) {\n";
-    ss << "    if (gid >= TOTAL_C) return;\n";
+    if (use_runtime_params) {
+        ss << "    if (gid >= TOTAL) return;\n";
+    } else {
+        ss << "    if (gid >= TOTAL_C) return;\n";
+    }
     ss << "    uint idx = gid;\n";
     ss << "    uint off_in = 0;\n";
-    ss << "    for (int d = (int)RANK - 1; d >= 0; --d) {\n";
-    ss << "        uint coord = idx % OUT_SHAPE[d];\n";
-    ss << "        idx /= OUT_SHAPE[d];\n";
-    ss << "        uint p = PERM[d];\n";
-    ss << "        off_in += coord * IN_STRIDE[p];\n";
+    if (use_runtime_params) {
+        ss << "    for (int d = (int)RANK_RT - 1; d >= 0; --d) {\n";
+        ss << "        uint coord = idx % OUT_SHAPE_RT[d];\n";
+        ss << "        idx /= OUT_SHAPE_RT[d];\n";
+        ss << "        uint p = PERM_RT[d];\n";
+        ss << "        off_in += coord * IN_STRIDE_RT[p];\n";
+    } else {
+        ss << "    for (int d = (int)RANK - 1; d >= 0; --d) {\n";
+        ss << "        uint coord = idx % OUT_SHAPE[d];\n";
+        ss << "        idx /= OUT_SHAPE[d];\n";
+        ss << "        uint p = PERM[d];\n";
+        ss << "        off_in += coord * IN_STRIDE[p];\n";
+    }
     ss << "    }\n";
     ss << "    C[gid] = A[off_in];\n";
     ss << "}\n";

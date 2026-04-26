@@ -33,6 +33,24 @@ mlir::Value extract_scalar(mlir::OpBuilder& b, mlir::Location loc, mlir::Value t
     return b.create<mlir::tensor::ExtractOp>(loc, tensor, mlir::ValueRange{zero}).getResult();
 }
 
+mlir::Value cast_scalar_to_i64(mlir::OpBuilder& b, mlir::Location loc, mlir::Value value) {
+    auto src_ty = value.getType();
+    auto i64_ty = b.getI64Type();
+    if (src_ty == i64_ty) {
+        return value;
+    }
+    auto int_ty = mlir::dyn_cast<mlir::IntegerType>(src_ty);
+    OPENVINO_ASSERT(int_ty, "Range MLIR: dynamic output length requires integer bounds");
+    if (int_ty.getWidth() < 64) {
+        return int_ty.isUnsigned() ? b.create<mlir::arith::ExtUIOp>(loc, i64_ty, value).getResult()
+                                   : b.create<mlir::arith::ExtSIOp>(loc, i64_ty, value).getResult();
+    }
+    if (int_ty.getWidth() > 64) {
+        return b.create<mlir::arith::TruncIOp>(loc, i64_ty, value).getResult();
+    }
+    return value;
+}
+
 }  // namespace
 
 mlir::ModuleOp build_mlir_range_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx) {
@@ -49,26 +67,42 @@ mlir::ModuleOp build_mlir_range_from_model(const std::shared_ptr<const ov::Model
     }
     OPENVINO_ASSERT(range_node, "Range MLIR builder: Range op not found");
 
-    const auto out_shape = range_node->get_output_shape(0);
-    OPENVINO_ASSERT(out_shape.size() == 1, "Range MLIR: output rank must be 1");
-    const int64_t out_total = static_cast<int64_t>(ov::shape_size(out_shape));
+    const auto out_pshape = range_node->get_output_partial_shape(0);
+    OPENVINO_ASSERT(out_pshape.rank().is_static() && out_pshape.rank().get_length() == 1,
+                    "Range MLIR: output rank must be 1");
+    const bool dynamic_output = !out_pshape.is_static();
+    const int64_t out_total = dynamic_output ? mlir::ShapedType::kDynamic
+                                             : static_cast<int64_t>(ov::shape_size(out_pshape.to_shape()));
     auto elem_ty = to_mlir_type(range_node->get_output_element_type(0), ctx, /*fallback_f32=*/false,
-                                /*allow_unsigned=*/true);
+                                /*allow_unsigned=*/true,
+                                /*allow_small_ints=*/true,
+                                /*allow_bf16=*/false,
+                                /*allow_boolean=*/false,
+                                /*signless_integers=*/true);
     auto out_ty = mlir::RankedTensorType::get({out_total}, elem_ty);
 
-    mlir::SmallVector<int64_t> start_shape(range_node->get_input_shape(0).begin(),
-                                           range_node->get_input_shape(0).end());
-    mlir::SmallVector<int64_t> stop_shape(range_node->get_input_shape(1).begin(),
-                                          range_node->get_input_shape(1).end());
-    mlir::SmallVector<int64_t> step_shape(range_node->get_input_shape(2).begin(),
-                                          range_node->get_input_shape(2).end());
+    mlir::SmallVector<int64_t> start_shape = to_shape(range_node->get_input_partial_shape(0));
+    mlir::SmallVector<int64_t> stop_shape = to_shape(range_node->get_input_partial_shape(1));
+    mlir::SmallVector<int64_t> step_shape = to_shape(range_node->get_input_partial_shape(2));
 
     auto start_elem_ty = to_mlir_type(range_node->get_input_element_type(0), ctx, /*fallback_f32=*/false,
-                                      /*allow_unsigned=*/true);
+                                      /*allow_unsigned=*/true,
+                                      /*allow_small_ints=*/true,
+                                      /*allow_bf16=*/false,
+                                      /*allow_boolean=*/false,
+                                      /*signless_integers=*/true);
     auto stop_elem_ty = to_mlir_type(range_node->get_input_element_type(1), ctx, /*fallback_f32=*/false,
-                                     /*allow_unsigned=*/true);
+                                     /*allow_unsigned=*/true,
+                                     /*allow_small_ints=*/true,
+                                     /*allow_bf16=*/false,
+                                     /*allow_boolean=*/false,
+                                     /*signless_integers=*/true);
     auto step_elem_ty = to_mlir_type(range_node->get_input_element_type(2), ctx, /*fallback_f32=*/false,
-                                     /*allow_unsigned=*/true);
+                                     /*allow_unsigned=*/true,
+                                     /*allow_small_ints=*/true,
+                                     /*allow_bf16=*/false,
+                                     /*allow_boolean=*/false,
+                                     /*signless_integers=*/true);
 
     auto start_ty = mlir::RankedTensorType::get(start_shape, start_elem_ty);
     auto stop_ty = mlir::RankedTensorType::get(stop_shape, stop_elem_ty);
@@ -85,8 +119,11 @@ mlir::ModuleOp build_mlir_range_from_model(const std::shared_ptr<const ov::Model
     auto loc = mlir::UnknownLoc::get(&ctx);
     b.setInsertionPointToStart(&func.getBody().front());
 
-    auto start_val = extract_scalar(b, loc, func.getArgument(0));
-    auto step_val = extract_scalar(b, loc, func.getArgument(2));
+    auto start_raw = extract_scalar(b, loc, func.getArgument(0));
+    auto stop_raw = extract_scalar(b, loc, func.getArgument(1));
+    auto step_raw = extract_scalar(b, loc, func.getArgument(2));
+    auto start_val = start_raw;
+    auto step_val = step_raw;
     auto cast_to_elem = [&](mlir::Value v) -> mlir::Value {
         auto src_ty = v.getType();
         if (src_ty == elem_ty) {
@@ -116,11 +153,21 @@ mlir::ModuleOp build_mlir_range_from_model(const std::shared_ptr<const ov::Model
     start_val = cast_to_elem(start_val);
     step_val = cast_to_elem(step_val);
 
-    auto out_flat = b.create<mlir::tensor::EmptyOp>(loc, mlir::ArrayRef<int64_t>{out_total}, elem_ty);
+    llvm::SmallVector<mlir::Value> out_dyn_dims;
+    if (dynamic_output) {
+        auto start_i64 = cast_scalar_to_i64(b, loc, start_raw);
+        auto stop_i64 = cast_scalar_to_i64(b, loc, stop_raw);
+        auto step_i64 = cast_scalar_to_i64(b, loc, step_raw);
+        auto diff = b.create<mlir::arith::SubIOp>(loc, stop_i64, start_i64).getResult();
+        auto len_i64 = b.create<mlir::arith::CeilDivSIOp>(loc, diff, step_i64).getResult();
+        out_dyn_dims.push_back(b.create<mlir::arith::IndexCastOp>(loc, b.getIndexType(), len_i64).getResult());
+    }
+    auto out_flat = b.create<mlir::tensor::EmptyOp>(loc, mlir::ArrayRef<int64_t>{out_total}, elem_ty, out_dyn_dims);
 
     auto c0 = b.create<mlir::arith::ConstantIndexOp>(loc, 0);
     auto c1 = b.create<mlir::arith::ConstantIndexOp>(loc, 1);
-    auto c_out = b.create<mlir::arith::ConstantIndexOp>(loc, out_total);
+    mlir::Value c_out = dynamic_output ? out_dyn_dims.front()
+                                       : b.create<mlir::arith::ConstantIndexOp>(loc, out_total).getResult();
 
     auto loop = b.create<mlir::scf::ForOp>(loc, c0, c_out, c1, mlir::ValueRange{out_flat});
     {

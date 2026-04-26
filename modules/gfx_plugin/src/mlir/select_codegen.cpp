@@ -30,7 +30,7 @@ std::string generate_msl_for_select(mlir::ModuleOp module, ov::element::Type et)
     ss << "#include <metal_stdlib>\n";
     ss << "using namespace metal;\n";
     ss << "using scalar_t = " << scalar_t << ";\n";
-    ss << "kernel void select_kernel(device const bool* C [[buffer(0)]],\n";
+    ss << "kernel void select_kernel(device const uchar* C [[buffer(0)]],\n";
     ss << "                           device const scalar_t* A [[buffer(1)]],\n";
     ss << "                           device const scalar_t* B [[buffer(2)]],\n";
     ss << "                           device scalar_t* O [[buffer(3)]],\n";
@@ -51,7 +51,7 @@ std::string generate_msl_for_select(mlir::ModuleOp module, ov::element::Type et)
     ss << "        off_a += (STRIDE_A[d] == 0 ? 0 : coord * STRIDE_A[d]);\n";
     ss << "        off_b += (STRIDE_B[d] == 0 ? 0 : coord * STRIDE_B[d]);\n";
     ss << "    }\n";
-    ss << "    O[gid] = C[off_c] ? A[off_a] : B[off_b];\n";
+    ss << "    O[gid] = (C[off_c] != 0) ? A[off_a] : B[off_b];\n";
     ss << "}\n";
     return ss.str();
 }

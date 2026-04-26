@@ -278,9 +278,11 @@ MetalTensor& MetalTensorMap::bind_input(size_t index, const ov::Tensor& host, Me
     binding.host = host;
     const size_t bytes = host.get_byte_size();
     OPENVINO_ASSERT(bytes > 0 && host.data(), "MetalTensorMap::bind_input: host tensor is empty");
-    binding.dev = MetalTensor{core.wrap_shared(host.data(), bytes, host.get_element_type()),
-                              host.get_shape(),
-                              host.get_element_type()};
+    binding.dev = MetalTensor{};
+    binding.dev.buf = core.wrap_shared(host.data(), bytes, host.get_element_type());
+    binding.dev.shape = host.get_shape();
+    binding.dev.expected_type = host.get_element_type();
+    binding.dev.prefer_private = false;
     return binding.dev;
 }
 

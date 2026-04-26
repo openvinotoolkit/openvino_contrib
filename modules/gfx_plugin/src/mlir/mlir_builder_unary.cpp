@@ -29,7 +29,8 @@ mlir::ModuleOp build_mlir_unary_from_node(const std::shared_ptr<const ov::Node>&
     ctx.loadDialect<mlir::func::FuncDialect, mlir::linalg::LinalgDialect, mlir::tensor::TensorDialect,
                     mlir::arith::ArithDialect, mlir::math::MathDialect>();
 
-    const auto shape = node->get_input_shape(0);
+    const auto pshape = node->get_input_partial_shape(0);
+    OPENVINO_ASSERT(pshape.rank().is_static(), "Unary MLIR builder: input rank must be static");
     auto elem_ty = to_mlir_type(node->get_input_element_type(0),
                                 ctx,
                                 /*fallback_f32=*/true,
@@ -38,7 +39,7 @@ mlir::ModuleOp build_mlir_unary_from_node(const std::shared_ptr<const ov::Node>&
                                 /*allow_bf16=*/false,
                                 /*allow_boolean=*/true,
                                 /*signless_integers=*/true);
-    mlir::SmallVector<int64_t> dims(shape.begin(), shape.end());
+    mlir::SmallVector<int64_t> dims = to_shape(pshape);
     auto tensor_ty = mlir::RankedTensorType::get(dims, elem_ty);
     auto make_float_attr = [&](double v) {
         if (auto ft = mlir::dyn_cast<mlir::FloatType>(elem_ty)) {
@@ -57,7 +58,13 @@ mlir::ModuleOp build_mlir_unary_from_node(const std::shared_ptr<const ov::Node>&
 
     mlir::OpBuilder b(func.getBody());
     b.setInsertionPointToStart(&func.getBody().front());
-    auto empty = b.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&ctx), dims, elem_ty);
+    auto empty = b.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&ctx),
+                                                 dims,
+                                                 elem_ty,
+                                                 materialize_dynamic_dims_from_tensor(b,
+                                                                                      mlir::UnknownLoc::get(&ctx),
+                                                                                      func.getArgument(0),
+                                                                                      dims));
 
     llvm::SmallVector<mlir::utils::IteratorType> iterators(dims.size(), mlir::utils::IteratorType::parallel);
     auto map = mlir::AffineMap::getMultiDimIdentityMap(dims.size(), &ctx);

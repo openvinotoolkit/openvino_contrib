@@ -15,6 +15,7 @@ namespace ov {
 namespace gfx_plugin {
 
 class GfxProfiler;
+struct GpuBufferDesc;
 
 enum class GpuDeviceFamily {
     Generic,
@@ -63,6 +64,10 @@ public:
                                  ov::element::Type /*type*/) {
         return {};
     }
+    virtual GpuBuffer allocate_temp(const GpuBufferDesc& /*desc*/) {
+        return {};
+    }
+    virtual void release_temp(GpuBuffer&& /*buf*/) {}
     virtual void begin_const_upload_batch() {}
     virtual void flush_const_upload_batch(GpuCommandBufferHandle /*command_buffer*/,
                                           GfxProfiler* /*profiler*/) {}

@@ -25,6 +25,7 @@ namespace ov {
 namespace gfx_plugin {
 
 struct MlirKernelPlanContext;
+struct MatMulCodegenDesc;
 
 class MlirStage : public GpuStage {
 public:
@@ -73,6 +74,8 @@ protected:
     virtual bool is_vulkan_backend() const { return false; }
     virtual bool prefer_specialized_concat_execution() const { return false; }
     virtual bool should_skip_generic_kernel_compile(const GfxStageOptimizationPlan& /*plan*/) const { return false; }
+    virtual void configure_runtime_matmul_kernel_source(KernelSource& /*source*/,
+                                                        const MatMulCodegenDesc& /*desc*/) const {}
     GpuBackend backend_kind() const { return is_vulkan_backend() ? GpuBackend::Vulkan : GpuBackend::Metal; }
     virtual KernelExecutionHooks* prepare_profiling(ProfileState& state,
                                                     KernelExecutionHooks& hooks);
@@ -109,6 +112,9 @@ protected:
     bool m_profiling_enabled = false;
     ParallelDispatchConfig m_parallel_cfg{};
     bool m_force_single_dispatch = false;
+    uint32_t m_matmul_reduction_threads = 1;
+    uint32_t m_rms_reduction_threads = 1;
+    uint32_t m_rms_hidden = 0;
     bool m_matmul_safe_retry_attempted = false;
     bool m_matmul_serial_retry_attempted = false;
     bool m_vulkan_conv_serial_retry_attempted = false;

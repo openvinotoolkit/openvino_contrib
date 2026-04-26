@@ -66,6 +66,8 @@
 #include "openvino/op/reverse.hpp"
 #include "openvino/op/scatter_elements_update.hpp"
 #include "openvino/op/scatter_nd_update.hpp"
+#include "openvino/op/scatter_update.hpp"
+#include "openvino/op/select.hpp"
 #include "openvino/op/shape_of.hpp"
 #include "openvino/op/slice.hpp"
 #include "openvino/op/strided_slice.hpp"
@@ -77,6 +79,7 @@
 #include "openvino/op/topk.hpp"
 #include "openvino/op/transpose.hpp"
 #include "openvino/op/variadic_split.hpp"
+#include "ov_ops/rms.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -87,6 +90,44 @@ std::vector<int64_t> get_slice_const_i64(const ov::Output<ov::Node>& source, con
     auto c = ov::util::get_constant_from_source(source);
     OPENVINO_ASSERT(c, "GFX Metal Slice: ", what, " must be Constant");
     return c->cast_vector<int64_t>();
+}
+
+bool configure_runtime_softmax_generator(const std::shared_ptr<const ov::Node>& node,
+                                         const std::vector<GpuTensor*>& inputs,
+                                         KernelSource& src) {
+    if (!node) {
+        return false;
+    }
+
+    int64_t axis = -1;
+    bool log_softmax = false;
+    if (auto sm1 = ov::as_type_ptr<const ov::op::v1::Softmax>(node)) {
+        axis = sm1->get_axis();
+    } else if (auto sm8 = ov::as_type_ptr<const ov::op::v8::Softmax>(node)) {
+        axis = sm8->get_axis();
+    } else if (auto ls = ov::as_type_ptr<const ov::op::v5::LogSoftmax>(node)) {
+        axis = ls->get_axis();
+        log_softmax = true;
+    } else {
+        return false;
+    }
+
+    OPENVINO_ASSERT(!inputs.empty() && inputs.front(), "GFX Metal Softmax: input tensor is not bound");
+    const ov::Shape& in_shape = inputs.front()->shape;
+    OPENVINO_ASSERT(!in_shape.empty(), "GFX Metal Softmax: runtime input shape is unknown");
+
+    SoftmaxCodegenDesc d{};
+    d.element_type = node->get_output_element_type(0);
+    const auto dims = compute_softmax_dims(in_shape, axis, "GFX Metal");
+    d.rows = static_cast<int64_t>(dims.rows);
+    d.cols = static_cast<int64_t>(dims.axis_len);
+    d.inner = static_cast<int64_t>(dims.inner);
+    d.log_softmax = log_softmax;
+    src.entry_point = "softmax_kernel";
+    src.msl_generator = [d](mlir::ModuleOp module) mutable {
+        return generate_msl_from_mlir(module, d);
+    };
+    return true;
 }
 
 int64_t normalize_slice_index(int64_t index, int64_t dim, bool is_begin) {
@@ -103,7 +144,7 @@ struct StaticSliceMeta {
     std::vector<uint32_t> out_shape;
     std::vector<uint32_t> in_stride;
     std::vector<int32_t> starts;
-    std::vector<uint32_t> steps;
+    std::vector<int32_t> steps;
     uint32_t total = 0;
 };
 
@@ -149,11 +190,11 @@ StaticSliceMeta build_static_slice_meta(const std::shared_ptr<const ov::Node>& n
             }
             OPENVINO_ASSERT(axis >= 0 && static_cast<size_t>(axis) < rank,
                             "GFX Metal Slice: axis out of range");
-            OPENVINO_ASSERT(steps[i] > 0, "GFX Metal Slice: only positive steps supported");
+            OPENVINO_ASSERT(steps[i] != 0, "GFX Metal Slice: zero step is not supported");
             const auto dim = static_cast<int64_t>(in_shape[static_cast<size_t>(axis)]);
             meta.starts[static_cast<size_t>(axis)] =
                 static_cast<int32_t>(normalize_slice_index(starts[i], dim, true));
-            meta.steps[static_cast<size_t>(axis)] = static_cast<uint32_t>(steps[i]);
+            meta.steps[static_cast<size_t>(axis)] = static_cast<int32_t>(steps[i]);
         }
         return meta;
     }
@@ -188,14 +229,14 @@ StaticSliceMeta build_static_slice_meta(const std::shared_ptr<const ov::Node>& n
         const bool masked_begin = axis < begin_mask.size() && begin_mask[axis] != 0;
         const bool masked_end = axis < end_mask.size() && end_mask[axis] != 0;
         const int64_t step = strides[axis];
-        OPENVINO_ASSERT(step > 0, "GFX Metal Slice: StridedSlice only positive steps supported");
+        OPENVINO_ASSERT(step != 0, "GFX Metal Slice: StridedSlice zero step is not supported");
         int64_t start = axis < begin.size() ? begin[axis] : 0;
         int64_t finish = axis < end.size() ? end[axis] : dim;
-        start = masked_begin ? 0 : normalize_slice_index(start, dim, true);
-        finish = masked_end ? dim : normalize_slice_index(finish, dim, false);
+        start = masked_begin ? (step < 0 ? dim - 1 : 0) : normalize_slice_index(start, dim, true);
+        finish = masked_end ? (step < 0 ? -1 : dim) : normalize_slice_index(finish, dim, false);
         (void)finish;
         meta.starts[axis] = static_cast<int32_t>(start);
-        meta.steps[axis] = static_cast<uint32_t>(step);
+        meta.steps[axis] = static_cast<int32_t>(step);
     }
     return meta;
 }
@@ -228,7 +269,7 @@ std::string generate_static_msl_for_slice(const std::shared_ptr<const ov::Node>&
         ss << meta.starts[i];
     }
     ss << "};\n";
-    ss << "constant uint STEPS_C[" << rank << "] = {";
+    ss << "constant int STEPS_C[" << rank << "] = {";
     for (size_t i = 0; i < meta.steps.size(); ++i) {
         if (i) ss << ", ";
         ss << meta.steps[i];
@@ -240,11 +281,11 @@ std::string generate_static_msl_for_slice(const std::shared_ptr<const ov::Node>&
     ss << "  uint gid [[thread_position_in_grid]]) {\n";
     ss << "    if (gid >= TOTAL_C) return;\n";
     ss << "    uint idx = gid;\n";
-    ss << "    uint in_off = 0;\n";
+    ss << "    int in_off = 0;\n";
     ss << "    for (int d = (int)RANK_C - 1; d >= 0; --d) {\n";
     ss << "        uint coord = idx % OUT_SHAPE_C[d];\n";
     ss << "        idx /= OUT_SHAPE_C[d];\n";
-    ss << "        in_off += (uint)((int)STARTS_C[d] + (int)(coord * STEPS_C[d])) * IN_STRIDE_C[d];\n";
+    ss << "        in_off += (STARTS_C[d] + int(coord) * STEPS_C[d]) * int(IN_STRIDE_C[d]);\n";
     ss << "    }\n";
     ss << "    C[gid] = A[in_off];\n";
     ss << "}\n";
@@ -286,6 +327,16 @@ std::vector<int64_t> to_i64_shape(const ov::Shape& s) {
     return v;
 }
 
+ov::Shape static_shape_or_placeholder(const ov::PartialShape& pshape) {
+    OPENVINO_ASSERT(pshape.rank().is_static(), "GFX Metal: tensor rank must be static for codegen");
+    ov::Shape shape;
+    shape.reserve(static_cast<size_t>(pshape.rank().get_length()));
+    for (const auto& dim : pshape) {
+        shape.push_back(dim.is_static() ? static_cast<size_t>(dim.get_length()) : 1);
+    }
+    return shape;
+}
+
 std::vector<int64_t> make_strides(const ov::Shape& s) {
     const size_t rank = s.size();
     std::vector<int64_t> strides(rank, 1);
@@ -315,6 +366,67 @@ std::string generate_bias_broadcast_add_msl(const std::shared_ptr<const ov::Node
     ss << "  if (gid >= " << total << "u) return;\n";
     ss << "  uint c = (gid / " << hw << "u) % " << channels << "u;\n";
     ss << "  C[gid] = A[gid] + B[c];\n";
+    ss << "}\n";
+    return ss.str();
+}
+
+std::string generate_scatter_update_msl(const ov::element::Type& data_type,
+                                        const ov::element::Type& index_type) {
+    const std::string scalar_t = msl_type_from_element(data_type == ov::element::dynamic ? ov::element::f32 : data_type);
+    const std::string index_t = msl_type_from_element(index_type == ov::element::i64 ? ov::element::i64 : ov::element::i32);
+    std::ostringstream ss;
+    ss << "#include <metal_stdlib>\nusing namespace metal;\n";
+    ss << "using scalar_t = " << scalar_t << ";\n";
+    ss << "using index_t = " << index_t << ";\n";
+    ss << "struct ScatterUpdateParams {\n";
+    ss << "  uint data_rank;\n";
+    ss << "  uint idx_rank;\n";
+    ss << "  uint update_rank;\n";
+    ss << "  uint axis;\n";
+    ss << "  uint total_data;\n";
+    ss << "  uint idx_total;\n";
+    ss << "  uint data_dims[8];\n";
+    ss << "  uint data_strides[8];\n";
+    ss << "  uint idx_dims[8];\n";
+    ss << "  uint idx_strides[8];\n";
+    ss << "  uint update_strides[16];\n";
+    ss << "};\n";
+    ss << "kernel void scatter_update_kernel(\n";
+    ss << "  device const scalar_t* data [[buffer(0)]],\n";
+    ss << "  device const index_t* indices [[buffer(1)]],\n";
+    ss << "  device const scalar_t* updates [[buffer(2)]],\n";
+    ss << "  device scalar_t* out [[buffer(3)]],\n";
+    ss << "  constant ScatterUpdateParams& p [[buffer(4)]],\n";
+    ss << "  uint gid [[thread_position_in_grid]]) {\n";
+    ss << "  if (gid >= p.total_data) return;\n";
+    ss << "  uint coord[8];\n";
+    ss << "  uint rem = gid;\n";
+    ss << "  for (uint d = 0; d < p.data_rank; ++d) {\n";
+    ss << "    uint stride = p.data_strides[d];\n";
+    ss << "    coord[d] = stride == 0 ? 0 : rem / stride;\n";
+    ss << "    rem = stride == 0 ? 0 : rem - coord[d] * stride;\n";
+    ss << "  }\n";
+    ss << "  scalar_t value = data[gid];\n";
+    ss << "  for (uint linear = 0; linear < p.idx_total; ++linear) {\n";
+    ss << "    uint idx_coord[8];\n";
+    ss << "    uint idx_rem = linear;\n";
+    ss << "    for (uint d = 0; d < p.idx_rank; ++d) {\n";
+    ss << "      uint stride = p.idx_strides[d];\n";
+    ss << "      idx_coord[d] = stride == 0 ? 0 : idx_rem / stride;\n";
+    ss << "      idx_rem = stride == 0 ? 0 : idx_rem - idx_coord[d] * stride;\n";
+    ss << "    }\n";
+    ss << "    long raw = static_cast<long>(indices[linear]);\n";
+    ss << "    long axis_dim = static_cast<long>(p.data_dims[p.axis]);\n";
+    ss << "    long normalized = raw < 0 ? raw + axis_dim : raw;\n";
+    ss << "    if (normalized != static_cast<long>(coord[p.axis])) continue;\n";
+    ss << "    uint upd_off = 0;\n";
+    ss << "    uint upd_dim = 0;\n";
+    ss << "    for (uint d = 0; d < p.axis; ++d) upd_off += coord[d] * p.update_strides[upd_dim++];\n";
+    ss << "    for (uint d = 0; d < p.idx_rank; ++d) upd_off += idx_coord[d] * p.update_strides[upd_dim++];\n";
+    ss << "    for (uint d = p.axis + 1; d < p.data_rank; ++d) upd_off += coord[d] * p.update_strides[upd_dim++];\n";
+    ss << "    value = updates[upd_off];\n";
+    ss << "  }\n";
+    ss << "  out[gid] = value;\n";
     ss << "}\n";
     return ss.str();
 }
@@ -372,6 +484,41 @@ ov::Shape shape_from_entry_argument(mlir::ModuleOp module, size_t arg_idx, const
         return shape;
     }
     return fallback;
+}
+
+ov::Shape shape_from_entry_argument_or_partial(mlir::ModuleOp module,
+                                               size_t arg_idx,
+                                               const ov::PartialShape& fallback) {
+    return shape_from_entry_argument(module, arg_idx, static_shape_or_placeholder(fallback));
+}
+
+ov::Shape output_shape_for_codegen(mlir::ModuleOp module, const std::shared_ptr<const ov::Node>& node) {
+    if (node && node->get_output_partial_shape(0).is_static()) {
+        return node->get_output_shape(0);
+    }
+    if (module) {
+        auto func = get_entry_func(module);
+        if (func && func.getFunctionType().getNumResults() > 0) {
+            auto type = func.getFunctionType().getResult(0);
+            if (auto ranked = llvm::dyn_cast<mlir::RankedTensorType>(type)) {
+                ov::Shape shape;
+                shape.reserve(ranked.getRank());
+                for (int64_t dim : ranked.getShape()) {
+                    shape.push_back(dim == mlir::ShapedType::kDynamic ? 1 : static_cast<size_t>(dim));
+                }
+                return shape;
+            }
+            if (auto memref = llvm::dyn_cast<mlir::MemRefType>(type)) {
+                ov::Shape shape;
+                shape.reserve(memref.getRank());
+                for (int64_t dim : memref.getShape()) {
+                    shape.push_back(dim == mlir::ShapedType::kDynamic ? 1 : static_cast<size_t>(dim));
+                }
+                return shape;
+            }
+        }
+    }
+    return static_shape_or_placeholder(node->get_output_partial_shape(0));
 }
 
 std::vector<int64_t> read_absorbed_input_permutation(mlir::ModuleOp module, size_t input_idx) {
@@ -601,20 +748,24 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
 
     if (auto mm = std::dynamic_pointer_cast<const ov::op::v0::MatMul>(node)) {
         MatMulCodegenDesc d{};
-        const auto out_shape = mm->get_output_shape(0);
-        const size_t rank = out_shape.size();
+        const auto out_shape = output_shape_for_codegen(src.module, node);
+        const auto a_shape = static_shape_or_placeholder(mm->get_input_partial_shape(0));
+        const auto b_shape = static_shape_or_placeholder(mm->get_input_partial_shape(1));
+        const size_t a_rank = a_shape.size();
+        const size_t b_rank = b_shape.size();
+        const size_t out_rank = out_shape.size();
+        OPENVINO_ASSERT(a_rank >= 2 && b_rank >= 2 && out_rank >= 2,
+                        "GFX Metal MatMul: ranks must be at least 2");
         d.element_type = mm->get_output_element_type(0);
         d.input_a_type = mm->get_input_element_type(0);
         d.input_b_type = mm->get_input_element_type(1);
         d.output_type = mm->get_output_element_type(0);
         d.a_transpose = mm->get_transpose_a();
         d.b_transpose = mm->get_transpose_b();
-        d.M = static_cast<int64_t>(out_shape[rank - 2]);
-        d.N = static_cast<int64_t>(out_shape[rank - 1]);
-        const auto a_shape = mm->get_input_shape(0);
-        d.K = static_cast<int64_t>(d.a_transpose ? a_shape[rank - 2] : a_shape[rank - 1]);
+        d.M = static_cast<int64_t>(out_shape[out_rank - 2]);
+        d.N = static_cast<int64_t>(out_shape[out_rank - 1]);
+        d.K = static_cast<int64_t>(d.a_transpose ? a_shape[a_rank - 2] : a_shape[a_rank - 1]);
         d.batch_a = static_cast<int64_t>(shape_size(a_shape) / static_cast<uint64_t>(d.M * d.K));
-        const auto b_shape = mm->get_input_shape(1);
         d.batch_b = static_cast<int64_t>(shape_size(b_shape) / static_cast<uint64_t>(d.K * d.N));
         d.b_is_nk_layout = d.b_transpose;
         d.batch = static_cast<int64_t>(shape_size(out_shape) / (d.M * d.N));
@@ -625,6 +776,47 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
             std::vector<int32_t> kinds{1, 1, 1};
             std::vector<int32_t> arg_idx{0, 1, 2};
             annotate_module_operands(src.module, kinds, arg_idx, {});
+        }
+        return;
+    }
+
+    if (auto rms = std::dynamic_pointer_cast<const ov::op::internal::RMS>(node)) {
+        const auto data_shape = static_shape_or_placeholder(rms->get_input_partial_shape(0));
+        const auto gamma_shape = static_shape_or_placeholder(rms->get_input_partial_shape(1));
+        OPENVINO_ASSERT(!data_shape.empty() && data_shape.back() > 0,
+                        "GFX Metal RMS: hidden dimension must be static");
+        RmsCodegenDesc d{};
+        d.element_type = rms->get_output_element_type(0);
+        d.input_type = rms->get_input_element_type(0);
+        d.gamma_type = rms->get_input_element_type(1);
+        d.output_type = rms->get_output_element_type(0);
+        d.hidden = static_cast<uint32_t>(data_shape.back());
+        d.gamma_size = static_cast<uint32_t>(std::max<uint64_t>(1, ov::shape_size(gamma_shape)));
+        d.reduction_threads = gfx_rms_parallel_reduction_threads(d.hidden);
+        d.epsilon = static_cast<float>(rms->get_epsilon());
+        set_desc(d, "rms_kernel");
+        src.signature.arg_count = 3;
+        if (src.module) {
+            const std::vector<int32_t> kinds{1, 1, 1};
+            const std::vector<int32_t> arg_idx{0, 1, 2};
+            annotate_module_operands(src.module, kinds, arg_idx, {});
+        }
+        return;
+    }
+
+    if (std::dynamic_pointer_cast<const ov::op::v1::Select>(node)) {
+        const auto out_shape = output_shape_for_codegen(src.module, node);
+        src.entry_point = "select_kernel";
+        src.signature.arg_count = 10;
+        src.msl_generator = [et = node->get_output_element_type(0)](mlir::ModuleOp module) {
+            return generate_msl_for_select(module, et);
+        };
+        if (src.module) {
+            const std::vector<int32_t> kinds{1, 1, 1, 1, 0, 0, 1, 1, 1, 1};
+            const std::vector<int32_t> arg_idx{0, 1, 2, 7, -1, -1, 3, 4, 5, 6};
+            const std::vector<int32_t> scalars{static_cast<int32_t>(shape_size(out_shape)),
+                                               static_cast<int32_t>(out_shape.empty() ? 1 : out_shape.size())};
+            annotate_module_operands(src.module, kinds, arg_idx, scalars);
         }
         return;
     }
@@ -713,12 +905,14 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
         }
         set_desc(d, "unary_kernel");
         src.signature.arg_count = 3;
-        const auto out_shape = node->get_output_shape(0);
+        const auto out_shape = output_shape_for_codegen(src.module, node);
         const int32_t num_elems = static_cast<int32_t>(shape_size(out_shape));
-        const std::vector<int32_t> kinds{1, 1, 0};
-        const std::vector<int32_t> arg_idx{0, 1, -1};
-        const std::vector<int32_t> scalars{num_elems};
-        annotate_module_operands(src.module, kinds, arg_idx, scalars);
+        if (src.module) {
+            const std::vector<int32_t> kinds{1, 1, 0};
+            const std::vector<int32_t> arg_idx{0, 1, -1};
+            const std::vector<int32_t> scalars{num_elems};
+            annotate_module_operands(src.module, kinds, arg_idx, scalars);
+        }
         return;
     }
 
@@ -798,19 +992,25 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
         }
         EltwiseCodegenDesc d{};
         d.element_type = node->get_output_element_type(0);
+        d.input0_type = node->get_input_element_type(0);
+        d.input1_type = node->get_input_element_type(1);
+        d.output_type = node->get_output_element_type(0);
         d.eltwise_kind = eltwise_kind_from_node(*node);
-        const auto out_shape = node->get_output_shape(0);
+        const bool dynamic_shape = !node->get_output_partial_shape(0).is_static() ||
+                                   !node->get_input_partial_shape(0).is_static() ||
+                                   !node->get_input_partial_shape(1).is_static();
+        const auto out_shape = output_shape_for_codegen(src.module, node);
         d.out_shape = to_i64_shape(out_shape);
         d.num_elements = static_cast<uint32_t>(shape_size(out_shape));
-        const auto a_shape = shape_from_entry_argument(src.module, 0, node->get_input_shape(0));
-        const auto b_shape = shape_from_entry_argument(src.module, 1, node->get_input_shape(1));
+        const auto a_shape = shape_from_entry_argument_or_partial(src.module, 0, node->get_input_partial_shape(0));
+        const auto b_shape = shape_from_entry_argument_or_partial(src.module, 1, node->get_input_partial_shape(1));
         const auto perm0 = read_absorbed_input_permutation(src.module, 0);
         const auto perm1 = read_absorbed_input_permutation(src.module, 1);
-        d.is_broadcast = !perm0.empty() || !perm1.empty() || (a_shape != b_shape) ||
+        d.is_broadcast = dynamic_shape || !perm0.empty() || !perm1.empty() || (a_shape != b_shape) ||
                          (a_shape != out_shape) || (b_shape != out_shape);
         if (!perm0.empty()) {
             auto strides = compute_permuted_broadcast_element_strides(a_shape,
-                                                                      node->get_input_shape(0),
+                                                                      static_shape_or_placeholder(node->get_input_partial_shape(0)),
                                                                       perm0,
                                                                       out_shape,
                                                                       "GFX Metal");
@@ -820,7 +1020,7 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
         }
         if (!perm1.empty()) {
             auto strides = compute_permuted_broadcast_element_strides(b_shape,
-                                                                      node->get_input_shape(1),
+                                                                      static_shape_or_placeholder(node->get_input_partial_shape(1)),
                                                                       perm1,
                                                                       out_shape,
                                                                       "GFX Metal");
@@ -855,20 +1055,31 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
         d.element_type = node->get_output_element_type(0);
         d.kind = reduce_kind_from_node(*node);
         set_desc(d, "reduce_kernel");
+        src.signature.arg_count = 9;
+        src.signature.output_arg_count = 1;
+        if (src.module) {
+            annotate_module_operands(src.module,
+                                     {1, 1, 0, 0, 1, 1, 1, 1, 1},
+                                     {0, 1, -1, -1, 2, 3, 4, 5, 6},
+                                     {});
+        }
         return;
     }
 
     if (auto cat = std::dynamic_pointer_cast<const ov::op::v0::Concat>(node)) {
         ConcatCodegenDesc d{};
-        const size_t axis = static_cast<size_t>(cat->get_axis());
-        const auto out = cat->get_output_shape(0);
-        uint64_t inner = 1, outer = 1;
-        for (size_t i = axis + 1; i < out.size(); ++i) inner *= out[i];
-        for (size_t i = 0; i < axis; ++i) outer *= out[i];
-        d.inner = inner;
-        d.outer = outer;
-        d.axis_total = out[axis];
+        d.element_type = cat->get_output_element_type(0);
+        const auto out_pshape = cat->get_output_partial_shape(0);
+        OPENVINO_ASSERT(out_pshape.rank().is_static(), "GFX Metal Concat: output rank must be static");
+        const size_t rank = static_cast<size_t>(out_pshape.rank().get_length());
+        OPENVINO_ASSERT(rank > 0, "GFX Metal Concat: output rank must be positive");
+        const size_t axis = normalize_axis(cat->get_axis(), rank, "GFX Metal Concat");
+        (void)axis;
+        d.inner = 1;
+        d.outer = 1;
+        d.axis_total = 1;
         set_desc(d, "concat_kernel");
+        src.signature.arg_count = 3;  // src, dst, params
         return;
     }
 
@@ -958,12 +1169,9 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
         auto perm_c = ov::as_type_ptr<const ov::op::v0::Constant>(t->input_value(1).get_node_shared_ptr());
         OPENVINO_ASSERT(perm_c, "Transpose perm must be constant");
         auto perm = perm_c->cast_vector<int64_t>();
-        const auto in = t->get_input_shape(0);
-        const auto out = t->get_output_shape(0);
-        for (auto v : in) d.in_shape.push_back(static_cast<uint32_t>(v));
-        for (auto v : out) d.out_shape.push_back(static_cast<uint32_t>(v));
         for (auto v : perm) d.perm.push_back(static_cast<uint32_t>(v));
         set_desc(d, "transpose_kernel");
+        src.signature.arg_count = 7;  // src, dst, total, rank, out_shape, perm, in_stride
         return;
     }
 
@@ -973,12 +1181,21 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
         d.dst_type = cvt->get_output_element_type(0);
         d.element_type = d.dst_type == ov::element::dynamic ? ov::element::f32 : d.dst_type;
         set_desc(d, "convert_kernel");
+        src.signature.arg_count = 3;
+        src.signature.output_arg_count = 1;
+        if (src.module) {
+            annotate_module_operands(src.module, {1, 1, 0}, {0, 1, -1}, {});
+        }
         return;
     }
 
-    if (std::dynamic_pointer_cast<const ov::op::v0::ShapeOf>(node)) {
+    if (std::dynamic_pointer_cast<const ov::op::v0::ShapeOf>(node) ||
+        std::dynamic_pointer_cast<const ov::op::v3::ShapeOf>(node)) {
         ShapeOfCodegenDesc d{};
-        d.rank = static_cast<uint32_t>(node->get_input_shape(0).size());
+        const auto input_pshape = node->get_input_partial_shape(0);
+        OPENVINO_ASSERT(input_pshape.rank().is_static(), "ShapeOf: input rank must be static");
+        d.rank = static_cast<uint32_t>(input_pshape.rank().get_length());
+        d.element_type = node->get_output_element_type(0);
         set_desc(d, "shapeof_kernel");
         return;
     }
@@ -1001,17 +1218,38 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
         return;
     }
 
-    if (std::dynamic_pointer_cast<const ov::op::v3::Broadcast>(node)) {
+    if (std::dynamic_pointer_cast<const ov::op::v1::Broadcast>(node) ||
+        std::dynamic_pointer_cast<const ov::op::v3::Broadcast>(node)) {
         BroadcastCodegenDesc d{};
         d.element_type = node->get_output_element_type(0);
         set_desc(d, "broadcast_kernel");
+        src.signature.arg_count = 9;
+        src.signature.output_arg_count = 1;
+        if (src.module) {
+            annotate_module_operands(src.module,
+                                     {1, 1, 0, 0, 0, 1, 1, 1, 1},
+                                     {0, 1, -1, -1, -1, 2, 3, 4, 5},
+                                     {});
+        }
         return;
     }
 
     if (std::dynamic_pointer_cast<const ov::op::v4::Range>(node)) {
         RangeCodegenDesc d{};
         d.element_type = node->get_output_element_type(0);
+        d.output_type = node->get_output_element_type(0);
+        d.start_type = node->get_input_element_type(0);
+        d.stop_type = node->get_input_element_type(1);
+        d.step_type = node->get_input_element_type(2);
         set_desc(d, "range_kernel");
+        src.signature.arg_count = 5;
+        src.signature.output_arg_count = 1;
+        if (src.module) {
+            annotate_module_operands(src.module,
+                                     {1, 1, 1, 1, 0},
+                                     {0, 1, 2, 3, -1},
+                                     {});
+        }
         return;
     }
 
@@ -1172,21 +1410,27 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
         return;
     }
 
-    if (auto g = std::dynamic_pointer_cast<const ov::op::v1::Gather>(node)) {
+    if (auto g = std::dynamic_pointer_cast<const ov::op::util::GatherBase>(node)) {
         GatherCodegenDesc d{};
-        const auto data = g->get_input_shape(0);
-        const auto idx = g->get_input_shape(1);
-        const size_t axis = static_cast<size_t>(g->get_axis());
-        uint64_t inner = 1, outer = 1;
-        for (size_t i = axis + 1; i < data.size(); ++i) inner *= data[i];
-        for (size_t i = 0; i < axis; ++i) outer *= data[i];
-        d.outer = outer;
-        d.inner = inner;
-        d.axis_dim = data[axis];
-        d.indices_count = shape_size(idx);
+        if (auto g7 = std::dynamic_pointer_cast<const ov::op::v7::Gather>(node)) {
+            OPENVINO_ASSERT(g7->get_batch_dims() == 0, "GFX Metal Gather: batch_dims not supported");
+        } else if (auto g8 = std::dynamic_pointer_cast<const ov::op::v8::Gather>(node)) {
+            OPENVINO_ASSERT(g8->get_batch_dims() == 0, "GFX Metal Gather: batch_dims not supported");
+        }
         d.index_type = g->get_input_element_type(1);
         d.element_type = g->get_output_element_type(0);
+        const auto data_pshape = g->get_input_partial_shape(0);
+        OPENVINO_ASSERT(data_pshape.rank().is_static(), "GFX Metal Gather: data rank must be static");
+        const size_t rank = static_cast<size_t>(data_pshape.rank().get_length());
+        OPENVINO_ASSERT(rank > 0, "GFX Metal Gather: data rank must be positive");
+        const size_t axis = normalize_axis(g->get_axis(), rank, "GFX Metal Gather");
+        (void)axis;
+        d.outer = 1;
+        d.inner = 1;
+        d.axis_dim = 1;
+        d.indices_count = 1;
         set_desc(d, "gather_kernel");
+        src.signature.arg_count = 4;  // data, indices, out, params
         return;
     }
 
@@ -1228,6 +1472,21 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
             d.data_strides[i] = static_cast<uint32_t>(data_strides[i]);
         }
         set_desc(d, "gather_elements_kernel");
+        return;
+    }
+
+    if (auto su = std::dynamic_pointer_cast<const ov::op::v3::ScatterUpdate>(node)) {
+        src.entry_point = "scatter_update_kernel";
+        src.signature.arg_count = 5;
+        src.msl_generator = [data_type = su->get_output_element_type(0),
+                             index_type = su->get_input_element_type(1)](mlir::ModuleOp) {
+            return generate_scatter_update_msl(data_type, index_type);
+        };
+        if (src.module) {
+            const std::vector<int32_t> kinds{1, 1, 1, 1, 1};
+            const std::vector<int32_t> arg_idx{0, 1, 2, 4, 3};
+            annotate_module_operands(src.module, kinds, arg_idx, {});
+        }
         return;
     }
 
@@ -1405,7 +1664,9 @@ std::shared_ptr<ICompiledKernel> MetalStage::compile_kernel(const KernelSource& 
                                                             std::string* log) {
     OPENVINO_ASSERT(m_device, "MetalStage: Metal device handle is null");
     KernelSource src = source;
-    attach_msl_generator(m_node, src);
+    if (!configure_runtime_softmax_generator(m_node, m_inputs, src)) {
+        attach_msl_generator(m_node, src);
+    }
     if (m_node &&
         (ov::is_type<const ov::op::v8::Slice>(m_node) || ov::is_type<const ov::op::v1::StridedSlice>(m_node))) {
         ConvertCodegenDesc d{};
@@ -1422,12 +1683,15 @@ std::shared_ptr<ICompiledKernel> MetalStage::compile_kernel(const KernelSource& 
         d.element_type = storage_type;
         d.dst_type = storage_type;
         src.entry_point = "slice_kernel";
-        if (m_kernel_extra_inputs.empty()) {
+        const bool dynamic_slice_shape = !m_node->get_input_partial_shape(0).is_static() ||
+                                         !m_node->get_output_partial_shape(0).is_static();
+        if (m_kernel_extra_inputs.empty() && !dynamic_slice_shape) {
             src.signature.arg_count = 2;
             src.msl_source = generate_static_msl_for_slice(m_node, d.dst_type);
             src.msl_generator = {};
             src.module = {};
         } else {
+            src.signature.arg_count = 8;
             src.msl_generator = [d](mlir::ModuleOp module) mutable {
                 return generate_msl_for_slice_generic(d, module);
             };
@@ -1438,6 +1702,14 @@ std::shared_ptr<ICompiledKernel> MetalStage::compile_kernel(const KernelSource& 
                     m_node ? m_node->get_type_name() : "");
     MetalCodegenBackend backend(m_device);
     return backend.compile(src, log);
+}
+
+void MetalStage::configure_runtime_matmul_kernel_source(KernelSource& source,
+                                                        const MatMulCodegenDesc& desc) const {
+    source.entry_point = "matmul_kernel";
+    source.module = {};
+    source.msl_source = generate_msl_from_mlir({}, desc);
+    source.msl_generator = {};
 }
 
 KernelExecutionHooks* MetalStage::prepare_profiling(ProfileState& state,

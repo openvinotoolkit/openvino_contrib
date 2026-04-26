@@ -5,6 +5,8 @@
 
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "llvm/ADT/SmallVector.h"
 
 #include "openvino/core/type/element_type.hpp"
@@ -104,6 +106,20 @@ inline mlir::SmallVector<int64_t> to_shape(const ov::PartialShape& ps) {
                                       : static_cast<int64_t>(d.get_length()));
     }
     return dims;
+}
+
+inline llvm::SmallVector<mlir::Value> materialize_dynamic_dims_from_tensor(mlir::OpBuilder& builder,
+                                                                           mlir::Location loc,
+                                                                           mlir::Value tensor,
+                                                                           llvm::ArrayRef<int64_t> shape) {
+    llvm::SmallVector<mlir::Value> dyn_dims;
+    dyn_dims.reserve(shape.size());
+    for (size_t i = 0; i < shape.size(); ++i) {
+        if (shape[i] == mlir::ShapedType::kDynamic) {
+            dyn_dims.push_back(builder.create<mlir::tensor::DimOp>(loc, tensor, static_cast<int64_t>(i)).getResult());
+        }
+    }
+    return dyn_dims;
 }
 
 }  // namespace gfx_plugin

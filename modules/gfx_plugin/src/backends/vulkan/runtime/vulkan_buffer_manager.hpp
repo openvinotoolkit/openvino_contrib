@@ -24,6 +24,8 @@ public:
                          const void* data,
                          size_t bytes,
                          ov::element::Type type) override;
+    GpuBuffer allocate_temp(const GpuBufferDesc& desc) override;
+    void release_temp(GpuBuffer&& buf) override;
     void begin_const_upload_batch() override;
     void flush_const_upload_batch(GpuCommandBufferHandle command_buffer,
                                   GfxProfiler* profiler) override;

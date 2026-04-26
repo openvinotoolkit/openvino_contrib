@@ -18,6 +18,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/codegen_common.hpp"
+#include "runtime/gfx_shape_utils.hpp"
 #include "transforms/mlir_fused_ops.hpp"
 #include "runtime/gfx_logger.hpp"
 
@@ -25,17 +26,6 @@ namespace ov {
 namespace gfx_plugin {
 
 namespace {
-// Flatten arbitrary rank (2–4) shapes into [batch, M, K] or [batch, K, N]
-std::vector<int64_t> flatten_to_3d(const ov::Shape& s) {
-    OPENVINO_ASSERT(!s.empty(), "MatMul: empty shape");
-    OPENVINO_ASSERT(s.size() >= 2 && s.size() <= 4, "MatMul supports ranks 2–4");
-    int64_t batch = 1;
-    for (size_t i = 0; i + 2 < s.size(); ++i) batch *= static_cast<int64_t>(s[i]);
-    int64_t m = static_cast<int64_t>(s[s.size() - 2]);
-    int64_t k = static_cast<int64_t>(s[s.size() - 1]);
-    return {batch, m, k};
-}
-
 bool compute_bias_dims(const BiasParams& params,
                        const MatMulCodegenDesc& desc,
                        std::array<int64_t, 3>& out_dims) {
@@ -94,14 +84,12 @@ void MetalMatMulOp::fill_desc_from_node(const std::shared_ptr<const ov::Node>& n
     m_shape_b = node->get_input_shape(1);
     OPENVINO_ASSERT(!m_shape_a.empty() && !m_shape_b.empty(), "MatMul: static shapes required");
 
-    auto a3 = flatten_to_3d(m_shape_a);
-    auto b3 = flatten_to_3d(m_shape_b);
-
+    const auto flattened = flatten_matmul_shapes_with_batch_broadcast(m_shape_a, m_shape_b, "MatMul");
+    const auto& a3 = flattened.lhs;
+    const auto& b3 = flattened.rhs;
     const int64_t batch_a = a3[0];
     const int64_t batch_b = b3[0];
-    const int64_t batch = std::max(batch_a, batch_b);
-    OPENVINO_ASSERT(batch_a == batch_b || batch_a == 1 || batch_b == 1,
-                    "MatMul: incompatible batch broadcast (", batch_a, " vs ", batch_b, ")");
+    const int64_t batch = flattened.batch;
 
     const int64_t M = ta ? a3[2] : a3[1];
     const int64_t K_a = ta ? a3[1] : a3[2];
@@ -283,12 +271,14 @@ void MetalMatMulOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     OPENVINO_ASSERT(B->buf.size >= need_b, "MatMul: B buffer too small");
     OPENVINO_ASSERT(C.buf.size >= need_c, "MatMul: C buffer too small");
 
-    const uint32_t total = static_cast<uint32_t>(m_desc.batch * m_desc.M * m_desc.N);
+    const uint64_t total = gfx_matmul_dispatch_items(m_desc);
     if (total == 0) {
         return;
     }
-    const NSUInteger threads_per_tg = 256;
-    KernelDispatch dispatch = make_1d_dispatch(total, m_kernel->clamp_threadgroup_size(threads_per_tg));
+    const uint32_t reduction_threads = gfx_matmul_parallel_reduction_threads(m_desc);
+    const NSUInteger threads_per_tg = reduction_threads > 1 ? reduction_threads : 256;
+    KernelDispatch dispatch = make_1d_dispatch(static_cast<size_t>(total),
+                                               m_kernel->clamp_threadgroup_size(threads_per_tg));
 
     KernelArgsBuilder args_builder(name().c_str());
     args_builder.add_inputs(2, [&](size_t idx) { return idx == 0 ? A : B; });
