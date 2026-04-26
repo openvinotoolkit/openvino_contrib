@@ -18,6 +18,7 @@
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/mlir_builder.hpp"
 #include "mlir/mlir_kernel_plan_utils.hpp"
+#include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_parallelism.hpp"
 #include "runtime/gfx_profiler.hpp"
@@ -38,6 +39,7 @@
 
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
+#include "openvino/core/type/float16.hpp"
 #include "openvino/core/validation_util.hpp"
 #include "openvino/op/batch_norm.hpp"
 #include "openvino/op/broadcast.hpp"
@@ -363,6 +365,28 @@ std::optional<ov::Tensor> evaluate_constant_source_tensor(const ov::Output<ov::N
         return std::nullopt;
     }
     return outputs.at(source.get_index());
+}
+
+bool should_pack_matmul_const_input_as_f16(const std::shared_ptr<const ov::Node>& node,
+                                           size_t input_idx,
+                                           const ov::Tensor& tensor) {
+    auto matmul = ov::as_type_ptr<const ov::op::v0::MatMul>(node);
+    return matmul &&
+           input_idx == 1 &&
+           (!matmul->get_input_partial_shape(0).is_static() ||
+            !matmul->get_output_partial_shape(0).is_static()) &&
+           tensor.get_element_type() == ov::element::f32 &&
+           matmul->get_output_element_type(0) == ov::element::f32;
+}
+
+std::vector<ov::float16> pack_f32_tensor_as_f16(const ov::Tensor& tensor) {
+    const auto elements = tensor.get_size();
+    const auto* src = tensor.data<const float>();
+    std::vector<ov::float16> packed(elements);
+    for (size_t i = 0; i < elements; ++i) {
+        packed[i] = ov::float16(src[i]);
+    }
+    return packed;
 }
 
 std::vector<int64_t> evaluate_constant_source_i64(const ov::Output<ov::Node>& source, const char* what) {
@@ -893,8 +917,20 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
             if (m_const_buffers->present[i] && m_const_buffers->buffers[i].buf.valid()) {
                 continue;
             }
-            const size_t bytes = const_tensor->get_byte_size();
-            const auto et = const_tensor->get_element_type();
+            std::vector<ov::float16> packed_f16;
+            const void* const_data = const_tensor->data();
+            size_t bytes = const_tensor->get_byte_size();
+            auto et = const_tensor->get_element_type();
+            if (backend_kind() == GpuBackend::Metal && should_pack_matmul_const_input_as_f16(m_node, i, *const_tensor)) {
+                const size_t original_bytes = bytes;
+                packed_f16 = pack_f32_tensor_as_f16(*const_tensor);
+                const_data = packed_f16.data();
+                bytes = packed_f16.size() * sizeof(ov::float16);
+                et = ov::element::f16;
+                increment_compile_counter("matmul_const_f32_to_f16_pack_count");
+                increment_compile_counter("matmul_const_f32_to_f16_original_bytes", original_bytes);
+                increment_compile_counter("matmul_const_f32_to_f16_packed_bytes", bytes);
+            }
             if (gfx_log_debug_enabled() && et == ov::element::f32 && bytes >= sizeof(float)) {
                 const float* vals = const_tensor->data<const float>();
                 const size_t count = bytes / sizeof(float);
@@ -910,7 +946,7 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
                 gfx_log_debug("MLIRConst") << oss.str();
             }
             if (use_const_cache && bytes) {
-                const uint64_t hash = gfx_hash_bytes(const_tensor->data(), bytes);
+                const uint64_t hash = gfx_hash_bytes(const_data, bytes);
                 std::ostringstream key;
                 key << m_name
                     << "/const/"
@@ -921,7 +957,7 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
                     << bytes
                     << "/"
                     << hash;
-                GpuBuffer buf = m_buffer_manager->wrap_const(key.str(), const_tensor->data(), bytes, et);
+                GpuBuffer buf = m_buffer_manager->wrap_const(key.str(), const_data, bytes, et);
                 OPENVINO_ASSERT(buf.valid(),
                                 "GFX MLIR: failed to wrap const buffer for stage ",
                                 m_name);
@@ -2568,10 +2604,21 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
             matmul_key.push_back(0);
             matmul_key.insert(matmul_key.end(), b_shape.begin(), b_shape.end());
             if (m_last_input_shape != matmul_key || !m_kernel) {
+                auto runtime_input_type = [&](size_t input_idx, const ov::element::Type& fallback) {
+                    if (auto* tensor = resolve_input_tensor(input_idx)) {
+                        if (tensor->expected_type != ov::element::dynamic) {
+                            return tensor->expected_type;
+                        }
+                        if (tensor->buf.type != ov::element::dynamic) {
+                            return tensor->buf.type;
+                        }
+                    }
+                    return fallback;
+                };
                 MatMulCodegenDesc desc{};
                 desc.element_type = matmul->get_output_element_type(0);
-                desc.input_a_type = matmul->get_input_element_type(0);
-                desc.input_b_type = matmul->get_input_element_type(1);
+                desc.input_a_type = runtime_input_type(0, matmul->get_input_element_type(0));
+                desc.input_b_type = runtime_input_type(1, matmul->get_input_element_type(1));
                 desc.output_type = matmul->get_output_element_type(0);
                 desc.a_transpose = ta;
                 desc.b_transpose = tb;

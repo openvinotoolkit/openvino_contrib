@@ -58,6 +58,7 @@ Check whether the change belongs to one of the current special families:
 - dedicated lowered ops such as `RMS` and `ScatterUpdate`
 - stateful `ReadValue` / `Assign` handling through infer-request variable storage
 - backend-specialized launch paths that now depend on final runtime shape or final shader binding counts
+- compile-time data repacking paths, such as Metal dynamic-shape `MatMul` packing a constant RHS from `f32` to `f16` and recompiling against the effective runtime tensor types
 
 ### Runtime or backend scheduling change
 

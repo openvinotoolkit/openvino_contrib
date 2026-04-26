@@ -126,6 +126,7 @@ Recent MLIR-specific changes reflected in the current code:
 - interior-tile eligibility is now factored through separate height and width window checks before the combined 2D interior fast path is selected
 - manual Vulkan Conv2D MLIR building can now emit `gpu.func` entry points for batch-1 parallel dispatch plans and keep a serial `func.func` entry path for larger batches
 - kernel-signature and metadata helpers now resolve `gpu.func` entry points before falling back to plain `func.func`, so Vulkan launch metadata stays aligned with GPU-entry modules
+- Metal `MatMul` codegen can now derive input element types from the effective runtime tensors, which matters when stage compilation repacks a constant RHS from `f32` to `f16` for dynamic-shape paths
 - layout cleanup can now fold the DFL softmax expectation tail into a `Softmax -> MatMul -> Reshape/Transpose` form that preserves output values without the older synthetic convolution path
 
 Lowered kernels also rely on backend-neutral argument and binding helpers:
@@ -155,6 +156,7 @@ Direct Metal API usage lives in Objective-C++ files (`.mm`).
 The current Metal backend also shares immutable constant-buffer state across compatible requests through `MetalConstCache` and the backend-neutral immutable buffer cache helper.
 It now also reports execution-device limits through `GpuExecutionDeviceInfo`, so backend-neutral planning code can use real Metal subgroup and threadgroup limits.
 The current Metal executor also contains runtime-specialized codegen paths for dynamically shaped `Softmax`, `Select`, `ScatterUpdate`, `RMS`, and more permissive slice handling, including negative-step `StridedSlice`.
+For dynamic-shape `MatMul`, the current MLIR stage path may also pack a constant RHS from `f32` to `f16` before wrapping it as an immutable const buffer. Compile profiling counters track the original and packed byte sizes for that optimization.
 
 ## Vulkan Backend
 `src/backends/vulkan/` mirrors the same broad split:

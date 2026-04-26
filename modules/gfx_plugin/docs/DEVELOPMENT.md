@@ -173,6 +173,8 @@ For the current codebase, also check whether the op should participate in:
 
 For Reduce-like work, prefer the existing typed reduction extraction in `src/mlir/mlir_builder_reduce.cpp`. The current builder reads axes and `keep_dims` from concrete Reduce op classes such as `ReduceSum`, `ReduceMean`, `ReduceMax`, `ReduceMin`, `ReduceProd`, `ReduceL1`, and `ReduceL2` instead of relying on a looser generic reduction-base path.
 
+For `MatMul`, keep the compile-time const-buffer story aligned with runtime codegen. The current Metal path may repack a constant RHS from `f32` to `f16` for dynamic-shape `MatMul` stages and then derive kernel input element types from the effective runtime tensors instead of only the original node input types.
+
 For RMSNorm-style work, remember that `src/transforms/pipeline.cpp` now runs OpenVINO `RMSFusion` before plugin-local cleanup. The current intended path is fused RMSNorm graph patterns lowering into the dedicated `RMS` builder and backend codegen, not preserving only the unfused arithmetic tail.
 
 For `ScatterUpdate`, use the dedicated builder in `src/mlir/mlir_builder_scatter_update.cpp`. The current path expects a constant scalar `axis`, static ranks, and normalized negative indices in the generated kernel path.

@@ -174,6 +174,7 @@ Current lowering/runtime special cases:
 - Slice lowering now prefers `tensor.extract_slice`; generic slice metadata extraction still accepts the older generic form when needed
 - dynamic-shape support now covers `ShapeOf` compile/query flow and query-time acceptance for selected data-movement ops such as `Concat`, `Broadcast`, `Select`, `StridedSlice`, and `Range`
 - `ReadValue` is treated as a view-style stage, while `Assign` is intercepted by a stateful execution layer that persists the variable buffer inside infer-request state
+- Metal dynamic-shape `MatMul` can repack a constant RHS from `f32` to `f16` during stage compilation and then compile the kernel against the effective runtime buffer types instead of only the original node input element types
 - layout cleanup can fold the DFL softmax expectation tail into a value-preserving `Softmax -> MatMul -> Reshape/Transpose` path instead of the older synthetic convolution rewrite
 
 ## Public And Internal Properties

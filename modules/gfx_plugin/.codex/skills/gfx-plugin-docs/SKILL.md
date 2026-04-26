@@ -42,6 +42,7 @@ Additional operational docs:
    - supported-shape or dispatch constraints
    - stateful execution semantics for `ReadValue` / `Assign`
    - dedicated lowering families such as `RMS` or `ScatterUpdate`
+   - effective runtime type or const-packing behavior that changes kernel compilation assumptions
    - test layout or regression coverage
    - compare-runner CLI or debug workflow
    - profiling or microbench workflows
