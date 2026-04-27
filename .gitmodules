@@ -1,0 +1,6 @@
+[submodule "modules/gfx_plugin/third_party/llvm-project"]
+	path = modules/gfx_plugin/third_party/llvm-project
+	url = https://github.com/llvm/llvm-project.git
+[submodule "modules/gfx_plugin/third_party/Vulkan-Headers"]
+	path = modules/gfx_plugin/third_party/Vulkan-Headers
+	url = https://github.com/KhronosGroup/Vulkan-Headers.git

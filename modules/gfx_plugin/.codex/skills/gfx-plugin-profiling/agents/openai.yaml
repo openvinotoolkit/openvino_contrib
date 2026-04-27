@@ -1,0 +1,4 @@
+interface:
+  display_name: "GFX Plugin Profiling"
+  short_description: "Triage GFX plugin performance and profiling data"
+  default_prompt: "Use $gfx-plugin-profiling to analyze GFX plugin performance and profiling output."

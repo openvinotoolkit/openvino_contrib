@@ -1,0 +1,304 @@
+// Copyright (C) 2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+
+#include "backends/vulkan/runtime/profiling/profiler.hpp"
+
+#include "openvino/core/except.hpp"
+
+namespace ov {
+namespace gfx_plugin {
+
+namespace {
+uint64_t to_us(double ns) {
+    if (ns <= 0.0) {
+        return 0;
+    }
+    return static_cast<uint64_t>(ns / 1000.0);
+}
+
+uint64_t to_us(std::chrono::steady_clock::duration d) {
+    return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(d).count());
+}
+}  // namespace
+
+VulkanProfiler::VulkanProfiler(VkDevice device,
+                               VkPhysicalDevice physical_device,
+                               uint32_t queue_family_index)
+    : m_device(device),
+      m_physical_device(physical_device),
+      m_queue_family_index(queue_family_index) {
+    VkPhysicalDeviceProperties props{};
+    vkGetPhysicalDeviceProperties(m_physical_device, &props);
+    m_timestamp_period = props.limits.timestampPeriod;
+    uint32_t qcount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(m_physical_device, &qcount, nullptr);
+    VkQueueFamilyProperties qprops{};
+    if (qcount > 0 && m_queue_family_index < qcount) {
+        std::vector<VkQueueFamilyProperties> qprops_list(qcount);
+        vkGetPhysicalDeviceQueueFamilyProperties(m_physical_device, &qcount, qprops_list.data());
+        qprops = qprops_list[m_queue_family_index];
+    }
+    m_supported = (m_timestamp_period > 0.0f) &&
+                  (qprops.timestampValidBits > 0) &&
+                  (props.limits.timestampComputeAndGraphics != 0);
+}
+
+void VulkanProfiler::set_config(const GfxProfilerConfig& cfg) {
+    m_cfg = cfg;
+    m_enabled = (m_cfg.level != ProfilingLevel::Off);
+}
+
+void VulkanProfiler::begin_infer(size_t expected_samples) {
+    m_nodes.clear();
+    m_next_query = 0;
+    m_trace.reset(m_cfg.level);
+    m_trace.set_backend("vulkan");
+    m_trace.set_counter_capability(m_supported, m_supported);
+    m_wall_start = std::chrono::steady_clock::now();
+    if (!enabled()) {
+        return;
+    }
+    if (m_supported) {
+        ensure_query_pool(expected_samples);
+    }
+}
+
+void VulkanProfiler::end_infer(GpuCommandBufferHandle /*command_buffer*/) {
+    if (!enabled()) {
+        return;
+    }
+    uint64_t total_gpu_us = 0;
+    if (m_supported) {
+        for (auto& rec : m_nodes) {
+            for (const auto& samples : rec.pending_samples) {
+                if (samples.begin == UINT32_MAX || samples.end == UINT32_MAX) {
+                    continue;
+                }
+                const uint64_t begin = read_timestamp(samples.begin);
+                const uint64_t end = read_timestamp(samples.end);
+                if (end > begin) {
+                    const double ns = static_cast<double>(end - begin) * static_cast<double>(m_timestamp_period);
+                    rec.gpu_us += to_us(ns);
+                    rec.dispatches += 1;
+                }
+            }
+            rec.pending_samples.clear();
+            total_gpu_us += rec.gpu_us;
+        }
+    } else {
+        for (auto& rec : m_nodes) {
+            rec.pending_samples.clear();
+        }
+    }
+    uint64_t total_cpu_us = 0;
+    for (const auto& seg : m_trace.report().segments) {
+        total_cpu_us += seg.cpu_us;
+    }
+    m_trace.set_total_gpu_us(total_gpu_us);
+    m_trace.set_total_cpu_us(total_cpu_us);
+    m_trace.set_total_wall_us(to_us(std::chrono::steady_clock::now() - m_wall_start));
+    m_trace.set_counter_capability(m_supported, m_supported);
+}
+
+void VulkanProfiler::record_segment(std::string_view phase,
+                                    std::string_view name,
+                                    std::chrono::microseconds cpu_us,
+                                    uint64_t gpu_us,
+                                    uint32_t dispatches,
+                                    uint64_t bytes_in,
+                                    uint64_t bytes_out,
+                                    uint64_t macs_est,
+                                    uint64_t flops_est,
+                                    int64_t inflight_slot,
+                                    uint64_t queue_id,
+                                    uint64_t cmd_buffer_id) {
+    if (!enabled()) {
+        return;
+    }
+    m_trace.add_segment(phase,
+                        name,
+                        static_cast<uint64_t>(cpu_us.count()),
+                        gpu_us,
+                        dispatches,
+                        bytes_in,
+                        bytes_out,
+                        macs_est,
+                        flops_est,
+                        inflight_slot,
+                        queue_id,
+                        cmd_buffer_id);
+}
+
+void VulkanProfiler::record_transfer(const char* tag,
+                                     uint64_t bytes,
+                                     bool h2d,
+                                     std::chrono::microseconds cpu_us,
+                                     uint64_t gpu_us) {
+    if (!enabled()) {
+        return;
+    }
+    m_trace.add_transfer(tag, bytes, h2d, static_cast<uint64_t>(cpu_us.count()), gpu_us);
+}
+
+void VulkanProfiler::increment_counter(std::string_view name, uint64_t delta) {
+    if (!enabled()) {
+        return;
+    }
+    m_trace.increment_counter(name, delta);
+}
+
+void VulkanProfiler::set_counter(std::string_view name, uint64_t value) {
+    if (!enabled()) {
+        return;
+    }
+    m_trace.set_counter(name, value);
+}
+
+void VulkanProfiler::begin_node(uint32_t node_id,
+                                const char* node_name,
+                                const char* node_type,
+                                const char* exec_type) {
+    if (!enabled()) {
+        return;
+    }
+    if (node_id >= m_nodes.size()) {
+        m_nodes.resize(node_id + 1);
+    }
+    auto& rec = m_nodes[node_id];
+    rec.node_id = node_id;
+    if (rec.node_name.empty() && node_name) {
+        rec.node_name = node_name;
+    }
+    if (rec.node_type.empty() && node_type) {
+        rec.node_type = node_type;
+    }
+    if (rec.exec_type.empty() && exec_type) {
+        rec.exec_type = exec_type;
+    }
+}
+
+VulkanProfiler::SamplePair VulkanProfiler::reserve_samples() {
+    SamplePair pair{};
+    if (!enabled()) {
+        return pair;
+    }
+    if (m_next_query + 1 >= m_query_count) {
+        return pair;
+    }
+    pair.begin = m_next_query++;
+    pair.end = m_next_query++;
+    return pair;
+}
+
+void VulkanProfiler::write_timestamp(VkCommandBuffer cmd, uint32_t query_index) const {
+    if (!enabled() || !cmd || !m_query_pool || query_index == UINT32_MAX) {
+        return;
+    }
+    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, m_query_pool, query_index);
+}
+
+void VulkanProfiler::end_node(uint32_t node_id, SamplePair samples) {
+    if (!enabled()) {
+        return;
+    }
+    if (node_id >= m_nodes.size()) {
+        return;
+    }
+    if (samples.begin == UINT32_MAX || samples.end == UINT32_MAX) {
+        return;
+    }
+    m_nodes[node_id].pending_samples.push_back(samples);
+}
+
+std::vector<ov::ProfilingInfo> VulkanProfiler::export_ov() const {
+    std::vector<ov::ProfilingInfo> out;
+    if (!enabled()) {
+        return out;
+    }
+    out.reserve(m_nodes.size());
+    for (const auto& rec : m_nodes) {
+        if (rec.node_name.empty()) {
+            continue;
+        }
+        ov::ProfilingInfo info;
+        info.node_name = rec.node_name;
+        info.node_type = rec.node_type;
+        info.exec_type = rec.exec_type.empty() ? std::string{"GFX"} : rec.exec_type;
+        info.status = ov::ProfilingInfo::Status::EXECUTED;
+        info.real_time = std::chrono::microseconds{static_cast<int64_t>(rec.gpu_us)};
+        info.cpu_time = std::chrono::microseconds{0};
+        out.push_back(std::move(info));
+    }
+    return out;
+}
+
+std::string VulkanProfiler::export_extended_json() const {
+    return export_extended_report().to_json();
+}
+
+GfxProfilingReport VulkanProfiler::export_extended_report() const {
+    auto report = m_trace.report();
+    report.nodes.reserve(report.nodes.size() + m_nodes.size());
+    for (const auto& rec : m_nodes) {
+        if (rec.node_name.empty()) {
+            continue;
+        }
+        GfxProfilingNodeEntry entry;
+        entry.node_id = rec.node_id;
+        entry.node_name = rec.node_name;
+        entry.node_type = rec.node_type;
+        entry.exec_type = rec.exec_type.empty() ? std::string{"GFX"} : rec.exec_type;
+        entry.gpu_us = rec.gpu_us;
+        entry.cpu_us = 0;
+        entry.dispatches = rec.dispatches;
+        report.nodes.push_back(std::move(entry));
+    }
+    return report;
+}
+
+void VulkanProfiler::ensure_query_pool(size_t sample_pairs) {
+    if (!enabled() || !m_supported) {
+        return;
+    }
+    const uint32_t desired = sample_pairs == 0 ? 0u : static_cast<uint32_t>(sample_pairs * 2);
+    if (desired == 0) {
+        return;
+    }
+    if (m_query_pool) {
+        vkDestroyQueryPool(m_device, m_query_pool, nullptr);
+        m_query_pool = VK_NULL_HANDLE;
+        m_query_count = 0;
+    }
+    VkQueryPoolCreateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+    info.queryType = VK_QUERY_TYPE_TIMESTAMP;
+    info.queryCount = desired;
+    VkResult res = vkCreateQueryPool(m_device, &info, nullptr, &m_query_pool);
+    if (res != VK_SUCCESS) {
+        OPENVINO_THROW("GFX Vulkan: vkCreateQueryPool failed: ", static_cast<int>(res));
+    }
+    m_query_count = desired;
+}
+
+uint64_t VulkanProfiler::read_timestamp(uint32_t query_index) const {
+    if (!enabled() || !m_supported || !m_query_pool) {
+        return 0;
+    }
+    uint64_t value = 0;
+    VkResult res = vkGetQueryPoolResults(m_device,
+                                         m_query_pool,
+                                         query_index,
+                                         1,
+                                         sizeof(uint64_t),
+                                         &value,
+                                         sizeof(uint64_t),
+                                         VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+    if (res != VK_SUCCESS) {
+        return 0;
+    }
+    return value;
+}
+
+}  // namespace gfx_plugin
+}  // namespace ov
