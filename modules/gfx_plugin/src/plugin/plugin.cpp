@@ -103,8 +103,6 @@ std::shared_ptr<ov::ICompiledModel> Plugin::compile_model_impl(
         OPENVINO_THROW("GFX plugin does not support HETERO subgraphs yet");
     }
 
-    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
-
     ov::AnyMap compile_properties = m_config;
     for (const auto& kv : properties) {
         compile_properties[kv.first] = kv.second;
@@ -112,6 +110,7 @@ std::shared_ptr<ov::ICompiledModel> Plugin::compile_model_impl(
     const auto resolved = resolve_backend_for_properties(compile_properties, /*log_fallback=*/true, "Plugin");
     const auto backend_kind = resolved.backend;
     gfx_log_info("Plugin") << "Selected GFX backend: " << resolved.backend_name;
+    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model, backend_kind);
 
     if (!model_supported_by_backend(transformed, backend_kind)) {
         auto summary = collect_unsupported(transformed, backend_kind);
@@ -206,7 +205,7 @@ ov::SupportedOpsMap Plugin::query_model(const std::shared_ptr<const ov::Model>& 
     }
     ov::SupportedOpsMap res;
     // Use the same transformation pipeline as compile_model to keep support checks consistent.
-    const auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
+    const auto transformed = ov::gfx_plugin::transforms::run_pipeline(model, backend_kind);
     if (!model_supported_by_backend(transformed, backend_kind)) {
         // No partial fallback to CPU/HETERO: all-or-nothing support.
         return res;

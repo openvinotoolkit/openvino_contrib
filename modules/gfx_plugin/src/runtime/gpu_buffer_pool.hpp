@@ -3,6 +3,7 @@
 //
 #pragma once
 
+#include <algorithm>
 #include <utility>
 
 #include "runtime/memory_manager.hpp"
@@ -32,8 +33,14 @@ public:
             return handle.buf;
         }
 
+        GpuBufferDesc alloc_desc = desc;
+        if (handle.capacity > 0) {
+            const size_t geometric = handle.capacity + handle.capacity / 2;
+            alloc_desc.bytes = std::max(desc.bytes, geometric);
+        }
+
         release(handle);
-        GpuBuffer buf = m_allocator.allocate(desc);
+        GpuBuffer buf = m_allocator.allocate(alloc_desc);
         buf.from_handle = true;
         handle.buf = buf;
         handle.capacity = buf.size;

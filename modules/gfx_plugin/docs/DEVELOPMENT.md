@@ -153,6 +153,11 @@ If the change touches infer-request throughput or resource reuse, also read:
 - `src/plugin/infer_io_utils.*`
 - `src/backends/vulkan/runtime/vulkan_buffer_manager.*` when Vulkan const-upload batching or shared upload-recording behavior changes
 
+For stage-output reuse changes, also inspect:
+- `StageOutputBufferWorkspace` in `src/plugin/infer_pipeline.hpp`
+- `GpuStage::describe_output_lifetimes()` in `src/runtime/gpu_stage.hpp`
+- `src/runtime/fused_sequence_stage.*` for fused-stage lifetime propagation
+
 If the change touches stateful graphs, read `src/plugin/infer_request_state.hpp` as well. `ReadValue` and `Assign` are no longer just generic ops flowing through the normal stateless path: infer-request state now owns persistent variable buffers keyed by OpenVINO variable id.
 
 ## Adding Or Extending An Op
@@ -174,10 +179,15 @@ For the current codebase, also check whether the op should participate in:
 For Reduce-like work, prefer the existing typed reduction extraction in `src/mlir/mlir_builder_reduce.cpp`. The current builder reads axes and `keep_dims` from concrete Reduce op classes such as `ReduceSum`, `ReduceMean`, `ReduceMax`, `ReduceMin`, `ReduceProd`, `ReduceL1`, and `ReduceL2` instead of relying on a looser generic reduction-base path.
 
 For `MatMul`, keep the compile-time const-buffer story aligned with runtime codegen. The current Metal path may repack a constant RHS from `f32` to `f16` for dynamic-shape `MatMul` stages and then derive kernel input element types from the effective runtime tensors instead of only the original node input types.
+If the change touches compressed or quantized `MatMul` weights, also inspect `src/transforms/pipeline.cpp`. The transform pipeline is now backend-aware and can protect decompression subgraphs on Metal so backend-specific compressed-weight handling survives generic optimization passes.
 
 For RMSNorm-style work, remember that `src/transforms/pipeline.cpp` now runs OpenVINO `RMSFusion` before plugin-local cleanup. The current intended path is fused RMSNorm graph patterns lowering into the dedicated `RMS` builder and backend codegen, not preserving only the unfused arithmetic tail.
 
 For `ScatterUpdate`, use the dedicated builder in `src/mlir/mlir_builder_scatter_update.cpp`. The current path expects a constant scalar `axis`, static ranks, and normalized negative indices in the generated kernel path.
+
+For fusion work, note that current support is no longer limited to output post-ops. `Multiply` can now absorb selected activations into one chosen input through the fusion plan and backend `fuse_input_activation()` hooks. Keep the transform-side fusion pattern, compiled-model fusion bookkeeping, and backend runtime/codegen support aligned.
+
+For `ScaledDotProductAttention`, the current native path is backend-specific: Metal can keep a rank-4 FP16/FP32 SDPA node and compile a dedicated kernel, while Vulkan still rejects native SDPA and expects other lowering paths.
 
 For Slice-like work, note that the current lowering prefers `tensor.extract_slice` instead of synthesizing a `linalg.generic` copy. Shared metadata extraction in `src/mlir/slice_generic_codegen.cpp` still accepts both forms so older paths and debug flows remain readable.
 

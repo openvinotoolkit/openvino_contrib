@@ -24,6 +24,7 @@ public:
     void compile(MetalBufferManager* buffer_manager) override;
     void execute(MetalCommandBufferHandle command_buffer) override;
     bool fuse_activation(ActivationKind kind, float alpha = 0.0f) override;
+    bool fuse_input_activation(size_t input_idx, ActivationKind kind, float alpha = 0.0f) override;
 
 protected:
     EltwiseKind m_kind;
@@ -49,6 +50,10 @@ protected:
     bool m_has_activation = false;
     ActivationKind m_activation = ActivationKind::Relu;
     float m_activation_alpha = 0.0f;
+    bool m_has_input_activation = false;
+    size_t m_input_activation_index = 0;
+    ActivationKind m_input_activation = ActivationKind::Relu;
+    float m_input_activation_alpha = 0.0f;
 
     // Recompute shapes/strides from runtime tensors if needed.
     void refresh_shapes_from_inputs();

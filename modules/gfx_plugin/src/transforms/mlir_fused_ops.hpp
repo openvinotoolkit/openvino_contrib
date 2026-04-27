@@ -3,6 +3,8 @@
 //
 #pragma once
 
+#include <cstddef>
+
 #include "mlir/IR/BuiltinOps.h"
 
 #include "runtime/gfx_activation.hpp"
@@ -13,6 +15,8 @@ namespace ov {
 namespace gfx_plugin {
 
 bool apply_fused_activation(mlir::ModuleOp module, ActivationKind kind, float alpha);
+
+bool apply_fused_input_activation(mlir::ModuleOp module, size_t input_idx, ActivationKind kind, float alpha);
 
 bool apply_fused_batchnorm(mlir::ModuleOp module, const BatchNormParams& params);
 

@@ -26,6 +26,9 @@ struct FusionGroup {
     std::vector<size_t> node_indices;
     std::optional<ActivationKind> activation;
     float activation_alpha = 0.0f;
+    std::optional<ActivationKind> input_activation;
+    float input_activation_alpha = 0.0f;
+    size_t input_activation_input = 0;
     std::optional<BiasParams> bias;
     std::optional<BatchNormParams> batchnorm;
     std::string kind;  // e.g. "ConvRelu"

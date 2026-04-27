@@ -33,6 +33,7 @@ struct BackendInferState {
     PreparedInferHostOutputPlan reusable_host_output_plan;
     bool reusable_pipeline_runtime_prewarmed = false;
     std::vector<std::vector<BufferHandle>> stage_output_handles;
+    StageOutputBufferWorkspace stage_output_workspace;
     std::vector<BufferHandle> input_handles;
     std::vector<BufferHandle> input_staging_handles;
     std::vector<BufferHandle> output_staging_handles;

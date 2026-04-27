@@ -3,6 +3,9 @@
 //
 #pragma once
 
+#include <algorithm>
+#include <cstddef>
+#include <limits>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -25,6 +28,17 @@ struct InferStage {
     std::vector<std::unique_ptr<GpuTensor>> outputs;
     std::vector<bool> output_is_model_output;
     std::vector<PipelineStageDesc::InputLink> inputs;
+};
+
+struct StageOutputBufferWorkspace {
+    static constexpr size_t npos = std::numeric_limits<size_t>::max();
+
+    std::vector<BufferHandle> handles;
+    std::vector<std::vector<size_t>> output_slots;
+    size_t last_workspace_outputs = 0;
+    size_t last_legacy_outputs = 0;
+    size_t last_slots_used = 0;
+    size_t last_peak_live_slots = 0;
 };
 
 enum class PreparedStageInputKind {
@@ -167,10 +181,314 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
                                    std::vector<std::vector<BufferHandle>>& handles,
                                    GpuBufferPool& pool,
                                    DescribeOutput&& describe_output,
+                                   StageOutputBufferWorkspace* workspace = nullptr,
                                    const char* error_prefix = "GFX") {
     if (handles.size() != pipeline.size()) {
         handles.assign(pipeline.size(), {});
     }
+
+    if (workspace) {
+        struct OutputPlan {
+            bool needs_buffer = false;
+            bool workspace_managed = false;
+            GpuBufferDesc desc{};
+        };
+        struct ActiveSlot {
+            size_t slot = StageOutputBufferWorkspace::npos;
+            size_t last_use = 0;
+        };
+
+        std::vector<std::vector<OutputPlan>> output_plan(pipeline.size());
+        std::vector<std::vector<size_t>> last_use(pipeline.size());
+        workspace->output_slots.assign(pipeline.size(), {});
+        workspace->last_workspace_outputs = 0;
+        workspace->last_legacy_outputs = 0;
+        workspace->last_slots_used = 0;
+        workspace->last_peak_live_slots = 0;
+        size_t max_new_workspace_slots = 0;
+        for (const auto& stage : pipeline) {
+            max_new_workspace_slots += stage.outputs.size();
+        }
+        workspace->handles.reserve(workspace->handles.size() + max_new_workspace_slots);
+
+        std::unordered_map<const ov::Node*, size_t> stage_by_node;
+        stage_by_node.reserve(pipeline.size());
+
+        for (size_t stage_idx = 0; stage_idx < pipeline.size(); ++stage_idx) {
+            auto& stage = pipeline[stage_idx];
+            if (stage.node) {
+                stage_by_node[stage.node.get()] = stage_idx;
+            }
+            auto& stage_handles = handles[stage_idx];
+            if (stage_handles.size() < stage.outputs.size()) {
+                stage_handles.resize(stage.outputs.size());
+            }
+            output_plan[stage_idx].resize(stage.outputs.size());
+            last_use[stage_idx].assign(stage.outputs.size(), stage_idx);
+            workspace->output_slots[stage_idx].assign(stage.outputs.size(), StageOutputBufferWorkspace::npos);
+
+            for (size_t oi = 0; oi < stage.outputs.size(); ++oi) {
+                auto& out_ref = stage.outputs[oi];
+                if (!out_ref || out_ref->buf.valid()) {
+                    continue;
+                }
+                GpuBufferDesc desc{};
+                if (!describe_output(stage, oi, *out_ref, desc, error_prefix)) {
+                    continue;
+                }
+                auto& plan = output_plan[stage_idx][oi];
+                plan.needs_buffer = true;
+                plan.desc = desc;
+                plan.workspace_managed = desc.usage == BufferUsage::Intermediate &&
+                                         desc.prefer_device_local &&
+                                         !desc.cpu_read &&
+                                         !desc.cpu_write;
+                if (!plan.workspace_managed) {
+                    continue;
+                }
+                if (stage_handles[oi].valid()) {
+                    pool.release(stage_handles[oi]);
+                }
+            }
+        }
+
+        for (size_t consumer_idx = 0; consumer_idx < pipeline.size(); ++consumer_idx) {
+            const auto& consumer = pipeline[consumer_idx];
+            for (const auto& link : consumer.inputs) {
+                if (!link.node) {
+                    continue;
+                }
+                auto it = stage_by_node.find(link.node.get());
+                if (it == stage_by_node.end()) {
+                    continue;
+                }
+                const size_t producer_idx = it->second;
+                if (link.port >= last_use[producer_idx].size()) {
+                    continue;
+                }
+                last_use[producer_idx][link.port] =
+                    std::max(last_use[producer_idx][link.port], consumer_idx);
+            }
+        }
+
+        for (size_t stage_idx = 0; stage_idx < pipeline.size(); ++stage_idx) {
+            const auto& stage = pipeline[stage_idx];
+            for (size_t oi = 0; oi < stage.output_is_model_output.size() && oi < last_use[stage_idx].size(); ++oi) {
+                if (stage.output_is_model_output[oi]) {
+                    last_use[stage_idx][oi] = pipeline.size();
+                }
+            }
+        }
+
+        for (size_t rev = pipeline.size(); rev > 0; --rev) {
+            const size_t stage_idx = rev - 1;
+            const auto& stage = pipeline[stage_idx];
+            if (!is_view_op(stage) || last_use[stage_idx].empty()) {
+                continue;
+            }
+            size_t view_last_use = stage_idx;
+            for (const auto use : last_use[stage_idx]) {
+                view_last_use = std::max(view_last_use, use);
+            }
+            for (const auto& link : stage.inputs) {
+                if (!link.node) {
+                    continue;
+                }
+                auto it = stage_by_node.find(link.node.get());
+                if (it == stage_by_node.end()) {
+                    continue;
+                }
+                const size_t producer_idx = it->second;
+                if (link.port < last_use[producer_idx].size()) {
+                    last_use[producer_idx][link.port] =
+                        std::max(last_use[producer_idx][link.port], view_last_use);
+                }
+            }
+        }
+
+        std::vector<size_t> free_slots;
+        free_slots.reserve(workspace->handles.size());
+        for (size_t slot = 0; slot < workspace->handles.size(); ++slot) {
+            free_slots.push_back(slot);
+        }
+        std::vector<ActiveSlot> active_slots;
+
+        auto host_visible = [](const GpuBufferDesc& desc) {
+            return desc.cpu_read || desc.cpu_write || !desc.prefer_device_local;
+        };
+        auto compatible = [&](const BufferHandle& handle, const GpuBufferDesc& desc) {
+            return handle.valid() &&
+                   handle.capacity >= desc.bytes &&
+                   handle.buf.type == desc.type &&
+                   handle.buf.host_visible == host_visible(desc);
+        };
+        auto acquire_slot = [&](const GpuBufferDesc& desc) {
+            if (desc.bytes == 0) {
+                if (!free_slots.empty()) {
+                    const size_t slot = free_slots.back();
+                    free_slots.pop_back();
+                    return slot;
+                }
+                workspace->handles.emplace_back();
+                return workspace->handles.size() - 1;
+            }
+            size_t best_pos = StageOutputBufferWorkspace::npos;
+            size_t best_capacity = std::numeric_limits<size_t>::max();
+            for (size_t pos = 0; pos < free_slots.size(); ++pos) {
+                const size_t slot = free_slots[pos];
+                const auto& handle = workspace->handles[slot];
+                if (!compatible(handle, desc)) {
+                    continue;
+                }
+                if (handle.capacity < best_capacity) {
+                    best_capacity = handle.capacity;
+                    best_pos = pos;
+                }
+            }
+            if (best_pos == StageOutputBufferWorkspace::npos) {
+                for (size_t pos = 0; pos < free_slots.size(); ++pos) {
+                    const size_t slot = free_slots[pos];
+                    if (!workspace->handles[slot].valid()) {
+                        best_pos = pos;
+                        break;
+                    }
+                }
+            }
+            if (best_pos != StageOutputBufferWorkspace::npos) {
+                const size_t slot = free_slots[best_pos];
+                free_slots.erase(free_slots.begin() + static_cast<std::ptrdiff_t>(best_pos));
+                return slot;
+            }
+            workspace->handles.emplace_back();
+            return workspace->handles.size() - 1;
+        };
+        auto update_peak_live = [&](size_t extra_internal_live = 0) {
+            workspace->last_peak_live_slots =
+                std::max(workspace->last_peak_live_slots, active_slots.size() + extra_internal_live);
+        };
+
+        for (size_t stage_idx = 0; stage_idx < pipeline.size(); ++stage_idx) {
+            auto active_it = active_slots.begin();
+            while (active_it != active_slots.end()) {
+                if (active_it->last_use < stage_idx) {
+                    free_slots.push_back(active_it->slot);
+                    active_it = active_slots.erase(active_it);
+                } else {
+                    ++active_it;
+                }
+            }
+
+            auto& stage = pipeline[stage_idx];
+            auto& stage_handles = handles[stage_idx];
+            std::vector<GpuStageOutputLifetime> internal_lifetimes;
+            const bool has_internal_lifetimes =
+                stage.stage &&
+                stage.stage->describe_output_lifetimes(internal_lifetimes) &&
+                internal_lifetimes.size() >= stage.outputs.size();
+            if (has_internal_lifetimes) {
+                struct InternalOutput {
+                    size_t output = 0;
+                    size_t produced_at = 0;
+                    size_t last_used_at = 0;
+                    bool escapes_stage = false;
+                };
+                std::vector<InternalOutput> internal_outputs;
+                internal_outputs.reserve(stage.outputs.size());
+                for (size_t oi = 0; oi < stage.outputs.size(); ++oi) {
+                    auto& out_ref = stage.outputs[oi];
+                    if (!out_ref || out_ref->buf.valid()) {
+                        continue;
+                    }
+                    const auto& plan = output_plan[stage_idx][oi];
+                    if (!plan.needs_buffer) {
+                        continue;
+                    }
+                    if (!plan.workspace_managed) {
+                        ++workspace->last_legacy_outputs;
+                        out_ref->buf = pool.ensure(stage_handles[oi], plan.desc);
+                        continue;
+                    }
+                    const auto& lifetime = internal_lifetimes[oi];
+                    if (!lifetime.valid() || !lifetime.requires_buffer) {
+                        continue;
+                    }
+                    internal_outputs.push_back({oi,
+                                                lifetime.produced_at,
+                                                lifetime.last_used_at,
+                                                last_use[stage_idx][oi] > stage_idx});
+                }
+                std::sort(internal_outputs.begin(),
+                          internal_outputs.end(),
+                          [](const InternalOutput& lhs, const InternalOutput& rhs) {
+                              if (lhs.produced_at != rhs.produced_at) {
+                                  return lhs.produced_at < rhs.produced_at;
+                              }
+                              return lhs.output < rhs.output;
+                          });
+
+                std::vector<ActiveSlot> internal_active_slots;
+                for (const auto& output : internal_outputs) {
+                    auto internal_it = internal_active_slots.begin();
+                    while (internal_it != internal_active_slots.end()) {
+                        if (internal_it->last_use < output.produced_at) {
+                            free_slots.push_back(internal_it->slot);
+                            internal_it = internal_active_slots.erase(internal_it);
+                        } else {
+                            ++internal_it;
+                        }
+                    }
+
+                    auto& out_ref = stage.outputs[output.output];
+                    const auto& plan = output_plan[stage_idx][output.output];
+                    const size_t slot = acquire_slot(plan.desc);
+                    if (plan.needs_buffer) {
+                        out_ref->buf = pool.ensure(workspace->handles[slot], plan.desc);
+                    }
+                    workspace->output_slots[stage_idx][output.output] = slot;
+                    workspace->last_slots_used = std::max(workspace->last_slots_used, slot + 1);
+                    ++workspace->last_workspace_outputs;
+                    if (output.escapes_stage) {
+                        active_slots.push_back({slot, last_use[stage_idx][output.output]});
+                        update_peak_live();
+                    } else {
+                        internal_active_slots.push_back({slot, output.last_used_at});
+                        update_peak_live(internal_active_slots.size());
+                    }
+                }
+                for (const auto& active : internal_active_slots) {
+                    free_slots.push_back(active.slot);
+                }
+                continue;
+            }
+
+            for (size_t oi = 0; oi < stage.outputs.size(); ++oi) {
+                auto& out_ref = stage.outputs[oi];
+                if (!out_ref || out_ref->buf.valid()) {
+                    continue;
+                }
+                const auto& plan = output_plan[stage_idx][oi];
+                if (!plan.needs_buffer) {
+                    continue;
+                }
+                if (!plan.workspace_managed) {
+                    ++workspace->last_legacy_outputs;
+                    out_ref->buf = pool.ensure(stage_handles[oi], plan.desc);
+                    continue;
+                }
+                const size_t slot = acquire_slot(plan.desc);
+                if (plan.needs_buffer) {
+                    out_ref->buf = pool.ensure(workspace->handles[slot], plan.desc);
+                }
+                workspace->output_slots[stage_idx][oi] = slot;
+                workspace->last_slots_used = std::max(workspace->last_slots_used, slot + 1);
+                ++workspace->last_workspace_outputs;
+                active_slots.push_back({slot, last_use[stage_idx][oi]});
+                update_peak_live();
+            }
+        }
+        return;
+    }
+
     for (size_t stage_idx = 0; stage_idx < pipeline.size(); ++stage_idx) {
         auto& stage = pipeline[stage_idx];
         auto& stage_handles = handles[stage_idx];

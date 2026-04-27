@@ -43,6 +43,8 @@ Additional operational docs:
    - stateful execution semantics for `ReadValue` / `Assign`
    - dedicated lowering families such as `RMS` or `ScatterUpdate`
    - effective runtime type or const-packing behavior that changes kernel compilation assumptions
+   - backend-aware transform preservation or decomposition rules
+   - liveness-managed workspace allocation for stage outputs
    - test layout or regression coverage
    - compare-runner CLI or debug workflow
    - profiling or microbench workflows

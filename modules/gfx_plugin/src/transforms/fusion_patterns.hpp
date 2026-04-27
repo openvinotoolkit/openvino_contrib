@@ -21,6 +21,8 @@ void add_conv_batchnorm_swish_fusion_patterns(mlir::RewritePatternSet& patterns,
                                               const FusionConfig& config);
 void add_eltwise_activation_fusion_patterns(mlir::RewritePatternSet& patterns,
                                             const FusionConfig& config);
+void add_eltwise_input_activation_fusion_patterns(mlir::RewritePatternSet& patterns,
+                                                  const FusionConfig& config);
 void add_eltwise_bias_activation_fusion_patterns(mlir::RewritePatternSet& patterns,
                                                  const FusionConfig& config);
 void add_eltwise_bias_fusion_patterns(mlir::RewritePatternSet& patterns,

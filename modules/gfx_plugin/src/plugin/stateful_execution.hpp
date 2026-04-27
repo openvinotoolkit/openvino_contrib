@@ -8,6 +8,7 @@
 
 #include "plugin/infer_pipeline.hpp"
 #include "plugin/infer_request_state.hpp"
+#include "runtime/gfx_profiler.hpp"
 #include "runtime/gpu_buffer_pool.hpp"
 
 namespace ov {
@@ -21,7 +22,14 @@ bool execute_stateful_stage(InferRequestState& state,
                             InferStage& stage,
                             const std::vector<GpuTensor*>& resolved_inputs,
                             GpuBufferPool& pool,
-                            GpuCommandBufferHandle command_buffer);
+                            GpuCommandBufferHandle command_buffer,
+                            GfxProfiler* profiler = nullptr);
+
+bool try_bind_direct_stateful_assign_output(InferRequestState& state,
+                                            InferStage& stage,
+                                            const std::vector<GpuTensor*>& resolved_inputs,
+                                            GpuBufferPool& pool,
+                                            GfxProfiler* profiler = nullptr);
 
 }  // namespace gfx_plugin
 }  // namespace ov

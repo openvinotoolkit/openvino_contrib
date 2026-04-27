@@ -4,6 +4,7 @@
 
 #include "runtime/fused_sequence_stage.hpp"
 
+#include <algorithm>
 #include <sstream>
 
 #include "openvino/core/except.hpp"
@@ -11,6 +12,20 @@
 
 namespace ov {
 namespace gfx_plugin {
+namespace {
+
+bool stage_may_alias_first_input(const GpuStage& stage) {
+    const auto& type = stage.type();
+    return type == "ReadValue" ||
+           type == "Reshape" ||
+           type == "Squeeze" ||
+           type == "Unsqueeze" ||
+           type == "Transpose" ||
+           type == "Slice" ||
+           type == "StridedSlice";
+}
+
+}  // namespace
 
 FusedSequenceStage::FusedSequenceStage(std::vector<FusedStageInfo> stages,
                                        std::string name,
@@ -86,6 +101,85 @@ GpuStageSubmitPolicy FusedSequenceStage::submit_policy() const {
         policy.isolate = policy.isolate || child.isolate;
     }
     return policy;
+}
+
+bool FusedSequenceStage::describe_output_lifetimes(std::vector<GpuStageOutputLifetime>& lifetimes) const {
+    size_t output_count = 0;
+    for (const auto& info : m_stages) {
+        for (const auto output_index : info.output_indices) {
+            output_count = std::max(output_count, output_index + 1);
+        }
+        for (const auto& input : info.inputs) {
+            if (input.kind == FusedInputKind::Output) {
+                output_count = std::max(output_count, input.index + 1);
+            }
+        }
+    }
+    if (output_count == 0) {
+        return false;
+    }
+
+    lifetimes.assign(output_count, {});
+    for (size_t stage_idx = 0; stage_idx < m_stages.size(); ++stage_idx) {
+        const auto& info = m_stages[stage_idx];
+        for (const auto output_index : info.output_indices) {
+            if (output_index >= lifetimes.size()) {
+                continue;
+            }
+            auto& lifetime = lifetimes[output_index];
+            lifetime.produced_at = std::min(lifetime.produced_at, stage_idx);
+            lifetime.last_used_at = std::max(lifetime.last_used_at == GpuStageOutputLifetime::npos ? stage_idx
+                                                                                                   : lifetime.last_used_at,
+                                             stage_idx);
+        }
+        for (const auto& input : info.inputs) {
+            if (input.kind != FusedInputKind::Output || input.index >= lifetimes.size()) {
+                continue;
+            }
+            auto& lifetime = lifetimes[input.index];
+            if (lifetime.produced_at == GpuStageOutputLifetime::npos) {
+                continue;
+            }
+            lifetime.last_used_at = std::max(lifetime.last_used_at, stage_idx);
+        }
+    }
+
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (const auto& info : m_stages) {
+            if (!info.stage || !stage_may_alias_first_input(*info.stage) || info.inputs.empty()) {
+                continue;
+            }
+            const auto& input = info.inputs.front();
+            if (input.kind != FusedInputKind::Output || input.index >= lifetimes.size()) {
+                continue;
+            }
+            auto& input_lifetime = lifetimes[input.index];
+            if (!input_lifetime.valid()) {
+                continue;
+            }
+            for (const auto output_index : info.output_indices) {
+                if (output_index >= lifetimes.size()) {
+                    continue;
+                }
+                const auto& output_lifetime = lifetimes[output_index];
+                if (!output_lifetime.valid()) {
+                    continue;
+                }
+                if (output_lifetime.last_used_at > input_lifetime.last_used_at) {
+                    input_lifetime.last_used_at = output_lifetime.last_used_at;
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    bool any = false;
+    for (const auto& lifetime : lifetimes) {
+        any = any || lifetime.valid();
+    }
+    return any;
 }
 
 void FusedSequenceStage::execute(GpuCommandBufferHandle command_buffer) {

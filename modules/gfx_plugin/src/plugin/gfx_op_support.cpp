@@ -10,11 +10,14 @@
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/result.hpp"
 #include "openvino/op/reshape.hpp"
+#include "openvino/op/split.hpp"
 #include "openvino/op/squeeze.hpp"
 #include "openvino/op/unsqueeze.hpp"
 #include "openvino/op/util/assign_base.hpp"
+#include "openvino/op/variadic_split.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_stage_policy.hpp"
+#include "transformations/rt_info/decompression.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -27,6 +30,10 @@ bool is_view_node(const std::shared_ptr<const ov::Node>& node) {
     return select_tensor_layout_plan(node->get_type_name(), node).view_only;
 }
 
+bool is_decompression_node(const std::shared_ptr<const ov::Node>& node) {
+    return node && ov::is_decompression(std::const_pointer_cast<ov::Node>(node));
+}
+
 }  // namespace
 
 bool metal_supports_node(const std::shared_ptr<const ov::Node>& node);
@@ -37,6 +44,9 @@ bool is_supported_node(const std::shared_ptr<const ov::Node>& node, GpuBackend b
         ov::as_type_ptr<const ov::op::v0::Constant>(node) ||
         ov::as_type_ptr<const ov::op::v0::Result>(node) ||
         ov::as_type_ptr<const ov::op::util::AssignBase>(node)) {
+        return true;
+    }
+    if (is_decompression_node(node)) {
         return true;
     }
     if (is_view_node(node)) {

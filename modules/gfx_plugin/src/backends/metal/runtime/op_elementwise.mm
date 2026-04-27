@@ -147,6 +147,29 @@ bool MetalElementwiseOp::fuse_activation(ActivationKind kind, float alpha) {
     return true;
 }
 
+bool MetalElementwiseOp::fuse_input_activation(size_t input_idx, ActivationKind kind, float alpha) {
+    if (m_has_input_activation || input_idx >= 2) {
+        return false;
+    }
+    if (kind != ActivationKind::Relu &&
+        kind != ActivationKind::Sigmoid &&
+        kind != ActivationKind::Tanh &&
+        kind != ActivationKind::Gelu &&
+        kind != ActivationKind::Swish &&
+        kind != ActivationKind::HSwish &&
+        kind != ActivationKind::HSigmoid) {
+        return false;
+    }
+    if (m_element_type.is_integral_number() || m_element_type == ov::element::boolean) {
+        return false;
+    }
+    m_has_input_activation = true;
+    m_input_activation_index = input_idx;
+    m_input_activation = kind;
+    m_input_activation_alpha = alpha;
+    return true;
+}
+
 void MetalElementwiseOp::refresh_shapes_from_inputs() {
     // Derive shapes from bound tensors if available.
     ov::Shape a_shape;
@@ -291,6 +314,10 @@ void MetalElementwiseOp::compile_kernel(MetalBufferManager* buffer_manager,
     desc.has_activation = m_has_activation;
     desc.activation = m_activation;
     desc.alpha = m_activation_alpha;
+    desc.has_input_activation = m_has_input_activation;
+    desc.input_activation_index = static_cast<uint32_t>(m_input_activation_index);
+    desc.input_activation = m_input_activation;
+    desc.input_activation_alpha = m_input_activation_alpha;
     auto& ctx = gfx_mlir_context();
     auto module = build_mlir_for_node(m_node, ctx);
     auto msl_desc = desc;

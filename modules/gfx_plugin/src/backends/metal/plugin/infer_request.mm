@@ -332,6 +332,7 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                                                                 GpuBackend::Metal,
                                                                 pool,
                                                                 metal_state->stage_output_handles,
+                                                                &metal_state->stage_output_workspace,
                                                                 [](std::vector<InferStage>&) {},
                                                                 [&](InferStage& stage,
                                                                     size_t oi,
@@ -351,6 +352,16 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                                                                                                   error_prefix);
                                                                 },
                                                                 "GFX");
+        if (profiler) {
+            profiler->set_counter("stage_output_workspace_outputs",
+                                  metal_state->stage_output_workspace.last_workspace_outputs);
+            profiler->set_counter("stage_output_legacy_outputs",
+                                  metal_state->stage_output_workspace.last_legacy_outputs);
+            profiler->set_counter("stage_output_workspace_slots",
+                                  metal_state->stage_output_workspace.last_slots_used);
+            profiler->set_counter("stage_output_workspace_peak_live",
+                                  metal_state->stage_output_workspace.last_peak_live_slots);
+        }
         prepare_reusable_execution_plan(metal_state->reusable_execution_plan, pipeline, node_map, param_map);
         if (!metal_state->reusable_pipeline_runtime_prewarmed) {
             const auto prewarm_start = profiling ? std::chrono::steady_clock::now()
@@ -416,7 +427,8 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
             profiler,
             &metal_state->reusable_execution_plan,
             [&](InferStage& stage, const std::vector<GpuTensor*>& resolved, GpuCommandBufferHandle command_buffer) {
-                if (execute_stateful_stage(state, stage, resolved, pool, command_buffer)) {
+                try_bind_direct_stateful_assign_output(state, stage, resolved, pool, profiler);
+                if (execute_stateful_stage(state, stage, resolved, pool, command_buffer, profiler)) {
                     return;
                 }
                 if (gfx_log_debug_enabled() || metal_safe_debug_enabled()) {

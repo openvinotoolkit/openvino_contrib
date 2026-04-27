@@ -53,6 +53,7 @@ public:
     const std::string& type() const override { return m_type; }
 
     bool fuse_activation(ActivationKind kind, float alpha) override;
+    bool fuse_input_activation(size_t input_idx, ActivationKind kind, float alpha) override;
     bool fuse_batchnorm(const BatchNormParams& params) override;
     bool fuse_bias(const BiasParams& params) override;
 
@@ -93,6 +94,8 @@ protected:
     bool m_is_view_op = false;
     std::shared_ptr<const ov::Node> m_node;
     std::shared_ptr<ICompiledKernel> m_kernel;
+    std::shared_ptr<ICompiledKernel> m_concat_binary_kernel;
+    bool m_is_compressed_matmul = false;
     std::string m_name;
     std::string m_type;
     std::vector<GpuTensor*> m_inputs;
@@ -113,6 +116,8 @@ protected:
     ParallelDispatchConfig m_parallel_cfg{};
     bool m_force_single_dispatch = false;
     uint32_t m_matmul_reduction_threads = 1;
+    uint32_t m_compressed_matmul_output_block = 1;
+    uint32_t m_compressed_matmul_n = 0;
     uint32_t m_rms_reduction_threads = 1;
     uint32_t m_rms_hidden = 0;
     bool m_matmul_safe_retry_attempted = false;
@@ -121,6 +126,10 @@ protected:
     bool m_has_activation = false;
     ActivationKind m_activation = ActivationKind::Relu;
     float m_activation_alpha = 0.0f;
+    bool m_has_input_activation = false;
+    size_t m_input_activation_index = 0;
+    ActivationKind m_input_activation = ActivationKind::Relu;
+    float m_input_activation_alpha = 0.0f;
     bool m_has_bn = false;
     BatchNormParams m_bn_params{};
     bool m_has_bias = false;

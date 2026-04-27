@@ -94,6 +94,7 @@ struct VulkanInferState final : BackendInferState {
         for (auto& stage_handles : stage_output_handles) {
             release_buffer_handles(stage_handles, allocator);
         }
+        release_buffer_handles(stage_output_workspace.handles, allocator);
         release_buffer_handles(output_staging_handles, allocator);
     }
 
@@ -681,6 +682,7 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
         GpuBackend::Vulkan,
         pool,
         vk_state->stage_output_handles,
+        &vk_state->stage_output_workspace,
         [&](std::vector<InferStage>& stages) {
             for (auto& stage : stages) {
                 for (auto& out : stage.outputs) {
@@ -707,6 +709,16 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
                                           error_prefix);
         },
         "GFX Vulkan");
+    if (profiler) {
+        profiler->set_counter("stage_output_workspace_outputs",
+                              vk_state->stage_output_workspace.last_workspace_outputs);
+        profiler->set_counter("stage_output_legacy_outputs",
+                              vk_state->stage_output_workspace.last_legacy_outputs);
+        profiler->set_counter("stage_output_workspace_slots",
+                              vk_state->stage_output_workspace.last_slots_used);
+        profiler->set_counter("stage_output_workspace_peak_live",
+                              vk_state->stage_output_workspace.last_peak_live_slots);
+    }
     prepare_reusable_execution_plan(vk_state->reusable_execution_plan, pipeline, node_map, param_map);
     if (profiling) {
         profiler->record_segment("compile",
@@ -876,7 +888,8 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
         profiler,
         &vk_state->reusable_execution_plan,
         [&](InferStage& stage, const std::vector<GpuTensor*>& resolved_inputs, GpuCommandBufferHandle command_buffer) {
-            if (execute_stateful_stage(state, stage, resolved_inputs, pool, command_buffer)) {
+            try_bind_direct_stateful_assign_output(state, stage, resolved_inputs, pool, profiler);
+            if (execute_stateful_stage(state, stage, resolved_inputs, pool, command_buffer, profiler)) {
                 return;
             }
             submission.prepare_stage_submission(stage, resolved_inputs, command_buffer);

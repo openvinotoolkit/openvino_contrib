@@ -178,6 +178,10 @@ struct EltwiseCodegenDesc : BaseCodegenDesc {
     bool has_activation = false;
     ActivationKind activation = ActivationKind::Relu;
     float alpha = 0.0f;
+    bool has_input_activation = false;
+    uint32_t input_activation_index = 0;
+    ActivationKind input_activation = ActivationKind::Relu;
+    float input_activation_alpha = 0.0f;
 };
 
 struct Pool2DCodegenDesc : BaseCodegenDesc {

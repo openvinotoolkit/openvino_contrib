@@ -38,6 +38,7 @@
 #include "openvino/op/variadic_split.hpp"
 #include "openvino/runtime/exec_model_info.hpp"
 #include "openvino/runtime/properties.hpp"
+#include "transformations/rt_info/decompression.hpp"
 #include "openvino/util/common_util.hpp"
 
 #include "transforms/fusion_pass.hpp"
@@ -434,10 +435,22 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
             const size_t primary_idx = attention_group ? group.node_indices.back()
                                                        : group.node_indices.front();
             fusion_primary[primary_idx] = &group;
+            const bool pre_fusion_supported = [&]() {
+                if (group.kind != "EltwiseInputActivation" ||
+                    !group.input_activation.has_value() ||
+                    primary_idx >= ordered_ops.size()) {
+                    return false;
+                }
+                auto probe_stage = backend_state->create_stage(ordered_ops[primary_idx]);
+                return probe_stage &&
+                       probe_stage->fuse_input_activation(group.input_activation_input,
+                                                          *group.input_activation,
+                                                          group.input_activation_alpha);
+            }();
             for (const auto node_idx : group.node_indices) {
                 if (node_idx < ordered_ops.size()) {
                     fused_nodes.insert(ordered_ops[node_idx].get());
-                    if (attention_group && node_idx != primary_idx) {
+                    if ((attention_group || pre_fusion_supported) && node_idx != primary_idx) {
                         planned_fused_indices.insert(node_idx);
                     }
                 }
@@ -500,7 +513,8 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
         const auto& node = ordered_ops[op_index];
         if (ov::as_type_ptr<ov::op::v0::Parameter>(node) ||
             ov::as_type_ptr<ov::op::v0::Result>(node) ||
-            ov::as_type_ptr<ov::op::v0::Constant>(node)) {
+            ov::as_type_ptr<ov::op::v0::Constant>(node) ||
+            ov::is_decompression(node)) {
             continue;
         }
 
@@ -759,6 +773,31 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
                     mark_fused(group->node_indices[i]);
                 }
             };
+            if (group->input_activation.has_value()) {
+                const size_t input_idx = group->input_activation_input;
+                bool input_activation_ok = false;
+                if (group->node_indices.size() > 1 &&
+                    input_idx < stage.inputs.size() &&
+                    stage.stage->fuse_input_activation(input_idx,
+                                                       *group->input_activation,
+                                                       group->input_activation_alpha)) {
+                    const size_t act_idx = group->node_indices[1];
+                    if (act_idx < ordered_ops.size()) {
+                        const auto& act_node = ordered_ops[act_idx];
+                        if (stage.inputs[input_idx].node.get() == act_node.get() &&
+                            act_node->get_input_size() == 1) {
+                            stage.inputs[input_idx].node = act_node->input_value(0).get_node_shared_ptr();
+                            stage.inputs[input_idx].port = act_node->input_value(0).get_index();
+                            mark_fused(act_idx);
+                            input_activation_ok = true;
+                        }
+                    }
+                }
+                if (!input_activation_ok && gfx_log_debug_enabled()) {
+                    gfx_log_debug("Fusion") << "Failed input activation fusion for "
+                                            << (node ? node->get_friendly_name() : std::string("<null>"));
+                }
+            }
             size_t next_post_op_idx = 1;
             bool post_ops_ok = true;
             if (group->batchnorm.has_value()) {

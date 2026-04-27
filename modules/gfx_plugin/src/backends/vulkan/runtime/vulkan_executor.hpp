@@ -76,6 +76,7 @@ private:
     void prepare_gather_linear_kernel();
     void prepare_gather_embedding_kernel();
     void prepare_reduce_last_axis_kernel();
+    void prepare_rms_kernel();
     void prepare_matmul_linear_kernel();
     void prepare_broadcast_kernel();
     void prepare_select_kernel();
@@ -88,8 +89,10 @@ private:
     // Chunked Split support to stay within mobile descriptor limits.
     std::shared_ptr<ICompiledKernel> m_split_single_kernel;
     std::shared_ptr<ICompiledKernel> m_concat_single_kernel;
+    std::shared_ptr<ICompiledKernel> m_concat_binary_kernel;
     ov::element::Type m_split_elem_type{};
     ov::element::Type m_concat_elem_type{};
+    ov::element::Type m_concat_binary_elem_type{};
     std::shared_ptr<ICompiledKernel> m_slice_linear_kernel;
     ov::element::Type m_slice_elem_type{};
     std::shared_ptr<ICompiledKernel> m_softmax_row_kernel;
@@ -131,6 +134,12 @@ private:
     std::shared_ptr<ICompiledKernel> m_reduce_last_axis_kernel;
     ov::element::Type m_reduce_last_axis_elem_type{};
     std::string m_reduce_last_axis_key;
+    std::shared_ptr<ICompiledKernel> m_rms_kernel;
+    ov::element::Type m_rms_input_elem_type{};
+    ov::element::Type m_rms_gamma_elem_type{};
+    ov::element::Type m_rms_output_elem_type{};
+    size_t m_rms_gamma_size = 0;
+    float m_rms_epsilon = 0.0f;
     std::shared_ptr<ICompiledKernel> m_matmul_linear_kernel;
     ov::element::Type m_matmul_linear_elem_type{};
     bool m_matmul_linear_transpose_a = false;
@@ -176,6 +185,7 @@ private:
     void execute_gather_linear(GpuCommandBufferHandle command_buffer);
     void execute_gather_embedding(GpuCommandBufferHandle command_buffer);
     void execute_reduce_last_axis(GpuCommandBufferHandle command_buffer);
+    void execute_rms_chunked(GpuCommandBufferHandle command_buffer);
     void execute_matmul_linear(GpuCommandBufferHandle command_buffer);
     void execute_broadcast_chunked(GpuCommandBufferHandle command_buffer);
     void execute_select_chunked(GpuCommandBufferHandle command_buffer);
@@ -185,6 +195,7 @@ private:
     void execute_binary_bias_add(GpuCommandBufferHandle command_buffer);
     mlir::ModuleOp build_split_single_module(mlir::MLIRContext& ctx, const ov::element::Type& et);
     mlir::ModuleOp build_concat_single_module(mlir::MLIRContext& ctx, const ov::element::Type& et);
+    mlir::ModuleOp build_concat_binary_module(mlir::MLIRContext& ctx, const ov::element::Type& et);
     mlir::ModuleOp build_slice_linear_module(mlir::MLIRContext& ctx, const ov::element::Type& et);
     mlir::ModuleOp build_softmax_row_module(mlir::MLIRContext& ctx,
                                             const ov::element::Type& et,
@@ -215,6 +226,14 @@ private:
     mlir::ModuleOp build_reduce_last_axis_module(mlir::MLIRContext& ctx,
                                                  const ov::element::Type& et,
                                                  const std::string& op_key);
+    mlir::ModuleOp build_rms_module(mlir::MLIRContext& ctx,
+                                    const ov::element::Type& input_et,
+                                    const ov::element::Type& gamma_et,
+                                    const ov::element::Type& output_et,
+                                    size_t hidden,
+                                    size_t gamma_size,
+                                    uint32_t reduction_threads,
+                                    float epsilon);
     mlir::ModuleOp build_matmul_linear_module(mlir::MLIRContext& ctx,
                                               const ov::element::Type& et,
                                               bool transpose_a,
@@ -268,6 +287,7 @@ private:
     bool should_use_gather_linear() const;
     bool should_use_gather_embedding() const;
     bool should_use_reduce_last_axis() const;
+    bool should_use_rms_chunked() const;
     bool should_use_matmul_linear() const;
     bool should_use_broadcast_chunked() const;
     bool should_use_select_chunked() const;

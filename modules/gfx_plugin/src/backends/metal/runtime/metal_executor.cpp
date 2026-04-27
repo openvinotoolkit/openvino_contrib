@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <chrono>
 #include <numeric>
+#include <optional>
 #include <sstream>
 
 #include "backends/metal/codegen/metal_codegen_backend.hpp"
@@ -615,6 +616,26 @@ ReduceKind reduce_kind_from_node(const ov::Node& node) {
     OPENVINO_THROW("GFX Metal: unsupported reduce op ", t);
 }
 
+std::optional<ActivationKind> activation_kind_from_module_attr(mlir::ModuleOp module,
+                                                               llvm::StringRef attr_name) {
+    if (!module) {
+        return std::nullopt;
+    }
+    auto attr = module->getAttrOfType<mlir::StringAttr>(attr_name);
+    if (!attr) {
+        return std::nullopt;
+    }
+    const auto value = attr.getValue();
+    if (value == "Relu") return ActivationKind::Relu;
+    if (value == "Sigmoid") return ActivationKind::Sigmoid;
+    if (value == "Tanh") return ActivationKind::Tanh;
+    if (value == "Gelu") return ActivationKind::Gelu;
+    if (value == "Swish") return ActivationKind::Swish;
+    if (value == "HSwish") return ActivationKind::HSwish;
+    if (value == "HSigmoid") return ActivationKind::HSigmoid;
+    return std::nullopt;
+}
+
 void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
                           KernelSource& src) {
     auto set_desc = [&](auto&& desc, const char* entry = nullptr) {
@@ -996,6 +1017,16 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
         d.input1_type = node->get_input_element_type(1);
         d.output_type = node->get_output_element_type(0);
         d.eltwise_kind = eltwise_kind_from_node(*node);
+        if (auto input_activation = activation_kind_from_module_attr(src.module, "gfx.input_activation_kind")) {
+            d.has_input_activation = true;
+            d.input_activation = *input_activation;
+            if (auto input_attr = src.module->getAttrOfType<mlir::IntegerAttr>("gfx.input_activation_input")) {
+                d.input_activation_index = static_cast<uint32_t>(std::max<int64_t>(input_attr.getInt(), 0));
+            }
+            if (auto alpha_attr = src.module->getAttrOfType<mlir::FloatAttr>("gfx.input_activation_alpha")) {
+                d.input_activation_alpha = static_cast<float>(alpha_attr.getValueAsDouble());
+            }
+        }
         const bool dynamic_shape = !node->get_output_partial_shape(0).is_static() ||
                                    !node->get_input_partial_shape(0).is_static() ||
                                    !node->get_input_partial_shape(1).is_static();
@@ -1664,8 +1695,10 @@ std::shared_ptr<ICompiledKernel> MetalStage::compile_kernel(const KernelSource& 
                                                             std::string* log) {
     OPENVINO_ASSERT(m_device, "MetalStage: Metal device handle is null");
     KernelSource src = source;
-    if (!configure_runtime_softmax_generator(m_node, m_inputs, src)) {
-        attach_msl_generator(m_node, src);
+    if (!src.msl_generator && src.msl_source.empty()) {
+        if (!configure_runtime_softmax_generator(m_node, m_inputs, src)) {
+            attach_msl_generator(m_node, src);
+        }
     }
     if (m_node &&
         (ov::is_type<const ov::op::v8::Slice>(m_node) || ov::is_type<const ov::op::v1::StridedSlice>(m_node))) {

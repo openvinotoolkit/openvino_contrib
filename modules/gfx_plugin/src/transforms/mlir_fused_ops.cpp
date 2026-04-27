@@ -5,6 +5,7 @@
 #include "transforms/mlir_fused_ops.hpp"
 
 #include <cmath>
+#include <unordered_set>
 #include <vector>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -41,6 +42,21 @@ mlir::func::ReturnOp find_return_op(mlir::func::FuncOp func) {
         return mlir::dyn_cast<mlir::func::ReturnOp>(term);
     }
     return {};
+}
+
+mlir::tensor::EmptyOp create_empty_like(mlir::OpBuilder& b,
+                                        mlir::Location loc,
+                                        mlir::Value like,
+                                        mlir::RankedTensorType type) {
+    llvm::SmallVector<mlir::Value, 4> dyn_dims;
+    const auto shape = type.getShape();
+    dyn_dims.reserve(static_cast<size_t>(type.getNumDynamicDims()));
+    for (int64_t i = 0; i < type.getRank(); ++i) {
+        if (shape[static_cast<size_t>(i)] == mlir::ShapedType::kDynamic) {
+            dyn_dims.push_back(b.create<mlir::tensor::DimOp>(loc, like, i).getResult());
+        }
+    }
+    return b.create<mlir::tensor::EmptyOp>(loc, shape, type.getElementType(), dyn_dims);
 }
 
 mlir::Value emit_activation(mlir::OpBuilder& b,
@@ -229,7 +245,7 @@ bool apply_activation_to_generic(mlir::ModuleOp module, ActivationKind kind, flo
         }
         mlir::OpBuilder b(ret);
         auto loc = ret.getLoc();
-        auto empty = b.create<mlir::tensor::EmptyOp>(loc, out_type.getShape(), elem_ty);
+        auto empty = create_empty_like(b, loc, result, out_type);
         const auto rank = out_type.getRank();
         auto map = mlir::AffineMap::getMultiDimIdentityMap(rank, b.getContext());
         llvm::SmallVector<mlir::utils::IteratorType, 4> iters;
@@ -289,7 +305,7 @@ bool apply_activation_to_output(mlir::ModuleOp module, ActivationKind kind, floa
     }
     mlir::OpBuilder b(ret);
     auto loc = ret.getLoc();
-    auto empty = b.create<mlir::tensor::EmptyOp>(loc, out_type.getShape(), elem_ty);
+    auto empty = create_empty_like(b, loc, result, out_type);
     auto map = mlir::AffineMap::getMultiDimIdentityMap(rank, b.getContext());
     llvm::SmallVector<mlir::utils::IteratorType, 4> iters;
     iters.assign(static_cast<size_t>(rank), mlir::utils::IteratorType::parallel);
@@ -331,6 +347,111 @@ bool apply_fused_activation_impl(mlir::ModuleOp module, ActivationKind kind, flo
         return true;
     }
     return apply_activation_to_generic(module, kind, alpha);
+}
+
+bool apply_input_activation_to_generic(mlir::ModuleOp module,
+                                       size_t input_idx,
+                                       ActivationKind kind,
+                                       float alpha) {
+    auto func = find_entry_func(module);
+    if (!func) {
+        return false;
+    }
+    mlir::linalg::GenericOp generic;
+    func.walk([&](mlir::linalg::GenericOp op) {
+        if (!generic) {
+            generic = op;
+        }
+    });
+    if (!generic) {
+        return false;
+    }
+    if (input_idx >= generic.getNumDpsInputs()) {
+        return false;
+    }
+    auto* block = generic.getBody();
+    if (!block || input_idx >= block->getNumArguments()) {
+        return false;
+    }
+    mlir::BlockArgument input = block->getArgument(static_cast<unsigned>(input_idx));
+    auto elem_ty = input.getType();
+    if (!mlir::isa<mlir::FloatType>(elem_ty)) {
+        return false;
+    }
+
+    mlir::Operation* first_after = &block->front();
+    mlir::OpBuilder b(block, block->begin());
+    auto activated = emit_activation(b, first_after->getLoc(), input, kind, alpha, elem_ty);
+    std::unordered_set<mlir::Operation*> activation_ops;
+    for (auto it = block->begin(); it != block->end() && &*it != first_after; ++it) {
+        activation_ops.insert(&*it);
+    }
+    input.replaceUsesWithIf(activated, [&](mlir::OpOperand& use) {
+        return activation_ops.count(use.getOwner()) == 0;
+    });
+    return true;
+}
+
+bool apply_input_activation_to_tensor_extract(mlir::ModuleOp module,
+                                              size_t input_idx,
+                                              ActivationKind kind,
+                                              float alpha) {
+    auto func = find_entry_func(module);
+    if (!func || input_idx >= func.getNumArguments()) {
+        return false;
+    }
+    mlir::Value input = func.getArgument(static_cast<unsigned>(input_idx));
+    bool applied = false;
+    func.walk([&](mlir::tensor::ExtractOp extract) {
+        if (extract.getTensor() != input) {
+            return;
+        }
+        auto elem_ty = extract.getResult().getType();
+        if (!mlir::isa<mlir::FloatType>(elem_ty)) {
+            return;
+        }
+
+        mlir::Operation* insertion_limit = extract->getNextNode();
+        mlir::OpBuilder b(extract);
+        b.setInsertionPointAfter(extract);
+        auto activated = emit_activation(b, extract.getLoc(), extract.getResult(), kind, alpha, elem_ty);
+
+        std::unordered_set<mlir::Operation*> activation_ops;
+        for (auto* op = extract->getNextNode(); op && op != insertion_limit; op = op->getNextNode()) {
+            activation_ops.insert(op);
+        }
+        extract.getResult().replaceUsesWithIf(activated, [&](mlir::OpOperand& use) {
+            return activation_ops.count(use.getOwner()) == 0;
+        });
+        applied = true;
+    });
+    return applied;
+}
+
+bool apply_fused_input_activation_impl(mlir::ModuleOp module,
+                                       size_t input_idx,
+                                       ActivationKind kind,
+                                       float alpha) {
+    if (!module) {
+        return false;
+    }
+    module.getContext()->loadDialect<mlir::func::FuncDialect,
+                                     mlir::linalg::LinalgDialect,
+                                     mlir::tensor::TensorDialect,
+                                     mlir::arith::ArithDialect,
+                                     mlir::math::MathDialect>();
+    auto* ctx = module.getContext();
+    module->setAttr("gfx.input_activation_kind",
+                    mlir::StringAttr::get(ctx, fusion_utils::activation_kind_name(kind)));
+    module->setAttr("gfx.input_activation_alpha",
+                    mlir::FloatAttr::get(mlir::Float32Type::get(ctx), alpha));
+    module->setAttr("gfx.input_activation_input",
+                    mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                           static_cast<int32_t>(input_idx)));
+    if (apply_input_activation_to_generic(module, input_idx, kind, alpha)) {
+        return true;
+    }
+    return apply_input_activation_to_tensor_extract(module, input_idx, kind, alpha);
 }
 
 bool apply_fused_batchnorm_impl(mlir::ModuleOp module, const BatchNormParams& params) {
@@ -468,8 +589,7 @@ bool apply_fused_bias_impl(mlir::ModuleOp module, const BiasParams& params) {
     auto& entry = func.getBody().front();
     auto bias_arg = entry.addArgument(bias_type, loc);
 
-    auto out_shape = out_type.getShape();
-    auto out_empty = b.create<mlir::tensor::EmptyOp>(loc, out_shape, elem_ty);
+    auto out_empty = create_empty_like(b, loc, result, out_type);
     auto out_map = mlir::AffineMap::getMultiDimIdentityMap(out_rank, b.getContext());
     llvm::SmallVector<mlir::AffineExpr, 4> bias_exprs;
     bias_exprs.reserve(static_cast<size_t>(out_rank));
@@ -507,6 +627,10 @@ bool apply_fused_bias_impl(mlir::ModuleOp module, const BiasParams& params) {
 
 bool apply_fused_activation(mlir::ModuleOp module, ActivationKind kind, float alpha) {
     return apply_fused_activation_impl(module, kind, alpha);
+}
+
+bool apply_fused_input_activation(mlir::ModuleOp module, size_t input_idx, ActivationKind kind, float alpha) {
+    return apply_fused_input_activation_impl(module, input_idx, kind, alpha);
 }
 
 bool apply_fused_batchnorm(mlir::ModuleOp module, const BatchNormParams& params) {

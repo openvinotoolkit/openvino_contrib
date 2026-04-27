@@ -8,6 +8,7 @@
 
 #include "backends/vulkan/codegen/vulkan_codegen_backend.hpp"
 #include "backends/vulkan/runtime/profiling/profiler.hpp"
+#include "kernel_ir/gfx_codegen_desc.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
 #include "kernel_ir/gfx_kernel_plan.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
@@ -33,6 +34,7 @@
 #include "openvino/op/split.hpp"
 #include "openvino/op/transpose.hpp"
 #include "openvino/op/variadic_split.hpp"
+#include "ov_ops/rms.hpp"
 #include "openvino/core/validation_util.hpp"
 #include "openvino/util/common_util.hpp"
 #include "runtime/gfx_logger.hpp"
@@ -606,6 +608,10 @@ void VulkanStage::prepare_specialized_kernels() {
         prepare_reduce_last_axis_kernel();
         return;
     }
+    if (should_use_rms_chunked()) {
+        prepare_rms_kernel();
+        return;
+    }
     if (should_use_softmax_chunked()) {
         prepare_softmax_kernel();
         return;
@@ -919,13 +925,28 @@ void VulkanStage::prepare_softmax_kernel() {
 void VulkanStage::prepare_concat_kernel() {
     const ov::element::Type elem_type = resolve_stage_element_type(m_node, !m_outputs.empty() ? m_outputs.front() : m_output);
     if (m_concat_single_kernel && m_concat_elem_type == elem_type) {
-        return;
+        if (!m_node || m_node->get_input_size() != 2 ||
+            (m_concat_binary_kernel && m_concat_binary_elem_type == elem_type)) {
+            return;
+        }
     }
     auto& ctx = gfx_mlir_context();
-    auto module = build_concat_single_module(ctx, elem_type);
-    m_concat_single_kernel =
-        compile_specialized_kernel_from_mlir(module, "concat_single", 3, "GFX Vulkan Concat: kernel compile failed: ");
-    m_concat_elem_type = elem_type;
+    if (!m_concat_single_kernel || m_concat_elem_type != elem_type) {
+        auto module = build_concat_single_module(ctx, elem_type);
+        m_concat_single_kernel =
+            compile_specialized_kernel_from_mlir(module, "concat_single", 3, "GFX Vulkan Concat: kernel compile failed: ");
+        m_concat_elem_type = elem_type;
+    }
+    if (m_node && m_node->get_input_size() == 2 &&
+        (!m_concat_binary_kernel || m_concat_binary_elem_type != elem_type)) {
+        auto module = build_concat_binary_module(ctx, elem_type);
+        m_concat_binary_kernel = compile_specialized_kernel_from_mlir(
+            module,
+            "concat_binary",
+            4,
+            "GFX Vulkan Concat binary: kernel compile failed: ");
+        m_concat_binary_elem_type = elem_type;
+    }
 }
 
 void VulkanStage::prepare_slice_kernel() {
@@ -1090,6 +1111,62 @@ void VulkanStage::prepare_reduce_last_axis_kernel() {
     m_reduce_last_axis_key = op_key;
 }
 
+void VulkanStage::prepare_rms_kernel() {
+    auto rms = ov::as_type_ptr<const ov::op::internal::RMS>(m_node);
+    OPENVINO_ASSERT(rms, "GFX Vulkan RMS: node cast failed");
+    const auto in_pshape = rms->get_input_partial_shape(0);
+    const auto gamma_pshape = rms->get_input_partial_shape(1);
+    OPENVINO_ASSERT(in_pshape.rank().is_static() && in_pshape.rank().get_length() > 0,
+                    "GFX Vulkan RMS: input rank must be static");
+    const auto rank = static_cast<size_t>(in_pshape.rank().get_length());
+    OPENVINO_ASSERT(in_pshape[rank - 1].is_static(),
+                    "GFX Vulkan RMS: hidden dimension must be static");
+    OPENVINO_ASSERT(gamma_pshape.is_static(), "GFX Vulkan RMS: gamma shape must be static");
+    const size_t hidden = static_cast<size_t>(in_pshape[rank - 1].get_length());
+    const size_t gamma_size = ov::shape_size(gamma_pshape.to_shape());
+    const uint32_t reduction_threads = gfx_rms_parallel_reduction_threads(static_cast<uint32_t>(hidden));
+    const auto input_et = rms->get_input_element_type(0);
+    const auto gamma_et = rms->get_input_element_type(1);
+    const auto output_et = rms->get_output_element_type(0);
+    OPENVINO_ASSERT(is_supported_linear_elem_type(input_et) &&
+                        is_supported_linear_elem_type(gamma_et) &&
+                        is_supported_linear_elem_type(output_et),
+                    "GFX Vulkan RMS: unsupported element types ",
+                    input_et,
+                    " / ",
+                    gamma_et,
+                    " -> ",
+                    output_et);
+    if (m_rms_kernel &&
+        m_rms_input_elem_type == input_et &&
+        m_rms_gamma_elem_type == gamma_et &&
+        m_rms_output_elem_type == output_et &&
+        m_rms_hidden == hidden &&
+        m_rms_gamma_size == gamma_size &&
+        m_rms_reduction_threads == reduction_threads &&
+        m_rms_epsilon == static_cast<float>(rms->get_epsilon())) {
+        return;
+    }
+    auto& ctx = gfx_mlir_context();
+    auto module = build_rms_module(ctx,
+                                   input_et,
+                                   gamma_et,
+                                   output_et,
+                                   hidden,
+                                   gamma_size,
+                                   reduction_threads,
+                                   static_cast<float>(rms->get_epsilon()));
+    m_rms_kernel =
+        compile_specialized_kernel_from_mlir(module, "rms_linear", 3, "GFX Vulkan RMS: kernel compile failed: ");
+    m_rms_input_elem_type = input_et;
+    m_rms_gamma_elem_type = gamma_et;
+    m_rms_output_elem_type = output_et;
+    m_rms_hidden = static_cast<uint32_t>(hidden);
+    m_rms_gamma_size = gamma_size;
+    m_rms_reduction_threads = reduction_threads;
+    m_rms_epsilon = static_cast<float>(rms->get_epsilon());
+}
+
 void VulkanStage::prepare_matmul_linear_kernel() {
     auto mm = ov::as_type_ptr<const ov::op::v0::MatMul>(m_node);
     OPENVINO_ASSERT(mm, "GFX Vulkan MatMul: node cast failed");
@@ -1246,6 +1323,10 @@ void VulkanStage::execute(GpuCommandBufferHandle command_buffer) {
     }
     if (should_use_reduce_last_axis()) {
         execute_reduce_last_axis(command_buffer);
+        return;
+    }
+    if (should_use_rms_chunked()) {
+        execute_rms_chunked(command_buffer);
         return;
     }
     if (should_use_softmax_chunked()) {
@@ -1470,7 +1551,7 @@ bool VulkanStage::should_skip_generic_kernel_compile(const GfxStageOptimizationP
         return true;
     }
     if (should_use_interpolate_chunked() || should_use_convert_chunked() || should_use_softmax_chunked() || should_use_binary_same_shape() ||
-        should_use_gather_linear() || should_use_gather_embedding() || should_use_matmul_linear() || should_use_broadcast_chunked() || should_use_select_chunked() || should_use_reduce_last_axis() || should_use_binary_bias_add() || should_use_binary_chunked() || should_use_unary_chunked() ||
+        should_use_gather_linear() || should_use_gather_embedding() || should_use_matmul_linear() || should_use_broadcast_chunked() || should_use_select_chunked() || should_use_reduce_last_axis() || should_use_rms_chunked() || should_use_binary_bias_add() || should_use_binary_chunked() || should_use_unary_chunked() ||
         should_use_transpose_chunked()) {
         return true;
     }
@@ -1762,6 +1843,36 @@ bool VulkanStage::should_use_reduce_last_axis() const {
     }
     const ov::element::Type et = resolve_stage_element_type(m_node, !m_outputs.empty() ? m_outputs.front() : m_output);
     return is_supported_broadcast_elem_type(et);
+}
+
+bool VulkanStage::should_use_rms_chunked() const {
+    if (m_type != "RMS" || !m_node || m_node->get_input_size() != 2 || m_node->get_output_size() != 1) {
+        return false;
+    }
+    auto rms = ov::as_type_ptr<const ov::op::internal::RMS>(m_node);
+    if (!rms) {
+        return false;
+    }
+    const auto in_pshape = m_node->get_input_partial_shape(0);
+    const auto gamma_pshape = m_node->get_input_partial_shape(1);
+    if (!in_pshape.rank().is_static() || in_pshape.rank().get_length() < 1 || !gamma_pshape.is_static()) {
+        return false;
+    }
+    const auto rank = static_cast<size_t>(in_pshape.rank().get_length());
+    if (!in_pshape[rank - 1].is_static()) {
+        return false;
+    }
+    const auto hidden = static_cast<size_t>(in_pshape[rank - 1].get_length());
+    if (hidden == 0) {
+        return false;
+    }
+    const auto gamma_size = ov::shape_size(gamma_pshape.to_shape());
+    if (gamma_size != 1 && gamma_size != hidden) {
+        return false;
+    }
+    return is_supported_linear_elem_type(m_node->get_input_element_type(0)) &&
+           is_supported_linear_elem_type(m_node->get_input_element_type(1)) &&
+           is_supported_linear_elem_type(m_node->get_output_element_type(0));
 }
 
 bool VulkanStage::should_use_matmul_linear() const {
@@ -4345,6 +4456,108 @@ mlir::ModuleOp VulkanStage::build_concat_single_module(mlir::MLIRContext& ctx,
     return mod;
 }
 
+mlir::ModuleOp VulkanStage::build_concat_binary_module(mlir::MLIRContext& ctx,
+                                                       const ov::element::Type& et) {
+    using namespace mlir;
+    ctx.loadDialect<func::FuncDialect, gpu::GPUDialect, scf::SCFDialect, memref::MemRefDialect, arith::ArithDialect>();
+
+    Type elem_ty = to_mlir_type(et, ctx, /*fallback_f32=*/true, /*allow_unsigned=*/true,
+                                /*allow_small_ints=*/true, /*allow_bf16=*/false,
+                                /*allow_boolean=*/false, /*signless_integers=*/true);
+
+    auto mod = ModuleOp::create(UnknownLoc::get(&ctx));
+    OpBuilder b(mod.getBody(), mod.getBody()->begin());
+    mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
+    mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
+    mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
+    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 4));
+    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
+        SmallVector<Attribute, 8> attrs;
+        for (int32_t value : values) {
+            attrs.push_back(b.getI32IntegerAttr(value));
+        }
+        return b.getArrayAttr(attrs);
+    };
+    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1, 1}));
+    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2, 3}));
+
+    auto io_ty = MemRefType::get({ShapedType::kDynamic}, elem_ty);
+    auto param_ty = MemRefType::get({5}, IntegerType::get(&ctx, 32));
+    SmallVector<Type, 4> arg_types{io_ty, io_ty, param_ty, io_ty};
+    auto gpu_mod = b.create<gpu::GPUModuleOp>(UnknownLoc::get(&ctx), "gfx_kernels");
+    OpBuilder gpu_builder = OpBuilder::atBlockBegin(gpu_mod.getBody());
+    auto fn = gpu_builder.create<gpu::GPUFuncOp>(UnknownLoc::get(&ctx),
+                                                 "concat_binary",
+                                                 b.getFunctionType(arg_types, {}),
+                                                 TypeRange{},
+                                                 TypeRange{});
+    fn->setAttr(gpu::GPUDialect::getKernelFuncAttrName(), b.getUnitAttr());
+    fn.setKnownBlockSizeAttr(DenseI32ArrayAttr::get(&ctx, {64, 1, 1}));
+    auto* entry = &fn.getBody().front();
+    OpBuilder body(entry, entry->begin());
+    auto loc = fn.getLoc();
+
+    // params: [0]=outer, [1]=axis_total, [2]=inner, [3]=slice0, [4]=slice1
+    auto load_param = [&](int idx) -> Value {
+        auto idx_val = body.create<arith::ConstantIndexOp>(loc, idx);
+        auto v_i32 = body.create<memref::LoadOp>(loc, fn.getArgument(2), ValueRange{idx_val});
+        return body.create<arith::IndexCastOp>(loc, body.getIndexType(), v_i32);
+    };
+    Value outer = load_param(0);
+    Value axis_total = load_param(1);
+    Value inner = load_param(2);
+    Value slice0 = load_param(3);
+    Value slice1 = load_param(4);
+    Value active_axis = body.create<arith::AddIOp>(loc, slice0, slice1);
+    Value total = body.create<arith::MulIOp>(loc, outer,
+                                             body.create<arith::MulIOp>(loc, active_axis, inner));
+    Value bid = body.create<gpu::BlockIdOp>(loc, gpu::Dimension::x);
+    Value bdim = body.create<gpu::BlockDimOp>(loc, gpu::Dimension::x);
+    Value tid = body.create<gpu::ThreadIdOp>(loc, gpu::Dimension::x);
+    Value idx = body.create<arith::AddIOp>(loc, body.create<arith::MulIOp>(loc, bid, bdim), tid);
+    auto active = body.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, idx, total);
+    auto active_if = body.create<scf::IfOp>(loc, active, false);
+    {
+        auto loop = active_if.getThenBodyBuilder();
+        Value inner_idx = loop.create<arith::RemUIOp>(loc, idx, inner);
+        Value tmp = loop.create<arith::DivUIOp>(loc, idx, inner);
+        Value axis_idx = loop.create<arith::RemUIOp>(loc, tmp, active_axis);
+        Value outer_idx = loop.create<arith::DivUIOp>(loc, tmp, active_axis);
+
+        Value dst_base0 = loop.create<arith::MulIOp>(loc, outer_idx, axis_total);
+        Value dst_base1 = loop.create<arith::AddIOp>(loc, dst_base0, axis_idx);
+        Value dst_index = loop.create<arith::MulIOp>(loc, dst_base1, inner);
+        dst_index = loop.create<arith::AddIOp>(loc, dst_index, inner_idx);
+
+        auto use_src0 = loop.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, axis_idx, slice0);
+        auto select_input = loop.create<scf::IfOp>(loc, TypeRange{elem_ty}, use_src0, true);
+        {
+            auto then_builder = select_input.getThenBodyBuilder();
+            Value src_base0 = then_builder.create<arith::MulIOp>(loc, outer_idx, slice0);
+            Value src_base1 = then_builder.create<arith::AddIOp>(loc, src_base0, axis_idx);
+            Value src_index = then_builder.create<arith::MulIOp>(loc, src_base1, inner);
+            src_index = then_builder.create<arith::AddIOp>(loc, src_index, inner_idx);
+            Value val = then_builder.create<memref::LoadOp>(loc, fn.getArgument(0), ValueRange{src_index});
+            then_builder.create<scf::YieldOp>(loc, val);
+        }
+        {
+            auto else_builder = select_input.getElseBodyBuilder();
+            Value axis1_idx = else_builder.create<arith::SubIOp>(loc, axis_idx, slice0);
+            Value src_base0 = else_builder.create<arith::MulIOp>(loc, outer_idx, slice1);
+            Value src_base1 = else_builder.create<arith::AddIOp>(loc, src_base0, axis1_idx);
+            Value src_index = else_builder.create<arith::MulIOp>(loc, src_base1, inner);
+            src_index = else_builder.create<arith::AddIOp>(loc, src_index, inner_idx);
+            Value val = else_builder.create<memref::LoadOp>(loc, fn.getArgument(1), ValueRange{src_index});
+            else_builder.create<scf::YieldOp>(loc, val);
+        }
+        loop.create<memref::StoreOp>(loc, select_input.getResult(0), fn.getArgument(3), ValueRange{dst_index});
+    }
+
+    body.setInsertionPointAfter(active_if);
+    body.create<gpu::ReturnOp>(loc);
+    return mod;
+}
+
 mlir::ModuleOp VulkanStage::build_slice_linear_module(mlir::MLIRContext& ctx,
                                                       const ov::element::Type& et) {
     using namespace mlir;
@@ -5422,6 +5635,191 @@ mlir::ModuleOp VulkanStage::build_reduce_last_axis_module(mlir::MLIRContext& ctx
     return mod;
 }
 
+mlir::ModuleOp VulkanStage::build_rms_module(mlir::MLIRContext& ctx,
+                                             const ov::element::Type& input_et,
+                                             const ov::element::Type& gamma_et,
+                                             const ov::element::Type& output_et,
+                                             size_t hidden,
+                                             size_t gamma_size,
+                                             uint32_t reduction_threads,
+                                             float epsilon) {
+    using namespace mlir;
+    ctx.loadDialect<func::FuncDialect,
+                    gpu::GPUDialect,
+                    scf::SCFDialect,
+                    memref::MemRefDialect,
+                    arith::ArithDialect,
+                    math::MathDialect>();
+
+    auto to_float_ty = [&](const ov::element::Type& et, const char* what) -> Type {
+        if (et == ov::element::f16) {
+            return Float16Type::get(&ctx);
+        }
+        if (et == ov::element::f32) {
+            return Float32Type::get(&ctx);
+        }
+        OPENVINO_THROW("GFX Vulkan RMS: unsupported ", what, " element type ", et);
+    };
+    Type input_ty = to_float_ty(input_et, "input");
+    Type gamma_ty = to_float_ty(gamma_et, "gamma");
+    Type output_ty = to_float_ty(output_et, "output");
+    Type compute_ty = Float32Type::get(&ctx);
+    const uint32_t threads = reduction_threads > 1 ? reduction_threads : 1u;
+    OPENVINO_ASSERT(hidden > 0, "GFX Vulkan RMS: hidden dimension must be positive");
+    OPENVINO_ASSERT(gamma_size == 1 || gamma_size == hidden,
+                    "GFX Vulkan RMS: unsupported gamma size ",
+                    gamma_size,
+                    " for hidden ",
+                    hidden);
+
+    auto mod = ModuleOp::create(UnknownLoc::get(&ctx));
+    OpBuilder b(mod.getBody(), mod.getBody()->begin());
+    mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
+    mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
+    mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
+    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 3));
+    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
+        SmallVector<Attribute, 8> attrs;
+        attrs.reserve(values.size());
+        for (int32_t value : values) {
+            attrs.push_back(b.getI32IntegerAttr(value));
+        }
+        return b.getArrayAttr(attrs);
+    };
+    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1}));
+    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2}));
+
+    auto input_mem_ty = MemRefType::get({ShapedType::kDynamic}, input_ty);
+    auto gamma_mem_ty = MemRefType::get({ShapedType::kDynamic}, gamma_ty);
+    auto output_mem_ty = MemRefType::get({ShapedType::kDynamic}, output_ty);
+    auto gpu_mod = b.create<gpu::GPUModuleOp>(UnknownLoc::get(&ctx), "gfx_kernels");
+    OpBuilder gpu_builder = OpBuilder::atBlockBegin(gpu_mod.getBody());
+    auto fn = gpu_builder.create<gpu::GPUFuncOp>(UnknownLoc::get(&ctx),
+                                                 "rms_linear",
+                                                 b.getFunctionType(TypeRange{input_mem_ty, gamma_mem_ty, output_mem_ty}, {}),
+                                                 TypeRange{},
+                                                 TypeRange{});
+    fn->setAttr(gpu::GPUDialect::getKernelFuncAttrName(), b.getUnitAttr());
+    fn.setKnownBlockSizeAttr(DenseI32ArrayAttr::get(&ctx, {static_cast<int32_t>(threads), 1, 1}));
+
+    auto* entry = &fn.getBody().front();
+    OpBuilder body(entry, entry->begin());
+    auto loc = fn.getLoc();
+    auto c0 = body.create<arith::ConstantIndexOp>(loc, 0);
+    auto c1 = body.create<arith::ConstantIndexOp>(loc, 1);
+    auto hidden_v = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(hidden));
+    auto threads_v = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(threads));
+    auto eps_v = body.create<arith::ConstantOp>(loc, FloatAttr::get(compute_ty, epsilon));
+    auto hidden_f_i32 =
+        body.create<arith::ConstantOp>(loc,
+                                       IntegerAttr::get(IntegerType::get(&ctx, 32), static_cast<int64_t>(hidden)));
+    auto hidden_f = body.create<arith::SIToFPOp>(loc, compute_ty, hidden_f_i32);
+
+    auto cast_to_compute = [&](OpBuilder& builder, Value value) -> Value {
+        if (value.getType() == compute_ty) {
+            return value;
+        }
+        return builder.create<arith::ExtFOp>(loc, compute_ty, value);
+    };
+    auto cast_to_output = [&](OpBuilder& builder, Value value) -> Value {
+        if (value.getType() == output_ty) {
+            return value;
+        }
+        return builder.create<arith::TruncFOp>(loc, output_ty, value);
+    };
+    auto emit_scale = [&](OpBuilder& builder, Value linear_idx, Value col, Value inv) {
+        Value x = builder.create<memref::LoadOp>(loc, fn.getArgument(0), ValueRange{linear_idx});
+        Value gamma_idx = gamma_size == 1 ? c0.getResult() : col;
+        Value gamma = builder.create<memref::LoadOp>(loc, fn.getArgument(1), ValueRange{gamma_idx});
+        Value scaled = builder.create<arith::MulFOp>(
+            loc,
+            builder.create<arith::MulFOp>(loc, cast_to_compute(builder, x), inv),
+            cast_to_compute(builder, gamma));
+        builder.create<memref::StoreOp>(loc, cast_to_output(builder, scaled), fn.getArgument(2), ValueRange{linear_idx});
+    };
+
+    Value bid = body.create<gpu::BlockIdOp>(loc, gpu::Dimension::x);
+    Value bdim = body.create<gpu::BlockDimOp>(loc, gpu::Dimension::x);
+    Value tid = body.create<gpu::ThreadIdOp>(loc, gpu::Dimension::x);
+    Value global_idx = body.create<arith::AddIOp>(loc, body.create<arith::MulIOp>(loc, bid, bdim), tid);
+    if (threads == 1) {
+        Value row = body.create<arith::DivUIOp>(loc, global_idx, hidden_v);
+        Value col = body.create<arith::RemUIOp>(loc, global_idx, hidden_v);
+        Value base = body.create<arith::MulIOp>(loc, row, hidden_v);
+        Value zero = body.create<arith::ConstantOp>(loc, FloatAttr::get(compute_ty, 0.0f));
+        auto loop = body.create<scf::ForOp>(loc, c0, hidden_v, c1, ValueRange{zero});
+        {
+            auto loop_builder = OpBuilder::atBlockBegin(loop.getBody());
+            Value in_idx = loop_builder.create<arith::AddIOp>(loc, base, loop.getInductionVar());
+            Value x = loop_builder.create<memref::LoadOp>(loc, fn.getArgument(0), ValueRange{in_idx});
+            Value xf = cast_to_compute(loop_builder, x);
+            Value sq = loop_builder.create<arith::MulFOp>(loc, xf, xf);
+            Value sum = loop_builder.create<arith::AddFOp>(loc, loop.getRegionIterArgs()[0], sq);
+            if (!loop.getBody()->empty() && loop.getBody()->back().hasTrait<OpTrait::IsTerminator>()) {
+                loop.getBody()->back().erase();
+            }
+            auto loop_end = OpBuilder::atBlockEnd(loop.getBody());
+            loop_end.create<scf::YieldOp>(loc, ValueRange{sum});
+        }
+        Value mean = body.create<arith::DivFOp>(loc, loop.getResult(0), hidden_f);
+        Value inv = body.create<math::RsqrtOp>(loc, body.create<arith::AddFOp>(loc, mean, eps_v));
+        emit_scale(body, global_idx, col, inv);
+    } else {
+        auto partial_ty = MemRefType::get({static_cast<int64_t>(threads)},
+                                          compute_ty,
+                                          MemRefLayoutAttrInterface{},
+                                          b.getI64IntegerAttr(3));
+        Value partial = body.create<memref::AllocOp>(loc, partial_ty);
+        Value lane = tid;
+        Value row = body.create<arith::DivUIOp>(loc, global_idx, threads_v);
+        Value base = body.create<arith::MulIOp>(loc, row, hidden_v);
+        Value zero = body.create<arith::ConstantOp>(loc, FloatAttr::get(compute_ty, 0.0f));
+        auto loop = body.create<scf::ForOp>(loc, lane, hidden_v, threads_v, ValueRange{zero});
+        {
+            auto loop_builder = OpBuilder::atBlockBegin(loop.getBody());
+            Value in_idx = loop_builder.create<arith::AddIOp>(loc, base, loop.getInductionVar());
+            Value x = loop_builder.create<memref::LoadOp>(loc, fn.getArgument(0), ValueRange{in_idx});
+            Value xf = cast_to_compute(loop_builder, x);
+            Value sq = loop_builder.create<arith::MulFOp>(loc, xf, xf);
+            Value sum = loop_builder.create<arith::AddFOp>(loc, loop.getRegionIterArgs()[0], sq);
+            if (!loop.getBody()->empty() && loop.getBody()->back().hasTrait<OpTrait::IsTerminator>()) {
+                loop.getBody()->back().erase();
+            }
+            auto loop_end = OpBuilder::atBlockEnd(loop.getBody());
+            loop_end.create<scf::YieldOp>(loc, ValueRange{sum});
+        }
+        body.create<memref::StoreOp>(loc, loop.getResult(0), partial, ValueRange{lane});
+        body.create<gpu::BarrierOp>(loc);
+        for (uint32_t stride = threads / 2; stride > 0; stride >>= 1) {
+            auto stride_v = body.create<arith::ConstantIndexOp>(loc, stride);
+            auto lane_active = body.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, lane, stride_v);
+            auto reduce_if = body.create<scf::IfOp>(loc, lane_active, false);
+            {
+                auto then_builder = reduce_if.getThenBodyBuilder();
+                Value other_lane = then_builder.create<arith::AddIOp>(loc, lane, stride_v);
+                Value lhs = then_builder.create<memref::LoadOp>(loc, partial, ValueRange{lane});
+                Value rhs = then_builder.create<memref::LoadOp>(loc, partial, ValueRange{other_lane});
+                Value sum = then_builder.create<arith::AddFOp>(loc, lhs, rhs);
+                then_builder.create<memref::StoreOp>(loc, sum, partial, ValueRange{lane});
+            }
+            body.setInsertionPointAfter(reduce_if);
+            body.create<gpu::BarrierOp>(loc);
+        }
+        Value total_sum = body.create<memref::LoadOp>(loc, partial, ValueRange{c0});
+        Value mean = body.create<arith::DivFOp>(loc, total_sum, hidden_f);
+        Value inv = body.create<math::RsqrtOp>(loc, body.create<arith::AddFOp>(loc, mean, eps_v));
+        auto out_loop = body.create<scf::ForOp>(loc, lane, hidden_v, threads_v);
+        {
+            auto loop_builder = OpBuilder::atBlockBegin(out_loop.getBody());
+            Value col = out_loop.getInductionVar();
+            Value out_idx = loop_builder.create<arith::AddIOp>(loc, base, col);
+            emit_scale(loop_builder, out_idx, col, inv);
+        }
+    }
+    body.create<gpu::ReturnOp>(loc);
+    return mod;
+}
+
 mlir::ModuleOp VulkanStage::build_matmul_linear_module(mlir::MLIRContext& ctx,
                                                        const ov::element::Type& et,
                                                        bool transpose_a,
@@ -6128,6 +6526,96 @@ void VulkanStage::execute_reduce_last_axis(GpuCommandBufferHandle command_buffer
     m_reduce_last_axis_kernel->execute(command_buffer, dispatch, args, nullptr);
 }
 
+void VulkanStage::execute_rms_chunked(GpuCommandBufferHandle command_buffer) {
+    OPENVINO_ASSERT(m_node, "GFX Vulkan RMS: node is null");
+    auto rms = ov::as_type_ptr<const ov::op::internal::RMS>(m_node);
+    OPENVINO_ASSERT(rms, "GFX Vulkan RMS: expected internal RMS node");
+    OPENVINO_ASSERT(m_inputs.size() >= 2 && m_inputs[0] && m_inputs[0]->buf.valid(),
+                    "GFX Vulkan RMS: missing input buffer");
+    GpuTensor* input = m_inputs[0];
+    GpuTensor* gamma = m_inputs[1];
+    if ((!gamma || !gamma->buf.valid()) &&
+        m_const_buffers &&
+        m_const_buffers->buffers.size() > 1 &&
+        m_const_buffers->present.size() > 1 &&
+        m_const_buffers->present[1] &&
+        m_const_buffers->buffers[1].buf.valid()) {
+        gamma = &m_const_buffers->buffers[1];
+    }
+    OPENVINO_ASSERT(gamma && gamma->buf.valid(), "GFX Vulkan RMS: missing gamma buffer");
+    GpuTensor* output = !m_outputs.empty() ? m_outputs.front() : m_output;
+    OPENVINO_ASSERT(output && output->buf.valid(), "GFX Vulkan RMS: missing output buffer");
+
+    ov::Shape out_shape = input->shape;
+    if (out_shape.empty() && m_node->get_input_partial_shape(0).is_static()) {
+        out_shape = m_node->get_input_shape(0);
+    }
+    OPENVINO_ASSERT(!out_shape.empty(), "GFX Vulkan RMS: input/output shape is unknown");
+    output->shape = out_shape;
+    output->expected_type = rms->get_output_element_type(0);
+
+    const auto in_pshape = rms->get_input_partial_shape(0);
+    OPENVINO_ASSERT(in_pshape.rank().is_static() && in_pshape.rank().get_length() > 0,
+                    "GFX Vulkan RMS: input rank must be static");
+    const size_t rank = static_cast<size_t>(in_pshape.rank().get_length());
+    OPENVINO_ASSERT(in_pshape[rank - 1].is_static(),
+                    "GFX Vulkan RMS: hidden dimension must be static");
+    const size_t hidden = static_cast<size_t>(in_pshape[rank - 1].get_length());
+    const auto gamma_shape = rms->get_input_partial_shape(1).to_shape();
+    const size_t gamma_size = ov::shape_size(gamma_shape);
+    const uint32_t reduction_threads = gfx_rms_parallel_reduction_threads(static_cast<uint32_t>(hidden));
+    const auto input_et = rms->get_input_element_type(0);
+    const auto gamma_et = rms->get_input_element_type(1);
+    const auto output_et = rms->get_output_element_type(0);
+
+    if (!m_rms_kernel ||
+        m_rms_input_elem_type != input_et ||
+        m_rms_gamma_elem_type != gamma_et ||
+        m_rms_output_elem_type != output_et ||
+        m_rms_hidden != hidden ||
+        m_rms_gamma_size != gamma_size ||
+        m_rms_reduction_threads != reduction_threads ||
+        m_rms_epsilon != static_cast<float>(rms->get_epsilon())) {
+        auto& ctx = gfx_mlir_context();
+        auto module = build_rms_module(ctx,
+                                       input_et,
+                                       gamma_et,
+                                       output_et,
+                                       hidden,
+                                       gamma_size,
+                                       reduction_threads,
+                                       static_cast<float>(rms->get_epsilon()));
+        KernelSource src = make_kernel_source_from_mlir(module, "rms_linear", /*arg_count=*/3);
+        src.signature.output_arg_count = 1;
+        VulkanCodegenBackend backend;
+        std::string log;
+        m_rms_kernel = backend.compile(src, &log);
+        OPENVINO_ASSERT(m_rms_kernel, "GFX Vulkan RMS: kernel compile failed: ", log);
+        m_rms_kernel->prepare_runtime_artifacts();
+        m_rms_input_elem_type = input_et;
+        m_rms_gamma_elem_type = gamma_et;
+        m_rms_output_elem_type = output_et;
+        m_rms_hidden = static_cast<uint32_t>(hidden);
+        m_rms_gamma_size = gamma_size;
+        m_rms_reduction_threads = reduction_threads;
+        m_rms_epsilon = static_cast<float>(rms->get_epsilon());
+    }
+
+    const uint64_t total = static_cast<uint64_t>(tensor_elements(out_shape));
+    OPENVINO_ASSERT(total % hidden == 0, "GFX Vulkan RMS: output elements are not divisible by hidden");
+    const uint64_t rows = total / hidden;
+    const uint32_t tg = m_rms_kernel->clamp_threadgroup_size(reduction_threads);
+    KernelDispatch dispatch = reduction_threads > 1
+                                  ? make_1d_dispatch(static_cast<size_t>(rows * reduction_threads), tg)
+                                  : make_1d_dispatch(static_cast<size_t>(total), tg);
+    std::vector<KernelArg> args{
+        make_buffer_arg(0, input->buf),
+        make_buffer_arg(1, gamma->buf),
+        make_buffer_arg(2, output->buf),
+    };
+    m_rms_kernel->execute(command_buffer, dispatch, args, nullptr);
+}
+
 void VulkanStage::execute_softmax_chunked(GpuCommandBufferHandle command_buffer) {
     OPENVINO_ASSERT(!m_inputs.empty() && m_inputs[0] && m_inputs[0]->buf.valid(),
                     "GFX Vulkan Softmax: missing input buffer");
@@ -6257,15 +6745,78 @@ void VulkanStage::execute_concat_chunked(GpuCommandBufferHandle command_buffer) 
         return nullptr;
     };
 
+    auto input_shape = [&](GpuTensor* src, size_t input_idx) -> ov::Shape {
+        OPENVINO_ASSERT(src && src->buf.valid(), "GFX Vulkan Concat: missing input buffer ", input_idx);
+        ov::Shape src_shape = src->shape;
+        if (src_shape.empty() && m_node->get_input_partial_shape(input_idx).is_static()) {
+            src_shape = m_node->get_input_shape(input_idx);
+        }
+        OPENVINO_ASSERT(src_shape.size() == rank, "GFX Vulkan Concat: rank mismatch at input ", input_idx);
+        return src_shape;
+    };
+
+    if (concat->get_input_size() == 2) {
+        if (!m_concat_binary_kernel || m_concat_binary_elem_type != elem_type) {
+            auto& ctx = gfx_mlir_context();
+            auto module = build_concat_binary_module(ctx, elem_type);
+            KernelSource src = make_kernel_source_from_mlir(module, "concat_binary", /*arg_count=*/4);
+            src.signature.output_arg_count = 1;
+            VulkanCodegenBackend backend;
+            std::string log;
+            m_concat_binary_kernel = backend.compile(src, &log);
+            OPENVINO_ASSERT(m_concat_binary_kernel, "GFX Vulkan Concat binary: kernel compile failed: ", log);
+            m_concat_binary_kernel->prepare_runtime_artifacts();
+            m_concat_binary_elem_type = elem_type;
+        }
+
+        GpuTensor* src0 = resolve_input(0);
+        GpuTensor* src1 = resolve_input(1);
+        const ov::Shape src0_shape = input_shape(src0, 0);
+        const ov::Shape src1_shape = input_shape(src1, 1);
+        const size_t slice0 = src0_shape[static_cast<size_t>(axis_norm)];
+        const size_t slice1 = src1_shape[static_cast<size_t>(axis_norm)];
+        OPENVINO_ASSERT(slice0 + slice1 == axis_total,
+                        "GFX Vulkan Concat: binary axis total mismatch");
+
+        struct ConcatBinaryParams {
+            uint32_t outer;
+            uint32_t axis_total;
+            uint32_t inner;
+            uint32_t slice0;
+            uint32_t slice1;
+        } params{static_cast<uint32_t>(outer),
+                 static_cast<uint32_t>(axis_total),
+                 static_cast<uint32_t>(inner == 0 ? 1 : inner),
+                 static_cast<uint32_t>(slice0),
+                 static_cast<uint32_t>(slice1)};
+
+        const std::string key = m_name + "/concat_binary_params";
+        GpuBuffer params_buf = m_buffer_manager->wrap_const(key, &params, sizeof(params), ov::element::u8);
+        OPENVINO_ASSERT(params_buf.valid(), "GFX Vulkan Concat binary: failed to wrap params");
+        params_buf.owned = false;
+
+        std::vector<KernelArg> args{
+            make_buffer_arg(0, src0->buf),
+            make_buffer_arg(1, src1->buf),
+            make_buffer_arg(2, params_buf),
+            make_buffer_arg(3, output->buf),
+        };
+        auto bound_args = materialize_kernel_bytes_args(args, *m_buffer_manager, m_name.c_str());
+        const uint32_t total =
+            static_cast<uint32_t>(outer * (slice0 + slice1) * (inner == 0 ? 1 : inner));
+        if (total == 0) {
+            return;
+        }
+        const uint32_t tg = m_concat_binary_kernel->clamp_threadgroup_size(64);
+        KernelDispatch dispatch = make_1d_dispatch(total, tg);
+        m_concat_binary_kernel->execute(command_buffer, dispatch, bound_args, nullptr);
+        return;
+    }
+
     size_t axis_offset = 0;
     for (size_t i = 0; i < concat->get_input_size(); ++i) {
         GpuTensor* src = resolve_input(i);
-        OPENVINO_ASSERT(src && src->buf.valid(), "GFX Vulkan Concat: missing input buffer ", i);
-        ov::Shape src_shape = src->shape;
-        if (src_shape.empty() && m_node->get_input_partial_shape(i).is_static()) {
-            src_shape = m_node->get_input_shape(i);
-        }
-        OPENVINO_ASSERT(src_shape.size() == rank, "GFX Vulkan Concat: rank mismatch at input ", i);
+        ov::Shape src_shape = input_shape(src, i);
         const size_t slice = src_shape[static_cast<size_t>(axis_norm)];
 
         struct ConcatParams {

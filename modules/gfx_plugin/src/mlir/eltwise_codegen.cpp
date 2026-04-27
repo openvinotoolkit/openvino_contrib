@@ -71,6 +71,27 @@ std::string activation_expr(ActivationKind kind, float alpha) {
     }
 }
 
+std::string activation_expr_for(ActivationKind kind, float alpha, const std::string& value) {
+    const std::string x = "(" + value + ")";
+    switch (kind) {
+        case ActivationKind::Relu: return "(max(" + x + ", 0.0f))";
+        case ActivationKind::Sigmoid: return "(1.0f / (1.0f + exp(-" + x + ")))";
+        case ActivationKind::Tanh: return "(tanh(" + x + "))";
+        case ActivationKind::Prelu: return "((" + x + " >= 0.0f) ? " + x + " : " + x + " * " + std::to_string(alpha) + ")";
+        case ActivationKind::Gelu:
+            return "(0.5f * " + x + " * (1.0f + tanh(0.79788456f * (" + x + " + 0.044715f * " +
+                   x + " * " + x + " * " + x + "))))";
+        case ActivationKind::Swish:
+            return "((" + x + " >= 0.0f) ? (" + x + " / (1.0f + exp(-" + x + "))) : (" +
+                   x + " * exp(" + x + ") / (1.0f + exp(" + x + "))))";
+        case ActivationKind::HSwish:
+            return "(" + x + " * clamp(" + x + " + 3.0f, 0.0f, 6.0f) / 6.0f)";
+        case ActivationKind::HSigmoid:
+            return "(clamp(" + x + " + 3.0f, 0.0f, 6.0f) / 6.0f)";
+        default: return x;
+    }
+}
+
 std::string emit_eltwise_msl(const EltwiseCodegenDesc& d,
                              const std::string& input_ty,
                              const std::string& output_ty,
@@ -125,6 +146,15 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d,
         return ptr + "[" + idx + "]";
     };
     const bool use_activation = d.has_activation && !is_int;
+    const bool use_input_activation = d.has_input_activation && !is_int && !input_is_bool;
+    auto apply_input_activation = [&](const std::string& value, uint32_t input_idx) -> std::string {
+        if (!use_input_activation || d.input_activation_index != input_idx) {
+            return value;
+        }
+        return activation_expr_for(d.input_activation,
+                                   d.input_activation_alpha,
+                                   "static_cast<float>(" + value + ")");
+    };
     auto emit_assign = [&](const std::string& dst, const std::string& value) {
         if (output_is_bool) {
             ss << "    " << dst << " = (" << value << ") ? uchar(1) : uchar(0);\n";
@@ -239,7 +269,9 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d,
             ss << "    " << input_ty << " b = " << load("B", "gid") << ";\n";
             emit_assign("C[gid]", "b == 0 ? 0 : (" + load("A", "gid") + " / b)");
         } else {
-            emit_assign("C[gid]", emit_op(load("A", "gid"), load("B", "gid")));
+            emit_assign("C[gid]",
+                        emit_op(apply_input_activation(load("A", "gid"), 0),
+                                apply_input_activation(load("B", "gid"), 1)));
         }
         ss << "}\n";
         return ss.str();
@@ -264,7 +296,9 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d,
         ss << "    " << input_ty << " b = " << load("B", "off1") << ";\n";
         emit_assign("C[gid]", "b == 0 ? 0 : (" + load("A", "off0") + " / b)");
     } else {
-        emit_assign("C[gid]", emit_op(load("A", "off0"), load("B", "off1")));
+        emit_assign("C[gid]",
+                    emit_op(apply_input_activation(load("A", "off0"), 0),
+                            apply_input_activation(load("B", "off1"), 1)));
     }
     ss << "}\n";
     return ss.str();

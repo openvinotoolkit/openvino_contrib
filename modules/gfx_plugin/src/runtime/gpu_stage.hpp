@@ -3,6 +3,7 @@
 //
 #pragma once
 
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -19,6 +20,18 @@ namespace gfx_plugin {
 struct GpuStageSubmitPolicy {
     size_t weight = 1;
     bool isolate = false;
+};
+
+struct GpuStageOutputLifetime {
+    static constexpr size_t npos = std::numeric_limits<size_t>::max();
+
+    size_t produced_at = npos;
+    size_t last_used_at = npos;
+    bool requires_buffer = true;
+
+    bool valid() const {
+        return produced_at != npos && last_used_at != npos;
+    }
 };
 
 // Backend-neutral execution stage interface.
@@ -49,6 +62,7 @@ public:
     virtual void set_input_transform(size_t /*input_idx*/, const GfxInputTransform& /*transform*/) {}
 
     virtual bool fuse_activation(ActivationKind /*kind*/, float /*alpha*/) { return false; }
+    virtual bool fuse_input_activation(size_t /*input_idx*/, ActivationKind /*kind*/, float /*alpha*/) { return false; }
     virtual bool fuse_batchnorm(const BatchNormParams& /*params*/) { return false; }
     virtual bool fuse_bias(const BiasParams& /*params*/) { return false; }
 
@@ -63,6 +77,9 @@ public:
     virtual const std::string& type() const = 0;
     virtual GpuStageSubmitPolicy submit_policy() const { return {}; }
     virtual bool has_internal_input_bindings() const { return false; }
+    virtual bool describe_output_lifetimes(std::vector<GpuStageOutputLifetime>& /*lifetimes*/) const {
+        return false;
+    }
 
     virtual std::unique_ptr<GpuStage> clone() const = 0;
 };

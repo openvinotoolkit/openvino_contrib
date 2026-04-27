@@ -58,6 +58,7 @@ public:
     const std::string& type() const override { return m_type; }
     GpuStageSubmitPolicy submit_policy() const override;
     bool has_internal_input_bindings() const override { return true; }
+    bool describe_output_lifetimes(std::vector<GpuStageOutputLifetime>& lifetimes) const override;
 
     std::unique_ptr<GpuStage> clone() const override;
 

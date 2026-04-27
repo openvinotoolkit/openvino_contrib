@@ -25,7 +25,7 @@ Responsibilities:
 - register the `GFX` device
 - validate and normalize properties
 - resolve the backend (`metal` or `vulkan`)
-- run `transforms::run_pipeline()`
+- run backend-aware `transforms::run_pipeline()`
 - answer `query_model()`
 - create remote contexts
 
@@ -100,6 +100,11 @@ The reusable infer pipeline layer now has two precomputed plans:
 When output shape and element type are statically known, infer requests may also keep reusable host output tensors in backend infer state to avoid recreating host tensors on each execution.
 If a reusable host output no longer matches the expected static type or shape, the infer path now recreates it instead of treating that mismatch as a hard internal error.
 
+Stage-output allocation also has a liveness-aware workspace layer:
+- `StageOutputBufferWorkspace` can recycle intermediate output buffers across stages when the output lifetime does not escape the current live range
+- `GpuStage::describe_output_lifetimes()` lets complex stages such as `FusedSequenceStage` report finer-grained internal lifetimes
+- infer requests report workspace allocation counters such as slots used and peak live slots through the normal profiling path
+
 ## MLIR Role
 MLIR lives in `src/mlir/` and is shared infrastructure, not a separate monolithic backend object.
 
@@ -117,6 +122,7 @@ Recent MLIR-specific changes reflected in the current code:
 - Softmax lowering handles arbitrary normalized axes
 - Reduce lowering now resolves axes and `keep_dims` through concrete Reduce op types instead of a generic reduction-base lookup
 - dedicated builders now exist for `RMS` and `ScatterUpdate` instead of relying only on more generic lowering families
+- fusion now also supports selected input-side activations for `Multiply`, not only output activations or bias/post-op forms
 - Slice lowering now prefers `tensor.extract_slice`, while slice metadata extraction still accepts both `tensor.extract_slice` and the older `linalg.generic` form
 - shape and data-movement lowering is now more permissive for dynamic shapes in paths such as `ShapeOf`, `Concat`, `Broadcast`, `Select`, `StridedSlice`, and `Range`
 - buffer-results-to-out-params promotion now allows public function signatures to be rewritten when required by the lowering pipeline
@@ -155,8 +161,9 @@ Direct Metal API usage lives in Objective-C++ files (`.mm`).
 
 The current Metal backend also shares immutable constant-buffer state across compatible requests through `MetalConstCache` and the backend-neutral immutable buffer cache helper.
 It now also reports execution-device limits through `GpuExecutionDeviceInfo`, so backend-neutral planning code can use real Metal subgroup and threadgroup limits.
-The current Metal executor also contains runtime-specialized codegen paths for dynamically shaped `Softmax`, `Select`, `ScatterUpdate`, `RMS`, and more permissive slice handling, including negative-step `StridedSlice`.
+The current Metal executor also contains runtime-specialized codegen paths for dynamically shaped `Softmax`, `Select`, `ScatterUpdate`, `RMS`, binary `Concat`, rank-4 `ScaledDotProductAttention`, and more permissive slice handling, including negative-step `StridedSlice`.
 For dynamic-shape `MatMul`, the current MLIR stage path may also pack a constant RHS from `f32` to `f16` before wrapping it as an immutable const buffer. Compile profiling counters track the original and packed byte sizes for that optimization.
+The backend-aware transform pipeline is also important for Metal now: compressed `MatMul` decompression subgraphs can be marked as decompression and protected from generic folding so later stage compilation can still recognize weight-only compressed patterns.
 
 ## Vulkan Backend
 `src/backends/vulkan/` mirrors the same broad split:
@@ -180,6 +187,7 @@ The current Vulkan runtime also:
 - recompiles selected specialized Conv2D and GroupConv2D kernels when the chosen dispatch workgroup shape changes, so launch shape and kernel metadata stay aligned
 - prefers SPIR-V-observed binding counts when reconciling compiled-kernel argument metadata, reducing drift between MLIR-side arg inference and final Vulkan shader bindings
 - broadens specialized handling for boolean, compare, select, range, broadcast, gather, slice, and reduction-style kernels used in dynamic-shape-heavy graphs
+- adds specialized chunked kernels for binary `Concat` and `RMS` when their shape and element-type constraints are satisfied
 
 The current policy layer also deliberately prefers the shared MLIR/SPIR-V convolution path over older dedicated Vulkan 1x1 and 3x3 direct routes on current mobile-class stacks, keeping the backend contract more stable for Android and Raspberry Pi flows.
 

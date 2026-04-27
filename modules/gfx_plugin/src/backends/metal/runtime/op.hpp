@@ -57,6 +57,7 @@ public:
     virtual void execute(MetalCommandBufferHandle command_buffer) = 0;
     // Optional fusion hook (e.g., Conv + Relu). Default: not supported.
     virtual bool fuse_activation(ActivationKind /*kind*/, float /*alpha*/) { return false; }
+    virtual bool fuse_input_activation(size_t /*input_idx*/, ActivationKind /*kind*/, float /*alpha*/) { return false; }
     virtual bool fuse_batchnorm(const BatchNormParams& /*params*/) { return false; }
     virtual bool fuse_bias(const BiasParams& /*params*/) { return false; }
 

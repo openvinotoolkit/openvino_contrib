@@ -56,6 +56,7 @@ set(GFX_MLIR_SOURCES
     ../transforms/fusion_conv_batchnorm.cpp
     ../transforms/fusion_conv_batchnorm_act.cpp
     ../transforms/fusion_conv_batchnorm_swish.cpp
+    ../transforms/fusion_eltwise_input_activation.cpp
     ../transforms/fusion_eltwise_activation.cpp
     ../transforms/fusion_matmul_activation.cpp
     ../transforms/fusion_matmul_swish.cpp

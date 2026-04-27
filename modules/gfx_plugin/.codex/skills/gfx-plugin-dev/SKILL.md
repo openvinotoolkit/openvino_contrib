@@ -59,6 +59,8 @@ Check whether the change belongs to one of the current special families:
 - stateful `ReadValue` / `Assign` handling through infer-request variable storage
 - backend-specialized launch paths that now depend on final runtime shape or final shader binding counts
 - compile-time data repacking paths, such as Metal dynamic-shape `MatMul` packing a constant RHS from `f32` to `f16` and recompiling against the effective runtime tensor types
+- backend-aware transform preservation, such as keeping compressed `MatMul` decompression subgraphs intact for Metal-only downstream routes
+- input-side fusion paths, such as `Multiply` absorbing an activation on one selected input instead of only post-op activation on the output
 
 ### Runtime or backend scheduling change
 
@@ -72,6 +74,7 @@ Check whether the change belongs to one of the current special families:
 1. Inspect `src/plugin/infer_request_state.hpp`, `src/plugin/infer_pipeline.*`, `src/plugin/infer_io_utils.*`, and `src/plugin/stateful_execution.*`.
 2. Keep variable-buffer lifetime, reusable host-output lifetime, and stage-output shape/type recovery aligned.
 3. Treat `ReadValue` as a view-style stage and `Assign` as a persisted copy/update path unless the code explicitly changes that contract.
+4. When output allocation changed, also inspect `StageOutputBufferWorkspace` and `GpuStage::describe_output_lifetimes()` so liveness-based reuse and profiling counters stay coherent.
 
 ### Property or device-selection change
 

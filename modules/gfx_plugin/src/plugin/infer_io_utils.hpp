@@ -88,6 +88,7 @@ inline std::vector<InferStage> build_pipeline_with_outputs(
     GpuBackend expected_backend,
     GpuBufferPool& pool,
     std::vector<std::vector<BufferHandle>>& stage_handles,
+    StageOutputBufferWorkspace* stage_workspace,
     PostBuildFn&& post_build,
     DescribeOutputFn&& describe_output,
     const char* error_prefix) {
@@ -109,6 +110,7 @@ inline std::vector<InferStage> build_pipeline_with_outputs(
                            stage_handles,
                            pool,
                            std::forward<DescribeOutputFn>(describe_output),
+                           stage_workspace,
                            error_prefix);
     return pipeline;
 }
@@ -129,6 +131,7 @@ inline std::vector<InferStage>& prepare_reusable_pipeline_with_outputs(
     GpuBackend expected_backend,
     GpuBufferPool& pool,
     std::vector<std::vector<BufferHandle>>& stage_handles,
+    StageOutputBufferWorkspace* stage_workspace,
     PostBuildFn&& post_build,
     DescribeOutputFn&& describe_output,
     const char* error_prefix) {
@@ -164,6 +167,7 @@ inline std::vector<InferStage>& prepare_reusable_pipeline_with_outputs(
                            stage_handles,
                            pool,
                            std::forward<DescribeOutputFn>(describe_output),
+                           stage_workspace,
                            error_prefix);
     return reusable_pipeline;
 }

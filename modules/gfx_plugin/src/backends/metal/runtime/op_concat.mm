@@ -106,6 +106,14 @@ void MetalConcatOp::compile(MetalBufferManager* buffer_manager) {
     KernelSpec spec(m_node, 3u);
     m_kernel = compile_msl_kernel(backend, spec, module, "concat_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalConcatOp: failed to compile kernel: ", log);
+    if (m_node && m_node->get_input_size() == 2) {
+        log.clear();
+        auto binary_generator = [msl_desc](mlir::ModuleOp mod) {
+            return generate_msl_for_concat_binary(msl_desc, mod);
+        };
+        m_binary_kernel = compile_msl_kernel(backend, module, "concat_binary_kernel", binary_generator, &log, 4u);
+        OPENVINO_ASSERT(m_binary_kernel, "MetalConcatOp: failed to compile binary kernel: ", log);
+    }
 
     if (m_node) {
         m_const_inputs.resize(m_node->get_input_size());
@@ -169,11 +177,15 @@ void MetalConcatOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     const uint32_t outer_u32 = static_cast<uint32_t>(m_outer);
     const uint32_t inner_u32 = static_cast<uint32_t>(m_inner);
 
-    for (size_t i = 0; i < inputs().size() && i < m_axis_sizes.size(); ++i) {
-        MetalTensor* src = inputs()[i];
+    auto resolve_input = [&](size_t i) -> MetalTensor* {
+        MetalTensor* src = i < inputs().size() ? inputs()[i] : nullptr;
         if ((!src || !src->buf.valid()) && i < m_const_inputs.size() && m_const_inputs[i].buf.valid()) {
             src = &m_const_inputs[i];
         }
+        return src;
+    };
+
+    auto validate_input = [&](MetalTensor* src, size_t i) -> ov::Shape {
         OPENVINO_ASSERT(src && src->buf.valid(), "Concat: input ", i, " is null");
         ov::Shape src_shape = !src->shape.empty() ? src->shape : ov::Shape{};
         if (src_shape.empty() && m_node->get_input_partial_shape(i).is_static()) {
@@ -185,6 +197,62 @@ void MetalConcatOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
         OPENVINO_ASSERT(static_cast<int64_t>(src_shape[static_cast<size_t>(axis_norm)]) ==
                             static_cast<int64_t>(m_axis_sizes[i]),
                         "Concat: runtime axis dim mismatch at input ", i);
+        return src_shape;
+    };
+
+    if (m_binary_kernel && inputs().size() == 2 && m_axis_sizes.size() == 2) {
+        MetalTensor* src0 = resolve_input(0);
+        MetalTensor* src1 = resolve_input(1);
+        validate_input(src0, 0);
+        validate_input(src1, 1);
+        OPENVINO_ASSERT(m_axis_offsets[0] == 0 && m_axis_offsets[1] == m_axis_sizes[0],
+                        "Concat: binary path expects canonical two-input offsets");
+
+        struct ConcatBinaryParams {
+            uint32_t outer;
+            uint32_t inner;
+            uint32_t axis0;
+            uint32_t axis1;
+            uint32_t axis_total;
+        } params{outer_u32,
+                 inner_u32,
+                 static_cast<uint32_t>(m_axis_sizes[0]),
+                 static_cast<uint32_t>(m_axis_sizes[1]),
+                 axis_total};
+
+        const size_t src0_bytes =
+            static_cast<size_t>(outer) * params.axis0 * static_cast<size_t>(inner) * elem_sz;
+        const size_t src1_bytes =
+            static_cast<size_t>(outer) * params.axis1 * static_cast<size_t>(inner) * elem_sz;
+        const size_t dst_bytes =
+            static_cast<size_t>(outer) * axis_total * static_cast<size_t>(inner) * elem_sz;
+        OPENVINO_ASSERT(src0_bytes <= cap(src0),
+                        "Concat: source buffer too small for input 0 need=", src0_bytes, " have=", cap(src0));
+        OPENVINO_ASSERT(src1_bytes <= cap(src1),
+                        "Concat: source buffer too small for input 1 need=", src1_bytes, " have=", cap(src1));
+        OPENVINO_ASSERT(dst_bytes <= dst_cap,
+                        "Concat: destination buffer too small need=", dst_bytes, " have=", dst_cap);
+
+        const uint64_t total =
+            static_cast<uint64_t>(params.outer) * (params.axis0 + params.axis1) * params.inner;
+        if (total == 0) {
+            return;
+        }
+        KernelDispatch dispatch =
+            make_1d_dispatch(static_cast<size_t>(total), m_binary_kernel->clamp_threadgroup_size(256));
+        std::vector<KernelArg> args{
+            make_buffer_arg(0, src0->buf),
+            make_buffer_arg(1, src1->buf),
+            make_buffer_arg(2, out.buf),
+            make_bytes_arg(3, &params, sizeof(params)),
+        };
+        execute_kernel(*m_binary_kernel, cmd_buf_handle, dispatch, args);
+        return;
+    }
+
+    for (size_t i = 0; i < inputs().size() && i < m_axis_sizes.size(); ++i) {
+        MetalTensor* src = resolve_input(i);
+        validate_input(src, i);
         ConcatParams params{};
         params.outer = outer_u32;
         params.inner = inner_u32;

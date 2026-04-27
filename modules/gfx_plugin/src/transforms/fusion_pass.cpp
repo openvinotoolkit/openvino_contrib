@@ -601,6 +601,7 @@ void run_fusion_passes(mlir::ModuleOp module, const FusionConfig& config) {
     add_conv_scale_fusion_patterns(patterns, config);
     add_conv_swish_fusion_patterns(patterns, config);
     add_conv_activation_fusion_patterns(patterns, config);
+    add_eltwise_input_activation_fusion_patterns(patterns, config);
     add_eltwise_activation_fusion_patterns(patterns, config);
     add_eltwise_bias_activation_fusion_patterns(patterns, config);
     add_eltwise_bias_fusion_patterns(patterns, config);
@@ -649,6 +650,15 @@ FusionPlan extract_plan(mlir::ModuleOp module) {
         }
         if (auto alpha_attr = op.getAttrOfType<mlir::FloatAttr>("gfx.activation_alpha")) {
             group.activation_alpha = static_cast<float>(alpha_attr.getValueAsDouble());
+        }
+        if (auto act_attr = op.getAttrOfType<mlir::StringAttr>("gfx.input_activation_kind")) {
+            group.input_activation = parse_activation_kind(act_attr.getValue());
+        }
+        if (auto alpha_attr = op.getAttrOfType<mlir::FloatAttr>("gfx.input_activation_alpha")) {
+            group.input_activation_alpha = static_cast<float>(alpha_attr.getValueAsDouble());
+        }
+        if (auto input_attr = op.getAttrOfType<mlir::IntegerAttr>("gfx.input_activation_input")) {
+            group.input_activation_input = static_cast<size_t>(input_attr.getInt());
         }
         if (!group.node_indices.empty()) {
             plan.groups.emplace_back(std::move(group));

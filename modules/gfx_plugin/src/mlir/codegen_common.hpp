@@ -122,6 +122,7 @@ std::string generate_msl_for_maxpool2d(const Pool2DCodegenDesc& desc, mlir::Modu
 std::string generate_msl_for_avgpool2d(const Pool2DCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_softmax(const SoftmaxCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_concat(const ConcatCodegenDesc& desc, mlir::ModuleOp module);
+std::string generate_msl_for_concat_binary(const ConcatCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_interpolate(const InterpolateCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_split(const SplitCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_transpose(const TransposeCodegenDesc& desc, mlir::ModuleOp module);
