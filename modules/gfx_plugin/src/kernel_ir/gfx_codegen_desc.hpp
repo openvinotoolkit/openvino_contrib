@@ -380,6 +380,27 @@ struct RmsCodegenDesc : BaseCodegenDesc {
     float epsilon = 0.0f;
 };
 
+struct RopeCodegenDesc : BaseCodegenDesc {
+    ov::element::Type input_type{ov::element::dynamic};
+    ov::element::Type cos_type{ov::element::dynamic};
+    ov::element::Type sin_type{ov::element::dynamic};
+    ov::element::Type output_type{ov::element::dynamic};
+    ov::element::Type position_type{ov::element::dynamic};
+    uint32_t rank = 0;
+    uint32_t batch = 1;
+    uint32_t heads = 1;
+    uint32_t head_size = 0;
+    uint32_t rotary_dims = 0;
+    uint32_t cos_sin_dims = 0;
+    uint32_t cos_rank = 0;
+    std::array<uint32_t, 4> cos_dims{{1, 1, 1, 1}};
+    uint32_t cos_dynamic_mask = 0;
+    bool is_interleaved = false;
+    bool input_trans0213 = false;
+    bool output_trans0213 = false;
+    bool has_position = false;
+};
+
 inline uint32_t gfx_rms_parallel_reduction_threads(uint32_t hidden) {
     if (hidden >= 1024) {
         return 256u;

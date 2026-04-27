@@ -285,7 +285,17 @@ std::string generate_msl_for_sdpa(ov::element::Type type) {
     return ss.str();
 }
 
+struct CompressedMatMulPart {
+    std::shared_ptr<const ov::op::v0::Constant> weights;
+    std::shared_ptr<const ov::op::v0::Constant> scale;
+    size_t n = 0;
+    size_t groups = 0;
+    size_t group_size = 0;
+    size_t k = 0;
+};
+
 struct CompressedMatMulInfo {
+    std::vector<CompressedMatMulPart> parts;
     std::shared_ptr<const ov::op::v0::Constant> weights;
     std::shared_ptr<const ov::op::v0::Constant> scale;
     ov::element::Type input_type = ov::element::dynamic;
@@ -301,20 +311,13 @@ std::shared_ptr<const ov::op::v0::Constant> as_constant_node(const ov::Output<ov
     return ov::as_type_ptr<const ov::op::v0::Constant>(value.get_node_shared_ptr());
 }
 
-std::optional<CompressedMatMulInfo> detect_compressed_matmul_weights(const std::shared_ptr<const ov::Node>& node) {
-    auto matmul = ov::as_type_ptr<const ov::op::v0::MatMul>(node);
-    if (!matmul || !matmul->get_transpose_b() || matmul->get_input_size() != 2) {
-        return std::nullopt;
-    }
-    if (!matmul->get_input_partial_shape(1).is_static()) {
-        return std::nullopt;
-    }
-    const auto b_shape = matmul->get_input_shape(1);
+std::optional<CompressedMatMulPart> detect_compressed_matmul_part(const ov::Output<ov::Node>& value,
+                                                                  const ov::Shape& b_shape) {
     if (b_shape.size() != 2) {
         return std::nullopt;
     }
 
-    auto source = matmul->input_value(1).get_node_shared_ptr();
+    auto source = value.get_node_shared_ptr();
     if (auto convert = ov::as_type_ptr<const ov::op::v0::Convert>(source)) {
         source = convert->input_value(0).get_node_shared_ptr();
     }
@@ -369,13 +372,94 @@ std::optional<CompressedMatMulInfo> detect_compressed_matmul_weights(const std::
         return std::nullopt;
     }
 
+    CompressedMatMulPart part;
+    part.weights = weights;
+    part.scale = scale;
+    part.n = n;
+    part.groups = groups;
+    part.group_size = group_size;
+    part.k = k;
+    return part;
+}
+
+std::optional<CompressedMatMulInfo> detect_compressed_matmul_weights(const std::shared_ptr<const ov::Node>& node) {
+    auto matmul = ov::as_type_ptr<const ov::op::v0::MatMul>(node);
+    if (!matmul || !matmul->get_transpose_b() || matmul->get_input_size() != 2) {
+        return std::nullopt;
+    }
+    if (!matmul->get_input_partial_shape(1).is_static()) {
+        return std::nullopt;
+    }
+    const auto b_shape = matmul->get_input_shape(1);
+    if (b_shape.size() != 2) {
+        return std::nullopt;
+    }
+
+    std::vector<CompressedMatMulPart> parts;
+    auto source = matmul->input_value(1).get_node_shared_ptr();
+    if (auto convert = ov::as_type_ptr<const ov::op::v0::Convert>(source)) {
+        source = convert->input_value(0).get_node_shared_ptr();
+    }
+    if (auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(source)) {
+        if (concat->get_axis() != 0) {
+            return std::nullopt;
+        }
+        size_t total_n = 0;
+        for (size_t i = 0; i < concat->get_input_size(); ++i) {
+            const auto input = concat->input_value(i);
+            if (!input.get_partial_shape().is_static()) {
+                return std::nullopt;
+            }
+            const auto part_shape = input.get_shape();
+            auto part = detect_compressed_matmul_part(input, part_shape);
+            if (!part) {
+                return std::nullopt;
+            }
+            total_n += part->n;
+            parts.push_back(std::move(*part));
+        }
+        if (parts.empty() || total_n != b_shape[0]) {
+            return std::nullopt;
+        }
+    } else {
+        auto part = detect_compressed_matmul_part(matmul->input_value(1), b_shape);
+        if (!part) {
+            return std::nullopt;
+        }
+        parts.push_back(std::move(*part));
+    }
+    if (parts.empty()) {
+        return std::nullopt;
+    }
+    const auto weight_type = parts.front().weights->get_element_type();
+    const auto scale_type = parts.front().scale->get_element_type();
+    const size_t groups = parts.front().groups;
+    const size_t group_size = parts.front().group_size;
+    const size_t k = parts.front().k;
+    size_t n = 0;
+    for (const auto& part : parts) {
+        if (!part.weights || !part.scale ||
+            part.weights->get_element_type() != weight_type ||
+            part.scale->get_element_type() != scale_type ||
+            part.groups != groups ||
+            part.group_size != group_size ||
+            part.k != k) {
+            return std::nullopt;
+        }
+        n += part.n;
+    }
+    if (n == 0 || k == 0 || b_shape[0] != n || b_shape[1] != k) {
+        return std::nullopt;
+    }
+
     CompressedMatMulInfo info;
-    info.weights = weights;
-    info.scale = scale;
+    info.parts = std::move(parts);
+    info.weights = info.parts.front().weights;
+    info.scale = info.parts.front().scale;
     info.input_type = matmul->get_input_element_type(0);
     info.output_type = matmul->get_output_element_type(0);
-    info.signed_weights = weights->get_element_type() == ov::element::i4 ||
-                          weights->get_element_type() == ov::element::i8;
+    info.signed_weights = weight_type == ov::element::i4 ||
+                          weight_type == ov::element::i8;
     info.n = n;
     info.k = k;
     info.groups = groups;
@@ -421,8 +505,108 @@ uint32_t compressed_matmul_output_block(const CompressedMatMulInfo& info,
     if (max_threads < 128) {
         return 1;
     }
-    const uint32_t max_block = 4u;
+    const uint32_t max_block = max_threads >= 256 ? 16u : 8u;
     return std::min<uint32_t>(max_block, floor_power_of_two(static_cast<uint32_t>(std::min<size_t>(info.n, max_block))));
+}
+
+uint8_t read_quantized_weight_value(const ov::op::v0::Constant& weights, size_t logical_index) {
+    const auto et = weights.get_element_type();
+    const auto* raw = static_cast<const uint8_t*>(weights.get_data_ptr());
+    OPENVINO_ASSERT(raw, "GFX compressed MatMul: empty weight constant");
+    if (et == ov::element::i4 || et == ov::element::u4) {
+        const uint8_t packed = raw[logical_index >> 1];
+        return ((logical_index & 1u) == 0u) ? static_cast<uint8_t>(packed & 0x0fu)
+                                            : static_cast<uint8_t>((packed >> 4) & 0x0fu);
+    }
+    if (et == ov::element::i8 || et == ov::element::u8) {
+        return raw[logical_index];
+    }
+    OPENVINO_THROW("GFX compressed MatMul: unsupported weight type ", et);
+}
+
+void write_quantized_weight_value(std::vector<uint8_t>& packed,
+                                  ov::element::Type type,
+                                  size_t logical_index,
+                                  uint8_t value) {
+    if (type == ov::element::i4 || type == ov::element::u4) {
+        const size_t byte_index = logical_index >> 1;
+        const uint8_t nibble = static_cast<uint8_t>(value & 0x0fu);
+        if ((logical_index & 1u) == 0u) {
+            packed[byte_index] = static_cast<uint8_t>((packed[byte_index] & 0xf0u) | nibble);
+        } else {
+            packed[byte_index] = static_cast<uint8_t>((packed[byte_index] & 0x0fu) | static_cast<uint8_t>(nibble << 4));
+        }
+        return;
+    }
+    if (type == ov::element::i8 || type == ov::element::u8) {
+        packed[logical_index] = value;
+        return;
+    }
+    OPENVINO_THROW("GFX compressed MatMul: unsupported weight type ", type);
+}
+
+std::vector<uint8_t> pack_compressed_matmul_weights_for_output_block(const CompressedMatMulInfo& info,
+                                                                    uint32_t output_block) {
+    OPENVINO_ASSERT(!info.parts.empty(), "GFX compressed MatMul: no compressed weight parts");
+    const auto et = info.weights->get_element_type();
+    const size_t col_blocks = (info.n + output_block - 1) / output_block;
+    const size_t logical_values = col_blocks * info.k * output_block;
+    const size_t bytes = (et == ov::element::i4 || et == ov::element::u4) ? ((logical_values + 1) / 2)
+                                                                          : logical_values;
+    std::vector<uint8_t> packed(bytes, 0);
+
+    for (size_t col_block = 0; col_block < col_blocks; ++col_block) {
+        for (size_t kk = 0; kk < info.k; ++kk) {
+            for (uint32_t lane = 0; lane < output_block; ++lane) {
+                const size_t col = col_block * output_block + lane;
+                const size_t packed_index = ((col_block * info.k + kk) * output_block) + lane;
+                if (col >= info.n) {
+                    write_quantized_weight_value(packed, et, packed_index, 0);
+                    continue;
+                }
+                size_t part_offset = 0;
+                const CompressedMatMulPart* selected_part = nullptr;
+                for (const auto& part : info.parts) {
+                    if (col < part_offset + part.n) {
+                        selected_part = &part;
+                        break;
+                    }
+                    part_offset += part.n;
+                }
+                OPENVINO_ASSERT(selected_part, "GFX compressed MatMul: invalid packed weight column");
+                const size_t local_col = col - part_offset;
+                const size_t source_index = local_col * info.k + kk;
+                write_quantized_weight_value(packed, et, packed_index, read_quantized_weight_value(*selected_part->weights, source_index));
+            }
+        }
+    }
+    return packed;
+}
+
+std::vector<uint8_t> pack_compressed_matmul_scales(const CompressedMatMulInfo& info) {
+    OPENVINO_ASSERT(!info.parts.empty(), "GFX compressed MatMul: no compressed scale parts");
+    const auto scale_type = info.scale->get_element_type();
+    const size_t element_count = ov::shape_size(info.scale->get_shape());
+    OPENVINO_ASSERT(element_count > 0, "GFX compressed MatMul: empty scale shape");
+    const size_t element_bytes = info.scale->get_byte_size() / element_count;
+    OPENVINO_ASSERT(element_bytes > 0, "GFX compressed MatMul: invalid scale element size");
+
+    std::vector<uint8_t> packed(info.n * info.groups * element_bytes, 0);
+    size_t row_offset = 0;
+    for (const auto& part : info.parts) {
+        OPENVINO_ASSERT(part.scale && part.scale->get_element_type() == scale_type,
+                        "GFX compressed MatMul: inconsistent scale part");
+        const auto shape = part.scale->get_shape();
+        OPENVINO_ASSERT(shape.size() == 3 && shape[0] == part.n && shape[1] == info.groups && shape[2] == 1,
+                        "GFX compressed MatMul: unsupported scale part shape");
+        const size_t bytes = part.n * info.groups * element_bytes;
+        const auto* src = static_cast<const uint8_t*>(part.scale->get_data_ptr());
+        OPENVINO_ASSERT(src && bytes > 0, "GFX compressed MatMul: empty scale part");
+        std::memcpy(packed.data() + row_offset * info.groups * element_bytes, src, bytes);
+        row_offset += part.n;
+    }
+    OPENVINO_ASSERT(row_offset == info.n, "GFX compressed MatMul: packed scale size mismatch");
+    return packed;
 }
 
 std::string generate_msl_for_compressed_matmul(const CompressedMatMulInfo& info,
@@ -477,23 +661,27 @@ std::string generate_msl_for_compressed_matmul(const CompressedMatMulInfo& info,
     ss << "  uint lane [[thread_index_in_threadgroup]]) {\n";
     if (reduction_threads <= 1) {
         ss << "  uint block_id = gid;\n";
-        ss << "  uint col_base = (block_id % COL_BLOCKS) * OUTPUT_BLOCK;\n";
+        ss << "  uint col_block = block_id % COL_BLOCKS;\n";
+        ss << "  uint col_base = col_block * OUTPUT_BLOCK;\n";
         ss << "  uint row = block_id / COL_BLOCKS;\n";
         for (uint32_t i = 0; i < output_block; ++i) {
             ss << "  float acc" << i << " = 0.0f;\n";
         }
-        ss << "  for (uint kk = 0; kk < K; ++kk) {\n";
-        ss << "    uint group = kk / GROUP_SIZE;\n";
-        ss << "    uint in_group = kk - group * GROUP_SIZE;\n";
-        ss << "    float a = float(A[row * K + kk]);\n";
+        ss << "  for (uint group = 0; group < GROUPS; ++group) {\n";
         for (uint32_t i = 0; i < output_block; ++i) {
-            ss << "    if (col_base + " << i << "u < N) {\n";
-            ss << "      uint col" << i << " = col_base + " << i << "u;\n";
-            ss << "      uint w_idx" << i << " = (col" << i << " * GROUPS + group) * GROUP_SIZE + in_group;\n";
-            ss << "      uint s_idx" << i << " = col" << i << " * GROUPS + group;\n";
-            ss << "      acc" << i << " += a * load_qweight(W, w_idx" << i << ") * float(S[s_idx" << i << "]);\n";
-            ss << "    }\n";
+            ss << "    float scale" << i << " = 0.0f;\n";
+            ss << "    if (col_base + " << i << "u < N) scale" << i
+               << " = float(S[(col_base + " << i << "u) * GROUPS + group]);\n";
         }
+        ss << "    for (uint in_group = 0; in_group < GROUP_SIZE; ++in_group) {\n";
+        ss << "      uint kk = group * GROUP_SIZE + in_group;\n";
+        ss << "      float a = float(A[row * K + kk]);\n";
+        ss << "      uint w_base = ((col_block * K + kk) * OUTPUT_BLOCK);\n";
+        for (uint32_t i = 0; i < output_block; ++i) {
+            ss << "      if (col_base + " << i << "u < N) acc" << i
+               << " += a * load_qweight(W, w_base + " << i << "u) * scale" << i << ";\n";
+        }
+        ss << "    }\n";
         ss << "  }\n";
         for (uint32_t i = 0; i < output_block; ++i) {
             ss << "  if (col_base + " << i << "u < N) C[row * N + col_base + " << i << "u] = "
@@ -502,26 +690,30 @@ std::string generate_msl_for_compressed_matmul(const CompressedMatMulInfo& info,
         ss << "}\n";
         return ss.str();
     }
-    ss << "  threadgroup float partial[" << (reduction_threads * output_block) << "];\n";
     ss << "  uint block_id = gid / REDUCE_THREADS;\n";
-    ss << "  uint col_base = (block_id % COL_BLOCKS) * OUTPUT_BLOCK;\n";
+    ss << "  uint col_block = block_id % COL_BLOCKS;\n";
+    ss << "  uint col_base = col_block * OUTPUT_BLOCK;\n";
     ss << "  uint row = block_id / COL_BLOCKS;\n";
     for (uint32_t i = 0; i < output_block; ++i) {
         ss << "  float acc" << i << " = 0.0f;\n";
     }
-    ss << "  for (uint kk = lane; kk < K; kk += REDUCE_THREADS) {\n";
-    ss << "    uint group = kk / GROUP_SIZE;\n";
-    ss << "    uint in_group = kk - group * GROUP_SIZE;\n";
-    ss << "    float a = float(A[row * K + kk]);\n";
+    ss << "  for (uint group = 0; group < GROUPS; ++group) {\n";
     for (uint32_t i = 0; i < output_block; ++i) {
-        ss << "    if (col_base + " << i << "u < N) {\n";
-        ss << "      uint col" << i << " = col_base + " << i << "u;\n";
-        ss << "      uint w_idx" << i << " = (col" << i << " * GROUPS + group) * GROUP_SIZE + in_group;\n";
-        ss << "      uint s_idx" << i << " = col" << i << " * GROUPS + group;\n";
-        ss << "      acc" << i << " += a * load_qweight(W, w_idx" << i << ") * float(S[s_idx" << i << "]);\n";
-        ss << "    }\n";
+        ss << "    float scale" << i << " = 0.0f;\n";
+        ss << "    if (col_base + " << i << "u < N) scale" << i
+           << " = float(S[(col_base + " << i << "u) * GROUPS + group]);\n";
     }
+    ss << "    for (uint in_group = lane; in_group < GROUP_SIZE; in_group += REDUCE_THREADS) {\n";
+    ss << "      uint kk = group * GROUP_SIZE + in_group;\n";
+    ss << "      float a = float(A[row * K + kk]);\n";
+    ss << "      uint w_base = ((col_block * K + kk) * OUTPUT_BLOCK);\n";
+    for (uint32_t i = 0; i < output_block; ++i) {
+        ss << "      if (col_base + " << i << "u < N) acc" << i
+           << " += a * load_qweight(W, w_base + " << i << "u) * scale" << i << ";\n";
+    }
+    ss << "    }\n";
     ss << "  }\n";
+    ss << "  threadgroup float partial[" << (reduction_threads * output_block) << "];\n";
     for (uint32_t i = 0; i < output_block; ++i) {
         ss << "  partial[lane * OUTPUT_BLOCK + " << i << "u] = acc" << i << ";\n";
     }
@@ -1097,6 +1289,75 @@ inline SplitPlan make_split_plan(const std::shared_ptr<const ov::Node>& node,
     return plan;
 }
 
+bool try_alias_contiguous_split_outputs(const std::shared_ptr<const ov::Node>& node,
+                                        GpuTensor* input,
+                                        const std::vector<GpuTensor*>& outputs,
+                                        const char* stage_name) {
+    if (!node || !input || !input->buf.valid() || input->shape.empty() || outputs.empty()) {
+        return false;
+    }
+    for (const auto* out : outputs) {
+        if (!out || !out->prefer_private) {
+            return false;
+        }
+    }
+
+    const auto plan = make_split_plan(node, input->shape, outputs);
+    size_t outer = 1;
+    for (size_t d = 0; d < static_cast<size_t>(plan.axis_norm); ++d) {
+        outer *= input->shape[d];
+    }
+    if (outer != 1) {
+        return false;
+    }
+
+    ov::element::Type element_type =
+        input->expected_type == ov::element::dynamic ? input->buf.type : input->expected_type;
+    if (element_type == ov::element::dynamic) {
+        element_type = node->get_input_element_type(0);
+    }
+    OPENVINO_ASSERT(element_type != ov::element::dynamic,
+                    "GFX MLIR: Split input element type is unknown for stage ",
+                    stage_name);
+    const size_t elem_size = element_type.size();
+    OPENVINO_ASSERT(elem_size != 0, "GFX MLIR: Split element size is zero for stage ", stage_name);
+
+    size_t axis_offset = 0;
+    for (size_t oi = 0; oi < outputs.size(); ++oi) {
+        auto* out = outputs[oi];
+        if (!out) {
+            axis_offset += plan.split_sizes[oi];
+            continue;
+        }
+
+        ov::Shape out_shape = input->shape;
+        out_shape[static_cast<size_t>(plan.axis_norm)] = plan.split_sizes[oi];
+        const size_t byte_offset = axis_offset * static_cast<size_t>(plan.inner_stride) * elem_size;
+        const size_t bytes = ov::shape_size(out_shape) * elem_size;
+        OPENVINO_ASSERT(byte_offset + bytes <= input->buf.size,
+                        "GFX MLIR: Split view exceeds input buffer for stage ",
+                        stage_name,
+                        " (offset=",
+                        byte_offset,
+                        ", bytes=",
+                        bytes,
+                        ", input=",
+                        input->buf.size,
+                        ")");
+
+        GpuBuffer alias = input->buf;
+        alias.offset += byte_offset;
+        alias.size = bytes;
+        alias.external = true;
+        alias.owned = false;
+        out->buf = alias;
+        out->shape = std::move(out_shape);
+        out->expected_type = element_type;
+        axis_offset += plan.split_sizes[oi];
+    }
+    return true;
+}
+
 }  // namespace
 
 MlirStage::MlirStage(const std::shared_ptr<const ov::Node>& node)
@@ -1404,11 +1665,12 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
         OPENVINO_ASSERT(m_buffer_manager,
                         "GFX MLIR: const buffer manager is required for compressed MatMul stage ",
                         m_name);
-        const auto wrap_raw_constant = [&](const std::shared_ptr<const ov::op::v0::Constant>& constant,
-                                           const std::string& suffix,
-                                           ov::element::Type buffer_type) {
-            const void* data = constant->get_data_ptr();
-            const size_t bytes = constant->get_byte_size();
+        const auto wrap_byte_constant = [&](const std::vector<uint8_t>& bytes_data,
+                                            const std::string& suffix,
+                                            ov::element::Type buffer_type,
+                                            const ov::Shape& shape) {
+            const void* data = bytes_data.data();
+            const size_t bytes = bytes_data.size();
             OPENVINO_ASSERT(data && bytes > 0,
                             "GFX MLIR: compressed MatMul constant is empty for stage ",
                             m_name);
@@ -1431,7 +1693,7 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
             GpuTensor tensor;
             tensor.buf = buf;
             tensor.expected_type = buffer_type;
-            tensor.shape = suffix == "scale" ? constant->get_shape() : ov::Shape{bytes};
+            tensor.shape = shape;
             return tensor;
         };
 
@@ -1440,12 +1702,18 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
         m_compressed_matmul_output_block =
             compressed_matmul_output_block(*compressed_matmul_info, caps, m_matmul_reduction_threads);
         m_compressed_matmul_n = static_cast<uint32_t>(compressed_matmul_info->n);
+        const std::vector<uint8_t> packed_weights =
+            pack_compressed_matmul_weights_for_output_block(*compressed_matmul_info, m_compressed_matmul_output_block);
+        const std::vector<uint8_t> packed_scales = pack_compressed_matmul_scales(*compressed_matmul_info);
         if (gfx_log_debug_enabled()) {
             std::ostringstream oss;
             oss << "compressed MatMul reduction threads=" << m_matmul_reduction_threads
                 << " output_block=" << m_compressed_matmul_output_block
                 << " K=" << compressed_matmul_info->k
                 << " N=" << compressed_matmul_info->n
+                << " parts=" << compressed_matmul_info->parts.size()
+                << " packed_weight_bytes=" << packed_weights.size()
+                << " packed_scale_bytes=" << packed_scales.size()
                 << " max_threads=" << caps.max_total_threads_per_group
                 << " simd=" << std::max(caps.subgroup_size, caps.preferred_simd_width);
             gfx_log_debug("MLIRConst") << oss.str();
@@ -1464,10 +1732,38 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
         m_kernel->prepare_runtime_artifacts();
 
         m_kernel_extra_inputs.clear();
-        m_kernel_extra_inputs.push_back(wrap_raw_constant(compressed_matmul_info->weights, "weights", ov::element::u8));
-        m_kernel_extra_inputs.push_back(wrap_raw_constant(compressed_matmul_info->scale,
-                                                          "scale",
-                                                          compressed_matmul_info->scale->get_element_type()));
+        {
+            const uint64_t hash = gfx_hash_bytes(packed_weights.data(), packed_weights.size());
+            std::ostringstream key;
+            key << m_name
+                << "/compressed_matmul/packed_weights/"
+                << compressed_matmul_info->weights->get_element_type().get_type_name()
+                << "/block"
+                << m_compressed_matmul_output_block
+                << "/"
+                << packed_weights.size()
+                << "/"
+                << hash;
+            GpuBuffer buf = m_buffer_manager->wrap_const(key.str(),
+                                                         packed_weights.data(),
+                                                         packed_weights.size(),
+                                                         ov::element::u8);
+            OPENVINO_ASSERT(buf.valid(),
+                            "GFX MLIR: failed to wrap packed compressed MatMul weights for stage ",
+                            m_name);
+            buf.owned = false;
+            GpuTensor tensor;
+            tensor.buf = buf;
+            tensor.expected_type = ov::element::u8;
+            tensor.shape = ov::Shape{packed_weights.size()};
+            m_kernel_extra_inputs.push_back(std::move(tensor));
+        }
+        m_kernel_extra_inputs.push_back(wrap_byte_constant(packed_scales,
+                                                           "packed_scale",
+                                                           compressed_matmul_info->scale->get_element_type(),
+                                                           ov::Shape{compressed_matmul_info->n,
+                                                                     compressed_matmul_info->groups,
+                                                                     1}));
         m_kernel_inputs = {0};
         m_kernel_input_arg_count = 3;
         m_kernel_operand_kinds = {1, 1, 1, 1};
@@ -4485,6 +4781,25 @@ struct ScatterUpdateParams {
         }
     }
 
+    if (m_type == "RoPE" && m_node && !outputs.empty()) {
+        ov::Shape out_shape;
+        if (!resolve_known_input_shape(0, out_shape)) {
+            out_shape = resolve_input_shape(0);
+        }
+        if (!out_shape.empty()) {
+            for (auto* out : outputs) {
+                if (!out) {
+                    continue;
+                }
+                out->shape = out_shape;
+                if (out->expected_type == ov::element::dynamic) {
+                    out->expected_type = m_node->get_output_element_type(0);
+                }
+            }
+            m_output_shape = out_shape;
+        }
+    }
+
     for (size_t i = 0; i < outputs.size(); ++i) {
         GpuTensor* out = outputs[i];
         if (!out) {
@@ -4552,6 +4867,11 @@ struct ScatterUpdateParams {
                            ")");
         }
         out->expected_type = out_type;
+    }
+
+    if ((m_type == "Split" || m_type == "VariadicSplit") &&
+        try_alias_contiguous_split_outputs(m_node, resolve_input_tensor(0), outputs, m_name.c_str())) {
+        return;
     }
 
     if (m_is_view_op) {

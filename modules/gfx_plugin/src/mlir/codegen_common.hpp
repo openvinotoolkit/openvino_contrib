@@ -141,6 +141,7 @@ std::string generate_msl_for_unary(const UnaryCodegenDesc& desc, mlir::ModuleOp 
 std::string generate_msl_for_select(mlir::ModuleOp module, ov::element::Type et);
 std::string generate_msl_for_reduce(const ReduceCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_rms(const RmsCodegenDesc& desc, mlir::ModuleOp module);
+std::string generate_msl_for_rope(const RopeCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_pad(const PadCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_tile(const TileCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_broadcast(const BroadcastCodegenDesc& desc, mlir::ModuleOp module);
@@ -223,6 +224,9 @@ inline std::string generate_msl_from_mlir(mlir::ModuleOp module, const ReduceCod
 }
 inline std::string generate_msl_from_mlir(mlir::ModuleOp module, const RmsCodegenDesc& desc) {
     return generate_msl_for_rms(desc, module);
+}
+inline std::string generate_msl_from_mlir(mlir::ModuleOp module, const RopeCodegenDesc& desc) {
+    return generate_msl_for_rope(desc, module);
 }
 inline std::string generate_msl_from_mlir(mlir::ModuleOp module, const PadCodegenDesc& desc) {
     return generate_msl_for_pad(desc, module);

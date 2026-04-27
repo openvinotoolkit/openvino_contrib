@@ -259,7 +259,7 @@ private:
 
 class SharedPreparedBindingCache {
 public:
-    static constexpr size_t kMaxEntries = 512;
+    static constexpr size_t kInitialMaxEntries = 512;
 
     struct Entry {
         std::shared_ptr<const PreparedKernelBindings> bindings;
@@ -269,6 +269,7 @@ public:
     std::mutex mutex;
     std::unordered_map<KernelBindingTable, Entry, KernelBindingTableHash> entries;
     std::list<KernelBindingTable> lru;
+    size_t max_entries = kInitialMaxEntries;
 };
 
 class PreparedBindingCacheRegistry {
@@ -471,7 +472,10 @@ private:
         }
         auto lru_it = cache->lru.insert(cache->lru.begin(), created->binding_table());
         cache->entries.emplace(*lru_it, SharedPreparedBindingCache::Entry{created, lru_it});
-        while (cache->entries.size() > SharedPreparedBindingCache::kMaxEntries) {
+        while (cache->entries.size() > cache->max_entries) {
+            cache->max_entries *= 2;
+        }
+        while (cache->entries.size() > cache->max_entries) {
             const auto& evict_key = cache->lru.back();
             cache->entries.erase(evict_key);
             cache->lru.pop_back();

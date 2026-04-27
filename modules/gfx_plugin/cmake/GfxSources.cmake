@@ -152,6 +152,7 @@ set(GFX_RUNTIME_METAL_MSL_SOURCES
     ${_gfx_src_dir}/mlir/reduce_codegen.cpp
     ${_gfx_src_dir}/mlir/reverse_codegen.cpp
     ${_gfx_src_dir}/mlir/rms_codegen.cpp
+    ${_gfx_src_dir}/mlir/rope_codegen.cpp
     ${_gfx_src_dir}/mlir/scatter_elements_update_codegen.cpp
     ${_gfx_src_dir}/mlir/scatter_nd_update_codegen.cpp
     ${_gfx_src_dir}/mlir/select_codegen.cpp

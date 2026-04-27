@@ -20,6 +20,7 @@ set(GFX_MLIR_SOURCES
     mlir_builder_select.cpp
     mlir_builder_reduce.cpp
     mlir_builder_rms.cpp
+    mlir_builder_rope.cpp
     mlir_builder_pad.cpp
     mlir_builder_tile.cpp
     mlir_builder_broadcast.cpp

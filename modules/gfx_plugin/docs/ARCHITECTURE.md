@@ -105,6 +105,8 @@ Stage-output allocation also has a liveness-aware workspace layer:
 - `GpuStage::describe_output_lifetimes()` lets complex stages such as `FusedSequenceStage` report finer-grained internal lifetimes
 - infer requests report workspace allocation counters such as slots used and peak live slots through the normal profiling path
 
+Some view-style data movement now skips copies entirely. `Split` and `VariadicSplit` can alias contiguous byte ranges of the input buffer when the inferred split plan is view-compatible, so downstream stages can consume output tensors backed by slices of the original allocation.
+
 ## MLIR Role
 MLIR lives in `src/mlir/` and is shared infrastructure, not a separate monolithic backend object.
 
@@ -121,8 +123,10 @@ Recent MLIR-specific changes reflected in the current code:
 - OpenVINO `RMSFusion` now runs before plugin-local cleanup so common RMSNorm tails reach a dedicated `RMS` lowering path
 - Softmax lowering handles arbitrary normalized axes
 - Reduce lowering now resolves axes and `keep_dims` through concrete Reduce op types instead of a generic reduction-base lookup
-- dedicated builders now exist for `RMS` and `ScatterUpdate` instead of relying only on more generic lowering families
+- dedicated builders now exist for `RMS`, `ScatterUpdate`, and `RoPE` instead of relying only on more generic lowering families
 - fusion now also supports selected input-side activations for `Multiply`, not only output activations or bias/post-op forms
+- the backend-aware transform pipeline can fuse the common LLaMA rotate-half arithmetic pattern into native `RoPE` before stage compilation on Metal
+- the backend-aware transform pipeline can regroup compatible compressed `MatMul` nodes that share one data input into a fused horizontal `MatMul` plus `VariadicSplit`
 - Slice lowering now prefers `tensor.extract_slice`, while slice metadata extraction still accepts both `tensor.extract_slice` and the older `linalg.generic` form
 - shape and data-movement lowering is now more permissive for dynamic shapes in paths such as `ShapeOf`, `Concat`, `Broadcast`, `Select`, `StridedSlice`, and `Range`
 - buffer-results-to-out-params promotion now allows public function signatures to be rewritten when required by the lowering pipeline
@@ -138,6 +142,8 @@ Recent MLIR-specific changes reflected in the current code:
 Lowered kernels also rely on backend-neutral argument and binding helpers:
 - `src/kernel_ir/gfx_kernel_args.hpp` materializes runtime kernel arguments and can turn scalar byte payloads into cached immutable device buffers
 - `src/runtime/gpu_backend_base.hpp` provides shared prepared-binding caches reused across compatible compiled-kernel wrappers
+
+Prepared-binding caches are no longer hard-capped at one fixed size. They start from an initial bound and can grow when repeated executions observe more distinct compatible binding tables than the initial cache budget allowed.
 
 Outside kernel execution, `src/plugin/infer_pipeline.cpp` can also materialize constant graph outputs into synthetic pipeline tensors so output resolution stays uniform even when the public output does not come from a runtime stage.
 
@@ -161,9 +167,10 @@ Direct Metal API usage lives in Objective-C++ files (`.mm`).
 
 The current Metal backend also shares immutable constant-buffer state across compatible requests through `MetalConstCache` and the backend-neutral immutable buffer cache helper.
 It now also reports execution-device limits through `GpuExecutionDeviceInfo`, so backend-neutral planning code can use real Metal subgroup and threadgroup limits.
-The current Metal executor also contains runtime-specialized codegen paths for dynamically shaped `Softmax`, `Select`, `ScatterUpdate`, `RMS`, binary `Concat`, rank-4 `ScaledDotProductAttention`, and more permissive slice handling, including negative-step `StridedSlice`.
+The current Metal executor also contains runtime-specialized codegen paths for dynamically shaped `Softmax`, `Select`, `ScatterUpdate`, `RMS`, `RoPE`, binary `Concat`, rank-4 `ScaledDotProductAttention`, and more permissive slice handling, including negative-step `StridedSlice`.
 For dynamic-shape `MatMul`, the current MLIR stage path may also pack a constant RHS from `f32` to `f16` before wrapping it as an immutable const buffer. Compile profiling counters track the original and packed byte sizes for that optimization.
 The backend-aware transform pipeline is also important for Metal now: compressed `MatMul` decompression subgraphs can be marked as decompression and protected from generic folding so later stage compilation can still recognize weight-only compressed patterns.
+That same transform pipeline can also collapse supported LLaMA rotate-half arithmetic into native `RoPE`, letting Metal compile one backend kernel instead of preserving the original Multiply/Add subgraph.
 
 ## Vulkan Backend
 `src/backends/vulkan/` mirrors the same broad split:

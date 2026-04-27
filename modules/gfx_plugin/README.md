@@ -27,6 +27,7 @@ Recent runtime work extends this model in two directions:
 - device-aware scheduling now uses backend-reported execution limits and device-family classification through shared `gfx_parallelism.*` and `gfx_partitioning.*` helpers
 - infer requests can also keep per-request stateful variable buffers for `ReadValue` / `Assign` style subgraphs instead of treating them as ordinary stateless stage edges
 - output allocation can now reuse workspace-managed intermediate slots across stages based on liveness instead of always keeping one dedicated buffer per stage output
+- shared prepared-binding caches can now grow beyond their initial capacity when a workload introduces many distinct compatible binding tables
 
 This is not the old monolithic `MlirBackend` architecture that earlier design notes experimented with.
 
@@ -69,6 +70,7 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 - remote context creation
 - model transformation before compilation
 - backend-aware transform pipeline selection, including backend-specific protection of decompression subgraphs when a later runtime route depends on them
+- backend-specific pattern fusion such as LLaMA rotate-half rewriting into native `RoPE` on Metal and horizontal regrouping of compatible compressed `MatMul` nodes
 
 ### CompiledModel
 `src/plugin/compiled_model.cpp` owns:
@@ -112,6 +114,7 @@ The current infer path is not a naive "execute one stage, submit immediately" lo
 The runtime also has explicit reuse layers:
 - immutable constant payloads can be cached as device buffers through backend const-cache implementations
 - compiled kernels can reuse prepared binding tables through shared backend-neutral cache helpers in `gpu_backend_base.hpp`
+- prepared binding-table caches can grow past their initial size when the infer path observes more distinct reusable binding sets
 - infer requests can reuse prepared output bindings and preallocated host output tensors across repeated executions
 
 Profiling now also has two layers:
@@ -155,6 +158,7 @@ Support is driven by MLIR builders in `src/mlir/` and backend runtime implementa
 - compare, logical, and select operations
 - unary activations and elementwise transforms
 - RMSNorm-style lowered `RMS`
+- rotary positional embeddings through native `RoPE`
 - backend-specific `ScaledDotProductAttention` support on Metal for rank-4 FP16/FP32 Q/K/V inputs
 - reduction ops such as ReduceSum, ReduceMean, ReduceMax, ReduceMin, ReduceProd, ReduceL1, and ReduceL2
 - MaxPool, AvgPool, Softmax, BatchNormInference
@@ -177,12 +181,16 @@ Current lowering/runtime special cases:
 - Reduce lowering now extracts axes and `keep_dims` through concrete Reduce op types instead of relying on a generic reduction base path
 - transform cleanup now runs OpenVINO `RMSFusion` before plugin-local cleanup, so common RMSNorm tails can reach dedicated `RMS` lowering and backend codegen
 - Metal can keep compressed `MatMul` weight decompression subgraphs intact so later stage compilation can use backend-side compressed or repacked constant paths instead of losing that structure during generic transforms
+- Metal can also fuse the common LLaMA rotate-half arithmetic pattern into a native `RoPE` stage when the resulting RoPE layout constraints are supported
+- compatible compressed `MatMul` nodes that share the same data input can be regrouped into one horizontally fused `MatMul` followed by `VariadicSplit`
+- compressed `MatMul` stage compilation can repack concatenated quantized weight parts and scale blocks into backend const buffers before codegen
 - `ScatterUpdate` now has a dedicated MLIR lowering path instead of falling back to the older scatter-family builders
 - Slice lowering now prefers `tensor.extract_slice`; generic slice metadata extraction still accepts the older generic form when needed
 - dynamic-shape support now covers `ShapeOf` compile/query flow and query-time acceptance for selected data-movement ops such as `Concat`, `Broadcast`, `Select`, `StridedSlice`, and `Range`
 - `ReadValue` is treated as a view-style stage, while `Assign` is intercepted by a stateful execution layer that persists the variable buffer inside infer-request state
 - Metal dynamic-shape `MatMul` can repack a constant RHS from `f32` to `f16` during stage compilation and then compile the kernel against the effective runtime buffer types instead of only the original node input element types
 - Multiply-style eltwise stages can now fuse selected activations into one chosen input instead of only fusing an activation on the final stage output
+- contiguous `Split` and `VariadicSplit` outputs can alias byte ranges of the input buffer instead of forcing materialized copies when the split layout is view-compatible
 - layout cleanup can fold the DFL softmax expectation tail into a value-preserving `Softmax -> MatMul -> Reshape/Transpose` path instead of the older synthetic convolution rewrite
 
 ## Public And Internal Properties

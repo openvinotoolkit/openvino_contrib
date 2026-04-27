@@ -83,6 +83,7 @@ const std::vector<BuilderEntry>& builder_registry() {
         {"ReduceL1", build_mlir_reducel1_from_model, false},
         {"ReduceL2", build_mlir_reducel2_from_model, false},
         {"RMS", build_mlir_rms_from_model, false},
+        {"RoPE", build_mlir_rope_from_model, false},
         {"Pad", build_mlir_pad_from_model, false},
         {"Tile", build_mlir_tile_from_model, false},
         {"Broadcast", build_mlir_broadcast_from_model, false},

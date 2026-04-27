@@ -80,6 +80,7 @@
 #include "openvino/op/topk.hpp"
 #include "openvino/op/transpose.hpp"
 #include "openvino/op/variadic_split.hpp"
+#include "ov_ops/rotary_positional_embeddings.hpp"
 #include "ov_ops/rms.hpp"
 
 namespace ov {
@@ -820,6 +821,86 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
         if (src.module) {
             const std::vector<int32_t> kinds{1, 1, 1};
             const std::vector<int32_t> arg_idx{0, 1, 2};
+            annotate_module_operands(src.module, kinds, arg_idx, {});
+        }
+        return;
+    }
+
+    if (auto rope = std::dynamic_pointer_cast<const ov::op::internal::RoPE>(node)) {
+        const auto& cfg = rope->get_config();
+        OPENVINO_ASSERT(!cfg.input_trans0213 && !cfg.output_trans0213,
+                        "GFX Metal RoPE: transposed layouts are not supported yet");
+        OPENVINO_ASSERT(!cfg.is_chatglm && !cfg.is_qwen,
+                        "GFX Metal RoPE: ChatGLM/Qwen-special layouts are not supported yet");
+        OPENVINO_ASSERT(cfg.slice_start == 0 && cfg.slice_stop == 0,
+                        "GFX Metal RoPE: sliced input layout is not supported yet");
+        OPENVINO_ASSERT(rope->get_input_size() >= 3 && rope->get_input_size() <= 4,
+                        "GFX Metal RoPE: expected data, cos, sin and optional position inputs");
+        OPENVINO_ASSERT(cfg.gather_position_arg_id == 0 || cfg.gather_position_arg_id == 3,
+                        "GFX Metal RoPE: position gather must use input 3");
+        const auto data_shape = static_shape_or_placeholder(rope->get_input_partial_shape(0));
+        const auto cos_shape = static_shape_or_placeholder(rope->get_input_partial_shape(1));
+        OPENVINO_ASSERT(data_shape.size() == 4 || data_shape.size() == 3,
+                        "GFX Metal RoPE: expected rank-3 or rank-4 data tensor");
+        OPENVINO_ASSERT(!data_shape.empty() && data_shape.back() > 0,
+                        "GFX Metal RoPE: head size must be static");
+        OPENVINO_ASSERT(cos_shape.size() >= 2 && cos_shape.size() <= 4,
+                        "GFX Metal RoPE: expected rank-2/3/4 cos/sin tensors");
+        RopeCodegenDesc d{};
+        d.element_type = rope->get_output_element_type(0);
+        d.input_type = rope->get_input_element_type(0);
+        d.cos_type = rope->get_input_element_type(1);
+        d.sin_type = rope->get_input_element_type(2);
+        d.output_type = rope->get_output_element_type(0);
+        d.position_type = rope->get_input_size() > 3 ? rope->get_input_element_type(3) : ov::element::dynamic;
+        d.rank = static_cast<uint32_t>(data_shape.size());
+        d.batch = static_cast<uint32_t>(data_shape.size() == 4 ? data_shape[0] : 1);
+        d.heads = static_cast<uint32_t>(data_shape.size() == 4 ? data_shape[1] : data_shape[1]);
+        d.head_size = static_cast<uint32_t>(data_shape.back());
+        d.rotary_dims = static_cast<uint32_t>(cfg.rotary_ndims ? cfg.rotary_ndims : d.head_size);
+        d.cos_sin_dims = static_cast<uint32_t>(cfg.cos_sin_ndims ? cfg.cos_sin_ndims : d.rotary_dims);
+        d.cos_rank = static_cast<uint32_t>(cos_shape.size());
+        const auto cos_pshape = rope->get_input_partial_shape(1);
+        auto mark_dynamic = [&](size_t logical_dim, size_t source_dim) {
+            if (source_dim < static_cast<size_t>(cos_pshape.rank().get_length()) && cos_pshape[source_dim].is_dynamic()) {
+                d.cos_dynamic_mask |= (1u << logical_dim);
+            }
+        };
+        if (cos_shape.size() == 2) {
+            d.cos_dims = {{1, 1, static_cast<uint32_t>(cos_shape[0]), static_cast<uint32_t>(cos_shape[1])}};
+            mark_dynamic(2, 0);
+            mark_dynamic(3, 1);
+        } else if (cos_shape.size() == 3) {
+            d.cos_dims = {{1,
+                           static_cast<uint32_t>(cos_shape[0]),
+                           static_cast<uint32_t>(cos_shape[1]),
+                           static_cast<uint32_t>(cos_shape[2])}};
+            mark_dynamic(1, 0);
+            mark_dynamic(2, 1);
+            mark_dynamic(3, 2);
+        } else {
+            d.cos_dims = {{static_cast<uint32_t>(cos_shape[0]),
+                           static_cast<uint32_t>(cos_shape[1]),
+                           static_cast<uint32_t>(cos_shape[2]),
+                           static_cast<uint32_t>(cos_shape[3])}};
+            mark_dynamic(0, 0);
+            mark_dynamic(1, 1);
+            mark_dynamic(2, 2);
+            mark_dynamic(3, 3);
+        }
+        d.is_interleaved = cfg.is_interleaved;
+        d.input_trans0213 = cfg.input_trans0213;
+        d.output_trans0213 = cfg.output_trans0213;
+        d.has_position = cfg.gather_position_arg_id == 3 && rope->get_input_size() > 3;
+        set_desc(d, "rope_kernel");
+        src.signature.arg_count = d.has_position ? 5 : 4;
+        if (src.module) {
+            std::vector<int32_t> kinds(d.has_position ? 5 : 4, 1);
+            std::vector<int32_t> arg_idx;
+            arg_idx.reserve(kinds.size());
+            for (int32_t i = 0; i < static_cast<int32_t>(kinds.size()); ++i) {
+                arg_idx.push_back(i);
+            }
             annotate_module_operands(src.module, kinds, arg_idx, {});
         }
         return;

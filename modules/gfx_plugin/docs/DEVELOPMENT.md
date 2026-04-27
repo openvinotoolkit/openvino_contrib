@@ -179,17 +179,20 @@ For the current codebase, also check whether the op should participate in:
 For Reduce-like work, prefer the existing typed reduction extraction in `src/mlir/mlir_builder_reduce.cpp`. The current builder reads axes and `keep_dims` from concrete Reduce op classes such as `ReduceSum`, `ReduceMean`, `ReduceMax`, `ReduceMin`, `ReduceProd`, `ReduceL1`, and `ReduceL2` instead of relying on a looser generic reduction-base path.
 
 For `MatMul`, keep the compile-time const-buffer story aligned with runtime codegen. The current Metal path may repack a constant RHS from `f32` to `f16` for dynamic-shape `MatMul` stages and then derive kernel input element types from the effective runtime tensors instead of only the original node input types.
-If the change touches compressed or quantized `MatMul` weights, also inspect `src/transforms/pipeline.cpp`. The transform pipeline is now backend-aware and can protect decompression subgraphs on Metal so backend-specific compressed-weight handling survives generic optimization passes.
+If the change touches compressed or quantized `MatMul` weights, also inspect `src/transforms/pipeline.cpp`. The transform pipeline is now backend-aware and can protect decompression subgraphs on Metal so backend-specific compressed-weight handling survives generic optimization passes. It can also horizontally regroup compatible compressed `MatMul` nodes that share one data input into a fused `MatMul` plus `VariadicSplit`, and stage compilation may repack concatenated quantized weight/scales into backend const buffers.
 
 For RMSNorm-style work, remember that `src/transforms/pipeline.cpp` now runs OpenVINO `RMSFusion` before plugin-local cleanup. The current intended path is fused RMSNorm graph patterns lowering into the dedicated `RMS` builder and backend codegen, not preserving only the unfused arithmetic tail.
 
 For `ScatterUpdate`, use the dedicated builder in `src/mlir/mlir_builder_scatter_update.cpp`. The current path expects a constant scalar `axis`, static ranks, and normalized negative indices in the generated kernel path.
+
+For `RoPE`, use the dedicated builder in `src/mlir/mlir_builder_rope.cpp` and the Metal codegen path in `src/mlir/rope_codegen.cpp`. The current native Metal route expects rank-3 or rank-4 data, rank-2/3/4 cos/sin inputs, no `input_trans0213` / `output_trans0213`, no ChatGLM or Qwen-special layouts, and no sliced input layout. Supported LLaMA rotate-half arithmetic may be rewritten into native `RoPE` in `src/transforms/pipeline.cpp` before stage compilation.
 
 For fusion work, note that current support is no longer limited to output post-ops. `Multiply` can now absorb selected activations into one chosen input through the fusion plan and backend `fuse_input_activation()` hooks. Keep the transform-side fusion pattern, compiled-model fusion bookkeeping, and backend runtime/codegen support aligned.
 
 For `ScaledDotProductAttention`, the current native path is backend-specific: Metal can keep a rank-4 FP16/FP32 SDPA node and compile a dedicated kernel, while Vulkan still rejects native SDPA and expects other lowering paths.
 
 For Slice-like work, note that the current lowering prefers `tensor.extract_slice` instead of synthesizing a `linalg.generic` copy. Shared metadata extraction in `src/mlir/slice_generic_codegen.cpp` still accepts both forms so older paths and debug flows remain readable.
+At runtime, contiguous `Split` and `VariadicSplit` outputs may also alias slices of the input buffer instead of materializing new output allocations. Keep split-plan inference in `src/mlir/mlir_stage.cpp` aligned with any change that affects byte layout or view eligibility.
 
 For layout-cleanup work around DFL-style postprocessing tails, the current rewrite target is a value-preserving `Softmax -> MatMul -> Reshape/Transpose` form. Do not describe the older synthetic 1x1 convolution rewrite as the active implementation.
 
