@@ -21,6 +21,7 @@
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/core/type/float16.hpp"
+#include "transforms/gfx_llm_ops.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/batch_norm.hpp"
 #include "openvino/op/broadcast.hpp"
@@ -34,6 +35,7 @@
 #include "openvino/op/reshape.hpp"
 #include "openvino/op/result.hpp"
 #include "openvino/op/slice.hpp"
+#include "openvino/op/scaled_dot_product_attention.hpp"
 #include "openvino/op/split.hpp"
 #include "openvino/op/squeeze.hpp"
 #include "openvino/op/strided_slice.hpp"
@@ -226,7 +228,8 @@ bool extract_scale_as_batchnorm_params(const std::shared_ptr<const ov::Node>& sc
 }
 
 bool is_attention_group_kind(const std::string& kind) {
-    return kind == "Attention" || kind == "AttentionScale" || kind == "AttentionScaleMask";
+    return kind == "Attention" || kind == "AttentionScale" || kind == "AttentionScaleMask" ||
+           kind == "NativeSDPA";
 }
 
 bool is_attention_layout_node(const std::shared_ptr<const ov::Node>& node) {
@@ -306,7 +309,7 @@ void expand_attention_groups(const std::shared_ptr<const ov::Model>& model, Fusi
     const auto model_outputs = collect_model_outputs(model);
 
     for (auto& group : plan.groups) {
-        if (!is_attention_group_kind(group.kind) || group.node_indices.size() < 3) {
+        if (!is_attention_group_kind(group.kind) || group.node_indices.empty()) {
             continue;
         }
 
@@ -366,6 +369,31 @@ void expand_attention_groups(const std::shared_ptr<const ov::Model>& model, Fusi
 
         group.node_indices.assign(group_nodes.begin(), group_nodes.end());
         std::sort(group.node_indices.begin(), group.node_indices.end());
+    }
+}
+
+void add_native_sdpa_groups(const std::shared_ptr<const ov::Model>& model, FusionPlan& plan) {
+    if (!model) {
+        return;
+    }
+
+    const auto ordered_ops = model->get_ordered_ops();
+    std::unordered_set<size_t> occupied;
+    for (const auto& group : plan.groups) {
+        occupied.insert(group.node_indices.begin(), group.node_indices.end());
+    }
+
+    for (size_t idx = 0; idx < ordered_ops.size(); ++idx) {
+        if (occupied.count(idx) != 0 ||
+            (!ov::as_type_ptr<const ov::op::v13::ScaledDotProductAttention>(ordered_ops[idx]) &&
+             !ov::as_type_ptr<const ov::gfx_plugin::op::GfxSDPAWithCausalMask>(ordered_ops[idx]))) {
+            continue;
+        }
+        FusionGroup group;
+        group.kind = "NativeSDPA";
+        group.node_indices.push_back(idx);
+        plan.groups.emplace_back(std::move(group));
+        occupied.insert(idx);
     }
 }
 
@@ -741,6 +769,7 @@ FusionPlan build_fusion_plan(const std::shared_ptr<const ov::Model>& model,
 
     plan = extract_plan(module);
     materialize_post_op_payloads(model, plan);
+    add_native_sdpa_groups(model, plan);
     expand_attention_groups(model, plan);
     return plan;
 }

@@ -29,6 +29,8 @@ struct FusedStageInfo {
     std::unique_ptr<GpuStage> stage;
     std::vector<FusedInputBinding> inputs;
     std::vector<size_t> output_indices;
+    std::vector<GpuTensor*> resolved_inputs;
+    std::vector<GpuTensor*> resolved_outputs;
 };
 
 // Executes a fixed sequence of stages inside a single pipeline slot.

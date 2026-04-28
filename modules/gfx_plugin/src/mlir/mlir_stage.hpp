@@ -3,6 +3,7 @@
 //
 #pragma once
 
+#include <array>
 #include <chrono>
 #include <memory>
 #include <string>
@@ -54,6 +55,7 @@ public:
 
     bool fuse_activation(ActivationKind kind, float alpha) override;
     bool fuse_input_activation(size_t input_idx, ActivationKind kind, float alpha) override;
+    bool fuse_residual_add() override;
     bool fuse_batchnorm(const BatchNormParams& params) override;
     bool fuse_bias(const BiasParams& params) override;
 
@@ -130,6 +132,9 @@ protected:
     size_t m_input_activation_index = 0;
     ActivationKind m_input_activation = ActivationKind::Relu;
     float m_input_activation_alpha = 0.0f;
+    std::array<int32_t, 16> m_sdpa_params{};
+    bool m_has_sdpa_params = false;
+    bool m_has_residual_add = false;
     bool m_has_bn = false;
     BatchNormParams m_bn_params{};
     bool m_has_bias = false;
@@ -153,11 +158,15 @@ private:
     const GfxInputTransform* input_transform(size_t input_idx) const;
     ov::Shape compile_time_input_shape(size_t input_idx) const;
     std::vector<int32_t> compile_time_broadcast_strides(size_t input_idx, const ov::Shape& out_shape) const;
+    const std::vector<int64_t>& cached_constant_i64_input(size_t input_idx, const char* what);
     void apply_stage_optimization_attrs(mlir::ModuleOp module,
                                         const GfxStageOptimizationPlan& plan);
     void apply_input_transform_attrs(mlir::ModuleOp module) const;
     void set_parallel_preference(mlir::ModuleOp module);
     void apply_fused_operations(mlir::ModuleOp module);
+    std::vector<std::vector<int64_t>> m_cached_constant_i64_inputs;
+    std::vector<bool> m_cached_constant_i64_input_valid;
+    std::vector<GpuTensor> m_small_i64_const_output_cache;
 };
 
 }  // namespace gfx_plugin

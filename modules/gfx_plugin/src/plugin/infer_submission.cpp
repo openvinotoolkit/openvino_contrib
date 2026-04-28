@@ -271,9 +271,53 @@ void execute_pipeline_with_submission(
                                              << " current_window=" << submission_window_index;
             }
             if (on_stage) {
+                const auto stage_start = profiler ? std::chrono::steady_clock::now()
+                                                  : std::chrono::steady_clock::time_point{};
                 on_stage(stage, resolved, command_buffer);
+                if (profiler) {
+                    const auto stage_cpu_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - stage_start);
+                    const auto* gpu_stage = stage.stage.get();
+                    std::string segment_name = gpu_stage ? gpu_stage->type() : std::string{"unknown"};
+                    segment_name += ":";
+                    segment_name += gpu_stage ? gpu_stage->name() : std::string{"<null>"};
+                    profiler->record_segment("stage_execute",
+                                             segment_name,
+                                             stage_cpu_us,
+                                             0,
+                                             0,
+                                             0,
+                                             0,
+                                             0,
+                                             0,
+                                             -1,
+                                             0,
+                                             reinterpret_cast<uint64_t>(command_buffer));
+                }
             } else {
+                const auto stage_start = profiler ? std::chrono::steady_clock::now()
+                                                  : std::chrono::steady_clock::time_point{};
                 stage.stage->execute(command_buffer);
+                if (profiler) {
+                    const auto stage_cpu_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - stage_start);
+                    const auto* gpu_stage = stage.stage.get();
+                    std::string segment_name = gpu_stage ? gpu_stage->type() : std::string{"unknown"};
+                    segment_name += ":";
+                    segment_name += gpu_stage ? gpu_stage->name() : std::string{"<null>"};
+                    profiler->record_segment("stage_execute",
+                                             segment_name,
+                                             stage_cpu_us,
+                                             0,
+                                             0,
+                                             0,
+                                             0,
+                                             0,
+                                             0,
+                                             -1,
+                                             0,
+                                             reinterpret_cast<uint64_t>(command_buffer));
+                }
             }
             recorded_stage_count += stage_weight;
             recorded_stages.push_back(&stage);

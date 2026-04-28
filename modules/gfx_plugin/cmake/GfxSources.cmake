@@ -45,6 +45,7 @@ set(GFX_PLUGIN_HEADERS
     ${_gfx_src_dir}/plugin/stateful_execution.hpp
     ${_gfx_src_dir}/plugin/stateful_stage.hpp
     ${_gfx_src_dir}/transforms/gfx_layout_cleanup.hpp
+    ${_gfx_src_dir}/transforms/gfx_llm_ops.hpp
     ${_gfx_src_dir}/transforms/pipeline.hpp
     ${_gfx_src_dir}/../include/openvino/gfx_plugin/plugin.hpp
     ${_gfx_src_dir}/../include/openvino/gfx_plugin/compiled_model.hpp
@@ -168,6 +169,7 @@ set(GFX_RUNTIME_METAL_MSL_SOURCES
 )
 
 set(GFX_RUNTIME_METAL_SOURCES
+    ${_gfx_src_dir}/backends/metal/runtime/metal_command_encoder.mm
     ${_gfx_src_dir}/backends/metal/runtime/memory_ops.mm
     ${_gfx_src_dir}/backends/metal/runtime/metal_executor.cpp
     ${_gfx_src_dir}/backends/metal/runtime/gpu_memory.mm
@@ -222,6 +224,7 @@ set(GFX_RUNTIME_METAL_SOURCES
 )
 
 set(GFX_RUNTIME_METAL_HEADERS
+    ${_gfx_src_dir}/backends/metal/runtime/metal_command_encoder.hpp
     ${_gfx_src_dir}/backends/metal/codegen/metal_compiler.hpp
     ${_gfx_src_dir}/backends/metal/codegen/metal_codegen_backend.hpp
     ${_gfx_src_dir}/backends/metal/runtime/dtype.hpp

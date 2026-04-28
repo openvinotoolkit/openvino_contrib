@@ -5,7 +5,6 @@
 #include "plugin/stateful_execution.hpp"
 
 #include <chrono>
-
 #include "openvino/core/except.hpp"
 #include "openvino/op/concat.hpp"
 #include "openvino/op/util/assign_base.hpp"
@@ -118,12 +117,13 @@ ov::Shape resolve_assign_output_shape(const InferStage& stage,
     return out_shape;
 }
 
-const ov::op::util::AssignBase* find_direct_assign_consumer(const InferStage& stage, size_t output_idx) {
-    if (!stage.node || output_idx >= stage.node->get_output_size()) {
+const ov::op::util::AssignBase* find_direct_assign_consumer(const std::shared_ptr<const ov::Node>& node,
+                                                            size_t output_idx) {
+    if (!node || output_idx >= node->get_output_size()) {
         return nullptr;
     }
     const ov::op::util::AssignBase* assign = nullptr;
-    for (const auto& target : stage.node->output(output_idx).get_target_inputs()) {
+    for (const auto& target : node->output(output_idx).get_target_inputs()) {
         if (target.get_index() != 0) {
             continue;
         }
@@ -147,9 +147,63 @@ bool try_bind_direct_stateful_assign_output(InferRequestState& state,
                                             GpuBufferPool& pool,
                                             GfxProfiler* profiler) {
     if (!stage.node || stage.outputs.size() != 1 || !stage.outputs[0]) {
-        return false;
+        bool any = false;
+        for (size_t output_idx = 0; output_idx < stage.outputs.size(); ++output_idx) {
+            if (!stage.outputs[output_idx]) {
+                continue;
+            }
+            const auto source = output_idx < stage.output_sources.size()
+                                    ? stage.output_sources[output_idx]
+                                    : PipelineStageDesc::InputLink{stage.node, output_idx};
+            const auto* assign = find_direct_assign_consumer(source.node, source.port);
+            if (!assign) {
+                continue;
+            }
+            const auto variable_id = get_stateful_variable_id(assign);
+            if (variable_id.empty()) {
+                continue;
+            }
+
+            auto& out = *stage.outputs[output_idx];
+            const ov::Shape shape = resolve_assign_output_shape(stage, resolved_inputs, out);
+            const auto type = resolve_assign_output_type(stage, resolved_inputs, out);
+            if (shape.empty() || type == ov::element::dynamic) {
+                continue;
+            }
+            const size_t bytes = tensor_byte_size(shape, type);
+            if (bytes == 0) {
+                continue;
+            }
+
+            GpuBufferDesc desc{};
+            desc.bytes = bytes;
+            desc.type = type;
+            desc.usage = BufferUsage::Intermediate;
+            desc.cpu_read = false;
+            desc.cpu_write = false;
+            desc.prefer_device_local = true;
+            desc.label = "stateful_variable";
+
+            auto& slot = state.variable_states[variable_id];
+            auto persistent = pool.ensure(slot.handle, desc);
+            if (!persistent.valid()) {
+                continue;
+            }
+            out.buf = persistent;
+            out.shape = shape;
+            out.expected_type = type;
+            if (profiler) {
+                profiler->increment_counter("stateful_assign_prebind_count");
+                profiler->increment_counter("stateful_assign_prebind_bytes", static_cast<uint64_t>(bytes));
+            }
+            any = true;
+        }
+        return any;
     }
-    const auto* assign = find_direct_assign_consumer(stage, 0);
+    const auto source = !stage.output_sources.empty()
+                            ? stage.output_sources[0]
+                            : PipelineStageDesc::InputLink{stage.node, 0};
+    const auto* assign = find_direct_assign_consumer(source.node, source.port);
     if (!assign) {
         return false;
     }

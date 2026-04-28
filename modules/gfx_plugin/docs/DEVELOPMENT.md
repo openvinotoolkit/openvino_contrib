@@ -182,6 +182,7 @@ For `MatMul`, keep the compile-time const-buffer story aligned with runtime code
 If the change touches compressed or quantized `MatMul` weights, also inspect `src/transforms/pipeline.cpp`. The transform pipeline is now backend-aware and can protect decompression subgraphs on Metal so backend-specific compressed-weight handling survives generic optimization passes. It can also horizontally regroup compatible compressed `MatMul` nodes that share one data input into a fused `MatMul` plus `VariadicSplit`, and stage compilation may repack concatenated quantized weight/scales into backend const buffers.
 
 For RMSNorm-style work, remember that `src/transforms/pipeline.cpp` now runs OpenVINO `RMSFusion` before plugin-local cleanup. The current intended path is fused RMSNorm graph patterns lowering into the dedicated `RMS` builder and backend codegen, not preserving only the unfused arithmetic tail.
+On Metal, also account for residual-add fusion into `RMS`: `CompiledModel` can detect a directly attached `Add`, route both add inputs plus gamma into one stage, and mark the MLIR/codegen path with `gfx.fused_residual_add`.
 
 For `ScatterUpdate`, use the dedicated builder in `src/mlir/mlir_builder_scatter_update.cpp`. The current path expects a constant scalar `axis`, static ranks, and normalized negative indices in the generated kernel path.
 
@@ -189,10 +190,12 @@ For `RoPE`, use the dedicated builder in `src/mlir/mlir_builder_rope.cpp` and th
 
 For fusion work, note that current support is no longer limited to output post-ops. `Multiply` can now absorb selected activations into one chosen input through the fusion plan and backend `fuse_input_activation()` hooks. Keep the transform-side fusion pattern, compiled-model fusion bookkeeping, and backend runtime/codegen support aligned.
 
-For `ScaledDotProductAttention`, the current native path is backend-specific: Metal can keep a rank-4 FP16/FP32 SDPA node and compile a dedicated kernel, while Vulkan still rejects native SDPA and expects other lowering paths.
+For `ScaledDotProductAttention`, the current native path is backend-specific: Metal can keep a rank-4 FP16/FP32 SDPA node and compile a dedicated kernel, while Vulkan still rejects native SDPA and expects other lowering paths. `src/transforms/gfx_llm_ops.hpp` also defines a Metal-only `GfxSDPAWithCausalMask` op used for selected LLM graphs when `src/transforms/pipeline.cpp` can recover explicit `attention_mask[B,K]` and `cache_position[Q]` inputs from the original mask subgraph. That fusion may also peel some broadcast-expanded GQA K/V views back to compact K/V tensors before stage compilation.
 
 For Slice-like work, note that the current lowering prefers `tensor.extract_slice` instead of synthesizing a `linalg.generic` copy. Shared metadata extraction in `src/mlir/slice_generic_codegen.cpp` still accepts both forms so older paths and debug flows remain readable.
 At runtime, contiguous `Split` and `VariadicSplit` outputs may also alias slices of the input buffer instead of materializing new output allocations. Keep split-plan inference in `src/mlir/mlir_stage.cpp` aligned with any change that affects byte layout or view eligibility.
+
+For Metal kernel-dispatch work, inspect `src/backends/metal/runtime/metal_command_encoder.*` before adding new ad-hoc encoder setup code. The current runtime keeps one compute encoder per active command buffer, caches the last bound pipeline plus buffer table, and ends that encoder explicitly before blit/copy paths or command-buffer commit.
 
 For layout-cleanup work around DFL-style postprocessing tails, the current rewrite target is a value-preserving `Softmax -> MatMul -> Reshape/Transpose` form. Do not describe the older synthetic 1x1 convolution rewrite as the active implementation.
 

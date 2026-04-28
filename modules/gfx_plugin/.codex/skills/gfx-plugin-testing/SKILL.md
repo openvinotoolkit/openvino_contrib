@@ -40,6 +40,7 @@ Prefer:
 - `tests/unit/mlir_*_test.cpp`
 - targeted IR-shape assertions
 - transform-specific unit coverage
+- LLM-fusion coverage when the change introduces backend-only rewrites such as `RoPE` or `GfxSDPAWithCausalMask`
 
 Use runtime tests only as a second layer.
 
@@ -71,6 +72,8 @@ Inspect and extend:
 - `tests/unit/gpu_const_cache_test.cpp`
 - `tests/unit/kernel_arg_reuse_test.cpp`
 - `tests/unit/gpu_backend_base_test.cpp`
+
+If the change is Metal-dispatch specific, also look for focused coverage around command-buffer submission, encoder reuse, and binding reuse before jumping to broader backend tests.
 
 ## Practical Command Pattern
 

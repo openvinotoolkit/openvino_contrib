@@ -6,23 +6,29 @@
 
 #include "runtime/gfx_logger.hpp"
 #include "transforms/gfx_layout_cleanup.hpp"
+#include "transforms/gfx_llm_ops.hpp"
 
 #include <map>
 #include <optional>
+#include <functional>
 #include <tuple>
+#include <unordered_set>
 #include <vector>
 
 #include "openvino/core/rt_info.hpp"
 #include "openvino/op/add.hpp"
+#include "openvino/op/broadcast.hpp"
 #include "openvino/op/concat.hpp"
 #include "openvino/pass/manager.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/convert.hpp"
 #include "openvino/op/matmul.hpp"
 #include "openvino/op/multiply.hpp"
+#include "openvino/op/scaled_dot_product_attention.hpp"
 #include "openvino/op/reshape.hpp"
 #include "openvino/op/slice.hpp"
 #include "openvino/op/strided_slice.hpp"
+#include "openvino/op/unsqueeze.hpp"
 #include "openvino/op/variadic_split.hpp"
 #include "ov_ops/rotary_positional_embeddings.hpp"
 #include "transformations/common_optimizations/common_optimizations.hpp"
@@ -168,6 +174,190 @@ std::optional<ov::Output<ov::Node>> non_matching_multiply_input(const std::share
         return mul->input_value(0);
     }
     return std::nullopt;
+}
+
+bool value_has_name_fragment(const ov::Output<ov::Node>& value, const std::string& fragment) {
+    for (const auto& name : value.get_names()) {
+        if (name.find(fragment) != std::string::npos) {
+            return true;
+        }
+    }
+    const auto node = value.get_node_shared_ptr();
+    return node && node->get_friendly_name().find(fragment) != std::string::npos;
+}
+
+bool is_integer_element_type(const ov::element::Type& type) {
+    return type == ov::element::i8 || type == ov::element::u8 ||
+           type == ov::element::i16 || type == ov::element::u16 ||
+           type == ov::element::i32 || type == ov::element::u32 ||
+           type == ov::element::i64 || type == ov::element::u64;
+}
+
+std::optional<ov::Output<ov::Node>> find_upstream_value(
+    const ov::Output<ov::Node>& root,
+    const std::function<bool(const ov::Output<ov::Node>&)>& predicate,
+    size_t max_depth = 64) {
+    struct Item {
+        ov::Output<ov::Node> value;
+        size_t depth = 0;
+    };
+    struct Key {
+        const ov::Node* node = nullptr;
+        size_t port = 0;
+        bool operator==(const Key& other) const {
+            return node == other.node && port == other.port;
+        }
+    };
+    struct KeyHash {
+        size_t operator()(const Key& key) const {
+            const size_t h1 = std::hash<const ov::Node*>()(key.node);
+            const size_t h2 = std::hash<size_t>()(key.port);
+            return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
+        }
+    };
+
+    std::vector<Item> stack{{root, 0}};
+    std::unordered_set<Key, KeyHash> visited;
+    while (!stack.empty()) {
+        auto item = stack.back();
+        stack.pop_back();
+        const Key key{item.value.get_node(), item.value.get_index()};
+        if (!visited.insert(key).second) {
+            continue;
+        }
+        if (predicate(item.value)) {
+            return item.value;
+        }
+        if (item.depth >= max_depth) {
+            continue;
+        }
+        auto node = item.value.get_node_shared_ptr();
+        if (!node) {
+            continue;
+        }
+        for (size_t i = 0; i < node->get_input_size(); ++i) {
+            stack.push_back({node->input_value(i), item.depth + 1});
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<ov::Output<ov::Node>> find_llm_attention_mask_input(const ov::Output<ov::Node>& mask_value) {
+    return find_upstream_value(mask_value, [](const ov::Output<ov::Node>& value) {
+        if (!value_has_name_fragment(value, "attention_mask")) {
+            return false;
+        }
+        const auto type = value.get_element_type();
+        const auto rank = value.get_partial_shape().rank();
+        return is_integer_element_type(type) && rank.is_static() && rank.get_length() == 2;
+    });
+}
+
+std::optional<ov::Output<ov::Node>> find_llm_cache_positions(const ov::Output<ov::Node>& mask_value) {
+    return find_upstream_value(mask_value, [](const ov::Output<ov::Node>& value) {
+        if (!value_has_name_fragment(value, "cache_position")) {
+            return false;
+        }
+        const auto type = value.get_element_type();
+        const auto rank = value.get_partial_shape().rank();
+        return is_integer_element_type(type) && rank.is_static() && rank.get_length() == 1;
+    });
+}
+
+std::optional<ov::Output<ov::Node>> peel_llm_gqa_broadcast_view(const ov::Output<ov::Node>& value) {
+    auto reshape = ov::as_type_ptr<ov::op::v1::Reshape>(value.get_node_shared_ptr());
+    if (!reshape || reshape->get_input_size() != 2) {
+        return std::nullopt;
+    }
+    auto broadcast_node = reshape->input_value(0).get_node_shared_ptr();
+    if (!ov::as_type_ptr<ov::op::v1::Broadcast>(broadcast_node) &&
+        !ov::as_type_ptr<ov::op::v3::Broadcast>(broadcast_node)) {
+        return std::nullopt;
+    }
+    auto unsqueeze = ov::as_type_ptr<ov::op::v0::Unsqueeze>(broadcast_node->input_value(0).get_node_shared_ptr());
+    if (!unsqueeze || unsqueeze->get_input_size() != 2) {
+        return std::nullopt;
+    }
+
+    auto axes = as_constant(unsqueeze->input_value(1));
+    if (!axes) {
+        return std::nullopt;
+    }
+    const auto axes_values = axes->cast_vector<int64_t>();
+    if (axes_values.size() != 1 || axes_values.front() != 2) {
+        return std::nullopt;
+    }
+
+    const auto compact = unsqueeze->input_value(0);
+    const auto compact_pshape = compact.get_partial_shape();
+    const auto unsqueeze_pshape = unsqueeze->get_output_partial_shape(0);
+    const auto broadcast_pshape = broadcast_node->get_output_partial_shape(0);
+    const auto reshape_pshape = reshape->get_output_partial_shape(0);
+    if (compact_pshape.rank().is_dynamic() || unsqueeze_pshape.rank().is_dynamic() ||
+        broadcast_pshape.rank().is_dynamic() || reshape_pshape.rank().is_dynamic() ||
+        compact_pshape.rank().get_length() != 4 ||
+        unsqueeze_pshape.rank().get_length() != 5 ||
+        broadcast_pshape.rank().get_length() != 5 ||
+        reshape_pshape.rank().get_length() != 4) {
+        return std::nullopt;
+    }
+    if (compact_pshape[1].is_static() && reshape_pshape[1].is_static() &&
+        compact_pshape[1].get_length() >= reshape_pshape[1].get_length()) {
+        return std::nullopt;
+    }
+    if (compact_pshape[3].is_static() && reshape_pshape[3].is_static() &&
+        compact_pshape[3].get_length() != reshape_pshape[3].get_length()) {
+        return std::nullopt;
+    }
+    return compact;
+}
+
+size_t fuse_llm_sdpa_causal_mask(const std::shared_ptr<ov::Model>& model) {
+    size_t fused = 0;
+    size_t peeled_gqa = 0;
+    for (const auto& node : model->get_ordered_ops()) {
+        auto sdpa = ov::as_type_ptr<ov::op::v13::ScaledDotProductAttention>(node);
+        if (!sdpa || sdpa->get_input_size() != 5 || sdpa->get_output_size() != 1) {
+            continue;
+        }
+        auto attention_mask = find_llm_attention_mask_input(sdpa->input_value(3));
+        auto cache_positions = find_llm_cache_positions(sdpa->input_value(3));
+        if (!attention_mask || !cache_positions) {
+            continue;
+        }
+
+        auto k_input = sdpa->input_value(1);
+        auto v_input = sdpa->input_value(2);
+        if (auto compact_k = peel_llm_gqa_broadcast_view(k_input)) {
+            k_input = *compact_k;
+            ++peeled_gqa;
+        }
+        if (auto compact_v = peel_llm_gqa_broadcast_view(v_input)) {
+            v_input = *compact_v;
+            ++peeled_gqa;
+        }
+
+        ov::OutputVector inputs{
+            sdpa->input_value(0),
+            k_input,
+            v_input,
+            *attention_mask,
+            *cache_positions,
+            sdpa->input_value(4),
+        };
+        auto fused_sdpa = std::make_shared<ov::gfx_plugin::op::GfxSDPAWithCausalMask>(inputs);
+        fused_sdpa->set_friendly_name(sdpa->get_friendly_name() + "/gfx_causal_mask");
+        ov::copy_runtime_info({sdpa, sdpa->input_value(3).get_node_shared_ptr()}, fused_sdpa);
+        fused_sdpa->validate_and_infer_types();
+        sdpa->output(0).replace(fused_sdpa->output(0));
+        ++fused;
+    }
+
+    if (gfx_log_debug_enabled()) {
+        gfx_log_debug("GfxTransforms") << "LLaMA SDPA causal-mask fusion: fused=" << fused
+                                       << " peeled_gqa=" << peeled_gqa;
+    }
+    return fused;
 }
 
 std::optional<CompressedMatMulMatch> match_compressed_matmul(const std::shared_ptr<ov::Node>& node) {
@@ -503,6 +693,7 @@ std::shared_ptr<const ov::Model> run_pipeline(const std::shared_ptr<const ov::Mo
     manager.run_passes(cloned);
     if (backend == GpuBackend::Metal) {
         fuse_llama_rotate_half_rope(cloned);
+        fuse_llm_sdpa_causal_mask(cloned);
     }
     fuse_compressed_matmul_horizontal(cloned);
     cloned->validate_nodes_and_infer_types();

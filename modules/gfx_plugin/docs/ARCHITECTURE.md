@@ -52,6 +52,7 @@ Responsibilities:
 
 The infer path now has an explicit submission layer. `src/plugin/infer_submission.*` abstracts command-buffer recording and submission windows, while `src/plugin/infer_pipeline.*` can pre-resolve reusable stage-input bindings, reusable output bindings, and reusable output handles for repeated requests.
 `src/plugin/stateful_execution.*` adds a second interception layer for stateful graphs: `ReadValue` can source a persisted variable tensor from infer-request state, while `Assign` copies the latest value into a persistent backend buffer owned by that request.
+Compiled-model output descriptors now also remember the original source node and source port. That source mapping is used when one pipeline slot covers several fused OpenVINO nodes or when stateful assign prebinding needs to reason about the original graph consumer rather than only the final pipeline stage wrapper.
 
 ## Pipeline Model
 The runtime is stage-based.
@@ -92,6 +93,7 @@ This lets Metal and Vulkan keep different submission mechanics while sharing the
 
 Submission tuning is no longer a fixed constant table. The current infer path derives per-backend submit-window sizing from backend capability snapshots and records the selected tuning into the profiling path when profiling is enabled.
 Vulkan infer paths can also batch immutable constant uploads through the shared infer command buffer path instead of forcing one upload submit per constant buffer materialization.
+Metal infer paths now also keep one compute encoder alive across consecutive dispatches on the same command buffer and skip redundant pipeline-state or buffer rebinds when the cached encoder state already matches the next kernel launch.
 
 The reusable infer pipeline layer now has two precomputed plans:
 - `PreparedInferExecutionPlan` for stage inputs that resolve to parameters or previous stage outputs
@@ -125,7 +127,9 @@ Recent MLIR-specific changes reflected in the current code:
 - Reduce lowering now resolves axes and `keep_dims` through concrete Reduce op types instead of a generic reduction-base lookup
 - dedicated builders now exist for `RMS`, `ScatterUpdate`, and `RoPE` instead of relying only on more generic lowering families
 - fusion now also supports selected input-side activations for `Multiply`, not only output activations or bias/post-op forms
+- Metal `RMS` stages can fuse one residual `Add` input directly into the RMS kernel when the upstream shape contract is preserved
 - the backend-aware transform pipeline can fuse the common LLaMA rotate-half arithmetic pattern into native `RoPE` before stage compilation on Metal
+- the backend-aware transform pipeline can also fuse selected LLM `ScaledDotProductAttention` masking graphs into `GfxSDPAWithCausalMask`, including peeling some broadcast-expanded GQA K/V views back to their compact tensors
 - the backend-aware transform pipeline can regroup compatible compressed `MatMul` nodes that share one data input into a fused horizontal `MatMul` plus `VariadicSplit`
 - Slice lowering now prefers `tensor.extract_slice`, while slice metadata extraction still accepts both `tensor.extract_slice` and the older `linalg.generic` form
 - shape and data-movement lowering is now more permissive for dynamic shapes in paths such as `ShapeOf`, `Concat`, `Broadcast`, `Select`, `StridedSlice`, and `Range`
@@ -167,10 +171,11 @@ Direct Metal API usage lives in Objective-C++ files (`.mm`).
 
 The current Metal backend also shares immutable constant-buffer state across compatible requests through `MetalConstCache` and the backend-neutral immutable buffer cache helper.
 It now also reports execution-device limits through `GpuExecutionDeviceInfo`, so backend-neutral planning code can use real Metal subgroup and threadgroup limits.
-The current Metal executor also contains runtime-specialized codegen paths for dynamically shaped `Softmax`, `Select`, `ScatterUpdate`, `RMS`, `RoPE`, binary `Concat`, rank-4 `ScaledDotProductAttention`, and more permissive slice handling, including negative-step `StridedSlice`.
+The current Metal executor also contains runtime-specialized codegen paths for dynamically shaped `Softmax`, `Select`, `ScatterUpdate`, `RMS`, `RoPE`, binary `Concat`, rank-4 `ScaledDotProductAttention`, fused causal-mask `ScaledDotProductAttention`, and more permissive slice handling, including negative-step `StridedSlice`.
 For dynamic-shape `MatMul`, the current MLIR stage path may also pack a constant RHS from `f32` to `f16` before wrapping it as an immutable const buffer. Compile profiling counters track the original and packed byte sizes for that optimization.
 The backend-aware transform pipeline is also important for Metal now: compressed `MatMul` decompression subgraphs can be marked as decompression and protected from generic folding so later stage compilation can still recognize weight-only compressed patterns.
 That same transform pipeline can also collapse supported LLaMA rotate-half arithmetic into native `RoPE`, letting Metal compile one backend kernel instead of preserving the original Multiply/Add subgraph.
+For attention-heavy LLM graphs, the same frontend/backend split now also allows Metal-only `GfxSDPAWithCausalMask` lowering while leaving Vulkan on the conservative unsupported path for that exact fused form.
 
 ## Vulkan Backend
 `src/backends/vulkan/` mirrors the same broad split:

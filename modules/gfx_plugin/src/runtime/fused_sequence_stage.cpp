@@ -195,8 +195,11 @@ void FusedSequenceStage::execute(GpuCommandBufferHandle command_buffer) {
         if (!info.stage) {
             continue;
         }
-        std::vector<GpuTensor*> resolved_inputs;
-        resolved_inputs.reserve(info.inputs.size());
+        auto& resolved_inputs = info.resolved_inputs;
+        resolved_inputs.clear();
+        if (resolved_inputs.capacity() < info.inputs.size()) {
+            resolved_inputs.reserve(info.inputs.size());
+        }
         if (gfx_log_debug_enabled()) {
             std::ostringstream oss;
             oss << "child=" << info.stage->name() << " [" << info.stage->type() << "] inputs=";
@@ -247,8 +250,11 @@ void FusedSequenceStage::execute(GpuCommandBufferHandle command_buffer) {
             }
         }
         info.stage->set_inputs(resolved_inputs);
-        std::vector<GpuTensor*> resolved_outputs;
-        resolved_outputs.reserve(info.output_indices.size());
+        auto& resolved_outputs = info.resolved_outputs;
+        resolved_outputs.clear();
+        if (resolved_outputs.capacity() < info.output_indices.size()) {
+            resolved_outputs.reserve(info.output_indices.size());
+        }
         for (size_t output_index : info.output_indices) {
             resolved_outputs.push_back(output_index < m_outputs.size() ? m_outputs[output_index] : nullptr);
         }

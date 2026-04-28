@@ -101,6 +101,56 @@ bool is_absorbable_transpose_candidate(const std::shared_ptr<const ov::Node>& no
     return true;
 }
 
+bool is_model_output_port(const std::unordered_map<const ov::Node*, std::vector<bool>>& model_outputs,
+                          const ov::Node* node,
+                          size_t port) {
+    auto it = model_outputs.find(node);
+    if (it == model_outputs.end() || port >= it->second.size()) {
+        return false;
+    }
+    return it->second[port];
+}
+
+bool shape_matches_without_broadcast(const ov::PartialShape& input, const ov::PartialShape& output) {
+    if (input.rank().is_dynamic() || output.rank().is_dynamic() ||
+        input.rank().get_length() != output.rank().get_length()) {
+        return false;
+    }
+    const auto rank = static_cast<size_t>(input.rank().get_length());
+    for (size_t i = 0; i < rank; ++i) {
+        if (input[i].is_static() && output[i].is_static() && input[i].get_length() != output[i].get_length()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::shared_ptr<const ov::op::v1::Add> residual_add_for_rms(
+    const std::shared_ptr<const ov::Node>& rms,
+    const std::unordered_map<const ov::Node*, std::vector<bool>>& model_outputs,
+    const std::unordered_set<const ov::Node*>& fused_nodes) {
+    if (!rms || rms->get_type_name() != std::string("RMS") || rms->get_input_size() != 2 ||
+        rms->get_output_size() != 1) {
+        return nullptr;
+    }
+    auto add = ov::as_type_ptr<const ov::op::v1::Add>(rms->input_value(0).get_node_shared_ptr());
+    if (!add || add->get_output_size() != 1 || add->get_input_size() != 2 ||
+        add->output(0).get_target_inputs().size() != 1 ||
+        is_model_output_port(model_outputs, add.get(), 0) ||
+        fused_nodes.count(add.get()) != 0) {
+        return nullptr;
+    }
+    const auto out_shape = add->get_output_partial_shape(0);
+    if (!shape_matches_without_broadcast(add->get_input_partial_shape(0), out_shape) ||
+        !shape_matches_without_broadcast(add->get_input_partial_shape(1), out_shape)) {
+        return nullptr;
+    }
+    if (!shape_matches_without_broadcast(out_shape, rms->get_input_partial_shape(0))) {
+        return nullptr;
+    }
+    return add;
+}
+
 }  // namespace
 
 CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
@@ -397,6 +447,7 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
     FusionPlan fusion_plan;
     std::unordered_map<size_t, const FusionGroup*> fusion_primary;
     std::unordered_set<size_t> planned_fused_indices;
+    std::unordered_set<const ov::Node*> planned_fused_nodes;
     std::unordered_set<const ov::Node*> fused_nodes;
     if (m_enable_fusion) {
         FusionConfig fusion_cfg;
@@ -431,7 +482,8 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
             }
             const bool attention_group = group.kind == "Attention" ||
                                          group.kind == "AttentionScale" ||
-                                         group.kind == "AttentionScaleMask";
+                                         group.kind == "AttentionScaleMask" ||
+                                         group.kind == "NativeSDPA";
             const size_t primary_idx = attention_group ? group.node_indices.back()
                                                        : group.node_indices.front();
             fusion_primary[primary_idx] = &group;
@@ -452,6 +504,7 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
                     fused_nodes.insert(ordered_ops[node_idx].get());
                     if ((attention_group || pre_fusion_supported) && node_idx != primary_idx) {
                         planned_fused_indices.insert(node_idx);
+                        planned_fused_nodes.insert(ordered_ops[node_idx].get());
                     }
                 }
             }
@@ -463,8 +516,52 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
         gfx_log_debug("Fusion") << "Fusion disabled via " << kGfxEnableFusionProperty;
     }
 
+    std::unordered_map<const ov::Node*, std::shared_ptr<const ov::op::v1::Add>> rms_residual_adds;
+    std::unordered_set<const ov::Node*> rms_residual_add_nodes;
+    for (const auto& node : ordered_ops) {
+        auto add = residual_add_for_rms(node, model_outputs, planned_fused_nodes);
+        if (!add) {
+            continue;
+        }
+        auto probe_stage = backend_state->create_stage(node);
+        if (!probe_stage || !probe_stage->fuse_residual_add()) {
+            continue;
+        }
+        rms_residual_adds.emplace(node.get(), add);
+        rms_residual_add_nodes.insert(add.get());
+    }
+    if (compile_trace && !rms_residual_adds.empty()) {
+        compile_trace->set_counter("rms_residual_add_fusion_count",
+                                   static_cast<uint64_t>(rms_residual_adds.size()));
+    }
+    if (gfx_log_debug_enabled() && !rms_residual_adds.empty()) {
+        gfx_log_debug("Fusion") << "RMS residual Add fusion candidates=" << rms_residual_adds.size();
+    }
+
     std::unordered_set<size_t> fused_indices;
     fused_indices.reserve(ordered_ops.size());
+    struct NodePortKey {
+        const ov::Node* node = nullptr;
+        size_t port = 0;
+        bool operator==(const NodePortKey& other) const {
+            return node == other.node && port == other.port;
+        }
+    };
+    struct NodePortKeyHash {
+        size_t operator()(const NodePortKey& key) const {
+            size_t h1 = std::hash<const ov::Node*>()(key.node);
+            size_t h2 = std::hash<size_t>()(key.port);
+            return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
+        }
+    };
+    std::unordered_map<NodePortKey, size_t, NodePortKeyHash> fused_output_port_aliases;
+    auto remap_input_link = [&](std::shared_ptr<const ov::Node> linked_node, size_t linked_port) {
+        auto it = fused_output_port_aliases.find({linked_node.get(), linked_port});
+        if (it != fused_output_port_aliases.end()) {
+            linked_port = it->second;
+        }
+        return PipelineStageDesc::InputLink{std::move(linked_node), linked_port};
+    };
     auto merge_model_outputs = [&](PipelineStageDesc& stage_desc, const ov::Node* node) {
         auto it = model_outputs.find(node);
         if (it == model_outputs.end()) {
@@ -522,17 +619,23 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
             continue;
         }
 
+        if (rms_residual_add_nodes.count(node.get()) != 0) {
+            continue;
+        }
+
         if (fused_indices.count(op_index)) {
             continue;
         }
-        if (planned_fused_indices.count(op_index) && fusion_primary.find(op_index) == fusion_primary.end()) {
+        if (planned_fused_indices.count(op_index) &&
+            fusion_primary.find(op_index) == fusion_primary.end()) {
             continue;
         }
 
         auto f_it = fusion_primary.find(op_index);
         if (f_it != fusion_primary.end() && f_it->second) {
             const auto* group = f_it->second;
-            if (group->kind == "Attention" || group->kind == "AttentionScale" || group->kind == "AttentionScaleMask") {
+            if (group->kind == "Attention" || group->kind == "AttentionScale" ||
+                group->kind == "AttentionScaleMask" || group->kind == "NativeSDPA") {
                 const size_t stage_count = group->node_indices.size();
                 if (stage_count >= 3) {
                     struct InputKey {
@@ -624,13 +727,18 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
                                 info.inputs.push_back({FusedInputKind::None, 0});
                                 continue;
                             }
-                            InputKey key{src_node, iv.get_index()};
+                            size_t linked_port = iv.get_index();
+                            if (auto alias_it = fused_output_port_aliases.find({src_node, linked_port});
+                                alias_it != fused_output_port_aliases.end()) {
+                                linked_port = alias_it->second;
+                            }
+                            InputKey key{src_node, linked_port};
                             auto it_ext = external_map.find(key);
                             size_t ext_idx = 0;
                             if (it_ext == external_map.end()) {
                                 ext_idx = fused_inputs.size();
                                 external_map.emplace(key, ext_idx);
-                                fused_inputs.push_back({iv.get_node_shared_ptr(), iv.get_index()});
+                                fused_inputs.push_back({iv.get_node_shared_ptr(), linked_port});
                             } else {
                                 ext_idx = it_ext->second;
                             }
@@ -679,6 +787,9 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
                                 }
                                 out_desc.type = out_node->get_output_element_type(port);
                                 out_desc.is_model_output = is_model_output(out_node.get(), port);
+                                out_desc.source_node = out_node;
+                                out_desc.source_port = port;
+                                fused_output_port_aliases[{out_node.get(), port}] = slot;
                             }
                         }
 
@@ -723,27 +834,41 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
                 out_desc.shape = node->get_output_shape(oi);
             }
             out_desc.type = node->get_output_element_type(oi);
+            out_desc.source_node = node;
+            out_desc.source_port = oi;
             stage_desc.outputs.emplace_back(std::move(out_desc));
         }
         merge_model_outputs(stage_desc, node.get());
-        const auto absorbed_it = absorbed_input_transforms.find(node.get());
-        for (size_t input_idx = 0; input_idx < node->get_input_size(); ++input_idx) {
-            const auto& iv = node->input_value(input_idx);
-            auto linked_node = iv.get_node_shared_ptr();
-            size_t linked_port = iv.get_index();
-            if (absorbed_it != absorbed_input_transforms.end()) {
-                auto transform_it = absorbed_it->second.find(input_idx);
-                if (transform_it != absorbed_it->second.end()) {
-                    auto transpose = ov::as_type_ptr<const ov::op::v1::Transpose>(linked_node);
-                    OPENVINO_ASSERT(transpose,
-                                    "GFX: absorbed transpose input is not a transpose for ",
-                                    node->get_friendly_name());
-                    linked_node = transpose->input_value(0).get_node_shared_ptr();
-                    linked_port = transpose->input_value(0).get_index();
-                    stage_desc.stage->set_input_transform(input_idx, transform_it->second);
+        const auto residual_it = rms_residual_adds.find(node.get());
+        if (residual_it != rms_residual_adds.end() && residual_it->second &&
+            stage_desc.stage->fuse_residual_add()) {
+            const auto& add = residual_it->second;
+            stage_desc.inputs.push_back(remap_input_link(add->input_value(0).get_node_shared_ptr(),
+                                                         add->input_value(0).get_index()));
+            stage_desc.inputs.push_back(remap_input_link(node->input_value(1).get_node_shared_ptr(),
+                                                         node->input_value(1).get_index()));
+            stage_desc.inputs.push_back(remap_input_link(add->input_value(1).get_node_shared_ptr(),
+                                                         add->input_value(1).get_index()));
+        } else {
+            const auto absorbed_it = absorbed_input_transforms.find(node.get());
+            for (size_t input_idx = 0; input_idx < node->get_input_size(); ++input_idx) {
+                const auto& iv = node->input_value(input_idx);
+                auto linked_node = iv.get_node_shared_ptr();
+                size_t linked_port = iv.get_index();
+                if (absorbed_it != absorbed_input_transforms.end()) {
+                    auto transform_it = absorbed_it->second.find(input_idx);
+                    if (transform_it != absorbed_it->second.end()) {
+                        auto transpose = ov::as_type_ptr<const ov::op::v1::Transpose>(linked_node);
+                        OPENVINO_ASSERT(transpose,
+                                        "GFX: absorbed transpose input is not a transpose for ",
+                                        node->get_friendly_name());
+                        linked_node = transpose->input_value(0).get_node_shared_ptr();
+                        linked_port = transpose->input_value(0).get_index();
+                        stage_desc.stage->set_input_transform(input_idx, transform_it->second);
+                    }
                 }
+                stage_desc.inputs.push_back(remap_input_link(linked_node, linked_port));
             }
-            stage_desc.inputs.push_back({linked_node, linked_port});
         }
         if (gfx_log_debug_enabled()) {
             gfx_log_debug("StageFactory") << "Created GpuStage for " << node->get_type_name()
@@ -752,6 +877,9 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
 
         const size_t idx = m_pipeline.size();
         m_node_to_stage[node.get()] = idx;
+        if (residual_it != rms_residual_adds.end() && residual_it->second) {
+            m_node_to_stage[residual_it->second.get()] = idx;
+        }
         m_pipeline.emplace_back(std::move(stage_desc));
 
         auto f_it2 = fusion_primary.find(op_index);

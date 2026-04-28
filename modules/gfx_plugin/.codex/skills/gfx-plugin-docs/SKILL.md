@@ -42,11 +42,14 @@ Additional operational docs:
    - supported-shape or dispatch constraints
    - stateful execution semantics for `ReadValue` / `Assign`
    - dedicated lowering families such as `RMS`, `ScatterUpdate`, or `RoPE`
+   - custom fused ops or backend-only graph rewrites such as `GfxSDPAWithCausalMask`
    - effective runtime type or const-packing behavior that changes kernel compilation assumptions
    - backend-aware transform preservation or decomposition rules
    - backend-aware transform fusion or regrouping rules such as rotate-half to `RoPE` or fused compressed `MatMul`
+   - backend-side fused epilogues such as residual-add absorbed into `RMS`
    - liveness-managed workspace allocation for stage outputs
    - view-style aliasing rules for split outputs
+   - command-encoder or binding-reuse behavior that changes profiling counters or dispatch setup cost
    - test layout or regression coverage
    - compare-runner CLI or debug workflow
    - profiling or microbench workflows

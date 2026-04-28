@@ -378,6 +378,7 @@ struct RmsCodegenDesc : BaseCodegenDesc {
     uint32_t gamma_size = 0;
     uint32_t reduction_threads = 1;
     float epsilon = 0.0f;
+    bool has_residual_add = false;
 };
 
 struct RopeCodegenDesc : BaseCodegenDesc {

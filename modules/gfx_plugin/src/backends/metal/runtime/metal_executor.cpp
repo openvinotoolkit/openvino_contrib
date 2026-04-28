@@ -816,11 +816,14 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
         d.gamma_size = static_cast<uint32_t>(std::max<uint64_t>(1, ov::shape_size(gamma_shape)));
         d.reduction_threads = gfx_rms_parallel_reduction_threads(d.hidden);
         d.epsilon = static_cast<float>(rms->get_epsilon());
+        d.has_residual_add = src.module && src.module->hasAttr("gfx.fused_residual_add");
         set_desc(d, "rms_kernel");
-        src.signature.arg_count = 3;
+        src.signature.arg_count = d.has_residual_add ? 4 : 3;
         if (src.module) {
-            const std::vector<int32_t> kinds{1, 1, 1};
-            const std::vector<int32_t> arg_idx{0, 1, 2};
+            const std::vector<int32_t> kinds = d.has_residual_add ? std::vector<int32_t>{1, 1, 1, 1}
+                                                                  : std::vector<int32_t>{1, 1, 1};
+            const std::vector<int32_t> arg_idx = d.has_residual_add ? std::vector<int32_t>{0, 1, 2, 3}
+                                                                    : std::vector<int32_t>{0, 1, 2};
             annotate_module_operands(src.module, kinds, arg_idx, {});
         }
         return;

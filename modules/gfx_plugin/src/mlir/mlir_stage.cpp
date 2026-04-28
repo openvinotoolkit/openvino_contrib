@@ -26,6 +26,7 @@
 #include "runtime/gfx_shape_utils.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 #include "runtime/memory_manager.hpp"
+#include "transforms/gfx_llm_ops.hpp"
 #include "transforms/mlir_fused_ops.hpp"
 
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -220,6 +221,7 @@ std::string generate_msl_for_sdpa(ov::element::Type type) {
     ss << "  uint B; uint H; uint Q; uint K; uint D; uint DV;\n";
     ss << "  uint has_mask; uint mask_B; uint mask_H; uint mask_Q; uint mask_K;\n";
     ss << "  uint scale_bits;\n";
+    ss << "  uint k_gqa; uint k_heads; uint v_gqa; uint v_heads;\n";
     ss << "};\n";
     ss << "kernel void sdpa_kernel(\n";
     ss << "  device const scalar_t* q [[buffer(0)]],\n";
@@ -228,7 +230,61 @@ std::string generate_msl_for_sdpa(ov::element::Type type) {
     ss << "  device const scalar_t* mask [[buffer(3)]],\n";
     ss << "  constant SdpaParams& p [[buffer(4)]],\n";
     ss << "  device scalar_t* out [[buffer(5)]],\n";
-    ss << "  uint gid [[thread_position_in_grid]]) {\n";
+    ss << "  uint gid [[thread_position_in_grid]],\n";
+    ss << "  uint lane [[thread_index_in_threadgroup]],\n";
+    ss << "  uint tgid [[threadgroup_position_in_grid]]) {\n";
+    ss << "  if (p.D <= 64 && p.DV <= 64) {\n";
+    ss << "    uint total_vectors = p.B * p.H * p.Q;\n";
+    ss << "    if (tgid >= total_vectors) return;\n";
+    ss << "    uint qi = tgid % p.Q;\n";
+    ss << "    uint tmp_vec = tgid / p.Q;\n";
+    ss << "    uint h = tmp_vec % p.H;\n";
+    ss << "    uint b = tmp_vec / p.H;\n";
+    ss << "    uint kh = (p.k_gqa != 0 && p.k_heads != 0) ? min(h / max(p.H / p.k_heads, 1u), p.k_heads - 1u) : h;\n";
+    ss << "    uint vh = (p.v_gqa != 0 && p.v_heads != 0) ? min(h / max(p.H / p.v_heads, 1u), p.v_heads - 1u) : h;\n";
+    ss << "    float scale = as_type<float>(p.scale_bits);\n";
+    ss << "    float acc0 = 0.0f;\n";
+    ss << "    float acc1 = 0.0f;\n";
+    ss << "    float m = -INFINITY;\n";
+    ss << "    float l = 0.0f;\n";
+    ss << "    uint q_base = (((b * p.H + h) * p.Q + qi) * p.D);\n";
+    ss << "    for (uint kk = 0; kk < p.K; ++kk) {\n";
+    ss << "      float qk = 0.0f;\n";
+    ss << "      uint k_base = (((b * (p.k_gqa != 0 ? p.k_heads : p.H) + kh) * p.K + kk) * p.D);\n";
+    ss << "      for (uint d = lane; d < p.D; d += 32) {\n";
+    ss << "        qk += float(q[q_base + d]) * float(k[k_base + d]);\n";
+    ss << "      }\n";
+    ss << "      float score = simd_sum(qk) * scale;\n";
+    ss << "      if (p.has_mask != 0) {\n";
+    ss << "        uint mb = (p.mask_B == 1) ? 0 : b;\n";
+    ss << "        uint mh = (p.mask_H == 1) ? 0 : h;\n";
+    ss << "        uint mq = (p.mask_Q == 1) ? 0 : qi;\n";
+    ss << "        uint mk = (p.mask_K == 1) ? 0 : kk;\n";
+    ss << "        uint mask_idx = (((mb * p.mask_H + mh) * p.mask_Q + mq) * p.mask_K + mk);\n";
+    ss << "        score += float(mask[mask_idx]);\n";
+    ss << "      }\n";
+    ss << "      float new_m = max(m, score);\n";
+    ss << "      float old_scale = exp(m - new_m);\n";
+    ss << "      float score_scale = exp(score - new_m);\n";
+    ss << "      l = l * old_scale + score_scale;\n";
+    ss << "      m = new_m;\n";
+    ss << "      uint v_base = (((b * (p.v_gqa != 0 ? p.v_heads : p.H) + vh) * p.K + kk) * p.DV);\n";
+    ss << "      if (lane < p.DV) {\n";
+    ss << "        acc0 = acc0 * old_scale + score_scale * float(v[v_base + lane]);\n";
+    ss << "      }\n";
+    ss << "      if (lane + 32 < p.DV) {\n";
+    ss << "        acc1 = acc1 * old_scale + score_scale * float(v[v_base + lane + 32]);\n";
+    ss << "      }\n";
+    ss << "    }\n";
+    ss << "    uint out_base = (((b * p.H + h) * p.Q + qi) * p.DV);\n";
+    ss << "    if (lane < p.DV) {\n";
+    ss << "      out[out_base + lane] = scalar_t(acc0 / l);\n";
+    ss << "    }\n";
+    ss << "    if (lane + 32 < p.DV) {\n";
+    ss << "      out[out_base + lane + 32] = scalar_t(acc1 / l);\n";
+    ss << "    }\n";
+    ss << "    return;\n";
+    ss << "  }\n";
     ss << "  uint total = p.B * p.H * p.Q * p.DV;\n";
     ss << "  if (gid >= total) return;\n";
     ss << "  uint dv = gid % p.DV;\n";
@@ -237,12 +293,14 @@ std::string generate_msl_for_sdpa(ov::element::Type type) {
     ss << "  tmp /= p.Q;\n";
     ss << "  uint h = tmp % p.H;\n";
     ss << "  uint b = tmp / p.H;\n";
+    ss << "  uint kh = (p.k_gqa != 0 && p.k_heads != 0) ? min(h / max(p.H / p.k_heads, 1u), p.k_heads - 1u) : h;\n";
+    ss << "  uint vh = (p.v_gqa != 0 && p.v_heads != 0) ? min(h / max(p.H / p.v_heads, 1u), p.v_heads - 1u) : h;\n";
     ss << "  float scale = as_type<float>(p.scale_bits);\n";
     ss << "  float max_score = -INFINITY;\n";
     ss << "  for (uint kk = 0; kk < p.K; ++kk) {\n";
     ss << "    float score = 0.0f;\n";
     ss << "    uint q_base = (((b * p.H + h) * p.Q + qi) * p.D);\n";
-    ss << "    uint k_base = (((b * p.H + h) * p.K + kk) * p.D);\n";
+    ss << "    uint k_base = (((b * (p.k_gqa != 0 ? p.k_heads : p.H) + kh) * p.K + kk) * p.D);\n";
     ss << "    for (uint d = 0; d < p.D; ++d) {\n";
     ss << "      score += float(q[q_base + d]) * float(k[k_base + d]);\n";
     ss << "    }\n";
@@ -262,7 +320,7 @@ std::string generate_msl_for_sdpa(ov::element::Type type) {
     ss << "  for (uint kk = 0; kk < p.K; ++kk) {\n";
     ss << "    float score = 0.0f;\n";
     ss << "    uint q_base = (((b * p.H + h) * p.Q + qi) * p.D);\n";
-    ss << "    uint k_base = (((b * p.H + h) * p.K + kk) * p.D);\n";
+    ss << "    uint k_base = (((b * (p.k_gqa != 0 ? p.k_heads : p.H) + kh) * p.K + kk) * p.D);\n";
     ss << "    for (uint d = 0; d < p.D; ++d) {\n";
     ss << "      score += float(q[q_base + d]) * float(k[k_base + d]);\n";
     ss << "    }\n";
@@ -277,7 +335,114 @@ std::string generate_msl_for_sdpa(ov::element::Type type) {
     ss << "    }\n";
     ss << "    float w = exp(score - max_score);\n";
     ss << "    sum += w;\n";
-    ss << "    uint v_idx = (((b * p.H + h) * p.K + kk) * p.DV + dv);\n";
+    ss << "    uint v_idx = (((b * (p.v_gqa != 0 ? p.v_heads : p.H) + vh) * p.K + kk) * p.DV + dv);\n";
+    ss << "    acc += w * float(v[v_idx]);\n";
+    ss << "  }\n";
+    ss << "  out[gid] = scalar_t(acc / sum);\n";
+    ss << "}\n";
+    return ss.str();
+}
+
+std::string generate_msl_for_sdpa_with_causal_mask(ov::element::Type type) {
+    const std::string scalar = metal_scalar_type(type);
+    std::ostringstream ss;
+    ss << "#include <metal_stdlib>\n";
+    ss << "using namespace metal;\n";
+    ss << "using scalar_t = " << scalar << ";\n";
+    ss << "struct SdpaCausalMaskParams {\n";
+    ss << "  uint B; uint H; uint Q; uint K; uint D; uint DV;\n";
+    ss << "  uint mask_K; uint scale_bits; uint k_gqa; uint k_heads; uint v_gqa; uint v_heads;\n";
+    ss << "};\n";
+    ss << "inline float gfx_sdpa_mask_score(device const long* attention_mask,\n";
+    ss << "                                  device const long* cache_positions,\n";
+    ss << "                                  constant SdpaCausalMaskParams& p,\n";
+    ss << "                                  uint b, uint qi, uint kk) {\n";
+    ss << "  long row = cache_positions[qi];\n";
+    ss << "  bool causal_block = long(kk) > row;\n";
+    ss << "  bool padding_block = false;\n";
+    ss << "  if (kk < p.mask_K) {\n";
+    ss << "    padding_block = attention_mask[b * p.mask_K + kk] == 0;\n";
+    ss << "  }\n";
+    ss << "  return (causal_block || padding_block) ? -INFINITY : 0.0f;\n";
+    ss << "}\n";
+    ss << "kernel void sdpa_causal_mask_kernel(\n";
+    ss << "  device const scalar_t* q [[buffer(0)]],\n";
+    ss << "  device const scalar_t* k [[buffer(1)]],\n";
+    ss << "  device const scalar_t* v [[buffer(2)]],\n";
+    ss << "  device const long* attention_mask [[buffer(3)]],\n";
+    ss << "  device const long* cache_positions [[buffer(4)]],\n";
+    ss << "  constant SdpaCausalMaskParams& p [[buffer(5)]],\n";
+    ss << "  device scalar_t* out [[buffer(6)]],\n";
+    ss << "  uint gid [[thread_position_in_grid]],\n";
+    ss << "  uint lane [[thread_index_in_threadgroup]],\n";
+    ss << "  uint tgid [[threadgroup_position_in_grid]]) {\n";
+    ss << "  if (p.D <= 64 && p.DV <= 64) {\n";
+    ss << "    uint total_vectors = p.B * p.H * p.Q;\n";
+    ss << "    if (tgid >= total_vectors) return;\n";
+    ss << "    uint qi = tgid % p.Q;\n";
+    ss << "    uint tmp_vec = tgid / p.Q;\n";
+    ss << "    uint h = tmp_vec % p.H;\n";
+    ss << "    uint b = tmp_vec / p.H;\n";
+    ss << "    uint kh = (p.k_gqa != 0 && p.k_heads != 0) ? min(h / max(p.H / p.k_heads, 1u), p.k_heads - 1u) : h;\n";
+    ss << "    uint vh = (p.v_gqa != 0 && p.v_heads != 0) ? min(h / max(p.H / p.v_heads, 1u), p.v_heads - 1u) : h;\n";
+    ss << "    float scale = as_type<float>(p.scale_bits);\n";
+    ss << "    float acc0 = 0.0f;\n";
+    ss << "    float acc1 = 0.0f;\n";
+    ss << "    float m = -INFINITY;\n";
+    ss << "    float l = 0.0f;\n";
+    ss << "    uint q_base = (((b * p.H + h) * p.Q + qi) * p.D);\n";
+    ss << "    for (uint kk = 0; kk < p.K; ++kk) {\n";
+    ss << "      float qk = 0.0f;\n";
+    ss << "      uint k_base = (((b * (p.k_gqa != 0 ? p.k_heads : p.H) + kh) * p.K + kk) * p.D);\n";
+    ss << "      for (uint d = lane; d < p.D; d += 32) {\n";
+    ss << "        qk += float(q[q_base + d]) * float(k[k_base + d]);\n";
+    ss << "      }\n";
+    ss << "      float score = simd_sum(qk) * scale + gfx_sdpa_mask_score(attention_mask, cache_positions, p, b, qi, kk);\n";
+    ss << "      float new_m = max(m, score);\n";
+    ss << "      float old_scale = exp(m - new_m);\n";
+    ss << "      float score_scale = exp(score - new_m);\n";
+    ss << "      l = l * old_scale + score_scale;\n";
+    ss << "      m = new_m;\n";
+    ss << "      uint v_base = (((b * (p.v_gqa != 0 ? p.v_heads : p.H) + vh) * p.K + kk) * p.DV);\n";
+    ss << "      if (lane < p.DV) acc0 = acc0 * old_scale + score_scale * float(v[v_base + lane]);\n";
+    ss << "      if (lane + 32 < p.DV) acc1 = acc1 * old_scale + score_scale * float(v[v_base + lane + 32]);\n";
+    ss << "    }\n";
+    ss << "    uint out_base = (((b * p.H + h) * p.Q + qi) * p.DV);\n";
+    ss << "    if (lane < p.DV) out[out_base + lane] = scalar_t(acc0 / l);\n";
+    ss << "    if (lane + 32 < p.DV) out[out_base + lane + 32] = scalar_t(acc1 / l);\n";
+    ss << "    return;\n";
+    ss << "  }\n";
+    ss << "  uint total = p.B * p.H * p.Q * p.DV;\n";
+    ss << "  if (gid >= total) return;\n";
+    ss << "  uint dv = gid % p.DV;\n";
+    ss << "  uint tmp = gid / p.DV;\n";
+    ss << "  uint qi = tmp % p.Q;\n";
+    ss << "  tmp /= p.Q;\n";
+    ss << "  uint h = tmp % p.H;\n";
+    ss << "  uint b = tmp / p.H;\n";
+    ss << "  uint kh = (p.k_gqa != 0 && p.k_heads != 0) ? min(h / max(p.H / p.k_heads, 1u), p.k_heads - 1u) : h;\n";
+    ss << "  uint vh = (p.v_gqa != 0 && p.v_heads != 0) ? min(h / max(p.H / p.v_heads, 1u), p.v_heads - 1u) : h;\n";
+    ss << "  float scale = as_type<float>(p.scale_bits);\n";
+    ss << "  float max_score = -INFINITY;\n";
+    ss << "  for (uint kk = 0; kk < p.K; ++kk) {\n";
+    ss << "    float score = 0.0f;\n";
+    ss << "    uint q_base = (((b * p.H + h) * p.Q + qi) * p.D);\n";
+    ss << "    uint k_base = (((b * (p.k_gqa != 0 ? p.k_heads : p.H) + kh) * p.K + kk) * p.D);\n";
+    ss << "    for (uint d = 0; d < p.D; ++d) score += float(q[q_base + d]) * float(k[k_base + d]);\n";
+    ss << "    score = score * scale + gfx_sdpa_mask_score(attention_mask, cache_positions, p, b, qi, kk);\n";
+    ss << "    max_score = max(max_score, score);\n";
+    ss << "  }\n";
+    ss << "  float sum = 0.0f;\n";
+    ss << "  float acc = 0.0f;\n";
+    ss << "  for (uint kk = 0; kk < p.K; ++kk) {\n";
+    ss << "    float score = 0.0f;\n";
+    ss << "    uint q_base = (((b * p.H + h) * p.Q + qi) * p.D);\n";
+    ss << "    uint k_base = (((b * (p.k_gqa != 0 ? p.k_heads : p.H) + kh) * p.K + kk) * p.D);\n";
+    ss << "    for (uint d = 0; d < p.D; ++d) score += float(q[q_base + d]) * float(k[k_base + d]);\n";
+    ss << "    score = score * scale + gfx_sdpa_mask_score(attention_mask, cache_positions, p, b, qi, kk);\n";
+    ss << "    float w = exp(score - max_score);\n";
+    ss << "    sum += w;\n";
+    ss << "    uint v_idx = (((b * (p.v_gqa != 0 ? p.v_heads : p.H) + vh) * p.K + kk) * p.DV + dv);\n";
     ss << "    acc += w * float(v[v_idx]);\n";
     ss << "  }\n";
     ss << "  out[gid] = scalar_t(acc / sum);\n";
@@ -505,7 +670,7 @@ uint32_t compressed_matmul_output_block(const CompressedMatMulInfo& info,
     if (max_threads < 128) {
         return 1;
     }
-    const uint32_t max_block = max_threads >= 256 ? 16u : 8u;
+    const uint32_t max_block = 8u;
     return std::min<uint32_t>(max_block, floor_power_of_two(static_cast<uint32_t>(std::min<size_t>(info.n, max_block))));
 }
 
@@ -1358,6 +1523,91 @@ bool try_alias_contiguous_split_outputs(const std::shared_ptr<const ov::Node>& n
     return true;
 }
 
+void propagate_view_metadata(GpuTensor& dst, const GpuTensor& src) {
+    dst.gqa_broadcast_view = src.gqa_broadcast_view;
+    dst.gqa_storage_shape = src.gqa_storage_shape;
+    dst.gqa_kv_heads = src.gqa_kv_heads;
+}
+
+bool alias_tensor_view(GpuTensor& dst, const GpuTensor& src, const ov::Shape& shape, ov::element::Type element_type) {
+    if (!src.buf.valid()) {
+        return false;
+    }
+    dst.buf = src.buf;
+    dst.buf.external = true;
+    dst.buf.owned = false;
+    dst.shape = shape;
+    dst.expected_type = element_type == ov::element::dynamic
+                            ? (src.expected_type == ov::element::dynamic ? src.buf.type : src.expected_type)
+                            : element_type;
+    propagate_view_metadata(dst, src);
+    if (!src.i64_values.empty() && src.i64_values.size() == ov::shape_size(shape)) {
+        dst.i64_values = src.i64_values;
+    }
+    return true;
+}
+
+bool try_alias_same_shape_unary_view(GpuTensor* input,
+                                     const std::vector<GpuTensor*>& outputs,
+                                     const ov::Shape& out_shape,
+                                     ov::element::Type output_type) {
+    if (!input || outputs.size() != 1 || !outputs[0] || input->shape != out_shape) {
+        return false;
+    }
+    return alias_tensor_view(*outputs[0], *input, out_shape, output_type);
+}
+
+bool output_consumers_are_reshape_or_sdpa(const std::shared_ptr<const ov::Node>& node) {
+    if (!node || node->get_output_size() != 1) {
+        return false;
+    }
+    bool has_consumer = false;
+    for (const auto& target : node->output(0).get_target_inputs()) {
+        has_consumer = true;
+        const auto* consumer = target.get_node();
+        if (dynamic_cast<const ov::op::v1::Reshape*>(consumer) ||
+            dynamic_cast<const ov::op::v13::ScaledDotProductAttention*>(consumer)) {
+            continue;
+        }
+        return false;
+    }
+    return has_consumer;
+}
+
+bool try_alias_gqa_broadcast_view(const std::shared_ptr<const ov::Node>& node,
+                                  GpuTensor* input,
+                                  const std::vector<GpuTensor*>& outputs) {
+    if (!node || !input || !input->buf.valid() || input->shape.size() != 5 ||
+        outputs.size() != 1 || !outputs[0] || outputs[0]->shape.size() != 5 ||
+        !output_consumers_are_reshape_or_sdpa(node)) {
+        return false;
+    }
+    if (!ov::as_type_ptr<const ov::op::v3::Broadcast>(node) &&
+        !ov::as_type_ptr<const ov::op::v1::Broadcast>(node)) {
+        return false;
+    }
+
+    const auto& in_shape = input->shape;
+    const auto& out_shape = outputs[0]->shape;
+    if (in_shape[2] != 1 || out_shape[2] <= 1 ||
+        in_shape[0] != out_shape[0] ||
+        in_shape[1] != out_shape[1] ||
+        in_shape[3] != out_shape[3] ||
+        in_shape[4] != out_shape[4]) {
+        return false;
+    }
+
+    auto* out = outputs[0];
+    out->buf = input->buf;
+    out->buf.external = true;
+    out->buf.owned = false;
+    out->expected_type = input->expected_type == ov::element::dynamic ? input->buf.type : input->expected_type;
+    out->gqa_broadcast_view = true;
+    out->gqa_storage_shape = ov::Shape{in_shape[0], in_shape[1], in_shape[3], in_shape[4]};
+    out->gqa_kv_heads = in_shape[1];
+    return true;
+}
+
 }  // namespace
 
 MlirStage::MlirStage(const std::shared_ptr<const ov::Node>& node)
@@ -1368,6 +1618,22 @@ MlirStage::MlirStage(const std::shared_ptr<const ov::Node>& node)
         m_output_shape = node->get_output_shape(0);
     }
     m_is_view_op = select_tensor_layout_plan(m_type, m_node).view_only;
+}
+
+const std::vector<int64_t>& MlirStage::cached_constant_i64_input(size_t input_idx, const char* what) {
+    OPENVINO_ASSERT(m_node && input_idx < m_node->get_input_size(),
+                    "GFX MLIR: constant i64 input index is out of range for stage ",
+                    m_name);
+    if (m_cached_constant_i64_inputs.size() <= input_idx) {
+        m_cached_constant_i64_inputs.resize(input_idx + 1);
+        m_cached_constant_i64_input_valid.resize(input_idx + 1, false);
+    }
+    if (!m_cached_constant_i64_input_valid[input_idx]) {
+        m_cached_constant_i64_inputs[input_idx] =
+            evaluate_constant_source_i64(m_node->input_value(input_idx), what);
+        m_cached_constant_i64_input_valid[input_idx] = true;
+    }
+    return m_cached_constant_i64_inputs[input_idx];
 }
 
 void MlirStage::apply_kernel_metadata(const KernelRuntimeMetadata& meta,
@@ -2305,6 +2571,27 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
         m_kernel_inputs = {0};
         m_kernel_input_arg_count = 1;
     }
+    if (m_type == "GfxSDPAWithCausalMask") {
+        if (is_vulkan_backend()) {
+            OPENVINO_THROW("GFX Vulkan SDPA causal mask fusion is not enabled yet");
+        }
+        const auto et = m_node ? m_node->get_output_element_type(0) : ov::element::dynamic;
+        KernelSource src;
+        src.entry_point = "sdpa_causal_mask_kernel";
+        src.msl_source = generate_msl_for_sdpa_with_causal_mask(et);
+        src.signature.arg_count = 7;
+        src.signature.output_arg_count = 1;
+        std::string log;
+        m_kernel = compile_kernel(src, &log);
+        OPENVINO_ASSERT(m_kernel, "GFX Metal SDPA causal mask kernel compile failed: ", log);
+        m_kernel->prepare_runtime_artifacts();
+        m_kernel_inputs = {0, 1, 2, 3, 4};
+        m_kernel_input_arg_count = 6;
+        m_kernel_operand_kinds = {1, 1, 1, 1, 1, 1, 1};
+        m_kernel_operand_arg_indices = {0, 1, 2, 3, 4, 5, 6};
+        m_force_single_dispatch = false;
+        return;
+    }
     if (m_type == "ScaledDotProductAttention") {
         if (is_vulkan_backend()) {
             OPENVINO_THROW("GFX Vulkan SDPA: native ScaledDotProductAttention is not enabled yet");
@@ -2649,6 +2936,9 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
                 });
         }
     }
+    if (m_has_residual_add && module) {
+        module->setAttr("gfx.fused_residual_add", mlir::BoolAttr::get(module.getContext(), true));
+    }
     compile_from_plan(plan_ctx, module, "stage");
     if (m_type == "MatMul" && m_node &&
         (!m_node->get_input_partial_shape(0).is_static() ||
@@ -2665,6 +2955,12 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
         m_kernel_operand_arg_indices = {0, 1, 2};
         m_kernel_inputs = {0};
         m_kernel_input_arg_count = 1;
+    }
+    if (m_has_residual_add && m_type == "RMS") {
+        m_kernel_operand_kinds = {1, 1, 1, 1};
+        m_kernel_operand_arg_indices = {0, 1, 2, 3};
+        m_kernel_inputs = {0, 1, 2};
+        m_kernel_input_arg_count = 3;
     }
     if (module) {
         if (gfx_log_debug_enabled() && !m_kernel_scalar_args.empty()) {
@@ -2997,9 +3293,6 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
         OPENVINO_ASSERT(!values.empty(), "GFX MLIR: empty metadata vector for stage ", m_name);
         std::ostringstream key;
         key << m_name << "/" << suffix;
-        for (auto value : values) {
-            key << "/" << value;
-        }
         GpuBuffer buf = m_buffer_manager->wrap_const(key.str(),
                                                      values.data(),
                                                      values.size() * sizeof(int32_t),
@@ -3013,6 +3306,191 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
         tensor.shape = ov::Shape{values.size()};
         return tensor;
     };
+    auto bind_small_i64_const_outputs = [&](const std::string& suffix) -> bool {
+        if (!m_buffer_manager || outputs.empty()) {
+            return false;
+        }
+        std::vector<ov::element::Type> resolved_types;
+        resolved_types.reserve(outputs.size());
+        for (auto* out : outputs) {
+            if (!out || out->i64_values.empty() || out->i64_values.size() != ov::shape_size(out->shape) ||
+                out->i64_values.size() > 16) {
+                return false;
+            }
+            const auto type = out->expected_type == ov::element::dynamic && m_node && m_node->get_output_size() > 0
+                                  ? m_node->get_output_element_type(0)
+                                  : out->expected_type;
+            if (type != ov::element::i32 && type != ov::element::i64) {
+                return false;
+            }
+            resolved_types.push_back(type);
+        }
+
+        if (m_small_i64_const_output_cache.size() == outputs.size()) {
+            bool cache_hit = true;
+            for (size_t oi = 0; oi < outputs.size(); ++oi) {
+                const auto* out = outputs[oi];
+                const auto& cached = m_small_i64_const_output_cache[oi];
+                if (!cached.buf.valid() ||
+                    cached.expected_type != resolved_types[oi] ||
+                    cached.shape != out->shape ||
+                    cached.i64_values != out->i64_values) {
+                    cache_hit = false;
+                    break;
+                }
+            }
+            if (cache_hit) {
+                for (size_t oi = 0; oi < outputs.size(); ++oi) {
+                    auto* out = outputs[oi];
+                    const auto& cached = m_small_i64_const_output_cache[oi];
+                    out->buf = cached.buf;
+                    out->buf.external = true;
+                    out->expected_type = cached.expected_type;
+                    out->shape = cached.shape;
+                    out->i64_values = cached.i64_values;
+                }
+                if (auto* profiler = static_cast<GfxProfiler*>(m_profiler)) {
+                    if (m_profiling_enabled) {
+                        profiler->increment_counter("small_i64_const_cache_hit_count");
+                    }
+                }
+                return true;
+            }
+        }
+
+        m_small_i64_const_output_cache.clear();
+        m_small_i64_const_output_cache.reserve(outputs.size());
+        for (size_t oi = 0; oi < outputs.size(); ++oi) {
+            auto* out = outputs[oi];
+            const auto type = resolved_types[oi];
+            std::ostringstream key;
+            key << m_name << "/" << suffix << "/" << type << "/";
+            for (auto value : out->i64_values) {
+                key << value << ",";
+            }
+            GpuBuffer buf;
+            if (type == ov::element::i32) {
+                std::vector<int32_t> values;
+                values.reserve(out->i64_values.size());
+                for (auto value : out->i64_values) {
+                    values.push_back(static_cast<int32_t>(value));
+                }
+                buf = m_buffer_manager->wrap_const(key.str(),
+                                                   values.data(),
+                                                   values.size() * sizeof(int32_t),
+                                                   ov::element::i32);
+            } else {
+                buf = m_buffer_manager->wrap_const(key.str(),
+                                                   out->i64_values.data(),
+                                                   out->i64_values.size() * sizeof(int64_t),
+                                                   ov::element::i64);
+            }
+            OPENVINO_ASSERT(buf.valid(), "GFX MLIR: failed to bind small const output for stage ", m_name);
+            buf.owned = false;
+            out->buf = buf;
+            out->buf.external = true;
+            out->expected_type = type;
+
+            GpuTensor cached;
+            cached.buf = out->buf;
+            cached.shape = out->shape;
+            cached.i64_values = out->i64_values;
+            cached.expected_type = type;
+            m_small_i64_const_output_cache.push_back(std::move(cached));
+        }
+        if (auto* profiler = static_cast<GfxProfiler*>(m_profiler)) {
+            if (m_profiling_enabled) {
+                profiler->increment_counter("small_i64_const_stage_count");
+            }
+        }
+        return true;
+    };
+
+    if (m_type == "GfxSDPAWithCausalMask" && m_node) {
+        OPENVINO_ASSERT(ov::as_type_ptr<const ov::gfx_plugin::op::GfxSDPAWithCausalMask>(m_node),
+                        "GFX MLIR: expected GfxSDPAWithCausalMask node for stage ",
+                        m_name);
+        ov::Shape q_shape = resolve_input_shape(0);
+        ov::Shape k_shape = resolve_input_shape(1);
+        ov::Shape v_shape = resolve_input_shape(2);
+        ov::Shape mask_shape = resolve_input_shape(3);
+        ov::Shape pos_shape = resolve_input_shape(4);
+        OPENVINO_ASSERT(q_shape.size() == 4 && k_shape.size() == 4 && v_shape.size() == 4,
+                        "GFX MLIR: fused causal-mask SDPA expects rank-4 Q/K/V for stage ",
+                        m_name);
+        OPENVINO_ASSERT(mask_shape.size() == 2 && pos_shape.size() == 1,
+                        "GFX MLIR: fused causal-mask SDPA expects attention_mask[B,K] and cache_positions[Q] for stage ",
+                        m_name);
+        const bool k_heads_match = q_shape[1] == k_shape[1] ||
+                                   (k_shape[1] > 0 && (q_shape[1] % k_shape[1]) == 0);
+        const bool v_heads_match = q_shape[1] == v_shape[1] ||
+                                   (v_shape[1] > 0 && (q_shape[1] % v_shape[1]) == 0);
+        OPENVINO_ASSERT(q_shape[0] == k_shape[0] && q_shape[0] == v_shape[0] &&
+                        k_heads_match && v_heads_match &&
+                        k_shape[2] == v_shape[2] && q_shape[3] == k_shape[3] &&
+                        q_shape[0] == mask_shape[0] && q_shape[2] == pos_shape[0],
+                        "GFX MLIR: incompatible fused causal-mask SDPA shapes for stage ",
+                        m_name,
+                        " q=",
+                        q_shape,
+                        " k=",
+                        k_shape,
+                        " v=",
+                        v_shape,
+                        " mask=",
+                        mask_shape,
+                        " positions=",
+                        pos_shape);
+        ov::Shape out_shape{q_shape[0], q_shape[1], q_shape[2], v_shape[3]};
+        for (auto* out : outputs) {
+            if (!out) {
+                continue;
+            }
+            out->shape = out_shape;
+            if (out->expected_type == ov::element::dynamic) {
+                out->expected_type = m_node->get_output_element_type(0);
+            }
+        }
+        m_output_shape = out_shape;
+
+        float scale = 1.0f / std::sqrt(static_cast<float>(q_shape[3]));
+        if (auto scale_const = ov::util::get_constant_from_source(m_node->input_value(5))) {
+            const auto vals = scale_const->cast_vector<float>();
+            if (!vals.empty()) {
+                scale = vals[0];
+            }
+        }
+        int32_t scale_bits = 0;
+        static_assert(sizeof(scale_bits) == sizeof(scale), "GFX SDPA scale bitcast size mismatch");
+        std::memcpy(&scale_bits, &scale, sizeof(scale));
+
+        const auto* k_tensor = resolve_input_tensor(1);
+        const auto* v_tensor = resolve_input_tensor(2);
+        const bool k_view_gqa = k_tensor && k_tensor->gqa_broadcast_view && k_tensor->gqa_kv_heads > 0;
+        const bool v_view_gqa = v_tensor && v_tensor->gqa_broadcast_view && v_tensor->gqa_kv_heads > 0;
+        const bool k_gqa = k_view_gqa || k_shape[1] != q_shape[1];
+        const bool v_gqa = v_view_gqa || v_shape[1] != q_shape[1];
+        m_sdpa_params = {
+            static_cast<int32_t>(q_shape[0]),
+            static_cast<int32_t>(q_shape[1]),
+            static_cast<int32_t>(q_shape[2]),
+            static_cast<int32_t>(k_shape[2]),
+            static_cast<int32_t>(q_shape[3]),
+            static_cast<int32_t>(v_shape[3]),
+            static_cast<int32_t>(mask_shape[1]),
+            scale_bits,
+            k_gqa ? 1 : 0,
+            static_cast<int32_t>(k_view_gqa ? k_tensor->gqa_kv_heads : k_shape[1]),
+            v_gqa ? 1 : 0,
+            static_cast<int32_t>(v_view_gqa ? v_tensor->gqa_kv_heads : v_shape[1]),
+        };
+        m_kernel_extra_inputs.clear();
+        m_has_sdpa_params = true;
+        m_kernel_inputs = {0, 1, 2, 3, 4};
+        m_kernel_input_arg_count = 6;
+        m_kernel_operand_kinds = {1, 1, 1, 1, 1, 1, 1};
+        m_kernel_operand_arg_indices = {0, 1, 2, 3, 4, 5, 6};
+    }
 
     if (m_type == "ScaledDotProductAttention" && m_node) {
         auto sdpa = ov::as_type_ptr<const ov::op::v13::ScaledDotProductAttention>(m_node);
@@ -3059,6 +3537,11 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
         static_assert(sizeof(scale_bits) == sizeof(scale), "GFX SDPA scale bitcast size mismatch");
         std::memcpy(&scale_bits, &scale, sizeof(scale));
 
+        const auto* k_tensor = resolve_input_tensor(1);
+        const auto* v_tensor = resolve_input_tensor(2);
+        const bool k_gqa = k_tensor && k_tensor->gqa_broadcast_view && k_tensor->gqa_kv_heads > 0;
+        const bool v_gqa = v_tensor && v_tensor->gqa_broadcast_view && v_tensor->gqa_kv_heads > 0;
+
         ov::Shape mask_shape{1, 1, 1, 1};
         const bool has_mask = m_node->get_input_size() >= 4;
         if (has_mask) {
@@ -3067,7 +3550,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                             "GFX MLIR: SDPA mask expects rank-4 shape for stage ",
                             m_name);
         }
-        std::vector<int32_t> params = {
+        m_sdpa_params = {
             static_cast<int32_t>(q_shape[0]),
             static_cast<int32_t>(q_shape[1]),
             static_cast<int32_t>(q_shape[2]),
@@ -3080,9 +3563,13 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
             static_cast<int32_t>(mask_shape[2]),
             static_cast<int32_t>(mask_shape[3]),
             scale_bits,
+            k_gqa ? 1 : 0,
+            static_cast<int32_t>(k_gqa ? k_tensor->gqa_kv_heads : k_shape[1]),
+            v_gqa ? 1 : 0,
+            static_cast<int32_t>(v_gqa ? v_tensor->gqa_kv_heads : v_shape[1]),
         };
         m_kernel_extra_inputs.clear();
-        m_kernel_extra_inputs.push_back(wrap_i32_vector("sdpa_params", params));
+        m_has_sdpa_params = true;
         m_kernel_inputs = has_mask ? std::vector<size_t>{0, 1, 2, 3}
                                    : std::vector<size_t>{0, 1, 2, 0};
         m_kernel_input_arg_count = 5;
@@ -3184,13 +3671,42 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                     break;
                 }
             }
-            if (all_values_resolved && values.size() == ov::shape_size(out_shape)) {
-                for (auto* out : outputs) {
-                    assign_i64_values(out, values, out_shape);
-                }
+        if (all_values_resolved && values.size() == ov::shape_size(out_shape)) {
+            for (auto* out : outputs) {
+                assign_i64_values(out, values, out_shape);
+            }
+            if (bind_small_i64_const_outputs("concat_i64_const")) {
+                return;
             }
         }
+    }
         m_output_shape = out_shape;
+        GpuTensor* single_live_input = nullptr;
+        size_t live_input_count = 0;
+        for (size_t input_idx = 0; input_idx < concat->get_input_size(); ++input_idx) {
+            ov::Shape input_shape = resolve_input_shape(input_idx);
+            if (input_shape.empty() && m_node->get_input_partial_shape(input_idx).is_static()) {
+                input_shape = m_node->get_input_shape(input_idx);
+            }
+            if (ov::shape_size(input_shape) == 0) {
+                continue;
+            }
+            ++live_input_count;
+            single_live_input = resolve_input_tensor(input_idx);
+        }
+        if (live_input_count == 1 && single_live_input && single_live_input->shape == out_shape) {
+            const auto output_type = m_node->get_output_element_type(0);
+            bool all_aliased = true;
+            for (auto* out : outputs) {
+                if (!out || !alias_tensor_view(*out, *single_live_input, out_shape, output_type)) {
+                    all_aliased = false;
+                    break;
+                }
+            }
+            if (all_aliased) {
+                return;
+            }
+        }
     }
 
     if (!is_vulkan_backend()) {
@@ -3260,6 +3776,9 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                         for (auto* out : outputs) {
                             assign_i64_values(out, gathered_values, out_shape);
                         }
+                        if (bind_small_i64_const_outputs("gather_i64_const")) {
+                            return;
+                        }
                     }
                 }
             }
@@ -3275,6 +3794,22 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                 static_cast<uint32_t>(shape_product(data_shape, static_cast<size_t>(axis_norm) + 1, data_shape.size()));
             params.axis_dim = static_cast<uint32_t>(data_shape[static_cast<size_t>(axis_norm)]);
             params.indices_count = static_cast<uint32_t>(ov::shape_size(idx_shape));
+            if (params.axis_dim == 1 && params.indices_count == 1 && out_shape == data_shape) {
+                GpuTensor* input = resolve_input_tensor(0);
+                OPENVINO_ASSERT(input && input->buf.valid(),
+                                "GFX MLIR: missing input buffer for Gather identity view ",
+                                m_name);
+                for (auto* out : outputs) {
+                    if (!out) {
+                        continue;
+                    }
+                    out->buf = input->buf;
+                    out->buf.external = true;
+                    out->buf.owned = false;
+                    propagate_view_metadata(*out, *input);
+                }
+                return;
+            }
 
             auto wrap_bytes_tensor = [&](const std::string& suffix,
                                          const void* data,
@@ -3443,6 +3978,9 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                 out->i64_values = shape_values;
             }
         }
+        if (bind_small_i64_const_outputs("shapeof_i64_const")) {
+            return;
+        }
 
         auto wrap_shape_dims_tensor = [&](const ov::Shape& runtime_shape) {
             std::ostringstream suffix;
@@ -3492,7 +4030,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
         ov::Shape a_shape;
         ov::Shape b_shape;
         const bool a_known = resolve_known_input_shape(0, a_shape);
-        const bool b_known = resolve_known_input_shape(1, b_shape);
+        bool b_known = resolve_known_input_shape(1, b_shape);
         if (a_known && b_known) {
             OPENVINO_ASSERT(a_shape.size() >= 2 && b_shape.size() >= 2,
                             "GFX MLIR: MatMul ranks must be at least 2 for stage ",
@@ -4375,6 +4913,9 @@ struct ScatterUpdateParams {
                         for (auto* out : outputs) {
                             assign_i64_values(out, values, out_shape);
                         }
+                        if (bind_small_i64_const_outputs("add_i64_const")) {
+                            return;
+                        }
                     }
                 }
             }
@@ -4477,6 +5018,9 @@ struct ScatterUpdateParams {
                 assign_i64_values(out, *input_values, out_shape);
             }
         }
+        if (bind_small_i64_const_outputs("reshape_i64_const")) {
+            return;
+        }
     }
 
     if (m_is_view_op && (m_type == "Squeeze" || m_type == "Unsqueeze") &&
@@ -4487,7 +5031,7 @@ struct ScatterUpdateParams {
         if (auto squeeze = ov::as_type_ptr<const ov::op::v0::Squeeze>(m_node)) {
             std::vector<int64_t> axes;
             if (squeeze->get_input_size() > 1) {
-                axes = evaluate_constant_source_i64(squeeze->input_value(1), "Squeeze axes");
+                axes = cached_constant_i64_input(1, "Squeeze axes");
                 ov::util::normalize_axes(axes, static_cast<int64_t>(in_shape.size()));
             }
             for (size_t i = 0; i < in_shape.size(); ++i) {
@@ -4499,7 +5043,7 @@ struct ScatterUpdateParams {
                 }
             }
         } else if (auto unsqueeze = ov::as_type_ptr<const ov::op::v0::Unsqueeze>(m_node)) {
-            auto axes = evaluate_constant_source_i64(unsqueeze->input_value(1), "Unsqueeze axes");
+            auto axes = cached_constant_i64_input(1, "Unsqueeze axes");
             ov::util::normalize_axes(axes, static_cast<int64_t>(in_shape.size() + axes.size()));
             std::sort(axes.begin(), axes.end());
             out_shape = in_shape;
@@ -4522,6 +5066,9 @@ struct ScatterUpdateParams {
             if (auto input_values = resolve_i64_values(0)) {
                 assign_i64_values(out, *input_values, out_shape);
             }
+        }
+        if (bind_small_i64_const_outputs("shape_view_i64_const")) {
+            return;
         }
     }
 
@@ -4577,6 +5124,9 @@ struct ScatterUpdateParams {
                     assign_i64_values(out, *reduced_values, out_shape);
                 }
             }
+        }
+        if (bind_small_i64_const_outputs("reduce_i64_const")) {
+            return;
         }
         m_output_shape = out_shape;
         m_kernel_extra_inputs.clear();
@@ -4685,6 +5235,18 @@ struct ScatterUpdateParams {
             }
         }
         m_output_shape = out_shape;
+        if (bind_small_i64_const_outputs("broadcast_i64_const")) {
+            return;
+        }
+        if (try_alias_same_shape_unary_view(resolve_input_tensor(0),
+                                            outputs,
+                                            out_shape,
+                                            m_node->get_output_element_type(0))) {
+            return;
+        }
+        if (try_alias_gqa_broadcast_view(m_node, resolve_input_tensor(0), outputs)) {
+            return;
+        }
         m_kernel_extra_inputs.clear();
         m_kernel_extra_inputs.push_back(wrap_i32_vector("broadcast_out_dims", out_dims));
         m_kernel_extra_inputs.push_back(wrap_i32_vector("broadcast_in_dims", in_dims));
@@ -4715,6 +5277,9 @@ struct ScatterUpdateParams {
             }
         }
         m_output_shape = in_shape;
+        if (bind_small_i64_const_outputs("convert_i64_const")) {
+            return;
+        }
         m_kernel_scalar_args = {static_cast<int32_t>(ov::shape_size(in_shape))};
         m_kernel_operand_kinds = {1, 1, 0};
         m_kernel_operand_arg_indices = {0, 1, -1};
@@ -4755,6 +5320,9 @@ struct ScatterUpdateParams {
             }
         }
         m_output_shape = out_shape;
+        if (bind_small_i64_const_outputs("range_i64_const")) {
+            return;
+        }
         m_kernel_scalar_args = {static_cast<int32_t>(ov::shape_size(out_shape))};
         m_kernel_operand_kinds = {1, 1, 1, 1, 0};
         m_kernel_operand_arg_indices = {0, 1, 2, 3, -1};
@@ -4874,6 +5442,10 @@ struct ScatterUpdateParams {
         return;
     }
 
+    if (m_type == "Broadcast" && try_alias_gqa_broadcast_view(m_node, resolve_input_tensor(0), outputs)) {
+        return;
+    }
+
     if (m_is_view_op) {
         if (m_inputs.empty() || !m_inputs[0] || !m_inputs[0]->buf.valid()) {
             OPENVINO_THROW("GFX MLIR: missing input buffer for view op ", m_name);
@@ -4896,6 +5468,7 @@ struct ScatterUpdateParams {
         out->buf.external = true;
         out->buf.owned = false;
         out->expected_type = out_type;
+        propagate_view_metadata(*out, *in);
         return;
     }
 
@@ -4935,6 +5508,8 @@ struct ScatterUpdateParams {
         size_t axis_offset = 0;
         uint64_t copied_bytes = 0;
         uint64_t copied_regions = 0;
+        uint64_t skipped_self_copy_bytes = 0;
+        uint64_t skipped_self_copy_regions = 0;
         for (size_t input_idx = 0; input_idx < concat->get_input_size(); ++input_idx) {
             GpuTensor* src = resolve_input_tensor(input_idx);
             OPENVINO_ASSERT(src && src->buf.valid(), "GFX MLIR: missing concat input buffer for stage ", m_name);
@@ -4949,7 +5524,6 @@ struct ScatterUpdateParams {
                 axis_offset += axis_len;
                 continue;
             }
-
             CopyBatch batch{};
             batch.src = &src->buf;
             batch.regions.reserve(outer);
@@ -4958,7 +5532,17 @@ struct ScatterUpdateParams {
                 region.src_offset = outer_idx * region_bytes;
                 region.dst_offset = ((outer_idx * axis_total + axis_offset) * inner) * elem_bytes;
                 region.bytes = region_bytes;
+                if (src->buf.buffer == output->buf.buffer &&
+                    src->buf.offset + region.src_offset == output->buf.offset + region.dst_offset) {
+                    skipped_self_copy_bytes += static_cast<uint64_t>(region.bytes);
+                    ++skipped_self_copy_regions;
+                    continue;
+                }
                 batch.regions.push_back(region);
+            }
+            if (batch.regions.empty()) {
+                axis_offset += axis_len;
+                continue;
             }
             batch.total_bytes = static_cast<uint64_t>(batch.regions.size()) * static_cast<uint64_t>(region_bytes);
             copied_bytes += batch.total_bytes;
@@ -4967,9 +5551,17 @@ struct ScatterUpdateParams {
             batches.push_back(std::move(batch));
         }
 
+        auto* profiler = static_cast<GfxProfiler*>(m_profiler);
+        const bool profiling = m_profiling_enabled && profiler;
+        if (batches.empty()) {
+            if (profiling) {
+                profiler->increment_counter("concat_self_copy_skip_bytes", skipped_self_copy_bytes);
+                profiler->increment_counter("concat_self_copy_skip_region_count", skipped_self_copy_regions);
+            }
+            return;
+        }
+
         if (!batches.empty()) {
-            auto* profiler = static_cast<GfxProfiler*>(m_profiler);
-            const bool profiling = m_profiling_enabled && profiler;
             const auto copy_start = profiling ? std::chrono::steady_clock::now()
                                               : std::chrono::steady_clock::time_point{};
             for (const auto& batch : batches) {
@@ -4997,6 +5589,8 @@ struct ScatterUpdateParams {
                 profiler->increment_counter("concat_copy_input_count",
                                             static_cast<uint64_t>(batches.size()));
                 profiler->increment_counter("concat_copy_region_count", copied_regions);
+                profiler->increment_counter("concat_self_copy_skip_bytes", skipped_self_copy_bytes);
+                profiler->increment_counter("concat_self_copy_skip_region_count", skipped_self_copy_regions);
             }
             return;
         }
@@ -5224,17 +5818,58 @@ struct ScatterUpdateParams {
         }
     }
 
-    auto bundle = build_kernel_args_from_metadata(
-        m_kernel_operand_kinds,
-        m_kernel_operand_arg_indices,
-        m_kernel_scalar_args,
-        m_kernel_inputs,
-        m_kernel_input_arg_count,
-        *extras,
-        outputs,
-        [&](size_t input_idx) { return resolve_input_tensor(input_idx); },
-        m_name.c_str(),
-        gfx_log_debug_enabled() ? &arg_map : nullptr);
+    KernelArgsBundle bundle;
+    if (m_type == "GfxSDPAWithCausalMask" && m_has_sdpa_params) {
+        OPENVINO_ASSERT(m_kernel_inputs.size() == 5,
+                        "GFX MLIR: fused causal-mask SDPA expects five logical inputs for stage ",
+                        m_name);
+        OPENVINO_ASSERT(outputs.size() == 1 && outputs.front() && outputs.front()->buf.valid(),
+                        "GFX MLIR: fused causal-mask SDPA output buffer is missing for stage ",
+                        m_name);
+        bundle.args.reserve(7);
+        for (uint32_t arg_idx = 0; arg_idx < 5; ++arg_idx) {
+            GpuTensor* input = resolve_input_tensor(m_kernel_inputs[arg_idx]);
+            OPENVINO_ASSERT(input && input->buf.valid(),
+                            "GFX MLIR: fused causal-mask SDPA input buffer is missing for stage ",
+                            m_name,
+                            " input=",
+                            m_kernel_inputs[arg_idx]);
+            bundle.args.push_back(make_buffer_arg(arg_idx, input->buf));
+        }
+        bundle.args.push_back(make_bytes_arg(5, m_sdpa_params.data(), m_sdpa_params.size() * sizeof(int32_t)));
+        bundle.args.push_back(make_buffer_arg(6, outputs.front()->buf));
+    } else if (m_type == "ScaledDotProductAttention" && m_has_sdpa_params) {
+        OPENVINO_ASSERT(m_kernel_inputs.size() == 4,
+                        "GFX MLIR: SDPA expects four logical inputs for stage ",
+                        m_name);
+        OPENVINO_ASSERT(outputs.size() == 1 && outputs.front() && outputs.front()->buf.valid(),
+                        "GFX MLIR: SDPA output buffer is missing for stage ",
+                        m_name);
+        bundle.args.reserve(6);
+        for (uint32_t arg_idx = 0; arg_idx < 4; ++arg_idx) {
+            GpuTensor* input = resolve_input_tensor(m_kernel_inputs[arg_idx]);
+            OPENVINO_ASSERT(input && input->buf.valid(),
+                            "GFX MLIR: SDPA input buffer is missing for stage ",
+                            m_name,
+                            " input=",
+                            m_kernel_inputs[arg_idx]);
+            bundle.args.push_back(make_buffer_arg(arg_idx, input->buf));
+        }
+        bundle.args.push_back(make_bytes_arg(4, m_sdpa_params.data(), m_sdpa_params.size() * sizeof(int32_t)));
+        bundle.args.push_back(make_buffer_arg(5, outputs.front()->buf));
+    } else {
+        bundle = build_kernel_args_from_metadata(
+            m_kernel_operand_kinds,
+            m_kernel_operand_arg_indices,
+            m_kernel_scalar_args,
+            m_kernel_inputs,
+            m_kernel_input_arg_count,
+            *extras,
+            outputs,
+            [&](size_t input_idx) { return resolve_input_tensor(input_idx); },
+            m_name.c_str(),
+            gfx_log_debug_enabled() ? &arg_map : nullptr);
+    }
     if (gfx_log_debug_enabled() && !arg_map.empty()) {
         gfx_log_debug("MLIRExec") << arg_map;
     }
@@ -5265,6 +5900,28 @@ struct ScatterUpdateParams {
                                       << dispatch.threads_per_group[1] << ", "
                                       << dispatch.threads_per_group[2] << ")"
                                       << " loops=" << m_parallel_cfg.loop_dims;
+        }
+    } else if ((m_type == "ScaledDotProductAttention" || m_type == "GfxSDPAWithCausalMask") &&
+               dispatch_shape.size() == 4 &&
+               dispatch_shape[3] <= 256 &&
+               !m_inputs.empty() &&
+               m_inputs[0] &&
+               !m_inputs[0]->shape.empty() &&
+               m_inputs[0]->shape.size() == 4 &&
+               m_inputs[0]->shape[3] <= 256) {
+        const uint64_t vectors = static_cast<uint64_t>(dispatch_shape[0]) *
+                                 static_cast<uint64_t>(dispatch_shape[1]) *
+                                 static_cast<uint64_t>(dispatch_shape[2]);
+        const bool simdgroup_path = dispatch_shape[3] <= 64 && m_inputs[0]->shape[3] <= 64;
+        const size_t threads = m_kernel->clamp_threadgroup_size(simdgroup_path ? 32 : 256);
+        dispatch = make_1d_dispatch(static_cast<size_t>(vectors * static_cast<uint64_t>(threads)), threads);
+        if (gfx_log_debug_enabled()) {
+            gfx_log_debug("MLIRExec") << "SDPA streaming dispatch grid=(" << dispatch.grid[0] << ", "
+                                      << dispatch.grid[1] << ", "
+                                      << dispatch.grid[2] << ")"
+                                      << " tpg=(" << dispatch.threads_per_group[0] << ", "
+                                      << dispatch.threads_per_group[1] << ", "
+                                      << dispatch.threads_per_group[2] << ")";
         }
     } else if (m_force_single_dispatch) {
         dispatch = make_1d_dispatch(1, 1);
@@ -5492,6 +6149,15 @@ bool MlirStage::fuse_input_activation(size_t input_idx, ActivationKind kind, flo
     return true;
 }
 
+bool MlirStage::fuse_residual_add() {
+    if (m_type != "RMS" || is_vulkan_backend()) {
+        return false;
+    }
+    OPENVINO_ASSERT(!m_kernel, "MlirStage: cannot fuse residual add after compilation");
+    m_has_residual_add = true;
+    return true;
+}
+
 bool MlirStage::fuse_batchnorm(const BatchNormParams& params) {
     OPENVINO_ASSERT(!m_kernel, "MlirStage: cannot fuse batchnorm after compilation");
     if (!stage_optimization_plan().execution.fusion.allow_batchnorm) {
@@ -5627,6 +6293,7 @@ void MlirStage::clone_into(MlirStage& dst) const {
     dst.m_input_activation_index = m_input_activation_index;
     dst.m_input_activation = m_input_activation;
     dst.m_input_activation_alpha = m_input_activation_alpha;
+    dst.m_has_residual_add = m_has_residual_add;
     dst.m_has_bn = m_has_bn;
     dst.m_bn_params = m_bn_params;
     dst.m_has_bias = m_has_bias;

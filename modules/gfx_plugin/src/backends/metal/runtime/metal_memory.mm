@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "backends/metal/runtime/dtype.hpp"
+#include "backends/metal/runtime/metal_command_encoder.hpp"
 
 #ifdef __OBJC__
 #import <Metal/Metal.h>
@@ -247,6 +248,7 @@ void metal_copy_buffer_regions(MetalCommandQueueHandle execution_context,
     if (!cb) {
         return;
     }
+    metal_end_compute_encoder(reinterpret_cast<GpuCommandBufferHandle>(cb));
     id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
     for (size_t i = 0; i < region_count; ++i) {
         const auto& region = regions[i];
@@ -261,6 +263,7 @@ void metal_copy_buffer_regions(MetalCommandQueueHandle execution_context,
     }
     [blit endEncoding];
     if (owns_command_buffer) {
+        metal_end_compute_encoder(reinterpret_cast<GpuCommandBufferHandle>(cb));
         [cb commit];
         [cb waitUntilCompleted];
     }

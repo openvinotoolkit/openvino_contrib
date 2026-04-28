@@ -27,6 +27,7 @@ struct InferStage {
     std::unique_ptr<GpuStage> stage;
     std::vector<std::unique_ptr<GpuTensor>> outputs;
     std::vector<bool> output_is_model_output;
+    std::vector<PipelineStageDesc::InputLink> output_sources;
     std::vector<PipelineStageDesc::InputLink> inputs;
 };
 
@@ -218,6 +219,11 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
             auto& stage = pipeline[stage_idx];
             if (stage.node) {
                 stage_by_node[stage.node.get()] = stage_idx;
+            }
+            for (const auto& source : stage.output_sources) {
+                if (source.node) {
+                    stage_by_node[source.node.get()] = stage_idx;
+                }
             }
             auto& stage_handles = handles[stage_idx];
             if (stage_handles.size() < stage.outputs.size()) {

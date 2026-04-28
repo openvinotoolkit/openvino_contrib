@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "backends/metal/codegen/metal_compiler.hpp"
+#include "backends/metal/runtime/metal_command_encoder.hpp"
 #include "mlir/mlir_passes.hpp"
 #include "openvino/core/except.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
@@ -141,16 +142,21 @@ public:
     explicit MetalPreparedState(const KernelBindingTable& table) {
         const auto& bindings = table.buffers;
         buffers.reserve(bindings.size());
+        buffer_ptrs.reserve(bindings.size());
         offsets.reserve(bindings.size());
         for (const auto& binding : bindings) {
-            buffers.push_back(to_mtl(binding.buffer));
+            auto* buffer = to_mtl(binding.buffer);
+            buffers.push_back(buffer);
+            buffer_ptrs.push_back(buffer);
             offsets.push_back(binding.offset);
         }
     }
 
     std::vector<id<MTLBuffer>> buffers;
+    std::vector<void*> buffer_ptrs;
     std::vector<size_t> offsets;
 };
+
 }  // namespace
 
 MetalCodegenBackend::MetalCodegenBackend(MetalDeviceHandle device)
@@ -349,7 +355,6 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
             std::chrono::steady_clock::now() - binding_start);
         if (hooks->on_counter) {
             hooks->on_counter("binding_prepare_count", 1);
-            hooks->on_counter("buffer_bind_count", static_cast<uint64_t>(prepared->buffers.size()));
         }
         if (hooks->on_segment) {
             hooks->on_segment("binding_prepare",
@@ -372,18 +377,26 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
     const bool trace_encoder_setup = hooks && (hooks->on_segment || hooks->on_counter);
     const auto encoder_setup_start =
         trace_encoder_setup ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+    bool encoder_created = false;
+    id<MTLComputeCommandEncoder> enc =
+        static_cast<id<MTLComputeCommandEncoder>>(metal_get_or_create_compute_encoder(command_buffer, &encoder_created));
+    OPENVINO_ASSERT(enc, "MetalCompiledKernel: failed to create compute encoder");
     const auto pipeline_bind_start =
         trace_encoder_setup ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    [enc setComputePipelineState:(id<MTLComputePipelineState>)m_pipeline];
+    const bool pipeline_bound =
+        metal_set_compute_pipeline_if_needed(command_buffer,
+                                             reinterpret_cast<GpuCommandEncoderHandle>(enc),
+                                             m_pipeline);
     const auto after_pipeline_bind =
         trace_encoder_setup ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
 
     const auto buffer_bind_start =
         trace_encoder_setup ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    for (size_t index = 0; index < prepared->buffers.size(); ++index) {
-        [enc setBuffer:prepared->buffers[index] offset:prepared->offsets[index] atIndex:index];
-    }
+    const size_t bound_buffers =
+        metal_bind_compute_buffers_if_needed(command_buffer,
+                                             reinterpret_cast<GpuCommandEncoderHandle>(enc),
+                                             prepared->buffer_ptrs,
+                                             prepared->offsets);
     if (trace_encoder_setup) {
         const auto encoder_cpu_us = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - encoder_setup_start);
@@ -392,8 +405,13 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
         const auto buffer_bind_cpu_us =
             std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - buffer_bind_start);
         if (hooks->on_counter) {
-            hooks->on_counter("encoder_setup_count", 1);
-            hooks->on_counter("pipeline_bind_count", 1);
+            if (encoder_created) {
+                hooks->on_counter("encoder_setup_count", 1);
+            }
+            if (pipeline_bound) {
+                hooks->on_counter("pipeline_bind_count", 1);
+            }
+            hooks->on_counter("buffer_bind_count", static_cast<uint64_t>(bound_buffers));
         }
         if (hooks->on_segment) {
             hooks->on_segment("descriptor_update",
@@ -412,7 +430,7 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
                               "metal_buffer_bind",
                               buffer_bind_cpu_us,
                               0,
-                              static_cast<uint32_t>(prepared->buffers.size()),
+                              static_cast<uint32_t>(bound_buffers),
                               0,
                               0,
                               0,
@@ -420,7 +438,7 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
                               -1,
                               0,
                               reinterpret_cast<uint64_t>(cb));
-            if (encoder_cpu_us > pipeline_bind_cpu_us + buffer_bind_cpu_us) {
+            if (encoder_created && encoder_cpu_us > pipeline_bind_cpu_us + buffer_bind_cpu_us) {
                 hooks->on_segment("descriptor_update",
                                   "metal_encoder_setup_overhead",
                                   encoder_cpu_us - pipeline_bind_cpu_us - buffer_bind_cpu_us,
@@ -448,7 +466,6 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
         if (hooks && hooks->on_end) {
             hooks->on_end(enc);
         }
-        [enc endEncoding];
         return;
     }
 
@@ -461,7 +478,6 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
     if (hooks && hooks->on_end) {
         hooks->on_end(enc);
     }
-    [enc endEncoding];
 }
 
 }  // namespace gfx_plugin

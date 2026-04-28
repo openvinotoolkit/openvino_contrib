@@ -30,6 +30,8 @@ struct OutputDesc {
     ov::Shape shape;
     ov::element::Type type = ov::element::dynamic;
     bool is_model_output = false;
+    std::shared_ptr<const ov::Node> source_node;
+    size_t source_port = 0;
 };
 
 struct PipelineStageDesc {

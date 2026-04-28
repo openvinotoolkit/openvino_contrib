@@ -52,6 +52,7 @@ bool append_materialized_constant_output(std::vector<InferStage>& pipeline,
     tensor->prefer_private = false;
     stage.outputs.emplace_back(std::move(tensor));
     stage.output_is_model_output.push_back(true);
+    stage.output_sources.push_back({source.node, source.port});
     pipeline.emplace_back(std::move(stage));
     return true;
 }
@@ -112,6 +113,13 @@ ov::Shape ensure_stage_output_shape(InferStage& stage, size_t out_idx) {
         stage.node->get_output_partial_shape(out_idx).is_static()) {
         out->shape = stage.node->get_output_shape(out_idx);
     }
+    if (out->shape.empty() && out_idx < stage.output_sources.size()) {
+        const auto& source = stage.output_sources[out_idx];
+        if (source.node && source.port < source.node->get_output_size() &&
+            source.node->get_output_partial_shape(source.port).is_static()) {
+            out->shape = source.node->get_output_shape(source.port);
+        }
+    }
     return out->shape;
 }
 
@@ -124,6 +132,12 @@ ov::element::Type resolve_stage_output_type(const InferStage& stage,
     }
     if (stage.node && out_idx < stage.node->get_output_size()) {
         return stage.node->get_output_element_type(out_idx);
+    }
+    if (out_idx < stage.output_sources.size()) {
+        const auto& source = stage.output_sources[out_idx];
+        if (source.node && source.port < source.node->get_output_size()) {
+            return source.node->get_output_element_type(source.port);
+        }
     }
     OPENVINO_THROW(error_prefix, ": stage output type is not known");
 }
@@ -178,12 +192,15 @@ std::vector<InferStage> build_infer_pipeline(const std::vector<PipelineStageDesc
         stage.inputs = desc.inputs;
         stage.outputs.reserve(desc.outputs.size());
         stage.output_is_model_output.reserve(desc.outputs.size());
+        stage.output_sources.reserve(desc.outputs.size());
         for (const auto& out_desc : desc.outputs) {
             auto out_tensor = std::make_unique<GpuTensor>();
             out_tensor->shape = out_desc.shape;
             out_tensor->expected_type = out_desc.type;
             stage.outputs.emplace_back(std::move(out_tensor));
             stage.output_is_model_output.push_back(out_desc.is_model_output);
+            stage.output_sources.push_back({out_desc.source_node ? out_desc.source_node : desc.node,
+                                            out_desc.source_port});
         }
         if (stage.outputs.size() == 1) {
             stage.stage->set_output(stage.outputs[0].get());

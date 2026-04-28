@@ -63,6 +63,7 @@ public:
 
     virtual bool fuse_activation(ActivationKind /*kind*/, float /*alpha*/) { return false; }
     virtual bool fuse_input_activation(size_t /*input_idx*/, ActivationKind /*kind*/, float /*alpha*/) { return false; }
+    virtual bool fuse_residual_add() { return false; }
     virtual bool fuse_batchnorm(const BatchNormParams& /*params*/) { return false; }
     virtual bool fuse_bias(const BiasParams& /*params*/) { return false; }
 

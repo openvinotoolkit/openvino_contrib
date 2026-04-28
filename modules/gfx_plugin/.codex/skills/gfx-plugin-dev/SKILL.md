@@ -55,13 +55,15 @@ Then read the relevant code path:
 Check whether the change belongs to one of the current special families:
 
 - dynamic-shape data movement and shape ops such as `ShapeOf`, `Concat`, `Broadcast`, `Select`, `StridedSlice`, and `Range`
-- dedicated lowered ops such as `RMS` and `ScatterUpdate`
 - dedicated lowered ops such as `RMS`, `ScatterUpdate`, and `RoPE`
 - stateful `ReadValue` / `Assign` handling through infer-request variable storage
+- source-node-aware output routing for fused stages or direct stateful-assign prebinding
 - backend-specialized launch paths that now depend on final runtime shape or final shader binding counts
+- backend-only fused LLM ops such as `GfxSDPAWithCausalMask`
 - compile-time data repacking paths, such as Metal dynamic-shape `MatMul` packing a constant RHS from `f32` to `f16` and recompiling against the effective runtime tensor types
 - backend-aware transform preservation, such as keeping compressed `MatMul` decompression subgraphs intact for Metal-only downstream routes
 - backend-aware transform fusion, such as LLaMA rotate-half rewriting into native `RoPE` on Metal or compatible compressed `MatMul` nodes regrouping into a fused horizontal path
+- backend-side fused epilogues, such as Metal `RMS` absorbing a residual `Add`
 - input-side fusion paths, such as `Multiply` absorbing an activation on one selected input instead of only post-op activation on the output
 
 ### Runtime or backend scheduling change
@@ -70,6 +72,7 @@ Check whether the change belongs to one of the current special families:
 2. Check whether the change is backend-neutral or family-specific.
 3. Verify interaction with infer submission, immutable const caches, and prepared binding reuse when applicable.
 4. Add tests in `tests/unit/` and backend tests when behavior is externally visible.
+5. On Metal, inspect `src/backends/metal/runtime/metal_command_encoder.*` before adding new encoder/pipeline/buffer binding logic.
 
 ### Stateful or reusable infer-path change
 

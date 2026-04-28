@@ -24,6 +24,7 @@ Recent runtime work extends this model in two directions:
 - compile-time stage planning now picks layout, fusion, and execution policy per stage
 - backend runtimes, especially Vulkan, can choose specialized direct or chunked execution routes for selected ops
 - infer execution can batch stage recording into submission windows and reuse prepared bindings or immutable device buffers across requests
+- Metal infer execution can now reuse one compute encoder across consecutive dispatches and skip redundant pipeline or buffer rebinds when the command-buffer state is unchanged
 - device-aware scheduling now uses backend-reported execution limits and device-family classification through shared `gfx_parallelism.*` and `gfx_partitioning.*` helpers
 - infer requests can also keep per-request stateful variable buffers for `ReadValue` / `Assign` style subgraphs instead of treating them as ordinary stateless stage edges
 - output allocation can now reuse workspace-managed intermediate slots across stages based on liveness instead of always keeping one dedicated buffer per stage output
@@ -79,6 +80,7 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 - stage pipeline construction in `build_op_pipeline()`
 - optional fusion of compatible stages through `FusedSequenceStage`
 - absorption of selected transpose inputs into downstream stages through `GfxInputTransform`
+- output-source tracking for fused or rewritten stages so public outputs and direct stateful-assign consumers stay mapped to the original OpenVINO node/port
 
 ### InferRequest
 `include/openvino/gfx_plugin/infer_request.hpp` plus backend-specific implementation files own:
@@ -96,6 +98,7 @@ The current infer path is not a naive "execute one stage, submit immediately" lo
 - backend-specific submission sessions for Metal and Vulkan
 - self-healing reusable host outputs that are recreated if a cached host tensor no longer matches the required type or shape
 - workspace-managed stage-output allocation that can recycle intermediate buffers across compatible stage lifetimes and report slot usage through profiling counters
+- stateful `Assign` prebinding that can bind persistent variable outputs through source-node-aware pipeline output links instead of forcing a later copy-only path
 
 ### Backend-neutral runtime
 `src/runtime/` contains:
@@ -160,6 +163,7 @@ Support is driven by MLIR builders in `src/mlir/` and backend runtime implementa
 - RMSNorm-style lowered `RMS`
 - rotary positional embeddings through native `RoPE`
 - backend-specific `ScaledDotProductAttention` support on Metal for rank-4 FP16/FP32 Q/K/V inputs
+- backend-specific fused causal-mask `ScaledDotProductAttention` support on Metal for selected LLM graphs with explicit `attention_mask` and `cache_position` inputs
 - reduction ops such as ReduceSum, ReduceMean, ReduceMax, ReduceMin, ReduceProd, ReduceL1, and ReduceL2
 - MaxPool, AvgPool, Softmax, BatchNormInference
 - Concat, Split, Slice, Transpose, Reshape, Convert, Interpolate
@@ -180,8 +184,10 @@ Current lowering/runtime special cases:
 - Softmax lowering now supports arbitrary normalized axes instead of only the last axis
 - Reduce lowering now extracts axes and `keep_dims` through concrete Reduce op types instead of relying on a generic reduction base path
 - transform cleanup now runs OpenVINO `RMSFusion` before plugin-local cleanup, so common RMSNorm tails can reach dedicated `RMS` lowering and backend codegen
+- Metal `RMS` stages can also fuse one residual `Add` input directly into the RMS kernel when the shape contract matches
 - Metal can keep compressed `MatMul` weight decompression subgraphs intact so later stage compilation can use backend-side compressed or repacked constant paths instead of losing that structure during generic transforms
 - Metal can also fuse the common LLaMA rotate-half arithmetic pattern into a native `RoPE` stage when the resulting RoPE layout constraints are supported
+- Metal can fuse selected LLM causal-mask attention graphs into a native `ScaledDotProductAttention` variant that consumes `attention_mask` and `cache_position`; Vulkan still rejects that native path today
 - compatible compressed `MatMul` nodes that share the same data input can be regrouped into one horizontally fused `MatMul` followed by `VariadicSplit`
 - compressed `MatMul` stage compilation can repack concatenated quantized weight parts and scale blocks into backend const buffers before codegen
 - `ScatterUpdate` now has a dedicated MLIR lowering path instead of falling back to the older scatter-family builders

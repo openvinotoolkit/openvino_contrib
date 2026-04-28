@@ -39,6 +39,7 @@
 #include "plugin/infer_io_utils.hpp"
 #include "plugin/infer_submission.hpp"
 #include "plugin/stateful_execution.hpp"
+#include "backends/metal/runtime/metal_command_encoder.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -96,6 +97,7 @@ protected:
         if (!m_command_buffer) {
             return;
         }
+        metal_end_compute_encoder(reinterpret_cast<GpuCommandBufferHandle>(m_command_buffer));
         const bool profiling = (m_profiler != nullptr);
         const auto commit_start = profiling ? std::chrono::steady_clock::now()
                                             : std::chrono::steady_clock::time_point{};

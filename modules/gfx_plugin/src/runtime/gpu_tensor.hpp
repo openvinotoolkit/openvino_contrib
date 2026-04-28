@@ -18,6 +18,9 @@ struct GpuTensor {
     std::vector<int64_t> i64_values;
     ov::element::Type expected_type = ov::element::dynamic;  // desired logical type
     bool prefer_private = true;
+    bool gqa_broadcast_view = false;
+    ov::Shape gqa_storage_shape;
+    size_t gqa_kv_heads = 0;
 };
 
 }  // namespace gfx_plugin

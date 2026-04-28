@@ -39,9 +39,16 @@ std::string generate_msl_for_rms(const RmsCodegenDesc& d, mlir::ModuleOp module)
     ss << "using input_t = " << input_t << ";\n";
     ss << "using gamma_t = " << gamma_t << ";\n";
     ss << "using output_t = " << output_t << ";\n";
-    ss << "kernel void rms_kernel(device const input_t* X [[buffer(0)]],\n";
-    ss << "                       device const gamma_t* G [[buffer(1)]],\n";
-    ss << "                       device output_t* O [[buffer(2)]],\n";
+    if (d.has_residual_add) {
+        ss << "kernel void rms_kernel(device const input_t* A [[buffer(0)]],\n";
+        ss << "                       device const gamma_t* G [[buffer(1)]],\n";
+        ss << "                       device const input_t* B [[buffer(2)]],\n";
+        ss << "                       device output_t* O [[buffer(3)]],\n";
+    } else {
+        ss << "kernel void rms_kernel(device const input_t* X [[buffer(0)]],\n";
+        ss << "                       device const gamma_t* G [[buffer(1)]],\n";
+        ss << "                       device output_t* O [[buffer(2)]],\n";
+    }
     ss << "                       uint gid [[thread_position_in_grid]],\n";
     ss << "                       uint lane [[thread_index_in_threadgroup]]) {\n";
     if (threads == 1) {
@@ -51,12 +58,21 @@ std::string generate_msl_for_rms(const RmsCodegenDesc& d, mlir::ModuleOp module)
         ss << "    const uint base = row * hidden;\n";
         ss << "    float sum = 0.0f;\n";
         ss << "    for (uint k = 0; k < hidden; ++k) {\n";
-        ss << "        const float x = static_cast<float>(X[base + k]);\n";
+        if (d.has_residual_add) {
+            ss << "        const float x = static_cast<float>(A[base + k]) + static_cast<float>(B[base + k]);\n";
+        } else {
+            ss << "        const float x = static_cast<float>(X[base + k]);\n";
+        }
         ss << "        sum += x * x;\n";
         ss << "    }\n";
         ss << "    const uint gidx = " << (d.gamma_size == 1 ? "0u" : "col") << ";\n";
         ss << "    const float inv = rsqrt(sum / static_cast<float>(hidden) + " << d.epsilon << "f);\n";
-        ss << "    O[gid] = static_cast<output_t>(static_cast<float>(X[gid]) * inv * static_cast<float>(G[gidx]));\n";
+        if (d.has_residual_add) {
+            ss << "    const float y = static_cast<float>(A[gid]) + static_cast<float>(B[gid]);\n";
+        } else {
+            ss << "    const float y = static_cast<float>(X[gid]);\n";
+        }
+        ss << "    O[gid] = static_cast<output_t>(y * inv * static_cast<float>(G[gidx]));\n";
     } else {
         ss << "    const uint threads = " << threads << "u;\n";
         ss << "    const uint hidden = " << d.hidden << "u;\n";
@@ -65,7 +81,11 @@ std::string generate_msl_for_rms(const RmsCodegenDesc& d, mlir::ModuleOp module)
         ss << "    threadgroup float partial[" << threads << "];\n";
         ss << "    float sum = 0.0f;\n";
         ss << "    for (uint k = lane; k < hidden; k += threads) {\n";
-        ss << "        const float x = static_cast<float>(X[base + k]);\n";
+        if (d.has_residual_add) {
+            ss << "        const float x = static_cast<float>(A[base + k]) + static_cast<float>(B[base + k]);\n";
+        } else {
+            ss << "        const float x = static_cast<float>(X[base + k]);\n";
+        }
         ss << "        sum += x * x;\n";
         ss << "    }\n";
         ss << "    partial[lane] = sum;\n";
@@ -77,7 +97,12 @@ std::string generate_msl_for_rms(const RmsCodegenDesc& d, mlir::ModuleOp module)
         ss << "    const float inv = rsqrt(partial[0] / static_cast<float>(hidden) + " << d.epsilon << "f);\n";
         ss << "    for (uint k = lane; k < hidden; k += threads) {\n";
         ss << "        const uint gidx = " << (d.gamma_size == 1 ? "0u" : "k") << ";\n";
-        ss << "        O[base + k] = static_cast<output_t>(static_cast<float>(X[base + k]) * inv * static_cast<float>(G[gidx]));\n";
+        if (d.has_residual_add) {
+            ss << "        const float y = static_cast<float>(A[base + k]) + static_cast<float>(B[base + k]);\n";
+        } else {
+            ss << "        const float y = static_cast<float>(X[base + k]);\n";
+        }
+        ss << "        O[base + k] = static_cast<output_t>(y * inv * static_cast<float>(G[gidx]));\n";
         ss << "    }\n";
     }
     ss << "}\n";
