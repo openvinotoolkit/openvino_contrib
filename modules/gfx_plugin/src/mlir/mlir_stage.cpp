@@ -73,6 +73,7 @@
 #include "openvino/op/convolution.hpp"
 #include "openvino/op/concat.hpp"
 #include "openvino/op/gather.hpp"
+#include "openvino/op/gather_elements.hpp"
 #include "openvino/op/split.hpp"
 #include "openvino/op/transpose.hpp"
 #include "openvino/op/variadic_split.hpp"
@@ -153,6 +154,38 @@ namespace ov {
 namespace gfx_plugin {
 
 namespace {
+
+uint32_t kernel_activation_code(ActivationKind kind) {
+    switch (kind) {
+        case ActivationKind::Relu:
+            return 1u;
+        case ActivationKind::Sigmoid:
+            return 2u;
+        case ActivationKind::Tanh:
+            return 3u;
+        case ActivationKind::Elu:
+            return 4u;
+        case ActivationKind::Prelu:
+            return 5u;
+        case ActivationKind::Gelu:
+            return 6u;
+        case ActivationKind::Swish:
+            return 7u;
+        case ActivationKind::HSwish:
+            return 8u;
+        case ActivationKind::HSigmoid:
+            return 9u;
+        case ActivationKind::Abs:
+            return 10u;
+        case ActivationKind::Sign:
+            return 11u;
+        case ActivationKind::Clamp:
+            return 12u;
+        case ActivationKind::Identity:
+        default:
+            return 0u;
+    }
+}
 
 std::string generate_msl_for_concat_binary_runtime(const ConcatCodegenDesc& desc, mlir::ModuleOp module) {
     std::ostringstream ss;
@@ -1141,6 +1174,85 @@ std::vector<ov::float16> pack_f32_tensor_as_f16(const ov::Tensor& tensor) {
     return packed;
 }
 
+bool should_pack_conv2d_const_weights_oc4(const std::shared_ptr<const ov::Node>& node,
+                                          size_t input_idx,
+                                          const ov::Tensor& tensor) {
+    auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(node);
+    if (!conv || input_idx != 1 || tensor.get_shape().size() != 4) {
+        return false;
+    }
+    const auto et = tensor.get_element_type();
+    if (et != ov::element::f16 && et != ov::element::f32) {
+        return false;
+    }
+    if (!conv->get_input_partial_shape(0).is_static() ||
+        !conv->get_input_partial_shape(1).is_static() ||
+        !conv->get_output_partial_shape(0).is_static()) {
+        return false;
+    }
+    const auto in_shape = conv->get_input_shape(0);
+    const auto w_shape = conv->get_input_shape(1);
+    const auto out_shape = conv->get_output_shape(0);
+    if (in_shape.size() != 4 || w_shape.size() != 4 || out_shape.size() != 4) {
+        return false;
+    }
+    Conv2DCodegenDesc desc{};
+    desc.input_type = conv->get_input_element_type(0);
+    desc.weight_type = conv->get_input_element_type(1);
+    desc.output_type = conv->get_output_element_type(0);
+    desc.C_out = static_cast<uint32_t>(w_shape[0]);
+    desc.kH = static_cast<uint32_t>(w_shape[2]);
+    desc.kW = static_cast<uint32_t>(w_shape[3]);
+    const uint32_t cin_pg = static_cast<uint32_t>(w_shape[1]);
+    const uint32_t c_in = static_cast<uint32_t>(in_shape[1]);
+    desc.groups = (cin_pg != 0 && c_in % cin_pg == 0) ? (c_in / cin_pg) : 1;
+    return gfx_conv2d_output_channel_block(desc) >= 4;
+}
+
+template <typename T>
+std::vector<uint8_t> pack_conv2d_weights_oc4_typed(const ov::Tensor& tensor) {
+    const auto shape = tensor.get_shape();
+    OPENVINO_ASSERT(shape.size() == 4, "GFX Conv2D weight pack expects OIHW rank-4 weights");
+    const size_t c_out = shape[0];
+    const size_t c_in = shape[1];
+    const size_t k_h = shape[2];
+    const size_t k_w = shape[3];
+    const size_t channel_blocks = (c_out + 3u) / 4u;
+    const auto* src = tensor.data<const T>();
+    std::vector<T> packed(channel_blocks * c_in * k_h * k_w * 4u, T{});
+    for (size_t block = 0; block < channel_blocks; ++block) {
+        for (size_t ci = 0; ci < c_in; ++ci) {
+            for (size_t kh = 0; kh < k_h; ++kh) {
+                for (size_t kw = 0; kw < k_w; ++kw) {
+                    const size_t dst_base = (((block * c_in + ci) * k_h + kh) * k_w + kw) * 4u;
+                    for (size_t lane = 0; lane < 4; ++lane) {
+                        const size_t co = block * 4u + lane;
+                        if (co >= c_out) {
+                            continue;
+                        }
+                        const size_t src_idx = ((co * c_in + ci) * k_h + kh) * k_w + kw;
+                        packed[dst_base + lane] = src[src_idx];
+                    }
+                }
+            }
+        }
+    }
+    std::vector<uint8_t> bytes(packed.size() * sizeof(T));
+    std::memcpy(bytes.data(), packed.data(), bytes.size());
+    return bytes;
+}
+
+std::vector<uint8_t> pack_conv2d_weights_oc4(const ov::Tensor& tensor) {
+    const auto et = tensor.get_element_type();
+    if (et == ov::element::f16) {
+        return pack_conv2d_weights_oc4_typed<ov::float16>(tensor);
+    }
+    if (et == ov::element::f32) {
+        return pack_conv2d_weights_oc4_typed<float>(tensor);
+    }
+    OPENVINO_THROW("GFX Conv2D weight pack: unsupported element type ", et);
+}
+
 std::vector<int64_t> evaluate_constant_source_i64(const ov::Output<ov::Node>& source, const char* what) {
     auto constant = ov::util::get_constant_from_source(source);
     OPENVINO_ASSERT(constant, "GFX MLIR: ", what, " must be Constant");
@@ -1413,9 +1525,25 @@ inline SplitPlan make_split_plan(const std::shared_ptr<const ov::Node>& node,
         OPENVINO_ASSERT(lengths_const, "VariadicSplit lengths must be constant");
         auto lengths = lengths_const->cast_vector<int64_t>();
         plan.split_sizes.reserve(lengths.size());
-        for (auto v : lengths) {
-            OPENVINO_ASSERT(v >= 0, "VariadicSplit negative length not supported");
-            plan.split_sizes.push_back(static_cast<size_t>(v));
+        int64_t infer_index = -1;
+        size_t known_sum = 0;
+        for (size_t i = 0; i < lengths.size(); ++i) {
+            const int64_t v = lengths[i];
+            if (v < 0) {
+                OPENVINO_ASSERT(v == -1, "VariadicSplit only -1 negative length is supported");
+                OPENVINO_ASSERT(infer_index < 0, "VariadicSplit supports only one inferred -1 length");
+                infer_index = static_cast<int64_t>(i);
+                plan.split_sizes.push_back(0);
+            } else {
+                known_sum += static_cast<size_t>(v);
+                plan.split_sizes.push_back(static_cast<size_t>(v));
+            }
+        }
+        if (infer_index >= 0) {
+            const auto axis_norm = normalize_axis(axis, input_shape.size(), "GFX MLIR: VariadicSplit");
+            const size_t axis_len = input_shape[static_cast<size_t>(axis_norm)];
+            OPENVINO_ASSERT(known_sum <= axis_len, "VariadicSplit known lengths exceed axis dimension");
+            plan.split_sizes[static_cast<size_t>(infer_index)] = axis_len - known_sum;
         }
     }
 
@@ -1813,6 +1941,10 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
     m_matmul_reduction_threads = 1;
     m_compressed_matmul_output_block = 1;
     m_compressed_matmul_n = 0;
+    m_conv_output_channels_per_thread = 1;
+    m_conv_output_width_per_thread = 1;
+    m_conv_weight_storage_type = ov::element::dynamic;
+    m_conv_weights_packed_oc4 = false;
     m_rms_reduction_threads = 1;
     m_rms_hidden = 0;
     if (auto desc = static_matmul_desc_for_node(m_node)) {
@@ -1876,6 +2008,7 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
                 continue;
             }
             std::vector<ov::float16> packed_f16;
+            std::vector<uint8_t> packed_conv_weights;
             const void* const_data = const_tensor->data();
             size_t bytes = const_tensor->get_byte_size();
             auto et = const_tensor->get_element_type();
@@ -1888,6 +2021,18 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
                 increment_compile_counter("matmul_const_f32_to_f16_pack_count");
                 increment_compile_counter("matmul_const_f32_to_f16_original_bytes", original_bytes);
                 increment_compile_counter("matmul_const_f32_to_f16_packed_bytes", bytes);
+            }
+            if (backend_kind() == GpuBackend::Metal && should_pack_conv2d_const_weights_oc4(m_node, i, *const_tensor)) {
+                const size_t original_bytes = bytes;
+                packed_conv_weights = pack_conv2d_weights_oc4(*const_tensor);
+                et = const_tensor->get_element_type();
+                m_conv_weight_storage_type = et;
+                const_data = packed_conv_weights.data();
+                bytes = packed_conv_weights.size();
+                m_conv_weights_packed_oc4 = true;
+                increment_compile_counter("conv2d_const_oc4_pack_count");
+                increment_compile_counter("conv2d_const_oc4_original_bytes", original_bytes);
+                increment_compile_counter("conv2d_const_oc4_packed_bytes", bytes);
             }
             if (gfx_log_debug_enabled() && et == ov::element::f32 && bytes >= sizeof(float)) {
                 const float* vals = const_tensor->data<const float>();
@@ -2294,7 +2439,9 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
         } else {
             OPENVINO_ASSERT(out_shape.size() == 4, "GFX MLIR: Conv expects NCHW output");
             OPENVINO_ASSERT(in_shape.size() == 4, "GFX MLIR: Conv expects NCHW input");
-        ov::element::Type et = out_et == ov::element::dynamic ? m_node->get_output_element_type(0) : out_et;
+            m_conv_output_channels_per_thread = 1;
+            m_conv_output_width_per_thread = 1;
+            ov::element::Type et = out_et == ov::element::dynamic ? m_node->get_output_element_type(0) : out_et;
         if (et == ov::element::dynamic) {
             et = ov::element::f32;
         }
@@ -2341,6 +2488,19 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
             padRight = static_cast<uint32_t>(gconv->get_pads_end().at(1));
         } else {
             OPENVINO_THROW("GFX MLIR: unsupported conv-like op ", m_type);
+        }
+        if (!is_vulkan_backend() && m_type == "Convolution") {
+            Conv2DCodegenDesc desc{};
+            desc.input_type = m_node->get_input_element_type(0);
+            desc.weight_type = m_node->get_input_element_type(1);
+            desc.output_type = m_node->get_output_element_type(0);
+            desc.C_out = C_out;
+            desc.groups = groups;
+            desc.kH = kH;
+            desc.kW = kW;
+            desc.outW = static_cast<uint32_t>(out_shape.at(3));
+            m_conv_output_channels_per_thread = gfx_conv2d_output_channel_block(desc);
+            m_conv_output_width_per_thread = gfx_conv2d_output_width_block(desc);
         }
         // Prepare bias + BN buffers even if unused to keep argument order stable.
         const size_t channels = static_cast<size_t>(C_out);
@@ -2432,7 +2592,7 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
         params.outW = static_cast<uint32_t>(out_shape[3]);
         params.has_bias = m_has_bias ? 1u : 0u;
         params.has_bn = m_has_bn ? 1u : 0u;
-        params.activation = m_has_activation ? 1u : 0u;
+        params.activation = m_has_activation ? kernel_activation_code(m_activation) : 0u;
         params.alpha = m_activation_alpha;
         params.epsilon = epsilon;
         params.clamp_min = 0.0f;
@@ -2452,7 +2612,7 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
     }
     if (m_type == "MaxPool" || m_type == "AvgPool") {
         m_kernel_extra_inputs.clear();
-        auto maxpool = std::dynamic_pointer_cast<const ov::op::v1::MaxPool>(m_node);
+        auto maxpool = std::dynamic_pointer_cast<const ov::op::util::MaxPoolBase>(m_node);
         auto avgpool = std::dynamic_pointer_cast<const ov::op::v1::AvgPool>(m_node);
         OPENVINO_ASSERT(maxpool || avgpool, "GFX MLIR: pool node cast failed");
         const auto in = m_node->get_input_shape(0);
@@ -2462,6 +2622,14 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
         const auto& strides = maxpool ? maxpool->get_strides() : avgpool->get_strides();
         const auto& pads_begin = maxpool ? maxpool->get_pads_begin() : avgpool->get_pads_begin();
         const auto& pads_end = maxpool ? maxpool->get_pads_end() : avgpool->get_pads_end();
+        ov::Strides dilations(kernel.size(), 1);
+        if (maxpool) {
+            if (auto p = std::dynamic_pointer_cast<const ov::op::v8::MaxPool>(m_node)) {
+                dilations = p->get_dilations();
+            } else if (auto p = std::dynamic_pointer_cast<const ov::op::v14::MaxPool>(m_node)) {
+                dilations = p->get_dilations();
+            }
+        }
         const bool is_avg = avgpool != nullptr;
         const bool exclude_pad = is_avg ? avgpool->get_exclude_pad() : true;
         struct PoolParams {
@@ -2482,8 +2650,8 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
         params.kW = static_cast<uint32_t>(kernel.at(1));
         params.strideH = static_cast<uint32_t>(strides.at(0));
         params.strideW = static_cast<uint32_t>(strides.at(1));
-        params.dilationH = 1;
-        params.dilationW = 1;
+        params.dilationH = static_cast<uint32_t>(dilations.at(0));
+        params.dilationW = static_cast<uint32_t>(dilations.at(1));
         params.padTop = static_cast<uint32_t>(pads_begin.at(0));
         params.padLeft = static_cast<uint32_t>(pads_begin.at(1));
         params.padBottom = static_cast<uint32_t>(pads_end.at(0));
@@ -2501,6 +2669,10 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
         t.expected_type = ov::element::u8;
         t.shape = ov::Shape{sizeof(params)};
         m_kernel_extra_inputs.push_back(std::move(t));
+        m_kernel_inputs = {0};
+        m_kernel_input_arg_count = 2;  // input tensor + runtime params precede output0 in the kernel ABI.
+        m_kernel_operand_kinds = {1, 1, 1};
+        m_kernel_operand_arg_indices = {0, 1, 2};
     }
     if (m_type == "ShapeOf") {
         OPENVINO_ASSERT(m_node, "GFX MLIR: ShapeOf stage requires node");
@@ -2680,6 +2852,14 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
     apply_stage_optimization_attrs(module, optimization_plan);
     apply_input_transform_attrs(module);
     set_parallel_preference(module);
+    if (m_conv_weights_packed_oc4 && module) {
+        module->setAttr("gfx.conv2d_weights_packed_oc4",
+                        mlir::BoolAttr::get(module.getContext(), true));
+        if (m_conv_weight_storage_type == ov::element::f16) {
+            module->setAttr("gfx.conv2d_weight_storage_f16",
+                            mlir::BoolAttr::get(module.getContext(), true));
+        }
+    }
     if (should_skip_vulkan_conv_parallel() || force_vulkan_conv_serial_fallback) {
         module->setAttr("gfx.skip_conv_parallel", mlir::BoolAttr::get(module.getContext(), true));
         module->setAttr("gfx.prefer_parallel", mlir::BoolAttr::get(module.getContext(), false));
@@ -2704,6 +2884,121 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
         module->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr(b, kinds));
         module->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr(b, arg_idx));
     }
+    if (m_type == "Tile" && m_node && module) {
+        OPENVINO_ASSERT(m_node->get_input_partial_shape(0).is_static() &&
+                            m_node->get_output_partial_shape(0).is_static(),
+                        "GFX MLIR: Tile requires static input/output shapes for stage ",
+                        m_name);
+        const ov::Shape in_shape = m_node->get_input_shape(0);
+        const ov::Shape out_shape = m_node->get_output_shape(0);
+        auto to_i32 = [](const ov::Shape& shape) {
+            std::vector<int32_t> out(std::max<size_t>(shape.size(), 1), 1);
+            for (size_t i = 0; i < shape.size(); ++i) {
+                out[i] = static_cast<int32_t>(shape[i]);
+            }
+            return out;
+        };
+        auto strides_i32 = [](const ov::Shape& shape) {
+            std::vector<int32_t> strides(std::max<size_t>(shape.size(), 1), 1);
+            if (shape.empty()) {
+                return strides;
+            }
+            for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; --i) {
+                const size_t idx = static_cast<size_t>(i);
+                strides[idx] = strides[idx + 1] * static_cast<int32_t>(shape[idx + 1]);
+            }
+            return strides;
+        };
+        auto wrap_i32_vector = [&](const char* suffix, const std::vector<int32_t>& values) {
+            GpuTensor tensor;
+            const std::string key = m_name + "/" + suffix;
+            GpuBuffer buf = m_buffer_manager->wrap_const(key,
+                                                         values.data(),
+                                                         values.size() * sizeof(int32_t),
+                                                         ov::element::i32);
+            OPENVINO_ASSERT(buf.valid(), "GFX MLIR: failed to wrap Tile metadata for stage ", m_name);
+            buf.owned = false;
+            tensor.buf = buf;
+            tensor.expected_type = ov::element::i32;
+            tensor.shape = ov::Shape{values.size()};
+            return tensor;
+        };
+        m_kernel_extra_inputs.clear();
+        m_kernel_extra_inputs.push_back(wrap_i32_vector("tile_out_dims", to_i32(out_shape)));
+        m_kernel_extra_inputs.push_back(wrap_i32_vector("tile_in_dims", to_i32(in_shape)));
+        m_kernel_extra_inputs.push_back(wrap_i32_vector("tile_out_strides", strides_i32(out_shape)));
+        m_kernel_extra_inputs.push_back(wrap_i32_vector("tile_in_strides", strides_i32(in_shape)));
+        m_kernel_scalar_args = {static_cast<int32_t>(ov::shape_size(out_shape)),
+                                static_cast<int32_t>(std::max<size_t>(out_shape.size(), 1))};
+        m_kernel_inputs = {0};
+        m_kernel_input_arg_count = 1;
+        m_kernel_operand_kinds = {1, 1, 0, 0, 1, 1, 1, 1};
+        m_kernel_operand_arg_indices = {0, 1, -1, -1, -1, -1, -1, -1};
+
+        mlir::OpBuilder b(module.getContext());
+        module->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr(b, m_kernel_operand_kinds));
+        module->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr(b, m_kernel_operand_arg_indices));
+    }
+    if (auto gather_elements = ov::as_type_ptr<const ov::op::v6::GatherElements>(m_node)) {
+        OPENVINO_ASSERT(gather_elements->get_input_partial_shape(0).is_static() &&
+                            gather_elements->get_input_partial_shape(1).is_static() &&
+                            gather_elements->get_output_partial_shape(0).is_static(),
+                        "GFX MLIR: GatherElements requires static shapes for stage ",
+                        m_name);
+        const ov::Shape data_shape = gather_elements->get_input_shape(0);
+        const ov::Shape out_shape = gather_elements->get_output_shape(0);
+        auto make_u32_strides = [](const ov::Shape& shape) {
+            std::vector<uint32_t> strides(shape.size(), 1);
+            for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; --i) {
+                const size_t idx = static_cast<size_t>(i);
+                strides[idx] = strides[idx + 1] * static_cast<uint32_t>(shape[idx + 1]);
+            }
+            return strides;
+        };
+        const auto data_strides = make_u32_strides(data_shape);
+        const auto out_strides = make_u32_strides(out_shape);
+        const int64_t axis_norm = normalize_axis(gather_elements->get_axis(),
+                                                 out_shape.size(),
+                                                 "GFX MLIR: GatherElements");
+        struct GatherElementsParams {
+            uint32_t rank = 0;
+            uint32_t axis = 0;
+            uint32_t total = 0;
+            uint32_t out_dims[GatherElementsCodegenDesc::kMaxDims] = {};
+            uint32_t out_strides[GatherElementsCodegenDesc::kMaxDims] = {};
+            uint32_t data_dims[GatherElementsCodegenDesc::kMaxDims] = {};
+            uint32_t data_strides[GatherElementsCodegenDesc::kMaxDims] = {};
+        } params{};
+        params.rank = static_cast<uint32_t>(out_shape.size());
+        params.axis = static_cast<uint32_t>(axis_norm);
+        params.total = static_cast<uint32_t>(ov::shape_size(out_shape));
+        for (size_t i = 0; i < out_shape.size() && i < GatherElementsCodegenDesc::kMaxDims; ++i) {
+            params.out_dims[i] = static_cast<uint32_t>(out_shape[i]);
+            params.out_strides[i] = static_cast<uint32_t>(out_strides[i]);
+            params.data_dims[i] = static_cast<uint32_t>(data_shape[i]);
+            params.data_strides[i] = static_cast<uint32_t>(data_strides[i]);
+        }
+        GpuTensor params_tensor;
+        GpuBuffer params_buf = m_buffer_manager->wrap_const(m_name + "/gather_elements_params",
+                                                            &params,
+                                                            sizeof(params),
+                                                            ov::element::u8);
+        OPENVINO_ASSERT(params_buf.valid(), "GFX MLIR: failed to wrap GatherElements params for stage ", m_name);
+        params_buf.owned = false;
+        params_tensor.buf = params_buf;
+        params_tensor.expected_type = ov::element::u8;
+        params_tensor.shape = ov::Shape{sizeof(params)};
+        m_kernel_extra_inputs.clear();
+        m_kernel_extra_inputs.push_back(std::move(params_tensor));
+        m_kernel_inputs = {0, 1};
+        m_kernel_input_arg_count = 2;
+        m_kernel_operand_kinds = {1, 1, 1, 1};
+        m_kernel_operand_arg_indices = {0, 1, 2, -1};
+
+        mlir::OpBuilder b(module.getContext());
+        module->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr(b, m_kernel_operand_kinds));
+        module->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr(b, m_kernel_operand_arg_indices));
+    }
     auto plan_ctx = build_mlir_kernel_plan(
         module,
         plan.entry_point(),
@@ -2722,6 +3017,26 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
         });
     if (m_type == "ShapeOf") {
         plan_ctx.build_info.plan = KernelPlan(module, plan_ctx.build_info.plan.entry_point(), 4);
+    }
+    if (m_type == "Tile") {
+        plan_ctx.build_info.plan = KernelPlan(module, plan_ctx.build_info.plan.entry_point(), 8);
+    }
+    if (m_type == "GatherElements") {
+        plan_ctx.build_info.plan = KernelPlan(module, plan_ctx.build_info.plan.entry_point(), 4);
+    }
+    if (m_type == "MaxPool" || m_type == "AvgPool") {
+        plan_ctx = build_mlir_kernel_plan(
+            module,
+            plan.entry_point(),
+            m_node,
+            /*output_args_override=*/1,
+            m_kernel_extra_inputs.size(),
+            m_name.c_str(),
+            "gfx_kernel",
+            [&](const KernelArgMappingInfo&) -> size_t {
+                return 3;
+            });
+        plan_ctx.build_info.plan = KernelPlan(module, plan_ctx.build_info.plan.entry_point(), 3);
     }
     if (is_vulkan_backend() && is_matmul_like() && module) {
         // Keep Vulkan MatMul on an explicit compact buffer ABI. Lowering will
@@ -5404,15 +5719,31 @@ struct ScatterUpdateParams {
             desc.label = m_name.c_str();
             return m_buffer_manager->allocate_temp(desc);
         };
+        auto output_aliases_input = [&]() {
+            if (!out->buf.valid()) {
+                return false;
+            }
+            for (size_t input_idx = 0; input_idx < m_inputs.size(); ++input_idx) {
+                GpuTensor* src = resolve_input_tensor(input_idx);
+                if (src && same_gpu_allocation(out->buf, src->buf)) {
+                    return true;
+                }
+            }
+            return false;
+        };
         if (!out->buf.valid()) {
             out->buf = allocate_output_buffer(out_bytes);
             OPENVINO_ASSERT(out->buf.valid(), "GFX MLIR: output buffer is not allocated for stage ", m_name);
         }
-        if (out->buf.size < out_bytes) {
+        const bool aliases_input = output_aliases_input();
+        if (out->buf.size < out_bytes || aliases_input) {
             if (out->buf.owned && !out->buf.external) {
-                if (!out->buf.from_handle) {
+                if (!out->buf.from_handle && !aliases_input) {
                     m_buffer_manager->release_temp(std::move(out->buf));
                 }
+                out->buf = allocate_output_buffer(out_bytes);
+                OPENVINO_ASSERT(out->buf.valid(), "GFX MLIR: output buffer is not allocated for stage ", m_name);
+            } else if (aliases_input) {
                 out->buf = allocate_output_buffer(out_bytes);
                 OPENVINO_ASSERT(out->buf.valid(), "GFX MLIR: output buffer is not allocated for stage ", m_name);
             }
@@ -5472,8 +5803,7 @@ struct ScatterUpdateParams {
         return;
     }
 
-    if (is_vulkan_backend() &&
-        m_type == "Concat" &&
+    if (m_type == "Concat" &&
         !has_absorbed_input_transpose() &&
         !prefer_specialized_concat_execution()) {
         auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(m_node);
@@ -5638,6 +5968,42 @@ struct ScatterUpdateParams {
         }
         const uint32_t axis_total = static_cast<uint32_t>(out_shape[static_cast<size_t>(axis_norm)]);
         uint64_t axis_offset = 0;
+        auto ensure_concat_output_not_aliased = [&]() {
+            auto* dst = outputs.front();
+            if (!dst || !dst->buf.valid()) {
+                return;
+            }
+            bool aliases_input = false;
+            for (size_t input_idx = 0; input_idx < m_inputs.size(); ++input_idx) {
+                GpuTensor* src = resolve_input_tensor(input_idx);
+                if (src && same_gpu_allocation(dst->buf, src->buf)) {
+                    aliases_input = true;
+                    break;
+                }
+            }
+            if (!aliases_input) {
+                return;
+            }
+            ov::element::Type out_type = dst->expected_type;
+            if (out_type == ov::element::dynamic) {
+                out_type = m_node->get_output_element_type(0);
+            }
+            GpuBufferDesc desc{};
+            desc.bytes = ov::shape_size(out_shape) * out_type.size();
+            desc.type = out_type;
+            desc.usage = dst->prefer_private ? BufferUsage::Intermediate : BufferUsage::IO;
+            desc.cpu_read = !dst->prefer_private;
+            desc.cpu_write = !dst->prefer_private;
+            desc.prefer_device_local = dst->prefer_private;
+            desc.label = m_name.c_str();
+            OPENVINO_ASSERT(m_buffer_manager, "GFX MLIR: buffer manager is not set for concat stage ", m_name);
+            if (dst->buf.owned && !dst->buf.external && !dst->buf.from_handle) {
+                m_buffer_manager->release_temp(std::move(dst->buf));
+            }
+            dst->buf = m_buffer_manager->allocate_temp(desc);
+            OPENVINO_ASSERT(dst->buf.valid(), "GFX MLIR: failed to allocate non-aliased concat output for stage ", m_name);
+        };
+        ensure_concat_output_not_aliased();
 
         if (m_concat_binary_kernel && concat->get_input_size() == 2 && m_inputs.size() >= 2) {
             GpuTensor* src0 = resolve_input_tensor(0);
@@ -5797,6 +6163,14 @@ struct ScatterUpdateParams {
             }
         }
     }
+    if (m_type == "Tile" && !outputs.empty() && outputs.front() && !outputs.front()->shape.empty()) {
+        m_kernel_scalar_args = {static_cast<int32_t>(ov::shape_size(outputs.front()->shape)),
+                                static_cast<int32_t>(std::max<size_t>(outputs.front()->shape.size(), 1))};
+        m_kernel_inputs = {0};
+        m_kernel_input_arg_count = 1;
+        m_kernel_operand_kinds = {1, 1, 0, 0, 1, 1, 1, 1};
+        m_kernel_operand_arg_indices = {0, 1, -1, -1, -1, -1, -1, -1};
+    }
     // Conv3D uses params as extra input; keep output before params.
     auto maybe_set_conv3d_inputs = [&]() {
         if (m_type == "Convolution") {
@@ -5951,6 +6325,27 @@ struct ScatterUpdateParams {
                                       << " tpg=(" << dispatch.threads_per_group[0] << ", "
                                       << dispatch.threads_per_group[1] << ", "
                                       << dispatch.threads_per_group[2] << ")";
+        }
+    } else if (m_type == "Convolution" &&
+               m_conv_output_channels_per_thread > 1 &&
+               dispatch_shape.size() == 4) {
+        const uint64_t work_items = gfx_conv2d_dispatch_items(static_cast<uint64_t>(dispatch_shape[0]),
+                                                              static_cast<uint64_t>(dispatch_shape[1]),
+                                                              static_cast<uint64_t>(dispatch_shape[2]),
+                                                              static_cast<uint64_t>(dispatch_shape[3]),
+                                                              m_conv_output_channels_per_thread,
+                                                              m_conv_output_width_per_thread);
+        dispatch = make_1d_dispatch(static_cast<size_t>(work_items),
+                                    m_kernel->clamp_threadgroup_size(256));
+        if (gfx_log_debug_enabled()) {
+            gfx_log_debug("MLIRExec") << "Conv channel-block dispatch grid=(" << dispatch.grid[0] << ", "
+                                      << dispatch.grid[1] << ", "
+                                      << dispatch.grid[2] << ")"
+                                      << " tpg=(" << dispatch.threads_per_group[0] << ", "
+                                      << dispatch.threads_per_group[1] << ", "
+                                      << dispatch.threads_per_group[2] << ")"
+                                      << " channels_per_thread=" << m_conv_output_channels_per_thread
+                                      << " width_per_thread=" << m_conv_output_width_per_thread;
         }
     } else if (m_type == "RMS" && m_rms_reduction_threads > 1 && m_rms_hidden > 0) {
         const uint64_t total = static_cast<uint64_t>(ov::shape_size(dispatch_shape));
@@ -6280,6 +6675,10 @@ void MlirStage::clone_into(MlirStage& dst) const {
     dst.m_matmul_reduction_threads = m_matmul_reduction_threads;
     dst.m_compressed_matmul_output_block = m_compressed_matmul_output_block;
     dst.m_compressed_matmul_n = m_compressed_matmul_n;
+    dst.m_conv_output_channels_per_thread = m_conv_output_channels_per_thread;
+    dst.m_conv_output_width_per_thread = m_conv_output_width_per_thread;
+    dst.m_conv_weight_storage_type = m_conv_weight_storage_type;
+    dst.m_conv_weights_packed_oc4 = m_conv_weights_packed_oc4;
     dst.m_rms_reduction_threads = m_rms_reduction_threads;
     dst.m_rms_hidden = m_rms_hidden;
     dst.m_kernel_scalar_args = m_kernel_scalar_args;

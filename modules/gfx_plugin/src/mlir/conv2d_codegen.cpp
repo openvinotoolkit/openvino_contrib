@@ -4,7 +4,9 @@
 
 #include "mlir/codegen_common.hpp"
 
+#include <optional>
 #include <sstream>
+#include <string>
 #include <vector>
 
 #include "openvino/core/except.hpp"
@@ -28,6 +30,9 @@ ov::element::Type resolve_conv_buffer_type(const ov::element::Type& type,
 
 std::vector<int64_t> read_entry_argument_shape(mlir::ModuleOp module, size_t arg_idx) {
     std::vector<int64_t> shape;
+    if (!module) {
+        return shape;
+    }
     auto func = get_entry_func(module);
     if (!func) {
         return shape;
@@ -72,6 +77,30 @@ std::vector<int64_t> read_absorbed_input_permutation(mlir::ModuleOp module, size
     return permutation;
 }
 
+bool read_bool_attr(mlir::ModuleOp module, const char* name) {
+    if (!module) {
+        return false;
+    }
+    auto attr = module->getAttrOfType<mlir::BoolAttr>(name);
+    return attr && attr.getValue();
+}
+
+std::optional<std::string> read_first_string_attr(mlir::ModuleOp module, llvm::StringRef name) {
+    std::optional<std::string> result;
+    if (!module) {
+        return result;
+    }
+    module.walk([&](mlir::Operation* op) {
+        if (result) {
+            return;
+        }
+        if (auto attr = op->getAttrOfType<mlir::StringAttr>(name)) {
+            result = attr.getValue().str();
+        }
+    });
+    return result;
+}
+
 std::vector<int64_t> invert_permutation(const std::vector<int64_t>& permutation) {
     std::vector<int64_t> inverse(permutation.size(), -1);
     for (size_t logical_axis = 0; logical_axis < permutation.size(); ++logical_axis) {
@@ -85,6 +114,47 @@ std::vector<int64_t> invert_permutation(const std::vector<int64_t>& permutation)
     return inverse;
 }
 
+std::string static_activation_expr(const std::string& kind, const char* value) {
+    const std::string x(value);
+    if (kind == "Relu") {
+        return "max(" + x + ", 0.0f)";
+    }
+    if (kind == "Sigmoid") {
+        return "1.0f / (1.0f + exp(-" + x + "))";
+    }
+    if (kind == "Tanh") {
+        return "tanh(" + x + ")";
+    }
+    if (kind == "Elu") {
+        return "(" + x + " > 0.0f) ? " + x + " : (exp(" + x + ") - 1.0f) * p.alpha";
+    }
+    if (kind == "Prelu") {
+        return "(" + x + " >= 0.0f) ? " + x + " : " + x + " * p.alpha";
+    }
+    if (kind == "Gelu") {
+        return "0.5f * " + x + " * (1.0f + tanh(0.79788456f * (" + x + " + 0.044715f * " + x + " * " + x + " * " + x + ")))";
+    }
+    if (kind == "Swish") {
+        return "(" + x + " >= 0.0f) ? (" + x + " / (1.0f + exp(-" + x + "))) : (" + x + " * exp(" + x + ") / (1.0f + exp(" + x + ")))";
+    }
+    if (kind == "HSwish") {
+        return x + " * clamp(" + x + " + 3.0f, 0.0f, 6.0f) / 6.0f";
+    }
+    if (kind == "HSigmoid") {
+        return "clamp(" + x + " + 3.0f, 0.0f, 6.0f) / 6.0f";
+    }
+    if (kind == "Abs") {
+        return "fabs(" + x + ")";
+    }
+    if (kind == "Sign") {
+        return "(" + x + " > 0.0f) ? 1.0f : ((" + x + " < 0.0f) ? -1.0f : 0.0f)";
+    }
+    if (kind == "Clamp") {
+        return "clamp(" + x + ", p.clamp_min, p.clamp_max)";
+    }
+    return x;
+}
+
 }  // namespace
 
 // Simple text generator: emits a single-kernel Conv2D with optional bias, batchnorm and activation.
@@ -95,7 +165,10 @@ std::string generate_msl_for_conv2d(const Conv2DCodegenDesc& d, mlir::ModuleOp m
     uint32_t outW = d.outW;
     const ov::element::Type output_type = resolve_conv_buffer_type(d.output_type, d.element_type);
     const ov::element::Type input_type = resolve_conv_buffer_type(d.input_type, output_type);
-    const ov::element::Type weight_type = resolve_conv_buffer_type(d.weight_type, output_type);
+    const ov::element::Type weight_type =
+        read_bool_attr(module, "gfx.conv2d_weight_storage_f16")
+            ? ov::element::f16
+            : resolve_conv_buffer_type(d.weight_type, output_type);
     const ov::element::Type bias_type = resolve_conv_buffer_type(d.bias_type, output_type);
     const ov::element::Type bn_type = resolve_conv_buffer_type(d.bn_type, output_type);
     std::string input_scalar = msl_type_from_element(input_type);
@@ -132,6 +205,32 @@ std::string generate_msl_for_conv2d(const Conv2DCodegenDesc& d, mlir::ModuleOp m
         int64_t eff_kw = static_cast<int64_t>(d.dilationW) * (static_cast<int64_t>(d.kW) - 1) + 1;
         outW = static_cast<uint32_t>((static_cast<int64_t>(d.W) + d.padLeft + d.padRight - eff_kw) / d.strideW + 1);
     }
+    Conv2DCodegenDesc resolved_desc = d;
+    resolved_desc.outH = outH;
+    resolved_desc.outW = outW;
+    const uint32_t channel_block =
+        std::max<uint32_t>(1u, resolved_desc.output_channels_per_thread
+                                    ? resolved_desc.output_channels_per_thread
+                                    : gfx_conv2d_output_channel_block(resolved_desc));
+    const uint32_t width_block =
+        std::max<uint32_t>(1u, resolved_desc.output_width_per_thread
+                                    ? resolved_desc.output_width_per_thread
+                                    : gfx_conv2d_output_width_block(resolved_desc));
+    const bool weights_packed_oc4 =
+        channel_block == 4 && read_bool_attr(module, "gfx.conv2d_weights_packed_oc4");
+    const auto static_activation = read_first_string_attr(module, "gfx.activation_kind");
+    const bool pointwise_1x1_fast_path =
+        resolved_desc.groups <= 1 &&
+        resolved_desc.kH == 1 &&
+        resolved_desc.kW == 1 &&
+        resolved_desc.strideH == 1 &&
+        resolved_desc.strideW == 1 &&
+        resolved_desc.dilationH == 1 &&
+        resolved_desc.dilationW == 1 &&
+        resolved_desc.padTop == 0 &&
+        resolved_desc.padLeft == 0 &&
+        resolved_desc.padBottom == 0 &&
+        resolved_desc.padRight == 0;
 
     const auto input_permutation = read_absorbed_input_permutation(module, 0);
     const auto source_input_shape = read_entry_argument_shape(module, 0);
@@ -190,6 +289,251 @@ std::string generate_msl_for_conv2d(const Conv2DCodegenDesc& d, mlir::ModuleOp m
     ss << "  float clamp_min;\n";
     ss << "  float clamp_max;\n";
     ss << "};\n";
+    ss << "constant uint GFX_CONV_N = " << resolved_desc.N << "u;\n";
+    ss << "constant uint GFX_CONV_C_IN = " << resolved_desc.C_in << "u;\n";
+    ss << "constant uint GFX_CONV_H = " << resolved_desc.H << "u;\n";
+    ss << "constant uint GFX_CONV_W = " << resolved_desc.W << "u;\n";
+    ss << "constant uint GFX_CONV_C_OUT = " << resolved_desc.C_out << "u;\n";
+    ss << "constant uint GFX_CONV_C_IN_PG = " << resolved_desc.C_in_pg << "u;\n";
+    ss << "constant uint GFX_CONV_KH = " << resolved_desc.kH << "u;\n";
+    ss << "constant uint GFX_CONV_KW = " << resolved_desc.kW << "u;\n";
+    ss << "constant uint GFX_CONV_STRIDE_H = " << resolved_desc.strideH << "u;\n";
+    ss << "constant uint GFX_CONV_STRIDE_W = " << resolved_desc.strideW << "u;\n";
+    ss << "constant uint GFX_CONV_DILATION_H = " << resolved_desc.dilationH << "u;\n";
+    ss << "constant uint GFX_CONV_DILATION_W = " << resolved_desc.dilationW << "u;\n";
+    ss << "constant uint GFX_CONV_PAD_TOP = " << resolved_desc.padTop << "u;\n";
+    ss << "constant uint GFX_CONV_PAD_LEFT = " << resolved_desc.padLeft << "u;\n";
+    ss << "constant uint GFX_CONV_OUT_H = " << resolved_desc.outH << "u;\n";
+    ss << "constant uint GFX_CONV_OUT_W = " << resolved_desc.outW << "u;\n";
+
+    if (channel_block > 1) {
+        OPENVINO_ASSERT(channel_block == 4, "Conv2D codegen: only 4-channel output blocking is supported");
+        OPENVINO_ASSERT(width_block <= 2, "Conv2D codegen: only 2-pixel output width blocking is supported");
+        OPENVINO_ASSERT(d.groups <= 1, "Conv2D codegen: channel-blocked kernel expects non-group convolution");
+        if (static_activation) {
+            ss << "inline float gfx_conv_apply_activation(float acc, constant ConvParams& p) {\n";
+            ss << "    return " << static_activation_expr(*static_activation, "acc") << ";\n";
+            ss << "}\n";
+        } else {
+            ss << "inline float gfx_conv_apply_activation(float acc, constant ConvParams& p) {\n";
+            ss << "    switch (p.activation) {\n";
+            ss << "      case ActRelu: return max(acc, 0.0f);\n";
+            ss << "      case ActSigmoid: return 1.0f / (1.0f + exp(-acc));\n";
+            ss << "      case ActTanh: return tanh(acc);\n";
+            ss << "      case ActElu: return (acc > 0.0f) ? acc : (exp(acc) - 1.0f) * p.alpha;\n";
+            ss << "      case ActPrelu: return (acc >= 0.0f) ? acc : acc * p.alpha;\n";
+            ss << "      case ActGelu: return 0.5f * acc * (1.0f + tanh(0.79788456f * (acc + 0.044715f * acc * acc * acc)));\n";
+            ss << "      case ActSwish: return (acc >= 0.0f) ? (acc / (1.0f + exp(-acc))) : (acc * exp(acc) / (1.0f + exp(acc)));\n";
+            ss << "      case ActHSwish: return acc * clamp(acc + 3.0f, 0.0f, 6.0f) / 6.0f;\n";
+            ss << "      case ActHSigmoid: return clamp(acc + 3.0f, 0.0f, 6.0f) / 6.0f;\n";
+            ss << "      case ActAbs: return fabs(acc);\n";
+            ss << "      case ActSign: return (acc > 0.0f) ? 1.0f : ((acc < 0.0f) ? -1.0f : 0.0f);\n";
+            ss << "      case ActClamp: return clamp(acc, p.clamp_min, p.clamp_max);\n";
+            ss << "      case ActIdentity:\n";
+            ss << "      default: return acc;\n";
+            ss << "    }\n";
+            ss << "}\n";
+        }
+        ss << "kernel void conv2d_kernel(\n";
+        ss << "  device const " << input_scalar << "* in0   [[buffer(0)]],\n";
+        ss << "  device const " << weight_scalar << "* w     [[buffer(1)]],\n";
+        ss << "  device const " << bias_scalar << "* bias  [[buffer(2)]],\n";
+        ss << "  device const " << bn_scalar << "* gamma [[buffer(3)]],\n";
+        ss << "  device const " << bn_scalar << "* beta  [[buffer(4)]],\n";
+        ss << "  device const " << bn_scalar << "* mean  [[buffer(5)]],\n";
+        ss << "  device const " << bn_scalar << "* var   [[buffer(6)]],\n";
+        ss << "  constant ConvParams& p    [[buffer(7)]],\n";
+        ss << "  device " << output_scalar << "* out         [[buffer(8)]],\n";
+        ss << "  uint gid [[thread_position_in_grid]]) {\n";
+        ss << "    constexpr uint width_blocks = (GFX_CONV_OUT_W + " << (width_block - 1) << "u) / " << width_block << "u;\n";
+        ss << "    constexpr uint spatial_total = GFX_CONV_N * GFX_CONV_OUT_H * width_blocks;\n";
+        ss << "    constexpr uint channel_blocks = (GFX_CONV_C_OUT + " << (channel_block - 1) << "u) / " << channel_block << "u;\n";
+        ss << "    uint total = spatial_total * channel_blocks;\n";
+        ss << "    if (gid >= total) return;\n";
+        ss << "    uint block = gid / spatial_total;\n";
+        ss << "    uint spatial = gid - block * spatial_total;\n";
+        ss << "    uint co_base = block * " << channel_block << "u;\n";
+        ss << "    uint tmp = spatial;\n";
+        ss << "    uint ow_base = (tmp % width_blocks) * " << width_block << "u; tmp /= width_blocks;\n";
+        ss << "    uint oh = tmp % GFX_CONV_OUT_H; tmp /= GFX_CONV_OUT_H;\n";
+        ss << "    uint n = tmp;\n";
+        ss << "    int in_h0 = int(oh) * int(GFX_CONV_STRIDE_H) - int(GFX_CONV_PAD_TOP);\n";
+        ss << "    int in_w0_base = int(ow_base) * int(GFX_CONV_STRIDE_W) - int(GFX_CONV_PAD_LEFT);\n";
+        for (uint32_t px = 0; px < width_block; ++px) {
+        for (uint32_t vec = 0; vec < channel_block / 4; ++vec) {
+                ss << "    float4 acc" << px << "_" << vec << " = float4(0.0f);\n";
+            }
+        }
+        ss << "    constexpr uint weight_channel_stride = GFX_CONV_C_IN_PG * GFX_CONV_KH * GFX_CONV_KW;\n";
+        if (pointwise_1x1_fast_path) {
+            ss << "    for (uint ci = 0; ci < GFX_CONV_C_IN; ++ci) {\n";
+            for (uint32_t vec = 0; vec < channel_block / 4; ++vec) {
+                const uint32_t co_offset = vec * 4;
+                ss << "        if (co_base + " << co_offset << "u < GFX_CONV_C_OUT) {\n";
+                if (weights_packed_oc4) {
+                    ss << "            uint w_base" << vec
+                       << " = ((block + " << vec << "u) * GFX_CONV_C_IN + ci) * 4u;\n";
+                    ss << "            float4 ww" << vec << " = float4(static_cast<float>(static_cast<"
+                       << weight_compute << ">(w[w_base" << vec << "])),\n";
+                    ss << "                                        static_cast<float>(static_cast<"
+                       << weight_compute << ">(w[w_base" << vec << " + 1u])),\n";
+                    ss << "                                        static_cast<float>(static_cast<"
+                       << weight_compute << ">(w[w_base" << vec << " + 2u])),\n";
+                    ss << "                                        static_cast<float>(static_cast<"
+                       << weight_compute << ">(w[w_base" << vec << " + 3u])));\n";
+                } else {
+                    ss << "            uint w_base" << vec << " = (co_base + " << co_offset
+                       << "u) * weight_channel_stride + ci;\n";
+                    ss << "            float4 ww" << vec << " = float4(0.0f);\n";
+                    ss << "            if (co_base + " << (co_offset + 3) << "u < GFX_CONV_C_OUT) {\n";
+                    ss << "                ww" << vec << " = float4(static_cast<float>(static_cast<"
+                       << weight_compute << ">(w[w_base" << vec << "])),\n";
+                    ss << "                            static_cast<float>(static_cast<"
+                       << weight_compute << ">(w[w_base" << vec << " + weight_channel_stride])),\n";
+                    ss << "                            static_cast<float>(static_cast<"
+                       << weight_compute << ">(w[w_base" << vec << " + 2u * weight_channel_stride])),\n";
+                    ss << "                            static_cast<float>(static_cast<"
+                       << weight_compute << ">(w[w_base" << vec << " + 3u * weight_channel_stride])));\n";
+                    ss << "            } else {\n";
+                    for (uint32_t lane = 0; lane < 4; ++lane) {
+                        ss << "                if (co_base + " << (co_offset + lane)
+                           << "u < GFX_CONV_C_OUT) ww" << vec << "[" << lane
+                           << "] = static_cast<float>(static_cast<" << weight_compute
+                           << ">(w[w_base" << vec << " + " << lane << "u * weight_channel_stride]));\n";
+                    }
+                    ss << "            }\n";
+                }
+                for (uint32_t px = 0; px < width_block; ++px) {
+                    ss << "            if (ow_base + " << px << "u < GFX_CONV_OUT_W) {\n";
+                    if (!has_absorbed_input_transform) {
+                        ss << "                uint in_idx" << px
+                           << " = ((n * GFX_CONV_C_IN + ci) * GFX_CONV_H + oh) * GFX_CONV_W + (ow_base + "
+                           << px << "u);\n";
+                    } else {
+                        ss << "                uint logical_idx" << px
+                           << "[4] = {n, ci, oh, ow_base + " << px << "u};\n";
+                        ss << "                uint in_idx" << px << " = 0u;\n";
+                        for (size_t src_dim = 0; src_dim < source_input_shape.size(); ++src_dim) {
+                            ss << "                in_idx" << px << " += logical_idx" << px
+                               << "[" << inverse_input_permutation[src_dim] << "] * "
+                               << static_cast<uint32_t>(source_input_strides[src_dim]) << "u;\n";
+                        }
+                    }
+                    ss << "                float x" << px << " = static_cast<float>(static_cast<"
+                       << input_compute << ">(in0[in_idx" << px << "]));\n";
+                    ss << "                acc" << px << "_" << vec << " += x" << px
+                       << " * ww" << vec << ";\n";
+                    ss << "            }\n";
+                }
+                ss << "        }\n";
+            }
+            ss << "    }\n";
+        } else {
+            ss << "    for (uint ci = 0; ci < GFX_CONV_C_IN; ++ci) {\n";
+            ss << "        for (uint kh = 0; kh < GFX_CONV_KH; ++kh) {\n";
+            ss << "            int ih = in_h0 + int(kh) * int(GFX_CONV_DILATION_H);\n";
+            ss << "            if (ih < 0 || ih >= int(GFX_CONV_H)) continue;\n";
+            ss << "            for (uint kw = 0; kw < GFX_CONV_KW; ++kw) {\n";
+        for (uint32_t vec = 0; vec < channel_block / 4; ++vec) {
+            const uint32_t co_offset = vec * 4;
+            ss << "                if (co_base + " << co_offset << "u < GFX_CONV_C_OUT) {\n";
+            if (weights_packed_oc4) {
+                ss << "                    uint w_base" << vec
+                   << " = (((block + " << vec << "u) * GFX_CONV_C_IN + ci) * GFX_CONV_KH * GFX_CONV_KW + kh * GFX_CONV_KW + kw) * 4u;\n";
+                ss << "                    float4 ww" << vec << " = float4(static_cast<float>(static_cast<"
+                   << weight_compute << ">(w[w_base" << vec << "])),\n";
+                ss << "                                                static_cast<float>(static_cast<"
+                   << weight_compute << ">(w[w_base" << vec << " + 1u])),\n";
+                ss << "                                                static_cast<float>(static_cast<"
+                   << weight_compute << ">(w[w_base" << vec << " + 2u])),\n";
+                ss << "                                                static_cast<float>(static_cast<"
+                   << weight_compute << ">(w[w_base" << vec << " + 3u])));\n";
+            } else {
+                ss << "                    uint w_base" << vec << " = (co_base + " << co_offset
+                   << "u) * weight_channel_stride + ci * GFX_CONV_KH * GFX_CONV_KW + kh * GFX_CONV_KW + kw;\n";
+                ss << "                    float4 ww" << vec << " = float4(0.0f);\n";
+                ss << "                    if (co_base + " << (co_offset + 3) << "u < GFX_CONV_C_OUT) {\n";
+                ss << "                        ww" << vec << " = float4(static_cast<float>(static_cast<"
+                   << weight_compute << ">(w[w_base" << vec << "])),\n";
+                ss << "                                    static_cast<float>(static_cast<"
+                   << weight_compute << ">(w[w_base" << vec << " + weight_channel_stride])),\n";
+                ss << "                                    static_cast<float>(static_cast<"
+                   << weight_compute << ">(w[w_base" << vec << " + 2u * weight_channel_stride])),\n";
+                ss << "                                    static_cast<float>(static_cast<"
+                   << weight_compute << ">(w[w_base" << vec << " + 3u * weight_channel_stride])));\n";
+                ss << "                    } else {\n";
+                for (uint32_t lane = 0; lane < 4; ++lane) {
+                    ss << "                        if (co_base + " << (co_offset + lane)
+                       << "u < GFX_CONV_C_OUT) ww" << vec << "[" << lane
+                       << "] = static_cast<float>(static_cast<" << weight_compute
+                       << ">(w[w_base" << vec << " + " << lane << "u * weight_channel_stride]));\n";
+                }
+                ss << "                    }\n";
+            }
+            for (uint32_t px = 0; px < width_block; ++px) {
+                ss << "                    if (ow_base + " << px << "u < GFX_CONV_OUT_W) {\n";
+                ss << "                        int iw" << px << " = in_w0_base + int("
+                   << px << "u * GFX_CONV_STRIDE_W) + int(kw) * int(GFX_CONV_DILATION_W);\n";
+                ss << "                        if (iw" << px << " >= 0 && iw" << px << " < int(GFX_CONV_W)) {\n";
+                if (!has_absorbed_input_transform) {
+                    ss << "                            uint in_idx" << px
+                       << " = ((n * GFX_CONV_C_IN + ci) * GFX_CONV_H + uint(ih)) * GFX_CONV_W + uint(iw" << px << ");\n";
+                } else {
+                    ss << "                            uint logical_idx" << px
+                       << "[4] = {n, ci, uint(ih), uint(iw" << px << ")};\n";
+                    ss << "                            uint in_idx" << px << " = 0u;\n";
+                    for (size_t src_dim = 0; src_dim < source_input_shape.size(); ++src_dim) {
+                        ss << "                            in_idx" << px << " += logical_idx" << px
+                           << "[" << inverse_input_permutation[src_dim] << "] * "
+                           << static_cast<uint32_t>(source_input_strides[src_dim]) << "u;\n";
+                    }
+                }
+                ss << "                            float x" << px << " = static_cast<float>(static_cast<"
+                   << input_compute << ">(in0[in_idx" << px << "]));\n";
+                ss << "                            acc" << px << "_" << vec << " += x" << px
+                   << " * ww" << vec << ";\n";
+                ss << "                        }\n";
+                ss << "                    }\n";
+            }
+            ss << "                }\n";
+        }
+            ss << "            }\n";
+            ss << "        }\n";
+            ss << "    }\n";
+        }
+        for (uint32_t px = 0; px < width_block; ++px) {
+            ss << "    if (ow_base + " << px << "u < GFX_CONV_OUT_W) {\n";
+            for (uint32_t vec = 0; vec < channel_block / 4; ++vec) {
+                for (uint32_t lane = 0; lane < 4; ++lane) {
+                    const uint32_t co_offset = vec * 4 + lane;
+                    ss << "        if (co_base + " << co_offset << "u < GFX_CONV_C_OUT) {\n";
+                    ss << "            uint co = co_base + " << co_offset << "u;\n";
+                    ss << "            float v = acc" << px << "_" << vec << "[" << lane << "];\n";
+                    ss << "            if (p.has_bias) v += static_cast<float>(static_cast<"
+                       << bias_compute << ">(bias[co]));\n";
+                    ss << "            if (p.has_bn) {\n";
+                    ss << "                float g_scale = static_cast<float>(static_cast<"
+                       << bn_compute << ">(gamma[co]));\n";
+                    ss << "                float b_shift = static_cast<float>(static_cast<"
+                       << bn_compute << ">(beta[co]));\n";
+                    ss << "                float m = static_cast<float>(static_cast<"
+                       << bn_compute << ">(mean[co]));\n";
+                    ss << "                float vv = static_cast<float>(static_cast<"
+                       << bn_compute << ">(var[co]));\n";
+                    ss << "                v = g_scale * (v - m) * rsqrt(vv + p.epsilon) + b_shift;\n";
+                    ss << "            }\n";
+                    ss << "            v = gfx_conv_apply_activation(v, p);\n";
+                    ss << "            uint out_idx = ((n * GFX_CONV_C_OUT + co) * GFX_CONV_OUT_H + oh) * GFX_CONV_OUT_W + (ow_base + "
+                       << px << "u);\n";
+                    ss << "            out[out_idx] = static_cast<" << output_scalar << ">(v);\n";
+                    ss << "        }\n";
+                }
+            }
+            ss << "    }\n";
+        }
+        ss << "}\n";
+        return ss.str();
+    }
 
     ss << "kernel void conv2d_kernel(\n";
     ss << "  device const " << input_scalar << "* in0   [[buffer(0)]],\n";

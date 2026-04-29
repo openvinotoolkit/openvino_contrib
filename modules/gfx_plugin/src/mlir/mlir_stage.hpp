@@ -75,7 +75,7 @@ protected:
     virtual std::shared_ptr<ICompiledKernel> compile_kernel(const KernelSource& source,
                                                             std::string* log) = 0;
     virtual bool is_vulkan_backend() const { return false; }
-    virtual bool prefer_specialized_concat_execution() const { return false; }
+    virtual bool prefer_specialized_concat_execution() const { return true; }
     virtual bool should_skip_generic_kernel_compile(const GfxStageOptimizationPlan& /*plan*/) const { return false; }
     virtual void configure_runtime_matmul_kernel_source(KernelSource& /*source*/,
                                                         const MatMulCodegenDesc& /*desc*/) const {}
@@ -120,6 +120,10 @@ protected:
     uint32_t m_matmul_reduction_threads = 1;
     uint32_t m_compressed_matmul_output_block = 1;
     uint32_t m_compressed_matmul_n = 0;
+    uint32_t m_conv_output_channels_per_thread = 1;
+    uint32_t m_conv_output_width_per_thread = 1;
+    ov::element::Type m_conv_weight_storage_type = ov::element::dynamic;
+    bool m_conv_weights_packed_oc4 = false;
     uint32_t m_rms_reduction_threads = 1;
     uint32_t m_rms_hidden = 0;
     bool m_matmul_safe_retry_attempted = false;

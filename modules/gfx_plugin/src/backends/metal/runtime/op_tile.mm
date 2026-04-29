@@ -92,8 +92,11 @@ void MetalTileOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
 
     MetalTensor& dst = require_output();
     ov::Shape in_shape = !src->shape.empty() ? src->shape : ov::Shape{};
-    if (in_shape.empty() && m_node->get_input_partial_shape(0).is_static()) {
-        in_shape = m_node->get_input_shape(0);
+    if (m_node->get_input_partial_shape(0).is_static()) {
+        const auto expected_shape = m_node->get_input_shape(0);
+        if (in_shape.empty() || in_shape.size() != expected_shape.size()) {
+            in_shape = expected_shape;
+        }
     }
     OPENVINO_ASSERT(!in_shape.empty(), "Tile: input shape unknown");
     ov::Shape out_shape = !dst.shape.empty() ? dst.shape : output_shape();
@@ -115,7 +118,7 @@ void MetalTileOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     const size_t in_bytes = m_element_type.size() * ov::shape_size(in_shape);
     OPENVINO_ASSERT(src->buf.size >= in_bytes, "Tile: input buffer too small");
     const size_t bytes = m_element_type.size() * static_cast<size_t>(m_num_elems);
-    if (!dst.buf.valid() || dst.buf.size < bytes) {
+    if (!dst.buf.valid() || dst.buf.size < bytes || same_gpu_allocation(dst.buf, src->buf)) {
         dst.buf = allocate_temp_buffer(bytes, m_element_type, /*persistent=*/false, dst.prefer_private);
     }
     dst.expected_type = m_element_type;

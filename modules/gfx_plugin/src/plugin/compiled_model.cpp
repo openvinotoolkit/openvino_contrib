@@ -487,10 +487,34 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
             const size_t primary_idx = attention_group ? group.node_indices.back()
                                                        : group.node_indices.front();
             fusion_primary[primary_idx] = &group;
+            auto input_activation_has_exclusive_consumer = [&]() {
+                if (group.kind != "EltwiseInputActivation" ||
+                    group.node_indices.size() < 2 ||
+                    primary_idx >= ordered_ops.size()) {
+                    return false;
+                }
+                const size_t act_idx = group.node_indices[1];
+                if (act_idx >= ordered_ops.size()) {
+                    return false;
+                }
+                const auto& act_node = ordered_ops[act_idx];
+                if (!act_node || act_node->get_output_size() != 1 ||
+                    model_outputs.count(act_node.get()) != 0) {
+                    return false;
+                }
+                const auto& targets = act_node->output(0).get_target_inputs();
+                if (targets.size() != 1) {
+                    return false;
+                }
+                const auto& target = *targets.begin();
+                return target.get_node() == ordered_ops[primary_idx].get() &&
+                       target.get_index() == group.input_activation_input;
+            };
             const bool pre_fusion_supported = [&]() {
                 if (group.kind != "EltwiseInputActivation" ||
                     !group.input_activation.has_value() ||
-                    primary_idx >= ordered_ops.size()) {
+                    primary_idx >= ordered_ops.size() ||
+                    !input_activation_has_exclusive_consumer()) {
                     return false;
                 }
                 auto probe_stage = backend_state->create_stage(ordered_ops[primary_idx]);
@@ -571,6 +595,33 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
         for (size_t oi = 0; oi < stage_desc.outputs.size() && oi < flags.size(); ++oi) {
             stage_desc.outputs[oi].is_model_output = stage_desc.outputs[oi].is_model_output || flags[oi];
         }
+    };
+    auto append_output_alias = [](PipelineStageDesc& stage_desc,
+                                  const std::shared_ptr<const ov::Node>& source_node,
+                                  size_t source_port,
+                                  size_t output_port) {
+        if (!source_node || output_port >= stage_desc.outputs.size()) {
+            return;
+        }
+        const auto duplicate = std::any_of(stage_desc.output_aliases.begin(),
+                                           stage_desc.output_aliases.end(),
+                                           [&](const PipelineStageDesc::OutputAlias& alias) {
+                                               return alias.node.get() == source_node.get() &&
+                                                      alias.source_port == source_port &&
+                                                      alias.output_port == output_port;
+                                           });
+        if (!duplicate) {
+            stage_desc.output_aliases.push_back({source_node, source_port, output_port});
+        }
+    };
+    auto fusion_requires_bias_payload = [](const std::string& kind) {
+        return kind == "ConvBias" || kind == "ConvBiasActivation" ||
+               kind == "EltwiseBias" || kind == "EltwiseBiasActivation" ||
+               kind == "MatMulBias" || kind == "MatMulBiasActivation";
+    };
+    auto fusion_requires_batchnorm_payload = [](const std::string& kind) {
+        return kind == "ConvBatchNorm" || kind == "ConvBatchNormAct" ||
+               kind == "ConvScale" || kind == "ConvScaleActivation";
     };
 
     std::unordered_map<const ov::Node*, std::unordered_map<size_t, GfxInputTransform>> absorbed_input_transforms;
@@ -886,25 +937,56 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
         if (f_it2 != fusion_primary.end() && f_it2->second) {
             const auto* group = f_it2->second;
             auto& stage = m_pipeline[idx];
-            auto mark_fused = [&](size_t fused_idx) {
+            auto mark_fused = [&](size_t fused_idx, bool aliases_stage_output) -> bool {
                 if (fused_idx >= ordered_ops.size()) {
-                    return;
+                    return false;
                 }
                 fused_indices.insert(fused_idx);
                 const auto& fused_node = ordered_ops[fused_idx];
                 m_node_to_stage[fused_node.get()] = idx;
-                merge_model_outputs(stage, fused_node.get());
+                if (aliases_stage_output && fused_node->get_output_size() == 1) {
+                    merge_model_outputs(stage, fused_node.get());
+                    append_output_alias(stage, fused_node, 0, 0);
+                }
+                return true;
             };
 
-            auto mark_fused_tail = [&](size_t start_idx) {
+            auto mark_fused_tail = [&](size_t start_idx) -> bool {
                 for (size_t i = start_idx; i < group->node_indices.size(); ++i) {
-                    mark_fused(group->node_indices[i]);
+                    const bool aliases_stage_output = (i + 1 == group->node_indices.size());
+                    if (!mark_fused(group->node_indices[i], aliases_stage_output)) {
+                        return false;
+                    }
                 }
+                return true;
             };
             if (group->input_activation.has_value()) {
                 const size_t input_idx = group->input_activation_input;
                 bool input_activation_ok = false;
-                if (group->node_indices.size() > 1 &&
+                const bool input_activation_exclusive = [&]() {
+                    if (group->node_indices.size() <= 1) {
+                        return false;
+                    }
+                    const size_t act_idx = group->node_indices[1];
+                    if (act_idx >= ordered_ops.size()) {
+                        return false;
+                    }
+                    const auto& act_node = ordered_ops[act_idx];
+                    if (!act_node || act_node->get_output_size() != 1 ||
+                        model_outputs.count(act_node.get()) != 0) {
+                        return false;
+                    }
+                    const auto& targets = act_node->output(0).get_target_inputs();
+                    if (targets.size() != 1) {
+                        return false;
+                    }
+                    const auto& target = *targets.begin();
+                    return stage.node &&
+                           target.get_node() == stage.node.get() &&
+                           target.get_index() == input_idx;
+                }();
+                if (input_activation_exclusive &&
+                    group->node_indices.size() > 1 &&
                     input_idx < stage.inputs.size() &&
                     stage.stage->fuse_input_activation(input_idx,
                                                        *group->input_activation,
@@ -916,8 +998,7 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
                             act_node->get_input_size() == 1) {
                             stage.inputs[input_idx].node = act_node->input_value(0).get_node_shared_ptr();
                             stage.inputs[input_idx].port = act_node->input_value(0).get_index();
-                            mark_fused(act_idx);
-                            input_activation_ok = true;
+                            input_activation_ok = mark_fused(act_idx, false);
                         }
                     }
                 }
@@ -928,12 +1009,19 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
             }
             size_t next_post_op_idx = 1;
             bool post_ops_ok = true;
+            if (fusion_requires_batchnorm_payload(group->kind) && !group->batchnorm.has_value()) {
+                post_ops_ok = false;
+            }
+            if (fusion_requires_bias_payload(group->kind) && !group->bias.has_value()) {
+                post_ops_ok = false;
+            }
+            std::vector<size_t> fused_post_ops;
             if (group->batchnorm.has_value()) {
                 if (group->node_indices.size() <= next_post_op_idx ||
                     !stage.stage->fuse_batchnorm(*group->batchnorm)) {
                     post_ops_ok = false;
                 } else {
-                    mark_fused(group->node_indices[next_post_op_idx]);
+                    fused_post_ops.push_back(group->node_indices[next_post_op_idx]);
                     ++next_post_op_idx;
                 }
             }
@@ -942,15 +1030,21 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace* compile_trace) {
                     !stage.stage->fuse_bias(*group->bias)) {
                     post_ops_ok = false;
                 } else {
-                    mark_fused(group->node_indices[next_post_op_idx]);
+                    fused_post_ops.push_back(group->node_indices[next_post_op_idx]);
                     ++next_post_op_idx;
                 }
             }
+            bool activation_fused = false;
             if (post_ops_ok && group->activation.has_value() &&
                 group->node_indices.size() > next_post_op_idx) {
                 if (stage.stage->fuse_activation(*group->activation, group->activation_alpha)) {
-                    mark_fused_tail(next_post_op_idx);
+                    activation_fused = mark_fused_tail(next_post_op_idx);
+                    post_ops_ok = activation_fused;
                 }
+            }
+            for (size_t i = 0; i < fused_post_ops.size(); ++i) {
+                const bool aliases_stage_output = !activation_fused && (i + 1 == fused_post_ops.size());
+                post_ops_ok = mark_fused(fused_post_ops[i], aliases_stage_output) && post_ops_ok;
             }
         }
     }

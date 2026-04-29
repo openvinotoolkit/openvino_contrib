@@ -17,7 +17,7 @@ DEFAULTS = {
     "macos_build": "/Users/anesterov/repos/openvino_contrib/build-gfx-plugin-macos",
     "android_build": "/Users/anesterov/repos/openvino_contrib/build-gfx-plugin-android",
     "rpi_build": "/Users/anesterov/repos/openvino_contrib/build-gfx-plugin-rpi",
-    "model": "/Users/anesterov/repos/openvino_contrib/yolo12n_ir/yolov12n.xml",
+    "model": "/Users/anesterov/repos/openvino_contrib/yolo26x_ir/yolo26x.xml",
     "android_dir": "/data/local/tmp/openvino_gfx_android",
     "rpi_dir": "/home/anesterov/gfx_eval",
 }
@@ -148,7 +148,7 @@ def build_plan(platform: str, args: argparse.Namespace) -> Dict[str, object]:
                         f"cd {remote_dir} && "
                         f"OV_GFX_PROFILE_TRACE=perfetto OV_GFX_PROFILE_TRACE_FILE={remote_dir}/gfx-trace-android.json "
                         f"GFX_PLUGIN_PATH={plugin_path} LD_LIBRARY_PATH={remote_dir} "
-                        f"./benchmark_app -m {args.remote_model or f'{remote_dir}/yolov12n.xml'} -d GFX -pc -niter 10"
+                        f"./benchmark_app -m {args.remote_model or f'{remote_dir}/yolo26x.xml'} -d GFX -pc -niter 10"
                     )
                 ),
                 "validation_enable": None if not package else "\n".join([
@@ -187,16 +187,16 @@ def build_plan(platform: str, args: argparse.Namespace) -> Dict[str, object]:
             "benchmark": "\n".join([
                 f"cd {shlex.quote(remote_dir)}",
                 f"LD_LIBRARY_PATH={shlex.quote(remote_dir + '/libs/Release')}:{shlex.quote(remote_dir)} "
-                + shell_join([benchmark, "-m", args.remote_model or f"{remote_dir}/yolov12n.xml", "-d", "GFX", "-pc", "-niter", "10"]),
+                + shell_join([benchmark, "-m", args.remote_model or f"{remote_dir}/yolo26x.xml", "-d", "GFX", "-pc", "-niter", "10"]),
             ]),
             "perf_stat": shell_join([
                 "perf", "stat", "-e", "cycles,instructions,cache-misses,branch-misses", "--",
-                benchmark, "-m", args.remote_model or f"{remote_dir}/yolov12n.xml", "-d", "GFX", "-pc", "-niter", "10"
+                benchmark, "-m", args.remote_model or f"{remote_dir}/yolo26x.xml", "-d", "GFX", "-pc", "-niter", "10"
             ]),
             "perf_record": "\n".join([
                 shell_join([
                     "perf", "record", "-g", "--",
-                    benchmark, "-m", args.remote_model or f"{remote_dir}/yolov12n.xml", "-d", "GFX", "-pc", "-niter", "10"
+                    benchmark, "-m", args.remote_model or f"{remote_dir}/yolo26x.xml", "-d", "GFX", "-pc", "-niter", "10"
                 ]),
                 "perf report",
             ]),

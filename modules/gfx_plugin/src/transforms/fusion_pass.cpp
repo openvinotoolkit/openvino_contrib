@@ -20,6 +20,7 @@
 #include "mlir/mlir_support.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
+#include "openvino/core/validation_util.hpp"
 #include "openvino/core/type/float16.hpp"
 #include "transforms/gfx_llm_ops.hpp"
 #include "openvino/op/add.hpp"
@@ -82,12 +83,11 @@ bool extract_bias_params(const std::shared_ptr<const ov::Node>& node, BiasParams
         return false;
     }
 
-    std::shared_ptr<const ov::op::v0::Constant> bias_const;
-    if (auto c = std::dynamic_pointer_cast<const ov::op::v0::Constant>(add->get_input_node_shared_ptr(0))) {
-        bias_const = c;
-    } else if (auto c = std::dynamic_pointer_cast<const ov::op::v0::Constant>(add->get_input_node_shared_ptr(1))) {
-        bias_const = c;
-    } else {
+    auto bias_const = ov::util::get_constant_from_source(add->input_value(0));
+    if (!bias_const) {
+        bias_const = ov::util::get_constant_from_source(add->input_value(1));
+    }
+    if (!bias_const) {
         return false;
     }
 
@@ -163,11 +163,11 @@ bool extract_scale_as_batchnorm_params(const std::shared_ptr<const ov::Node>& sc
         return false;
     }
 
-    std::shared_ptr<const ov::op::v0::Constant> scale_const;
+    std::shared_ptr<ov::op::v0::Constant> scale_const;
     if (mul->get_input_node_shared_ptr(0) == producer_node) {
-        scale_const = std::dynamic_pointer_cast<const ov::op::v0::Constant>(mul->get_input_node_shared_ptr(1));
+        scale_const = ov::util::get_constant_from_source(mul->input_value(1));
     } else if (mul->get_input_node_shared_ptr(1) == producer_node) {
-        scale_const = std::dynamic_pointer_cast<const ov::op::v0::Constant>(mul->get_input_node_shared_ptr(0));
+        scale_const = ov::util::get_constant_from_source(mul->input_value(0));
     } else {
         return false;
     }

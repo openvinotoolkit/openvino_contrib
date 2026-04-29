@@ -29,6 +29,7 @@ Recent runtime work extends this model in two directions:
 - infer requests can also keep per-request stateful variable buffers for `ReadValue` / `Assign` style subgraphs instead of treating them as ordinary stateless stage edges
 - output allocation can now reuse workspace-managed intermediate slots across stages based on liveness instead of always keeping one dedicated buffer per stage output
 - shared prepared-binding caches can now grow beyond their initial capacity when a workload introduces many distinct compatible binding tables
+- infer-time stage profiling can now attach lightweight `bytes_in`, `bytes_out`, `macs_est`, and `flops_est` estimates to `stage_execute` segments
 
 This is not the old monolithic `MlirBackend` architecture that earlier design notes experimented with.
 
@@ -81,6 +82,7 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 - optional fusion of compatible stages through `FusedSequenceStage`
 - absorption of selected transpose inputs into downstream stages through `GfxInputTransform`
 - output-source tracking for fused or rewritten stages so public outputs and direct stateful-assign consumers stay mapped to the original OpenVINO node/port
+- output-alias tracking when one runtime stage materializes several graph outputs through the same underlying buffer
 
 ### InferRequest
 `include/openvino/gfx_plugin/infer_request.hpp` plus backend-specific implementation files own:
@@ -123,6 +125,7 @@ The runtime also has explicit reuse layers:
 Profiling now also has two layers:
 - compile-time tracing stored as a JSON `compile` section inside `GFX_PROFILING_REPORT`
 - infer-time node, segment, transfer, allocation, and counter reporting through `gfx_profiling_report.*`
+- infer `stage_execute` segments now also carry lightweight data-movement and compute estimates used by the extended roofline-style summaries
 
 Backend-neutral planning now consumes device info exported by the active buffer manager:
 - Metal and Vulkan buffer managers report subgroup width, workgroup limits, and device family through `GpuExecutionDeviceInfo`
@@ -190,6 +193,8 @@ Current lowering/runtime special cases:
 - Metal can fuse selected LLM causal-mask attention graphs into a native `ScaledDotProductAttention` variant that consumes `attention_mask` and `cache_position`; Vulkan still rejects that native path today
 - compatible compressed `MatMul` nodes that share the same data input can be regrouped into one horizontally fused `MatMul` followed by `VariadicSplit`
 - compressed `MatMul` stage compilation can repack concatenated quantized weight parts and scale blocks into backend const buffers before codegen
+- Metal Conv2D and MaxPool codegen now honor dilation metadata, and Conv2D dispatch planning can block output channels and output width per thread for selected float-like cases
+- `ShapeOf`, `TopK`, `Tile`, and unary stage handling now have stricter runtime/codegen paths around output typing, alias safety, and ABI metadata
 - `ScatterUpdate` now has a dedicated MLIR lowering path instead of falling back to the older scatter-family builders
 - Slice lowering now prefers `tensor.extract_slice`; generic slice metadata extraction still accepts the older generic form when needed
 - dynamic-shape support now covers `ShapeOf` compile/query flow and query-time acceptance for selected data-movement ops such as `Concat`, `Broadcast`, `Select`, `StridedSlice`, and `Range`
@@ -345,7 +350,7 @@ Useful environment variables from the current codebase:
 - `OV_GFX_DUMP_SPIRV_BINDINGS`: dump Vulkan binding information
 - `OV_GFX_DUMP_SPIRV_MLIR`, `OV_GFX_DUMP_SPIRV_MLIR_FILTER`, `OV_GFX_DUMP_MLIR_PRE_SPIRV`: Vulkan/MLIR dump controls
 
-For output-quality checks against a reference backend, use `ov_gfx_compare_runner`. It is an accuracy-only helper: it registers local plugin builds, compares tensor diffs, can run per-op windows or full-graph per-op output scans, and can also emit `GFX`-only output summaries for quick debugging. For performance numbers, use `benchmark_app` instead of the compare tool.
+For output-quality checks against a reference backend, use `ov_gfx_compare_runner`. It is an accuracy-only helper: it registers local plugin builds, compares tensor diffs, can run per-op windows or full-graph per-op output scans, and can also emit `GFX`-only output summaries for quick debugging. Diff reports now identify outputs by `friendly_name:port` and print the worst mismatch index plus reference and GFX values. For performance numbers, use `benchmark_app` instead of the compare tool.
 
 For profiling-driven triage, use `ov_gfx_microbench` plus the local references in `docs/MICROBENCH_SCHEMA.md` and `docs/PROFILING_RUNBOOK.md`.
 

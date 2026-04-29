@@ -190,6 +190,7 @@ std::vector<InferStage> build_infer_pipeline(const std::vector<PipelineStageDesc
         stage.stage = desc.stage->clone();
         OPENVINO_ASSERT(stage.stage, "GFX: failed to clone stage for ", desc.node->get_friendly_name());
         stage.inputs = desc.inputs;
+        stage.output_aliases = desc.output_aliases;
         stage.outputs.reserve(desc.outputs.size());
         stage.output_is_model_output.reserve(desc.outputs.size());
         stage.output_sources.reserve(desc.outputs.size());
@@ -345,6 +346,12 @@ void prepare_reusable_execution_plan(
             } else if (auto pit = param_map.find(link.node.get()); pit != param_map.end()) {
                 ref.kind = PreparedStageInputKind::Parameter;
                 ref.index = pit->second;
+            } else if (size_t producer_idx = 0, producer_output = 0;
+                       find_pipeline_output_ref(pipeline, link.node.get(), link.port, producer_idx, producer_output)) {
+                ref.kind = PreparedStageInputKind::StageOutput;
+                ref.index = producer_idx;
+                ref.port = producer_output;
+                resolved = pipeline[producer_idx].outputs[producer_output].get();
             } else if (auto it = node_map.find(link.node.get()); it != node_map.end()) {
                 ref.kind = PreparedStageInputKind::StageOutput;
                 ref.index = it->second;
@@ -507,7 +514,18 @@ GpuTensor* find_pipeline_output(std::vector<InferStage>& pipeline,
     }
     for (auto& stage : pipeline) {
         if (!stage.node || stage.node.get() != node) {
-            continue;
+            bool matched_alias = false;
+            for (const auto& alias : stage.output_aliases) {
+                if (alias.node.get() == node && alias.source_port == port) {
+                    OPENVINO_ASSERT(alias.output_port < stage.outputs.size(),
+                                    error_prefix ? error_prefix : "GFX",
+                                    ": output alias port out of range");
+                    return stage.outputs[alias.output_port].get();
+                }
+            }
+            if (!matched_alias) {
+                continue;
+            }
         }
         OPENVINO_ASSERT(port < stage.outputs.size(),
                         error_prefix ? error_prefix : "GFX",

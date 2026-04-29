@@ -102,8 +102,14 @@ MetalConvOp::MetalConvOp(const std::shared_ptr<const ov::op::v1::Convolution>& n
     m_desc.padLeft = static_cast<uint32_t>(pads_begin.at(1));
     m_desc.padBottom = static_cast<uint32_t>(pads_end.at(0));
     m_desc.padRight = static_cast<uint32_t>(pads_end.at(1));
-    m_desc.outH = 0;  // will be derived by codegen if zero
-    m_desc.outW = 0;
+    if (m_node->get_output_partial_shape(0).is_static()) {
+        const auto& out_shape = m_node->get_output_shape(0);
+        OPENVINO_ASSERT(out_shape.size() == 4, "MetalConvOp: expected rank-4 output shape");
+        m_desc.outH = static_cast<uint32_t>(out_shape.at(2));
+        m_desc.outW = static_cast<uint32_t>(out_shape.at(3));
+    }
+    m_desc.output_channels_per_thread = gfx_conv2d_output_channel_block(m_desc);
+    m_desc.output_width_per_thread = gfx_conv2d_output_width_block(m_desc);
     m_desc.has_bias = false;
     m_desc.has_bn = false;
     m_desc.has_activation = false;
@@ -424,10 +430,12 @@ void MetalConvOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     params.epsilon = m_desc.epsilon;
     params.clamp_min = m_desc.clamp_min;
     params.clamp_max = m_desc.clamp_max;
-    const uint64_t total_u64 = static_cast<uint64_t>(params.N) *
-                               static_cast<uint64_t>(params.outH) *
-                               static_cast<uint64_t>(params.outW) *
-                               static_cast<uint64_t>(params.C_out);
+    Conv2DCodegenDesc dispatch_desc = m_desc;
+    dispatch_desc.outH = params.outH;
+    dispatch_desc.outW = params.outW;
+    dispatch_desc.output_channels_per_thread = m_desc.output_channels_per_thread;
+    dispatch_desc.output_width_per_thread = m_desc.output_width_per_thread;
+    const uint64_t total_u64 = gfx_conv2d_dispatch_items(dispatch_desc);
     OPENVINO_ASSERT(total_u64 > 0, "MetalConvOp: computed zero elements");
     // Guard against runaway grids that can wedge the GPU in case of bad shapes.
     constexpr uint64_t kMaxGrid = 1ULL << 31;  // ~2 billion threads

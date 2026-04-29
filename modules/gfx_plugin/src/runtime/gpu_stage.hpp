@@ -28,6 +28,7 @@ struct GpuStageOutputLifetime {
     size_t produced_at = npos;
     size_t last_used_at = npos;
     bool requires_buffer = true;
+    size_t storage_source_output = npos;
 
     bool valid() const {
         return produced_at != npos && last_used_at != npos;

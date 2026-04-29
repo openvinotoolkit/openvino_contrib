@@ -85,6 +85,8 @@ Add or update tests when you change:
 - infer submission thresholds, submission ordering, or command-buffer lifecycle
 - immutable const-cache behavior or prepared-binding reuse
 - output-resolution planning, passthrough-output handling, or reusable host-output allocation
+- stage-output aliasing, fused-stage lifetime reuse, or source-node-aware output routing
+- stage-level profiling payloads such as `bytes_in`, `bytes_out`, `macs_est`, or `flops_est`
 
 ## Practical Strategy
 - run the narrowest relevant gtest filter first
@@ -105,6 +107,7 @@ If you change MLIR lowering, prefer a unit test that inspects the emitted IR for
 - Vulkan tests depend on Vulkan being enabled and available in the build
 - `ov_gfx_compare_runner` is useful for numeric diffs and per-op narrowing when a failure is hard to isolate from the full suite; it also supports `--per-op-all`, `--reference-device`, `--reference-plugin`, and `--gfx-only`
 - `ov_gfx_compare_runner` also supports boolean tensors, `--single-op-output`, `--tinyllama-prompt-inputs`, and an extra `Select` mismatch probe for harder data-dependent failures
+- `ov_gfx_compare_runner` now prints outputs as `friendly_name:port` and reports `max_index`, reference value, and GFX value for the worst mismatch
 - keep `ov_gfx_compare_runner` accuracy-only and use `benchmark_app` for perf
 - use `ov_gfx_microbench` for `MB0` to `MB3`, calibration artifacts, and profiling triage rather than for acceptance perf numbers
 - for the full profiling workflow and external tracing commands, use `PROFILING_RUNBOOK.md`

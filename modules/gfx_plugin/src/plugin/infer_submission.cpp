@@ -9,10 +9,146 @@
 #include <limits>
 #include <sstream>
 
+#include "openvino/core/shape_util.hpp"
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/group_conv.hpp"
+#include "openvino/op/matmul.hpp"
 #include "runtime/gfx_logger.hpp"
 
 namespace ov {
 namespace gfx_plugin {
+
+namespace {
+
+struct StageProfileEstimate {
+    uint64_t bytes_in = 0;
+    uint64_t bytes_out = 0;
+    uint64_t macs = 0;
+    uint64_t flops = 0;
+};
+
+uint64_t safe_shape_size_u64(const ov::Shape& shape) {
+    return static_cast<uint64_t>(ov::shape_size(shape));
+}
+
+void add_saturating(uint64_t& dst, uint64_t value) {
+    if (std::numeric_limits<uint64_t>::max() - dst < value) {
+        dst = std::numeric_limits<uint64_t>::max();
+        return;
+    }
+    dst += value;
+}
+
+uint64_t mul_saturating(uint64_t lhs, uint64_t rhs) {
+    if (lhs == 0 || rhs == 0) {
+        return 0;
+    }
+    if (lhs > std::numeric_limits<uint64_t>::max() / rhs) {
+        return std::numeric_limits<uint64_t>::max();
+    }
+    return lhs * rhs;
+}
+
+uint64_t tensor_bytes_estimate(const GpuTensor* tensor) {
+    if (!tensor) {
+        return 0;
+    }
+    if (tensor->buf.valid() && tensor->buf.size != 0) {
+        return static_cast<uint64_t>(tensor->buf.size);
+    }
+    if (tensor->shape.empty() || tensor->expected_type == ov::element::dynamic ||
+        tensor->expected_type.bitwidth() == 0) {
+        return 0;
+    }
+    return mul_saturating(safe_shape_size_u64(tensor->shape),
+                          static_cast<uint64_t>(tensor->expected_type.size()));
+}
+
+uint64_t output_bytes_estimate(const InferStage& stage) {
+    uint64_t bytes = 0;
+    for (const auto& output : stage.outputs) {
+        add_saturating(bytes, tensor_bytes_estimate(output.get()));
+    }
+    return bytes;
+}
+
+uint64_t input_bytes_estimate(const std::vector<GpuTensor*>& inputs) {
+    uint64_t bytes = 0;
+    for (const auto* input : inputs) {
+        add_saturating(bytes, tensor_bytes_estimate(input));
+    }
+    return bytes;
+}
+
+uint64_t conv_macs_estimate(const ov::Node& node) {
+    try {
+        if (auto conv = dynamic_cast<const ov::op::v1::Convolution*>(&node)) {
+            const auto weights = conv->get_input_shape(1);
+            const auto output = conv->get_output_shape(0);
+            if (weights.size() != 4 || output.size() != 4) {
+                return 0;
+            }
+            const uint64_t output_elems = safe_shape_size_u64(output);
+            const uint64_t reduction =
+                mul_saturating(static_cast<uint64_t>(weights[1]),
+                               mul_saturating(static_cast<uint64_t>(weights[2]),
+                                              static_cast<uint64_t>(weights[3])));
+            return mul_saturating(output_elems, reduction);
+        }
+        if (auto group_conv = dynamic_cast<const ov::op::v1::GroupConvolution*>(&node)) {
+            const auto weights = group_conv->get_input_shape(1);
+            const auto output = group_conv->get_output_shape(0);
+            if (weights.size() != 5 || output.size() != 4) {
+                return 0;
+            }
+            const uint64_t output_elems = safe_shape_size_u64(output);
+            const uint64_t reduction =
+                mul_saturating(static_cast<uint64_t>(weights[2]),
+                               mul_saturating(static_cast<uint64_t>(weights[3]),
+                                              static_cast<uint64_t>(weights[4])));
+            return mul_saturating(output_elems, reduction);
+        }
+    } catch (const std::exception&) {
+        return 0;
+    }
+    return 0;
+}
+
+uint64_t matmul_macs_estimate(const ov::Node& node) {
+    try {
+        auto matmul = dynamic_cast<const ov::op::v0::MatMul*>(&node);
+        if (!matmul) {
+            return 0;
+        }
+        const auto a = matmul->get_input_shape(0);
+        const auto b = matmul->get_input_shape(1);
+        const auto output = matmul->get_output_shape(0);
+        if (a.size() < 2 || b.size() < 2 || output.size() < 2) {
+            return 0;
+        }
+        const auto k = matmul->get_transpose_a() ? a[a.size() - 2] : a[a.size() - 1];
+        return mul_saturating(safe_shape_size_u64(output), static_cast<uint64_t>(k));
+    } catch (const std::exception&) {
+        return 0;
+    }
+}
+
+StageProfileEstimate estimate_stage_profile(const InferStage& stage,
+                                            const std::vector<GpuTensor*>& resolved_inputs) {
+    StageProfileEstimate estimate{};
+    estimate.bytes_in = input_bytes_estimate(resolved_inputs);
+    estimate.bytes_out = output_bytes_estimate(stage);
+    if (stage.node) {
+        estimate.macs = conv_macs_estimate(*stage.node);
+        if (estimate.macs == 0) {
+            estimate.macs = matmul_macs_estimate(*stage.node);
+        }
+    }
+    estimate.flops = mul_saturating(estimate.macs, 2);
+    return estimate;
+}
+
+}  // namespace
 
 InferSubmissionTuning select_infer_submission_tuning(const InferSubmissionTuningCaps& caps, size_t stage_count) {
     InferSubmissionTuning tuning{};
@@ -277,6 +413,7 @@ void execute_pipeline_with_submission(
                 if (profiler) {
                     const auto stage_cpu_us = std::chrono::duration_cast<std::chrono::microseconds>(
                         std::chrono::steady_clock::now() - stage_start);
+                    const auto estimate = estimate_stage_profile(stage, resolved);
                     const auto* gpu_stage = stage.stage.get();
                     std::string segment_name = gpu_stage ? gpu_stage->type() : std::string{"unknown"};
                     segment_name += ":";
@@ -286,10 +423,10 @@ void execute_pipeline_with_submission(
                                              stage_cpu_us,
                                              0,
                                              0,
-                                             0,
-                                             0,
-                                             0,
-                                             0,
+                                             estimate.bytes_in,
+                                             estimate.bytes_out,
+                                             estimate.macs,
+                                             estimate.flops,
                                              -1,
                                              0,
                                              reinterpret_cast<uint64_t>(command_buffer));
@@ -301,6 +438,7 @@ void execute_pipeline_with_submission(
                 if (profiler) {
                     const auto stage_cpu_us = std::chrono::duration_cast<std::chrono::microseconds>(
                         std::chrono::steady_clock::now() - stage_start);
+                    const auto estimate = estimate_stage_profile(stage, resolved);
                     const auto* gpu_stage = stage.stage.get();
                     std::string segment_name = gpu_stage ? gpu_stage->type() : std::string{"unknown"};
                     segment_name += ":";
@@ -310,10 +448,10 @@ void execute_pipeline_with_submission(
                                              stage_cpu_us,
                                              0,
                                              0,
-                                             0,
-                                             0,
-                                             0,
-                                             0,
+                                             estimate.bytes_in,
+                                             estimate.bytes_out,
+                                             estimate.macs,
+                                             estimate.flops,
                                              -1,
                                              0,
                                              reinterpret_cast<uint64_t>(command_buffer));

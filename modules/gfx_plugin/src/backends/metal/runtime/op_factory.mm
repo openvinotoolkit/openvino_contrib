@@ -990,12 +990,12 @@ void register_ops_once() {
     });
 
     r.push_back([](const std::shared_ptr<const ov::Node>& node, void* device, void* queue) -> std::unique_ptr<MetalOp> {
-        auto mp = ov::as_type_ptr<const ov::op::v1::MaxPool>(node);
+        auto mp = ov::as_type_ptr<const ov::op::util::MaxPoolBase>(node);
         if (!mp)
             return nullptr;
         if (!is_static_shape(node->get_input_partial_shape(0)))
             return nullptr;
-        return std::make_unique<MetalMaxPoolOp>(mp, device, queue);
+        return std::make_unique<MetalMaxPoolOp>(node, device, queue);
     });
 
     r.push_back([](const std::shared_ptr<const ov::Node>& node, void* device, void* queue) -> std::unique_ptr<MetalOp> {

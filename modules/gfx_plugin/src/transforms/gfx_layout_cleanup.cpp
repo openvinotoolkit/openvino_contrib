@@ -4,8 +4,10 @@
 
 #include "transforms/gfx_layout_cleanup.hpp"
 
+#include <limits>
 #include <numeric>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 #include "openvino/core/graph_util.hpp"
@@ -409,7 +411,8 @@ bool fold_transpose_unary_transpose(const std::shared_ptr<ov::Node>& node) {
     return true;
 }
 
-bool deduplicate_transpose_reshape_branch(const std::shared_ptr<ov::Node>& node) {
+bool deduplicate_transpose_reshape_branch(const std::shared_ptr<ov::Node>& node,
+                                          const std::unordered_map<const ov::Node*, size_t>& op_order) {
     auto reshape = ov::as_type_ptr<ov::op::v1::Reshape>(node);
     if (!reshape || reshape->get_input_size() != 2 || reshape->get_output_size() != 1) {
         return false;
@@ -458,7 +461,13 @@ bool deduplicate_transpose_reshape_branch(const std::shared_ptr<ov::Node>& node)
         if (sibling_reshape->get_special_zero() != reshape->get_special_zero()) {
             continue;
         }
-        if (sibling_reshape->get_friendly_name() < canonical->get_friendly_name()) {
+        const auto sibling_order_it = op_order.find(sibling_reshape.get());
+        const auto canonical_order_it = op_order.find(canonical.get());
+        const size_t sibling_order = sibling_order_it == op_order.end() ? std::numeric_limits<size_t>::max()
+                                                                        : sibling_order_it->second;
+        const size_t canonical_order = canonical_order_it == op_order.end() ? std::numeric_limits<size_t>::max()
+                                                                            : canonical_order_it->second;
+        if (sibling_order < canonical_order) {
             canonical = sibling_reshape;
         }
     }
@@ -667,6 +676,11 @@ bool GfxLayoutCleanup::run_on_model(const std::shared_ptr<ov::Model>& model) {
             model->validate_nodes_and_infer_types();
             continue;
         }
+        std::unordered_map<const ov::Node*, size_t> op_order;
+        op_order.reserve(ordered_ops.size());
+        for (size_t i = 0; i < ordered_ops.size(); ++i) {
+            op_order.emplace(ordered_ops[i].get(), i);
+        }
         for (const auto& node : ordered_ops) {
             if (ov::as_type_ptr<ov::op::v0::Parameter>(node) ||
                 ov::as_type_ptr<ov::op::v0::Constant>(node) ||
@@ -675,7 +689,7 @@ bool GfxLayoutCleanup::run_on_model(const std::shared_ptr<ov::Model>& model) {
             }
             if (fold_transpose_softmax_transpose(node) ||
                 fold_transpose_unary_transpose(node) ||
-                deduplicate_transpose_reshape_branch(node) ||
+                deduplicate_transpose_reshape_branch(node, op_order) ||
                 eliminate_identity_transpose(node) ||
                 eliminate_noop_reshape(node) ||
                 eliminate_noop_squeeze_or_unsqueeze(node) || eliminate_single_input_concat(node) ||

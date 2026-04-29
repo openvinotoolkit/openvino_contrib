@@ -44,10 +44,7 @@ mlir::ModuleOp build_mlir_interpolate_from_model(const std::shared_ptr<const ov:
     auto in_shape = to_shape(interp->get_input_partial_shape(0));
     auto out_shape = to_shape(interp->get_output_partial_shape(0));
     auto elem_ty = to_mlir_type(interp->get_output_element_type(0), ctx);
-    auto make_float_attr = [&](double v) {
-        if (auto ft = mlir::dyn_cast<mlir::FloatType>(elem_ty)) {
-            return mlir::FloatAttr::get(ft, v);
-        }
+    auto make_coord_float_attr = [&](double v) {
         return mlir::FloatAttr::get(mlir::Float32Type::get(&ctx), v);
     };
 
@@ -176,10 +173,10 @@ mlir::ModuleOp build_mlir_interpolate_from_model(const std::shared_ptr<const ov:
 
     auto f32 = mlir::Float32Type::get(&ctx);
     auto scale_h = b.create<mlir::arith::ConstantOp>(
-                       loc, make_float_attr(static_cast<float>(H_in) / static_cast<float>(H_out)))
+                       loc, make_coord_float_attr(static_cast<float>(H_in) / static_cast<float>(H_out)))
                        .getResult();
     auto scale_w = b.create<mlir::arith::ConstantOp>(
-                       loc, make_float_attr(static_cast<float>(W_in) / static_cast<float>(W_out)))
+                       loc, make_coord_float_attr(static_cast<float>(W_in) / static_cast<float>(W_out)))
                        .getResult();
 
     auto loop = b.create<mlir::scf::ForOp>(loc, c0, c_total, c1, mlir::ValueRange{out_tensor});
@@ -203,10 +200,10 @@ mlir::ModuleOp build_mlir_interpolate_from_model(const std::shared_ptr<const ov:
 
         if (align_corners && H_out > 1) {
             auto h_scale = lb.create<mlir::arith::ConstantOp>(
-                loc, make_float_attr(static_cast<float>(H_in - 1) / static_cast<float>(H_out - 1))).getResult();
+                loc, make_coord_float_attr(static_cast<float>(H_in - 1) / static_cast<float>(H_out - 1))).getResult();
             fh = lb.create<mlir::arith::MulFOp>(loc, fh, h_scale).getResult();
         } else if (use_half_pixel) {
-            auto half = lb.create<mlir::arith::ConstantOp>(loc, make_float_attr(0.5f)).getResult();
+            auto half = lb.create<mlir::arith::ConstantOp>(loc, make_coord_float_attr(0.5f)).getResult();
             auto fh_add = lb.create<mlir::arith::AddFOp>(loc, fh, half).getResult();
             fh = lb.create<mlir::arith::MulFOp>(loc, fh_add, scale_h).getResult();
             fh = lb.create<mlir::arith::SubFOp>(loc, fh, half).getResult();
@@ -215,10 +212,10 @@ mlir::ModuleOp build_mlir_interpolate_from_model(const std::shared_ptr<const ov:
         }
         if (align_corners && W_out > 1) {
             auto w_scale = lb.create<mlir::arith::ConstantOp>(
-                loc, make_float_attr(static_cast<float>(W_in - 1) / static_cast<float>(W_out - 1))).getResult();
+                loc, make_coord_float_attr(static_cast<float>(W_in - 1) / static_cast<float>(W_out - 1))).getResult();
             fw = lb.create<mlir::arith::MulFOp>(loc, fw, w_scale).getResult();
         } else if (use_half_pixel) {
-            auto half = lb.create<mlir::arith::ConstantOp>(loc, make_float_attr(0.5f)).getResult();
+            auto half = lb.create<mlir::arith::ConstantOp>(loc, make_coord_float_attr(0.5f)).getResult();
             auto fw_add = lb.create<mlir::arith::AddFOp>(loc, fw, half).getResult();
             fw = lb.create<mlir::arith::MulFOp>(loc, fw_add, scale_w).getResult();
             fw = lb.create<mlir::arith::SubFOp>(loc, fw, half).getResult();
@@ -303,7 +300,7 @@ mlir::ModuleOp build_mlir_interpolate_from_model(const std::shared_ptr<const ov:
 
             auto dh = lb.create<mlir::arith::SubFOp>(loc, fh, h0f).getResult();
             auto dw = lb.create<mlir::arith::SubFOp>(loc, fw, w0f).getResult();
-            auto one = lb.create<mlir::arith::ConstantOp>(loc, make_float_attr(1.0f)).getResult();
+            auto one = lb.create<mlir::arith::ConstantOp>(loc, make_coord_float_attr(1.0f)).getResult();
             auto one_minus_dw = lb.create<mlir::arith::SubFOp>(loc, one, dw).getResult();
             auto one_minus_dh = lb.create<mlir::arith::SubFOp>(loc, one, dh).getResult();
             auto v0 = lb.create<mlir::arith::AddFOp>(loc,

@@ -540,7 +540,10 @@ DiffStats compare_model_outputs(ov::CompiledModel& ref_model,
             std::cout << "output[" << i << "]"
                       << " elements=" << stats.elements
                       << " max_abs_diff=" << std::setprecision(10) << stats.max_abs_diff
-                      << " max_rel_diff=" << stats.max_rel_diff << '\n';
+                      << " max_rel_diff=" << stats.max_rel_diff
+                      << " max_index=" << stats.max_index
+                      << " ref=" << stats.lhs_at_max
+                      << " gfx=" << stats.rhs_at_max << '\n';
         }
     }
     return total;
@@ -1153,9 +1156,9 @@ int main(int argc, char** argv) try {
 
         std::cout << "GFX_ONLY\n";
         for (const auto& output : model->outputs()) {
-            const auto tensor = gfx_req.get_tensor(output.get_any_name());
+            const auto tensor = gfx_req.get_tensor(output);
             const auto summary = summarize_tensor(tensor);
-            std::cout << output.get_any_name()
+            std::cout << output.get_node()->get_friendly_name() << ':' << output.get_index()
                       << " elements=" << summary.elements
                       << " finite=" << summary.finite_count
                       << " nan=" << summary.nan_count
@@ -1183,12 +1186,12 @@ int main(int argc, char** argv) try {
     double global_max_abs = 0.0;
     double global_max_rel = 0.0;
     for (const auto& output : model->outputs()) {
-        const auto ref_tensor = ref_req.get_tensor(output.get_any_name());
-        const auto gfx_tensor = gfx_req.get_tensor(output.get_any_name());
+        const auto ref_tensor = ref_req.get_tensor(output);
+        const auto gfx_tensor = gfx_req.get_tensor(output);
         const auto stats = compare_tensors(ref_tensor, gfx_tensor);
         global_max_abs = std::max(global_max_abs, stats.max_abs_diff);
         global_max_rel = std::max(global_max_rel, stats.max_rel_diff);
-        std::cout << output.get_any_name()
+        std::cout << output.get_node()->get_friendly_name() << ':' << output.get_index()
                   << " elements=" << stats.elements
                   << " max_abs_diff=" << std::setprecision(10) << stats.max_abs_diff
                   << " max_rel_diff=" << stats.max_rel_diff

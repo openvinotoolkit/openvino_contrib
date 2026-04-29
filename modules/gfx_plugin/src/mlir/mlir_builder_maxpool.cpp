@@ -21,9 +21,9 @@ mlir::ModuleOp build_mlir_maxpool_from_model(const std::shared_ptr<const ov::Mod
                                              mlir::MLIRContext& ctx) {
     ctx.loadDialect<mlir::func::FuncDialect, mlir::scf::SCFDialect, mlir::memref::MemRefDialect,
                     mlir::arith::ArithDialect>();
-    std::shared_ptr<const ov::op::v1::MaxPool> pool;
+    std::shared_ptr<const ov::op::util::MaxPoolBase> pool;
     for (const auto& node : model->get_ordered_ops()) {
-        if (auto p = ov::as_type_ptr<const ov::op::v1::MaxPool>(node)) { pool = p; break; }
+        if (auto p = ov::as_type_ptr<const ov::op::util::MaxPoolBase>(node)) { pool = p; break; }
     }
     OPENVINO_ASSERT(pool, "MaxPool builder: MaxPool op not found");
 
@@ -32,6 +32,12 @@ mlir::ModuleOp build_mlir_maxpool_from_model(const std::shared_ptr<const ov::Mod
     const auto strides = pool->get_strides();
     const auto pads_begin = pool->get_pads_begin();
     const auto kernel = pool->get_kernel();
+    ov::Strides dilations(kernel.size(), 1);
+    if (auto p = ov::as_type_ptr<const ov::op::v8::MaxPool>(pool)) {
+        dilations = p->get_dilations();
+    } else if (auto p = ov::as_type_ptr<const ov::op::v14::MaxPool>(pool)) {
+        dilations = p->get_dilations();
+    }
 
     auto to_elem_ty = [&](ov::element::Type et) -> mlir::Type {
         switch (et) {
@@ -72,8 +78,8 @@ mlir::ModuleOp build_mlir_maxpool_from_model(const std::shared_ptr<const ov::Mod
     auto kW = make_idx(kernel[1]);
     auto strideH = make_idx(strides[0]);
     auto strideW = make_idx(strides[1]);
-    auto dilH = make_idx(1);
-    auto dilW = make_idx(1);
+    auto dilH = make_idx(dilations[0]);
+    auto dilW = make_idx(dilations[1]);
     auto padTop = make_idx(pads_begin[0]);
     auto padLeft = make_idx(pads_begin[1]);
 

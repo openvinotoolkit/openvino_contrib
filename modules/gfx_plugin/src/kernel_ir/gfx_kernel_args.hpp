@@ -3,6 +3,7 @@
 //
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -132,9 +133,16 @@ inline std::vector<KernelArg> materialize_kernel_bytes_args(const std::vector<Ke
         OPENVINO_ASSERT(arg.byte_size > 0,
                         "GFX: bytes arg size is zero for stage ",
                         stage_name ? stage_name : "<unknown>");
-        // Keep bytes-arg materialization on a backend-neutral immutable namespace so
-        // equal payloads across different stages can reuse the same device buffer.
-        static const std::string key = "kernel-bytes-args";
+        const auto* bytes = static_cast<const uint8_t*>(arg.bytes);
+        uint64_t hash = 1469598103934665603ull;
+        for (size_t i = 0; i < arg.byte_size; ++i) {
+            hash ^= static_cast<uint64_t>(bytes[i]);
+            hash *= 1099511628211ull;
+        }
+        // Backend-neutral immutable namespace: equal payloads reuse a const buffer,
+        // different runtime parameter blocks never alias.
+        const std::string key = "kernel-bytes-args/" + std::to_string(arg.byte_size) + "/" +
+                                std::to_string(hash);
         GpuBuffer buf = buffer_manager.wrap_const(key, arg.bytes, arg.byte_size, ov::element::u8);
         OPENVINO_ASSERT(buf.valid(),
                         "GFX: failed to materialize bytes arg for stage ",

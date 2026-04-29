@@ -61,9 +61,27 @@ std::vector<size_t> extract_split_sizes(const std::shared_ptr<const ov::Node>& n
         auto lengths = lengths_const->cast_vector<int64_t>();
         std::vector<size_t> res;
         res.reserve(lengths.size());
-        for (auto v : lengths) {
-            OPENVINO_ASSERT(v >= 0, "VariadicSplit negative length not supported");
-            res.push_back(static_cast<size_t>(v));
+        const size_t axis_norm = axis_out >= 0 ? static_cast<size_t>(axis_out)
+                                               : static_cast<size_t>(axis_out + static_cast<int64_t>(input_shape.size()));
+        OPENVINO_ASSERT(axis_norm < input_shape.size(), "VariadicSplit axis out of range");
+        int64_t infer_index = -1;
+        size_t known_sum = 0;
+        for (size_t i = 0; i < lengths.size(); ++i) {
+            const int64_t v = lengths[i];
+            if (v < 0) {
+                OPENVINO_ASSERT(v == -1, "VariadicSplit only -1 negative length is supported");
+                OPENVINO_ASSERT(infer_index < 0, "VariadicSplit supports only one inferred -1 length");
+                infer_index = static_cast<int64_t>(i);
+                res.push_back(0);
+            } else {
+                known_sum += static_cast<size_t>(v);
+                res.push_back(static_cast<size_t>(v));
+            }
+        }
+        if (infer_index >= 0) {
+            const size_t axis_len = input_shape.at(axis_norm);
+            OPENVINO_ASSERT(known_sum <= axis_len, "VariadicSplit known lengths exceed axis dimension");
+            res[static_cast<size_t>(infer_index)] = axis_len - known_sum;
         }
         return res;
     }

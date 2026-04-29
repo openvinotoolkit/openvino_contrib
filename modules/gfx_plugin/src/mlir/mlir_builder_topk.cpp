@@ -83,7 +83,9 @@ mlir::ModuleOp build_mlir_topk_from_model(const std::shared_ptr<const ov::Model>
     auto out_val_ty = to_mlir_type(topk->get_output_element_type(0), ctx, /*fallback_f32=*/false,
                                    /*allow_unsigned=*/true);
     auto out_idx_ty = to_mlir_type(topk->get_output_element_type(1), ctx, /*fallback_f32=*/false,
-                                   /*allow_unsigned=*/true);
+                                   /*allow_unsigned=*/true, /*allow_small_ints=*/false,
+                                   /*allow_bf16=*/false, /*allow_boolean=*/false,
+                                   /*signless_integers=*/true);
 
     mlir::SmallVector<int64_t> in_dims(in_shape.begin(), in_shape.end());
     mlir::SmallVector<int64_t> out0_dims(out0_shape.begin(), out0_shape.end());

@@ -29,6 +29,7 @@ struct InferStage {
     std::vector<bool> output_is_model_output;
     std::vector<PipelineStageDesc::InputLink> output_sources;
     std::vector<PipelineStageDesc::InputLink> inputs;
+    std::vector<PipelineStageDesc::OutputAlias> output_aliases;
 };
 
 struct StageOutputBufferWorkspace {
@@ -177,6 +178,99 @@ GpuTensor* find_pipeline_output(std::vector<InferStage>& pipeline,
                                 size_t port,
                                 const char* error_prefix = "GFX");
 
+inline bool stage_outputs_may_alias_inputs(const InferStage& stage) {
+    if (!stage.stage) {
+        return false;
+    }
+    const auto& type = stage.stage->type();
+    return is_view_op(stage) || type == "Split" || type == "VariadicSplit";
+}
+
+struct StageOutputRef {
+    size_t stage = 0;
+    size_t output = 0;
+};
+
+struct NodePortKey {
+    const ov::Node* node = nullptr;
+    size_t port = 0;
+
+    bool operator==(const NodePortKey& other) const {
+        return node == other.node && port == other.port;
+    }
+};
+
+struct NodePortKeyHash {
+    size_t operator()(const NodePortKey& key) const {
+        size_t h1 = std::hash<const ov::Node*>()(key.node);
+        size_t h2 = std::hash<size_t>()(key.port);
+        return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
+    }
+};
+
+inline bool find_pipeline_output_ref(const std::vector<InferStage>& pipeline,
+                                     const ov::Node* node,
+                                     size_t port,
+                                     size_t& stage_index,
+                                     size_t& output_index) {
+    if (!node) {
+        return false;
+    }
+    for (size_t si = 0; si < pipeline.size(); ++si) {
+        const auto& stage = pipeline[si];
+        auto matches = [&](const std::shared_ptr<const ov::Node>& source_node,
+                           size_t source_port,
+                           size_t stage_output) {
+            if (source_node.get() != node || source_port != port || stage_output >= stage.outputs.size()) {
+                return false;
+            }
+            stage_index = si;
+            output_index = stage_output;
+            return true;
+        };
+        if (stage.node) {
+            for (size_t oi = 0; oi < stage.outputs.size(); ++oi) {
+                if (matches(stage.node, oi, oi)) {
+                    return true;
+                }
+            }
+        }
+        for (size_t oi = 0; oi < stage.output_sources.size(); ++oi) {
+            const auto& source = stage.output_sources[oi];
+            if (matches(source.node, source.port, oi)) {
+                return true;
+            }
+        }
+        for (const auto& alias : stage.output_aliases) {
+            if (matches(alias.node, alias.source_port, alias.output_port)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+inline bool stage_output_has_multiple_graph_consumers(const InferStage& stage, size_t output_index) {
+    auto has_multiple_consumers = [](const std::shared_ptr<const ov::Node>& node, size_t port) {
+        return node && port < node->get_output_size() && node->output(port).get_target_inputs().size() > 1;
+    };
+    if (output_index < stage.output_sources.size()) {
+        const auto& source = stage.output_sources[output_index];
+        if (has_multiple_consumers(source.node, source.port)) {
+            return true;
+        }
+    }
+    if (has_multiple_consumers(stage.node, output_index)) {
+        return true;
+    }
+    for (const auto& alias : stage.output_aliases) {
+        if (alias.output_port == output_index && has_multiple_consumers(alias.node, alias.source_port)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 template <typename DescribeOutput>
 inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
                                    std::vector<std::vector<BufferHandle>>& handles,
@@ -212,18 +306,30 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
         }
         workspace->handles.reserve(workspace->handles.size() + max_new_workspace_slots);
 
-        std::unordered_map<const ov::Node*, size_t> stage_by_node;
-        stage_by_node.reserve(pipeline.size());
+        std::unordered_map<NodePortKey, StageOutputRef, NodePortKeyHash> output_by_source;
+        output_by_source.reserve(pipeline.size());
 
         for (size_t stage_idx = 0; stage_idx < pipeline.size(); ++stage_idx) {
             auto& stage = pipeline[stage_idx];
-            if (stage.node) {
-                stage_by_node[stage.node.get()] = stage_idx;
-            }
-            for (const auto& source : stage.output_sources) {
-                if (source.node) {
-                    stage_by_node[source.node.get()] = stage_idx;
+            auto register_output_source = [&](const std::shared_ptr<const ov::Node>& source_node,
+                                              size_t source_port,
+                                              size_t output_port) {
+                if (!source_node || output_port >= stage.outputs.size()) {
+                    return;
                 }
+                output_by_source[{source_node.get(), source_port}] = {stage_idx, output_port};
+            };
+            if (stage.node) {
+                for (size_t oi = 0; oi < stage.outputs.size(); ++oi) {
+                    register_output_source(stage.node, oi, oi);
+                }
+            }
+            for (size_t oi = 0; oi < stage.output_sources.size(); ++oi) {
+                const auto& source = stage.output_sources[oi];
+                register_output_source(source.node, source.port, oi);
+            }
+            for (const auto& alias : stage.output_aliases) {
+                register_output_source(alias.node, alias.source_port, alias.output_port);
             }
             auto& stage_handles = handles[stage_idx];
             if (stage_handles.size() < stage.outputs.size()) {
@@ -248,7 +354,8 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
                 plan.workspace_managed = desc.usage == BufferUsage::Intermediate &&
                                          desc.prefer_device_local &&
                                          !desc.cpu_read &&
-                                         !desc.cpu_write;
+                                         !desc.cpu_write &&
+                                         !stage_output_has_multiple_graph_consumers(stage, oi);
                 if (!plan.workspace_managed) {
                     continue;
                 }
@@ -264,16 +371,17 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
                 if (!link.node) {
                     continue;
                 }
-                auto it = stage_by_node.find(link.node.get());
-                if (it == stage_by_node.end()) {
+                auto it = output_by_source.find({link.node.get(), link.port});
+                if (it == output_by_source.end()) {
                     continue;
                 }
-                const size_t producer_idx = it->second;
-                if (link.port >= last_use[producer_idx].size()) {
+                const size_t producer_idx = it->second.stage;
+                const size_t producer_output = it->second.output;
+                if (producer_output >= last_use[producer_idx].size()) {
                     continue;
                 }
-                last_use[producer_idx][link.port] =
-                    std::max(last_use[producer_idx][link.port], consumer_idx);
+                last_use[producer_idx][producer_output] =
+                    std::max(last_use[producer_idx][producer_output], consumer_idx);
             }
         }
 
@@ -289,7 +397,7 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
         for (size_t rev = pipeline.size(); rev > 0; --rev) {
             const size_t stage_idx = rev - 1;
             const auto& stage = pipeline[stage_idx];
-            if (!is_view_op(stage) || last_use[stage_idx].empty()) {
+            if (!stage_outputs_may_alias_inputs(stage) || last_use[stage_idx].empty()) {
                 continue;
             }
             size_t view_last_use = stage_idx;
@@ -300,14 +408,24 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
                 if (!link.node) {
                     continue;
                 }
-                auto it = stage_by_node.find(link.node.get());
-                if (it == stage_by_node.end()) {
+                auto it = output_by_source.find({link.node.get(), link.port});
+                if (it == output_by_source.end()) {
                     continue;
                 }
-                const size_t producer_idx = it->second;
-                if (link.port < last_use[producer_idx].size()) {
-                    last_use[producer_idx][link.port] =
-                        std::max(last_use[producer_idx][link.port], view_last_use);
+                const size_t producer_idx = it->second.stage;
+                const size_t producer_output = it->second.output;
+                if (producer_output < last_use[producer_idx].size()) {
+                    last_use[producer_idx][producer_output] =
+                        std::max(last_use[producer_idx][producer_output], view_last_use);
+                }
+            }
+        }
+
+        for (size_t stage_idx = 0; stage_idx < pipeline.size(); ++stage_idx) {
+            for (size_t oi = 0; oi < output_plan[stage_idx].size() && oi < last_use[stage_idx].size(); ++oi) {
+                auto& plan = output_plan[stage_idx][oi];
+                if (plan.workspace_managed && last_use[stage_idx][oi] > stage_idx + 1) {
+                    plan.workspace_managed = false;
                 }
             }
         }
@@ -328,7 +446,23 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
                    handle.buf.type == desc.type &&
                    handle.buf.host_visible == host_visible(desc);
         };
+        auto slot_is_live = [&](size_t slot) {
+            return std::any_of(active_slots.begin(),
+                               active_slots.end(),
+                               [&](const ActiveSlot& active) {
+                                   return active.slot == slot;
+                               });
+        };
+        auto remove_live_free_slots = [&]() {
+            free_slots.erase(std::remove_if(free_slots.begin(),
+                                            free_slots.end(),
+                                            [&](size_t slot) {
+                                                return slot_is_live(slot);
+                                            }),
+                             free_slots.end());
+        };
         auto acquire_slot = [&](const GpuBufferDesc& desc) {
+            remove_live_free_slots();
             if (desc.bytes == 0) {
                 if (!free_slots.empty()) {
                     const size_t slot = free_slots.back();
@@ -342,6 +476,9 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
             size_t best_capacity = std::numeric_limits<size_t>::max();
             for (size_t pos = 0; pos < free_slots.size(); ++pos) {
                 const size_t slot = free_slots[pos];
+                if (slot_is_live(slot)) {
+                    continue;
+                }
                 const auto& handle = workspace->handles[slot];
                 if (!compatible(handle, desc)) {
                     continue;
@@ -354,6 +491,9 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
             if (best_pos == StageOutputBufferWorkspace::npos) {
                 for (size_t pos = 0; pos < free_slots.size(); ++pos) {
                     const size_t slot = free_slots[pos];
+                    if (slot_is_live(slot)) {
+                        continue;
+                    }
                     if (!workspace->handles[slot].valid()) {
                         best_pos = pos;
                         break;
@@ -372,6 +512,35 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
             workspace->last_peak_live_slots =
                 std::max(workspace->last_peak_live_slots, active_slots.size() + extra_internal_live);
         };
+        auto protect_current_stage_input_slots = [&](const InferStage& stage) {
+            std::vector<size_t> protected_slots;
+            for (const auto& link : stage.inputs) {
+                if (!link.node) {
+                    continue;
+                }
+                auto it = output_by_source.find({link.node.get(), link.port});
+                if (it == output_by_source.end()) {
+                    continue;
+                }
+                const size_t producer_idx = it->second.stage;
+                const size_t producer_output = it->second.output;
+                if (producer_idx >= workspace->output_slots.size() ||
+                    producer_output >= workspace->output_slots[producer_idx].size()) {
+                    continue;
+                }
+                const size_t slot = workspace->output_slots[producer_idx][producer_output];
+                if (slot == StageOutputBufferWorkspace::npos) {
+                    continue;
+                }
+                auto free_it = std::find(free_slots.begin(), free_slots.end(), slot);
+                if (free_it == free_slots.end()) {
+                    continue;
+                }
+                protected_slots.push_back(slot);
+                free_slots.erase(free_it);
+            }
+            return protected_slots;
+        };
 
         for (size_t stage_idx = 0; stage_idx < pipeline.size(); ++stage_idx) {
             auto active_it = active_slots.begin();
@@ -385,6 +554,7 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
             }
 
             auto& stage = pipeline[stage_idx];
+            auto protected_input_slots = protect_current_stage_input_slots(stage);
             auto& stage_handles = handles[stage_idx];
             std::vector<GpuStageOutputLifetime> internal_lifetimes;
             const bool has_internal_lifetimes =
@@ -397,7 +567,38 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
                     size_t produced_at = 0;
                     size_t last_used_at = 0;
                     bool escapes_stage = false;
+                    size_t escape_last_use = 0;
                 };
+                std::vector<bool> escapes_stage(stage.outputs.size(), false);
+                std::vector<size_t> escape_last_use(stage.outputs.size(), stage_idx);
+                for (size_t oi = 0; oi < stage.outputs.size(); ++oi) {
+                    if (last_use[stage_idx][oi] > stage_idx) {
+                        escapes_stage[oi] = true;
+                        escape_last_use[oi] = last_use[stage_idx][oi];
+                    }
+                }
+                bool alias_escape_changed = true;
+                while (alias_escape_changed) {
+                    alias_escape_changed = false;
+                    for (size_t oi = 0; oi < internal_lifetimes.size() && oi < escapes_stage.size(); ++oi) {
+                        if (!escapes_stage[oi]) {
+                            continue;
+                        }
+                        const size_t storage_source = internal_lifetimes[oi].storage_source_output;
+                        if (storage_source == GpuStageOutputLifetime::npos ||
+                            storage_source >= escapes_stage.size()) {
+                            continue;
+                        }
+                        const size_t propagated_last_use =
+                            std::max(escape_last_use[storage_source], escape_last_use[oi]);
+                        if (!escapes_stage[storage_source] ||
+                            escape_last_use[storage_source] != propagated_last_use) {
+                            escapes_stage[storage_source] = true;
+                            escape_last_use[storage_source] = propagated_last_use;
+                            alias_escape_changed = true;
+                        }
+                    }
+                }
                 std::vector<InternalOutput> internal_outputs;
                 internal_outputs.reserve(stage.outputs.size());
                 for (size_t oi = 0; oi < stage.outputs.size(); ++oi) {
@@ -421,7 +622,8 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
                     internal_outputs.push_back({oi,
                                                 lifetime.produced_at,
                                                 lifetime.last_used_at,
-                                                last_use[stage_idx][oi] > stage_idx});
+                                                escapes_stage[oi],
+                                                escape_last_use[oi]});
                 }
                 std::sort(internal_outputs.begin(),
                           internal_outputs.end(),
@@ -454,7 +656,7 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
                     workspace->last_slots_used = std::max(workspace->last_slots_used, slot + 1);
                     ++workspace->last_workspace_outputs;
                     if (output.escapes_stage) {
-                        active_slots.push_back({slot, last_use[stage_idx][output.output]});
+                        active_slots.push_back({slot, output.escape_last_use});
                         update_peak_live();
                     } else {
                         internal_active_slots.push_back({slot, output.last_used_at});
@@ -464,6 +666,7 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
                 for (const auto& active : internal_active_slots) {
                     free_slots.push_back(active.slot);
                 }
+                free_slots.insert(free_slots.end(), protected_input_slots.begin(), protected_input_slots.end());
                 continue;
             }
 
@@ -491,6 +694,7 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
                 active_slots.push_back({slot, last_use[stage_idx][oi]});
                 update_peak_live();
             }
+            free_slots.insert(free_slots.end(), protected_input_slots.begin(), protected_input_slots.end());
         }
         return;
     }
@@ -654,6 +858,12 @@ inline std::vector<GpuTensor*> resolve_stage_inputs(
         }
         if (auto itp = param_map.find(link.node.get()); itp != param_map.end()) {
             resolved.push_back(input_lookup(itp->second));
+            continue;
+        }
+        size_t stage_idx = 0;
+        size_t output_idx = 0;
+        if (find_pipeline_output_ref(pipeline, link.node.get(), link.port, stage_idx, output_idx)) {
+            resolved.push_back(pipeline[stage_idx].outputs[output_idx].get());
             continue;
         }
         if (auto it = node_map.find(link.node.get()); it != node_map.end()) {

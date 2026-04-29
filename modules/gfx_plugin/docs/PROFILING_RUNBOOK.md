@@ -14,6 +14,8 @@ Automation helpers live in `modules/gfx_plugin/tools/`:
 - `gfx_calibration_diff.py`: produces a machine-readable diff between two calibration artifacts
 - `gfx_external_trace_summary.py`: summarizes trace-event JSON, generic JSON exports, `perf stat`, or `perf report`
 
+The current helper script defaults target the local `yolo26x` IR export when no explicit model path is provided.
+
 ## Unified Flow
 
 1. Rebuild the relevant target in the existing build directory.
@@ -33,6 +35,14 @@ Automation helpers live in `modules/gfx_plugin/tools/`:
    - `benchmarks[].profile_digest`
    - `GFX_PROFILING_REPORT.compile`
    - `GFX_PROFILING_REPORT.extended`
+
+Recent infer profiling also records lightweight per-stage estimates on `stage_execute` segments:
+- `bytes_in`
+- `bytes_out`
+- `macs_est`
+- `flops_est`
+
+These are estimates, not hardware counters, but they are useful when comparing trace hot spots with the roofline-style summaries in the profiling report.
 
 If you want the script-generated commands instead of following the sections manually:
 

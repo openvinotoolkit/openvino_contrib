@@ -49,6 +49,16 @@ struct GpuBuffer {
     bool valid() const { return buffer != nullptr; }
 };
 
+inline bool same_gpu_allocation(const GpuBuffer& lhs, const GpuBuffer& rhs) {
+    if (!lhs.valid() || !rhs.valid()) {
+        return false;
+    }
+    if (lhs.allocation_uid != 0 && rhs.allocation_uid != 0) {
+        return lhs.allocation_uid == rhs.allocation_uid;
+    }
+    return lhs.buffer == rhs.buffer && lhs.heap == rhs.heap && lhs.offset == rhs.offset;
+}
+
 struct BufferHandle {
     GpuBuffer buf;
     size_t capacity = 0;

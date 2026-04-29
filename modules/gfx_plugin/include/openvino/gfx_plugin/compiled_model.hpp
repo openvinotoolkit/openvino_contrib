@@ -41,8 +41,14 @@ struct PipelineStageDesc {
         std::shared_ptr<const ov::Node> node;
         size_t port = 0;
     };
+    struct OutputAlias {
+        std::shared_ptr<const ov::Node> node;
+        size_t source_port = 0;
+        size_t output_port = 0;
+    };
     std::vector<OutputDesc> outputs;
     std::vector<InputLink> inputs;
+    std::vector<OutputAlias> output_aliases;
 };
 
 class CompiledModel : public ov::ICompiledModel {

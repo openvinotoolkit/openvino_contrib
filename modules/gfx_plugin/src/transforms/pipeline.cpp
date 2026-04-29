@@ -24,8 +24,10 @@
 #include "openvino/op/convert.hpp"
 #include "openvino/op/matmul.hpp"
 #include "openvino/op/multiply.hpp"
+#include "openvino/op/parameter.hpp"
 #include "openvino/op/scaled_dot_product_attention.hpp"
 #include "openvino/op/reshape.hpp"
+#include "openvino/op/shape_of.hpp"
 #include "openvino/op/slice.hpp"
 #include "openvino/op/strided_slice.hpp"
 #include "openvino/op/unsqueeze.hpp"
@@ -176,16 +178,6 @@ std::optional<ov::Output<ov::Node>> non_matching_multiply_input(const std::share
     return std::nullopt;
 }
 
-bool value_has_name_fragment(const ov::Output<ov::Node>& value, const std::string& fragment) {
-    for (const auto& name : value.get_names()) {
-        if (name.find(fragment) != std::string::npos) {
-            return true;
-        }
-    }
-    const auto node = value.get_node_shared_ptr();
-    return node && node->get_friendly_name().find(fragment) != std::string::npos;
-}
-
 bool is_integer_element_type(const ov::element::Type& type) {
     return type == ov::element::i8 || type == ov::element::u8 ||
            type == ov::element::i16 || type == ov::element::u16 ||
@@ -193,9 +185,30 @@ bool is_integer_element_type(const ov::element::Type& type) {
            type == ov::element::i64 || type == ov::element::u64;
 }
 
-std::optional<ov::Output<ov::Node>> find_upstream_value(
+bool is_sdpa_causal_mask_abi_integer_type(const ov::element::Type& type) {
+    return type == ov::element::i64;
+}
+
+bool dimension_compatible(const ov::Dimension& lhs, const ov::Dimension& rhs) {
+    return lhs.is_dynamic() || rhs.is_dynamic() || lhs.get_length() == rhs.get_length();
+}
+
+bool is_shape_metadata_value(const ov::Output<ov::Node>& value) {
+    const auto node = value.get_node_shared_ptr();
+    return ov::as_type_ptr<ov::op::v0::Constant>(node) ||
+           ov::as_type_ptr<ov::op::v0::ShapeOf>(node) ||
+           ov::as_type_ptr<ov::op::v3::ShapeOf>(node);
+}
+
+struct UpstreamValueCandidate {
+    ov::Output<ov::Node> value;
+    size_t depth = 0;
+    int score = 0;
+};
+
+std::optional<ov::Output<ov::Node>> find_best_upstream_value(
     const ov::Output<ov::Node>& root,
-    const std::function<bool(const ov::Output<ov::Node>&)>& predicate,
+    const std::function<std::optional<int>(const ov::Output<ov::Node>&)>& scorer,
     size_t max_depth = 64) {
     struct Item {
         ov::Output<ov::Node> value;
@@ -218,6 +231,7 @@ std::optional<ov::Output<ov::Node>> find_upstream_value(
 
     std::vector<Item> stack{{root, 0}};
     std::unordered_set<Key, KeyHash> visited;
+    std::optional<UpstreamValueCandidate> best;
     while (!stack.empty()) {
         auto item = stack.back();
         stack.pop_back();
@@ -225,8 +239,12 @@ std::optional<ov::Output<ov::Node>> find_upstream_value(
         if (!visited.insert(key).second) {
             continue;
         }
-        if (predicate(item.value)) {
-            return item.value;
+        if (auto score = scorer(item.value)) {
+            if (!best ||
+                *score > best->score ||
+                (*score == best->score && item.depth < best->depth)) {
+                best = UpstreamValueCandidate{item.value, item.depth, *score};
+            }
         }
         if (item.depth >= max_depth) {
             continue;
@@ -239,28 +257,70 @@ std::optional<ov::Output<ov::Node>> find_upstream_value(
             stack.push_back({node->input_value(i), item.depth + 1});
         }
     }
+    if (best) {
+        return best->value;
+    }
     return std::nullopt;
 }
 
-std::optional<ov::Output<ov::Node>> find_llm_attention_mask_input(const ov::Output<ov::Node>& mask_value) {
-    return find_upstream_value(mask_value, [](const ov::Output<ov::Node>& value) {
-        if (!value_has_name_fragment(value, "attention_mask")) {
-            return false;
+std::optional<ov::Output<ov::Node>> find_llm_attention_mask_input(const ov::Output<ov::Node>& mask_value,
+                                                                  const ov::PartialShape& q_shape,
+                                                                  const ov::PartialShape& k_shape) {
+    return find_best_upstream_value(mask_value, [&](const ov::Output<ov::Node>& value) -> std::optional<int> {
+        if (is_shape_metadata_value(value)) {
+            return std::nullopt;
         }
         const auto type = value.get_element_type();
-        const auto rank = value.get_partial_shape().rank();
-        return is_integer_element_type(type) && rank.is_static() && rank.get_length() == 2;
+        const auto pshape = value.get_partial_shape();
+        const auto rank = pshape.rank();
+        if (!is_sdpa_causal_mask_abi_integer_type(type) || rank.is_dynamic() || rank.get_length() != 2) {
+            return std::nullopt;
+        }
+        if (q_shape.rank().is_static() && q_shape.rank().get_length() == 4 &&
+            !dimension_compatible(pshape[0], q_shape[0])) {
+            return std::nullopt;
+        }
+        if (k_shape.rank().is_static() && k_shape.rank().get_length() == 4 &&
+            !dimension_compatible(pshape[1], k_shape[2])) {
+            return std::nullopt;
+        }
+        int score = 10;
+        if (ov::as_type_ptr<ov::op::v0::Parameter>(value.get_node_shared_ptr())) {
+            score += 100;
+        }
+        if (pshape.is_static()) {
+            score += 5;
+        }
+        return score;
     });
 }
 
-std::optional<ov::Output<ov::Node>> find_llm_cache_positions(const ov::Output<ov::Node>& mask_value) {
-    return find_upstream_value(mask_value, [](const ov::Output<ov::Node>& value) {
-        if (!value_has_name_fragment(value, "cache_position")) {
-            return false;
+std::optional<ov::Output<ov::Node>> find_llm_cache_positions(const ov::Output<ov::Node>& mask_value,
+                                                            const ov::PartialShape& q_shape) {
+    if (q_shape.rank().is_dynamic() || q_shape.rank().get_length() != 4 || q_shape[2].is_dynamic()) {
+        return std::nullopt;
+    }
+    return find_best_upstream_value(mask_value, [&](const ov::Output<ov::Node>& value) -> std::optional<int> {
+        if (is_shape_metadata_value(value)) {
+            return std::nullopt;
         }
         const auto type = value.get_element_type();
-        const auto rank = value.get_partial_shape().rank();
-        return is_integer_element_type(type) && rank.is_static() && rank.get_length() == 1;
+        const auto pshape = value.get_partial_shape();
+        const auto rank = pshape.rank();
+        if (!is_sdpa_causal_mask_abi_integer_type(type) || rank.is_dynamic() || rank.get_length() != 1) {
+            return std::nullopt;
+        }
+        if (!dimension_compatible(pshape[0], q_shape[2])) {
+            return std::nullopt;
+        }
+        int score = 10;
+        if (ov::as_type_ptr<ov::op::v0::Parameter>(value.get_node_shared_ptr())) {
+            score += 100;
+        }
+        if (pshape.is_static()) {
+            score += 5;
+        }
+        return score;
     });
 }
 
@@ -320,8 +380,11 @@ size_t fuse_llm_sdpa_causal_mask(const std::shared_ptr<ov::Model>& model) {
         if (!sdpa || sdpa->get_input_size() != 5 || sdpa->get_output_size() != 1) {
             continue;
         }
-        auto attention_mask = find_llm_attention_mask_input(sdpa->input_value(3));
-        auto cache_positions = find_llm_cache_positions(sdpa->input_value(3));
+        auto attention_mask = find_llm_attention_mask_input(sdpa->input_value(3),
+                                                            sdpa->input_value(0).get_partial_shape(),
+                                                            sdpa->input_value(1).get_partial_shape());
+        auto cache_positions = find_llm_cache_positions(sdpa->input_value(3),
+                                                        sdpa->input_value(0).get_partial_shape());
         if (!attention_mask || !cache_positions) {
             continue;
         }

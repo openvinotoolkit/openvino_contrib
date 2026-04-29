@@ -412,7 +412,7 @@ void MetalGroupConvOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     params.outH = static_cast<uint32_t>(out_shape[2]);
     params.outW = static_cast<uint32_t>(out_shape[3]);
     OPENVINO_ASSERT(params.outH > 0 && params.outW > 0, "MetalGroupConvOp: output spatial dims must be positive");
-    params.has_bias = 0;
+    params.has_bias = m_desc.has_bias ? 1u : 0u;
     params.has_bn = m_desc.has_bn ? 1u : 0u;
     params.activation = m_desc.has_activation ? to_msl_activation(m_desc.activation) : 0u;
     params.alpha = m_activation_alpha;

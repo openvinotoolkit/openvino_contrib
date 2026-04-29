@@ -159,6 +159,7 @@ For stage-output reuse changes, also inspect:
 - `src/runtime/fused_sequence_stage.*` for fused-stage lifetime propagation
 
 If the change touches stateful graphs, read `src/plugin/infer_request_state.hpp` as well. `ReadValue` and `Assign` are no longer just generic ops flowing through the normal stateless path: infer-request state now owns persistent variable buffers keyed by OpenVINO variable id.
+If the change touches fused stages or rewritten outputs, also inspect `PipelineStageDesc::output_aliases` plus the source-node/source-port plumbing in `src/plugin/infer_pipeline.*`. Public outputs and direct stateful-assign consumers no longer assume a simple `stage.node/output_port` mapping.
 
 ## Adding Or Extending An Op
 Typical path:
@@ -191,11 +192,15 @@ For `RoPE`, use the dedicated builder in `src/mlir/mlir_builder_rope.cpp` and th
 For fusion work, note that current support is no longer limited to output post-ops. `Multiply` can now absorb selected activations into one chosen input through the fusion plan and backend `fuse_input_activation()` hooks. Keep the transform-side fusion pattern, compiled-model fusion bookkeeping, and backend runtime/codegen support aligned.
 
 For `ScaledDotProductAttention`, the current native path is backend-specific: Metal can keep a rank-4 FP16/FP32 SDPA node and compile a dedicated kernel, while Vulkan still rejects native SDPA and expects other lowering paths. `src/transforms/gfx_llm_ops.hpp` also defines a Metal-only `GfxSDPAWithCausalMask` op used for selected LLM graphs when `src/transforms/pipeline.cpp` can recover explicit `attention_mask[B,K]` and `cache_position[Q]` inputs from the original mask subgraph. That fusion may also peel some broadcast-expanded GQA K/V views back to compact K/V tensors before stage compilation.
+For `TopK`, prefer the generalized `TopKBase` path instead of wiring only one opset version. The current lowering/codegen reads `get_k()`, preserves the output index element type from output port 1, and only accepts the currently implemented sort modes.
 
 For Slice-like work, note that the current lowering prefers `tensor.extract_slice` instead of synthesizing a `linalg.generic` copy. Shared metadata extraction in `src/mlir/slice_generic_codegen.cpp` still accepts both forms so older paths and debug flows remain readable.
 At runtime, contiguous `Split` and `VariadicSplit` outputs may also alias slices of the input buffer instead of materializing new output allocations. Keep split-plan inference in `src/mlir/mlir_stage.cpp` aligned with any change that affects byte layout or view eligibility.
 
+For `ShapeOf`, keep the runtime-materialized dims path aligned with the builder and output ABI. The current stage path wraps the resolved runtime shape into an immutable `i32` or `i64` buffer and treats it as a dedicated kernel input/output contract rather than a generic copied tensor.
+
 For Metal kernel-dispatch work, inspect `src/backends/metal/runtime/metal_command_encoder.*` before adding new ad-hoc encoder setup code. The current runtime keeps one compute encoder per active command buffer, caches the last bound pipeline plus buffer table, and ends that encoder explicitly before blit/copy paths or command-buffer commit.
+For Metal Conv2D / MaxPool work, keep dilation handling and dispatch blocking coherent across `gfx_codegen_desc.hpp`, MLIR codegen, and native runtime ops. The current code shares the same dilation and output-block metadata between compile-time codegen and runtime dispatch sizing.
 
 For layout-cleanup work around DFL-style postprocessing tails, the current rewrite target is a value-preserving `Softmax -> MatMul -> Reshape/Transpose` form. Do not describe the older synthetic 1x1 convolution rewrite as the active implementation.
 
@@ -235,6 +240,7 @@ Useful environment variables:
 These are implemented directly in the runtime and codegen sources; grep for `OV_GFX_` when adding new diagnostics.
 
 For functional comparison against a reference backend, build and run `tests/tools/ov_gfx_compare_runner.cpp`. It is an accuracy-only tool for numeric diffs, per-op narrowing, full-graph per-op output scans, and `GFX`-only output summaries. Useful switches now include `--reference-device`, `--reference-plugin`, `--per-op`, `--per-op-all`, `--single-op-output`, `--tinyllama-prompt-inputs`, and `--gfx-only`. The current tool also understands boolean tensors and prints an extra mismatch probe for `Select` failures. Do not use it for performance numbers; use `benchmark_app` for that.
+The compare runner now also prints output ids as `friendly_name:port` and reports the worst mismatch index together with the reference and GFX values, which is useful when only one slice or token position diverges.
 
 For profiling workflows, calibration artifacts, and cross-device trace correlation, use:
 - `tests/tools/ov_gfx_microbench.cpp`

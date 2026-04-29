@@ -720,6 +720,11 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
         d.padLeft = static_cast<uint32_t>(conv->get_pads_begin().at(1));
         d.padBottom = static_cast<uint32_t>(conv->get_pads_end().at(0));
         d.padRight = static_cast<uint32_t>(conv->get_pads_end().at(1));
+        const auto out_shape = conv->get_output_shape(0);
+        d.outH = static_cast<uint32_t>(out_shape.at(2));
+        d.outW = static_cast<uint32_t>(out_shape.at(3));
+        d.output_channels_per_thread = gfx_conv2d_output_channel_block(d);
+        d.output_width_per_thread = gfx_conv2d_output_width_block(d);
         set_desc(d, "conv2d_kernel");
         src.signature.arg_count = 9;  // in, w, bias, gamma, beta, mean, var, params, out
         if (src.module) {
@@ -1021,10 +1026,16 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
         return;
     }
 
-    if (auto pool = std::dynamic_pointer_cast<const ov::op::v1::MaxPool>(node)) {
+    if (auto pool = std::dynamic_pointer_cast<const ov::op::util::MaxPoolBase>(node)) {
         Pool2DCodegenDesc d{};
         const auto in = pool->get_input_shape(0);
         const auto out = pool->get_output_shape(0);
+        ov::Strides dilations(pool->get_kernel().size(), 1);
+        if (auto p = std::dynamic_pointer_cast<const ov::op::v8::MaxPool>(node)) {
+            dilations = p->get_dilations();
+        } else if (auto p = std::dynamic_pointer_cast<const ov::op::v14::MaxPool>(node)) {
+            dilations = p->get_dilations();
+        }
         d.element_type = pool->get_output_element_type(0);
         d.N = static_cast<uint32_t>(in.at(0));
         d.C = static_cast<uint32_t>(in.at(1));
@@ -1034,6 +1045,8 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
         d.kW = static_cast<uint32_t>(pool->get_kernel().at(1));
         d.strideH = static_cast<uint32_t>(pool->get_strides().at(0));
         d.strideW = static_cast<uint32_t>(pool->get_strides().at(1));
+        d.dilationH = static_cast<uint32_t>(dilations.at(0));
+        d.dilationW = static_cast<uint32_t>(dilations.at(1));
         d.padTop = static_cast<uint32_t>(pool->get_pads_begin().at(0));
         d.padLeft = static_cast<uint32_t>(pool->get_pads_begin().at(1));
         d.padBottom = static_cast<uint32_t>(pool->get_pads_end().at(0));
@@ -1330,6 +1343,8 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
         TileCodegenDesc d{};
         d.element_type = node->get_output_element_type(0);
         set_desc(d, "tile_kernel");
+        src.signature.arg_count = 8;
+        src.signature.output_arg_count = 1;
         return;
     }
 
@@ -1390,23 +1405,33 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
         return;
     }
 
-    if (auto tk = std::dynamic_pointer_cast<const ov::op::v1::TopK>(node)) {
+    if (auto tk = std::dynamic_pointer_cast<const ov::op::util::TopKBase>(node)) {
         TopKCodegenDesc d{};
         const auto in = tk->get_input_shape(0);
-        const size_t axis = static_cast<size_t>(tk->get_axis());
+        const int64_t axis_i64 = normalize_axis(tk->get_axis(), in.size(), "TopK");
+        const size_t axis = static_cast<size_t>(axis_i64);
         d.axis_len = static_cast<uint32_t>(in[axis]);
-        auto k_c = ov::as_type_ptr<const ov::op::v0::Constant>(tk->input_value(1).get_node_shared_ptr());
-        OPENVINO_ASSERT(k_c, "TopK k must be constant");
-        d.k = static_cast<uint32_t>(k_c->cast_vector<int64_t>()[0]);
+        d.k = static_cast<uint32_t>(tk->get_k());
         uint32_t outer = 1, inner = 1;
         for (size_t i = 0; i < axis; ++i) outer *= static_cast<uint32_t>(in[i]);
         for (size_t i = axis + 1; i < in.size(); ++i) inner *= static_cast<uint32_t>(in[i]);
         d.outer = outer;
         d.inner = inner;
-        d.mode_max = tk->get_mode() == ov::op::v1::TopK::Mode::MAX;
-        d.sort_type = static_cast<TopKSortType>(tk->get_sort_type());
+        d.mode_max = tk->get_mode() == ov::op::TopKMode::MAX;
+        switch (tk->get_sort_type()) {
+            case ov::op::TopKSortType::SORT_INDICES:
+                d.sort_type = TopKSortType::SortIndices;
+                break;
+            case ov::op::TopKSortType::NONE:
+                d.sort_type = TopKSortType::None;
+                break;
+            case ov::op::TopKSortType::SORT_VALUES:
+            default:
+                d.sort_type = TopKSortType::SortValues;
+                break;
+        }
         d.element_type = tk->get_output_element_type(0);
-        d.index_type = tk->get_index_element_type();
+        d.index_type = tk->get_output_element_type(1);
         set_desc(d, "topk_kernel");
         return;
     }
@@ -1587,6 +1612,8 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
             d.data_strides[i] = static_cast<uint32_t>(data_strides[i]);
         }
         set_desc(d, "gather_elements_kernel");
+        src.signature.arg_count = 4;
+        src.signature.output_arg_count = 1;
         return;
     }
 

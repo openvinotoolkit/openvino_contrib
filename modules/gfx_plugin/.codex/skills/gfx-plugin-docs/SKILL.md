@@ -49,7 +49,9 @@ Additional operational docs:
    - backend-side fused epilogues such as residual-add absorbed into `RMS`
    - liveness-managed workspace allocation for stage outputs
    - view-style aliasing rules for split outputs
+   - output-alias routing or source-node-aware output resolution for fused stages
    - command-encoder or binding-reuse behavior that changes profiling counters or dispatch setup cost
+   - stage-level profiling estimates such as `bytes_in`, `bytes_out`, `macs_est`, or `flops_est`
    - test layout or regression coverage
    - compare-runner CLI or debug workflow
    - profiling or microbench workflows

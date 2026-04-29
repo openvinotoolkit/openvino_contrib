@@ -25,6 +25,13 @@ bool stage_may_alias_first_input(const GpuStage& stage) {
            type == "StridedSlice";
 }
 
+bool stage_guarantees_first_input_storage_alias(const GpuStage& stage) {
+    const auto& type = stage.type();
+    return type == "Reshape" ||
+           type == "Squeeze" ||
+           type == "Unsqueeze";
+}
+
 }  // namespace
 
 FusedSequenceStage::FusedSequenceStage(std::vector<FusedStageInfo> stages,
@@ -172,6 +179,31 @@ bool FusedSequenceStage::describe_output_lifetimes(std::vector<GpuStageOutputLif
                     changed = true;
                 }
             }
+        }
+    }
+
+    for (const auto& info : m_stages) {
+        if (!info.stage || !stage_guarantees_first_input_storage_alias(*info.stage) || info.inputs.empty()) {
+            continue;
+        }
+        const auto& input = info.inputs.front();
+        if (input.kind != FusedInputKind::Output || input.index >= lifetimes.size()) {
+            continue;
+        }
+        const auto& input_lifetime = lifetimes[input.index];
+        if (!input_lifetime.valid()) {
+            continue;
+        }
+        for (const auto output_index : info.output_indices) {
+            if (output_index >= lifetimes.size()) {
+                continue;
+            }
+            auto& output_lifetime = lifetimes[output_index];
+            if (!output_lifetime.valid()) {
+                continue;
+            }
+            output_lifetime.requires_buffer = false;
+            output_lifetime.storage_source_output = input.index;
         }
     }
 

@@ -41,7 +41,7 @@ protected:
 
 class GFX_OP_API MetalMaxPoolOp final : public MetalPoolOp {
 public:
-    MetalMaxPoolOp(const std::shared_ptr<const ov::op::v1::MaxPool>& node,
+    MetalMaxPoolOp(const std::shared_ptr<const ov::Node>& node,
                    void* device,
                    void* queue);
 };

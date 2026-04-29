@@ -232,11 +232,15 @@ mlir::ModuleOp build_mlir_unary_from_node(const std::shared_ptr<const ov::Node>&
                 break;
             }
             case ActivationKind::Floor: {
-                result = body.create<mlir::math::FloorOp>(mlir::UnknownLoc::get(&ctx), x);
+                result = mlir::isa<mlir::IntegerType>(elem_ty)
+                             ? x
+                             : body.create<mlir::math::FloorOp>(mlir::UnknownLoc::get(&ctx), x).getResult();
                 break;
             }
             case ActivationKind::Ceil: {
-                result = body.create<mlir::math::CeilOp>(mlir::UnknownLoc::get(&ctx), x);
+                result = mlir::isa<mlir::IntegerType>(elem_ty)
+                             ? x
+                             : body.create<mlir::math::CeilOp>(mlir::UnknownLoc::get(&ctx), x).getResult();
                 break;
             }
             case ActivationKind::Negative: {
@@ -338,11 +342,15 @@ mlir::ModuleOp build_mlir_unary_from_node(const std::shared_ptr<const ov::Node>&
                 break;
             }
             case ActivationKind::RoundEven: {
-                result = body.create<mlir::math::RoundEvenOp>(mlir::UnknownLoc::get(&ctx), x);
+                result = mlir::isa<mlir::IntegerType>(elem_ty)
+                             ? x
+                             : body.create<mlir::math::RoundEvenOp>(mlir::UnknownLoc::get(&ctx), x).getResult();
                 break;
             }
             case ActivationKind::RoundAway: {
-                result = body.create<mlir::math::RoundOp>(mlir::UnknownLoc::get(&ctx), x);
+                result = mlir::isa<mlir::IntegerType>(elem_ty)
+                             ? x
+                             : body.create<mlir::math::RoundOp>(mlir::UnknownLoc::get(&ctx), x).getResult();
                 break;
             }
             case ActivationKind::Clamp: {

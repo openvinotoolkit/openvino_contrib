@@ -94,6 +94,8 @@ struct Conv2DCodegenDesc : BaseCodegenDesc {
     bool has_activation = false;
     ActivationKind activation = ActivationKind::Relu;
     float alpha = 0.0f;
+    uint32_t output_channels_per_thread = 1;
+    uint32_t output_width_per_thread = 1;
     bool use_special_k3 = false;  // enable k=3 stride1/2 optimized kernel
     // BatchNorm + clamp support for fused conv
     bool has_bn = false;
@@ -105,6 +107,53 @@ struct Conv2DCodegenDesc : BaseCodegenDesc {
     std::vector<float> mean;
     std::vector<float> var;
 };
+
+inline bool gfx_conv2d_float_like_type(const ov::element::Type& type) {
+    return type == ov::element::dynamic || type == ov::element::f16 || type == ov::element::f32;
+}
+
+inline uint32_t gfx_conv2d_output_channel_block(const Conv2DCodegenDesc& desc) {
+    if (desc.groups > 1 || desc.C_out < 4) {
+        return 1;
+    }
+    if (!gfx_conv2d_float_like_type(desc.input_type) ||
+        !gfx_conv2d_float_like_type(desc.weight_type) ||
+        !gfx_conv2d_float_like_type(desc.output_type)) {
+        return 1;
+    }
+    return 4;
+}
+
+inline uint32_t gfx_conv2d_output_width_block(const Conv2DCodegenDesc& desc) {
+    if (gfx_conv2d_output_channel_block(desc) <= 1 || desc.outW < 2) {
+        return 1;
+    }
+    return 2;
+}
+
+inline uint64_t gfx_conv2d_dispatch_items(uint64_t n,
+                                          uint64_t c_out,
+                                          uint64_t out_h,
+                                          uint64_t out_w,
+                                          uint32_t output_channels_per_thread,
+                                          uint32_t output_width_per_thread) {
+    const uint64_t channel_block = std::max<uint32_t>(output_channels_per_thread, 1u);
+    const uint64_t width_block = std::max<uint32_t>(output_width_per_thread, 1u);
+    const uint64_t width_blocks = (out_w + width_block - 1) / width_block;
+    const uint64_t spatial = n * out_h * width_blocks;
+    const uint64_t channel_blocks = (c_out + channel_block - 1) / channel_block;
+    return spatial * channel_blocks;
+}
+
+inline uint64_t gfx_conv2d_dispatch_items(const Conv2DCodegenDesc& desc) {
+    const uint32_t channel_block = desc.output_channels_per_thread
+                                       ? desc.output_channels_per_thread
+                                       : gfx_conv2d_output_channel_block(desc);
+    const uint32_t width_block = desc.output_width_per_thread
+                                     ? desc.output_width_per_thread
+                                     : gfx_conv2d_output_width_block(desc);
+    return gfx_conv2d_dispatch_items(desc.N, desc.C_out, desc.outH, desc.outW, channel_block, width_block);
+}
 
 struct Conv3DCodegenDesc : BaseCodegenDesc {
     uint32_t N = 0;
@@ -193,6 +242,8 @@ struct Pool2DCodegenDesc : BaseCodegenDesc {
     uint32_t kW = 0;
     uint32_t strideH = 1;
     uint32_t strideW = 1;
+    uint32_t dilationH = 1;
+    uint32_t dilationW = 1;
     uint32_t padTop = 0;
     uint32_t padLeft = 0;
     uint32_t padBottom = 0;

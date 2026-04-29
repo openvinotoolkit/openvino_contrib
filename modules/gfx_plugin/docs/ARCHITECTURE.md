@@ -39,7 +39,7 @@ Responsibilities:
 - expose compiled-model properties and profiling state
 - thread `ov::cache_dir` into Vulkan pipeline-cache persistence when the active backend is Vulkan
 
-The compiled pipeline is represented as `PipelineStageDesc` entries that wrap backend-specific `GpuStage` objects.
+The compiled pipeline is represented as `PipelineStageDesc` entries that wrap backend-specific `GpuStage` objects. A stage descriptor can also carry output aliases when several OpenVINO node outputs are served by the same runtime stage output buffer.
 
 ### `ov::gfx_plugin::InferRequest`
 Declared in `include/openvino/gfx_plugin/infer_request.hpp` and implemented by backend-specific infer paths.
@@ -108,6 +108,7 @@ Stage-output allocation also has a liveness-aware workspace layer:
 - infer requests report workspace allocation counters such as slots used and peak live slots through the normal profiling path
 
 Some view-style data movement now skips copies entirely. `Split` and `VariadicSplit` can alias contiguous byte ranges of the input buffer when the inferred split plan is view-compatible, so downstream stages can consume output tensors backed by slices of the original allocation.
+Fused-stage lifetime reporting also recognizes some guaranteed storage-alias paths such as `Reshape`, `Squeeze`, and `Unsqueeze`, allowing internal outputs to reuse the first input allocation instead of reserving a fresh workspace slot.
 
 ## MLIR Role
 MLIR lives in `src/mlir/` and is shared infrastructure, not a separate monolithic backend object.
@@ -131,6 +132,7 @@ Recent MLIR-specific changes reflected in the current code:
 - the backend-aware transform pipeline can fuse the common LLaMA rotate-half arithmetic pattern into native `RoPE` before stage compilation on Metal
 - the backend-aware transform pipeline can also fuse selected LLM `ScaledDotProductAttention` masking graphs into `GfxSDPAWithCausalMask`, including peeling some broadcast-expanded GQA K/V views back to their compact tensors
 - the backend-aware transform pipeline can regroup compatible compressed `MatMul` nodes that share one data input into a fused horizontal `MatMul` plus `VariadicSplit`
+- `ShapeOf` has a dedicated runtime-materialized dims path, while `TopK` and unary codegen now respect more of the concrete output/index typing rules from the original node
 - Slice lowering now prefers `tensor.extract_slice`, while slice metadata extraction still accepts both `tensor.extract_slice` and the older `linalg.generic` form
 - shape and data-movement lowering is now more permissive for dynamic shapes in paths such as `ShapeOf`, `Concat`, `Broadcast`, `Select`, `StridedSlice`, and `Range`
 - buffer-results-to-out-params promotion now allows public function signatures to be rewritten when required by the lowering pipeline
@@ -158,6 +160,7 @@ Profiling is split into compile-time and infer-time collection.
 - `src/runtime/gfx_profiling_report.*` owns the JSON-ready report model for nodes, segments, transfers, allocations, and counters
 - backend profilers under `src/backends/*/runtime/profiling/` populate runtime timing and backend-specific counters
 - `src/plugin/gfx_profiling_utils.hpp` merges compile and infer reports into the final `GFX_PROFILING_REPORT` JSON and can optionally emit Perfetto-style trace payloads
+- `src/plugin/infer_submission.cpp` now also attaches lightweight `bytes_in`, `bytes_out`, `macs_est`, and `flops_est` estimates to `stage_execute` segments so the extended summaries can derive simple roofline-style hints without a separate replay pass
 
 When profiling is disabled, these paths stay out of the fast path.
 
@@ -176,6 +179,7 @@ For dynamic-shape `MatMul`, the current MLIR stage path may also pack a constant
 The backend-aware transform pipeline is also important for Metal now: compressed `MatMul` decompression subgraphs can be marked as decompression and protected from generic folding so later stage compilation can still recognize weight-only compressed patterns.
 That same transform pipeline can also collapse supported LLaMA rotate-half arithmetic into native `RoPE`, letting Metal compile one backend kernel instead of preserving the original Multiply/Add subgraph.
 For attention-heavy LLM graphs, the same frontend/backend split now also allows Metal-only `GfxSDPAWithCausalMask` lowering while leaving Vulkan on the conservative unsupported path for that exact fused form.
+Recent Metal codegen changes also make Conv2D and MaxPool honor dilation metadata directly and allow Conv2D dispatch planning to block output channels and output width per thread for selected float-like kernels.
 
 ## Vulkan Backend
 `src/backends/vulkan/` mirrors the same broad split:

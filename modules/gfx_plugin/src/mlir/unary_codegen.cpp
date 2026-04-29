@@ -83,7 +83,11 @@ std::string generate_msl_for_unary(const UnaryCodegenDesc& d, mlir::ModuleOp mod
     if (is_int_scalar &&
         (d.activation == ActivationKind::Sign ||
          d.activation == ActivationKind::Abs ||
-         d.activation == ActivationKind::LogicalNot)) {
+         d.activation == ActivationKind::LogicalNot ||
+         d.activation == ActivationKind::Floor ||
+         d.activation == ActivationKind::Ceil ||
+         d.activation == ActivationKind::RoundEven ||
+         d.activation == ActivationKind::RoundAway)) {
         ss << "    " << scalar << " x = in0[gid];\n";
         if (d.activation == ActivationKind::LogicalNot) {
             if (is_bool) {
@@ -91,6 +95,11 @@ std::string generate_msl_for_unary(const UnaryCodegenDesc& d, mlir::ModuleOp mod
             } else {
                 ss << "    out[gid] = (x == 0) ? (" << scalar << ")1 : (" << scalar << ")0;\n";
             }
+        } else if (d.activation == ActivationKind::Floor ||
+                   d.activation == ActivationKind::Ceil ||
+                   d.activation == ActivationKind::RoundEven ||
+                   d.activation == ActivationKind::RoundAway) {
+            ss << "    out[gid] = x;\n";
         } else if (d.activation == ActivationKind::Abs) {
             if (is_unsigned) {
                 ss << "    out[gid] = x;\n";

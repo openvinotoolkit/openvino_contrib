@@ -35,10 +35,11 @@ uint32_t compute_out_dim(uint32_t in,
     return static_cast<uint32_t>(rounding == ov::op::RoundingType::CEIL ? std::ceil(raw) : std::floor(raw));
 }
 
-void fill_pool_desc_from_node(const ov::op::v1::MaxPool* node,
-                              Pool2DCodegenDesc& desc,
-                              ov::element::Type& et,
-                              ov::op::RoundingType& rounding) {
+void fill_pool_desc_from_maxpool(const ov::op::util::MaxPoolBase* node,
+                                 const ov::Strides& dilations,
+                                 Pool2DCodegenDesc& desc,
+                                 ov::element::Type& et,
+                                 ov::op::RoundingType& rounding) {
     OPENVINO_ASSERT(node, "MetalPoolOp: MaxPool node is null");
     OPENVINO_ASSERT(node->get_input_size() == 1, "MetalPoolOp expects single input");
     OPENVINO_ASSERT(node->get_input_partial_shape(0).is_static(), "MetalPoolOp requires static input shape");
@@ -64,6 +65,8 @@ void fill_pool_desc_from_node(const ov::op::v1::MaxPool* node,
     desc.kW = static_cast<uint32_t>(k.at(1));
     desc.strideH = static_cast<uint32_t>(s.at(0));
     desc.strideW = static_cast<uint32_t>(s.at(1));
+    desc.dilationH = static_cast<uint32_t>(dilations.at(0));
+    desc.dilationW = static_cast<uint32_t>(dilations.at(1));
     desc.padTop = static_cast<uint32_t>(pb.at(0));
     desc.padLeft = static_cast<uint32_t>(pb.at(1));
     desc.padBottom = static_cast<uint32_t>(pe.at(0));
@@ -124,8 +127,15 @@ MetalPoolOp::MetalPoolOp(const std::shared_ptr<const ov::Node>& node,
       m_device((id<MTLDevice>)device),
       m_queue((id<MTLCommandQueue>)queue) {
     if (!m_is_avg) {
-        auto mp = std::dynamic_pointer_cast<const ov::op::v1::MaxPool>(node);
-        fill_pool_desc_from_node(mp.get(), m_desc, m_element_type, m_rounding);
+        auto mp = std::dynamic_pointer_cast<const ov::op::util::MaxPoolBase>(node);
+        OPENVINO_ASSERT(mp, "MetalPoolOp: MaxPool node cast failed");
+        ov::Strides dilations(mp->get_kernel().size(), 1);
+        if (auto p = std::dynamic_pointer_cast<const ov::op::v8::MaxPool>(node)) {
+            dilations = p->get_dilations();
+        } else if (auto p = std::dynamic_pointer_cast<const ov::op::v14::MaxPool>(node)) {
+            dilations = p->get_dilations();
+        }
+        fill_pool_desc_from_maxpool(mp.get(), dilations, m_desc, m_element_type, m_rounding);
     } else {
         auto ap = std::dynamic_pointer_cast<const ov::op::v1::AvgPool>(node);
         fill_pool_desc_from_node(ap.get(), m_desc, m_element_type, m_rounding);
@@ -193,14 +203,14 @@ void MetalPoolOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
         op.outH = compute_out_dim(op.H,
                                        op.kH,
                                        op.strideH,
-                                       1,
+                                       op.dilationH,
                                        op.padTop,
                                        op.padBottom,
                                        m_rounding);
         op.outW = compute_out_dim(op.W,
                                        op.kW,
                                        op.strideW,
-                                       1,
+                                       op.dilationW,
                                        op.padLeft,
                                        op.padRight,
                                        m_rounding);
@@ -236,8 +246,8 @@ void MetalPoolOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     params.kW = op.kW;
     params.strideH = op.strideH;
     params.strideW = op.strideW;
-    params.dilationH = 1;
-    params.dilationW = 1;
+    params.dilationH = op.dilationH;
+    params.dilationW = op.dilationW;
     params.padTop = op.padTop;
     params.padLeft = op.padLeft;
     params.padBottom = op.padBottom;
@@ -264,7 +274,7 @@ void MetalPoolOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);
 }
 
-MetalMaxPoolOp::MetalMaxPoolOp(const std::shared_ptr<const ov::op::v1::MaxPool>& node,
+MetalMaxPoolOp::MetalMaxPoolOp(const std::shared_ptr<const ov::Node>& node,
                                void* device,
                                void* queue)
     : MetalPoolOp(node, /*is_avg*/ false, /*exclude_pad*/ false, device, queue) {}

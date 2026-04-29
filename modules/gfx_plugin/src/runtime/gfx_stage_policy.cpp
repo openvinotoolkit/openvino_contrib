@@ -168,6 +168,9 @@ bool is_safe_shared_activation(ActivationKind kind) {
         case ActivationKind::Elu:
         case ActivationKind::Prelu:
         case ActivationKind::Gelu:
+        case ActivationKind::Swish:
+        case ActivationKind::HSwish:
+        case ActivationKind::HSigmoid:
         case ActivationKind::Abs:
         case ActivationKind::Sign:
             return true;
