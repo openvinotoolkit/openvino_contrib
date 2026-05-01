@@ -11,6 +11,7 @@ This document describes the current architecture implemented in `modules/gfx_plu
 ## Top-Level Structure
 - `src/plugin/`: OpenVINO-facing integration
 - `src/runtime/`: backend-neutral runtime interfaces and helpers
+- `src/runtime/gfx_mpsrt_*`: Apple MPS/MSL ABI, stage-plan, builder-plan, and kernel-manifest helpers
 - `src/mlir/`: MLIR support probing and lowering helpers
 - `src/backends/metal/`: Metal-specific plugin, runtime, memory, profiling, and codegen pieces
 - `src/backends/vulkan/`: Vulkan-specific plugin, runtime, profiling, and codegen pieces
@@ -66,6 +67,8 @@ Two interface points are important in the current code:
 - `submit_policy()`: a stage reports scheduling weight and isolation hints used by backend infer paths during command-buffer submission
 
 `src/runtime/gfx_stage_policy.*` selects runtime policy from node shape, element type, backend, and backend capabilities. The policy layer currently decides:
+- whether a stage stays on shared SPIR-V dispatch, Apple MSL dispatch, or Apple MPS vendor primitives
+- which storage kind that route expects, such as `buffer`, `image`, or `matrix`
 - whether a stage should use direct or chunked execution
 - whether bias, activation, or batchnorm can be fused
 - how expensive a stage is for submission ordering
@@ -152,6 +155,7 @@ Lowered kernels also rely on backend-neutral argument and binding helpers:
 Prepared-binding caches are no longer hard-capped at one fixed size. They start from an initial bound and can grow when repeated executions observe more distinct compatible binding tables than the initial cache budget allowed.
 
 Outside kernel execution, `src/plugin/infer_pipeline.cpp` can also materialize constant graph outputs into synthetic pipeline tensors so output resolution stays uniform even when the public output does not come from a runtime stage.
+On Metal, MLIR and stage-policy metadata can also be serialized into a compact MPSRT runtime-model boundary: stage placement is converted into `GfxMpsrtStageDesc`, tensor/storage metadata becomes `GfxMpsrtTensorDesc` or ABI structs, and MSL-dispatch stages carry kernel-family plus external-buffer-role metadata so request-time binding does not rely on a hard-coded argument convention.
 
 ## Profiling Stack
 Profiling is split into compile-time and infer-time collection.
@@ -174,6 +178,16 @@ Direct Metal API usage lives in Objective-C++ files (`.mm`).
 
 The current Metal backend also shares immutable constant-buffer state across compatible requests through `MetalConstCache` and the backend-neutral immutable buffer cache helper.
 It now also reports execution-device limits through `GpuExecutionDeviceInfo`, so backend-neutral planning code can use real Metal subgroup and threadgroup limits.
+Stage policy now splits Metal work into two internal domains:
+- Apple MPS image or matrix stages for selected conv/pool/interpolate/matmul/softmax/topk shapes
+- Apple MSL buffer dispatch for the remaining custom-kernel cases
+
+The Metal path also now has a local MPSRT runtime layer under `src/backends/metal/runtime/mpsrt/`:
+- `mpsrt_model.*` validates builder records and reconstructs compact runtime models
+- `mpsrt_context.*` prepares and caches Metal pipeline states for annotated MSL-dispatch stages
+- `mpsrt_request.*` binds external or transient buffers and encodes prepared dispatches into a command buffer
+
+That split is driven by `gfx_msl_kernel_manifest.*` plus MLIR module attrs. The manifest classifies MSL kernels into stable families such as eltwise, transpose/packing, concat/split, gather/scatter, RMS/RoPE, masked softmax-attention, Conv3D, and reduction dispatch, and it also defines the external-buffer ABI roles expected by request-time binding.
 The current Metal executor also contains runtime-specialized codegen paths for dynamically shaped `Softmax`, `Select`, `ScatterUpdate`, `RMS`, `RoPE`, binary `Concat`, rank-4 `ScaledDotProductAttention`, fused causal-mask `ScaledDotProductAttention`, and more permissive slice handling, including negative-step `StridedSlice`.
 For dynamic-shape `MatMul`, the current MLIR stage path may also pack a constant RHS from `f32` to `f16` before wrapping it as an immutable const buffer. Compile profiling counters track the original and packed byte sizes for that optimization.
 The backend-aware transform pipeline is also important for Metal now: compressed `MatMul` decompression subgraphs can be marked as decompression and protected from generic folding so later stage compilation can still recognize weight-only compressed patterns.

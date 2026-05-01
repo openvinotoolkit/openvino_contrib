@@ -53,7 +53,7 @@ TEST(GfxTransforms, MergeZeroPadIntoConvolution) {
     auto result = std::make_shared<ov::op::v0::Result>(conv);
     auto model = std::make_shared<ov::Model>(ov::ResultVector{result}, ov::ParameterVector{input}, "pad_conv_merge");
 
-    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
+    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model, ov::gfx_plugin::GpuBackend::Metal);
     ASSERT_TRUE(transformed);
 
     bool has_pad = false;
@@ -85,7 +85,7 @@ TEST(GfxTransforms, FoldTransposeSoftmaxInverseTranspose) {
     auto result = std::make_shared<ov::op::v0::Result>(transpose1);
     auto model = std::make_shared<ov::Model>(ov::ResultVector{result}, ov::ParameterVector{input}, "softmax_transpose_fold");
 
-    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
+    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model, ov::gfx_plugin::GpuBackend::Metal);
     ASSERT_TRUE(transformed);
 
     int transpose_count = 0;
@@ -122,7 +122,7 @@ TEST(GfxTransforms, FoldTransposeSoftmaxTransposeToSingleTranspose) {
     auto result = std::make_shared<ov::op::v0::Result>(transpose1);
     auto model = std::make_shared<ov::Model>(ov::ResultVector{result}, ov::ParameterVector{input}, "softmax_transpose_fold_single");
 
-    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
+    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model, ov::gfx_plugin::GpuBackend::Metal);
     ASSERT_TRUE(transformed);
 
     int transpose_count = 0;
@@ -163,7 +163,7 @@ TEST(GfxTransforms, SinkTransposeThroughReluAndEliminatePair) {
     auto model =
         std::make_shared<ov::Model>(ov::ResultVector{result}, ov::ParameterVector{input}, "transpose_relu_transpose");
 
-    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
+    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model, ov::gfx_plugin::GpuBackend::Metal);
     ASSERT_TRUE(transformed);
 
     int transpose_count = 0;
@@ -201,7 +201,7 @@ TEST(GfxTransforms, DeduplicateEquivalentTransposeReshapeBranches) {
     auto result1 = std::make_shared<ov::op::v0::Result>(softmax1);
     auto model = std::make_shared<ov::Model>(ov::ResultVector{result0, result1}, ov::ParameterVector{input}, "dedup_transpose_reshape");
 
-    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
+    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model, ov::gfx_plugin::GpuBackend::Metal);
     ASSERT_TRUE(transformed);
 
     int transpose_count = 0;
@@ -250,7 +250,7 @@ TEST(GfxTransforms, FoldDflSoftmaxExpectationToMatMul) {
     auto result = std::make_shared<ov::op::v0::Result>(reshape1);
     auto model = std::make_shared<ov::Model>(ov::ResultVector{result}, ov::ParameterVector{input}, "dfl_expectation_fold");
 
-    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
+    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model, ov::gfx_plugin::GpuBackend::Metal);
     ASSERT_TRUE(transformed);
 
     int transpose_count = 0;
@@ -318,7 +318,7 @@ TEST(GfxTransforms, FoldDflSoftmaxExpectationMatMulPreservesValues) {
     auto result = std::make_shared<ov::op::v0::Result>(reshape1);
     auto model = std::make_shared<ov::Model>(ov::ResultVector{result}, ov::ParameterVector{}, "dfl_expectation_values");
 
-    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
+    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model, ov::gfx_plugin::GpuBackend::Metal);
     ASSERT_TRUE(transformed);
 
     const auto expected = infer_with_template(model);

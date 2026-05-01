@@ -11,6 +11,7 @@ This skill is for test selection, regression coverage, and profiling-oriented va
 
 - The task asks what tests to add or run.
 - The task changes MLIR lowering, backend routes, properties, scheduling, caches, infer submission, or output planning.
+- The task changes Metal placement domains, MPSRT ABI metadata, or MSL kernel-family routing.
 - The user wants compare-runner, microbench, profiling-runbook, Android, or Raspberry Pi validation guidance.
 
 ## Primary References
@@ -74,6 +75,7 @@ Inspect and extend:
 - `tests/unit/gpu_backend_base_test.cpp`
 
 If the change is Metal-dispatch specific, also look for focused coverage around command-buffer submission, encoder reuse, and binding reuse before jumping to broader backend tests.
+If the change affects Apple MPS versus Apple MSL placement, extend `tests/unit/gfx_stage_policy_test.cpp` first, then use `tests/backends/metal/gpu_backend_test.mm` for compile/prepare/encode coverage.
 
 ## Practical Command Pattern
 
@@ -94,6 +96,7 @@ ctest --test-dir build-gfx-plugin --output-on-failure -L GFX
 - Remember that the current compare runner also handles boolean outputs, prints a targeted `Select` mismatch probe, identifies outputs as `friendly_name:port`, and reports `max_index` plus reference/GFX values for the worst mismatch.
 - Do not use `ov_gfx_compare_runner` for performance numbers.
 - Use `ov_gfx_microbench` plus `docs/MICROBENCH_SCHEMA.md` and `docs/PROFILING_RUNBOOK.md` for profiling triage.
+- Use `tests/tools/ov_gfx_conv_shape_bench.cpp` when stage-policy or Metal placement changes need a quick compile-plus-infer sample across representative Conv2D shapes.
 - Use `tools/gfx_profile_runbook.py`, `tools/gfx_microbench_smoke.py`, `tools/gfx_calibration_diff.py`, and `tools/gfx_external_trace_summary.py` when the task is operational rather than purely code-level.
 
 ## Output Expectations

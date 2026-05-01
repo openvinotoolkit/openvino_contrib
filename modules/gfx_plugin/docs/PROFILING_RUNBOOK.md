@@ -1,6 +1,6 @@
 # GFX Profiling Runbook
 
-This runbook is the operational companion to `create-profiler.md`.
+This runbook is the operational companion to the local profiling and microbench workflow docs in this module.
 
 Use it when you need to:
 - collect `GFX_PROFILING_REPORT`

@@ -8,7 +8,14 @@
 
 #include "openvino/op/constant.hpp"
 #include "openvino/op/convolution.hpp"
+#include "openvino/op/avg_pool.hpp"
 #include "openvino/op/group_conv.hpp"
+#include "openvino/op/interpolate.hpp"
+#include "openvino/op/log_softmax.hpp"
+#include "openvino/op/matmul.hpp"
+#include "openvino/op/max_pool.hpp"
+#include "openvino/op/softmax.hpp"
+#include "openvino/op/topk.hpp"
 #include "openvino/op/transpose.hpp"
 #include "runtime/gfx_parallelism.hpp"
 #include "runtime/gfx_shape_utils.hpp"
@@ -113,6 +120,143 @@ bool is_chainable_mobile_conv(const std::shared_ptr<const ov::Node>& node) {
 
 bool is_conv_like(std::string_view stage_type) {
     return stage_type == "Convolution" || stage_type == "GroupConvolution";
+}
+
+bool has_static_output_rank(const std::shared_ptr<const ov::Node>& node, size_t rank) {
+    if (!node || node->get_output_size() == 0) {
+        return false;
+    }
+    const auto& pshape = node->get_output_partial_shape(0);
+    return pshape.rank().is_static() && static_cast<size_t>(pshape.rank().get_length()) == rank;
+}
+
+bool is_last_dim_softmax(const std::shared_ptr<const ov::Node>& node) {
+    if (!node || node->get_input_size() == 0) {
+        return false;
+    }
+    const auto& pshape = node->get_input_partial_shape(0);
+    if (!pshape.rank().is_static()) {
+        return false;
+    }
+    const auto rank = pshape.rank().get_length();
+    if (rank <= 0) {
+        return false;
+    }
+    auto normalize_axis = [rank](int64_t axis) {
+        return axis < 0 ? axis + rank : axis;
+    };
+    if (auto sm1 = ov::as_type_ptr<const ov::op::v1::Softmax>(node)) {
+        return normalize_axis(sm1->get_axis()) == rank - 1;
+    }
+    if (auto sm8 = ov::as_type_ptr<const ov::op::v8::Softmax>(node)) {
+        return normalize_axis(sm8->get_axis()) == rank - 1;
+    }
+    if (auto ls = ov::as_type_ptr<const ov::op::v5::LogSoftmax>(node)) {
+        return normalize_axis(ls->get_axis()) == rank - 1;
+    }
+    return false;
+}
+
+bool is_last_dim_topk(const std::shared_ptr<const ov::Node>& node) {
+    auto topk = ov::as_type_ptr<const ov::op::v11::TopK>(node);
+    if (!topk || topk->get_input_size() == 0) {
+        return false;
+    }
+    const auto& pshape = topk->get_input_partial_shape(0);
+    if (!pshape.rank().is_static()) {
+        return false;
+    }
+    const auto rank = pshape.rank().get_length();
+    if (rank <= 0) {
+        return false;
+    }
+    const int64_t axis = topk->get_axis() < 0 ? topk->get_axis() + rank : topk->get_axis();
+    return axis == rank - 1;
+}
+
+std::string make_placement_key(GfxStageBackendDomain domain,
+                               GfxStageStorageKind storage,
+                               std::string_view stage_type) {
+    std::string key(gfx_stage_backend_domain_name(domain));
+    key += ":";
+    key += gfx_stage_storage_kind_name(storage);
+    key += ":";
+    key += stage_type;
+    return key;
+}
+
+GfxStagePlacementPlan make_placement(GfxStageBackendDomain domain,
+                                     GfxStageStorageKind storage,
+                                     std::string_view stage_type,
+                                     bool vendor_primitive,
+                                     bool custom_kernel) {
+    GfxStagePlacementPlan plan{};
+    plan.domain = domain;
+    plan.storage = storage;
+    plan.uses_vendor_primitive = vendor_primitive;
+    plan.uses_custom_kernel = custom_kernel;
+    plan.specialization_key = make_placement_key(domain, storage, stage_type);
+    return plan;
+}
+
+bool is_mps_image_candidate(std::string_view stage_type,
+                            const std::shared_ptr<const ov::Node>& node) {
+    if (stage_type == "Convolution" || stage_type == "GroupConvolution" ||
+        stage_type == "MaxPool" || stage_type == "AvgPool" || stage_type == "Interpolate" ||
+        stage_type == "BatchNormInference") {
+        return has_static_output_rank(node, 4);
+    }
+    return false;
+}
+
+bool is_mps_matrix_candidate(std::string_view stage_type,
+                             const std::shared_ptr<const ov::Node>& node) {
+    if (stage_type == "MatMul") {
+        return true;
+    }
+    if ((stage_type == "Softmax" || stage_type == "LogSoftmax") && is_last_dim_softmax(node)) {
+        return true;
+    }
+    if (stage_type == "TopK" && is_last_dim_topk(node)) {
+        return true;
+    }
+    return false;
+}
+
+GfxStagePlacementPlan select_stage_placement(GpuBackend backend,
+                                             const std::string& stage_type,
+                                             const std::shared_ptr<const ov::Node>& node) {
+    if (backend == GpuBackend::Vulkan) {
+        return make_placement(GfxStageBackendDomain::Spirv,
+                              GfxStageStorageKind::Buffer,
+                              stage_type,
+                              /*vendor_primitive=*/false,
+                              /*custom_kernel=*/true);
+    }
+    if (backend != GpuBackend::Metal) {
+        return {};
+    }
+
+    if (is_mps_image_candidate(stage_type, node)) {
+        return make_placement(GfxStageBackendDomain::AppleMps,
+                              GfxStageStorageKind::Image,
+                              stage_type,
+                              /*vendor_primitive=*/true,
+                              /*custom_kernel=*/false);
+    }
+    if (is_mps_matrix_candidate(stage_type, node)) {
+        return make_placement(GfxStageBackendDomain::AppleMps,
+                              GfxStageStorageKind::Matrix,
+                              stage_type,
+                              /*vendor_primitive=*/true,
+                              /*custom_kernel=*/false);
+    }
+
+    return make_placement(GfxStageBackendDomain::AppleMsl,
+                          GfxStageStorageKind::Buffer,
+                          stage_type,
+                          /*vendor_primitive=*/false,
+                          /*custom_kernel=*/true);
 }
 
 GfxStageArchetype classify_stage_archetype(const std::string& stage_type,
@@ -290,6 +434,38 @@ bool allow_stage_activation_fusion(GpuBackend backend,
     return is_conv_like(stage_type);
 }
 
+const char* gfx_stage_backend_domain_name(GfxStageBackendDomain domain) {
+    switch (domain) {
+        case GfxStageBackendDomain::AppleMps:
+            return "apple_mps";
+        case GfxStageBackendDomain::AppleMsl:
+            return "apple_msl";
+        case GfxStageBackendDomain::Spirv:
+            return "spirv";
+        case GfxStageBackendDomain::Unknown:
+        default:
+            return "unknown";
+    }
+}
+
+const char* gfx_stage_storage_kind_name(GfxStageStorageKind storage) {
+    switch (storage) {
+        case GfxStageStorageKind::Buffer:
+            return "buffer";
+        case GfxStageStorageKind::Image:
+            return "image";
+        case GfxStageStorageKind::Matrix:
+            return "matrix";
+        case GfxStageStorageKind::NDArray:
+            return "ndarray";
+        case GfxStageStorageKind::Alias:
+            return "alias";
+        case GfxStageStorageKind::Unknown:
+        default:
+            return "unknown";
+    }
+}
+
 GfxStagePostOpSupport select_stage_post_op_support(GpuBackend backend,
                                                    GfxStageArchetype archetype,
                                                    const std::string& stage_type) {
@@ -340,6 +516,7 @@ GfxStageOptimizationPlan select_stage_optimization_plan(const GpuBufferManager* 
                                                         const GfxStageRuntimeTraits& traits) {
     GfxStageOptimizationPlan plan{};
     plan.archetype = classify_stage_archetype(stage_type, node, traits);
+    plan.placement = select_stage_placement(backend, stage_type, node);
     plan.layout = select_tensor_layout_plan(stage_type, node);
     plan.post_ops = select_stage_post_op_support(backend, plan.archetype, stage_type);
     plan.execution.fusion.allow_bias = plan.post_ops.bias;

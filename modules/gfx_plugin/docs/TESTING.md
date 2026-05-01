@@ -55,9 +55,12 @@ Recent additions in the tree include:
 - `tests/unit/infer_pipeline_reuse_test.cpp` for reusable pipeline, prepared-input plans, prepared-output plans, and reusable host-output coverage
 - `tests/unit/gfx_profiling_report_test.cpp` for compile/infer profiling JSON assembly and merge behavior
 - `tests/unit/gfx_stage_policy_test.cpp` for submit-weight and route-policy heuristics
+- `tests/unit/gfx_stage_policy_test.cpp` now also covers Metal placement domains, MPSRT tensor descriptors, stage record keys, kernel-family manifests, builder-plan serialization, and runtime-model ABI adaptation
+- `tests/backends/metal/gpu_backend_test.mm` now covers MPSRT-backed Metal compile, prepared-pipeline caching, and request-time MSL-dispatch execution
 - `tests/unit/gfx_parallelism_test.cpp` now also covers Broadcom V3D-specific matmul and convolution tuning behavior
 - `tests/unit/runtime_subgraph_test.cpp` for targeted runtime subgraph execution checks through `ov_gfx_runtime_micro_tests`
 - `tests/unit/gpu_const_cache_test.cpp`, `tests/unit/kernel_arg_reuse_test.cpp`, and `tests/unit/gpu_backend_base_test.cpp` for cache and binding reuse layers
+- `tests/tools/ov_gfx_conv_shape_bench.cpp` for representative YOLO26x Conv2D compile-plus-infer sweeps on `CPU` or `GFX`
 
 Recent focused updates in existing tests include:
 - stronger Broadcom V3D expectations for dense stride-1, huge-spatial, and ultra-dense convolution threadgroup selection in `tests/unit/gfx_parallelism_test.cpp`
@@ -81,6 +84,7 @@ Add or update tests when you change:
 - stage fusion behavior
 - MLIR support probing
 - stage policy, parallelism selection, or input-transform absorption
+- Metal placement-domain selection, MPSRT ABI metadata, or MSL kernel-family mapping
 - backend-specialized routes such as chunked or direct Vulkan execution
 - infer submission thresholds, submission ordering, or command-buffer lifecycle
 - immutable const-cache behavior or prepared-binding reuse
@@ -108,6 +112,7 @@ If you change MLIR lowering, prefer a unit test that inspects the emitted IR for
 - `ov_gfx_compare_runner` is useful for numeric diffs and per-op narrowing when a failure is hard to isolate from the full suite; it also supports `--per-op-all`, `--reference-device`, `--reference-plugin`, and `--gfx-only`
 - `ov_gfx_compare_runner` also supports boolean tensors, `--single-op-output`, `--tinyllama-prompt-inputs`, and an extra `Select` mismatch probe for harder data-dependent failures
 - `ov_gfx_compare_runner` now prints outputs as `friendly_name:port` and reports `max_index`, reference value, and GFX value for the worst mismatch
+- `ov_gfx_conv_shape_bench` is useful when stage-policy or Metal placement changes need a quick before/after sample on a fixed set of Conv2D shapes without running a full benchmark flow
 - keep `ov_gfx_compare_runner` accuracy-only and use `benchmark_app` for perf
 - use `ov_gfx_microbench` for `MB0` to `MB3`, calibration artifacts, and profiling triage rather than for acceptance perf numbers
 - for the full profiling workflow and external tracing commands, use `PROFILING_RUNBOOK.md`

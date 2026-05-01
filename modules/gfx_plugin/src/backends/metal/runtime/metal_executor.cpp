@@ -15,6 +15,7 @@
 #include "backends/metal/runtime/profiling/profiler.hpp"
 #include "kernel_ir/gfx_codegen_desc.hpp"
 #include "mlir/codegen_common.hpp"
+#include "mlir/msl_codegen.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/validation_util.hpp"
 #include "runtime/gfx_shape_utils.hpp"
@@ -1840,6 +1841,20 @@ std::shared_ptr<ICompiledKernel> MetalStage::compile_kernel(const KernelSource& 
                 return generate_msl_for_slice_generic(d, module);
             };
         }
+    }
+    if (src.module) {
+        const auto plan = select_stage_optimization_plan(m_buffer_manager,
+                                                         GpuBackend::Metal,
+                                                         m_type,
+                                                         m_node,
+                                                         m_node ? m_node->get_output_element_type(0)
+                                                                : ov::element::dynamic,
+                                                         m_has_bias,
+                                                         m_has_activation,
+                                                         m_has_bn,
+                                                         GfxStageRuntimeTraits{});
+        annotate_msl_module_with_stage_plan(src.module, plan, m_type);
+        configure_msl_kernel_source_for_plan(src, m_type);
     }
     OPENVINO_ASSERT(src.msl_generator || !src.msl_source.empty(),
                     "MetalStage: missing MSL source/generator for op ",

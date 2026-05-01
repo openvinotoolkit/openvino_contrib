@@ -26,6 +26,8 @@ Recent runtime work extends this model in two directions:
 - infer execution can batch stage recording into submission windows and reuse prepared bindings or immutable device buffers across requests
 - Metal infer execution can now reuse one compute encoder across consecutive dispatches and skip redundant pipeline or buffer rebinds when the command-buffer state is unchanged
 - device-aware scheduling now uses backend-reported execution limits and device-family classification through shared `gfx_parallelism.*` and `gfx_partitioning.*` helpers
+- Metal stage planning now also chooses an internal placement domain per stage: Apple MPS image or matrix primitives for selected ops, or Apple MSL buffer dispatch for custom-kernel paths
+- the Metal compile path can serialize that placement into a compact MPSRT runtime model with explicit tensor descriptors, external-buffer roles, and kernel-family metadata before request-time execution
 - infer requests can also keep per-request stateful variable buffers for `ReadValue` / `Assign` style subgraphs instead of treating them as ordinary stateless stage edges
 - output allocation can now reuse workspace-managed intermediate slots across stages based on liveness instead of always keeping one dedicated buffer per stage output
 - shared prepared-binding caches can now grow beyond their initial capacity when a workload introduces many distinct compatible binding tables
@@ -52,6 +54,7 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 - `include/openvino/gfx_plugin/`: public plugin headers
 - `src/plugin/`: `Plugin`, `CompiledModel`, shared property handling, pipeline construction
 - `src/runtime/`: backend-neutral runtime abstractions and helpers
+- `src/runtime/gfx_mpsrt_*`: shared ABI, stage-plan, builder-plan, and MSL-kernel-manifest helpers for the Apple MPS/MSL split
 - `src/mlir/`: MLIR support probes, builders, and shared codegen helpers
 - `src/backends/metal/`: Metal-specific plugin glue, runtime, memory, profiling, MSL compilation
 - `src/backends/vulkan/`: Vulkan-specific plugin glue, runtime, buffers, profiling, SPIR-V/Vulkan execution
@@ -83,6 +86,7 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 - absorption of selected transpose inputs into downstream stages through `GfxInputTransform`
 - output-source tracking for fused or rewritten stages so public outputs and direct stateful-assign consumers stay mapped to the original OpenVINO node/port
 - output-alias tracking when one runtime stage materializes several graph outputs through the same underlying buffer
+- per-stage optimization planning that now includes placement domain and storage decisions, not only fusion and submit-policy hints
 
 ### InferRequest
 `include/openvino/gfx_plugin/infer_request.hpp` plus backend-specific implementation files own:
@@ -107,6 +111,7 @@ The current infer path is not a naive "execute one stage, submit immediately" lo
 - `GpuStage`: execution-stage interface
 - `GpuStageFactory` / `ExecutionDispatcher`: backend-specific stage dispatch
 - `gfx_stage_policy.*`: runtime route, fusion, and submit-policy selection
+- `gfx_stage_policy.*` now also selects placement domains such as `apple_mps`, `apple_msl`, and `spirv`, together with storage kinds such as `image`, `matrix`, and `buffer`
 - `gfx_parallelism.*` and `gfx_partitioning.*`: backend-neutral device-capability and workgroup planning helpers
 - `immutable_gpu_buffer_cache.*`: backend-neutral cache for immutable device buffers
 - shared remote context/tensor abstractions
@@ -121,6 +126,7 @@ The runtime also has explicit reuse layers:
 - compiled kernels can reuse prepared binding tables through shared backend-neutral cache helpers in `gpu_backend_base.hpp`
 - prepared binding-table caches can grow past their initial size when the infer path observes more distinct reusable binding sets
 - infer requests can reuse prepared output bindings and preallocated host output tensors across repeated executions
+- on Metal, MSL-dispatch stages can also be wrapped as compact MPSRT runtime models with explicit external-buffer ABI roles, prepared pipeline-cache entries, and request-time transient tensor binding
 
 Profiling now also has two layers:
 - compile-time tracing stored as a JSON `compile` section inside `GFX_PROFILING_REPORT`
@@ -195,6 +201,8 @@ Current lowering/runtime special cases:
 - compressed `MatMul` stage compilation can repack concatenated quantized weight parts and scale blocks into backend const buffers before codegen
 - Metal Conv2D and MaxPool codegen now honor dilation metadata, and Conv2D dispatch planning can block output channels and output width per thread for selected float-like cases
 - `ShapeOf`, `TopK`, `Tile`, and unary stage handling now have stricter runtime/codegen paths around output typing, alias safety, and ABI metadata
+- Metal stage policy now routes selected 4D conv/pool/interpolate-style stages to Apple MPS image storage, selected `MatMul` / last-dimension `Softmax` / `TopK` stages to Apple MPS matrix storage, and keeps the remaining cases on Apple MSL buffer dispatch
+- the Metal MSL path now carries a kernel-family manifest plus explicit external-buffer ABI roles so runtime parameter, input, and output buffers can be rebound without assuming a simple tail-output convention
 - `ScatterUpdate` now has a dedicated MLIR lowering path instead of falling back to the older scatter-family builders
 - Slice lowering now prefers `tensor.extract_slice`; generic slice metadata extraction still accepts the older generic form when needed
 - dynamic-shape support now covers `ShapeOf` compile/query flow and query-time acceptance for selected data-movement ops such as `Concat`, `Broadcast`, `Select`, `StridedSlice`, and `Range`
@@ -258,6 +266,7 @@ Build notes:
 - the module build treats compiler warnings as errors by default through `-Werror` on Clang/GCC and `/WX` on MSVC
 - `cmake/GfxAndroidRuntimeBundle.cmake.in` provides helper copy logic for Android-side runtime dependency bundling
 - `third_party/Vulkan-Headers` is tracked as a git submodule pinned to the module-tested upstream release
+- Metal now also builds the local MPSRT runtime sources under `src/backends/metal/runtime/mpsrt/` together with the shared `gfx_mpsrt_*` and `gfx_msl_kernel_manifest.*` helpers
 - `tools/gfx_rpi_vulkan_toolchain_builder.py` can assemble a hermetic Raspberry Pi Vulkan cross-toolchain bundle for Raspberry Pi 4/5 class `aarch64` Bookworm-style targets, normalize absolute sysroot symlinks, install both `vulkan/` and `vk_video/` headers into the generated sysroot, and emit portable `-march=armv8-a` compile flags in the generated wrappers and toolchain file
 
 The build produces the `openvino_gfx_plugin` shared library. On Unix-like builds this is typically emitted as `libopenvino_gfx_plugin.so`; the `.so` suffix is also forced on macOS for OpenVINO plugin loading compatibility.
@@ -324,6 +333,8 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 `ov_gfx_func_tests` covers plugin-facing and functional behavior, `ov_gfx_unit_tests` carries focused runtime, MLIR, backend, and cache regressions, and `ov_gfx_runtime_micro_tests` is used for smaller runtime subgraph checks. Helper tools `ov_gfx_compare_runner` and `ov_gfx_microbench` are also built from `tests/tools/`.
 
 Recent regression coverage includes:
+- Metal stage-placement and MPSRT descriptor/runtime-model coverage in `tests/unit/gfx_stage_policy_test.cpp`
+- Metal backend tests for MPSRT compile, prepared-pipeline caching, and request-time MSL dispatch execution in `tests/backends/metal/gpu_backend_test.mm`
 - canonical Conv2D MLIR lowering checks
 - strict interior-tile bounds checks plus Vulkan batch-1 parallel-launch and batch>1 serial-fallback checks in `tests/unit/mlir_conv_parallel_test.cpp`
 - im2col rewrite coverage, including the batch-1 plain-matmul route
@@ -339,6 +350,7 @@ Recent regression coverage includes:
 - DFL softmax expectation rewrite coverage, including value-preservation checks for the MatMul form, in `tests/unit/layout_cleanup_test.cpp`
 - backend memory/device integration coverage in `tests/unit/memory_device_integration_test.mm`
 - plugin property coverage for numeric `available_devices` / `ov::device::id` behavior in `tests/unit/plugin_tests.cpp`
+- `ov_gfx_conv_shape_bench` in `tests/tools/` for compile-plus-infer sweeps across representative YOLO26x convolution shapes on `CPU` or `GFX`
 
 ## Debugging And Instrumentation
 Useful environment variables from the current codebase:

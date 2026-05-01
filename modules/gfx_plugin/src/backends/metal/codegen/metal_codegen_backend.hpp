@@ -8,6 +8,7 @@
 
 #include "kernel_ir/gfx_codegen_backend.hpp"
 #include "backends/metal/runtime/memory/buffer.hpp"
+#include "backends/metal/runtime/mpsrt/mpsrt_model.hpp"
 
 #ifdef __OBJC__
 #import <Metal/Metal.h>
@@ -47,6 +48,8 @@ public:
     size_t clamp_threadgroup_size(size_t desired) const override;
     std::shared_ptr<ICompiledKernel> fork() const override;
     void prewarm_bindings(const std::vector<KernelArg>& args) override;
+    void set_mpsrt_model(std::shared_ptr<const metal::mpsrt::MpsrtModel> model);
+    const metal::mpsrt::MpsrtModel* mpsrt_model() const;
     void execute(GpuCommandBufferHandle command_buffer,
                  const KernelDispatch& dispatch,
                  const std::vector<KernelArg>& args,
@@ -57,6 +60,7 @@ private:
     MetalDeviceHandle m_device = nullptr;
     void* m_pipeline = nullptr;
     std::shared_ptr<MetalBindingSchema> m_binding_schema;
+    std::shared_ptr<const metal::mpsrt::MpsrtModel> m_mpsrt_model;
 };
 
 }  // namespace gfx_plugin

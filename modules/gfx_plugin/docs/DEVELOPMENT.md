@@ -122,6 +122,10 @@ For runtime execution, follow:
 If the behavior depends on route or scheduling selection, also read:
 - `src/runtime/gfx_stage_policy.*`
 - `src/runtime/gfx_parallelism.*`
+- `src/runtime/gfx_mpsrt_abi.hpp`
+- `src/runtime/gfx_mpsrt_plan.hpp`
+- `src/runtime/gfx_mpsrt_builder_plan.hpp`
+- `src/runtime/gfx_msl_kernel_manifest.*`
 
 `tests/unit/gfx_parallelism_test.cpp` now covers Broadcom-oriented matmul
 selection plus dense stride-1, huge-spatial, and ultra-dense convolution
@@ -135,6 +139,7 @@ The current planning path is no longer just backend-wide. It includes family-spe
 - Broadcom V3D Vulkan devices
 - Qualcomm Adreno Vulkan devices
 - explicit convolution dispatch attrs forwarded into MLIR lowering
+- Metal placement decisions between Apple MPS image or matrix primitives and Apple MSL buffer dispatch
 
 For current convolution work, there are now two important lowering details to keep in mind:
 - full interior tiles in conv parallel lowering can skip lane-level bounds guards on the fast path
@@ -152,6 +157,7 @@ If the change touches infer-request throughput or resource reuse, also read:
 - `src/runtime/gpu_buffer_manager.hpp`
 - `src/plugin/infer_io_utils.*`
 - `src/backends/vulkan/runtime/vulkan_buffer_manager.*` when Vulkan const-upload batching or shared upload-recording behavior changes
+- `src/backends/metal/runtime/mpsrt/*` when Metal request-time binding, prepared dispatch caching, or external-buffer ABI rules changed
 
 For stage-output reuse changes, also inspect:
 - `StageOutputBufferWorkspace` in `src/plugin/infer_pipeline.hpp`
@@ -201,6 +207,11 @@ For `ShapeOf`, keep the runtime-materialized dims path aligned with the builder 
 
 For Metal kernel-dispatch work, inspect `src/backends/metal/runtime/metal_command_encoder.*` before adding new ad-hoc encoder setup code. The current runtime keeps one compute encoder per active command buffer, caches the last bound pipeline plus buffer table, and ends that encoder explicitly before blit/copy paths or command-buffer commit.
 For Metal Conv2D / MaxPool work, keep dilation handling and dispatch blocking coherent across `gfx_codegen_desc.hpp`, MLIR codegen, and native runtime ops. The current code shares the same dilation and output-block metadata between compile-time codegen and runtime dispatch sizing.
+For Metal placement or codegen work, also keep the MPSRT boundary coherent. The current code expects stage policy, MLIR attrs, `gfx_msl_kernel_manifest.*`, and `src/backends/metal/runtime/mpsrt/*` to agree on:
+- the selected placement domain (`apple_mps` vs `apple_msl`)
+- the storage kind (`image`, `matrix`, `buffer`)
+- the stable stage record key
+- the external-buffer ABI roles for inputs, outputs, and runtime-parameter buffers
 
 For layout-cleanup work around DFL-style postprocessing tails, the current rewrite target is a value-preserving `Softmax -> MatMul -> Reshape/Transpose` form. Do not describe the older synthetic 1x1 convolution rewrite as the active implementation.
 
@@ -241,6 +252,7 @@ These are implemented directly in the runtime and codegen sources; grep for `OV_
 
 For functional comparison against a reference backend, build and run `tests/tools/ov_gfx_compare_runner.cpp`. It is an accuracy-only tool for numeric diffs, per-op narrowing, full-graph per-op output scans, and `GFX`-only output summaries. Useful switches now include `--reference-device`, `--reference-plugin`, `--per-op`, `--per-op-all`, `--single-op-output`, `--tinyllama-prompt-inputs`, and `--gfx-only`. The current tool also understands boolean tensors and prints an extra mismatch probe for `Select` failures. Do not use it for performance numbers; use `benchmark_app` for that.
 The compare runner now also prints output ids as `friendly_name:port` and reports the worst mismatch index together with the reference and GFX values, which is useful when only one slice or token position diverges.
+For targeted convolution compile-plus-infer sweeps, use `tests/tools/ov_gfx_conv_shape_bench.cpp`. It measures representative YOLO26x-style Conv2D shapes on `CPU` or `GFX` and is useful when stage-policy or Metal placement changes need a quick before/after sample instead of a full benchmark pipeline.
 
 For profiling workflows, calibration artifacts, and cross-device trace correlation, use:
 - `tests/tools/ov_gfx_microbench.cpp`

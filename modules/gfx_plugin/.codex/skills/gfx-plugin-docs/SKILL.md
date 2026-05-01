@@ -39,6 +39,7 @@ Additional operational docs:
    - architecture or runtime flow
    - property semantics
    - backend-specific route selection
+   - Metal placement-domain or storage selection such as `apple_mps` image/matrix stages versus `apple_msl` buffer dispatch
    - supported-shape or dispatch constraints
    - stateful execution semantics for `ReadValue` / `Assign`
    - dedicated lowering families such as `RMS`, `ScatterUpdate`, or `RoPE`
@@ -51,6 +52,7 @@ Additional operational docs:
    - view-style aliasing rules for split outputs
    - output-alias routing or source-node-aware output resolution for fused stages
    - command-encoder or binding-reuse behavior that changes profiling counters or dispatch setup cost
+   - MPSRT runtime-model, kernel-family-manifest, or external-buffer-ABI behavior on Metal
    - stage-level profiling estimates such as `bytes_in`, `bytes_out`, `macs_est`, or `flops_est`
    - test layout or regression coverage
    - compare-runner CLI or debug workflow

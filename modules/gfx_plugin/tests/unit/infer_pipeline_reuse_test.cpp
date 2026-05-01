@@ -145,6 +145,7 @@ TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparati
     GpuBufferPool pool(allocator);
     std::vector<InferStage> reusable_pipeline;
     std::vector<std::vector<BufferHandle>> stage_handles;
+    StageOutputBufferWorkspace stage_workspace;
     std::vector<std::shared_ptr<GfxRemoteTensor>> remote_outputs;
     const std::vector<std::shared_ptr<GfxRemoteTensor>> remote_inputs;
     const std::vector<ov::Output<const ov::Node>> outputs;
@@ -180,6 +181,7 @@ TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparati
                                                          GpuBackend::Metal,
                                                          pool,
                                                          stage_handles,
+                                                         &stage_workspace,
                                                          [](std::vector<InferStage>&) {},
                                                          describe_output,
                                                          "test");
@@ -206,6 +208,7 @@ TEST(InferPipelineReuseTest, ReusesClonedPipelineAndOutputHandlesAcrossPreparati
                                                           GpuBackend::Metal,
                                                           pool,
                                                           stage_handles,
+                                                          &stage_workspace,
                                                           [](std::vector<InferStage>&) {},
                                                           describe_output,
                                                           "test");

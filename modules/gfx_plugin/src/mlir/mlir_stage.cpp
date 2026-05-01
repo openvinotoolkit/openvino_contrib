@@ -17,6 +17,7 @@
 #include "kernel_ir/gfx_kernel_spec.hpp"
 #include "mlir/codegen_common.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
+#include "mlir/gfx_mpsrt_metadata.hpp"
 #include "mlir/mlir_builder.hpp"
 #include "mlir/mlir_kernel_plan_utils.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
@@ -6717,6 +6718,7 @@ void MlirStage::apply_stage_optimization_attrs(mlir::ModuleOp module,
     auto* ctx = module.getContext();
     module->setAttr("gfx.stage_archetype",
                     mlir::StringAttr::get(ctx, stage_archetype_attr(plan.archetype)));
+    annotate_module_with_mpsrt_stage_plan(module, plan, m_type);
     module->setAttr("gfx.tensor_layout_kind",
                     mlir::StringAttr::get(ctx, tensor_layout_kind_attr(plan.layout.kind)));
     module->setAttr("gfx.tensor_view_only",

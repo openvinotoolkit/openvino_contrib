@@ -41,6 +41,7 @@ Then read the relevant code path:
 - For MLIR changes, keep compile-time support probing, lowering, and runtime behavior aligned.
 - When changing plugin-visible behavior, also check properties, `query_model()`, and compiled-model/runtime property exposure.
 - When changing stateful graph behavior, treat `ReadValue` / `Assign` as a dedicated infer-request-state path, not just generic stateless runtime stages.
+- For Metal placement work, keep `gfx_stage_policy.*`, `gfx_mpsrt_*`, `gfx_msl_kernel_manifest.*`, MLIR attrs, and `src/backends/metal/runtime/mpsrt/*` aligned as one contract.
 
 ## Common Workflows
 
@@ -62,6 +63,8 @@ Check whether the change belongs to one of the current special families:
 - backend-specialized launch paths that now depend on final runtime shape or final shader binding counts
 - backend-only fused LLM ops such as `GfxSDPAWithCausalMask`
 - Metal-native op contracts that now carry more ABI metadata, such as dilated MaxPool, generalized TopK, ShapeOf, or blocked Conv2D dispatch
+- Metal placement-domain and storage selection, such as Apple MPS image or matrix stages versus Apple MSL buffer dispatch
+- MPSRT runtime-model boundaries, including tensor descriptors, stage record keys, external-buffer roles, and prepared MSL-dispatch pipeline caching
 - compile-time data repacking paths, such as Metal dynamic-shape `MatMul` packing a constant RHS from `f32` to `f16` and recompiling against the effective runtime tensor types
 - backend-aware transform preservation, such as keeping compressed `MatMul` decompression subgraphs intact for Metal-only downstream routes
 - backend-aware transform fusion, such as LLaMA rotate-half rewriting into native `RoPE` on Metal or compatible compressed `MatMul` nodes regrouping into a fused horizontal path
@@ -75,6 +78,7 @@ Check whether the change belongs to one of the current special families:
 3. Verify interaction with infer submission, immutable const caches, and prepared binding reuse when applicable.
 4. Add tests in `tests/unit/` and backend tests when behavior is externally visible.
 5. On Metal, inspect `src/backends/metal/runtime/metal_command_encoder.*` before adding new encoder/pipeline/buffer binding logic.
+6. If the change affects Apple placement or request-time Metal binding, also inspect `src/backends/metal/runtime/mpsrt/*` and `src/runtime/gfx_msl_kernel_manifest.*`.
 
 ### Stateful or reusable infer-path change
 

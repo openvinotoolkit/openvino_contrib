@@ -58,6 +58,30 @@ struct GfxStageExecutionPolicy {
     GpuStageSubmitPolicy submit{};
 };
 
+enum class GfxStageBackendDomain {
+    Unknown,
+    AppleMps,
+    AppleMsl,
+    Spirv,
+};
+
+enum class GfxStageStorageKind {
+    Unknown,
+    Buffer,
+    Image,
+    Matrix,
+    NDArray,
+    Alias,
+};
+
+struct GfxStagePlacementPlan {
+    GfxStageBackendDomain domain = GfxStageBackendDomain::Unknown;
+    GfxStageStorageKind storage = GfxStageStorageKind::Unknown;
+    bool uses_vendor_primitive = false;
+    bool uses_custom_kernel = false;
+    std::string specialization_key;
+};
+
 enum class GfxStageArchetype {
     Unknown,
     Convolution,
@@ -112,6 +136,7 @@ struct GfxConvRoutePlan {
 
 struct GfxStageOptimizationPlan {
     GfxStageArchetype archetype = GfxStageArchetype::Unknown;
+    GfxStagePlacementPlan placement{};
     GfxTensorLayoutPlan layout{};
     GfxStagePostOpSupport post_ops{};
     GfxStageExecutionPolicy execution{};
@@ -148,6 +173,8 @@ bool allow_stage_batchnorm_fusion(GpuBackend backend, const std::string& stage_t
 bool allow_stage_activation_fusion(GpuBackend backend,
                                    const std::string& stage_type,
                                    ActivationKind kind);
+const char* gfx_stage_backend_domain_name(GfxStageBackendDomain domain);
+const char* gfx_stage_storage_kind_name(GfxStageStorageKind storage);
 
 }  // namespace gfx_plugin
 }  // namespace ov

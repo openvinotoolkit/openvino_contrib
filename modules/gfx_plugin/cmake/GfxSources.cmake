@@ -81,6 +81,10 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_plan.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_spec.hpp
     ${_gfx_src_dir}/runtime/gfx_logger.hpp
+    ${_gfx_src_dir}/runtime/gfx_mpsrt_abi.hpp
+    ${_gfx_src_dir}/runtime/gfx_mpsrt_builder_plan.hpp
+    ${_gfx_src_dir}/runtime/gfx_mpsrt_plan.hpp
+    ${_gfx_src_dir}/runtime/gfx_msl_kernel_manifest.hpp
     ${_gfx_src_dir}/runtime/gfx_op_utils.hpp
     ${_gfx_src_dir}/runtime/gfx_parallelism.hpp
     ${_gfx_src_dir}/runtime/gfx_remote_context.hpp
@@ -100,6 +104,7 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/immutable_gpu_buffer_cache.cpp
     ${_gfx_src_dir}/runtime/memory_manager.cpp
     ${_gfx_src_dir}/runtime/gfx_logger.cpp
+    ${_gfx_src_dir}/runtime/gfx_msl_kernel_manifest.cpp
     ${_gfx_src_dir}/runtime/gfx_op_utils.cpp
     ${_gfx_src_dir}/runtime/gfx_parallelism.cpp
     ${_gfx_src_dir}/runtime/gfx_profiling_report.cpp
@@ -113,6 +118,7 @@ set(GFX_RUNTIME_MLIR_HEADERS
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.hpp
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_metadata.hpp
     ${_gfx_src_dir}/mlir/gfx_mlir_type_utils.hpp
+    ${_gfx_src_dir}/mlir/gfx_mpsrt_metadata.hpp
     ${_gfx_src_dir}/mlir/gfx_mlir_debug.hpp
     ${_gfx_src_dir}/mlir/mlir_kernel_plan_utils.hpp
     ${_gfx_src_dir}/mlir/mlir_stage.hpp
@@ -172,6 +178,9 @@ set(GFX_RUNTIME_METAL_SOURCES
     ${_gfx_src_dir}/backends/metal/runtime/metal_command_encoder.mm
     ${_gfx_src_dir}/backends/metal/runtime/memory_ops.mm
     ${_gfx_src_dir}/backends/metal/runtime/metal_executor.cpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_context.mm
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_model.cpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_request.mm
     ${_gfx_src_dir}/backends/metal/runtime/gpu_memory.mm
     ${_gfx_src_dir}/backends/metal/codegen/metal_compiler.mm
     ${_gfx_src_dir}/backends/metal/codegen/metal_codegen_backend.mm
@@ -275,6 +284,9 @@ set(GFX_RUNTIME_METAL_HEADERS
     ${_gfx_src_dir}/backends/metal/runtime/memory/memory_session.hpp
     ${_gfx_src_dir}/backends/metal/runtime/memory/memory_stats.hpp
     ${_gfx_src_dir}/backends/metal/runtime/memory/staging_pool.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_context.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_model.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_request.hpp
     ${_gfx_src_dir}/backends/metal/runtime/profiling/gpu_timestamps.hpp
     ${_gfx_src_dir}/backends/metal/runtime/profiling/profiler.hpp
     ${_gfx_src_dir}/backends/metal/runtime/profiling/profiler_config.hpp

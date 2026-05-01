@@ -41,10 +41,15 @@
 #include "plugin/gfx_backend_config.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/gfx_mlir_kernel_metadata.hpp"
+#include "mlir/gfx_mpsrt_metadata.hpp"
 #include "mlir/mlir_kernel_plan_utils.hpp"
 #include "mlir/mlir_support.hpp"
 #include "mlir/codegen_common.hpp"
 #include "mlir/mlir_passes.hpp"
+#include "mlir/msl_codegen.hpp"
+#include "runtime/gfx_mpsrt_builder_plan.hpp"
+#include "runtime/gfx_stage_policy.hpp"
+#include "llvm/ADT/SmallVector.h"
 #if GFX_BACKEND_VULKAN_AVAILABLE
 #    include "mlir/spirv_codegen.hpp"
 #endif
@@ -771,6 +776,433 @@ TEST(GfxMlir, MatMulBuilderProducesModule) {
     const auto func_type = func.getFunctionType();
     ASSERT_EQ(func_type.getNumInputs(), 2u);
     ASSERT_EQ(func_type.getNumResults(), 1u);
+}
+
+TEST(GfxMlir, MatMulMpsrtMetadataAnnotatesPlacementAndTensorDescriptors) {
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 2});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 2});
+    auto matmul = std::make_shared<ov::op::v0::MatMul>(lhs, rhs, false, true);
+
+    auto& ctx = ov::gfx_plugin::gfx_mlir_context();
+    auto module = ov::gfx_plugin::build_mlir_for_node(matmul, ctx);
+    ASSERT_TRUE(module);
+
+    const auto plan = ov::gfx_plugin::select_stage_optimization_plan(nullptr,
+                                                                     ov::gfx_plugin::GpuBackend::Metal,
+                                                                     "MatMul",
+                                                                     matmul,
+                                                                     ov::element::f32,
+                                                                     /*has_bias=*/false,
+                                                                     /*has_activation=*/false,
+                                                                     /*has_batchnorm=*/false,
+                                                                     {});
+    ov::gfx_plugin::annotate_module_with_mpsrt_stage_plan(module, plan, "MatMul");
+
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.backend").str(), "apple_mps");
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.storage").str(), "matrix");
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.stage_kind").str(), "mps_gemm");
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.kernel_name").str(), "mps_gemm");
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.builder_symbol").str(),
+              "ovgfx_mpsrt_encode_gemm");
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.stage_record_key").str(),
+              "mps_gemm|apple_mps|matrix|matrix|row_major|MatMul|apple_mps:matrix:MatMul");
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.input0.storage").str(), "matrix");
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.input0.layout").str(), "row_major");
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.input0.dtype").str(), "f32");
+    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.input_count").getInt(), 2);
+    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.output_count").getInt(), 1);
+    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.input0.matrix_rows").getInt(), 4);
+    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.input0.matrix_columns").getInt(), 2);
+    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.input0.matrix_row_bytes").getInt(), 8);
+
+    ov::gfx_plugin::GfxMpsrtModuleStagePlan extracted;
+    ASSERT_TRUE(ov::gfx_plugin::read_module_mpsrt_stage_plan(module, extracted));
+    ASSERT_TRUE(extracted.valid);
+    ASSERT_EQ(extracted.stage.kind, ov::gfx_plugin::GfxMpsrtStageKind::MPSGemm);
+    ASSERT_EQ(extracted.stage.domain, ov::gfx_plugin::GfxStageBackendDomain::AppleMps);
+    ASSERT_EQ(extracted.stage.builder_symbol, "ovgfx_mpsrt_encode_gemm");
+    ASSERT_EQ(extracted.stage.input_storage, ov::gfx_plugin::GfxMpsrtStorage::Matrix);
+    ASSERT_EQ(extracted.stage.output_storage, ov::gfx_plugin::GfxMpsrtStorage::Matrix);
+    ASSERT_EQ(extracted.stage.layout, ov::gfx_plugin::GfxMpsrtLayout::RowMajor);
+    ASSERT_EQ(extracted.stage_record_key,
+              "mps_gemm|apple_mps|matrix|matrix|row_major|MatMul|apple_mps:matrix:MatMul");
+    ASSERT_EQ(extracted.inputs.size(), 2u);
+    ASSERT_EQ(extracted.outputs.size(), 1u);
+    ASSERT_EQ(extracted.inputs[0].dtype, ov::gfx_plugin::GfxMpsrtDType::F32);
+    ASSERT_EQ(extracted.inputs[0].matrix_rows, 4u);
+    ASSERT_EQ(extracted.inputs[0].matrix_columns, 2u);
+    ASSERT_EQ(extracted.outputs[0].byte_length, 1u * 4u * 4u * 4u);
+
+    const auto module_builder_plan = ov::gfx_plugin::build_module_mpsrt_builder_plan(module);
+    ASSERT_TRUE(module_builder_plan.valid);
+    const auto& builder_plan = module_builder_plan.builder_plan;
+    ASSERT_TRUE(builder_plan.valid);
+    ASSERT_EQ(builder_plan.records.size(), 5u);
+    ASSERT_EQ(builder_plan.input_values.size(), 2u);
+    ASSERT_EQ(builder_plan.output_values.size(), 1u);
+    ASSERT_EQ(builder_plan.records[0].kind, ov::gfx_plugin::GfxMpsrtBuilderRecordKind::ModelBegin);
+    ASSERT_EQ(builder_plan.records[0].symbol, "ovgfx_mpsrt_model_begin");
+    ASSERT_EQ(builder_plan.records[1].kind, ov::gfx_plugin::GfxMpsrtBuilderRecordKind::AddTensor);
+    ASSERT_EQ(builder_plan.records[1].symbol, "ovgfx_mpsrt_add_tensor");
+    ASSERT_EQ(builder_plan.records[1].value, 0u);
+    ASSERT_EQ(builder_plan.records[1].tensor_descs[0].storage,
+              static_cast<uint32_t>(ov::gfx_plugin::GfxMpsrtStorage::Matrix));
+    ASSERT_EQ(builder_plan.records[3].kind, ov::gfx_plugin::GfxMpsrtBuilderRecordKind::EncodeStage);
+    ASSERT_EQ(builder_plan.records[3].symbol, "ovgfx_mpsrt_encode_gemm");
+    ASSERT_EQ(builder_plan.records[3].inputs.size(), 2u);
+    ASSERT_EQ(builder_plan.records[3].outputs.size(), 1u);
+    ASSERT_EQ(builder_plan.records[3].outputs[0], 2u);
+    ASSERT_EQ(builder_plan.records[3].tensor_descs[0].byte_length, 1u * 4u * 4u * 4u);
+    ASSERT_EQ(builder_plan.records[4].kind, ov::gfx_plugin::GfxMpsrtBuilderRecordKind::ModelEnd);
+    ASSERT_EQ(builder_plan.records[4].symbol, "ovgfx_mpsrt_model_end");
+}
+
+TEST(GfxMlir, AddMslMetadataUsesRequiredMpsrtKernelFamily) {
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 64, 80, 80});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 64, 80, 80});
+    auto add = std::make_shared<ov::op::v1::Add>(lhs, rhs);
+
+    auto& ctx = ov::gfx_plugin::gfx_mlir_context();
+    auto module = ov::gfx_plugin::build_mlir_for_node(add, ctx);
+    ASSERT_TRUE(module);
+    mlir::Builder builder(module.getContext());
+    module->setAttr("gfx.fixed_arg_count", builder.getI32IntegerAttr(3));
+    module->setAttr("gfx.kernel_output_arg_count", builder.getI32IntegerAttr(1));
+
+    const auto plan = ov::gfx_plugin::select_stage_optimization_plan(nullptr,
+                                                                     ov::gfx_plugin::GpuBackend::Metal,
+                                                                     "Add",
+                                                                     add,
+                                                                     ov::element::f16,
+                                                                     /*has_bias=*/false,
+                                                                     /*has_activation=*/false,
+                                                                     /*has_batchnorm=*/false,
+                                                                     {});
+    ov::gfx_plugin::annotate_msl_module_with_stage_plan(module, plan, "Add");
+
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.backend").str(), "apple_msl");
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.storage").str(), "buffer");
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.stage_kind").str(), "msl_dispatch");
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.msl.kernel_family").str(), "eltwise_fused_buffer");
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.msl.required_entry_point").str(),
+              "eltwise_fused_buffer");
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.dispatch_kernel_family").str(),
+              "eltwise_fused_buffer");
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.dispatch_entry_point").str(),
+              "eltwise_fused_buffer");
+    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.dispatch_kernel_family_id")
+                  .getInt(),
+              static_cast<int64_t>(ov::gfx_plugin::GfxMslKernelFamily::EltwiseFusedBuffer));
+    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.dispatch_flags").getInt(),
+              ov::gfx_plugin::GfxMpsrtMslDispatchFlagPrecompiledMetallibRequired);
+    ASSERT_TRUE(module->getAttrOfType<mlir::BoolAttr>("gfx.mpsrt.dispatch_precompiled_kernel_required")
+                    .getValue());
+    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.dispatch_threads_per_threadgroup")
+                  .getInt(),
+              256);
+    ASSERT_TRUE(module->getAttrOfType<mlir::BoolAttr>("gfx.msl.precompiled_metallib_required").getValue());
+    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.msl.threads_per_threadgroup").getInt(), 256);
+
+    const auto msl_plan = ov::gfx_plugin::make_msl_kernel_plan("Add", "eltwise_kernel");
+    ASSERT_TRUE(msl_plan.valid);
+    ASSERT_EQ(msl_plan.family, ov::gfx_plugin::GfxMslKernelFamily::EltwiseFusedBuffer);
+    ASSERT_EQ(msl_plan.required_entry_point, "eltwise_fused_buffer");
+
+    ov::gfx_plugin::KernelSource source;
+    source.module = module;
+    source.entry_point = "eltwise_kernel";
+    source.msl_source =
+        "#include <metal_stdlib>\n"
+        "using namespace metal;\n"
+        "kernel void eltwise_kernel(device const half* A [[buffer(0)]]) {}\n";
+    ov::gfx_plugin::configure_msl_kernel_source_for_plan(source, "Add");
+    ASSERT_EQ(source.entry_point, "eltwise_fused_buffer");
+    ASSERT_NE(source.msl_source.find("kernel void eltwise_fused_buffer"), std::string::npos);
+    ASSERT_EQ(source.msl_source.find("kernel void eltwise_kernel"), std::string::npos);
+
+    const auto module_builder_plan = ov::gfx_plugin::build_module_mpsrt_builder_plan(module);
+    ASSERT_TRUE(module_builder_plan.valid);
+    ASSERT_TRUE(module_builder_plan.external_buffer_abi.valid);
+    ASSERT_TRUE(module_builder_plan.external_buffer_abi.has_buffer_count);
+    ASSERT_TRUE(module_builder_plan.external_buffer_abi.has_output_buffer_count);
+    ASSERT_EQ(module_builder_plan.external_buffer_abi.buffer_count, 3u);
+    ASSERT_EQ(module_builder_plan.external_buffer_abi.output_buffer_count, 1u);
+    ASSERT_TRUE(module_builder_plan.external_buffer_abi.has_buffer_roles);
+    ASSERT_EQ(module_builder_plan.external_buffer_abi.buffer_roles,
+              std::vector<ov::gfx_plugin::GfxMpsrtExternalBufferRole>(
+                  {ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorInput,
+                   ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorInput,
+                   ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorOutput}));
+    ASSERT_TRUE(module_builder_plan.builder_plan.external_buffer_abi_valid);
+    ASSERT_EQ(module_builder_plan.builder_plan.external_buffer_count, 3u);
+    ASSERT_EQ(module_builder_plan.builder_plan.external_output_buffer_count, 1u);
+    ASSERT_EQ(module_builder_plan.builder_plan.external_buffer_roles,
+              module_builder_plan.external_buffer_abi.buffer_roles);
+    ASSERT_EQ(module_builder_plan.builder_plan.records[3].kind,
+              ov::gfx_plugin::GfxMpsrtBuilderRecordKind::EncodeStage);
+    ASSERT_EQ(module_builder_plan.builder_plan.records[3].symbol, "ovgfx_mpsrt_encode_dispatch");
+    ASSERT_EQ(module_builder_plan.builder_plan.records[3].kernel_name, "eltwise_fused_buffer");
+    ASSERT_EQ(module_builder_plan.builder_plan.records[3].dispatch_kernel_family, "eltwise_fused_buffer");
+    ASSERT_EQ(module_builder_plan.builder_plan.records[3].dispatch_entry_point, "eltwise_fused_buffer");
+    ASSERT_EQ(module_builder_plan.builder_plan.records[3].dispatch_kernel_family_id,
+              static_cast<uint32_t>(ov::gfx_plugin::GfxMslKernelFamily::EltwiseFusedBuffer));
+    ASSERT_EQ(module_builder_plan.builder_plan.records[3].dispatch_flags,
+              ov::gfx_plugin::GfxMpsrtMslDispatchFlagPrecompiledMetallibRequired);
+    ASSERT_EQ(module_builder_plan.builder_plan.records[3].dispatch_threads_per_threadgroup, 256u);
+    ASSERT_TRUE(module_builder_plan.builder_plan.records[3].dispatch_precompiled_kernel_required);
+    ASSERT_EQ(module_builder_plan.builder_plan.records[3].msl_dispatch_desc.kernel_family,
+              static_cast<uint32_t>(ov::gfx_plugin::GfxMslKernelFamily::EltwiseFusedBuffer));
+    ASSERT_EQ(module_builder_plan.builder_plan.records[3].msl_dispatch_desc.storage,
+              static_cast<uint32_t>(ov::gfx_plugin::GfxMpsrtStorage::Buffer));
+    ASSERT_EQ(module_builder_plan.builder_plan.records[3].msl_dispatch_desc.layout,
+              static_cast<uint32_t>(ov::gfx_plugin::GfxMpsrtLayout::Linear));
+    ASSERT_EQ(module_builder_plan.builder_plan.records[3].msl_dispatch_desc.threads_per_threadgroup, 256u);
+    ASSERT_EQ(module_builder_plan.builder_plan.records[3].msl_dispatch_desc.input_count, 2u);
+    ASSERT_EQ(module_builder_plan.builder_plan.records[3].msl_dispatch_desc.output_count, 1u);
+    ASSERT_EQ(module_builder_plan.builder_plan.records[3].msl_dispatch_desc.flags,
+              ov::gfx_plugin::GfxMpsrtMslDispatchFlagPrecompiledMetallibRequired);
+}
+
+TEST(GfxMlir, SoftmaxMslMetadataUsesRoleBasedExternalAbi) {
+    mlir::MLIRContext ctx;
+    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+
+    const auto plan = ov::gfx_plugin::select_stage_optimization_plan(nullptr,
+                                                                     ov::gfx_plugin::GpuBackend::Metal,
+                                                                     "Softmax",
+                                                                     nullptr,
+                                                                     ov::element::f16,
+                                                                     /*has_bias=*/false,
+                                                                     /*has_activation=*/false,
+                                                                     /*has_batchnorm=*/false,
+                                                                     {});
+    ov::gfx_plugin::annotate_msl_module_with_stage_plan(module, plan, "Softmax");
+
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.msl.kernel_family").str(),
+              "masked_softmax_attention");
+    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.external_buffer_count").getInt(), 3);
+    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.external_output_buffer_count").getInt(), 1);
+
+    const auto abi = ov::gfx_plugin::read_module_mpsrt_external_buffer_abi(module);
+    ASSERT_TRUE(abi.valid);
+    EXPECT_TRUE(abi.has_buffer_count);
+    EXPECT_TRUE(abi.has_output_buffer_count);
+    EXPECT_EQ(abi.buffer_count, 3u);
+    EXPECT_EQ(abi.output_buffer_count, 1u);
+    ASSERT_TRUE(abi.has_buffer_roles);
+    EXPECT_EQ(abi.buffer_roles,
+              std::vector<ov::gfx_plugin::GfxMpsrtExternalBufferRole>(
+                  {ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorInput,
+                   ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorOutput,
+                   ov::gfx_plugin::GfxMpsrtExternalBufferRole::RuntimeParams}));
+}
+
+TEST(GfxMlir, TopKMslMetadataUsesRoleBasedExternalAbi) {
+    mlir::MLIRContext ctx;
+    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+    mlir::Builder builder(&ctx);
+    module->setAttr("gfx.fixed_arg_count", builder.getI32IntegerAttr(3));
+
+    const auto plan = ov::gfx_plugin::select_stage_optimization_plan(nullptr,
+                                                                     ov::gfx_plugin::GpuBackend::Metal,
+                                                                     "TopK",
+                                                                     nullptr,
+                                                                     ov::element::f32,
+                                                                     /*has_bias=*/false,
+                                                                     /*has_activation=*/false,
+                                                                     /*has_batchnorm=*/false,
+                                                                     {});
+    ov::gfx_plugin::annotate_msl_module_with_stage_plan(module, plan, "TopK");
+
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.msl.kernel_family").str(),
+              "gather_scatter_indexed");
+    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.external_buffer_count").getInt(), 3);
+    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.external_output_buffer_count").getInt(), 2);
+
+    const auto abi = ov::gfx_plugin::read_module_mpsrt_external_buffer_abi(module);
+    ASSERT_TRUE(abi.valid);
+    EXPECT_TRUE(abi.has_buffer_count);
+    EXPECT_TRUE(abi.has_output_buffer_count);
+    EXPECT_EQ(abi.buffer_count, 3u);
+    EXPECT_EQ(abi.output_buffer_count, 2u);
+    ASSERT_TRUE(abi.has_buffer_roles);
+    EXPECT_EQ(abi.buffer_roles,
+              std::vector<ov::gfx_plugin::GfxMpsrtExternalBufferRole>(
+                  {ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorInput,
+                   ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorOutput,
+                   ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorOutput}));
+}
+
+TEST(GfxMlir, GatherMslMetadataUsesRolePatternWithRuntimeParams) {
+    mlir::MLIRContext ctx;
+    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+    mlir::Builder builder(&ctx);
+    module->setAttr("gfx.fixed_arg_count", builder.getI32IntegerAttr(4));
+
+    const auto plan = ov::gfx_plugin::select_stage_optimization_plan(nullptr,
+                                                                     ov::gfx_plugin::GpuBackend::Metal,
+                                                                     "Gather",
+                                                                     nullptr,
+                                                                     ov::element::f32,
+                                                                     /*has_bias=*/false,
+                                                                     /*has_activation=*/false,
+                                                                     /*has_batchnorm=*/false,
+                                                                     {});
+    ov::gfx_plugin::annotate_msl_module_with_stage_plan(module, plan, "Gather");
+
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.msl.kernel_family").str(),
+              "gather_scatter_indexed");
+    const auto abi = ov::gfx_plugin::read_module_mpsrt_external_buffer_abi(module);
+    ASSERT_TRUE(abi.valid);
+    EXPECT_EQ(abi.buffer_count, 4u);
+    EXPECT_EQ(abi.output_buffer_count, 1u);
+    ASSERT_TRUE(abi.has_buffer_roles);
+    EXPECT_EQ(abi.buffer_roles,
+              std::vector<ov::gfx_plugin::GfxMpsrtExternalBufferRole>(
+                  {ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorInput,
+                   ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorInput,
+                   ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorOutput,
+                   ov::gfx_plugin::GfxMpsrtExternalBufferRole::RuntimeParams}));
+}
+
+TEST(GfxMlir, SliceMslMetadataUsesRolePatternForTrailingRuntimeParams) {
+    mlir::MLIRContext ctx;
+    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+    mlir::Builder builder(&ctx);
+    module->setAttr("gfx.fixed_arg_count", builder.getI32IntegerAttr(8));
+
+    const auto plan = ov::gfx_plugin::select_stage_optimization_plan(nullptr,
+                                                                     ov::gfx_plugin::GpuBackend::Metal,
+                                                                     "Slice",
+                                                                     nullptr,
+                                                                     ov::element::f32,
+                                                                     /*has_bias=*/false,
+                                                                     /*has_activation=*/false,
+                                                                     /*has_batchnorm=*/false,
+                                                                     {});
+    ov::gfx_plugin::annotate_msl_module_with_stage_plan(module, plan, "Slice");
+
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.msl.kernel_family").str(),
+              "gather_scatter_indexed");
+    const auto abi = ov::gfx_plugin::read_module_mpsrt_external_buffer_abi(module);
+    ASSERT_TRUE(abi.valid);
+    EXPECT_EQ(abi.buffer_count, 8u);
+    EXPECT_EQ(abi.output_buffer_count, 1u);
+    ASSERT_TRUE(abi.has_buffer_roles);
+    ASSERT_EQ(abi.buffer_roles.size(), 8u);
+    EXPECT_EQ(abi.buffer_roles[0], ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorInput);
+    EXPECT_EQ(abi.buffer_roles[1], ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorOutput);
+    for (size_t i = 2; i < abi.buffer_roles.size(); ++i) {
+        EXPECT_EQ(abi.buffer_roles[i], ov::gfx_plugin::GfxMpsrtExternalBufferRole::RuntimeParams);
+    }
+}
+
+TEST(GfxMlir, ConfigureMslKernelSourceAnnotatesRolePatternFromSignature) {
+    mlir::MLIRContext ctx;
+    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+
+    const auto plan = ov::gfx_plugin::select_stage_optimization_plan(nullptr,
+                                                                     ov::gfx_plugin::GpuBackend::Metal,
+                                                                     "GatherElements",
+                                                                     nullptr,
+                                                                     ov::element::f32,
+                                                                     /*has_bias=*/false,
+                                                                     /*has_activation=*/false,
+                                                                     /*has_batchnorm=*/false,
+                                                                     {});
+    ov::gfx_plugin::annotate_msl_module_with_stage_plan(module, plan, "GatherElements");
+    EXPECT_FALSE(module->hasAttr("gfx.mpsrt.external_buffer_count"));
+
+    ov::gfx_plugin::KernelSource source;
+    source.module = module;
+    source.entry_point = "gather_elements_kernel";
+    source.signature.arg_count = 4;
+    ov::gfx_plugin::configure_msl_kernel_source_for_plan(source, "GatherElements");
+
+    EXPECT_EQ(source.entry_point, "gather_scatter_indexed");
+    const auto abi = ov::gfx_plugin::read_module_mpsrt_external_buffer_abi(module);
+    ASSERT_TRUE(abi.valid);
+    EXPECT_EQ(abi.buffer_count, 4u);
+    EXPECT_EQ(abi.output_buffer_count, 1u);
+    EXPECT_EQ(abi.buffer_roles,
+              std::vector<ov::gfx_plugin::GfxMpsrtExternalBufferRole>(
+                  {ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorInput,
+                   ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorInput,
+                   ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorOutput,
+                   ov::gfx_plugin::GfxMpsrtExternalBufferRole::RuntimeParams}));
+}
+
+TEST(GfxMlir, MpsrtExternalBufferAbiRequiresExplicitMpsrtAttrs) {
+    mlir::MLIRContext ctx;
+    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+    mlir::Builder builder(&ctx);
+    module->setAttr("gfx.fixed_arg_count", builder.getI32IntegerAttr(3));
+    module->setAttr("gfx.kernel_output_arg_count", builder.getI32IntegerAttr(1));
+
+    auto abi = ov::gfx_plugin::read_module_mpsrt_external_buffer_abi(module);
+    EXPECT_FALSE(abi.valid);
+    EXPECT_FALSE(abi.has_buffer_count);
+    EXPECT_FALSE(abi.has_output_buffer_count);
+
+    module->setAttr("gfx.mpsrt.external_buffer_count", builder.getI32IntegerAttr(3));
+    module->setAttr("gfx.mpsrt.external_output_buffer_count", builder.getI32IntegerAttr(1));
+    abi = ov::gfx_plugin::read_module_mpsrt_external_buffer_abi(module);
+    ASSERT_TRUE(abi.valid);
+    EXPECT_TRUE(abi.has_buffer_count);
+    EXPECT_TRUE(abi.has_output_buffer_count);
+    EXPECT_EQ(abi.buffer_count, 3u);
+    EXPECT_EQ(abi.output_buffer_count, 1u);
+
+    llvm::SmallVector<mlir::Attribute, 3> roles;
+    roles.push_back(builder.getI32IntegerAttr(
+        static_cast<int32_t>(ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorInput)));
+    roles.push_back(builder.getI32IntegerAttr(
+        static_cast<int32_t>(ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorOutput)));
+    roles.push_back(builder.getI32IntegerAttr(
+        static_cast<int32_t>(ov::gfx_plugin::GfxMpsrtExternalBufferRole::RuntimeParams)));
+    module->setAttr("gfx.mpsrt.external_buffer_roles", builder.getArrayAttr(roles));
+    abi = ov::gfx_plugin::read_module_mpsrt_external_buffer_abi(module);
+    ASSERT_TRUE(abi.valid);
+    EXPECT_TRUE(abi.has_buffer_roles);
+    EXPECT_EQ(abi.buffer_roles,
+              std::vector<ov::gfx_plugin::GfxMpsrtExternalBufferRole>(
+                  {ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorInput,
+                   ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorOutput,
+                   ov::gfx_plugin::GfxMpsrtExternalBufferRole::RuntimeParams}));
+}
+
+TEST(GfxMlir, MpsrtExternalBufferAbiRejectsImpossibleOutputCount) {
+    mlir::MLIRContext ctx;
+    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+    mlir::Builder builder(&ctx);
+    module->setAttr("gfx.mpsrt.external_buffer_count", builder.getI32IntegerAttr(2));
+    module->setAttr("gfx.mpsrt.external_output_buffer_count", builder.getI32IntegerAttr(3));
+
+    auto abi = ov::gfx_plugin::read_module_mpsrt_external_buffer_abi(module);
+    EXPECT_FALSE(abi.valid);
+    EXPECT_TRUE(abi.has_buffer_count);
+    EXPECT_TRUE(abi.has_output_buffer_count);
+    EXPECT_EQ(abi.buffer_count, 2u);
+    EXPECT_EQ(abi.output_buffer_count, 3u);
+}
+
+TEST(GfxMlir, MpsrtExternalBufferAbiRejectsRoleCountMismatch) {
+    mlir::MLIRContext ctx;
+    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+    mlir::Builder builder(&ctx);
+    module->setAttr("gfx.mpsrt.external_buffer_count", builder.getI32IntegerAttr(3));
+    module->setAttr("gfx.mpsrt.external_output_buffer_count", builder.getI32IntegerAttr(1));
+    llvm::SmallVector<mlir::Attribute, 2> roles;
+    roles.push_back(builder.getI32IntegerAttr(
+        static_cast<int32_t>(ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorInput)));
+    roles.push_back(builder.getI32IntegerAttr(
+        static_cast<int32_t>(ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorOutput)));
+    module->setAttr("gfx.mpsrt.external_buffer_roles", builder.getArrayAttr(roles));
+
+    auto abi = ov::gfx_plugin::read_module_mpsrt_external_buffer_abi(module);
+    EXPECT_FALSE(abi.valid);
+    EXPECT_TRUE(abi.has_buffer_roles);
+    EXPECT_EQ(abi.buffer_roles.size(), 2u);
 }
 
 TEST(GfxMlir, ReduceSumBuilderProducesModule) {
@@ -1567,7 +1999,7 @@ TEST(GfxTransforms, CommonOptimizationsConstantFolding) {
     auto res = std::make_shared<ov::op::v0::Result>(relu);
     auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{}, "const_fold");
 
-    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model);
+    auto transformed = ov::gfx_plugin::transforms::run_pipeline(model, ov::gfx_plugin::GpuBackend::Metal);
 
     // Expect only Result + Constant to remain after folding (Add and Relu folded away).
     size_t constants = 0;
