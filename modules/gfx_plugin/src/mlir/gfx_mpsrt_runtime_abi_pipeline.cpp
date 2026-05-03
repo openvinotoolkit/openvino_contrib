@@ -5,6 +5,7 @@
 #include "mlir/gfx_mpsrt_runtime_abi_pipeline.hpp"
 
 #include "mlir/gfx_mpsrt_metadata.hpp"
+#include "mlir/gfx_mpsrt_ops.hpp"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
@@ -15,6 +16,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace ov {
@@ -22,6 +24,19 @@ namespace gfx_plugin {
 namespace {
 
 constexpr const char* kRuntimeAbiPlanSymbol = "gfx_mpsrt_runtime_abi_plan";
+
+struct GfxMpsrtRuntimeAbiProgramPlan {
+    bool valid = false;
+    GfxMpsrtProgram program{};
+    GfxMpsrtBuilderPlan builder_plan{};
+};
+
+void ensure_runtime_abi_dialects(mlir::ModuleOp module) {
+    if (!module) {
+        return;
+    }
+    module.getContext()->loadDialect<mlir::func::FuncDialect>();
+}
 
 GfxMpsrtBuilderRecordKind builder_record_kind_from_name(llvm::StringRef name) {
     if (name == "model_begin") return GfxMpsrtBuilderRecordKind::ModelBegin;
@@ -577,13 +592,105 @@ void annotate_runtime_abi_call(mlir::func::CallOp call,
     set_u32_vector_attr(call, builder, "gfx.mpsrt.runtime_abi.kernel_buffer_order", record.kernel_buffer_order);
 }
 
+bool read_runtime_abi_program_plan(mlir::ModuleOp module,
+                                   GfxMpsrtRuntimeAbiProgramPlan& out) {
+    out = {};
+    if (!module) {
+        return false;
+    }
+
+    GfxMpsrtProgram program{};
+    if (!read_module_mpsrt_ops_program(module, program)) {
+        if (!read_module_mpsrt_program(module, program)) {
+            return false;
+        }
+        if (!materialize_module_mpsrt_ops(module, program) ||
+            !read_module_mpsrt_ops_program(module, program)) {
+            return false;
+        }
+    }
+    GfxMpsrtBuilderPlan builder_plan{};
+    if (!gfx_mpsrt_build_builder_plan_from_program(program, builder_plan)) {
+        return false;
+    }
+
+    out.valid = true;
+    out.program = std::move(program);
+    out.builder_plan = std::move(builder_plan);
+    return true;
+}
+
+bool annotate_module_with_runtime_abi_attrs_from_program_plan(
+    mlir::ModuleOp module,
+    const GfxMpsrtRuntimeAbiProgramPlan& program_plan) {
+    if (!module || !program_plan.valid || !program_plan.builder_plan.valid) {
+        return false;
+    }
+
+    const auto& builder_plan = program_plan.builder_plan;
+    mlir::Builder builder(module->getContext());
+    constexpr const char* kPrefix = "gfx.mpsrt.runtime_abi";
+    module->setAttr(std::string(kPrefix) + ".valid", builder.getBoolAttr(true));
+    module->setAttr(std::string(kPrefix) + ".kind",
+                    builder.getStringAttr(program_plan.program.multi_stage ? "multi_stage" : "single_stage"));
+    module->setAttr(std::string(kPrefix) + ".record_key",
+                    builder.getStringAttr(builder_plan.stage_record_key));
+    module->setAttr(std::string(kPrefix) + ".record_count",
+                    builder.getI32IntegerAttr(static_cast<int32_t>(builder_plan.records.size())));
+    module->setAttr(std::string(kPrefix) + ".input_value_count",
+                    builder.getI32IntegerAttr(static_cast<int32_t>(builder_plan.input_values.size())));
+    module->setAttr(std::string(kPrefix) + ".output_value_count",
+                    builder.getI32IntegerAttr(static_cast<int32_t>(builder_plan.output_values.size())));
+    module->setAttr(std::string(kPrefix) + ".storage_bridge_count",
+                    builder.getI32IntegerAttr(static_cast<int32_t>(builder_plan.storage_bridges.size())));
+    if (builder_plan.external_buffer_abi_valid) {
+        module->setAttr(std::string(kPrefix) + ".external_buffer_count",
+                        builder.getI32IntegerAttr(static_cast<int32_t>(builder_plan.external_buffer_count)));
+        module->setAttr(std::string(kPrefix) + ".external_output_buffer_count",
+                        builder.getI32IntegerAttr(
+                            static_cast<int32_t>(builder_plan.external_output_buffer_count)));
+    }
+    for (size_t i = 0; i < builder_plan.records.size(); ++i) {
+        const auto& record = builder_plan.records[i];
+        const std::string prefix = std::string(kPrefix) + ".record" + std::to_string(i);
+        module->setAttr(prefix + ".kind",
+                        builder.getStringAttr(gfx_mpsrt_builder_record_kind_name(record.kind)));
+        if (!record.symbol.empty()) {
+            module->setAttr(prefix + ".symbol", builder.getStringAttr(record.symbol));
+        }
+        if (!record.stage_record_key.empty()) {
+            module->setAttr(prefix + ".stage_record_key", builder.getStringAttr(record.stage_record_key));
+        }
+        if (record.stage_kind != GfxMpsrtStageKind::Unknown) {
+            module->setAttr(prefix + ".stage_kind",
+                            builder.getStringAttr(gfx_mpsrt_stage_kind_name(record.stage_kind)));
+        }
+        if (!record.kernel_name.empty()) {
+            module->setAttr(prefix + ".kernel_name", builder.getStringAttr(record.kernel_name));
+        }
+        if (!record.inputs.empty()) {
+            module->setAttr(prefix + ".input_values",
+                            detail::gfx_mpsrt_u32_vector_attr(builder, record.inputs));
+        }
+        if (!record.outputs.empty()) {
+            module->setAttr(prefix + ".output_values",
+                            detail::gfx_mpsrt_u32_vector_attr(builder, record.outputs));
+        }
+        if (!record.kernel_buffer_order.empty()) {
+            module->setAttr(prefix + ".kernel_buffer_order",
+                            detail::gfx_mpsrt_u32_vector_attr(builder, record.kernel_buffer_order));
+        }
+    }
+    return true;
+}
+
 void annotate_runtime_abi_plan_func(mlir::func::FuncOp plan_func,
                                     mlir::Builder& builder,
-                                    const GfxMpsrtModuleBuilderPlan& module_plan) {
-    const auto& builder_plan = module_plan.builder_plan;
+                                    const GfxMpsrtRuntimeAbiProgramPlan& program_plan) {
+    const auto& builder_plan = program_plan.builder_plan;
     plan_func->setAttr("gfx.mpsrt.runtime_abi.generated", builder.getBoolAttr(true));
     plan_func->setAttr("gfx.mpsrt.runtime_abi.kind",
-                       builder.getStringAttr(module_plan.multi_stage ? "multi_stage" : "single_stage"));
+                       builder.getStringAttr(program_plan.program.multi_stage ? "multi_stage" : "single_stage"));
     plan_func->setAttr("gfx.mpsrt.runtime_abi.record_key",
                        builder.getStringAttr(builder_plan.stage_record_key));
     plan_func->setAttr("gfx.mpsrt.runtime_abi.record_count",
@@ -606,12 +713,13 @@ void annotate_runtime_abi_plan_func(mlir::func::FuncOp plan_func,
     annotate_runtime_abi_storage_bridges(plan_func, builder, builder_plan.storage_bridges);
 }
 
-bool materialize_runtime_abi_call_plan(mlir::ModuleOp module) {
-    GfxMpsrtModuleBuilderPlan module_plan{};
-    if (!module || !build_module_mpsrt_builder_plan(module, module_plan)) {
+bool materialize_runtime_abi_call_plan(mlir::ModuleOp module,
+                                       const GfxMpsrtRuntimeAbiProgramPlan& program_plan) {
+    if (!module || !program_plan.valid || !program_plan.builder_plan.valid) {
         return false;
     }
 
+    ensure_runtime_abi_dialects(module);
     mlir::OpBuilder builder(module.getContext());
     const auto loc = mlir::UnknownLoc::get(module.getContext());
     const auto empty_func_type = builder.getFunctionType({}, {});
@@ -622,7 +730,7 @@ bool materialize_runtime_abi_call_plan(mlir::ModuleOp module) {
 
     builder.setInsertionPointToEnd(module.getBody());
     std::set<std::string> declared_symbols;
-    for (const auto& record : module_plan.builder_plan.records) {
+    for (const auto& record : program_plan.builder_plan.records) {
         if (record.symbol.empty() || record.symbol == kRuntimeAbiPlanSymbol ||
             !declared_symbols.insert(record.symbol).second ||
             module.lookupSymbol<mlir::func::FuncOp>(record.symbol)) {
@@ -634,13 +742,13 @@ bool materialize_runtime_abi_call_plan(mlir::ModuleOp module) {
 
     auto plan_func = mlir::func::FuncOp::create(builder, loc, kRuntimeAbiPlanSymbol, empty_func_type);
     plan_func.setSymVisibility("private");
-    annotate_runtime_abi_plan_func(plan_func, builder, module_plan);
+    annotate_runtime_abi_plan_func(plan_func, builder, program_plan);
     plan_func.addEntryBlock();
 
     mlir::OpBuilder body_builder(plan_func.getBody());
     body_builder.setInsertionPointToStart(&plan_func.getBody().front());
-    for (size_t i = 0; i < module_plan.builder_plan.records.size(); ++i) {
-        const auto& record = module_plan.builder_plan.records[i];
+    for (size_t i = 0; i < program_plan.builder_plan.records.size(); ++i) {
+        const auto& record = program_plan.builder_plan.records[i];
         if (record.symbol.empty()) {
             return false;
         }
@@ -674,19 +782,23 @@ public:
 
     void runOnOperation() final {
         auto module = getOperation();
-        const bool has_mpsrt_plan = module->hasAttr("gfx.mpsrt.stage_kind") ||
-                                    module->hasAttr("gfx.mpsrt.model_record_key");
-        if (!has_mpsrt_plan) {
+        ensure_runtime_abi_dialects(module);
+
+        GfxMpsrtRuntimeAbiProgramPlan program_plan{};
+        if (!read_runtime_abi_program_plan(module, program_plan)) {
             return;
         }
-        if (!annotate_module_with_mpsrt_runtime_abi_attrs(module)) {
-            module.emitError("failed to materialize MPSRT runtime ABI from stage manifest metadata");
+        if (!annotate_module_with_runtime_abi_attrs_from_program_plan(module, program_plan)) {
+            module.emitError("failed to materialize MPSRT runtime ABI from MPSRT program facade");
             signalPassFailure();
+            return;
         }
-        if (!materialize_runtime_abi_call_plan(module)) {
-            module.emitError("failed to materialize MPSRT runtime ABI call plan from stage manifest metadata");
+        if (!materialize_runtime_abi_call_plan(module, program_plan)) {
+            module.emitError("failed to materialize MPSRT runtime ABI call plan from MPSRT program facade");
             signalPassFailure();
+            return;
         }
+        erase_module_mpsrt_legacy_attrs(module);
     }
 };
 
@@ -702,6 +814,7 @@ bool read_gfx_apple_mpsrt_runtime_abi_call_plan(mlir::ModuleOp module,
     if (!module) {
         return false;
     }
+    ensure_runtime_abi_dialects(module);
     std::string plan_symbol = kRuntimeAbiPlanSymbol;
     if (auto attr = module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.runtime_abi.call_plan_symbol")) {
         plan_symbol = attr.str();

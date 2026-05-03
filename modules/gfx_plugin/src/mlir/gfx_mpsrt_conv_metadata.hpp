@@ -119,8 +119,12 @@ inline bool annotate_module_with_mpsrt_conv_const_weight_desc(mlir::ModuleOp mod
                                                  weight_type,
                                                  GfxStageStorageKind::Buffer,
                                                  GfxMpsrtTensorFlagConst);
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.input1", desc);
-    return true;
+    GfxMpsrtModuleStagePlan stage_plan{};
+    if (!read_module_mpsrt_stage_plan(module, stage_plan) || stage_plan.inputs.size() <= 1) {
+        return false;
+    }
+    stage_plan.inputs[1] = desc;
+    return materialize_module_mpsrt_ops_from_stage_plan(module, stage_plan);
 }
 
 inline bool make_mpsrt_conv2d_desc_from_node(const std::shared_ptr<const ov::Node>& node,

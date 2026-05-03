@@ -125,10 +125,12 @@ If the behavior depends on route or scheduling selection, also read:
 - `src/runtime/gfx_mpsrt_abi.hpp`
 - `src/runtime/gfx_mpsrt_plan.hpp`
 - `src/runtime/gfx_mpsrt_builder_plan.hpp`
+- `src/runtime/gfx_mpsrt_program.hpp`
 - `src/runtime/gfx_mpsrt_storage_bridge.hpp`
 - `src/kernel_ir/gfx_kernel_manifest.hpp`
 - `src/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp`
 - `src/runtime/gfx_msl_kernel_manifest.*`
+- `src/mlir/gfx_mpsrt_ops.*`
 - `src/mlir/gfx_mpsrt_runtime_abi_pipeline.*`
 - `src/mlir/gfx_mpsrt_source_plan.hpp`
 - `src/mlir/gfx_mpsrt_const_tensor_sources.hpp`
@@ -148,6 +150,7 @@ The current planning path is no longer just backend-wide. It includes family-spe
 - Metal placement decisions between Apple MPS image or matrix primitives and Apple MSL buffer dispatch
 - manifest-backed execution-kind selection between vendor primitives and custom kernels
 - generated MPSRT runtime-ABI plans and storage bridges that must stay aligned with request-time binding and stage reconstruction
+- the typed `GfxMpsrtProgram` facade and generated `gfx_mpsrt_ops` materialization, which now sit between legacy module attrs and final runtime-ABI call-plan lowering
 
 For current convolution work, there are now two important lowering details to keep in mind:
 - full interior tiles in conv parallel lowering can skip lane-level bounds guards on the fast path
@@ -223,9 +226,11 @@ For Metal placement or codegen work, also keep the MPSRT boundary coherent. The 
 - the external-buffer ABI roles for inputs, outputs, and runtime-parameter buffers
 
 If the change touches manifest-backed Metal lowering, also inspect:
+- `src/runtime/gfx_mpsrt_program.hpp`
 - `src/kernel_ir/gfx_kernel_manifest.hpp`
 - `src/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp`
 - `src/runtime/gfx_mpsrt_storage_bridge.hpp`
+- `src/mlir/gfx_mpsrt_ops.*`
 - `src/mlir/gfx_mpsrt_runtime_abi_pipeline.*`
 - `src/mlir/gfx_mpsrt_source_plan.hpp`
 - `src/mlir/gfx_mpsrt_const_tensor_sources.hpp`
@@ -243,11 +248,13 @@ So do not assume one stage equals one dispatch source anymore. For MatMul specif
 
 When touching the Metal MPSRT boundary, keep four layers aligned:
 - the manifest and stage-family contract in `gfx_kernel_manifest.hpp`
-- the generated MLIR runtime-ABI call plan in `gfx_mpsrt_runtime_abi_pipeline.*`
+- the typed program contract in `gfx_mpsrt_program.hpp`
+- generated `gfx_mpsrt_ops` plus the runtime-ABI call plan in `gfx_mpsrt_ops.*` and `gfx_mpsrt_runtime_abi_pipeline.*`
 - storage-bridge descriptors in `gfx_mpsrt_storage_bridge.hpp`
 - request-time execution and validation in `src/backends/metal/runtime/mpsrt/*`
 
 The current request path can no longer assume one storage class for all external bindings. Image-backed Apple MPS stages may require explicit `buffer_to_image` or `image_to_buffer` bridges, and those bridges are part of the serialized builder plan and reconstructed runtime model.
+Also, do not build new tooling on top of stale flat `gfx.mpsrt.*` stage attrs. Current code intentionally materializes generated helpers and erases legacy attrs after the program facade is available.
 
 For layout-cleanup work around DFL-style postprocessing tails, the current rewrite target is a value-preserving `Softmax -> MatMul -> Reshape/Transpose` form. Do not describe the older synthetic 1x1 convolution rewrite as the active implementation.
 

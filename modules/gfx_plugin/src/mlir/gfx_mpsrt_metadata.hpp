@@ -12,11 +12,13 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/gfx_mpsrt_ops.hpp"
 #include "openvino/core/type/element_type.hpp"
 #include "runtime/gfx_mpsrt_abi.hpp"
 #include "runtime/gfx_mpsrt_builder_plan.hpp"
 #include "runtime/gfx_mpsrt_kernel_manifest_adapter.hpp"
 #include "runtime/gfx_mpsrt_plan.hpp"
+#include "runtime/gfx_mpsrt_program.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 
 namespace ov {
@@ -105,7 +107,7 @@ inline GfxStageBackendDomain gfx_mpsrt_backend_domain_from_name(llvm::StringRef 
     return GfxStageBackendDomain::Unknown;
 }
 
-inline bool gfx_mpsrt_read_i32_attr(mlir::ModuleOp module, const std::string& name, uint32_t& out) {
+inline bool gfx_mpsrt_read_i32_attr(mlir::Operation* module, const std::string& name, uint32_t& out) {
     auto attr = module->getAttrOfType<mlir::IntegerAttr>(name);
     if (!attr) {
         return false;
@@ -114,7 +116,7 @@ inline bool gfx_mpsrt_read_i32_attr(mlir::ModuleOp module, const std::string& na
     return true;
 }
 
-inline bool gfx_mpsrt_read_i64_attr(mlir::ModuleOp module, const std::string& name, uint64_t& out) {
+inline bool gfx_mpsrt_read_i64_attr(mlir::Operation* module, const std::string& name, uint64_t& out) {
     auto attr = module->getAttrOfType<mlir::IntegerAttr>(name);
     if (!attr) {
         return false;
@@ -123,7 +125,7 @@ inline bool gfx_mpsrt_read_i64_attr(mlir::ModuleOp module, const std::string& na
     return true;
 }
 
-inline bool gfx_mpsrt_read_string_attr(mlir::ModuleOp module, const std::string& name, std::string& out) {
+inline bool gfx_mpsrt_read_string_attr(mlir::Operation* module, const std::string& name, std::string& out) {
     auto attr = module->getAttrOfType<mlir::StringAttr>(name);
     if (!attr) {
         return false;
@@ -132,7 +134,7 @@ inline bool gfx_mpsrt_read_string_attr(mlir::ModuleOp module, const std::string&
     return true;
 }
 
-inline bool gfx_mpsrt_read_bool_attr(mlir::ModuleOp module, const std::string& name, bool& out) {
+inline bool gfx_mpsrt_read_bool_attr(mlir::Operation* module, const std::string& name, bool& out) {
     auto attr = module->getAttrOfType<mlir::BoolAttr>(name);
     if (!attr) {
         return false;
@@ -141,7 +143,7 @@ inline bool gfx_mpsrt_read_bool_attr(mlir::ModuleOp module, const std::string& n
     return true;
 }
 
-inline void gfx_mpsrt_read_u64_array_attr(mlir::ModuleOp module,
+inline void gfx_mpsrt_read_u64_array_attr(mlir::Operation* module,
                                           const std::string& name,
                                           uint64_t* out,
                                           uint32_t count) {
@@ -157,7 +159,7 @@ inline void gfx_mpsrt_read_u64_array_attr(mlir::ModuleOp module,
     }
 }
 
-inline void gfx_mpsrt_read_i64_array_attr(mlir::ModuleOp module,
+inline void gfx_mpsrt_read_i64_array_attr(mlir::Operation* module,
                                           const std::string& name,
                                           int64_t* out,
                                           uint32_t count) {
@@ -173,7 +175,7 @@ inline void gfx_mpsrt_read_i64_array_attr(mlir::ModuleOp module,
     }
 }
 
-inline std::vector<uint32_t> gfx_mpsrt_read_u32_vector_attr(mlir::ModuleOp module,
+inline std::vector<uint32_t> gfx_mpsrt_read_u32_vector_attr(mlir::Operation* module,
                                                             const std::string& name) {
     std::vector<uint32_t> values;
     auto attr = module->getAttrOfType<mlir::ArrayAttr>(name);
@@ -207,9 +209,10 @@ inline bool gfx_mpsrt_module_has_external_buffer_abi_attrs(mlir::ModuleOp module
 }
 
 inline void gfx_mpsrt_set_external_buffer_roles_attrs(
-    mlir::ModuleOp module,
+    mlir::Operation* module,
+    const std::string& prefix,
     const std::vector<GfxMpsrtExternalBufferRole>& roles) {
-    mlir::Builder builder(module.getContext());
+    mlir::Builder builder(module->getContext());
 
     uint32_t output_buffer_count = 0;
     llvm::SmallVector<mlir::Attribute, 8> role_attrs;
@@ -221,11 +224,17 @@ inline void gfx_mpsrt_set_external_buffer_roles_attrs(
         role_attrs.push_back(builder.getI32IntegerAttr(static_cast<int32_t>(role)));
     }
 
-    module->setAttr("gfx.mpsrt.external_buffer_count",
+    module->setAttr(prefix + ".external_buffer_count",
                     builder.getI32IntegerAttr(static_cast<int32_t>(roles.size())));
-    module->setAttr("gfx.mpsrt.external_output_buffer_count",
+    module->setAttr(prefix + ".external_output_buffer_count",
                     builder.getI32IntegerAttr(static_cast<int32_t>(output_buffer_count)));
-    module->setAttr("gfx.mpsrt.external_buffer_roles", builder.getArrayAttr(role_attrs));
+    module->setAttr(prefix + ".external_buffer_roles", builder.getArrayAttr(role_attrs));
+}
+
+inline void gfx_mpsrt_set_external_buffer_roles_attrs(
+    mlir::Operation* module,
+    const std::vector<GfxMpsrtExternalBufferRole>& roles) {
+    gfx_mpsrt_set_external_buffer_roles_attrs(module, "gfx.mpsrt", roles);
 }
 
 inline std::vector<uint32_t> gfx_kernel_buffer_roles_to_attr_values(
@@ -238,14 +247,14 @@ inline std::vector<uint32_t> gfx_kernel_buffer_roles_to_attr_values(
     return values;
 }
 
-inline void gfx_mpsrt_set_stage_manifest_attrs(mlir::ModuleOp module,
+inline void gfx_mpsrt_set_stage_manifest_attrs(mlir::Operation* module,
                                                const std::string& prefix,
                                                const GfxKernelStageManifest& manifest) {
     if (!module || !manifest.valid) {
         return;
     }
 
-    mlir::Builder builder(module.getContext());
+    mlir::Builder builder(module->getContext());
     module->setAttr(prefix + ".stage_family",
                     builder.getStringAttr(gfx_kernel_stage_family_name(manifest.stage_family)));
     module->setAttr(prefix + ".backend_domain",
@@ -292,7 +301,7 @@ inline void gfx_mpsrt_set_stage_manifest_attrs(mlir::ModuleOp module,
     }
 }
 
-inline bool gfx_mpsrt_read_stage_manifest_attrs(mlir::ModuleOp module,
+inline bool gfx_mpsrt_read_stage_manifest_attrs(mlir::Operation* module,
                                                 const std::string& prefix,
                                                 GfxKernelStageManifest& manifest) {
     manifest = {};
@@ -370,7 +379,7 @@ inline bool gfx_mpsrt_read_stage_manifest_attrs(mlir::ModuleOp module,
     return true;
 }
 
-inline void gfx_mpsrt_set_stage_manifest_attrs(mlir::ModuleOp module,
+inline void gfx_mpsrt_set_stage_manifest_attrs(mlir::Operation* module,
                                                const GfxKernelStageManifest& manifest) {
     gfx_mpsrt_set_stage_manifest_attrs(module, "gfx.stage_manifest", manifest);
 }
@@ -425,10 +434,10 @@ inline void gfx_mpsrt_apply_stage_manifest_to_stage_desc(GfxMpsrtStageDesc& stag
     }
 }
 
-inline void gfx_mpsrt_set_tensor_desc_attrs(mlir::ModuleOp module,
+inline void gfx_mpsrt_set_tensor_desc_attrs(mlir::Operation* module,
                                             std::string prefix,
                                             const GfxMpsrtTensorDesc& desc) {
-    mlir::Builder builder(module.getContext());
+    mlir::Builder builder(module->getContext());
     module->setAttr(prefix + ".dtype",
                     builder.getStringAttr(gfx_mpsrt_dtype_name(desc.dtype)));
     module->setAttr(prefix + ".storage",
@@ -462,7 +471,7 @@ inline void gfx_mpsrt_set_tensor_desc_attrs(mlir::ModuleOp module,
     }
 }
 
-inline bool gfx_mpsrt_read_tensor_desc_attrs(mlir::ModuleOp module,
+inline bool gfx_mpsrt_read_tensor_desc_attrs(mlir::Operation* module,
                                              const std::string& prefix,
                                              GfxMpsrtTensorDesc& desc) {
     std::string dtype;
@@ -496,10 +505,10 @@ inline bool gfx_mpsrt_read_tensor_desc_attrs(mlir::ModuleOp module,
     return true;
 }
 
-inline void gfx_mpsrt_set_storage_bridge_attrs(mlir::ModuleOp module,
+inline void gfx_mpsrt_set_storage_bridge_attrs(mlir::Operation* module,
                                                const std::string& prefix,
                                                const GfxMpsrtStorageBridgeDesc& bridge) {
-    mlir::Builder builder(module.getContext());
+    mlir::Builder builder(module->getContext());
     module->setAttr(prefix + ".value",
                     builder.getI32IntegerAttr(static_cast<int32_t>(bridge.value)));
     module->setAttr(prefix + ".direction",
@@ -511,7 +520,7 @@ inline void gfx_mpsrt_set_storage_bridge_attrs(mlir::ModuleOp module,
     gfx_mpsrt_set_tensor_desc_attrs(module, prefix + ".tensor", gfx_mpsrt_from_abi_desc(bridge.tensor));
 }
 
-inline bool gfx_mpsrt_read_storage_bridge_attrs(mlir::ModuleOp module,
+inline bool gfx_mpsrt_read_storage_bridge_attrs(mlir::Operation* module,
                                                 const std::string& prefix,
                                                 GfxMpsrtStorageBridgeDesc& bridge) {
     uint32_t value = 0;
@@ -546,30 +555,32 @@ inline bool gfx_mpsrt_read_storage_bridge_attrs(mlir::ModuleOp module,
     return true;
 }
 
-inline void gfx_mpsrt_set_storage_bridges_attrs(mlir::ModuleOp module,
+inline void gfx_mpsrt_set_storage_bridges_attrs(mlir::Operation* module,
+                                                const std::string& prefix,
                                                 const std::vector<GfxMpsrtStorageBridgeDesc>& bridges) {
-    mlir::Builder builder(module.getContext());
-    module->setAttr("gfx.mpsrt.storage_bridge_count",
+    mlir::Builder builder(module->getContext());
+    module->setAttr(prefix + ".storage_bridge_count",
                     builder.getI32IntegerAttr(static_cast<int32_t>(bridges.size())));
     for (size_t i = 0; i < bridges.size(); ++i) {
         gfx_mpsrt_set_storage_bridge_attrs(module,
-                                           "gfx.mpsrt.storage_bridge" + std::to_string(i),
+                                           prefix + ".storage_bridge" + std::to_string(i),
                                            bridges[i]);
     }
 }
 
-inline bool gfx_mpsrt_read_storage_bridges_attrs(mlir::ModuleOp module,
+inline bool gfx_mpsrt_read_storage_bridges_attrs(mlir::Operation* module,
+                                                 const std::string& prefix,
                                                  std::vector<GfxMpsrtStorageBridgeDesc>& bridges) {
     bridges.clear();
     uint32_t bridge_count = 0;
-    if (!gfx_mpsrt_read_i32_attr(module, "gfx.mpsrt.storage_bridge_count", bridge_count)) {
+    if (!gfx_mpsrt_read_i32_attr(module, prefix + ".storage_bridge_count", bridge_count)) {
         return false;
     }
     bridges.reserve(bridge_count);
     for (uint32_t i = 0; i < bridge_count; ++i) {
         GfxMpsrtStorageBridgeDesc bridge{};
         if (!gfx_mpsrt_read_storage_bridge_attrs(module,
-                                                 "gfx.mpsrt.storage_bridge" + std::to_string(i),
+                                                 prefix + ".storage_bridge" + std::to_string(i),
                                                  bridge)) {
             bridges.clear();
             return false;
@@ -579,10 +590,20 @@ inline bool gfx_mpsrt_read_storage_bridges_attrs(mlir::ModuleOp module,
     return true;
 }
 
-inline void gfx_mpsrt_set_gemm_desc_attrs(mlir::ModuleOp module,
+inline void gfx_mpsrt_set_storage_bridges_attrs(mlir::Operation* module,
+                                                const std::vector<GfxMpsrtStorageBridgeDesc>& bridges) {
+    gfx_mpsrt_set_storage_bridges_attrs(module, "gfx.mpsrt", bridges);
+}
+
+inline bool gfx_mpsrt_read_storage_bridges_attrs(mlir::Operation* module,
+                                                 std::vector<GfxMpsrtStorageBridgeDesc>& bridges) {
+    return gfx_mpsrt_read_storage_bridges_attrs(module, "gfx.mpsrt", bridges);
+}
+
+inline void gfx_mpsrt_set_gemm_desc_attrs(mlir::Operation* module,
                                           const std::string& prefix,
                                           const GfxMpsrtGemmAbiDesc& desc) {
-    mlir::Builder builder(module.getContext());
+    mlir::Builder builder(module->getContext());
     module->setAttr(prefix + ".transpose_lhs",
                     builder.getI32IntegerAttr(static_cast<int32_t>(desc.transpose_lhs)));
     module->setAttr(prefix + ".transpose_rhs",
@@ -593,7 +614,7 @@ inline void gfx_mpsrt_set_gemm_desc_attrs(mlir::ModuleOp module,
     module->setAttr(prefix + ".beta", builder.getF32FloatAttr(desc.beta));
 }
 
-inline bool gfx_mpsrt_read_gemm_desc_attrs(mlir::ModuleOp module,
+inline bool gfx_mpsrt_read_gemm_desc_attrs(mlir::Operation* module,
                                            const std::string& prefix,
                                            GfxMpsrtGemmAbiDesc& desc) {
     bool read_any = false;
@@ -611,10 +632,10 @@ inline bool gfx_mpsrt_read_gemm_desc_attrs(mlir::ModuleOp module,
     return read_any;
 }
 
-inline void gfx_mpsrt_set_pool2d_desc_attrs(mlir::ModuleOp module,
+inline void gfx_mpsrt_set_pool2d_desc_attrs(mlir::Operation* module,
                                             const std::string& prefix,
                                             const GfxMpsrtPool2DAbiDesc& desc) {
-    mlir::Builder builder(module.getContext());
+    mlir::Builder builder(module->getContext());
     const uint64_t kernel[] = {desc.kernel[0], desc.kernel[1]};
     const uint64_t strides[] = {desc.strides[0], desc.strides[1]};
     const uint64_t dilations[] = {desc.dilations[0], desc.dilations[1]};
@@ -633,7 +654,7 @@ inline void gfx_mpsrt_set_pool2d_desc_attrs(mlir::ModuleOp module,
                     builder.getI32IntegerAttr(static_cast<int32_t>(desc.exclude_pad)));
 }
 
-inline bool gfx_mpsrt_read_pool2d_desc_attrs(mlir::ModuleOp module,
+inline bool gfx_mpsrt_read_pool2d_desc_attrs(mlir::Operation* module,
                                              const std::string& prefix,
                                              GfxMpsrtPool2DAbiDesc& desc) {
     bool read_any = false;
@@ -663,17 +684,17 @@ inline bool gfx_mpsrt_read_pool2d_desc_attrs(mlir::ModuleOp module,
     return read_any;
 }
 
-inline void gfx_mpsrt_set_softmax_desc_attrs(mlir::ModuleOp module,
+inline void gfx_mpsrt_set_softmax_desc_attrs(mlir::Operation* module,
                                              const std::string& prefix,
                                              const GfxMpsrtSoftmaxAbiDesc& desc) {
-    mlir::Builder builder(module.getContext());
+    mlir::Builder builder(module->getContext());
     module->setAttr(prefix + ".axis",
                     builder.getI32IntegerAttr(static_cast<int32_t>(desc.axis)));
     module->setAttr(prefix + ".log_softmax",
                     builder.getI32IntegerAttr(static_cast<int32_t>(desc.log_softmax)));
 }
 
-inline bool gfx_mpsrt_read_softmax_desc_attrs(mlir::ModuleOp module,
+inline bool gfx_mpsrt_read_softmax_desc_attrs(mlir::Operation* module,
                                               const std::string& prefix,
                                               GfxMpsrtSoftmaxAbiDesc& desc) {
     bool read_any = false;
@@ -682,10 +703,10 @@ inline bool gfx_mpsrt_read_softmax_desc_attrs(mlir::ModuleOp module,
     return read_any;
 }
 
-inline void gfx_mpsrt_set_topk_desc_attrs(mlir::ModuleOp module,
+inline void gfx_mpsrt_set_topk_desc_attrs(mlir::Operation* module,
                                           const std::string& prefix,
                                           const GfxMpsrtTopKAbiDesc& desc) {
-    mlir::Builder builder(module.getContext());
+    mlir::Builder builder(module->getContext());
     module->setAttr(prefix + ".axis",
                     builder.getI32IntegerAttr(static_cast<int32_t>(desc.axis)));
     module->setAttr(prefix + ".k",
@@ -696,7 +717,7 @@ inline void gfx_mpsrt_set_topk_desc_attrs(mlir::ModuleOp module,
                     builder.getI32IntegerAttr(static_cast<int32_t>(desc.sort_type)));
 }
 
-inline bool gfx_mpsrt_read_topk_desc_attrs(mlir::ModuleOp module,
+inline bool gfx_mpsrt_read_topk_desc_attrs(mlir::Operation* module,
                                            const std::string& prefix,
                                            GfxMpsrtTopKAbiDesc& desc) {
     bool read_any = false;
@@ -707,10 +728,10 @@ inline bool gfx_mpsrt_read_topk_desc_attrs(mlir::ModuleOp module,
     return read_any;
 }
 
-inline void gfx_mpsrt_set_conv2d_desc_attrs(mlir::ModuleOp module,
+inline void gfx_mpsrt_set_conv2d_desc_attrs(mlir::Operation* module,
                                             const std::string& prefix,
                                             const GfxMpsrtConv2DAbiDesc& desc) {
-    mlir::Builder builder(module.getContext());
+    mlir::Builder builder(module->getContext());
     const uint64_t strides[] = {desc.strides[0], desc.strides[1]};
     const uint64_t dilations[] = {desc.dilations[0], desc.dilations[1]};
     const uint64_t pads[] = {desc.pads[0], desc.pads[1], desc.pads[2], desc.pads[3]};
@@ -728,7 +749,7 @@ inline void gfx_mpsrt_set_conv2d_desc_attrs(mlir::ModuleOp module,
                     builder.getI32IntegerAttr(static_cast<int32_t>(desc.accumulate_fp32)));
 }
 
-inline bool gfx_mpsrt_read_conv2d_desc_attrs(mlir::ModuleOp module,
+inline bool gfx_mpsrt_read_conv2d_desc_attrs(mlir::Operation* module,
                                              const std::string& prefix,
                                              GfxMpsrtConv2DAbiDesc& desc) {
     bool read_any = false;
@@ -754,52 +775,52 @@ inline bool gfx_mpsrt_read_conv2d_desc_attrs(mlir::ModuleOp module,
     return read_any;
 }
 
-inline void gfx_mpsrt_set_conv2d_desc_attrs(mlir::ModuleOp module,
+inline void gfx_mpsrt_set_conv2d_desc_attrs(mlir::Operation* module,
                                             const GfxMpsrtConv2DAbiDesc& desc) {
     gfx_mpsrt_set_conv2d_desc_attrs(module, "gfx.mpsrt.conv2d", desc);
 }
 
-inline bool gfx_mpsrt_read_conv2d_desc_attrs(mlir::ModuleOp module,
+inline bool gfx_mpsrt_read_conv2d_desc_attrs(mlir::Operation* module,
                                              GfxMpsrtConv2DAbiDesc& desc) {
     return gfx_mpsrt_read_conv2d_desc_attrs(module, "gfx.mpsrt.conv2d", desc);
 }
 
-inline void gfx_mpsrt_set_gemm_desc_attrs(mlir::ModuleOp module,
+inline void gfx_mpsrt_set_gemm_desc_attrs(mlir::Operation* module,
                                           const GfxMpsrtGemmAbiDesc& desc) {
     gfx_mpsrt_set_gemm_desc_attrs(module, "gfx.mpsrt.gemm", desc);
 }
 
-inline bool gfx_mpsrt_read_gemm_desc_attrs(mlir::ModuleOp module,
+inline bool gfx_mpsrt_read_gemm_desc_attrs(mlir::Operation* module,
                                            GfxMpsrtGemmAbiDesc& desc) {
     return gfx_mpsrt_read_gemm_desc_attrs(module, "gfx.mpsrt.gemm", desc);
 }
 
-inline void gfx_mpsrt_set_pool2d_desc_attrs(mlir::ModuleOp module,
+inline void gfx_mpsrt_set_pool2d_desc_attrs(mlir::Operation* module,
                                             const GfxMpsrtPool2DAbiDesc& desc) {
     gfx_mpsrt_set_pool2d_desc_attrs(module, "gfx.mpsrt.pool2d", desc);
 }
 
-inline bool gfx_mpsrt_read_pool2d_desc_attrs(mlir::ModuleOp module,
+inline bool gfx_mpsrt_read_pool2d_desc_attrs(mlir::Operation* module,
                                              GfxMpsrtPool2DAbiDesc& desc) {
     return gfx_mpsrt_read_pool2d_desc_attrs(module, "gfx.mpsrt.pool2d", desc);
 }
 
-inline void gfx_mpsrt_set_softmax_desc_attrs(mlir::ModuleOp module,
+inline void gfx_mpsrt_set_softmax_desc_attrs(mlir::Operation* module,
                                              const GfxMpsrtSoftmaxAbiDesc& desc) {
     gfx_mpsrt_set_softmax_desc_attrs(module, "gfx.mpsrt.softmax", desc);
 }
 
-inline bool gfx_mpsrt_read_softmax_desc_attrs(mlir::ModuleOp module,
+inline bool gfx_mpsrt_read_softmax_desc_attrs(mlir::Operation* module,
                                               GfxMpsrtSoftmaxAbiDesc& desc) {
     return gfx_mpsrt_read_softmax_desc_attrs(module, "gfx.mpsrt.softmax", desc);
 }
 
-inline void gfx_mpsrt_set_topk_desc_attrs(mlir::ModuleOp module,
+inline void gfx_mpsrt_set_topk_desc_attrs(mlir::Operation* module,
                                           const GfxMpsrtTopKAbiDesc& desc) {
     gfx_mpsrt_set_topk_desc_attrs(module, "gfx.mpsrt.topk", desc);
 }
 
-inline bool gfx_mpsrt_read_topk_desc_attrs(mlir::ModuleOp module,
+inline bool gfx_mpsrt_read_topk_desc_attrs(mlir::Operation* module,
                                            GfxMpsrtTopKAbiDesc& desc) {
     return gfx_mpsrt_read_topk_desc_attrs(module, "gfx.mpsrt.topk", desc);
 }
@@ -812,7 +833,7 @@ inline void gfx_mpsrt_annotate_entry_tensors(mlir::ModuleOp module,
     }
 
     auto fn_type = func.getFunctionType();
-    mlir::Builder builder(module.getContext());
+    mlir::Builder builder(module->getContext());
     module->setAttr("gfx.mpsrt.input_count",
                     builder.getI32IntegerAttr(static_cast<int32_t>(fn_type.getNumInputs())));
     module->setAttr("gfx.mpsrt.output_count",
@@ -837,14 +858,24 @@ inline void gfx_mpsrt_annotate_entry_tensors(mlir::ModuleOp module,
     }
 }
 
-inline void gfx_mpsrt_set_stage_desc_attrs(mlir::ModuleOp module,
+inline void gfx_mpsrt_set_stage_desc_attrs(mlir::Operation* module,
                                            const std::string& prefix,
                                            const GfxMpsrtStageDesc& stage,
                                            const std::string& stage_record_key) {
-    mlir::Builder builder(module.getContext());
+    mlir::Builder builder(module->getContext());
     module->setAttr(prefix + ".backend", builder.getStringAttr(gfx_stage_backend_domain_name(stage.domain)));
     module->setAttr(prefix + ".stage_kind", builder.getStringAttr(gfx_mpsrt_stage_kind_name(stage.kind)));
     module->setAttr(prefix + ".stage_record_key", builder.getStringAttr(stage_record_key));
+    if (stage.input_storage != GfxMpsrtStorage::Unknown) {
+        module->setAttr(prefix + ".input_storage", builder.getStringAttr(gfx_mpsrt_storage_name(stage.input_storage)));
+    }
+    if (stage.output_storage != GfxMpsrtStorage::Unknown) {
+        module->setAttr(prefix + ".output_storage",
+                        builder.getStringAttr(gfx_mpsrt_storage_name(stage.output_storage)));
+    }
+    if (stage.layout != GfxMpsrtLayout::Unknown) {
+        module->setAttr(prefix + ".layout", builder.getStringAttr(gfx_mpsrt_layout_name(stage.layout)));
+    }
     if (!stage.stage_type.empty()) {
         module->setAttr(prefix + ".stage_type", builder.getStringAttr(stage.stage_type));
     }
@@ -901,7 +932,7 @@ inline void gfx_mpsrt_set_stage_desc_attrs(mlir::ModuleOp module,
     }
 }
 
-inline bool gfx_mpsrt_read_stage_desc_attrs(mlir::ModuleOp module,
+inline bool gfx_mpsrt_read_stage_desc_attrs(mlir::Operation* module,
                                             const std::string& prefix,
                                             GfxMpsrtStageDesc& stage,
                                             std::string& stage_record_key) {
@@ -921,6 +952,18 @@ inline bool gfx_mpsrt_read_stage_desc_attrs(mlir::ModuleOp module,
 
     stage.domain = gfx_mpsrt_backend_domain_from_name(backend);
     stage.kind = gfx_mpsrt_stage_kind_from_name(stage_kind);
+    std::string input_storage;
+    std::string output_storage;
+    std::string layout;
+    if (gfx_mpsrt_read_string_attr(module, prefix + ".input_storage", input_storage)) {
+        stage.input_storage = gfx_mpsrt_storage_from_name(input_storage);
+    }
+    if (gfx_mpsrt_read_string_attr(module, prefix + ".output_storage", output_storage)) {
+        stage.output_storage = gfx_mpsrt_storage_from_name(output_storage);
+    }
+    if (gfx_mpsrt_read_string_attr(module, prefix + ".layout", layout)) {
+        stage.layout = gfx_mpsrt_layout_from_name(layout);
+    }
     (void)gfx_mpsrt_read_string_attr(module, prefix + ".stage_type", stage.stage_type);
     (void)gfx_mpsrt_read_string_attr(module, prefix + ".kernel_name", stage.kernel_name);
     (void)gfx_mpsrt_read_string_attr(module, prefix + ".builder_symbol", stage.builder_symbol);
@@ -981,16 +1024,6 @@ struct GfxMpsrtModuleMultiStagePlan {
     std::vector<GfxMpsrtTensorDesc> inputs;
     std::vector<GfxMpsrtBuilderStageSpec> stages;
     std::vector<GfxMpsrtValue> output_values;
-};
-
-struct GfxMpsrtExternalBufferAbiPlan {
-    bool valid = false;
-    bool has_buffer_count = false;
-    bool has_output_buffer_count = false;
-    bool has_buffer_roles = false;
-    uint32_t buffer_count = 0;
-    uint32_t output_buffer_count = 0;
-    std::vector<GfxMpsrtExternalBufferRole> buffer_roles;
 };
 
 inline bool gfx_mpsrt_finalize_external_buffer_abi(GfxMpsrtExternalBufferAbiPlan& abi) {
@@ -1160,6 +1193,20 @@ inline bool read_module_mpsrt_stage_plan(mlir::ModuleOp module,
         return false;
     }
 
+    GfxMpsrtProgram ops_program{};
+    if (read_module_mpsrt_ops_program(module, ops_program)) {
+        if (ops_program.multi_stage || ops_program.stages.size() != 1) {
+            return false;
+        }
+        const auto& stage_spec = ops_program.stages.front();
+        out.stage = stage_spec.stage;
+        out.inputs = ops_program.inputs;
+        out.outputs = stage_spec.output_descs;
+        out.stage_record_key = stage_spec.stage_record_key;
+        out.valid = true;
+        return true;
+    }
+
     std::string backend;
     std::string stage_kind;
     std::string input_storage;
@@ -1267,11 +1314,62 @@ inline bool annotate_module_with_mpsrt_storage_bridges_from_stage_plan(mlir::Mod
     return true;
 }
 
+inline bool materialize_module_mpsrt_ops_from_stage_plan(mlir::ModuleOp module,
+                                                         const GfxMpsrtModuleStagePlan& stage_plan) {
+    if (!module || !stage_plan.valid) {
+        return false;
+    }
+
+    GfxMpsrtBuilderStageSpec stage{};
+    stage.stage = stage_plan.stage;
+    stage.stage_record_key = stage_plan.stage_record_key;
+    stage.inputs = gfx_mpsrt_make_sequential_values(stage_plan.inputs.size());
+    stage.outputs = gfx_mpsrt_make_sequential_values(stage_plan.outputs.size(),
+                                                     static_cast<GfxMpsrtValue>(stage_plan.inputs.size()));
+    stage.output_descs = stage_plan.outputs;
+
+    GfxMpsrtProgram program{};
+    program.valid = true;
+    program.multi_stage = false;
+    program.record_key = stage_plan.stage_record_key;
+    program.inputs = stage_plan.inputs;
+    program.output_values = stage.outputs;
+    program.stages.push_back(std::move(stage));
+    program.external_buffer_abi = read_module_mpsrt_external_buffer_abi(module);
+
+    const auto builder_plan = gfx_mpsrt_make_builder_plan(program.stages.front().stage,
+                                                          program.inputs,
+                                                          program.stages.front().output_descs,
+                                                          program.stages.front().stage_record_key);
+    if (builder_plan.valid) {
+        program.has_storage_bridges = true;
+        program.storage_bridges = builder_plan.storage_bridges;
+    }
+    if (!materialize_module_mpsrt_ops(module, program)) {
+        return false;
+    }
+    erase_module_mpsrt_legacy_attrs(module);
+    return true;
+}
+
 inline bool read_module_mpsrt_multi_stage_plan(mlir::ModuleOp module,
                                                GfxMpsrtModuleMultiStagePlan& out) {
     out = {};
     if (!module) {
         return false;
+    }
+
+    GfxMpsrtProgram ops_program{};
+    if (read_module_mpsrt_ops_program(module, ops_program)) {
+        if (!ops_program.multi_stage || ops_program.stages.empty()) {
+            return false;
+        }
+        out.model_record_key = std::move(ops_program.record_key);
+        out.inputs = std::move(ops_program.inputs);
+        out.stages = std::move(ops_program.stages);
+        out.output_values = std::move(ops_program.output_values);
+        out.valid = true;
+        return true;
     }
 
     uint32_t stage_count = 0;
@@ -1332,6 +1430,275 @@ inline bool read_module_mpsrt_multi_stage_plan(mlir::ModuleOp module,
     return out.valid;
 }
 
+inline constexpr const char* kGfxMpsrtProgramFacadeSymbol = "gfx_mpsrt_program";
+
+inline mlir::func::FuncOp lookup_module_mpsrt_program_facade(mlir::ModuleOp module) {
+    if (!module) {
+        return {};
+    }
+    std::string symbol = kGfxMpsrtProgramFacadeSymbol;
+    if (auto attr = module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.program.symbol")) {
+        symbol = attr.str();
+    }
+    return module.lookupSymbol<mlir::func::FuncOp>(symbol);
+}
+
+inline void erase_module_mpsrt_program_facade(mlir::ModuleOp module) {
+    if (auto facade = lookup_module_mpsrt_program_facade(module)) {
+        if (facade->getAttrOfType<mlir::BoolAttr>("gfx.mpsrt.program.generated")) {
+            facade.erase();
+        }
+    }
+    if (module) {
+        module->removeAttr("gfx.mpsrt.program.symbol");
+    }
+}
+
+inline bool read_module_mpsrt_program_facade(mlir::ModuleOp module,
+                                             GfxMpsrtProgram& out) {
+    out = {};
+    auto facade = lookup_module_mpsrt_program_facade(module);
+    if (!facade ||
+        !facade->getAttrOfType<mlir::BoolAttr>("gfx.mpsrt.program.generated")) {
+        return false;
+    }
+
+    auto* op = facade.getOperation();
+    std::string kind;
+    uint32_t input_count = 0;
+    uint32_t stage_count = 0;
+    if (!detail::gfx_mpsrt_read_string_attr(op, "gfx.mpsrt.program.kind", kind) ||
+        !detail::gfx_mpsrt_read_string_attr(op, "gfx.mpsrt.program.record_key", out.record_key) ||
+        !detail::gfx_mpsrt_read_i32_attr(op, "gfx.mpsrt.program.input_count", input_count) ||
+        !detail::gfx_mpsrt_read_i32_attr(op, "gfx.mpsrt.program.stage_count", stage_count)) {
+        return false;
+    }
+
+    out.multi_stage = kind == "multi_stage";
+    out.inputs.reserve(input_count);
+    for (uint32_t i = 0; i < input_count; ++i) {
+        GfxMpsrtTensorDesc desc{};
+        if (!detail::gfx_mpsrt_read_tensor_desc_attrs(op,
+                                                      "gfx.mpsrt.program.input" + std::to_string(i),
+                                                      desc)) {
+            out = {};
+            return false;
+        }
+        out.inputs.push_back(desc);
+    }
+
+    out.output_values = detail::gfx_mpsrt_read_u32_vector_attr(op, "gfx.mpsrt.program.output_values");
+    out.stages.reserve(stage_count);
+    for (uint32_t i = 0; i < stage_count; ++i) {
+        const std::string prefix = "gfx.mpsrt.program.stage" + std::to_string(i);
+        GfxMpsrtBuilderStageSpec spec{};
+        if (!detail::gfx_mpsrt_read_stage_desc_attrs(op,
+                                                     prefix,
+                                                     spec.stage,
+                                                     spec.stage_record_key)) {
+            out = {};
+            return false;
+        }
+        spec.inputs = detail::gfx_mpsrt_read_u32_vector_attr(op, prefix + ".input_values");
+        spec.outputs = detail::gfx_mpsrt_read_u32_vector_attr(op, prefix + ".output_values");
+
+        uint32_t output_count = 0;
+        (void)detail::gfx_mpsrt_read_i32_attr(op, prefix + ".output_count", output_count);
+        spec.output_descs.reserve(output_count);
+        for (uint32_t output_idx = 0; output_idx < output_count; ++output_idx) {
+            GfxMpsrtTensorDesc desc{};
+            if (!detail::gfx_mpsrt_read_tensor_desc_attrs(op,
+                                                          prefix + ".output" + std::to_string(output_idx),
+                                                          desc)) {
+                out = {};
+                return false;
+            }
+            spec.output_descs.push_back(desc);
+        }
+        if (spec.stage.input_storage == GfxMpsrtStorage::Unknown && !spec.inputs.empty()) {
+            const auto input_value = spec.inputs.front();
+            if (input_value < out.inputs.size()) {
+                spec.stage.input_storage = out.inputs[input_value].storage;
+            }
+        }
+        if (spec.stage.output_storage == GfxMpsrtStorage::Unknown && !spec.output_descs.empty()) {
+            spec.stage.output_storage = spec.output_descs.front().storage;
+        }
+        if (spec.stage.layout == GfxMpsrtLayout::Unknown &&
+            spec.stage.output_storage != GfxMpsrtStorage::Unknown) {
+            spec.stage.layout = gfx_mpsrt_stage_layout_for_storage(spec.stage.output_storage);
+        }
+        out.stages.push_back(std::move(spec));
+    }
+
+    GfxMpsrtExternalBufferAbiPlan external_buffer_abi{};
+    external_buffer_abi.has_buffer_count =
+        detail::gfx_mpsrt_read_i32_attr(op,
+                                        "gfx.mpsrt.program.external_buffer_count",
+                                        external_buffer_abi.buffer_count);
+    external_buffer_abi.has_output_buffer_count =
+        detail::gfx_mpsrt_read_i32_attr(op,
+                                        "gfx.mpsrt.program.external_output_buffer_count",
+                                        external_buffer_abi.output_buffer_count);
+    const auto role_values =
+        detail::gfx_mpsrt_read_u32_vector_attr(op, "gfx.mpsrt.program.external_buffer_roles");
+    if (!role_values.empty()) {
+        external_buffer_abi.has_buffer_roles = true;
+        external_buffer_abi.buffer_roles.reserve(role_values.size());
+        for (const auto role_value : role_values) {
+            external_buffer_abi.buffer_roles.push_back(static_cast<GfxMpsrtExternalBufferRole>(role_value));
+        }
+    }
+    if (external_buffer_abi.has_buffer_count ||
+        external_buffer_abi.has_output_buffer_count ||
+        external_buffer_abi.has_buffer_roles) {
+        if (!gfx_mpsrt_finalize_external_buffer_abi(external_buffer_abi)) {
+            out = {};
+            return false;
+        }
+        out.external_buffer_abi = std::move(external_buffer_abi);
+    }
+
+    if (detail::gfx_mpsrt_read_storage_bridges_attrs(op,
+                                                     "gfx.mpsrt.program",
+                                                     out.storage_bridges)) {
+        out.has_storage_bridges = true;
+    }
+
+    out.valid = gfx_mpsrt_validate_program(out, nullptr);
+    if (!out.valid) {
+        out = {};
+    }
+    return out.valid;
+}
+
+inline bool materialize_module_mpsrt_program_facade(mlir::ModuleOp module,
+                                                    const GfxMpsrtProgram& program) {
+    if (!module || !gfx_mpsrt_validate_program(program, nullptr)) {
+        return false;
+    }
+    auto* context = module->getContext();
+    context->loadDialect<mlir::func::FuncDialect>();
+
+    erase_module_mpsrt_program_facade(module);
+    if (module.lookupSymbol<mlir::func::FuncOp>(kGfxMpsrtProgramFacadeSymbol)) {
+        return false;
+    }
+
+    mlir::OpBuilder builder(context);
+    builder.setInsertionPointToEnd(module.getBody());
+    auto facade = mlir::func::FuncOp::create(builder,
+                                             mlir::UnknownLoc::get(context),
+                                             kGfxMpsrtProgramFacadeSymbol,
+                                             builder.getFunctionType({}, {}));
+    facade.setSymVisibility("private");
+    auto* op = facade.getOperation();
+    op->setAttr("gfx.mpsrt.program.generated", builder.getBoolAttr(true));
+    op->setAttr("gfx.mpsrt.program.version", builder.getI32IntegerAttr(1));
+    op->setAttr("gfx.mpsrt.program.kind",
+                builder.getStringAttr(program.multi_stage ? "multi_stage" : "single_stage"));
+    op->setAttr("gfx.mpsrt.program.record_key", builder.getStringAttr(program.record_key));
+    op->setAttr("gfx.mpsrt.program.input_count",
+                builder.getI32IntegerAttr(static_cast<int32_t>(program.inputs.size())));
+    op->setAttr("gfx.mpsrt.program.stage_count",
+                builder.getI32IntegerAttr(static_cast<int32_t>(program.stages.size())));
+    op->setAttr("gfx.mpsrt.program.output_values",
+                detail::gfx_mpsrt_u32_vector_attr(builder, program.output_values));
+
+    for (size_t i = 0; i < program.inputs.size(); ++i) {
+        detail::gfx_mpsrt_set_tensor_desc_attrs(op,
+                                                "gfx.mpsrt.program.input" + std::to_string(i),
+                                                program.inputs[i]);
+    }
+    for (size_t i = 0; i < program.stages.size(); ++i) {
+        const auto& spec = program.stages[i];
+        const std::string prefix = "gfx.mpsrt.program.stage" + std::to_string(i);
+        detail::gfx_mpsrt_set_stage_desc_attrs(op, prefix, spec.stage, spec.stage_record_key);
+        op->setAttr(prefix + ".input_values",
+                    detail::gfx_mpsrt_u32_vector_attr(builder, spec.inputs));
+        op->setAttr(prefix + ".output_values",
+                    detail::gfx_mpsrt_u32_vector_attr(builder, spec.outputs));
+        op->setAttr(prefix + ".output_count",
+                    builder.getI32IntegerAttr(static_cast<int32_t>(spec.output_descs.size())));
+        for (size_t output_idx = 0; output_idx < spec.output_descs.size(); ++output_idx) {
+            detail::gfx_mpsrt_set_tensor_desc_attrs(op,
+                                                    prefix + ".output" + std::to_string(output_idx),
+                                                    spec.output_descs[output_idx]);
+        }
+    }
+    if (program.external_buffer_abi.valid && program.external_buffer_abi.has_buffer_roles) {
+        detail::gfx_mpsrt_set_external_buffer_roles_attrs(op,
+                                                          "gfx.mpsrt.program",
+                                                          program.external_buffer_abi.buffer_roles);
+    }
+    if (program.has_storage_bridges) {
+        detail::gfx_mpsrt_set_storage_bridges_attrs(op,
+                                                    "gfx.mpsrt.program",
+                                                    program.storage_bridges);
+    }
+    module->setAttr("gfx.mpsrt.program.symbol",
+                    builder.getStringAttr(kGfxMpsrtProgramFacadeSymbol));
+    return true;
+}
+
+inline bool read_module_mpsrt_program(mlir::ModuleOp module,
+                                      GfxMpsrtProgram& out) {
+    out = {};
+    if (!module) {
+        return false;
+    }
+    if (read_module_mpsrt_ops_program(module, out)) {
+        return true;
+    }
+    if (read_module_mpsrt_program_facade(module, out)) {
+        return true;
+    }
+
+    GfxMpsrtModuleMultiStagePlan multi_stage_plan{};
+    if (read_module_mpsrt_multi_stage_plan(module, multi_stage_plan)) {
+        out.multi_stage = true;
+        out.record_key = multi_stage_plan.model_record_key;
+        out.inputs = std::move(multi_stage_plan.inputs);
+        out.stages = std::move(multi_stage_plan.stages);
+        out.output_values = std::move(multi_stage_plan.output_values);
+    } else {
+        GfxMpsrtModuleStagePlan stage_plan{};
+        if (!read_module_mpsrt_stage_plan(module, stage_plan)) {
+            return false;
+        }
+        out.multi_stage = false;
+        out.record_key = stage_plan.stage_record_key;
+        out.inputs = std::move(stage_plan.inputs);
+        GfxMpsrtBuilderStageSpec stage{};
+        stage.stage = std::move(stage_plan.stage);
+        stage.stage_record_key = stage_plan.stage_record_key;
+        stage.inputs = gfx_mpsrt_make_sequential_values(out.inputs.size());
+        stage.outputs = gfx_mpsrt_make_sequential_values(stage_plan.outputs.size(),
+                                                         static_cast<GfxMpsrtValue>(out.inputs.size()));
+        stage.output_descs = std::move(stage_plan.outputs);
+        out.output_values = stage.outputs;
+        out.stages.push_back(std::move(stage));
+    }
+
+    out.external_buffer_abi = read_module_mpsrt_external_buffer_abi(module);
+    if (detail::gfx_mpsrt_read_storage_bridges_attrs(module, out.storage_bridges)) {
+        out.has_storage_bridges = true;
+    }
+
+    GfxMpsrtBuilderPlan builder_plan{};
+    out.valid = gfx_mpsrt_build_builder_plan_from_program(out, builder_plan);
+    return out.valid;
+}
+
+inline bool materialize_module_mpsrt_program_facade_from_module_attrs(mlir::ModuleOp module) {
+    erase_module_mpsrt_program_facade(module);
+    GfxMpsrtProgram program{};
+    if (!read_module_mpsrt_program(module, program)) {
+        return false;
+    }
+    return materialize_module_mpsrt_program_facade(module, program);
+}
+
 inline void annotate_module_with_mpsrt_multi_stage_plan(
     mlir::ModuleOp module,
     const std::string& model_record_key,
@@ -1343,7 +1710,7 @@ inline void annotate_module_with_mpsrt_multi_stage_plan(
         return;
     }
 
-    mlir::Builder builder(module.getContext());
+    mlir::Builder builder(module->getContext());
     module->setAttr("gfx.mpsrt.model_record_key", builder.getStringAttr(model_record_key));
     module->setAttr("gfx.mpsrt.model_stage_count",
                     builder.getI32IntegerAttr(static_cast<int32_t>(stages.size())));
@@ -1384,6 +1751,7 @@ inline void annotate_module_with_mpsrt_multi_stage_plan(
     if (builder_plan.valid) {
         detail::gfx_mpsrt_set_storage_bridges_attrs(module, builder_plan.storage_bridges);
     }
+    (void)materialize_module_mpsrt_ops_from_module_attrs(module);
 }
 
 inline void annotate_module_with_mpsrt_gemm_desc(mlir::ModuleOp module,
@@ -1392,18 +1760,13 @@ inline void annotate_module_with_mpsrt_gemm_desc(mlir::ModuleOp module,
         return;
     }
 
-    detail::gfx_mpsrt_set_gemm_desc_attrs(module, desc);
-
     GfxMpsrtModuleStagePlan stage_plan;
     if (!read_module_mpsrt_stage_plan(module, stage_plan)) {
         return;
     }
     stage_plan.stage.gemm_desc = desc;
-
-    mlir::Builder builder(module.getContext());
-    module->setAttr("gfx.mpsrt.stage_record_key",
-                    builder.getStringAttr(gfx_mpsrt_stage_record_key(stage_plan.stage)));
-    (void)annotate_module_with_mpsrt_storage_bridges_from_stage_plan(module);
+    stage_plan.stage_record_key = gfx_mpsrt_stage_record_key(stage_plan.stage);
+    (void)materialize_module_mpsrt_ops_from_stage_plan(module, stage_plan);
 }
 
 inline void annotate_module_with_mpsrt_conv2d_desc(mlir::ModuleOp module,
@@ -1412,18 +1775,13 @@ inline void annotate_module_with_mpsrt_conv2d_desc(mlir::ModuleOp module,
         return;
     }
 
-    detail::gfx_mpsrt_set_conv2d_desc_attrs(module, desc);
-
     GfxMpsrtModuleStagePlan stage_plan;
     if (!read_module_mpsrt_stage_plan(module, stage_plan)) {
         return;
     }
     stage_plan.stage.conv2d_desc = desc;
-
-    mlir::Builder builder(module.getContext());
-    module->setAttr("gfx.mpsrt.stage_record_key",
-                    builder.getStringAttr(gfx_mpsrt_stage_record_key(stage_plan.stage)));
-    (void)annotate_module_with_mpsrt_storage_bridges_from_stage_plan(module);
+    stage_plan.stage_record_key = gfx_mpsrt_stage_record_key(stage_plan.stage);
+    (void)materialize_module_mpsrt_ops_from_stage_plan(module, stage_plan);
 }
 
 inline void annotate_module_with_mpsrt_pool2d_desc(mlir::ModuleOp module,
@@ -1432,18 +1790,13 @@ inline void annotate_module_with_mpsrt_pool2d_desc(mlir::ModuleOp module,
         return;
     }
 
-    detail::gfx_mpsrt_set_pool2d_desc_attrs(module, desc);
-
     GfxMpsrtModuleStagePlan stage_plan;
     if (!read_module_mpsrt_stage_plan(module, stage_plan)) {
         return;
     }
     stage_plan.stage.pool2d_desc = desc;
-
-    mlir::Builder builder(module.getContext());
-    module->setAttr("gfx.mpsrt.stage_record_key",
-                    builder.getStringAttr(gfx_mpsrt_stage_record_key(stage_plan.stage)));
-    (void)annotate_module_with_mpsrt_storage_bridges_from_stage_plan(module);
+    stage_plan.stage_record_key = gfx_mpsrt_stage_record_key(stage_plan.stage);
+    (void)materialize_module_mpsrt_ops_from_stage_plan(module, stage_plan);
 }
 
 inline void annotate_module_with_mpsrt_softmax_desc(mlir::ModuleOp module,
@@ -1452,18 +1805,13 @@ inline void annotate_module_with_mpsrt_softmax_desc(mlir::ModuleOp module,
         return;
     }
 
-    detail::gfx_mpsrt_set_softmax_desc_attrs(module, desc);
-
     GfxMpsrtModuleStagePlan stage_plan;
     if (!read_module_mpsrt_stage_plan(module, stage_plan)) {
         return;
     }
     stage_plan.stage.softmax_desc = desc;
-
-    mlir::Builder builder(module.getContext());
-    module->setAttr("gfx.mpsrt.stage_record_key",
-                    builder.getStringAttr(gfx_mpsrt_stage_record_key(stage_plan.stage)));
-    (void)annotate_module_with_mpsrt_storage_bridges_from_stage_plan(module);
+    stage_plan.stage_record_key = gfx_mpsrt_stage_record_key(stage_plan.stage);
+    (void)materialize_module_mpsrt_ops_from_stage_plan(module, stage_plan);
 }
 
 inline void annotate_module_with_mpsrt_topk_desc(mlir::ModuleOp module,
@@ -1472,18 +1820,13 @@ inline void annotate_module_with_mpsrt_topk_desc(mlir::ModuleOp module,
         return;
     }
 
-    detail::gfx_mpsrt_set_topk_desc_attrs(module, desc);
-
     GfxMpsrtModuleStagePlan stage_plan;
     if (!read_module_mpsrt_stage_plan(module, stage_plan)) {
         return;
     }
     stage_plan.stage.topk_desc = desc;
-
-    mlir::Builder builder(module.getContext());
-    module->setAttr("gfx.mpsrt.stage_record_key",
-                    builder.getStringAttr(gfx_mpsrt_stage_record_key(stage_plan.stage)));
-    (void)annotate_module_with_mpsrt_storage_bridges_from_stage_plan(module);
+    stage_plan.stage_record_key = gfx_mpsrt_stage_record_key(stage_plan.stage);
+    (void)materialize_module_mpsrt_ops_from_stage_plan(module, stage_plan);
 }
 
 struct GfxMpsrtModuleBuilderPlan {
@@ -1498,56 +1841,29 @@ struct GfxMpsrtModuleBuilderPlan {
 inline bool build_module_mpsrt_builder_plan(mlir::ModuleOp module,
                                             GfxMpsrtModuleBuilderPlan& out) {
     out = {};
-    if (read_module_mpsrt_multi_stage_plan(module, out.multi_stage_plan)) {
-        out.builder_plan = gfx_mpsrt_make_multi_stage_builder_plan(out.multi_stage_plan.model_record_key,
-                                                                   out.multi_stage_plan.inputs,
-                                                                   out.multi_stage_plan.stages,
-                                                                   out.multi_stage_plan.output_values);
-        if (!out.builder_plan.valid) {
-            out = {};
-            return false;
-        }
-        std::vector<GfxMpsrtStorageBridgeDesc> storage_bridges;
-        if (detail::gfx_mpsrt_read_storage_bridges_attrs(module, storage_bridges)) {
-            out.builder_plan.storage_bridges = std::move(storage_bridges);
-        }
-        out.multi_stage = true;
-        out.stage_plan.valid = true;
-        out.stage_plan.stage = out.multi_stage_plan.stages.front().stage;
-        out.stage_plan.inputs = out.multi_stage_plan.inputs;
-        out.stage_plan.outputs = out.multi_stage_plan.stages.back().output_descs;
-        out.stage_plan.stage_record_key = out.multi_stage_plan.stages.front().stage_record_key;
-        out.external_buffer_abi = read_module_mpsrt_external_buffer_abi(module);
-        if (out.external_buffer_abi.valid) {
-            out.builder_plan.external_buffer_abi_valid = true;
-            out.builder_plan.external_buffer_count = out.external_buffer_abi.buffer_count;
-            out.builder_plan.external_output_buffer_count = out.external_buffer_abi.output_buffer_count;
-            out.builder_plan.external_buffer_roles = out.external_buffer_abi.buffer_roles;
-        }
-        out.valid = true;
-        return true;
-    }
-
-    if (!read_module_mpsrt_stage_plan(module, out.stage_plan)) {
+    GfxMpsrtProgram program{};
+    if (!read_module_mpsrt_program(module, program) ||
+        !gfx_mpsrt_build_builder_plan_from_program(program, out.builder_plan)) {
+        out = {};
         return false;
     }
 
-    out.builder_plan = gfx_mpsrt_make_builder_plan(out.stage_plan.stage,
-                                                   out.stage_plan.inputs,
-                                                   out.stage_plan.outputs,
-                                                   out.stage_plan.stage_record_key);
-    std::vector<GfxMpsrtStorageBridgeDesc> storage_bridges;
-    if (detail::gfx_mpsrt_read_storage_bridges_attrs(module, storage_bridges)) {
-        out.builder_plan.storage_bridges = std::move(storage_bridges);
+    out.multi_stage = program.multi_stage;
+    out.external_buffer_abi = program.external_buffer_abi;
+    out.stage_plan.valid = true;
+    out.stage_plan.stage = program.stages.front().stage;
+    out.stage_plan.inputs = program.inputs;
+    out.stage_plan.outputs = program.stages.back().output_descs;
+    out.stage_plan.stage_record_key = program.stages.front().stage_record_key;
+    if (program.multi_stage) {
+        out.multi_stage_plan.valid = true;
+        out.multi_stage_plan.model_record_key = program.record_key;
+        out.multi_stage_plan.inputs = program.inputs;
+        out.multi_stage_plan.stages = program.stages;
+        out.multi_stage_plan.output_values = program.output_values;
     }
-    out.external_buffer_abi = read_module_mpsrt_external_buffer_abi(module);
-    if (out.external_buffer_abi.valid) {
-        out.builder_plan.external_buffer_abi_valid = true;
-        out.builder_plan.external_buffer_count = out.external_buffer_abi.buffer_count;
-        out.builder_plan.external_output_buffer_count = out.external_buffer_abi.output_buffer_count;
-        out.builder_plan.external_buffer_roles = out.external_buffer_abi.buffer_roles;
-    }
-    out.valid = out.stage_plan.valid && out.builder_plan.valid;
+
+    out.valid = out.builder_plan.valid;
     return out.valid;
 }
 
@@ -1555,69 +1871,6 @@ inline GfxMpsrtModuleBuilderPlan build_module_mpsrt_builder_plan(mlir::ModuleOp 
     GfxMpsrtModuleBuilderPlan out{};
     (void)build_module_mpsrt_builder_plan(module, out);
     return out;
-}
-
-inline bool annotate_module_with_mpsrt_runtime_abi_attrs(mlir::ModuleOp module) {
-    GfxMpsrtModuleBuilderPlan module_plan{};
-    if (!module || !build_module_mpsrt_builder_plan(module, module_plan)) {
-        return false;
-    }
-
-    const auto& builder_plan = module_plan.builder_plan;
-    mlir::Builder builder(module.getContext());
-    constexpr const char* kPrefix = "gfx.mpsrt.runtime_abi";
-    module->setAttr(std::string(kPrefix) + ".valid", builder.getBoolAttr(true));
-    module->setAttr(std::string(kPrefix) + ".kind",
-                    builder.getStringAttr(module_plan.multi_stage ? "multi_stage" : "single_stage"));
-    module->setAttr(std::string(kPrefix) + ".record_key",
-                    builder.getStringAttr(builder_plan.stage_record_key));
-    module->setAttr(std::string(kPrefix) + ".record_count",
-                    builder.getI32IntegerAttr(static_cast<int32_t>(builder_plan.records.size())));
-    module->setAttr(std::string(kPrefix) + ".input_value_count",
-                    builder.getI32IntegerAttr(static_cast<int32_t>(builder_plan.input_values.size())));
-    module->setAttr(std::string(kPrefix) + ".output_value_count",
-                    builder.getI32IntegerAttr(static_cast<int32_t>(builder_plan.output_values.size())));
-    module->setAttr(std::string(kPrefix) + ".storage_bridge_count",
-                    builder.getI32IntegerAttr(static_cast<int32_t>(builder_plan.storage_bridges.size())));
-    if (builder_plan.external_buffer_abi_valid) {
-        module->setAttr(std::string(kPrefix) + ".external_buffer_count",
-                        builder.getI32IntegerAttr(static_cast<int32_t>(builder_plan.external_buffer_count)));
-        module->setAttr(std::string(kPrefix) + ".external_output_buffer_count",
-                        builder.getI32IntegerAttr(
-                            static_cast<int32_t>(builder_plan.external_output_buffer_count)));
-    }
-    for (size_t i = 0; i < builder_plan.records.size(); ++i) {
-        const auto& record = builder_plan.records[i];
-        const std::string prefix = std::string(kPrefix) + ".record" + std::to_string(i);
-        module->setAttr(prefix + ".kind",
-                        builder.getStringAttr(gfx_mpsrt_builder_record_kind_name(record.kind)));
-        if (!record.symbol.empty()) {
-            module->setAttr(prefix + ".symbol", builder.getStringAttr(record.symbol));
-        }
-        if (!record.stage_record_key.empty()) {
-            module->setAttr(prefix + ".stage_record_key", builder.getStringAttr(record.stage_record_key));
-        }
-        if (record.stage_kind != GfxMpsrtStageKind::Unknown) {
-            module->setAttr(prefix + ".stage_kind",
-                            builder.getStringAttr(gfx_mpsrt_stage_kind_name(record.stage_kind)));
-        }
-        if (!record.kernel_name.empty()) {
-            module->setAttr(prefix + ".kernel_name", builder.getStringAttr(record.kernel_name));
-        }
-        if (!record.inputs.empty()) {
-            module->setAttr(prefix + ".input_values",
-                            detail::gfx_mpsrt_u32_vector_attr(builder, record.inputs));
-        }
-        if (!record.outputs.empty()) {
-            module->setAttr(prefix + ".output_values",
-                            detail::gfx_mpsrt_u32_vector_attr(builder, record.outputs));
-        }
-        if (!record.kernel_buffer_order.empty()) {
-            module->setAttr(prefix + ".kernel_buffer_order",
-                            detail::gfx_mpsrt_u32_vector_attr(builder, record.kernel_buffer_order));
-        }
-    }
-    return true;
 }
 
 inline void annotate_module_with_mpsrt_stage_plan(mlir::ModuleOp module,
@@ -1628,7 +1881,7 @@ inline void annotate_module_with_mpsrt_stage_plan(mlir::ModuleOp module,
         return;
     }
 
-    mlir::Builder builder(module.getContext());
+    mlir::Builder builder(module->getContext());
     module->setAttr("gfx.backend",
                     builder.getStringAttr(gfx_stage_backend_domain_name(plan.placement.domain)));
     module->setAttr("gfx.storage",
@@ -1677,6 +1930,7 @@ inline void annotate_module_with_mpsrt_stage_plan(mlir::ModuleOp module,
                     builder.getStringAttr(gfx_mpsrt_stage_record_key(stage_desc)));
     detail::gfx_mpsrt_annotate_entry_tensors(module, plan);
     (void)annotate_module_with_mpsrt_storage_bridges_from_stage_plan(module);
+    (void)materialize_module_mpsrt_ops_from_module_attrs(module);
 }
 
 }  // namespace gfx_plugin

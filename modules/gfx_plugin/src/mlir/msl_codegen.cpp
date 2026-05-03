@@ -242,6 +242,9 @@ void annotate_msl_module_with_stage_plan(mlir::ModuleOp module,
     module->setAttr("gfx.msl.threads_per_threadgroup",
                     builder.getI32IntegerAttr(static_cast<int32_t>(msl_plan.threads_per_threadgroup)));
     (void)annotate_module_with_mpsrt_external_buffer_abi_from_stage_manifest(module);
+    if (read_module_mpsrt_stage_plan(module, stage_plan)) {
+        (void)materialize_module_mpsrt_ops_from_stage_plan(module, stage_plan);
+    }
 }
 
 std::string generate_msl_for_matmul_mpsrt_epilogue(const MatMulCodegenDesc& desc) {

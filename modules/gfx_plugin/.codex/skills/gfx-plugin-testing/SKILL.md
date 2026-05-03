@@ -12,7 +12,7 @@ This skill is for test selection, regression coverage, and profiling-oriented va
 - The task asks what tests to add or run.
 - The task changes MLIR lowering, backend routes, properties, scheduling, caches, infer submission, or output planning.
 - The task changes Metal placement domains, MPSRT ABI metadata, or MSL kernel-family routing.
-- The task changes kernel-manifest execution kind, generated runtime-ABI call plans, storage bridges, vendor-stage coverage, or hybrid MPS+MSL prepared-model execution.
+- The task changes kernel-manifest execution kind, typed MPSRT programs, generated runtime-ABI call plans, storage bridges, vendor-stage coverage, or hybrid MPS+MSL prepared-model execution.
 - The user wants compare-runner, microbench, profiling-runbook, Android, or Raspberry Pi validation guidance.
 
 ## Primary References
@@ -78,7 +78,7 @@ Inspect and extend:
 If the change is Metal-dispatch specific, also look for focused coverage around command-buffer submission, encoder reuse, and binding reuse before jumping to broader backend tests.
 If the change affects Apple MPS versus Apple MSL placement, extend `tests/unit/gfx_stage_policy_test.cpp` first, then use `tests/backends/metal/gpu_backend_test.mm` for compile/prepare/encode coverage.
 If the change introduces or changes a hybrid vendor-plus-custom plan, make sure coverage includes both manifest serialization in `tests/unit/gfx_stage_policy_test.cpp` and request-time execution in `tests/backends/metal/gpu_backend_test.mm`.
-If the change touches generated MPSRT runtime-ABI plans or storage bridges, also extend `tests/unit/basic_ops_internal_test.cpp` for call-plan readback and `tests/unit/gfx_stage_policy_test.cpp` for serialized bridge/record validation before relying on end-to-end Metal tests.
+If the change touches `GfxMpsrtProgram`, generated `gfx_mpsrt_ops`, runtime-ABI plans, or storage bridges, also extend `tests/unit/basic_ops_internal_test.cpp` for program/call-plan readback and `tests/unit/gfx_stage_policy_test.cpp` for serialized bridge/record validation before relying on end-to-end Metal tests.
 
 ## Practical Command Pattern
 

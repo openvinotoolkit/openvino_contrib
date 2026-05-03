@@ -47,7 +47,7 @@ Recent additions in the tree include:
 - `tests/unit/mlir_conv_parallel_test.cpp` for canonical Conv2D lowering, per-axis and combined interior-tile bounds checks, Vulkan batch-1 parallel-launch coverage, batch>1 serial-fallback coverage, im2col rewrite coverage, and absorbed-input-transform regression checks
 - `tests/unit/gfx_parallelism_test.cpp` for backend-neutral parallelism-plan selection
 - `tests/unit/mlir_matmul_parallel_test.cpp` for linear matmul parallel-lowering behavior
-- `tests/unit/basic_ops_internal_test.cpp` for internal transform, fusion, plugin regression coverage, focused builder coverage such as ReduceSum, and generated MPSRT runtime-ABI call-plan readback
+- `tests/unit/basic_ops_internal_test.cpp` for internal transform, fusion, plugin regression coverage, focused builder coverage such as ReduceSum, generated `gfx_mpsrt_ops` / `GfxMpsrtProgram` readback, and generated MPSRT runtime-ABI call-plan readback
 - `tests/unit/layout_cleanup_test.cpp` for MLIR layout-cleanup behavior, including DFL softmax expectation rewrites
 - `tests/backends/vulkan/vulkan_runtime_test.cpp` for Vulkan runtime regressions
 - `tests/unit/memory_device_integration_test.mm` for Metal memory/device integration behavior
@@ -55,7 +55,7 @@ Recent additions in the tree include:
 - `tests/unit/infer_pipeline_reuse_test.cpp` for reusable pipeline, prepared-input plans, prepared-output plans, and reusable host-output coverage
 - `tests/unit/gfx_profiling_report_test.cpp` for compile/infer profiling JSON assembly and merge behavior
 - `tests/unit/gfx_stage_policy_test.cpp` for submit-weight and route-policy heuristics
-- `tests/unit/gfx_stage_policy_test.cpp` now also covers Metal placement domains, MPSRT tensor descriptors, stage record keys, kernel-family manifests, builder-plan serialization, runtime-model ABI adaptation, and storage-bridge descriptors
+- `tests/unit/gfx_stage_policy_test.cpp` now also covers Metal placement domains, MPSRT tensor descriptors, typed program validation, stage record keys, kernel-family manifests, builder-plan serialization, runtime-model ABI adaptation, and storage-bridge descriptors
 - `tests/backends/metal/gpu_backend_test.mm` now covers MPSRT-backed Metal compile, prepared-pipeline caching, and request-time MSL-dispatch execution
 - `tests/backends/metal/gpu_backend_test.mm` now also covers manifest-driven buffer ordering, runtime-parameter roles, storage bridges, vendor `MPSGemm` / Conv2D / Pool2D / Softmax / TopK, and hybrid multi-stage execution
 - `tests/unit/gfx_parallelism_test.cpp` now also covers Broadcom V3D-specific matmul and convolution tuning behavior
@@ -87,6 +87,7 @@ Add or update tests when you change:
 - stage policy, parallelism selection, or input-transform absorption
 - Metal placement-domain selection, MPSRT ABI metadata, or MSL kernel-family mapping
 - kernel-manifest execution-kind changes such as vendor-primitive versus custom-kernel routing
+- generated `gfx_mpsrt_ops` / `GfxMpsrtProgram` materialization or legacy-attr cleanup rules
 - generated runtime-ABI call-plan metadata or storage-bridge contracts for Metal MPSRT execution
 - backend-specialized routes such as chunked or direct Vulkan execution
 - infer submission thresholds, submission ordering, or command-buffer lifecycle

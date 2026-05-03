@@ -55,6 +55,7 @@ Additional operational docs:
    - command-encoder or binding-reuse behavior that changes profiling counters or dispatch setup cost
    - MPSRT runtime-model, kernel-family-manifest, or external-buffer-ABI behavior on Metal
    - generated runtime-ABI call-plan or storage-bridge behavior on Metal
+   - typed `GfxMpsrtProgram` / generated `gfx_mpsrt_ops` behavior or cleanup of stale legacy MPSRT attrs
    - stage-level profiling estimates such as `bytes_in`, `bytes_out`, `macs_est`, or `flops_est`
    - test layout or regression coverage
    - compare-runner CLI or debug workflow

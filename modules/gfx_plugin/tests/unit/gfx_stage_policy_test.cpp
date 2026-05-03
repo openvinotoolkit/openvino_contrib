@@ -23,6 +23,7 @@
 #include "runtime/gfx_mpsrt_builder_plan.hpp"
 #include "runtime/gfx_mpsrt_kernel_manifest_adapter.hpp"
 #include "runtime/gfx_mpsrt_plan.hpp"
+#include "runtime/gfx_mpsrt_program.hpp"
 #include "runtime/gfx_mpsrt_storage_bridge.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 
@@ -1214,6 +1215,47 @@ TEST(GfxStagePolicyTest, MpsrtMultiStageBuilderPlanSerializesMpsGemmPlusMslDispa
                                                 ov::element::f16,
                                                 GfxStageStorageKind::Buffer,
                                                 GfxMpsrtTensorFlagExternalIo);
+
+    GfxMpsrtProgram program{};
+    program.multi_stage = true;
+    program.record_key = "mps_gemm_plus_msl_epilogue_model|MatMul";
+    program.inputs = {lhs, rhs};
+    program.stages = {GfxMpsrtBuilderStageSpec{gemm_stage,
+                                               gfx_mpsrt_stage_record_key(gemm_stage),
+                                               {0u, 1u},
+                                               {2u},
+                                               {gemm}},
+                      GfxMpsrtBuilderStageSpec{epilogue_stage,
+                                               gfx_mpsrt_stage_record_key(epilogue_stage),
+                                               {2u},
+                                               {3u},
+                                               {out}}};
+    program.output_values = {3u};
+    program.external_buffer_abi.valid = true;
+    program.external_buffer_abi.has_buffer_count = true;
+    program.external_buffer_abi.has_output_buffer_count = true;
+    program.external_buffer_abi.has_buffer_roles = true;
+    program.external_buffer_abi.buffer_count = 3u;
+    program.external_buffer_abi.output_buffer_count = 1u;
+    program.external_buffer_abi.buffer_roles = {GfxMpsrtExternalBufferRole::TensorInput,
+                                                GfxMpsrtExternalBufferRole::TensorInput,
+                                                GfxMpsrtExternalBufferRole::TensorOutput};
+
+    const auto validation = gfx_mpsrt_validate_program(program);
+    ASSERT_TRUE(validation.valid) << validation.error;
+
+    GfxMpsrtBuilderPlan program_builder_plan{};
+    ASSERT_TRUE(gfx_mpsrt_build_builder_plan_from_program(program, program_builder_plan));
+    ASSERT_TRUE(program_builder_plan.valid);
+    EXPECT_EQ(program_builder_plan.records.size(), 6u);
+    EXPECT_TRUE(program_builder_plan.external_buffer_abi_valid);
+    EXPECT_EQ(program_builder_plan.external_buffer_roles, program.external_buffer_abi.buffer_roles);
+
+    auto invalid_program = program;
+    invalid_program.stages[1].inputs = {42u};
+    std::string validation_error;
+    EXPECT_FALSE(gfx_mpsrt_validate_program(invalid_program, &validation_error));
+    EXPECT_NE(validation_error.find("reads a value before it is materialized"), std::string::npos);
 
     auto builder_plan = gfx_mpsrt_make_multi_stage_builder_plan(
         "mps_gemm_plus_msl_epilogue_model|MatMul",

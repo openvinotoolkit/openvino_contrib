@@ -207,6 +207,13 @@ kernel void add1(device float* data [[buffer(0)]],
                                                         GfxMpsrtTensorFlagTransient);
     detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.input0", input_desc);
     detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.output0", output_desc);
+    ASSERT_TRUE(materialize_module_mpsrt_ops_from_module_attrs(module));
+    ASSERT_TRUE(static_cast<bool>(module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_ops")));
+    ASSERT_FALSE(static_cast<bool>(module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_program")));
+    module->removeAttr("gfx.mpsrt.stage_kind");
+    module->removeAttr("gfx.mpsrt.model_record_key");
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.stage_kind"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.model_record_key"));
 
     KernelSource ks;
     ks.module = module;
@@ -2266,9 +2273,6 @@ TEST(GfxBackendTest, MetalCodegenCompilesVendorOnlyMpsGemmWithoutMslSource) {
                                        GfxKernelBackendDomain::AppleMps,
                                        GfxKernelStorageKind::Matrix,
                                        "apple_mps:matrix:MatMul"));
-    GfxMpsrtGemmAbiDesc gemm_desc{};
-    gemm_desc.transpose_rhs = 1;
-    annotate_module_with_mpsrt_gemm_desc(module, gemm_desc);
     const auto lhs_desc = gfx_mpsrt_make_tensor_desc({kRows, kInner},
                                                      ov::element::f32,
                                                      GfxStageStorageKind::Matrix,
@@ -2284,6 +2288,9 @@ TEST(GfxBackendTest, MetalCodegenCompilesVendorOnlyMpsGemmWithoutMslSource) {
     detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.input0", lhs_desc);
     detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.input1", rhs_desc);
     detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.output0", output_desc);
+    GfxMpsrtGemmAbiDesc gemm_desc{};
+    gemm_desc.transpose_rhs = 1;
+    annotate_module_with_mpsrt_gemm_desc(module, gemm_desc);
 
     KernelSource source;
     source.module = module;
@@ -2399,12 +2406,6 @@ TEST(GfxBackendTest, MetalCodegenCompilesVendorOnlyMpsTopKWithoutMslSource) {
                                        GfxKernelBackendDomain::AppleMps,
                                        GfxKernelStorageKind::Matrix,
                                        "apple_mps:matrix:TopK"));
-    GfxMpsrtTopKAbiDesc topk_desc{};
-    topk_desc.axis = 1;
-    topk_desc.k = kTopK;
-    topk_desc.mode_max = 1;
-    topk_desc.sort_type = 1;
-    annotate_module_with_mpsrt_topk_desc(module, topk_desc);
     const auto input_desc = gfx_mpsrt_make_tensor_desc({kRows, kColumns},
                                                        ov::element::f32,
                                                        GfxStageStorageKind::Matrix,
@@ -2420,6 +2421,12 @@ TEST(GfxBackendTest, MetalCodegenCompilesVendorOnlyMpsTopKWithoutMslSource) {
     detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.input0", input_desc);
     detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.output0", values_desc);
     detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.output1", indices_desc);
+    GfxMpsrtTopKAbiDesc topk_desc{};
+    topk_desc.axis = 1;
+    topk_desc.k = kTopK;
+    topk_desc.mode_max = 1;
+    topk_desc.sort_type = 1;
+    annotate_module_with_mpsrt_topk_desc(module, topk_desc);
 
     KernelSource source;
     source.module = module;

@@ -86,6 +86,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/gfx_mpsrt_builder_plan.hpp
     ${_gfx_src_dir}/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp
     ${_gfx_src_dir}/runtime/gfx_mpsrt_plan.hpp
+    ${_gfx_src_dir}/runtime/gfx_mpsrt_program.hpp
     ${_gfx_src_dir}/runtime/gfx_msl_kernel_manifest.hpp
     ${_gfx_src_dir}/runtime/gfx_op_utils.hpp
     ${_gfx_src_dir}/runtime/gfx_parallelism.hpp
@@ -123,6 +124,7 @@ set(GFX_RUNTIME_MLIR_HEADERS
     ${_gfx_src_dir}/mlir/gfx_mpsrt_conv_metadata.hpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_matmul_metadata.hpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_metadata.hpp
+    ${_gfx_src_dir}/mlir/gfx_mpsrt_ops.hpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_runtime_abi_pipeline.hpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_source_plan.hpp
     ${_gfx_src_dir}/mlir/gfx_mlir_debug.hpp
@@ -133,6 +135,7 @@ set(GFX_RUNTIME_MLIR_HEADERS
 
 set(GFX_RUNTIME_MLIR_SOURCES
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.cpp
+    ${_gfx_src_dir}/mlir/gfx_mpsrt_ops.cpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_runtime_abi_pipeline.cpp
     ${_gfx_src_dir}/mlir/mlir_stage.cpp
     ${_gfx_src_dir}/mlir/mlir_support.cpp

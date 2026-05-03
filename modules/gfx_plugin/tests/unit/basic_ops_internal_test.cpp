@@ -45,6 +45,7 @@
 #include "mlir/gfx_mpsrt_conv_metadata.hpp"
 #include "mlir/gfx_mpsrt_metadata.hpp"
 #include "mlir/gfx_mpsrt_matmul_metadata.hpp"
+#include "mlir/gfx_mpsrt_ops.hpp"
 #include "mlir/gfx_mpsrt_runtime_abi_pipeline.hpp"
 #include "mlir/mlir_kernel_plan_utils.hpp"
 #include "mlir/mlir_support.hpp"
@@ -807,10 +808,6 @@ TEST(GfxMlir, MatMulMpsrtMetadataAnnotatesPlacementAndTensorDescriptors) {
 
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.backend").str(), "apple_mps");
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.storage").str(), "matrix");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.stage_kind").str(), "mps_gemm");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.kernel_name").str(), "mps_gemm");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.builder_symbol").str(),
-              "ovgfx_mpsrt_encode_gemm");
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.stage_family").str(), "gemm");
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.backend_domain").str(), "apple_mps");
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.execution_kind").str(),
@@ -818,30 +815,33 @@ TEST(GfxMlir, MatMulMpsrtMetadataAnnotatesPlacementAndTensorDescriptors) {
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.storage").str(), "matrix");
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.specialization_key").str(),
               "apple_mps:matrix:MatMul");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.stage_record_key").str(),
-              "mps_gemm|apple_mps|matrix|matrix|row_major|MatMul|apple_mps:matrix:MatMul|"
-              "gemm:ta0:tb1:alpha1.000000:beta0.000000");
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.gemm.transpose_lhs").getInt(), 0);
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.gemm.transpose_rhs").getInt(), 1);
-    ASSERT_EQ(module->getAttrOfType<mlir::FloatAttr>("gfx.mpsrt.gemm.alpha").getValueAsDouble(), 1.0);
-    ASSERT_EQ(module->getAttrOfType<mlir::FloatAttr>("gfx.mpsrt.gemm.beta").getValueAsDouble(), 0.0);
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.input0.storage").str(), "matrix");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.input0.layout").str(), "row_major");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.input0.dtype").str(), "f32");
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.input_count").getInt(), 2);
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.output_count").getInt(), 1);
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.input0.matrix_rows").getInt(), 4);
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.input0.matrix_columns").getInt(), 2);
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.input0.matrix_row_bytes").getInt(), 8);
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.stage_kind"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.stage_record_key"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.gemm.transpose_rhs"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.input_count"));
 
     ov::gfx_plugin::GfxMpsrtModuleStagePlan extracted;
     ASSERT_TRUE(ov::gfx_plugin::read_module_mpsrt_stage_plan(module, extracted));
     ASSERT_TRUE(extracted.valid);
     ASSERT_EQ(extracted.stage.kind, ov::gfx_plugin::GfxMpsrtStageKind::MPSGemm);
     ASSERT_EQ(extracted.stage.domain, ov::gfx_plugin::GfxStageBackendDomain::AppleMps);
+    ASSERT_EQ(extracted.stage.kernel_name, "mps_gemm");
     ASSERT_EQ(extracted.stage.builder_symbol, "ovgfx_mpsrt_encode_gemm");
+    ASSERT_EQ(extracted.stage_record_key,
+              "mps_gemm|apple_mps|matrix|matrix|row_major|MatMul|apple_mps:matrix:MatMul|"
+              "gemm:ta0:tb1:alpha1.000000:beta0.000000");
     ASSERT_EQ(extracted.stage.gemm_desc.transpose_lhs, 0u);
     ASSERT_EQ(extracted.stage.gemm_desc.transpose_rhs, 1u);
+    ASSERT_EQ(extracted.stage.gemm_desc.alpha, 1.0f);
+    ASSERT_EQ(extracted.stage.gemm_desc.beta, 0.0f);
+    ASSERT_EQ(extracted.inputs.size(), 2u);
+    ASSERT_EQ(extracted.outputs.size(), 1u);
+    ASSERT_EQ(extracted.inputs[0].storage, ov::gfx_plugin::GfxMpsrtStorage::Matrix);
+    ASSERT_EQ(extracted.inputs[0].layout, ov::gfx_plugin::GfxMpsrtLayout::RowMajor);
+    ASSERT_EQ(extracted.inputs[0].dtype, ov::gfx_plugin::GfxMpsrtDType::F32);
+    ASSERT_EQ(extracted.inputs[0].matrix_rows, 4u);
+    ASSERT_EQ(extracted.inputs[0].matrix_columns, 2u);
+    ASSERT_EQ(extracted.inputs[0].matrix_row_bytes, 8u);
     ASSERT_TRUE(extracted.stage.stage_manifest.valid);
     ASSERT_EQ(extracted.stage.stage_manifest.stage_family, ov::gfx_plugin::GfxKernelStageFamily::Gemm);
     ASSERT_EQ(extracted.stage.stage_manifest.backend_domain,
@@ -923,9 +923,6 @@ TEST(GfxMlir, ConvMpsrtMetadataAnnotatesVendorDescriptorFromOpenVINONode) {
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.backend").str(), "apple_mps");
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.storage").str(), "image");
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.stage_type").str(), "Convolution");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.stage_kind").str(), "mps_conv2d");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.builder_symbol").str(),
-              "ovgfx_mpsrt_encode_conv2d");
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.stage_family").str(),
               "convolution");
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.backend_domain").str(),
@@ -933,50 +930,20 @@ TEST(GfxMlir, ConvMpsrtMetadataAnnotatesVendorDescriptorFromOpenVINONode) {
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.execution_kind").str(),
               "vendor_primitive");
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.storage").str(), "image");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.stage_record_key").str(),
-              "mps_conv2d|apple_mps|image|image|nhwc4|Convolution|apple_mps:image:Convolution|"
-              "conv2d:g1:s2x1:d1x2:p1,2,3,4");
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.conv2d.groups").getInt(), 1);
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.input1.storage").str(), "buffer");
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.input1.flags").getInt(),
-              ov::gfx_plugin::GfxMpsrtTensorFlagConst);
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.storage_bridge_count").getInt(), 2);
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.storage_bridge0.value").getInt(), 0);
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.storage_bridge0.direction").str(),
-              "buffer_to_image");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.storage_bridge0.source_storage").str(),
-              "buffer");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.storage_bridge0.target_storage").str(),
-              "image");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.storage_bridge0.tensor.storage").str(),
-              "image");
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.storage_bridge1.value").getInt(), 2);
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.storage_bridge1.direction").str(),
-              "image_to_buffer");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.storage_bridge1.source_storage").str(),
-              "image");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.storage_bridge1.target_storage").str(),
-              "buffer");
-
-    auto read_i64_array_value = [&](const char* name, unsigned index) {
-        const auto attr = module->getAttrOfType<mlir::ArrayAttr>(name);
-        EXPECT_TRUE(static_cast<bool>(attr));
-        EXPECT_LT(index, attr.size());
-        return mlir::cast<mlir::IntegerAttr>(attr[index]).getInt();
-    };
-    ASSERT_EQ(read_i64_array_value("gfx.mpsrt.conv2d.strides", 0), 2);
-    ASSERT_EQ(read_i64_array_value("gfx.mpsrt.conv2d.strides", 1), 1);
-    ASSERT_EQ(read_i64_array_value("gfx.mpsrt.conv2d.dilations", 0), 1);
-    ASSERT_EQ(read_i64_array_value("gfx.mpsrt.conv2d.dilations", 1), 2);
-    ASSERT_EQ(read_i64_array_value("gfx.mpsrt.conv2d.pads", 0), 1);
-    ASSERT_EQ(read_i64_array_value("gfx.mpsrt.conv2d.pads", 1), 2);
-    ASSERT_EQ(read_i64_array_value("gfx.mpsrt.conv2d.pads", 2), 3);
-    ASSERT_EQ(read_i64_array_value("gfx.mpsrt.conv2d.pads", 3), 4);
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.stage_kind"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.stage_record_key"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.conv2d.groups"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.input1.storage"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.storage_bridge_count"));
 
     ov::gfx_plugin::GfxMpsrtModuleStagePlan extracted;
     ASSERT_TRUE(ov::gfx_plugin::read_module_mpsrt_stage_plan(module, extracted));
     ASSERT_TRUE(extracted.valid);
     ASSERT_EQ(extracted.stage.kind, ov::gfx_plugin::GfxMpsrtStageKind::MPSConv2D);
+    ASSERT_EQ(extracted.stage.builder_symbol, "ovgfx_mpsrt_encode_conv2d");
+    ASSERT_EQ(extracted.stage_record_key,
+              "mps_conv2d|apple_mps|image|image|nhwc4|Convolution|apple_mps:image:Convolution|"
+              "conv2d:g1:s2x1:d1x2:p1,2,3,4");
     ASSERT_EQ(extracted.stage.stage_manifest.stage_family,
               ov::gfx_plugin::GfxKernelStageFamily::Convolution);
     ASSERT_EQ(extracted.stage.stage_manifest.backend_domain,
@@ -984,11 +951,33 @@ TEST(GfxMlir, ConvMpsrtMetadataAnnotatesVendorDescriptorFromOpenVINONode) {
     ASSERT_EQ(extracted.stage.stage_manifest.execution_kind,
               ov::gfx_plugin::GfxKernelExecutionKind::VendorPrimitive);
     ASSERT_EQ(extracted.stage.conv2d_desc.strides[0], 2u);
+    ASSERT_EQ(extracted.stage.conv2d_desc.strides[1], 1u);
+    ASSERT_EQ(extracted.stage.conv2d_desc.dilations[0], 1u);
     ASSERT_EQ(extracted.stage.conv2d_desc.dilations[1], 2u);
+    ASSERT_EQ(extracted.stage.conv2d_desc.pads[0], 1u);
+    ASSERT_EQ(extracted.stage.conv2d_desc.pads[1], 2u);
+    ASSERT_EQ(extracted.stage.conv2d_desc.pads[2], 3u);
     ASSERT_EQ(extracted.stage.conv2d_desc.pads[3], 4u);
+    ASSERT_EQ(extracted.stage.conv2d_desc.groups, 1u);
+    ASSERT_EQ(extracted.inputs[1].storage, ov::gfx_plugin::GfxMpsrtStorage::Buffer);
+    ASSERT_EQ(extracted.inputs[1].flags, ov::gfx_plugin::GfxMpsrtTensorFlagConst);
 
     const auto module_builder_plan = ov::gfx_plugin::build_module_mpsrt_builder_plan(module);
     ASSERT_TRUE(module_builder_plan.valid);
+    ASSERT_EQ(module_builder_plan.builder_plan.storage_bridges.size(), 2u);
+    ASSERT_EQ(module_builder_plan.builder_plan.storage_bridges[0].value, 0u);
+    ASSERT_EQ(module_builder_plan.builder_plan.storage_bridges[0].direction,
+              ov::gfx_plugin::GfxMpsrtStorageBridgeDirection::BufferToImage);
+    ASSERT_EQ(module_builder_plan.builder_plan.storage_bridges[0].source_storage,
+              ov::gfx_plugin::GfxMpsrtStorage::Buffer);
+    ASSERT_EQ(module_builder_plan.builder_plan.storage_bridges[0].target_storage,
+              ov::gfx_plugin::GfxMpsrtStorage::Image);
+    ASSERT_EQ(module_builder_plan.builder_plan.storage_bridges[0].tensor.storage,
+              static_cast<uint32_t>(ov::gfx_plugin::GfxMpsrtStorage::Image));
+    ASSERT_EQ(module_builder_plan.builder_plan.storage_bridges[1].value, 2u);
+    ASSERT_EQ(module_builder_plan.builder_plan.storage_bridges[1].direction,
+              ov::gfx_plugin::GfxMpsrtStorageBridgeDirection::ImageToBuffer);
+
     ASSERT_EQ(module_builder_plan.builder_plan.records.size(), 5u);
     ASSERT_EQ(module_builder_plan.builder_plan.records[3].stage_kind,
               ov::gfx_plugin::GfxMpsrtStageKind::MPSConv2D);
@@ -1044,19 +1033,14 @@ TEST(GfxMlir, GroupConvMpsrtMetadataCanonicalizesLegacyStageType) {
                                                                                    "GroupConv2D");
     ASSERT_EQ(lowering_kind, ov::gfx_plugin::GfxConvMpsrtLoweringKind::MpsGroupConv2D);
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.stage_type").str(), "GroupConvolution");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.stage_kind").str(),
-              "mps_group_conv2d");
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.stage_family").str(),
               "group_convolution");
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.backend_domain").str(),
               "apple_mps");
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.conv2d.groups").getInt(), 4);
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.input1.storage").str(), "buffer");
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.input1.flags").getInt(),
-              ov::gfx_plugin::GfxMpsrtTensorFlagConst);
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.stage_record_key").str(),
-              "mps_group_conv2d|apple_mps|image|image|nhwc4|GroupConvolution|"
-              "apple_mps:image:GroupConvolution|conv2d:g4:s1x1:d1x1:p1,1,1,1");
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.stage_kind"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.conv2d.groups"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.input1.storage"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.stage_record_key"));
 
     ov::gfx_plugin::GfxMpsrtModuleStagePlan extracted;
     ASSERT_TRUE(ov::gfx_plugin::read_module_mpsrt_stage_plan(module, extracted));
@@ -1064,6 +1048,11 @@ TEST(GfxMlir, GroupConvMpsrtMetadataCanonicalizesLegacyStageType) {
     ASSERT_EQ(extracted.stage.kind, ov::gfx_plugin::GfxMpsrtStageKind::MPSGroupConv2D);
     ASSERT_EQ(extracted.stage.stage_type, "GroupConvolution");
     ASSERT_EQ(extracted.stage.conv2d_desc.groups, 4u);
+    ASSERT_EQ(extracted.inputs[1].storage, ov::gfx_plugin::GfxMpsrtStorage::Buffer);
+    ASSERT_EQ(extracted.inputs[1].flags, ov::gfx_plugin::GfxMpsrtTensorFlagConst);
+    ASSERT_EQ(extracted.stage_record_key,
+              "mps_group_conv2d|apple_mps|image|image|nhwc4|GroupConvolution|"
+              "apple_mps:image:GroupConvolution|conv2d:g4:s1x1:d1x1:p1,1,1,1");
     ASSERT_EQ(extracted.stage.stage_manifest.stage_family,
               ov::gfx_plugin::GfxKernelStageFamily::GroupConvolution);
 
@@ -1112,13 +1101,10 @@ TEST(GfxMlir, MpsrtModuleMetadataRoundTripsMultiStageMpsGemmPlusMslDispatch) {
         lhs->get_shape(),
         rhs->get_shape());
 
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.model_stage_count").getInt(), 2);
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.stage0.backend").str(), "apple_mps");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.stage1.backend").str(), "apple_msl");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>(
-                  "gfx.mpsrt.stage1.stage_manifest.kernel.entry_point")
-                  .str(),
-              "eltwise_fused_buffer");
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.model_stage_count"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.stage0.backend"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.stage1.backend"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.stage1.stage_manifest.kernel.entry_point"));
 
     ov::gfx_plugin::GfxMpsrtModuleMultiStagePlan extracted;
     ASSERT_TRUE(ov::gfx_plugin::read_module_mpsrt_multi_stage_plan(module, extracted));
@@ -1136,6 +1122,104 @@ TEST(GfxMlir, MpsrtModuleMetadataRoundTripsMultiStageMpsGemmPlusMslDispatch) {
     ASSERT_TRUE(extracted.stages[1].stage.dispatch_precompiled_kernel_required);
     ASSERT_EQ(extracted.stages[1].inputs, std::vector<ov::gfx_plugin::GfxMpsrtValue>({2u}));
     ASSERT_EQ(extracted.stages[1].outputs, std::vector<ov::gfx_plugin::GfxMpsrtValue>({3u}));
+
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.program.symbol"));
+    ASSERT_FALSE(static_cast<bool>(module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_program")));
+    auto generated_ops = module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_ops");
+    ASSERT_TRUE(static_cast<bool>(generated_ops));
+    ASSERT_TRUE(generated_ops->getAttrOfType<mlir::BoolAttr>("gfx.mpsrt.ops.generated").getValue());
+    ASSERT_EQ(generated_ops->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.ops.kind").str(),
+              "multi_stage");
+    ASSERT_EQ(generated_ops->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.ops.stage_count").getInt(), 2);
+
+    mlir::Builder stale_builder(module.getContext());
+    module->setAttr("gfx.mpsrt.model_record_key", stale_builder.getStringAttr("legacy_attrs_are_not_primary"));
+    ov::gfx_plugin::GfxMpsrtProgram program;
+    ASSERT_TRUE(ov::gfx_plugin::read_module_mpsrt_program(module, program));
+    ASSERT_TRUE(program.valid);
+    ASSERT_TRUE(program.multi_stage);
+    ASSERT_EQ(program.record_key, "mps_gemm_plus_msl_epilogue_model|MatMul");
+    ASSERT_EQ(program.inputs.size(), 2u);
+    ASSERT_EQ(program.stages.size(), 2u);
+    ASSERT_EQ(program.stages[0].stage.kind, ov::gfx_plugin::GfxMpsrtStageKind::MPSGemm);
+    ASSERT_EQ(program.stages[1].stage.kind, ov::gfx_plugin::GfxMpsrtStageKind::MSLDispatch);
+    ASSERT_TRUE(program.external_buffer_abi.valid);
+    ASSERT_EQ(program.external_buffer_abi.buffer_roles,
+              std::vector<ov::gfx_plugin::GfxMpsrtExternalBufferRole>(
+                  {ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorInput,
+                   ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorInput,
+                   ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorOutput}));
+
+    ov::gfx_plugin::GfxMpsrtBuilderPlan program_builder_plan;
+    ASSERT_TRUE(ov::gfx_plugin::gfx_mpsrt_build_builder_plan_from_program(program, program_builder_plan));
+    ASSERT_TRUE(program_builder_plan.valid);
+    ASSERT_EQ(program_builder_plan.records.size(), 6u);
+    ASSERT_EQ(program_builder_plan.records[3].stage_kind,
+              ov::gfx_plugin::GfxMpsrtStageKind::MPSGemm);
+    ASSERT_EQ(program_builder_plan.records[4].stage_kind,
+              ov::gfx_plugin::GfxMpsrtStageKind::MSLDispatch);
+
+    ASSERT_TRUE(ov::gfx_plugin::materialize_module_mpsrt_ops(module, program));
+    auto ops_func = module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_ops");
+    ASSERT_TRUE(static_cast<bool>(ops_func));
+    ASSERT_TRUE(ops_func->getAttrOfType<mlir::BoolAttr>("gfx.mpsrt.ops.generated").getValue());
+    std::vector<std::string> mpsrt_ops;
+    ops_func.walk([&](mlir::func::CallOp call) {
+        if (auto name = call->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.op.name")) {
+            mpsrt_ops.push_back(name.str());
+        }
+    });
+    ASSERT_EQ(mpsrt_ops,
+              std::vector<std::string>({"mpsrt.gemm", "mpsrt.dispatch", "mpsrt.return"}));
+    mlir::func::CallOp gemm_op;
+    mlir::func::CallOp dispatch_op;
+    ops_func.walk([&](mlir::func::CallOp call) {
+        auto name = call->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.op.name");
+        if (!name) {
+            return;
+        }
+        if (name.str() == "mpsrt.gemm") {
+            gemm_op = call;
+        } else if (name.str() == "mpsrt.dispatch") {
+            dispatch_op = call;
+        }
+    });
+    ASSERT_TRUE(static_cast<bool>(gemm_op));
+    ASSERT_TRUE(static_cast<bool>(dispatch_op));
+    ASSERT_EQ(gemm_op->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.backend_domain").str(),
+              "apple_mps");
+    ASSERT_EQ(gemm_op->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.execution_kind").str(),
+              "vendor_primitive");
+    ASSERT_EQ(gemm_op->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.storage").str(),
+              "matrix");
+    ASSERT_EQ(dispatch_op->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.backend_domain").str(),
+              "apple_msl");
+    ASSERT_EQ(dispatch_op->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.execution_kind").str(),
+              "custom_kernel");
+    ASSERT_EQ(dispatch_op->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.storage").str(),
+              "buffer");
+    ASSERT_EQ(dispatch_op->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.kernel.entry_point").str(),
+              "eltwise_fused_buffer");
+
+    mlir::Builder op_builder(module.getContext());
+    dispatch_op->setAttr("gfx.mpsrt.op.stage.stage_manifest.backend_domain",
+                         op_builder.getStringAttr("apple_mps"));
+    dispatch_op->setAttr("gfx.mpsrt.op.stage.stage_manifest.execution_kind",
+                         op_builder.getStringAttr("vendor_primitive"));
+    ov::gfx_plugin::GfxMpsrtProgram ops_program;
+    ASSERT_TRUE(ov::gfx_plugin::read_module_mpsrt_ops_program(module, ops_program));
+    ASSERT_TRUE(ops_program.valid);
+    ASSERT_TRUE(ops_program.multi_stage);
+    ASSERT_EQ(ops_program.record_key, "mps_gemm_plus_msl_epilogue_model|MatMul");
+    ASSERT_EQ(ops_program.stages.size(), 2u);
+    ASSERT_EQ(ops_program.stages[0].stage.kind, ov::gfx_plugin::GfxMpsrtStageKind::MPSGemm);
+    ASSERT_EQ(ops_program.stages[1].stage.kind, ov::gfx_plugin::GfxMpsrtStageKind::MSLDispatch);
+    ASSERT_EQ(ops_program.stages[1].stage.domain, ov::gfx_plugin::GfxStageBackendDomain::AppleMsl);
+    ASSERT_TRUE(ops_program.stages[1].stage.uses_custom_kernel);
+    dispatch_op->setAttr("gfx.mpsrt.op.stage_index", op_builder.getI32IntegerAttr(0));
+    ov::gfx_plugin::GfxMpsrtProgram invalid_ops_program;
+    ASSERT_FALSE(ov::gfx_plugin::read_module_mpsrt_ops_program(module, invalid_ops_program));
+    dispatch_op->setAttr("gfx.mpsrt.op.stage_index", op_builder.getI32IntegerAttr(1));
 
     const auto module_builder_plan = ov::gfx_plugin::build_module_mpsrt_builder_plan(module);
     ASSERT_TRUE(module_builder_plan.valid);
@@ -1330,6 +1414,14 @@ TEST(GfxMlir, AppleMpsrtRuntimeAbiPipelineMaterializesMultiStageBuilderRecords) 
                                                                                 lhs->get_shape(),
                                                                                 rhs->get_shape());
     ASSERT_EQ(lowering, ov::gfx_plugin::GfxMatMulMpsrtLoweringKind::MpsGemmWithMslEpilogue);
+    ASSERT_FALSE(static_cast<bool>(module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_program")));
+    ASSERT_TRUE(static_cast<bool>(module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_ops")));
+    ov::gfx_plugin::GfxMpsrtProgram program;
+    ASSERT_TRUE(ov::gfx_plugin::read_module_mpsrt_program(module, program));
+    module->removeAttr("gfx.mpsrt.stage_kind");
+    module->removeAttr("gfx.mpsrt.model_record_key");
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.stage_kind"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.model_record_key"));
 
     mlir::PassManager pm(module.getContext());
     ov::gfx_plugin::populate_gfx_apple_mpsrt_runtime_abi_pipeline(pm);
@@ -1356,6 +1448,24 @@ TEST(GfxMlir, AppleMpsrtRuntimeAbiPipelineMaterializesMultiStageBuilderRecords) 
 
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.runtime_abi.call_plan_symbol").str(),
               "gfx_mpsrt_runtime_abi_plan");
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.model_stage_count"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.input_count"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.storage_bridge_count"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.stage0.backend"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.stage1.dispatch_entry_point"));
+    ASSERT_FALSE(static_cast<bool>(module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_program")));
+    ASSERT_TRUE(static_cast<bool>(module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_ops")));
+
+    ov::gfx_plugin::GfxMpsrtModuleMultiStagePlan cleaned_multi_stage;
+    ASSERT_TRUE(ov::gfx_plugin::read_module_mpsrt_multi_stage_plan(module, cleaned_multi_stage));
+    ASSERT_TRUE(cleaned_multi_stage.valid);
+    ASSERT_EQ(cleaned_multi_stage.model_record_key, "mps_gemm_plus_msl_epilogue_model|MatMul");
+    ASSERT_EQ(cleaned_multi_stage.stages.size(), 2u);
+    ASSERT_EQ(cleaned_multi_stage.stages[0].stage.kind,
+              ov::gfx_plugin::GfxMpsrtStageKind::MPSGemm);
+    ASSERT_EQ(cleaned_multi_stage.stages[1].stage.kind,
+              ov::gfx_plugin::GfxMpsrtStageKind::MSLDispatch);
+
     auto call_plan = module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_runtime_abi_plan");
     ASSERT_TRUE(static_cast<bool>(call_plan));
     ASSERT_TRUE(call_plan->getAttrOfType<mlir::BoolAttr>("gfx.mpsrt.runtime_abi.generated").getValue());
@@ -1452,13 +1562,8 @@ TEST(GfxMlir, AddMslMetadataUsesRequiredMpsrtKernelFamily) {
 
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.backend").str(), "apple_msl");
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.storage").str(), "buffer");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.stage_kind").str(), "msl_dispatch");
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.msl.kernel_family").str(), "eltwise_fused_buffer");
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.msl.required_entry_point").str(),
-              "eltwise_fused_buffer");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.dispatch_kernel_family").str(),
-              "eltwise_fused_buffer");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.dispatch_entry_point").str(),
               "eltwise_fused_buffer");
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.stage_family").str(), "eltwise");
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.backend_domain").str(), "apple_msl");
@@ -1472,18 +1577,27 @@ TEST(GfxMlir, AddMslMetadataUsesRequiredMpsrtKernelFamily) {
     ASSERT_TRUE(module->getAttrOfType<mlir::BoolAttr>(
                           "gfx.stage_manifest.kernel.external_buffer_abi.tail_outputs")
                     .getValue());
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.dispatch_kernel_family_id")
-                  .getInt(),
-              static_cast<int64_t>(ov::gfx_plugin::GfxMslKernelFamily::EltwiseFusedBuffer));
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.dispatch_flags").getInt(),
-              ov::gfx_plugin::GfxMpsrtMslDispatchFlagPrecompiledMetallibRequired);
-    ASSERT_TRUE(module->getAttrOfType<mlir::BoolAttr>("gfx.mpsrt.dispatch_precompiled_kernel_required")
-                    .getValue());
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.dispatch_threads_per_threadgroup")
-                  .getInt(),
-              256);
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.stage_kind"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.dispatch_kernel_family"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.dispatch_entry_point"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.dispatch_kernel_family_id"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.dispatch_flags"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.dispatch_precompiled_kernel_required"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.dispatch_threads_per_threadgroup"));
     ASSERT_TRUE(module->getAttrOfType<mlir::BoolAttr>("gfx.msl.precompiled_metallib_required").getValue());
     ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.msl.threads_per_threadgroup").getInt(), 256);
+
+    ov::gfx_plugin::GfxMpsrtModuleStagePlan extracted_stage;
+    ASSERT_TRUE(ov::gfx_plugin::read_module_mpsrt_stage_plan(module, extracted_stage));
+    ASSERT_EQ(extracted_stage.stage.kind, ov::gfx_plugin::GfxMpsrtStageKind::MSLDispatch);
+    ASSERT_EQ(extracted_stage.stage.dispatch_kernel_family, "eltwise_fused_buffer");
+    ASSERT_EQ(extracted_stage.stage.dispatch_entry_point, "eltwise_fused_buffer");
+    ASSERT_EQ(extracted_stage.stage.dispatch_kernel_family_id,
+              static_cast<uint32_t>(ov::gfx_plugin::GfxMslKernelFamily::EltwiseFusedBuffer));
+    ASSERT_EQ(extracted_stage.stage.dispatch_flags,
+              ov::gfx_plugin::GfxMpsrtMslDispatchFlagPrecompiledMetallibRequired);
+    ASSERT_TRUE(extracted_stage.stage.dispatch_precompiled_kernel_required);
+    ASSERT_EQ(extracted_stage.stage.dispatch_threads_per_threadgroup, 256u);
 
     const auto msl_plan = ov::gfx_plugin::make_msl_kernel_plan("Add", "eltwise_kernel");
     ASSERT_TRUE(msl_plan.valid);

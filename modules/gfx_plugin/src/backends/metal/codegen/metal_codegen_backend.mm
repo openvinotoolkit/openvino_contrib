@@ -10,6 +10,7 @@
 #include <mutex>
 #include <sstream>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "backends/metal/codegen/metal_compiler.hpp"
@@ -25,6 +26,7 @@
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_mpsrt_storage_bridge.hpp"
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/PassManager.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -593,16 +595,22 @@ bool encode_mpsrt_image_bridge_copies(GpuCommandBufferHandle command_buffer,
     return true;
 }
 
-bool module_has_mpsrt_stage_plan(mlir::ModuleOp module) {
-    return module &&
-           (module->hasAttr("gfx.mpsrt.stage_kind") ||
-            module->hasAttr("gfx.mpsrt.model_record_key"));
+struct ResolvedMpsrtProgramPlan {
+    bool valid = false;
+    GfxMpsrtProgram program{};
+    GfxMpsrtBuilderPlan builder_plan{};
+};
+
+bool module_has_mpsrt_program(mlir::ModuleOp module) {
+    GfxMpsrtProgram program{};
+    return module && read_module_mpsrt_program(module, program);
 }
 
 bool module_has_generated_mpsrt_runtime_abi_call_plan(mlir::ModuleOp module) {
     if (!module) {
         return false;
     }
+    module.getContext()->loadDialect<mlir::func::FuncDialect>();
     std::string plan_symbol = "gfx_mpsrt_runtime_abi_plan";
     if (auto attr = module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.runtime_abi.call_plan_symbol")) {
         plan_symbol = attr.str();
@@ -613,7 +621,7 @@ bool module_has_generated_mpsrt_runtime_abi_call_plan(mlir::ModuleOp module) {
 }
 
 bool ensure_mpsrt_runtime_abi_call_plan(mlir::ModuleOp module) {
-    if (!module_has_mpsrt_stage_plan(module)) {
+    if (!module_has_mpsrt_program(module)) {
         return false;
     }
     if (module_has_generated_mpsrt_runtime_abi_call_plan(module)) {
@@ -693,14 +701,20 @@ bool validate_mpsrt_runtime_abi_call_plan_matches_builder_plan(const GfxMpsrtBui
     return true;
 }
 
-bool resolve_module_mpsrt_builder_plan(mlir::ModuleOp module,
-                                       GfxMpsrtModuleBuilderPlan& module_plan) {
-    module_plan = {};
-    if (!module_has_mpsrt_stage_plan(module)) {
+bool resolve_module_mpsrt_program_plan(mlir::ModuleOp module,
+                                       ResolvedMpsrtProgramPlan& program_plan) {
+    program_plan = {};
+    if (!module) {
         return false;
     }
 
-    if (!build_module_mpsrt_builder_plan(module, module_plan)) {
+    GfxMpsrtProgram program{};
+    if (!read_module_mpsrt_program(module, program)) {
+        return false;
+    }
+
+    GfxMpsrtBuilderPlan builder_plan{};
+    if (!gfx_mpsrt_build_builder_plan_from_program(program, builder_plan)) {
         return false;
     }
 
@@ -711,12 +725,12 @@ bool resolve_module_mpsrt_builder_plan(mlir::ModuleOp module,
 
     if (read_call_plan) {
         std::string error;
-        if (!validate_mpsrt_runtime_abi_call_plan_matches_builder_plan(module_plan.builder_plan,
+        if (!validate_mpsrt_runtime_abi_call_plan_matches_builder_plan(builder_plan,
                                                                        call_plan,
                                                                        &error)) {
             OPENVINO_THROW("GFX Metal MPSRT: runtime ABI call plan diverged from stage manifest: ", error);
         }
-        module_plan.builder_plan = std::move(call_plan);
+        builder_plan = std::move(call_plan);
         if (current_compile_trace()) {
             increment_compile_counter("mpsrt_runtime_abi_call_plan_consumed_count");
         }
@@ -724,7 +738,10 @@ bool resolve_module_mpsrt_builder_plan(mlir::ModuleOp module,
         OPENVINO_THROW("GFX Metal MPSRT: generated runtime ABI call plan is not readable");
     }
 
-    return true;
+    program_plan.valid = true;
+    program_plan.program = std::move(program);
+    program_plan.builder_plan = std::move(builder_plan);
+    return program_plan.valid;
 }
 
 void record_mpsrt_plan_counters(mlir::ModuleOp module) {
@@ -732,11 +749,12 @@ void record_mpsrt_plan_counters(mlir::ModuleOp module) {
         return;
     }
 
-    GfxMpsrtModuleBuilderPlan module_plan;
-    if (!resolve_module_mpsrt_builder_plan(module, module_plan)) {
+    ResolvedMpsrtProgramPlan program_plan;
+    if (!resolve_module_mpsrt_program_plan(module, program_plan)) {
         return;
     }
-    const auto& builder_plan = module_plan.builder_plan;
+    const auto& builder_plan = program_plan.builder_plan;
+    const auto& program = program_plan.program;
     auto record_stage_counters = [](const GfxMpsrtStageDesc& stage) {
         switch (stage.domain) {
             case GfxStageBackendDomain::AppleMps:
@@ -813,28 +831,28 @@ void record_mpsrt_plan_counters(mlir::ModuleOp module) {
     uint64_t input_bytes = 0;
     uint64_t output_bytes = 0;
     uint64_t output_descriptor_count = 0;
-    if (module_plan.multi_stage) {
+    if (program.multi_stage) {
         increment_compile_counter("mpsrt_multi_stage_module_plan_count");
         increment_compile_counter("mpsrt_multi_stage_module_stage_count",
-                                  static_cast<uint64_t>(module_plan.multi_stage_plan.stages.size()));
-        for (const auto& desc : module_plan.multi_stage_plan.inputs) {
+                                  static_cast<uint64_t>(program.stages.size()));
+        for (const auto& desc : program.inputs) {
             input_bytes += desc.byte_length;
         }
-        for (const auto& stage : module_plan.multi_stage_plan.stages) {
+        for (const auto& stage : program.stages) {
             record_stage_counters(stage.stage);
             output_descriptor_count += stage.output_descs.size();
             for (const auto& desc : stage.output_descs) {
                 output_bytes += desc.byte_length;
             }
         }
-    } else {
-        const auto& plan = module_plan.stage_plan;
-        record_stage_counters(plan.stage);
-        for (const auto& desc : plan.inputs) {
+    } else if (!program.stages.empty()) {
+        const auto& stage = program.stages.front();
+        record_stage_counters(stage.stage);
+        for (const auto& desc : program.inputs) {
             input_bytes += desc.byte_length;
         }
-        output_descriptor_count = plan.outputs.size();
-        for (const auto& desc : plan.outputs) {
+        output_descriptor_count = stage.output_descs.size();
+        for (const auto& desc : stage.output_descs) {
             output_bytes += desc.byte_length;
         }
     }
@@ -852,21 +870,21 @@ std::shared_ptr<const metal::mpsrt::MpsrtModel> build_metal_mpsrt_runtime_model(
         return nullptr;
     }
 
-    GfxMpsrtModuleBuilderPlan module_plan;
-    if (!resolve_module_mpsrt_builder_plan(module, module_plan)) {
+    ResolvedMpsrtProgramPlan program_plan;
+    if (!resolve_module_mpsrt_program_plan(module, program_plan)) {
         return nullptr;
     }
 
     metal::mpsrt::MpsrtModel model;
     std::string error;
-    if (!metal::mpsrt::build_mpsrt_model_from_builder_plan(module_plan.builder_plan, model, &error)) {
+    if (!metal::mpsrt::build_mpsrt_model_from_builder_plan(program_plan.builder_plan, model, &error)) {
         OPENVINO_THROW("GFX Metal MPSRT: failed to build runtime model: ", error);
     }
-    const uint32_t mpsrt_arg_count = module_plan.builder_plan.external_buffer_count != 0
-                                         ? module_plan.builder_plan.external_buffer_count
+    const uint32_t mpsrt_arg_count = program_plan.builder_plan.external_buffer_count != 0
+                                         ? program_plan.builder_plan.external_buffer_count
                                          : arg_count;
-    const uint32_t mpsrt_output_arg_count = module_plan.builder_plan.external_buffer_abi_valid
-                                                ? module_plan.builder_plan.external_output_buffer_count
+    const uint32_t mpsrt_output_arg_count = program_plan.builder_plan.external_buffer_abi_valid
+                                                ? program_plan.builder_plan.external_output_buffer_count
                                                 : output_arg_count;
     if (!metal::mpsrt::adapt_mpsrt_model_to_external_buffer_abi(model,
                                                                 mpsrt_arg_count,
@@ -877,7 +895,7 @@ std::shared_ptr<const metal::mpsrt::MpsrtModel> build_metal_mpsrt_runtime_model(
 
     if (current_compile_trace()) {
         increment_compile_counter("mpsrt_runtime_model_prepare_count");
-        if (module_plan.builder_plan.external_buffer_abi_valid) {
+        if (program_plan.builder_plan.external_buffer_abi_valid) {
             increment_compile_counter("mpsrt_runtime_model_mlir_external_buffer_abi_count");
         }
         increment_compile_counter("mpsrt_runtime_model_stage_count", static_cast<uint64_t>(model.stages.size()));
