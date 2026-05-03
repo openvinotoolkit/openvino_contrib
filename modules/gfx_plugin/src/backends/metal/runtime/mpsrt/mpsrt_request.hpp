@@ -31,8 +31,20 @@ struct MpsrtMslEncodeResult {
     size_t bound_buffers = 0;
 };
 
+struct MpsrtMpsGemmEncodeResult {
+    size_t bound_buffers = 0;
+    size_t kernel_encodes = 0;
+};
+
+struct MpsrtMpsConv2DEncodeResult {
+    size_t bound_resources = 0;
+    size_t kernel_encodes = 0;
+};
+
 struct MpsrtModelEncodeResult {
     size_t encoded_msl_dispatches = 0;
+    size_t encoded_mps_gemm_stages = 0;
+    size_t encoded_mps_conv2d_stages = 0;
     size_t skipped_non_msl_stages = 0;
     size_t bound_buffers = 0;
 };
@@ -99,6 +111,24 @@ public:
                                  const MpsrtTensorBindings& bindings,
                                  std::vector<MpsrtBoundBuffer>& buffers,
                                  std::string* error = nullptr) const;
+
+    bool encode_mps_gemm(GpuCommandBufferHandle command_buffer,
+                         const MpsrtModel& model,
+                         const MpsrtRuntimeStage& stage,
+                         const MpsrtPreparedMpsGemm& prepared,
+                         const MpsrtTensorBindings& bindings,
+                         const KernelExecutionHooks* hooks = nullptr,
+                         MpsrtMpsGemmEncodeResult* result = nullptr,
+                         std::string* error = nullptr) const;
+
+    bool encode_mps_conv2d(GpuCommandBufferHandle command_buffer,
+                           const MpsrtModel& model,
+                           const MpsrtRuntimeStage& stage,
+                           const MpsrtPreparedMpsConv2D& prepared,
+                           const MpsrtTensorBindings& bindings,
+                           const KernelExecutionHooks* hooks = nullptr,
+                           MpsrtMpsConv2DEncodeResult* result = nullptr,
+                           std::string* error = nullptr) const;
 
     bool encode_prepared_model(GpuCommandBufferHandle command_buffer,
                                const MpsrtModel& model,

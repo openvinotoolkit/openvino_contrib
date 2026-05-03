@@ -42,6 +42,7 @@ private:
     MetalTensor m_constB;
     MetalBuffer m_bias{};
     std::vector<ov::float16> m_bias_f16;
+    bool m_uses_mpsrt_matmul = false;
 
     id<MTLDevice> m_device = nil;
     id<MTLCommandQueue> m_queue = nil;

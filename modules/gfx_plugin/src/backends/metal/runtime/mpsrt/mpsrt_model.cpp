@@ -6,8 +6,10 @@
 #include <algorithm>
 #include <sstream>
 #include <unordered_set>
+#include <utility>
 
 #include "openvino/core/except.hpp"
+#include "runtime/gfx_mpsrt_kernel_manifest_adapter.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -45,24 +47,6 @@ bool validate_value_list(const std::vector<GfxMpsrtValue>& values,
         }
     }
     return true;
-}
-
-bool is_external_output_role(GfxMpsrtExternalBufferRole role) {
-    return role == GfxMpsrtExternalBufferRole::TensorOutput;
-}
-
-bool is_valid_external_role(GfxMpsrtExternalBufferRole role) {
-    switch (role) {
-        case GfxMpsrtExternalBufferRole::TensorInput:
-        case GfxMpsrtExternalBufferRole::TensorOutput:
-        case GfxMpsrtExternalBufferRole::ConstBuffer:
-        case GfxMpsrtExternalBufferRole::RuntimeParams:
-        case GfxMpsrtExternalBufferRole::Metadata:
-            return true;
-        case GfxMpsrtExternalBufferRole::Unknown:
-        default:
-            return false;
-    }
 }
 
 bool validate_msl_dispatch(const GfxMpsrtBuilderRecord& record, size_t record_index, std::string* error) {
@@ -153,7 +137,8 @@ bool build_mpsrt_model_from_builder_plan(const GfxMpsrtBuilderPlan& plan,
 
     for (size_t i = 0; i < plan.records.size(); ++i) {
         const auto& record = plan.records[i];
-        if (record.stage_record_key != plan.stage_record_key) {
+        if (record.kind != GfxMpsrtBuilderRecordKind::EncodeStage &&
+            record.stage_record_key != plan.stage_record_key) {
             return fail(error, record_error(i, "stage record key does not match builder plan"));
         }
 
@@ -172,6 +157,9 @@ bool build_mpsrt_model_from_builder_plan(const GfxMpsrtBuilderPlan& plan,
                 break;
             }
             case GfxMpsrtBuilderRecordKind::EncodeStage: {
+                if (record.stage_record_key.empty()) {
+                    return fail(error, record_error(i, "stage record key is empty"));
+                }
                 if (record.stage_kind == GfxMpsrtStageKind::Unknown) {
                     return fail(error, record_error(i, "stage kind is unknown"));
                 }
@@ -228,6 +216,51 @@ bool build_mpsrt_model_from_builder_plan(const GfxMpsrtBuilderPlan& plan,
     return true;
 }
 
+MpsrtRuntimeStage make_mpsrt_runtime_stage_from_desc(const GfxMpsrtStageDesc& desc,
+                                                     const std::string& stage_record_key,
+                                                     const std::vector<GfxMpsrtValue>& inputs,
+                                                     const std::vector<GfxMpsrtValue>& outputs,
+                                                     const std::vector<GfxMpsrtTensorAbiDesc>& output_descs) {
+    MpsrtRuntimeStage stage{};
+    stage.kind = desc.kind;
+    stage.stage_record_key = stage_record_key;
+    stage.kernel_name = !desc.dispatch_entry_point.empty() ? desc.dispatch_entry_point : desc.kernel_name;
+    stage.dispatch_kernel_family = desc.dispatch_kernel_family;
+    stage.dispatch_entry_point = desc.dispatch_entry_point;
+    stage.dispatch_kernel_family_id = desc.dispatch_kernel_family_id;
+    stage.dispatch_flags = desc.dispatch_flags;
+    stage.dispatch_threads_per_threadgroup = desc.dispatch_threads_per_threadgroup;
+    stage.dispatch_precompiled_kernel_required = desc.dispatch_precompiled_kernel_required;
+    stage.conv2d_desc = desc.conv2d_desc;
+    stage.gemm_desc = desc.gemm_desc;
+    stage.inputs = inputs;
+    stage.outputs = outputs;
+    stage.output_descs = output_descs;
+
+    const auto manifest_dispatch =
+        gfx_mpsrt_custom_dispatch_spec_from_kernel_manifest(desc.stage_manifest.custom_kernel);
+    if (manifest_dispatch.valid) {
+        stage.dispatch_kernel_family = manifest_dispatch.kernel_family;
+        stage.dispatch_entry_point = manifest_dispatch.entry_point;
+        stage.dispatch_kernel_family_id = manifest_dispatch.kernel_family_id;
+        stage.dispatch_flags = manifest_dispatch.flags;
+        stage.dispatch_threads_per_threadgroup = manifest_dispatch.threads_per_threadgroup;
+        stage.dispatch_precompiled_kernel_required = manifest_dispatch.precompiled_binary_required;
+        stage.kernel_name = manifest_dispatch.entry_point;
+    }
+
+    if (desc.kind == GfxMpsrtStageKind::MSLDispatch) {
+        stage.msl_dispatch_desc = gfx_mpsrt_make_msl_dispatch_desc(desc,
+                                                                   static_cast<uint32_t>(inputs.size()),
+                                                                   static_cast<uint32_t>(outputs.size()));
+        stage.kernel_buffer_order =
+            gfx_mpsrt_kernel_buffer_order_from_kernel_abi(desc.stage_manifest.custom_kernel.external_buffer_abi,
+                                                          stage.inputs,
+                                                          stage.outputs);
+    }
+    return stage;
+}
+
 MpsrtModel build_mpsrt_model_from_builder_plan_or_throw(const GfxMpsrtBuilderPlan& plan) {
     MpsrtModel model;
     std::string error;
@@ -257,10 +290,10 @@ bool adapt_mpsrt_model_to_external_buffer_abi(MpsrtModel& model,
     const bool has_explicit_roles = model.external_buffer_roles.size() == arg_count;
     if (has_explicit_roles) {
         for (const auto role : model.external_buffer_roles) {
-            if (!is_valid_external_role(role)) {
+            if (!gfx_mpsrt_is_valid_external_buffer_role(role)) {
                 return fail(error, "GFX MPSRT: external buffer role is unknown");
             }
-            if (is_external_output_role(role)) {
+            if (gfx_mpsrt_is_external_output_buffer_role(role)) {
                 ++role_output_count;
             }
         }
@@ -331,7 +364,7 @@ bool adapt_mpsrt_model_to_external_buffer_abi(MpsrtModel& model,
         if (!has_explicit_roles) {
             model.external_buffer_roles.push_back(role);
         }
-        if (is_external_output_role(role)) {
+        if (gfx_mpsrt_is_external_output_buffer_role(role)) {
             model.output_values.push_back(value);
             model.external_output_values.push_back(value);
         } else {
@@ -345,7 +378,12 @@ bool adapt_mpsrt_model_to_external_buffer_abi(MpsrtModel& model,
     stage.inputs = model.input_values;
     stage.outputs = model.output_values;
     stage.output_descs.assign(stage.outputs.size(), GfxMpsrtTensorAbiDesc{});
-    stage.kernel_buffer_order = model.external_values;
+    auto kernel_buffer_order =
+        gfx_mpsrt_kernel_buffer_order_from_external_values(model.external_buffer_roles, model.external_values);
+    if (kernel_buffer_order.empty()) {
+        return fail(error, "GFX MPSRT: external kernel buffer order cannot be materialized");
+    }
+    stage.kernel_buffer_order = std::move(kernel_buffer_order);
     stage.msl_dispatch_desc.input_count = input_arg_count;
     stage.msl_dispatch_desc.output_count = output_arg_count;
     return true;

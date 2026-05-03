@@ -18,6 +18,8 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/codegen_common.hpp"
+#include "mlir/msl_codegen.hpp"
+#include "runtime/gfx_stage_policy.hpp"
 #include "runtime/gfx_shape_utils.hpp"
 #include "transforms/mlir_fused_ops.hpp"
 #include "runtime/gfx_logger.hpp"
@@ -226,6 +228,30 @@ void MetalMatMulOp::compile(MetalBufferManager* buffer_manager) {
     if (desc.bias_type == ov::element::dynamic && m_has_bias) {
         desc.bias_type = m_bias_params.element_type;
     }
+    const auto plan = select_stage_optimization_plan(buffer_manager,
+                                                     GpuBackend::Metal,
+                                                     "MatMul",
+                                                     m_node,
+                                                     desc.output_type,
+                                                     m_has_bias,
+                                                     m_has_activation,
+                                                     /*has_batchnorm=*/false,
+                                                     GfxStageRuntimeTraits{});
+    const auto mpsrt_source =
+        lower_matmul_module_to_mpsrt_kernel_source(module, plan, desc, m_shape_a, m_shape_b);
+    if (mpsrt_source.valid()) {
+        m_kernel = backend.compile(mpsrt_source.source, &log);
+        OPENVINO_ASSERT(m_kernel, "MetalMatMulOp: failed to compile MPSRT MatMul kernel: ", log);
+        if (mpsrt_source.requires_mpsrt_model) {
+            auto metal_kernel = std::dynamic_pointer_cast<MetalCompiledKernel>(m_kernel);
+            OPENVINO_ASSERT(metal_kernel, "MetalMatMulOp: MPSRT MatMul did not compile to Metal kernel");
+            OPENVINO_ASSERT(metal_kernel->mpsrt_model(),
+                            "MetalMatMulOp: MPSRT MatMul did not materialize from MLIR metadata");
+        }
+        m_uses_mpsrt_matmul = true;
+        MetalOp::compile(buffer_manager);
+        return;
+    }
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
@@ -271,11 +297,14 @@ void MetalMatMulOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     OPENVINO_ASSERT(B->buf.size >= need_b, "MatMul: B buffer too small");
     OPENVINO_ASSERT(C.buf.size >= need_c, "MatMul: C buffer too small");
 
-    const uint64_t total = gfx_matmul_dispatch_items(m_desc);
+    const uint64_t output_total = static_cast<uint64_t>(m_desc.batch) *
+                                  static_cast<uint64_t>(m_desc.M) *
+                                  static_cast<uint64_t>(m_desc.N);
+    const uint64_t total = m_uses_mpsrt_matmul ? output_total : gfx_matmul_dispatch_items(m_desc);
     if (total == 0) {
         return;
     }
-    const uint32_t reduction_threads = gfx_matmul_parallel_reduction_threads(m_desc);
+    const uint32_t reduction_threads = m_uses_mpsrt_matmul ? 1u : gfx_matmul_parallel_reduction_threads(m_desc);
     const NSUInteger threads_per_tg = reduction_threads > 1 ? reduction_threads : 256;
     KernelDispatch dispatch = make_1d_dispatch(static_cast<size_t>(total),
                                                m_kernel->clamp_threadgroup_size(threads_per_tg));

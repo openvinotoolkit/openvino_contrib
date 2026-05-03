@@ -238,7 +238,7 @@ inline GfxMpsrtStorage gfx_mpsrt_storage_from_stage_storage(GfxStageStorageKind 
 inline GfxMpsrtLayout gfx_mpsrt_default_layout(GfxMpsrtStorage storage, uint32_t rank) {
     switch (storage) {
         case GfxMpsrtStorage::Image:
-            return rank == 4 ? GfxMpsrtLayout::NCHW : GfxMpsrtLayout::NHWC;
+            return rank == 4 ? GfxMpsrtLayout::NHWC4 : GfxMpsrtLayout::NHWC;
         case GfxMpsrtStorage::Matrix:
         case GfxMpsrtStorage::NDArray:
             return GfxMpsrtLayout::RowMajor;

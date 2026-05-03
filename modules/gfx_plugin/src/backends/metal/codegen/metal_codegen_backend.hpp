@@ -19,6 +19,11 @@ namespace gfx_plugin {
 
 class MetalBindingSchema;
 class MetalDeviceReuseContext;
+namespace metal {
+namespace mpsrt {
+class MpsrtContext;
+}  // namespace mpsrt
+}  // namespace metal
 
 class MetalCodegenBackend final : public ICodegenBackend {
 public:
@@ -49,6 +54,7 @@ public:
     std::shared_ptr<ICompiledKernel> fork() const override;
     void prewarm_bindings(const std::vector<KernelArg>& args) override;
     void set_mpsrt_model(std::shared_ptr<const metal::mpsrt::MpsrtModel> model);
+    void set_mpsrt_msl_source(std::string msl_source);
     const metal::mpsrt::MpsrtModel* mpsrt_model() const;
     void execute(GpuCommandBufferHandle command_buffer,
                  const KernelDispatch& dispatch,
@@ -61,6 +67,8 @@ private:
     void* m_pipeline = nullptr;
     std::shared_ptr<MetalBindingSchema> m_binding_schema;
     std::shared_ptr<const metal::mpsrt::MpsrtModel> m_mpsrt_model;
+    std::shared_ptr<metal::mpsrt::MpsrtContext> m_mpsrt_context;
+    std::string m_mpsrt_msl_source;
 };
 
 }  // namespace gfx_plugin

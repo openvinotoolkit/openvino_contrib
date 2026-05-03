@@ -40,6 +40,7 @@ Additional operational docs:
    - property semantics
    - backend-specific route selection
    - Metal placement-domain or storage selection such as `apple_mps` image/matrix stages versus `apple_msl` buffer dispatch
+   - manifest-backed execution-kind or hybrid-stage planning such as vendor `MPSGemm` plus custom MSL epilogues
    - supported-shape or dispatch constraints
    - stateful execution semantics for `ReadValue` / `Assign`
    - dedicated lowering families such as `RMS`, `ScatterUpdate`, or `RoPE`

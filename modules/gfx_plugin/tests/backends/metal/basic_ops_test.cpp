@@ -1012,9 +1012,106 @@ ov::Core core;
     });
 }
 
+TEST(GfxBasicOps, MatMulTransposeB2D) {
+    gfx_try_catch_fail([&]() {
+    ov::Core core;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 3});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{4, 3});
+    auto mm = std::make_shared<ov::op::v0::MatMul>(lhs, rhs, false, true);
+    auto res = std::make_shared<ov::op::v0::Result>(mm);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{lhs, rhs},
+                                             "matmul_transpose_b_model");
+
+    auto cpu_cm = core.compile_model(model, reference_device(core));
+    auto gfx_cm = core.compile_model(model, "GFX");
+
+    ov::Tensor a{ov::element::f32, {2, 3}};
+    ov::Tensor b{ov::element::f32, {4, 3}};
+    const std::vector<float> avals{1.f, 2.f, 3.f, -1.f, 0.5f, 4.f};
+    const std::vector<float> bvals{1.f, 0.f, 2.f, -2.f, 3.f, 1.f, 4.f, -1.f, 0.f, 0.5f, 0.25f, -0.5f};
+    std::copy(avals.begin(), avals.end(), a.data<float>());
+    std::copy(bvals.begin(), bvals.end(), b.data<float>());
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    cpu_req.set_input_tensor(0, a);
+    cpu_req.set_input_tensor(1, b);
+    cpu_req.infer();
+    auto cpu_out = cpu_req.get_output_tensor();
+
+    auto gfx_req = gfx_cm.create_infer_request();
+    gfx_req.set_input_tensor(0, a);
+    gfx_req.set_input_tensor(1, b);
+    gfx_req.infer();
+    auto gfx_out = get_output_or_skip(gfx_req);
+
+    expect_shape_type(cpu_out, {2, 4});
+    expect_allclose(cpu_out, gfx_out, /*tol=*/2e-4f);
+    expect_finite(gfx_out);
+    });
+}
+
+TEST(GfxBasicOps, MatMulBatchNoBroadcast) {
+    gfx_try_catch_fail([&]() {
+    ov::Core core;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+
+    const size_t B = 2;
+    const size_t M = 2;
+    const size_t K = 3;
+    const size_t N = 2;
+
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{B, M, K});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{B, K, N});
+    auto mm = std::make_shared<ov::op::v0::MatMul>(lhs, rhs, false, false);
+    auto res = std::make_shared<ov::op::v0::Result>(mm);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{lhs, rhs},
+                                             "matmul_batch_no_broadcast");
+
+    auto cpu_cm = core.compile_model(model, reference_device(core));
+    auto gfx_cm = core.compile_model(model, "GFX");
+
+    ov::Tensor a{ov::element::f32, {B, M, K}};
+    ov::Tensor b{ov::element::f32, {B, K, N}};
+    const std::vector<float> avals{
+        1.f, 2.f, 3.f,
+        -1.f, 0.5f, 4.f,
+        0.25f, -2.f, 1.f,
+        3.f, 0.f, -0.5f};
+    const std::vector<float> bvals{
+        1.f, 0.f,
+        2.f, -1.f,
+        0.5f, 3.f,
+        -2.f, 1.f,
+        4.f, 0.25f,
+        1.5f, -0.5f};
+    std::copy(avals.begin(), avals.end(), a.data<float>());
+    std::copy(bvals.begin(), bvals.end(), b.data<float>());
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    cpu_req.set_input_tensor(0, a);
+    cpu_req.set_input_tensor(1, b);
+    cpu_req.infer();
+    auto cpu_out = cpu_req.get_output_tensor();
+
+    auto gfx_req = gfx_cm.create_infer_request();
+    gfx_req.set_input_tensor(0, a);
+    gfx_req.set_input_tensor(1, b);
+    gfx_req.infer();
+    auto gfx_out = get_output_or_skip(gfx_req);
+
+    expect_shape_type(cpu_out, {B, M, N});
+    expect_allclose(cpu_out, gfx_out, /*tol=*/2e-4f);
+    expect_finite(gfx_out);
+    });
+}
+
 TEST(GfxBasicOps, MatMulBatchBroadcastLeft) {
     gfx_try_catch_fail([&]() {
-ov::Core core;
+    ov::Core core;
     ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
 
     const size_t B = 2;
@@ -1997,4 +2094,3 @@ ov::Core core;
     }
     });
 }
-

@@ -125,6 +125,8 @@ If the behavior depends on route or scheduling selection, also read:
 - `src/runtime/gfx_mpsrt_abi.hpp`
 - `src/runtime/gfx_mpsrt_plan.hpp`
 - `src/runtime/gfx_mpsrt_builder_plan.hpp`
+- `src/kernel_ir/gfx_kernel_manifest.hpp`
+- `src/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp`
 - `src/runtime/gfx_msl_kernel_manifest.*`
 
 `tests/unit/gfx_parallelism_test.cpp` now covers Broadcom-oriented matmul
@@ -140,6 +142,7 @@ The current planning path is no longer just backend-wide. It includes family-spe
 - Qualcomm Adreno Vulkan devices
 - explicit convolution dispatch attrs forwarded into MLIR lowering
 - Metal placement decisions between Apple MPS image or matrix primitives and Apple MSL buffer dispatch
+- manifest-backed execution-kind selection between vendor primitives and custom kernels
 
 For current convolution work, there are now two important lowering details to keep in mind:
 - full interior tiles in conv parallel lowering can skip lane-level bounds guards on the fast path
@@ -210,8 +213,24 @@ For Metal Conv2D / MaxPool work, keep dilation handling and dispatch blocking co
 For Metal placement or codegen work, also keep the MPSRT boundary coherent. The current code expects stage policy, MLIR attrs, `gfx_msl_kernel_manifest.*`, and `src/backends/metal/runtime/mpsrt/*` to agree on:
 - the selected placement domain (`apple_mps` vs `apple_msl`)
 - the storage kind (`image`, `matrix`, `buffer`)
+- the execution kind (`vendor_primitive` vs `custom_kernel`)
 - the stable stage record key
 - the external-buffer ABI roles for inputs, outputs, and runtime-parameter buffers
+
+If the change touches manifest-backed Metal lowering, also inspect:
+- `src/kernel_ir/gfx_kernel_manifest.hpp`
+- `src/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp`
+- `src/mlir/gfx_mpsrt_source_plan.hpp`
+
+The current MPSRT path can now represent:
+- vendor-only stages such as `MPSGemm`
+- custom-kernel-only MSL dispatch stages
+- hybrid multi-stage plans such as `MPSGemm + MSL epilogue`
+
+So do not assume one stage equals one dispatch source anymore. For MatMul specifically, the Metal path may choose:
+- plain vendor `MPSGemm`
+- vendor `MPSGemm` plus one manifest-driven MSL epilogue when bias or a supported activation is fused
+- fallback custom MSL kernel compilation when the MPSRT mixed plan is not applicable
 
 For layout-cleanup work around DFL-style postprocessing tails, the current rewrite target is a value-preserving `Softmax -> MatMul -> Reshape/Transpose` form. Do not describe the older synthetic 1x1 convolution rewrite as the active implementation.
 

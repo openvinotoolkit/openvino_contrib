@@ -57,6 +57,7 @@ Recent additions in the tree include:
 - `tests/unit/gfx_stage_policy_test.cpp` for submit-weight and route-policy heuristics
 - `tests/unit/gfx_stage_policy_test.cpp` now also covers Metal placement domains, MPSRT tensor descriptors, stage record keys, kernel-family manifests, builder-plan serialization, and runtime-model ABI adaptation
 - `tests/backends/metal/gpu_backend_test.mm` now covers MPSRT-backed Metal compile, prepared-pipeline caching, and request-time MSL-dispatch execution
+- `tests/backends/metal/gpu_backend_test.mm` now also covers manifest-driven buffer ordering, runtime-parameter roles, vendor `MPSGemm`, and hybrid multi-stage `MPSGemm + MSL` execution
 - `tests/unit/gfx_parallelism_test.cpp` now also covers Broadcom V3D-specific matmul and convolution tuning behavior
 - `tests/unit/runtime_subgraph_test.cpp` for targeted runtime subgraph execution checks through `ov_gfx_runtime_micro_tests`
 - `tests/unit/gpu_const_cache_test.cpp`, `tests/unit/kernel_arg_reuse_test.cpp`, and `tests/unit/gpu_backend_base_test.cpp` for cache and binding reuse layers
@@ -85,6 +86,7 @@ Add or update tests when you change:
 - MLIR support probing
 - stage policy, parallelism selection, or input-transform absorption
 - Metal placement-domain selection, MPSRT ABI metadata, or MSL kernel-family mapping
+- kernel-manifest execution-kind changes such as vendor-primitive versus custom-kernel routing
 - backend-specialized routes such as chunked or direct Vulkan execution
 - infer submission thresholds, submission ordering, or command-buffer lifecycle
 - immutable const-cache behavior or prepared-binding reuse

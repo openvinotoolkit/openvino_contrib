@@ -5,6 +5,7 @@
 #import "backends/metal/runtime/mpsrt/mpsrt_request.hpp"
 
 #import <Metal/Metal.h>
+#import <MetalPerformanceShaders/MetalPerformanceShaders.h>
 
 #include <chrono>
 
@@ -34,6 +35,31 @@ const MpsrtPreparedMslDispatch* find_prepared_msl_dispatch(const MpsrtPreparedMo
     return nullptr;
 }
 
+const MpsrtPreparedMpsGemm* find_prepared_mps_gemm(const MpsrtPreparedModel& prepared_model,
+                                                   size_t stage_index) {
+    for (const auto& gemm : prepared_model.mps_gemm_stages) {
+        if (gemm.stage_index == stage_index) {
+            return &gemm;
+        }
+    }
+    return nullptr;
+}
+
+const MpsrtPreparedMpsConv2D* find_prepared_mps_conv2d(const MpsrtPreparedModel& prepared_model,
+                                                       size_t stage_index) {
+    for (const auto& conv : prepared_model.mps_conv2d_stages) {
+        if (conv.stage_index == stage_index) {
+            return &conv;
+        }
+    }
+    return nullptr;
+}
+
+bool is_mps_conv2d_stage(GfxMpsrtStageKind kind) {
+    return kind == GfxMpsrtStageKind::MPSConv2D ||
+           kind == GfxMpsrtStageKind::MPSGroupConv2D;
+}
+
 bool has_value(const std::vector<GfxMpsrtValue>& values, GfxMpsrtValue value) {
     for (const auto known : values) {
         if (known == value) {
@@ -41,6 +67,110 @@ bool has_value(const std::vector<GfxMpsrtValue>& values, GfxMpsrtValue value) {
         }
     }
     return false;
+}
+
+const MpsrtRuntimeTensor* find_tensor(const MpsrtModel& model, GfxMpsrtValue value) {
+    for (const auto& tensor : model.tensors) {
+        if (tensor.value == value) {
+            return &tensor;
+        }
+    }
+    return nullptr;
+}
+
+MPSDataType mps_data_type_from_gfx(uint32_t dtype) {
+    switch (static_cast<GfxMpsrtDType>(dtype)) {
+        case GfxMpsrtDType::F16:
+            return MPSDataTypeFloat16;
+        case GfxMpsrtDType::F32:
+            return MPSDataTypeFloat32;
+        default:
+            return MPSDataTypeInvalid;
+    }
+}
+
+uint32_t matrix_count_or_one(const GfxMpsrtTensorAbiDesc& desc) {
+    return desc.matrix_count == 0 ? 1 : desc.matrix_count;
+}
+
+NSUInteger matrix_bytes_for_desc(const GfxMpsrtTensorAbiDesc& desc) {
+    return static_cast<NSUInteger>(desc.matrix_rows) *
+           static_cast<NSUInteger>(desc.matrix_row_bytes);
+}
+
+size_t matrix_batch_offset(const GfxMpsrtTensorAbiDesc& desc, uint32_t batch_index) {
+    if (matrix_count_or_one(desc) == 1) {
+        return static_cast<size_t>(desc.byte_offset);
+    }
+    return static_cast<size_t>(desc.byte_offset) +
+           static_cast<size_t>(batch_index) * static_cast<size_t>(matrix_bytes_for_desc(desc));
+}
+
+bool make_mps_matrix_descriptor(const GfxMpsrtTensorAbiDesc& desc,
+                                MPSMatrixDescriptor*& out,
+                                const char* name,
+                                std::string* error,
+                                uint32_t matrix_count_override = 0) {
+    out = nil;
+    if (desc.storage != static_cast<uint32_t>(GfxMpsrtStorage::Matrix)) {
+        return fail(error, std::string("GFX MPSRT: MPS GEMM ") + name + " tensor is not matrix storage");
+    }
+    if (desc.matrix_rows == 0 || desc.matrix_columns == 0 || desc.matrix_row_bytes == 0) {
+        return fail(error, std::string("GFX MPSRT: MPS GEMM ") + name + " matrix descriptor is incomplete");
+    }
+    const MPSDataType data_type = mps_data_type_from_gfx(desc.dtype);
+    if (data_type == MPSDataTypeInvalid) {
+        return fail(error, std::string("GFX MPSRT: MPS GEMM ") + name + " dtype is unsupported");
+    }
+    const uint32_t matrix_count = matrix_count_override == 0 ? matrix_count_or_one(desc) : matrix_count_override;
+    const NSUInteger matrix_bytes = matrix_bytes_for_desc(desc);
+    if (matrix_count > 1) {
+        out = [MPSMatrixDescriptor matrixDescriptorWithRows:desc.matrix_rows
+                                                    columns:desc.matrix_columns
+                                                   matrices:matrix_count
+                                                   rowBytes:desc.matrix_row_bytes
+                                                matrixBytes:matrix_bytes
+                                                   dataType:data_type];
+    } else {
+        out = [MPSMatrixDescriptor matrixDescriptorWithRows:desc.matrix_rows
+                                                    columns:desc.matrix_columns
+                                                   rowBytes:desc.matrix_row_bytes
+                                                   dataType:data_type];
+    }
+    if (!out) {
+        return fail(error, std::string("GFX MPSRT: failed to create MPS GEMM ") + name + " descriptor");
+    }
+    return true;
+}
+
+bool validate_mps_gemm_batch_contract(const GfxMpsrtTensorAbiDesc& lhs,
+                                      const GfxMpsrtTensorAbiDesc& rhs,
+                                      const GfxMpsrtTensorAbiDesc& output,
+                                      std::string* error) {
+    const uint32_t lhs_count = matrix_count_or_one(lhs);
+    const uint32_t rhs_count = matrix_count_or_one(rhs);
+    const uint32_t output_count = matrix_count_or_one(output);
+    if (output_count == 0) {
+        return fail(error, "GFX MPSRT: MPS GEMM output matrix count is zero");
+    }
+    if ((lhs_count != output_count && lhs_count != 1) ||
+        (rhs_count != output_count && rhs_count != 1)) {
+        return fail(error, "GFX MPSRT: MPS GEMM batch matrix counts must be either 1 or output matrix count");
+    }
+    return true;
+}
+
+bool lookup_bound_buffer(const MpsrtTensorBindings& bindings,
+                         GfxMpsrtValue value,
+                         const char* name,
+                         MpsrtBoundBuffer& out,
+                         std::string* error) {
+    const auto* bound = bindings.lookup(value);
+    if (!bound || !bound->buffer) {
+        return fail(error, std::string("GFX MPSRT: missing tensor binding for MPS GEMM ") + name);
+    }
+    out = *bound;
+    return true;
 }
 
 }  // namespace
@@ -377,6 +507,191 @@ bool MpsrtRequest::build_msl_stage_buffers(const MpsrtRuntimeStage& stage,
     return true;
 }
 
+bool MpsrtRequest::encode_mps_gemm(GpuCommandBufferHandle command_buffer,
+                                   const MpsrtModel& model,
+                                   const MpsrtRuntimeStage& stage,
+                                   const MpsrtPreparedMpsGemm& prepared,
+                                   const MpsrtTensorBindings& bindings,
+                                   const KernelExecutionHooks* hooks,
+                                   MpsrtMpsGemmEncodeResult* result,
+                                   std::string* error) const {
+    if (result) {
+        *result = {};
+    }
+    OPENVINO_ASSERT(command_buffer, "GFX MPSRT: command buffer is null");
+    if (stage.kind != GfxMpsrtStageKind::MPSGemm) {
+        return fail(error, "GFX MPSRT: cannot encode non-GEMM stage with MPS GEMM");
+    }
+    if (!prepared.kernel) {
+        return fail(error, "GFX MPSRT: prepared MPS GEMM kernel is null");
+    }
+    if (stage.inputs.size() != 2 || stage.outputs.size() != 1 || stage.output_descs.size() != 1) {
+        return fail(error, "GFX MPSRT: MPS GEMM requires two inputs and one output");
+    }
+
+    const auto* lhs_tensor = find_tensor(model, stage.inputs[0]);
+    const auto* rhs_tensor = find_tensor(model, stage.inputs[1]);
+    if (!lhs_tensor || !rhs_tensor) {
+        return fail(error, "GFX MPSRT: MPS GEMM input tensor descriptor is missing");
+    }
+
+    MpsrtBoundBuffer lhs_buffer;
+    MpsrtBoundBuffer rhs_buffer;
+    MpsrtBoundBuffer output_buffer;
+    if (!lookup_bound_buffer(bindings, stage.inputs[0], "lhs", lhs_buffer, error) ||
+        !lookup_bound_buffer(bindings, stage.inputs[1], "rhs", rhs_buffer, error) ||
+        !lookup_bound_buffer(bindings, stage.outputs[0], "output", output_buffer, error)) {
+        return false;
+    }
+
+    MPSMatrixDescriptor* lhs_desc = nil;
+    MPSMatrixDescriptor* rhs_desc = nil;
+    MPSMatrixDescriptor* output_desc = nil;
+    if (!make_mps_matrix_descriptor(lhs_tensor->desc, lhs_desc, "lhs", error) ||
+        !make_mps_matrix_descriptor(rhs_tensor->desc, rhs_desc, "rhs", error) ||
+        !make_mps_matrix_descriptor(stage.output_descs.front(), output_desc, "output", error)) {
+        return false;
+    }
+    if (!validate_mps_gemm_batch_contract(lhs_tensor->desc, rhs_tensor->desc, stage.output_descs.front(), error)) {
+        return false;
+    }
+
+    metal_end_compute_encoder(command_buffer);
+    id<MTLCommandBuffer> command = static_cast<id<MTLCommandBuffer>>(command_buffer);
+    const auto encode_start = hooks && hooks->on_segment ? std::chrono::steady_clock::now()
+                                                         : std::chrono::steady_clock::time_point{};
+    const uint32_t output_count = matrix_count_or_one(stage.output_descs.front());
+    const bool needs_batch_loop = output_count > 1 &&
+                                  (matrix_count_or_one(lhs_tensor->desc) != output_count ||
+                                   matrix_count_or_one(rhs_tensor->desc) != output_count);
+    size_t kernel_encodes = 0;
+    if (!needs_batch_loop) {
+        MPSMatrix* lhs_matrix =
+            [[MPSMatrix alloc] initWithBuffer:static_cast<id<MTLBuffer>>(lhs_buffer.buffer)
+                                       offset:static_cast<NSUInteger>(lhs_buffer.offset + lhs_tensor->desc.byte_offset)
+                                   descriptor:lhs_desc];
+        MPSMatrix* rhs_matrix =
+            [[MPSMatrix alloc] initWithBuffer:static_cast<id<MTLBuffer>>(rhs_buffer.buffer)
+                                       offset:static_cast<NSUInteger>(rhs_buffer.offset + rhs_tensor->desc.byte_offset)
+                                   descriptor:rhs_desc];
+        MPSMatrix* output_matrix =
+            [[MPSMatrix alloc] initWithBuffer:static_cast<id<MTLBuffer>>(output_buffer.buffer)
+                                       offset:static_cast<NSUInteger>(output_buffer.offset +
+                                                                      stage.output_descs.front().byte_offset)
+                                   descriptor:output_desc];
+        if (!lhs_matrix || !rhs_matrix || !output_matrix) {
+            [lhs_matrix release];
+            [rhs_matrix release];
+            [output_matrix release];
+            return fail(error, "GFX MPSRT: failed to create MPS GEMM matrix wrappers");
+        }
+
+        [(MPSMatrixMultiplication*)prepared.kernel encodeToCommandBuffer:command
+                                                              leftMatrix:lhs_matrix
+                                                             rightMatrix:rhs_matrix
+                                                            resultMatrix:output_matrix];
+        [lhs_matrix release];
+        [rhs_matrix release];
+        [output_matrix release];
+        kernel_encodes = 1;
+    } else {
+        MPSMatrixDescriptor* single_lhs_desc = nil;
+        MPSMatrixDescriptor* single_rhs_desc = nil;
+        MPSMatrixDescriptor* single_output_desc = nil;
+        if (!make_mps_matrix_descriptor(lhs_tensor->desc, single_lhs_desc, "lhs", error, 1) ||
+            !make_mps_matrix_descriptor(rhs_tensor->desc, single_rhs_desc, "rhs", error, 1) ||
+            !make_mps_matrix_descriptor(stage.output_descs.front(), single_output_desc, "output", error, 1)) {
+            return false;
+        }
+        for (uint32_t batch = 0; batch < output_count; ++batch) {
+            MPSMatrix* lhs_matrix =
+                [[MPSMatrix alloc] initWithBuffer:static_cast<id<MTLBuffer>>(lhs_buffer.buffer)
+                                           offset:static_cast<NSUInteger>(
+                                               lhs_buffer.offset + matrix_batch_offset(lhs_tensor->desc, batch))
+                                       descriptor:single_lhs_desc];
+            MPSMatrix* rhs_matrix =
+                [[MPSMatrix alloc] initWithBuffer:static_cast<id<MTLBuffer>>(rhs_buffer.buffer)
+                                           offset:static_cast<NSUInteger>(
+                                               rhs_buffer.offset + matrix_batch_offset(rhs_tensor->desc, batch))
+                                       descriptor:single_rhs_desc];
+            MPSMatrix* output_matrix =
+                [[MPSMatrix alloc] initWithBuffer:static_cast<id<MTLBuffer>>(output_buffer.buffer)
+                                           offset:static_cast<NSUInteger>(
+                                               output_buffer.offset +
+                                               matrix_batch_offset(stage.output_descs.front(), batch))
+                                       descriptor:single_output_desc];
+            if (!lhs_matrix || !rhs_matrix || !output_matrix) {
+                [lhs_matrix release];
+                [rhs_matrix release];
+                [output_matrix release];
+                return fail(error, "GFX MPSRT: failed to create MPS GEMM broadcast matrix wrappers");
+            }
+
+            [(MPSMatrixMultiplication*)prepared.kernel encodeToCommandBuffer:command
+                                                                  leftMatrix:lhs_matrix
+                                                                 rightMatrix:rhs_matrix
+                                                                resultMatrix:output_matrix];
+            [lhs_matrix release];
+            [rhs_matrix release];
+            [output_matrix release];
+            ++kernel_encodes;
+        }
+    }
+
+    if (result) {
+        result->bound_buffers = 3 * kernel_encodes;
+        result->kernel_encodes = kernel_encodes;
+    }
+    if (hooks && hooks->on_counter) {
+        hooks->on_counter("mpsrt_mps_gemm_request_encode_count", 1);
+        hooks->on_counter("mpsrt_mps_gemm_kernel_encode_count", kernel_encodes);
+        hooks->on_counter("mpsrt_mps_gemm_bound_buffer_count", 3 * kernel_encodes);
+    }
+    if (hooks && hooks->on_segment) {
+        const auto setup_cpu_us = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - encode_start);
+        hooks->on_segment("mpsrt_encode",
+                          stage.stage_record_key,
+                          setup_cpu_us,
+                          0,
+                          3,
+                          0,
+                          0,
+                          0,
+                          0,
+                          -1,
+                          0,
+                          reinterpret_cast<uint64_t>(command_buffer));
+    }
+    return true;
+}
+
+bool MpsrtRequest::encode_mps_conv2d(GpuCommandBufferHandle command_buffer,
+                                     const MpsrtModel& model,
+                                     const MpsrtRuntimeStage& stage,
+                                     const MpsrtPreparedMpsConv2D& prepared,
+                                     const MpsrtTensorBindings& bindings,
+                                     const KernelExecutionHooks* hooks,
+                                     MpsrtMpsConv2DEncodeResult* result,
+                                     std::string* error) const {
+    if (result) {
+        *result = {};
+    }
+    OPENVINO_ASSERT(command_buffer, "GFX MPSRT: command buffer is null");
+    (void)model;
+    (void)bindings;
+    (void)hooks;
+    if (!is_mps_conv2d_stage(stage.kind)) {
+        return fail(error, "GFX MPSRT: cannot encode non-Conv2D stage with MPS Conv2D");
+    }
+    if (!prepared.weights_buffer) {
+        return fail(error, "GFX MPSRT: prepared MPS Conv2D weights buffer is null");
+    }
+    return fail(error,
+                "GFX MPSRT: MPS Conv2D const-pack is prepared, but MPSImage wrappers and "
+                "MPSCNNConvolution encode are not implemented yet");
+}
+
 bool MpsrtRequest::encode_prepared_model(GpuCommandBufferHandle command_buffer,
                                          const MpsrtModel& model,
                                          const MpsrtPreparedModel& prepared_model,
@@ -400,6 +715,58 @@ bool MpsrtRequest::encode_prepared_model(GpuCommandBufferHandle command_buffer,
     std::vector<MpsrtBoundBuffer> stage_buffers;
     for (size_t stage_index = 0; stage_index < model.stages.size(); ++stage_index) {
         const auto& stage = model.stages[stage_index];
+        if (stage.kind == GfxMpsrtStageKind::MPSGemm) {
+            const auto* prepared = find_prepared_mps_gemm(prepared_model, stage_index);
+            if (!prepared) {
+                return fail(error, "GFX MPSRT: missing prepared MPS GEMM for stage " + std::to_string(stage_index));
+            }
+            MpsrtMpsGemmEncodeResult stage_result;
+            if (!encode_mps_gemm(command_buffer,
+                                 model,
+                                 stage,
+                                 *prepared,
+                                 bindings,
+                                 hooks,
+                                 &stage_result,
+                                 error)) {
+                return false;
+            }
+            if (result) {
+                ++result->encoded_mps_gemm_stages;
+                result->bound_buffers += stage_result.bound_buffers;
+            }
+            if (hooks && hooks->on_counter) {
+                hooks->on_counter("mpsrt_model_request_mps_gemm_stage_encode_count", 1);
+            }
+            continue;
+        }
+
+        if (is_mps_conv2d_stage(stage.kind)) {
+            const auto* prepared = find_prepared_mps_conv2d(prepared_model, stage_index);
+            if (!prepared) {
+                return fail(error, "GFX MPSRT: missing prepared MPS Conv2D for stage " + std::to_string(stage_index));
+            }
+            MpsrtMpsConv2DEncodeResult stage_result;
+            if (!encode_mps_conv2d(command_buffer,
+                                   model,
+                                   stage,
+                                   *prepared,
+                                   bindings,
+                                   hooks,
+                                   &stage_result,
+                                   error)) {
+                return false;
+            }
+            if (result) {
+                ++result->encoded_mps_conv2d_stages;
+                result->bound_buffers += stage_result.bound_resources;
+            }
+            if (hooks && hooks->on_counter) {
+                hooks->on_counter("mpsrt_model_request_mps_conv2d_stage_encode_count", 1);
+            }
+            continue;
+        }
+
         if (stage.kind != GfxMpsrtStageKind::MSLDispatch) {
             if (result) {
                 ++result->skipped_non_msl_stages;

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "runtime/gfx_mpsrt_abi.hpp"
+#include "runtime/gfx_mpsrt_kernel_manifest_adapter.hpp"
 #include "runtime/gfx_mpsrt_plan.hpp"
 
 namespace ov {
@@ -55,6 +56,14 @@ struct GfxMpsrtBuilderPlan {
     std::vector<GfxMpsrtExternalBufferRole> external_buffer_roles;
 };
 
+struct GfxMpsrtBuilderStageSpec {
+    GfxMpsrtStageDesc stage;
+    std::string stage_record_key;
+    std::vector<GfxMpsrtValue> inputs;
+    std::vector<GfxMpsrtValue> outputs;
+    std::vector<GfxMpsrtTensorDesc> output_descs;
+};
+
 inline const char* gfx_mpsrt_builder_record_kind_name(GfxMpsrtBuilderRecordKind kind) {
     switch (kind) {
         case GfxMpsrtBuilderRecordKind::ModelBegin:
@@ -84,14 +93,139 @@ inline GfxMpsrtMslDispatchAbiDesc gfx_mpsrt_make_msl_dispatch_desc(const GfxMpsr
                                                                    uint32_t input_count,
                                                                    uint32_t output_count) {
     GfxMpsrtMslDispatchAbiDesc desc{};
-    desc.kernel_family = stage.dispatch_kernel_family_id;
+    const auto manifest_dispatch =
+        gfx_mpsrt_custom_dispatch_spec_from_kernel_manifest(stage.stage_manifest.custom_kernel);
+    const uint32_t kernel_family_id = manifest_dispatch.valid
+                                          ? manifest_dispatch.kernel_family_id
+                                          : stage.dispatch_kernel_family_id;
+    const uint32_t threads_per_threadgroup = manifest_dispatch.valid
+                                                 ? manifest_dispatch.threads_per_threadgroup
+                                                 : stage.dispatch_threads_per_threadgroup;
+    const uint32_t dispatch_flags = manifest_dispatch.valid
+                                        ? manifest_dispatch.flags
+                                        : stage.dispatch_flags;
+    desc.kernel_family = kernel_family_id;
     desc.storage = static_cast<uint32_t>(stage.output_storage);
     desc.layout = static_cast<uint32_t>(stage.layout);
-    desc.threads_per_threadgroup = std::max<uint32_t>(1u, stage.dispatch_threads_per_threadgroup);
+    desc.threads_per_threadgroup = std::max<uint32_t>(1u, threads_per_threadgroup);
     desc.input_count = input_count;
     desc.output_count = output_count;
-    desc.flags = stage.dispatch_flags;
+    desc.flags = dispatch_flags;
     return desc;
+}
+
+inline GfxMpsrtBuilderRecord gfx_mpsrt_make_encode_stage_record(const GfxMpsrtStageDesc& stage,
+                                                                const std::string& stage_record_key,
+                                                                const std::vector<GfxMpsrtValue>& inputs,
+                                                                const std::vector<GfxMpsrtValue>& outputs,
+                                                                const std::vector<GfxMpsrtTensorDesc>& output_descs) {
+    GfxMpsrtBuilderRecord encode{};
+    encode.kind = GfxMpsrtBuilderRecordKind::EncodeStage;
+    encode.symbol = stage.builder_symbol;
+    encode.stage_record_key = stage_record_key;
+    encode.kernel_name = !stage.dispatch_entry_point.empty() ? stage.dispatch_entry_point : stage.kernel_name;
+    encode.dispatch_kernel_family = stage.dispatch_kernel_family;
+    encode.dispatch_entry_point = stage.dispatch_entry_point;
+    encode.dispatch_kernel_family_id = stage.dispatch_kernel_family_id;
+    encode.dispatch_flags = stage.dispatch_flags;
+    encode.dispatch_threads_per_threadgroup = stage.dispatch_threads_per_threadgroup;
+    encode.dispatch_precompiled_kernel_required = stage.dispatch_precompiled_kernel_required;
+    const auto manifest_dispatch =
+        gfx_mpsrt_custom_dispatch_spec_from_kernel_manifest(stage.stage_manifest.custom_kernel);
+    if (manifest_dispatch.valid) {
+        encode.dispatch_kernel_family = manifest_dispatch.kernel_family;
+        encode.dispatch_entry_point = manifest_dispatch.entry_point;
+        encode.dispatch_kernel_family_id = manifest_dispatch.kernel_family_id;
+        encode.dispatch_flags = manifest_dispatch.flags;
+        encode.dispatch_threads_per_threadgroup = manifest_dispatch.threads_per_threadgroup;
+        encode.dispatch_precompiled_kernel_required = manifest_dispatch.precompiled_binary_required;
+        encode.kernel_name = manifest_dispatch.entry_point;
+    }
+    encode.stage_kind = stage.kind;
+    encode.inputs = inputs;
+    encode.outputs = outputs;
+    encode.tensor_descs.reserve(output_descs.size());
+    for (const auto& output : output_descs) {
+        encode.tensor_descs.push_back(gfx_mpsrt_to_abi_desc(output));
+    }
+    encode.kernel_buffer_order =
+        gfx_mpsrt_kernel_buffer_order_from_kernel_abi(stage.stage_manifest.custom_kernel.external_buffer_abi,
+                                                      encode.inputs,
+                                                      encode.outputs);
+    if (stage.kind == GfxMpsrtStageKind::MSLDispatch) {
+        encode.msl_dispatch_desc = gfx_mpsrt_make_msl_dispatch_desc(stage,
+                                                                    static_cast<uint32_t>(inputs.size()),
+                                                                    static_cast<uint32_t>(outputs.size()));
+    } else if (gfx_mpsrt_stage_uses_conv2d_desc(stage.kind)) {
+        encode.conv2d_desc = stage.conv2d_desc;
+    } else if (stage.kind == GfxMpsrtStageKind::MPSGemm) {
+        encode.gemm_desc = stage.gemm_desc;
+    }
+    return encode;
+}
+
+inline GfxMpsrtBuilderPlan gfx_mpsrt_make_multi_stage_builder_plan(
+    const std::string& model_record_key,
+    const std::vector<GfxMpsrtTensorDesc>& inputs,
+    const std::vector<GfxMpsrtBuilderStageSpec>& stages,
+    std::vector<GfxMpsrtValue> output_values) {
+    GfxMpsrtBuilderPlan plan{};
+    if (model_record_key.empty() || stages.empty()) {
+        return plan;
+    }
+    if (output_values.empty()) {
+        output_values = stages.back().outputs;
+    }
+    if (output_values.empty()) {
+        return plan;
+    }
+
+    plan.valid = true;
+    plan.stage_record_key = model_record_key;
+    plan.input_values.reserve(inputs.size());
+    plan.output_values = std::move(output_values);
+
+    GfxMpsrtBuilderRecord begin{};
+    begin.kind = GfxMpsrtBuilderRecordKind::ModelBegin;
+    begin.symbol = "ovgfx_mpsrt_model_begin";
+    begin.stage_record_key = model_record_key;
+    plan.records.push_back(std::move(begin));
+
+    GfxMpsrtValue next_value = 0;
+    for (const auto& input : inputs) {
+        const GfxMpsrtValue value = next_value++;
+        plan.input_values.push_back(value);
+        GfxMpsrtBuilderRecord add{};
+        add.kind = GfxMpsrtBuilderRecordKind::AddTensor;
+        add.symbol = "ovgfx_mpsrt_add_tensor";
+        add.stage_record_key = model_record_key;
+        add.value = value;
+        add.tensor_descs.push_back(gfx_mpsrt_to_abi_desc(input));
+        plan.records.push_back(std::move(add));
+    }
+
+    for (const auto& spec : stages) {
+        if (spec.stage.kind == GfxMpsrtStageKind::Unknown ||
+            spec.stage.builder_symbol.empty() ||
+            spec.stage_record_key.empty() ||
+            spec.outputs.empty() ||
+            spec.outputs.size() != spec.output_descs.size()) {
+            return {};
+        }
+        plan.records.push_back(gfx_mpsrt_make_encode_stage_record(spec.stage,
+                                                                  spec.stage_record_key,
+                                                                  spec.inputs,
+                                                                  spec.outputs,
+                                                                  spec.output_descs));
+    }
+
+    GfxMpsrtBuilderRecord end{};
+    end.kind = GfxMpsrtBuilderRecordKind::ModelEnd;
+    end.symbol = "ovgfx_mpsrt_model_end";
+    end.stage_record_key = model_record_key;
+    plan.records.push_back(std::move(end));
+
+    return plan;
 }
 
 inline GfxMpsrtBuilderPlan gfx_mpsrt_make_builder_plan(const GfxMpsrtStageDesc& stage,
@@ -130,36 +264,18 @@ inline GfxMpsrtBuilderPlan gfx_mpsrt_make_builder_plan(const GfxMpsrtStageDesc& 
         plan.records.push_back(std::move(add));
     }
 
-    GfxMpsrtBuilderRecord encode{};
-    encode.kind = GfxMpsrtBuilderRecordKind::EncodeStage;
-    encode.symbol = stage.builder_symbol;
-    encode.stage_record_key = stage_record_key;
-    encode.kernel_name = !stage.dispatch_entry_point.empty() ? stage.dispatch_entry_point : stage.kernel_name;
-    encode.dispatch_kernel_family = stage.dispatch_kernel_family;
-    encode.dispatch_entry_point = stage.dispatch_entry_point;
-    encode.dispatch_kernel_family_id = stage.dispatch_kernel_family_id;
-    encode.dispatch_flags = stage.dispatch_flags;
-    encode.dispatch_threads_per_threadgroup = stage.dispatch_threads_per_threadgroup;
-    encode.dispatch_precompiled_kernel_required = stage.dispatch_precompiled_kernel_required;
-    encode.stage_kind = stage.kind;
-    encode.inputs = plan.input_values;
-    encode.outputs.reserve(outputs.size());
-    encode.tensor_descs.reserve(outputs.size());
-    for (const auto& output : outputs) {
+    std::vector<GfxMpsrtValue> stage_outputs;
+    stage_outputs.reserve(outputs.size());
+    for (size_t i = 0; i < outputs.size(); ++i) {
         const GfxMpsrtValue value = next_value++;
         plan.output_values.push_back(value);
-        encode.outputs.push_back(value);
-        encode.tensor_descs.push_back(gfx_mpsrt_to_abi_desc(output));
+        stage_outputs.push_back(value);
     }
-    encode.kernel_buffer_order = encode.inputs;
-    encode.kernel_buffer_order.insert(encode.kernel_buffer_order.end(),
-                                      encode.outputs.begin(),
-                                      encode.outputs.end());
-    if (stage.kind == GfxMpsrtStageKind::MSLDispatch) {
-        encode.msl_dispatch_desc = gfx_mpsrt_make_msl_dispatch_desc(stage,
-                                                                    static_cast<uint32_t>(inputs.size()),
-                                                                    static_cast<uint32_t>(outputs.size()));
-    }
+    auto encode = gfx_mpsrt_make_encode_stage_record(stage,
+                                                     stage_record_key,
+                                                     plan.input_values,
+                                                     stage_outputs,
+                                                     outputs);
     plan.records.push_back(std::move(encode));
 
     GfxMpsrtBuilderRecord end{};

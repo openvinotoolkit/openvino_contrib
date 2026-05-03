@@ -46,6 +46,7 @@ function(_gfx_check_metal_backend out_var)
 
     foreach(_gfx_metal_cache_var
             GFX_METAL_LIBRARY
+            GFX_METAL_PERFORMANCE_SHADERS_LIBRARY
             GFX_FOUNDATION_LIBRARY
             GFX_METAL_INCLUDE_DIR)
         if(DEFINED ${_gfx_metal_cache_var} AND NOT EXISTS "${${_gfx_metal_cache_var}}")
@@ -60,26 +61,30 @@ function(_gfx_check_metal_backend out_var)
         "/System/Library/Frameworks")
 
     find_library(GFX_METAL_LIBRARY Metal PATHS ${_gfx_framework_paths})
+    find_library(GFX_METAL_PERFORMANCE_SHADERS_LIBRARY MetalPerformanceShaders PATHS ${_gfx_framework_paths})
     find_library(GFX_FOUNDATION_LIBRARY Foundation PATHS ${_gfx_framework_paths})
     find_path(GFX_METAL_INCLUDE_DIR Metal/Metal.h
         PATHS ${_gfx_framework_paths}
         PATH_SUFFIXES Metal.framework/Headers)
 
-    if(NOT GFX_METAL_LIBRARY OR NOT GFX_FOUNDATION_LIBRARY OR NOT GFX_METAL_INCLUDE_DIR)
+    if(NOT GFX_METAL_LIBRARY OR NOT GFX_METAL_PERFORMANCE_SHADERS_LIBRARY OR
+       NOT GFX_FOUNDATION_LIBRARY OR NOT GFX_METAL_INCLUDE_DIR)
         return()
     endif()
 
     cmake_push_check_state(RESET)
     set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
     set(CMAKE_REQUIRED_INCLUDES "${GFX_METAL_INCLUDE_DIR}")
-    set(CMAKE_REQUIRED_LIBRARIES "${GFX_METAL_LIBRARY};${GFX_FOUNDATION_LIBRARY}")
+    set(CMAKE_REQUIRED_LIBRARIES
+        "${GFX_METAL_LIBRARY};${GFX_METAL_PERFORMANCE_SHADERS_LIBRARY};${GFX_FOUNDATION_LIBRARY}")
     set(CMAKE_REQUIRED_FLAGS "-x objective-c++")
     set(_gfx_metal_test [=[
 #include <Foundation/Foundation.h>
 #include <Metal/Metal.h>
+#include <MetalPerformanceShaders/MetalPerformanceShaders.h>
 int main() {
   id<MTLDevice> dev = MTLCreateSystemDefaultDevice();
-  (void)dev;
+  (void)MPSSupportsMTLDevice(dev);
   return 0;
 }
 ]=])
@@ -88,7 +93,9 @@ int main() {
 
     if(GFX_METAL_COMPILES)
         set(${out_var} ON PARENT_SCOPE)
-        set(GFX_METAL_LIBRARIES "${GFX_METAL_LIBRARY};${GFX_FOUNDATION_LIBRARY}" PARENT_SCOPE)
+        set(GFX_METAL_LIBRARIES
+            "${GFX_METAL_LIBRARY};${GFX_METAL_PERFORMANCE_SHADERS_LIBRARY};${GFX_FOUNDATION_LIBRARY}"
+            PARENT_SCOPE)
         set(GFX_METAL_INCLUDE_DIRS "${GFX_METAL_INCLUDE_DIR}" PARENT_SCOPE)
     endif()
 

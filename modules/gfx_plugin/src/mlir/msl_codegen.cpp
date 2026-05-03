@@ -8,10 +8,8 @@
 
 #include "mlir/IR/Builders.h"
 
-#include "llvm/ADT/SmallVector.h"
-
+#include <sstream>
 #include <utility>
-#include <vector>
 
 namespace ov {
 namespace gfx_plugin {
@@ -47,116 +45,38 @@ bool replace_kernel_entry_name(std::string& source,
     return false;
 }
 
-bool read_positive_i32_attr(mlir::ModuleOp module, const char* name, uint32_t& out) {
-    auto attr = module->getAttrOfType<mlir::IntegerAttr>(name);
-    if (!attr || attr.getInt() <= 0) {
-        return false;
+ov::element::Type resolve_matmul_buffer_type(const ov::element::Type& type,
+                                             const ov::element::Type& fallback) {
+    if (type != ov::element::dynamic) {
+        return type;
     }
-    out = static_cast<uint32_t>(attr.getInt());
-    return true;
+    return fallback == ov::element::dynamic ? ov::element::f32 : fallback;
 }
 
-bool module_has_mpsrt_external_buffer_abi_attrs(mlir::ModuleOp module) {
-    return module->hasAttr("gfx.mpsrt.external_buffer_count") ||
-           module->hasAttr("gfx.mpsrt.external_output_buffer_count") ||
-           module->hasAttr("gfx.mpsrt.external_buffer_roles");
-}
-
-void annotate_mpsrt_external_buffer_roles(mlir::ModuleOp module,
-                                          const std::vector<GfxMpsrtExternalBufferRole>& roles) {
-    mlir::Builder builder(module.getContext());
-
-    uint32_t output_buffer_count = 0;
-    llvm::SmallVector<mlir::Attribute, 8> role_attrs;
-    role_attrs.reserve(roles.size());
-    for (const auto role : roles) {
-        if (role == GfxMpsrtExternalBufferRole::TensorOutput) {
-            ++output_buffer_count;
-        }
-        role_attrs.push_back(builder.getI32IntegerAttr(static_cast<int32_t>(role)));
+std::string matmul_epilogue_activation_expr(ActivationKind activation) {
+    switch (activation) {
+        case ActivationKind::Relu:
+            return "max(x, 0.0f)";
+        case ActivationKind::Sigmoid:
+            return "1.0f / (1.0f + exp(-x))";
+        case ActivationKind::Tanh:
+            return "tanh(x)";
+        case ActivationKind::Gelu:
+            return "0.5f * x * (1.0f + tanh(0.79788456f * (x + 0.044715f * x * x * x)))";
+        case ActivationKind::Swish:
+            return "(x >= 0.0f) ? (x / (1.0f + exp(-x))) : (x * exp(x) / (1.0f + exp(x)))";
+        case ActivationKind::HSwish:
+            return "x * clamp(x + 3.0f, 0.0f, 6.0f) / 6.0f";
+        case ActivationKind::HSigmoid:
+            return "clamp(x + 3.0f, 0.0f, 6.0f) / 6.0f";
+        case ActivationKind::Abs:
+            return "fabs(x)";
+        case ActivationKind::Sign:
+            return "(x > 0.0f) ? 1.0f : ((x < 0.0f) ? -1.0f : 0.0f)";
+        case ActivationKind::Identity:
+        default:
+            return "x";
     }
-
-    module->setAttr("gfx.mpsrt.external_buffer_count",
-                    builder.getI32IntegerAttr(static_cast<int32_t>(roles.size())));
-    module->setAttr("gfx.mpsrt.external_output_buffer_count",
-                    builder.getI32IntegerAttr(static_cast<int32_t>(output_buffer_count)));
-    module->setAttr("gfx.mpsrt.external_buffer_roles", builder.getArrayAttr(role_attrs));
-}
-
-std::vector<GfxMpsrtExternalBufferRole> make_roles_from_leading_io_spec(
-    const GfxMslExternalBufferAbiSpec& spec,
-    uint32_t buffer_count) {
-    const uint32_t structured_count = spec.leading_input_count + spec.leading_output_count;
-    if (!spec.valid || structured_count == 0 || buffer_count < structured_count) {
-        return {};
-    }
-
-    std::vector<GfxMpsrtExternalBufferRole> roles;
-    roles.reserve(buffer_count);
-    roles.insert(roles.end(),
-                 spec.leading_input_count,
-                 GfxMpsrtExternalBufferRole::TensorInput);
-    roles.insert(roles.end(),
-                 spec.leading_output_count,
-                 GfxMpsrtExternalBufferRole::TensorOutput);
-    roles.insert(roles.end(),
-                 buffer_count - structured_count,
-                 GfxMpsrtExternalBufferRole::RuntimeParams);
-    return roles;
-}
-
-bool annotate_msl_role_based_external_buffer_abi(mlir::ModuleOp module,
-                                                 const GfxMslKernelPlan& msl_plan,
-                                                 uint32_t known_buffer_count = 0) {
-    if (!module || module_has_mpsrt_external_buffer_abi_attrs(module)) {
-        return false;
-    }
-    if (!msl_plan.external_buffer_abi.valid) {
-        return false;
-    }
-    std::vector<GfxMpsrtExternalBufferRole> roles = msl_plan.external_buffer_abi.roles;
-    if (roles.empty()) {
-        uint32_t buffer_count = known_buffer_count;
-        if (buffer_count == 0) {
-            (void)read_positive_i32_attr(module, "gfx.fixed_arg_count", buffer_count);
-        }
-        roles = make_roles_from_leading_io_spec(msl_plan.external_buffer_abi, buffer_count);
-    }
-    if (roles.empty()) {
-        return false;
-    }
-    annotate_mpsrt_external_buffer_roles(module, roles);
-    return true;
-}
-
-void annotate_msl_tail_output_external_buffer_abi(mlir::ModuleOp module,
-                                                  const GfxMslKernelPlan& msl_plan) {
-    if (!module ||
-        !msl_plan.external_buffer_abi.valid ||
-        !msl_plan.external_buffer_abi.tail_outputs) {
-        return;
-    }
-    if (module_has_mpsrt_external_buffer_abi_attrs(module)) {
-        return;
-    }
-
-    uint32_t buffer_count = 0;
-    uint32_t output_buffer_count = 0;
-    if (!read_positive_i32_attr(module, "gfx.fixed_arg_count", buffer_count) ||
-        !read_positive_i32_attr(module, "gfx.kernel_output_arg_count", output_buffer_count) ||
-        output_buffer_count > buffer_count) {
-        return;
-    }
-
-    std::vector<GfxMpsrtExternalBufferRole> roles;
-    roles.reserve(buffer_count);
-    const uint32_t input_buffer_count = buffer_count - output_buffer_count;
-    for (uint32_t i = 0; i < buffer_count; ++i) {
-        roles.push_back(i < input_buffer_count
-                            ? GfxMpsrtExternalBufferRole::TensorInput
-                            : GfxMpsrtExternalBufferRole::TensorOutput);
-    }
-    annotate_mpsrt_external_buffer_roles(module, roles);
 }
 
 }  // namespace
@@ -205,9 +125,14 @@ void configure_msl_kernel_source_for_plan(KernelSource& source,
         };
     }
     source.entry_point = required_entry;
-    (void)annotate_msl_role_based_external_buffer_abi(source.module,
-                                                     msl_plan,
-                                                     source.signature.arg_count);
+    (void)annotate_module_with_mpsrt_external_buffer_abi_from_stage_manifest(source.module,
+                                                                            source.signature.arg_count);
+}
+
+GfxMpsrtKernelSourcePlan configure_msl_kernel_source_plan(KernelSource source,
+                                                          std::string_view stage_type) {
+    configure_msl_kernel_source_for_plan(source, stage_type);
+    return make_mpsrt_kernel_source_plan_from_configured_source(std::move(source));
 }
 
 void annotate_msl_module_with_stage_plan(mlir::ModuleOp module,
@@ -237,19 +162,87 @@ void annotate_msl_module_with_stage_plan(mlir::ModuleOp module,
                     builder.getBoolAttr(msl_plan.precompiled_metallib_required));
     module->setAttr("gfx.msl.threads_per_threadgroup",
                     builder.getI32IntegerAttr(static_cast<int32_t>(msl_plan.threads_per_threadgroup)));
-    module->setAttr("gfx.mpsrt.dispatch_kernel_family", builder.getStringAttr(msl_plan.family_name));
-    module->setAttr("gfx.mpsrt.dispatch_entry_point", builder.getStringAttr(msl_plan.required_entry_point));
-    module->setAttr("gfx.mpsrt.dispatch_kernel_family_id",
-                    builder.getI32IntegerAttr(static_cast<int32_t>(msl_plan.abi_kernel_family)));
-    module->setAttr("gfx.mpsrt.dispatch_flags",
-                    builder.getI32IntegerAttr(static_cast<int32_t>(msl_plan.dispatch_flags)));
-    module->setAttr("gfx.mpsrt.dispatch_precompiled_kernel_required",
-                    builder.getBoolAttr(msl_plan.precompiled_metallib_required));
-    module->setAttr("gfx.mpsrt.dispatch_threads_per_threadgroup",
-                    builder.getI32IntegerAttr(static_cast<int32_t>(msl_plan.threads_per_threadgroup)));
-    if (!annotate_msl_role_based_external_buffer_abi(module, msl_plan)) {
-        annotate_msl_tail_output_external_buffer_abi(module, msl_plan);
+    (void)annotate_module_with_mpsrt_external_buffer_abi_from_stage_manifest(module);
+}
+
+std::string generate_msl_for_matmul_mpsrt_epilogue(const MatMulCodegenDesc& desc) {
+    const ov::element::Type output_type = resolve_matmul_buffer_type(desc.output_type, desc.element_type);
+    const ov::element::Type bias_type = resolve_matmul_buffer_type(desc.bias_type, output_type);
+    const std::string scalar_out = msl_type_from_element(output_type);
+    const std::string scalar_bias = msl_type_from_element(bias_type);
+
+    std::ostringstream ss;
+    ss << "#include <metal_stdlib>\n";
+    ss << "using namespace metal;\n";
+    ss << "constant uint BATCH = " << desc.batch << ";\n";
+    ss << "constant uint M = " << desc.M << ";\n";
+    ss << "constant uint N = " << desc.N << ";\n";
+    if (desc.has_bias) {
+        ss << "constant uint BIAS_B = " << desc.bias_dims[0] << ";\n";
+        ss << "constant uint BIAS_M = " << desc.bias_dims[1] << ";\n";
+        ss << "constant uint BIAS_N = " << desc.bias_dims[2] << ";\n";
     }
+    ss << "kernel void eltwise_fused_buffer(\n";
+    ss << "  device const " << scalar_out << "* gemm [[buffer(0)]],\n";
+    if (desc.has_bias) {
+        ss << "  device const " << scalar_bias << "* bias [[buffer(1)]],\n";
+        ss << "  device " << scalar_out << "* output [[buffer(2)]],\n";
+    } else {
+        ss << "  device " << scalar_out << "* output [[buffer(1)]],\n";
+    }
+    ss << "  uint gid [[thread_position_in_grid]]) {\n";
+    ss << "    const uint total = BATCH * M * N;\n";
+    ss << "    if (gid >= total) return;\n";
+    ss << "    const uint batch = gid / (M * N);\n";
+    ss << "    const uint idx = gid - batch * M * N;\n";
+    ss << "    const uint row = idx / N;\n";
+    ss << "    const uint col = idx - row * N;\n";
+    ss << "    float x = static_cast<float>(gemm[gid]);\n";
+    if (desc.has_bias) {
+        ss << "    const uint bb = (BIAS_B == 1) ? 0 : batch;\n";
+        ss << "    const uint bm = (BIAS_M == 1) ? 0 : row;\n";
+        ss << "    const uint bn = (BIAS_N == 1) ? 0 : col;\n";
+        ss << "    const uint bias_idx = (bb * BIAS_M + bm) * BIAS_N + bn;\n";
+        ss << "    x += static_cast<float>(bias[bias_idx]);\n";
+    }
+    if (desc.has_activation) {
+        ss << "    x = " << matmul_epilogue_activation_expr(desc.activation) << ";\n";
+    }
+    ss << "    output[gid] = static_cast<" << scalar_out << ">(x);\n";
+    ss << "}\n";
+    return ss.str();
+}
+
+GfxMatMulMpsrtKernelSourcePlan lower_matmul_module_to_mpsrt_kernel_source(
+    mlir::ModuleOp module,
+    const GfxStageOptimizationPlan& plan,
+    const MatMulCodegenDesc& desc,
+    const ov::Shape& shape_a,
+    const ov::Shape& shape_b) {
+    GfxMatMulMpsrtKernelSourcePlan result{};
+    result.lowering = annotate_module_with_matmul_mpsrt_plan(module, plan, desc, shape_a, shape_b);
+    if (result.lowering == GfxMatMulMpsrtLoweringKind::None) {
+        return result;
+    }
+
+    GfxMpsrtKernelSourceOptions source_options{};
+    switch (result.lowering) {
+        case GfxMatMulMpsrtLoweringKind::MpsGemm:
+            break;
+        case GfxMatMulMpsrtLoweringKind::MpsGemmWithMslEpilogue:
+            source_options.msl_source = generate_msl_for_matmul_mpsrt_epilogue(desc);
+            break;
+        case GfxMatMulMpsrtLoweringKind::None:
+            break;
+    }
+    result.mpsrt_plan = make_mpsrt_kernel_source_plan_from_module(module, std::move(source_options));
+    if (!result.mpsrt_plan.valid()) {
+        result.lowering = GfxMatMulMpsrtLoweringKind::None;
+        return result;
+    }
+    result.source = result.mpsrt_plan.source;
+    result.requires_mpsrt_model = result.mpsrt_plan.requires_mpsrt_model;
+    return result;
 }
 
 }  // namespace gfx_plugin

@@ -8,13 +8,32 @@ namespace ov {
 namespace gfx_plugin {
 namespace {
 
-GfxMslExternalBufferAbiSpec make_leading_io_params_spec(uint32_t input_count,
-                                                        uint32_t output_count) {
-    GfxMslExternalBufferAbiSpec spec{};
-    spec.valid = true;
-    spec.leading_input_count = input_count;
-    spec.leading_output_count = output_count;
-    return spec;
+GfxKernelStageFamily gfx_msl_stage_family_from_kernel_family(GfxMslKernelFamily family) {
+    switch (family) {
+        case GfxMslKernelFamily::EltwiseFusedBuffer:
+            return GfxKernelStageFamily::Eltwise;
+        case GfxMslKernelFamily::TransposePackND:
+            return GfxKernelStageFamily::Transpose;
+        case GfxMslKernelFamily::ConcatSplitGeneric:
+            return GfxKernelStageFamily::ConcatSplit;
+        case GfxMslKernelFamily::GatherScatterIndexed:
+            return GfxKernelStageFamily::GatherScatter;
+        case GfxMslKernelFamily::RmsnormRopeFused:
+            return GfxKernelStageFamily::RmsnormRope;
+        case GfxMslKernelFamily::MaskedSoftmaxAttention:
+            return GfxKernelStageFamily::AttentionSoftmax;
+        case GfxMslKernelFamily::KvCacheUpdate:
+            return GfxKernelStageFamily::KvCache;
+        case GfxMslKernelFamily::Conv3DDirectOrIm2col:
+            return GfxKernelStageFamily::Conv3D;
+        case GfxMslKernelFamily::ReductionBuffer:
+            return GfxKernelStageFamily::Reduction;
+        case GfxMslKernelFamily::Conv2DDirectOrIm2col:
+            return GfxKernelStageFamily::Convolution;
+        case GfxMslKernelFamily::Unknown:
+        default:
+            return GfxKernelStageFamily::Unknown;
+    }
 }
 
 }  // namespace
@@ -39,6 +58,8 @@ const char* gfx_msl_kernel_family_name(GfxMslKernelFamily family) {
             return "conv3d_direct_or_im2col";
         case GfxMslKernelFamily::ReductionBuffer:
             return "reduction_buffer";
+        case GfxMslKernelFamily::Conv2DDirectOrIm2col:
+            return "conv2d_direct_or_im2col";
         case GfxMslKernelFamily::Unknown:
         default:
             return "unknown";
@@ -57,17 +78,15 @@ GfxMslExternalBufferAbiSpec gfx_msl_external_buffer_abi_spec(GfxMslKernelFamily 
     GfxMslExternalBufferAbiSpec spec{};
     switch (family) {
         case GfxMslKernelFamily::EltwiseFusedBuffer:
-            spec.valid = true;
-            spec.tail_outputs = true;
-            return spec;
+            return make_gfx_kernel_tail_outputs_abi();
         case GfxMslKernelFamily::MaskedSoftmaxAttention:
-            spec.valid = true;
-            spec.roles = {GfxMpsrtExternalBufferRole::TensorInput,
-                          GfxMpsrtExternalBufferRole::TensorOutput,
-                          GfxMpsrtExternalBufferRole::RuntimeParams};
-            return spec;
+            return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
+                                              GfxKernelBufferRole::TensorOutput,
+                                              GfxKernelBufferRole::RuntimeParams});
         case GfxMslKernelFamily::ReductionBuffer:
-            return make_leading_io_params_spec(/*input_count=*/1, /*output_count=*/1);
+            return make_gfx_kernel_leading_io_params_abi(/*input_count=*/1, /*output_count=*/1);
+        case GfxMslKernelFamily::Conv2DDirectOrIm2col:
+            return make_gfx_kernel_tail_outputs_abi();
         default:
             return spec;
     }
@@ -78,7 +97,7 @@ GfxMslExternalBufferAbiSpec gfx_msl_external_buffer_abi_spec(std::string_view st
                                                              GfxMslKernelFamily family) {
     if (family == GfxMslKernelFamily::GatherScatterIndexed &&
         (stage_type == "TopK" || entry_point == "topk_kernel")) {
-        return make_leading_io_params_spec(/*input_count=*/1, /*output_count=*/2);
+        return make_gfx_kernel_leading_io_params_abi(/*input_count=*/1, /*output_count=*/2);
     }
     if (family == GfxMslKernelFamily::GatherScatterIndexed &&
         (stage_type == "Gather" ||
@@ -87,7 +106,7 @@ GfxMslExternalBufferAbiSpec gfx_msl_external_buffer_abi_spec(std::string_view st
          entry_point == "gather_kernel" ||
          entry_point == "gathernd_kernel" ||
          entry_point == "gather_elements_kernel")) {
-        return make_leading_io_params_spec(/*input_count=*/2, /*output_count=*/1);
+        return make_gfx_kernel_leading_io_params_abi(/*input_count=*/2, /*output_count=*/1);
     }
     if ((family == GfxMslKernelFamily::GatherScatterIndexed &&
          (stage_type == "Slice" ||
@@ -97,14 +116,14 @@ GfxMslExternalBufferAbiSpec gfx_msl_external_buffer_abi_spec(std::string_view st
           entry_point == "tile_kernel")) ||
         (family == GfxMslKernelFamily::TransposePackND &&
          (stage_type == "Transpose" || entry_point == "transpose_kernel"))) {
-        return make_leading_io_params_spec(/*input_count=*/1, /*output_count=*/1);
+        return make_gfx_kernel_leading_io_params_abi(/*input_count=*/1, /*output_count=*/1);
     }
     if (family == GfxMslKernelFamily::ConcatSplitGeneric) {
         if (entry_point == "concat_binary_kernel") {
-            return make_leading_io_params_spec(/*input_count=*/2, /*output_count=*/1);
+            return make_gfx_kernel_leading_io_params_abi(/*input_count=*/2, /*output_count=*/1);
         }
         if (entry_point == "concat_kernel" || stage_type == "Split" || stage_type == "VariadicSplit") {
-            return make_leading_io_params_spec(/*input_count=*/1, /*output_count=*/1);
+            return make_gfx_kernel_leading_io_params_abi(/*input_count=*/1, /*output_count=*/1);
         }
     }
     return gfx_msl_external_buffer_abi_spec(family);
@@ -246,11 +265,14 @@ GfxMslKernelFamily classify_msl_kernel_family(std::string_view stage_type,
         entry_point == "kv_cache_update") {
         return GfxMslKernelFamily::KvCacheUpdate;
     }
-    if (stage_type == "Convolution" ||
-        stage_type == "Convolution3D" ||
+    if (stage_type == "Convolution3D" ||
         stage_type == "Conv3D" ||
         entry_point == "conv3d_kernel") {
         return GfxMslKernelFamily::Conv3DDirectOrIm2col;
+    }
+    if (stage_type == "Convolution" ||
+        entry_point == "conv2d_kernel") {
+        return GfxMslKernelFamily::Conv2DDirectOrIm2col;
     }
     if (stage_type == "ReduceSum" ||
         stage_type == "ReduceMean" ||
@@ -285,6 +307,22 @@ GfxMslKernelPlan make_msl_kernel_plan(std::string_view stage_type,
         plan.threads_per_threadgroup = 128;
     } else if (plan.family == GfxMslKernelFamily::ReductionBuffer) {
         plan.threads_per_threadgroup = 128;
+    }
+    if (plan.valid) {
+        plan.kernel_manifest = make_gfx_custom_kernel_manifest(plan.family_name,
+                                                              plan.abi_kernel_family,
+                                                              plan.required_entry_point,
+                                                              plan.external_buffer_abi,
+                                                              plan.threads_per_threadgroup,
+                                                              plan.precompiled_metallib_required);
+        std::string specialization_key = "apple_msl:buffer:";
+        specialization_key += stage_type;
+        plan.stage_manifest = make_gfx_custom_kernel_stage_manifest(
+            gfx_msl_stage_family_from_kernel_family(plan.family),
+            GfxKernelBackendDomain::AppleMsl,
+            GfxKernelStorageKind::Buffer,
+            std::move(specialization_key),
+            plan.kernel_manifest);
     }
     return plan;
 }

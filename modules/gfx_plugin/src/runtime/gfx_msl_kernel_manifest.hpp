@@ -3,6 +3,7 @@
 //
 #pragma once
 
+#include "kernel_ir/gfx_kernel_manifest.hpp"
 #include "runtime/gfx_mpsrt_abi.hpp"
 
 #include <string>
@@ -23,15 +24,10 @@ enum class GfxMslKernelFamily {
     KvCacheUpdate = 7,
     Conv3DDirectOrIm2col = 8,
     ReductionBuffer = 9,
+    Conv2DDirectOrIm2col = 10,
 };
 
-struct GfxMslExternalBufferAbiSpec {
-    bool valid = false;
-    bool tail_outputs = false;
-    uint32_t leading_input_count = 0;
-    uint32_t leading_output_count = 0;
-    std::vector<GfxMpsrtExternalBufferRole> roles;
-};
+using GfxMslExternalBufferAbiSpec = GfxKernelExternalBufferAbiSpec;
 
 struct GfxMslKernelPlan {
     bool valid = false;
@@ -45,6 +41,8 @@ struct GfxMslKernelPlan {
     uint32_t threads_per_threadgroup = 256;
     bool precompiled_metallib_required = true;
     GfxMslExternalBufferAbiSpec external_buffer_abi;
+    GfxKernelCustomManifest kernel_manifest;
+    GfxKernelStageManifest stage_manifest;
 };
 
 const char* gfx_msl_kernel_family_name(GfxMslKernelFamily family);

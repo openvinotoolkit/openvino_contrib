@@ -28,6 +28,7 @@ Recent runtime work extends this model in two directions:
 - device-aware scheduling now uses backend-reported execution limits and device-family classification through shared `gfx_parallelism.*` and `gfx_partitioning.*` helpers
 - Metal stage planning now also chooses an internal placement domain per stage: Apple MPS image or matrix primitives for selected ops, or Apple MSL buffer dispatch for custom-kernel paths
 - the Metal compile path can serialize that placement into a compact MPSRT runtime model with explicit tensor descriptors, external-buffer roles, and kernel-family metadata before request-time execution
+- that MPSRT path is no longer limited to one annotated MSL dispatch; it can now carry multi-stage hybrid plans where a vendor MPS stage is followed by a custom MSL epilogue or dispatch stage
 - infer requests can also keep per-request stateful variable buffers for `ReadValue` / `Assign` style subgraphs instead of treating them as ordinary stateless stage edges
 - output allocation can now reuse workspace-managed intermediate slots across stages based on liveness instead of always keeping one dedicated buffer per stage output
 - shared prepared-binding caches can now grow beyond their initial capacity when a workload introduces many distinct compatible binding tables
@@ -55,6 +56,7 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 - `src/plugin/`: `Plugin`, `CompiledModel`, shared property handling, pipeline construction
 - `src/runtime/`: backend-neutral runtime abstractions and helpers
 - `src/runtime/gfx_mpsrt_*`: shared ABI, stage-plan, builder-plan, and MSL-kernel-manifest helpers for the Apple MPS/MSL split
+- `src/kernel_ir/gfx_kernel_manifest.hpp`: backend-neutral manifest for vendor-primitive versus custom-kernel stage contracts
 - `src/mlir/`: MLIR support probes, builders, and shared codegen helpers
 - `src/backends/metal/`: Metal-specific plugin glue, runtime, memory, profiling, MSL compilation
 - `src/backends/vulkan/`: Vulkan-specific plugin glue, runtime, buffers, profiling, SPIR-V/Vulkan execution
@@ -112,6 +114,7 @@ The current infer path is not a naive "execute one stage, submit immediately" lo
 - `GpuStageFactory` / `ExecutionDispatcher`: backend-specific stage dispatch
 - `gfx_stage_policy.*`: runtime route, fusion, and submit-policy selection
 - `gfx_stage_policy.*` now also selects placement domains such as `apple_mps`, `apple_msl`, and `spirv`, together with storage kinds such as `image`, `matrix`, and `buffer`
+- manifest-backed stage metadata now distinguishes vendor-primitive stages from custom-kernel stages and carries stable kernel-family plus external-buffer-ABI contracts across the MLIR, compile, and runtime layers
 - `gfx_parallelism.*` and `gfx_partitioning.*`: backend-neutral device-capability and workgroup planning helpers
 - `immutable_gpu_buffer_cache.*`: backend-neutral cache for immutable device buffers
 - shared remote context/tensor abstractions
@@ -127,6 +130,7 @@ The runtime also has explicit reuse layers:
 - prepared binding-table caches can grow past their initial size when the infer path observes more distinct reusable binding sets
 - infer requests can reuse prepared output bindings and preallocated host output tensors across repeated executions
 - on Metal, MSL-dispatch stages can also be wrapped as compact MPSRT runtime models with explicit external-buffer ABI roles, prepared pipeline-cache entries, and request-time transient tensor binding
+- on Metal, MPSRT execution can now cover vendor-only plans such as `MPSGemm` and hybrid multi-stage plans such as `MPSGemm + MSL epilogue`, instead of only one standalone MSL dispatch
 
 Profiling now also has two layers:
 - compile-time tracing stored as a JSON `compile` section inside `GFX_PROFILING_REPORT`
@@ -203,6 +207,8 @@ Current lowering/runtime special cases:
 - `ShapeOf`, `TopK`, `Tile`, and unary stage handling now have stricter runtime/codegen paths around output typing, alias safety, and ABI metadata
 - Metal stage policy now routes selected 4D conv/pool/interpolate-style stages to Apple MPS image storage, selected `MatMul` / last-dimension `Softmax` / `TopK` stages to Apple MPS matrix storage, and keeps the remaining cases on Apple MSL buffer dispatch
 - the Metal MSL path now carries a kernel-family manifest plus explicit external-buffer ABI roles so runtime parameter, input, and output buffers can be rebound without assuming a simple tail-output convention
+- Metal MatMul lowering can now choose a vendor MPS GEMM route directly, or a mixed `MPSGemm + MSL epilogue` route when bias or supported activation fusion still needs a custom kernel stage
+- Metal Conv2D manifest handling now also covers the legacy custom `conv2d_kernel` family under the same manifest/ABI contract used by other MSL dispatch kernels
 - `ScatterUpdate` now has a dedicated MLIR lowering path instead of falling back to the older scatter-family builders
 - Slice lowering now prefers `tensor.extract_slice`; generic slice metadata extraction still accepts the older generic form when needed
 - dynamic-shape support now covers `ShapeOf` compile/query flow and query-time acceptance for selected data-movement ops such as `Concat`, `Broadcast`, `Select`, `StridedSlice`, and `Range`
@@ -267,6 +273,7 @@ Build notes:
 - `cmake/GfxAndroidRuntimeBundle.cmake.in` provides helper copy logic for Android-side runtime dependency bundling
 - `third_party/Vulkan-Headers` is tracked as a git submodule pinned to the module-tested upstream release
 - Metal now also builds the local MPSRT runtime sources under `src/backends/metal/runtime/mpsrt/` together with the shared `gfx_mpsrt_*` and `gfx_msl_kernel_manifest.*` helpers
+- Metal backend detection now also requires `MetalPerformanceShaders.framework`, not only `Metal.framework` and `Foundation.framework`
 - `tools/gfx_rpi_vulkan_toolchain_builder.py` can assemble a hermetic Raspberry Pi Vulkan cross-toolchain bundle for Raspberry Pi 4/5 class `aarch64` Bookworm-style targets, normalize absolute sysroot symlinks, install both `vulkan/` and `vk_video/` headers into the generated sysroot, and emit portable `-march=armv8-a` compile flags in the generated wrappers and toolchain file
 
 The build produces the `openvino_gfx_plugin` shared library. On Unix-like builds this is typically emitted as `libopenvino_gfx_plugin.so`; the `.so` suffix is also forced on macOS for OpenVINO plugin loading compatibility.
@@ -335,6 +342,7 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 Recent regression coverage includes:
 - Metal stage-placement and MPSRT descriptor/runtime-model coverage in `tests/unit/gfx_stage_policy_test.cpp`
 - Metal backend tests for MPSRT compile, prepared-pipeline caching, and request-time MSL dispatch execution in `tests/backends/metal/gpu_backend_test.mm`
+- Metal backend tests now also cover manifest-driven buffer ordering, runtime-parameter roles, vendor `MPSGemm` execution, and hybrid `MPSGemm + MSL` prepared-model execution
 - canonical Conv2D MLIR lowering checks
 - strict interior-tile bounds checks plus Vulkan batch-1 parallel-launch and batch>1 serial-fallback checks in `tests/unit/mlir_conv_parallel_test.cpp`
 - im2col rewrite coverage, including the batch-1 plain-matmul route

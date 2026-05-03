@@ -184,55 +184,68 @@ void record_mpsrt_plan_counters(mlir::ModuleOp module) {
     if (!build_module_mpsrt_builder_plan(module, module_plan)) {
         return;
     }
-    const auto& plan = module_plan.stage_plan;
     const auto& builder_plan = module_plan.builder_plan;
+    auto record_stage_counters = [](const GfxMpsrtStageDesc& stage) {
+        switch (stage.domain) {
+            case GfxStageBackendDomain::AppleMps:
+                increment_compile_counter("mpsrt_plan_apple_mps_count");
+                break;
+            case GfxStageBackendDomain::AppleMsl:
+                increment_compile_counter("mpsrt_plan_apple_msl_count");
+                break;
+            case GfxStageBackendDomain::Spirv:
+                increment_compile_counter("mpsrt_plan_spirv_count");
+                break;
+            case GfxStageBackendDomain::Unknown:
+            default:
+                break;
+        }
+        increment_compile_counter(std::string("mpsrt_stage_kind_") + gfx_mpsrt_stage_kind_name(stage.kind));
+        increment_compile_counter(std::string("mpsrt_builder_symbol_") + stage.builder_symbol + "_count");
+        if (!stage.dispatch_kernel_family.empty()) {
+            increment_compile_counter(std::string("mpsrt_dispatch_family_") +
+                                      stage.dispatch_kernel_family +
+                                      "_count");
+        }
+        if (stage.dispatch_kernel_family_id != 0) {
+            increment_compile_counter(std::string("mpsrt_dispatch_family_id_") +
+                                      std::to_string(stage.dispatch_kernel_family_id) +
+                                      "_count");
+        }
+        if (!stage.dispatch_entry_point.empty()) {
+            increment_compile_counter(std::string("mpsrt_dispatch_entry_") +
+                                      stage.dispatch_entry_point +
+                                      "_count");
+        }
+        if (stage.dispatch_threads_per_threadgroup != 0) {
+            increment_compile_counter(std::string("mpsrt_dispatch_tg_") +
+                                      std::to_string(stage.dispatch_threads_per_threadgroup) +
+                                      "_count");
+        }
+        if (stage.dispatch_flags != GfxMpsrtMslDispatchFlagNone) {
+            increment_compile_counter("mpsrt_dispatch_flags",
+                                      static_cast<uint64_t>(stage.dispatch_flags));
+        }
+        if (stage.dispatch_precompiled_kernel_required) {
+            increment_compile_counter("mpsrt_dispatch_precompiled_kernel_required_count");
+        }
+        increment_compile_counter(std::string("mpsrt_storage_") +
+                                  gfx_mpsrt_storage_name(stage.output_storage) +
+                                  "_count");
+        if (stage.uses_vendor_primitive) {
+            increment_compile_counter("mpsrt_vendor_primitive_stage_count");
+        }
+        if (stage.uses_custom_kernel) {
+            increment_compile_counter("mpsrt_custom_kernel_stage_count");
+        }
+    };
 
-    switch (plan.stage.domain) {
-        case GfxStageBackendDomain::AppleMps:
-            increment_compile_counter("mpsrt_plan_apple_mps_count");
-            break;
-        case GfxStageBackendDomain::AppleMsl:
-            increment_compile_counter("mpsrt_plan_apple_msl_count");
-            break;
-        case GfxStageBackendDomain::Spirv:
-            increment_compile_counter("mpsrt_plan_spirv_count");
-            break;
-        case GfxStageBackendDomain::Unknown:
-        default:
-            break;
-    }
-    increment_compile_counter(std::string("mpsrt_stage_kind_") + gfx_mpsrt_stage_kind_name(plan.stage.kind));
-    increment_compile_counter(std::string("mpsrt_builder_symbol_") + plan.stage.builder_symbol + "_count");
     increment_compile_counter("mpsrt_builder_record_count", static_cast<uint64_t>(builder_plan.records.size()));
-    increment_compile_counter("mpsrt_builder_encode_record_count");
-    if (!plan.stage.dispatch_kernel_family.empty()) {
-        increment_compile_counter(std::string("mpsrt_dispatch_family_") +
-                                  plan.stage.dispatch_kernel_family +
-                                  "_count");
-    }
-    if (plan.stage.dispatch_kernel_family_id != 0) {
-        increment_compile_counter(std::string("mpsrt_dispatch_family_id_") +
-                                  std::to_string(plan.stage.dispatch_kernel_family_id) +
-                                  "_count");
-    }
-    if (!plan.stage.dispatch_entry_point.empty()) {
-        increment_compile_counter(std::string("mpsrt_dispatch_entry_") +
-                                  plan.stage.dispatch_entry_point +
-                                  "_count");
-    }
-    if (plan.stage.dispatch_threads_per_threadgroup != 0) {
-        increment_compile_counter(std::string("mpsrt_dispatch_tg_") +
-                                  std::to_string(plan.stage.dispatch_threads_per_threadgroup) +
-                                  "_count");
-    }
-    if (plan.stage.dispatch_flags != GfxMpsrtMslDispatchFlagNone) {
-        increment_compile_counter("mpsrt_dispatch_flags",
-                                  static_cast<uint64_t>(plan.stage.dispatch_flags));
-    }
-    if (plan.stage.dispatch_precompiled_kernel_required) {
-        increment_compile_counter("mpsrt_dispatch_precompiled_kernel_required_count");
-    }
+    uint64_t encode_record_count = 0;
     for (const auto& record : builder_plan.records) {
+        if (record.kind == GfxMpsrtBuilderRecordKind::EncodeStage) {
+            ++encode_record_count;
+        }
         if (record.stage_kind == GfxMpsrtStageKind::MSLDispatch &&
             record.msl_dispatch_desc.kernel_family != 0) {
             increment_compile_counter("mpsrt_msl_dispatch_descriptor_count");
@@ -241,25 +254,39 @@ void record_mpsrt_plan_counters(mlir::ModuleOp module) {
                                       "_count");
         }
     }
-    increment_compile_counter(std::string("mpsrt_storage_") +
-                              gfx_mpsrt_storage_name(plan.stage.output_storage) +
-                              "_count");
-    if (plan.stage.uses_vendor_primitive) {
-        increment_compile_counter("mpsrt_vendor_primitive_stage_count");
-    }
-    if (plan.stage.uses_custom_kernel) {
-        increment_compile_counter("mpsrt_custom_kernel_stage_count");
-    }
+    increment_compile_counter("mpsrt_builder_encode_record_count", encode_record_count);
+
     uint64_t input_bytes = 0;
     uint64_t output_bytes = 0;
-    for (const auto& desc : plan.inputs) {
-        input_bytes += desc.byte_length;
+    uint64_t output_descriptor_count = 0;
+    if (module_plan.multi_stage) {
+        increment_compile_counter("mpsrt_multi_stage_module_plan_count");
+        increment_compile_counter("mpsrt_multi_stage_module_stage_count",
+                                  static_cast<uint64_t>(module_plan.multi_stage_plan.stages.size()));
+        for (const auto& desc : module_plan.multi_stage_plan.inputs) {
+            input_bytes += desc.byte_length;
+        }
+        for (const auto& stage : module_plan.multi_stage_plan.stages) {
+            record_stage_counters(stage.stage);
+            output_descriptor_count += stage.output_descs.size();
+            for (const auto& desc : stage.output_descs) {
+                output_bytes += desc.byte_length;
+            }
+        }
+    } else {
+        const auto& plan = module_plan.stage_plan;
+        record_stage_counters(plan.stage);
+        for (const auto& desc : plan.inputs) {
+            input_bytes += desc.byte_length;
+        }
+        output_descriptor_count = plan.outputs.size();
+        for (const auto& desc : plan.outputs) {
+            output_bytes += desc.byte_length;
+        }
     }
-    for (const auto& desc : plan.outputs) {
-        output_bytes += desc.byte_length;
-    }
-    increment_compile_counter("mpsrt_input_descriptor_count", static_cast<uint64_t>(plan.inputs.size()));
-    increment_compile_counter("mpsrt_output_descriptor_count", static_cast<uint64_t>(plan.outputs.size()));
+    increment_compile_counter("mpsrt_input_descriptor_count",
+                              static_cast<uint64_t>(builder_plan.input_values.size()));
+    increment_compile_counter("mpsrt_output_descriptor_count", output_descriptor_count);
     increment_compile_counter("mpsrt_input_byte_length", input_bytes);
     increment_compile_counter("mpsrt_output_byte_length", output_bytes);
 }
@@ -364,6 +391,113 @@ public:
     std::vector<size_t> offsets;
 };
 
+bool mpsrt_model_has_msl_dispatch(const std::shared_ptr<const metal::mpsrt::MpsrtModel>& model) {
+    if (!model) {
+        return false;
+    }
+    return std::any_of(model->stages.begin(), model->stages.end(), [](const auto& stage) {
+        return stage.kind == GfxMpsrtStageKind::MSLDispatch;
+    });
+}
+
+bool mpsrt_model_has_supported_vendor_stage(const std::shared_ptr<const metal::mpsrt::MpsrtModel>& model) {
+    if (!model) {
+        return false;
+    }
+    return std::any_of(model->stages.begin(), model->stages.end(), [](const auto& stage) {
+        return stage.kind == GfxMpsrtStageKind::MPSGemm;
+    });
+}
+
+bool mpsrt_model_is_executable_by_mpsrt(const std::shared_ptr<const metal::mpsrt::MpsrtModel>& model,
+                                        const std::string& msl_source) {
+    if (!model || model->stages.empty()) {
+        return false;
+    }
+
+    bool has_msl_dispatch = false;
+    for (const auto& stage : model->stages) {
+        switch (stage.kind) {
+            case GfxMpsrtStageKind::MPSGemm:
+                break;
+            case GfxMpsrtStageKind::MSLDispatch:
+                has_msl_dispatch = true;
+                break;
+            default:
+                return false;
+        }
+    }
+    return !has_msl_dispatch || !msl_source.empty();
+}
+
+bool mpsrt_model_should_use_context_execution(const std::shared_ptr<const metal::mpsrt::MpsrtModel>& model,
+                                              const std::string& msl_source) {
+    if (!mpsrt_model_is_executable_by_mpsrt(model, msl_source)) {
+        return false;
+    }
+
+    const bool has_vendor_stage = mpsrt_model_has_supported_vendor_stage(model);
+    const bool has_msl_dispatch = mpsrt_model_has_msl_dispatch(model);
+    if (!has_vendor_stage) {
+        return false;
+    }
+
+    return !has_msl_dispatch || model->stages.size() > 1;
+}
+
+bool build_mpsrt_bindings_from_prepared_state(const metal::mpsrt::MpsrtModel& model,
+                                              const KernelBindingPlan& binding_plan,
+                                              MetalDeviceHandle device,
+                                              const MetalPreparedState& prepared,
+                                              metal::mpsrt::MpsrtTensorBindings& bindings,
+                                              metal::mpsrt::MpsrtBindingBuildResult& binding_result,
+                                              std::vector<id<MTLBuffer>>& transient_buffers,
+                                              std::string& error) {
+    std::vector<metal::mpsrt::MpsrtBoundBuffer> input_buffers;
+    std::vector<metal::mpsrt::MpsrtBoundBuffer> output_buffers;
+    const auto external_buffers = metal::mpsrt::make_mpsrt_bound_buffers(prepared.buffer_ptrs,
+                                                                         prepared.offsets);
+
+    auto transient_allocator = [&](const metal::mpsrt::MpsrtRuntimeTensor& tensor) {
+        const auto byte_length = static_cast<NSUInteger>(tensor.desc.byte_length);
+        if (byte_length == 0) {
+            return metal::mpsrt::MpsrtBoundBuffer{};
+        }
+        id<MTLBuffer> buffer =
+            [static_cast<id<MTLDevice>>(device) newBufferWithLength:byte_length
+                                                            options:MTLResourceStorageModePrivate];
+        transient_buffers.push_back(buffer);
+        return metal::mpsrt::MpsrtBoundBuffer{(__bridge void*)buffer,
+                                              static_cast<size_t>(tensor.desc.byte_offset)};
+    };
+
+    if (external_buffers.size() == model.external_values.size()) {
+        return metal::mpsrt::build_mpsrt_external_tensor_bindings(model,
+                                                                  external_buffers,
+                                                                  transient_allocator,
+                                                                  bindings,
+                                                                  &binding_result,
+                                                                  &error);
+    }
+
+    if (!make_mpsrt_external_io_bindings(model,
+                                         prepared.buffer_ptrs,
+                                         prepared.offsets,
+                                         binding_plan.output_arg_count(),
+                                         input_buffers,
+                                         output_buffers,
+                                         &error)) {
+        return false;
+    }
+    return metal::mpsrt::build_mpsrt_tensor_bindings(model,
+                                                     input_buffers,
+                                                     output_buffers,
+                                                     transient_allocator,
+                                                     bindings,
+                                                     &binding_result,
+                                                     &error);
+}
+
 }  // namespace
 
 MetalCodegenBackend::MetalCodegenBackend(MetalDeviceHandle device)
@@ -388,6 +522,25 @@ std::shared_ptr<ICompiledKernel> MetalCodegenBackend::compile(const KernelSource
     const uint32_t arg_count = source.signature.arg_count;
     const uint32_t output_arg_count = resolve_kernel_output_arg_count(source);
     auto mpsrt_model = build_metal_mpsrt_runtime_model(source.module, arg_count, output_arg_count);
+    const uintptr_t device_key = reinterpret_cast<uintptr_t>(m_device);
+    auto shared_prepared_cache = acquire_shared_prepared_binding_cache(GpuBackend::Metal, device_key, arg_count);
+    auto binding_schema = m_reuse_context->acquire_binding_schema(arg_count);
+    const bool vendor_only_mpsrt_model = mpsrt_model &&
+                                         mpsrt_model_has_supported_vendor_stage(mpsrt_model) &&
+                                         !mpsrt_model_has_msl_dispatch(mpsrt_model);
+    if (vendor_only_mpsrt_model && source.msl_source.empty() && !source.msl_generator) {
+        if (current_compile_trace()) {
+            increment_compile_counter("metal_mpsrt_vendor_only_kernel_count");
+        }
+        auto binding_plan = std::make_shared<KernelBindingPlan>(arg_count, output_arg_count);
+        auto kernel = std::make_shared<MetalCompiledKernel>(m_device,
+                                                            nullptr,
+                                                            std::move(binding_plan),
+                                                            shared_prepared_cache,
+                                                            binding_schema);
+        kernel->set_mpsrt_model(std::move(mpsrt_model));
+        return kernel;
+    }
     if (can_cache_resolved_msl) {
         const auto cache_key_start = current_compile_trace() ? std::chrono::steady_clock::now()
                                                              : std::chrono::steady_clock::time_point{};
@@ -459,9 +612,6 @@ std::shared_ptr<ICompiledKernel> MetalCodegenBackend::compile(const KernelSource
     OPENVINO_ASSERT(!msl.empty(), "MetalCodegenBackend: missing MSL source");
     OPENVINO_ASSERT(!source.entry_point.empty(), "MetalCodegenBackend: missing entry point");
 
-    const uintptr_t device_key = reinterpret_cast<uintptr_t>(m_device);
-    auto shared_prepared_cache = acquire_shared_prepared_binding_cache(GpuBackend::Metal, device_key, arg_count);
-    auto binding_schema = m_reuse_context->acquire_binding_schema(arg_count);
     auto kernel = lookup_or_compile_kernel(GpuBackend::Metal,
                                            device_key,
                                            msl.data(),
@@ -502,8 +652,12 @@ std::shared_ptr<ICompiledKernel> MetalCodegenBackend::compile(const KernelSource
                                                                                             shared_prepared_cache,
                                                                                             binding_schema);
                                            });
+    const bool compiled_model_has_msl_dispatch = mpsrt_model_has_msl_dispatch(mpsrt_model);
     if (auto metal_kernel = std::dynamic_pointer_cast<MetalCompiledKernel>(kernel)) {
         metal_kernel->set_mpsrt_model(std::move(mpsrt_model));
+        if (compiled_model_has_msl_dispatch) {
+            metal_kernel->set_mpsrt_msl_source(msl);
+        }
     }
     return kernel;
 }
@@ -537,6 +691,8 @@ std::shared_ptr<ICompiledKernel> MetalCompiledKernel::fork() const {
                                                         prepared_binding_cache(),
                                                         m_binding_schema);
     kernel->set_mpsrt_model(m_mpsrt_model);
+    kernel->set_mpsrt_msl_source(m_mpsrt_msl_source);
+    kernel->m_mpsrt_context = m_mpsrt_context;
     return kernel;
 }
 
@@ -546,6 +702,10 @@ const void* MetalCompiledKernel::shared_binding_schema_identity() const {
 
 void MetalCompiledKernel::set_mpsrt_model(std::shared_ptr<const metal::mpsrt::MpsrtModel> model) {
     m_mpsrt_model = std::move(model);
+}
+
+void MetalCompiledKernel::set_mpsrt_msl_source(std::string msl_source) {
+    m_mpsrt_msl_source = std::move(msl_source);
 }
 
 const metal::mpsrt::MpsrtModel* MetalCompiledKernel::mpsrt_model() const {
@@ -567,7 +727,6 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
                                   const KernelExecutionHooks* hooks) {
     id<MTLCommandBuffer> cb = static_cast<id<MTLCommandBuffer>>(command_buffer);
     OPENVINO_ASSERT(cb, "MetalCompiledKernel: command buffer is null");
-    OPENVINO_ASSERT(m_pipeline, "MetalCompiledKernel: pipeline is null");
     auto prepared_base = get_or_create_prepared_bindings(args, "MetalCompiledKernel");
     const bool trace_bindings = hooks && (hooks->on_segment || hooks->on_counter);
     const auto binding_start = trace_bindings ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
@@ -602,61 +761,75 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
         hooks->on_counter("prepared_binding_cache_hit_count", 1);
     }
 
+    if (mpsrt_model_should_use_context_execution(m_mpsrt_model, m_mpsrt_msl_source)) {
+        std::string mpsrt_error;
+        std::vector<id<MTLBuffer>> transient_buffers;
+        metal::mpsrt::MpsrtTensorBindings bindings;
+        metal::mpsrt::MpsrtBindingBuildResult binding_result;
+        const bool bindings_built =
+            build_mpsrt_bindings_from_prepared_state(*m_mpsrt_model,
+                                                     *binding_plan(),
+                                                     m_device,
+                                                     *prepared,
+                                                     bindings,
+                                                     binding_result,
+                                                     transient_buffers,
+                                                     mpsrt_error);
+        OPENVINO_ASSERT(bindings_built, mpsrt_error);
+        if (hooks && hooks->on_counter) {
+            hooks->on_counter("mpsrt_binding_external_input_count",
+                              static_cast<uint64_t>(binding_result.external_inputs_bound));
+            hooks->on_counter("mpsrt_binding_external_output_count",
+                              static_cast<uint64_t>(binding_result.external_outputs_bound));
+            hooks->on_counter("mpsrt_binding_transient_alloc_count",
+                              static_cast<uint64_t>(binding_result.transient_buffers_allocated));
+        }
+
+        if (!m_mpsrt_context) {
+            m_mpsrt_context = std::make_shared<metal::mpsrt::MpsrtContext>(static_cast<id<MTLDevice>>(m_device));
+        }
+        metal::mpsrt::MpsrtPreparedModel prepared_model;
+        OPENVINO_ASSERT(m_mpsrt_context->prepare_model(*m_mpsrt_model,
+                                                       m_mpsrt_msl_source,
+                                                       prepared_model,
+                                                       &mpsrt_error),
+                        mpsrt_error);
+        std::vector<KernelDispatch> stage_dispatches(m_mpsrt_model->stages.size(), dispatch);
+        metal::mpsrt::MpsrtRequest request;
+        metal::mpsrt::MpsrtModelEncodeResult encode_result;
+        const bool encoded =
+            request.encode_prepared_model(command_buffer,
+                                          *m_mpsrt_model,
+                                          prepared_model,
+                                          stage_dispatches,
+                                          bindings,
+                                          hooks,
+                                          &encode_result,
+                                          &mpsrt_error);
+        OPENVINO_ASSERT(encoded, mpsrt_error);
+        return;
+    }
+
     if (m_mpsrt_model && m_mpsrt_model->stages.size() == 1 &&
         m_mpsrt_model->stages.front().kind == GfxMpsrtStageKind::MSLDispatch) {
+        OPENVINO_ASSERT(m_pipeline, "MetalCompiledKernel: MSL MPSRT pipeline is null");
         const auto prepared_mpsrt =
             metal::mpsrt::make_prepared_msl_dispatch_from_pipeline(m_mpsrt_model->stages.front(),
                                                                     0,
                                                                     static_cast<id<MTLComputePipelineState>>(m_pipeline));
         std::string mpsrt_error;
-        std::vector<metal::mpsrt::MpsrtBoundBuffer> input_buffers;
-        std::vector<metal::mpsrt::MpsrtBoundBuffer> output_buffers;
-        const auto external_buffers = metal::mpsrt::make_mpsrt_bound_buffers(prepared->buffer_ptrs,
-                                                                             prepared->offsets);
-
         std::vector<id<MTLBuffer>> transient_buffers;
-        auto transient_allocator = [&](const metal::mpsrt::MpsrtRuntimeTensor& tensor) {
-            const auto byte_length = static_cast<NSUInteger>(tensor.desc.byte_length);
-            if (byte_length == 0) {
-                return metal::mpsrt::MpsrtBoundBuffer{};
-            }
-            id<MTLBuffer> buffer =
-                [static_cast<id<MTLDevice>>(m_device) newBufferWithLength:byte_length
-                                                                  options:MTLResourceStorageModePrivate];
-            transient_buffers.push_back(buffer);
-            return metal::mpsrt::MpsrtBoundBuffer{(__bridge void*)buffer,
-                                                  static_cast<size_t>(tensor.desc.byte_offset)};
-        };
         metal::mpsrt::MpsrtTensorBindings bindings;
         metal::mpsrt::MpsrtBindingBuildResult binding_result;
-        bool bindings_built = false;
-        if (external_buffers.size() == m_mpsrt_model->external_values.size()) {
-            bindings_built =
-                metal::mpsrt::build_mpsrt_external_tensor_bindings(*m_mpsrt_model,
-                                                                   external_buffers,
-                                                                   transient_allocator,
-                                                                   bindings,
-                                                                   &binding_result,
-                                                                   &mpsrt_error);
-        } else {
-            const bool external_bound =
-                make_mpsrt_external_io_bindings(*m_mpsrt_model,
-                                                prepared->buffer_ptrs,
-                                                prepared->offsets,
-                                                binding_plan()->output_arg_count(),
-                                                input_buffers,
-                                                output_buffers,
-                                                &mpsrt_error);
-            OPENVINO_ASSERT(external_bound, mpsrt_error);
-            bindings_built =
-                metal::mpsrt::build_mpsrt_tensor_bindings(*m_mpsrt_model,
-                                                          input_buffers,
-                                                          output_buffers,
-                                                          transient_allocator,
-                                                          bindings,
-                                                          &binding_result,
-                                                          &mpsrt_error);
-        }
+        const bool bindings_built =
+            build_mpsrt_bindings_from_prepared_state(*m_mpsrt_model,
+                                                     *binding_plan(),
+                                                     m_device,
+                                                     *prepared,
+                                                     bindings,
+                                                     binding_result,
+                                                     transient_buffers,
+                                                     mpsrt_error);
         OPENVINO_ASSERT(bindings_built, mpsrt_error);
         if (hooks && hooks->on_counter) {
             hooks->on_counter("mpsrt_binding_external_input_count",
@@ -685,6 +858,7 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
         return;
     }
 
+    OPENVINO_ASSERT(m_pipeline, "MetalCompiledKernel: pipeline is null");
     const bool trace_encoder_setup = hooks && (hooks->on_segment || hooks->on_counter);
     const auto encoder_setup_start =
         trace_encoder_setup ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};

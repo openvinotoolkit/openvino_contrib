@@ -53,6 +53,12 @@ struct MpsrtModel {
     std::vector<GfxMpsrtExternalBufferRole> external_buffer_roles;
 };
 
+MpsrtRuntimeStage make_mpsrt_runtime_stage_from_desc(const GfxMpsrtStageDesc& desc,
+                                                     const std::string& stage_record_key,
+                                                     const std::vector<GfxMpsrtValue>& inputs,
+                                                     const std::vector<GfxMpsrtValue>& outputs,
+                                                     const std::vector<GfxMpsrtTensorAbiDesc>& output_descs);
+
 bool build_mpsrt_model_from_builder_plan(const GfxMpsrtBuilderPlan& plan,
                                          MpsrtModel& model,
                                          std::string* error = nullptr);

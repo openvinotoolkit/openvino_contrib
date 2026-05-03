@@ -78,11 +78,13 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/gpu_types.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_codegen_backend.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_dispatch.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_manifest.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_plan.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_spec.hpp
     ${_gfx_src_dir}/runtime/gfx_logger.hpp
     ${_gfx_src_dir}/runtime/gfx_mpsrt_abi.hpp
     ${_gfx_src_dir}/runtime/gfx_mpsrt_builder_plan.hpp
+    ${_gfx_src_dir}/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp
     ${_gfx_src_dir}/runtime/gfx_mpsrt_plan.hpp
     ${_gfx_src_dir}/runtime/gfx_msl_kernel_manifest.hpp
     ${_gfx_src_dir}/runtime/gfx_op_utils.hpp
@@ -118,7 +120,10 @@ set(GFX_RUNTIME_MLIR_HEADERS
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.hpp
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_metadata.hpp
     ${_gfx_src_dir}/mlir/gfx_mlir_type_utils.hpp
+    ${_gfx_src_dir}/mlir/gfx_mpsrt_conv_metadata.hpp
+    ${_gfx_src_dir}/mlir/gfx_mpsrt_matmul_metadata.hpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_metadata.hpp
+    ${_gfx_src_dir}/mlir/gfx_mpsrt_source_plan.hpp
     ${_gfx_src_dir}/mlir/gfx_mlir_debug.hpp
     ${_gfx_src_dir}/mlir/mlir_kernel_plan_utils.hpp
     ${_gfx_src_dir}/mlir/mlir_stage.hpp
