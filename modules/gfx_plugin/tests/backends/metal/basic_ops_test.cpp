@@ -17,6 +17,7 @@
 #include "openvino/op/multiply.hpp"
 #include "openvino/op/maximum.hpp"
 #include "openvino/op/convolution.hpp"
+#include "openvino/op/group_conv.hpp"
 #include "openvino/op/max_pool.hpp"
 #include "openvino/op/avg_pool.hpp"
 #include "openvino/op/matmul.hpp"
@@ -1597,6 +1598,68 @@ TEST(GfxBasicOps, Conv2D) {
     metal_req.infer();
     auto metal_out2 = get_output_or_skip(metal_req);
     expect_or_skip_allclose(cpu_out2, metal_out2, 1e-4f, 0.f, "GFX conv2d delta not yet accurate in pure mode");
+    });
+}
+
+TEST(GfxBasicOps, DepthwiseGroupConv2D) {
+    gfx_try_catch_fail([&]() {
+    ov::Core core;
+    ASSERT_TRUE(register_gfx_plugin(core)) << gfx_skip_reason;
+
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 5, 5});
+    auto weights = std::make_shared<ov::op::v0::Constant>(
+        ov::element::f32,
+        ov::Shape{4, 1, 1, 3, 3},
+        std::vector<float>{
+            0.f, 1.f, 0.f, 1.f, -4.f, 1.f, 0.f, 1.f, 0.f,
+            1.f, 0.f, -1.f, 2.f, 0.f, -2.f, 1.f, 0.f, -1.f,
+            0.25f, 0.5f, 0.25f, 0.5f, 1.f, 0.5f, 0.25f, 0.5f, 0.25f,
+            -1.f, -0.5f, 0.f, -0.5f, 2.f, 0.5f, 0.f, 0.5f, 1.f});
+
+    auto gconv = std::make_shared<ov::op::v1::GroupConvolution>(param,
+                                                                weights,
+                                                                ov::Strides{1, 1},
+                                                                ov::CoordinateDiff{1, 1},
+                                                                ov::CoordinateDiff{1, 1},
+                                                                ov::Strides{1, 1});
+    auto res = std::make_shared<ov::op::v0::Result>(gconv);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{param},
+                                             "depthwise_group_conv2d_model");
+
+    auto cpu_cm = core.compile_model(model, reference_device(core));
+    auto metal_cm = core.compile_model(model, "GFX");
+
+    std::vector<std::vector<float>> patterns;
+    patterns.emplace_back(1 * 4 * 5 * 5);
+    for (size_t i = 0; i < patterns.back().size(); ++i) {
+        patterns.back()[i] = static_cast<float>(static_cast<int>(i % 11) - 5) * 0.25f;
+    }
+    patterns.emplace_back(1 * 4 * 5 * 5, 0.f);
+    patterns.back()[12] = 1.f;
+    patterns.back()[25 + 6] = -2.f;
+    patterns.back()[50 + 18] = 0.5f;
+    patterns.back()[75 + 24] = 3.f;
+
+    auto cpu_req = cpu_cm.create_infer_request();
+    auto metal_req = metal_cm.create_infer_request();
+    for (const auto& vals : patterns) {
+        ov::Tensor input{ov::element::f32, {1, 4, 5, 5}};
+        std::copy(vals.begin(), vals.end(), input.data<float>());
+
+        cpu_req.set_input_tensor(input);
+        cpu_req.infer();
+        auto cpu_out = cpu_req.get_output_tensor();
+
+        metal_req.set_input_tensor(input);
+        metal_req.infer();
+        auto metal_out = get_output_or_skip(metal_req);
+
+        expect_shape_type(cpu_out, {1, 4, 5, 5});
+        expect_shape_type(metal_out, {1, 4, 5, 5});
+        expect_finite(metal_out);
+        expect_or_skip_allclose(cpu_out, metal_out, 1e-4f, 0.f, "GFX depthwise group conv mismatch");
+    }
     });
 }
 

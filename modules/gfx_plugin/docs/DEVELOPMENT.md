@@ -125,9 +125,13 @@ If the behavior depends on route or scheduling selection, also read:
 - `src/runtime/gfx_mpsrt_abi.hpp`
 - `src/runtime/gfx_mpsrt_plan.hpp`
 - `src/runtime/gfx_mpsrt_builder_plan.hpp`
+- `src/runtime/gfx_mpsrt_storage_bridge.hpp`
 - `src/kernel_ir/gfx_kernel_manifest.hpp`
 - `src/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp`
 - `src/runtime/gfx_msl_kernel_manifest.*`
+- `src/mlir/gfx_mpsrt_runtime_abi_pipeline.*`
+- `src/mlir/gfx_mpsrt_source_plan.hpp`
+- `src/mlir/gfx_mpsrt_const_tensor_sources.hpp`
 
 `tests/unit/gfx_parallelism_test.cpp` now covers Broadcom-oriented matmul
 selection plus dense stride-1, huge-spatial, and ultra-dense convolution
@@ -143,6 +147,7 @@ The current planning path is no longer just backend-wide. It includes family-spe
 - explicit convolution dispatch attrs forwarded into MLIR lowering
 - Metal placement decisions between Apple MPS image or matrix primitives and Apple MSL buffer dispatch
 - manifest-backed execution-kind selection between vendor primitives and custom kernels
+- generated MPSRT runtime-ABI plans and storage bridges that must stay aligned with request-time binding and stage reconstruction
 
 For current convolution work, there are now two important lowering details to keep in mind:
 - full interior tiles in conv parallel lowering can skip lane-level bounds guards on the fast path
@@ -220,17 +225,29 @@ For Metal placement or codegen work, also keep the MPSRT boundary coherent. The 
 If the change touches manifest-backed Metal lowering, also inspect:
 - `src/kernel_ir/gfx_kernel_manifest.hpp`
 - `src/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp`
+- `src/runtime/gfx_mpsrt_storage_bridge.hpp`
+- `src/mlir/gfx_mpsrt_runtime_abi_pipeline.*`
 - `src/mlir/gfx_mpsrt_source_plan.hpp`
+- `src/mlir/gfx_mpsrt_const_tensor_sources.hpp`
 
 The current MPSRT path can now represent:
 - vendor-only stages such as `MPSGemm`
 - custom-kernel-only MSL dispatch stages
 - hybrid multi-stage plans such as `MPSGemm + MSL epilogue`
+- vendor-only Conv2D, GroupConv, Pool2D, Softmax, and TopK stages when Apple MPS placement is selected
 
 So do not assume one stage equals one dispatch source anymore. For MatMul specifically, the Metal path may choose:
 - plain vendor `MPSGemm`
 - vendor `MPSGemm` plus one manifest-driven MSL epilogue when bias or a supported activation is fused
 - fallback custom MSL kernel compilation when the MPSRT mixed plan is not applicable
+
+When touching the Metal MPSRT boundary, keep four layers aligned:
+- the manifest and stage-family contract in `gfx_kernel_manifest.hpp`
+- the generated MLIR runtime-ABI call plan in `gfx_mpsrt_runtime_abi_pipeline.*`
+- storage-bridge descriptors in `gfx_mpsrt_storage_bridge.hpp`
+- request-time execution and validation in `src/backends/metal/runtime/mpsrt/*`
+
+The current request path can no longer assume one storage class for all external bindings. Image-backed Apple MPS stages may require explicit `buffer_to_image` or `image_to_buffer` bridges, and those bridges are part of the serialized builder plan and reconstructed runtime model.
 
 For layout-cleanup work around DFL-style postprocessing tails, the current rewrite target is a value-preserving `Softmax -> MatMul -> Reshape/Transpose` form. Do not describe the older synthetic 1x1 convolution rewrite as the active implementation.
 

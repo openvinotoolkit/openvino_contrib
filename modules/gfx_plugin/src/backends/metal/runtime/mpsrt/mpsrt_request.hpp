@@ -23,6 +23,7 @@ namespace mpsrt {
 struct MpsrtBoundBuffer {
     void* buffer = nullptr;
     size_t offset = 0;
+    void* texture = nullptr;
 };
 
 struct MpsrtMslEncodeResult {
@@ -41,10 +42,28 @@ struct MpsrtMpsConv2DEncodeResult {
     size_t kernel_encodes = 0;
 };
 
+struct MpsrtMpsPool2DEncodeResult {
+    size_t bound_resources = 0;
+    size_t kernel_encodes = 0;
+};
+
+struct MpsrtMpsSoftmaxEncodeResult {
+    size_t bound_buffers = 0;
+    size_t kernel_encodes = 0;
+};
+
+struct MpsrtMpsTopKEncodeResult {
+    size_t bound_buffers = 0;
+    size_t kernel_encodes = 0;
+};
+
 struct MpsrtModelEncodeResult {
     size_t encoded_msl_dispatches = 0;
     size_t encoded_mps_gemm_stages = 0;
     size_t encoded_mps_conv2d_stages = 0;
+    size_t encoded_mps_pool2d_stages = 0;
+    size_t encoded_mps_softmax_stages = 0;
+    size_t encoded_mps_topk_stages = 0;
     size_t skipped_non_msl_stages = 0;
     size_t bound_buffers = 0;
 };
@@ -58,6 +77,7 @@ struct MpsrtBindingBuildResult {
     size_t external_inputs_bound = 0;
     size_t external_outputs_bound = 0;
     size_t transient_buffers_allocated = 0;
+    size_t transient_images_allocated = 0;
     size_t const_tensors_skipped = 0;
 };
 
@@ -78,6 +98,7 @@ private:
 
 std::vector<MpsrtBoundBuffer> make_mpsrt_bound_buffers(const std::vector<void*>& buffers,
                                                        const std::vector<size_t>& offsets);
+MpsrtBoundBuffer make_mpsrt_bound_image(void* texture);
 
 bool build_mpsrt_tensor_bindings(const MpsrtModel& model,
                                  const std::vector<MpsrtBoundBuffer>& input_buffers,
@@ -129,6 +150,33 @@ public:
                            const KernelExecutionHooks* hooks = nullptr,
                            MpsrtMpsConv2DEncodeResult* result = nullptr,
                            std::string* error = nullptr) const;
+
+    bool encode_mps_pool2d(GpuCommandBufferHandle command_buffer,
+                           const MpsrtModel& model,
+                           const MpsrtRuntimeStage& stage,
+                           const MpsrtPreparedMpsPool2D& prepared,
+                           const MpsrtTensorBindings& bindings,
+                           const KernelExecutionHooks* hooks = nullptr,
+                           MpsrtMpsPool2DEncodeResult* result = nullptr,
+                           std::string* error = nullptr) const;
+
+    bool encode_mps_softmax(GpuCommandBufferHandle command_buffer,
+                            const MpsrtModel& model,
+                            const MpsrtRuntimeStage& stage,
+                            const MpsrtPreparedMpsSoftmax& prepared,
+                            const MpsrtTensorBindings& bindings,
+                            const KernelExecutionHooks* hooks = nullptr,
+                            MpsrtMpsSoftmaxEncodeResult* result = nullptr,
+                            std::string* error = nullptr) const;
+
+    bool encode_mps_topk(GpuCommandBufferHandle command_buffer,
+                         const MpsrtModel& model,
+                         const MpsrtRuntimeStage& stage,
+                         const MpsrtPreparedMpsTopK& prepared,
+                         const MpsrtTensorBindings& bindings,
+                         const KernelExecutionHooks* hooks = nullptr,
+                         MpsrtMpsTopKEncodeResult* result = nullptr,
+                         std::string* error = nullptr) const;
 
     bool encode_prepared_model(GpuCommandBufferHandle command_buffer,
                                const MpsrtModel& model,

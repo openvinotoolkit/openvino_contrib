@@ -30,6 +30,8 @@ GfxKernelStageFamily gfx_msl_stage_family_from_kernel_family(GfxMslKernelFamily 
             return GfxKernelStageFamily::Reduction;
         case GfxMslKernelFamily::Conv2DDirectOrIm2col:
             return GfxKernelStageFamily::Convolution;
+        case GfxMslKernelFamily::MatMulBuffer:
+            return GfxKernelStageFamily::Gemm;
         case GfxMslKernelFamily::Unknown:
         default:
             return GfxKernelStageFamily::Unknown;
@@ -60,6 +62,8 @@ const char* gfx_msl_kernel_family_name(GfxMslKernelFamily family) {
             return "reduction_buffer";
         case GfxMslKernelFamily::Conv2DDirectOrIm2col:
             return "conv2d_direct_or_im2col";
+        case GfxMslKernelFamily::MatMulBuffer:
+            return "matmul_buffer";
         case GfxMslKernelFamily::Unknown:
         default:
             return "unknown";
@@ -86,6 +90,8 @@ GfxMslExternalBufferAbiSpec gfx_msl_external_buffer_abi_spec(GfxMslKernelFamily 
         case GfxMslKernelFamily::ReductionBuffer:
             return make_gfx_kernel_leading_io_params_abi(/*input_count=*/1, /*output_count=*/1);
         case GfxMslKernelFamily::Conv2DDirectOrIm2col:
+            return make_gfx_kernel_tail_outputs_abi();
+        case GfxMslKernelFamily::MatMulBuffer:
             return make_gfx_kernel_tail_outputs_abi();
         default:
             return spec;
@@ -273,6 +279,10 @@ GfxMslKernelFamily classify_msl_kernel_family(std::string_view stage_type,
     if (stage_type == "Convolution" ||
         entry_point == "conv2d_kernel") {
         return GfxMslKernelFamily::Conv2DDirectOrIm2col;
+    }
+    if (stage_type == "MatMul" ||
+        entry_point == "matmul_kernel") {
+        return GfxMslKernelFamily::MatMulBuffer;
     }
     if (stage_type == "ReduceSum" ||
         stage_type == "ReduceMean" ||

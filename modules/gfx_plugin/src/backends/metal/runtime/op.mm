@@ -6,12 +6,11 @@
 #include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "backends/metal/runtime/profiling/profiler.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
+#include "mlir/gfx_mpsrt_const_tensor_sources.hpp"
 #include "mlir/gfx_mlir_kernel_metadata.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/mlir_kernel_plan_utils.hpp"
 #include "mlir/msl_codegen.hpp"
-#include "runtime/gfx_msl_kernel_manifest.hpp"
-#include "runtime/gfx_stage_policy.hpp"
 
 #include <string>
 
@@ -37,45 +36,6 @@ inline void update_kernel_inputs_if_needed(std::vector<size_t>& dst, std::vector
     }
 }
 
-inline void configure_msl_source_for_spec(KernelSource& source,
-                                          const KernelSpec& spec,
-                                          const GpuBufferManager* buffer_manager,
-                                          const std::string& entry_point) {
-    if (!source.module || !spec.node()) {
-        return;
-    }
-
-    const auto stage_type = spec.type();
-    const auto msl_kernel_plan = make_msl_kernel_plan(stage_type, entry_point);
-    if (!msl_kernel_plan.valid) {
-        return;
-    }
-
-    auto plan = select_stage_optimization_plan(buffer_manager,
-                                               GpuBackend::Metal,
-                                               stage_type,
-                                               spec.node(),
-                                               spec.node()->get_output_element_type(0),
-                                               /*has_bias=*/false,
-                                               /*has_activation=*/false,
-                                               /*has_batchnorm=*/false,
-                                               GfxStageRuntimeTraits{});
-    if (plan.placement.domain != GfxStageBackendDomain::AppleMsl) {
-        plan.placement.domain = GfxStageBackendDomain::AppleMsl;
-        plan.placement.storage = GfxStageStorageKind::Buffer;
-        plan.placement.uses_vendor_primitive = false;
-        plan.placement.uses_custom_kernel = true;
-        plan.placement.specialization_key = std::string("apple_msl:buffer:") + stage_type;
-    }
-
-    annotate_msl_module_with_stage_plan(source.module, plan, stage_type);
-    auto source_plan = configure_msl_kernel_source_plan(source, stage_type);
-    if (source_plan.valid()) {
-        source = std::move(source_plan.source);
-        return;
-    }
-    configure_msl_kernel_source_for_plan(source, stage_type);
-}
 }  // namespace
 
 MetalOp::MetalOp(std::string name,
@@ -176,7 +136,8 @@ std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(MetalCodegenBackend
     auto& build_info = plan_ctx.build_info;
     update_kernel_inputs_if_needed(m_kernel_inputs, build_info.mapping.mapping.kernel_inputs);
     auto source = build_info.plan.to_source_with_msl(std::move(msl_source));
-    configure_msl_source_for_spec(source, spec, buffer_manager(), entry_point);
+    configure_msl_kernel_source_for_spec(source, spec, buffer_manager(), entry_point);
+    gfx_attach_mpsrt_conv_const_tensors(source, spec.node());
     return backend.compile(source, log);
 }
 
@@ -201,7 +162,8 @@ std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(
     auto& build_info = plan_ctx.build_info;
     update_kernel_inputs_if_needed(m_kernel_inputs, build_info.mapping.mapping.kernel_inputs);
     auto source = build_info.plan.to_source_with_msl_generator(std::move(msl_generator));
-    configure_msl_source_for_spec(source, spec, buffer_manager(), entry_point);
+    configure_msl_kernel_source_for_spec(source, spec, buffer_manager(), entry_point);
+    gfx_attach_mpsrt_conv_const_tensors(source, spec.node());
     return backend.compile(source, log);
 }
 

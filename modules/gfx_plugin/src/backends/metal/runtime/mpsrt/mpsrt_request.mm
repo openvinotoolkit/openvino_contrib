@@ -55,6 +55,36 @@ const MpsrtPreparedMpsConv2D* find_prepared_mps_conv2d(const MpsrtPreparedModel&
     return nullptr;
 }
 
+const MpsrtPreparedMpsPool2D* find_prepared_mps_pool2d(const MpsrtPreparedModel& prepared_model,
+                                                       size_t stage_index) {
+    for (const auto& pool : prepared_model.mps_pool2d_stages) {
+        if (pool.stage_index == stage_index) {
+            return &pool;
+        }
+    }
+    return nullptr;
+}
+
+const MpsrtPreparedMpsSoftmax* find_prepared_mps_softmax(const MpsrtPreparedModel& prepared_model,
+                                                         size_t stage_index) {
+    for (const auto& softmax : prepared_model.mps_softmax_stages) {
+        if (softmax.stage_index == stage_index) {
+            return &softmax;
+        }
+    }
+    return nullptr;
+}
+
+const MpsrtPreparedMpsTopK* find_prepared_mps_topk(const MpsrtPreparedModel& prepared_model,
+                                                   size_t stage_index) {
+    for (const auto& topk : prepared_model.mps_topk_stages) {
+        if (topk.stage_index == stage_index) {
+            return &topk;
+        }
+    }
+    return nullptr;
+}
+
 bool is_mps_conv2d_stage(GfxMpsrtStageKind kind) {
     return kind == GfxMpsrtStageKind::MPSConv2D ||
            kind == GfxMpsrtStageKind::MPSGroupConv2D;
@@ -76,6 +106,52 @@ const MpsrtRuntimeTensor* find_tensor(const MpsrtModel& model, GfxMpsrtValue val
         }
     }
     return nullptr;
+}
+
+bool tensor_requires_image_binding(const GfxMpsrtTensorAbiDesc& desc) {
+    return desc.storage == static_cast<uint32_t>(GfxMpsrtStorage::Image);
+}
+
+bool validate_bound_resource(const GfxMpsrtTensorAbiDesc& desc,
+                             const MpsrtBoundBuffer& bound,
+                             const std::string& name,
+                             std::string* error) {
+    if (tensor_requires_image_binding(desc)) {
+        if (!bound.texture) {
+            return fail(error, "GFX MPSRT: " + name + " image texture binding is null");
+        }
+        if (bound.offset != 0) {
+            return fail(error, "GFX MPSRT: " + name + " image binding must have zero byte offset");
+        }
+        return true;
+    }
+    if (!bound.buffer) {
+        return fail(error, "GFX MPSRT: " + name + " buffer binding is null");
+    }
+    return true;
+}
+
+bool validate_bound_value_resource(const MpsrtModel& model,
+                                   GfxMpsrtValue value,
+                                   const MpsrtBoundBuffer& bound,
+                                   const std::string& name,
+                                   std::string* error) {
+    const auto* tensor = find_tensor(model, value);
+    if (!tensor) {
+        return fail(error, "GFX MPSRT: " + name + " tensor descriptor is missing");
+    }
+    return validate_bound_resource(tensor->desc, bound, name, error);
+}
+
+void count_transient_resource(const GfxMpsrtTensorAbiDesc& desc, MpsrtBindingBuildResult* result) {
+    if (!result) {
+        return;
+    }
+    if (tensor_requires_image_binding(desc)) {
+        ++result->transient_images_allocated;
+    } else {
+        ++result->transient_buffers_allocated;
+    }
 }
 
 MPSDataType mps_data_type_from_gfx(uint32_t dtype) {
@@ -143,6 +219,42 @@ bool make_mps_matrix_descriptor(const GfxMpsrtTensorAbiDesc& desc,
     return true;
 }
 
+bool make_mps_topk_index_matrix_descriptor(const GfxMpsrtTensorAbiDesc& desc,
+                                           MPSMatrixDescriptor*& out,
+                                           const char* name,
+                                           std::string* error) {
+    out = nil;
+    if (desc.storage != static_cast<uint32_t>(GfxMpsrtStorage::Matrix)) {
+        return fail(error, std::string("GFX MPSRT: MPS TopK ") + name + " tensor is not matrix storage");
+    }
+    if (desc.matrix_rows == 0 || desc.matrix_columns == 0 || desc.matrix_row_bytes == 0) {
+        return fail(error, std::string("GFX MPSRT: MPS TopK ") + name + " matrix descriptor is incomplete");
+    }
+    if (desc.dtype != static_cast<uint32_t>(GfxMpsrtDType::I32) &&
+        desc.dtype != static_cast<uint32_t>(GfxMpsrtDType::U32)) {
+        return fail(error, std::string("GFX MPSRT: MPS TopK ") + name + " dtype must be i32/u32");
+    }
+    const uint32_t matrix_count = matrix_count_or_one(desc);
+    const NSUInteger matrix_bytes = matrix_bytes_for_desc(desc);
+    if (matrix_count > 1) {
+        out = [MPSMatrixDescriptor matrixDescriptorWithRows:desc.matrix_rows
+                                                    columns:desc.matrix_columns
+                                                   matrices:matrix_count
+                                                   rowBytes:desc.matrix_row_bytes
+                                                matrixBytes:matrix_bytes
+                                                   dataType:MPSDataTypeUInt32];
+    } else {
+        out = [MPSMatrixDescriptor matrixDescriptorWithRows:desc.matrix_rows
+                                                    columns:desc.matrix_columns
+                                                   rowBytes:desc.matrix_row_bytes
+                                                   dataType:MPSDataTypeUInt32];
+    }
+    if (!out) {
+        return fail(error, std::string("GFX MPSRT: failed to create MPS TopK ") + name + " descriptor");
+    }
+    return true;
+}
+
 bool validate_mps_gemm_batch_contract(const GfxMpsrtTensorAbiDesc& lhs,
                                       const GfxMpsrtTensorAbiDesc& rhs,
                                       const GfxMpsrtTensorAbiDesc& output,
@@ -170,6 +282,106 @@ bool lookup_bound_buffer(const MpsrtTensorBindings& bindings,
         return fail(error, std::string("GFX MPSRT: missing tensor binding for MPS GEMM ") + name);
     }
     out = *bound;
+    return true;
+}
+
+bool lookup_bound_image(const MpsrtTensorBindings& bindings,
+                        GfxMpsrtValue value,
+                        const char* name,
+                        MpsrtBoundBuffer& out,
+                        std::string* error) {
+    const auto* bound = bindings.lookup(value);
+    if (!bound || !bound->texture) {
+        return fail(error, std::string("GFX MPSRT: missing tensor binding for MPS Conv2D ") + name + " image");
+    }
+    out = *bound;
+    return true;
+}
+
+MTLPixelFormat mps_image_pixel_format_from_gfx(uint32_t dtype) {
+    switch (static_cast<GfxMpsrtDType>(dtype)) {
+        case GfxMpsrtDType::F16:
+            return MTLPixelFormatRGBA16Float;
+        case GfxMpsrtDType::F32:
+            return MTLPixelFormatRGBA32Float;
+        default:
+            return MTLPixelFormatInvalid;
+    }
+}
+
+uint32_t image_slice_count(uint32_t feature_channels) {
+    return (feature_channels + 3) / 4;
+}
+
+uint32_t conv_kernel_height(const GfxMpsrtTensorAbiDesc& weights) {
+    return weights.rank == 5 ? weights.dims[3] : weights.dims[2];
+}
+
+uint32_t conv_kernel_width(const GfxMpsrtTensorAbiDesc& weights) {
+    return weights.rank == 5 ? weights.dims[4] : weights.dims[3];
+}
+
+NSInteger mps_conv_offset(uint32_t kernel, uint32_t dilation, uint32_t pad_before) {
+    const uint32_t kernel_extent = kernel == 0 ? 1 : kernel;
+    const uint32_t dilation_extent = dilation == 0 ? 1 : dilation;
+    const uint32_t effective_kernel = kernel_extent + (kernel_extent - 1) * (dilation_extent - 1);
+    return static_cast<NSInteger>(effective_kernel / 2) - static_cast<NSInteger>(pad_before);
+}
+
+uint32_t align_channels_for_mps_image(uint32_t channels) {
+    return ((channels + 3u) / 4u) * 4u;
+}
+
+bool make_mps_image_wrapper(const GfxMpsrtTensorAbiDesc& desc,
+                            const MpsrtBoundBuffer& bound,
+                            const char* name,
+                            MPSImage*& out,
+                            std::string* error) {
+    out = nil;
+    if (desc.storage != static_cast<uint32_t>(GfxMpsrtStorage::Image)) {
+        return fail(error, std::string("GFX MPSRT: MPS Conv2D ") + name + " tensor is not image storage");
+    }
+    if (!bound.texture) {
+        return fail(error, std::string("GFX MPSRT: MPS Conv2D ") + name + " texture binding is null");
+    }
+    if (bound.offset != 0) {
+        return fail(error, std::string("GFX MPSRT: MPS Conv2D ") + name + " image binding must have zero byte offset");
+    }
+    if (desc.image_width == 0 || desc.image_height == 0 || desc.image_feature_channels == 0 ||
+        desc.image_batch == 0) {
+        return fail(error, std::string("GFX MPSRT: MPS Conv2D ") + name + " image descriptor is incomplete");
+    }
+
+    id<MTLTexture> texture = static_cast<id<MTLTexture>>(bound.texture);
+    if ([texture width] != desc.image_width || [texture height] != desc.image_height) {
+        return fail(error, std::string("GFX MPSRT: MPS Conv2D ") + name + " texture shape mismatch");
+    }
+    const MTLPixelFormat expected_pixel_format = mps_image_pixel_format_from_gfx(desc.dtype);
+    if (expected_pixel_format == MTLPixelFormatInvalid || [texture pixelFormat] != expected_pixel_format) {
+        return fail(error, std::string("GFX MPSRT: MPS Conv2D ") + name + " texture pixel format mismatch");
+    }
+
+    const uint32_t slices = image_slice_count(desc.image_feature_channels);
+    const NSUInteger expected_array_length = static_cast<NSUInteger>(desc.image_batch * slices);
+    if ([texture textureType] == MTLTextureType2D) {
+        if (expected_array_length != 1) {
+            return fail(error, std::string("GFX MPSRT: MPS Conv2D ") + name + " 2D texture cannot hold image array");
+        }
+    } else if ([texture textureType] != MTLTextureType2DArray ||
+               [texture arrayLength] != expected_array_length) {
+        return fail(error, std::string("GFX MPSRT: MPS Conv2D ") + name + " texture array layout mismatch");
+    }
+
+    out = [[MPSImage alloc] initWithTexture:texture
+                            featureChannels:align_channels_for_mps_image(desc.image_feature_channels)];
+    if (!out) {
+        return fail(error, std::string("GFX MPSRT: failed to create MPS Conv2D ") + name + " image wrapper");
+    }
+    if ([out numberOfImages] != desc.image_batch) {
+        [out release];
+        out = nil;
+        return fail(error, std::string("GFX MPSRT: MPS Conv2D ") + name + " image batch mismatch");
+    }
     return true;
 }
 
@@ -208,6 +420,10 @@ std::vector<MpsrtBoundBuffer> make_mpsrt_bound_buffers(const std::vector<void*>&
     return bound;
 }
 
+MpsrtBoundBuffer make_mpsrt_bound_image(void* texture) {
+    return {nullptr, 0, texture};
+}
+
 bool build_mpsrt_tensor_bindings(const MpsrtModel& model,
                                  const std::vector<MpsrtBoundBuffer>& input_buffers,
                                  const std::vector<MpsrtBoundBuffer>& output_buffers,
@@ -227,8 +443,12 @@ bool build_mpsrt_tensor_bindings(const MpsrtModel& model,
     }
 
     for (size_t i = 0; i < model.input_values.size(); ++i) {
-        if (!input_buffers[i].buffer) {
-            return fail(error, "GFX MPSRT: input binding buffer is null at index " + std::to_string(i));
+        if (!validate_bound_value_resource(model,
+                                           model.input_values[i],
+                                           input_buffers[i],
+                                           "input binding at index " + std::to_string(i),
+                                           error)) {
+            return false;
         }
         bindings.bind(model.input_values[i], input_buffers[i]);
         if (result) {
@@ -236,8 +456,12 @@ bool build_mpsrt_tensor_bindings(const MpsrtModel& model,
         }
     }
     for (size_t i = 0; i < model.output_values.size(); ++i) {
-        if (!output_buffers[i].buffer) {
-            return fail(error, "GFX MPSRT: output binding buffer is null at index " + std::to_string(i));
+        if (!validate_bound_value_resource(model,
+                                           model.output_values[i],
+                                           output_buffers[i],
+                                           "output binding at index " + std::to_string(i),
+                                           error)) {
+            return false;
         }
         bindings.bind(model.output_values[i], output_buffers[i]);
         if (result) {
@@ -269,14 +493,14 @@ bool build_mpsrt_tensor_bindings(const MpsrtModel& model,
             return fail(error, "GFX MPSRT: transient tensor allocator is not set");
         }
         MpsrtBoundBuffer allocated = transient_allocator(tensor);
-        if (!allocated.buffer) {
-            return fail(error, "GFX MPSRT: transient allocator returned null for value " +
-                                   std::to_string(tensor.value));
+        if (!validate_bound_resource(tensor.desc,
+                                     allocated,
+                                     "transient binding for value " + std::to_string(tensor.value),
+                                     error)) {
+            return false;
         }
         bindings.bind(tensor.value, allocated);
-        if (result) {
-            ++result->transient_buffers_allocated;
-        }
+        count_transient_resource(tensor.desc, result);
     }
     return true;
 }
@@ -306,8 +530,12 @@ bool build_mpsrt_external_tensor_bindings(const MpsrtModel& model,
     }
 
     for (size_t i = 0; i < external_values.size(); ++i) {
-        if (!external_buffers[i].buffer) {
-            return fail(error, "GFX MPSRT: external binding buffer is null at index " + std::to_string(i));
+        if (!validate_bound_value_resource(model,
+                                           external_values[i],
+                                           external_buffers[i],
+                                           "external binding at index " + std::to_string(i),
+                                           error)) {
+            return false;
         }
         bindings.bind(external_values[i], external_buffers[i]);
         if (result) {
@@ -344,14 +572,14 @@ bool build_mpsrt_external_tensor_bindings(const MpsrtModel& model,
             return fail(error, "GFX MPSRT: transient tensor allocator is not set");
         }
         MpsrtBoundBuffer allocated = transient_allocator(tensor);
-        if (!allocated.buffer) {
-            return fail(error, "GFX MPSRT: transient allocator returned null for value " +
-                                   std::to_string(tensor.value));
+        if (!validate_bound_resource(tensor.desc,
+                                     allocated,
+                                     "transient binding for value " + std::to_string(tensor.value),
+                                     error)) {
+            return false;
         }
         bindings.bind(tensor.value, allocated);
-        if (result) {
-            ++result->transient_buffers_allocated;
-        }
+        count_transient_resource(tensor.desc, result);
     }
     return true;
 }
@@ -678,18 +906,406 @@ bool MpsrtRequest::encode_mps_conv2d(GpuCommandBufferHandle command_buffer,
         *result = {};
     }
     OPENVINO_ASSERT(command_buffer, "GFX MPSRT: command buffer is null");
-    (void)model;
-    (void)bindings;
-    (void)hooks;
     if (!is_mps_conv2d_stage(stage.kind)) {
         return fail(error, "GFX MPSRT: cannot encode non-Conv2D stage with MPS Conv2D");
     }
     if (!prepared.weights_buffer) {
         return fail(error, "GFX MPSRT: prepared MPS Conv2D weights buffer is null");
     }
-    return fail(error,
-                "GFX MPSRT: MPS Conv2D const-pack is prepared, but MPSImage wrappers and "
-                "MPSCNNConvolution encode are not implemented yet");
+    if (!prepared.kernel) {
+        return fail(error, "GFX MPSRT: prepared MPS Conv2D kernel is null");
+    }
+    if (stage.inputs.size() != 2 || stage.outputs.size() != 1 || stage.output_descs.size() != 1) {
+        return fail(error, "GFX MPSRT: MPS Conv2D requires input, weights and one output");
+    }
+
+    const auto* input_tensor = find_tensor(model, stage.inputs[0]);
+    const auto* weights_tensor = find_tensor(model, stage.inputs[1]);
+    if (!input_tensor || !weights_tensor) {
+        return fail(error, "GFX MPSRT: MPS Conv2D input or weights tensor descriptor is missing");
+    }
+
+    MpsrtBoundBuffer input_binding;
+    MpsrtBoundBuffer output_binding;
+    if (!lookup_bound_image(bindings, stage.inputs[0], "input", input_binding, error) ||
+        !lookup_bound_image(bindings, stage.outputs[0], "output", output_binding, error)) {
+        return false;
+    }
+
+    MPSImage* input_image = nil;
+    MPSImage* output_image = nil;
+    if (!make_mps_image_wrapper(input_tensor->desc, input_binding, "input", input_image, error) ||
+        !make_mps_image_wrapper(stage.output_descs.front(), output_binding, "output", output_image, error)) {
+        [input_image release];
+        [output_image release];
+        return false;
+    }
+
+    metal_end_compute_encoder(command_buffer);
+    id<MTLCommandBuffer> command = static_cast<id<MTLCommandBuffer>>(command_buffer);
+    const auto encode_start = hooks && hooks->on_segment ? std::chrono::steady_clock::now()
+                                                         : std::chrono::steady_clock::time_point{};
+
+    MPSCNNConvolution* kernel = static_cast<MPSCNNConvolution*>(prepared.kernel);
+    kernel.edgeMode = MPSImageEdgeModeZero;
+    kernel.offset = (MPSOffset){
+        .x = mps_conv_offset(conv_kernel_width(weights_tensor->desc),
+                             stage.conv2d_desc.dilations[1] == 0 ? 1 : stage.conv2d_desc.dilations[1],
+                             stage.conv2d_desc.pads[1]),
+        .y = mps_conv_offset(conv_kernel_height(weights_tensor->desc),
+                             stage.conv2d_desc.dilations[0] == 0 ? 1 : stage.conv2d_desc.dilations[0],
+                             stage.conv2d_desc.pads[0]),
+        .z = 0,
+    };
+    kernel.clipRect = MTLRegionMake3D(0,
+                                      0,
+                                      0,
+                                      stage.output_descs.front().image_width,
+                                      stage.output_descs.front().image_height,
+                                      stage.output_descs.front().image_batch);
+
+    [kernel encodeToCommandBuffer:command sourceImage:input_image destinationImage:output_image];
+    [input_image release];
+    [output_image release];
+
+    if (result) {
+        result->bound_resources = 2;
+        result->kernel_encodes = 1;
+    }
+    if (hooks && hooks->on_counter) {
+        hooks->on_counter("mpsrt_mps_conv2d_request_encode_count", 1);
+        hooks->on_counter("mpsrt_mps_conv2d_kernel_encode_count", 1);
+        hooks->on_counter("mpsrt_mps_conv2d_bound_resource_count", 2);
+    }
+    if (hooks && hooks->on_segment) {
+        const auto setup_cpu_us = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - encode_start);
+        hooks->on_segment("mpsrt_encode",
+                          stage.stage_record_key,
+                          setup_cpu_us,
+                          0,
+                          2,
+                          0,
+                          0,
+                          0,
+                          0,
+                          -1,
+                          0,
+                          reinterpret_cast<uint64_t>(command_buffer));
+    }
+    return true;
+}
+
+bool MpsrtRequest::encode_mps_pool2d(GpuCommandBufferHandle command_buffer,
+                                     const MpsrtModel& model,
+                                     const MpsrtRuntimeStage& stage,
+                                     const MpsrtPreparedMpsPool2D& prepared,
+                                     const MpsrtTensorBindings& bindings,
+                                     const KernelExecutionHooks* hooks,
+                                     MpsrtMpsPool2DEncodeResult* result,
+                                     std::string* error) const {
+    if (result) {
+        *result = {};
+    }
+    OPENVINO_ASSERT(command_buffer, "GFX MPSRT: command buffer is null");
+    if (stage.kind != GfxMpsrtStageKind::MPSPool2D) {
+        return fail(error, "GFX MPSRT: cannot encode non-Pool2D stage with MPS Pool2D");
+    }
+    if (!prepared.kernel) {
+        return fail(error, "GFX MPSRT: prepared MPS Pool2D kernel is null");
+    }
+    if (stage.inputs.size() != 1 || stage.outputs.size() != 1 || stage.output_descs.size() != 1) {
+        return fail(error, "GFX MPSRT: MPS Pool2D requires one input and one output");
+    }
+
+    const auto* input_tensor = find_tensor(model, stage.inputs[0]);
+    if (!input_tensor) {
+        return fail(error, "GFX MPSRT: MPS Pool2D input tensor descriptor is missing");
+    }
+
+    MpsrtBoundBuffer input_binding;
+    MpsrtBoundBuffer output_binding;
+    if (!lookup_bound_image(bindings, stage.inputs[0], "input", input_binding, error) ||
+        !lookup_bound_image(bindings, stage.outputs[0], "output", output_binding, error)) {
+        return false;
+    }
+
+    MPSImage* input_image = nil;
+    MPSImage* output_image = nil;
+    if (!make_mps_image_wrapper(input_tensor->desc, input_binding, "input", input_image, error) ||
+        !make_mps_image_wrapper(stage.output_descs.front(), output_binding, "output", output_image, error)) {
+        [input_image release];
+        [output_image release];
+        return false;
+    }
+
+    metal_end_compute_encoder(command_buffer);
+    id<MTLCommandBuffer> command = static_cast<id<MTLCommandBuffer>>(command_buffer);
+    const auto encode_start = hooks && hooks->on_segment ? std::chrono::steady_clock::now()
+                                                         : std::chrono::steady_clock::time_point{};
+
+    MPSCNNPooling* kernel = static_cast<MPSCNNPooling*>(prepared.kernel);
+    kernel.edgeMode = MPSImageEdgeModeZero;
+    kernel.offset = (MPSOffset){
+        .x = mps_conv_offset(stage.pool2d_desc.kernel[1], 1, stage.pool2d_desc.pads[1]),
+        .y = mps_conv_offset(stage.pool2d_desc.kernel[0], 1, stage.pool2d_desc.pads[0]),
+        .z = 0,
+    };
+    kernel.clipRect = MTLRegionMake3D(0,
+                                      0,
+                                      0,
+                                      stage.output_descs.front().image_width,
+                                      stage.output_descs.front().image_height,
+                                      stage.output_descs.front().image_batch);
+
+    [kernel encodeToCommandBuffer:command sourceImage:input_image destinationImage:output_image];
+    [input_image release];
+    [output_image release];
+
+    if (result) {
+        result->bound_resources = 2;
+        result->kernel_encodes = 1;
+    }
+    if (hooks && hooks->on_counter) {
+        hooks->on_counter("mpsrt_mps_pool2d_request_encode_count", 1);
+        hooks->on_counter("mpsrt_mps_pool2d_kernel_encode_count", 1);
+        hooks->on_counter("mpsrt_mps_pool2d_bound_resource_count", 2);
+    }
+    if (hooks && hooks->on_segment) {
+        const auto setup_cpu_us = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - encode_start);
+        hooks->on_segment("mpsrt_encode",
+                          stage.stage_record_key,
+                          setup_cpu_us,
+                          0,
+                          2,
+                          0,
+                          0,
+                          0,
+                          0,
+                          -1,
+                          0,
+                          reinterpret_cast<uint64_t>(command_buffer));
+    }
+    return true;
+}
+
+bool MpsrtRequest::encode_mps_softmax(GpuCommandBufferHandle command_buffer,
+                                      const MpsrtModel& model,
+                                      const MpsrtRuntimeStage& stage,
+                                      const MpsrtPreparedMpsSoftmax& prepared,
+                                      const MpsrtTensorBindings& bindings,
+                                      const KernelExecutionHooks* hooks,
+                                      MpsrtMpsSoftmaxEncodeResult* result,
+                                      std::string* error) const {
+    if (result) {
+        *result = {};
+    }
+    OPENVINO_ASSERT(command_buffer, "GFX MPSRT: command buffer is null");
+    if (stage.kind != GfxMpsrtStageKind::MPSSoftmax) {
+        return fail(error, "GFX MPSRT: cannot encode non-Softmax stage with MPS Softmax");
+    }
+    if (!prepared.kernel) {
+        return fail(error, "GFX MPSRT: prepared MPS Softmax kernel is null");
+    }
+    if (stage.softmax_desc.log_softmax != 0) {
+        return fail(error, "GFX MPSRT: MPS Softmax encode does not implement LogSoftmax");
+    }
+    if (stage.inputs.size() != 1 || stage.outputs.size() != 1 || stage.output_descs.size() != 1) {
+        return fail(error, "GFX MPSRT: MPS Softmax requires one input and one output");
+    }
+
+    const auto* input_tensor = find_tensor(model, stage.inputs[0]);
+    if (!input_tensor) {
+        return fail(error, "GFX MPSRT: MPS Softmax input tensor descriptor is missing");
+    }
+
+    MpsrtBoundBuffer input_buffer;
+    MpsrtBoundBuffer output_buffer;
+    if (!lookup_bound_buffer(bindings, stage.inputs[0], "input", input_buffer, error) ||
+        !lookup_bound_buffer(bindings, stage.outputs[0], "output", output_buffer, error)) {
+        return false;
+    }
+
+    MPSMatrixDescriptor* input_desc = nil;
+    MPSMatrixDescriptor* output_desc = nil;
+    if (!make_mps_matrix_descriptor(input_tensor->desc, input_desc, "input", error) ||
+        !make_mps_matrix_descriptor(stage.output_descs.front(), output_desc, "output", error)) {
+        return false;
+    }
+
+    MPSMatrix* input_matrix =
+        [[MPSMatrix alloc] initWithBuffer:static_cast<id<MTLBuffer>>(input_buffer.buffer)
+                                   offset:static_cast<NSUInteger>(input_buffer.offset +
+                                                                  input_tensor->desc.byte_offset)
+                               descriptor:input_desc];
+    MPSMatrix* output_matrix =
+        [[MPSMatrix alloc] initWithBuffer:static_cast<id<MTLBuffer>>(output_buffer.buffer)
+                                   offset:static_cast<NSUInteger>(output_buffer.offset +
+                                                                  stage.output_descs.front().byte_offset)
+                               descriptor:output_desc];
+    if (!input_matrix || !output_matrix) {
+        [input_matrix release];
+        [output_matrix release];
+        return fail(error, "GFX MPSRT: failed to create MPS Softmax matrix wrappers");
+    }
+
+    metal_end_compute_encoder(command_buffer);
+    id<MTLCommandBuffer> command = static_cast<id<MTLCommandBuffer>>(command_buffer);
+    const auto encode_start = hooks && hooks->on_segment ? std::chrono::steady_clock::now()
+                                                         : std::chrono::steady_clock::time_point{};
+
+    [(MPSMatrixSoftMax*)prepared.kernel encodeToCommandBuffer:command
+                                                  inputMatrix:input_matrix
+                                                 resultMatrix:output_matrix];
+    [input_matrix release];
+    [output_matrix release];
+
+    if (result) {
+        result->bound_buffers = 2;
+        result->kernel_encodes = 1;
+    }
+    if (hooks && hooks->on_counter) {
+        hooks->on_counter("mpsrt_mps_softmax_request_encode_count", 1);
+        hooks->on_counter("mpsrt_mps_softmax_kernel_encode_count", 1);
+        hooks->on_counter("mpsrt_mps_softmax_bound_buffer_count", 2);
+    }
+    if (hooks && hooks->on_segment) {
+        const auto setup_cpu_us = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - encode_start);
+        hooks->on_segment("mpsrt_encode",
+                          stage.stage_record_key,
+                          setup_cpu_us,
+                          0,
+                          2,
+                          0,
+                          0,
+                          0,
+                          0,
+                          -1,
+                          0,
+                          reinterpret_cast<uint64_t>(command_buffer));
+    }
+    return true;
+}
+
+bool MpsrtRequest::encode_mps_topk(GpuCommandBufferHandle command_buffer,
+                                   const MpsrtModel& model,
+                                   const MpsrtRuntimeStage& stage,
+                                   const MpsrtPreparedMpsTopK& prepared,
+                                   const MpsrtTensorBindings& bindings,
+                                   const KernelExecutionHooks* hooks,
+                                   MpsrtMpsTopKEncodeResult* result,
+                                   std::string* error) const {
+    if (result) {
+        *result = {};
+    }
+    OPENVINO_ASSERT(command_buffer, "GFX MPSRT: command buffer is null");
+    if (stage.kind != GfxMpsrtStageKind::MPSTopK) {
+        return fail(error, "GFX MPSRT: cannot encode non-TopK stage with MPS TopK");
+    }
+    if (!prepared.kernel) {
+        return fail(error, "GFX MPSRT: prepared MPS TopK kernel is null");
+    }
+    if (stage.topk_desc.mode_max == 0) {
+        return fail(error, "GFX MPSRT: MPS TopK encode supports MAX mode only");
+    }
+    if (stage.inputs.size() != 1 || stage.outputs.size() != 2 || stage.output_descs.size() != 2) {
+        return fail(error, "GFX MPSRT: MPS TopK requires one input and two outputs");
+    }
+
+    const auto* input_tensor = find_tensor(model, stage.inputs[0]);
+    if (!input_tensor) {
+        return fail(error, "GFX MPSRT: MPS TopK input tensor descriptor is missing");
+    }
+
+    MpsrtBoundBuffer input_buffer;
+    MpsrtBoundBuffer values_buffer;
+    MpsrtBoundBuffer indices_buffer;
+    if (!lookup_bound_buffer(bindings, stage.inputs[0], "input", input_buffer, error) ||
+        !lookup_bound_buffer(bindings, stage.outputs[0], "values output", values_buffer, error) ||
+        !lookup_bound_buffer(bindings, stage.outputs[1], "indices output", indices_buffer, error)) {
+        return false;
+    }
+
+    MPSMatrixDescriptor* input_desc = nil;
+    MPSMatrixDescriptor* values_desc = nil;
+    MPSMatrixDescriptor* indices_desc = nil;
+    if (!make_mps_matrix_descriptor(input_tensor->desc, input_desc, "input", error) ||
+        !make_mps_matrix_descriptor(stage.output_descs[0], values_desc, "values output", error) ||
+        !make_mps_topk_index_matrix_descriptor(stage.output_descs[1],
+                                               indices_desc,
+                                               "indices output",
+                                               error)) {
+        return false;
+    }
+
+    MPSMatrix* input_matrix =
+        [[MPSMatrix alloc] initWithBuffer:static_cast<id<MTLBuffer>>(input_buffer.buffer)
+                                   offset:static_cast<NSUInteger>(input_buffer.offset +
+                                                                  input_tensor->desc.byte_offset)
+                               descriptor:input_desc];
+    MPSMatrix* values_matrix =
+        [[MPSMatrix alloc] initWithBuffer:static_cast<id<MTLBuffer>>(values_buffer.buffer)
+                                   offset:static_cast<NSUInteger>(values_buffer.offset +
+                                                                  stage.output_descs[0].byte_offset)
+                               descriptor:values_desc];
+    MPSMatrix* indices_matrix =
+        [[MPSMatrix alloc] initWithBuffer:static_cast<id<MTLBuffer>>(indices_buffer.buffer)
+                                   offset:static_cast<NSUInteger>(indices_buffer.offset +
+                                                                  stage.output_descs[1].byte_offset)
+                               descriptor:indices_desc];
+    if (!input_matrix || !values_matrix || !indices_matrix) {
+        [input_matrix release];
+        [values_matrix release];
+        [indices_matrix release];
+        return fail(error, "GFX MPSRT: failed to create MPS TopK matrix wrappers");
+    }
+
+    metal_end_compute_encoder(command_buffer);
+    id<MTLCommandBuffer> command = static_cast<id<MTLCommandBuffer>>(command_buffer);
+    const auto encode_start = hooks && hooks->on_segment ? std::chrono::steady_clock::now()
+                                                         : std::chrono::steady_clock::time_point{};
+
+    MPSMatrixFindTopK* kernel = static_cast<MPSMatrixFindTopK*>(prepared.kernel);
+    kernel.sourceRows = prepared.rows;
+    kernel.sourceColumns = prepared.source_columns;
+    kernel.numberOfTopKValues = prepared.k;
+    kernel.indexOffset = 0;
+    [kernel encodeToCommandBuffer:command
+                       inputMatrix:input_matrix
+                 resultIndexMatrix:indices_matrix
+                 resultValueMatrix:values_matrix];
+    [input_matrix release];
+    [values_matrix release];
+    [indices_matrix release];
+
+    if (result) {
+        result->bound_buffers = 3;
+        result->kernel_encodes = 1;
+    }
+    if (hooks && hooks->on_counter) {
+        hooks->on_counter("mpsrt_mps_topk_request_encode_count", 1);
+        hooks->on_counter("mpsrt_mps_topk_kernel_encode_count", 1);
+        hooks->on_counter("mpsrt_mps_topk_bound_buffer_count", 3);
+    }
+    if (hooks && hooks->on_segment) {
+        const auto setup_cpu_us = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - encode_start);
+        hooks->on_segment("mpsrt_encode",
+                          stage.stage_record_key,
+                          setup_cpu_us,
+                          0,
+                          3,
+                          0,
+                          0,
+                          0,
+                          0,
+                          -1,
+                          0,
+                          reinterpret_cast<uint64_t>(command_buffer));
+    }
+    return true;
 }
 
 bool MpsrtRequest::encode_prepared_model(GpuCommandBufferHandle command_buffer,
@@ -763,6 +1379,84 @@ bool MpsrtRequest::encode_prepared_model(GpuCommandBufferHandle command_buffer,
             }
             if (hooks && hooks->on_counter) {
                 hooks->on_counter("mpsrt_model_request_mps_conv2d_stage_encode_count", 1);
+            }
+            continue;
+        }
+
+        if (stage.kind == GfxMpsrtStageKind::MPSPool2D) {
+            const auto* prepared = find_prepared_mps_pool2d(prepared_model, stage_index);
+            if (!prepared) {
+                return fail(error, "GFX MPSRT: missing prepared MPS Pool2D for stage " + std::to_string(stage_index));
+            }
+            MpsrtMpsPool2DEncodeResult stage_result;
+            if (!encode_mps_pool2d(command_buffer,
+                                   model,
+                                   stage,
+                                   *prepared,
+                                   bindings,
+                                   hooks,
+                                   &stage_result,
+                                   error)) {
+                return false;
+            }
+            if (result) {
+                ++result->encoded_mps_pool2d_stages;
+                result->bound_buffers += stage_result.bound_resources;
+            }
+            if (hooks && hooks->on_counter) {
+                hooks->on_counter("mpsrt_model_request_mps_pool2d_stage_encode_count", 1);
+            }
+            continue;
+        }
+
+        if (stage.kind == GfxMpsrtStageKind::MPSSoftmax) {
+            const auto* prepared = find_prepared_mps_softmax(prepared_model, stage_index);
+            if (!prepared) {
+                return fail(error, "GFX MPSRT: missing prepared MPS Softmax for stage " + std::to_string(stage_index));
+            }
+            MpsrtMpsSoftmaxEncodeResult stage_result;
+            if (!encode_mps_softmax(command_buffer,
+                                    model,
+                                    stage,
+                                    *prepared,
+                                    bindings,
+                                    hooks,
+                                    &stage_result,
+                                    error)) {
+                return false;
+            }
+            if (result) {
+                ++result->encoded_mps_softmax_stages;
+                result->bound_buffers += stage_result.bound_buffers;
+            }
+            if (hooks && hooks->on_counter) {
+                hooks->on_counter("mpsrt_model_request_mps_softmax_stage_encode_count", 1);
+            }
+            continue;
+        }
+
+        if (stage.kind == GfxMpsrtStageKind::MPSTopK) {
+            const auto* prepared = find_prepared_mps_topk(prepared_model, stage_index);
+            if (!prepared) {
+                return fail(error, "GFX MPSRT: missing prepared MPS TopK for stage " + std::to_string(stage_index));
+            }
+            MpsrtMpsTopKEncodeResult stage_result;
+            if (!encode_mps_topk(command_buffer,
+                                 model,
+                                 stage,
+                                 *prepared,
+                                 bindings,
+                                 hooks,
+                                 &stage_result,
+                                 error)) {
+                return false;
+            }
+            if (result) {
+                ++result->encoded_mps_topk_stages;
+                result->bound_buffers += stage_result.bound_buffers;
+            }
+            if (hooks && hooks->on_counter) {
+                hooks->on_counter("mpsrt_model_request_mps_topk_stage_encode_count", 1);
             }
             continue;
         }

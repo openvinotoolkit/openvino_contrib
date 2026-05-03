@@ -4,7 +4,10 @@
 
 #include "mlir/msl_codegen.hpp"
 
+#include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/gfx_mpsrt_metadata.hpp"
+#include "mlir/mlir_kernel_plan_utils.hpp"
+#include "transforms/mlir_fused_ops.hpp"
 
 #include "mlir/IR/Builders.h"
 
@@ -51,6 +54,26 @@ ov::element::Type resolve_matmul_buffer_type(const ov::element::Type& type,
         return type;
     }
     return fallback == ov::element::dynamic ? ov::element::f32 : fallback;
+}
+
+void force_apple_msl_buffer_placement(GfxStageOptimizationPlan& plan,
+                                      std::string_view stage_type) {
+    plan.placement.domain = GfxStageBackendDomain::AppleMsl;
+    plan.placement.storage = GfxStageStorageKind::Buffer;
+    plan.placement.uses_vendor_primitive = false;
+    plan.placement.uses_custom_kernel = true;
+    plan.placement.specialization_key = std::string("apple_msl:buffer:") + std::string(stage_type);
+}
+
+uint32_t resolve_matmul_source_arg_count(mlir::ModuleOp module,
+                                         uint32_t arg_count,
+                                         const KernelArgMappingInfo& info) {
+    const uint32_t inferred_total =
+        static_cast<uint32_t>(infer_kernel_arg_count_from_module(module, info.signature.total()));
+    if (arg_count != 0) {
+        return arg_count;
+    }
+    return inferred_total;
 }
 
 std::string matmul_epilogue_activation_expr(ActivationKind activation) {
@@ -126,7 +149,8 @@ void configure_msl_kernel_source_for_plan(KernelSource& source,
     }
     source.entry_point = required_entry;
     (void)annotate_module_with_mpsrt_external_buffer_abi_from_stage_manifest(source.module,
-                                                                            source.signature.arg_count);
+                                                                            source.signature.arg_count,
+                                                                            source.signature.output_arg_count);
 }
 
 GfxMpsrtKernelSourcePlan configure_msl_kernel_source_plan(KernelSource source,
@@ -135,14 +159,69 @@ GfxMpsrtKernelSourcePlan configure_msl_kernel_source_plan(KernelSource source,
     return make_mpsrt_kernel_source_plan_from_configured_source(std::move(source));
 }
 
+void configure_msl_kernel_source_for_node(KernelSource& source,
+                                          const std::shared_ptr<const ov::Node>& node,
+                                          const GpuBufferManager* buffer_manager,
+                                          std::string_view stage_type,
+                                          bool has_bias,
+                                          bool has_activation,
+                                          bool has_batchnorm) {
+    if (!source.module || !node) {
+        return;
+    }
+
+    const auto msl_kernel_plan = make_msl_kernel_plan(stage_type, source.entry_point);
+    if (!msl_kernel_plan.valid) {
+        return;
+    }
+
+    auto plan = select_stage_optimization_plan(buffer_manager,
+                                               GpuBackend::Metal,
+                                               std::string(stage_type),
+                                               node,
+                                               node->get_output_element_type(0),
+                                               has_bias,
+                                               has_activation,
+                                               has_batchnorm,
+                                               GfxStageRuntimeTraits{});
+    if (plan.placement.domain != GfxStageBackendDomain::AppleMsl) {
+        force_apple_msl_buffer_placement(plan, stage_type);
+    }
+
+    annotate_msl_module_with_stage_plan(source.module, plan, std::string(stage_type), source.entry_point);
+    auto source_plan = configure_msl_kernel_source_plan(source, stage_type);
+    if (source_plan.valid()) {
+        source = std::move(source_plan.source);
+        return;
+    }
+    configure_msl_kernel_source_for_plan(source, stage_type);
+}
+
+void configure_msl_kernel_source_for_spec(KernelSource& source,
+                                          const KernelSpec& spec,
+                                          const GpuBufferManager* buffer_manager,
+                                          std::string_view entry_point) {
+    if (source.entry_point.empty()) {
+        source.entry_point = std::string(entry_point);
+    }
+    configure_msl_kernel_source_for_node(source,
+                                         spec.node(),
+                                         buffer_manager,
+                                         spec.type(),
+                                         /*has_bias=*/false,
+                                         /*has_activation=*/false,
+                                         /*has_batchnorm=*/false);
+}
+
 void annotate_msl_module_with_stage_plan(mlir::ModuleOp module,
                                          const GfxStageOptimizationPlan& plan,
-                                         const std::string& stage_type) {
+                                         const std::string& stage_type,
+                                         std::string_view kernel_entry_point) {
     if (!module) {
         return;
     }
 
-    annotate_module_with_mpsrt_stage_plan(module, plan, stage_type);
+    annotate_module_with_mpsrt_stage_plan(module, plan, stage_type, kernel_entry_point);
 
     GfxMpsrtModuleStagePlan stage_plan;
     if (!read_module_mpsrt_stage_plan(module, stage_plan) ||
@@ -150,7 +229,7 @@ void annotate_msl_module_with_stage_plan(mlir::ModuleOp module,
         return;
     }
 
-    const auto msl_plan = make_msl_kernel_plan(stage_type, stage_plan.stage.kernel_name);
+    const auto msl_plan = make_msl_kernel_plan(stage_type, stage_plan.stage.dispatch_entry_point);
     if (!msl_plan.valid) {
         return;
     }
@@ -213,6 +292,63 @@ std::string generate_msl_for_matmul_mpsrt_epilogue(const MatMulCodegenDesc& desc
     return ss.str();
 }
 
+GfxMatMulMetalKernelSourcePlan make_matmul_msl_fallback_source_plan(
+    mlir::ModuleOp module,
+    const GpuBufferManager* buffer_manager,
+    const std::shared_ptr<const ov::Node>& node,
+    const MatMulCodegenDesc& desc) {
+    GfxMatMulMetalKernelSourcePlan result{};
+    if (!module || !node) {
+        return result;
+    }
+
+    constexpr const char* kStageType = "MatMul";
+    constexpr const char* kEntryPoint = "matmul_kernel";
+    const uint32_t arg_count = desc.has_bias ? 4u : 3u;
+    auto plan = select_stage_optimization_plan(buffer_manager,
+                                               GpuBackend::Metal,
+                                               kStageType,
+                                               node,
+                                               desc.output_type,
+                                               desc.has_bias,
+                                               desc.has_activation,
+                                               /*has_batchnorm=*/false,
+                                               GfxStageRuntimeTraits{});
+    force_apple_msl_buffer_placement(plan, kStageType);
+    annotate_msl_module_with_stage_plan(module, plan, kStageType);
+
+    auto plan_ctx = build_mlir_kernel_plan(
+        module,
+        kEntryPoint,
+        node,
+        /*output_args_override=*/0,
+        /*extra_inputs=*/0,
+        node->get_friendly_name().c_str(),
+        "gfx_kernel",
+        [&](const KernelArgMappingInfo& info) -> size_t {
+            return resolve_matmul_source_arg_count(module, arg_count, info);
+        });
+
+    auto source_desc = desc;
+    auto source = plan_ctx.build_info.plan.to_source_with_msl_generator(
+        [source_desc](mlir::ModuleOp mod) {
+            return generate_msl_from_mlir(mod, source_desc);
+        });
+    source.signature.output_arg_count = 1;
+    configure_msl_kernel_source_for_plan(source, kStageType);
+
+    result.kind = GfxMatMulMetalKernelSourcePlanKind::MslFallback;
+    result.source = std::move(source);
+    result.requires_mpsrt_model = false;
+    auto mpsrt_plan = make_mpsrt_kernel_source_plan_from_configured_source(result.source);
+    if (mpsrt_plan.valid()) {
+        result.mpsrt_plan = std::move(mpsrt_plan);
+        result.source = result.mpsrt_plan.source;
+        result.requires_mpsrt_model = result.mpsrt_plan.requires_mpsrt_model;
+    }
+    return result;
+}
+
 GfxMatMulMpsrtKernelSourcePlan lower_matmul_module_to_mpsrt_kernel_source(
     mlir::ModuleOp module,
     const GfxStageOptimizationPlan& plan,
@@ -243,6 +379,61 @@ GfxMatMulMpsrtKernelSourcePlan lower_matmul_module_to_mpsrt_kernel_source(
     result.source = result.mpsrt_plan.source;
     result.requires_mpsrt_model = result.mpsrt_plan.requires_mpsrt_model;
     return result;
+}
+
+GfxMatMulMetalKernelSourcePlan lower_matmul_node_to_metal_kernel_source(
+    mlir::MLIRContext& ctx,
+    const GpuBufferManager* buffer_manager,
+    const std::shared_ptr<const ov::Node>& node,
+    MatMulCodegenDesc desc,
+    const ov::Shape& shape_a,
+    const ov::Shape& shape_b) {
+    GfxMatMulMetalKernelSourcePlan result{};
+    if (!node) {
+        return result;
+    }
+
+    auto module = build_mlir_for_node(node, ctx);
+    if (!module) {
+        return result;
+    }
+    if (desc.has_activation) {
+        const bool applied = apply_fused_activation(module, desc.activation, desc.alpha);
+        if (!applied) {
+            return result;
+        }
+    }
+
+    const auto output_type = node->get_output_element_type(0);
+    desc.element_type = resolve_matmul_buffer_type(desc.element_type, output_type);
+    desc.input_a_type = resolve_matmul_buffer_type(desc.input_a_type, desc.element_type);
+    desc.input_b_type = resolve_matmul_buffer_type(desc.input_b_type, desc.element_type);
+    desc.output_type = output_type;
+
+    const auto placement = select_stage_optimization_plan(buffer_manager,
+                                                          GpuBackend::Metal,
+                                                          "MatMul",
+                                                          node,
+                                                          desc.output_type,
+                                                          desc.has_bias,
+                                                          desc.has_activation,
+                                                          /*has_batchnorm=*/false,
+                                                          GfxStageRuntimeTraits{});
+    auto mpsrt_source = lower_matmul_module_to_mpsrt_kernel_source(module,
+                                                                  placement,
+                                                                  desc,
+                                                                  shape_a,
+                                                                  shape_b);
+    if (mpsrt_source.valid()) {
+        result.kind = GfxMatMulMetalKernelSourcePlanKind::Mpsrt;
+        result.mpsrt_lowering = mpsrt_source.lowering;
+        result.mpsrt_plan = std::move(mpsrt_source.mpsrt_plan);
+        result.source = std::move(mpsrt_source.source);
+        result.requires_mpsrt_model = mpsrt_source.requires_mpsrt_model;
+        return result;
+    }
+
+    return make_matmul_msl_fallback_source_plan(module, buffer_manager, node, desc);
 }
 
 }  // namespace gfx_plugin

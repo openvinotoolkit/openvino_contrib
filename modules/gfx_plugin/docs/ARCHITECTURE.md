@@ -11,7 +11,7 @@ This document describes the current architecture implemented in `modules/gfx_plu
 ## Top-Level Structure
 - `src/plugin/`: OpenVINO-facing integration
 - `src/runtime/`: backend-neutral runtime interfaces and helpers
-- `src/runtime/gfx_mpsrt_*`: Apple MPS/MSL ABI, stage-plan, builder-plan, and kernel-manifest helpers
+- `src/runtime/gfx_mpsrt_*`: Apple MPS/MSL ABI, stage-plan, builder-plan, storage-bridge, and kernel-manifest helpers
 - `src/kernel_ir/gfx_kernel_manifest.hpp`: backend-neutral manifest for stage family, execution kind, storage, and custom-kernel ABI
 - `src/mlir/`: MLIR support probing and lowering helpers
 - `src/backends/metal/`: Metal-specific plugin, runtime, memory, profiling, and codegen pieces
@@ -158,6 +158,11 @@ Prepared-binding caches are no longer hard-capped at one fixed size. They start 
 Outside kernel execution, `src/plugin/infer_pipeline.cpp` can also materialize constant graph outputs into synthetic pipeline tensors so output resolution stays uniform even when the public output does not come from a runtime stage.
 On Metal, MLIR and stage-policy metadata can also be serialized into a compact MPSRT runtime-model boundary: stage placement is converted into `GfxMpsrtStageDesc`, tensor/storage metadata becomes `GfxMpsrtTensorDesc` or ABI structs, and MSL-dispatch stages carry kernel-family plus external-buffer-role metadata so request-time binding does not rely on a hard-coded argument convention.
 That boundary is now manifest-driven rather than ad-hoc. `GfxKernelStageManifest` describes whether a stage is a vendor primitive or a custom kernel, which backend/storage family it belongs to, and what external-buffer ABI the custom kernel expects. The MPSRT adapter layer converts that manifest into the runtime record and buffer-order form used by Metal execution.
+The compile path now also emits a generated MLIR call-plan function, `gfx_mpsrt_runtime_abi_plan`, through `gfx_mpsrt_runtime_abi_pipeline.*`. That call plan serializes:
+- model record keys and record counts
+- external-buffer roles and counts
+- per-stage ABI descriptors for GEMM, Conv2D, Pool2D, Softmax, TopK, or MSL dispatch
+- explicit storage bridges such as `buffer_to_image` and `image_to_buffer`
 
 ## Profiling Stack
 Profiling is split into compile-time and infer-time collection.
@@ -188,6 +193,7 @@ The Metal path also now has a local MPSRT runtime layer under `src/backends/meta
 - `mpsrt_model.*` validates builder records and reconstructs compact runtime models
 - `mpsrt_context.*` prepares and caches Metal pipeline states for annotated MSL-dispatch stages
 - `mpsrt_request.*` binds external or transient buffers and encodes prepared dispatches into a command buffer
+- `gfx_mpsrt_storage_bridge.hpp` describes explicit conversions between external buffer bindings and Apple MPS image storage when a stage crosses that boundary
 
 That split is driven by `gfx_msl_kernel_manifest.*` plus MLIR module attrs. The manifest classifies MSL kernels into stable families such as eltwise, transpose/packing, concat/split, gather/scatter, RMS/RoPE, masked softmax-attention, Conv3D, and reduction dispatch, and it also defines the external-buffer ABI roles expected by request-time binding.
 The manifest layer now also carries stage-family information for vendor primitives and custom kernels through `gfx_kernel_manifest.hpp`, which lets one MPSRT model mix execution kinds while keeping one stable record key and buffer-order contract.
@@ -195,6 +201,8 @@ Recent Metal compile/runtime changes extend the MPSRT path beyond one standalone
 - vendor-only plans such as `MPSGemm` can now execute through the MPSRT runtime boundary without requiring generated MSL source
 - hybrid multi-stage plans such as `MPSGemm + MSL epilogue` can be serialized as one MPSRT model with semantic inputs/outputs, intermediate values, and stage-local descriptors
 - request-time execution can choose full-context MPSRT execution for those mixed models instead of falling back to one raw compiled-kernel dispatch
+- vendor primitive coverage now also includes Apple MPS convolution, group convolution, pooling, softmax, and TopK stages when stage policy selects those routes
+- compile-time source planning now uses `gfx_mpsrt_source_plan.hpp` to pick `SingleStage` versus `MultiStage` source contracts, while `gfx_mpsrt_const_tensor_sources.hpp` can attach evaluated constant payloads for vendor convolution-family stages
 
 MatMul is the clearest current example of that split:
 - plain supported GEMM shapes can lower to vendor `MPSGemm`
@@ -204,6 +212,7 @@ MatMul is the clearest current example of that split:
 Convolution follows the same direction on the metadata side:
 - Apple MPS convolution/group-convolution stages now serialize explicit `GfxMpsrtConv2DAbiDesc` stride, dilation, pad, and grouping metadata
 - the custom Metal Conv2D kernel family is also represented through the same manifest path, so legacy MSL `conv2d_kernel` dispatch still shares the common kernel-family and ABI contract
+When those Apple MPS image-backed stages connect to public buffer inputs or outputs, the runtime model carries storage-bridge descriptors and the request path materializes the needed bridge resources explicitly rather than assuming one storage class end-to-end.
 The current Metal executor also contains runtime-specialized codegen paths for dynamically shaped `Softmax`, `Select`, `ScatterUpdate`, `RMS`, `RoPE`, binary `Concat`, rank-4 `ScaledDotProductAttention`, fused causal-mask `ScaledDotProductAttention`, and more permissive slice handling, including negative-step `StridedSlice`.
 For dynamic-shape `MatMul`, the current MLIR stage path may also pack a constant RHS from `f32` to `f16` before wrapping it as an immutable const buffer. Compile profiling counters track the original and packed byte sizes for that optimization.
 The backend-aware transform pipeline is also important for Metal now: compressed `MatMul` decompression subgraphs can be marked as decompression and protected from generic folding so later stage compilation can still recognize weight-only compressed patterns.

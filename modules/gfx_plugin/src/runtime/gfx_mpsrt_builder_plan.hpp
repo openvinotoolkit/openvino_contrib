@@ -10,6 +10,7 @@
 #include "runtime/gfx_mpsrt_abi.hpp"
 #include "runtime/gfx_mpsrt_kernel_manifest_adapter.hpp"
 #include "runtime/gfx_mpsrt_plan.hpp"
+#include "runtime/gfx_mpsrt_storage_bridge.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -41,6 +42,9 @@ struct GfxMpsrtBuilderRecord {
     std::vector<GfxMpsrtTensorAbiDesc> tensor_descs;
     GfxMpsrtConv2DAbiDesc conv2d_desc{};
     GfxMpsrtGemmAbiDesc gemm_desc{};
+    GfxMpsrtPool2DAbiDesc pool2d_desc{};
+    GfxMpsrtSoftmaxAbiDesc softmax_desc{};
+    GfxMpsrtTopKAbiDesc topk_desc{};
     GfxMpsrtMslDispatchAbiDesc msl_dispatch_desc{};
 };
 
@@ -54,6 +58,7 @@ struct GfxMpsrtBuilderPlan {
     uint32_t external_buffer_count = 0;
     uint32_t external_output_buffer_count = 0;
     std::vector<GfxMpsrtExternalBufferRole> external_buffer_roles;
+    std::vector<GfxMpsrtStorageBridgeDesc> storage_bridges;
 };
 
 struct GfxMpsrtBuilderStageSpec {
@@ -87,6 +92,41 @@ inline bool gfx_mpsrt_stage_uses_gemm_desc(GfxMpsrtStageKind kind) {
 inline bool gfx_mpsrt_stage_uses_conv2d_desc(GfxMpsrtStageKind kind) {
     return kind == GfxMpsrtStageKind::MPSConv2D ||
            kind == GfxMpsrtStageKind::MPSGroupConv2D;
+}
+
+inline bool gfx_mpsrt_stage_uses_pool2d_desc(GfxMpsrtStageKind kind) {
+    return kind == GfxMpsrtStageKind::MPSPool2D;
+}
+
+inline bool gfx_mpsrt_stage_uses_softmax_desc(GfxMpsrtStageKind kind) {
+    return kind == GfxMpsrtStageKind::MPSSoftmax;
+}
+
+inline bool gfx_mpsrt_stage_uses_topk_desc(GfxMpsrtStageKind kind) {
+    return kind == GfxMpsrtStageKind::MPSTopK;
+}
+
+inline bool gfx_mpsrt_tensor_desc_is_const(const GfxMpsrtTensorDesc& desc) {
+    return (desc.flags & GfxMpsrtTensorFlagConst) != 0;
+}
+
+inline void gfx_mpsrt_append_image_storage_bridge(std::vector<GfxMpsrtStorageBridgeDesc>& bridges,
+                                                  GfxMpsrtValue value,
+                                                  const GfxMpsrtTensorDesc& tensor,
+                                                  GfxMpsrtStorageBridgeDirection direction) {
+    if (gfx_mpsrt_tensor_desc_is_const(tensor)) {
+        return;
+    }
+    GfxMpsrtStorageBridgeDesc bridge{};
+    if (!gfx_mpsrt_make_image_bridge_desc(value, gfx_mpsrt_to_abi_desc(tensor), direction, bridge)) {
+        return;
+    }
+    const auto already_recorded = std::any_of(bridges.begin(), bridges.end(), [&](const auto& known) {
+        return known.value == bridge.value && known.direction == bridge.direction;
+    });
+    if (!already_recorded) {
+        bridges.push_back(bridge);
+    }
 }
 
 inline GfxMpsrtMslDispatchAbiDesc gfx_mpsrt_make_msl_dispatch_desc(const GfxMpsrtStageDesc& stage,
@@ -160,6 +200,12 @@ inline GfxMpsrtBuilderRecord gfx_mpsrt_make_encode_stage_record(const GfxMpsrtSt
         encode.conv2d_desc = stage.conv2d_desc;
     } else if (stage.kind == GfxMpsrtStageKind::MPSGemm) {
         encode.gemm_desc = stage.gemm_desc;
+    } else if (gfx_mpsrt_stage_uses_pool2d_desc(stage.kind)) {
+        encode.pool2d_desc = stage.pool2d_desc;
+    } else if (gfx_mpsrt_stage_uses_softmax_desc(stage.kind)) {
+        encode.softmax_desc = stage.softmax_desc;
+    } else if (gfx_mpsrt_stage_uses_topk_desc(stage.kind)) {
+        encode.topk_desc = stage.topk_desc;
     }
     return encode;
 }
@@ -195,6 +241,10 @@ inline GfxMpsrtBuilderPlan gfx_mpsrt_make_multi_stage_builder_plan(
     for (const auto& input : inputs) {
         const GfxMpsrtValue value = next_value++;
         plan.input_values.push_back(value);
+        gfx_mpsrt_append_image_storage_bridge(plan.storage_bridges,
+                                              value,
+                                              input,
+                                              GfxMpsrtStorageBridgeDirection::BufferToImage);
         GfxMpsrtBuilderRecord add{};
         add.kind = GfxMpsrtBuilderRecordKind::AddTensor;
         add.symbol = "ovgfx_mpsrt_add_tensor";
@@ -217,6 +267,16 @@ inline GfxMpsrtBuilderPlan gfx_mpsrt_make_multi_stage_builder_plan(
                                                                   spec.inputs,
                                                                   spec.outputs,
                                                                   spec.output_descs));
+        for (size_t i = 0; i < spec.outputs.size(); ++i) {
+            if (std::find(plan.output_values.begin(), plan.output_values.end(), spec.outputs[i]) ==
+                plan.output_values.end()) {
+                continue;
+            }
+            gfx_mpsrt_append_image_storage_bridge(plan.storage_bridges,
+                                                  spec.outputs[i],
+                                                  spec.output_descs[i],
+                                                  GfxMpsrtStorageBridgeDirection::ImageToBuffer);
+        }
     }
 
     GfxMpsrtBuilderRecord end{};
@@ -255,6 +315,10 @@ inline GfxMpsrtBuilderPlan gfx_mpsrt_make_builder_plan(const GfxMpsrtStageDesc& 
     for (const auto& input : inputs) {
         const GfxMpsrtValue value = next_value++;
         plan.input_values.push_back(value);
+        gfx_mpsrt_append_image_storage_bridge(plan.storage_bridges,
+                                              value,
+                                              input,
+                                              GfxMpsrtStorageBridgeDirection::BufferToImage);
         GfxMpsrtBuilderRecord add{};
         add.kind = GfxMpsrtBuilderRecordKind::AddTensor;
         add.symbol = "ovgfx_mpsrt_add_tensor";
@@ -270,6 +334,10 @@ inline GfxMpsrtBuilderPlan gfx_mpsrt_make_builder_plan(const GfxMpsrtStageDesc& 
         const GfxMpsrtValue value = next_value++;
         plan.output_values.push_back(value);
         stage_outputs.push_back(value);
+        gfx_mpsrt_append_image_storage_bridge(plan.storage_bridges,
+                                              value,
+                                              outputs[i],
+                                              GfxMpsrtStorageBridgeDirection::ImageToBuffer);
     }
     auto encode = gfx_mpsrt_make_encode_stage_record(stage,
                                                      stage_record_key,

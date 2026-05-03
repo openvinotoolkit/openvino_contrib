@@ -1,0 +1,12 @@
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.backup
+*.aux
+*.log
+*.nav
+*.out
+*.snm
+*.toc

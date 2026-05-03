@@ -14,15 +14,62 @@
 #include "backends/metal/runtime/op_utils.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
+#include "mlir/gfx_mpsrt_source_plan.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/codegen_common.hpp"
 #include "runtime/gfx_shape_utils.hpp"
+#include "runtime/gfx_stage_policy.hpp"
 
 namespace ov {
 namespace gfx_plugin {
 
 namespace {
+
+bool topk_can_use_mpsrt(const std::shared_ptr<const ov::Node>& node,
+                        const TopKCodegenDesc& desc,
+                        const GfxStageOptimizationPlan& plan,
+                        const ov::element::Type& element_type,
+                        const ov::element::Type& index_type) {
+    if (!node) {
+        return false;
+    }
+    if (plan.placement.domain != GfxStageBackendDomain::AppleMps ||
+        !plan.placement.uses_vendor_primitive ||
+        plan.placement.storage != GfxStageStorageKind::Matrix) {
+        return false;
+    }
+    if (element_type != ov::element::f32 && element_type != ov::element::f16) {
+        return false;
+    }
+    if (index_type != ov::element::i32 && index_type != ov::element::u32) {
+        return false;
+    }
+    if (!desc.mode_max || desc.sort_type == TopKSortType::SortIndices || desc.k == 0 || desc.k > 16) {
+        return false;
+    }
+    if (!node->get_input_partial_shape(0).is_static() ||
+        !node->get_output_partial_shape(0).is_static() ||
+        !node->get_output_partial_shape(1).is_static()) {
+        return false;
+    }
+    const auto input_rank = node->get_input_shape(0).size();
+    if (input_rank < 2 || node->get_output_shape(0).size() != input_rank ||
+        node->get_output_shape(1).size() != input_rank) {
+        return false;
+    }
+    return desc.outer > 0 && desc.axis_len > 0 && (desc.inner == 0 || desc.inner == 1);
+}
+
+GfxMpsrtTopKAbiDesc make_mpsrt_topk_desc(const TopKCodegenDesc& desc, uint32_t axis) {
+    GfxMpsrtTopKAbiDesc abi{};
+    abi.axis = axis;
+    abi.k = desc.k;
+    abi.mode_max = desc.mode_max ? 1u : 0u;
+    abi.sort_type = static_cast<uint32_t>(desc.sort_type);
+    return abi;
+}
+
 }  // namespace
 
 MetalTopKOp::MetalTopKOp(const std::shared_ptr<const ov::Node>& node, void* device, void* queue)
@@ -100,6 +147,35 @@ void MetalTopKOp::compile(MetalBufferManager* buffer_manager) {
     desc.inner = m_inner == 0 ? 1u : m_inner;
     desc.mode_max = m_mode_max;
     desc.sort_type = m_sort_type;
+
+    const auto plan = select_stage_optimization_plan(buffer_manager,
+                                                     GpuBackend::Metal,
+                                                     "TopK",
+                                                     m_node,
+                                                     desc.element_type,
+                                                     /*has_bias=*/false,
+                                                     /*has_activation=*/false,
+                                                     /*has_batchnorm=*/false,
+                                                     GfxStageRuntimeTraits{});
+    if (topk_can_use_mpsrt(m_node, desc, plan, desc.element_type, desc.index_type)) {
+        annotate_module_with_mpsrt_stage_plan(module, plan, "TopK");
+        annotate_module_with_mpsrt_topk_desc(module, make_mpsrt_topk_desc(desc, m_axis));
+        GfxMpsrtKernelSourceOptions source_options{};
+        source_options.external_arg_count = 3u;
+        source_options.external_output_arg_count = 2u;
+        auto source_plan = make_mpsrt_kernel_source_plan_from_module(module, std::move(source_options));
+        if (source_plan.valid()) {
+            m_kernel = backend.compile(source_plan.source, &log);
+            OPENVINO_ASSERT(m_kernel, "MetalTopKOp: failed to compile MPSRT TopK kernel: ", log);
+            auto metal_kernel = std::dynamic_pointer_cast<MetalCompiledKernel>(m_kernel);
+            OPENVINO_ASSERT(metal_kernel, "MetalTopKOp: MPSRT TopK did not compile to Metal kernel");
+            OPENVINO_ASSERT(metal_kernel->mpsrt_model(),
+                            "MetalTopKOp: MPSRT TopK did not materialize from MLIR metadata");
+            m_uses_mpsrt_topk = true;
+            MetalOp::compile(buffer_manager);
+            return;
+        }
+    }
 
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };

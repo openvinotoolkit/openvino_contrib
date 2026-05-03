@@ -33,6 +33,9 @@ struct MpsrtRuntimeStage {
     GfxMpsrtMslDispatchAbiDesc msl_dispatch_desc{};
     GfxMpsrtConv2DAbiDesc conv2d_desc{};
     GfxMpsrtGemmAbiDesc gemm_desc{};
+    GfxMpsrtPool2DAbiDesc pool2d_desc{};
+    GfxMpsrtSoftmaxAbiDesc softmax_desc{};
+    GfxMpsrtTopKAbiDesc topk_desc{};
     std::vector<GfxMpsrtValue> inputs;
     std::vector<GfxMpsrtValue> outputs;
     std::vector<GfxMpsrtValue> kernel_buffer_order;
@@ -51,6 +54,7 @@ struct MpsrtModel {
     std::vector<GfxMpsrtValue> external_input_values;
     std::vector<GfxMpsrtValue> external_output_values;
     std::vector<GfxMpsrtExternalBufferRole> external_buffer_roles;
+    std::vector<GfxMpsrtStorageBridgeDesc> storage_bridges;
 };
 
 MpsrtRuntimeStage make_mpsrt_runtime_stage_from_desc(const GfxMpsrtStageDesc& desc,

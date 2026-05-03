@@ -17,6 +17,8 @@
 #include "kernel_ir/gfx_kernel_spec.hpp"
 #include "mlir/codegen_common.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
+#include "mlir/gfx_mpsrt_const_tensor_sources.hpp"
+#include "mlir/gfx_mpsrt_conv_metadata.hpp"
 #include "mlir/gfx_mpsrt_metadata.hpp"
 #include "mlir/mlir_builder.hpp"
 #include "mlir/mlir_kernel_plan_utils.hpp"
@@ -1117,42 +1119,6 @@ std::optional<MatMulCodegenDesc> static_matmul_desc_for_node(const std::shared_p
     return desc;
 }
 
-std::optional<ov::Tensor> evaluate_constant_source_tensor(const ov::Output<ov::Node>& source) {
-    auto node = source.get_node_shared_ptr();
-    if (!node) {
-        return std::nullopt;
-    }
-    if (auto constant = ov::as_type_ptr<const ov::op::v0::Constant>(node)) {
-        return constant->get_tensor_view();
-    }
-    if (!node->has_evaluate()) {
-        return std::nullopt;
-    }
-
-    ov::TensorVector inputs;
-    inputs.reserve(node->get_input_size());
-    for (const auto& input_value : node->input_values()) {
-        auto input_tensor = evaluate_constant_source_tensor(input_value);
-        if (!input_tensor.has_value()) {
-            return std::nullopt;
-        }
-        inputs.push_back(*input_tensor);
-    }
-
-    ov::TensorVector outputs;
-    outputs.reserve(node->get_output_size());
-    for (size_t i = 0; i < node->get_output_size(); ++i) {
-        if (node->get_output_partial_shape(i).is_dynamic()) {
-            return std::nullopt;
-        }
-        outputs.emplace_back(node->get_output_element_type(i), node->get_output_shape(i));
-    }
-    if (!node->evaluate(outputs, inputs)) {
-        return std::nullopt;
-    }
-    return outputs.at(source.get_index());
-}
-
 bool should_pack_matmul_const_input_as_f16(const std::shared_ptr<const ov::Node>& node,
                                            size_t input_idx,
                                            const ov::Tensor& tensor) {
@@ -1830,6 +1796,9 @@ void MlirStage::compile_from_plan(MlirKernelPlanContext& plan_ctx,
     m_kernel_inputs = std::move(build_info.mapping.mapping.kernel_inputs);
     KernelSource src = build_info.plan.to_source();
     src.signature.output_arg_count = static_cast<uint32_t>(output_arg_count);
+    if (backend_kind() == GpuBackend::Metal && is_conv_like()) {
+        gfx_attach_mpsrt_conv_const_tensors(src, m_node);
+    }
     if (src.module) {
         normalize_operand_segment_sizes(src.module);
         if (auto fixed_arg_count = src.module->getAttrOfType<mlir::IntegerAttr>("gfx.fixed_arg_count")) {
@@ -1991,7 +1960,7 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
             if (compressed_matmul_info && i == 1) {
                 continue;
             }
-            auto const_tensor = evaluate_constant_source_tensor(m_node->input_value(i));
+            auto const_tensor = gfx_evaluate_constant_source_tensor(m_node->input_value(i));
             if (!const_tensor.has_value()) {
                 continue;
             }
@@ -6703,7 +6672,7 @@ void MlirStage::clone_into(MlirStage& dst) const {
 }
 
 bool MlirStage::is_conv_like() const {
-    return m_type == "Convolution" || m_type == "GroupConvolution";
+    return m_type == "Convolution" || m_type == "GroupConvolution" || m_type == "GroupConv2D";
 }
 
 bool MlirStage::is_matmul_like() const {
@@ -6718,7 +6687,12 @@ void MlirStage::apply_stage_optimization_attrs(mlir::ModuleOp module,
     auto* ctx = module.getContext();
     module->setAttr("gfx.stage_archetype",
                     mlir::StringAttr::get(ctx, stage_archetype_attr(plan.archetype)));
-    annotate_module_with_mpsrt_stage_plan(module, plan, m_type);
+    const bool conv_mpsrt_annotated =
+        is_conv_like() &&
+        annotate_module_with_conv_mpsrt_plan(module, plan, m_node, m_type) != GfxConvMpsrtLoweringKind::None;
+    if (!conv_mpsrt_annotated) {
+        annotate_module_with_mpsrt_stage_plan(module, plan, m_type);
+    }
     module->setAttr("gfx.tensor_layout_kind",
                     mlir::StringAttr::get(ctx, tensor_layout_kind_attr(plan.layout.kind)));
     module->setAttr("gfx.tensor_view_only",

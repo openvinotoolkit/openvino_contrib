@@ -15,6 +15,9 @@
 #include "backends/metal/runtime/profiling/profiler.hpp"
 #include "kernel_ir/gfx_codegen_desc.hpp"
 #include "mlir/codegen_common.hpp"
+#include "mlir/gfx_mpsrt_const_tensor_sources.hpp"
+#include "mlir/gfx_mpsrt_conv_metadata.hpp"
+#include "mlir/gfx_mpsrt_source_plan.hpp"
 #include "mlir/msl_codegen.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/validation_util.hpp"
@@ -1842,19 +1845,56 @@ std::shared_ptr<ICompiledKernel> MetalStage::compile_kernel(const KernelSource& 
             };
         }
     }
-    if (src.module) {
+    const bool mpsrt_conv_candidate =
+        src.module &&
+        (ov::is_type<const ov::op::v1::Convolution>(m_node) ||
+         ov::is_type<const ov::op::v1::GroupConvolution>(m_node)) &&
+        !m_has_bias && !m_has_bn &&
+        (!m_has_activation || gfx_mpsrt_conv_supports_fused_activation(m_activation));
+    if (mpsrt_conv_candidate) {
+        const bool group_conv = ov::is_type<const ov::op::v1::GroupConvolution>(m_node);
+        const char* stage_type = group_conv ? "GroupConvolution" : "Convolution";
+        const char* fallback_stage_type = group_conv ? "GroupConv2D" : "Convolution";
         const auto plan = select_stage_optimization_plan(m_buffer_manager,
                                                          GpuBackend::Metal,
-                                                         m_type,
+                                                         stage_type,
                                                          m_node,
                                                          m_node ? m_node->get_output_element_type(0)
                                                                 : ov::element::dynamic,
-                                                         m_has_bias,
-                                                         m_has_activation,
-                                                         m_has_bn,
+                                                         /*has_bias=*/false,
+                                                         /*has_activation=*/false,
+                                                         /*has_batchnorm=*/false,
                                                          GfxStageRuntimeTraits{});
-        annotate_msl_module_with_stage_plan(src.module, plan, m_type);
-        configure_msl_kernel_source_for_plan(src, m_type);
+        const auto lowering = annotate_module_with_conv_mpsrt_plan(src.module,
+                                                                   plan,
+                                                                   m_node,
+                                                                   fallback_stage_type,
+                                                                   m_has_activation,
+                                                                   m_activation);
+        if (lowering == GfxConvMpsrtLoweringKind::MpsConv2D ||
+            lowering == GfxConvMpsrtLoweringKind::MpsGroupConv2D) {
+            GfxMpsrtKernelSourceOptions source_options{};
+            source_options.external_arg_count = src.signature.arg_count != 0 ? src.signature.arg_count : 9u;
+            source_options.external_output_arg_count =
+                src.signature.output_arg_count != 0 ? src.signature.output_arg_count : 1u;
+            auto source_plan = make_mpsrt_kernel_source_plan_from_module(src.module, std::move(source_options));
+            OPENVINO_ASSERT(source_plan.valid(),
+                            "MetalStage: failed to create MPSRT source plan for ",
+                            stage_type);
+            src = std::move(source_plan.source);
+            gfx_attach_mpsrt_conv_const_tensors(src, m_node);
+            MetalCodegenBackend backend(m_device);
+            return backend.compile(src, log);
+        }
+    }
+    if (src.module) {
+        configure_msl_kernel_source_for_node(src,
+                                             m_node,
+                                             m_buffer_manager,
+                                             m_type,
+                                             m_has_bias,
+                                             m_has_activation,
+                                             m_has_bn);
     }
     OPENVINO_ASSERT(src.msl_generator || !src.msl_source.empty(),
                     "MetalStage: missing MSL source/generator for op ",

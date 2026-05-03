@@ -25,6 +25,28 @@ enum class GfxConvMpsrtLoweringKind {
     MpsGroupConv2D,
 };
 
+inline uint32_t gfx_mpsrt_conv_fused_activation_code(ActivationKind kind) {
+    switch (kind) {
+        case ActivationKind::Relu:
+            return 1u;
+        case ActivationKind::Sigmoid:
+            return 2u;
+        case ActivationKind::Tanh:
+            return 3u;
+        case ActivationKind::Abs:
+            return 10u;
+        case ActivationKind::Identity:
+            return 0u;
+        default:
+            return 0u;
+    }
+}
+
+inline bool gfx_mpsrt_conv_supports_fused_activation(ActivationKind kind) {
+    return kind == ActivationKind::Identity ||
+           gfx_mpsrt_conv_fused_activation_code(kind) != 0u;
+}
+
 inline std::string gfx_mpsrt_canonical_conv_stage_type(const std::shared_ptr<const ov::Node>& node,
                                                        std::string_view fallback_stage_type) {
     if (ov::as_type_ptr<const ov::op::v1::Convolution>(node)) {
@@ -67,6 +89,39 @@ inline bool gfx_mpsrt_copy_conv_spatial_attrs(const ov::Strides& strides,
 }
 
 }  // namespace detail
+
+inline bool annotate_module_with_mpsrt_conv_const_weight_desc(mlir::ModuleOp module,
+                                                              const std::shared_ptr<const ov::Node>& node) {
+    if (!module) {
+        return false;
+    }
+
+    std::vector<int64_t> weight_shape;
+    ov::element::Type weight_type = ov::element::dynamic;
+    if (node && node->get_input_size() >= 2 && node->get_input_partial_shape(1).is_static()) {
+        const auto node_weight_shape = node->get_input_shape(1);
+        weight_shape.assign(node_weight_shape.begin(), node_weight_shape.end());
+        weight_type = node->get_input_element_type(1);
+    } else if (auto func = detail::gfx_mpsrt_entry_func(module)) {
+        const auto fn_type = func.getFunctionType();
+        if (fn_type.getNumInputs() > 1) {
+            const auto mlir_weight_type = fn_type.getInput(1);
+            weight_shape = detail::gfx_mpsrt_shape_from_mlir_type(mlir_weight_type);
+            weight_type = detail::gfx_mpsrt_element_from_mlir_type(mlir_weight_type);
+        }
+    }
+
+    if (weight_shape.empty() || (weight_type != ov::element::f16 && weight_type != ov::element::f32)) {
+        return false;
+    }
+
+    const auto desc = gfx_mpsrt_make_tensor_desc(weight_shape,
+                                                 weight_type,
+                                                 GfxStageStorageKind::Buffer,
+                                                 GfxMpsrtTensorFlagConst);
+    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.input1", desc);
+    return true;
+}
 
 inline bool make_mpsrt_conv2d_desc_from_node(const std::shared_ptr<const ov::Node>& node,
                                              GfxMpsrtConv2DAbiDesc& desc) {
@@ -113,11 +168,16 @@ inline GfxConvMpsrtLoweringKind annotate_module_with_conv_mpsrt_plan(
     mlir::ModuleOp module,
     const GfxStageOptimizationPlan& plan,
     const std::shared_ptr<const ov::Node>& node,
-    std::string_view fallback_stage_type) {
+    std::string_view fallback_stage_type,
+    bool has_activation = false,
+    ActivationKind activation = ActivationKind::Identity) {
     if (!module ||
         plan.placement.domain != GfxStageBackendDomain::AppleMps ||
         !plan.placement.uses_vendor_primitive ||
         plan.placement.uses_custom_kernel) {
+        return GfxConvMpsrtLoweringKind::None;
+    }
+    if (has_activation && !gfx_mpsrt_conv_supports_fused_activation(activation)) {
         return GfxConvMpsrtLoweringKind::None;
     }
 
@@ -132,8 +192,14 @@ inline GfxConvMpsrtLoweringKind annotate_module_with_conv_mpsrt_plan(
     if (!make_mpsrt_conv2d_desc_from_node(node, conv_desc)) {
         return GfxConvMpsrtLoweringKind::None;
     }
+    if (has_activation) {
+        conv_desc.fused_activation = gfx_mpsrt_conv_fused_activation_code(activation);
+    }
 
     annotate_module_with_mpsrt_stage_plan(module, plan, stage_type);
+    if (!annotate_module_with_mpsrt_conv_const_weight_desc(module, node)) {
+        return GfxConvMpsrtLoweringKind::None;
+    }
     annotate_module_with_mpsrt_conv2d_desc(module, conv_desc);
     return stage_desc.kind == GfxMpsrtStageKind::MPSConv2D
                ? GfxConvMpsrtLoweringKind::MpsConv2D

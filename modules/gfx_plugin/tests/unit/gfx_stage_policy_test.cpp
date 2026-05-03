@@ -12,14 +12,18 @@
 #include "openvino/op/constant.hpp"
 #include "openvino/op/group_conv.hpp"
 #include "openvino/op/matmul.hpp"
+#include "openvino/op/max_pool.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/reshape.hpp"
+#include "openvino/op/softmax.hpp"
+#include "openvino/op/topk.hpp"
 #include "openvino/op/transpose.hpp"
 #include "backends/metal/runtime/mpsrt/mpsrt_model.hpp"
 #include "runtime/gfx_mpsrt_abi.hpp"
 #include "runtime/gfx_mpsrt_builder_plan.hpp"
 #include "runtime/gfx_mpsrt_kernel_manifest_adapter.hpp"
 #include "runtime/gfx_mpsrt_plan.hpp"
+#include "runtime/gfx_mpsrt_storage_bridge.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 
 using namespace ov::gfx_plugin;
@@ -51,6 +55,32 @@ std::shared_ptr<const ov::Node> make_pointwise_conv_node() {
                                                      ov::Strides{1, 1});
 }
 
+std::shared_ptr<const ov::Node> make_non_aligned_channel_conv_node() {
+    auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 3, 32, 32});
+    auto weights = ov::op::v0::Constant::create(ov::element::f16,
+                                                ov::Shape{2, 3, 3, 3},
+                                                std::vector<float>(2 * 3 * 3 * 3, 1.f));
+    return std::make_shared<ov::op::v1::Convolution>(input,
+                                                     weights,
+                                                     ov::Strides{1, 1},
+                                                     ov::CoordinateDiff{1, 1},
+                                                     ov::CoordinateDiff{1, 1},
+                                                     ov::Strides{1, 1});
+}
+
+std::shared_ptr<const ov::Node> make_dilated_non_aligned_channel_conv_node() {
+    auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 3, 32, 32});
+    auto weights = ov::op::v0::Constant::create(ov::element::f16,
+                                                ov::Shape{2, 3, 3, 3},
+                                                std::vector<float>(2 * 3 * 3 * 3, 1.f));
+    return std::make_shared<ov::op::v1::Convolution>(input,
+                                                     weights,
+                                                     ov::Strides{1, 1},
+                                                     ov::CoordinateDiff{0, 0},
+                                                     ov::CoordinateDiff{0, 0},
+                                                     ov::Strides{3, 1});
+}
+
 std::shared_ptr<const ov::Node> make_depthwise_group_conv_node() {
     auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 32, 32, 32});
     auto weights = ov::op::v0::Constant::create(ov::element::f16,
@@ -74,6 +104,32 @@ std::shared_ptr<const ov::Node> make_matmul_node() {
     auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 128, 256});
     auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 256, 64});
     return std::make_shared<ov::op::v0::MatMul>(lhs, rhs, false, false);
+}
+
+std::shared_ptr<const ov::Node> make_aligned_maxpool_node() {
+    auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 4, 16, 16});
+    return std::make_shared<ov::op::v1::MaxPool>(input,
+                                                 ov::Strides{2, 2},
+                                                 ov::Shape{0, 0},
+                                                 ov::Shape{0, 0},
+                                                 ov::Shape{2, 2},
+                                                 ov::op::RoundingType::FLOOR);
+}
+
+std::shared_ptr<const ov::Node> make_last_dim_softmax_node() {
+    auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{2, 8, 16});
+    return std::make_shared<ov::op::v1::Softmax>(input, 2);
+}
+
+std::shared_ptr<const ov::Node> make_last_dim_topk_node() {
+    auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{2, 8, 16});
+    auto k = ov::op::v0::Constant::create(ov::element::i32, ov::Shape{}, std::vector<int32_t>{4});
+    return std::make_shared<ov::op::v11::TopK>(input,
+                                               k,
+                                               2,
+                                               ov::op::TopKMode::MAX,
+                                               ov::op::TopKSortType::SORT_VALUES,
+                                               ov::element::i32);
 }
 
 std::shared_ptr<const ov::Node> make_large_concat_node() {
@@ -227,8 +283,8 @@ TEST(GfxStagePolicyTest, MetalConvolutionPlansAppleMpsImageStorage) {
                                                      "Convolution",
                                                      conv,
                                                      ov::element::f16,
-                                                     /*has_bias=*/true,
-                                                     /*has_activation=*/true,
+                                                     /*has_bias=*/false,
+                                                     /*has_activation=*/false,
                                                      /*has_batchnorm=*/false,
                                                      {});
 
@@ -239,6 +295,93 @@ TEST(GfxStagePolicyTest, MetalConvolutionPlansAppleMpsImageStorage) {
     EXPECT_FALSE(plan.placement.uses_custom_kernel);
     EXPECT_TRUE(plan.post_ops.bias);
     EXPECT_TRUE(plan.post_ops.activation);
+}
+
+TEST(GfxStagePolicyTest, MetalConvolutionWithGenericActivationStaysMslUntilActivationKindIsKnown) {
+    const auto conv = make_pointwise_conv_node();
+    const auto plan = select_stage_optimization_plan(nullptr,
+                                                     GpuBackend::Metal,
+                                                     "Convolution",
+                                                     conv,
+                                                     ov::element::f16,
+                                                     /*has_bias=*/false,
+                                                     /*has_activation=*/true,
+                                                     /*has_batchnorm=*/false,
+                                                     {});
+
+    EXPECT_EQ(plan.archetype, GfxStageArchetype::Convolution);
+    EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMsl);
+    EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Buffer);
+    EXPECT_FALSE(plan.placement.uses_vendor_primitive);
+    EXPECT_TRUE(plan.placement.uses_custom_kernel);
+}
+
+TEST(GfxStagePolicyTest, MetalConvolutionWithNonAlignedChannelsStillPlansAppleMpsImageStorage) {
+    const auto conv = make_non_aligned_channel_conv_node();
+    const auto plan = select_stage_optimization_plan(nullptr,
+                                                     GpuBackend::Metal,
+                                                     "Convolution",
+                                                     conv,
+                                                     ov::element::f16,
+                                                     /*has_bias=*/false,
+                                                     /*has_activation=*/false,
+                                                     /*has_batchnorm=*/false,
+                                                     {});
+
+    EXPECT_EQ(plan.archetype, GfxStageArchetype::Convolution);
+    EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMps);
+    EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Image);
+    EXPECT_TRUE(plan.placement.uses_vendor_primitive);
+    EXPECT_FALSE(plan.placement.uses_custom_kernel);
+
+    const auto desc = gfx_mpsrt_make_stage_desc(plan, "Convolution");
+    EXPECT_EQ(desc.kind, GfxMpsrtStageKind::MPSConv2D);
+    EXPECT_EQ(desc.layout, GfxMpsrtLayout::NHWC4);
+    EXPECT_EQ(desc.specialization_key, "apple_mps:image:Convolution");
+}
+
+TEST(GfxStagePolicyTest, MetalDilatedConvolutionPlansAppleMpsImageStorage) {
+    const auto conv = make_dilated_non_aligned_channel_conv_node();
+    const auto plan = select_stage_optimization_plan(nullptr,
+                                                     GpuBackend::Metal,
+                                                     "Convolution",
+                                                     conv,
+                                                     ov::element::f16,
+                                                     /*has_bias=*/false,
+                                                     /*has_activation=*/false,
+                                                     /*has_batchnorm=*/false,
+                                                     {});
+
+    EXPECT_EQ(plan.archetype, GfxStageArchetype::Convolution);
+    EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMps);
+    EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Image);
+    EXPECT_TRUE(plan.placement.uses_vendor_primitive);
+    EXPECT_FALSE(plan.placement.uses_custom_kernel);
+}
+
+TEST(GfxStagePolicyTest, MetalDepthwiseGroupConvolutionPlansAppleMpsImageStorage) {
+    const auto gconv = make_depthwise_group_conv_node();
+    const auto plan = select_stage_optimization_plan(nullptr,
+                                                     GpuBackend::Metal,
+                                                     "GroupConvolution",
+                                                     gconv,
+                                                     ov::element::f16,
+                                                     /*has_bias=*/false,
+                                                     /*has_activation=*/false,
+                                                     /*has_batchnorm=*/false,
+                                                     {});
+
+    EXPECT_EQ(plan.archetype, GfxStageArchetype::GroupConvolution);
+    EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMps);
+    EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Image);
+    EXPECT_TRUE(plan.placement.uses_vendor_primitive);
+    EXPECT_FALSE(plan.placement.uses_custom_kernel);
+
+    const auto desc = gfx_mpsrt_make_stage_desc(plan, "GroupConvolution");
+    EXPECT_EQ(desc.kind, GfxMpsrtStageKind::MPSGroupConv2D);
+    EXPECT_EQ(desc.stage_manifest.stage_family, GfxKernelStageFamily::GroupConvolution);
+    EXPECT_EQ(desc.stage_manifest.backend_domain, GfxKernelBackendDomain::AppleMps);
+    EXPECT_EQ(desc.stage_manifest.execution_kind, GfxKernelExecutionKind::VendorPrimitive);
 }
 
 TEST(GfxStagePolicyTest, MetalMatMulPlansAppleMpsMatrixStorage) {
@@ -321,6 +464,74 @@ TEST(GfxStagePolicyTest, MpsrtImageTensorDescriptorUsesLogicalNchwShapeAndNhwc4S
     EXPECT_EQ(desc.image_feature_channels, 64u);
     EXPECT_EQ(desc.image_height, 32u);
     EXPECT_EQ(desc.image_width, 16u);
+}
+
+TEST(GfxStagePolicyTest, MpsrtImageStorageBridgeContractClassifiesExternalIoDirections) {
+    const auto desc = gfx_mpsrt_to_abi_desc(gfx_mpsrt_make_tensor_desc({1, 64, 32, 16},
+                                                                       ov::element::f16,
+                                                                       GfxStageStorageKind::Image,
+                                                                       GfxMpsrtTensorFlagExternalIo));
+
+    EXPECT_TRUE(gfx_mpsrt_tensor_is_image(desc));
+    EXPECT_TRUE(gfx_mpsrt_image_bridge_supported(desc));
+    EXPECT_EQ(gfx_mpsrt_external_image_bridge_direction(false),
+              GfxMpsrtStorageBridgeDirection::BufferToImage);
+    EXPECT_EQ(gfx_mpsrt_external_image_bridge_direction(true),
+              GfxMpsrtStorageBridgeDirection::ImageToBuffer);
+
+    GfxMpsrtStorageBridgeDesc input_bridge{};
+    ASSERT_TRUE(gfx_mpsrt_make_image_bridge_desc(7u,
+                                                 desc,
+                                                 gfx_mpsrt_external_image_bridge_direction(false),
+                                                 input_bridge));
+    EXPECT_EQ(input_bridge.value, 7u);
+    EXPECT_EQ(input_bridge.direction, GfxMpsrtStorageBridgeDirection::BufferToImage);
+    EXPECT_EQ(input_bridge.source_storage, GfxMpsrtStorage::Buffer);
+    EXPECT_EQ(input_bridge.target_storage, GfxMpsrtStorage::Image);
+    EXPECT_STREQ(gfx_mpsrt_storage_bridge_direction_name(input_bridge.direction), "buffer_to_image");
+
+    GfxMpsrtStorageBridgeDesc output_bridge{};
+    ASSERT_TRUE(gfx_mpsrt_make_image_bridge_desc(8u,
+                                                 desc,
+                                                 gfx_mpsrt_external_image_bridge_direction(true),
+                                                 output_bridge));
+    EXPECT_EQ(output_bridge.value, 8u);
+    EXPECT_EQ(output_bridge.direction, GfxMpsrtStorageBridgeDirection::ImageToBuffer);
+    EXPECT_EQ(output_bridge.source_storage, GfxMpsrtStorage::Image);
+    EXPECT_EQ(output_bridge.target_storage, GfxMpsrtStorage::Buffer);
+    EXPECT_STREQ(gfx_mpsrt_storage_bridge_direction_name(output_bridge.direction), "image_to_buffer");
+}
+
+TEST(GfxStagePolicyTest, MpsrtImageStorageBridgeRejectsNonImageOrIncompleteTensor) {
+    const auto matrix_desc = gfx_mpsrt_to_abi_desc(gfx_mpsrt_make_tensor_desc({2, 128, 64},
+                                                                              ov::element::f16,
+                                                                              GfxStageStorageKind::Matrix));
+    EXPECT_FALSE(gfx_mpsrt_tensor_is_image(matrix_desc));
+    EXPECT_FALSE(gfx_mpsrt_image_bridge_supported(matrix_desc));
+
+    auto incomplete_image = gfx_mpsrt_to_abi_desc(gfx_mpsrt_make_tensor_desc({1, 64, 32, 16},
+                                                                             ov::element::f16,
+                                                                             GfxStageStorageKind::Image));
+    incomplete_image.image_width = 0;
+    EXPECT_TRUE(gfx_mpsrt_tensor_is_image(incomplete_image));
+    EXPECT_FALSE(gfx_mpsrt_image_bridge_supported(incomplete_image));
+
+    GfxMpsrtStorageBridgeDesc bridge{};
+    EXPECT_FALSE(gfx_mpsrt_make_image_bridge_desc(1u,
+                                                  matrix_desc,
+                                                  GfxMpsrtStorageBridgeDirection::BufferToImage,
+                                                  bridge));
+    EXPECT_FALSE(gfx_mpsrt_make_image_bridge_desc(1u,
+                                                  incomplete_image,
+                                                  GfxMpsrtStorageBridgeDirection::BufferToImage,
+                                                  bridge));
+    const auto valid_image = gfx_mpsrt_to_abi_desc(gfx_mpsrt_make_tensor_desc({1, 64, 32, 16},
+                                                                              ov::element::f16,
+                                                                              GfxStageStorageKind::Image));
+    EXPECT_FALSE(gfx_mpsrt_make_image_bridge_desc(1u,
+                                                  valid_image,
+                                                  GfxMpsrtStorageBridgeDirection::Unknown,
+                                                  bridge));
 }
 
 TEST(GfxStagePolicyTest, MpsrtMatrixTensorDescriptorFlattensBatchToMatrixCount) {
@@ -431,6 +642,25 @@ TEST(GfxStagePolicyTest, MpsrtStageRecordKeyUsesNhwc4ForMetalConvolutionStage) {
               "mps_conv2d|apple_mps|image|image|nhwc4|Convolution|apple_mps:image:Convolution");
 }
 
+TEST(GfxStagePolicyTest, MpsrtConv2DStageRecordKeyCarriesFusedActivation) {
+    const auto conv = make_pointwise_conv_node();
+    const auto plan = select_stage_optimization_plan(nullptr,
+                                                     GpuBackend::Metal,
+                                                     "Convolution",
+                                                     conv,
+                                                     ov::element::f16,
+                                                     /*has_bias=*/false,
+                                                     /*has_activation=*/false,
+                                                     /*has_batchnorm=*/false,
+                                                     {});
+    auto desc = gfx_mpsrt_make_stage_desc(plan, "Convolution");
+    desc.conv2d_desc.fused_activation = 1u;
+
+    EXPECT_EQ(gfx_mpsrt_stage_record_key(desc),
+              "mps_conv2d|apple_mps|image|image|nhwc4|Convolution|apple_mps:image:Convolution|"
+              "conv2d:g1:s1x1:d1x1:p0,0,0,0:act1");
+}
+
 TEST(GfxStagePolicyTest, MpsrtConv2DBuilderPlanCarriesVendorPrimitiveDescriptor) {
     const auto conv = make_light_spatial3x3_conv_node();
     const auto plan = select_stage_optimization_plan(nullptr,
@@ -471,6 +701,11 @@ TEST(GfxStagePolicyTest, MpsrtConv2DBuilderPlanCarriesVendorPrimitiveDescriptor)
     const auto builder_plan = gfx_mpsrt_make_builder_plan(stage, {input, weights}, {output}, record_key);
     ASSERT_TRUE(builder_plan.valid);
     ASSERT_EQ(builder_plan.records.size(), 5u);
+    ASSERT_EQ(builder_plan.storage_bridges.size(), 2u);
+    EXPECT_EQ(builder_plan.storage_bridges[0].value, 0u);
+    EXPECT_EQ(builder_plan.storage_bridges[0].direction, GfxMpsrtStorageBridgeDirection::BufferToImage);
+    EXPECT_EQ(builder_plan.storage_bridges[1].value, 2u);
+    EXPECT_EQ(builder_plan.storage_bridges[1].direction, GfxMpsrtStorageBridgeDirection::ImageToBuffer);
     EXPECT_EQ(builder_plan.records[3].stage_kind, GfxMpsrtStageKind::MPSConv2D);
     EXPECT_EQ(builder_plan.records[3].conv2d_desc.pads[0], 1u);
     EXPECT_EQ(builder_plan.records[3].conv2d_desc.pads[3], 1u);
@@ -480,9 +715,158 @@ TEST(GfxStagePolicyTest, MpsrtConv2DBuilderPlanCarriesVendorPrimitiveDescriptor)
     ASSERT_TRUE(ov::gfx_plugin::metal::mpsrt::build_mpsrt_model_from_builder_plan(builder_plan, model, &error))
         << error;
     ASSERT_EQ(model.stages.size(), 1u);
+    ASSERT_EQ(model.storage_bridges.size(), 2u);
+    EXPECT_EQ(model.storage_bridges[0].value, 0u);
+    EXPECT_EQ(model.storage_bridges[0].source_storage, GfxMpsrtStorage::Buffer);
+    EXPECT_EQ(model.storage_bridges[0].target_storage, GfxMpsrtStorage::Image);
+    EXPECT_EQ(model.storage_bridges[1].value, 2u);
+    EXPECT_EQ(model.storage_bridges[1].source_storage, GfxMpsrtStorage::Image);
+    EXPECT_EQ(model.storage_bridges[1].target_storage, GfxMpsrtStorage::Buffer);
     EXPECT_EQ(model.stages.front().kind, GfxMpsrtStageKind::MPSConv2D);
     EXPECT_EQ(model.stages.front().conv2d_desc.pads[0], 1u);
     EXPECT_EQ(model.stages.front().conv2d_desc.pads[3], 1u);
+}
+
+TEST(GfxStagePolicyTest, MpsrtPool2DBuilderPlanCarriesVendorPrimitiveDescriptor) {
+    const auto pool = make_aligned_maxpool_node();
+    const auto plan = select_stage_optimization_plan(nullptr,
+                                                     GpuBackend::Metal,
+                                                     "MaxPool",
+                                                     pool,
+                                                     ov::element::f16,
+                                                     /*has_bias=*/false,
+                                                     /*has_activation=*/false,
+                                                     /*has_batchnorm=*/false,
+                                                     {});
+    auto stage = gfx_mpsrt_make_stage_desc(plan, "MaxPool");
+    stage.pool2d_desc.is_avg = 0;
+    stage.pool2d_desc.kernel[0] = 2;
+    stage.pool2d_desc.kernel[1] = 2;
+    stage.pool2d_desc.strides[0] = 2;
+    stage.pool2d_desc.strides[1] = 2;
+
+    const auto input = gfx_mpsrt_make_tensor_desc({1, 4, 16, 16},
+                                                  ov::element::f16,
+                                                  GfxStageStorageKind::Image,
+                                                  GfxMpsrtTensorFlagExternalIo);
+    const auto output = gfx_mpsrt_make_tensor_desc({1, 4, 8, 8},
+                                                   ov::element::f16,
+                                                   GfxStageStorageKind::Image,
+                                                   GfxMpsrtTensorFlagTransient);
+    const auto record_key = gfx_mpsrt_stage_record_key(stage);
+    EXPECT_NE(record_key.find("|pool2d:max:k2x2:s2x2:d1x1:p0,0,0,0"), std::string::npos);
+
+    const auto builder_plan = gfx_mpsrt_make_builder_plan(stage, {input}, {output}, record_key);
+    ASSERT_TRUE(builder_plan.valid);
+    ASSERT_EQ(builder_plan.records.size(), 4u);
+    EXPECT_EQ(builder_plan.records[2].stage_kind, GfxMpsrtStageKind::MPSPool2D);
+    EXPECT_EQ(builder_plan.records[2].pool2d_desc.kernel[0], 2u);
+    EXPECT_EQ(builder_plan.records[2].pool2d_desc.strides[1], 2u);
+
+    ov::gfx_plugin::metal::mpsrt::MpsrtModel model;
+    std::string error;
+    ASSERT_TRUE(ov::gfx_plugin::metal::mpsrt::build_mpsrt_model_from_builder_plan(builder_plan, model, &error))
+        << error;
+    ASSERT_EQ(model.stages.size(), 1u);
+    EXPECT_EQ(model.stages.front().kind, GfxMpsrtStageKind::MPSPool2D);
+    EXPECT_EQ(model.stages.front().pool2d_desc.kernel[0], 2u);
+    EXPECT_EQ(model.stages.front().pool2d_desc.strides[1], 2u);
+}
+
+TEST(GfxStagePolicyTest, MpsrtSoftmaxBuilderPlanCarriesVendorPrimitiveDescriptor) {
+    const auto softmax = make_last_dim_softmax_node();
+    const auto plan = select_stage_optimization_plan(nullptr,
+                                                     GpuBackend::Metal,
+                                                     "Softmax",
+                                                     softmax,
+                                                     ov::element::f16,
+                                                     /*has_bias=*/false,
+                                                     /*has_activation=*/false,
+                                                     /*has_batchnorm=*/false,
+                                                     {});
+    auto stage = gfx_mpsrt_make_stage_desc(plan, "Softmax");
+    stage.softmax_desc.axis = 2;
+    stage.softmax_desc.log_softmax = 0;
+
+    const auto input = gfx_mpsrt_make_tensor_desc({2, 8, 16},
+                                                  ov::element::f16,
+                                                  GfxStageStorageKind::Matrix,
+                                                  GfxMpsrtTensorFlagExternalIo);
+    const auto output = gfx_mpsrt_make_tensor_desc({2, 8, 16},
+                                                   ov::element::f16,
+                                                   GfxStageStorageKind::Matrix,
+                                                   GfxMpsrtTensorFlagTransient);
+    const auto record_key = gfx_mpsrt_stage_record_key(stage);
+    EXPECT_NE(record_key.find("|softmax:axis2"), std::string::npos);
+
+    const auto builder_plan = gfx_mpsrt_make_builder_plan(stage, {input}, {output}, record_key);
+    ASSERT_TRUE(builder_plan.valid);
+    ASSERT_EQ(builder_plan.records.size(), 4u);
+    EXPECT_EQ(builder_plan.records[2].stage_kind, GfxMpsrtStageKind::MPSSoftmax);
+    EXPECT_EQ(builder_plan.records[2].softmax_desc.axis, 2u);
+    EXPECT_EQ(builder_plan.records[2].softmax_desc.log_softmax, 0u);
+
+    ov::gfx_plugin::metal::mpsrt::MpsrtModel model;
+    std::string error;
+    ASSERT_TRUE(ov::gfx_plugin::metal::mpsrt::build_mpsrt_model_from_builder_plan(builder_plan, model, &error))
+        << error;
+    ASSERT_EQ(model.stages.size(), 1u);
+    EXPECT_EQ(model.stages.front().kind, GfxMpsrtStageKind::MPSSoftmax);
+    EXPECT_EQ(model.stages.front().softmax_desc.axis, 2u);
+    EXPECT_EQ(model.stages.front().softmax_desc.log_softmax, 0u);
+}
+
+TEST(GfxStagePolicyTest, MpsrtTopKBuilderPlanCarriesVendorPrimitiveDescriptor) {
+    const auto topk = make_last_dim_topk_node();
+    const auto plan = select_stage_optimization_plan(nullptr,
+                                                     GpuBackend::Metal,
+                                                     "TopK",
+                                                     topk,
+                                                     ov::element::f16,
+                                                     /*has_bias=*/false,
+                                                     /*has_activation=*/false,
+                                                     /*has_batchnorm=*/false,
+                                                     {});
+    auto stage = gfx_mpsrt_make_stage_desc(plan, "TopK");
+    stage.topk_desc.axis = 2;
+    stage.topk_desc.k = 4;
+    stage.topk_desc.mode_max = 1;
+    stage.topk_desc.sort_type = 1u;
+
+    const auto input = gfx_mpsrt_make_tensor_desc({2, 8, 16},
+                                                  ov::element::f16,
+                                                  GfxStageStorageKind::Matrix,
+                                                  GfxMpsrtTensorFlagExternalIo);
+    const auto output_values = gfx_mpsrt_make_tensor_desc({2, 8, 4},
+                                                          ov::element::f16,
+                                                          GfxStageStorageKind::Matrix,
+                                                          GfxMpsrtTensorFlagTransient);
+    const auto output_indices = gfx_mpsrt_make_tensor_desc({2, 8, 4},
+                                                           ov::element::i32,
+                                                           GfxStageStorageKind::Matrix,
+                                                           GfxMpsrtTensorFlagTransient);
+    const auto record_key = gfx_mpsrt_stage_record_key(stage);
+    EXPECT_NE(record_key.find("|topk:axis2:k4:max:sort1"), std::string::npos);
+
+    const auto builder_plan = gfx_mpsrt_make_builder_plan(stage, {input}, {output_values, output_indices}, record_key);
+    ASSERT_TRUE(builder_plan.valid);
+    ASSERT_EQ(builder_plan.records.size(), 4u);
+    EXPECT_EQ(builder_plan.records[2].stage_kind, GfxMpsrtStageKind::MPSTopK);
+    EXPECT_EQ(builder_plan.records[2].topk_desc.axis, 2u);
+    EXPECT_EQ(builder_plan.records[2].topk_desc.k, 4u);
+    EXPECT_EQ(builder_plan.records[2].topk_desc.mode_max, 1u);
+
+    ov::gfx_plugin::metal::mpsrt::MpsrtModel model;
+    std::string error;
+    ASSERT_TRUE(ov::gfx_plugin::metal::mpsrt::build_mpsrt_model_from_builder_plan(builder_plan, model, &error))
+        << error;
+    ASSERT_EQ(model.stages.size(), 1u);
+    EXPECT_EQ(model.stages.front().kind, GfxMpsrtStageKind::MPSTopK);
+    EXPECT_EQ(model.stages.front().topk_desc.axis, 2u);
+    EXPECT_EQ(model.stages.front().topk_desc.k, 4u);
+    ASSERT_EQ(model.stages.front().output_descs.size(), 2u);
+    EXPECT_EQ(model.stages.front().output_descs[0].matrix_columns, 4u);
+    EXPECT_EQ(model.stages.front().output_descs[1].dtype, static_cast<uint32_t>(GfxMpsrtDType::I32));
 }
 
 TEST(GfxStagePolicyTest, MpsrtStageRecordKeyKeepsElementwiseInMslDispatch) {
@@ -520,6 +904,39 @@ TEST(GfxStagePolicyTest, MpsrtStageRecordKeyKeepsElementwiseInMslDispatch) {
               "dispatch:eltwise_fused_buffer:eltwise_fused_buffer:tg256:metallib");
 }
 
+TEST(GfxStagePolicyTest, MpsrtStageDescUsesExplicitMslEntryPointForManifestClassification) {
+    const auto conv = make_pointwise_conv_node();
+    auto plan = select_stage_optimization_plan(nullptr,
+                                               GpuBackend::Metal,
+                                               "Convolution",
+                                               conv,
+                                               ov::element::f16,
+                                               /*has_bias=*/false,
+                                               /*has_activation=*/false,
+                                               /*has_batchnorm=*/false,
+                                               {});
+    plan.placement.domain = GfxStageBackendDomain::AppleMsl;
+    plan.placement.storage = GfxStageStorageKind::Buffer;
+    plan.placement.uses_vendor_primitive = false;
+    plan.placement.uses_custom_kernel = true;
+    plan.placement.specialization_key = "apple_msl:buffer:Convolution";
+
+    const auto desc = gfx_mpsrt_make_stage_desc(plan, "Convolution", "conv3d_kernel");
+
+    EXPECT_EQ(desc.kind, GfxMpsrtStageKind::MSLDispatch);
+    ASSERT_TRUE(desc.stage_manifest.valid);
+    EXPECT_EQ(desc.stage_manifest.stage_family, GfxKernelStageFamily::Conv3D);
+    EXPECT_EQ(desc.stage_manifest.backend_domain, GfxKernelBackendDomain::AppleMsl);
+    EXPECT_EQ(desc.stage_manifest.execution_kind, GfxKernelExecutionKind::CustomKernel);
+    ASSERT_TRUE(desc.stage_manifest.custom_kernel.valid);
+    EXPECT_EQ(desc.dispatch_kernel_family, "conv3d_direct_or_im2col");
+    EXPECT_EQ(desc.dispatch_entry_point, "conv3d_direct_or_im2col");
+    EXPECT_EQ(desc.dispatch_kernel_family_id, static_cast<uint32_t>(GfxMslKernelFamily::Conv3DDirectOrIm2col));
+    EXPECT_EQ(gfx_mpsrt_stage_record_key(desc),
+              "msl_dispatch|apple_msl|buffer|buffer|linear|Convolution|apple_msl:buffer:Convolution|"
+              "dispatch:conv3d_direct_or_im2col:conv3d_direct_or_im2col:tg128:metallib");
+}
+
 TEST(GfxStagePolicyTest, MslManifestClassifiesLegacyConv2DKernelAsCustomConvolution) {
     const auto plan = make_msl_kernel_plan("Convolution", "conv2d_kernel");
 
@@ -529,6 +946,22 @@ TEST(GfxStagePolicyTest, MslManifestClassifiesLegacyConv2DKernelAsCustomConvolut
     EXPECT_EQ(plan.required_entry_point, "conv2d_direct_or_im2col");
     ASSERT_TRUE(plan.stage_manifest.valid);
     EXPECT_EQ(plan.stage_manifest.stage_family, GfxKernelStageFamily::Convolution);
+    EXPECT_EQ(plan.stage_manifest.backend_domain, GfxKernelBackendDomain::AppleMsl);
+    EXPECT_EQ(plan.stage_manifest.execution_kind, GfxKernelExecutionKind::CustomKernel);
+    EXPECT_EQ(plan.stage_manifest.storage, GfxKernelStorageKind::Buffer);
+    ASSERT_TRUE(plan.stage_manifest.custom_kernel.valid);
+    EXPECT_TRUE(plan.stage_manifest.custom_kernel.external_buffer_abi.tail_outputs);
+}
+
+TEST(GfxStagePolicyTest, MslManifestClassifiesLegacyMatMulKernelAsCustomGemm) {
+    const auto plan = make_msl_kernel_plan("MatMul", "matmul_kernel");
+
+    ASSERT_TRUE(plan.valid);
+    EXPECT_EQ(plan.family, GfxMslKernelFamily::MatMulBuffer);
+    EXPECT_EQ(plan.family_name, "matmul_buffer");
+    EXPECT_EQ(plan.required_entry_point, "matmul_buffer");
+    ASSERT_TRUE(plan.stage_manifest.valid);
+    EXPECT_EQ(plan.stage_manifest.stage_family, GfxKernelStageFamily::Gemm);
     EXPECT_EQ(plan.stage_manifest.backend_domain, GfxKernelBackendDomain::AppleMsl);
     EXPECT_EQ(plan.stage_manifest.execution_kind, GfxKernelExecutionKind::CustomKernel);
     EXPECT_EQ(plan.stage_manifest.storage, GfxKernelStorageKind::Buffer);
@@ -976,6 +1409,39 @@ TEST(GfxStagePolicyTest, MpsrtRuntimeModelRejectsMalformedMslDispatch) {
     std::string error;
     EXPECT_FALSE(ov::gfx_plugin::metal::mpsrt::build_mpsrt_model_from_builder_plan(builder_plan, model, &error));
     EXPECT_NE(error.find("MSL dispatch kernel family is not set"), std::string::npos);
+}
+
+TEST(GfxStagePolicyTest, MpsrtRuntimeModelRejectsMalformedStorageBridgeContract) {
+    const auto pool = make_aligned_maxpool_node();
+    const auto plan = select_stage_optimization_plan(nullptr,
+                                                     GpuBackend::Metal,
+                                                     "MaxPool",
+                                                     pool,
+                                                     ov::element::f16,
+                                                     /*has_bias=*/false,
+                                                     /*has_activation=*/false,
+                                                     /*has_batchnorm=*/false,
+                                                     {});
+    auto stage = gfx_mpsrt_make_stage_desc(plan, "MaxPool");
+    const auto input = gfx_mpsrt_make_tensor_desc({1, 4, 16, 16},
+                                                  ov::element::f16,
+                                                  GfxStageStorageKind::Image,
+                                                  GfxMpsrtTensorFlagExternalIo);
+    const auto output = gfx_mpsrt_make_tensor_desc({1, 4, 8, 8},
+                                                   ov::element::f16,
+                                                   GfxStageStorageKind::Image,
+                                                   GfxMpsrtTensorFlagTransient);
+    auto builder_plan = gfx_mpsrt_make_builder_plan(stage,
+                                                    {input},
+                                                    {output},
+                                                    gfx_mpsrt_stage_record_key(stage));
+    ASSERT_EQ(builder_plan.storage_bridges.size(), 2u);
+    builder_plan.storage_bridges.front().direction = GfxMpsrtStorageBridgeDirection::Unknown;
+
+    ov::gfx_plugin::metal::mpsrt::MpsrtModel model;
+    std::string error;
+    EXPECT_FALSE(ov::gfx_plugin::metal::mpsrt::build_mpsrt_model_from_builder_plan(builder_plan, model, &error));
+    EXPECT_NE(error.find("storage bridge contract is invalid"), std::string::npos);
 }
 
 TEST(GfxStagePolicyTest, MpsrtRuntimeModelAdaptsExpandedExternalBufferAbi) {

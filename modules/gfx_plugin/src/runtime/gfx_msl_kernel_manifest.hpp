@@ -25,6 +25,7 @@ enum class GfxMslKernelFamily {
     Conv3DDirectOrIm2col = 8,
     ReductionBuffer = 9,
     Conv2DDirectOrIm2col = 10,
+    MatMulBuffer = 11,
 };
 
 using GfxMslExternalBufferAbiSpec = GfxKernelExternalBufferAbiSpec;

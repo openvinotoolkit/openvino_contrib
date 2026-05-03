@@ -3,6 +3,7 @@
 //
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -10,10 +11,16 @@
 #include <vector>
 
 #include "mlir/IR/BuiltinOps.h"
+#include "runtime/gfx_mpsrt_abi.hpp"
 #include "runtime/gpu_backend_base.hpp"
 
 namespace ov {
 namespace gfx_plugin {
+
+struct MpsrtConstTensorSource {
+    GfxMpsrtValue value = 0;
+    std::vector<uint8_t> bytes;
+};
 
 struct KernelSource {
     mlir::ModuleOp module;
@@ -23,6 +30,7 @@ struct KernelSource {
     std::vector<uint32_t> spirv_binary;
     std::function<std::vector<uint32_t>(mlir::ModuleOp)> spirv_generator;
     KernelSignature signature{};
+    std::vector<MpsrtConstTensorSource> mpsrt_const_tensors;
 };
 
 inline std::string resolve_entry_point(const KernelSource& source,

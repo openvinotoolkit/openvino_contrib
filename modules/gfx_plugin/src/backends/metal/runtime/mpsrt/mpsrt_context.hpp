@@ -57,13 +57,57 @@ struct MpsrtPreparedMpsConv2D {
     uint32_t output_batch = 0;
     uint32_t data_type = static_cast<uint32_t>(GfxMpsrtDType::Unknown);
     bool weights_cache_hit = false;
+    bool kernel_cache_hit = false;
     id<MTLBuffer> weights_buffer = nil;
+    id kernel = nil;
+};
+
+struct MpsrtPreparedMpsPool2D {
+    size_t stage_index = 0;
+    std::string stage_record_key;
+    GfxMpsrtPool2DAbiDesc pool2d_desc{};
+    uint32_t output_width = 0;
+    uint32_t output_height = 0;
+    uint32_t output_batch = 0;
+    uint32_t output_feature_channels = 0;
+    uint32_t data_type = static_cast<uint32_t>(GfxMpsrtDType::Unknown);
+    bool kernel_cache_hit = false;
+    id kernel = nil;
+};
+
+struct MpsrtPreparedMpsSoftmax {
+    size_t stage_index = 0;
+    std::string stage_record_key;
+    GfxMpsrtSoftmaxAbiDesc softmax_desc{};
+    uint32_t rows = 0;
+    uint32_t columns = 0;
+    uint32_t matrix_count = 1;
+    uint32_t data_type = static_cast<uint32_t>(GfxMpsrtDType::Unknown);
+    bool kernel_cache_hit = false;
+    id kernel = nil;
+};
+
+struct MpsrtPreparedMpsTopK {
+    size_t stage_index = 0;
+    std::string stage_record_key;
+    GfxMpsrtTopKAbiDesc topk_desc{};
+    uint32_t rows = 0;
+    uint32_t source_columns = 0;
+    uint32_t k = 0;
+    uint32_t matrix_count = 1;
+    uint32_t data_type = static_cast<uint32_t>(GfxMpsrtDType::Unknown);
+    uint32_t index_type = static_cast<uint32_t>(GfxMpsrtDType::Unknown);
+    bool kernel_cache_hit = false;
+    id kernel = nil;
 };
 
 struct MpsrtPreparedModel {
     std::vector<MpsrtPreparedMslDispatch> msl_dispatches;
     std::vector<MpsrtPreparedMpsGemm> mps_gemm_stages;
     std::vector<MpsrtPreparedMpsConv2D> mps_conv2d_stages;
+    std::vector<MpsrtPreparedMpsPool2D> mps_pool2d_stages;
+    std::vector<MpsrtPreparedMpsSoftmax> mps_softmax_stages;
+    std::vector<MpsrtPreparedMpsTopK> mps_topk_stages;
     uint32_t skipped_non_msl_stages = 0;
 };
 
@@ -105,6 +149,21 @@ public:
                             MpsrtPreparedMpsConv2D& out,
                             std::string* log = nullptr);
 
+    bool prepare_mps_pool2d(const MpsrtModel& model,
+                            const MpsrtRuntimeStage& stage,
+                            MpsrtPreparedMpsPool2D& out,
+                            std::string* log = nullptr);
+
+    bool prepare_mps_softmax(const MpsrtModel& model,
+                             const MpsrtRuntimeStage& stage,
+                             MpsrtPreparedMpsSoftmax& out,
+                             std::string* log = nullptr);
+
+    bool prepare_mps_topk(const MpsrtModel& model,
+                          const MpsrtRuntimeStage& stage,
+                          MpsrtPreparedMpsTopK& out,
+                          std::string* log = nullptr);
+
     bool prepare_model(const MpsrtModel& model,
                        const std::string& msl_source,
                        MpsrtPreparedModel& out,
@@ -118,26 +177,42 @@ public:
         return m_pipeline_cache_misses;
     }
 
-private:
-    struct PipelineCacheEntry;
-    struct MpsGemmCacheEntry;
-    struct ConstTensorCacheEntry;
-
     id<MTLComputePipelineState> get_or_create_pipeline(const MpsrtRuntimeStage& stage,
                                                        const std::string& msl_source,
                                                        bool& cache_hit,
                                                        std::string* log);
+
+private:
+    struct PipelineCacheEntry;
+    struct MpsGemmCacheEntry;
+    struct MpsConv2DCacheEntry;
+    struct MpsPool2DCacheEntry;
+    struct MpsSoftmaxCacheEntry;
+    struct MpsTopKCacheEntry;
+    struct ConstTensorCacheEntry;
 
     id<MTLDevice> m_device = nil;
     id<MTLCommandQueue> m_command_queue = nil;
     id<MTLBinaryArchive> m_binary_archive = nil;
     std::vector<PipelineCacheEntry> m_pipeline_cache;
     std::vector<MpsGemmCacheEntry> m_mps_gemm_cache;
+    std::vector<MpsConv2DCacheEntry> m_mps_conv2d_cache;
+    std::vector<MpsPool2DCacheEntry> m_mps_pool2d_cache;
+    std::vector<MpsSoftmaxCacheEntry> m_mps_softmax_cache;
+    std::vector<MpsTopKCacheEntry> m_mps_topk_cache;
     std::vector<ConstTensorCacheEntry> m_const_tensor_cache;
     uint64_t m_pipeline_cache_hits = 0;
     uint64_t m_pipeline_cache_misses = 0;
     uint64_t m_mps_gemm_cache_hits = 0;
     uint64_t m_mps_gemm_cache_misses = 0;
+    uint64_t m_mps_conv2d_cache_hits = 0;
+    uint64_t m_mps_conv2d_cache_misses = 0;
+    uint64_t m_mps_pool2d_cache_hits = 0;
+    uint64_t m_mps_pool2d_cache_misses = 0;
+    uint64_t m_mps_softmax_cache_hits = 0;
+    uint64_t m_mps_softmax_cache_misses = 0;
+    uint64_t m_mps_topk_cache_hits = 0;
+    uint64_t m_mps_topk_cache_misses = 0;
     uint64_t m_const_tensor_cache_hits = 0;
     uint64_t m_const_tensor_cache_misses = 0;
 };

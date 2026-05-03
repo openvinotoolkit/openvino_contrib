@@ -38,6 +38,7 @@ private:
     uint32_t m_inner = 1;
     bool m_mode_max = true;
     TopKSortType m_sort_type = TopKSortType::SortValues;
+    bool m_uses_mpsrt_topk = false;
 
     id<MTLDevice> m_device = nil;
     id<MTLCommandQueue> m_queue = nil;

@@ -33,6 +33,7 @@ The intended plugin content should stay identical across both publication target
   - `.DS_Store`
   - backup files such as `*.backup`
   - local reports, JSON dumps, temporary files, and machine-local helper outputs
+- If the plugin tree lacks repo-local ignore rules for generic junk, add them as part of the publication cleanup instead of staging the junk itself.
 
 ### 2. Build the staged set intentionally
 

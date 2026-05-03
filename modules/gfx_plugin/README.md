@@ -27,8 +27,8 @@ Recent runtime work extends this model in two directions:
 - Metal infer execution can now reuse one compute encoder across consecutive dispatches and skip redundant pipeline or buffer rebinds when the command-buffer state is unchanged
 - device-aware scheduling now uses backend-reported execution limits and device-family classification through shared `gfx_parallelism.*` and `gfx_partitioning.*` helpers
 - Metal stage planning now also chooses an internal placement domain per stage: Apple MPS image or matrix primitives for selected ops, or Apple MSL buffer dispatch for custom-kernel paths
-- the Metal compile path can serialize that placement into a compact MPSRT runtime model with explicit tensor descriptors, external-buffer roles, and kernel-family metadata before request-time execution
-- that MPSRT path is no longer limited to one annotated MSL dispatch; it can now carry multi-stage hybrid plans where a vendor MPS stage is followed by a custom MSL epilogue or dispatch stage
+- the Metal compile path can serialize that placement into a compact MPSRT runtime model with explicit tensor descriptors, external-buffer roles, generated runtime-ABI call-plan metadata, and image-storage bridge descriptors before request-time execution
+- that MPSRT path is no longer limited to one annotated MSL dispatch; it can now carry vendor-only and hybrid multi-stage plans covering Apple MPS GEMM, Conv2D, GroupConv, Pool2D, Softmax, and TopK stages together with custom MSL epilogues or dispatch stages
 - infer requests can also keep per-request stateful variable buffers for `ReadValue` / `Assign` style subgraphs instead of treating them as ordinary stateless stage edges
 - output allocation can now reuse workspace-managed intermediate slots across stages based on liveness instead of always keeping one dedicated buffer per stage output
 - shared prepared-binding caches can now grow beyond their initial capacity when a workload introduces many distinct compatible binding tables
@@ -55,9 +55,9 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 - `include/openvino/gfx_plugin/`: public plugin headers
 - `src/plugin/`: `Plugin`, `CompiledModel`, shared property handling, pipeline construction
 - `src/runtime/`: backend-neutral runtime abstractions and helpers
-- `src/runtime/gfx_mpsrt_*`: shared ABI, stage-plan, builder-plan, and MSL-kernel-manifest helpers for the Apple MPS/MSL split
+- `src/runtime/gfx_mpsrt_*`: shared ABI, stage-plan, builder-plan, storage-bridge, and manifest-adapter helpers for the Apple MPS/MSL split
 - `src/kernel_ir/gfx_kernel_manifest.hpp`: backend-neutral manifest for vendor-primitive versus custom-kernel stage contracts
-- `src/mlir/`: MLIR support probes, builders, and shared codegen helpers
+- `src/mlir/`: MLIR support probes, builders, generated runtime-ABI planning, source-plan helpers, const-tensor-source attachment, and shared codegen helpers
 - `src/backends/metal/`: Metal-specific plugin glue, runtime, memory, profiling, MSL compilation
 - `src/backends/vulkan/`: Vulkan-specific plugin glue, runtime, buffers, profiling, SPIR-V/Vulkan execution
 - `src/transforms/`: OpenVINO graph passes and fusion logic
@@ -115,6 +115,7 @@ The current infer path is not a naive "execute one stage, submit immediately" lo
 - `gfx_stage_policy.*`: runtime route, fusion, and submit-policy selection
 - `gfx_stage_policy.*` now also selects placement domains such as `apple_mps`, `apple_msl`, and `spirv`, together with storage kinds such as `image`, `matrix`, and `buffer`
 - manifest-backed stage metadata now distinguishes vendor-primitive stages from custom-kernel stages and carries stable kernel-family plus external-buffer-ABI contracts across the MLIR, compile, and runtime layers
+- generated `gfx_mpsrt_runtime_abi_plan` metadata now serializes multi-stage model records, external-buffer roles, per-stage ABI descriptors, and storage bridges into the Metal compile path instead of relying on ad-hoc stage reconstruction
 - `gfx_parallelism.*` and `gfx_partitioning.*`: backend-neutral device-capability and workgroup planning helpers
 - `immutable_gpu_buffer_cache.*`: backend-neutral cache for immutable device buffers
 - shared remote context/tensor abstractions
@@ -129,8 +130,8 @@ The runtime also has explicit reuse layers:
 - compiled kernels can reuse prepared binding tables through shared backend-neutral cache helpers in `gpu_backend_base.hpp`
 - prepared binding-table caches can grow past their initial size when the infer path observes more distinct reusable binding sets
 - infer requests can reuse prepared output bindings and preallocated host output tensors across repeated executions
-- on Metal, MSL-dispatch stages can also be wrapped as compact MPSRT runtime models with explicit external-buffer ABI roles, prepared pipeline-cache entries, and request-time transient tensor binding
-- on Metal, MPSRT execution can now cover vendor-only plans such as `MPSGemm` and hybrid multi-stage plans such as `MPSGemm + MSL epilogue`, instead of only one standalone MSL dispatch
+- on Metal, MSL-dispatch stages can also be wrapped as compact MPSRT runtime models with explicit external-buffer ABI roles, prepared pipeline-cache entries, generated runtime-ABI call plans, and request-time transient tensor binding
+- on Metal, MPSRT execution can now cover vendor-only plans such as `MPSGemm`, `MPSCNNConvolution`, `MPSCNNPooling*`, `MPSMatrixSoftMax`, and `MPSMatrixFindTopK`, plus hybrid multi-stage plans such as `MPSGemm + MSL epilogue`
 
 Profiling now also has two layers:
 - compile-time tracing stored as a JSON `compile` section inside `GFX_PROFILING_REPORT`
@@ -207,7 +208,9 @@ Current lowering/runtime special cases:
 - `ShapeOf`, `TopK`, `Tile`, and unary stage handling now have stricter runtime/codegen paths around output typing, alias safety, and ABI metadata
 - Metal stage policy now routes selected 4D conv/pool/interpolate-style stages to Apple MPS image storage, selected `MatMul` / last-dimension `Softmax` / `TopK` stages to Apple MPS matrix storage, and keeps the remaining cases on Apple MSL buffer dispatch
 - the Metal MSL path now carries a kernel-family manifest plus explicit external-buffer ABI roles so runtime parameter, input, and output buffers can be rebound without assuming a simple tail-output convention
+- Metal image-backed stages now materialize explicit `buffer_to_image` and `image_to_buffer` bridge descriptors when public inputs or outputs cross the Apple MPS image-storage boundary
 - Metal MatMul lowering can now choose a vendor MPS GEMM route directly, or a mixed `MPSGemm + MSL epilogue` route when bias or supported activation fusion still needs a custom kernel stage
+- Metal source planning can now pick `SingleStage` or `MultiStage` MPSRT kernel-source plans and attach constant tensor payloads for vendor convolution-family stages before request-time execution
 - Metal Conv2D manifest handling now also covers the legacy custom `conv2d_kernel` family under the same manifest/ABI contract used by other MSL dispatch kernels
 - `ScatterUpdate` now has a dedicated MLIR lowering path instead of falling back to the older scatter-family builders
 - Slice lowering now prefers `tensor.extract_slice`; generic slice metadata extraction still accepts the older generic form when needed
@@ -342,7 +345,7 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 Recent regression coverage includes:
 - Metal stage-placement and MPSRT descriptor/runtime-model coverage in `tests/unit/gfx_stage_policy_test.cpp`
 - Metal backend tests for MPSRT compile, prepared-pipeline caching, and request-time MSL dispatch execution in `tests/backends/metal/gpu_backend_test.mm`
-- Metal backend tests now also cover manifest-driven buffer ordering, runtime-parameter roles, vendor `MPSGemm` execution, and hybrid `MPSGemm + MSL` prepared-model execution
+- Metal backend tests now also cover manifest-driven buffer ordering, runtime-parameter roles, generated runtime-ABI call-plan execution, storage bridges, vendor `MPSGemm` / Conv2D / Pool2D / Softmax / TopK execution, and hybrid prepared-model execution
 - canonical Conv2D MLIR lowering checks
 - strict interior-tile bounds checks plus Vulkan batch-1 parallel-launch and batch>1 serial-fallback checks in `tests/unit/mlir_conv_parallel_test.cpp`
 - im2col rewrite coverage, including the batch-1 plain-matmul route

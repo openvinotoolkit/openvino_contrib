@@ -56,6 +56,11 @@ public:
     void set_mpsrt_model(std::shared_ptr<const metal::mpsrt::MpsrtModel> model);
     void set_mpsrt_msl_source(std::string msl_source);
     const metal::mpsrt::MpsrtModel* mpsrt_model() const;
+    bool register_mpsrt_const_tensor_data(GfxMpsrtValue value,
+                                          GfxMpsrtTensorAbiDesc desc,
+                                          const void* data,
+                                          size_t bytes,
+                                          std::string* log = nullptr);
     void execute(GpuCommandBufferHandle command_buffer,
                  const KernelDispatch& dispatch,
                  const std::vector<KernelArg>& args,

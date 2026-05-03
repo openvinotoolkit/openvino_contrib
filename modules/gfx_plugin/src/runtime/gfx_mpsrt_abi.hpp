@@ -139,6 +139,27 @@ struct GfxMpsrtGemmAbiDesc {
     float beta = 0.0f;
 };
 
+struct GfxMpsrtPool2DAbiDesc {
+    uint32_t is_avg = 0;
+    uint32_t kernel[2] = {1, 1};
+    uint32_t strides[2] = {1, 1};
+    uint32_t dilations[2] = {1, 1};
+    uint32_t pads[4] = {0, 0, 0, 0};
+    uint32_t exclude_pad = 0;
+};
+
+struct GfxMpsrtSoftmaxAbiDesc {
+    uint32_t axis = 0;
+    uint32_t log_softmax = 0;
+};
+
+struct GfxMpsrtTopKAbiDesc {
+    uint32_t axis = 0;
+    uint32_t k = 0;
+    uint32_t mode_max = 1;
+    uint32_t sort_type = 0;
+};
+
 enum GfxMpsrtMslDispatchFlags : uint32_t {
     GfxMpsrtMslDispatchFlagNone = 0,
     GfxMpsrtMslDispatchFlagPrecompiledMetallibRequired = 1u << 0,

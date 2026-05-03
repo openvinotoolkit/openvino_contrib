@@ -48,6 +48,9 @@ struct GfxMpsrtStageDesc {
     bool dispatch_precompiled_kernel_required = false;
     GfxMpsrtConv2DAbiDesc conv2d_desc{};
     GfxMpsrtGemmAbiDesc gemm_desc{};
+    GfxMpsrtPool2DAbiDesc pool2d_desc{};
+    GfxMpsrtSoftmaxAbiDesc softmax_desc{};
+    GfxMpsrtTopKAbiDesc topk_desc{};
 };
 
 inline const char* gfx_mpsrt_stage_kind_name(GfxMpsrtStageKind kind) {
@@ -259,7 +262,8 @@ inline bool gfx_mpsrt_stage_has_builder_symbol(GfxMpsrtStageKind kind) {
 }
 
 inline GfxMpsrtStageDesc gfx_mpsrt_make_stage_desc(const GfxStageOptimizationPlan& plan,
-                                                   const std::string& stage_type) {
+                                                   const std::string& stage_type,
+                                                   std::string_view kernel_entry_point = {}) {
     GfxMpsrtStageDesc desc{};
     desc.kind = gfx_mpsrt_stage_kind_from_plan(plan.placement, stage_type);
     desc.domain = plan.placement.domain;
@@ -281,7 +285,9 @@ inline GfxMpsrtStageDesc gfx_mpsrt_make_stage_desc(const GfxStageOptimizationPla
             desc.specialization_key);
     }
     if (desc.kind == GfxMpsrtStageKind::MSLDispatch) {
-        const auto msl_plan = make_msl_kernel_plan(stage_type, desc.kernel_name);
+        const auto manifest_entry = kernel_entry_point.empty() ? std::string_view(desc.kernel_name)
+                                                               : kernel_entry_point;
+        const auto msl_plan = make_msl_kernel_plan(stage_type, manifest_entry);
         if (msl_plan.valid) {
             desc.stage_manifest = msl_plan.stage_manifest;
             desc.dispatch_kernel_family = msl_plan.family_name;
@@ -303,6 +309,24 @@ inline bool gfx_mpsrt_conv2d_desc_has_non_default_fields(const GfxMpsrtConv2DAbi
            desc.pads[2] != 0 || desc.pads[3] != 0 ||
            desc.fused_activation != 0 ||
            desc.accumulate_fp32 != 1;
+}
+
+inline bool gfx_mpsrt_pool2d_desc_has_non_default_fields(const GfxMpsrtPool2DAbiDesc& desc) {
+    return desc.is_avg != 0 ||
+           desc.kernel[0] != 1 || desc.kernel[1] != 1 ||
+           desc.strides[0] != 1 || desc.strides[1] != 1 ||
+           desc.dilations[0] != 1 || desc.dilations[1] != 1 ||
+           desc.pads[0] != 0 || desc.pads[1] != 0 ||
+           desc.pads[2] != 0 || desc.pads[3] != 0 ||
+           desc.exclude_pad != 0;
+}
+
+inline bool gfx_mpsrt_softmax_desc_has_non_default_fields(const GfxMpsrtSoftmaxAbiDesc& desc) {
+    return desc.axis != 0 || desc.log_softmax != 0;
+}
+
+inline bool gfx_mpsrt_topk_desc_has_non_default_fields(const GfxMpsrtTopKAbiDesc& desc) {
+    return desc.axis != 0 || desc.k != 0 || desc.mode_max != 1 || desc.sort_type != 0;
 }
 
 inline std::string gfx_mpsrt_stage_record_key(const GfxMpsrtStageDesc& desc) {
@@ -370,6 +394,52 @@ inline std::string gfx_mpsrt_stage_record_key(const GfxMpsrtStageDesc& desc) {
             key += ":acc";
             key += std::to_string(desc.conv2d_desc.accumulate_fp32);
         }
+    }
+    if (desc.kind == GfxMpsrtStageKind::MPSPool2D &&
+        gfx_mpsrt_pool2d_desc_has_non_default_fields(desc.pool2d_desc)) {
+        key += "|pool2d:";
+        key += desc.pool2d_desc.is_avg ? "avg" : "max";
+        key += ":k";
+        key += std::to_string(desc.pool2d_desc.kernel[0]);
+        key += "x";
+        key += std::to_string(desc.pool2d_desc.kernel[1]);
+        key += ":s";
+        key += std::to_string(desc.pool2d_desc.strides[0]);
+        key += "x";
+        key += std::to_string(desc.pool2d_desc.strides[1]);
+        key += ":d";
+        key += std::to_string(desc.pool2d_desc.dilations[0]);
+        key += "x";
+        key += std::to_string(desc.pool2d_desc.dilations[1]);
+        key += ":p";
+        key += std::to_string(desc.pool2d_desc.pads[0]);
+        key += ",";
+        key += std::to_string(desc.pool2d_desc.pads[1]);
+        key += ",";
+        key += std::to_string(desc.pool2d_desc.pads[2]);
+        key += ",";
+        key += std::to_string(desc.pool2d_desc.pads[3]);
+        if (desc.pool2d_desc.exclude_pad != 0) {
+            key += ":exclude_pad";
+        }
+    }
+    if (desc.kind == GfxMpsrtStageKind::MPSSoftmax &&
+        gfx_mpsrt_softmax_desc_has_non_default_fields(desc.softmax_desc)) {
+        key += "|softmax:axis";
+        key += std::to_string(desc.softmax_desc.axis);
+        if (desc.softmax_desc.log_softmax != 0) {
+            key += ":log";
+        }
+    }
+    if (desc.kind == GfxMpsrtStageKind::MPSTopK &&
+        gfx_mpsrt_topk_desc_has_non_default_fields(desc.topk_desc)) {
+        key += "|topk:axis";
+        key += std::to_string(desc.topk_desc.axis);
+        key += ":k";
+        key += std::to_string(desc.topk_desc.k);
+        key += desc.topk_desc.mode_max != 0 ? ":max" : ":min";
+        key += ":sort";
+        key += std::to_string(desc.topk_desc.sort_type);
     }
     return key;
 }

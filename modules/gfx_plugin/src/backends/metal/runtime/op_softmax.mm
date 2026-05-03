@@ -5,6 +5,7 @@
 #import "backends/metal/runtime/op_softmax.hpp"
 
 #include <numeric>
+#include <utility>
 
 #include "openvino/core/shape_util.hpp"
 #include "openvino/core/validation_util.hpp"
@@ -13,13 +14,55 @@
 #include "kernel_ir/gfx_kernel_args.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
+#include "mlir/gfx_mpsrt_source_plan.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/codegen_common.hpp"
 #include "runtime/gfx_shape_utils.hpp"
+#include "runtime/gfx_stage_policy.hpp"
 
 namespace ov {
 namespace gfx_plugin {
+
+namespace {
+
+bool softmax_can_use_mpsrt(const std::shared_ptr<const ov::Node>& node,
+                           const SoftmaxCodegenDesc& desc,
+                           const GfxStageOptimizationPlan& plan,
+                           bool log_softmax,
+                           const ov::element::Type& element_type) {
+    if (!node || log_softmax) {
+        return false;
+    }
+    if (plan.placement.domain != GfxStageBackendDomain::AppleMps ||
+        !plan.placement.uses_vendor_primitive ||
+        plan.placement.storage != GfxStageStorageKind::Matrix) {
+        return false;
+    }
+    if (element_type != ov::element::f32 && element_type != ov::element::f16) {
+        return false;
+    }
+    if (!node->get_input_partial_shape(0).is_static() ||
+        !node->get_output_partial_shape(0).is_static()) {
+        return false;
+    }
+    const auto input_rank = node->get_input_shape(0).size();
+    const auto output_rank = node->get_output_shape(0).size();
+    if (input_rank < 2 || input_rank != output_rank) {
+        return false;
+    }
+    return desc.rows > 0 && desc.cols > 0 && (desc.inner == 0 || desc.inner == 1);
+}
+
+GfxMpsrtSoftmaxAbiDesc make_mpsrt_softmax_desc(const SoftmaxCodegenDesc& desc, int64_t axis, size_t rank) {
+    GfxMpsrtSoftmaxAbiDesc abi{};
+    const int64_t normalized_axis = axis < 0 ? axis + static_cast<int64_t>(rank) : axis;
+    abi.axis = normalized_axis < 0 ? 0u : static_cast<uint32_t>(normalized_axis);
+    abi.log_softmax = desc.log_softmax ? 1u : 0u;
+    return abi;
+}
+
+}  // namespace
 
 MetalSoftmaxOp::MetalSoftmaxOp(const std::shared_ptr<const ov::Node>& node,
                                void* device,
@@ -79,6 +122,37 @@ void MetalSoftmaxOp::compile(MetalBufferManager* buffer_manager) {
     desc.inner = m_desc.inner == 0 ? 1 : m_desc.inner;
     desc.element_type = m_element_type == ov::element::dynamic ? ov::element::f32 : m_element_type;
     desc.log_softmax = m_log_softmax;
+
+    const auto plan = select_stage_optimization_plan(buffer_manager,
+                                                     GpuBackend::Metal,
+                                                     m_log_softmax ? "LogSoftmax" : "Softmax",
+                                                     m_node,
+                                                     desc.element_type,
+                                                     /*has_bias=*/false,
+                                                     /*has_activation=*/false,
+                                                     /*has_batchnorm=*/false,
+                                                     GfxStageRuntimeTraits{});
+    if (softmax_can_use_mpsrt(m_node, desc, plan, m_log_softmax, desc.element_type)) {
+        annotate_module_with_mpsrt_stage_plan(module, plan, "Softmax");
+        annotate_module_with_mpsrt_softmax_desc(module,
+                                                make_mpsrt_softmax_desc(desc, m_axis, m_node->get_input_shape(0).size()));
+        GfxMpsrtKernelSourceOptions source_options{};
+        source_options.external_arg_count = 2u;
+        source_options.external_output_arg_count = 1u;
+        auto source_plan = make_mpsrt_kernel_source_plan_from_module(module, std::move(source_options));
+        if (source_plan.valid()) {
+            m_kernel = backend.compile(source_plan.source, &log);
+            OPENVINO_ASSERT(m_kernel, "MetalSoftmaxOp: failed to compile MPSRT Softmax kernel: ", log);
+            auto metal_kernel = std::dynamic_pointer_cast<MetalCompiledKernel>(m_kernel);
+            OPENVINO_ASSERT(metal_kernel, "MetalSoftmaxOp: MPSRT Softmax did not compile to Metal kernel");
+            OPENVINO_ASSERT(metal_kernel->mpsrt_model(),
+                            "MetalSoftmaxOp: MPSRT Softmax did not materialize from MLIR metadata");
+            m_uses_mpsrt_softmax = true;
+            MetalOp::compile(buffer_manager);
+            return;
+        }
+    }
+
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
@@ -101,10 +175,11 @@ void MetalSoftmaxOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
     OPENVINO_ASSERT(dims.rows > 0 && dims.axis_len > 0, "Softmax: invalid flattened dims");
 
     // Recompile kernel on-the-fly if runtime dims differ from the specialized pipeline.
-    if (m_desc.rows != static_cast<int64_t>(dims.rows) ||
-        m_desc.cols != static_cast<int64_t>(dims.axis_len) ||
-        m_desc.inner != static_cast<int64_t>(dims.inner) ||
-        !m_kernel) {
+    if (!m_uses_mpsrt_softmax &&
+        (m_desc.rows != static_cast<int64_t>(dims.rows) ||
+         m_desc.cols != static_cast<int64_t>(dims.axis_len) ||
+         m_desc.inner != static_cast<int64_t>(dims.inner) ||
+         !m_kernel)) {
         m_desc.rows = static_cast<int64_t>(dims.rows);
         m_desc.cols = static_cast<int64_t>(dims.axis_len);
         m_desc.inner = static_cast<int64_t>(dims.inner);
@@ -159,7 +234,9 @@ void MetalSoftmaxOp::execute(MetalCommandBufferHandle cmd_buf_handle) {
                              [&](size_t idx) { return inputs()[idx]; },
                              name().c_str());
     args_builder.add_output(&dst);
-    args_builder.add_bytes(&params, sizeof(params));
+    if (!m_uses_mpsrt_softmax) {
+        args_builder.add_bytes(&params, sizeof(params));
+    }
 
     const auto args = args_builder.finalize(buffer_manager(), m_kernel.get());
     execute_kernel(*m_kernel, cmd_buf_handle, dispatch, args);

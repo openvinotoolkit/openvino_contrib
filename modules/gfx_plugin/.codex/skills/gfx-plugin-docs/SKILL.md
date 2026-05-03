@@ -54,6 +54,7 @@ Additional operational docs:
    - output-alias routing or source-node-aware output resolution for fused stages
    - command-encoder or binding-reuse behavior that changes profiling counters or dispatch setup cost
    - MPSRT runtime-model, kernel-family-manifest, or external-buffer-ABI behavior on Metal
+   - generated runtime-ABI call-plan or storage-bridge behavior on Metal
    - stage-level profiling estimates such as `bytes_in`, `bytes_out`, `macs_est`, or `flops_est`
    - test layout or regression coverage
    - compare-runner CLI or debug workflow
@@ -96,6 +97,7 @@ Additional operational docs:
 - Use exact property names such as `ov::available_devices`, `ov::device::id`, and `GFX_BACKEND`.
 - Mention concrete test files when documenting new regression coverage.
 - Keep README public-facing; keep deeper mechanics in `docs/ARCHITECTURE.md` and `docs/DEVELOPMENT.md`.
+- Keep the published tree clean: do not normalize local dumps, caches, backups, or machine-local helper outputs into public docs.
 
 ## Output Expectations
 

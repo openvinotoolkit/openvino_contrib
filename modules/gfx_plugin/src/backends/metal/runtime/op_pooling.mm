@@ -13,10 +13,12 @@
 #include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
+#include "mlir/gfx_mpsrt_source_plan.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/codegen_common.hpp"
+#include "runtime/gfx_stage_policy.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -110,6 +112,43 @@ void fill_pool_desc_from_node(const ov::op::v1::AvgPool* node,
     desc.exclude_pad = node->get_exclude_pad();
 }
 
+bool pool_can_use_mpsrt(const Pool2DCodegenDesc& desc, const ov::element::Type& element_type) {
+    if (element_type != ov::element::f16 && element_type != ov::element::f32) {
+        return false;
+    }
+    if (desc.N == 0 || desc.C == 0 || desc.H == 0 || desc.W == 0 || desc.outH == 0 || desc.outW == 0 ||
+        desc.kH == 0 || desc.kW == 0 || desc.strideH == 0 || desc.strideW == 0) {
+        return false;
+    }
+    if (desc.dilationH != 1 || desc.dilationW != 1) {
+        return false;
+    }
+    if ((desc.C % 4u) != 0) {
+        return false;
+    }
+    if (desc.padTop != 0 || desc.padLeft != 0 || desc.padBottom != 0 || desc.padRight != 0) {
+        return false;
+    }
+    return true;
+}
+
+GfxMpsrtPool2DAbiDesc make_mpsrt_pool2d_desc(const Pool2DCodegenDesc& desc, bool is_avg) {
+    GfxMpsrtPool2DAbiDesc out{};
+    out.is_avg = is_avg ? 1u : 0u;
+    out.kernel[0] = desc.kH;
+    out.kernel[1] = desc.kW;
+    out.strides[0] = desc.strideH;
+    out.strides[1] = desc.strideW;
+    out.dilations[0] = desc.dilationH == 0 ? 1u : desc.dilationH;
+    out.dilations[1] = desc.dilationW == 0 ? 1u : desc.dilationW;
+    out.pads[0] = desc.padTop;
+    out.pads[1] = desc.padLeft;
+    out.pads[2] = desc.padBottom;
+    out.pads[3] = desc.padRight;
+    out.exclude_pad = desc.exclude_pad ? 1u : 0u;
+    return out;
+}
+
 }  // namespace
 
 MetalPoolOp::MetalPoolOp(const std::shared_ptr<const ov::Node>& node,
@@ -171,6 +210,35 @@ void MetalPoolOp::compile(MetalBufferManager* buffer_manager) {
     mlir::ModuleOp module = build_mlir_for_node(m_node, ctx);
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
+
+    if (pool_can_use_mpsrt(desc, desc.element_type)) {
+        const auto plan = select_stage_optimization_plan(buffer_manager,
+                                                         GpuBackend::Metal,
+                                                         m_is_avg ? "AvgPool" : "MaxPool",
+                                                         m_node,
+                                                         desc.element_type,
+                                                         /*has_bias=*/false,
+                                                         /*has_activation=*/false,
+                                                         /*has_batchnorm=*/false,
+                                                         GfxStageRuntimeTraits{});
+        if (plan.placement.domain == GfxStageBackendDomain::AppleMps &&
+            plan.placement.uses_vendor_primitive) {
+            annotate_module_with_mpsrt_stage_plan(module, plan, m_is_avg ? "AvgPool" : "MaxPool");
+            annotate_module_with_mpsrt_pool2d_desc(module, make_mpsrt_pool2d_desc(desc, m_is_avg));
+
+            GfxMpsrtKernelSourceOptions source_options{};
+            source_options.external_arg_count = 3u;
+            source_options.external_output_arg_count = 1u;
+            auto source_plan = make_mpsrt_kernel_source_plan_from_module(module, std::move(source_options));
+            OPENVINO_ASSERT(source_plan.valid(),
+                            "MetalPoolOp: failed to create MPSRT source plan for ",
+                            name());
+            m_kernel = backend.compile(source_plan.source, &log);
+            OPENVINO_ASSERT(m_kernel, "MetalPoolOp: failed to compile MPSRT Pool2D: ", log);
+            MetalOp::compile(buffer_manager);
+            return;
+        }
+    }
 
     KernelSpec spec(m_node, 3u);
     m_kernel = compile_msl_kernel(backend, spec, module, "pool2d_kernel", msl_generator, &log);

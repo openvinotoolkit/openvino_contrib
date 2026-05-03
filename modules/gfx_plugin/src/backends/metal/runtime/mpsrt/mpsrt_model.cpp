@@ -24,6 +24,34 @@ bool fail(std::string* error, const std::string& message) {
     return false;
 }
 
+const GfxMpsrtTensorAbiDesc* find_tensor_desc(const std::vector<MpsrtRuntimeTensor>& tensors,
+                                              GfxMpsrtValue value) {
+    for (const auto& tensor : tensors) {
+        if (tensor.value == value) {
+            return &tensor.desc;
+        }
+    }
+    return nullptr;
+}
+
+bool is_const_tensor_value(const std::vector<MpsrtRuntimeTensor>& tensors,
+                           GfxMpsrtValue value) {
+    const auto* desc = find_tensor_desc(tensors, value);
+    return desc && (desc->flags & GfxMpsrtTensorFlagConst) != 0;
+}
+
+std::vector<GfxMpsrtValue> filter_const_values(const std::vector<GfxMpsrtValue>& values,
+                                               const std::vector<MpsrtRuntimeTensor>& tensors) {
+    std::vector<GfxMpsrtValue> filtered;
+    filtered.reserve(values.size());
+    for (const auto value : values) {
+        if (!is_const_tensor_value(tensors, value)) {
+            filtered.push_back(value);
+        }
+    }
+    return filtered;
+}
+
 std::string record_error(size_t record_index, const std::string& message) {
     std::ostringstream stream;
     stream << "GFX MPSRT: builder record " << record_index << ": " << message;
@@ -93,6 +121,9 @@ MpsrtRuntimeStage make_runtime_stage(const GfxMpsrtBuilderRecord& record) {
     stage.msl_dispatch_desc = record.msl_dispatch_desc;
     stage.conv2d_desc = record.conv2d_desc;
     stage.gemm_desc = record.gemm_desc;
+    stage.pool2d_desc = record.pool2d_desc;
+    stage.softmax_desc = record.softmax_desc;
+    stage.topk_desc = record.topk_desc;
     stage.inputs = record.inputs;
     stage.outputs = record.outputs;
     stage.kernel_buffer_order = record.kernel_buffer_order;
@@ -134,6 +165,7 @@ bool build_mpsrt_model_from_builder_plan(const GfxMpsrtBuilderPlan& plan,
     model.external_values = plan.input_values;
     model.external_values.insert(model.external_values.end(), plan.output_values.begin(), plan.output_values.end());
     model.external_buffer_roles = plan.external_buffer_roles;
+    model.storage_bridges = plan.storage_bridges;
 
     for (size_t i = 0; i < plan.records.size(); ++i) {
         const auto& record = plan.records[i];
@@ -212,6 +244,27 @@ bool build_mpsrt_model_from_builder_plan(const GfxMpsrtBuilderPlan& plan,
         })) {
         return fail(error, "GFX MPSRT: model output list references unknown tensor values");
     }
+    for (const auto& bridge : model.storage_bridges) {
+        if (!has_value(known_values, bridge.value)) {
+            return fail(error, "GFX MPSRT: storage bridge references unknown tensor value");
+        }
+        GfxMpsrtStorageBridgeDesc normalized{};
+        if (!gfx_mpsrt_make_image_bridge_desc(bridge.value, bridge.tensor, bridge.direction, normalized)) {
+            return fail(error, "GFX MPSRT: storage bridge contract is invalid");
+        }
+        if (normalized.source_storage != bridge.source_storage ||
+            normalized.target_storage != bridge.target_storage) {
+            return fail(error, "GFX MPSRT: storage bridge source/target storage mismatch");
+        }
+    }
+
+    model.input_values = filter_const_values(model.input_values, model.tensors);
+    model.semantic_input_values = filter_const_values(model.semantic_input_values, model.tensors);
+    model.external_input_values = filter_const_values(model.external_input_values, model.tensors);
+    model.external_values = model.external_input_values;
+    model.external_values.insert(model.external_values.end(),
+                                 model.external_output_values.begin(),
+                                 model.external_output_values.end());
 
     return true;
 }
@@ -233,6 +286,7 @@ MpsrtRuntimeStage make_mpsrt_runtime_stage_from_desc(const GfxMpsrtStageDesc& de
     stage.dispatch_precompiled_kernel_required = desc.dispatch_precompiled_kernel_required;
     stage.conv2d_desc = desc.conv2d_desc;
     stage.gemm_desc = desc.gemm_desc;
+    stage.pool2d_desc = desc.pool2d_desc;
     stage.inputs = inputs;
     stage.outputs = outputs;
     stage.output_descs = output_descs;
@@ -343,6 +397,7 @@ bool adapt_mpsrt_model_to_external_buffer_abi(MpsrtModel& model,
     model.external_values.clear();
     model.external_input_values.clear();
     model.external_output_values.clear();
+    model.storage_bridges.clear();
     if (!has_explicit_roles) {
         model.external_buffer_roles.clear();
     }

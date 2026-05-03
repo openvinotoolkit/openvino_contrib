@@ -31,6 +31,7 @@ private:
     ov::element::Type m_element_type{ov::element::f32};
     SoftmaxCodegenDesc m_desc{};
     bool m_log_softmax = false;
+    bool m_uses_mpsrt_softmax = false;
 
     id<MTLDevice> m_device = nil;
     id<MTLCommandQueue> m_queue = nil;

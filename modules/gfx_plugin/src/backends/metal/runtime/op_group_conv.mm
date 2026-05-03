@@ -16,10 +16,14 @@
 #include "backends/metal/runtime/metal_memory.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
+#include "mlir/gfx_mpsrt_const_tensor_sources.hpp"
+#include "mlir/gfx_mpsrt_conv_metadata.hpp"
+#include "mlir/gfx_mpsrt_source_plan.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/codegen_common.hpp"
+#include "runtime/gfx_stage_policy.hpp"
 #include "transforms/mlir_fused_ops.hpp"
 
 namespace ov {
@@ -235,6 +239,41 @@ void MetalGroupConvOp::compile(MetalBufferManager* buffer_manager) {
                         type(),
                         ")");
     }
+
+    if (!m_has_bias && !m_has_bn &&
+        (!m_has_activation || gfx_mpsrt_conv_supports_fused_activation(m_activation))) {
+        const auto plan = select_stage_optimization_plan(buffer_manager,
+                                                         GpuBackend::Metal,
+                                                         "GroupConvolution",
+                                                         m_node,
+                                                         desc.output_type,
+                                                         /*has_bias=*/false,
+                                                         /*has_activation=*/false,
+                                                         /*has_batchnorm=*/false,
+                                                         GfxStageRuntimeTraits{});
+        const auto lowering = annotate_module_with_conv_mpsrt_plan(module,
+                                                                   plan,
+                                                                   m_node,
+                                                                   "GroupConv2D",
+                                                                   m_has_activation,
+                                                                   m_activation);
+        if (lowering == GfxConvMpsrtLoweringKind::MpsGroupConv2D) {
+            GfxMpsrtKernelSourceOptions source_options{};
+            source_options.external_arg_count = 9u;
+            source_options.external_output_arg_count = 1u;
+            auto source_plan = make_mpsrt_kernel_source_plan_from_module(module, std::move(source_options));
+            OPENVINO_ASSERT(source_plan.valid(),
+                            "MetalGroupConvOp: failed to create MPSRT source plan for ",
+                            name());
+            auto source = std::move(source_plan.source);
+            gfx_attach_mpsrt_conv_const_tensors(source, m_node);
+            m_kernel = backend.compile(source, &log);
+            OPENVINO_ASSERT(m_kernel, "MetalGroupConvOp: failed to compile MPSRT GroupConv2D: ", log);
+            MetalOp::compile(buffer_manager);
+            return;
+        }
+    }
+
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 

@@ -20,9 +20,12 @@
 #include "backends/metal/runtime/op_utils.hpp"
 #include "kernel_ir/gfx_kernel_cache.hpp"
 #include "mlir/gfx_mpsrt_metadata.hpp"
+#include "mlir/gfx_mpsrt_runtime_abi_pipeline.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gfx_logger.hpp"
+#include "runtime/gfx_mpsrt_storage_bridge.hpp"
 
+#include "mlir/Pass/PassManager.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace ov {
@@ -175,13 +178,562 @@ bool make_mpsrt_external_io_bindings(const metal::mpsrt::MpsrtModel& model,
     return set_error(error, "GFX MPSRT: cannot infer model output bindings from runtime buffers");
 }
 
+MTLPixelFormat mpsrt_texture_pixel_format_from_dtype(uint32_t dtype) {
+    switch (static_cast<GfxMpsrtDType>(dtype)) {
+        case GfxMpsrtDType::F16:
+            return MTLPixelFormatRGBA16Float;
+        case GfxMpsrtDType::F32:
+            return MTLPixelFormatRGBA32Float;
+        default:
+            return MTLPixelFormatInvalid;
+    }
+}
+
+uint32_t mpsrt_image_slice_count(uint32_t feature_channels) {
+    return (feature_channels + 3) / 4;
+}
+
+id<MTLTexture> new_mpsrt_image_texture(MetalDeviceHandle device,
+                                       const GfxMpsrtTensorAbiDesc& desc,
+                                       std::string* error) {
+    if (desc.storage != static_cast<uint32_t>(GfxMpsrtStorage::Image)) {
+        set_error(error, "GFX MPSRT: cannot allocate MTLTexture for non-image tensor");
+        return nil;
+    }
+    if (desc.image_width == 0 || desc.image_height == 0 || desc.image_feature_channels == 0 ||
+        desc.image_batch == 0) {
+        set_error(error, "GFX MPSRT: cannot allocate MTLTexture for incomplete image tensor descriptor");
+        return nil;
+    }
+
+    const MTLPixelFormat pixel_format = mpsrt_texture_pixel_format_from_dtype(desc.dtype);
+    if (pixel_format == MTLPixelFormatInvalid) {
+        set_error(error, "GFX MPSRT: cannot allocate MTLTexture for unsupported image dtype");
+        return nil;
+    }
+
+    const uint32_t slices = mpsrt_image_slice_count(desc.image_feature_channels);
+    MTLTextureDescriptor* descriptor =
+        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:pixel_format
+                                                          width:desc.image_width
+                                                         height:desc.image_height
+                                                      mipmapped:false];
+    descriptor.textureType = MTLTextureType2DArray;
+    descriptor.arrayLength = static_cast<NSUInteger>(desc.image_batch * slices);
+    descriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+    descriptor.storageMode = MTLStorageModePrivate;
+    id<MTLTexture> texture = [static_cast<id<MTLDevice>>(device) newTextureWithDescriptor:descriptor];
+    if (!texture) {
+        set_error(error, "GFX MPSRT: failed to allocate transient image MTLTexture");
+    }
+    return texture;
+}
+
+struct MpsrtImageBridgeCopy {
+    GfxMpsrtStorageBridgeDirection direction = GfxMpsrtStorageBridgeDirection::BufferToImage;
+    GfxMpsrtValue value = 0;
+    GfxMpsrtTensorAbiDesc desc{};
+    metal::mpsrt::MpsrtBoundBuffer buffer_binding{};
+    metal::mpsrt::MpsrtBoundBuffer image_binding{};
+};
+
+struct MpsrtImageBridgeParams {
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t channels = 0;
+    uint32_t batch = 0;
+};
+
+const metal::mpsrt::MpsrtRuntimeTensor* find_mpsrt_tensor(const metal::mpsrt::MpsrtModel& model,
+                                                         GfxMpsrtValue value) {
+    for (const auto& tensor : model.tensors) {
+        if (tensor.value == value) {
+            return &tensor;
+        }
+    }
+    return nullptr;
+}
+
+bool has_mpsrt_value(const std::vector<GfxMpsrtValue>& values, GfxMpsrtValue value) {
+    for (const auto known : values) {
+        if (known == value) {
+            return true;
+        }
+    }
+    return false;
+}
+
+const GfxMpsrtStorageBridgeDesc* find_mpsrt_storage_bridge(const metal::mpsrt::MpsrtModel& model,
+                                                           GfxMpsrtValue value) {
+    for (const auto& bridge : model.storage_bridges) {
+        if (bridge.value == value) {
+            return &bridge;
+        }
+    }
+    return nullptr;
+}
+
+GfxMpsrtStorageBridgeDirection mpsrt_external_image_bridge_direction_for_value(
+    const metal::mpsrt::MpsrtModel& model,
+    GfxMpsrtValue value,
+    GfxMpsrtStorageBridgeDirection legacy_fallback) {
+    if (model.storage_bridges.empty()) {
+        return legacy_fallback;
+    }
+    if (const auto* bridge = find_mpsrt_storage_bridge(model, value)) {
+        return bridge->direction;
+    }
+    return GfxMpsrtStorageBridgeDirection::Unknown;
+}
+
+bool register_mpsrt_const_tensor_sources(MetalCompiledKernel& kernel,
+                                         const metal::mpsrt::MpsrtModel& model,
+                                         const std::vector<MpsrtConstTensorSource>& const_tensors,
+                                         std::string* log) {
+    for (const auto& payload : const_tensors) {
+        if (payload.bytes.empty()) {
+            return set_error(log, "GFX MPSRT: const tensor source payload is empty");
+        }
+        const auto* tensor = find_mpsrt_tensor(model, payload.value);
+        if (!tensor) {
+            std::ostringstream stream;
+            stream << "GFX MPSRT: const tensor source references unknown value " << payload.value;
+            return set_error(log, stream.str());
+        }
+        if (!kernel.register_mpsrt_const_tensor_data(payload.value,
+                                                     tensor->desc,
+                                                     payload.bytes.data(),
+                                                     payload.bytes.size(),
+                                                     log)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool materialize_mpsrt_image_bridge_binding(const metal::mpsrt::MpsrtModel& model,
+                                            MetalDeviceHandle device,
+                                            GfxMpsrtValue value,
+                                            GfxMpsrtStorageBridgeDirection direction,
+                                            metal::mpsrt::MpsrtBoundBuffer& binding,
+                                            std::vector<id<MTLTexture>>& transient_textures,
+                                            std::vector<MpsrtImageBridgeCopy>& bridge_copies,
+                                            std::string* error) {
+    const auto* tensor = find_mpsrt_tensor(model, value);
+    if (!tensor) {
+        return set_error(error, "GFX MPSRT: image bridge tensor descriptor is missing");
+    }
+    if (!gfx_mpsrt_tensor_is_image(tensor->desc)) {
+        return true;
+    }
+    if (binding.texture) {
+        return true;
+    }
+    if (direction == GfxMpsrtStorageBridgeDirection::Unknown) {
+        return true;
+    }
+    if (!binding.buffer) {
+        return set_error(error, "GFX MPSRT: image bridge external buffer binding is null");
+    }
+    if (!gfx_mpsrt_image_bridge_supported(tensor->desc)) {
+        std::ostringstream stream;
+        stream << "GFX MPSRT: image bridge supports only static rank-4 f16/f32 image tensors"
+               << " value=" << value
+               << " rank=" << tensor->desc.rank
+               << " storage=" << tensor->desc.storage
+               << " flags=" << tensor->desc.flags;
+        return set_error(error, stream.str());
+    }
+    GfxMpsrtStorageBridgeDesc bridge_desc{};
+    if (!gfx_mpsrt_make_image_bridge_desc(value, tensor->desc, direction, bridge_desc)) {
+        return set_error(error, "GFX MPSRT: image bridge storage contract is invalid");
+    }
+
+    id<MTLTexture> texture = new_mpsrt_image_texture(device, tensor->desc, error);
+    if (!texture) {
+        return false;
+    }
+    transient_textures.push_back(texture);
+    const auto image_binding = metal::mpsrt::make_mpsrt_bound_image((__bridge void*)texture);
+    bridge_copies.push_back({bridge_desc.direction, bridge_desc.value, bridge_desc.tensor, binding, image_binding});
+    binding = image_binding;
+    return true;
+}
+
+bool materialize_mpsrt_image_bridge_bindings(const metal::mpsrt::MpsrtModel& model,
+                                             MetalDeviceHandle device,
+                                             const std::vector<GfxMpsrtValue>& values,
+                                             GfxMpsrtStorageBridgeDirection legacy_fallback_direction,
+                                             std::vector<metal::mpsrt::MpsrtBoundBuffer>& bindings,
+                                             std::vector<id<MTLTexture>>& transient_textures,
+                                             std::vector<MpsrtImageBridgeCopy>& bridge_copies,
+                                             std::string* error) {
+    if (values.size() != bindings.size()) {
+        return set_error(error, "GFX MPSRT: image bridge value count does not match binding count");
+    }
+    for (size_t i = 0; i < values.size(); ++i) {
+        const auto direction =
+            mpsrt_external_image_bridge_direction_for_value(model, values[i], legacy_fallback_direction);
+        if (!materialize_mpsrt_image_bridge_binding(model,
+                                                    device,
+                                                    values[i],
+                                                    direction,
+                                                    bindings[i],
+                                                    transient_textures,
+                                                    bridge_copies,
+                                                    error)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+const char* mpsrt_image_bridge_entry_point(const GfxMpsrtTensorAbiDesc& desc,
+                                           GfxMpsrtStorageBridgeDirection direction) {
+    const bool f16 = desc.dtype == static_cast<uint32_t>(GfxMpsrtDType::F16);
+    if (direction == GfxMpsrtStorageBridgeDirection::BufferToImage) {
+        return f16 ? "gfx_mpsrt_buffer_to_image_f16" : "gfx_mpsrt_buffer_to_image_f32";
+    }
+    return f16 ? "gfx_mpsrt_image_to_buffer_f16" : "gfx_mpsrt_image_to_buffer_f32";
+}
+
+const char* mpsrt_image_bridge_source() {
+    return R"MSL(
+#include <metal_stdlib>
+using namespace metal;
+
+struct GfxMpsrtImageBridgeParams {
+    uint width;
+    uint height;
+    uint channels;
+    uint batch;
+};
+
+inline uint gfx_mpsrt_image_bridge_slices(uint channels) {
+    return (channels + 3u) / 4u;
+}
+
+inline uint gfx_mpsrt_image_bridge_nchw_index(constant GfxMpsrtImageBridgeParams& p,
+                                              uint n,
+                                              uint c,
+                                              uint y,
+                                              uint x) {
+    return ((n * p.channels + c) * p.height + y) * p.width + x;
+}
+
+kernel void gfx_mpsrt_buffer_to_image_f32(device const float* src [[buffer(0)]],
+                                          texture2d_array<float, access::write> dst [[texture(0)]],
+                                          constant GfxMpsrtImageBridgeParams& p [[buffer(1)]],
+                                          uint3 gid [[thread_position_in_grid]]) {
+    const uint x = gid.x;
+    const uint y = gid.y;
+    const uint plane = gid.z;
+    const uint slices = gfx_mpsrt_image_bridge_slices(p.channels);
+    const uint n = plane / slices;
+    const uint slice = plane - n * slices;
+    if (x >= p.width || y >= p.height || n >= p.batch) {
+        return;
+    }
+    float4 value = float4(0.0f);
+    const uint c0 = slice * 4u;
+    if (c0 + 0u < p.channels) value.x = src[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 0u, y, x)];
+    if (c0 + 1u < p.channels) value.y = src[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 1u, y, x)];
+    if (c0 + 2u < p.channels) value.z = src[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 2u, y, x)];
+    if (c0 + 3u < p.channels) value.w = src[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 3u, y, x)];
+    dst.write(value, uint2(x, y), plane);
+}
+
+kernel void gfx_mpsrt_buffer_to_image_f16(device const half* src [[buffer(0)]],
+                                          texture2d_array<half, access::write> dst [[texture(0)]],
+                                          constant GfxMpsrtImageBridgeParams& p [[buffer(1)]],
+                                          uint3 gid [[thread_position_in_grid]]) {
+    const uint x = gid.x;
+    const uint y = gid.y;
+    const uint plane = gid.z;
+    const uint slices = gfx_mpsrt_image_bridge_slices(p.channels);
+    const uint n = plane / slices;
+    const uint slice = plane - n * slices;
+    if (x >= p.width || y >= p.height || n >= p.batch) {
+        return;
+    }
+    half4 value = half4(0.0h);
+    const uint c0 = slice * 4u;
+    if (c0 + 0u < p.channels) value.x = src[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 0u, y, x)];
+    if (c0 + 1u < p.channels) value.y = src[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 1u, y, x)];
+    if (c0 + 2u < p.channels) value.z = src[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 2u, y, x)];
+    if (c0 + 3u < p.channels) value.w = src[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 3u, y, x)];
+    dst.write(value, uint2(x, y), plane);
+}
+
+kernel void gfx_mpsrt_image_to_buffer_f32(texture2d_array<float, access::read> src [[texture(0)]],
+                                          device float* dst [[buffer(0)]],
+                                          constant GfxMpsrtImageBridgeParams& p [[buffer(1)]],
+                                          uint3 gid [[thread_position_in_grid]]) {
+    const uint x = gid.x;
+    const uint y = gid.y;
+    const uint plane = gid.z;
+    const uint slices = gfx_mpsrt_image_bridge_slices(p.channels);
+    const uint n = plane / slices;
+    const uint slice = plane - n * slices;
+    if (x >= p.width || y >= p.height || n >= p.batch) {
+        return;
+    }
+    const float4 value = src.read(uint2(x, y), plane);
+    const uint c0 = slice * 4u;
+    if (c0 + 0u < p.channels) dst[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 0u, y, x)] = value.x;
+    if (c0 + 1u < p.channels) dst[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 1u, y, x)] = value.y;
+    if (c0 + 2u < p.channels) dst[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 2u, y, x)] = value.z;
+    if (c0 + 3u < p.channels) dst[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 3u, y, x)] = value.w;
+}
+
+kernel void gfx_mpsrt_image_to_buffer_f16(texture2d_array<half, access::read> src [[texture(0)]],
+                                          device half* dst [[buffer(0)]],
+                                          constant GfxMpsrtImageBridgeParams& p [[buffer(1)]],
+                                          uint3 gid [[thread_position_in_grid]]) {
+    const uint x = gid.x;
+    const uint y = gid.y;
+    const uint plane = gid.z;
+    const uint slices = gfx_mpsrt_image_bridge_slices(p.channels);
+    const uint n = plane / slices;
+    const uint slice = plane - n * slices;
+    if (x >= p.width || y >= p.height || n >= p.batch) {
+        return;
+    }
+    const half4 value = src.read(uint2(x, y), plane);
+    const uint c0 = slice * 4u;
+    if (c0 + 0u < p.channels) dst[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 0u, y, x)] = value.x;
+    if (c0 + 1u < p.channels) dst[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 1u, y, x)] = value.y;
+    if (c0 + 2u < p.channels) dst[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 2u, y, x)] = value.z;
+    if (c0 + 3u < p.channels) dst[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 3u, y, x)] = value.w;
+}
+)MSL";
+}
+
+bool encode_mpsrt_image_bridge_copy(GpuCommandBufferHandle command_buffer,
+                                    metal::mpsrt::MpsrtContext& context,
+                                    const MpsrtImageBridgeCopy& copy,
+                                    const KernelExecutionHooks* hooks,
+                                    std::string* error) {
+    if (!copy.buffer_binding.buffer || !copy.image_binding.texture) {
+        return set_error(error, "GFX MPSRT: image bridge copy has incomplete resources");
+    }
+
+    metal::mpsrt::MpsrtRuntimeStage stage;
+    stage.kind = GfxMpsrtStageKind::MSLDispatch;
+    stage.stage_record_key = copy.direction == GfxMpsrtStorageBridgeDirection::BufferToImage
+                                 ? "mpsrt_bridge_buffer_to_image"
+                                 : "mpsrt_bridge_image_to_buffer";
+    stage.dispatch_entry_point = mpsrt_image_bridge_entry_point(copy.desc, copy.direction);
+    stage.dispatch_threads_per_threadgroup = 64;
+    stage.dispatch_flags = GfxMpsrtMslDispatchFlagNone;
+    bool cache_hit = false;
+    id<MTLComputePipelineState> pipeline =
+        context.get_or_create_pipeline(stage, mpsrt_image_bridge_source(), cache_hit, error);
+    if (!pipeline) {
+        return false;
+    }
+
+    bool encoder_created = false;
+    id<MTLComputeCommandEncoder> encoder =
+        static_cast<id<MTLComputeCommandEncoder>>(metal_get_or_create_compute_encoder(command_buffer, &encoder_created));
+    if (!encoder) {
+        return set_error(error, "GFX MPSRT: failed to create image bridge compute encoder");
+    }
+    metal_set_compute_pipeline_if_needed(command_buffer,
+                                         reinterpret_cast<GpuCommandEncoderHandle>(encoder),
+                                         (__bridge void*)pipeline);
+
+    id<MTLBuffer> buffer = static_cast<id<MTLBuffer>>(copy.buffer_binding.buffer);
+    id<MTLTexture> texture = static_cast<id<MTLTexture>>(copy.image_binding.texture);
+    MpsrtImageBridgeParams params{};
+    params.width = copy.desc.image_width;
+    params.height = copy.desc.image_height;
+    params.channels = copy.desc.image_feature_channels;
+    params.batch = copy.desc.image_batch;
+    [encoder setBuffer:buffer offset:copy.buffer_binding.offset atIndex:0];
+    [encoder setBytes:&params length:sizeof(params) atIndex:1];
+    [encoder setTexture:texture atIndex:0];
+
+    const NSUInteger slices = static_cast<NSUInteger>(mpsrt_image_slice_count(copy.desc.image_feature_channels));
+    const MTLSize grid = MTLSizeMake(copy.desc.image_width,
+                                     copy.desc.image_height,
+                                     copy.desc.image_batch * slices);
+    const MTLSize threads = MTLSizeMake(8, 8, 1);
+    [encoder dispatchThreads:grid threadsPerThreadgroup:threads];
+
+    if (hooks && hooks->on_counter) {
+        hooks->on_counter(copy.direction == GfxMpsrtStorageBridgeDirection::BufferToImage
+                              ? "mpsrt_image_bridge_buffer_to_image_encode_count"
+                              : "mpsrt_image_bridge_image_to_buffer_encode_count",
+                          1);
+        hooks->on_counter(cache_hit ? "mpsrt_image_bridge_pipeline_cache_hit_count"
+                                    : "mpsrt_image_bridge_pipeline_cache_miss_count",
+                          1);
+        if (encoder_created) {
+            hooks->on_counter("mpsrt_image_bridge_encoder_create_count", 1);
+        }
+    }
+    return true;
+}
+
+bool encode_mpsrt_image_bridge_copies(GpuCommandBufferHandle command_buffer,
+                                      metal::mpsrt::MpsrtContext& context,
+                                      const std::vector<MpsrtImageBridgeCopy>& copies,
+                                      GfxMpsrtStorageBridgeDirection direction,
+                                      const KernelExecutionHooks* hooks,
+                                      std::string* error) {
+    for (const auto& copy : copies) {
+        if (copy.direction != direction) {
+            continue;
+        }
+        if (!encode_mpsrt_image_bridge_copy(command_buffer, context, copy, hooks, error)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool module_has_mpsrt_stage_plan(mlir::ModuleOp module) {
+    return module &&
+           (module->hasAttr("gfx.mpsrt.stage_kind") ||
+            module->hasAttr("gfx.mpsrt.model_record_key"));
+}
+
+bool module_has_generated_mpsrt_runtime_abi_call_plan(mlir::ModuleOp module) {
+    if (!module) {
+        return false;
+    }
+    std::string plan_symbol = "gfx_mpsrt_runtime_abi_plan";
+    if (auto attr = module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.runtime_abi.call_plan_symbol")) {
+        plan_symbol = attr.str();
+    }
+    auto plan_func = module.lookupSymbol<mlir::func::FuncOp>(plan_symbol);
+    return plan_func &&
+           static_cast<bool>(plan_func->getAttrOfType<mlir::BoolAttr>("gfx.mpsrt.runtime_abi.generated"));
+}
+
+bool ensure_mpsrt_runtime_abi_call_plan(mlir::ModuleOp module) {
+    if (!module_has_mpsrt_stage_plan(module)) {
+        return false;
+    }
+    if (module_has_generated_mpsrt_runtime_abi_call_plan(module)) {
+        return true;
+    }
+
+    mlir::PassManager pm(module.getContext());
+    populate_gfx_apple_mpsrt_runtime_abi_pipeline(pm);
+    if (mlir::failed(pm.run(module))) {
+        OPENVINO_THROW("GFX Metal MPSRT: failed to materialize runtime ABI call plan");
+    }
+    return module_has_generated_mpsrt_runtime_abi_call_plan(module);
+}
+
+bool equal_mpsrt_u32_vectors(const std::vector<GfxMpsrtValue>& lhs,
+                             const std::vector<GfxMpsrtValue>& rhs) {
+    return lhs.size() == rhs.size() &&
+           std::equal(lhs.begin(), lhs.end(), rhs.begin());
+}
+
+bool equal_mpsrt_external_roles(const std::vector<GfxMpsrtExternalBufferRole>& lhs,
+                                const std::vector<GfxMpsrtExternalBufferRole>& rhs) {
+    return lhs.size() == rhs.size() &&
+           std::equal(lhs.begin(), lhs.end(), rhs.begin());
+}
+
+bool validate_mpsrt_runtime_abi_call_plan_matches_builder_plan(const GfxMpsrtBuilderPlan& builder_plan,
+                                                               const GfxMpsrtBuilderPlan& call_plan,
+                                                               std::string* error) {
+    auto fail = [&](const std::string& message) {
+        if (error) {
+            *error = message;
+        }
+        return false;
+    };
+
+    if (!builder_plan.valid || !call_plan.valid) {
+        return fail("invalid builder or runtime ABI call plan");
+    }
+    if (builder_plan.stage_record_key != call_plan.stage_record_key) {
+        return fail("runtime ABI call plan record key mismatch");
+    }
+    if (!equal_mpsrt_u32_vectors(builder_plan.input_values, call_plan.input_values) ||
+        !equal_mpsrt_u32_vectors(builder_plan.output_values, call_plan.output_values)) {
+        return fail("runtime ABI call plan external IO value mismatch");
+    }
+    if (builder_plan.external_buffer_abi_valid != call_plan.external_buffer_abi_valid ||
+        builder_plan.external_buffer_count != call_plan.external_buffer_count ||
+        builder_plan.external_output_buffer_count != call_plan.external_output_buffer_count ||
+        !equal_mpsrt_external_roles(builder_plan.external_buffer_roles, call_plan.external_buffer_roles)) {
+        return fail("runtime ABI call plan external buffer ABI mismatch");
+    }
+    if (builder_plan.records.size() != call_plan.records.size()) {
+        return fail("runtime ABI call plan record count mismatch");
+    }
+
+    for (size_t i = 0; i < builder_plan.records.size(); ++i) {
+        const auto& expected = builder_plan.records[i];
+        const auto& actual = call_plan.records[i];
+        if (expected.kind != actual.kind || expected.symbol != actual.symbol) {
+            return fail("runtime ABI call plan record kind/symbol mismatch at " + std::to_string(i));
+        }
+        if (expected.kind == GfxMpsrtBuilderRecordKind::AddTensor && expected.value != actual.value) {
+            return fail("runtime ABI call plan tensor value mismatch at " + std::to_string(i));
+        }
+        if (expected.kind != GfxMpsrtBuilderRecordKind::EncodeStage) {
+            continue;
+        }
+        if (expected.stage_kind != actual.stage_kind ||
+            expected.kernel_name != actual.kernel_name ||
+            !equal_mpsrt_u32_vectors(expected.inputs, actual.inputs) ||
+            !equal_mpsrt_u32_vectors(expected.outputs, actual.outputs) ||
+            !equal_mpsrt_u32_vectors(expected.kernel_buffer_order, actual.kernel_buffer_order)) {
+            return fail("runtime ABI call plan encode-stage contract mismatch at " + std::to_string(i));
+        }
+    }
+    return true;
+}
+
+bool resolve_module_mpsrt_builder_plan(mlir::ModuleOp module,
+                                       GfxMpsrtModuleBuilderPlan& module_plan) {
+    module_plan = {};
+    if (!module_has_mpsrt_stage_plan(module)) {
+        return false;
+    }
+
+    if (!build_module_mpsrt_builder_plan(module, module_plan)) {
+        return false;
+    }
+
+    const bool has_call_plan = ensure_mpsrt_runtime_abi_call_plan(module);
+    GfxMpsrtBuilderPlan call_plan;
+    const bool read_call_plan =
+        has_call_plan && read_gfx_apple_mpsrt_runtime_abi_call_plan(module, call_plan);
+
+    if (read_call_plan) {
+        std::string error;
+        if (!validate_mpsrt_runtime_abi_call_plan_matches_builder_plan(module_plan.builder_plan,
+                                                                       call_plan,
+                                                                       &error)) {
+            OPENVINO_THROW("GFX Metal MPSRT: runtime ABI call plan diverged from stage manifest: ", error);
+        }
+        module_plan.builder_plan = std::move(call_plan);
+        if (current_compile_trace()) {
+            increment_compile_counter("mpsrt_runtime_abi_call_plan_consumed_count");
+        }
+    } else if (has_call_plan) {
+        OPENVINO_THROW("GFX Metal MPSRT: generated runtime ABI call plan is not readable");
+    }
+
+    return true;
+}
+
 void record_mpsrt_plan_counters(mlir::ModuleOp module) {
     if (!module || !current_compile_trace()) {
         return;
     }
 
     GfxMpsrtModuleBuilderPlan module_plan;
-    if (!build_module_mpsrt_builder_plan(module, module_plan)) {
+    if (!resolve_module_mpsrt_builder_plan(module, module_plan)) {
         return;
     }
     const auto& builder_plan = module_plan.builder_plan;
@@ -241,6 +793,8 @@ void record_mpsrt_plan_counters(mlir::ModuleOp module) {
     };
 
     increment_compile_counter("mpsrt_builder_record_count", static_cast<uint64_t>(builder_plan.records.size()));
+    increment_compile_counter("mpsrt_builder_storage_bridge_count",
+                              static_cast<uint64_t>(builder_plan.storage_bridges.size()));
     uint64_t encode_record_count = 0;
     for (const auto& record : builder_plan.records) {
         if (record.kind == GfxMpsrtBuilderRecordKind::EncodeStage) {
@@ -299,7 +853,7 @@ std::shared_ptr<const metal::mpsrt::MpsrtModel> build_metal_mpsrt_runtime_model(
     }
 
     GfxMpsrtModuleBuilderPlan module_plan;
-    if (!build_module_mpsrt_builder_plan(module, module_plan)) {
+    if (!resolve_module_mpsrt_builder_plan(module, module_plan)) {
         return nullptr;
     }
 
@@ -400,12 +954,174 @@ bool mpsrt_model_has_msl_dispatch(const std::shared_ptr<const metal::mpsrt::Mpsr
     });
 }
 
+bool mpsrt_conv2d_stage_supported_by_image_bridge(const metal::mpsrt::MpsrtModel& model,
+                                                  const metal::mpsrt::MpsrtRuntimeStage& stage) {
+    if (stage.inputs.size() != 2 || stage.outputs.size() != 1 || stage.output_descs.size() != 1) {
+        return false;
+    }
+    const auto* input = find_mpsrt_tensor(model, stage.inputs[0]);
+    const auto* weights = find_mpsrt_tensor(model, stage.inputs[1]);
+    if (!input || !weights) {
+        return false;
+    }
+    const auto& input_desc = input->desc;
+    const auto& weights_desc = weights->desc;
+    const auto& output_desc = stage.output_descs.front();
+    if (!gfx_mpsrt_tensor_is_image(input_desc) ||
+        !gfx_mpsrt_tensor_is_image(output_desc) ||
+        !gfx_mpsrt_image_bridge_supported(input_desc) ||
+        !gfx_mpsrt_image_bridge_supported(output_desc)) {
+        return false;
+    }
+    if (input_desc.dtype != output_desc.dtype || weights_desc.dtype != output_desc.dtype) {
+        return false;
+    }
+    if (stage.conv2d_desc.groups == 0 ||
+        input_desc.image_feature_channels % stage.conv2d_desc.groups != 0 ||
+        output_desc.image_feature_channels % stage.conv2d_desc.groups != 0) {
+        return false;
+    }
+    return true;
+}
+
+bool mpsrt_pool2d_stage_supported_by_image_bridge(const metal::mpsrt::MpsrtModel& model,
+                                                  const metal::mpsrt::MpsrtRuntimeStage& stage) {
+    if (stage.inputs.size() != 1 || stage.outputs.size() != 1 || stage.output_descs.size() != 1) {
+        return false;
+    }
+    const auto* input = find_mpsrt_tensor(model, stage.inputs[0]);
+    if (!input) {
+        return false;
+    }
+    const auto& input_desc = input->desc;
+    const auto& output_desc = stage.output_descs.front();
+    if (!gfx_mpsrt_tensor_is_image(input_desc) ||
+        !gfx_mpsrt_tensor_is_image(output_desc) ||
+        !gfx_mpsrt_image_bridge_supported(input_desc) ||
+        !gfx_mpsrt_image_bridge_supported(output_desc)) {
+        return false;
+    }
+    if (input_desc.dtype != output_desc.dtype ||
+        input_desc.image_batch != output_desc.image_batch ||
+        input_desc.image_feature_channels != output_desc.image_feature_channels) {
+        return false;
+    }
+    if ((input_desc.image_feature_channels % 4u) != 0) {
+        return false;
+    }
+    if (stage.pool2d_desc.kernel[0] == 0 || stage.pool2d_desc.kernel[1] == 0 ||
+        stage.pool2d_desc.strides[0] == 0 || stage.pool2d_desc.strides[1] == 0 ||
+        stage.pool2d_desc.dilations[0] != 1 || stage.pool2d_desc.dilations[1] != 1) {
+        return false;
+    }
+    return true;
+}
+
+bool mpsrt_softmax_stage_supported_by_matrix_bridge(const metal::mpsrt::MpsrtModel& model,
+                                                    const metal::mpsrt::MpsrtRuntimeStage& stage) {
+    if (stage.inputs.size() != 1 || stage.outputs.size() != 1 || stage.output_descs.size() != 1) {
+        return false;
+    }
+    const auto* input = find_mpsrt_tensor(model, stage.inputs[0]);
+    if (!input) {
+        return false;
+    }
+    const auto& input_desc = input->desc;
+    const auto& output_desc = stage.output_descs.front();
+    if (input_desc.storage != static_cast<uint32_t>(GfxMpsrtStorage::Matrix) ||
+        output_desc.storage != static_cast<uint32_t>(GfxMpsrtStorage::Matrix)) {
+        return false;
+    }
+    if (stage.softmax_desc.log_softmax != 0) {
+        return false;
+    }
+    if (input_desc.dtype != output_desc.dtype ||
+        (input_desc.dtype != static_cast<uint32_t>(GfxMpsrtDType::F16) &&
+         input_desc.dtype != static_cast<uint32_t>(GfxMpsrtDType::F32))) {
+        return false;
+    }
+    if (input_desc.matrix_rows == 0 || input_desc.matrix_columns == 0 ||
+        input_desc.matrix_row_bytes == 0 ||
+        output_desc.matrix_rows != input_desc.matrix_rows ||
+        output_desc.matrix_columns != input_desc.matrix_columns ||
+        output_desc.matrix_row_bytes == 0) {
+        return false;
+    }
+    const uint32_t input_count = input_desc.matrix_count == 0 ? 1 : input_desc.matrix_count;
+    const uint32_t output_count = output_desc.matrix_count == 0 ? 1 : output_desc.matrix_count;
+    return input_count == output_count;
+}
+
+bool mpsrt_topk_stage_supported_by_matrix_bridge(const metal::mpsrt::MpsrtModel& model,
+                                                 const metal::mpsrt::MpsrtRuntimeStage& stage) {
+    if (stage.inputs.size() != 1 || stage.outputs.size() != 2 || stage.output_descs.size() != 2) {
+        return false;
+    }
+    const auto* input = find_mpsrt_tensor(model, stage.inputs[0]);
+    if (!input) {
+        return false;
+    }
+    const auto& input_desc = input->desc;
+    const auto& values_desc = stage.output_descs[0];
+    const auto& indices_desc = stage.output_descs[1];
+    if (input_desc.storage != static_cast<uint32_t>(GfxMpsrtStorage::Matrix) ||
+        values_desc.storage != static_cast<uint32_t>(GfxMpsrtStorage::Matrix) ||
+        indices_desc.storage != static_cast<uint32_t>(GfxMpsrtStorage::Matrix)) {
+        return false;
+    }
+    if (stage.topk_desc.mode_max == 0 || stage.topk_desc.k == 0 || stage.topk_desc.k > 16) {
+        return false;
+    }
+    if (input_desc.dtype != values_desc.dtype ||
+        (input_desc.dtype != static_cast<uint32_t>(GfxMpsrtDType::F16) &&
+         input_desc.dtype != static_cast<uint32_t>(GfxMpsrtDType::F32))) {
+        return false;
+    }
+    if (indices_desc.dtype != static_cast<uint32_t>(GfxMpsrtDType::I32) &&
+        indices_desc.dtype != static_cast<uint32_t>(GfxMpsrtDType::U32)) {
+        return false;
+    }
+    if (input_desc.matrix_rows == 0 || input_desc.matrix_columns == 0 ||
+        input_desc.matrix_row_bytes == 0 ||
+        values_desc.matrix_rows != input_desc.matrix_rows ||
+        values_desc.matrix_columns != stage.topk_desc.k ||
+        values_desc.matrix_row_bytes == 0 ||
+        indices_desc.matrix_rows != input_desc.matrix_rows ||
+        indices_desc.matrix_columns != stage.topk_desc.k ||
+        indices_desc.matrix_row_bytes == 0) {
+        return false;
+    }
+    const uint32_t input_count = input_desc.matrix_count == 0 ? 1 : input_desc.matrix_count;
+    const uint32_t values_count = values_desc.matrix_count == 0 ? 1 : values_desc.matrix_count;
+    const uint32_t indices_count = indices_desc.matrix_count == 0 ? 1 : indices_desc.matrix_count;
+    return input_count == values_count && input_count == indices_count;
+}
+
+bool mpsrt_stage_supported_by_current_runtime(const metal::mpsrt::MpsrtModel& model,
+                                              const metal::mpsrt::MpsrtRuntimeStage& stage) {
+    switch (stage.kind) {
+        case GfxMpsrtStageKind::MPSGemm:
+            return true;
+        case GfxMpsrtStageKind::MPSConv2D:
+        case GfxMpsrtStageKind::MPSGroupConv2D:
+            return mpsrt_conv2d_stage_supported_by_image_bridge(model, stage);
+        case GfxMpsrtStageKind::MPSPool2D:
+            return mpsrt_pool2d_stage_supported_by_image_bridge(model, stage);
+        case GfxMpsrtStageKind::MPSSoftmax:
+            return mpsrt_softmax_stage_supported_by_matrix_bridge(model, stage);
+        case GfxMpsrtStageKind::MPSTopK:
+            return mpsrt_topk_stage_supported_by_matrix_bridge(model, stage);
+        default:
+            return false;
+    }
+}
+
 bool mpsrt_model_has_supported_vendor_stage(const std::shared_ptr<const metal::mpsrt::MpsrtModel>& model) {
     if (!model) {
         return false;
     }
-    return std::any_of(model->stages.begin(), model->stages.end(), [](const auto& stage) {
-        return stage.kind == GfxMpsrtStageKind::MPSGemm;
+    return std::any_of(model->stages.begin(), model->stages.end(), [&](const auto& stage) {
+        return mpsrt_stage_supported_by_current_runtime(*model, stage);
     });
 }
 
@@ -419,6 +1135,14 @@ bool mpsrt_model_is_executable_by_mpsrt(const std::shared_ptr<const metal::mpsrt
     for (const auto& stage : model->stages) {
         switch (stage.kind) {
             case GfxMpsrtStageKind::MPSGemm:
+            case GfxMpsrtStageKind::MPSConv2D:
+            case GfxMpsrtStageKind::MPSGroupConv2D:
+            case GfxMpsrtStageKind::MPSPool2D:
+            case GfxMpsrtStageKind::MPSSoftmax:
+            case GfxMpsrtStageKind::MPSTopK:
+                if (!mpsrt_stage_supported_by_current_runtime(*model, stage)) {
+                    return false;
+                }
                 break;
             case GfxMpsrtStageKind::MSLDispatch:
                 has_msl_dispatch = true;
@@ -452,13 +1176,23 @@ bool build_mpsrt_bindings_from_prepared_state(const metal::mpsrt::MpsrtModel& mo
                                               metal::mpsrt::MpsrtTensorBindings& bindings,
                                               metal::mpsrt::MpsrtBindingBuildResult& binding_result,
                                               std::vector<id<MTLBuffer>>& transient_buffers,
+                                              std::vector<id<MTLTexture>>& transient_textures,
+                                              std::vector<MpsrtImageBridgeCopy>& image_bridge_copies,
                                               std::string& error) {
     std::vector<metal::mpsrt::MpsrtBoundBuffer> input_buffers;
     std::vector<metal::mpsrt::MpsrtBoundBuffer> output_buffers;
-    const auto external_buffers = metal::mpsrt::make_mpsrt_bound_buffers(prepared.buffer_ptrs,
-                                                                         prepared.offsets);
+    auto external_buffers = metal::mpsrt::make_mpsrt_bound_buffers(prepared.buffer_ptrs,
+                                                                   prepared.offsets);
 
     auto transient_allocator = [&](const metal::mpsrt::MpsrtRuntimeTensor& tensor) {
+        if (tensor.desc.storage == static_cast<uint32_t>(GfxMpsrtStorage::Image)) {
+            id<MTLTexture> texture = new_mpsrt_image_texture(device, tensor.desc, &error);
+            if (!texture) {
+                return metal::mpsrt::MpsrtBoundBuffer{};
+            }
+            transient_textures.push_back(texture);
+            return metal::mpsrt::make_mpsrt_bound_image((__bridge void*)texture);
+        }
         const auto byte_length = static_cast<NSUInteger>(tensor.desc.byte_length);
         if (byte_length == 0) {
             return metal::mpsrt::MpsrtBoundBuffer{};
@@ -472,6 +1206,29 @@ bool build_mpsrt_bindings_from_prepared_state(const metal::mpsrt::MpsrtModel& mo
     };
 
     if (external_buffers.size() == model.external_values.size()) {
+        std::vector<GfxMpsrtValue> external_output_values = model.external_output_values;
+        if (external_output_values.empty()) {
+            external_output_values = model.output_values;
+        }
+        for (size_t i = 0; i < model.external_values.size(); ++i) {
+            const auto fallback_direction =
+                gfx_mpsrt_external_image_bridge_direction(has_mpsrt_value(external_output_values,
+                                                                          model.external_values[i]));
+            const auto direction =
+                mpsrt_external_image_bridge_direction_for_value(model,
+                                                               model.external_values[i],
+                                                               fallback_direction);
+            if (!materialize_mpsrt_image_bridge_binding(model,
+                                                        device,
+                                                        model.external_values[i],
+                                                        direction,
+                                                        external_buffers[i],
+                                                        transient_textures,
+                                                        image_bridge_copies,
+                                                        &error)) {
+                return false;
+            }
+        }
         return metal::mpsrt::build_mpsrt_external_tensor_bindings(model,
                                                                   external_buffers,
                                                                   transient_allocator,
@@ -487,6 +1244,24 @@ bool build_mpsrt_bindings_from_prepared_state(const metal::mpsrt::MpsrtModel& mo
                                          input_buffers,
                                          output_buffers,
                                          &error)) {
+        return false;
+    }
+    if (!materialize_mpsrt_image_bridge_bindings(model,
+                                                device,
+                                                model.input_values,
+                                                GfxMpsrtStorageBridgeDirection::BufferToImage,
+                                                input_buffers,
+                                                transient_textures,
+                                                image_bridge_copies,
+                                                &error) ||
+        !materialize_mpsrt_image_bridge_bindings(model,
+                                                device,
+                                                model.output_values,
+                                                GfxMpsrtStorageBridgeDirection::ImageToBuffer,
+                                                output_buffers,
+                                                transient_textures,
+                                                image_bridge_copies,
+                                                &error)) {
         return false;
     }
     return metal::mpsrt::build_mpsrt_tensor_bindings(model,
@@ -538,7 +1313,11 @@ std::shared_ptr<ICompiledKernel> MetalCodegenBackend::compile(const KernelSource
                                                             std::move(binding_plan),
                                                             shared_prepared_cache,
                                                             binding_schema);
-        kernel->set_mpsrt_model(std::move(mpsrt_model));
+        kernel->set_mpsrt_model(mpsrt_model);
+        if (!source.mpsrt_const_tensors.empty() &&
+            !register_mpsrt_const_tensor_sources(*kernel, *mpsrt_model, source.mpsrt_const_tensors, log_ptr)) {
+            return nullptr;
+        }
         return kernel;
     }
     if (can_cache_resolved_msl) {
@@ -654,7 +1433,15 @@ std::shared_ptr<ICompiledKernel> MetalCodegenBackend::compile(const KernelSource
                                            });
     const bool compiled_model_has_msl_dispatch = mpsrt_model_has_msl_dispatch(mpsrt_model);
     if (auto metal_kernel = std::dynamic_pointer_cast<MetalCompiledKernel>(kernel)) {
-        metal_kernel->set_mpsrt_model(std::move(mpsrt_model));
+        metal_kernel->set_mpsrt_model(mpsrt_model);
+        if (mpsrt_model &&
+            !source.mpsrt_const_tensors.empty() &&
+            !register_mpsrt_const_tensor_sources(*metal_kernel,
+                                                 *mpsrt_model,
+                                                 source.mpsrt_const_tensors,
+                                                 log_ptr)) {
+            return nullptr;
+        }
         if (compiled_model_has_msl_dispatch) {
             metal_kernel->set_mpsrt_msl_source(msl);
         }
@@ -692,7 +1479,6 @@ std::shared_ptr<ICompiledKernel> MetalCompiledKernel::fork() const {
                                                         m_binding_schema);
     kernel->set_mpsrt_model(m_mpsrt_model);
     kernel->set_mpsrt_msl_source(m_mpsrt_msl_source);
-    kernel->m_mpsrt_context = m_mpsrt_context;
     return kernel;
 }
 
@@ -710,6 +1496,21 @@ void MetalCompiledKernel::set_mpsrt_msl_source(std::string msl_source) {
 
 const metal::mpsrt::MpsrtModel* MetalCompiledKernel::mpsrt_model() const {
     return m_mpsrt_model.get();
+}
+
+bool MetalCompiledKernel::register_mpsrt_const_tensor_data(GfxMpsrtValue value,
+                                                           GfxMpsrtTensorAbiDesc desc,
+                                                           const void* data,
+                                                           size_t bytes,
+                                                           std::string* log) {
+    if (!m_mpsrt_model) {
+        return set_error(log, "GFX MPSRT: cannot register const tensor without an MPSRT model");
+    }
+    if (!m_mpsrt_context) {
+        m_mpsrt_context = std::make_shared<metal::mpsrt::MpsrtContext>(static_cast<id<MTLDevice>>(m_device));
+    }
+    desc.flags |= GfxMpsrtTensorFlagConst;
+    return m_mpsrt_context->register_const_tensor_data(value, desc, data, bytes, log);
 }
 
 void MetalCompiledKernel::prewarm_bindings(const std::vector<KernelArg>& args) {
@@ -764,6 +1565,8 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
     if (mpsrt_model_should_use_context_execution(m_mpsrt_model, m_mpsrt_msl_source)) {
         std::string mpsrt_error;
         std::vector<id<MTLBuffer>> transient_buffers;
+        std::vector<id<MTLTexture>> transient_textures;
+        std::vector<MpsrtImageBridgeCopy> image_bridge_copies;
         metal::mpsrt::MpsrtTensorBindings bindings;
         metal::mpsrt::MpsrtBindingBuildResult binding_result;
         const bool bindings_built =
@@ -774,6 +1577,8 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
                                                      bindings,
                                                      binding_result,
                                                      transient_buffers,
+                                                     transient_textures,
+                                                     image_bridge_copies,
                                                      mpsrt_error);
         OPENVINO_ASSERT(bindings_built, mpsrt_error);
         if (hooks && hooks->on_counter) {
@@ -783,6 +1588,10 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
                               static_cast<uint64_t>(binding_result.external_outputs_bound));
             hooks->on_counter("mpsrt_binding_transient_alloc_count",
                               static_cast<uint64_t>(binding_result.transient_buffers_allocated));
+            hooks->on_counter("mpsrt_binding_transient_image_alloc_count",
+                              static_cast<uint64_t>(binding_result.transient_images_allocated));
+            hooks->on_counter("mpsrt_image_bridge_copy_count",
+                              static_cast<uint64_t>(image_bridge_copies.size()));
         }
 
         if (!m_mpsrt_context) {
@@ -797,6 +1606,13 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
         std::vector<KernelDispatch> stage_dispatches(m_mpsrt_model->stages.size(), dispatch);
         metal::mpsrt::MpsrtRequest request;
         metal::mpsrt::MpsrtModelEncodeResult encode_result;
+        OPENVINO_ASSERT(encode_mpsrt_image_bridge_copies(command_buffer,
+                                                         *m_mpsrt_context,
+                                                         image_bridge_copies,
+                                                         GfxMpsrtStorageBridgeDirection::BufferToImage,
+                                                         hooks,
+                                                         &mpsrt_error),
+                        mpsrt_error);
         const bool encoded =
             request.encode_prepared_model(command_buffer,
                                           *m_mpsrt_model,
@@ -807,6 +1623,13 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
                                           &encode_result,
                                           &mpsrt_error);
         OPENVINO_ASSERT(encoded, mpsrt_error);
+        OPENVINO_ASSERT(encode_mpsrt_image_bridge_copies(command_buffer,
+                                                         *m_mpsrt_context,
+                                                         image_bridge_copies,
+                                                         GfxMpsrtStorageBridgeDirection::ImageToBuffer,
+                                                         hooks,
+                                                         &mpsrt_error),
+                        mpsrt_error);
         return;
     }
 
@@ -819,6 +1642,8 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
                                                                     static_cast<id<MTLComputePipelineState>>(m_pipeline));
         std::string mpsrt_error;
         std::vector<id<MTLBuffer>> transient_buffers;
+        std::vector<id<MTLTexture>> transient_textures;
+        std::vector<MpsrtImageBridgeCopy> image_bridge_copies;
         metal::mpsrt::MpsrtTensorBindings bindings;
         metal::mpsrt::MpsrtBindingBuildResult binding_result;
         const bool bindings_built =
@@ -829,6 +1654,8 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
                                                      bindings,
                                                      binding_result,
                                                      transient_buffers,
+                                                     transient_textures,
+                                                     image_bridge_copies,
                                                      mpsrt_error);
         OPENVINO_ASSERT(bindings_built, mpsrt_error);
         if (hooks && hooks->on_counter) {
@@ -838,13 +1665,27 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
                               static_cast<uint64_t>(binding_result.external_outputs_bound));
             hooks->on_counter("mpsrt_binding_transient_alloc_count",
                               static_cast<uint64_t>(binding_result.transient_buffers_allocated));
+            hooks->on_counter("mpsrt_binding_transient_image_alloc_count",
+                              static_cast<uint64_t>(binding_result.transient_images_allocated));
+            hooks->on_counter("mpsrt_image_bridge_copy_count",
+                              static_cast<uint64_t>(image_bridge_copies.size()));
         }
 
+        if (!m_mpsrt_context) {
+            m_mpsrt_context = std::make_shared<metal::mpsrt::MpsrtContext>(static_cast<id<MTLDevice>>(m_device));
+        }
         metal::mpsrt::MpsrtPreparedModel prepared_model;
         prepared_model.msl_dispatches.push_back(prepared_mpsrt);
         std::vector<KernelDispatch> stage_dispatches = {dispatch};
         metal::mpsrt::MpsrtRequest request;
         metal::mpsrt::MpsrtModelEncodeResult encode_result;
+        OPENVINO_ASSERT(encode_mpsrt_image_bridge_copies(command_buffer,
+                                                         *m_mpsrt_context,
+                                                         image_bridge_copies,
+                                                         GfxMpsrtStorageBridgeDirection::BufferToImage,
+                                                         hooks,
+                                                         &mpsrt_error),
+                        mpsrt_error);
         const bool encoded =
             request.encode_prepared_model(command_buffer,
                                           *m_mpsrt_model,
@@ -855,6 +1696,13 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
                                           &encode_result,
                                           &mpsrt_error);
         OPENVINO_ASSERT(encoded, mpsrt_error);
+        OPENVINO_ASSERT(encode_mpsrt_image_bridge_copies(command_buffer,
+                                                         *m_mpsrt_context,
+                                                         image_bridge_copies,
+                                                         GfxMpsrtStorageBridgeDirection::ImageToBuffer,
+                                                         hooks,
+                                                         &mpsrt_error),
+                        mpsrt_error);
         return;
     }
 

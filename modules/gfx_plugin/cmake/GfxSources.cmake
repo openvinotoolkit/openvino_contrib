@@ -123,6 +123,7 @@ set(GFX_RUNTIME_MLIR_HEADERS
     ${_gfx_src_dir}/mlir/gfx_mpsrt_conv_metadata.hpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_matmul_metadata.hpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_metadata.hpp
+    ${_gfx_src_dir}/mlir/gfx_mpsrt_runtime_abi_pipeline.hpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_source_plan.hpp
     ${_gfx_src_dir}/mlir/gfx_mlir_debug.hpp
     ${_gfx_src_dir}/mlir/mlir_kernel_plan_utils.hpp
@@ -132,6 +133,7 @@ set(GFX_RUNTIME_MLIR_HEADERS
 
 set(GFX_RUNTIME_MLIR_SOURCES
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.cpp
+    ${_gfx_src_dir}/mlir/gfx_mpsrt_runtime_abi_pipeline.cpp
     ${_gfx_src_dir}/mlir/mlir_stage.cpp
     ${_gfx_src_dir}/mlir/mlir_support.cpp
 )

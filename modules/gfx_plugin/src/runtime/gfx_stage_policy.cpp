@@ -49,6 +49,43 @@ bool is_identity_pointwise_conv(const std::shared_ptr<const ov::Node>& node) {
            in_shape[2] == out_shape[2] && in_shape[3] == out_shape[3];
 }
 
+bool has_mps_image_conv_channel_contract(const std::shared_ptr<const ov::Node>& node) {
+    if (auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(node)) {
+        if (!conv->get_input_partial_shape(0).is_static() ||
+            !conv->get_input_partial_shape(1).is_static() ||
+            !conv->get_output_partial_shape(0).is_static()) {
+            return false;
+        }
+        const auto& in_shape = conv->get_input_shape(0);
+        const auto& weights_shape = conv->get_input_shape(1);
+        const auto& out_shape = conv->get_output_shape(0);
+        return in_shape.size() == 4 && weights_shape.size() == 4 && out_shape.size() == 4 &&
+               weights_shape[0] == out_shape[1] && weights_shape[1] == in_shape[1];
+    }
+    if (auto group_conv = ov::as_type_ptr<const ov::op::v1::GroupConvolution>(node)) {
+        if (!group_conv->get_input_partial_shape(0).is_static() ||
+            !group_conv->get_input_partial_shape(1).is_static() ||
+            !group_conv->get_output_partial_shape(0).is_static()) {
+            return false;
+        }
+        const auto& in_shape = group_conv->get_input_shape(0);
+        const auto& weights_shape = group_conv->get_input_shape(1);
+        const auto& out_shape = group_conv->get_output_shape(0);
+        if (in_shape.size() != 4 || weights_shape.size() != 5 || out_shape.size() != 4) {
+            return false;
+        }
+        const auto groups = weights_shape[0];
+        if (groups == 0 || in_shape[1] % groups != 0 || out_shape[1] % groups != 0) {
+            return false;
+        }
+        const auto input_channels_per_group = in_shape[1] / groups;
+        const auto output_channels_per_group = out_shape[1] / groups;
+        return weights_shape[1] == output_channels_per_group &&
+               weights_shape[2] == input_channels_per_group;
+    }
+    return false;
+}
+
 bool has_input_type(const std::shared_ptr<const ov::Node>& node, std::string_view type_name) {
     if (!node) {
         return false;
@@ -201,8 +238,10 @@ GfxStagePlacementPlan make_placement(GfxStageBackendDomain domain,
 
 bool is_mps_image_candidate(std::string_view stage_type,
                             const std::shared_ptr<const ov::Node>& node) {
-    if (stage_type == "Convolution" || stage_type == "GroupConvolution" ||
-        stage_type == "MaxPool" || stage_type == "AvgPool" || stage_type == "Interpolate" ||
+    if (stage_type == "Convolution" || stage_type == "GroupConvolution") {
+        return has_static_output_rank(node, 4) && has_mps_image_conv_channel_contract(node);
+    }
+    if (stage_type == "MaxPool" || stage_type == "AvgPool" || stage_type == "Interpolate" ||
         stage_type == "BatchNormInference") {
         return has_static_output_rank(node, 4);
     }
@@ -530,6 +569,16 @@ GfxStageOptimizationPlan select_stage_optimization_plan(const GpuBufferManager* 
                                            has_bias,
                                            has_activation,
                                            has_batchnorm);
+    }
+    if (backend == GpuBackend::Metal &&
+        (plan.archetype == GfxStageArchetype::Convolution ||
+         plan.archetype == GfxStageArchetype::GroupConvolution) &&
+        (has_bias || has_activation || has_batchnorm)) {
+        plan.placement = make_placement(GfxStageBackendDomain::AppleMsl,
+                                        GfxStageStorageKind::Buffer,
+                                        stage_type,
+                                        /*vendor_primitive=*/false,
+                                        /*custom_kernel=*/true);
     }
 
     if (backend != GpuBackend::Vulkan) {
