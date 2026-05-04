@@ -18,8 +18,6 @@ void erase_module_mpsrt_legacy_attrs(mlir::ModuleOp module);
 bool materialize_module_mpsrt_ops(mlir::ModuleOp module,
                                   const GfxMpsrtProgram& program);
 
-bool materialize_module_mpsrt_ops_from_module_attrs(mlir::ModuleOp module);
-
 bool read_module_mpsrt_ops_program(mlir::ModuleOp module,
                                    GfxMpsrtProgram& out);
 

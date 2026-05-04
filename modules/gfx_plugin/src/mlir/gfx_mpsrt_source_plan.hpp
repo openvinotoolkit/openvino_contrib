@@ -98,14 +98,19 @@ inline GfxMpsrtKernelSourcePlan make_mpsrt_kernel_source_plan_from_module(
         return plan;
     }
 
+    const auto& program = module_plan.program;
+    if (!program.valid || program.stages.empty()) {
+        return plan;
+    }
+
     const GfxMpsrtStageDesc* first_stage = nullptr;
     const GfxMpsrtStageDesc* last_stage = nullptr;
     const GfxMpsrtStageDesc* source_stage = nullptr;
-    if (module_plan.multi_stage) {
-        first_stage = &module_plan.multi_stage_plan.stages.front().stage;
-        last_stage = &module_plan.multi_stage_plan.stages.back().stage;
-        for (auto it = module_plan.multi_stage_plan.stages.rbegin();
-             it != module_plan.multi_stage_plan.stages.rend();
+    if (program.multi_stage) {
+        first_stage = &program.stages.front().stage;
+        last_stage = &program.stages.back().stage;
+        for (auto it = program.stages.rbegin();
+             it != program.stages.rend();
              ++it) {
             if (gfx_mpsrt_stage_needs_custom_kernel_source(it->stage)) {
                 source_stage = &it->stage;
@@ -116,7 +121,7 @@ inline GfxMpsrtKernelSourcePlan make_mpsrt_kernel_source_plan_from_module(
             source_stage = last_stage;
         }
         plan.kind = GfxMpsrtKernelSourcePlanKind::MultiStage;
-        plan.record_key = module_plan.multi_stage_plan.model_record_key;
+        plan.record_key = program.record_key;
     } else {
         first_stage = &module_plan.stage_plan.stage;
         last_stage = first_stage;

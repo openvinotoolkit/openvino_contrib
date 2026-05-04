@@ -118,6 +118,82 @@ inline bool gfx_mpsrt_validate_program(const GfxMpsrtProgram& program,
     return result.valid;
 }
 
+class GfxMpsrtStageGraphBuilder {
+public:
+    explicit GfxMpsrtStageGraphBuilder(std::string record_key)
+        : m_record_key(std::move(record_key)) {}
+
+    GfxMpsrtValue add_external_input(const GfxMpsrtTensorDesc& desc) {
+        const auto value = next_value();
+        m_inputs.push_back(desc);
+        m_external_roles.push_back(GfxMpsrtExternalBufferRole::TensorInput);
+        return value;
+    }
+
+    std::vector<GfxMpsrtValue> add_stage(const GfxMpsrtStageDesc& stage,
+                                         std::vector<GfxMpsrtValue> inputs,
+                                         std::vector<GfxMpsrtTensorDesc> output_descs) {
+        std::vector<GfxMpsrtValue> outputs;
+        outputs.reserve(output_descs.size());
+        for (size_t i = 0; i < output_descs.size(); ++i) {
+            outputs.push_back(next_value());
+        }
+        add_stage_with_outputs(stage, std::move(inputs), outputs, std::move(output_descs));
+        return outputs;
+    }
+
+    void add_stage_with_outputs(const GfxMpsrtStageDesc& stage,
+                                std::vector<GfxMpsrtValue> inputs,
+                                std::vector<GfxMpsrtValue> outputs,
+                                std::vector<GfxMpsrtTensorDesc> output_descs) {
+        m_stages.push_back(GfxMpsrtBuilderStageSpec{stage,
+                                                    gfx_mpsrt_stage_record_key(stage),
+                                                    std::move(inputs),
+                                                    std::move(outputs),
+                                                    std::move(output_descs)});
+    }
+
+    void expose_external_output(GfxMpsrtValue value) {
+        m_output_values.push_back(value);
+        m_external_roles.push_back(GfxMpsrtExternalBufferRole::TensorOutput);
+    }
+
+    GfxMpsrtProgram build() const {
+        GfxMpsrtProgram program{};
+        program.record_key = m_record_key;
+        program.multi_stage = m_stages.size() > 1;
+        program.inputs = m_inputs;
+        program.stages = m_stages;
+        program.output_values = m_output_values;
+        if (!m_external_roles.empty()) {
+            program.external_buffer_abi.valid = true;
+            program.external_buffer_abi.has_buffer_count = true;
+            program.external_buffer_abi.has_output_buffer_count = true;
+            program.external_buffer_abi.has_buffer_roles = true;
+            program.external_buffer_abi.buffer_count = static_cast<uint32_t>(m_external_roles.size());
+            program.external_buffer_abi.output_buffer_count =
+                static_cast<uint32_t>(std::count(m_external_roles.begin(),
+                                                 m_external_roles.end(),
+                                                 GfxMpsrtExternalBufferRole::TensorOutput));
+            program.external_buffer_abi.buffer_roles = m_external_roles;
+        }
+        program.valid = gfx_mpsrt_validate_program(program, nullptr);
+        return program;
+    }
+
+private:
+    GfxMpsrtValue next_value() {
+        return m_next_value++;
+    }
+
+    std::string m_record_key;
+    GfxMpsrtValue m_next_value = 0;
+    std::vector<GfxMpsrtTensorDesc> m_inputs;
+    std::vector<GfxMpsrtBuilderStageSpec> m_stages;
+    std::vector<GfxMpsrtValue> m_output_values;
+    std::vector<GfxMpsrtExternalBufferRole> m_external_roles;
+};
+
 inline std::vector<GfxMpsrtValue> gfx_mpsrt_make_sequential_values(size_t count,
                                                                    GfxMpsrtValue first = 0) {
     std::vector<GfxMpsrtValue> values;

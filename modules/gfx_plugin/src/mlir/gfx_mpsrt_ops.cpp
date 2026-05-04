@@ -4,6 +4,7 @@
 
 #include "mlir/gfx_mpsrt_ops.hpp"
 
+#include "mlir/gfx_mpsrt_dialect.hpp"
 #include "mlir/gfx_mpsrt_metadata.hpp"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -18,41 +19,56 @@ namespace ov {
 namespace gfx_plugin {
 namespace {
 
-constexpr const char* kGfxMpsrtReturnOpSymbol = "gfx_mpsrt_op_return";
+constexpr const char* kGfxMpsrtReturnOpName = "gfx.mpsrt.return";
 
 std::string mpsrt_op_name_for_stage(GfxMpsrtStageKind kind) {
     switch (kind) {
         case GfxMpsrtStageKind::MPSConv2D:
-            return "mpsrt.conv2d";
+            return "gfx.mpsrt.conv2d";
         case GfxMpsrtStageKind::MPSGroupConv2D:
-            return "mpsrt.group_conv2d";
+            return "gfx.mpsrt.group_conv2d";
         case GfxMpsrtStageKind::MPSPool2D:
-            return "mpsrt.pool2d";
+            return "gfx.mpsrt.pool2d";
         case GfxMpsrtStageKind::MPSGemm:
-            return "mpsrt.gemm";
+            return "gfx.mpsrt.gemm";
         case GfxMpsrtStageKind::MPSSoftmax:
-            return "mpsrt.softmax";
+            return "gfx.mpsrt.softmax";
         case GfxMpsrtStageKind::MPSTopK:
-            return "mpsrt.topk";
+            return "gfx.mpsrt.topk";
         case GfxMpsrtStageKind::MSLDispatch:
-            return "mpsrt.dispatch";
+            return "gfx.mpsrt.dispatch";
         case GfxMpsrtStageKind::Unknown:
         default:
             return {};
     }
 }
 
-std::string mpsrt_op_symbol_for_stage(const GfxMpsrtStageDesc& stage) {
-    if (stage.builder_symbol.empty()) {
+std::string mpsrt_op_name_for_storage_bridge(GfxMpsrtStorageBridgeDirection direction) {
+    switch (direction) {
+        case GfxMpsrtStorageBridgeDirection::BufferToImage:
+            return "gfx.mpsrt.to_image";
+        case GfxMpsrtStorageBridgeDirection::BufferToMatrix:
+            return "gfx.mpsrt.to_matrix";
+        case GfxMpsrtStorageBridgeDirection::BufferToNDArray:
+            return "gfx.mpsrt.to_ndarray";
+        case GfxMpsrtStorageBridgeDirection::ImageToBuffer:
+        case GfxMpsrtStorageBridgeDirection::MatrixToBuffer:
+        case GfxMpsrtStorageBridgeDirection::NDArrayToBuffer:
+            return "gfx.mpsrt.to_buffer";
+        case GfxMpsrtStorageBridgeDirection::Alias:
+            return "gfx.mpsrt.alias";
+        case GfxMpsrtStorageBridgeDirection::Unknown:
+        default:
+            return {};
+    }
+}
+
+std::string mpsrt_stage_op_name(const GfxMpsrtStageDesc& stage) {
+    auto name = mpsrt_op_name_for_stage(stage.kind);
+    if (name.empty() || stage.builder_symbol.empty()) {
         return {};
     }
-    if (stage.kind == GfxMpsrtStageKind::MPSGemm) {
-        return "gfx_mpsrt_op_gemm";
-    }
-    if (stage.kind == GfxMpsrtStageKind::MSLDispatch) {
-        return "gfx_mpsrt_op_dispatch";
-    }
-    return "gfx_mpsrt_op_" + std::string(gfx_mpsrt_stage_kind_name(stage.kind));
+    return name;
 }
 
 mlir::func::FuncOp lookup_generated_ops_func(mlir::ModuleOp module) {
@@ -69,21 +85,6 @@ mlir::func::FuncOp lookup_generated_ops_func(mlir::ModuleOp module) {
         return {};
     }
     return ops_func;
-}
-
-void declare_private_func_if_missing(mlir::ModuleOp module,
-                                     mlir::OpBuilder& builder,
-                                     mlir::Location loc,
-                                     const std::string& symbol) {
-    if (symbol.empty() || module.lookupSymbol<mlir::func::FuncOp>(symbol)) {
-        return;
-    }
-    auto decl = mlir::func::FuncOp::create(builder,
-                                           loc,
-                                           symbol,
-                                           builder.getFunctionType({}, {}));
-    decl.setSymVisibility("private");
-    decl->setAttr("gfx.mpsrt.op.declaration", builder.getBoolAttr(true));
 }
 
 void set_op_tensor_outputs(mlir::Operation* op,
@@ -225,6 +226,43 @@ bool read_u32_op_attr(mlir::Operation* op,
     return detail::gfx_mpsrt_read_i32_attr(op, name, value);
 }
 
+mlir::Operation* create_mpsrt_op(mlir::OpBuilder& builder,
+                                 mlir::Location loc,
+                                 llvm::StringRef name) {
+    mlir::OperationState state(loc, name);
+    return builder.create(state);
+}
+
+bool create_mpsrt_storage_bridge_op(mlir::OpBuilder& builder,
+                                    mlir::Location loc,
+                                    const GfxMpsrtStorageBridgeDesc& bridge) {
+    const auto op_name = mpsrt_op_name_for_storage_bridge(bridge.direction);
+    if (op_name.empty()) {
+        return false;
+    }
+    auto* op = create_mpsrt_op(builder, loc, op_name);
+    op->setAttr("gfx.mpsrt.storage_bridge.generated", builder.getBoolAttr(true));
+    detail::gfx_mpsrt_set_storage_bridge_attrs(op, "gfx.mpsrt.storage_bridge", bridge);
+    return true;
+}
+
+bool create_mpsrt_storage_bridge_ops(mlir::OpBuilder& builder,
+                                     mlir::Location loc,
+                                     const std::vector<GfxMpsrtStorageBridgeDesc>& bridges,
+    bool external_inputs) {
+    for (const auto& bridge : bridges) {
+        const bool is_input_bridge =
+            gfx_mpsrt_storage_bridge_reads_external_buffer(bridge.direction);
+        if (is_input_bridge != external_inputs) {
+            continue;
+        }
+        if (!create_mpsrt_storage_bridge_op(builder, loc, bridge)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 }  // namespace
 
 void erase_module_mpsrt_ops(mlir::ModuleOp module) {
@@ -242,11 +280,27 @@ void erase_module_mpsrt_legacy_attrs(mlir::ModuleOp module) {
         return;
     }
 
+    // These module-level placement/MSL fields are a transitional adapter surface.
+    // Once a generated gfx.mpsrt program exists, the canonical contract lives
+    // on the generated stage op via gfx.stage_manifest and typed stage attrs.
+    for (const char* name : {
+             "gfx.backend",
+             "gfx.storage",
+             "gfx.stage_type",
+             "gfx.uses_vendor_primitive",
+             "gfx.uses_custom_kernel",
+             "gfx.specialization_key",
+         }) {
+        module->removeAttr(name);
+    }
+
     std::vector<std::string> attrs_to_remove;
     for (const auto& named_attr : module->getAttrs()) {
         const auto name = named_attr.getName().strref();
         if (!name.starts_with("gfx.mpsrt.")) {
-            continue;
+            if (!name.starts_with("gfx.msl.")) {
+                continue;
+            }
         }
         if (name.starts_with("gfx.mpsrt.ops.") ||
             name.starts_with("gfx.mpsrt.runtime_abi.")) {
@@ -266,6 +320,7 @@ bool materialize_module_mpsrt_ops(mlir::ModuleOp module,
         return false;
     }
     auto* context = module->getContext();
+    mpsrt::register_gfx_mpsrt_dialect(*context);
     context->loadDialect<mlir::func::FuncDialect>();
 
     erase_module_mpsrt_ops(module);
@@ -278,14 +333,6 @@ bool materialize_module_mpsrt_ops(mlir::ModuleOp module,
     const auto empty_func_type = builder.getFunctionType({}, {});
 
     builder.setInsertionPointToEnd(module.getBody());
-    for (const auto& stage : program.stages) {
-        declare_private_func_if_missing(module,
-                                        builder,
-                                        loc,
-                                        mpsrt_op_symbol_for_stage(stage.stage));
-    }
-    declare_private_func_if_missing(module, builder, loc, kGfxMpsrtReturnOpSymbol);
-
     auto ops_func = mlir::func::FuncOp::create(builder,
                                                loc,
                                                kGfxMpsrtOpsSymbol,
@@ -296,22 +343,22 @@ bool materialize_module_mpsrt_ops(mlir::ModuleOp module,
     ops_func.addEntryBlock();
 
     mlir::OpBuilder body_builder(ops_func.getBody());
-    body_builder.setInsertionPointToStart(&ops_func.getBody().front());
+    body_builder.setInsertionPointToEnd(&ops_func.getBody().front());
+    if (program.has_storage_bridges &&
+        !create_mpsrt_storage_bridge_ops(body_builder,
+                                         loc,
+                                         program.storage_bridges,
+                                         /*external_inputs=*/true)) {
+        return false;
+    }
     for (size_t i = 0; i < program.stages.size(); ++i) {
         const auto& spec = program.stages[i];
         const auto op_name = mpsrt_op_name_for_stage(spec.stage.kind);
-        const auto op_symbol = mpsrt_op_symbol_for_stage(spec.stage);
-        if (op_name.empty() || op_symbol.empty()) {
+        if (op_name.empty() || mpsrt_stage_op_name(spec.stage).empty()) {
             return false;
         }
-        auto call = mlir::func::CallOp::create(body_builder,
-                                               loc,
-                                               op_symbol,
-                                               mlir::TypeRange{},
-                                               mlir::ValueRange{});
-        auto* op = call.getOperation();
+        auto* op = create_mpsrt_op(body_builder, loc, op_name);
         op->setAttr("gfx.mpsrt.op.generated", body_builder.getBoolAttr(true));
-        op->setAttr("gfx.mpsrt.op.name", body_builder.getStringAttr(op_name));
         op->setAttr("gfx.mpsrt.op.stage_index",
                     body_builder.getI32IntegerAttr(static_cast<int32_t>(i)));
         detail::gfx_mpsrt_set_stage_desc_attrs(op,
@@ -325,36 +372,21 @@ bool materialize_module_mpsrt_ops(mlir::ModuleOp module,
                     detail::gfx_mpsrt_u32_vector_attr(body_builder, spec.outputs));
         set_op_tensor_outputs(op, body_builder, spec.output_descs);
     }
+    if (program.has_storage_bridges &&
+        !create_mpsrt_storage_bridge_ops(body_builder,
+                                         loc,
+                                         program.storage_bridges,
+                                         /*external_inputs=*/false)) {
+        return false;
+    }
 
-    auto return_call = mlir::func::CallOp::create(body_builder,
-                                                  loc,
-                                                  kGfxMpsrtReturnOpSymbol,
-                                                  mlir::TypeRange{},
-                                                  mlir::ValueRange{});
-    return_call->setAttr("gfx.mpsrt.op.generated", body_builder.getBoolAttr(true));
-    return_call->setAttr("gfx.mpsrt.op.name", body_builder.getStringAttr("mpsrt.return"));
-    return_call->setAttr("gfx.mpsrt.op.output_values",
-                         detail::gfx_mpsrt_u32_vector_attr(body_builder, program.output_values));
+    auto* return_op = create_mpsrt_op(body_builder, loc, kGfxMpsrtReturnOpName);
+    return_op->setAttr("gfx.mpsrt.op.generated", body_builder.getBoolAttr(true));
+    return_op->setAttr("gfx.mpsrt.op.output_values",
+                       detail::gfx_mpsrt_u32_vector_attr(body_builder, program.output_values));
     mlir::func::ReturnOp::create(body_builder, loc);
 
     module->setAttr("gfx.mpsrt.ops.symbol", builder.getStringAttr(kGfxMpsrtOpsSymbol));
-    return true;
-}
-
-bool materialize_module_mpsrt_ops_from_module_attrs(mlir::ModuleOp module) {
-    if (!module) {
-        return false;
-    }
-    erase_module_mpsrt_ops(module);
-
-    GfxMpsrtProgram program{};
-    if (!read_module_mpsrt_program(module, program)) {
-        return false;
-    }
-    if (!materialize_module_mpsrt_ops(module, program)) {
-        return false;
-    }
-    erase_module_mpsrt_legacy_attrs(module);
     return true;
 }
 
@@ -374,16 +406,19 @@ bool read_module_mpsrt_ops_program(mlir::ModuleOp module,
 
     bool saw_return = false;
     bool invalid = false;
-    ops_func.walk([&](mlir::func::CallOp call) {
+    ops_func.walk([&](mlir::Operation* op) {
         if (saw_return || invalid) {
             return;
         }
-        auto* op = call.getOperation();
-        auto name_attr = op->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.op.name");
-        if (!name_attr) {
+        if (op == ops_func.getOperation() || mlir::isa<mlir::func::ReturnOp>(op)) {
             return;
         }
-        if (name_attr.str() == "mpsrt.return") {
+        auto generated_attr = op->getAttrOfType<mlir::BoolAttr>("gfx.mpsrt.op.generated");
+        if (!generated_attr || !generated_attr.getValue()) {
+            return;
+        }
+        const auto op_name = op->getName().getStringRef();
+        if (op_name == kGfxMpsrtReturnOpName) {
             const auto return_values =
                 detail::gfx_mpsrt_read_u32_vector_attr(op, "gfx.mpsrt.op.output_values");
             if (!return_values.empty()) {
@@ -405,14 +440,13 @@ bool read_module_mpsrt_ops_program(mlir::ModuleOp module,
         if (detail::gfx_mpsrt_read_stage_manifest_attrs(op, "gfx.stage_manifest", canonical_manifest)) {
             spec.stage.stage_manifest = std::move(canonical_manifest);
             detail::gfx_mpsrt_apply_stage_manifest_to_stage_desc(spec.stage);
+            spec.stage_record_key = gfx_mpsrt_stage_record_key(spec.stage);
         }
         const auto expected_name = mpsrt_op_name_for_stage(spec.stage.kind);
-        const auto expected_symbol = mpsrt_op_symbol_for_stage(spec.stage);
         uint32_t stage_index = 0;
         if (expected_name.empty() ||
-            expected_symbol.empty() ||
-            name_attr.str() != expected_name ||
-            call.getCallee() != expected_symbol ||
+            mpsrt_stage_op_name(spec.stage).empty() ||
+            op_name != expected_name ||
             !read_u32_op_attr(op, "gfx.mpsrt.op.stage_index", stage_index) ||
             stage_index != out.stages.size()) {
             invalid = true;

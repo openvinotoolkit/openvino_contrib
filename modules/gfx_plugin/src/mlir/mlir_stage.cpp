@@ -15,6 +15,7 @@
 #include "kernel_ir/gfx_kernel_args.hpp"
 #include "kernel_ir/gfx_kernel_plan.hpp"
 #include "kernel_ir/gfx_kernel_spec.hpp"
+#include "mlir/gfx_apple_stage_pipeline.hpp"
 #include "mlir/codegen_common.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/gfx_mpsrt_const_tensor_sources.hpp"
@@ -6691,7 +6692,7 @@ void MlirStage::apply_stage_optimization_attrs(mlir::ModuleOp module,
         is_conv_like() &&
         annotate_module_with_conv_mpsrt_plan(module, plan, m_node, m_type) != GfxConvMpsrtLoweringKind::None;
     if (!conv_mpsrt_annotated) {
-        annotate_module_with_mpsrt_stage_plan(module, plan, m_type);
+        (void)run_gfx_apple_stage_pipeline(module, plan, m_type);
     }
     module->setAttr("gfx.tensor_layout_kind",
                     mlir::StringAttr::get(ctx, tensor_layout_kind_attr(plan.layout.kind)));

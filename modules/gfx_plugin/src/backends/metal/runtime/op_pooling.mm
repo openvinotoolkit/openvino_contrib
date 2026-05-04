@@ -223,8 +223,12 @@ void MetalPoolOp::compile(MetalBufferManager* buffer_manager) {
                                                          GfxStageRuntimeTraits{});
         if (plan.placement.domain == GfxStageBackendDomain::AppleMps &&
             plan.placement.uses_vendor_primitive) {
-            annotate_module_with_mpsrt_stage_plan(module, plan, m_is_avg ? "AvgPool" : "MaxPool");
-            annotate_module_with_mpsrt_pool2d_desc(module, make_mpsrt_pool2d_desc(desc, m_is_avg));
+            auto lowering_plan =
+                materialize_apple_mps_stage_manifest(module, plan, m_is_avg ? "AvgPool" : "MaxPool");
+            OPENVINO_ASSERT(set_apple_mps_pool2d_desc(lowering_plan, make_mpsrt_pool2d_desc(desc, m_is_avg)) &&
+                                materialize_apple_mps_typed_program(module, lowering_plan),
+                            "MetalPoolOp: failed to materialize MPSRT Pool2D stage for ",
+                            name());
 
             GfxMpsrtKernelSourceOptions source_options{};
             source_options.external_arg_count = 3u;

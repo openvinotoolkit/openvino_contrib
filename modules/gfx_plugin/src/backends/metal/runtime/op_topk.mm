@@ -158,8 +158,11 @@ void MetalTopKOp::compile(MetalBufferManager* buffer_manager) {
                                                      /*has_batchnorm=*/false,
                                                      GfxStageRuntimeTraits{});
     if (topk_can_use_mpsrt(m_node, desc, plan, desc.element_type, desc.index_type)) {
-        annotate_module_with_mpsrt_stage_plan(module, plan, "TopK");
-        annotate_module_with_mpsrt_topk_desc(module, make_mpsrt_topk_desc(desc, m_axis));
+        auto lowering_plan = materialize_apple_mps_stage_manifest(module, plan, "TopK");
+        OPENVINO_ASSERT(set_apple_mps_topk_desc(lowering_plan, make_mpsrt_topk_desc(desc, m_axis)) &&
+                            materialize_apple_mps_typed_program(module, lowering_plan),
+                        "MetalTopKOp: failed to materialize MPSRT TopK stage for ",
+                        name());
         GfxMpsrtKernelSourceOptions source_options{};
         source_options.external_arg_count = 3u;
         source_options.external_output_arg_count = 2u;

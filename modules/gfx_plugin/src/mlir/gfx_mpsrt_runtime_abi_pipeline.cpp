@@ -524,9 +524,15 @@ bool read_storage_bridge_attrs(mlir::Operation* op,
     bridge.direction = static_cast<GfxMpsrtStorageBridgeDirection>(direction);
     bridge.source_storage = static_cast<GfxMpsrtStorage>(source_storage);
     bridge.target_storage = static_cast<GfxMpsrtStorage>(target_storage);
-    return bridge.direction != GfxMpsrtStorageBridgeDirection::Unknown &&
-           bridge.source_storage != GfxMpsrtStorage::Unknown &&
-           bridge.target_storage != GfxMpsrtStorage::Unknown;
+    GfxMpsrtStorageBridgeDesc normalized{};
+    if (!gfx_mpsrt_make_storage_bridge_desc(bridge.value,
+                                            bridge.tensor,
+                                            bridge.direction,
+                                            normalized)) {
+        return false;
+    }
+    return normalized.source_storage == bridge.source_storage &&
+           normalized.target_storage == bridge.target_storage;
 }
 
 void annotate_runtime_abi_storage_bridges(mlir::func::FuncOp plan_func,

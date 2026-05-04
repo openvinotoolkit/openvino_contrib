@@ -114,6 +114,44 @@ std::string normalize_msl_source_for_kernel_plan(std::string source,
     return source;
 }
 
+GfxAppleMslStageLoweringPlan materialize_apple_msl_stage_manifest(
+    mlir::ModuleOp module,
+    const GfxStageOptimizationPlan& plan,
+    const std::string& stage_type,
+    std::string_view kernel_entry_point) {
+    GfxAppleMslStageLoweringPlan lowering_plan{};
+    if (!annotate_module_with_mpsrt_stage_manifest(module,
+                                                   plan,
+                                                   stage_type,
+                                                   kernel_entry_point,
+                                                   lowering_plan.stage_plan)) {
+        return lowering_plan;
+    }
+    if (lowering_plan.stage_plan.stage.kind != GfxMpsrtStageKind::MSLDispatch) {
+        return {};
+    }
+
+    lowering_plan.msl_plan = make_msl_kernel_plan(stage_type,
+                                                  lowering_plan.stage_plan.stage.dispatch_entry_point);
+    if (!lowering_plan.msl_plan.valid) {
+        return {};
+    }
+    lowering_plan.valid = true;
+    return lowering_plan;
+}
+
+bool materialize_apple_msl_typed_program(
+    mlir::ModuleOp module,
+    const GfxAppleMslStageLoweringPlan& lowering_plan,
+    const GfxMpsrtExternalBufferAbiPlan& external_buffer_abi) {
+    if (!module || !lowering_plan.valid) {
+        return false;
+    }
+    return materialize_module_mpsrt_ops_from_stage_plan(module,
+                                                        lowering_plan.stage_plan,
+                                                        external_buffer_abi);
+}
+
 void configure_msl_kernel_source_for_plan(KernelSource& source,
                                           std::string_view stage_type) {
     if (!source.module) {
@@ -148,9 +186,18 @@ void configure_msl_kernel_source_for_plan(KernelSource& source,
         };
     }
     source.entry_point = required_entry;
-    (void)annotate_module_with_mpsrt_external_buffer_abi_from_stage_manifest(source.module,
-                                                                            source.signature.arg_count,
-                                                                            source.signature.output_arg_count);
+    GfxMpsrtExternalBufferAbiPlan external_buffer_abi{};
+    if (gfx_mpsrt_external_buffer_abi_from_kernel_manifest(source.module,
+                                                          external_buffer_abi,
+                                                          source.signature.arg_count,
+                                                          source.signature.output_arg_count) &&
+        read_module_mpsrt_stage_plan(source.module, stage_plan)) {
+        GfxAppleMslStageLoweringPlan lowering_plan{};
+        lowering_plan.valid = true;
+        lowering_plan.stage_plan = std::move(stage_plan);
+        lowering_plan.msl_plan = std::move(msl_plan);
+        (void)materialize_apple_msl_typed_program(source.module, lowering_plan, external_buffer_abi);
+    }
 }
 
 GfxMpsrtKernelSourcePlan configure_msl_kernel_source_plan(KernelSource source,
@@ -217,34 +264,17 @@ void annotate_msl_module_with_stage_plan(mlir::ModuleOp module,
                                          const GfxStageOptimizationPlan& plan,
                                          const std::string& stage_type,
                                          std::string_view kernel_entry_point) {
-    if (!module) {
+    auto lowering_plan = materialize_apple_msl_stage_manifest(module,
+                                                              plan,
+                                                              stage_type,
+                                                              kernel_entry_point);
+    if (!lowering_plan.valid) {
         return;
     }
 
-    annotate_module_with_mpsrt_stage_plan(module, plan, stage_type, kernel_entry_point);
-
-    GfxMpsrtModuleStagePlan stage_plan;
-    if (!read_module_mpsrt_stage_plan(module, stage_plan) ||
-        stage_plan.stage.kind != GfxMpsrtStageKind::MSLDispatch) {
-        return;
-    }
-
-    const auto msl_plan = make_msl_kernel_plan(stage_type, stage_plan.stage.dispatch_entry_point);
-    if (!msl_plan.valid) {
-        return;
-    }
-
-    mlir::Builder builder(module.getContext());
-    module->setAttr("gfx.msl.kernel_family", builder.getStringAttr(msl_plan.family_name));
-    module->setAttr("gfx.msl.required_entry_point", builder.getStringAttr(msl_plan.required_entry_point));
-    module->setAttr("gfx.msl.precompiled_metallib_required",
-                    builder.getBoolAttr(msl_plan.precompiled_metallib_required));
-    module->setAttr("gfx.msl.threads_per_threadgroup",
-                    builder.getI32IntegerAttr(static_cast<int32_t>(msl_plan.threads_per_threadgroup)));
-    (void)annotate_module_with_mpsrt_external_buffer_abi_from_stage_manifest(module);
-    if (read_module_mpsrt_stage_plan(module, stage_plan)) {
-        (void)materialize_module_mpsrt_ops_from_stage_plan(module, stage_plan);
-    }
+    GfxMpsrtExternalBufferAbiPlan external_buffer_abi{};
+    (void)gfx_mpsrt_external_buffer_abi_from_kernel_manifest(module, external_buffer_abi);
+    (void)materialize_apple_msl_typed_program(module, lowering_plan, external_buffer_abi);
 }
 
 std::string generate_msl_for_matmul_mpsrt_epilogue(const MatMulCodegenDesc& desc) {

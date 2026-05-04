@@ -136,12 +136,6 @@ inline void annotate_module_with_matmul_mpsrt_epilogue_plan(mlir::ModuleOp modul
         return;
     }
 
-    constexpr GfxMpsrtValue kLhsValue = 0;
-    constexpr GfxMpsrtValue kRhsValue = 1;
-    constexpr GfxMpsrtValue kBiasValue = 2;
-    const GfxMpsrtValue gemm_value = desc.has_bias ? 3 : 2;
-    const GfxMpsrtValue output_value = desc.has_bias ? 4 : 3;
-
     const auto output_type = detail::gfx_mpsrt_matmul_resolve_type(desc.output_type, desc.element_type);
     const auto bias_type = detail::gfx_mpsrt_matmul_resolve_type(desc.bias_type, output_type);
     const auto lhs_type = detail::gfx_mpsrt_matmul_resolve_type(desc.input_a_type, output_type);
@@ -173,41 +167,33 @@ inline void annotate_module_with_matmul_mpsrt_epilogue_plan(mlir::ModuleOp modul
                                                         GfxStageStorageKind::Buffer,
                                                         GfxMpsrtTensorFlagExternalIo);
 
-    std::vector<GfxMpsrtTensorDesc> input_descs = {lhs_desc, rhs_desc};
+    GfxMpsrtStageGraphBuilder graph("mps_gemm_plus_msl_epilogue_model|MatMul");
+    const auto lhs_value = graph.add_external_input(lhs_desc);
+    const auto rhs_value = graph.add_external_input(rhs_desc);
+    GfxMpsrtValue bias_value = 0;
     if (desc.has_bias) {
-        input_descs.push_back(gfx_mpsrt_make_tensor_desc({desc.bias_dims[0],
-                                                          desc.bias_dims[1],
-                                                          desc.bias_dims[2]},
-                                                         bias_type,
-                                                         GfxStageStorageKind::Buffer,
-                                                         GfxMpsrtTensorFlagExternalIo));
+        bias_value = graph.add_external_input(gfx_mpsrt_make_tensor_desc({desc.bias_dims[0],
+                                                                          desc.bias_dims[1],
+                                                                          desc.bias_dims[2]},
+                                                                         bias_type,
+                                                                         GfxStageStorageKind::Buffer,
+                                                                         GfxMpsrtTensorFlagExternalIo));
     }
 
     const auto gemm_stage_desc = detail::gfx_mpsrt_make_matmul_gemm_stage_desc(desc);
     const auto epilogue_stage_desc = detail::gfx_mpsrt_make_matmul_epilogue_stage_desc();
-    const std::vector<GfxMpsrtValue> epilogue_inputs = desc.has_bias
-                                                           ? std::vector<GfxMpsrtValue>{gemm_value, kBiasValue}
-                                                           : std::vector<GfxMpsrtValue>{gemm_value};
-    std::vector<GfxMpsrtExternalBufferRole> external_roles(input_descs.size(),
-                                                           GfxMpsrtExternalBufferRole::TensorInput);
-    external_roles.push_back(GfxMpsrtExternalBufferRole::TensorOutput);
+    const auto gemm_values = graph.add_stage(gemm_stage_desc, {lhs_value, rhs_value}, {gemm_desc});
+    std::vector<GfxMpsrtValue> epilogue_inputs = {gemm_values.front()};
+    if (desc.has_bias) {
+        epilogue_inputs.push_back(bias_value);
+    }
+    const auto output_values = graph.add_stage(epilogue_stage_desc, std::move(epilogue_inputs), {output_desc});
+    graph.expose_external_output(output_values.front());
 
-    annotate_module_with_mpsrt_multi_stage_plan(
-        module,
-        "mps_gemm_plus_msl_epilogue_model|MatMul",
-        input_descs,
-        {GfxMpsrtBuilderStageSpec{gemm_stage_desc,
-                                  gfx_mpsrt_stage_record_key(gemm_stage_desc),
-                                  {kLhsValue, kRhsValue},
-                                  {gemm_value},
-                                  {gemm_desc}},
-         GfxMpsrtBuilderStageSpec{epilogue_stage_desc,
-                                  gfx_mpsrt_stage_record_key(epilogue_stage_desc),
-                                  epilogue_inputs,
-                                  {output_value},
-                                  {output_desc}}},
-        {output_value},
-        external_roles);
+    const auto program = graph.build();
+    if (program.valid) {
+        (void)materialize_module_mpsrt_ops(module, program);
+    }
 }
 
 inline GfxMatMulMpsrtLoweringKind annotate_module_with_matmul_mpsrt_plan(
@@ -226,11 +212,14 @@ inline GfxMatMulMpsrtLoweringKind annotate_module_with_matmul_mpsrt_plan(
 
     const bool needs_msl_epilogue = desc.has_bias || desc.has_activation;
     if (!needs_msl_epilogue) {
-        annotate_module_with_mpsrt_stage_plan(module, plan, "MatMul");
+        auto lowering_plan = materialize_apple_mps_stage_manifest(module, plan, "MatMul");
         GfxMpsrtGemmAbiDesc gemm_desc{};
         gemm_desc.transpose_lhs = desc.a_transpose ? 1u : 0u;
         gemm_desc.transpose_rhs = desc.b_transpose ? 1u : 0u;
-        annotate_module_with_mpsrt_gemm_desc(module, gemm_desc);
+        if (!set_apple_mps_gemm_desc(lowering_plan, gemm_desc) ||
+            !materialize_apple_mps_typed_program(module, lowering_plan)) {
+            return GfxMatMulMpsrtLoweringKind::None;
+        }
         return GfxMatMulMpsrtLoweringKind::MpsGemm;
     }
 

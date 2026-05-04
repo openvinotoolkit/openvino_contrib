@@ -131,6 +131,96 @@ inline GfxMpsrtStageKind gfx_mpsrt_stage_kind_from_plan(const GfxStagePlacementP
     return GfxMpsrtStageKind::Unknown;
 }
 
+inline GfxMpsrtStageKind gfx_mpsrt_stage_kind_from_manifest(const GfxKernelStageManifest& manifest) {
+    if (!manifest.valid) {
+        return GfxMpsrtStageKind::Unknown;
+    }
+    if (manifest.execution_kind == GfxKernelExecutionKind::CustomKernel) {
+        if (manifest.backend_domain == GfxKernelBackendDomain::AppleMsl) {
+            return GfxMpsrtStageKind::MSLDispatch;
+        }
+        if (manifest.backend_domain == GfxKernelBackendDomain::Spirv) {
+            return GfxMpsrtStageKind::SPIRVDispatch;
+        }
+        return GfxMpsrtStageKind::Unknown;
+    }
+    if (manifest.execution_kind != GfxKernelExecutionKind::VendorPrimitive ||
+        manifest.backend_domain != GfxKernelBackendDomain::AppleMps) {
+        return GfxMpsrtStageKind::Unknown;
+    }
+
+    switch (manifest.stage_family) {
+        case GfxKernelStageFamily::Convolution:
+            return GfxMpsrtStageKind::MPSConv2D;
+        case GfxKernelStageFamily::GroupConvolution:
+            return GfxMpsrtStageKind::MPSGroupConv2D;
+        case GfxKernelStageFamily::Pooling:
+            return GfxMpsrtStageKind::MPSPool2D;
+        case GfxKernelStageFamily::Resize:
+            return GfxMpsrtStageKind::MPSResize2D;
+        case GfxKernelStageFamily::Gemm:
+            return GfxMpsrtStageKind::MPSGemm;
+        case GfxKernelStageFamily::Softmax:
+            return GfxMpsrtStageKind::MPSSoftmax;
+        case GfxKernelStageFamily::TopK:
+            return GfxMpsrtStageKind::MPSTopK;
+        default:
+            return GfxMpsrtStageKind::Unknown;
+    }
+}
+
+inline std::string gfx_mpsrt_stage_type_from_manifest(const GfxKernelStageManifest& manifest) {
+    if (!manifest.valid) {
+        return {};
+    }
+    const auto delimiter = manifest.specialization_key.rfind(':');
+    if (delimiter != std::string::npos && delimiter + 1 < manifest.specialization_key.size()) {
+        return manifest.specialization_key.substr(delimiter + 1);
+    }
+
+    switch (manifest.stage_family) {
+        case GfxKernelStageFamily::Convolution:
+            return "Convolution";
+        case GfxKernelStageFamily::GroupConvolution:
+            return "GroupConvolution";
+        case GfxKernelStageFamily::Pooling:
+            return "Pooling";
+        case GfxKernelStageFamily::Resize:
+            return "Interpolate";
+        case GfxKernelStageFamily::Gemm:
+            return "MatMul";
+        case GfxKernelStageFamily::Softmax:
+            return "Softmax";
+        case GfxKernelStageFamily::TopK:
+            return "TopK";
+        case GfxKernelStageFamily::Eltwise:
+            return "Eltwise";
+        case GfxKernelStageFamily::Transpose:
+            return "Transpose";
+        case GfxKernelStageFamily::ConcatSplit:
+            return "ConcatSplit";
+        case GfxKernelStageFamily::GatherScatter:
+            return "GatherScatter";
+        case GfxKernelStageFamily::RmsnormRope:
+            return "RmsnormRope";
+        case GfxKernelStageFamily::AttentionSoftmax:
+            return "AttentionSoftmax";
+        case GfxKernelStageFamily::KvCache:
+            return "KvCache";
+        case GfxKernelStageFamily::Conv3D:
+            return "Conv3D";
+        case GfxKernelStageFamily::Reduction:
+            return "Reduction";
+        case GfxKernelStageFamily::Layout:
+            return "Layout";
+        case GfxKernelStageFamily::Convert:
+            return "Convert";
+        case GfxKernelStageFamily::Unknown:
+        default:
+            return {};
+    }
+}
+
 inline GfxKernelBackendDomain gfx_kernel_backend_domain_from_stage_domain(GfxStageBackendDomain domain) {
     switch (domain) {
         case GfxStageBackendDomain::AppleMps:

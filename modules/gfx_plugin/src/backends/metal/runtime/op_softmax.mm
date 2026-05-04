@@ -133,9 +133,14 @@ void MetalSoftmaxOp::compile(MetalBufferManager* buffer_manager) {
                                                      /*has_batchnorm=*/false,
                                                      GfxStageRuntimeTraits{});
     if (softmax_can_use_mpsrt(m_node, desc, plan, m_log_softmax, desc.element_type)) {
-        annotate_module_with_mpsrt_stage_plan(module, plan, "Softmax");
-        annotate_module_with_mpsrt_softmax_desc(module,
-                                                make_mpsrt_softmax_desc(desc, m_axis, m_node->get_input_shape(0).size()));
+        auto lowering_plan = materialize_apple_mps_stage_manifest(module, plan, "Softmax");
+        OPENVINO_ASSERT(set_apple_mps_softmax_desc(lowering_plan,
+                                                   make_mpsrt_softmax_desc(desc,
+                                                                           m_axis,
+                                                                           m_node->get_input_shape(0).size())) &&
+                            materialize_apple_mps_typed_program(module, lowering_plan),
+                        "MetalSoftmaxOp: failed to materialize MPSRT Softmax stage for ",
+                        name());
         GfxMpsrtKernelSourceOptions source_options{};
         source_options.external_arg_count = 2u;
         source_options.external_output_arg_count = 1u;

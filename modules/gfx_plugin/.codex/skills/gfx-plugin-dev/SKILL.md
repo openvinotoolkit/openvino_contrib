@@ -42,7 +42,7 @@ Then read the relevant code path:
 - When changing plugin-visible behavior, also check properties, `query_model()`, and compiled-model/runtime property exposure.
 - When changing stateful graph behavior, treat `ReadValue` / `Assign` as a dedicated infer-request-state path, not just generic stateless runtime stages.
 - For Metal placement work, keep `gfx_stage_policy.*`, `gfx_mpsrt_*`, `gfx_msl_kernel_manifest.*`, MLIR attrs, and `src/backends/metal/runtime/mpsrt/*` aligned as one contract.
-- For hybrid Metal paths, also keep `gfx_kernel_manifest.hpp`, `gfx_mpsrt_program.hpp`, `gfx_mpsrt_ops.*`, `gfx_mpsrt_kernel_manifest_adapter.hpp`, `gfx_mpsrt_runtime_abi_pipeline.*`, `gfx_mpsrt_storage_bridge.hpp`, and `gfx_mpsrt_source_plan.hpp` aligned with that contract.
+- For hybrid Metal paths, also keep `gfx_kernel_manifest.hpp`, `gfx_mpsrt_program.hpp`, `gfx_mpsrt_dialect.*`, `gfx_mpsrt_ops.*`, `gfx_apple_stage_pipeline.*`, `gfx_mpsrt_kernel_manifest_adapter.hpp`, `gfx_mpsrt_runtime_abi_pipeline.*`, `gfx_mpsrt_storage_bridge.hpp`, and `gfx_mpsrt_source_plan.hpp` aligned with that contract.
 
 ## Common Workflows
 
@@ -68,6 +68,7 @@ Check whether the change belongs to one of the current special families:
 - MPSRT runtime-model boundaries, including tensor descriptors, stage record keys, external-buffer roles, and prepared MSL-dispatch pipeline caching
 - generated runtime-ABI call plans, storage bridges, and const-tensor-source attachment for Apple MPS models
 - typed `GfxMpsrtProgram` validation and generated `gfx_mpsrt_ops` materialization, including cleanup of stale legacy attrs
+- Apple stage-pipeline passes and typed storage-conversion ops for image, matrix, ndarray, or alias boundaries
 - manifest-backed execution-kind routing, including vendor-only stages and mixed vendor-plus-custom multi-stage plans
 - compile-time data repacking paths, such as Metal dynamic-shape `MatMul` packing a constant RHS from `f32` to `f16` and recompiling against the effective runtime tensor types
 - backend-aware transform preservation, such as keeping compressed `MatMul` decompression subgraphs intact for Metal-only downstream routes

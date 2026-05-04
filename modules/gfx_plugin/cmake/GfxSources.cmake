@@ -118,10 +118,12 @@ set(GFX_RUNTIME_COMMON_SOURCES
 )
 
 set(GFX_RUNTIME_MLIR_HEADERS
+    ${_gfx_src_dir}/mlir/gfx_apple_stage_pipeline.hpp
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.hpp
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_metadata.hpp
     ${_gfx_src_dir}/mlir/gfx_mlir_type_utils.hpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_conv_metadata.hpp
+    ${_gfx_src_dir}/mlir/gfx_mpsrt_dialect.hpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_matmul_metadata.hpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_metadata.hpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_ops.hpp
@@ -134,7 +136,9 @@ set(GFX_RUNTIME_MLIR_HEADERS
 )
 
 set(GFX_RUNTIME_MLIR_SOURCES
+    ${_gfx_src_dir}/mlir/gfx_apple_stage_pipeline.cpp
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.cpp
+    ${_gfx_src_dir}/mlir/gfx_mpsrt_dialect.cpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_ops.cpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_runtime_abi_pipeline.cpp
     ${_gfx_src_dir}/mlir/mlir_stage.cpp

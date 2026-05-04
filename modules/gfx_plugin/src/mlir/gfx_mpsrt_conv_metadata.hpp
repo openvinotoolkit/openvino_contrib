@@ -90,9 +90,10 @@ inline bool gfx_mpsrt_copy_conv_spatial_attrs(const ov::Strides& strides,
 
 }  // namespace detail
 
-inline bool annotate_module_with_mpsrt_conv_const_weight_desc(mlir::ModuleOp module,
-                                                              const std::shared_ptr<const ov::Node>& node) {
-    if (!module) {
+inline bool set_apple_mps_conv_const_weight_desc(GfxAppleMpsStageLoweringPlan& lowering_plan,
+                                                 mlir::ModuleOp module,
+                                                 const std::shared_ptr<const ov::Node>& node) {
+    if (!module || !lowering_plan.valid) {
         return false;
     }
 
@@ -119,12 +120,11 @@ inline bool annotate_module_with_mpsrt_conv_const_weight_desc(mlir::ModuleOp mod
                                                  weight_type,
                                                  GfxStageStorageKind::Buffer,
                                                  GfxMpsrtTensorFlagConst);
-    GfxMpsrtModuleStagePlan stage_plan{};
-    if (!read_module_mpsrt_stage_plan(module, stage_plan) || stage_plan.inputs.size() <= 1) {
+    if (lowering_plan.stage_plan.inputs.size() <= 1) {
         return false;
     }
-    stage_plan.inputs[1] = desc;
-    return materialize_module_mpsrt_ops_from_stage_plan(module, stage_plan);
+    lowering_plan.stage_plan.inputs[1] = desc;
+    return refresh_apple_mps_stage_record_key(lowering_plan);
 }
 
 inline bool make_mpsrt_conv2d_desc_from_node(const std::shared_ptr<const ov::Node>& node,
@@ -186,9 +186,10 @@ inline GfxConvMpsrtLoweringKind annotate_module_with_conv_mpsrt_plan(
     }
 
     const auto stage_type = gfx_mpsrt_canonical_conv_stage_type(node, fallback_stage_type);
-    const auto stage_desc = gfx_mpsrt_make_stage_desc(plan, stage_type);
-    if (stage_desc.kind != GfxMpsrtStageKind::MPSConv2D &&
-        stage_desc.kind != GfxMpsrtStageKind::MPSGroupConv2D) {
+    auto lowering_plan = materialize_apple_mps_stage_manifest(module, plan, stage_type);
+    if (!lowering_plan.valid ||
+        (lowering_plan.stage_plan.stage.kind != GfxMpsrtStageKind::MPSConv2D &&
+         lowering_plan.stage_plan.stage.kind != GfxMpsrtStageKind::MPSGroupConv2D)) {
         return GfxConvMpsrtLoweringKind::None;
     }
 
@@ -200,12 +201,14 @@ inline GfxConvMpsrtLoweringKind annotate_module_with_conv_mpsrt_plan(
         conv_desc.fused_activation = gfx_mpsrt_conv_fused_activation_code(activation);
     }
 
-    annotate_module_with_mpsrt_stage_plan(module, plan, stage_type);
-    if (!annotate_module_with_mpsrt_conv_const_weight_desc(module, node)) {
+    if (!set_apple_mps_conv_const_weight_desc(lowering_plan, module, node)) {
         return GfxConvMpsrtLoweringKind::None;
     }
-    annotate_module_with_mpsrt_conv2d_desc(module, conv_desc);
-    return stage_desc.kind == GfxMpsrtStageKind::MPSConv2D
+    if (!set_apple_mps_conv2d_desc(lowering_plan, conv_desc) ||
+        !materialize_apple_mps_typed_program(module, lowering_plan)) {
+        return GfxConvMpsrtLoweringKind::None;
+    }
+    return lowering_plan.stage_plan.stage.kind == GfxMpsrtStageKind::MPSConv2D
                ? GfxConvMpsrtLoweringKind::MpsConv2D
                : GfxConvMpsrtLoweringKind::MpsGroupConv2D;
 }

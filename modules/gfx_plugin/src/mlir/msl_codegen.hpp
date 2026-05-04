@@ -25,6 +25,24 @@ namespace gfx_plugin {
 std::string normalize_msl_source_for_kernel_plan(std::string source,
                                                  std::string_view current_entry_point,
                                                  const GfxMslKernelPlan& plan);
+
+struct GfxAppleMslStageLoweringPlan {
+    bool valid = false;
+    GfxMpsrtModuleStagePlan stage_plan;
+    GfxMslKernelPlan msl_plan;
+};
+
+GfxAppleMslStageLoweringPlan materialize_apple_msl_stage_manifest(
+    mlir::ModuleOp module,
+    const GfxStageOptimizationPlan& plan,
+    const std::string& stage_type,
+    std::string_view kernel_entry_point = {});
+
+bool materialize_apple_msl_typed_program(
+    mlir::ModuleOp module,
+    const GfxAppleMslStageLoweringPlan& lowering_plan,
+    const GfxMpsrtExternalBufferAbiPlan& external_buffer_abi = {});
+
 void configure_msl_kernel_source_for_plan(KernelSource& source,
                                           std::string_view stage_type);
 GfxMpsrtKernelSourcePlan configure_msl_kernel_source_plan(KernelSource source,
@@ -41,9 +59,8 @@ void configure_msl_kernel_source_for_spec(KernelSource& source,
                                           const GpuBufferManager* buffer_manager,
                                           std::string_view entry_point);
 
-// Attach the Apple placement/storage decision to an MLIR module before MSL
-// generation. The attrs are intentionally stage-level and match the MPSRT
-// serialization boundary required by the Apple MPS+MSL rewrite.
+// Compatibility wrapper for the Apple MSL two-phase lowering boundary:
+// stage manifest first, then typed MPSRT program materialization.
 void annotate_msl_module_with_stage_plan(mlir::ModuleOp module,
                                          const GfxStageOptimizationPlan& plan,
                                          const std::string& stage_type,

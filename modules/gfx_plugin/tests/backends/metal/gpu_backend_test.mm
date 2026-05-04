@@ -13,7 +13,10 @@
 #include <gtest/gtest.h>
 
 #include <cstring>
+#include <string>
+#include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "mlir/IR/BuiltinOps.h"
@@ -31,6 +34,104 @@
 namespace ov {
 namespace gfx_plugin {
 namespace {
+
+void annotate_test_msl_dispatch_module(
+    mlir::ModuleOp module,
+    std::string_view stage_type,
+    std::string_view entry_point,
+    GfxKernelExternalBufferAbiSpec external_buffer_abi = make_gfx_kernel_tail_outputs_abi(),
+    uint32_t threads_per_threadgroup = 64) {
+    std::string specialization_key = "apple_msl:buffer:";
+    specialization_key += stage_type;
+
+    detail::gfx_mpsrt_set_stage_manifest_attrs(
+        module,
+        make_gfx_custom_kernel_stage_manifest(
+            GfxKernelStageFamily::Eltwise,
+            GfxKernelBackendDomain::AppleMsl,
+            GfxKernelStorageKind::Buffer,
+            specialization_key,
+            make_gfx_custom_kernel_manifest(
+                "eltwise_fused_buffer",
+                static_cast<uint32_t>(GfxMslKernelFamily::EltwiseFusedBuffer),
+                std::string(entry_point),
+                std::move(external_buffer_abi),
+                threads_per_threadgroup,
+                /*precompiled_binary_required=*/true)));
+}
+
+void annotate_test_mps_vendor_module(mlir::ModuleOp module,
+                                     std::string_view stage_type,
+                                     GfxKernelStageFamily stage_family,
+                                     GfxKernelStorageKind storage = GfxKernelStorageKind::Matrix) {
+    std::string specialization_key = "apple_mps:";
+    specialization_key += gfx_kernel_storage_kind_name(storage);
+    specialization_key += ":";
+    specialization_key += stage_type;
+
+    detail::gfx_mpsrt_set_stage_manifest_attrs(
+        module,
+        make_gfx_vendor_stage_manifest(stage_family,
+                                       GfxKernelBackendDomain::AppleMps,
+                                       storage,
+                                       specialization_key));
+}
+
+void materialize_test_mpsrt_stage_module(mlir::ModuleOp module,
+                                         const std::vector<GfxMpsrtTensorDesc>& inputs,
+                                         const std::vector<GfxMpsrtTensorDesc>& outputs) {
+    GfxMpsrtModuleStagePlan stage_plan{};
+    ASSERT_TRUE(read_module_mpsrt_stage_plan(module, stage_plan));
+    stage_plan.inputs = inputs;
+    stage_plan.outputs = outputs;
+    if (!stage_plan.inputs.empty()) {
+        stage_plan.stage.input_storage = stage_plan.inputs.front().storage;
+    }
+    if (!stage_plan.outputs.empty()) {
+        stage_plan.stage.output_storage = stage_plan.outputs.front().storage;
+    } else {
+        stage_plan.stage.output_storage = stage_plan.stage.input_storage;
+    }
+    stage_plan.stage.layout = stage_plan.stage.output_storage != GfxMpsrtStorage::Unknown
+                                  ? gfx_mpsrt_stage_layout_for_storage(stage_plan.stage.output_storage)
+                                  : GfxMpsrtLayout::Unknown;
+    stage_plan.stage_record_key = gfx_mpsrt_stage_record_key(stage_plan.stage);
+    stage_plan.valid = stage_plan.stage.domain != GfxStageBackendDomain::Unknown &&
+                       stage_plan.stage.kind != GfxMpsrtStageKind::Unknown &&
+                       gfx_mpsrt_stage_has_builder_symbol(stage_plan.stage.kind) &&
+                       !stage_plan.stage_record_key.empty();
+    ASSERT_TRUE(stage_plan.valid);
+    ASSERT_TRUE(materialize_module_mpsrt_ops_from_stage_plan(module, stage_plan));
+}
+
+GfxAppleMpsStageLoweringPlan make_test_mps_vendor_lowering(
+    mlir::ModuleOp module,
+    const std::vector<GfxMpsrtTensorDesc>& inputs,
+    const std::vector<GfxMpsrtTensorDesc>& outputs) {
+    GfxAppleMpsStageLoweringPlan lowering_plan{};
+    if (!read_module_mpsrt_stage_plan(module, lowering_plan.stage_plan)) {
+        return {};
+    }
+    lowering_plan.stage_plan.inputs = inputs;
+    lowering_plan.stage_plan.outputs = outputs;
+    if (!lowering_plan.stage_plan.inputs.empty()) {
+        lowering_plan.stage_plan.stage.input_storage = lowering_plan.stage_plan.inputs.front().storage;
+    }
+    if (!lowering_plan.stage_plan.outputs.empty()) {
+        lowering_plan.stage_plan.stage.output_storage = lowering_plan.stage_plan.outputs.front().storage;
+    } else {
+        lowering_plan.stage_plan.stage.output_storage = lowering_plan.stage_plan.stage.input_storage;
+    }
+    lowering_plan.stage_plan.stage.layout =
+        lowering_plan.stage_plan.stage.output_storage != GfxMpsrtStorage::Unknown
+            ? gfx_mpsrt_stage_layout_for_storage(lowering_plan.stage_plan.stage.output_storage)
+            : GfxMpsrtLayout::Unknown;
+    lowering_plan.valid = true;
+    if (!refresh_apple_mps_stage_record_key(lowering_plan)) {
+        return {};
+    }
+    return lowering_plan;
+}
 
 TEST(GfxBackendTest, CompileAndExecuteKernel) {
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
@@ -176,26 +277,7 @@ kernel void add1(device float* data [[buffer(0)]],
 
     mlir::MLIRContext ctx;
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
-    mlir::Builder builder(&ctx);
-    module->setAttr("gfx.backend", builder.getStringAttr("apple_msl"));
-    module->setAttr("gfx.stage_type", builder.getStringAttr("Add"));
-    module->setAttr("gfx.mpsrt.stage_kind", builder.getStringAttr("msl_dispatch"));
-    module->setAttr("gfx.mpsrt.kernel_name", builder.getStringAttr("add1"));
-    module->setAttr("gfx.mpsrt.builder_symbol", builder.getStringAttr("ovgfx_mpsrt_encode_dispatch"));
-    module->setAttr("gfx.specialization_key", builder.getStringAttr("apple_msl:buffer:Add"));
-    module->setAttr("gfx.mpsrt.dispatch_kernel_family", builder.getStringAttr("eltwise_fused_buffer"));
-    module->setAttr("gfx.mpsrt.dispatch_entry_point", builder.getStringAttr("add1"));
-    module->setAttr("gfx.mpsrt.dispatch_kernel_family_id",
-                    builder.getI32IntegerAttr(static_cast<int32_t>(GfxMslKernelFamily::EltwiseFusedBuffer)));
-    module->setAttr("gfx.mpsrt.dispatch_flags",
-                    builder.getI32IntegerAttr(GfxMpsrtMslDispatchFlagPrecompiledMetallibRequired));
-    module->setAttr("gfx.mpsrt.dispatch_threads_per_threadgroup", builder.getI32IntegerAttr(64));
-    module->setAttr("gfx.mpsrt.dispatch_precompiled_kernel_required", builder.getBoolAttr(true));
-    module->setAttr("gfx.mpsrt.stage_record_key",
-                    builder.getStringAttr("msl_dispatch|apple_msl|buffer|buffer|linear|Add|"
-                                          "apple_msl:buffer:Add|dispatch:eltwise_fused_buffer:add1:tg64:metallib"));
-    module->setAttr("gfx.mpsrt.input_count", builder.getI32IntegerAttr(1));
-    module->setAttr("gfx.mpsrt.output_count", builder.getI32IntegerAttr(1));
+    annotate_test_msl_dispatch_module(module, "Add", "add1");
 
     const auto input_desc = gfx_mpsrt_make_tensor_desc({64},
                                                        ov::element::f32,
@@ -205,9 +287,7 @@ kernel void add1(device float* data [[buffer(0)]],
                                                         ov::element::f32,
                                                         GfxStageStorageKind::Buffer,
                                                         GfxMpsrtTensorFlagTransient);
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.input0", input_desc);
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.output0", output_desc);
-    ASSERT_TRUE(materialize_module_mpsrt_ops_from_module_attrs(module));
+    materialize_test_mpsrt_stage_module(module, {input_desc}, {output_desc});
     ASSERT_TRUE(static_cast<bool>(module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_ops")));
     ASSERT_FALSE(static_cast<bool>(module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_program")));
     module->removeAttr("gfx.mpsrt.stage_kind");
@@ -263,26 +343,7 @@ kernel void add1(device float* data [[buffer(0)]],
 
     mlir::MLIRContext ctx;
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
-    mlir::Builder builder(&ctx);
-    module->setAttr("gfx.backend", builder.getStringAttr("apple_msl"));
-    module->setAttr("gfx.stage_type", builder.getStringAttr("Add"));
-    module->setAttr("gfx.mpsrt.stage_kind", builder.getStringAttr("msl_dispatch"));
-    module->setAttr("gfx.mpsrt.kernel_name", builder.getStringAttr("add1"));
-    module->setAttr("gfx.mpsrt.builder_symbol", builder.getStringAttr("ovgfx_mpsrt_encode_dispatch"));
-    module->setAttr("gfx.specialization_key", builder.getStringAttr("apple_msl:buffer:Add"));
-    module->setAttr("gfx.mpsrt.dispatch_kernel_family", builder.getStringAttr("eltwise_fused_buffer"));
-    module->setAttr("gfx.mpsrt.dispatch_entry_point", builder.getStringAttr("add1"));
-    module->setAttr("gfx.mpsrt.dispatch_kernel_family_id",
-                    builder.getI32IntegerAttr(static_cast<int32_t>(GfxMslKernelFamily::EltwiseFusedBuffer)));
-    module->setAttr("gfx.mpsrt.dispatch_flags",
-                    builder.getI32IntegerAttr(GfxMpsrtMslDispatchFlagPrecompiledMetallibRequired));
-    module->setAttr("gfx.mpsrt.dispatch_threads_per_threadgroup", builder.getI32IntegerAttr(64));
-    module->setAttr("gfx.mpsrt.dispatch_precompiled_kernel_required", builder.getBoolAttr(true));
-    module->setAttr("gfx.mpsrt.stage_record_key",
-                    builder.getStringAttr("msl_dispatch|apple_msl|buffer|buffer|linear|Add|"
-                                          "apple_msl:buffer:Add|dispatch:eltwise_fused_buffer:add1:tg64:metallib"));
-    module->setAttr("gfx.mpsrt.input_count", builder.getI32IntegerAttr(1));
-    module->setAttr("gfx.mpsrt.output_count", builder.getI32IntegerAttr(1));
+    annotate_test_msl_dispatch_module(module, "Add", "add1");
 
     const auto input_desc = gfx_mpsrt_make_tensor_desc({64},
                                                        ov::element::f32,
@@ -292,8 +353,7 @@ kernel void add1(device float* data [[buffer(0)]],
                                                         ov::element::f32,
                                                         GfxStageStorageKind::Buffer,
                                                         GfxMpsrtTensorFlagTransient);
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.input0", input_desc);
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.output0", output_desc);
+    materialize_test_mpsrt_stage_module(module, {input_desc}, {output_desc});
 
     KernelSource ks;
     ks.module = module;
@@ -350,26 +410,7 @@ kernel void add1(device float* data [[buffer(0)]],
 
     mlir::MLIRContext ctx;
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
-    mlir::Builder builder(&ctx);
-    module->setAttr("gfx.backend", builder.getStringAttr("apple_msl"));
-    module->setAttr("gfx.stage_type", builder.getStringAttr("Add"));
-    module->setAttr("gfx.mpsrt.stage_kind", builder.getStringAttr("msl_dispatch"));
-    module->setAttr("gfx.mpsrt.kernel_name", builder.getStringAttr("add1"));
-    module->setAttr("gfx.mpsrt.builder_symbol", builder.getStringAttr("ovgfx_mpsrt_encode_dispatch"));
-    module->setAttr("gfx.specialization_key", builder.getStringAttr("apple_msl:buffer:Add"));
-    module->setAttr("gfx.mpsrt.dispatch_kernel_family", builder.getStringAttr("eltwise_fused_buffer"));
-    module->setAttr("gfx.mpsrt.dispatch_entry_point", builder.getStringAttr("add1"));
-    module->setAttr("gfx.mpsrt.dispatch_kernel_family_id",
-                    builder.getI32IntegerAttr(static_cast<int32_t>(GfxMslKernelFamily::EltwiseFusedBuffer)));
-    module->setAttr("gfx.mpsrt.dispatch_flags",
-                    builder.getI32IntegerAttr(GfxMpsrtMslDispatchFlagPrecompiledMetallibRequired));
-    module->setAttr("gfx.mpsrt.dispatch_threads_per_threadgroup", builder.getI32IntegerAttr(64));
-    module->setAttr("gfx.mpsrt.dispatch_precompiled_kernel_required", builder.getBoolAttr(true));
-    module->setAttr("gfx.mpsrt.stage_record_key",
-                    builder.getStringAttr("msl_dispatch|apple_msl|buffer|buffer|linear|Add|"
-                                          "apple_msl:buffer:Add|dispatch:eltwise_fused_buffer:add1:tg64:metallib"));
-    module->setAttr("gfx.mpsrt.input_count", builder.getI32IntegerAttr(1));
-    module->setAttr("gfx.mpsrt.output_count", builder.getI32IntegerAttr(1));
+    annotate_test_msl_dispatch_module(module, "Add", "add1");
 
     const auto input_desc = gfx_mpsrt_make_tensor_desc({8},
                                                        ov::element::f32,
@@ -379,8 +420,7 @@ kernel void add1(device float* data [[buffer(0)]],
                                                         ov::element::f32,
                                                         GfxStageStorageKind::Buffer,
                                                         GfxMpsrtTensorFlagTransient);
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.input0", input_desc);
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.output0", output_desc);
+    materialize_test_mpsrt_stage_module(module, {input_desc}, {output_desc});
 
     KernelSource ks;
     ks.module = module;
@@ -458,28 +498,13 @@ kernel void add_bias(device const float* input [[buffer(0)]],
 
     mlir::MLIRContext ctx;
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
-    mlir::Builder builder(&ctx);
-    module->setAttr("gfx.backend", builder.getStringAttr("apple_msl"));
-    module->setAttr("gfx.stage_type", builder.getStringAttr("Add"));
-    module->setAttr("gfx.mpsrt.stage_kind", builder.getStringAttr("msl_dispatch"));
-    module->setAttr("gfx.mpsrt.kernel_name", builder.getStringAttr("add_bias"));
-    module->setAttr("gfx.mpsrt.builder_symbol", builder.getStringAttr("ovgfx_mpsrt_encode_dispatch"));
-    module->setAttr("gfx.specialization_key", builder.getStringAttr("apple_msl:buffer:Add"));
-    module->setAttr("gfx.mpsrt.dispatch_kernel_family", builder.getStringAttr("eltwise_fused_buffer"));
-    module->setAttr("gfx.mpsrt.dispatch_entry_point", builder.getStringAttr("add_bias"));
-    module->setAttr("gfx.mpsrt.dispatch_kernel_family_id",
-                    builder.getI32IntegerAttr(static_cast<int32_t>(GfxMslKernelFamily::EltwiseFusedBuffer)));
-    module->setAttr("gfx.mpsrt.dispatch_flags",
-                    builder.getI32IntegerAttr(GfxMpsrtMslDispatchFlagPrecompiledMetallibRequired));
-    module->setAttr("gfx.mpsrt.dispatch_threads_per_threadgroup", builder.getI32IntegerAttr(64));
-    module->setAttr("gfx.mpsrt.dispatch_precompiled_kernel_required", builder.getBoolAttr(true));
-    module->setAttr("gfx.mpsrt.external_buffer_count", builder.getI32IntegerAttr(3));
-    module->setAttr("gfx.mpsrt.external_output_buffer_count", builder.getI32IntegerAttr(1));
-    module->setAttr("gfx.mpsrt.stage_record_key",
-                    builder.getStringAttr("msl_dispatch|apple_msl|buffer|buffer|linear|Add|"
-                                          "apple_msl:buffer:Add|dispatch:eltwise_fused_buffer:add_bias:tg64:metallib"));
-    module->setAttr("gfx.mpsrt.input_count", builder.getI32IntegerAttr(1));
-    module->setAttr("gfx.mpsrt.output_count", builder.getI32IntegerAttr(1));
+    annotate_test_msl_dispatch_module(
+        module,
+        "Add",
+        "add_bias",
+        make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
+                                   GfxKernelBufferRole::TensorInput,
+                                   GfxKernelBufferRole::TensorOutput}));
 
     const auto input_desc = gfx_mpsrt_make_tensor_desc({8},
                                                        ov::element::f32,
@@ -489,8 +514,7 @@ kernel void add_bias(device const float* input [[buffer(0)]],
                                                         ov::element::f32,
                                                         GfxStageStorageKind::Buffer,
                                                         GfxMpsrtTensorFlagTransient);
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.input0", input_desc);
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.output0", output_desc);
+    materialize_test_mpsrt_stage_module(module, {input_desc}, {output_desc});
 
     KernelSource ks;
     ks.module = module;
@@ -636,11 +660,7 @@ kernel void softmax_kernel(device const float* input [[buffer(0)]],
                                                         ov::element::f32,
                                                         GfxStageStorageKind::Buffer,
                                                         GfxMpsrtTensorFlagTransient);
-    mlir::Builder builder(&ctx);
-    module->setAttr("gfx.mpsrt.input_count", builder.getI32IntegerAttr(1));
-    module->setAttr("gfx.mpsrt.output_count", builder.getI32IntegerAttr(1));
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.input0", input_desc);
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.output0", output_desc);
+    materialize_test_mpsrt_stage_module(module, {input_desc}, {output_desc});
 
     KernelSource ks;
     ks.module = module;
@@ -796,12 +816,7 @@ kernel void gather_elements_kernel(device const float* data [[buffer(0)]],
                                                         ov::element::f32,
                                                         GfxStageStorageKind::Buffer,
                                                         GfxMpsrtTensorFlagTransient);
-    mlir::Builder builder(&ctx);
-    module->setAttr("gfx.mpsrt.input_count", builder.getI32IntegerAttr(2));
-    module->setAttr("gfx.mpsrt.output_count", builder.getI32IntegerAttr(1));
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.input0", data_desc);
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.input1", indices_desc);
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.output0", output_desc);
+    materialize_test_mpsrt_stage_module(module, {data_desc, indices_desc}, {output_desc});
 
     KernelSource ks;
     ks.module = module;
@@ -971,11 +986,7 @@ kernel void slice_kernel(device const float* input [[buffer(0)]],
                                                         ov::element::f32,
                                                         GfxStageStorageKind::Buffer,
                                                         GfxMpsrtTensorFlagTransient);
-    mlir::Builder builder(&ctx);
-    module->setAttr("gfx.mpsrt.input_count", builder.getI32IntegerAttr(1));
-    module->setAttr("gfx.mpsrt.output_count", builder.getI32IntegerAttr(1));
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.input0", input_desc);
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.output0", output_desc);
+    materialize_test_mpsrt_stage_module(module, {input_desc}, {output_desc});
 
     KernelSource ks;
     ks.module = module;
@@ -2252,27 +2263,7 @@ TEST(GfxBackendTest, MetalCodegenCompilesVendorOnlyMpsGemmWithoutMslSource) {
 
     mlir::MLIRContext ctx;
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
-    mlir::Builder builder(&ctx);
-    module->setAttr("gfx.backend", builder.getStringAttr("apple_mps"));
-    module->setAttr("gfx.storage", builder.getStringAttr("matrix"));
-    module->setAttr("gfx.uses_vendor_primitive", builder.getBoolAttr(true));
-    module->setAttr("gfx.uses_custom_kernel", builder.getBoolAttr(false));
-    module->setAttr("gfx.stage_type", builder.getStringAttr("MatMul"));
-    module->setAttr("gfx.specialization_key", builder.getStringAttr("apple_mps:matrix:MatMul"));
-    module->setAttr("gfx.mpsrt.stage_kind", builder.getStringAttr("mps_gemm"));
-    module->setAttr("gfx.mpsrt.kernel_name", builder.getStringAttr("mps_gemm"));
-    module->setAttr("gfx.mpsrt.builder_symbol", builder.getStringAttr("ovgfx_mpsrt_encode_gemm"));
-    module->setAttr("gfx.mpsrt.stage_record_key",
-                    builder.getStringAttr("mps_gemm|apple_mps|matrix|matrix|row_major|MatMul|"
-                                          "apple_mps:matrix:MatMul"));
-    module->setAttr("gfx.mpsrt.input_count", builder.getI32IntegerAttr(2));
-    module->setAttr("gfx.mpsrt.output_count", builder.getI32IntegerAttr(1));
-    detail::gfx_mpsrt_set_stage_manifest_attrs(
-        module,
-        make_gfx_vendor_stage_manifest(GfxKernelStageFamily::Gemm,
-                                       GfxKernelBackendDomain::AppleMps,
-                                       GfxKernelStorageKind::Matrix,
-                                       "apple_mps:matrix:MatMul"));
+    annotate_test_mps_vendor_module(module, "MatMul", GfxKernelStageFamily::Gemm);
     const auto lhs_desc = gfx_mpsrt_make_tensor_desc({kRows, kInner},
                                                      ov::element::f32,
                                                      GfxStageStorageKind::Matrix,
@@ -2285,12 +2276,11 @@ TEST(GfxBackendTest, MetalCodegenCompilesVendorOnlyMpsGemmWithoutMslSource) {
                                                         ov::element::f32,
                                                         GfxStageStorageKind::Matrix,
                                                         GfxMpsrtTensorFlagExternalIo);
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.input0", lhs_desc);
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.input1", rhs_desc);
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.output0", output_desc);
+    auto lowering_plan = make_test_mps_vendor_lowering(module, {lhs_desc, rhs_desc}, {output_desc});
     GfxMpsrtGemmAbiDesc gemm_desc{};
     gemm_desc.transpose_rhs = 1;
-    annotate_module_with_mpsrt_gemm_desc(module, gemm_desc);
+    ASSERT_TRUE(set_apple_mps_gemm_desc(lowering_plan, gemm_desc));
+    ASSERT_TRUE(materialize_apple_mps_typed_program(module, lowering_plan));
 
     KernelSource source;
     source.module = module;
@@ -2385,27 +2375,7 @@ TEST(GfxBackendTest, MetalCodegenCompilesVendorOnlyMpsTopKWithoutMslSource) {
 
     mlir::MLIRContext ctx;
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
-    mlir::Builder builder(&ctx);
-    module->setAttr("gfx.backend", builder.getStringAttr("apple_mps"));
-    module->setAttr("gfx.storage", builder.getStringAttr("matrix"));
-    module->setAttr("gfx.uses_vendor_primitive", builder.getBoolAttr(true));
-    module->setAttr("gfx.uses_custom_kernel", builder.getBoolAttr(false));
-    module->setAttr("gfx.stage_type", builder.getStringAttr("TopK"));
-    module->setAttr("gfx.specialization_key", builder.getStringAttr("apple_mps:matrix:TopK"));
-    module->setAttr("gfx.mpsrt.stage_kind", builder.getStringAttr("mps_topk"));
-    module->setAttr("gfx.mpsrt.kernel_name", builder.getStringAttr("mps_topk"));
-    module->setAttr("gfx.mpsrt.builder_symbol", builder.getStringAttr("ovgfx_mpsrt_encode_topk"));
-    module->setAttr("gfx.mpsrt.stage_record_key",
-                    builder.getStringAttr("mps_topk|apple_mps|matrix|matrix|row_major|TopK|"
-                                          "apple_mps:matrix:TopK"));
-    module->setAttr("gfx.mpsrt.input_count", builder.getI32IntegerAttr(1));
-    module->setAttr("gfx.mpsrt.output_count", builder.getI32IntegerAttr(2));
-    detail::gfx_mpsrt_set_stage_manifest_attrs(
-        module,
-        make_gfx_vendor_stage_manifest(GfxKernelStageFamily::TopK,
-                                       GfxKernelBackendDomain::AppleMps,
-                                       GfxKernelStorageKind::Matrix,
-                                       "apple_mps:matrix:TopK"));
+    annotate_test_mps_vendor_module(module, "TopK", GfxKernelStageFamily::TopK);
     const auto input_desc = gfx_mpsrt_make_tensor_desc({kRows, kColumns},
                                                        ov::element::f32,
                                                        GfxStageStorageKind::Matrix,
@@ -2418,15 +2388,14 @@ TEST(GfxBackendTest, MetalCodegenCompilesVendorOnlyMpsTopKWithoutMslSource) {
                                                          ov::element::i32,
                                                          GfxStageStorageKind::Matrix,
                                                          GfxMpsrtTensorFlagExternalIo);
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.input0", input_desc);
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.output0", values_desc);
-    detail::gfx_mpsrt_set_tensor_desc_attrs(module, "gfx.mpsrt.output1", indices_desc);
+    auto lowering_plan = make_test_mps_vendor_lowering(module, {input_desc}, {values_desc, indices_desc});
     GfxMpsrtTopKAbiDesc topk_desc{};
     topk_desc.axis = 1;
     topk_desc.k = kTopK;
     topk_desc.mode_max = 1;
     topk_desc.sort_type = 1;
-    annotate_module_with_mpsrt_topk_desc(module, topk_desc);
+    ASSERT_TRUE(set_apple_mps_topk_desc(lowering_plan, topk_desc));
+    ASSERT_TRUE(materialize_apple_mps_typed_program(module, lowering_plan));
 
     KernelSource source;
     source.module = module;

@@ -70,13 +70,7 @@ inline bool gfx_module_uses_mpsrt_conv_stage(mlir::ModuleOp module) {
         return stage_plan.stage.kind == GfxMpsrtStageKind::MPSConv2D ||
                stage_plan.stage.kind == GfxMpsrtStageKind::MPSGroupConv2D;
     }
-
-    auto stage_kind = module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.stage_kind");
-    if (!stage_kind) {
-        return false;
-    }
-    const auto value = stage_kind.getValue();
-    return value == "mps_conv2d" || value == "mps_group_conv2d";
+    return false;
 }
 
 inline bool gfx_should_attach_mpsrt_conv_const_weights(const std::shared_ptr<const ov::Node>& node,

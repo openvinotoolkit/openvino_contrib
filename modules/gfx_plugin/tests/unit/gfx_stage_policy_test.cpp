@@ -535,6 +535,60 @@ TEST(GfxStagePolicyTest, MpsrtImageStorageBridgeRejectsNonImageOrIncompleteTenso
                                                   bridge));
 }
 
+TEST(GfxStagePolicyTest, MpsrtStorageBridgeContractCoversMatrixNdarrayAndAlias) {
+    const auto matrix_desc = gfx_mpsrt_to_abi_desc(gfx_mpsrt_make_tensor_desc({2, 128, 64},
+                                                                              ov::element::f16,
+                                                                              GfxStageStorageKind::Matrix,
+                                                                              GfxMpsrtTensorFlagExternalIo));
+    EXPECT_TRUE(gfx_mpsrt_matrix_bridge_supported(matrix_desc));
+    EXPECT_EQ(gfx_mpsrt_external_bridge_direction_for_storage(GfxMpsrtStorage::Matrix,
+                                                              /*external_output=*/false),
+              GfxMpsrtStorageBridgeDirection::BufferToMatrix);
+    EXPECT_EQ(gfx_mpsrt_external_bridge_direction_for_storage(GfxMpsrtStorage::Matrix,
+                                                              /*external_output=*/true),
+              GfxMpsrtStorageBridgeDirection::MatrixToBuffer);
+
+    GfxMpsrtStorageBridgeDesc matrix_bridge{};
+    ASSERT_TRUE(gfx_mpsrt_make_storage_bridge_desc(11u,
+                                                   matrix_desc,
+                                                   GfxMpsrtStorageBridgeDirection::BufferToMatrix,
+                                                   matrix_bridge));
+    EXPECT_EQ(matrix_bridge.source_storage, GfxMpsrtStorage::Buffer);
+    EXPECT_EQ(matrix_bridge.target_storage, GfxMpsrtStorage::Matrix);
+    EXPECT_STREQ(gfx_mpsrt_storage_bridge_direction_name(matrix_bridge.direction),
+                 "buffer_to_matrix");
+    EXPECT_EQ(gfx_mpsrt_storage_bridge_direction_from_name("matrix_to_buffer"),
+              GfxMpsrtStorageBridgeDirection::MatrixToBuffer);
+    EXPECT_FALSE(gfx_mpsrt_make_image_bridge_desc(11u,
+                                                  matrix_desc,
+                                                  GfxMpsrtStorageBridgeDirection::BufferToMatrix,
+                                                  matrix_bridge));
+
+    const auto ndarray_desc = gfx_mpsrt_to_abi_desc(gfx_mpsrt_make_tensor_desc({2, 4, 8},
+                                                                               ov::element::f32,
+                                                                               GfxStageStorageKind::NDArray,
+                                                                               GfxMpsrtTensorFlagExternalIo));
+    ASSERT_TRUE(gfx_mpsrt_make_storage_bridge_desc(12u,
+                                                   ndarray_desc,
+                                                   GfxMpsrtStorageBridgeDirection::BufferToNDArray,
+                                                   matrix_bridge));
+    EXPECT_EQ(matrix_bridge.target_storage, GfxMpsrtStorage::NDArray);
+    EXPECT_STREQ(gfx_mpsrt_storage_bridge_direction_name(matrix_bridge.direction),
+                 "buffer_to_ndarray");
+
+    auto alias_desc = gfx_mpsrt_to_abi_desc(gfx_mpsrt_make_tensor_desc({2, 4},
+                                                                       ov::element::f16,
+                                                                       GfxStageStorageKind::Alias));
+    alias_desc.alias_of = 3u;
+    ASSERT_TRUE(gfx_mpsrt_make_storage_bridge_desc(13u,
+                                                   alias_desc,
+                                                   GfxMpsrtStorageBridgeDirection::Alias,
+                                                   matrix_bridge));
+    EXPECT_EQ(matrix_bridge.source_storage, GfxMpsrtStorage::Alias);
+    EXPECT_EQ(matrix_bridge.target_storage, GfxMpsrtStorage::Alias);
+    EXPECT_STREQ(gfx_mpsrt_storage_bridge_direction_name(matrix_bridge.direction), "alias");
+}
+
 TEST(GfxStagePolicyTest, MpsrtMatrixTensorDescriptorFlattensBatchToMatrixCount) {
     const auto desc = gfx_mpsrt_make_tensor_desc({2, 128, 64},
                                                  ov::element::f32,
@@ -1216,30 +1270,14 @@ TEST(GfxStagePolicyTest, MpsrtMultiStageBuilderPlanSerializesMpsGemmPlusMslDispa
                                                 GfxStageStorageKind::Buffer,
                                                 GfxMpsrtTensorFlagExternalIo);
 
-    GfxMpsrtProgram program{};
-    program.multi_stage = true;
-    program.record_key = "mps_gemm_plus_msl_epilogue_model|MatMul";
-    program.inputs = {lhs, rhs};
-    program.stages = {GfxMpsrtBuilderStageSpec{gemm_stage,
-                                               gfx_mpsrt_stage_record_key(gemm_stage),
-                                               {0u, 1u},
-                                               {2u},
-                                               {gemm}},
-                      GfxMpsrtBuilderStageSpec{epilogue_stage,
-                                               gfx_mpsrt_stage_record_key(epilogue_stage),
-                                               {2u},
-                                               {3u},
-                                               {out}}};
-    program.output_values = {3u};
-    program.external_buffer_abi.valid = true;
-    program.external_buffer_abi.has_buffer_count = true;
-    program.external_buffer_abi.has_output_buffer_count = true;
-    program.external_buffer_abi.has_buffer_roles = true;
-    program.external_buffer_abi.buffer_count = 3u;
-    program.external_buffer_abi.output_buffer_count = 1u;
-    program.external_buffer_abi.buffer_roles = {GfxMpsrtExternalBufferRole::TensorInput,
-                                                GfxMpsrtExternalBufferRole::TensorInput,
-                                                GfxMpsrtExternalBufferRole::TensorOutput};
+    GfxMpsrtStageGraphBuilder graph("mps_gemm_plus_msl_epilogue_model|MatMul");
+    const auto lhs_value = graph.add_external_input(lhs);
+    const auto rhs_value = graph.add_external_input(rhs);
+    const auto gemm_values = graph.add_stage(gemm_stage, {lhs_value, rhs_value}, {gemm});
+    const auto output_values = graph.add_stage(epilogue_stage, {gemm_values.front()}, {out});
+    graph.expose_external_output(output_values.front());
+
+    const auto program = graph.build();
 
     const auto validation = gfx_mpsrt_validate_program(program);
     ASSERT_TRUE(validation.valid) << validation.error;

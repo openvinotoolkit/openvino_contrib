@@ -249,7 +249,7 @@ bool build_mpsrt_model_from_builder_plan(const GfxMpsrtBuilderPlan& plan,
             return fail(error, "GFX MPSRT: storage bridge references unknown tensor value");
         }
         GfxMpsrtStorageBridgeDesc normalized{};
-        if (!gfx_mpsrt_make_image_bridge_desc(bridge.value, bridge.tensor, bridge.direction, normalized)) {
+        if (!gfx_mpsrt_make_storage_bridge_desc(bridge.value, bridge.tensor, bridge.direction, normalized)) {
             return fail(error, "GFX MPSRT: storage bridge contract is invalid");
         }
         if (normalized.source_storage != bridge.source_storage ||
