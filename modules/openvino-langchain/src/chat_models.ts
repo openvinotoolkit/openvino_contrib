@@ -139,8 +139,6 @@ export class ChatOpenVINO
 
     // generation option setup
     const generateOptions: GenerationConfig = { ...this.generateOptions };
-    // to avoid a warning about result type
-    generateOptions['return_decoded_results'] = true;
     if (options.stop) {
       const set = new Set(options.stop);
       generateOptions['stop_strings'] = set;

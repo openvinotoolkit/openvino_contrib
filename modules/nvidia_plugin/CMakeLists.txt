@@ -15,9 +15,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
-if(NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-     set(CMAKE_CUDA_STANDARD 14)
-endif()
+# CMAKE_CUDA_STANDARD set after CUDA toolkit detection below,
+# so the value can depend on CUDAToolkit_VERSION_MAJOR (NVCC 10.x has no C++17).
 
 if (CUDA_KERNEL_PRINT_LOG)
     add_definitions(-DCUDA_KERNEL_PRINT_LOG)
@@ -85,6 +84,15 @@ if(CMAKE_VERSION VERSION_LESS 3.17.0)
     add_library(CUDA::cublas ALIAS cublas)
 else()
     find_package(CUDAToolkit REQUIRED)
+endif()
+
+if(NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    if(CUDAToolkit_VERSION_MAJOR LESS_EQUAL 10)
+        set(CMAKE_CUDA_STANDARD 14)
+    else()
+        set(CMAKE_CUDA_STANDARD 17)
+    endif()
+    set(CMAKE_CUDA_STANDARD_REQUIRED TRUE)
 endif()
 
 find_library(CUDNN_PATH
