@@ -1,3 +1,8 @@
+/*
+ * Copyright (C) 2018-2026 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // SparseEncoder Operation for OpenVINO
 //
 // Full sparse encoder pipeline as a single OV custom op.

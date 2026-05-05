@@ -1,4 +1,9 @@
 /*
+ * Copyright (C) 2018-2026 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
  * Fused Sparse Convolution OpenCL Kernels
  * 
  * Key optimizations vs. the old gather-GEMM-scatter approach:

@@ -1,3 +1,8 @@
+/*
+ * Copyright (C) 2018-2026 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Voxelization CPU Reference Implementation for OpenVINO
 
 #include "voxelize_op.hpp"

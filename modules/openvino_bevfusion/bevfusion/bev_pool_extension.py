@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """
 BEV pool using OpenVINO custom extension (replaces standalone OpenCL kernel).
 

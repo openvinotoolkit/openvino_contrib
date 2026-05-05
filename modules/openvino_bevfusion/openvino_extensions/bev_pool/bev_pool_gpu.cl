@@ -1,4 +1,9 @@
 /*
+ * Copyright (C) 2018-2026 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
  * Optimized BEV Pool GPU Kernel for OpenVINO Custom Layer
  *
  * Single fused kernel: depth softmax + weighted scatter via float CAS atomics.

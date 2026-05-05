@@ -1,4 +1,9 @@
 /*
+ * Copyright (C) 2018-2026 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
  * VoxelizeMean GPU Kernel for OpenVINO Custom Layer
  *
  * Single work-group approach (GWS=LWS=1024) to avoid stale-buffer

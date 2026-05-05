@@ -1,4 +1,9 @@
 /*
+ * Copyright (C) 2018-2026 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
  * VoxelizeScatter GPU Kernel for OpenVINO Custom Layer
  *
  * Single work-group approach to avoid stale-buffer issue.
