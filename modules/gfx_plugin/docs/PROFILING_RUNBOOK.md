@@ -14,7 +14,7 @@ Automation helpers live in `modules/gfx_plugin/tools/`:
 - `gfx_calibration_diff.py`: produces a machine-readable diff between two calibration artifacts
 - `gfx_external_trace_summary.py`: summarizes trace-event JSON, generic JSON exports, `perf stat`, or `perf report`
 
-The current helper script defaults target the local `yolo26x` IR export when no explicit model path is provided.
+The helper script uses generic public defaults. Override them with command-line options or environment variables such as `GFX_MACOS_BUILD`, `GFX_ANDROID_BUILD`, `GFX_RPI_BUILD`, `GFX_MODEL`, `GFX_ANDROID_DIR`, and `GFX_RPI_DIR` when your local checkout uses different paths.
 
 ## Unified Flow
 

@@ -4,6 +4,7 @@
 
 #include "mlir/msl_codegen.hpp"
 
+#include "mlir/gfx_apple_stage_pipeline.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/gfx_mpsrt_metadata.hpp"
 #include "mlir/mlir_kernel_plan_utils.hpp"
@@ -65,6 +66,13 @@ void force_apple_msl_buffer_placement(GfxStageOptimizationPlan& plan,
     plan.placement.specialization_key = std::string("apple_msl:buffer:") + std::string(stage_type);
 }
 
+GfxKernelExternalBufferAbiSpec make_matmul_bias_external_buffer_abi() {
+    return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
+                                      GfxKernelBufferRole::TensorInput,
+                                      GfxKernelBufferRole::TensorInput,
+                                      GfxKernelBufferRole::TensorOutput});
+}
+
 uint32_t resolve_matmul_source_arg_count(mlir::ModuleOp module,
                                          uint32_t arg_count,
                                          const KernelArgMappingInfo& info) {
@@ -106,11 +114,12 @@ std::string matmul_epilogue_activation_expr(ActivationKind activation) {
 
 std::string normalize_msl_source_for_kernel_plan(std::string source,
                                                  std::string_view current_entry_point,
-                                                 const GfxMslKernelPlan& plan) {
-    if (!plan.valid || plan.required_entry_point.empty()) {
+                                                 const GfxCustomKernelStagePlan& plan) {
+    const auto& custom_kernel = plan.stage_manifest.custom_kernel;
+    if (!plan.valid || !custom_kernel.valid || custom_kernel.entry_point.empty()) {
         return source;
     }
-    (void)replace_kernel_entry_name(source, current_entry_point, plan.required_entry_point);
+    (void)replace_kernel_entry_name(source, current_entry_point, custom_kernel.entry_point);
     return source;
 }
 
@@ -120,20 +129,24 @@ GfxAppleMslStageLoweringPlan materialize_apple_msl_stage_manifest(
     const std::string& stage_type,
     std::string_view kernel_entry_point) {
     GfxAppleMslStageLoweringPlan lowering_plan{};
-    if (!annotate_module_with_mpsrt_stage_manifest(module,
-                                                   plan,
-                                                   stage_type,
-                                                   kernel_entry_point,
-                                                   lowering_plan.stage_plan)) {
+    GfxAppleStagePipelineOptions options{};
+    options.plan = plan;
+    options.stage_type = stage_type;
+    options.kernel_entry_point = std::string(kernel_entry_point);
+    options.materialize_typed_program = false;
+    const auto pipeline_result = run_gfx_apple_stage_pipeline(module, options);
+    if (!pipeline_result.valid) {
         return lowering_plan;
     }
+    lowering_plan.stage_plan = pipeline_result.stage_plan;
     if (lowering_plan.stage_plan.stage.kind != GfxMpsrtStageKind::MSLDispatch) {
         return {};
     }
 
-    lowering_plan.msl_plan = make_msl_kernel_plan(stage_type,
-                                                  lowering_plan.stage_plan.stage.dispatch_entry_point);
-    if (!lowering_plan.msl_plan.valid) {
+    lowering_plan.custom_kernel_plan =
+        make_gfx_custom_kernel_stage_plan(stage_type,
+                                          lowering_plan.stage_plan.stage.dispatch_entry_point);
+    if (!lowering_plan.custom_kernel_plan.valid) {
         return {};
     }
     lowering_plan.valid = true;
@@ -164,25 +177,39 @@ void configure_msl_kernel_source_for_plan(KernelSource& source,
         return;
     }
 
-    auto msl_plan = make_msl_kernel_plan(stage_type, source.entry_point);
-    if (!msl_plan.valid) {
-        msl_plan = make_msl_kernel_plan(stage_plan.stage.stage_type, source.entry_point);
+    auto custom_kernel_plan = make_gfx_custom_kernel_stage_plan(stage_type, source.entry_point);
+    if (!custom_kernel_plan.valid) {
+        custom_kernel_plan = make_gfx_custom_kernel_stage_plan(stage_plan.stage.stage_type, source.entry_point);
     }
-    if (!msl_plan.valid || msl_plan.required_entry_point.empty()) {
+    if (custom_kernel_plan.valid &&
+        custom_kernel_plan.family == GfxKernelFamily::MatMulBuffer &&
+        source.signature.arg_count == 4u) {
+        custom_kernel_plan.stage_manifest.custom_kernel.external_buffer_abi =
+            make_matmul_bias_external_buffer_abi();
+        stage_plan.stage.stage_manifest = custom_kernel_plan.stage_manifest;
+        detail::gfx_mpsrt_set_stage_manifest_attrs(source.module,
+                                                   stage_plan.stage.stage_manifest);
+    }
+    const auto& custom_kernel = custom_kernel_plan.stage_manifest.custom_kernel;
+    if (!custom_kernel_plan.valid || !custom_kernel.valid || custom_kernel.entry_point.empty()) {
         return;
     }
 
-    const std::string legacy_entry = source.entry_point.empty() ? stage_plan.stage.kernel_name : source.entry_point;
-    const std::string required_entry = msl_plan.required_entry_point;
+    const std::string source_entry =
+        source.entry_point.empty() ? stage_plan.stage.kernel_name : source.entry_point;
+    const std::string required_entry = custom_kernel.entry_point;
     if (!source.msl_source.empty()) {
         source.msl_source = normalize_msl_source_for_kernel_plan(std::move(source.msl_source),
-                                                                 legacy_entry,
-                                                                 msl_plan);
+                                                                 source_entry,
+                                                                 custom_kernel_plan);
     }
     if (source.msl_generator) {
         auto generator = std::move(source.msl_generator);
-        source.msl_generator = [generator = std::move(generator), legacy_entry, msl_plan](mlir::ModuleOp module) mutable {
-            return normalize_msl_source_for_kernel_plan(generator(module), legacy_entry, msl_plan);
+        source.msl_generator =
+            [generator = std::move(generator), source_entry, custom_kernel_plan](mlir::ModuleOp module) mutable {
+                return normalize_msl_source_for_kernel_plan(generator(module),
+                                                            source_entry,
+                                                            custom_kernel_plan);
         };
     }
     source.entry_point = required_entry;
@@ -195,7 +222,7 @@ void configure_msl_kernel_source_for_plan(KernelSource& source,
         GfxAppleMslStageLoweringPlan lowering_plan{};
         lowering_plan.valid = true;
         lowering_plan.stage_plan = std::move(stage_plan);
-        lowering_plan.msl_plan = std::move(msl_plan);
+        lowering_plan.custom_kernel_plan = std::move(custom_kernel_plan);
         (void)materialize_apple_msl_typed_program(source.module, lowering_plan, external_buffer_abi);
     }
 }
@@ -206,20 +233,21 @@ GfxMpsrtKernelSourcePlan configure_msl_kernel_source_plan(KernelSource source,
     return make_mpsrt_kernel_source_plan_from_configured_source(std::move(source));
 }
 
-void configure_msl_kernel_source_for_node(KernelSource& source,
-                                          const std::shared_ptr<const ov::Node>& node,
-                                          const GpuBufferManager* buffer_manager,
-                                          std::string_view stage_type,
-                                          bool has_bias,
-                                          bool has_activation,
-                                          bool has_batchnorm) {
+GfxMpsrtKernelSourcePlan configure_msl_kernel_source_plan_for_node(
+    KernelSource source,
+    const std::shared_ptr<const ov::Node>& node,
+    const GpuBufferManager* buffer_manager,
+    std::string_view stage_type,
+    bool has_bias,
+    bool has_activation,
+    bool has_batchnorm) {
     if (!source.module || !node) {
-        return;
+        return {};
     }
 
-    const auto msl_kernel_plan = make_msl_kernel_plan(stage_type, source.entry_point);
+    const auto msl_kernel_plan = make_gfx_custom_kernel_stage_plan(stage_type, source.entry_point);
     if (!msl_kernel_plan.valid) {
-        return;
+        return {};
     }
 
     auto plan = select_stage_optimization_plan(buffer_manager,
@@ -238,43 +266,37 @@ void configure_msl_kernel_source_for_node(KernelSource& source,
     annotate_msl_module_with_stage_plan(source.module, plan, std::string(stage_type), source.entry_point);
     auto source_plan = configure_msl_kernel_source_plan(source, stage_type);
     if (source_plan.valid()) {
-        source = std::move(source_plan.source);
-        return;
+        return source_plan;
     }
     configure_msl_kernel_source_for_plan(source, stage_type);
+    return make_mpsrt_kernel_source_plan_from_configured_source(std::move(source));
 }
 
-void configure_msl_kernel_source_for_spec(KernelSource& source,
-                                          const KernelSpec& spec,
-                                          const GpuBufferManager* buffer_manager,
-                                          std::string_view entry_point) {
+GfxMpsrtKernelSourcePlan configure_msl_kernel_source_plan_for_spec(KernelSource source,
+                                                                   const KernelSpec& spec,
+                                                                   const GpuBufferManager* buffer_manager,
+                                                                   std::string_view entry_point) {
     if (source.entry_point.empty()) {
         source.entry_point = std::string(entry_point);
     }
-    configure_msl_kernel_source_for_node(source,
-                                         spec.node(),
-                                         buffer_manager,
-                                         spec.type(),
-                                         /*has_bias=*/false,
-                                         /*has_activation=*/false,
-                                         /*has_batchnorm=*/false);
+    return configure_msl_kernel_source_plan_for_node(std::move(source),
+                                                     spec.node(),
+                                                     buffer_manager,
+                                                     spec.type(),
+                                                     /*has_bias=*/false,
+                                                     /*has_activation=*/false,
+                                                     /*has_batchnorm=*/false);
 }
 
 void annotate_msl_module_with_stage_plan(mlir::ModuleOp module,
                                          const GfxStageOptimizationPlan& plan,
                                          const std::string& stage_type,
                                          std::string_view kernel_entry_point) {
-    auto lowering_plan = materialize_apple_msl_stage_manifest(module,
-                                                              plan,
-                                                              stage_type,
-                                                              kernel_entry_point);
-    if (!lowering_plan.valid) {
-        return;
-    }
-
-    GfxMpsrtExternalBufferAbiPlan external_buffer_abi{};
-    (void)gfx_mpsrt_external_buffer_abi_from_kernel_manifest(module, external_buffer_abi);
-    (void)materialize_apple_msl_typed_program(module, lowering_plan, external_buffer_abi);
+    GfxAppleStagePipelineOptions options{};
+    options.plan = plan;
+    options.stage_type = stage_type;
+    options.kernel_entry_point = std::string(kernel_entry_point);
+    (void)run_gfx_apple_stage_pipeline(module, options);
 }
 
 std::string generate_msl_for_matmul_mpsrt_epilogue(const MatMulCodegenDesc& desc) {
@@ -348,7 +370,15 @@ GfxMatMulMetalKernelSourcePlan make_matmul_msl_fallback_source_plan(
                                                /*has_batchnorm=*/false,
                                                GfxStageRuntimeTraits{});
     force_apple_msl_buffer_placement(plan, kStageType);
-    annotate_msl_module_with_stage_plan(module, plan, kStageType);
+    annotate_msl_module_with_stage_plan(module, plan, kStageType, kEntryPoint);
+    if (desc.has_bias) {
+        GfxKernelStageManifest manifest{};
+        if (detail::gfx_mpsrt_read_stage_manifest_attrs(module, manifest) &&
+            manifest.custom_kernel.valid) {
+            manifest.custom_kernel.external_buffer_abi = make_matmul_bias_external_buffer_abi();
+            detail::gfx_mpsrt_set_stage_manifest_attrs(module, manifest);
+        }
+    }
 
     auto plan_ctx = build_mlir_kernel_plan(
         module,
@@ -368,16 +398,16 @@ GfxMatMulMetalKernelSourcePlan make_matmul_msl_fallback_source_plan(
             return generate_msl_from_mlir(mod, source_desc);
         });
     source.signature.output_arg_count = 1;
-    configure_msl_kernel_source_for_plan(source, kStageType);
 
     result.kind = GfxMatMulMetalKernelSourcePlanKind::MslFallback;
-    result.source = std::move(source);
     result.requires_mpsrt_model = false;
-    auto mpsrt_plan = make_mpsrt_kernel_source_plan_from_configured_source(result.source);
+    auto mpsrt_plan = configure_msl_kernel_source_plan(std::move(source), kStageType);
     if (mpsrt_plan.valid()) {
         result.mpsrt_plan = std::move(mpsrt_plan);
         result.source = result.mpsrt_plan.source;
         result.requires_mpsrt_model = result.mpsrt_plan.requires_mpsrt_model;
+    } else {
+        result.kind = GfxMatMulMetalKernelSourcePlanKind::None;
     }
     return result;
 }
@@ -394,17 +424,20 @@ GfxMatMulMpsrtKernelSourcePlan lower_matmul_module_to_mpsrt_kernel_source(
         return result;
     }
 
-    GfxMpsrtKernelSourceOptions source_options{};
     switch (result.lowering) {
         case GfxMatMulMpsrtLoweringKind::MpsGemm:
             break;
         case GfxMatMulMpsrtLoweringKind::MpsGemmWithMslEpilogue:
-            source_options.msl_source = generate_msl_for_matmul_mpsrt_epilogue(desc);
+            result.mpsrt_plan =
+                make_mpsrt_kernel_source_plan_from_msl_source(module,
+                                                              generate_msl_for_matmul_mpsrt_epilogue(desc));
             break;
         case GfxMatMulMpsrtLoweringKind::None:
             break;
     }
-    result.mpsrt_plan = make_mpsrt_kernel_source_plan_from_module(module, std::move(source_options));
+    if (result.lowering == GfxMatMulMpsrtLoweringKind::MpsGemm) {
+        result.mpsrt_plan = make_mpsrt_kernel_source_plan_from_module(module);
+    }
     if (!result.mpsrt_plan.valid()) {
         result.lowering = GfxMatMulMpsrtLoweringKind::None;
         return result;

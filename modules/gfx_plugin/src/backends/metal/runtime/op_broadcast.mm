@@ -74,7 +74,7 @@ void MetalBroadcastOp::compile(MetalBufferManager* buffer_manager) {
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
-    KernelSpec spec(m_node, 9u);
+    auto spec = make_kernel_spec_from_custom_kernel_abi(m_node, "broadcast_kernel");
     m_kernel = compile_msl_kernel(backend, spec, module, "broadcast_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalBroadcastOp: failed to compile broadcast kernel: ", log);
 

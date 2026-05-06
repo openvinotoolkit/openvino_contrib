@@ -5,7 +5,9 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 
+#include "kernel_ir/gfx_custom_kernel_families.hpp"
 #include "openvino/core/node.hpp"
 #include "openvino/core/shape.hpp"
 
@@ -39,6 +41,22 @@ private:
     std::string m_type;
     ov::Shape m_output_shape;
 };
+
+inline uint32_t infer_kernel_spec_arg_count_from_custom_abi(std::string_view stage_type,
+                                                            std::string_view entry_point) {
+    const auto family = classify_gfx_custom_kernel_family(stage_type, entry_point);
+    const auto abi = gfx_kernel_external_buffer_abi_spec_for_stage(stage_type, entry_point, family);
+    if (abi.valid && !abi.roles.empty()) {
+        return static_cast<uint32_t>(abi.roles.size());
+    }
+    return 0;
+}
+
+inline KernelSpec make_kernel_spec_from_custom_kernel_abi(const std::shared_ptr<const ov::Node>& node,
+                                                          std::string_view entry_point) {
+    const std::string_view stage_type = node ? std::string_view(node->get_type_name()) : std::string_view{};
+    return KernelSpec(node, infer_kernel_spec_arg_count_from_custom_abi(stage_type, entry_point));
+}
 
 }  // namespace gfx_plugin
 }  // namespace ov

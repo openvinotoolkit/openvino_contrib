@@ -62,6 +62,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/fused_sequence_stage.hpp
     ${_gfx_src_dir}/runtime/gpu_memory_ops.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_codegen_desc.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_custom_kernel_families.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_args.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.hpp
@@ -87,7 +88,6 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp
     ${_gfx_src_dir}/runtime/gfx_mpsrt_plan.hpp
     ${_gfx_src_dir}/runtime/gfx_mpsrt_program.hpp
-    ${_gfx_src_dir}/runtime/gfx_msl_kernel_manifest.hpp
     ${_gfx_src_dir}/runtime/gfx_op_utils.hpp
     ${_gfx_src_dir}/runtime/gfx_parallelism.hpp
     ${_gfx_src_dir}/runtime/gfx_remote_context.hpp
@@ -101,13 +101,13 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/gfx_backend_utils.cpp
     ${_gfx_src_dir}/runtime/fused_sequence_stage.cpp
     ${_gfx_src_dir}/runtime/gpu_memory_ops.cpp
+    ${_gfx_src_dir}/kernel_ir/gfx_custom_kernel_families.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.cpp
     ${_gfx_src_dir}/runtime/execution_dispatcher.cpp
     ${_gfx_src_dir}/runtime/immutable_gpu_buffer_cache.cpp
     ${_gfx_src_dir}/runtime/memory_manager.cpp
     ${_gfx_src_dir}/runtime/gfx_logger.cpp
-    ${_gfx_src_dir}/runtime/gfx_msl_kernel_manifest.cpp
     ${_gfx_src_dir}/runtime/gfx_op_utils.cpp
     ${_gfx_src_dir}/runtime/gfx_parallelism.cpp
     ${_gfx_src_dir}/runtime/gfx_profiling_report.cpp
@@ -175,6 +175,7 @@ set(GFX_RUNTIME_METAL_MSL_SOURCES
     ${_gfx_src_dir}/mlir/rms_codegen.cpp
     ${_gfx_src_dir}/mlir/rope_codegen.cpp
     ${_gfx_src_dir}/mlir/scatter_elements_update_codegen.cpp
+    ${_gfx_src_dir}/mlir/scatter_update_codegen.cpp
     ${_gfx_src_dir}/mlir/scatter_nd_update_codegen.cpp
     ${_gfx_src_dir}/mlir/select_codegen.cpp
     ${_gfx_src_dir}/mlir/shapeof_codegen.cpp

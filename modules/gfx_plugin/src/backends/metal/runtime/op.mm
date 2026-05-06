@@ -23,11 +23,10 @@ inline uint32_t resolve_arg_count_from_spec(const KernelSpec& spec,
                                             const KernelArgMappingInfo& info) {
     const uint32_t inferred_total =
         static_cast<uint32_t>(infer_kernel_arg_count_from_module(module, info.signature.total()));
-    uint32_t arg_count = spec.arg_count();
-    if (arg_count == 0 && inferred_total) {
-        arg_count = inferred_total;
+    if (inferred_total != 0) {
+        return inferred_total;
     }
-    return arg_count;
+    return spec.arg_count();
 }
 
 inline void update_kernel_inputs_if_needed(std::vector<size_t>& dst, std::vector<size_t>& src) {
@@ -95,33 +94,27 @@ void MetalOp::execute_kernel(ICompiledKernel& kernel,
     flush_inflight_const_buffers(command_buffer);
 }
 
-std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(MetalCodegenBackend& backend,
-                                                             mlir::ModuleOp module,
-                                                             const std::string& entry_point,
-                                                             std::string msl_source,
-                                                             std::string* log,
-                                                             uint32_t arg_count) {
+MetalOp::MetalMslKernelSourcePlan MetalOp::make_msl_kernel_source_plan(mlir::ModuleOp module,
+                                                                       const std::string& entry_point,
+                                                                       std::string msl_source,
+                                                                       uint32_t arg_count) {
     KernelPlan plan(module, entry_point, arg_count);
-    return backend.compile(plan.to_source_with_msl(std::move(msl_source)), log);
+    return MetalMslKernelSourcePlan{plan.to_source_with_msl(std::move(msl_source))};
 }
 
-std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(
-    MetalCodegenBackend& backend,
+MetalOp::MetalMslKernelSourcePlan MetalOp::make_msl_kernel_source_plan(
     mlir::ModuleOp module,
     const std::string& entry_point,
     std::function<std::string(mlir::ModuleOp)> msl_generator,
-    std::string* log,
     uint32_t arg_count) {
     KernelPlan plan(module, entry_point, arg_count);
-    return backend.compile(plan.to_source_with_msl_generator(std::move(msl_generator)), log);
+    return MetalMslKernelSourcePlan{plan.to_source_with_msl_generator(std::move(msl_generator))};
 }
 
-std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(MetalCodegenBackend& backend,
-                                                             const KernelSpec& spec,
-                                                             mlir::ModuleOp module,
-                                                             const std::string& entry_point,
-                                                             std::string msl_source,
-                                                             std::string* log) {
+MetalOp::MetalMslKernelSourcePlan MetalOp::make_msl_kernel_source_plan(const KernelSpec& spec,
+                                                                       mlir::ModuleOp module,
+                                                                       const std::string& entry_point,
+                                                                       std::string msl_source) {
     auto plan_ctx = build_mlir_kernel_plan(
         module,
         entry_point,
@@ -136,18 +129,19 @@ std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(MetalCodegenBackend
     auto& build_info = plan_ctx.build_info;
     update_kernel_inputs_if_needed(m_kernel_inputs, build_info.mapping.mapping.kernel_inputs);
     auto source = build_info.plan.to_source_with_msl(std::move(msl_source));
-    configure_msl_kernel_source_for_spec(source, spec, buffer_manager(), entry_point);
+    auto source_plan = configure_msl_kernel_source_plan_for_spec(source, spec, buffer_manager(), entry_point);
+    if (source_plan.valid()) {
+        source = std::move(source_plan.source);
+    }
     gfx_attach_mpsrt_conv_const_tensors(source, spec.node());
-    return backend.compile(source, log);
+    return MetalMslKernelSourcePlan{std::move(source)};
 }
 
-std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(
-    MetalCodegenBackend& backend,
+MetalOp::MetalMslKernelSourcePlan MetalOp::make_msl_kernel_source_plan(
     const KernelSpec& spec,
     mlir::ModuleOp module,
     const std::string& entry_point,
-    std::function<std::string(mlir::ModuleOp)> msl_generator,
-    std::string* log) {
+    std::function<std::string(mlir::ModuleOp)> msl_generator) {
     auto plan_ctx = build_mlir_kernel_plan(
         module,
         entry_point,
@@ -162,9 +156,69 @@ std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(
     auto& build_info = plan_ctx.build_info;
     update_kernel_inputs_if_needed(m_kernel_inputs, build_info.mapping.mapping.kernel_inputs);
     auto source = build_info.plan.to_source_with_msl_generator(std::move(msl_generator));
-    configure_msl_kernel_source_for_spec(source, spec, buffer_manager(), entry_point);
+    auto source_plan = configure_msl_kernel_source_plan_for_spec(source, spec, buffer_manager(), entry_point);
+    if (source_plan.valid()) {
+        source = std::move(source_plan.source);
+    }
     gfx_attach_mpsrt_conv_const_tensors(source, spec.node());
-    return backend.compile(source, log);
+    return MetalMslKernelSourcePlan{std::move(source)};
+}
+
+std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel_source_plan(MetalCodegenBackend& backend,
+                                                                         MetalMslKernelSourcePlan plan,
+                                                                         std::string* log) {
+    OPENVINO_ASSERT(plan.valid(), "Invalid Metal MSL kernel source plan for op ", m_name);
+    return backend.compile(std::move(plan.source), log);
+}
+
+std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(MetalCodegenBackend& backend,
+                                                             mlir::ModuleOp module,
+                                                             const std::string& entry_point,
+                                                             std::string msl_source,
+                                                             std::string* log,
+                                                             uint32_t arg_count) {
+    return compile_msl_kernel_source_plan(
+        backend,
+        make_msl_kernel_source_plan(module, entry_point, std::move(msl_source), arg_count),
+        log);
+}
+
+std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(
+    MetalCodegenBackend& backend,
+    mlir::ModuleOp module,
+    const std::string& entry_point,
+    std::function<std::string(mlir::ModuleOp)> msl_generator,
+    std::string* log,
+    uint32_t arg_count) {
+    return compile_msl_kernel_source_plan(
+        backend,
+        make_msl_kernel_source_plan(module, entry_point, std::move(msl_generator), arg_count),
+        log);
+}
+
+std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(MetalCodegenBackend& backend,
+                                                             const KernelSpec& spec,
+                                                             mlir::ModuleOp module,
+                                                             const std::string& entry_point,
+                                                             std::string msl_source,
+                                                             std::string* log) {
+    return compile_msl_kernel_source_plan(
+        backend,
+        make_msl_kernel_source_plan(spec, module, entry_point, std::move(msl_source)),
+        log);
+}
+
+std::shared_ptr<ICompiledKernel> MetalOp::compile_msl_kernel(
+    MetalCodegenBackend& backend,
+    const KernelSpec& spec,
+    mlir::ModuleOp module,
+    const std::string& entry_point,
+    std::function<std::string(mlir::ModuleOp)> msl_generator,
+    std::string* log) {
+    return compile_msl_kernel_source_plan(
+        backend,
+        make_msl_kernel_source_plan(spec, module, entry_point, std::move(msl_generator)),
+        log);
 }
 
 MetalTensor& MetalOp::require_output() const {

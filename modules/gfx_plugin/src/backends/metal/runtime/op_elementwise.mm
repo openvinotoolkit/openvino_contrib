@@ -360,7 +360,7 @@ void MetalElementwiseOp::compile_kernel(MetalBufferManager* buffer_manager,
         }
     }
 
-    KernelSpec spec(m_node, 8u);
+    auto spec = make_kernel_spec_from_custom_kernel_abi(m_node, "eltwise_kernel");
     m_kernel = compile_msl_kernel(backend, spec, module, "eltwise_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "Failed to compile elementwise pipeline: ", log);
     m_compiled_type = elem_type;

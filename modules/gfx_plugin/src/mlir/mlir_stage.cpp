@@ -4393,14 +4393,12 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                 desc.alpha = m_activation_alpha;
                 m_matmul_reduction_threads = gfx_matmul_parallel_reduction_threads(desc);
 
-                KernelSource src;
-                src.entry_point = "matmul_kernel";
-                src.signature.arg_count = 3;
-                src.signature.output_arg_count = 1;
-                src.module = {};
-                configure_runtime_matmul_kernel_source(src, desc);
                 std::string log;
                 if (!is_vulkan_backend()) {
+                    KernelSource src = make_runtime_matmul_kernel_source(desc, a_shape, b_shape);
+                    OPENVINO_ASSERT(src.msl_generator || !src.msl_source.empty() || src.module,
+                                    "GFX MLIR: failed to build runtime MatMul source for stage ",
+                                    m_name);
                     try {
                         m_kernel = compile_kernel(src, &log);
                     } catch (const std::exception& e) {
@@ -4745,33 +4743,6 @@ struct ScatterUpdateParams {
                              << " out_size=" << outputs.front()->buf.size;
                     gfx_log_debug("MLIRExec") << buf_info.str();
                 }
-                KernelSource src;
-                src.entry_point = "slice_kernel";
-                src.signature.arg_count = 2;
-                src.signature.output_arg_count = 1;
-                std::string log;
-                try {
-                    m_kernel = compile_kernel(src, &log);
-                } catch (const std::exception& e) {
-                    OPENVINO_THROW("GFX MLIR: failed to compile slice stage ",
-                                   m_name,
-                                   " (",
-                                   m_type,
-                                   "): ",
-                                   e.what());
-                }
-                OPENVINO_ASSERT(m_kernel,
-                                "GFX MLIR: failed to compile slice stage ",
-                                m_name,
-                                " (",
-                                m_type,
-                                "): ",
-                                log);
-                m_kernel_operand_kinds = {1, 1};
-                m_kernel_operand_arg_indices = {0, 1};
-                m_kernel_inputs = {0};
-                m_kernel_input_arg_count = 1;
-                m_last_input_shape = in_shape;
             }
             auto& ctx = gfx_mlir_context();
             auto module = build_mlir_for_node(m_node, ctx);

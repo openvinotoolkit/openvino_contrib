@@ -9,6 +9,7 @@
 #include <string_view>
 
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/gfx_apple_stage_pipeline.hpp"
 #include "mlir/gfx_mpsrt_metadata.hpp"
 #include "openvino/core/node.hpp"
 #include "openvino/op/convolution.hpp"
@@ -90,43 +91,6 @@ inline bool gfx_mpsrt_copy_conv_spatial_attrs(const ov::Strides& strides,
 
 }  // namespace detail
 
-inline bool set_apple_mps_conv_const_weight_desc(GfxAppleMpsStageLoweringPlan& lowering_plan,
-                                                 mlir::ModuleOp module,
-                                                 const std::shared_ptr<const ov::Node>& node) {
-    if (!module || !lowering_plan.valid) {
-        return false;
-    }
-
-    std::vector<int64_t> weight_shape;
-    ov::element::Type weight_type = ov::element::dynamic;
-    if (node && node->get_input_size() >= 2 && node->get_input_partial_shape(1).is_static()) {
-        const auto node_weight_shape = node->get_input_shape(1);
-        weight_shape.assign(node_weight_shape.begin(), node_weight_shape.end());
-        weight_type = node->get_input_element_type(1);
-    } else if (auto func = detail::gfx_mpsrt_entry_func(module)) {
-        const auto fn_type = func.getFunctionType();
-        if (fn_type.getNumInputs() > 1) {
-            const auto mlir_weight_type = fn_type.getInput(1);
-            weight_shape = detail::gfx_mpsrt_shape_from_mlir_type(mlir_weight_type);
-            weight_type = detail::gfx_mpsrt_element_from_mlir_type(mlir_weight_type);
-        }
-    }
-
-    if (weight_shape.empty() || (weight_type != ov::element::f16 && weight_type != ov::element::f32)) {
-        return false;
-    }
-
-    const auto desc = gfx_mpsrt_make_tensor_desc(weight_shape,
-                                                 weight_type,
-                                                 GfxStageStorageKind::Buffer,
-                                                 GfxMpsrtTensorFlagConst);
-    if (lowering_plan.stage_plan.inputs.size() <= 1) {
-        return false;
-    }
-    lowering_plan.stage_plan.inputs[1] = desc;
-    return refresh_apple_mps_stage_record_key(lowering_plan);
-}
-
 inline bool make_mpsrt_conv2d_desc_from_node(const std::shared_ptr<const ov::Node>& node,
                                              GfxMpsrtConv2DAbiDesc& desc) {
     desc = {};
@@ -186,13 +150,6 @@ inline GfxConvMpsrtLoweringKind annotate_module_with_conv_mpsrt_plan(
     }
 
     const auto stage_type = gfx_mpsrt_canonical_conv_stage_type(node, fallback_stage_type);
-    auto lowering_plan = materialize_apple_mps_stage_manifest(module, plan, stage_type);
-    if (!lowering_plan.valid ||
-        (lowering_plan.stage_plan.stage.kind != GfxMpsrtStageKind::MPSConv2D &&
-         lowering_plan.stage_plan.stage.kind != GfxMpsrtStageKind::MPSGroupConv2D)) {
-        return GfxConvMpsrtLoweringKind::None;
-    }
-
     GfxMpsrtConv2DAbiDesc conv_desc{};
     if (!make_mpsrt_conv2d_desc_from_node(node, conv_desc)) {
         return GfxConvMpsrtLoweringKind::None;
@@ -201,14 +158,21 @@ inline GfxConvMpsrtLoweringKind annotate_module_with_conv_mpsrt_plan(
         conv_desc.fused_activation = gfx_mpsrt_conv_fused_activation_code(activation);
     }
 
-    if (!set_apple_mps_conv_const_weight_desc(lowering_plan, module, node)) {
+    const auto materialized =
+        materialize_apple_mps_conv2d_program(module,
+                                             plan,
+                                             stage_type,
+                                             conv_desc,
+                                             {GfxKernelBufferRole::TensorInput,
+                                              GfxKernelBufferRole::ConstTensor});
+    if (!materialized.valid || !materialized.typed_program_materialized) {
         return GfxConvMpsrtLoweringKind::None;
     }
-    if (!set_apple_mps_conv2d_desc(lowering_plan, conv_desc) ||
-        !materialize_apple_mps_typed_program(module, lowering_plan)) {
+    GfxMpsrtModuleStagePlan stage_plan{};
+    if (!read_module_mpsrt_stage_plan(module, stage_plan)) {
         return GfxConvMpsrtLoweringKind::None;
     }
-    return lowering_plan.stage_plan.stage.kind == GfxMpsrtStageKind::MPSConv2D
+    return stage_plan.stage.kind == GfxMpsrtStageKind::MPSConv2D
                ? GfxConvMpsrtLoweringKind::MpsConv2D
                : GfxConvMpsrtLoweringKind::MpsGroupConv2D;
 }

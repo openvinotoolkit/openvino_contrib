@@ -203,14 +203,14 @@ The Metal path also now has a local MPSRT runtime layer under `src/backends/meta
 - `gfx_mpsrt_program.hpp` defines the typed MPSRT program contract validated before builder-plan generation
 - `gfx_mpsrt_dialect.*` defines typed `gfx.mpsrt.*` helper ops used by the generated program facade, including explicit storage-conversion ops such as `to_image`, `to_matrix`, `to_ndarray`, `to_buffer`, and `alias`
 
-That split is driven by `gfx_msl_kernel_manifest.*` plus MLIR module attrs. The manifest classifies MSL kernels into stable families such as eltwise, transpose/packing, concat/split, gather/scatter, RMS/RoPE, masked softmax-attention, Conv3D, and reduction dispatch, and it also defines the external-buffer ABI roles expected by request-time binding.
-The manifest layer now also carries stage-family information for vendor primitives and custom kernels through `gfx_kernel_manifest.hpp`, which lets one MPSRT model mix execution kinds while keeping one stable record key and buffer-order contract.
+That split is driven by the backend-neutral manifest layer in `gfx_kernel_manifest.hpp` plus the custom-kernel family registry in `gfx_custom_kernel_families.*`. The registry classifies MSL kernels into stable families such as eltwise, transpose/packing, concat/split, gather/scatter, RMS/RoPE, masked softmax-attention, Conv2D/Conv3D, MatMul, pooling, BatchNorm, and reduction dispatch. It also defines the external-buffer ABI roles and dispatch policy expected by request-time binding.
+The manifest layer now also carries stage-family information for vendor primitives and custom kernels, semantic input/output roles, and dispatch-grid metadata, which lets one MPSRT model mix execution kinds while keeping one stable record key and buffer-order contract.
 Recent Metal compile/runtime changes extend the MPSRT path beyond one standalone MSL stage:
 - vendor-only plans such as `MPSGemm` can now execute through the MPSRT runtime boundary without requiring generated MSL source
-- hybrid multi-stage plans such as `MPSGemm + MSL epilogue` can be serialized as one MPSRT model with semantic inputs/outputs, intermediate values, and stage-local descriptors
+- hybrid multi-stage plans such as `MPSGemm + MSL epilogue` can be serialized as one MPSRT model with semantic inputs/outputs, explicit intermediate value edges, storage bridges, and stage-local descriptors
 - request-time execution can choose full-context MPSRT execution for those mixed models instead of falling back to one raw compiled-kernel dispatch
 - vendor primitive coverage now also includes Apple MPS convolution, group convolution, pooling, softmax, and TopK stages when stage policy selects those routes
-- compile-time source planning now uses `gfx_mpsrt_source_plan.hpp` to pick `SingleStage` versus `MultiStage` source contracts, while `gfx_mpsrt_const_tensor_sources.hpp` can attach evaluated constant payloads for vendor convolution-family stages
+- compile-time source planning now uses `gfx_mpsrt_source_plan.hpp` to pick `SingleStage` versus `MultiStage` source contracts directly from the typed program/module metadata, while `gfx_mpsrt_const_tensor_sources.hpp` can attach evaluated constant payloads for vendor convolution-family stages
 - metadata cleanup now removes stale flat `gfx.mpsrt.*` stage attrs after the generated program/ops facade is materialized, so current readers should prefer `read_module_mpsrt_program()`, typed `gfx.mpsrt.*` ops, and runtime-ABI helpers over direct attribute scraping
 
 MatMul is the clearest current example of that split:

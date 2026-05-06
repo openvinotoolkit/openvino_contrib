@@ -64,7 +64,7 @@ void MetalPadOp::compile(MetalBufferManager* buffer_manager) {
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
-    KernelSpec spec(m_node, 10u);
+    auto spec = make_kernel_spec_from_custom_kernel_abi(m_node, "pad_kernel");
     m_kernel = compile_msl_kernel(backend, spec, module, "pad_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalPadOp: failed to compile pad kernel: ", log);
 

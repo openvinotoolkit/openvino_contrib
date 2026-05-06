@@ -134,6 +134,7 @@ std::string generate_msl_for_gather_elements(const GatherElementsCodegenDesc& de
 std::string generate_msl_for_depth_to_space(const DepthToSpaceCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_space_to_depth(const SpaceToDepthCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_scatter_elements_update(const ScatterElementsUpdateCodegenDesc& desc, mlir::ModuleOp module);
+std::string generate_msl_for_scatter_update(const ScatterUpdateCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_scatter_nd_update(const ScatterNDUpdateCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_shapeof(const ShapeOfCodegenDesc& desc, mlir::ModuleOp module);
 std::string generate_msl_for_batchnorm2d(const BatchNorm2DCodegenDesc& desc, mlir::ModuleOp module);
@@ -209,6 +210,9 @@ inline std::string generate_msl_from_mlir(mlir::ModuleOp module, const SpaceToDe
 }
 inline std::string generate_msl_from_mlir(mlir::ModuleOp module, const ScatterElementsUpdateCodegenDesc& desc) {
     return generate_msl_for_scatter_elements_update(desc, module);
+}
+inline std::string generate_msl_from_mlir(mlir::ModuleOp module, const ScatterUpdateCodegenDesc& desc) {
+    return generate_msl_for_scatter_update(desc, module);
 }
 inline std::string generate_msl_from_mlir(mlir::ModuleOp module, const ScatterNDUpdateCodegenDesc& desc) {
     return generate_msl_for_scatter_nd_update(desc, module);

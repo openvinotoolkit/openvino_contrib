@@ -20,15 +20,6 @@ enum class GfxMpsrtKernelSourcePlanKind {
     MultiStage,
 };
 
-struct GfxMpsrtKernelSourceOptions {
-    std::string msl_source;
-    std::function<std::string(mlir::ModuleOp)> msl_generator;
-    std::vector<uint32_t> spirv_binary;
-    std::function<std::vector<uint32_t>(mlir::ModuleOp)> spirv_generator;
-    uint32_t external_arg_count = 0;
-    uint32_t external_output_arg_count = 0;
-};
-
 struct GfxMpsrtKernelSourcePlan {
     GfxMpsrtKernelSourcePlanKind kind = GfxMpsrtKernelSourcePlanKind::None;
     KernelSource source;
@@ -41,6 +32,19 @@ struct GfxMpsrtKernelSourcePlan {
         return kind != GfxMpsrtKernelSourcePlanKind::None && source.module;
     }
 };
+
+namespace detail {
+
+struct GfxMpsrtKernelSourceOptions {
+    std::string msl_source;
+    std::function<std::string(mlir::ModuleOp)> msl_generator;
+    std::vector<uint32_t> spirv_binary;
+    std::function<std::vector<uint32_t>(mlir::ModuleOp)> spirv_generator;
+    uint32_t external_arg_count = 0;
+    uint32_t external_output_arg_count = 0;
+};
+
+}  // namespace detail
 
 inline bool gfx_mpsrt_stage_needs_custom_kernel_source(const GfxMpsrtStageDesc& stage) {
     return stage.kind == GfxMpsrtStageKind::MSLDispatch ||
@@ -61,6 +65,8 @@ inline std::string gfx_mpsrt_stage_entry_point(const GfxMpsrtStageDesc& stage) {
     }
     return gfx_mpsrt_stage_kind_name(stage.kind);
 }
+
+namespace detail {
 
 inline uint32_t gfx_mpsrt_source_plan_arg_count(const GfxMpsrtModuleBuilderPlan& module_plan,
                                                 const GfxMpsrtKernelSourceOptions& options) {
@@ -87,7 +93,7 @@ inline uint32_t gfx_mpsrt_source_plan_output_arg_count(const GfxMpsrtModuleBuild
 
 inline GfxMpsrtKernelSourcePlan make_mpsrt_kernel_source_plan_from_module(
     mlir::ModuleOp module,
-    GfxMpsrtKernelSourceOptions options = {}) {
+    GfxMpsrtKernelSourceOptions options) {
     GfxMpsrtKernelSourcePlan plan{};
     if (!module) {
         return plan;
@@ -148,16 +154,39 @@ inline GfxMpsrtKernelSourcePlan make_mpsrt_kernel_source_plan_from_module(
     return plan;
 }
 
+}  // namespace detail
+
+inline GfxMpsrtKernelSourcePlan make_mpsrt_kernel_source_plan_from_module(
+    mlir::ModuleOp module) {
+    return detail::make_mpsrt_kernel_source_plan_from_module(module, detail::GfxMpsrtKernelSourceOptions{});
+}
+
+inline GfxMpsrtKernelSourcePlan make_mpsrt_kernel_source_plan_from_msl_source(
+    mlir::ModuleOp module,
+    std::string msl_source) {
+    detail::GfxMpsrtKernelSourceOptions options{};
+    options.msl_source = std::move(msl_source);
+    return detail::make_mpsrt_kernel_source_plan_from_module(module, std::move(options));
+}
+
+inline GfxMpsrtKernelSourcePlan make_mpsrt_kernel_source_plan_from_msl_generator(
+    mlir::ModuleOp module,
+    std::function<std::string(mlir::ModuleOp)> msl_generator) {
+    detail::GfxMpsrtKernelSourceOptions options{};
+    options.msl_generator = std::move(msl_generator);
+    return detail::make_mpsrt_kernel_source_plan_from_module(module, std::move(options));
+}
+
 inline GfxMpsrtKernelSourcePlan make_mpsrt_kernel_source_plan_from_configured_source(
     KernelSource source) {
-    GfxMpsrtKernelSourceOptions options{};
+    detail::GfxMpsrtKernelSourceOptions options{};
     options.msl_source = std::move(source.msl_source);
     options.msl_generator = std::move(source.msl_generator);
     options.spirv_binary = std::move(source.spirv_binary);
     options.spirv_generator = std::move(source.spirv_generator);
     options.external_arg_count = source.signature.arg_count;
     options.external_output_arg_count = source.signature.output_arg_count;
-    return make_mpsrt_kernel_source_plan_from_module(source.module, std::move(options));
+    return detail::make_mpsrt_kernel_source_plan_from_module(source.module, std::move(options));
 }
 
 }  // namespace gfx_plugin

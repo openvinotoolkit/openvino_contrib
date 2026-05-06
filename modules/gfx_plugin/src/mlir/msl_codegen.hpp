@@ -11,7 +11,7 @@
 #include "mlir/gfx_mpsrt_source_plan.hpp"
 #include "mlir/IR/MLIRContext.h"
 #include "openvino/core/shape.hpp"
-#include "runtime/gfx_msl_kernel_manifest.hpp"
+#include "kernel_ir/gfx_custom_kernel_families.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 
 #include <memory>
@@ -24,12 +24,12 @@ namespace gfx_plugin {
 
 std::string normalize_msl_source_for_kernel_plan(std::string source,
                                                  std::string_view current_entry_point,
-                                                 const GfxMslKernelPlan& plan);
+                                                 const GfxCustomKernelStagePlan& plan);
 
 struct GfxAppleMslStageLoweringPlan {
     bool valid = false;
     GfxMpsrtModuleStagePlan stage_plan;
-    GfxMslKernelPlan msl_plan;
+    GfxCustomKernelStagePlan custom_kernel_plan;
 };
 
 GfxAppleMslStageLoweringPlan materialize_apple_msl_stage_manifest(
@@ -47,20 +47,21 @@ void configure_msl_kernel_source_for_plan(KernelSource& source,
                                           std::string_view stage_type);
 GfxMpsrtKernelSourcePlan configure_msl_kernel_source_plan(KernelSource source,
                                                           std::string_view stage_type);
-void configure_msl_kernel_source_for_node(KernelSource& source,
-                                          const std::shared_ptr<const ov::Node>& node,
-                                          const GpuBufferManager* buffer_manager,
-                                          std::string_view stage_type,
-                                          bool has_bias,
-                                          bool has_activation,
-                                          bool has_batchnorm);
-void configure_msl_kernel_source_for_spec(KernelSource& source,
-                                          const KernelSpec& spec,
-                                          const GpuBufferManager* buffer_manager,
-                                          std::string_view entry_point);
+GfxMpsrtKernelSourcePlan configure_msl_kernel_source_plan_for_node(
+    KernelSource source,
+    const std::shared_ptr<const ov::Node>& node,
+    const GpuBufferManager* buffer_manager,
+    std::string_view stage_type,
+    bool has_bias,
+    bool has_activation,
+    bool has_batchnorm);
+GfxMpsrtKernelSourcePlan configure_msl_kernel_source_plan_for_spec(KernelSource source,
+                                                                   const KernelSpec& spec,
+                                                                   const GpuBufferManager* buffer_manager,
+                                                                   std::string_view entry_point);
 
-// Compatibility wrapper for the Apple MSL two-phase lowering boundary:
-// stage manifest first, then typed MPSRT program materialization.
+// Apple MSL two-phase lowering boundary: stage manifest first, then typed
+// MPSRT program materialization.
 void annotate_msl_module_with_stage_plan(mlir::ModuleOp module,
                                          const GfxStageOptimizationPlan& plan,
                                          const std::string& stage_type,

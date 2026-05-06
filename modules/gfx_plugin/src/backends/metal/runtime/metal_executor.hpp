@@ -45,8 +45,9 @@ public:
 private:
     std::shared_ptr<ICompiledKernel> compile_kernel(const KernelSource& source,
                                                     std::string* log) override;
-    void configure_runtime_matmul_kernel_source(KernelSource& source,
-                                                const MatMulCodegenDesc& desc) const override;
+    KernelSource make_runtime_matmul_kernel_source(const MatMulCodegenDesc& desc,
+                                                   const ov::Shape& shape_a,
+                                                   const ov::Shape& shape_b) const override;
     KernelExecutionHooks* prepare_profiling(ProfileState& state,
                                             KernelExecutionHooks& hooks) override;
     void finalize_profiling(const ProfileState& state) override;

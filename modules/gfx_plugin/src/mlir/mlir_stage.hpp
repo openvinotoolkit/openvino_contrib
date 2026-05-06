@@ -77,8 +77,11 @@ protected:
     virtual bool is_vulkan_backend() const { return false; }
     virtual bool prefer_specialized_concat_execution() const { return true; }
     virtual bool should_skip_generic_kernel_compile(const GfxStageOptimizationPlan& /*plan*/) const { return false; }
-    virtual void configure_runtime_matmul_kernel_source(KernelSource& /*source*/,
-                                                        const MatMulCodegenDesc& /*desc*/) const {}
+    virtual KernelSource make_runtime_matmul_kernel_source(const MatMulCodegenDesc& /*desc*/,
+                                                           const ov::Shape& /*shape_a*/,
+                                                           const ov::Shape& /*shape_b*/) const {
+        return {};
+    }
     GpuBackend backend_kind() const { return is_vulkan_backend() ? GpuBackend::Vulkan : GpuBackend::Metal; }
     virtual KernelExecutionHooks* prepare_profiling(ProfileState& state,
                                                     KernelExecutionHooks& hooks);

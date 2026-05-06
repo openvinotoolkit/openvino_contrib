@@ -92,7 +92,7 @@ void MetalDepthToSpaceOp::compile(MetalBufferManager* buffer_manager) {
     auto msl_desc = m_desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
-    KernelSpec spec(m_node, 3u);
+    auto spec = make_kernel_spec_from_custom_kernel_abi(m_node, "depth_to_space_kernel");
     m_kernel = compile_msl_kernel(backend, spec, module, "depth_to_space_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalDepthToSpaceOp: failed to compile kernel: ", log);
 

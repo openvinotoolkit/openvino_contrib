@@ -27,11 +27,13 @@ struct GfxMpsrtCustomKernelDispatchSpec {
 inline GfxMpsrtCustomKernelDispatchSpec gfx_mpsrt_custom_dispatch_spec_from_kernel_manifest(
     const GfxKernelCustomManifest& manifest) {
     GfxMpsrtCustomKernelDispatchSpec spec{};
+    const auto& dispatch_policy = manifest.dispatch_policy;
     if (!manifest.valid ||
         manifest.kernel_family.empty() ||
         manifest.entry_point.empty() ||
         manifest.kernel_family_id == 0 ||
-        manifest.threads_per_threadgroup == 0) {
+        !dispatch_policy.valid ||
+        dispatch_policy.threads_per_threadgroup == 0) {
         return spec;
     }
 
@@ -39,9 +41,9 @@ inline GfxMpsrtCustomKernelDispatchSpec gfx_mpsrt_custom_dispatch_spec_from_kern
     spec.kernel_family = manifest.kernel_family;
     spec.entry_point = manifest.entry_point;
     spec.kernel_family_id = manifest.kernel_family_id;
-    spec.threads_per_threadgroup = manifest.threads_per_threadgroup;
-    spec.precompiled_binary_required = manifest.precompiled_binary_required;
-    if (manifest.precompiled_binary_required) {
+    spec.threads_per_threadgroup = dispatch_policy.threads_per_threadgroup;
+    spec.precompiled_binary_required = dispatch_policy.precompiled_binary_required;
+    if (dispatch_policy.precompiled_binary_required) {
         spec.flags |= GfxMpsrtMslDispatchFlagPrecompiledMetallibRequired;
     }
     return spec;

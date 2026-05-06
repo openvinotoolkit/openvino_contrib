@@ -54,7 +54,7 @@ void MetalSelectOp::compile(MetalBufferManager* buffer_manager) {
     const auto msl_type = m_element_type;
     auto msl_generator = [msl_type](mlir::ModuleOp mod) { return generate_msl_for_select(mod, msl_type); };
 
-    KernelSpec spec(m_node, 10u);
+    auto spec = make_kernel_spec_from_custom_kernel_abi(m_node, "select_kernel");
     m_kernel = compile_msl_kernel(backend, spec, module, "select_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalSelectOp: failed to compile select kernel: ", log);
 

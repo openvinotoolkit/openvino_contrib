@@ -13,6 +13,7 @@
 #include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
+#include "mlir/gfx_apple_stage_pipeline.hpp"
 #include "mlir/gfx_mpsrt_source_plan.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/IR/BuiltinOps.h"
@@ -223,17 +224,16 @@ void MetalPoolOp::compile(MetalBufferManager* buffer_manager) {
                                                          GfxStageRuntimeTraits{});
         if (plan.placement.domain == GfxStageBackendDomain::AppleMps &&
             plan.placement.uses_vendor_primitive) {
-            auto lowering_plan =
-                materialize_apple_mps_stage_manifest(module, plan, m_is_avg ? "AvgPool" : "MaxPool");
-            OPENVINO_ASSERT(set_apple_mps_pool2d_desc(lowering_plan, make_mpsrt_pool2d_desc(desc, m_is_avg)) &&
-                                materialize_apple_mps_typed_program(module, lowering_plan),
+            const auto materialized =
+                materialize_apple_mps_pool2d_program(module,
+                                                     plan,
+                                                     m_is_avg ? "AvgPool" : "MaxPool",
+                                                     make_mpsrt_pool2d_desc(desc, m_is_avg));
+            OPENVINO_ASSERT(materialized.valid && materialized.typed_program_materialized,
                             "MetalPoolOp: failed to materialize MPSRT Pool2D stage for ",
                             name());
 
-            GfxMpsrtKernelSourceOptions source_options{};
-            source_options.external_arg_count = 3u;
-            source_options.external_output_arg_count = 1u;
-            auto source_plan = make_mpsrt_kernel_source_plan_from_module(module, std::move(source_options));
+            auto source_plan = make_mpsrt_kernel_source_plan_from_module(module);
             OPENVINO_ASSERT(source_plan.valid(),
                             "MetalPoolOp: failed to create MPSRT source plan for ",
                             name());
@@ -244,7 +244,7 @@ void MetalPoolOp::compile(MetalBufferManager* buffer_manager) {
         }
     }
 
-    KernelSpec spec(m_node, 3u);
+    auto spec = make_kernel_spec_from_custom_kernel_abi(m_node, "pool2d_kernel");
     m_kernel = compile_msl_kernel(backend, spec, module, "pool2d_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalPoolOp: failed to compile pool2d kernel: ", log);
 

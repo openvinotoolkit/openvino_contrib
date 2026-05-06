@@ -263,6 +263,18 @@ bool create_mpsrt_storage_bridge_ops(mlir::OpBuilder& builder,
     return true;
 }
 
+void erase_generated_legacy_program_facade(mlir::ModuleOp module) {
+    if (!module) {
+        return;
+    }
+    if (auto facade = module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_program")) {
+        if (facade->getAttrOfType<mlir::BoolAttr>("gfx.mpsrt.program.generated")) {
+            facade.erase();
+        }
+    }
+    module->removeAttr("gfx.mpsrt.program.symbol");
+}
+
 }  // namespace
 
 void erase_module_mpsrt_ops(mlir::ModuleOp module) {
@@ -311,7 +323,7 @@ void erase_module_mpsrt_legacy_attrs(mlir::ModuleOp module) {
     for (const auto& name : attrs_to_remove) {
         module->removeAttr(name);
     }
-    erase_module_mpsrt_program_facade(module);
+    erase_generated_legacy_program_facade(module);
 }
 
 bool materialize_module_mpsrt_ops(mlir::ModuleOp module,

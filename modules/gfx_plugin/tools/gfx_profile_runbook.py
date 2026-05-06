@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -14,12 +15,12 @@ from typing import Dict, List
 
 
 DEFAULTS = {
-    "macos_build": "/Users/anesterov/repos/openvino_contrib/build-gfx-plugin-macos",
-    "android_build": "/Users/anesterov/repos/openvino_contrib/build-gfx-plugin-android",
-    "rpi_build": "/Users/anesterov/repos/openvino_contrib/build-gfx-plugin-rpi",
-    "model": "/Users/anesterov/repos/openvino_contrib/yolo26x_ir/yolo26x.xml",
-    "android_dir": "/data/local/tmp/openvino_gfx_android",
-    "rpi_dir": "/home/anesterov/gfx_eval",
+    "macos_build": os.environ.get("GFX_MACOS_BUILD", "build-gfx-plugin-macos"),
+    "android_build": os.environ.get("GFX_ANDROID_BUILD", "build-gfx-plugin-android"),
+    "rpi_build": os.environ.get("GFX_RPI_BUILD", "build-gfx-plugin-rpi"),
+    "model": os.environ.get("GFX_MODEL", "model.xml"),
+    "android_dir": os.environ.get("GFX_ANDROID_DIR", "/data/local/tmp/openvino_gfx_android"),
+    "rpi_dir": os.environ.get("GFX_RPI_DIR", "/tmp/openvino_gfx_rpi"),
 }
 
 

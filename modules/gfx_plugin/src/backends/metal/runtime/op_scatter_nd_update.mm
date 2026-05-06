@@ -137,8 +137,8 @@ void MetalScatterNDUpdateOp::compile(MetalBufferManager* buffer_manager) {
     auto msl_desc = m_desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
-    KernelSpec spec_init(m_node, 3u);
-    KernelSpec spec_update(m_node, 4u);
+    auto spec_init = make_kernel_spec_from_custom_kernel_abi(m_node, "scatter_nd_init");
+    auto spec_update = make_kernel_spec_from_custom_kernel_abi(m_node, "scatter_nd_update");
     m_kernel_init = compile_msl_kernel(backend, spec_init, module, "scatter_nd_init", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel_init, "MetalScatterNDUpdateOp: init kernel compile failed: ", log);
     m_kernel_update = compile_msl_kernel(backend, spec_update, module, "scatter_nd_update", msl_generator, &log);

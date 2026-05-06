@@ -12,6 +12,7 @@
 #include "openvino/op/relu.hpp"
 #include "openvino/op/sigmoid.hpp"
 #include "openvino/op/tanh.hpp"
+#include "backends/metal/runtime/metal_command_encoder.hpp"
 #include "backends/metal/runtime/metal_memory.hpp"
 #include "backends/metal/runtime/stage_factory.hpp"
 #include "runtime/execution_dispatcher.hpp"
@@ -74,6 +75,7 @@ void run_activation(const ActivationCase& tc) {
     stage->compile(&mgr);
     id<MTLCommandBuffer> cb = [queue commandBuffer];
     stage->execute(cb);
+    metal_end_compute_encoder((GpuCommandBufferHandle)cb);
     [cb commit];
     [cb waitUntilCompleted];
 

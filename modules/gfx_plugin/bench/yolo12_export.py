@@ -5,14 +5,14 @@
 Export YOLOv12 (Ultralytics) to ONNX and OpenVINO IR.
 
 Steps performed:
-1. Create (if missing) a virtual environment at /Users/anesterov/venvs/ultralytics-yolo12
+1. Create (if missing) a virtual environment.
 2. Install/upgrade ultralytics inside that venv
 3. Download YOLOv12n weights and export to ONNX (ops set 12, imgsz=640)
 4. Convert ONNX to OpenVINO IR using mo (CLI)
 
-Paths:
-  ONNX: /Users/anesterov/models/yolo12/yolov12n.onnx
-  IR  : /Users/anesterov/models/yolo12/ir/yolov12n.xml
+Defaults can be overridden with:
+  GFX_YOLO12_VENV
+  GFX_YOLO12_MODEL_DIR
 """
 
 import os
@@ -21,8 +21,10 @@ import sys
 import venv
 from pathlib import Path
 
-VENV_DIR = Path("/Users/anesterov/venvs/ultralytics-yolo12")
-MODEL_DIR = Path("/Users/anesterov/models/yolo12")
+VENV_DIR = Path(os.environ.get("GFX_YOLO12_VENV",
+                               str(Path.home() / ".cache" / "openvino-gfx" / "ultralytics-yolo12")))
+MODEL_DIR = Path(os.environ.get("GFX_YOLO12_MODEL_DIR",
+                                str(Path.home() / ".cache" / "openvino-gfx" / "yolo12")))
 ONNX_PATH = MODEL_DIR / "yolov12n.onnx"
 IR_DIR = MODEL_DIR / "ir"
 IR_XML = IR_DIR / "yolov12n.xml"
@@ -99,4 +101,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

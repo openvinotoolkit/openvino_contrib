@@ -29,7 +29,7 @@
 #include "mlir/gfx_mpsrt_metadata.hpp"
 #include "mlir/msl_codegen.hpp"
 #include "runtime/gfx_stage_policy.hpp"
-#include "runtime/gfx_msl_kernel_manifest.hpp"
+#include "kernel_ir/gfx_custom_kernel_families.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -39,7 +39,7 @@ void annotate_test_msl_dispatch_module(
     mlir::ModuleOp module,
     std::string_view stage_type,
     std::string_view entry_point,
-    GfxKernelExternalBufferAbiSpec external_buffer_abi = make_gfx_kernel_tail_outputs_abi(),
+    GfxKernelExternalBufferAbiSpec external_buffer_abi = {},
     uint32_t threads_per_threadgroup = 64) {
     std::string specialization_key = "apple_msl:buffer:";
     specialization_key += stage_type;
@@ -53,11 +53,12 @@ void annotate_test_msl_dispatch_module(
             specialization_key,
             make_gfx_custom_kernel_manifest(
                 "eltwise_fused_buffer",
-                static_cast<uint32_t>(GfxMslKernelFamily::EltwiseFusedBuffer),
+                static_cast<uint32_t>(GfxKernelFamily::EltwiseFusedBuffer),
                 std::string(entry_point),
                 std::move(external_buffer_abi),
-                threads_per_threadgroup,
-                /*precompiled_binary_required=*/true)));
+                make_gfx_kernel_linear_dispatch_policy(
+                    threads_per_threadgroup,
+                    /*precompiled_binary_required=*/true))));
 }
 
 void annotate_test_mps_vendor_module(mlir::ModuleOp module,
@@ -322,7 +323,7 @@ kernel void add1(device float* data [[buffer(0)]],
     EXPECT_EQ(stage.dispatch_kernel_family, "eltwise_fused_buffer");
     EXPECT_EQ(stage.dispatch_entry_point, "add1");
     EXPECT_EQ(stage.msl_dispatch_desc.kernel_family,
-              static_cast<uint32_t>(GfxMslKernelFamily::EltwiseFusedBuffer));
+              static_cast<uint32_t>(GfxKernelFamily::EltwiseFusedBuffer));
     EXPECT_EQ(stage.msl_dispatch_desc.input_count, 1u);
     EXPECT_EQ(stage.msl_dispatch_desc.output_count, 1u);
     EXPECT_EQ(stage.msl_dispatch_desc.threads_per_threadgroup, 64u);
@@ -378,7 +379,7 @@ kernel void add1(device float* data [[buffer(0)]],
     EXPECT_FALSE(first_prepare.msl_dispatches.front().pipeline_cache_hit);
     EXPECT_EQ(first_prepare.msl_dispatches.front().dispatch_entry_point, "add1");
     EXPECT_EQ(first_prepare.msl_dispatches.front().dispatch_kernel_family_id,
-              static_cast<uint32_t>(GfxMslKernelFamily::EltwiseFusedBuffer));
+              static_cast<uint32_t>(GfxKernelFamily::EltwiseFusedBuffer));
     EXPECT_EQ(first_prepare.msl_dispatches.front().dispatch_threads_per_threadgroup, 64u);
     EXPECT_GT(first_prepare.msl_dispatches.front().thread_execution_width, 0u);
     EXPECT_GT(first_prepare.msl_dispatches.front().max_total_threads_per_threadgroup, 0u);
@@ -1144,7 +1145,7 @@ kernel void mul2(device const float* temp [[buffer(0)]],
         stage.kernel_name = entry;
         stage.dispatch_kernel_family = "eltwise_fused_buffer";
         stage.dispatch_entry_point = entry;
-        stage.dispatch_kernel_family_id = static_cast<uint32_t>(GfxMslKernelFamily::EltwiseFusedBuffer);
+        stage.dispatch_kernel_family_id = static_cast<uint32_t>(GfxKernelFamily::EltwiseFusedBuffer);
         stage.dispatch_flags = GfxMpsrtMslDispatchFlagPrecompiledMetallibRequired;
         stage.dispatch_threads_per_threadgroup = 64;
         stage.dispatch_precompiled_kernel_required = true;
@@ -2157,7 +2158,7 @@ kernel void eltwise_fused_buffer(device const float* gemm [[buffer(0)]],
     epilogue_stage.kernel_name = "eltwise_fused_buffer";
     epilogue_stage.dispatch_kernel_family = "eltwise_fused_buffer";
     epilogue_stage.dispatch_entry_point = "eltwise_fused_buffer";
-    epilogue_stage.dispatch_kernel_family_id = static_cast<uint32_t>(GfxMslKernelFamily::EltwiseFusedBuffer);
+    epilogue_stage.dispatch_kernel_family_id = static_cast<uint32_t>(GfxKernelFamily::EltwiseFusedBuffer);
     epilogue_stage.dispatch_threads_per_threadgroup = 256;
     epilogue_stage.dispatch_flags = GfxMpsrtMslDispatchFlagPrecompiledMetallibRequired;
     epilogue_stage.dispatch_precompiled_kernel_required = true;
@@ -2279,7 +2280,8 @@ TEST(GfxBackendTest, MetalCodegenCompilesVendorOnlyMpsGemmWithoutMslSource) {
     auto lowering_plan = make_test_mps_vendor_lowering(module, {lhs_desc, rhs_desc}, {output_desc});
     GfxMpsrtGemmAbiDesc gemm_desc{};
     gemm_desc.transpose_rhs = 1;
-    ASSERT_TRUE(set_apple_mps_gemm_desc(lowering_plan, gemm_desc));
+    lowering_plan.stage_plan.stage.gemm_desc = gemm_desc;
+    ASSERT_TRUE(refresh_apple_mps_stage_record_key(lowering_plan));
     ASSERT_TRUE(materialize_apple_mps_typed_program(module, lowering_plan));
 
     KernelSource source;
@@ -2394,7 +2396,8 @@ TEST(GfxBackendTest, MetalCodegenCompilesVendorOnlyMpsTopKWithoutMslSource) {
     topk_desc.k = kTopK;
     topk_desc.mode_max = 1;
     topk_desc.sort_type = 1;
-    ASSERT_TRUE(set_apple_mps_topk_desc(lowering_plan, topk_desc));
+    lowering_plan.stage_plan.stage.topk_desc = topk_desc;
+    ASSERT_TRUE(refresh_apple_mps_stage_record_key(lowering_plan));
     ASSERT_TRUE(materialize_apple_mps_typed_program(module, lowering_plan));
 
     KernelSource source;

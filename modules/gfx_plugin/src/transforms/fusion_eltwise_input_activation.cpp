@@ -58,6 +58,13 @@ struct EltwiseInputActivationFusionPattern final : public mlir::RewritePattern {
         if (activation->getNumResults() != 1 || activation->getNumOperands() != 1) {
             return mlir::failure();
         }
+        if (kind == ActivationKind::Sigmoid) {
+            const auto activation_input = activation->getOperand(0);
+            const auto other_operand = op->getOperand(input_idx == 0 ? 1 : 0);
+            if (activation_input == other_operand) {
+                return mlir::failure();
+            }
+        }
         mlir::Operation* user = nullptr;
         if (!has_single_user(activation->getResult(0), user) || user != op) {
             return mlir::failure();

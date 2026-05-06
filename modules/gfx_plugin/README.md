@@ -57,6 +57,7 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 - `src/runtime/`: backend-neutral runtime abstractions and helpers
 - `src/runtime/gfx_mpsrt_*`: shared ABI, stage-plan, builder-plan, program, storage-bridge, and manifest-adapter helpers for the Apple MPS/MSL split
 - `src/kernel_ir/gfx_kernel_manifest.hpp`: backend-neutral manifest for vendor-primitive versus custom-kernel stage contracts
+- `src/kernel_ir/gfx_custom_kernel_families.*`: custom-kernel family registry, external-buffer ABI roles, and dispatch-policy defaults shared by Metal MSL source planning and MPSRT runtime-model generation
 - `src/mlir/`: MLIR support probes, Apple stage-pipeline passes, typed MPSRT dialect/materialization helpers, generated runtime-ABI planning, source-plan helpers, const-tensor-source attachment, and shared codegen helpers
 - `src/backends/metal/`: Metal-specific plugin glue, runtime, memory, profiling, MSL compilation
 - `src/backends/vulkan/`: Vulkan-specific plugin glue, runtime, buffers, profiling, SPIR-V/Vulkan execution
@@ -114,7 +115,7 @@ The current infer path is not a naive "execute one stage, submit immediately" lo
 - `GpuStageFactory` / `ExecutionDispatcher`: backend-specific stage dispatch
 - `gfx_stage_policy.*`: runtime route, fusion, and submit-policy selection
 - `gfx_stage_policy.*` now also selects placement domains such as `apple_mps`, `apple_msl`, and `spirv`, together with storage kinds such as `image`, `matrix`, and `buffer`
-- manifest-backed stage metadata now distinguishes vendor-primitive stages from custom-kernel stages and carries stable kernel-family plus external-buffer-ABI contracts across the MLIR, compile, and runtime layers
+- manifest-backed stage metadata now distinguishes vendor-primitive stages from custom-kernel stages and carries stable kernel-family, semantic input/output roles, dispatch policy, and external-buffer-ABI contracts across the MLIR, compile, and runtime layers
 - generated `gfx_mpsrt_ops` and `gfx_mpsrt_runtime_abi_plan` metadata now serialize multi-stage model records, external-buffer roles, per-stage ABI descriptors, and storage bridges into the Metal compile path instead of relying on flat legacy `gfx.mpsrt.*` attrs for stage reconstruction
 - storage bridges now cover not only image-backed stages but also matrix, ndarray, and alias-style contracts where the typed program/runtime model needs an explicit conversion edge
 - `gfx_parallelism.*` and `gfx_partitioning.*`: backend-neutral device-capability and workgroup planning helpers
@@ -208,7 +209,7 @@ Current lowering/runtime special cases:
 - Metal Conv2D and MaxPool codegen now honor dilation metadata, and Conv2D dispatch planning can block output channels and output width per thread for selected float-like cases
 - `ShapeOf`, `TopK`, `Tile`, and unary stage handling now have stricter runtime/codegen paths around output typing, alias safety, and ABI metadata
 - Metal stage policy now routes selected 4D conv/pool/interpolate-style stages to Apple MPS image storage, selected `MatMul` / last-dimension `Softmax` / `TopK` stages to Apple MPS matrix storage, and keeps the remaining cases on Apple MSL buffer dispatch
-- the Metal MSL path now carries a kernel-family manifest plus explicit external-buffer ABI roles so runtime parameter, input, and output buffers can be rebound without assuming a simple tail-output convention
+- the Metal MSL path now carries a custom-kernel family manifest plus explicit external-buffer ABI roles and dispatch policy, so runtime parameter, input, and output buffers can be rebound without assuming a simple tail-output convention
 - Metal MPSRT stages now materialize explicit storage bridges such as `buffer_to_image`, `image_to_buffer`, `buffer_to_matrix`, `matrix_to_buffer`, `buffer_to_ndarray`, and `alias` when public bindings cross a typed storage boundary
 - Metal MatMul lowering can now choose a vendor MPS GEMM route directly, or a mixed `MPSGemm + MSL epilogue` route when bias or supported activation fusion still needs a custom kernel stage
 - Metal source planning can now pick `SingleStage` or `MultiStage` MPSRT kernel-source plans and attach constant tensor payloads for vendor convolution-family stages before request-time execution
@@ -278,7 +279,7 @@ Build notes:
 - the module build treats compiler warnings as errors by default through `-Werror` on Clang/GCC and `/WX` on MSVC
 - `cmake/GfxAndroidRuntimeBundle.cmake.in` provides helper copy logic for Android-side runtime dependency bundling
 - `third_party/Vulkan-Headers` is tracked as a git submodule pinned to the module-tested upstream release
-- Metal now also builds the local MPSRT runtime sources under `src/backends/metal/runtime/mpsrt/` together with the shared `gfx_mpsrt_*` and `gfx_msl_kernel_manifest.*` helpers
+- Metal now also builds the local MPSRT runtime sources under `src/backends/metal/runtime/mpsrt/` together with the shared `gfx_mpsrt_*`, `gfx_kernel_manifest.hpp`, and `gfx_custom_kernel_families.*` helpers
 - Metal backend detection now also requires `MetalPerformanceShaders.framework`, not only `Metal.framework` and `Foundation.framework`
 - `tools/gfx_rpi_vulkan_toolchain_builder.py` can assemble a hermetic Raspberry Pi Vulkan cross-toolchain bundle for Raspberry Pi 4/5 class `aarch64` Bookworm-style targets, normalize absolute sysroot symlinks, install both `vulkan/` and `vk_video/` headers into the generated sysroot, and emit portable `-march=armv8-a` compile flags in the generated wrappers and toolchain file
 

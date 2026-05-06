@@ -7,7 +7,8 @@
 #include <string_view>
 
 #include "runtime/gfx_mpsrt_abi.hpp"
-#include "runtime/gfx_msl_kernel_manifest.hpp"
+#include "runtime/gfx_mpsrt_kernel_manifest_adapter.hpp"
+#include "kernel_ir/gfx_custom_kernel_families.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 
 namespace ov {
@@ -377,15 +378,19 @@ inline GfxMpsrtStageDesc gfx_mpsrt_make_stage_desc(const GfxStageOptimizationPla
     if (desc.kind == GfxMpsrtStageKind::MSLDispatch) {
         const auto manifest_entry = kernel_entry_point.empty() ? std::string_view(desc.kernel_name)
                                                                : kernel_entry_point;
-        const auto msl_plan = make_msl_kernel_plan(stage_type, manifest_entry);
-        if (msl_plan.valid) {
-            desc.stage_manifest = msl_plan.stage_manifest;
-            desc.dispatch_kernel_family = msl_plan.family_name;
-            desc.dispatch_entry_point = msl_plan.required_entry_point;
-            desc.dispatch_kernel_family_id = msl_plan.abi_kernel_family;
-            desc.dispatch_flags = msl_plan.dispatch_flags;
-            desc.dispatch_threads_per_threadgroup = msl_plan.threads_per_threadgroup;
-            desc.dispatch_precompiled_kernel_required = msl_plan.precompiled_metallib_required;
+        const auto custom_kernel_plan = make_gfx_custom_kernel_stage_plan(stage_type, manifest_entry);
+        if (custom_kernel_plan.valid) {
+            desc.stage_manifest = custom_kernel_plan.stage_manifest;
+            const auto dispatch =
+                gfx_mpsrt_custom_dispatch_spec_from_kernel_manifest(desc.stage_manifest.custom_kernel);
+            if (dispatch.valid) {
+                desc.dispatch_kernel_family = dispatch.kernel_family;
+                desc.dispatch_entry_point = dispatch.entry_point;
+                desc.dispatch_kernel_family_id = dispatch.kernel_family_id;
+                desc.dispatch_flags = dispatch.flags;
+                desc.dispatch_threads_per_threadgroup = dispatch.threads_per_threadgroup;
+                desc.dispatch_precompiled_kernel_required = dispatch.precompiled_binary_required;
+            }
         }
     }
     return desc;
@@ -435,10 +440,15 @@ inline std::string gfx_mpsrt_stage_record_key(const GfxMpsrtStageDesc& desc) {
     key += desc.specialization_key;
     if (desc.kind == GfxMpsrtStageKind::MSLDispatch &&
         (!desc.dispatch_kernel_family.empty() || !desc.dispatch_entry_point.empty())) {
+        const auto& dispatch_policy = desc.stage_manifest.custom_kernel.dispatch_policy;
         key += "|dispatch:";
         key += desc.dispatch_kernel_family.empty() ? "unknown" : desc.dispatch_kernel_family;
         key += ":";
         key += desc.dispatch_entry_point.empty() ? desc.kernel_name : desc.dispatch_entry_point;
+        if (dispatch_policy.valid) {
+            key += ":";
+            key += gfx_kernel_dispatch_grid_name(dispatch_policy.grid);
+        }
         key += ":tg";
         key += std::to_string(desc.dispatch_threads_per_threadgroup);
         key += desc.dispatch_precompiled_kernel_required ? ":metallib" : ":source";

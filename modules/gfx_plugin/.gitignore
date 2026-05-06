@@ -2,6 +2,7 @@
 .idea/
 .vscode/
 __pycache__/
+AGENTS.md
 *.pyc
 *.pyo
 *.pyd
@@ -15,3 +16,8 @@ __pycache__/
 *.out
 *.snm
 *.toc
+
+# Local publication-prep and device/model helpers.
+bench/yolo26_*
+tools/rpi_ov_runtime_check.cpp
+report_*.xml

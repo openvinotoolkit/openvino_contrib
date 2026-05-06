@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 
 #include "mlir/mlir_builder.hpp"
@@ -14,8 +15,9 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Math/IR/Math.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
@@ -56,7 +58,7 @@ mlir::ModuleOp build_mlir_binary_eltwise_from_node(const std::shared_ptr<const N
                                                    Emitter&& emit,
                                                    std::string_view entry_name = "eltwise_main") {
     ctx.loadDialect<mlir::func::FuncDialect, mlir::linalg::LinalgDialect, mlir::tensor::TensorDialect,
-                    mlir::arith::ArithDialect, mlir::math::MathDialect, mlir::scf::SCFDialect>();
+                    mlir::arith::ArithDialect, mlir::math::MathDialect>();
 
     OPENVINO_ASSERT(node, "Eltwise MLIR builder: node is null");
 
@@ -108,52 +110,60 @@ mlir::ModuleOp build_mlir_binary_eltwise_from_node(const std::shared_ptr<const N
     b.setInsertionPointToStart(&func.getBody().front());
     auto loc = mlir::UnknownLoc::get(&ctx);
 
-    auto c0 = b.create<mlir::arith::ConstantIndexOp>(loc, 0);
-    auto c1 = b.create<mlir::arith::ConstantIndexOp>(loc, 1);
-
     llvm::SmallVector<mlir::Value> out_dyn;
     out_dyn.reserve(sout.size());
-    llvm::SmallVector<mlir::Value> out_dims;
-    out_dims.reserve(sout.size());
-    auto get_dim = [&](mlir::Value t, const mlir::SmallVector<int64_t>& shp, size_t out_idx) -> mlir::Value {
-        const size_t tr = shp.size();
-        if (out_idx + tr < rank) return mlir::Value{};
-        size_t axis = out_idx - (rank - tr);
-        int64_t dim = shp[axis];
-        if (dim == 1) return mlir::Value{};
-        return b.create<mlir::tensor::DimOp>(loc, t, axis).getResult();
-    };
-    for (size_t i = 0; i < rank; ++i) {
-        if (sout[i] != mlir::ShapedType::kDynamic) continue;
-        mlir::Value d = get_dim(func.getArgument(0), source_s0, i);
-        if (!d) d = get_dim(func.getArgument(1), source_s1, i);
-        if (!d) d = c1;
-        out_dyn.push_back(d);
-    }
-    size_t out_dyn_idx = 0;
-    for (size_t i = 0; i < rank; ++i) {
-        if (sout[i] == mlir::ShapedType::kDynamic) {
-            out_dims.push_back(out_dyn[out_dyn_idx++]);
-        } else {
-            out_dims.push_back(b.create<mlir::arith::ConstantIndexOp>(loc, sout[i]));
+    auto consumer_axis_for_output_dim = [&](const mlir::SmallVector<int64_t>& consumer_shape,
+                                            size_t out_idx) -> std::optional<size_t> {
+        const size_t consumer_rank = consumer_shape.size();
+        if (out_idx + consumer_rank < rank) {
+            return std::nullopt;
         }
-    }
-
-    auto empty = b.create<mlir::tensor::EmptyOp>(loc, sout, elem_ty, out_dyn);
-
+        return out_idx - (rank - consumer_rank);
+    };
+    auto get_dim = [&](mlir::Value tensor,
+                       const mlir::SmallVector<int64_t>& source_shape,
+                       const mlir::SmallVector<int64_t>& consumer_shape,
+                       const MlirInputTransformDesc* transform,
+                       size_t out_idx) -> mlir::Value {
+        const auto consumer_axis_opt = consumer_axis_for_output_dim(consumer_shape, out_idx);
+        if (!consumer_axis_opt.has_value()) {
+            return mlir::Value{};
+        }
+        const size_t consumer_axis = *consumer_axis_opt;
+        const int64_t dim = consumer_shape[consumer_axis];
+        if (dim == 1) return mlir::Value{};
+        size_t source_axis = consumer_axis;
+        if (transform && transform->has_transpose()) {
+            OPENVINO_ASSERT(transform->transpose_permutation.size() == consumer_shape.size(),
+                            "Eltwise MLIR builder: transpose rank mismatch");
+            const int64_t mapped_axis = transform->transpose_permutation[consumer_axis];
+            OPENVINO_ASSERT(mapped_axis >= 0 && static_cast<size_t>(mapped_axis) < source_shape.size(),
+                            "Eltwise MLIR builder: transpose permutation out of range");
+            source_axis = static_cast<size_t>(mapped_axis);
+        }
+        return b.create<mlir::tensor::DimOp>(loc, tensor, source_axis).getResult();
+    };
     const MlirInputTransformDesc* transform0 =
         input_transforms.size() > 0 && input_transforms[0].has_transpose() ? &input_transforms[0] : nullptr;
     const MlirInputTransformDesc* transform1 =
         input_transforms.size() > 1 && input_transforms[1].has_transpose() ? &input_transforms[1] : nullptr;
+    for (size_t i = 0; i < rank; ++i) {
+        if (sout[i] != mlir::ShapedType::kDynamic) continue;
+        mlir::Value d = get_dim(func.getArgument(0), source_s0, consumer_s0, transform0, i);
+        if (!d) d = get_dim(func.getArgument(1), source_s1, consumer_s1, transform1, i);
+        if (!d) d = b.create<mlir::arith::ConstantIndexOp>(loc, 1);
+        out_dyn.push_back(d);
+    }
 
-    auto build_operand_indices = [&](const mlir::SmallVector<int64_t>& source_shape,
-                                     const mlir::SmallVector<int64_t>& consumer_shape,
-                                     const MlirInputTransformDesc* transform,
-                                     llvm::ArrayRef<mlir::Value> out_indices) {
+    auto empty = b.create<mlir::tensor::EmptyOp>(loc, sout, elem_ty, out_dyn);
+
+    auto build_operand_map = [&](const mlir::SmallVector<int64_t>& source_shape,
+                                 const mlir::SmallVector<int64_t>& consumer_shape,
+                                 const MlirInputTransformDesc* transform) {
         const size_t consumer_rank = consumer_shape.size();
         const size_t source_rank = source_shape.size();
-        llvm::SmallVector<mlir::Value> indices;
-        indices.reserve(source_rank);
+        llvm::SmallVector<mlir::AffineExpr> exprs;
+        exprs.reserve(source_rank);
 
         if (transform && transform->has_transpose()) {
             OPENVINO_ASSERT(consumer_rank == transform->transpose_permutation.size(),
@@ -174,44 +184,46 @@ mlir::ModuleOp build_mlir_binary_eltwise_from_node(const std::shared_ptr<const N
             for (size_t source_axis = 0; source_axis < source_rank; ++source_axis) {
                 const size_t consumer_axis = inverse[source_axis];
                 const int64_t dim = consumer_shape[consumer_axis];
-                indices.push_back(dim == 1 ? c0 : out_indices[consumer_axis]);
+                exprs.push_back(dim == 1
+                                    ? mlir::getAffineConstantExpr(0, &ctx)
+                                    : mlir::getAffineDimExpr(static_cast<unsigned>(consumer_axis), &ctx));
             }
-            return indices;
+            return mlir::AffineMap::get(static_cast<unsigned>(rank), 0, exprs, &ctx);
         }
 
         const size_t start = rank - consumer_rank;
         for (size_t i = 0; i < consumer_rank; ++i) {
-            indices.push_back(consumer_shape[i] == 1 ? c0 : out_indices[start + i]);
+            exprs.push_back(consumer_shape[i] == 1
+                                ? mlir::getAffineConstantExpr(0, &ctx)
+                                : mlir::getAffineDimExpr(static_cast<unsigned>(start + i), &ctx));
         }
-        return indices;
+        return mlir::AffineMap::get(static_cast<unsigned>(rank), 0, exprs, &ctx);
     };
 
-    std::function<mlir::Value(mlir::OpBuilder&, size_t, mlir::Value, llvm::SmallVector<mlir::Value>&)> build_loops;
-    build_loops = [&](mlir::OpBuilder& nested_builder,
-                      size_t dim,
-                      mlir::Value current_tensor,
-                      llvm::SmallVector<mlir::Value>& out_indices) -> mlir::Value {
-        if (dim == rank) {
-            auto lhs_indices = build_operand_indices(source_s0, consumer_s0, transform0, out_indices);
-            auto rhs_indices = build_operand_indices(source_s1, consumer_s1, transform1, out_indices);
-            auto lhs = nested_builder.create<mlir::tensor::ExtractOp>(loc, func.getArgument(0), lhs_indices).getResult();
-            auto rhs = nested_builder.create<mlir::tensor::ExtractOp>(loc, func.getArgument(1), rhs_indices).getResult();
-            auto res = emit(nested_builder, loc, mlir::ValueRange{lhs, rhs}, elem_ty, node);
-            return nested_builder.create<mlir::tensor::InsertOp>(loc, res, current_tensor, out_indices).getResult();
-        }
+    auto out_map = mlir::AffineMap::getMultiDimIdentityMap(static_cast<unsigned>(rank), &ctx);
+    llvm::SmallVector<mlir::AffineMap> maps{
+        build_operand_map(source_s0, consumer_s0, transform0),
+        build_operand_map(source_s1, consumer_s1, transform1),
+        out_map};
+    llvm::SmallVector<mlir::utils::IteratorType> iterators(rank, mlir::utils::IteratorType::parallel);
 
-        auto loop = nested_builder.create<mlir::scf::ForOp>(loc, c0, out_dims[dim], c1, mlir::ValueRange{current_tensor});
-        mlir::OpBuilder body = mlir::OpBuilder::atBlockBegin(loop.getBody());
-        out_indices.push_back(loop.getInductionVar());
-        auto next_tensor = build_loops(body, dim + 1, loop.getRegionIterArgs()[0], out_indices);
-        out_indices.pop_back();
-        body.create<mlir::scf::YieldOp>(loc, next_tensor);
-        return loop.getResult(0);
-    };
-
-    llvm::SmallVector<mlir::Value> out_indices;
-    auto result = build_loops(b, 0, empty.getResult(), out_indices);
-    b.create<mlir::func::ReturnOp>(loc, result);
+    auto generic = b.create<mlir::linalg::GenericOp>(loc,
+                                                     ty_out,
+                                                     mlir::ValueRange{func.getArgument(0), func.getArgument(1)},
+                                                     mlir::ValueRange{empty},
+                                                     mlir::ArrayRef<mlir::AffineMap>(maps),
+                                                     mlir::ArrayRef<mlir::utils::IteratorType>(iterators));
+    {
+        auto& region = generic.getRegion();
+        region.getBlocks().clear();
+        auto* block = &region.emplaceBlock();
+        block->addArguments({elem_ty, elem_ty, elem_ty}, {loc, loc, loc});
+        mlir::OpBuilder body(block, block->begin());
+        mlir::Value res =
+            emit(body, loc, mlir::ValueRange{block->getArgument(0), block->getArgument(1)}, elem_ty, node);
+        body.create<mlir::linalg::YieldOp>(loc, res);
+    }
+    b.create<mlir::func::ReturnOp>(loc, generic.getResults());
     set_binary_eltwise_input_transform_attrs(module, input_transforms);
     return module;
 }
@@ -221,7 +233,7 @@ mlir::ModuleOp build_mlir_binary_eltwise_from_model(const std::shared_ptr<const 
                                                     mlir::MLIRContext& ctx,
                                                     Emitter&& emit) {
     ctx.loadDialect<mlir::func::FuncDialect, mlir::linalg::LinalgDialect, mlir::tensor::TensorDialect,
-                    mlir::arith::ArithDialect, mlir::math::MathDialect, mlir::scf::SCFDialect>();
+                    mlir::arith::ArithDialect, mlir::math::MathDialect>();
 
     std::shared_ptr<const NodeT> node;
     for (const auto& n : model->get_ordered_ops()) {

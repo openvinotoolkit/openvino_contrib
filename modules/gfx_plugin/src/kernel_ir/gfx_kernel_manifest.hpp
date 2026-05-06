@@ -64,6 +64,34 @@ enum class GfxKernelStageFamily : uint32_t {
     Convert = 18,
 };
 
+enum class GfxKernelDispatchGrid : uint32_t {
+    Unknown = 0,
+    Linear1D = 1,
+    Tiled2D = 2,
+    Tiled3D = 3,
+};
+
+inline const char* gfx_kernel_dispatch_grid_name(GfxKernelDispatchGrid grid) {
+    switch (grid) {
+        case GfxKernelDispatchGrid::Linear1D:
+            return "linear_1d";
+        case GfxKernelDispatchGrid::Tiled2D:
+            return "tiled_2d";
+        case GfxKernelDispatchGrid::Tiled3D:
+            return "tiled_3d";
+        case GfxKernelDispatchGrid::Unknown:
+        default:
+            return "unknown";
+    }
+}
+
+inline GfxKernelDispatchGrid gfx_kernel_dispatch_grid_from_name(std::string_view name) {
+    if (name == "linear_1d") return GfxKernelDispatchGrid::Linear1D;
+    if (name == "tiled_2d") return GfxKernelDispatchGrid::Tiled2D;
+    if (name == "tiled_3d") return GfxKernelDispatchGrid::Tiled3D;
+    return GfxKernelDispatchGrid::Unknown;
+}
+
 inline const char* gfx_kernel_backend_domain_name(GfxKernelBackendDomain domain) {
     switch (domain) {
         case GfxKernelBackendDomain::AppleMps:
@@ -204,14 +232,20 @@ struct GfxKernelExternalBufferAbiSpec {
     std::vector<GfxKernelBufferRole> roles;
 };
 
+struct GfxKernelDispatchPolicy {
+    bool valid = false;
+    GfxKernelDispatchGrid grid = GfxKernelDispatchGrid::Unknown;
+    uint32_t threads_per_threadgroup = 0;
+    bool precompiled_binary_required = false;
+};
+
 struct GfxKernelCustomManifest {
     bool valid = false;
     std::string kernel_family;
     uint32_t kernel_family_id = 0;
     std::string entry_point;
     GfxKernelExternalBufferAbiSpec external_buffer_abi;
-    uint32_t threads_per_threadgroup = 0;
-    bool precompiled_binary_required = false;
+    GfxKernelDispatchPolicy dispatch_policy;
 };
 
 struct GfxKernelStageManifest {
@@ -221,15 +255,10 @@ struct GfxKernelStageManifest {
     GfxKernelExecutionKind execution_kind = GfxKernelExecutionKind::Unknown;
     GfxKernelStorageKind storage = GfxKernelStorageKind::Unknown;
     std::string specialization_key;
+    std::vector<GfxKernelBufferRole> semantic_input_roles;
+    std::vector<GfxKernelBufferRole> semantic_output_roles;
     GfxKernelCustomManifest custom_kernel;
 };
-
-inline GfxKernelExternalBufferAbiSpec make_gfx_kernel_tail_outputs_abi() {
-    GfxKernelExternalBufferAbiSpec spec{};
-    spec.valid = true;
-    spec.tail_outputs = true;
-    return spec;
-}
 
 inline GfxKernelExternalBufferAbiSpec make_gfx_kernel_leading_io_params_abi(uint32_t input_count,
                                                                            uint32_t output_count) {
@@ -247,6 +276,27 @@ inline GfxKernelExternalBufferAbiSpec make_gfx_kernel_roles_abi(std::vector<GfxK
     return spec;
 }
 
+inline GfxKernelDispatchPolicy make_gfx_kernel_dispatch_policy(
+    GfxKernelDispatchGrid grid,
+    uint32_t threads_per_threadgroup,
+    bool precompiled_binary_required) {
+    GfxKernelDispatchPolicy policy{};
+    policy.valid = grid != GfxKernelDispatchGrid::Unknown &&
+                   threads_per_threadgroup != 0;
+    policy.grid = grid;
+    policy.threads_per_threadgroup = threads_per_threadgroup;
+    policy.precompiled_binary_required = precompiled_binary_required;
+    return policy;
+}
+
+inline GfxKernelDispatchPolicy make_gfx_kernel_linear_dispatch_policy(
+    uint32_t threads_per_threadgroup,
+    bool precompiled_binary_required) {
+    return make_gfx_kernel_dispatch_policy(GfxKernelDispatchGrid::Linear1D,
+                                           threads_per_threadgroup,
+                                           precompiled_binary_required);
+}
+
 inline bool is_gfx_kernel_output_role(GfxKernelBufferRole role) {
     return role == GfxKernelBufferRole::TensorOutput;
 }
@@ -255,16 +305,14 @@ inline GfxKernelCustomManifest make_gfx_custom_kernel_manifest(std::string kerne
                                                               uint32_t kernel_family_id,
                                                               std::string entry_point,
                                                               GfxKernelExternalBufferAbiSpec external_buffer_abi,
-                                                              uint32_t threads_per_threadgroup,
-                                                              bool precompiled_binary_required) {
+                                                              GfxKernelDispatchPolicy dispatch_policy) {
     GfxKernelCustomManifest manifest{};
     manifest.valid = true;
     manifest.kernel_family = std::move(kernel_family);
     manifest.kernel_family_id = kernel_family_id;
     manifest.entry_point = std::move(entry_point);
     manifest.external_buffer_abi = std::move(external_buffer_abi);
-    manifest.threads_per_threadgroup = threads_per_threadgroup;
-    manifest.precompiled_binary_required = precompiled_binary_required;
+    manifest.dispatch_policy = dispatch_policy;
     return manifest;
 }
 

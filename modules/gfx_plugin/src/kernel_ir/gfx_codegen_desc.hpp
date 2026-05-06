@@ -401,6 +401,10 @@ struct ScatterElementsUpdateCodegenDesc : BaseCodegenDesc {
     ov::element::Type index_type{ov::element::i64};
 };
 
+struct ScatterUpdateCodegenDesc : BaseCodegenDesc {
+    ov::element::Type index_type{ov::element::i64};
+};
+
 struct ScatterNDUpdateCodegenDesc : BaseCodegenDesc {
     static constexpr size_t kMaxDims = 8;
     uint32_t inner = 0;

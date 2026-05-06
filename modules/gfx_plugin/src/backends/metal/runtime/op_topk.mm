@@ -13,6 +13,7 @@
 #include "runtime/gfx_logger.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
+#include "mlir/gfx_apple_stage_pipeline.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/gfx_mpsrt_source_plan.hpp"
 #include "mlir/IR/BuiltinOps.h"
@@ -158,15 +159,15 @@ void MetalTopKOp::compile(MetalBufferManager* buffer_manager) {
                                                      /*has_batchnorm=*/false,
                                                      GfxStageRuntimeTraits{});
     if (topk_can_use_mpsrt(m_node, desc, plan, desc.element_type, desc.index_type)) {
-        auto lowering_plan = materialize_apple_mps_stage_manifest(module, plan, "TopK");
-        OPENVINO_ASSERT(set_apple_mps_topk_desc(lowering_plan, make_mpsrt_topk_desc(desc, m_axis)) &&
-                            materialize_apple_mps_typed_program(module, lowering_plan),
+        const auto materialized =
+            materialize_apple_mps_topk_program(module,
+                                               plan,
+                                               "TopK",
+                                               make_mpsrt_topk_desc(desc, m_axis));
+        OPENVINO_ASSERT(materialized.valid && materialized.typed_program_materialized,
                         "MetalTopKOp: failed to materialize MPSRT TopK stage for ",
                         name());
-        GfxMpsrtKernelSourceOptions source_options{};
-        source_options.external_arg_count = 3u;
-        source_options.external_output_arg_count = 2u;
-        auto source_plan = make_mpsrt_kernel_source_plan_from_module(module, std::move(source_options));
+        auto source_plan = make_mpsrt_kernel_source_plan_from_module(module);
         if (source_plan.valid()) {
             m_kernel = backend.compile(source_plan.source, &log);
             OPENVINO_ASSERT(m_kernel, "MetalTopKOp: failed to compile MPSRT TopK kernel: ", log);
@@ -183,7 +184,7 @@ void MetalTopKOp::compile(MetalBufferManager* buffer_manager) {
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
-    KernelSpec spec(m_node, 3u);
+    auto spec = make_kernel_spec_from_custom_kernel_abi(m_node, "topk_kernel");
     m_kernel = compile_msl_kernel(backend, spec, module, "topk_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalTopKOp: failed to compile kernel: ", log);
 

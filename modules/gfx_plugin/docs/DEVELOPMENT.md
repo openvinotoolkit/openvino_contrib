@@ -128,8 +128,8 @@ If the behavior depends on route or scheduling selection, also read:
 - `src/runtime/gfx_mpsrt_program.hpp`
 - `src/runtime/gfx_mpsrt_storage_bridge.hpp`
 - `src/kernel_ir/gfx_kernel_manifest.hpp`
+- `src/kernel_ir/gfx_custom_kernel_families.*`
 - `src/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp`
-- `src/runtime/gfx_msl_kernel_manifest.*`
 - `src/mlir/gfx_apple_stage_pipeline.*`
 - `src/mlir/gfx_mpsrt_dialect.*`
 - `src/mlir/gfx_mpsrt_ops.*`
@@ -151,6 +151,7 @@ The current planning path is no longer just backend-wide. It includes family-spe
 - explicit convolution dispatch attrs forwarded into MLIR lowering
 - Metal placement decisions between Apple MPS image or matrix primitives and Apple MSL buffer dispatch
 - manifest-backed execution-kind selection between vendor primitives and custom kernels
+- custom-kernel family classification, external-buffer ABI roles, semantic input/output roles, and dispatch policies from `src/kernel_ir/gfx_custom_kernel_families.*`
 - generated MPSRT runtime-ABI plans and storage bridges that must stay aligned with request-time binding and stage reconstruction
 - the typed `GfxMpsrtProgram` facade and generated `gfx_mpsrt_ops` materialization, which now sit between legacy module attrs and final runtime-ABI call-plan lowering
 - the Apple stage pipeline and typed `gfx.mpsrt` helper ops, which now mediate storage assignment and program materialization for Apple MPS routes
@@ -221,16 +222,18 @@ For `ShapeOf`, keep the runtime-materialized dims path aligned with the builder 
 
 For Metal kernel-dispatch work, inspect `src/backends/metal/runtime/metal_command_encoder.*` before adding new ad-hoc encoder setup code. The current runtime keeps one compute encoder per active command buffer, caches the last bound pipeline plus buffer table, and ends that encoder explicitly before blit/copy paths or command-buffer commit.
 For Metal Conv2D / MaxPool work, keep dilation handling and dispatch blocking coherent across `gfx_codegen_desc.hpp`, MLIR codegen, and native runtime ops. The current code shares the same dilation and output-block metadata between compile-time codegen and runtime dispatch sizing.
-For Metal placement or codegen work, also keep the MPSRT boundary coherent. The current code expects stage policy, MLIR attrs, `gfx_msl_kernel_manifest.*`, and `src/backends/metal/runtime/mpsrt/*` to agree on:
+For Metal placement or codegen work, also keep the MPSRT boundary coherent. The current code expects stage policy, MLIR attrs, `gfx_kernel_manifest.hpp`, `gfx_custom_kernel_families.*`, and `src/backends/metal/runtime/mpsrt/*` to agree on:
 - the selected placement domain (`apple_mps` vs `apple_msl`)
 - the storage kind (`image`, `matrix`, `buffer`)
 - the execution kind (`vendor_primitive` vs `custom_kernel`)
 - the stable stage record key
 - the external-buffer ABI roles for inputs, outputs, and runtime-parameter buffers
+- the dispatch grid, threadgroup size, and precompiled-binary requirement for custom MSL kernels
 
 If the change touches manifest-backed Metal lowering, also inspect:
 - `src/runtime/gfx_mpsrt_program.hpp`
 - `src/kernel_ir/gfx_kernel_manifest.hpp`
+- `src/kernel_ir/gfx_custom_kernel_families.*`
 - `src/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp`
 - `src/runtime/gfx_mpsrt_storage_bridge.hpp`
 - `src/mlir/gfx_apple_stage_pipeline.*`

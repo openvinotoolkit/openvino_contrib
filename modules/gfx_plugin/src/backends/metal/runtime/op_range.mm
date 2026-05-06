@@ -66,7 +66,7 @@ void MetalRangeOp::compile(MetalBufferManager* buffer_manager) {
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
-    KernelSpec spec(m_node, 4u);
+    auto spec = make_kernel_spec_from_custom_kernel_abi(m_node, "range_kernel");
     m_kernel = compile_msl_kernel(backend, spec, module, "range_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalRangeOp: failed to compile range kernel: ", log);
 

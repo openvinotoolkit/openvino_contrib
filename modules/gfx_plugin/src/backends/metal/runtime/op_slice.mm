@@ -140,7 +140,7 @@ void MetalSliceOp::compile(MetalBufferManager* buffer_manager) {
         return generate_msl_for_slice_generic(msl_desc, mod);
     };
 
-    KernelSpec spec(m_node, 8u);
+    auto spec = make_kernel_spec_from_custom_kernel_abi(m_node, "slice_kernel");
     m_kernel = compile_msl_kernel(backend, spec, module, "slice_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalSliceOp: failed to compile kernel: ", log);
 

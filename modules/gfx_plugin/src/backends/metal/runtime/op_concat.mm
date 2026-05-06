@@ -103,7 +103,7 @@ void MetalConcatOp::compile(MetalBufferManager* buffer_manager) {
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
-    KernelSpec spec(m_node, 3u);
+    auto spec = make_kernel_spec_from_custom_kernel_abi(m_node, "concat_kernel");
     m_kernel = compile_msl_kernel(backend, spec, module, "concat_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalConcatOp: failed to compile kernel: ", log);
     if (m_node && m_node->get_input_size() == 2) {
@@ -111,7 +111,13 @@ void MetalConcatOp::compile(MetalBufferManager* buffer_manager) {
         auto binary_generator = [msl_desc](mlir::ModuleOp mod) {
             return generate_msl_for_concat_binary(msl_desc, mod);
         };
-        m_binary_kernel = compile_msl_kernel(backend, module, "concat_binary_kernel", binary_generator, &log, 4u);
+        auto binary_spec = make_kernel_spec_from_custom_kernel_abi(m_node, "concat_binary_kernel");
+        m_binary_kernel = compile_msl_kernel(backend,
+                                             binary_spec,
+                                             module,
+                                             "concat_binary_kernel",
+                                             binary_generator,
+                                             &log);
         OPENVINO_ASSERT(m_binary_kernel, "MetalConcatOp: failed to compile binary kernel: ", log);
     }
 

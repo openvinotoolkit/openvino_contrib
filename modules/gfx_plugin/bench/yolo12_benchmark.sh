@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 
-MODEL_DEFAULT="/Users/anesterov/models/yolo12/ir/yolov12n.xml"
+MODEL_DEFAULT="${GFX_YOLO12_MODEL:-${HOME}/.cache/openvino-gfx/yolo12/ir/yolov12n.xml}"
 NITER_DEFAULT=200
 DEVICES_DEFAULT="CPU GFX"
 
@@ -31,9 +31,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-OV_BIN="/Users/anesterov/repos/openvino/bin/arm64/Release"
-OV_TBB="/Users/anesterov/repos/openvino/temp/Darwin_arm64/tbb/lib"
-export DYLD_LIBRARY_PATH="${OV_BIN}:${OV_TBB}:${DYLD_LIBRARY_PATH:-}"
+OV_BIN="${GFX_OPENVINO_BIN:-${PWD}/build-gfx-plugin/output/bin/arm64/Release}"
+if [[ -n "${GFX_OPENVINO_TBB:-}" ]]; then
+  export DYLD_LIBRARY_PATH="${OV_BIN}:${GFX_OPENVINO_TBB}:${DYLD_LIBRARY_PATH:-}"
+else
+  export DYLD_LIBRARY_PATH="${OV_BIN}:${DYLD_LIBRARY_PATH:-}"
+fi
 
 if [[ ! -x "${OV_BIN}/benchmark_app" ]]; then
   echo "benchmark_app not found at ${OV_BIN}/benchmark_app" >&2

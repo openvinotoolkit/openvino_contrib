@@ -84,6 +84,36 @@ public:
     double last_exec_duration_ms() const { return m_last_duration_ms; }
 
 protected:
+    struct MetalMslKernelSourcePlan {
+        KernelSource source;
+
+        bool valid() const {
+            return source.msl_generator || !source.msl_source.empty() || source.module;
+        }
+    };
+
+    MetalMslKernelSourcePlan make_msl_kernel_source_plan(mlir::ModuleOp module,
+                                                         const std::string& entry_point,
+                                                         std::string msl_source,
+                                                         uint32_t arg_count = 0);
+    MetalMslKernelSourcePlan make_msl_kernel_source_plan(
+        mlir::ModuleOp module,
+        const std::string& entry_point,
+        std::function<std::string(mlir::ModuleOp)> msl_generator,
+        uint32_t arg_count = 0);
+    MetalMslKernelSourcePlan make_msl_kernel_source_plan(const KernelSpec& spec,
+                                                         mlir::ModuleOp module,
+                                                         const std::string& entry_point,
+                                                         std::string msl_source);
+    MetalMslKernelSourcePlan make_msl_kernel_source_plan(
+        const KernelSpec& spec,
+        mlir::ModuleOp module,
+        const std::string& entry_point,
+        std::function<std::string(mlir::ModuleOp)> msl_generator);
+
+    std::shared_ptr<ICompiledKernel> compile_msl_kernel_source_plan(MetalCodegenBackend& backend,
+                                                                    MetalMslKernelSourcePlan plan,
+                                                                    std::string* log = nullptr);
     std::shared_ptr<ICompiledKernel> compile_msl_kernel(MetalCodegenBackend& backend,
                                                         mlir::ModuleOp module,
                                                         const std::string& entry_point,

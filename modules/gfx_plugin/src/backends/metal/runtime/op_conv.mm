@@ -259,10 +259,7 @@ void MetalConvOp::compile(MetalBufferManager* buffer_manager) {
                                                                    m_has_activation,
                                                                    m_activation);
         if (lowering == GfxConvMpsrtLoweringKind::MpsConv2D) {
-            GfxMpsrtKernelSourceOptions source_options{};
-            source_options.external_arg_count = 9u;
-            source_options.external_output_arg_count = 1u;
-            auto source_plan = make_mpsrt_kernel_source_plan_from_module(module, std::move(source_options));
+            auto source_plan = make_mpsrt_kernel_source_plan_from_module(module);
             OPENVINO_ASSERT(source_plan.valid(),
                             "MetalConvOp: failed to create MPSRT source plan for ",
                             name());
@@ -278,7 +275,7 @@ void MetalConvOp::compile(MetalBufferManager* buffer_manager) {
     auto msl_desc = desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
-    KernelSpec spec(m_node, 9u);
+    auto spec = make_kernel_spec_from_custom_kernel_abi(m_node, "conv2d_kernel");
     m_kernel = compile_msl_kernel(backend, spec, module, "conv2d_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalConvOp: failed to compile conv2d kernel: ", log);
     MetalOp::compile(buffer_manager);

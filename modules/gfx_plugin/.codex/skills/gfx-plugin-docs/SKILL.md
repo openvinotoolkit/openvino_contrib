@@ -54,6 +54,7 @@ Additional operational docs:
    - output-alias routing or source-node-aware output resolution for fused stages
    - command-encoder or binding-reuse behavior that changes profiling counters or dispatch setup cost
    - MPSRT runtime-model, kernel-family-manifest, or external-buffer-ABI behavior on Metal
+   - custom-kernel family classification, semantic input/output roles, or dispatch-grid policy
    - generated runtime-ABI call-plan or storage-bridge behavior on Metal
    - typed `GfxMpsrtProgram` / generated `gfx_mpsrt_ops` behavior or cleanup of stale legacy MPSRT attrs
    - Apple stage-pipeline or typed `gfx.mpsrt` dialect behavior

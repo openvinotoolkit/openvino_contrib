@@ -59,7 +59,7 @@ void MetalShapeOfOp::compile(MetalBufferManager* buffer_manager) {
     auto msl_desc = m_desc;
     auto msl_generator = [msl_desc](mlir::ModuleOp mod) { return generate_msl_from_mlir(mod, msl_desc); };
 
-    KernelSpec spec(m_node, 4u);
+    auto spec = make_kernel_spec_from_custom_kernel_abi(m_node, "shapeof_kernel");
     m_kernel = compile_msl_kernel(backend, spec, module, "shapeof_kernel", msl_generator, &log);
     OPENVINO_ASSERT(m_kernel, "MetalShapeOfOp: failed to compile kernel: ", log);
 

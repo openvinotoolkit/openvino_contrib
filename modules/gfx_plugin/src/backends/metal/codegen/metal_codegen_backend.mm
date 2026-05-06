@@ -1187,6 +1187,15 @@ bool mpsrt_model_should_use_context_execution(const std::shared_ptr<const metal:
     return !has_msl_dispatch || model->stages.size() > 1;
 }
 
+bool mpsrt_external_abi_matches_binding_plan(const metal::mpsrt::MpsrtModel& model,
+                                             const KernelBindingPlan& binding_plan) {
+    if (model.external_values.size() == binding_plan.arg_count()) {
+        return true;
+    }
+    return binding_plan.arg_count() == model.input_values.size() &&
+           model.input_values.size() == model.output_values.size();
+}
+
 bool build_mpsrt_bindings_from_prepared_state(const metal::mpsrt::MpsrtModel& model,
                                               const KernelBindingPlan& binding_plan,
                                               MetalDeviceHandle device,
@@ -1580,7 +1589,12 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
         hooks->on_counter("prepared_binding_cache_hit_count", 1);
     }
 
-    if (mpsrt_model_should_use_context_execution(m_mpsrt_model, m_mpsrt_msl_source)) {
+    const bool mpsrt_external_abi_matches_bindings =
+        m_mpsrt_model && mpsrt_external_abi_matches_binding_plan(*m_mpsrt_model, *binding_plan());
+    const bool mpsrt_has_msl_dispatch = mpsrt_model_has_msl_dispatch(m_mpsrt_model);
+    const bool mpsrt_context_external_abi_ready = !mpsrt_has_msl_dispatch || mpsrt_external_abi_matches_bindings;
+    if (mpsrt_context_external_abi_ready &&
+        mpsrt_model_should_use_context_execution(m_mpsrt_model, m_mpsrt_msl_source)) {
         std::string mpsrt_error;
         std::vector<id<MTLBuffer>> transient_buffers;
         std::vector<id<MTLTexture>> transient_textures;
@@ -1651,7 +1665,8 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
         return;
     }
 
-    if (m_mpsrt_model && m_mpsrt_model->stages.size() == 1 &&
+    if (mpsrt_external_abi_matches_bindings &&
+        m_mpsrt_model && m_mpsrt_model->stages.size() == 1 &&
         m_mpsrt_model->stages.front().kind == GfxMpsrtStageKind::MSLDispatch) {
         OPENVINO_ASSERT(m_pipeline, "MetalCompiledKernel: MSL MPSRT pipeline is null");
         const auto prepared_mpsrt =

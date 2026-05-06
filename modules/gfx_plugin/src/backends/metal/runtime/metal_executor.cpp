@@ -18,6 +18,7 @@
 #include "mlir/gfx_mpsrt_const_tensor_sources.hpp"
 #include "mlir/gfx_mpsrt_conv_metadata.hpp"
 #include "mlir/gfx_mpsrt_source_plan.hpp"
+#include "mlir/mlir_support.hpp"
 #include "mlir/msl_codegen.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/validation_util.hpp"
@@ -372,67 +373,6 @@ std::string generate_bias_broadcast_add_msl(const std::shared_ptr<const ov::Node
     ss << "  if (gid >= " << total << "u) return;\n";
     ss << "  uint c = (gid / " << hw << "u) % " << channels << "u;\n";
     ss << "  C[gid] = A[gid] + B[c];\n";
-    ss << "}\n";
-    return ss.str();
-}
-
-std::string generate_scatter_update_msl(const ov::element::Type& data_type,
-                                        const ov::element::Type& index_type) {
-    const std::string scalar_t = msl_type_from_element(data_type == ov::element::dynamic ? ov::element::f32 : data_type);
-    const std::string index_t = msl_type_from_element(index_type == ov::element::i64 ? ov::element::i64 : ov::element::i32);
-    std::ostringstream ss;
-    ss << "#include <metal_stdlib>\nusing namespace metal;\n";
-    ss << "using scalar_t = " << scalar_t << ";\n";
-    ss << "using index_t = " << index_t << ";\n";
-    ss << "struct ScatterUpdateParams {\n";
-    ss << "  uint data_rank;\n";
-    ss << "  uint idx_rank;\n";
-    ss << "  uint update_rank;\n";
-    ss << "  uint axis;\n";
-    ss << "  uint total_data;\n";
-    ss << "  uint idx_total;\n";
-    ss << "  uint data_dims[8];\n";
-    ss << "  uint data_strides[8];\n";
-    ss << "  uint idx_dims[8];\n";
-    ss << "  uint idx_strides[8];\n";
-    ss << "  uint update_strides[16];\n";
-    ss << "};\n";
-    ss << "kernel void scatter_update_kernel(\n";
-    ss << "  device const scalar_t* data [[buffer(0)]],\n";
-    ss << "  device const index_t* indices [[buffer(1)]],\n";
-    ss << "  device const scalar_t* updates [[buffer(2)]],\n";
-    ss << "  device scalar_t* out [[buffer(3)]],\n";
-    ss << "  constant ScatterUpdateParams& p [[buffer(4)]],\n";
-    ss << "  uint gid [[thread_position_in_grid]]) {\n";
-    ss << "  if (gid >= p.total_data) return;\n";
-    ss << "  uint coord[8];\n";
-    ss << "  uint rem = gid;\n";
-    ss << "  for (uint d = 0; d < p.data_rank; ++d) {\n";
-    ss << "    uint stride = p.data_strides[d];\n";
-    ss << "    coord[d] = stride == 0 ? 0 : rem / stride;\n";
-    ss << "    rem = stride == 0 ? 0 : rem - coord[d] * stride;\n";
-    ss << "  }\n";
-    ss << "  scalar_t value = data[gid];\n";
-    ss << "  for (uint linear = 0; linear < p.idx_total; ++linear) {\n";
-    ss << "    uint idx_coord[8];\n";
-    ss << "    uint idx_rem = linear;\n";
-    ss << "    for (uint d = 0; d < p.idx_rank; ++d) {\n";
-    ss << "      uint stride = p.idx_strides[d];\n";
-    ss << "      idx_coord[d] = stride == 0 ? 0 : idx_rem / stride;\n";
-    ss << "      idx_rem = stride == 0 ? 0 : idx_rem - idx_coord[d] * stride;\n";
-    ss << "    }\n";
-    ss << "    long raw = static_cast<long>(indices[linear]);\n";
-    ss << "    long axis_dim = static_cast<long>(p.data_dims[p.axis]);\n";
-    ss << "    long normalized = raw < 0 ? raw + axis_dim : raw;\n";
-    ss << "    if (normalized != static_cast<long>(coord[p.axis])) continue;\n";
-    ss << "    uint upd_off = 0;\n";
-    ss << "    uint upd_dim = 0;\n";
-    ss << "    for (uint d = 0; d < p.axis; ++d) upd_off += coord[d] * p.update_strides[upd_dim++];\n";
-    ss << "    for (uint d = 0; d < p.idx_rank; ++d) upd_off += idx_coord[d] * p.update_strides[upd_dim++];\n";
-    ss << "    for (uint d = p.axis + 1; d < p.data_rank; ++d) upd_off += coord[d] * p.update_strides[upd_dim++];\n";
-    ss << "    value = updates[upd_off];\n";
-    ss << "  }\n";
-    ss << "  out[gid] = value;\n";
     ss << "}\n";
     return ss.str();
 }
@@ -1622,12 +1562,10 @@ void attach_msl_generator(const std::shared_ptr<const ov::Node>& node,
     }
 
     if (auto su = std::dynamic_pointer_cast<const ov::op::v3::ScatterUpdate>(node)) {
-        src.entry_point = "scatter_update_kernel";
-        src.signature.arg_count = 5;
-        src.msl_generator = [data_type = su->get_output_element_type(0),
-                             index_type = su->get_input_element_type(1)](mlir::ModuleOp) {
-            return generate_scatter_update_msl(data_type, index_type);
-        };
+        ScatterUpdateCodegenDesc d{};
+        d.element_type = su->get_output_element_type(0);
+        d.index_type = su->get_input_element_type(1);
+        set_desc(d, "scatter_update_kernel");
         if (src.module) {
             const std::vector<int32_t> kinds{1, 1, 1, 1, 1};
             const std::vector<int32_t> arg_idx{0, 1, 2, 4, 3};
@@ -1873,11 +1811,7 @@ std::shared_ptr<ICompiledKernel> MetalStage::compile_kernel(const KernelSource& 
                                                                    m_activation);
         if (lowering == GfxConvMpsrtLoweringKind::MpsConv2D ||
             lowering == GfxConvMpsrtLoweringKind::MpsGroupConv2D) {
-            GfxMpsrtKernelSourceOptions source_options{};
-            source_options.external_arg_count = src.signature.arg_count != 0 ? src.signature.arg_count : 9u;
-            source_options.external_output_arg_count =
-                src.signature.output_arg_count != 0 ? src.signature.output_arg_count : 1u;
-            auto source_plan = make_mpsrt_kernel_source_plan_from_module(src.module, std::move(source_options));
+            auto source_plan = make_mpsrt_kernel_source_plan_from_module(src.module);
             OPENVINO_ASSERT(source_plan.valid(),
                             "MetalStage: failed to create MPSRT source plan for ",
                             stage_type);
@@ -1888,13 +1822,16 @@ std::shared_ptr<ICompiledKernel> MetalStage::compile_kernel(const KernelSource& 
         }
     }
     if (src.module) {
-        configure_msl_kernel_source_for_node(src,
-                                             m_node,
-                                             m_buffer_manager,
-                                             m_type,
-                                             m_has_bias,
-                                             m_has_activation,
-                                             m_has_bn);
+        auto source_plan = configure_msl_kernel_source_plan_for_node(src,
+                                                                     m_node,
+                                                                     m_buffer_manager,
+                                                                     m_type,
+                                                                     m_has_bias,
+                                                                     m_has_activation,
+                                                                     m_has_bn);
+        if (source_plan.valid()) {
+            src = std::move(source_plan.source);
+        }
     }
     OPENVINO_ASSERT(src.msl_generator || !src.msl_source.empty(),
                     "MetalStage: missing MSL source/generator for op ",
@@ -1903,12 +1840,19 @@ std::shared_ptr<ICompiledKernel> MetalStage::compile_kernel(const KernelSource& 
     return backend.compile(src, log);
 }
 
-void MetalStage::configure_runtime_matmul_kernel_source(KernelSource& source,
-                                                        const MatMulCodegenDesc& desc) const {
-    source.entry_point = "matmul_kernel";
-    source.module = {};
-    source.msl_source = generate_msl_from_mlir({}, desc);
-    source.msl_generator = {};
+KernelSource MetalStage::make_runtime_matmul_kernel_source(const MatMulCodegenDesc& desc,
+                                                           const ov::Shape& shape_a,
+                                                           const ov::Shape& shape_b) const {
+    auto source_plan = lower_matmul_node_to_metal_kernel_source(gfx_mlir_context(),
+                                                                m_buffer_manager,
+                                                                m_node,
+                                                                desc,
+                                                                shape_a,
+                                                                shape_b);
+    OPENVINO_ASSERT(source_plan.valid(),
+                    "MetalStage: failed to create runtime MatMul source plan for ",
+                    m_name);
+    return std::move(source_plan.source);
 }
 
 KernelExecutionHooks* MetalStage::prepare_profiling(ProfileState& state,

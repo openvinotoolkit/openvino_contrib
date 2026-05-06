@@ -110,15 +110,20 @@ inline bool gfx_mpsrt_tensor_desc_is_const(const GfxMpsrtTensorDesc& desc) {
     return (desc.flags & GfxMpsrtTensorFlagConst) != 0;
 }
 
-inline void gfx_mpsrt_append_image_storage_bridge(std::vector<GfxMpsrtStorageBridgeDesc>& bridges,
-                                                  GfxMpsrtValue value,
-                                                  const GfxMpsrtTensorDesc& tensor,
-                                                  GfxMpsrtStorageBridgeDirection direction) {
+inline void gfx_mpsrt_append_external_storage_bridge(std::vector<GfxMpsrtStorageBridgeDesc>& bridges,
+                                                     GfxMpsrtValue value,
+                                                     const GfxMpsrtTensorDesc& tensor,
+                                                     bool external_output) {
     if (gfx_mpsrt_tensor_desc_is_const(tensor)) {
         return;
     }
+    const auto storage = static_cast<GfxMpsrtStorage>(tensor.storage);
+    const auto direction = gfx_mpsrt_external_bridge_direction_for_storage(storage, external_output);
+    if (direction == GfxMpsrtStorageBridgeDirection::Unknown) {
+        return;
+    }
     GfxMpsrtStorageBridgeDesc bridge{};
-    if (!gfx_mpsrt_make_image_bridge_desc(value, gfx_mpsrt_to_abi_desc(tensor), direction, bridge)) {
+    if (!gfx_mpsrt_make_storage_bridge_desc(value, gfx_mpsrt_to_abi_desc(tensor), direction, bridge)) {
         return;
     }
     const auto already_recorded = std::any_of(bridges.begin(), bridges.end(), [&](const auto& known) {
@@ -241,10 +246,10 @@ inline GfxMpsrtBuilderPlan gfx_mpsrt_make_multi_stage_builder_plan(
     for (const auto& input : inputs) {
         const GfxMpsrtValue value = next_value++;
         plan.input_values.push_back(value);
-        gfx_mpsrt_append_image_storage_bridge(plan.storage_bridges,
-                                              value,
-                                              input,
-                                              GfxMpsrtStorageBridgeDirection::BufferToImage);
+        gfx_mpsrt_append_external_storage_bridge(plan.storage_bridges,
+                                                 value,
+                                                 input,
+                                                 /*external_output=*/false);
         GfxMpsrtBuilderRecord add{};
         add.kind = GfxMpsrtBuilderRecordKind::AddTensor;
         add.symbol = "ovgfx_mpsrt_add_tensor";
@@ -272,10 +277,10 @@ inline GfxMpsrtBuilderPlan gfx_mpsrt_make_multi_stage_builder_plan(
                 plan.output_values.end()) {
                 continue;
             }
-            gfx_mpsrt_append_image_storage_bridge(plan.storage_bridges,
-                                                  spec.outputs[i],
-                                                  spec.output_descs[i],
-                                                  GfxMpsrtStorageBridgeDirection::ImageToBuffer);
+            gfx_mpsrt_append_external_storage_bridge(plan.storage_bridges,
+                                                     spec.outputs[i],
+                                                     spec.output_descs[i],
+                                                     /*external_output=*/true);
         }
     }
 
@@ -315,10 +320,10 @@ inline GfxMpsrtBuilderPlan gfx_mpsrt_make_builder_plan(const GfxMpsrtStageDesc& 
     for (const auto& input : inputs) {
         const GfxMpsrtValue value = next_value++;
         plan.input_values.push_back(value);
-        gfx_mpsrt_append_image_storage_bridge(plan.storage_bridges,
-                                              value,
-                                              input,
-                                              GfxMpsrtStorageBridgeDirection::BufferToImage);
+        gfx_mpsrt_append_external_storage_bridge(plan.storage_bridges,
+                                                 value,
+                                                 input,
+                                                 /*external_output=*/false);
         GfxMpsrtBuilderRecord add{};
         add.kind = GfxMpsrtBuilderRecordKind::AddTensor;
         add.symbol = "ovgfx_mpsrt_add_tensor";
@@ -334,10 +339,10 @@ inline GfxMpsrtBuilderPlan gfx_mpsrt_make_builder_plan(const GfxMpsrtStageDesc& 
         const GfxMpsrtValue value = next_value++;
         plan.output_values.push_back(value);
         stage_outputs.push_back(value);
-        gfx_mpsrt_append_image_storage_bridge(plan.storage_bridges,
-                                              value,
-                                              outputs[i],
-                                              GfxMpsrtStorageBridgeDirection::ImageToBuffer);
+        gfx_mpsrt_append_external_storage_bridge(plan.storage_bridges,
+                                                 value,
+                                                 outputs[i],
+                                                 /*external_output=*/true);
     }
     auto encode = gfx_mpsrt_make_encode_stage_record(stage,
                                                      stage_record_key,
