@@ -166,6 +166,8 @@ set(GFX_RUNTIME_METAL_MSL_SOURCES
     ${_gfx_src_dir}/mlir/interpolate_codegen.cpp
     ${_gfx_src_dir}/mlir/matmul_codegen.cpp
     ${_gfx_src_dir}/mlir/msl_codegen.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_attention.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_compressed_matmul.cpp
     ${_gfx_src_dir}/mlir/pad_codegen.cpp
     ${_gfx_src_dir}/mlir/pool_avg_codegen.cpp
     ${_gfx_src_dir}/mlir/pool_max_codegen.cpp
@@ -201,39 +203,6 @@ set(GFX_RUNTIME_METAL_SOURCES
     ${_gfx_src_dir}/backends/metal/codegen/metal_codegen_backend.mm
     ${_gfx_src_dir}/backends/metal/runtime/dtype.cpp
     ${_gfx_src_dir}/backends/metal/runtime/metal_memory.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_activations.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_batchnorm.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_broadcast.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_concat.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_conv.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_conv3d.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_convert.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_depth_to_space.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_elementwise.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_factory.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_gather.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_gather_elements.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_gathernd.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_group_conv.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_interpolate.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_matmul.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_pad.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_pooling.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_range.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_reduce.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_reshape.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_reverse.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_scatter_elements_update.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_scatter_nd_update.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_select.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_shapeof.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_slice.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_softmax.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_space_to_depth.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_split.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_tile.mm
-    ${_gfx_src_dir}/backends/metal/runtime/op_topk.mm
     ${_gfx_src_dir}/backends/metal/runtime/op_support.cpp
     ${_gfx_src_dir}/backends/metal/runtime/memory/allocator.mm
     ${_gfx_src_dir}/backends/metal/runtime/memory/allocator_core.mm
@@ -254,40 +223,6 @@ set(GFX_RUNTIME_METAL_HEADERS
     ${_gfx_src_dir}/backends/metal/runtime/dtype.hpp
     ${_gfx_src_dir}/backends/metal/runtime/logger.hpp
     ${_gfx_src_dir}/backends/metal/runtime/metal_memory.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_activations.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_batchnorm.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_broadcast.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_concat.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_conv.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_conv3d.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_convert.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_depth_to_space.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_elementwise.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_factory.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_gather.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_gather_elements.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_gathernd.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_group_conv.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_interpolate.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_kinds.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_matmul.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_pad.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_pooling.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_range.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_reduce.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_reshape.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_reverse.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_scatter_elements_update.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_scatter_nd_update.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_select.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_shapeof.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_slice.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_softmax.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_space_to_depth.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_split.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_tile.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/op_topk.hpp
     ${_gfx_src_dir}/backends/metal/runtime/op_utils.hpp
     ${_gfx_src_dir}/backends/metal/runtime/memory/allocator.hpp
     ${_gfx_src_dir}/backends/metal/runtime/memory/allocator_core.hpp

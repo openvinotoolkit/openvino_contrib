@@ -18,6 +18,7 @@ enum class GfxKernelBufferRole : uint32_t {
     TensorOutput = 2,
     RuntimeParams = 3,
     ConstTensor = 4,
+    ScalarParam = 5,
 };
 
 enum class GfxKernelBackendDomain : uint32_t {
@@ -226,7 +227,6 @@ inline GfxKernelStageFamily gfx_kernel_stage_family_from_name(std::string_view n
 
 struct GfxKernelExternalBufferAbiSpec {
     bool valid = false;
-    bool tail_outputs = false;
     uint32_t leading_input_count = 0;
     uint32_t leading_output_count = 0;
     std::vector<GfxKernelBufferRole> roles;
@@ -299,6 +299,24 @@ inline GfxKernelDispatchPolicy make_gfx_kernel_linear_dispatch_policy(
 
 inline bool is_gfx_kernel_output_role(GfxKernelBufferRole role) {
     return role == GfxKernelBufferRole::TensorOutput;
+}
+
+inline bool is_gfx_kernel_scalar_role(GfxKernelBufferRole role) {
+    return role == GfxKernelBufferRole::ScalarParam;
+}
+
+inline bool is_gfx_kernel_buffer_role(GfxKernelBufferRole role) {
+    switch (role) {
+        case GfxKernelBufferRole::TensorInput:
+        case GfxKernelBufferRole::TensorOutput:
+        case GfxKernelBufferRole::RuntimeParams:
+        case GfxKernelBufferRole::ConstTensor:
+            return true;
+        case GfxKernelBufferRole::ScalarParam:
+        case GfxKernelBufferRole::Unknown:
+        default:
+            return false;
+    }
 }
 
 inline GfxKernelCustomManifest make_gfx_custom_kernel_manifest(std::string kernel_family,

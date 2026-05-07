@@ -96,6 +96,7 @@ enum class GfxAppleStagePipelinePassKind {
     VendorDescriptor,
     StageManifest,
     RuntimeAbi,
+    RuntimeAbiCallPlan,
 };
 
 const char* gfx_apple_stage_pipeline_pass_name(GfxAppleStagePipelinePassKind kind);
@@ -112,6 +113,8 @@ std::unique_ptr<mlir::Pass> createGfxAppleFusionPass(
 std::unique_ptr<mlir::Pass> createGfxAppleVendorDescriptorPass(
     const GfxAppleStagePipelineOptions& options);
 std::unique_ptr<mlir::Pass> createGfxAppleStageManifestPass(
+    const GfxAppleStagePipelineOptions& options);
+std::unique_ptr<mlir::Pass> createGfxAppleRuntimeAbiPass(
     const GfxAppleStagePipelineOptions& options);
 
 GfxAppleStagePipelineResult run_gfx_apple_stage_pipeline(

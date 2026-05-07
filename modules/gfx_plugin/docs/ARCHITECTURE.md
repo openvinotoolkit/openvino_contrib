@@ -13,7 +13,7 @@ This document describes the current architecture implemented in `modules/gfx_plu
 - `src/runtime/`: backend-neutral runtime interfaces and helpers
 - `src/runtime/gfx_mpsrt_*`: Apple MPS/MSL ABI, stage-plan, builder-plan, program, storage-bridge, and kernel-manifest helpers
 - `src/kernel_ir/gfx_kernel_manifest.hpp`: backend-neutral manifest for stage family, execution kind, storage, and custom-kernel ABI
-- `src/mlir/`: MLIR support probing, Apple stage-pipeline lowering, typed MPSRT dialect/materialization, and codegen helpers
+- `src/mlir/`: MLIR support probing, Apple stage-pipeline lowering, typed MPSRT dialect/materialization, Metal MSL source/binding-plan helpers, and shared codegen helpers
 - `src/backends/metal/`: Metal-specific plugin, runtime, memory, profiling, and codegen pieces
 - `src/backends/vulkan/`: Vulkan-specific plugin, runtime, profiling, and codegen pieces
 - `src/transforms/`: graph rewrites and fusion logic
@@ -136,6 +136,7 @@ Recent MLIR-specific changes reflected in the current code:
 - the backend-aware transform pipeline can fuse the common LLaMA rotate-half arithmetic pattern into native `RoPE` before stage compilation on Metal
 - the backend-aware transform pipeline can also fuse selected LLM `ScaledDotProductAttention` masking graphs into `GfxSDPAWithCausalMask`, including peeling some broadcast-expanded GQA K/V views back to their compact tensors
 - the backend-aware transform pipeline can regroup compatible compressed `MatMul` nodes that share one data input into a fused horizontal `MatMul` plus `VariadicSplit`
+- Metal MSL source planning now includes dedicated compressed `MatMul` and SDPA source-plan helpers and uses runtime binding plans so generated modules carry tensor, output, scalar, runtime-parameter, and const-tensor roles explicitly
 - `ShapeOf` has a dedicated runtime-materialized dims path, while `TopK` and unary codegen now respect more of the concrete output/index typing rules from the original node
 - Slice lowering now prefers `tensor.extract_slice`, while slice metadata extraction still accepts both `tensor.extract_slice` and the older `linalg.generic` form
 - shape and data-movement lowering is now more permissive for dynamic shapes in paths such as `ShapeOf`, `Concat`, `Broadcast`, `Select`, `StridedSlice`, and `Range`
@@ -184,7 +185,7 @@ When profiling is disabled, these paths stay out of the fast path.
 ## Metal Backend
 `src/backends/metal/` contains:
 - `plugin/`: backend state creation, infer request, remote context, remote tensor
-- `runtime/`: stage implementations, memory allocators, executor, profiler
+- `runtime/`: request-time execution, memory allocators, MPSRT runtime-model execution, executor, profiler
 - `codegen/`: Metal shader compilation helpers
 
 Direct Metal API usage lives in Objective-C++ files (`.mm`).
@@ -222,7 +223,8 @@ Convolution follows the same direction on the metadata side:
 - Apple MPS convolution/group-convolution stages now serialize explicit `GfxMpsrtConv2DAbiDesc` stride, dilation, pad, and grouping metadata
 - the custom Metal Conv2D kernel family is also represented through the same manifest path, so legacy MSL `conv2d_kernel` dispatch still shares the common kernel-family and ABI contract
 When those Apple MPS image-backed stages connect to public buffer inputs or outputs, the runtime model carries storage-bridge descriptors and the request path materializes the needed bridge resources explicitly rather than assuming one storage class end-to-end.
-The current Metal executor also contains runtime-specialized codegen paths for dynamically shaped `Softmax`, `Select`, `ScatterUpdate`, `RMS`, `RoPE`, binary `Concat`, rank-4 `ScaledDotProductAttention`, fused causal-mask `ScaledDotProductAttention`, and more permissive slice handling, including negative-step `StridedSlice`.
+Metal custom MSL source generation is centralized in MLIR source-plan helpers and `MlirStage` binding-plan annotation. That path covers dynamically shaped or metadata-heavy kernels such as `Softmax`, `Select`, `ScatterUpdate`, `RMS`, `RoPE`, binary `Concat`, rank-4 `ScaledDotProductAttention`, fused causal-mask `ScaledDotProductAttention`, compressed `MatMul`, and slice handling including negative-step `StridedSlice`.
+`GfxMslRuntimeBindingPlan` converts each manifest role order into the module/runtime operand metadata used by request-time binding. For direct MSL dispatch inside MPSRT, the runtime model must carry materialized `kernel_buffer_order`; request execution rejects an MSL dispatch stage when that order is absent.
 For dynamic-shape `MatMul`, the current MLIR stage path may also pack a constant RHS from `f32` to `f16` before wrapping it as an immutable const buffer. Compile profiling counters track the original and packed byte sizes for that optimization.
 The backend-aware transform pipeline is also important for Metal now: compressed `MatMul` decompression subgraphs can be marked as decompression and protected from generic folding so later stage compilation can still recognize weight-only compressed patterns.
 That same transform pipeline can also collapse supported LLaMA rotate-half arithmetic into native `RoPE`, letting Metal compile one backend kernel instead of preserving the original Multiply/Add subgraph.

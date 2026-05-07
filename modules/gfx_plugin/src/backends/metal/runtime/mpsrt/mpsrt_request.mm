@@ -710,17 +710,11 @@ bool MpsrtRequest::build_msl_stage_buffers(const MpsrtRuntimeStage& stage,
     if (stage.kind != GfxMpsrtStageKind::MSLDispatch) {
         return fail(error, "GFX MPSRT: cannot bind buffers for non-MSL stage");
     }
-    std::vector<GfxMpsrtValue> buffer_order = stage.kernel_buffer_order;
+    const auto& buffer_order = stage.kernel_buffer_order;
     if (buffer_order.empty()) {
-        if (stage.msl_dispatch_desc.input_count != stage.inputs.size()) {
-            return fail(error, "GFX MPSRT: MSL stage input count metadata mismatch");
-        }
-        if (stage.msl_dispatch_desc.output_count != stage.outputs.size()) {
-            return fail(error, "GFX MPSRT: MSL stage output count metadata mismatch");
-        }
-        buffer_order = stage.inputs;
-        buffer_order.insert(buffer_order.end(), stage.outputs.begin(), stage.outputs.end());
-    } else if (stage.msl_dispatch_desc.input_count + stage.msl_dispatch_desc.output_count != buffer_order.size()) {
+        return fail(error, "GFX MPSRT: MSL stage kernel buffer order is not materialized");
+    }
+    if (stage.msl_dispatch_desc.input_count + stage.msl_dispatch_desc.output_count != buffer_order.size()) {
         return fail(error, "GFX MPSRT: MSL stage kernel buffer order metadata mismatch");
     }
 

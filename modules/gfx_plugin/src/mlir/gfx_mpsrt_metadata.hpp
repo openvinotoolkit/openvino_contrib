@@ -293,8 +293,6 @@ inline void gfx_mpsrt_set_stage_manifest_attrs(mlir::Operation* module,
         return;
     }
     module->setAttr(prefix + ".kernel.external_buffer_abi.valid", builder.getBoolAttr(true));
-    module->setAttr(prefix + ".kernel.external_buffer_abi.tail_outputs",
-                    builder.getBoolAttr(abi.tail_outputs));
     module->setAttr(prefix + ".kernel.external_buffer_abi.leading_input_count",
                     builder.getI32IntegerAttr(static_cast<int32_t>(abi.leading_input_count)));
     module->setAttr(prefix + ".kernel.external_buffer_abi.leading_output_count",
@@ -389,9 +387,6 @@ inline bool gfx_mpsrt_read_stage_manifest_attrs(mlir::Operation* module,
     if (abi_valid) {
         auto& abi = custom.external_buffer_abi;
         abi.valid = true;
-        (void)gfx_mpsrt_read_bool_attr(module,
-                                       prefix + ".kernel.external_buffer_abi.tail_outputs",
-                                       abi.tail_outputs);
         (void)gfx_mpsrt_read_i32_attr(module,
                                       prefix + ".kernel.external_buffer_abi.leading_input_count",
                                       abi.leading_input_count);
@@ -1041,7 +1036,6 @@ inline void gfx_mpsrt_set_stage_desc_attrs(mlir::Operation* module,
     }
     module->setAttr(prefix + ".uses_vendor_primitive", builder.getBoolAttr(stage.uses_vendor_primitive));
     module->setAttr(prefix + ".uses_custom_kernel", builder.getBoolAttr(stage.uses_custom_kernel));
-    gfx_mpsrt_set_stage_manifest_attrs(module, prefix + ".stage_manifest", stage.stage_manifest);
     if (stage.kind == GfxMpsrtStageKind::MPSConv2D ||
         stage.kind == GfxMpsrtStageKind::MPSGroupConv2D) {
         gfx_mpsrt_set_conv2d_desc_attrs(module, prefix + ".conv2d", stage.conv2d_desc);
@@ -1070,16 +1064,11 @@ inline bool gfx_mpsrt_read_stage_desc_attrs(mlir::Operation* module,
         return false;
     }
 
-    const bool has_stage_manifest =
-        gfx_mpsrt_read_stage_manifest_attrs(module, prefix + ".stage_manifest", stage.stage_manifest);
     GfxKernelStageManifest canonical_manifest{};
-    const bool has_canonical_stage_manifest =
-        gfx_mpsrt_read_stage_manifest_attrs(module, "gfx.stage_manifest", canonical_manifest);
-    if (has_canonical_stage_manifest) {
-        stage.stage_manifest = std::move(canonical_manifest);
-    } else if (!has_stage_manifest) {
+    if (!gfx_mpsrt_read_stage_manifest_attrs(module, "gfx.stage_manifest", canonical_manifest)) {
         return false;
     }
+    stage.stage_manifest = std::move(canonical_manifest);
 
     std::string input_storage;
     std::string output_storage;
@@ -1168,18 +1157,6 @@ inline bool gfx_mpsrt_finalize_external_buffer_abi(GfxMpsrtExternalBufferAbiPlan
     return abi.valid;
 }
 
-inline bool gfx_mpsrt_read_external_buffer_count_hints(mlir::ModuleOp module,
-                                                       uint32_t& buffer_count,
-                                                       uint32_t& output_buffer_count) {
-    const bool has_buffer_count = detail::gfx_mpsrt_read_i32_attr(module,
-                                                                  "gfx.fixed_arg_count",
-                                                                  buffer_count);
-    const bool has_output_buffer_count = detail::gfx_mpsrt_read_i32_attr(module,
-                                                                         "gfx.kernel_output_arg_count",
-                                                                         output_buffer_count);
-    return has_buffer_count || has_output_buffer_count;
-}
-
 inline bool gfx_mpsrt_external_buffer_abi_from_kernel_manifest(mlir::ModuleOp module,
                                                                GfxMpsrtExternalBufferAbiPlan& abi,
                                                                uint32_t known_buffer_count = 0,
@@ -1196,6 +1173,12 @@ inline bool gfx_mpsrt_external_buffer_abi_from_kernel_manifest(mlir::ModuleOp mo
     if (!spec.roles.empty()) {
         abi.has_buffer_roles = true;
         abi.buffer_roles = gfx_mpsrt_external_buffer_roles_from_kernel_roles(spec.roles);
+        if (abi.buffer_roles.size() == 2 &&
+            abi.buffer_roles[0] == GfxMpsrtExternalBufferRole::TensorInput &&
+            abi.buffer_roles[1] == GfxMpsrtExternalBufferRole::TensorOutput) {
+            abi = {};
+            return false;
+        }
         abi.has_buffer_count = true;
         abi.buffer_count = static_cast<uint32_t>(abi.buffer_roles.size());
         abi.has_output_buffer_count = true;
@@ -1203,26 +1186,8 @@ inline bool gfx_mpsrt_external_buffer_abi_from_kernel_manifest(mlir::ModuleOp mo
         return gfx_mpsrt_finalize_external_buffer_abi(abi);
     }
 
-    uint32_t attr_buffer_count = 0;
-    uint32_t attr_output_count = 0;
-    (void)gfx_mpsrt_read_external_buffer_count_hints(module, attr_buffer_count, attr_output_count);
-    const uint32_t hinted_buffer_count = known_buffer_count != 0 ? known_buffer_count : attr_buffer_count;
-    const uint32_t hinted_output_count = known_output_buffer_count != 0 ? known_output_buffer_count
-                                                                        : attr_output_count;
-
-    if (spec.tail_outputs) {
-        if (hinted_output_count == 0 || hinted_buffer_count < hinted_output_count) {
-            return false;
-        }
-        abi.has_buffer_count = true;
-        abi.buffer_count = hinted_buffer_count;
-        abi.has_output_buffer_count = true;
-        abi.output_buffer_count = hinted_output_count;
-        abi.has_buffer_roles = true;
-        abi.buffer_roles = gfx_mpsrt_external_buffer_roles_from_tail_outputs(hinted_buffer_count,
-                                                                            hinted_output_count);
-        return gfx_mpsrt_finalize_external_buffer_abi(abi);
-    }
+    const uint32_t hinted_buffer_count = known_buffer_count;
+    (void)known_output_buffer_count;
 
     if (spec.leading_input_count != 0 || spec.leading_output_count != 0) {
         const uint32_t leading_io_count = spec.leading_input_count + spec.leading_output_count;

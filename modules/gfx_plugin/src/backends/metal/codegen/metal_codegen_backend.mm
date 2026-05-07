@@ -20,14 +20,13 @@
 #include "openvino/core/except.hpp"
 #include "backends/metal/runtime/op_utils.hpp"
 #include "kernel_ir/gfx_kernel_cache.hpp"
+#include "mlir/gfx_mlir_kernel_metadata.hpp"
 #include "mlir/gfx_mpsrt_metadata.hpp"
 #include "mlir/gfx_mpsrt_runtime_abi_pipeline.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_mpsrt_storage_bridge.hpp"
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Pass/PassManager.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace ov {
@@ -122,10 +121,23 @@ uint32_t resolve_kernel_output_arg_count(const KernelSource& source) {
     if (!source.module) {
         return 0;
     }
-    if (auto attr = source.module->getAttrOfType<mlir::IntegerAttr>("gfx.kernel_output_arg_count")) {
-        return static_cast<uint32_t>(std::max<int64_t>(attr.getInt(), 0));
+    const auto abi = read_module_mpsrt_external_buffer_abi(source.module);
+    if (abi.valid && abi.has_output_buffer_count) {
+        return abi.output_buffer_count;
     }
     return 0;
+}
+
+uint32_t resolve_kernel_arg_count(const KernelSource& source) {
+    uint32_t arg_count = source.signature.arg_count;
+    if (!source.module) {
+        return arg_count;
+    }
+    const auto operand_kinds = extract_kernel_operand_kinds(source.module);
+    if (!operand_kinds.empty()) {
+        arg_count = std::max<uint32_t>(arg_count, static_cast<uint32_t>(operand_kinds.size()));
+    }
+    return arg_count;
 }
 
 bool set_error(std::string* error, const std::string& message) {
@@ -278,9 +290,9 @@ const GfxMpsrtStorageBridgeDesc* find_mpsrt_storage_bridge(const metal::mpsrt::M
 GfxMpsrtStorageBridgeDirection mpsrt_external_image_bridge_direction_for_value(
     const metal::mpsrt::MpsrtModel& model,
     GfxMpsrtValue value,
-    GfxMpsrtStorageBridgeDirection legacy_fallback) {
+    GfxMpsrtStorageBridgeDirection fallback_direction) {
     if (model.storage_bridges.empty()) {
-        return legacy_fallback;
+        return fallback_direction;
     }
     if (const auto* bridge = find_mpsrt_storage_bridge(model, value)) {
         return bridge->direction;
@@ -365,7 +377,7 @@ bool materialize_mpsrt_image_bridge_binding(const metal::mpsrt::MpsrtModel& mode
 bool materialize_mpsrt_image_bridge_bindings(const metal::mpsrt::MpsrtModel& model,
                                              MetalDeviceHandle device,
                                              const std::vector<GfxMpsrtValue>& values,
-                                             GfxMpsrtStorageBridgeDirection legacy_fallback_direction,
+                                             GfxMpsrtStorageBridgeDirection fallback_direction,
                                              std::vector<metal::mpsrt::MpsrtBoundBuffer>& bindings,
                                              std::vector<id<MTLTexture>>& transient_textures,
                                              std::vector<MpsrtImageBridgeCopy>& bridge_copies,
@@ -375,7 +387,7 @@ bool materialize_mpsrt_image_bridge_bindings(const metal::mpsrt::MpsrtModel& mod
     }
     for (size_t i = 0; i < values.size(); ++i) {
         const auto direction =
-            mpsrt_external_image_bridge_direction_for_value(model, values[i], legacy_fallback_direction);
+            mpsrt_external_image_bridge_direction_for_value(model, values[i], fallback_direction);
         if (!materialize_mpsrt_image_bridge_binding(model,
                                                     device,
                                                     values[i],
@@ -601,41 +613,6 @@ struct ResolvedMpsrtProgramPlan {
     GfxMpsrtBuilderPlan builder_plan{};
 };
 
-bool module_has_mpsrt_program(mlir::ModuleOp module) {
-    GfxMpsrtProgram program{};
-    return module && read_module_mpsrt_program(module, program);
-}
-
-bool module_has_generated_mpsrt_runtime_abi_call_plan(mlir::ModuleOp module) {
-    if (!module) {
-        return false;
-    }
-    module.getContext()->loadDialect<mlir::func::FuncDialect>();
-    std::string plan_symbol = "gfx_mpsrt_runtime_abi_plan";
-    if (auto attr = module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.runtime_abi.call_plan_symbol")) {
-        plan_symbol = attr.str();
-    }
-    auto plan_func = module.lookupSymbol<mlir::func::FuncOp>(plan_symbol);
-    return plan_func &&
-           static_cast<bool>(plan_func->getAttrOfType<mlir::BoolAttr>("gfx.mpsrt.runtime_abi.generated"));
-}
-
-bool ensure_mpsrt_runtime_abi_call_plan(mlir::ModuleOp module) {
-    if (!module_has_mpsrt_program(module)) {
-        return false;
-    }
-    if (module_has_generated_mpsrt_runtime_abi_call_plan(module)) {
-        return true;
-    }
-
-    mlir::PassManager pm(module.getContext());
-    populate_gfx_apple_mpsrt_runtime_abi_pipeline(pm);
-    if (mlir::failed(pm.run(module))) {
-        OPENVINO_THROW("GFX Metal MPSRT: failed to materialize runtime ABI call plan");
-    }
-    return module_has_generated_mpsrt_runtime_abi_call_plan(module);
-}
-
 bool equal_mpsrt_u32_vectors(const std::vector<GfxMpsrtValue>& lhs,
                              const std::vector<GfxMpsrtValue>& rhs) {
     return lhs.size() == rhs.size() &&
@@ -718,7 +695,10 @@ bool resolve_module_mpsrt_program_plan(mlir::ModuleOp module,
         return false;
     }
 
-    const bool has_call_plan = ensure_mpsrt_runtime_abi_call_plan(module);
+    const bool has_call_plan = materialize_gfx_apple_mpsrt_runtime_abi_call_plan(module);
+    if (!has_call_plan) {
+        OPENVINO_THROW("GFX Metal MPSRT: failed to materialize runtime ABI call plan");
+    }
     GfxMpsrtBuilderPlan call_plan;
     const bool read_call_plan =
         has_call_plan && read_gfx_apple_mpsrt_runtime_abi_call_plan(module, call_plan);
@@ -728,7 +708,14 @@ bool resolve_module_mpsrt_program_plan(mlir::ModuleOp module,
         if (!validate_mpsrt_runtime_abi_call_plan_matches_builder_plan(builder_plan,
                                                                        call_plan,
                                                                        &error)) {
-            OPENVINO_THROW("GFX Metal MPSRT: runtime ABI call plan diverged from stage manifest: ", error);
+            error.clear();
+            if (!rematerialize_gfx_apple_mpsrt_runtime_abi_call_plan(module) ||
+                !read_gfx_apple_mpsrt_runtime_abi_call_plan(module, call_plan) ||
+                !validate_mpsrt_runtime_abi_call_plan_matches_builder_plan(builder_plan,
+                                                                           call_plan,
+                                                                           &error)) {
+                OPENVINO_THROW("GFX Metal MPSRT: runtime ABI call plan diverged from stage manifest: ", error);
+            }
         }
         builder_plan = std::move(call_plan);
         if (current_compile_trace()) {
@@ -1321,12 +1308,10 @@ std::shared_ptr<ICompiledKernel> MetalCodegenBackend::compile(const KernelSource
     std::string resolved_msl_cache_key;
     const bool can_cache_resolved_msl = source.module && source.msl_source.empty() && source.msl_generator;
     record_mpsrt_plan_counters(source.module);
-    const uint32_t arg_count = source.signature.arg_count;
+    const uint32_t source_arg_count = resolve_kernel_arg_count(source);
     const uint32_t output_arg_count = resolve_kernel_output_arg_count(source);
-    auto mpsrt_model = build_metal_mpsrt_runtime_model(source.module, arg_count, output_arg_count);
     const uintptr_t device_key = reinterpret_cast<uintptr_t>(m_device);
-    auto shared_prepared_cache = acquire_shared_prepared_binding_cache(GpuBackend::Metal, device_key, arg_count);
-    auto binding_schema = m_reuse_context->acquire_binding_schema(arg_count);
+    auto mpsrt_model = build_metal_mpsrt_runtime_model(source.module, source_arg_count, output_arg_count);
     const bool vendor_only_mpsrt_model = mpsrt_model &&
                                          mpsrt_model_has_supported_vendor_stage(mpsrt_model) &&
                                          !mpsrt_model_has_msl_dispatch(mpsrt_model);
@@ -1334,7 +1319,10 @@ std::shared_ptr<ICompiledKernel> MetalCodegenBackend::compile(const KernelSource
         if (current_compile_trace()) {
             increment_compile_counter("metal_mpsrt_vendor_only_kernel_count");
         }
-        auto binding_plan = std::make_shared<KernelBindingPlan>(arg_count, output_arg_count);
+        auto shared_prepared_cache =
+            acquire_shared_prepared_binding_cache(GpuBackend::Metal, device_key, source_arg_count);
+        auto binding_schema = m_reuse_context->acquire_binding_schema(source_arg_count);
+        auto binding_plan = std::make_shared<KernelBindingPlan>(source_arg_count, output_arg_count);
         auto kernel = std::make_shared<MetalCompiledKernel>(m_device,
                                                             nullptr,
                                                             std::move(binding_plan),
@@ -1417,13 +1405,32 @@ std::shared_ptr<ICompiledKernel> MetalCodegenBackend::compile(const KernelSource
     }
     OPENVINO_ASSERT(!msl.empty(), "MetalCodegenBackend: missing MSL source");
     OPENVINO_ASSERT(!source.entry_point.empty(), "MetalCodegenBackend: missing entry point");
+    const uint32_t resolved_source_arg_count = std::max(source_arg_count, resolve_kernel_arg_count(source));
+    const uint32_t resolved_output_arg_count = std::max(output_arg_count, resolve_kernel_output_arg_count(source));
+    uint32_t raw_msl_arg_count = infer_msl_buffer_arg_count_from_source(msl);
+    if (raw_msl_arg_count == 0) {
+        raw_msl_arg_count = resolved_source_arg_count;
+    } else if (resolved_source_arg_count != 0) {
+        raw_msl_arg_count = std::max(raw_msl_arg_count, resolved_source_arg_count);
+    }
+    OPENVINO_ASSERT(raw_msl_arg_count != 0, "MetalCodegenBackend: failed to resolve MSL buffer argument count");
+    if (!mpsrt_model ||
+        resolved_source_arg_count != source_arg_count ||
+        resolved_output_arg_count != output_arg_count) {
+        mpsrt_model = build_metal_mpsrt_runtime_model(source.module,
+                                                      resolved_source_arg_count,
+                                                      resolved_output_arg_count);
+    }
+    auto shared_prepared_cache =
+        acquire_shared_prepared_binding_cache(GpuBackend::Metal, device_key, raw_msl_arg_count);
+    auto binding_schema = m_reuse_context->acquire_binding_schema(raw_msl_arg_count);
 
     auto kernel = lookup_or_compile_kernel(GpuBackend::Metal,
                                            device_key,
                                            msl.data(),
                                            msl.size(),
                                            source.entry_point,
-                                           arg_count,
+                                           raw_msl_arg_count,
                                            [&]() -> std::shared_ptr<ICompiledKernel> {
                                                MetalKernelCompiler compiler((id<MTLDevice>)m_device);
                                                std::string local_log;
@@ -1450,8 +1457,8 @@ std::shared_ptr<ICompiledKernel> MetalCodegenBackend::compile(const KernelSource
                                                    return nullptr;
                                                }
                                                auto binding_plan = std::make_shared<KernelBindingPlan>(
-                                                   arg_count,
-                                                   output_arg_count);
+                                                   raw_msl_arg_count,
+                                                   resolved_output_arg_count);
                                                return std::make_shared<MetalCompiledKernel>(m_device,
                                                                                             (void*)pipeline,
                                                                                             std::move(binding_plan),

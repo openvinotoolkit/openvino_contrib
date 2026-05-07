@@ -23,6 +23,7 @@
 #include "mlir/gfx_mpsrt_metadata.hpp"
 #include "mlir/mlir_builder.hpp"
 #include "mlir/mlir_kernel_plan_utils.hpp"
+#include "mlir/msl_codegen.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_parallelism.hpp"
@@ -238,706 +239,6 @@ std::string generate_msl_for_concat_binary_runtime(const ConcatCodegenDesc& desc
     return ss.str();
 }
 
-std::string metal_scalar_type(ov::element::Type type) {
-    if (type == ov::element::f16) {
-        return "half";
-    }
-    if (type == ov::element::f32) {
-        return "float";
-    }
-    OPENVINO_THROW("GFX Metal SDPA: unsupported element type ", type);
-}
-
-std::string generate_msl_for_sdpa(ov::element::Type type) {
-    const std::string scalar = metal_scalar_type(type);
-    std::ostringstream ss;
-    ss << "#include <metal_stdlib>\n";
-    ss << "using namespace metal;\n";
-    ss << "using scalar_t = " << scalar << ";\n";
-    ss << "struct SdpaParams {\n";
-    ss << "  uint B; uint H; uint Q; uint K; uint D; uint DV;\n";
-    ss << "  uint has_mask; uint mask_B; uint mask_H; uint mask_Q; uint mask_K;\n";
-    ss << "  uint scale_bits;\n";
-    ss << "  uint k_gqa; uint k_heads; uint v_gqa; uint v_heads;\n";
-    ss << "};\n";
-    ss << "kernel void sdpa_kernel(\n";
-    ss << "  device const scalar_t* q [[buffer(0)]],\n";
-    ss << "  device const scalar_t* k [[buffer(1)]],\n";
-    ss << "  device const scalar_t* v [[buffer(2)]],\n";
-    ss << "  device const scalar_t* mask [[buffer(3)]],\n";
-    ss << "  constant SdpaParams& p [[buffer(4)]],\n";
-    ss << "  device scalar_t* out [[buffer(5)]],\n";
-    ss << "  uint gid [[thread_position_in_grid]],\n";
-    ss << "  uint lane [[thread_index_in_threadgroup]],\n";
-    ss << "  uint tgid [[threadgroup_position_in_grid]]) {\n";
-    ss << "  if (p.D <= 64 && p.DV <= 64) {\n";
-    ss << "    uint total_vectors = p.B * p.H * p.Q;\n";
-    ss << "    if (tgid >= total_vectors) return;\n";
-    ss << "    uint qi = tgid % p.Q;\n";
-    ss << "    uint tmp_vec = tgid / p.Q;\n";
-    ss << "    uint h = tmp_vec % p.H;\n";
-    ss << "    uint b = tmp_vec / p.H;\n";
-    ss << "    uint kh = (p.k_gqa != 0 && p.k_heads != 0) ? min(h / max(p.H / p.k_heads, 1u), p.k_heads - 1u) : h;\n";
-    ss << "    uint vh = (p.v_gqa != 0 && p.v_heads != 0) ? min(h / max(p.H / p.v_heads, 1u), p.v_heads - 1u) : h;\n";
-    ss << "    float scale = as_type<float>(p.scale_bits);\n";
-    ss << "    float acc0 = 0.0f;\n";
-    ss << "    float acc1 = 0.0f;\n";
-    ss << "    float m = -INFINITY;\n";
-    ss << "    float l = 0.0f;\n";
-    ss << "    uint q_base = (((b * p.H + h) * p.Q + qi) * p.D);\n";
-    ss << "    for (uint kk = 0; kk < p.K; ++kk) {\n";
-    ss << "      float qk = 0.0f;\n";
-    ss << "      uint k_base = (((b * (p.k_gqa != 0 ? p.k_heads : p.H) + kh) * p.K + kk) * p.D);\n";
-    ss << "      for (uint d = lane; d < p.D; d += 32) {\n";
-    ss << "        qk += float(q[q_base + d]) * float(k[k_base + d]);\n";
-    ss << "      }\n";
-    ss << "      float score = simd_sum(qk) * scale;\n";
-    ss << "      if (p.has_mask != 0) {\n";
-    ss << "        uint mb = (p.mask_B == 1) ? 0 : b;\n";
-    ss << "        uint mh = (p.mask_H == 1) ? 0 : h;\n";
-    ss << "        uint mq = (p.mask_Q == 1) ? 0 : qi;\n";
-    ss << "        uint mk = (p.mask_K == 1) ? 0 : kk;\n";
-    ss << "        uint mask_idx = (((mb * p.mask_H + mh) * p.mask_Q + mq) * p.mask_K + mk);\n";
-    ss << "        score += float(mask[mask_idx]);\n";
-    ss << "      }\n";
-    ss << "      float new_m = max(m, score);\n";
-    ss << "      float old_scale = exp(m - new_m);\n";
-    ss << "      float score_scale = exp(score - new_m);\n";
-    ss << "      l = l * old_scale + score_scale;\n";
-    ss << "      m = new_m;\n";
-    ss << "      uint v_base = (((b * (p.v_gqa != 0 ? p.v_heads : p.H) + vh) * p.K + kk) * p.DV);\n";
-    ss << "      if (lane < p.DV) {\n";
-    ss << "        acc0 = acc0 * old_scale + score_scale * float(v[v_base + lane]);\n";
-    ss << "      }\n";
-    ss << "      if (lane + 32 < p.DV) {\n";
-    ss << "        acc1 = acc1 * old_scale + score_scale * float(v[v_base + lane + 32]);\n";
-    ss << "      }\n";
-    ss << "    }\n";
-    ss << "    uint out_base = (((b * p.H + h) * p.Q + qi) * p.DV);\n";
-    ss << "    if (lane < p.DV) {\n";
-    ss << "      out[out_base + lane] = scalar_t(acc0 / l);\n";
-    ss << "    }\n";
-    ss << "    if (lane + 32 < p.DV) {\n";
-    ss << "      out[out_base + lane + 32] = scalar_t(acc1 / l);\n";
-    ss << "    }\n";
-    ss << "    return;\n";
-    ss << "  }\n";
-    ss << "  uint total = p.B * p.H * p.Q * p.DV;\n";
-    ss << "  if (gid >= total) return;\n";
-    ss << "  uint dv = gid % p.DV;\n";
-    ss << "  uint tmp = gid / p.DV;\n";
-    ss << "  uint qi = tmp % p.Q;\n";
-    ss << "  tmp /= p.Q;\n";
-    ss << "  uint h = tmp % p.H;\n";
-    ss << "  uint b = tmp / p.H;\n";
-    ss << "  uint kh = (p.k_gqa != 0 && p.k_heads != 0) ? min(h / max(p.H / p.k_heads, 1u), p.k_heads - 1u) : h;\n";
-    ss << "  uint vh = (p.v_gqa != 0 && p.v_heads != 0) ? min(h / max(p.H / p.v_heads, 1u), p.v_heads - 1u) : h;\n";
-    ss << "  float scale = as_type<float>(p.scale_bits);\n";
-    ss << "  float max_score = -INFINITY;\n";
-    ss << "  for (uint kk = 0; kk < p.K; ++kk) {\n";
-    ss << "    float score = 0.0f;\n";
-    ss << "    uint q_base = (((b * p.H + h) * p.Q + qi) * p.D);\n";
-    ss << "    uint k_base = (((b * (p.k_gqa != 0 ? p.k_heads : p.H) + kh) * p.K + kk) * p.D);\n";
-    ss << "    for (uint d = 0; d < p.D; ++d) {\n";
-    ss << "      score += float(q[q_base + d]) * float(k[k_base + d]);\n";
-    ss << "    }\n";
-    ss << "    score *= scale;\n";
-    ss << "    if (p.has_mask != 0) {\n";
-    ss << "      uint mb = (p.mask_B == 1) ? 0 : b;\n";
-    ss << "      uint mh = (p.mask_H == 1) ? 0 : h;\n";
-    ss << "      uint mq = (p.mask_Q == 1) ? 0 : qi;\n";
-    ss << "      uint mk = (p.mask_K == 1) ? 0 : kk;\n";
-    ss << "      uint mask_idx = (((mb * p.mask_H + mh) * p.mask_Q + mq) * p.mask_K + mk);\n";
-    ss << "      score += float(mask[mask_idx]);\n";
-    ss << "    }\n";
-    ss << "    max_score = max(max_score, score);\n";
-    ss << "  }\n";
-    ss << "  float sum = 0.0f;\n";
-    ss << "  float acc = 0.0f;\n";
-    ss << "  for (uint kk = 0; kk < p.K; ++kk) {\n";
-    ss << "    float score = 0.0f;\n";
-    ss << "    uint q_base = (((b * p.H + h) * p.Q + qi) * p.D);\n";
-    ss << "    uint k_base = (((b * (p.k_gqa != 0 ? p.k_heads : p.H) + kh) * p.K + kk) * p.D);\n";
-    ss << "    for (uint d = 0; d < p.D; ++d) {\n";
-    ss << "      score += float(q[q_base + d]) * float(k[k_base + d]);\n";
-    ss << "    }\n";
-    ss << "    score *= scale;\n";
-    ss << "    if (p.has_mask != 0) {\n";
-    ss << "      uint mb = (p.mask_B == 1) ? 0 : b;\n";
-    ss << "      uint mh = (p.mask_H == 1) ? 0 : h;\n";
-    ss << "      uint mq = (p.mask_Q == 1) ? 0 : qi;\n";
-    ss << "      uint mk = (p.mask_K == 1) ? 0 : kk;\n";
-    ss << "      uint mask_idx = (((mb * p.mask_H + mh) * p.mask_Q + mq) * p.mask_K + mk);\n";
-    ss << "      score += float(mask[mask_idx]);\n";
-    ss << "    }\n";
-    ss << "    float w = exp(score - max_score);\n";
-    ss << "    sum += w;\n";
-    ss << "    uint v_idx = (((b * (p.v_gqa != 0 ? p.v_heads : p.H) + vh) * p.K + kk) * p.DV + dv);\n";
-    ss << "    acc += w * float(v[v_idx]);\n";
-    ss << "  }\n";
-    ss << "  out[gid] = scalar_t(acc / sum);\n";
-    ss << "}\n";
-    return ss.str();
-}
-
-std::string generate_msl_for_sdpa_with_causal_mask(ov::element::Type type) {
-    const std::string scalar = metal_scalar_type(type);
-    std::ostringstream ss;
-    ss << "#include <metal_stdlib>\n";
-    ss << "using namespace metal;\n";
-    ss << "using scalar_t = " << scalar << ";\n";
-    ss << "struct SdpaCausalMaskParams {\n";
-    ss << "  uint B; uint H; uint Q; uint K; uint D; uint DV;\n";
-    ss << "  uint mask_K; uint scale_bits; uint k_gqa; uint k_heads; uint v_gqa; uint v_heads;\n";
-    ss << "};\n";
-    ss << "inline float gfx_sdpa_mask_score(device const long* attention_mask,\n";
-    ss << "                                  device const long* cache_positions,\n";
-    ss << "                                  constant SdpaCausalMaskParams& p,\n";
-    ss << "                                  uint b, uint qi, uint kk) {\n";
-    ss << "  long row = cache_positions[qi];\n";
-    ss << "  bool causal_block = long(kk) > row;\n";
-    ss << "  bool padding_block = false;\n";
-    ss << "  if (kk < p.mask_K) {\n";
-    ss << "    padding_block = attention_mask[b * p.mask_K + kk] == 0;\n";
-    ss << "  }\n";
-    ss << "  return (causal_block || padding_block) ? -INFINITY : 0.0f;\n";
-    ss << "}\n";
-    ss << "kernel void sdpa_causal_mask_kernel(\n";
-    ss << "  device const scalar_t* q [[buffer(0)]],\n";
-    ss << "  device const scalar_t* k [[buffer(1)]],\n";
-    ss << "  device const scalar_t* v [[buffer(2)]],\n";
-    ss << "  device const long* attention_mask [[buffer(3)]],\n";
-    ss << "  device const long* cache_positions [[buffer(4)]],\n";
-    ss << "  constant SdpaCausalMaskParams& p [[buffer(5)]],\n";
-    ss << "  device scalar_t* out [[buffer(6)]],\n";
-    ss << "  uint gid [[thread_position_in_grid]],\n";
-    ss << "  uint lane [[thread_index_in_threadgroup]],\n";
-    ss << "  uint tgid [[threadgroup_position_in_grid]]) {\n";
-    ss << "  if (p.D <= 64 && p.DV <= 64) {\n";
-    ss << "    uint total_vectors = p.B * p.H * p.Q;\n";
-    ss << "    if (tgid >= total_vectors) return;\n";
-    ss << "    uint qi = tgid % p.Q;\n";
-    ss << "    uint tmp_vec = tgid / p.Q;\n";
-    ss << "    uint h = tmp_vec % p.H;\n";
-    ss << "    uint b = tmp_vec / p.H;\n";
-    ss << "    uint kh = (p.k_gqa != 0 && p.k_heads != 0) ? min(h / max(p.H / p.k_heads, 1u), p.k_heads - 1u) : h;\n";
-    ss << "    uint vh = (p.v_gqa != 0 && p.v_heads != 0) ? min(h / max(p.H / p.v_heads, 1u), p.v_heads - 1u) : h;\n";
-    ss << "    float scale = as_type<float>(p.scale_bits);\n";
-    ss << "    float acc0 = 0.0f;\n";
-    ss << "    float acc1 = 0.0f;\n";
-    ss << "    float m = -INFINITY;\n";
-    ss << "    float l = 0.0f;\n";
-    ss << "    uint q_base = (((b * p.H + h) * p.Q + qi) * p.D);\n";
-    ss << "    for (uint kk = 0; kk < p.K; ++kk) {\n";
-    ss << "      float qk = 0.0f;\n";
-    ss << "      uint k_base = (((b * (p.k_gqa != 0 ? p.k_heads : p.H) + kh) * p.K + kk) * p.D);\n";
-    ss << "      for (uint d = lane; d < p.D; d += 32) {\n";
-    ss << "        qk += float(q[q_base + d]) * float(k[k_base + d]);\n";
-    ss << "      }\n";
-    ss << "      float score = simd_sum(qk) * scale + gfx_sdpa_mask_score(attention_mask, cache_positions, p, b, qi, kk);\n";
-    ss << "      float new_m = max(m, score);\n";
-    ss << "      float old_scale = exp(m - new_m);\n";
-    ss << "      float score_scale = exp(score - new_m);\n";
-    ss << "      l = l * old_scale + score_scale;\n";
-    ss << "      m = new_m;\n";
-    ss << "      uint v_base = (((b * (p.v_gqa != 0 ? p.v_heads : p.H) + vh) * p.K + kk) * p.DV);\n";
-    ss << "      if (lane < p.DV) acc0 = acc0 * old_scale + score_scale * float(v[v_base + lane]);\n";
-    ss << "      if (lane + 32 < p.DV) acc1 = acc1 * old_scale + score_scale * float(v[v_base + lane + 32]);\n";
-    ss << "    }\n";
-    ss << "    uint out_base = (((b * p.H + h) * p.Q + qi) * p.DV);\n";
-    ss << "    if (lane < p.DV) out[out_base + lane] = scalar_t(acc0 / l);\n";
-    ss << "    if (lane + 32 < p.DV) out[out_base + lane + 32] = scalar_t(acc1 / l);\n";
-    ss << "    return;\n";
-    ss << "  }\n";
-    ss << "  uint total = p.B * p.H * p.Q * p.DV;\n";
-    ss << "  if (gid >= total) return;\n";
-    ss << "  uint dv = gid % p.DV;\n";
-    ss << "  uint tmp = gid / p.DV;\n";
-    ss << "  uint qi = tmp % p.Q;\n";
-    ss << "  tmp /= p.Q;\n";
-    ss << "  uint h = tmp % p.H;\n";
-    ss << "  uint b = tmp / p.H;\n";
-    ss << "  uint kh = (p.k_gqa != 0 && p.k_heads != 0) ? min(h / max(p.H / p.k_heads, 1u), p.k_heads - 1u) : h;\n";
-    ss << "  uint vh = (p.v_gqa != 0 && p.v_heads != 0) ? min(h / max(p.H / p.v_heads, 1u), p.v_heads - 1u) : h;\n";
-    ss << "  float scale = as_type<float>(p.scale_bits);\n";
-    ss << "  float max_score = -INFINITY;\n";
-    ss << "  for (uint kk = 0; kk < p.K; ++kk) {\n";
-    ss << "    float score = 0.0f;\n";
-    ss << "    uint q_base = (((b * p.H + h) * p.Q + qi) * p.D);\n";
-    ss << "    uint k_base = (((b * (p.k_gqa != 0 ? p.k_heads : p.H) + kh) * p.K + kk) * p.D);\n";
-    ss << "    for (uint d = 0; d < p.D; ++d) score += float(q[q_base + d]) * float(k[k_base + d]);\n";
-    ss << "    score = score * scale + gfx_sdpa_mask_score(attention_mask, cache_positions, p, b, qi, kk);\n";
-    ss << "    max_score = max(max_score, score);\n";
-    ss << "  }\n";
-    ss << "  float sum = 0.0f;\n";
-    ss << "  float acc = 0.0f;\n";
-    ss << "  for (uint kk = 0; kk < p.K; ++kk) {\n";
-    ss << "    float score = 0.0f;\n";
-    ss << "    uint q_base = (((b * p.H + h) * p.Q + qi) * p.D);\n";
-    ss << "    uint k_base = (((b * (p.k_gqa != 0 ? p.k_heads : p.H) + kh) * p.K + kk) * p.D);\n";
-    ss << "    for (uint d = 0; d < p.D; ++d) score += float(q[q_base + d]) * float(k[k_base + d]);\n";
-    ss << "    score = score * scale + gfx_sdpa_mask_score(attention_mask, cache_positions, p, b, qi, kk);\n";
-    ss << "    float w = exp(score - max_score);\n";
-    ss << "    sum += w;\n";
-    ss << "    uint v_idx = (((b * (p.v_gqa != 0 ? p.v_heads : p.H) + vh) * p.K + kk) * p.DV + dv);\n";
-    ss << "    acc += w * float(v[v_idx]);\n";
-    ss << "  }\n";
-    ss << "  out[gid] = scalar_t(acc / sum);\n";
-    ss << "}\n";
-    return ss.str();
-}
-
-struct CompressedMatMulPart {
-    std::shared_ptr<const ov::op::v0::Constant> weights;
-    std::shared_ptr<const ov::op::v0::Constant> scale;
-    size_t n = 0;
-    size_t groups = 0;
-    size_t group_size = 0;
-    size_t k = 0;
-};
-
-struct CompressedMatMulInfo {
-    std::vector<CompressedMatMulPart> parts;
-    std::shared_ptr<const ov::op::v0::Constant> weights;
-    std::shared_ptr<const ov::op::v0::Constant> scale;
-    ov::element::Type input_type = ov::element::dynamic;
-    ov::element::Type output_type = ov::element::dynamic;
-    bool signed_weights = true;
-    size_t n = 0;
-    size_t k = 0;
-    size_t groups = 0;
-    size_t group_size = 0;
-};
-
-std::shared_ptr<const ov::op::v0::Constant> as_constant_node(const ov::Output<ov::Node>& value) {
-    return ov::as_type_ptr<const ov::op::v0::Constant>(value.get_node_shared_ptr());
-}
-
-std::optional<CompressedMatMulPart> detect_compressed_matmul_part(const ov::Output<ov::Node>& value,
-                                                                  const ov::Shape& b_shape) {
-    if (b_shape.size() != 2) {
-        return std::nullopt;
-    }
-
-    auto source = value.get_node_shared_ptr();
-    if (auto convert = ov::as_type_ptr<const ov::op::v0::Convert>(source)) {
-        source = convert->input_value(0).get_node_shared_ptr();
-    }
-    auto reshape = ov::as_type_ptr<const ov::op::v1::Reshape>(source);
-    if (!reshape) {
-        return std::nullopt;
-    }
-    auto mul = ov::as_type_ptr<const ov::op::v1::Multiply>(reshape->input_value(0).get_node_shared_ptr());
-    if (!mul) {
-        return std::nullopt;
-    }
-
-    std::shared_ptr<const ov::op::v0::Constant> weights;
-    std::shared_ptr<const ov::op::v0::Constant> scale;
-    for (size_t i = 0; i < mul->get_input_size(); ++i) {
-        auto input = mul->input_value(i);
-        if (auto convert = ov::as_type_ptr<const ov::op::v0::Convert>(input.get_node_shared_ptr())) {
-            if (auto constant = as_constant_node(convert->input_value(0))) {
-                const auto et = constant->get_element_type();
-                if (et == ov::element::i4 || et == ov::element::u4 ||
-                    et == ov::element::i8 || et == ov::element::u8) {
-                    weights = constant;
-                    continue;
-                }
-            }
-        }
-        if (auto constant = as_constant_node(input)) {
-            if (constant->get_element_type() == ov::element::f16 ||
-                constant->get_element_type() == ov::element::f32) {
-                scale = constant;
-            }
-        }
-    }
-    if (!weights || !scale) {
-        return std::nullopt;
-    }
-
-    const auto raw_shape = weights->get_shape();
-    const auto scale_shape = scale->get_shape();
-    if (raw_shape.size() != 3 || scale_shape.size() != 3 ||
-        raw_shape[0] != b_shape[0] ||
-        scale_shape[0] != raw_shape[0] ||
-        scale_shape[1] != raw_shape[1] ||
-        scale_shape[2] != 1) {
-        return std::nullopt;
-    }
-    const size_t n = raw_shape[0];
-    const size_t groups = raw_shape[1];
-    const size_t group_size = raw_shape[2];
-    const size_t k = groups * group_size;
-    if (n == 0 || k == 0 || b_shape[1] != k) {
-        return std::nullopt;
-    }
-
-    CompressedMatMulPart part;
-    part.weights = weights;
-    part.scale = scale;
-    part.n = n;
-    part.groups = groups;
-    part.group_size = group_size;
-    part.k = k;
-    return part;
-}
-
-std::optional<CompressedMatMulInfo> detect_compressed_matmul_weights(const std::shared_ptr<const ov::Node>& node) {
-    auto matmul = ov::as_type_ptr<const ov::op::v0::MatMul>(node);
-    if (!matmul || !matmul->get_transpose_b() || matmul->get_input_size() != 2) {
-        return std::nullopt;
-    }
-    if (!matmul->get_input_partial_shape(1).is_static()) {
-        return std::nullopt;
-    }
-    const auto b_shape = matmul->get_input_shape(1);
-    if (b_shape.size() != 2) {
-        return std::nullopt;
-    }
-
-    std::vector<CompressedMatMulPart> parts;
-    auto source = matmul->input_value(1).get_node_shared_ptr();
-    if (auto convert = ov::as_type_ptr<const ov::op::v0::Convert>(source)) {
-        source = convert->input_value(0).get_node_shared_ptr();
-    }
-    if (auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(source)) {
-        if (concat->get_axis() != 0) {
-            return std::nullopt;
-        }
-        size_t total_n = 0;
-        for (size_t i = 0; i < concat->get_input_size(); ++i) {
-            const auto input = concat->input_value(i);
-            if (!input.get_partial_shape().is_static()) {
-                return std::nullopt;
-            }
-            const auto part_shape = input.get_shape();
-            auto part = detect_compressed_matmul_part(input, part_shape);
-            if (!part) {
-                return std::nullopt;
-            }
-            total_n += part->n;
-            parts.push_back(std::move(*part));
-        }
-        if (parts.empty() || total_n != b_shape[0]) {
-            return std::nullopt;
-        }
-    } else {
-        auto part = detect_compressed_matmul_part(matmul->input_value(1), b_shape);
-        if (!part) {
-            return std::nullopt;
-        }
-        parts.push_back(std::move(*part));
-    }
-    if (parts.empty()) {
-        return std::nullopt;
-    }
-    const auto weight_type = parts.front().weights->get_element_type();
-    const auto scale_type = parts.front().scale->get_element_type();
-    const size_t groups = parts.front().groups;
-    const size_t group_size = parts.front().group_size;
-    const size_t k = parts.front().k;
-    size_t n = 0;
-    for (const auto& part : parts) {
-        if (!part.weights || !part.scale ||
-            part.weights->get_element_type() != weight_type ||
-            part.scale->get_element_type() != scale_type ||
-            part.groups != groups ||
-            part.group_size != group_size ||
-            part.k != k) {
-            return std::nullopt;
-        }
-        n += part.n;
-    }
-    if (n == 0 || k == 0 || b_shape[0] != n || b_shape[1] != k) {
-        return std::nullopt;
-    }
-
-    CompressedMatMulInfo info;
-    info.parts = std::move(parts);
-    info.weights = info.parts.front().weights;
-    info.scale = info.parts.front().scale;
-    info.input_type = matmul->get_input_element_type(0);
-    info.output_type = matmul->get_output_element_type(0);
-    info.signed_weights = weight_type == ov::element::i4 ||
-                          weight_type == ov::element::i8;
-    info.n = n;
-    info.k = k;
-    info.groups = groups;
-    info.group_size = group_size;
-    return info;
-}
-
-uint32_t floor_power_of_two(uint32_t value) {
-    if (value == 0) {
-        return 0;
-    }
-    uint32_t result = 1;
-    while (result <= value / 2) {
-        result <<= 1;
-    }
-    return result;
-}
-
-uint32_t compressed_matmul_parallel_reduction_threads(const CompressedMatMulInfo& info,
-                                                      const GfxParallelismCaps& caps) {
-    if (info.k < 512 || info.n < 16) {
-        return 1;
-    }
-
-    const uint32_t max_threads = std::max<uint32_t>(
-        1u,
-        std::min(std::max<uint32_t>(1u, caps.max_total_threads_per_group),
-                 std::max<uint32_t>(1u, caps.max_threads_per_group[0])));
-    const uint32_t wave = std::max<uint32_t>(1u, std::max(caps.subgroup_size, caps.preferred_simd_width));
-    const uint32_t k_tiles = static_cast<uint32_t>((info.k + 1023) / 1024);
-    const uint32_t desired = wave * std::max<uint32_t>(2u, k_tiles * 2u);
-    const uint32_t threads = floor_power_of_two(std::min(max_threads, desired));
-    return threads >= 2 ? threads : 1;
-}
-
-uint32_t compressed_matmul_output_block(const CompressedMatMulInfo& info,
-                                        const GfxParallelismCaps& caps,
-                                        uint32_t reduction_threads) {
-    if (reduction_threads < 2 || info.k < 1024 || info.n < 4) {
-        return 1;
-    }
-    const uint32_t max_threads = std::max<uint32_t>(1u, caps.max_total_threads_per_group);
-    if (max_threads < 128) {
-        return 1;
-    }
-    const uint32_t max_block = 8u;
-    return std::min<uint32_t>(max_block, floor_power_of_two(static_cast<uint32_t>(std::min<size_t>(info.n, max_block))));
-}
-
-uint8_t read_quantized_weight_value(const ov::op::v0::Constant& weights, size_t logical_index) {
-    const auto et = weights.get_element_type();
-    const auto* raw = static_cast<const uint8_t*>(weights.get_data_ptr());
-    OPENVINO_ASSERT(raw, "GFX compressed MatMul: empty weight constant");
-    if (et == ov::element::i4 || et == ov::element::u4) {
-        const uint8_t packed = raw[logical_index >> 1];
-        return ((logical_index & 1u) == 0u) ? static_cast<uint8_t>(packed & 0x0fu)
-                                            : static_cast<uint8_t>((packed >> 4) & 0x0fu);
-    }
-    if (et == ov::element::i8 || et == ov::element::u8) {
-        return raw[logical_index];
-    }
-    OPENVINO_THROW("GFX compressed MatMul: unsupported weight type ", et);
-}
-
-void write_quantized_weight_value(std::vector<uint8_t>& packed,
-                                  ov::element::Type type,
-                                  size_t logical_index,
-                                  uint8_t value) {
-    if (type == ov::element::i4 || type == ov::element::u4) {
-        const size_t byte_index = logical_index >> 1;
-        const uint8_t nibble = static_cast<uint8_t>(value & 0x0fu);
-        if ((logical_index & 1u) == 0u) {
-            packed[byte_index] = static_cast<uint8_t>((packed[byte_index] & 0xf0u) | nibble);
-        } else {
-            packed[byte_index] = static_cast<uint8_t>((packed[byte_index] & 0x0fu) | static_cast<uint8_t>(nibble << 4));
-        }
-        return;
-    }
-    if (type == ov::element::i8 || type == ov::element::u8) {
-        packed[logical_index] = value;
-        return;
-    }
-    OPENVINO_THROW("GFX compressed MatMul: unsupported weight type ", type);
-}
-
-std::vector<uint8_t> pack_compressed_matmul_weights_for_output_block(const CompressedMatMulInfo& info,
-                                                                    uint32_t output_block) {
-    OPENVINO_ASSERT(!info.parts.empty(), "GFX compressed MatMul: no compressed weight parts");
-    const auto et = info.weights->get_element_type();
-    const size_t col_blocks = (info.n + output_block - 1) / output_block;
-    const size_t logical_values = col_blocks * info.k * output_block;
-    const size_t bytes = (et == ov::element::i4 || et == ov::element::u4) ? ((logical_values + 1) / 2)
-                                                                          : logical_values;
-    std::vector<uint8_t> packed(bytes, 0);
-
-    for (size_t col_block = 0; col_block < col_blocks; ++col_block) {
-        for (size_t kk = 0; kk < info.k; ++kk) {
-            for (uint32_t lane = 0; lane < output_block; ++lane) {
-                const size_t col = col_block * output_block + lane;
-                const size_t packed_index = ((col_block * info.k + kk) * output_block) + lane;
-                if (col >= info.n) {
-                    write_quantized_weight_value(packed, et, packed_index, 0);
-                    continue;
-                }
-                size_t part_offset = 0;
-                const CompressedMatMulPart* selected_part = nullptr;
-                for (const auto& part : info.parts) {
-                    if (col < part_offset + part.n) {
-                        selected_part = &part;
-                        break;
-                    }
-                    part_offset += part.n;
-                }
-                OPENVINO_ASSERT(selected_part, "GFX compressed MatMul: invalid packed weight column");
-                const size_t local_col = col - part_offset;
-                const size_t source_index = local_col * info.k + kk;
-                write_quantized_weight_value(packed, et, packed_index, read_quantized_weight_value(*selected_part->weights, source_index));
-            }
-        }
-    }
-    return packed;
-}
-
-std::vector<uint8_t> pack_compressed_matmul_scales(const CompressedMatMulInfo& info) {
-    OPENVINO_ASSERT(!info.parts.empty(), "GFX compressed MatMul: no compressed scale parts");
-    const auto scale_type = info.scale->get_element_type();
-    const size_t element_count = ov::shape_size(info.scale->get_shape());
-    OPENVINO_ASSERT(element_count > 0, "GFX compressed MatMul: empty scale shape");
-    const size_t element_bytes = info.scale->get_byte_size() / element_count;
-    OPENVINO_ASSERT(element_bytes > 0, "GFX compressed MatMul: invalid scale element size");
-
-    std::vector<uint8_t> packed(info.n * info.groups * element_bytes, 0);
-    size_t row_offset = 0;
-    for (const auto& part : info.parts) {
-        OPENVINO_ASSERT(part.scale && part.scale->get_element_type() == scale_type,
-                        "GFX compressed MatMul: inconsistent scale part");
-        const auto shape = part.scale->get_shape();
-        OPENVINO_ASSERT(shape.size() == 3 && shape[0] == part.n && shape[1] == info.groups && shape[2] == 1,
-                        "GFX compressed MatMul: unsupported scale part shape");
-        const size_t bytes = part.n * info.groups * element_bytes;
-        const auto* src = static_cast<const uint8_t*>(part.scale->get_data_ptr());
-        OPENVINO_ASSERT(src && bytes > 0, "GFX compressed MatMul: empty scale part");
-        std::memcpy(packed.data() + row_offset * info.groups * element_bytes, src, bytes);
-        row_offset += part.n;
-    }
-    OPENVINO_ASSERT(row_offset == info.n, "GFX compressed MatMul: packed scale size mismatch");
-    return packed;
-}
-
-std::string generate_msl_for_compressed_matmul(const CompressedMatMulInfo& info,
-                                               uint32_t reduction_threads,
-                                               uint32_t output_block) {
-    const std::string input_scalar = msl_type_from_element(info.input_type).empty()
-                                         ? "float"
-                                         : msl_type_from_element(info.input_type);
-    const std::string output_scalar = msl_type_from_element(info.output_type).empty()
-                                          ? "float"
-                                          : msl_type_from_element(info.output_type);
-    const std::string scale_scalar = msl_type_from_element(info.scale->get_element_type()).empty()
-                                         ? "half"
-                                         : msl_type_from_element(info.scale->get_element_type());
-    const bool is_i4 = info.weights->get_element_type() == ov::element::i4 ||
-                       info.weights->get_element_type() == ov::element::u4;
-
-    std::ostringstream ss;
-    ss << "#include <metal_stdlib>\n";
-    ss << "using namespace metal;\n";
-    ss << "constant uint N = " << info.n << ";\n";
-    ss << "constant uint K = " << info.k << ";\n";
-    ss << "constant uint GROUPS = " << info.groups << ";\n";
-    ss << "constant uint GROUP_SIZE = " << info.group_size << ";\n";
-    ss << "constant uint REDUCE_THREADS = " << reduction_threads << ";\n";
-    ss << "constant uint OUTPUT_BLOCK = " << output_block << ";\n";
-    ss << "constant uint COL_BLOCKS = " << ((info.n + output_block - 1) / output_block) << ";\n";
-    ss << "inline float load_qweight(device const uchar* weights, uint idx) {\n";
-    if (is_i4) {
-        ss << "  uchar packed = weights[idx >> 1];\n";
-        ss << "  uint q = ((idx & 1u) == 0u) ? uint(packed & 0x0fu) : uint(packed >> 4);\n";
-        if (info.signed_weights) {
-            ss << "  int s = (q >= 8u) ? int(q) - 16 : int(q);\n";
-            ss << "  return float(s);\n";
-        } else {
-            ss << "  return float(q);\n";
-        }
-    } else {
-        if (info.signed_weights) {
-            ss << "  return float(as_type<char>(weights[idx]));\n";
-        } else {
-            ss << "  return float(weights[idx]);\n";
-        }
-    }
-    ss << "}\n";
-    ss << "kernel void compressed_matmul_kernel(\n";
-    ss << "  device const " << input_scalar << "* A [[buffer(0)]],\n";
-    ss << "  device const uchar* W [[buffer(1)]],\n";
-    ss << "  device const " << scale_scalar << "* S [[buffer(2)]],\n";
-    ss << "  device " << output_scalar << "* C [[buffer(3)]],\n";
-    ss << "  uint gid [[thread_position_in_grid]],\n";
-    ss << "  uint lane [[thread_index_in_threadgroup]]) {\n";
-    if (reduction_threads <= 1) {
-        ss << "  uint block_id = gid;\n";
-        ss << "  uint col_block = block_id % COL_BLOCKS;\n";
-        ss << "  uint col_base = col_block * OUTPUT_BLOCK;\n";
-        ss << "  uint row = block_id / COL_BLOCKS;\n";
-        for (uint32_t i = 0; i < output_block; ++i) {
-            ss << "  float acc" << i << " = 0.0f;\n";
-        }
-        ss << "  for (uint group = 0; group < GROUPS; ++group) {\n";
-        for (uint32_t i = 0; i < output_block; ++i) {
-            ss << "    float scale" << i << " = 0.0f;\n";
-            ss << "    if (col_base + " << i << "u < N) scale" << i
-               << " = float(S[(col_base + " << i << "u) * GROUPS + group]);\n";
-        }
-        ss << "    for (uint in_group = 0; in_group < GROUP_SIZE; ++in_group) {\n";
-        ss << "      uint kk = group * GROUP_SIZE + in_group;\n";
-        ss << "      float a = float(A[row * K + kk]);\n";
-        ss << "      uint w_base = ((col_block * K + kk) * OUTPUT_BLOCK);\n";
-        for (uint32_t i = 0; i < output_block; ++i) {
-            ss << "      if (col_base + " << i << "u < N) acc" << i
-               << " += a * load_qweight(W, w_base + " << i << "u) * scale" << i << ";\n";
-        }
-        ss << "    }\n";
-        ss << "  }\n";
-        for (uint32_t i = 0; i < output_block; ++i) {
-            ss << "  if (col_base + " << i << "u < N) C[row * N + col_base + " << i << "u] = "
-               << output_scalar << "(acc" << i << ");\n";
-        }
-        ss << "}\n";
-        return ss.str();
-    }
-    ss << "  uint block_id = gid / REDUCE_THREADS;\n";
-    ss << "  uint col_block = block_id % COL_BLOCKS;\n";
-    ss << "  uint col_base = col_block * OUTPUT_BLOCK;\n";
-    ss << "  uint row = block_id / COL_BLOCKS;\n";
-    for (uint32_t i = 0; i < output_block; ++i) {
-        ss << "  float acc" << i << " = 0.0f;\n";
-    }
-    ss << "  for (uint group = 0; group < GROUPS; ++group) {\n";
-    for (uint32_t i = 0; i < output_block; ++i) {
-        ss << "    float scale" << i << " = 0.0f;\n";
-        ss << "    if (col_base + " << i << "u < N) scale" << i
-           << " = float(S[(col_base + " << i << "u) * GROUPS + group]);\n";
-    }
-    ss << "    for (uint in_group = lane; in_group < GROUP_SIZE; in_group += REDUCE_THREADS) {\n";
-    ss << "      uint kk = group * GROUP_SIZE + in_group;\n";
-    ss << "      float a = float(A[row * K + kk]);\n";
-    ss << "      uint w_base = ((col_block * K + kk) * OUTPUT_BLOCK);\n";
-    for (uint32_t i = 0; i < output_block; ++i) {
-        ss << "      if (col_base + " << i << "u < N) acc" << i
-           << " += a * load_qweight(W, w_base + " << i << "u) * scale" << i << ";\n";
-    }
-    ss << "    }\n";
-    ss << "  }\n";
-    ss << "  threadgroup float partial[" << (reduction_threads * output_block) << "];\n";
-    for (uint32_t i = 0; i < output_block; ++i) {
-        ss << "  partial[lane * OUTPUT_BLOCK + " << i << "u] = acc" << i << ";\n";
-    }
-    ss << "  threadgroup_barrier(mem_flags::mem_threadgroup);\n";
-    ss << "  for (uint stride = " << (reduction_threads / 2) << "; stride > 0; stride >>= 1) {\n";
-    ss << "    if (lane < stride) {\n";
-    for (uint32_t i = 0; i < output_block; ++i) {
-        ss << "      partial[lane * OUTPUT_BLOCK + " << i << "u] += partial[(lane + stride) * OUTPUT_BLOCK + " << i << "u];\n";
-    }
-    ss << "    }\n";
-    ss << "    threadgroup_barrier(mem_flags::mem_threadgroup);\n";
-    ss << "  }\n";
-    ss << "  if (lane == 0) {\n";
-    for (uint32_t i = 0; i < output_block; ++i) {
-        ss << "    if (col_base + " << i << "u < N) C[row * N + col_base + " << i << "u] = "
-           << output_scalar << "(partial[" << i << "u]);\n";
-    }
-    ss << "  }\n";
-    ss << "}\n";
-    return ss.str();
-}
-
 const char* stage_archetype_attr(GfxStageArchetype archetype) {
     switch (archetype) {
         case GfxStageArchetype::Convolution:
@@ -1119,6 +420,25 @@ std::optional<MatMulCodegenDesc> static_matmul_desc_for_node(const std::shared_p
     desc.batch_b = static_cast<int64_t>(ov::shape_size(b_shape) / static_cast<uint64_t>(K * N));
     return desc;
 }
+
+}  // namespace
+
+KernelSource MlirStage::make_runtime_matmul_kernel_source(const MatMulCodegenDesc& desc,
+                                                          const ov::Shape& shape_a,
+                                                          const ov::Shape& shape_b) const {
+    OPENVINO_ASSERT(!is_vulkan_backend(),
+                    "GFX MLIR: runtime MatMul MSL source requested for Vulkan stage ",
+                    m_name);
+    return make_apple_metal_runtime_matmul_kernel_source(gfx_mlir_context(),
+                                                         m_buffer_manager,
+                                                         m_node,
+                                                         desc,
+                                                         shape_a,
+                                                         shape_b,
+                                                         m_name);
+}
+
+namespace {
 
 bool should_pack_matmul_const_input_as_f16(const std::shared_ptr<const ov::Node>& node,
                                            size_t input_idx,
@@ -1757,33 +1077,109 @@ void MlirStage::apply_kernel_metadata(const KernelRuntimeMetadata& meta,
     }
 }
 
+void MlirStage::apply_msl_runtime_binding_plan(const GfxMslRuntimeBindingPlan& plan) {
+    OPENVINO_ASSERT(plan.valid(), "GFX MLIR: invalid MSL runtime binding plan for stage ", m_name);
+    m_kernel_inputs = plan.kernel_inputs;
+    m_kernel_input_arg_count = plan.kernel_input_arg_count;
+    m_kernel_operand_kinds = plan.operand_kinds;
+    m_kernel_operand_arg_indices = plan.operand_arg_indices;
+    m_kernel_scalar_args = plan.scalar_args;
+}
+
+void MlirStage::apply_msl_custom_kernel_binding_plan(std::string_view stage_type,
+                                                     std::string_view entry_point,
+                                                     std::vector<size_t> tensor_input_indices) {
+    auto plan = make_msl_runtime_binding_plan_for_custom_kernel(stage_type,
+                                                                entry_point,
+                                                                std::move(tensor_input_indices));
+    OPENVINO_ASSERT(plan.valid(),
+                    "GFX MLIR: custom-kernel ABI manifest is invalid for stage ",
+                    m_name,
+                    " (",
+                    stage_type,
+                    ", ",
+                    entry_point,
+                    ")");
+    apply_msl_runtime_binding_plan(plan);
+}
+
+void MlirStage::apply_msl_custom_kernel_binding_plan(std::string_view stage_type,
+                                                     std::string_view entry_point,
+                                                     std::vector<size_t> tensor_input_indices,
+                                                     std::vector<int32_t> scalar_args) {
+    auto plan = make_msl_runtime_binding_plan_for_custom_kernel(stage_type,
+                                                                entry_point,
+                                                                std::move(tensor_input_indices),
+                                                                std::move(scalar_args));
+    OPENVINO_ASSERT(plan.valid(),
+                    "GFX MLIR: custom-kernel scalar ABI manifest is invalid for stage ",
+                    m_name,
+                    " (",
+                    stage_type,
+                    ", ",
+                    entry_point,
+                    ")");
+    apply_msl_runtime_binding_plan(plan);
+}
+
+void MlirStage::annotate_msl_custom_kernel_binding_plan(mlir::ModuleOp module,
+                                                        std::string_view stage_type,
+                                                        std::string_view entry_point,
+                                                        std::vector<size_t> tensor_input_indices) {
+    auto plan = make_msl_runtime_binding_plan_for_custom_kernel(stage_type,
+                                                                entry_point,
+                                                                std::move(tensor_input_indices));
+    OPENVINO_ASSERT(plan.valid(),
+                    "GFX MLIR: custom-kernel ABI manifest is invalid for stage ",
+                    m_name,
+                    " (",
+                    stage_type,
+                    ", ",
+                    entry_point,
+                    ")");
+    OPENVINO_ASSERT(annotate_msl_module_with_runtime_binding_plan(module, plan),
+                    "GFX MLIR: failed to annotate MSL binding manifest for stage ",
+                    m_name,
+                    " (",
+                    stage_type,
+                    ", ",
+                    entry_point,
+                    ")");
+}
+
+void MlirStage::annotate_msl_custom_kernel_binding_plan(mlir::ModuleOp module,
+                                                        std::string_view stage_type,
+                                                        std::string_view entry_point,
+                                                        std::vector<size_t> tensor_input_indices,
+                                                        std::vector<int32_t> scalar_args) {
+    auto plan = make_msl_runtime_binding_plan_for_custom_kernel(stage_type,
+                                                                entry_point,
+                                                                std::move(tensor_input_indices),
+                                                                std::move(scalar_args));
+    OPENVINO_ASSERT(plan.valid(),
+                    "GFX MLIR: custom-kernel scalar ABI manifest is invalid for stage ",
+                    m_name,
+                    " (",
+                    stage_type,
+                    ", ",
+                    entry_point,
+                    ")");
+    OPENVINO_ASSERT(annotate_msl_module_with_runtime_binding_plan(module, plan),
+                    "GFX MLIR: failed to annotate MSL scalar binding manifest for stage ",
+                    m_name,
+                    " (",
+                    stage_type,
+                    ", ",
+                    entry_point,
+                    ")");
+}
+
 void MlirStage::compile_from_plan(MlirKernelPlanContext& plan_ctx,
                                   mlir::ModuleOp module,
                                   const char* stage_kind) {
     auto& build_info = plan_ctx.build_info;
     if (module) {
         normalize_operand_segment_sizes(module);
-        if (auto fixed_arg_count = module->getAttrOfType<mlir::IntegerAttr>("gfx.fixed_arg_count")) {
-            auto func = get_entry_func(module);
-            const size_t total_buffer_args = static_cast<size_t>(std::max<int64_t>(fixed_arg_count.getInt(), 0));
-            const size_t output_arg_count = plan_ctx.output_args != 0 ? plan_ctx.output_args
-                                                                      : (m_node ? m_node->get_output_size() : 0);
-            const size_t non_output_buffer_args =
-                total_buffer_args >= output_arg_count ? (total_buffer_args - output_arg_count) : 0;
-            if (func) {
-                const size_t annotate_count =
-                    std::min(non_output_buffer_args, static_cast<size_t>(func.getNumArguments()));
-                for (size_t arg_idx = 0; arg_idx < annotate_count; ++arg_idx) {
-                    func.setArgAttr(static_cast<unsigned>(arg_idx),
-                                    "gfx.kernel_runtime_arg_index",
-                                    mlir::IntegerAttr::get(mlir::IntegerType::get(module.getContext(), 32),
-                                                           static_cast<int32_t>(arg_idx)));
-                }
-            }
-            module->setAttr("gfx.kernel_output_arg_count",
-                            mlir::IntegerAttr::get(mlir::IntegerType::get(module.getContext(), 32),
-                                                   static_cast<int32_t>(output_arg_count)));
-        }
         if (m_force_single_dispatch) {
             module->setAttr("gfx.force_single_dispatch",
                             mlir::BoolAttr::get(module.getContext(), true));
@@ -1802,26 +1198,29 @@ void MlirStage::compile_from_plan(MlirKernelPlanContext& plan_ctx,
     }
     if (src.module) {
         normalize_operand_segment_sizes(src.module);
-        if (auto fixed_arg_count = src.module->getAttrOfType<mlir::IntegerAttr>("gfx.fixed_arg_count")) {
+        if (is_vulkan_backend()) {
+            auto fixed_arg_count = src.module->getAttrOfType<mlir::IntegerAttr>("gfx.fixed_arg_count");
             auto func = get_entry_func(src.module);
-            const size_t total_buffer_args = static_cast<size_t>(std::max<int64_t>(fixed_arg_count.getInt(), 0));
-            const size_t output_arg_count = plan_ctx.output_args != 0 ? plan_ctx.output_args
-                                                                      : (m_node ? m_node->get_output_size() : 0);
-            const size_t non_output_buffer_args =
-                total_buffer_args >= output_arg_count ? (total_buffer_args - output_arg_count) : 0;
-            if (func) {
-                const size_t annotate_count =
-                    std::min(non_output_buffer_args, static_cast<size_t>(func.getNumArguments()));
-                for (size_t arg_idx = 0; arg_idx < annotate_count; ++arg_idx) {
-                    func.setArgAttr(static_cast<unsigned>(arg_idx),
-                                    "gfx.kernel_runtime_arg_index",
-                                    mlir::IntegerAttr::get(mlir::IntegerType::get(src.module.getContext(), 32),
-                                                           static_cast<int32_t>(arg_idx)));
+            if (fixed_arg_count) {
+                const size_t total_buffer_args = static_cast<size_t>(std::max<int64_t>(fixed_arg_count.getInt(), 0));
+                const size_t output_arg_count = plan_ctx.output_args != 0 ? plan_ctx.output_args
+                                                                          : (m_node ? m_node->get_output_size() : 0);
+                const size_t non_output_buffer_args =
+                    total_buffer_args >= output_arg_count ? (total_buffer_args - output_arg_count) : 0;
+                if (func) {
+                    const size_t annotate_count =
+                        std::min(non_output_buffer_args, static_cast<size_t>(func.getNumArguments()));
+                    for (size_t arg_idx = 0; arg_idx < annotate_count; ++arg_idx) {
+                        func.setArgAttr(static_cast<unsigned>(arg_idx),
+                                        "gfx.kernel_runtime_arg_index",
+                                        mlir::IntegerAttr::get(mlir::IntegerType::get(src.module.getContext(), 32),
+                                                               static_cast<int32_t>(arg_idx)));
+                    }
                 }
+                src.module->setAttr("gfx.kernel_output_arg_count",
+                                    mlir::IntegerAttr::get(mlir::IntegerType::get(src.module.getContext(), 32),
+                                                           static_cast<int32_t>(output_arg_count)));
             }
-            src.module->setAttr("gfx.kernel_output_arg_count",
-                                mlir::IntegerAttr::get(mlir::IntegerType::get(src.module.getContext(), 32),
-                                                       static_cast<int32_t>(output_arg_count)));
         }
         if (m_force_single_dispatch) {
             src.module->setAttr("gfx.force_single_dispatch",
@@ -2101,15 +1500,15 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
             gfx_log_debug("MLIRConst") << oss.str();
         }
 
-        KernelSource src;
-        src.entry_point = "compressed_matmul_kernel";
-        src.msl_source = generate_msl_for_compressed_matmul(*compressed_matmul_info,
-                                                            m_matmul_reduction_threads,
-                                                            m_compressed_matmul_output_block);
-        src.signature.arg_count = 4;
-        src.signature.output_arg_count = 1;
+        auto compressed_source_plan =
+            make_compressed_matmul_msl_kernel_source_plan(*compressed_matmul_info,
+                                                          m_matmul_reduction_threads,
+                                                          m_compressed_matmul_output_block);
+        OPENVINO_ASSERT(compressed_source_plan.valid(),
+                        "GFX Metal compressed MatMul: source plan is invalid for stage ",
+                        m_name);
         std::string log;
-        m_kernel = compile_kernel(src, &log);
+        m_kernel = compile_kernel(compressed_source_plan.source, &log);
         OPENVINO_ASSERT(m_kernel, "GFX Metal compressed MatMul: kernel compile failed: ", log);
         m_kernel->prepare_runtime_artifacts();
 
@@ -2146,10 +1545,7 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
                                                            ov::Shape{compressed_matmul_info->n,
                                                                      compressed_matmul_info->groups,
                                                                      1}));
-        m_kernel_inputs = {0};
-        m_kernel_input_arg_count = 3;
-        m_kernel_operand_kinds = {1, 1, 1, 1};
-        m_kernel_operand_arg_indices = {0, 1, 2, 3};
+        apply_msl_runtime_binding_plan(compressed_source_plan.binding);
         m_kernel_scalar_args.clear();
         m_parallel_cfg = ParallelDispatchConfig{};
         m_force_single_dispatch = false;
@@ -2640,10 +2036,6 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
         t.expected_type = ov::element::u8;
         t.shape = ov::Shape{sizeof(params)};
         m_kernel_extra_inputs.push_back(std::move(t));
-        m_kernel_inputs = {0};
-        m_kernel_input_arg_count = 2;  // input tensor + runtime params precede output0 in the kernel ABI.
-        m_kernel_operand_kinds = {1, 1, 1};
-        m_kernel_operand_arg_indices = {0, 1, 2};
     }
     if (m_type == "ShapeOf") {
         OPENVINO_ASSERT(m_node, "GFX MLIR: ShapeOf stage requires node");
@@ -2708,30 +2100,33 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
 
         m_kernel_extra_inputs.clear();
         m_kernel_extra_inputs.push_back(make_shape_dims_tensor(compile_shape));
-        m_kernel_scalar_args = {static_cast<int32_t>(rank)};
-        m_kernel_operand_kinds = {1, 1, 0, 1};
-        m_kernel_operand_arg_indices = {0, 1, -1, -1};
-        m_kernel_inputs = {0};
-        m_kernel_input_arg_count = 1;
+        if (!is_vulkan_backend()) {
+            apply_msl_custom_kernel_binding_plan("ShapeOf",
+                                                 "shapeof_kernel",
+                                                 {0},
+                                                 {static_cast<int32_t>(rank)});
+        } else {
+            m_kernel_scalar_args = {static_cast<int32_t>(rank)};
+            m_kernel_operand_kinds = {1, 1, 0, 1};
+            m_kernel_operand_arg_indices = {0, 1, -1, -1};
+            m_kernel_inputs = {0};
+            m_kernel_input_arg_count = 1;
+        }
     }
     if (m_type == "GfxSDPAWithCausalMask") {
         if (is_vulkan_backend()) {
             OPENVINO_THROW("GFX Vulkan SDPA causal mask fusion is not enabled yet");
         }
         const auto et = m_node ? m_node->get_output_element_type(0) : ov::element::dynamic;
-        KernelSource src;
-        src.entry_point = "sdpa_causal_mask_kernel";
-        src.msl_source = generate_msl_for_sdpa_with_causal_mask(et);
-        src.signature.arg_count = 7;
-        src.signature.output_arg_count = 1;
+        auto sdpa_source_plan = make_causal_sdpa_msl_kernel_source_plan(et);
+        OPENVINO_ASSERT(sdpa_source_plan.valid(),
+                        "GFX Metal SDPA causal mask source plan is invalid for stage ",
+                        m_name);
         std::string log;
-        m_kernel = compile_kernel(src, &log);
+        m_kernel = compile_kernel(sdpa_source_plan.source, &log);
         OPENVINO_ASSERT(m_kernel, "GFX Metal SDPA causal mask kernel compile failed: ", log);
         m_kernel->prepare_runtime_artifacts();
-        m_kernel_inputs = {0, 1, 2, 3, 4};
-        m_kernel_input_arg_count = 6;
-        m_kernel_operand_kinds = {1, 1, 1, 1, 1, 1, 1};
-        m_kernel_operand_arg_indices = {0, 1, 2, 3, 4, 5, 6};
+        apply_msl_runtime_binding_plan(sdpa_source_plan.binding);
         m_force_single_dispatch = false;
         return;
     }
@@ -2740,18 +2135,14 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
             OPENVINO_THROW("GFX Vulkan SDPA: native ScaledDotProductAttention is not enabled yet");
         }
         const auto et = m_node ? m_node->get_output_element_type(0) : ov::element::dynamic;
-        KernelSource src;
-        src.entry_point = "sdpa_kernel";
-        src.msl_source = generate_msl_for_sdpa(et);
-        src.signature.arg_count = 6;
+        const bool has_mask = m_node && m_node->get_input_size() >= 4;
+        auto sdpa_source_plan = make_sdpa_msl_kernel_source_plan(et, has_mask);
+        OPENVINO_ASSERT(sdpa_source_plan.valid(), "GFX Metal SDPA source plan is invalid for stage ", m_name);
         std::string log;
-        m_kernel = compile_kernel(src, &log);
+        m_kernel = compile_kernel(sdpa_source_plan.source, &log);
         OPENVINO_ASSERT(m_kernel, "GFX Metal SDPA: kernel compile failed: ", log);
         m_kernel->prepare_runtime_artifacts();
-        m_kernel_inputs = {0, 1, 2, 3};
-        m_kernel_input_arg_count = 5;
-        m_kernel_operand_kinds = {1, 1, 1, 1, 1, 1};
-        m_kernel_operand_arg_indices = {0, 1, 2, 3, 4, 5};
+        apply_msl_runtime_binding_plan(sdpa_source_plan.binding);
         m_force_single_dispatch = false;
         return;
     }
@@ -2849,11 +2240,19 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
     }
     apply_fused_operations(module);
     if (m_type == "ShapeOf" && module) {
-        mlir::OpBuilder b(module.getContext());
-        std::vector<int32_t> kinds = {1, 1, 0, 1};
-        std::vector<int32_t> arg_idx = {0, 1, -1, -1};
-        module->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr(b, kinds));
-        module->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr(b, arg_idx));
+        if (!is_vulkan_backend()) {
+            annotate_msl_custom_kernel_binding_plan(module,
+                                                              "ShapeOf",
+                                                              "shapeof_kernel",
+                                                              {0},
+                                                              m_kernel_scalar_args);
+        } else {
+            mlir::OpBuilder b(module.getContext());
+            std::vector<int32_t> kinds = {1, 1, 0, 1};
+            std::vector<int32_t> arg_idx = {0, 1, -1, -1};
+            module->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr(b, kinds));
+            module->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr(b, arg_idx));
+        }
     }
     if (m_type == "Tile" && m_node && module) {
         OPENVINO_ASSERT(m_node->get_input_partial_shape(0).is_static() &&
@@ -2899,16 +2298,28 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
         m_kernel_extra_inputs.push_back(wrap_i32_vector("tile_in_dims", to_i32(in_shape)));
         m_kernel_extra_inputs.push_back(wrap_i32_vector("tile_out_strides", strides_i32(out_shape)));
         m_kernel_extra_inputs.push_back(wrap_i32_vector("tile_in_strides", strides_i32(in_shape)));
-        m_kernel_scalar_args = {static_cast<int32_t>(ov::shape_size(out_shape)),
-                                static_cast<int32_t>(std::max<size_t>(out_shape.size(), 1))};
-        m_kernel_inputs = {0};
-        m_kernel_input_arg_count = 1;
-        m_kernel_operand_kinds = {1, 1, 0, 0, 1, 1, 1, 1};
-        m_kernel_operand_arg_indices = {0, 1, -1, -1, -1, -1, -1, -1};
-
-        mlir::OpBuilder b(module.getContext());
-        module->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr(b, m_kernel_operand_kinds));
-        module->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr(b, m_kernel_operand_arg_indices));
+        const std::vector<int32_t> tile_scalars = {
+            static_cast<int32_t>(ov::shape_size(out_shape)),
+            static_cast<int32_t>(std::max<size_t>(out_shape.size(), 1))};
+        if (!is_vulkan_backend()) {
+            annotate_msl_custom_kernel_binding_plan(module,
+                                                              "Tile",
+                                                              "tile_kernel",
+                                                              {0},
+                                                              tile_scalars);
+        } else {
+            m_kernel_scalar_args = tile_scalars;
+            m_kernel_inputs = {0};
+            m_kernel_input_arg_count = 1;
+            m_kernel_operand_kinds = {1, 1, 0, 0, 1, 1, 1, 1};
+            m_kernel_operand_arg_indices = {0, 1, -1, -1, -1, -1, -1, -1};
+            mlir::OpBuilder b(module.getContext());
+            module->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr(b, m_kernel_operand_kinds));
+            module->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr(b, m_kernel_operand_arg_indices));
+            if (!m_kernel_scalar_args.empty()) {
+                module->setAttr("gfx.kernel_scalar_values", make_i32_array_attr(b, m_kernel_scalar_args));
+            }
+        }
     }
     if (auto gather_elements = ov::as_type_ptr<const ov::op::v6::GatherElements>(m_node)) {
         OPENVINO_ASSERT(gather_elements->get_input_partial_shape(0).is_static() &&
@@ -2961,14 +2372,21 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
         params_tensor.shape = ov::Shape{sizeof(params)};
         m_kernel_extra_inputs.clear();
         m_kernel_extra_inputs.push_back(std::move(params_tensor));
-        m_kernel_inputs = {0, 1};
-        m_kernel_input_arg_count = 2;
-        m_kernel_operand_kinds = {1, 1, 1, 1};
-        m_kernel_operand_arg_indices = {0, 1, 2, -1};
+        if (!is_vulkan_backend()) {
+            annotate_msl_custom_kernel_binding_plan(module,
+                                                              "GatherElements",
+                                                              "gather_elements_kernel",
+                                                              {0, 1});
+        } else {
+            m_kernel_inputs = {0, 1};
+            m_kernel_input_arg_count = 2;
+            m_kernel_operand_kinds = {1, 1, 1, 1};
+            m_kernel_operand_arg_indices = {0, 1, 2, -1};
 
-        mlir::OpBuilder b(module.getContext());
-        module->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr(b, m_kernel_operand_kinds));
-        module->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr(b, m_kernel_operand_arg_indices));
+            mlir::OpBuilder b(module.getContext());
+            module->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr(b, m_kernel_operand_kinds));
+            module->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr(b, m_kernel_operand_arg_indices));
+        }
     }
     auto plan_ctx = build_mlir_kernel_plan(
         module,
@@ -3226,6 +2644,22 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
         module->setAttr("gfx.fused_residual_add", mlir::BoolAttr::get(module.getContext(), true));
     }
     compile_from_plan(plan_ctx, module, "stage");
+    if (!is_vulkan_backend() && (m_type == "MaxPool" || m_type == "AvgPool")) {
+        apply_msl_custom_kernel_binding_plan(m_type, "pool2d_kernel", {0});
+    }
+    if (!is_vulkan_backend() && m_type == "Tile" && m_node) {
+        OPENVINO_ASSERT(m_node->get_output_partial_shape(0).is_static(),
+                        "GFX MLIR: Tile requires static output shape for stage ",
+                        m_name);
+        const ov::Shape out_shape = m_node->get_output_shape(0);
+        const std::vector<int32_t> tile_scalars = {
+            static_cast<int32_t>(ov::shape_size(out_shape)),
+            static_cast<int32_t>(std::max<size_t>(out_shape.size(), 1))};
+        apply_msl_custom_kernel_binding_plan("Tile", "tile_kernel", {0}, tile_scalars);
+    }
+    if (!is_vulkan_backend() && m_type == "GatherElements") {
+        apply_msl_custom_kernel_binding_plan("GatherElements", "gather_elements_kernel", {0, 1});
+    }
     if (m_type == "MatMul" && m_node &&
         (!m_node->get_input_partial_shape(0).is_static() ||
          !m_node->get_input_partial_shape(1).is_static() ||
@@ -3237,10 +2671,17 @@ void MlirStage::compile(GpuBufferManager* buffer_manager) {
         m_last_input_shape.clear();
     }
     if (m_type == "ShapeOf") {
-        m_kernel_operand_kinds = {1, 1, 1};
-        m_kernel_operand_arg_indices = {0, 1, 2};
-        m_kernel_inputs = {0};
-        m_kernel_input_arg_count = 1;
+        if (!is_vulkan_backend() && !m_kernel_scalar_args.empty()) {
+            apply_msl_custom_kernel_binding_plan("ShapeOf",
+                                                 "shapeof_kernel",
+                                                 {0},
+                                                 m_kernel_scalar_args);
+        } else {
+            m_kernel_operand_kinds = {1, 1, 1};
+            m_kernel_operand_arg_indices = {0, 1, 2};
+            m_kernel_inputs = {0};
+            m_kernel_input_arg_count = 1;
+        }
     }
     if (m_has_residual_add && m_type == "RMS") {
         m_kernel_operand_kinds = {1, 1, 1, 1};
@@ -3746,36 +3187,26 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                 scale = vals[0];
             }
         }
-        int32_t scale_bits = 0;
-        static_assert(sizeof(scale_bits) == sizeof(scale), "GFX SDPA scale bitcast size mismatch");
-        std::memcpy(&scale_bits, &scale, sizeof(scale));
-
         const auto* k_tensor = resolve_input_tensor(1);
         const auto* v_tensor = resolve_input_tensor(2);
         const bool k_view_gqa = k_tensor && k_tensor->gqa_broadcast_view && k_tensor->gqa_kv_heads > 0;
         const bool v_view_gqa = v_tensor && v_tensor->gqa_broadcast_view && v_tensor->gqa_kv_heads > 0;
         const bool k_gqa = k_view_gqa || k_shape[1] != q_shape[1];
         const bool v_gqa = v_view_gqa || v_shape[1] != q_shape[1];
-        m_sdpa_params = {
-            static_cast<int32_t>(q_shape[0]),
-            static_cast<int32_t>(q_shape[1]),
-            static_cast<int32_t>(q_shape[2]),
-            static_cast<int32_t>(k_shape[2]),
-            static_cast<int32_t>(q_shape[3]),
-            static_cast<int32_t>(v_shape[3]),
-            static_cast<int32_t>(mask_shape[1]),
-            scale_bits,
-            k_gqa ? 1 : 0,
-            static_cast<int32_t>(k_view_gqa ? k_tensor->gqa_kv_heads : k_shape[1]),
-            v_gqa ? 1 : 0,
-            static_cast<int32_t>(v_view_gqa ? v_tensor->gqa_kv_heads : v_shape[1]),
-        };
+        auto sdpa_plan = make_causal_sdpa_msl_runtime_params_plan(q_shape,
+                                                                  k_shape,
+                                                                  v_shape,
+                                                                  mask_shape,
+                                                                  scale,
+                                                                  k_gqa,
+                                                                  k_view_gqa ? k_tensor->gqa_kv_heads : k_shape[1],
+                                                                  v_gqa,
+                                                                  v_view_gqa ? v_tensor->gqa_kv_heads : v_shape[1]);
+        OPENVINO_ASSERT(sdpa_plan.valid(), "GFX MLIR: invalid causal SDPA MSL runtime params for stage ", m_name);
         m_kernel_extra_inputs.clear();
-        m_has_sdpa_params = true;
-        m_kernel_inputs = {0, 1, 2, 3, 4};
-        m_kernel_input_arg_count = 6;
-        m_kernel_operand_kinds = {1, 1, 1, 1, 1, 1, 1};
-        m_kernel_operand_arg_indices = {0, 1, 2, 3, 4, 5, 6};
+        m_kernel_extra_inputs.push_back(wrap_i32_vector("sdpa_causal_mask_params",
+                                                        sdpa_plan.params));
+        apply_msl_runtime_binding_plan(sdpa_plan.binding);
     }
 
     if (m_type == "ScaledDotProductAttention" && m_node) {
@@ -3819,10 +3250,6 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                 }
             }
         }
-        int32_t scale_bits = 0;
-        static_assert(sizeof(scale_bits) == sizeof(scale), "GFX SDPA scale bitcast size mismatch");
-        std::memcpy(&scale_bits, &scale, sizeof(scale));
-
         const auto* k_tensor = resolve_input_tensor(1);
         const auto* v_tensor = resolve_input_tensor(2);
         const bool k_gqa = k_tensor && k_tensor->gqa_broadcast_view && k_tensor->gqa_kv_heads > 0;
@@ -3836,31 +3263,20 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                             "GFX MLIR: SDPA mask expects rank-4 shape for stage ",
                             m_name);
         }
-        m_sdpa_params = {
-            static_cast<int32_t>(q_shape[0]),
-            static_cast<int32_t>(q_shape[1]),
-            static_cast<int32_t>(q_shape[2]),
-            static_cast<int32_t>(k_shape[2]),
-            static_cast<int32_t>(q_shape[3]),
-            static_cast<int32_t>(v_shape[3]),
-            has_mask ? 1 : 0,
-            static_cast<int32_t>(mask_shape[0]),
-            static_cast<int32_t>(mask_shape[1]),
-            static_cast<int32_t>(mask_shape[2]),
-            static_cast<int32_t>(mask_shape[3]),
-            scale_bits,
-            k_gqa ? 1 : 0,
-            static_cast<int32_t>(k_gqa ? k_tensor->gqa_kv_heads : k_shape[1]),
-            v_gqa ? 1 : 0,
-            static_cast<int32_t>(v_gqa ? v_tensor->gqa_kv_heads : v_shape[1]),
-        };
+        auto sdpa_plan = make_sdpa_msl_runtime_params_plan(q_shape,
+                                                           k_shape,
+                                                           v_shape,
+                                                           mask_shape,
+                                                           has_mask,
+                                                           scale,
+                                                           k_gqa,
+                                                           k_gqa ? k_tensor->gqa_kv_heads : k_shape[1],
+                                                           v_gqa,
+                                                           v_gqa ? v_tensor->gqa_kv_heads : v_shape[1]);
+        OPENVINO_ASSERT(sdpa_plan.valid(), "GFX MLIR: invalid SDPA MSL runtime params for stage ", m_name);
         m_kernel_extra_inputs.clear();
-        m_has_sdpa_params = true;
-        m_kernel_inputs = has_mask ? std::vector<size_t>{0, 1, 2, 3}
-                                   : std::vector<size_t>{0, 1, 2, 0};
-        m_kernel_input_arg_count = 5;
-        m_kernel_operand_kinds = {1, 1, 1, 1, 1, 1};
-        m_kernel_operand_arg_indices = {0, 1, 2, 3, 4, 5};
+        m_kernel_extra_inputs.push_back(wrap_i32_vector("sdpa_params", sdpa_plan.params));
+        apply_msl_runtime_binding_plan(sdpa_plan.binding);
     }
 
     if (auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(m_node)) {
@@ -4121,10 +3537,14 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
             m_kernel_extra_inputs.clear();
             m_kernel_extra_inputs.push_back(
                 wrap_bytes_tensor(suffix.str(), &params, sizeof(params), ov::element::u32, ov::Shape{4}));
-            m_kernel_operand_kinds = {1, 1, 1, 1};
-            m_kernel_operand_arg_indices = {0, 1, 2, 3};
-            m_kernel_inputs = {0, 1};
-            m_kernel_input_arg_count = 2;
+            if (is_vulkan_backend()) {
+                m_kernel_operand_kinds = {1, 1, 1, 1};
+                m_kernel_operand_arg_indices = {0, 1, 2, 3};
+                m_kernel_inputs = {0, 1};
+                m_kernel_input_arg_count = 2;
+            } else {
+                apply_msl_custom_kernel_binding_plan("Gather", "gather_kernel", {0, 1});
+            }
         }
 
         if (auto transpose = ov::as_type_ptr<const ov::op::v1::Transpose>(m_node)) {
@@ -4235,10 +3655,14 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                                                               in_stride_u32.size() * sizeof(uint32_t),
                                                               ov::element::u32,
                                                               ov::Shape{in_stride_u32.size()}));
-            m_kernel_operand_kinds = {1, 1, 1, 1, 1, 1, 1};
-            m_kernel_operand_arg_indices = {0, 1, 2, 3, 4, 5, 6};
-            m_kernel_inputs = {0};
-            m_kernel_input_arg_count = 1;
+            if (is_vulkan_backend()) {
+                m_kernel_operand_kinds = {1, 1, 1, 1, 1, 1, 1};
+                m_kernel_operand_arg_indices = {0, 1, 2, 3, 4, 5, 6};
+                m_kernel_inputs = {0};
+                m_kernel_input_arg_count = 1;
+            } else {
+                apply_msl_custom_kernel_binding_plan("Transpose", "transpose_kernel", {0});
+            }
         }
     }
 
@@ -4307,11 +3731,18 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
 
         m_kernel_extra_inputs.clear();
         m_kernel_extra_inputs.push_back(wrap_shape_dims_tensor(in_shape));
-        m_kernel_scalar_args = {static_cast<int32_t>(rank)};
-        m_kernel_operand_kinds = {1, 1, 0, 1};
-        m_kernel_operand_arg_indices = {0, 1, -1, -1};
-        m_kernel_inputs = {0};
-        m_kernel_input_arg_count = 1;
+        if (!is_vulkan_backend()) {
+            apply_msl_custom_kernel_binding_plan("ShapeOf",
+                                                 "shapeof_kernel",
+                                                 {0},
+                                                 {static_cast<int32_t>(rank)});
+        } else {
+            m_kernel_scalar_args = {static_cast<int32_t>(rank)};
+            m_kernel_operand_kinds = {1, 1, 0, 1};
+            m_kernel_operand_arg_indices = {0, 1, -1, -1};
+            m_kernel_inputs = {0};
+            m_kernel_input_arg_count = 1;
+        }
     } else if (auto matmul = ov::as_type_ptr<const ov::op::v0::MatMul>(m_node)) {
         ov::Shape a_shape;
         ov::Shape b_shape;
@@ -4409,10 +3840,14 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                     }
                     OPENVINO_ASSERT(m_kernel, "GFX MLIR: failed to compile MatMul stage ", m_name, ": ", log);
                 }
-                m_kernel_operand_kinds = {1, 1, 1};
-                m_kernel_operand_arg_indices = {0, 1, 2};
-                m_kernel_inputs = {0, 1};
-                m_kernel_input_arg_count = 2;
+                if (is_vulkan_backend()) {
+                    m_kernel_operand_kinds = {1, 1, 1};
+                    m_kernel_operand_arg_indices = {0, 1, 2};
+                    m_kernel_inputs = {0, 1};
+                    m_kernel_input_arg_count = 2;
+                } else {
+                    apply_msl_custom_kernel_binding_plan("MatMul", "matmul_kernel", {0, 1});
+                }
                 m_kernel_extra_inputs.clear();
                 m_kernel_scalar_args.clear();
                 m_parallel_cfg = ParallelDispatchConfig{};
@@ -4453,12 +3888,21 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
             m_kernel_extra_inputs.push_back(wrap_i32_vector("select_stride_cond", stride_cond));
             m_kernel_extra_inputs.push_back(wrap_i32_vector("select_stride_true", stride_true));
             m_kernel_extra_inputs.push_back(wrap_i32_vector("select_stride_false", stride_false));
-            m_kernel_scalar_args = {static_cast<int32_t>(ov::shape_size(out_shape)),
-                                    static_cast<int32_t>(meta_shape.size())};
-            m_kernel_operand_kinds = {1, 1, 1, 1, 0, 0, 1, 1, 1, 1};
-            m_kernel_operand_arg_indices = {0, 1, 2, 7, -1, -1, 3, 4, 5, 6};
-            m_kernel_inputs = {0, 1, 2};
-            m_kernel_input_arg_count = 7;
+            const std::vector<int32_t> select_scalars = {
+                static_cast<int32_t>(ov::shape_size(out_shape)),
+                static_cast<int32_t>(meta_shape.size())};
+            if (!is_vulkan_backend()) {
+                apply_msl_custom_kernel_binding_plan("Select",
+                                                     "select_kernel",
+                                                     {0, 1, 2},
+                                                     select_scalars);
+            } else {
+                m_kernel_scalar_args = select_scalars;
+                m_kernel_operand_kinds = {1, 1, 1, 1, 0, 0, 1, 1, 1, 1};
+                m_kernel_operand_arg_indices = {0, 1, 2, 7, -1, -1, 3, 4, 5, 6};
+                m_kernel_inputs = {0, 1, 2};
+                m_kernel_input_arg_count = 7;
+            }
         }
     } else if (auto scatter = ov::as_type_ptr<const ov::op::v3::ScatterUpdate>(m_node)) {
         ov::Shape data_shape;
@@ -4543,10 +3987,14 @@ struct ScatterUpdateParams {
             param_tensor.shape = ov::Shape{sizeof(params)};
             m_kernel_extra_inputs.clear();
             m_kernel_extra_inputs.push_back(std::move(param_tensor));
-            m_kernel_operand_kinds = {1, 1, 1, 1, 1};
-            m_kernel_operand_arg_indices = {0, 1, 2, 4, 3};
-            m_kernel_inputs = {0, 1, 2};
-            m_kernel_input_arg_count = 4;
+            if (is_vulkan_backend()) {
+                m_kernel_operand_kinds = {1, 1, 1, 1, 1};
+                m_kernel_operand_arg_indices = {0, 1, 2, 4, 3};
+                m_kernel_inputs = {0, 1, 2};
+                m_kernel_input_arg_count = 4;
+            } else {
+                apply_msl_custom_kernel_binding_plan("ScatterUpdate", "scatter_update_kernel", {0, 1, 2});
+            }
         }
     } else if (m_type == "Slice" || m_type == "StridedSlice") {
         const bool use_runtime_slice_args = is_vulkan_backend() ||
@@ -4747,13 +4195,20 @@ struct ScatterUpdateParams {
             auto& ctx = gfx_mlir_context();
             auto module = build_mlir_for_node(m_node, ctx);
             if (module) {
-                mlir::OpBuilder b(module.getContext());
-                std::vector<int32_t> kinds = use_runtime_slice_args ? std::vector<int32_t>{1, 1, 1, 1, 1, 1, 1, 1}
-                                                                    : std::vector<int32_t>{1, 1};
-                std::vector<int32_t> arg_idx = use_runtime_slice_args ? std::vector<int32_t>{0, 1, 2, 3, 4, 5, 6, 7}
-                                                                      : std::vector<int32_t>{0, 1};
-                module->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr(b, kinds));
-                module->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr(b, arg_idx));
+                if (!is_vulkan_backend() && use_runtime_slice_args) {
+                    annotate_msl_custom_kernel_binding_plan(module,
+                                                                      "Slice",
+                                                                      "slice_kernel",
+                                                                      {0});
+                } else {
+                    mlir::OpBuilder b(module.getContext());
+                    std::vector<int32_t> kinds = use_runtime_slice_args ? std::vector<int32_t>{1, 1, 1, 1, 1, 1, 1, 1}
+                                                                        : std::vector<int32_t>{1, 1};
+                    std::vector<int32_t> arg_idx = use_runtime_slice_args ? std::vector<int32_t>{0, 1, 2, 3, 4, 5, 6, 7}
+                                                                          : std::vector<int32_t>{0, 1};
+                    module->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr(b, kinds));
+                    module->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr(b, arg_idx));
+                }
             }
             auto plan_ctx = build_mlir_kernel_plan(
                 module,
@@ -4773,12 +4228,16 @@ struct ScatterUpdateParams {
                                                   plan_ctx.build_info.plan.entry_point(),
                                                   use_runtime_slice_args ? 8u : 2u);
             compile_from_plan(plan_ctx, module, "slice");
-            m_kernel_operand_kinds = use_runtime_slice_args ? std::vector<int32_t>{1, 1, 1, 1, 1, 1, 1, 1}
-                                                            : std::vector<int32_t>{1, 1};
-            m_kernel_operand_arg_indices = use_runtime_slice_args ? std::vector<int32_t>{0, 1, 2, 3, 4, 5, 6, 7}
-                                                                  : std::vector<int32_t>{0, 1};
-            m_kernel_inputs = {0};
-            m_kernel_input_arg_count = 1;
+            if (!is_vulkan_backend() && use_runtime_slice_args) {
+                apply_msl_custom_kernel_binding_plan("Slice", "slice_kernel", {0});
+            } else {
+                m_kernel_operand_kinds = use_runtime_slice_args ? std::vector<int32_t>{1, 1, 1, 1, 1, 1, 1, 1}
+                                                                : std::vector<int32_t>{1, 1};
+                m_kernel_operand_arg_indices = use_runtime_slice_args ? std::vector<int32_t>{0, 1, 2, 3, 4, 5, 6, 7}
+                                                                      : std::vector<int32_t>{0, 1};
+                m_kernel_inputs = {0};
+                m_kernel_input_arg_count = 1;
+            }
             m_last_input_shape = in_shape;
         }
     } else if (m_type == "Interpolate") {
@@ -4886,13 +4345,20 @@ struct ScatterUpdateParams {
             auto& ctx = gfx_mlir_context();
             auto module = build_mlir_for_node(m_node, ctx);
             if (module) {
-                mlir::OpBuilder b(module.getContext());
-                std::vector<int32_t> kinds = use_runtime_interpolate_params ? std::vector<int32_t>{1, 1, 1}
-                                                                            : std::vector<int32_t>{1, 1};
-                std::vector<int32_t> arg_idx = use_runtime_interpolate_params ? std::vector<int32_t>{0, 1, 2}
-                                                                              : std::vector<int32_t>{0, 1};
-                module->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr(b, kinds));
-                module->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr(b, arg_idx));
+                if (!is_vulkan_backend() && use_runtime_interpolate_params) {
+                    annotate_msl_custom_kernel_binding_plan(module,
+                                                                      "Interpolate",
+                                                                      "interpolate_kernel",
+                                                                      {0});
+                } else {
+                    mlir::OpBuilder b(module.getContext());
+                    std::vector<int32_t> kinds = use_runtime_interpolate_params ? std::vector<int32_t>{1, 1, 1}
+                                                                                : std::vector<int32_t>{1, 1};
+                    std::vector<int32_t> arg_idx = use_runtime_interpolate_params ? std::vector<int32_t>{0, 1, 2}
+                                                                                  : std::vector<int32_t>{0, 1};
+                    module->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr(b, kinds));
+                    module->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr(b, arg_idx));
+                }
             }
             auto plan_ctx = build_mlir_kernel_plan(
                 module,
@@ -4911,12 +4377,16 @@ struct ScatterUpdateParams {
             plan_ctx.build_info.plan =
                 KernelPlan(module, plan_ctx.build_info.plan.entry_point(), use_runtime_interpolate_params ? 3u : 2u);
             compile_from_plan(plan_ctx, module, "interpolate");
-            m_kernel_operand_kinds = use_runtime_interpolate_params ? std::vector<int32_t>{1, 1, 1}
-                                                                   : std::vector<int32_t>{1, 1};
-            m_kernel_operand_arg_indices = use_runtime_interpolate_params ? std::vector<int32_t>{0, 1, 2}
-                                                                         : std::vector<int32_t>{0, 1};
-            m_kernel_inputs = {0};
-            m_kernel_input_arg_count = 1;
+            if (!is_vulkan_backend() && use_runtime_interpolate_params) {
+                apply_msl_custom_kernel_binding_plan("Interpolate", "interpolate_kernel", {0});
+            } else {
+                m_kernel_operand_kinds = use_runtime_interpolate_params ? std::vector<int32_t>{1, 1, 1}
+                                                                       : std::vector<int32_t>{1, 1};
+                m_kernel_operand_arg_indices = use_runtime_interpolate_params ? std::vector<int32_t>{0, 1, 2}
+                                                                             : std::vector<int32_t>{0, 1};
+                m_kernel_inputs = {0};
+                m_kernel_input_arg_count = 1;
+            }
             m_last_input_shape = in_shape;
         }
     } else if (m_type == "Softmax" || m_type == "LogSoftmax") {
@@ -4973,16 +4443,20 @@ struct ScatterUpdateParams {
             if (module) {
                 module->setAttr("gfx.prefer_parallel",
                                 mlir::BoolAttr::get(module.getContext(), false));
-                // Operand mapping: buffer0=input, buffer1=output, buffer2=params.
-                mlir::OpBuilder b(module.getContext());
-                // Argument order for softmax kernels is: input, output, params.
-                // Use a straightforward 0,1,2 mapping to avoid backend-specific
-                // descriptor ordering issues (Vulkan driver can lose device
-                // when bindings are permuted).
-                std::vector<int32_t> kinds{1, 1, 1};
-                std::vector<int32_t> arg_idx{0, 1, 2};
-                module->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr(b, kinds));
-                module->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr(b, arg_idx));
+                if (!is_vulkan_backend()) {
+                    annotate_msl_custom_kernel_binding_plan(module,
+                                                                      m_type,
+                                                                      "softmax_kernel",
+                                                                      {0});
+                } else {
+                    // Vulkan keeps a straightforward 0,1,2 mapping to avoid
+                    // backend-specific descriptor ordering issues.
+                    mlir::OpBuilder b(module.getContext());
+                    std::vector<int32_t> kinds{1, 1, 1};
+                    std::vector<int32_t> arg_idx{0, 1, 2};
+                    module->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr(b, kinds));
+                    module->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr(b, arg_idx));
+                }
             }
             auto plan_ctx = build_mlir_kernel_plan(
                 module,
@@ -5001,11 +4475,14 @@ struct ScatterUpdateParams {
             // Softmax MSL kernel expects 3 buffers (input, output, params).
             plan_ctx.build_info.plan = KernelPlan(module, plan_ctx.build_info.plan.entry_point(), 3);
             compile_from_plan(plan_ctx, module, "softmax");
-            // Pin bindings: 0=input, 1=output, 2=params to avoid backend reordering.
-            m_kernel_operand_kinds = {1, 1, 1};
-            m_kernel_operand_arg_indices = {0, 1, 2};
-            m_kernel_inputs = {0};
-            m_kernel_input_arg_count = 1;
+            if (!is_vulkan_backend()) {
+                apply_msl_custom_kernel_binding_plan(m_type, "softmax_kernel", {0});
+            } else {
+                m_kernel_operand_kinds = {1, 1, 1};
+                m_kernel_operand_arg_indices = {0, 1, 2};
+                m_kernel_inputs = {0};
+                m_kernel_input_arg_count = 1;
+            }
             m_last_input_shape = in_shape;
         }
     } else if (m_type == "Split" || m_type == "VariadicSplit") {
@@ -5392,11 +4869,18 @@ struct ScatterUpdateParams {
         m_kernel_extra_inputs.push_back(wrap_i32_vector("reduce_in_strides", in_strides));
         m_kernel_extra_inputs.push_back(wrap_i32_vector("reduce_axis_mask", axis_mask));
         m_kernel_extra_inputs.push_back(wrap_i32_vector("reduce_dims", reduce_dims));
-        m_kernel_scalar_args = {static_cast<int32_t>(ov::shape_size(out_shape)), static_cast<int32_t>(rank)};
-        m_kernel_operand_kinds = {1, 1, 0, 0, 1, 1, 1, 1, 1};
-        m_kernel_operand_arg_indices = {0, 1, -1, -1, 2, 3, 4, 5, 6};
-        m_kernel_inputs = {0};
-        m_kernel_input_arg_count = 1;
+        const std::vector<int32_t> reduce_scalars = {
+            static_cast<int32_t>(ov::shape_size(out_shape)),
+            static_cast<int32_t>(rank)};
+        if (!is_vulkan_backend()) {
+            apply_msl_custom_kernel_binding_plan(m_type, "reduce_kernel", {0}, reduce_scalars);
+        } else {
+            m_kernel_scalar_args = reduce_scalars;
+            m_kernel_operand_kinds = {1, 1, 0, 0, 1, 1, 1, 1, 1};
+            m_kernel_operand_arg_indices = {0, 1, -1, -1, 2, 3, 4, 5, 6};
+            m_kernel_inputs = {0};
+            m_kernel_input_arg_count = 1;
+        }
     }
 
     if (ov::as_type_ptr<const ov::op::v1::Broadcast>(m_node) ||
@@ -5509,13 +4993,19 @@ struct ScatterUpdateParams {
         m_kernel_extra_inputs.push_back(wrap_i32_vector("broadcast_in_dims", in_dims));
         m_kernel_extra_inputs.push_back(wrap_i32_vector("broadcast_in_strides", in_strides));
         m_kernel_extra_inputs.push_back(wrap_i32_vector("broadcast_axes", axes));
-        m_kernel_scalar_args = {static_cast<int32_t>(ov::shape_size(out_shape)),
-                                static_cast<int32_t>(out_rank),
-                                static_cast<int32_t>(in_rank)};
-        m_kernel_operand_kinds = {1, 1, 0, 0, 0, 1, 1, 1, 1};
-        m_kernel_operand_arg_indices = {0, 1, -1, -1, -1, 2, 3, 4, 5};
-        m_kernel_inputs = {0};
-        m_kernel_input_arg_count = 1;
+        const std::vector<int32_t> broadcast_scalars = {
+            static_cast<int32_t>(ov::shape_size(out_shape)),
+            static_cast<int32_t>(out_rank),
+            static_cast<int32_t>(in_rank)};
+        if (!is_vulkan_backend()) {
+            apply_msl_custom_kernel_binding_plan("Broadcast", "broadcast_kernel", {0}, broadcast_scalars);
+        } else {
+            m_kernel_scalar_args = broadcast_scalars;
+            m_kernel_operand_kinds = {1, 1, 0, 0, 0, 1, 1, 1, 1};
+            m_kernel_operand_arg_indices = {0, 1, -1, -1, -1, 2, 3, 4, 5};
+            m_kernel_inputs = {0};
+            m_kernel_input_arg_count = 1;
+        }
     }
 
     if (m_type == "Convert") {
@@ -5537,11 +5027,16 @@ struct ScatterUpdateParams {
         if (bind_small_i64_const_outputs("convert_i64_const")) {
             return;
         }
-        m_kernel_scalar_args = {static_cast<int32_t>(ov::shape_size(in_shape))};
-        m_kernel_operand_kinds = {1, 1, 0};
-        m_kernel_operand_arg_indices = {0, 1, -1};
-        m_kernel_inputs = {0};
-        m_kernel_input_arg_count = 1;
+        const std::vector<int32_t> convert_scalars = {static_cast<int32_t>(ov::shape_size(in_shape))};
+        if (!is_vulkan_backend()) {
+            apply_msl_custom_kernel_binding_plan("Convert", "convert_kernel", {0}, convert_scalars);
+        } else {
+            m_kernel_scalar_args = convert_scalars;
+            m_kernel_operand_kinds = {1, 1, 0};
+            m_kernel_operand_arg_indices = {0, 1, -1};
+            m_kernel_inputs = {0};
+            m_kernel_input_arg_count = 1;
+        }
     }
 
     if (m_type == "Range") {
@@ -5580,11 +5075,19 @@ struct ScatterUpdateParams {
         if (bind_small_i64_const_outputs("range_i64_const")) {
             return;
         }
-        m_kernel_scalar_args = {static_cast<int32_t>(ov::shape_size(out_shape))};
-        m_kernel_operand_kinds = {1, 1, 1, 1, 0};
-        m_kernel_operand_arg_indices = {0, 1, 2, 3, -1};
-        m_kernel_inputs = {0, 1, 2};
-        m_kernel_input_arg_count = 3;
+        const std::vector<int32_t> range_scalars = {static_cast<int32_t>(ov::shape_size(out_shape))};
+        if (!is_vulkan_backend()) {
+            apply_msl_custom_kernel_binding_plan("Range",
+                                                 "range_kernel",
+                                                 {0, 1, 2},
+                                                 range_scalars);
+        } else {
+            m_kernel_scalar_args = range_scalars;
+            m_kernel_operand_kinds = {1, 1, 1, 1, 0};
+            m_kernel_operand_arg_indices = {0, 1, 2, 3, -1};
+            m_kernel_inputs = {0, 1, 2};
+            m_kernel_input_arg_count = 3;
+        }
     }
 
     if (m_type == "RMS" && m_node && !outputs.empty()) {
@@ -6106,12 +5609,18 @@ struct ScatterUpdateParams {
         }
     }
     if (m_type == "Tile" && !outputs.empty() && outputs.front() && !outputs.front()->shape.empty()) {
-        m_kernel_scalar_args = {static_cast<int32_t>(ov::shape_size(outputs.front()->shape)),
-                                static_cast<int32_t>(std::max<size_t>(outputs.front()->shape.size(), 1))};
-        m_kernel_inputs = {0};
-        m_kernel_input_arg_count = 1;
-        m_kernel_operand_kinds = {1, 1, 0, 0, 1, 1, 1, 1};
-        m_kernel_operand_arg_indices = {0, 1, -1, -1, -1, -1, -1, -1};
+        const std::vector<int32_t> tile_scalars = {
+            static_cast<int32_t>(ov::shape_size(outputs.front()->shape)),
+            static_cast<int32_t>(std::max<size_t>(outputs.front()->shape.size(), 1))};
+        if (!is_vulkan_backend()) {
+            apply_msl_custom_kernel_binding_plan("Tile", "tile_kernel", {0}, tile_scalars);
+        } else {
+            m_kernel_scalar_args = tile_scalars;
+            m_kernel_inputs = {0};
+            m_kernel_input_arg_count = 1;
+            m_kernel_operand_kinds = {1, 1, 0, 0, 1, 1, 1, 1};
+            m_kernel_operand_arg_indices = {0, 1, -1, -1, -1, -1, -1, -1};
+        }
     }
     // Conv3D uses params as extra input; keep output before params.
     auto maybe_set_conv3d_inputs = [&]() {
@@ -6134,58 +5643,17 @@ struct ScatterUpdateParams {
         }
     }
 
-    KernelArgsBundle bundle;
-    if (m_type == "GfxSDPAWithCausalMask" && m_has_sdpa_params) {
-        OPENVINO_ASSERT(m_kernel_inputs.size() == 5,
-                        "GFX MLIR: fused causal-mask SDPA expects five logical inputs for stage ",
-                        m_name);
-        OPENVINO_ASSERT(outputs.size() == 1 && outputs.front() && outputs.front()->buf.valid(),
-                        "GFX MLIR: fused causal-mask SDPA output buffer is missing for stage ",
-                        m_name);
-        bundle.args.reserve(7);
-        for (uint32_t arg_idx = 0; arg_idx < 5; ++arg_idx) {
-            GpuTensor* input = resolve_input_tensor(m_kernel_inputs[arg_idx]);
-            OPENVINO_ASSERT(input && input->buf.valid(),
-                            "GFX MLIR: fused causal-mask SDPA input buffer is missing for stage ",
-                            m_name,
-                            " input=",
-                            m_kernel_inputs[arg_idx]);
-            bundle.args.push_back(make_buffer_arg(arg_idx, input->buf));
-        }
-        bundle.args.push_back(make_bytes_arg(5, m_sdpa_params.data(), m_sdpa_params.size() * sizeof(int32_t)));
-        bundle.args.push_back(make_buffer_arg(6, outputs.front()->buf));
-    } else if (m_type == "ScaledDotProductAttention" && m_has_sdpa_params) {
-        OPENVINO_ASSERT(m_kernel_inputs.size() == 4,
-                        "GFX MLIR: SDPA expects four logical inputs for stage ",
-                        m_name);
-        OPENVINO_ASSERT(outputs.size() == 1 && outputs.front() && outputs.front()->buf.valid(),
-                        "GFX MLIR: SDPA output buffer is missing for stage ",
-                        m_name);
-        bundle.args.reserve(6);
-        for (uint32_t arg_idx = 0; arg_idx < 4; ++arg_idx) {
-            GpuTensor* input = resolve_input_tensor(m_kernel_inputs[arg_idx]);
-            OPENVINO_ASSERT(input && input->buf.valid(),
-                            "GFX MLIR: SDPA input buffer is missing for stage ",
-                            m_name,
-                            " input=",
-                            m_kernel_inputs[arg_idx]);
-            bundle.args.push_back(make_buffer_arg(arg_idx, input->buf));
-        }
-        bundle.args.push_back(make_bytes_arg(4, m_sdpa_params.data(), m_sdpa_params.size() * sizeof(int32_t)));
-        bundle.args.push_back(make_buffer_arg(5, outputs.front()->buf));
-    } else {
-        bundle = build_kernel_args_from_metadata(
-            m_kernel_operand_kinds,
-            m_kernel_operand_arg_indices,
-            m_kernel_scalar_args,
-            m_kernel_inputs,
-            m_kernel_input_arg_count,
-            *extras,
-            outputs,
-            [&](size_t input_idx) { return resolve_input_tensor(input_idx); },
-            m_name.c_str(),
-            gfx_log_debug_enabled() ? &arg_map : nullptr);
-    }
+    KernelArgsBundle bundle = build_kernel_args_from_metadata(
+        m_kernel_operand_kinds,
+        m_kernel_operand_arg_indices,
+        m_kernel_scalar_args,
+        m_kernel_inputs,
+        m_kernel_input_arg_count,
+        *extras,
+        outputs,
+        [&](size_t input_idx) { return resolve_input_tensor(input_idx); },
+        m_name.c_str(),
+        gfx_log_debug_enabled() ? &arg_map : nullptr);
     if (gfx_log_debug_enabled() && !arg_map.empty()) {
         gfx_log_debug("MLIRExec") << arg_map;
     }

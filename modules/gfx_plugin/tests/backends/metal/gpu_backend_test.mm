@@ -41,6 +41,10 @@ void annotate_test_msl_dispatch_module(
     std::string_view entry_point,
     GfxKernelExternalBufferAbiSpec external_buffer_abi = {},
     uint32_t threads_per_threadgroup = 64) {
+    if (!external_buffer_abi.valid) {
+        external_buffer_abi = make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
+                                                         GfxKernelBufferRole::TensorOutput});
+    }
     std::string specialization_key = "apple_msl:buffer:";
     specialization_key += stage_type;
 
@@ -1156,6 +1160,7 @@ kernel void mul2(device const float* temp [[buffer(0)]],
         stage.msl_dispatch_desc.threads_per_threadgroup = 64;
         stage.inputs = {input};
         stage.outputs = {output};
+        stage.kernel_buffer_order = {input, output};
         (void)index;
         return stage;
     };
@@ -1269,6 +1274,31 @@ kernel void mul2(device const float* temp [[buffer(0)]],
     for (uint32_t i = 0; i < kCount; ++i) {
         EXPECT_FLOAT_EQ(output_ptr[i], static_cast<float>((i + 1) * 2));
     }
+}
+
+TEST(GfxBackendTest, MpsrtRequestRejectsMslDispatchWithoutManifestBufferOrder) {
+    metal::mpsrt::MpsrtRuntimeStage stage;
+    stage.kind = GfxMpsrtStageKind::MSLDispatch;
+    stage.stage_record_key = "missing_buffer_order";
+    stage.kernel_name = "eltwise_fused_buffer";
+    stage.dispatch_entry_point = "eltwise_fused_buffer";
+    stage.msl_dispatch_desc.input_count = 1;
+    stage.msl_dispatch_desc.output_count = 1;
+    stage.inputs = {0};
+    stage.outputs = {1};
+
+    int input = 0;
+    int output = 0;
+    metal::mpsrt::MpsrtTensorBindings bindings;
+    bindings.bind(0, metal::mpsrt::MpsrtBoundBuffer{&input, 0});
+    bindings.bind(1, metal::mpsrt::MpsrtBoundBuffer{&output, 0});
+
+    metal::mpsrt::MpsrtRequest request;
+    std::vector<metal::mpsrt::MpsrtBoundBuffer> buffers;
+    std::string error;
+    EXPECT_FALSE(request.build_msl_stage_buffers(stage, bindings, buffers, &error));
+    EXPECT_NE(error.find("kernel buffer order is not materialized"), std::string::npos);
+    EXPECT_TRUE(buffers.empty());
 }
 
 TEST(GfxBackendTest, MpsrtTensorBindingsAcceptImageExternalAndTransientResources) {

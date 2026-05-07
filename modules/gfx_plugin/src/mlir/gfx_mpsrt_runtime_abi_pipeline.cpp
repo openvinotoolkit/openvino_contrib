@@ -772,6 +772,27 @@ bool materialize_runtime_abi_call_plan(mlir::ModuleOp module,
     return true;
 }
 
+bool mark_runtime_abi_call_plan_materialized(mlir::ModuleOp module, bool materialized) {
+    if (!module || !materialized) {
+        return false;
+    }
+    module->removeAttr("gfx.apple.pipeline.runtime_abi.call_plan_deferred");
+    module->setAttr("gfx.apple.pipeline.runtime_abi.call_plan_materialized",
+                    mlir::BoolAttr::get(module.getContext(), true));
+    return true;
+}
+
+void erase_runtime_abi_call_plan(mlir::ModuleOp module) {
+    if (!module) {
+        return;
+    }
+    if (auto plan_func = module.lookupSymbol<mlir::func::FuncOp>(kRuntimeAbiPlanSymbol)) {
+        plan_func.erase();
+    }
+    module->removeAttr("gfx.mpsrt.runtime_abi.call_plan_symbol");
+    module->removeAttr("gfx.apple.pipeline.runtime_abi.call_plan_materialized");
+}
+
 class ConvertMpsrtToRuntimeAbiAttrsPass final
     : public mlir::PassWrapper<ConvertMpsrtToRuntimeAbiAttrsPass,
                                mlir::OperationPass<mlir::ModuleOp>> {
@@ -779,11 +800,11 @@ public:
     MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertMpsrtToRuntimeAbiAttrsPass)
 
     llvm::StringRef getArgument() const final {
-        return "gfx-convert-mpsrt-to-runtime-abi-attrs";
+        return "gfx-apple-runtime-abi-call-plan";
     }
 
     llvm::StringRef getDescription() const final {
-        return "Materialize the transitional MPSRT runtime builder ABI from canonical stage manifests";
+        return "Materialize the Apple MPSRT host-builder call plan from canonical stage manifests";
     }
 
     void runOnOperation() final {
@@ -805,6 +826,7 @@ public:
             return;
         }
         erase_module_mpsrt_legacy_attrs(module);
+        (void)mark_runtime_abi_call_plan_materialized(module, true);
     }
 };
 
@@ -812,6 +834,54 @@ public:
 
 void populate_gfx_apple_mpsrt_runtime_abi_pipeline(mlir::PassManager& pm) {
     pm.addPass(std::make_unique<ConvertMpsrtToRuntimeAbiAttrsPass>());
+}
+
+std::unique_ptr<mlir::Pass> createGfxAppleMpsrtRuntimeAbiCallPlanPass() {
+    return std::make_unique<ConvertMpsrtToRuntimeAbiAttrsPass>();
+}
+
+bool has_gfx_apple_mpsrt_runtime_abi_call_plan(mlir::ModuleOp module) {
+    if (!module) {
+        return false;
+    }
+    ensure_runtime_abi_dialects(module);
+    std::string plan_symbol = kRuntimeAbiPlanSymbol;
+    if (auto attr = module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.runtime_abi.call_plan_symbol")) {
+        plan_symbol = attr.str();
+    }
+    auto plan_func = module.lookupSymbol<mlir::func::FuncOp>(plan_symbol);
+    return plan_func &&
+           static_cast<bool>(plan_func->getAttrOfType<mlir::BoolAttr>("gfx.mpsrt.runtime_abi.generated"));
+}
+
+bool materialize_gfx_apple_mpsrt_runtime_abi_call_plan(mlir::ModuleOp module) {
+    if (!module) {
+        return false;
+    }
+    GfxMpsrtProgram program{};
+    if (!read_module_mpsrt_program(module, program)) {
+        return false;
+    }
+    if (has_gfx_apple_mpsrt_runtime_abi_call_plan(module)) {
+        return mark_runtime_abi_call_plan_materialized(module, true);
+    }
+
+    mlir::PassManager pm(module.getContext());
+    populate_gfx_apple_mpsrt_runtime_abi_pipeline(pm);
+    if (mlir::failed(pm.run(module))) {
+        return false;
+    }
+    return mark_runtime_abi_call_plan_materialized(
+        module,
+        has_gfx_apple_mpsrt_runtime_abi_call_plan(module));
+}
+
+bool rematerialize_gfx_apple_mpsrt_runtime_abi_call_plan(mlir::ModuleOp module) {
+    if (!module) {
+        return false;
+    }
+    erase_runtime_abi_call_plan(module);
+    return materialize_gfx_apple_mpsrt_runtime_abi_call_plan(module);
 }
 
 bool read_gfx_apple_mpsrt_runtime_abi_call_plan(mlir::ModuleOp module,

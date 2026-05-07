@@ -43,6 +43,7 @@ Then read the relevant code path:
 - When changing stateful graph behavior, treat `ReadValue` / `Assign` as a dedicated infer-request-state path, not just generic stateless runtime stages.
 - For Metal placement work, keep `gfx_stage_policy.*`, `gfx_mpsrt_*`, `gfx_kernel_manifest.hpp`, `gfx_custom_kernel_families.*`, MLIR attrs, and `src/backends/metal/runtime/mpsrt/*` aligned as one contract.
 - For hybrid Metal paths, also keep `gfx_kernel_manifest.hpp`, `gfx_custom_kernel_families.*`, `gfx_mpsrt_program.hpp`, `gfx_mpsrt_dialect.*`, `gfx_mpsrt_ops.*`, `gfx_apple_stage_pipeline.*`, `gfx_mpsrt_kernel_manifest_adapter.hpp`, `gfx_mpsrt_runtime_abi_pipeline.*`, `gfx_mpsrt_storage_bridge.hpp`, and `gfx_mpsrt_source_plan.hpp` aligned with that contract.
+- For Metal custom MSL source changes, prefer `src/mlir/msl_codegen.*` and `GfxMslRuntimeBindingPlan`; keep module operand annotations, manifest external-buffer roles, inferred `[[buffer(N)]]` counts, and MPSRT `kernel_buffer_order` aligned.
 
 ## Common Workflows
 
@@ -71,6 +72,8 @@ Check whether the change belongs to one of the current special families:
 - Apple stage-pipeline passes and typed storage-conversion ops for image, matrix, ndarray, or alias boundaries
 - manifest-backed execution-kind routing, including vendor-only stages and mixed vendor-plus-custom multi-stage plans
 - custom-kernel family classification, external-buffer ABI roles, semantic input/output roles, and dispatch-grid policy in `src/kernel_ir/gfx_custom_kernel_families.*`
+- Metal MSL runtime binding plans for tensor inputs, tensor outputs, const tensors, scalar params, and runtime params
+- MLIR-owned Metal MSL source plans such as compressed `MatMul`, SDPA, causal SDPA, and shape/data-movement custom kernels
 - compile-time data repacking paths, such as Metal dynamic-shape `MatMul` packing a constant RHS from `f32` to `f16` and recompiling against the effective runtime tensor types
 - backend-aware transform preservation, such as keeping compressed `MatMul` decompression subgraphs intact for Metal-only downstream routes
 - backend-aware transform fusion, such as LLaMA rotate-half rewriting into native `RoPE` on Metal or compatible compressed `MatMul` nodes regrouping into a fused horizontal path
@@ -84,7 +87,7 @@ Check whether the change belongs to one of the current special families:
 3. Verify interaction with infer submission, immutable const caches, and prepared binding reuse when applicable.
 4. Add tests in `tests/unit/` and backend tests when behavior is externally visible.
 5. On Metal, inspect `src/backends/metal/runtime/metal_command_encoder.*` before adding new encoder/pipeline/buffer binding logic.
-6. If the change affects Apple placement or request-time Metal binding, also inspect `src/backends/metal/runtime/mpsrt/*`, `src/kernel_ir/gfx_kernel_manifest.hpp`, and `src/kernel_ir/gfx_custom_kernel_families.*`.
+6. If the change affects Apple placement or request-time Metal binding, also inspect `src/backends/metal/runtime/mpsrt/*`, `src/kernel_ir/gfx_kernel_manifest.hpp`, `src/kernel_ir/gfx_custom_kernel_families.*`, and `src/mlir/msl_codegen.*`.
 
 ### Stateful or reusable infer-path change
 

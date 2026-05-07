@@ -3,10 +3,10 @@
 //
 #pragma once
 
-#include <array>
 #include <chrono>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "kernel_ir/gfx_codegen_backend.hpp"
@@ -27,6 +27,7 @@ namespace gfx_plugin {
 
 struct MlirKernelPlanContext;
 struct MatMulCodegenDesc;
+struct GfxMslRuntimeBindingPlan;
 
 class MlirStage : public GpuStage {
 public:
@@ -77,11 +78,9 @@ protected:
     virtual bool is_vulkan_backend() const { return false; }
     virtual bool prefer_specialized_concat_execution() const { return true; }
     virtual bool should_skip_generic_kernel_compile(const GfxStageOptimizationPlan& /*plan*/) const { return false; }
-    virtual KernelSource make_runtime_matmul_kernel_source(const MatMulCodegenDesc& /*desc*/,
-                                                           const ov::Shape& /*shape_a*/,
-                                                           const ov::Shape& /*shape_b*/) const {
-        return {};
-    }
+    KernelSource make_runtime_matmul_kernel_source(const MatMulCodegenDesc& desc,
+                                                   const ov::Shape& shape_a,
+                                                   const ov::Shape& shape_b) const;
     GpuBackend backend_kind() const { return is_vulkan_backend() ? GpuBackend::Vulkan : GpuBackend::Metal; }
     virtual KernelExecutionHooks* prepare_profiling(ProfileState& state,
                                                     KernelExecutionHooks& hooks);
@@ -89,6 +88,23 @@ protected:
 
     void clone_into(MlirStage& dst) const;
     bool has_absorbed_input_transpose() const;
+    void apply_msl_runtime_binding_plan(const GfxMslRuntimeBindingPlan& plan);
+    void apply_msl_custom_kernel_binding_plan(std::string_view stage_type,
+                                              std::string_view entry_point,
+                                              std::vector<size_t> tensor_input_indices);
+    void apply_msl_custom_kernel_binding_plan(std::string_view stage_type,
+                                              std::string_view entry_point,
+                                              std::vector<size_t> tensor_input_indices,
+                                              std::vector<int32_t> scalar_args);
+    void annotate_msl_custom_kernel_binding_plan(mlir::ModuleOp module,
+                                                 std::string_view stage_type,
+                                                 std::string_view entry_point,
+                                                 std::vector<size_t> tensor_input_indices);
+    void annotate_msl_custom_kernel_binding_plan(mlir::ModuleOp module,
+                                                 std::string_view stage_type,
+                                                 std::string_view entry_point,
+                                                 std::vector<size_t> tensor_input_indices,
+                                                 std::vector<int32_t> scalar_args);
 
     void* profiler_handle() const { return m_profiler; }
     uint32_t profile_node_id() const { return m_profile_node_id; }
@@ -139,8 +155,6 @@ protected:
     size_t m_input_activation_index = 0;
     ActivationKind m_input_activation = ActivationKind::Relu;
     float m_input_activation_alpha = 0.0f;
-    std::array<int32_t, 16> m_sdpa_params{};
-    bool m_has_sdpa_params = false;
     bool m_has_residual_add = false;
     bool m_has_bn = false;
     BatchNormParams m_bn_params{};

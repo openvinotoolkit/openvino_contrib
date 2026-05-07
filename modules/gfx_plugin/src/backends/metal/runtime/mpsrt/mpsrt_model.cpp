@@ -96,14 +96,142 @@ bool validate_msl_dispatch(const GfxMpsrtBuilderRecord& record, size_t record_in
     if (record.msl_dispatch_desc.output_count != record.outputs.size()) {
         return fail(error, record_error(record_index, "MSL dispatch output count metadata mismatch"));
     }
-    if (!record.kernel_buffer_order.empty() &&
-        record.kernel_buffer_order.size() !=
-            static_cast<size_t>(record.msl_dispatch_desc.input_count + record.msl_dispatch_desc.output_count)) {
+    if (record.kernel_buffer_order.empty()) {
+        return fail(error, record_error(record_index, "MSL dispatch kernel buffer order is not materialized"));
+    }
+    if (record.kernel_buffer_order.size() !=
+        static_cast<size_t>(record.msl_dispatch_desc.input_count + record.msl_dispatch_desc.output_count)) {
         return fail(error, record_error(record_index, "MSL dispatch kernel buffer order metadata mismatch"));
     }
     if (record.msl_dispatch_desc.threads_per_threadgroup == 0) {
         return fail(error, record_error(record_index, "MSL dispatch threadgroup size is not set"));
     }
+    return true;
+}
+
+bool normalize_external_buffer_roles(std::vector<GfxMpsrtExternalBufferRole>& roles,
+                                     uint32_t arg_count,
+                                     uint32_t output_arg_count,
+                                     size_t semantic_input_count,
+                                     size_t semantic_output_count,
+                                     std::string* error) {
+    if (arg_count == 0) {
+        return true;
+    }
+    if (output_arg_count > arg_count) {
+        return fail(error, "GFX MPSRT: output arg count exceeds kernel arg count");
+    }
+    if (!roles.empty() && roles.size() != arg_count) {
+        return fail(error, "GFX MPSRT: external buffer role count does not match kernel arg count");
+    }
+
+    if (roles.empty()) {
+        const size_t semantic_external_count = semantic_input_count + semantic_output_count;
+        const bool semantic_external_abi = arg_count == semantic_external_count ||
+                                           (arg_count == semantic_input_count &&
+                                            semantic_input_count == semantic_output_count);
+        if (!semantic_external_abi) {
+            return fail(error, "GFX MPSRT: external buffer ABI cannot be inferred without explicit roles");
+        }
+
+        const uint32_t input_arg_count = arg_count == semantic_external_count
+                                             ? static_cast<uint32_t>(semantic_input_count)
+                                             : static_cast<uint32_t>(semantic_input_count);
+        roles.assign(input_arg_count, GfxMpsrtExternalBufferRole::TensorInput);
+        roles.insert(roles.end(),
+                     arg_count - input_arg_count,
+                     GfxMpsrtExternalBufferRole::TensorOutput);
+    }
+
+    uint32_t role_output_count = 0;
+    for (const auto role : roles) {
+        if (!gfx_mpsrt_is_valid_external_buffer_role(role)) {
+            return fail(error, "GFX MPSRT: external buffer role is unknown");
+        }
+        if (gfx_mpsrt_is_external_output_buffer_role(role)) {
+            ++role_output_count;
+        }
+    }
+    if (output_arg_count != 0 && role_output_count != output_arg_count) {
+        return fail(error, "GFX MPSRT: external buffer role output count mismatch");
+    }
+    return true;
+}
+
+bool materialize_multi_stage_external_buffer_abi(MpsrtModel& model,
+                                                 uint32_t arg_count,
+                                                 uint32_t output_arg_count,
+                                                 std::string* error) {
+    if (arg_count == 0) {
+        return true;
+    }
+
+    if (model.semantic_input_values.empty() && !model.input_values.empty()) {
+        model.semantic_input_values = model.input_values;
+    }
+    if (model.semantic_output_values.empty() && !model.output_values.empty()) {
+        model.semantic_output_values = model.output_values;
+    }
+
+    auto roles = model.external_buffer_roles;
+    if (!normalize_external_buffer_roles(roles,
+                                         arg_count,
+                                         output_arg_count,
+                                         model.semantic_input_values.size(),
+                                         model.semantic_output_values.size(),
+                                         error)) {
+        return false;
+    }
+
+    std::vector<GfxMpsrtValue> external_values;
+    std::vector<GfxMpsrtValue> external_input_values;
+    std::vector<GfxMpsrtValue> external_output_values;
+    std::vector<GfxMpsrtExternalBufferRole> materialized_roles;
+    external_values.reserve(roles.size());
+    external_input_values.reserve(model.semantic_input_values.size());
+    external_output_values.reserve(model.semantic_output_values.size());
+    materialized_roles.reserve(roles.size());
+
+    size_t next_input = 0;
+    size_t next_output = 0;
+    for (const auto role : roles) {
+        switch (role) {
+            case GfxMpsrtExternalBufferRole::TensorInput:
+                if (next_input >= model.semantic_input_values.size()) {
+                    return fail(error, "GFX MPSRT: external input role has no semantic input value");
+                }
+                external_values.push_back(model.semantic_input_values[next_input]);
+                external_input_values.push_back(model.semantic_input_values[next_input]);
+                materialized_roles.push_back(role);
+                ++next_input;
+                break;
+            case GfxMpsrtExternalBufferRole::TensorOutput:
+                if (next_output >= model.semantic_output_values.size()) {
+                    return fail(error, "GFX MPSRT: external output role has no semantic output value");
+                }
+                external_values.push_back(model.semantic_output_values[next_output]);
+                external_output_values.push_back(model.semantic_output_values[next_output]);
+                materialized_roles.push_back(role);
+                ++next_output;
+                break;
+            case GfxMpsrtExternalBufferRole::ConstBuffer:
+            case GfxMpsrtExternalBufferRole::RuntimeParams:
+            case GfxMpsrtExternalBufferRole::Metadata:
+                break;
+            case GfxMpsrtExternalBufferRole::Unknown:
+            default:
+                return fail(error, "GFX MPSRT: external buffer role is unknown");
+        }
+    }
+    if (next_input != model.semantic_input_values.size() ||
+        next_output != model.semantic_output_values.size()) {
+        return fail(error, "GFX MPSRT: external buffer ABI does not cover semantic model IO");
+    }
+
+    model.external_buffer_roles = std::move(materialized_roles);
+    model.external_values = std::move(external_values);
+    model.external_input_values = std::move(external_input_values);
+    model.external_output_values = std::move(external_output_values);
     return true;
 }
 
@@ -329,19 +457,27 @@ bool adapt_mpsrt_model_to_external_buffer_abi(MpsrtModel& model,
                                               uint32_t output_arg_count,
                                               std::string* error) {
     if (model.stages.size() != 1 || model.stages.front().kind != GfxMpsrtStageKind::MSLDispatch) {
-        return true;
+        return materialize_multi_stage_external_buffer_abi(model, arg_count, output_arg_count, error);
     }
     if (arg_count == 0) {
         return true;
     }
+
+    if (model.semantic_input_values.empty() && !model.input_values.empty()) {
+        model.semantic_input_values = model.input_values;
+    }
+    if (model.semantic_output_values.empty() && !model.output_values.empty()) {
+        model.semantic_output_values = model.output_values;
+    }
+
     if (output_arg_count > arg_count) {
         return fail(error, "GFX MPSRT: output arg count exceeds kernel arg count");
     }
     if (!model.external_buffer_roles.empty() && model.external_buffer_roles.size() != arg_count) {
         return fail(error, "GFX MPSRT: external buffer role count does not match kernel arg count");
     }
-    uint32_t role_output_count = 0;
     const bool has_explicit_roles = model.external_buffer_roles.size() == arg_count;
+    uint32_t role_output_count = 0;
     if (has_explicit_roles) {
         for (const auto role : model.external_buffer_roles) {
             if (!gfx_mpsrt_is_valid_external_buffer_role(role)) {
@@ -354,13 +490,6 @@ bool adapt_mpsrt_model_to_external_buffer_abi(MpsrtModel& model,
         if (output_arg_count != 0 && role_output_count != output_arg_count) {
             return fail(error, "GFX MPSRT: external buffer role output count mismatch");
         }
-    }
-
-    if (model.semantic_input_values.empty() && !model.input_values.empty()) {
-        model.semantic_input_values = model.input_values;
-    }
-    if (model.semantic_output_values.empty() && !model.output_values.empty()) {
-        model.semantic_output_values = model.output_values;
     }
 
     const size_t semantic_external_count = model.input_values.size() + model.output_values.size();

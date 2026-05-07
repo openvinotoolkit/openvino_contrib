@@ -26,6 +26,7 @@
 #include "runtime/gfx_mpsrt_program.hpp"
 #include "runtime/gfx_mpsrt_storage_bridge.hpp"
 #include "runtime/gfx_stage_policy.hpp"
+#include "mlir/msl_codegen.hpp"
 
 using namespace ov::gfx_plugin;
 
@@ -946,11 +947,15 @@ TEST(GfxStagePolicyTest, MpsrtStageRecordKeyKeepsElementwiseInMslDispatch) {
     ASSERT_TRUE(desc.stage_manifest.custom_kernel.valid);
     EXPECT_EQ(desc.stage_manifest.custom_kernel.kernel_family, "eltwise_fused_buffer");
     ASSERT_TRUE(desc.stage_manifest.custom_kernel.external_buffer_abi.valid);
-    EXPECT_FALSE(desc.stage_manifest.custom_kernel.external_buffer_abi.tail_outputs);
     EXPECT_EQ(desc.stage_manifest.custom_kernel.external_buffer_abi.roles,
               std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
                                                 GfxKernelBufferRole::TensorInput,
-                                                GfxKernelBufferRole::TensorOutput}));
+                                                GfxKernelBufferRole::TensorOutput,
+                                                GfxKernelBufferRole::ScalarParam,
+                                                GfxKernelBufferRole::ScalarParam,
+                                                GfxKernelBufferRole::RuntimeParams,
+                                                GfxKernelBufferRole::RuntimeParams,
+                                                GfxKernelBufferRole::RuntimeParams}));
     EXPECT_EQ(desc.kernel_name, "Add");
     EXPECT_EQ(desc.dispatch_kernel_family, "eltwise_fused_buffer");
     EXPECT_EQ(desc.dispatch_entry_point, "eltwise_fused_buffer");
@@ -1010,7 +1015,6 @@ TEST(GfxStagePolicyTest, CustomKernelStagePlanClassifiesConv2DKernelAsCustomConv
     ASSERT_TRUE(plan.stage_manifest.custom_kernel.valid);
     EXPECT_EQ(plan.stage_manifest.custom_kernel.kernel_family, "conv2d_direct_or_im2col");
     EXPECT_EQ(plan.stage_manifest.custom_kernel.entry_point, "conv2d_direct_or_im2col");
-    EXPECT_FALSE(plan.stage_manifest.custom_kernel.external_buffer_abi.tail_outputs);
     EXPECT_EQ(plan.stage_manifest.custom_kernel.external_buffer_abi.roles,
               std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
                                                 GfxKernelBufferRole::ConstTensor,
@@ -1037,11 +1041,130 @@ TEST(GfxStagePolicyTest, CustomKernelStagePlanClassifiesMatMulKernelAsCustomGemm
     EXPECT_EQ(plan.stage_manifest.custom_kernel.kernel_family, "matmul_buffer");
     EXPECT_EQ(plan.stage_manifest.custom_kernel.entry_point, "matmul_buffer");
     ASSERT_TRUE(plan.stage_manifest.custom_kernel.external_buffer_abi.valid);
-    EXPECT_FALSE(plan.stage_manifest.custom_kernel.external_buffer_abi.tail_outputs);
     EXPECT_EQ(plan.stage_manifest.custom_kernel.external_buffer_abi.roles,
               std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
                                                 GfxKernelBufferRole::TensorInput,
                                                 GfxKernelBufferRole::TensorOutput}));
+}
+
+TEST(GfxStagePolicyTest, CustomKernelStagePlanClassifiesCompressedMatMulWithExplicitConstRoles) {
+    const auto plan = make_gfx_custom_kernel_stage_plan("CompressedMatMul", "compressed_matmul_kernel");
+
+    ASSERT_TRUE(plan.valid);
+    EXPECT_EQ(plan.family, GfxKernelFamily::MatMulBuffer);
+    ASSERT_TRUE(plan.stage_manifest.custom_kernel.external_buffer_abi.valid);
+    EXPECT_EQ(plan.stage_manifest.custom_kernel.external_buffer_abi.roles,
+              std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
+                                                GfxKernelBufferRole::ConstTensor,
+                                                GfxKernelBufferRole::ConstTensor,
+                                                GfxKernelBufferRole::TensorOutput}));
+
+    const auto binding =
+        make_msl_runtime_binding_plan_from_stage_manifest(plan.stage_manifest, {0});
+    ASSERT_TRUE(binding.valid());
+    EXPECT_EQ(binding.kernel_inputs, std::vector<size_t>({0}));
+    EXPECT_EQ(binding.kernel_input_arg_count, 3u);
+    EXPECT_EQ(binding.operand_kinds, std::vector<int32_t>({1, 1, 1, 1}));
+    EXPECT_EQ(binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2, 3}));
+}
+
+TEST(GfxStagePolicyTest, CustomKernelStagePlanClassifiesSdpaKernelsWithRuntimeParamsTail) {
+    const auto sdpa_plan = make_gfx_custom_kernel_stage_plan("ScaledDotProductAttention", "sdpa_kernel");
+    ASSERT_TRUE(sdpa_plan.valid);
+    EXPECT_EQ(sdpa_plan.family, GfxKernelFamily::MaskedSoftmaxAttention);
+    ASSERT_TRUE(sdpa_plan.stage_manifest.custom_kernel.external_buffer_abi.valid);
+    EXPECT_EQ(sdpa_plan.stage_manifest.custom_kernel.external_buffer_abi.roles,
+              std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
+                                                GfxKernelBufferRole::TensorInput,
+                                                GfxKernelBufferRole::TensorInput,
+                                                GfxKernelBufferRole::TensorInput,
+                                                GfxKernelBufferRole::RuntimeParams,
+                                                GfxKernelBufferRole::TensorOutput}));
+
+    const auto sdpa_binding =
+        make_msl_runtime_binding_plan_from_stage_manifest(sdpa_plan.stage_manifest, {0, 1, 2, 3});
+    ASSERT_TRUE(sdpa_binding.valid());
+    EXPECT_EQ(sdpa_binding.kernel_inputs, std::vector<size_t>({0, 1, 2, 3}));
+    EXPECT_EQ(sdpa_binding.kernel_input_arg_count, 5u);
+    EXPECT_EQ(sdpa_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2, 3, 4, 5}));
+
+    const auto causal_plan =
+        make_gfx_custom_kernel_stage_plan("GfxSDPAWithCausalMask", "sdpa_causal_mask_kernel");
+    ASSERT_TRUE(causal_plan.valid);
+    ASSERT_TRUE(causal_plan.stage_manifest.custom_kernel.external_buffer_abi.valid);
+    EXPECT_EQ(causal_plan.stage_manifest.custom_kernel.external_buffer_abi.roles,
+              std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
+                                                GfxKernelBufferRole::TensorInput,
+                                                GfxKernelBufferRole::TensorInput,
+                                                GfxKernelBufferRole::TensorInput,
+                                                GfxKernelBufferRole::TensorInput,
+                                                GfxKernelBufferRole::RuntimeParams,
+                                                GfxKernelBufferRole::TensorOutput}));
+    const auto causal_binding =
+        make_msl_runtime_binding_plan_from_stage_manifest(causal_plan.stage_manifest, {0, 1, 2, 3, 4});
+    ASSERT_TRUE(causal_binding.valid());
+    EXPECT_EQ(causal_binding.kernel_inputs, std::vector<size_t>({0, 1, 2, 3, 4}));
+    EXPECT_EQ(causal_binding.kernel_input_arg_count, 6u);
+    EXPECT_EQ(causal_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2, 3, 4, 5, 6}));
+}
+
+TEST(GfxStagePolicyTest, MslRuntimeBindingPlanPreservesOutputBeforeRuntimeParamsOrder) {
+    const auto gather_plan = make_gfx_custom_kernel_stage_plan("Gather", "gather_kernel");
+    ASSERT_TRUE(gather_plan.valid);
+    ASSERT_TRUE(gather_plan.stage_manifest.custom_kernel.external_buffer_abi.valid);
+    EXPECT_EQ(gather_plan.stage_manifest.custom_kernel.external_buffer_abi.roles,
+              std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
+                                                GfxKernelBufferRole::TensorInput,
+                                                GfxKernelBufferRole::TensorOutput,
+                                                GfxKernelBufferRole::RuntimeParams}));
+
+    const auto gather_binding =
+        make_msl_runtime_binding_plan_from_stage_manifest(gather_plan.stage_manifest, {0, 1});
+    ASSERT_TRUE(gather_binding.valid());
+    EXPECT_EQ(gather_binding.kernel_inputs, std::vector<size_t>({0, 1}));
+    EXPECT_EQ(gather_binding.kernel_input_arg_count, 2u);
+    EXPECT_EQ(gather_binding.operand_kinds, std::vector<int32_t>({1, 1, 1, 1}));
+    EXPECT_EQ(gather_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2, 3}));
+
+    const auto gather_elements_binding =
+        make_msl_runtime_binding_plan_for_custom_kernel("GatherElements", "gather_elements_kernel", {0, 1});
+    ASSERT_TRUE(gather_elements_binding.valid());
+    EXPECT_EQ(gather_elements_binding.kernel_inputs, std::vector<size_t>({0, 1}));
+    EXPECT_EQ(gather_elements_binding.kernel_input_arg_count, 2u);
+    EXPECT_EQ(gather_elements_binding.operand_kinds, std::vector<int32_t>({1, 1, 1, 1}));
+    EXPECT_EQ(gather_elements_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2, 3}));
+
+    const auto tile_binding =
+        make_msl_runtime_binding_plan_for_custom_kernel("Tile", "tile_kernel", {0}, {16, 4});
+    ASSERT_TRUE(tile_binding.valid());
+    EXPECT_EQ(tile_binding.kernel_inputs, std::vector<size_t>({0}));
+    EXPECT_EQ(tile_binding.kernel_input_arg_count, 1u);
+    EXPECT_EQ(tile_binding.scalar_arg_count, 2u);
+    EXPECT_EQ(tile_binding.scalar_args, std::vector<int32_t>({16, 4}));
+    EXPECT_EQ(tile_binding.operand_kinds, std::vector<int32_t>({1, 1, 0, 0, 1, 1, 1, 1}));
+    EXPECT_EQ(tile_binding.operand_arg_indices,
+              std::vector<int32_t>({0, 1, -1, -1, 2, 3, 4, 5}));
+
+    const auto softmax_binding =
+        make_msl_runtime_binding_plan_for_custom_kernel("Softmax", "softmax_kernel", {0});
+    ASSERT_TRUE(softmax_binding.valid());
+    EXPECT_EQ(softmax_binding.kernel_inputs, std::vector<size_t>({0}));
+    EXPECT_EQ(softmax_binding.kernel_input_arg_count, 1u);
+    EXPECT_EQ(softmax_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2}));
+
+    const auto select_binding =
+        make_msl_runtime_binding_plan_for_custom_kernel("Select",
+                                                        "select_kernel",
+                                                        {0, 1, 2},
+                                                        {16, 4});
+    ASSERT_TRUE(select_binding.valid());
+    EXPECT_EQ(select_binding.kernel_inputs, std::vector<size_t>({0, 1, 2}));
+    EXPECT_EQ(select_binding.kernel_input_arg_count, 3u);
+    EXPECT_EQ(select_binding.scalar_arg_count, 2u);
+    EXPECT_EQ(select_binding.scalar_args, std::vector<int32_t>({16, 4}));
+    EXPECT_EQ(select_binding.operand_kinds, std::vector<int32_t>({1, 1, 1, 1, 0, 0, 1, 1, 1, 1}));
+    EXPECT_EQ(select_binding.operand_arg_indices,
+              std::vector<int32_t>({0, 1, 2, 3, -1, -1, 4, 5, 6, 7}));
 }
 
 TEST(GfxStagePolicyTest, CustomKernelStagePlanCoversExistingUnaryAndBinaryMslOps) {
@@ -1052,21 +1175,25 @@ TEST(GfxStagePolicyTest, CustomKernelStagePlanCoversExistingUnaryAndBinaryMslOps
     EXPECT_EQ(elu_plan.stage_manifest.custom_kernel.kernel_family_id,
               static_cast<uint32_t>(GfxKernelFamily::EltwiseFusedBuffer));
     ASSERT_TRUE(elu_plan.stage_manifest.custom_kernel.external_buffer_abi.valid);
-    EXPECT_FALSE(elu_plan.stage_manifest.custom_kernel.external_buffer_abi.tail_outputs);
     EXPECT_EQ(elu_plan.stage_manifest.custom_kernel.external_buffer_abi.roles,
               std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
-                                                GfxKernelBufferRole::TensorOutput}));
+                                                GfxKernelBufferRole::TensorOutput,
+                                                GfxKernelBufferRole::ScalarParam}));
 
     const auto sqdiff_plan = make_gfx_custom_kernel_stage_plan("SquaredDifference", "eltwise_kernel");
     ASSERT_TRUE(sqdiff_plan.valid);
     EXPECT_EQ(sqdiff_plan.family, GfxKernelFamily::EltwiseFusedBuffer);
     EXPECT_EQ(sqdiff_plan.stage_manifest.custom_kernel.entry_point, "eltwise_fused_buffer");
     ASSERT_TRUE(sqdiff_plan.stage_manifest.custom_kernel.external_buffer_abi.valid);
-    EXPECT_FALSE(sqdiff_plan.stage_manifest.custom_kernel.external_buffer_abi.tail_outputs);
     EXPECT_EQ(sqdiff_plan.stage_manifest.custom_kernel.external_buffer_abi.roles,
               std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
                                                 GfxKernelBufferRole::TensorInput,
-                                                GfxKernelBufferRole::TensorOutput}));
+                                                GfxKernelBufferRole::TensorOutput,
+                                                GfxKernelBufferRole::ScalarParam,
+                                                GfxKernelBufferRole::ScalarParam,
+                                                GfxKernelBufferRole::RuntimeParams,
+                                                GfxKernelBufferRole::RuntimeParams,
+                                                GfxKernelBufferRole::RuntimeParams}));
 
     const auto reduce_plan = make_gfx_custom_kernel_stage_plan("ReduceMean", "reduce_kernel");
     ASSERT_TRUE(reduce_plan.valid);
@@ -1081,7 +1208,11 @@ TEST(GfxStagePolicyTest, CustomKernelStagePlanCoversExistingUnaryAndBinaryMslOps
               GfxKernelBufferRole::TensorInput);
     EXPECT_EQ(reduce_plan.stage_manifest.custom_kernel.external_buffer_abi.roles[1],
               GfxKernelBufferRole::TensorOutput);
-    for (size_t i = 2; i < reduce_plan.stage_manifest.custom_kernel.external_buffer_abi.roles.size(); ++i) {
+    EXPECT_EQ(reduce_plan.stage_manifest.custom_kernel.external_buffer_abi.roles[2],
+              GfxKernelBufferRole::ScalarParam);
+    EXPECT_EQ(reduce_plan.stage_manifest.custom_kernel.external_buffer_abi.roles[3],
+              GfxKernelBufferRole::ScalarParam);
+    for (size_t i = 4; i < reduce_plan.stage_manifest.custom_kernel.external_buffer_abi.roles.size(); ++i) {
         EXPECT_EQ(reduce_plan.stage_manifest.custom_kernel.external_buffer_abi.roles[i],
                   GfxKernelBufferRole::RuntimeParams);
     }
@@ -1100,7 +1231,6 @@ TEST(GfxStagePolicyTest, CustomKernelStagePlanCoversExistingUnaryAndBinaryMslOps
     EXPECT_EQ(softmax_plan.stage_manifest.custom_kernel.dispatch_policy.grid, GfxKernelDispatchGrid::Linear1D);
     EXPECT_EQ(softmax_plan.stage_manifest.custom_kernel.dispatch_policy.threads_per_threadgroup, 128u);
     ASSERT_TRUE(softmax_plan.stage_manifest.custom_kernel.external_buffer_abi.valid);
-    EXPECT_FALSE(softmax_plan.stage_manifest.custom_kernel.external_buffer_abi.tail_outputs);
     EXPECT_EQ(softmax_plan.stage_manifest.custom_kernel.external_buffer_abi.roles,
               std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
                                                 GfxKernelBufferRole::TensorOutput,
@@ -1110,7 +1240,6 @@ TEST(GfxStagePolicyTest, CustomKernelStagePlanCoversExistingUnaryAndBinaryMslOps
     ASSERT_TRUE(topk_plan.valid);
     EXPECT_EQ(topk_plan.family, GfxKernelFamily::GatherScatterIndexed);
     ASSERT_TRUE(topk_plan.stage_manifest.custom_kernel.external_buffer_abi.valid);
-    EXPECT_FALSE(topk_plan.stage_manifest.custom_kernel.external_buffer_abi.tail_outputs);
     EXPECT_EQ(topk_plan.stage_manifest.custom_kernel.external_buffer_abi.roles,
               std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
                                                 GfxKernelBufferRole::TensorOutput,
@@ -1170,7 +1299,11 @@ TEST(GfxStagePolicyTest, CustomKernelStagePlanCoversExistingUnaryAndBinaryMslOps
               GfxKernelBufferRole::TensorInput);
     EXPECT_EQ(tile_plan.stage_manifest.custom_kernel.external_buffer_abi.roles[1],
               GfxKernelBufferRole::TensorOutput);
-    for (size_t i = 2; i < tile_plan.stage_manifest.custom_kernel.external_buffer_abi.roles.size(); ++i) {
+    EXPECT_EQ(tile_plan.stage_manifest.custom_kernel.external_buffer_abi.roles[2],
+              GfxKernelBufferRole::ScalarParam);
+    EXPECT_EQ(tile_plan.stage_manifest.custom_kernel.external_buffer_abi.roles[3],
+              GfxKernelBufferRole::ScalarParam);
+    for (size_t i = 4; i < tile_plan.stage_manifest.custom_kernel.external_buffer_abi.roles.size(); ++i) {
         EXPECT_EQ(tile_plan.stage_manifest.custom_kernel.external_buffer_abi.roles[i],
                   GfxKernelBufferRole::RuntimeParams);
     }
@@ -1183,6 +1316,12 @@ TEST(GfxStagePolicyTest, CustomKernelStagePlanCoversExistingUnaryAndBinaryMslOps
               GfxKernelBufferRole::TensorInput);
     EXPECT_EQ(broadcast_plan.stage_manifest.custom_kernel.external_buffer_abi.roles[1],
               GfxKernelBufferRole::TensorOutput);
+    EXPECT_EQ(broadcast_plan.stage_manifest.custom_kernel.external_buffer_abi.roles[2],
+              GfxKernelBufferRole::ScalarParam);
+    EXPECT_EQ(broadcast_plan.stage_manifest.custom_kernel.external_buffer_abi.roles[3],
+              GfxKernelBufferRole::ScalarParam);
+    EXPECT_EQ(broadcast_plan.stage_manifest.custom_kernel.external_buffer_abi.roles[4],
+              GfxKernelBufferRole::ScalarParam);
 
     const auto select_plan = make_gfx_custom_kernel_stage_plan("Select", "select_kernel");
     ASSERT_TRUE(select_plan.valid);
@@ -1197,10 +1336,11 @@ TEST(GfxStagePolicyTest, CustomKernelStagePlanCoversExistingUnaryAndBinaryMslOps
     ASSERT_TRUE(range_plan.valid);
     EXPECT_EQ(range_plan.family, GfxKernelFamily::GatherScatterIndexed);
     EXPECT_EQ(range_plan.stage_manifest.custom_kernel.external_buffer_abi.roles,
-              std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorOutput,
-                                                GfxKernelBufferRole::RuntimeParams,
-                                                GfxKernelBufferRole::RuntimeParams,
-                                                GfxKernelBufferRole::RuntimeParams}));
+              std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
+                                                GfxKernelBufferRole::TensorInput,
+                                                GfxKernelBufferRole::TensorInput,
+                                                GfxKernelBufferRole::TensorOutput,
+                                                GfxKernelBufferRole::ScalarParam}));
 
     const auto scatter_init_plan =
         make_gfx_custom_kernel_stage_plan("ScatterElementsUpdate", "scatter_elements_init");
@@ -1372,6 +1512,21 @@ TEST(GfxStagePolicyTest, MpsrtManifestAdapterMaterializesExternalKernelBufferOrd
     const std::vector<GfxMpsrtValue> external_values = {0u, 1u, 2u};
 
     EXPECT_EQ(gfx_mpsrt_kernel_buffer_order_from_external_values(roles, external_values), external_values);
+    EXPECT_TRUE(gfx_mpsrt_kernel_buffer_order_from_kernel_abi({}, {0u}, {1u}).empty());
+    EXPECT_EQ(gfx_mpsrt_kernel_buffer_order_from_kernel_abi(
+                  make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorOutput,
+                                             GfxKernelBufferRole::TensorInput,
+                                             GfxKernelBufferRole::TensorInput}),
+                  {0u, 1u},
+                  {2u}),
+              std::vector<GfxMpsrtValue>({2u, 0u, 1u}));
+    EXPECT_EQ(gfx_mpsrt_kernel_buffer_order_from_kernel_abi(
+                  make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
+                                             GfxKernelBufferRole::TensorInput,
+                                             GfxKernelBufferRole::TensorOutput}),
+                  {0u},
+                  {1u}),
+              std::vector<GfxMpsrtValue>({0u, 1u}));
     EXPECT_TRUE(gfx_mpsrt_kernel_buffer_order_from_external_values({GfxMpsrtExternalBufferRole::TensorInput},
                                                                    external_values)
                     .empty());
@@ -1524,6 +1679,56 @@ TEST(GfxStagePolicyTest, MpsrtMultiStageBuilderPlanSerializesMpsGemmPlusMslDispa
     EXPECT_EQ(model.semantic_output_values, std::vector<GfxMpsrtValue>({3u}));
     EXPECT_EQ(model.external_values, std::vector<GfxMpsrtValue>({0u, 1u, 3u}));
     EXPECT_EQ(model.external_buffer_roles,
+              std::vector<GfxMpsrtExternalBufferRole>({GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput}));
+
+    ASSERT_TRUE(ov::gfx_plugin::metal::mpsrt::adapt_mpsrt_model_to_external_buffer_abi(model,
+                                                                                       3u,
+                                                                                       1u,
+                                                                                       &error))
+        << error;
+    EXPECT_EQ(model.external_values, std::vector<GfxMpsrtValue>({0u, 1u, 3u}));
+    EXPECT_EQ(model.external_input_values, std::vector<GfxMpsrtValue>({0u, 1u}));
+    EXPECT_EQ(model.external_output_values, std::vector<GfxMpsrtValue>({3u}));
+
+    auto output_first_builder_plan = builder_plan;
+    output_first_builder_plan.external_buffer_roles = {GfxMpsrtExternalBufferRole::TensorOutput,
+                                                       GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::TensorInput};
+    ov::gfx_plugin::metal::mpsrt::MpsrtModel output_first_model;
+    ASSERT_TRUE(ov::gfx_plugin::metal::mpsrt::build_mpsrt_model_from_builder_plan(output_first_builder_plan,
+                                                                                  output_first_model,
+                                                                                  &error))
+        << error;
+    ASSERT_TRUE(ov::gfx_plugin::metal::mpsrt::adapt_mpsrt_model_to_external_buffer_abi(output_first_model,
+                                                                                       3u,
+                                                                                       1u,
+                                                                                       &error))
+        << error;
+    EXPECT_EQ(output_first_model.semantic_input_values, std::vector<GfxMpsrtValue>({0u, 1u}));
+    EXPECT_EQ(output_first_model.semantic_output_values, std::vector<GfxMpsrtValue>({3u}));
+    EXPECT_EQ(output_first_model.external_values, std::vector<GfxMpsrtValue>({3u, 0u, 1u}));
+    EXPECT_EQ(output_first_model.external_input_values, std::vector<GfxMpsrtValue>({0u, 1u}));
+    EXPECT_EQ(output_first_model.external_output_values, std::vector<GfxMpsrtValue>({3u}));
+
+    auto runtime_param_builder_plan = builder_plan;
+    runtime_param_builder_plan.external_buffer_roles = {GfxMpsrtExternalBufferRole::TensorInput,
+                                                        GfxMpsrtExternalBufferRole::TensorInput,
+                                                        GfxMpsrtExternalBufferRole::RuntimeParams,
+                                                        GfxMpsrtExternalBufferRole::TensorOutput};
+    ov::gfx_plugin::metal::mpsrt::MpsrtModel runtime_param_model;
+    ASSERT_TRUE(ov::gfx_plugin::metal::mpsrt::build_mpsrt_model_from_builder_plan(runtime_param_builder_plan,
+                                                                                  runtime_param_model,
+                                                                                  &error))
+        << error;
+    ASSERT_TRUE(ov::gfx_plugin::metal::mpsrt::adapt_mpsrt_model_to_external_buffer_abi(runtime_param_model,
+                                                                                       4u,
+                                                                                       1u,
+                                                                                       &error))
+        << error;
+    EXPECT_EQ(runtime_param_model.external_values, std::vector<GfxMpsrtValue>({0u, 1u, 3u}));
+    EXPECT_EQ(runtime_param_model.external_buffer_roles,
               std::vector<GfxMpsrtExternalBufferRole>({GfxMpsrtExternalBufferRole::TensorInput,
                                                        GfxMpsrtExternalBufferRole::TensorInput,
                                                        GfxMpsrtExternalBufferRole::TensorOutput}));
@@ -1764,7 +1969,7 @@ TEST(GfxStagePolicyTest, MpsrtRuntimeModelAdaptsExpandedExternalBufferAbi) {
     EXPECT_EQ(model.stages.front().msl_dispatch_desc.output_count, 1u);
 }
 
-TEST(GfxStagePolicyTest, MpsrtRuntimeModelAdaptsExternalBufferRolesWithoutTailOutputAssumption) {
+TEST(GfxStagePolicyTest, MpsrtRuntimeModelAdaptsExternalBufferRolesFromExplicitManifestOrder) {
     const auto add = make_large_add_node();
     const auto plan = select_stage_optimization_plan(nullptr,
                                                      GpuBackend::Metal,

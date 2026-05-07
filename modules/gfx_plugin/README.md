@@ -58,7 +58,7 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 - `src/runtime/gfx_mpsrt_*`: shared ABI, stage-plan, builder-plan, program, storage-bridge, and manifest-adapter helpers for the Apple MPS/MSL split
 - `src/kernel_ir/gfx_kernel_manifest.hpp`: backend-neutral manifest for vendor-primitive versus custom-kernel stage contracts
 - `src/kernel_ir/gfx_custom_kernel_families.*`: custom-kernel family registry, external-buffer ABI roles, and dispatch-policy defaults shared by Metal MSL source planning and MPSRT runtime-model generation
-- `src/mlir/`: MLIR support probes, Apple stage-pipeline passes, typed MPSRT dialect/materialization helpers, generated runtime-ABI planning, source-plan helpers, const-tensor-source attachment, and shared codegen helpers
+- `src/mlir/`: MLIR support probes, Apple stage-pipeline passes, typed MPSRT dialect/materialization helpers, generated runtime-ABI planning, Metal MSL source/binding-plan helpers, const-tensor-source attachment, and shared codegen helpers
 - `src/backends/metal/`: Metal-specific plugin glue, runtime, memory, profiling, MSL compilation
 - `src/backends/vulkan/`: Vulkan-specific plugin glue, runtime, buffers, profiling, SPIR-V/Vulkan execution
 - `src/transforms/`: OpenVINO graph passes and fusion logic
@@ -206,6 +206,8 @@ Current lowering/runtime special cases:
 - Metal can fuse selected LLM causal-mask attention graphs into a native `ScaledDotProductAttention` variant that consumes `attention_mask` and `cache_position`; Vulkan still rejects that native path today
 - compatible compressed `MatMul` nodes that share the same data input can be regrouped into one horizontally fused `MatMul` followed by `VariadicSplit`
 - compressed `MatMul` stage compilation can repack concatenated quantized weight parts and scale blocks into backend const buffers before codegen
+- Metal custom MSL source generation and runtime binding metadata are centralized in MLIR source-plan helpers, including compressed `MatMul`, SDPA, and scalar/runtime-parameter-heavy custom kernels
+- Metal request-time binding follows `GfxMslRuntimeBindingPlan` / manifest external-buffer roles, so tensor inputs, outputs, scalar params, runtime params, and const tensors keep an explicit kernel-buffer order instead of relying on positional conventions
 - Metal Conv2D and MaxPool codegen now honor dilation metadata, and Conv2D dispatch planning can block output channels and output width per thread for selected float-like cases
 - `ShapeOf`, `TopK`, `Tile`, and unary stage handling now have stricter runtime/codegen paths around output typing, alias safety, and ABI metadata
 - Metal stage policy now routes selected 4D conv/pool/interpolate-style stages to Apple MPS image storage, selected `MatMul` / last-dimension `Softmax` / `TopK` stages to Apple MPS matrix storage, and keeps the remaining cases on Apple MSL buffer dispatch
@@ -350,6 +352,7 @@ Recent regression coverage includes:
 - Metal stage-placement and MPSRT descriptor/runtime-model coverage in `tests/unit/gfx_stage_policy_test.cpp`
 - Metal backend tests for MPSRT compile, prepared-pipeline caching, and request-time MSL dispatch execution in `tests/backends/metal/gpu_backend_test.mm`
 - Metal backend tests now also cover manifest-driven buffer ordering, program-to-ops materialization, runtime-parameter roles, generated runtime-ABI call-plan execution, typed storage bridges, vendor `MPSGemm` / Conv2D / Pool2D / Softmax / TopK execution, and hybrid prepared-model execution
+- Metal MSL binding-plan tests cover compressed `MatMul`, SDPA, scalar/runtime-parameter ordering, output-before-runtime-params ABI ordering, and request-time rejection when an MSL dispatch stage is missing materialized kernel-buffer order
 - canonical Conv2D MLIR lowering checks
 - strict interior-tile bounds checks plus Vulkan batch-1 parallel-launch and batch>1 serial-fallback checks in `tests/unit/mlir_conv_parallel_test.cpp`
 - im2col rewrite coverage, including the batch-1 plain-matmul route

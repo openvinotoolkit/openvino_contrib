@@ -55,6 +55,8 @@ Additional operational docs:
    - command-encoder or binding-reuse behavior that changes profiling counters or dispatch setup cost
    - MPSRT runtime-model, kernel-family-manifest, or external-buffer-ABI behavior on Metal
    - custom-kernel family classification, semantic input/output roles, or dispatch-grid policy
+   - Metal MSL runtime binding plans, explicit kernel-buffer order, or inferred MSL buffer-argument counts
+   - MLIR-owned Metal MSL source generation such as compressed `MatMul`, SDPA, or causal SDPA helpers
    - generated runtime-ABI call-plan or storage-bridge behavior on Metal
    - typed `GfxMpsrtProgram` / generated `gfx_mpsrt_ops` behavior or cleanup of stale legacy MPSRT attrs
    - Apple stage-pipeline or typed `gfx.mpsrt` dialect behavior

@@ -136,6 +136,9 @@ If the behavior depends on route or scheduling selection, also read:
 - `src/mlir/gfx_mpsrt_runtime_abi_pipeline.*`
 - `src/mlir/gfx_mpsrt_source_plan.hpp`
 - `src/mlir/gfx_mpsrt_const_tensor_sources.hpp`
+- `src/mlir/msl_codegen.hpp`
+- `src/mlir/msl_codegen_attention.cpp`
+- `src/mlir/msl_codegen_compressed_matmul.cpp`
 
 `tests/unit/gfx_parallelism_test.cpp` now covers Broadcom-oriented matmul
 selection plus dense stride-1, huge-spatial, and ultra-dense convolution
@@ -201,7 +204,7 @@ For the current codebase, also check whether the op should participate in:
 For Reduce-like work, prefer the existing typed reduction extraction in `src/mlir/mlir_builder_reduce.cpp`. The current builder reads axes and `keep_dims` from concrete Reduce op classes such as `ReduceSum`, `ReduceMean`, `ReduceMax`, `ReduceMin`, `ReduceProd`, `ReduceL1`, and `ReduceL2` instead of relying on a looser generic reduction-base path.
 
 For `MatMul`, keep the compile-time const-buffer story aligned with runtime codegen. The current Metal path may repack a constant RHS from `f32` to `f16` for dynamic-shape `MatMul` stages and then derive kernel input element types from the effective runtime tensors instead of only the original node input types.
-If the change touches compressed or quantized `MatMul` weights, also inspect `src/transforms/pipeline.cpp`. The transform pipeline is now backend-aware and can protect decompression subgraphs on Metal so backend-specific compressed-weight handling survives generic optimization passes. It can also horizontally regroup compatible compressed `MatMul` nodes that share one data input into a fused `MatMul` plus `VariadicSplit`, and stage compilation may repack concatenated quantized weight/scales into backend const buffers.
+If the change touches compressed or quantized `MatMul` weights, also inspect `src/transforms/pipeline.cpp` and `src/mlir/msl_codegen_compressed_matmul.cpp`. The transform pipeline is now backend-aware and can protect decompression subgraphs on Metal so backend-specific compressed-weight handling survives generic optimization passes. It can also horizontally regroup compatible compressed `MatMul` nodes that share one data input into a fused `MatMul` plus `VariadicSplit`, and stage compilation may repack concatenated quantized weight/scales into backend const buffers before selecting the compressed-MatMul MSL source and binding plan.
 
 For RMSNorm-style work, remember that `src/transforms/pipeline.cpp` now runs OpenVINO `RMSFusion` before plugin-local cleanup. The current intended path is fused RMSNorm graph patterns lowering into the dedicated `RMS` builder and backend codegen, not preserving only the unfused arithmetic tail.
 On Metal, also account for residual-add fusion into `RMS`: `CompiledModel` can detect a directly attached `Add`, route both add inputs plus gamma into one stage, and mark the MLIR/codegen path with `gfx.fused_residual_add`.
@@ -212,7 +215,7 @@ For `RoPE`, use the dedicated builder in `src/mlir/mlir_builder_rope.cpp` and th
 
 For fusion work, note that current support is no longer limited to output post-ops. `Multiply` can now absorb selected activations into one chosen input through the fusion plan and backend `fuse_input_activation()` hooks. Keep the transform-side fusion pattern, compiled-model fusion bookkeeping, and backend runtime/codegen support aligned.
 
-For `ScaledDotProductAttention`, the current native path is backend-specific: Metal can keep a rank-4 FP16/FP32 SDPA node and compile a dedicated kernel, while Vulkan still rejects native SDPA and expects other lowering paths. `src/transforms/gfx_llm_ops.hpp` also defines a Metal-only `GfxSDPAWithCausalMask` op used for selected LLM graphs when `src/transforms/pipeline.cpp` can recover explicit `attention_mask[B,K]` and `cache_position[Q]` inputs from the original mask subgraph. That fusion may also peel some broadcast-expanded GQA K/V views back to compact K/V tensors before stage compilation.
+For `ScaledDotProductAttention`, the current native path is backend-specific: Metal can keep a rank-4 FP16/FP32 SDPA node and compile a dedicated kernel through `src/mlir/msl_codegen_attention.cpp`, while Vulkan still rejects native SDPA and expects other lowering paths. `src/transforms/gfx_llm_ops.hpp` also defines a Metal-only `GfxSDPAWithCausalMask` op used for selected LLM graphs when `src/transforms/pipeline.cpp` can recover explicit `attention_mask[B,K]` and `cache_position[Q]` inputs from the original mask subgraph. That fusion may also peel some broadcast-expanded GQA K/V views back to compact K/V tensors before stage compilation.
 For `TopK`, prefer the generalized `TopKBase` path instead of wiring only one opset version. The current lowering/codegen reads `get_k()`, preserves the output index element type from output port 1, and only accepts the currently implemented sort modes.
 
 For Slice-like work, note that the current lowering prefers `tensor.extract_slice` instead of synthesizing a `linalg.generic` copy. Shared metadata extraction in `src/mlir/slice_generic_codegen.cpp` still accepts both forms so older paths and debug flows remain readable.
@@ -221,7 +224,7 @@ At runtime, contiguous `Split` and `VariadicSplit` outputs may also alias slices
 For `ShapeOf`, keep the runtime-materialized dims path aligned with the builder and output ABI. The current stage path wraps the resolved runtime shape into an immutable `i32` or `i64` buffer and treats it as a dedicated kernel input/output contract rather than a generic copied tensor.
 
 For Metal kernel-dispatch work, inspect `src/backends/metal/runtime/metal_command_encoder.*` before adding new ad-hoc encoder setup code. The current runtime keeps one compute encoder per active command buffer, caches the last bound pipeline plus buffer table, and ends that encoder explicitly before blit/copy paths or command-buffer commit.
-For Metal Conv2D / MaxPool work, keep dilation handling and dispatch blocking coherent across `gfx_codegen_desc.hpp`, MLIR codegen, and native runtime ops. The current code shares the same dilation and output-block metadata between compile-time codegen and runtime dispatch sizing.
+For Metal Conv2D / MaxPool work, keep dilation handling and dispatch blocking coherent across `gfx_codegen_desc.hpp`, MLIR/MSL source planning, and request-time dispatch metadata. The current code shares the same dilation and output-block metadata between compile-time codegen and runtime dispatch sizing.
 For Metal placement or codegen work, also keep the MPSRT boundary coherent. The current code expects stage policy, MLIR attrs, `gfx_kernel_manifest.hpp`, `gfx_custom_kernel_families.*`, and `src/backends/metal/runtime/mpsrt/*` to agree on:
 - the selected placement domain (`apple_mps` vs `apple_msl`)
 - the storage kind (`image`, `matrix`, `buffer`)
@@ -265,6 +268,7 @@ When touching the Metal MPSRT boundary, keep four layers aligned:
 The current request path can no longer assume one storage class for all external bindings. Image-backed Apple MPS stages may require explicit `buffer_to_image` or `image_to_buffer` bridges, and those bridges are part of the serialized builder plan and reconstructed runtime model.
 Also, do not build new tooling on top of stale flat `gfx.mpsrt.*` stage attrs. Current code intentionally materializes generated helpers and erases legacy attrs after the program facade is available.
 For Apple-targeted lowering, also prefer the dedicated `run_gfx_apple_stage_pipeline()` path over reintroducing per-op ad-hoc metadata assembly. The current code treats placement, storage, fusion, stage-manifest lowering, typed program materialization, and later runtime-ABI generation as one connected flow.
+For Metal custom-kernel source or request-time binding changes, route new behavior through `GfxMslRuntimeBindingPlan` and the helpers in `src/mlir/msl_codegen.*`. Keep the generated module operands, `GfxKernelStageManifest` external-buffer roles, inferred MSL `[[buffer(N)]]` argument count, and MPSRT `kernel_buffer_order` coherent. The request path treats a missing materialized buffer order for MSL dispatch as invalid runtime-model state.
 
 For layout-cleanup work around DFL-style postprocessing tails, the current rewrite target is a value-preserving `Softmax -> MatMul -> Reshape/Transpose` form. Do not describe the older synthetic 1x1 convolution rewrite as the active implementation.
 

@@ -74,13 +74,19 @@ bool is_gfx_kernel_unary_eltwise_stage(std::string_view stage_type) {
 
 GfxKernelExternalBufferAbiSpec make_gfx_kernel_unary_eltwise_abi() {
     return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
-                                      GfxKernelBufferRole::TensorOutput});
+                                      GfxKernelBufferRole::TensorOutput,
+                                      GfxKernelBufferRole::ScalarParam});
 }
 
 GfxKernelExternalBufferAbiSpec make_gfx_kernel_binary_eltwise_abi() {
     return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
                                       GfxKernelBufferRole::TensorInput,
-                                      GfxKernelBufferRole::TensorOutput});
+                                      GfxKernelBufferRole::TensorOutput,
+                                      GfxKernelBufferRole::ScalarParam,
+                                      GfxKernelBufferRole::ScalarParam,
+                                      GfxKernelBufferRole::RuntimeParams,
+                                      GfxKernelBufferRole::RuntimeParams,
+                                      GfxKernelBufferRole::RuntimeParams});
 }
 
 }  // namespace
@@ -226,9 +232,9 @@ GfxKernelExternalBufferAbiSpec gfx_kernel_external_buffer_abi_spec_for_stage(
         if (entry_point == "broadcast_kernel") {
             return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
                                               GfxKernelBufferRole::TensorOutput,
-                                              GfxKernelBufferRole::RuntimeParams,
-                                              GfxKernelBufferRole::RuntimeParams,
-                                              GfxKernelBufferRole::RuntimeParams,
+                                              GfxKernelBufferRole::ScalarParam,
+                                              GfxKernelBufferRole::ScalarParam,
+                                              GfxKernelBufferRole::ScalarParam,
                                               GfxKernelBufferRole::RuntimeParams,
                                               GfxKernelBufferRole::RuntimeParams,
                                               GfxKernelBufferRole::RuntimeParams,
@@ -239,8 +245,8 @@ GfxKernelExternalBufferAbiSpec gfx_kernel_external_buffer_abi_spec_for_stage(
                                               GfxKernelBufferRole::TensorInput,
                                               GfxKernelBufferRole::TensorInput,
                                               GfxKernelBufferRole::TensorOutput,
-                                              GfxKernelBufferRole::RuntimeParams,
-                                              GfxKernelBufferRole::RuntimeParams,
+                                              GfxKernelBufferRole::ScalarParam,
+                                              GfxKernelBufferRole::ScalarParam,
                                               GfxKernelBufferRole::RuntimeParams,
                                               GfxKernelBufferRole::RuntimeParams,
                                               GfxKernelBufferRole::RuntimeParams,
@@ -252,6 +258,13 @@ GfxKernelExternalBufferAbiSpec gfx_kernel_external_buffer_abi_spec_for_stage(
         }
     }
     if (family == GfxKernelFamily::MatMulBuffer &&
+        entry_point == "compressed_matmul_kernel") {
+        return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
+                                          GfxKernelBufferRole::ConstTensor,
+                                          GfxKernelBufferRole::ConstTensor,
+                                          GfxKernelBufferRole::TensorOutput});
+    }
+    if (family == GfxKernelFamily::MatMulBuffer &&
         (stage_type == "MatMul" || entry_point == "matmul_kernel")) {
         return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
                                           GfxKernelBufferRole::TensorInput,
@@ -260,8 +273,8 @@ GfxKernelExternalBufferAbiSpec gfx_kernel_external_buffer_abi_spec_for_stage(
     if (family == GfxKernelFamily::ReductionBuffer && entry_point == "reduce_kernel") {
         return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
                                           GfxKernelBufferRole::TensorOutput,
-                                          GfxKernelBufferRole::RuntimeParams,
-                                          GfxKernelBufferRole::RuntimeParams,
+                                          GfxKernelBufferRole::ScalarParam,
+                                          GfxKernelBufferRole::ScalarParam,
                                           GfxKernelBufferRole::RuntimeParams,
                                           GfxKernelBufferRole::RuntimeParams,
                                           GfxKernelBufferRole::RuntimeParams,
@@ -346,8 +359,8 @@ GfxKernelExternalBufferAbiSpec gfx_kernel_external_buffer_abi_spec_for_stage(
         if (stage_type == "Tile" || entry_point == "tile_kernel") {
             return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
                                               GfxKernelBufferRole::TensorOutput,
-                                              GfxKernelBufferRole::RuntimeParams,
-                                              GfxKernelBufferRole::RuntimeParams,
+                                              GfxKernelBufferRole::ScalarParam,
+                                              GfxKernelBufferRole::ScalarParam,
                                               GfxKernelBufferRole::RuntimeParams,
                                               GfxKernelBufferRole::RuntimeParams,
                                               GfxKernelBufferRole::RuntimeParams,
@@ -368,14 +381,15 @@ GfxKernelExternalBufferAbiSpec gfx_kernel_external_buffer_abi_spec_for_stage(
         if (stage_type == "ShapeOf" || entry_point == "shapeof_kernel") {
             return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
                                               GfxKernelBufferRole::TensorOutput,
-                                              GfxKernelBufferRole::RuntimeParams,
-                                              GfxKernelBufferRole::RuntimeParams});
+                                              GfxKernelBufferRole::ScalarParam,
+                                              GfxKernelBufferRole::ConstTensor});
         }
         if (stage_type == "Range" || entry_point == "range_kernel") {
-            return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorOutput,
-                                              GfxKernelBufferRole::RuntimeParams,
-                                              GfxKernelBufferRole::RuntimeParams,
-                                              GfxKernelBufferRole::RuntimeParams});
+            return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
+                                              GfxKernelBufferRole::TensorInput,
+                                              GfxKernelBufferRole::TensorInput,
+                                              GfxKernelBufferRole::TensorOutput,
+                                              GfxKernelBufferRole::ScalarParam});
         }
         return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
                                           GfxKernelBufferRole::TensorOutput,
@@ -399,6 +413,25 @@ GfxKernelExternalBufferAbiSpec gfx_kernel_external_buffer_abi_spec_for_stage(
                                               GfxKernelBufferRole::TensorOutput,
                                               GfxKernelBufferRole::RuntimeParams});
         }
+    }
+    if (family == GfxKernelFamily::MaskedSoftmaxAttention &&
+        entry_point == "sdpa_kernel") {
+        return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
+                                          GfxKernelBufferRole::TensorInput,
+                                          GfxKernelBufferRole::TensorInput,
+                                          GfxKernelBufferRole::TensorInput,
+                                          GfxKernelBufferRole::RuntimeParams,
+                                          GfxKernelBufferRole::TensorOutput});
+    }
+    if (family == GfxKernelFamily::MaskedSoftmaxAttention &&
+        entry_point == "sdpa_causal_mask_kernel") {
+        return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
+                                          GfxKernelBufferRole::TensorInput,
+                                          GfxKernelBufferRole::TensorInput,
+                                          GfxKernelBufferRole::TensorInput,
+                                          GfxKernelBufferRole::TensorInput,
+                                          GfxKernelBufferRole::RuntimeParams,
+                                          GfxKernelBufferRole::TensorOutput});
     }
     return gfx_kernel_external_buffer_abi_spec_for_family(family);
 }
@@ -584,11 +617,14 @@ GfxKernelFamily classify_gfx_custom_kernel_family(std::string_view stage_type,
         return GfxKernelFamily::Conv3DDirectOrIm2col;
     }
     if (stage_type == "Convolution" ||
+        stage_type == "GroupConvolution" ||
+        stage_type == "GroupConv2D" ||
         entry_point == "conv2d_kernel") {
         return GfxKernelFamily::Conv2DDirectOrIm2col;
     }
     if (stage_type == "MatMul" ||
-        entry_point == "matmul_kernel") {
+        entry_point == "matmul_kernel" ||
+        entry_point == "compressed_matmul_kernel") {
         return GfxKernelFamily::MatMulBuffer;
     }
     if (stage_type == "MaxPool" ||

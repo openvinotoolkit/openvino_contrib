@@ -357,8 +357,8 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
         if (profiler) {
             profiler->set_counter("stage_output_workspace_outputs",
                                   metal_state->stage_output_workspace.last_workspace_outputs);
-            profiler->set_counter("stage_output_legacy_outputs",
-                                  metal_state->stage_output_workspace.last_legacy_outputs);
+            profiler->set_counter("stage_output_direct_outputs",
+                                  metal_state->stage_output_workspace.last_direct_outputs);
             profiler->set_counter("stage_output_workspace_slots",
                                   metal_state->stage_output_workspace.last_slots_used);
             profiler->set_counter("stage_output_workspace_peak_live",

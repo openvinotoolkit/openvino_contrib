@@ -38,7 +38,7 @@ struct StageOutputBufferWorkspace {
     std::vector<BufferHandle> handles;
     std::vector<std::vector<size_t>> output_slots;
     size_t last_workspace_outputs = 0;
-    size_t last_legacy_outputs = 0;
+    size_t last_direct_outputs = 0;
     size_t last_slots_used = 0;
     size_t last_peak_live_slots = 0;
 };
@@ -297,7 +297,7 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
         std::vector<std::vector<size_t>> last_use(pipeline.size());
         workspace->output_slots.assign(pipeline.size(), {});
         workspace->last_workspace_outputs = 0;
-        workspace->last_legacy_outputs = 0;
+        workspace->last_direct_outputs = 0;
         workspace->last_slots_used = 0;
         workspace->last_peak_live_slots = 0;
         size_t max_new_workspace_slots = 0;
@@ -611,7 +611,7 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
                         continue;
                     }
                     if (!plan.workspace_managed) {
-                        ++workspace->last_legacy_outputs;
+                        ++workspace->last_direct_outputs;
                         out_ref->buf = pool.ensure(stage_handles[oi], plan.desc);
                         continue;
                     }
@@ -680,7 +680,7 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
                     continue;
                 }
                 if (!plan.workspace_managed) {
-                    ++workspace->last_legacy_outputs;
+                    ++workspace->last_direct_outputs;
                     out_ref->buf = pool.ensure(stage_handles[oi], plan.desc);
                     continue;
                 }
