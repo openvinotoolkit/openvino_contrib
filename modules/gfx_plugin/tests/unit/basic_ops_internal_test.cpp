@@ -1684,6 +1684,17 @@ TEST(GfxMlir, MatMulMpsrtLoweringEntryPointSelectsSingleAndMultiStagePlans) {
     ASSERT_FALSE(source_plan.source.msl_source.empty());
     ASSERT_EQ(source_plan.source.signature.arg_count, 4u);
     ASSERT_EQ(source_plan.source.signature.output_arg_count, 1u);
+    const auto epilogue_metadata = ov::gfx_plugin::extract_kernel_runtime_metadata(
+        source_plan.source.module,
+        source_plan.source.signature.output_arg_count,
+        /*fallback_input_arg_count=*/999,
+        source_plan.source.entry_point);
+    ASSERT_TRUE(epilogue_metadata.valid);
+    ASSERT_EQ(epilogue_metadata.kernel_input_arg_count, 3u);
+    EXPECT_EQ(epilogue_metadata.operands.operand_kinds,
+              std::vector<int32_t>({1, 1, 1, 1}));
+    EXPECT_EQ(epilogue_metadata.operands.operand_arg_indices,
+              std::vector<int32_t>({0, 1, 2, 3}));
 
     auto fallback_desc = desc;
     fallback_desc.batch = 3;
@@ -1701,6 +1712,17 @@ TEST(GfxMlir, MatMulMpsrtLoweringEntryPointSelectsSingleAndMultiStagePlans) {
     ASSERT_EQ(fallback_source.entry_point, "matmul_buffer");
     ASSERT_EQ(fallback_source.signature.arg_count, 3u);
     ASSERT_EQ(fallback_source.signature.output_arg_count, 1u);
+    const auto fallback_metadata = ov::gfx_plugin::extract_kernel_runtime_metadata(
+        fallback_source.module,
+        fallback_source.signature.output_arg_count,
+        /*fallback_input_arg_count=*/999,
+        fallback_source.entry_point);
+    ASSERT_TRUE(fallback_metadata.valid);
+    ASSERT_EQ(fallback_metadata.kernel_input_arg_count, 2u);
+    EXPECT_EQ(fallback_metadata.operands.operand_kinds,
+              std::vector<int32_t>({1, 1, 1}));
+    EXPECT_EQ(fallback_metadata.operands.operand_arg_indices,
+              std::vector<int32_t>({0, 1, 2}));
 
     ov::gfx_plugin::GfxMpsrtModuleStagePlan fallback_stage_plan;
     ASSERT_TRUE(ov::gfx_plugin::read_module_mpsrt_stage_plan(fallback_source.module,
@@ -2588,6 +2610,179 @@ TEST(GfxMlir, StageManifestSuppliesRoleAbiWithoutModuleMpsrtAttrs) {
     ASSERT_EQ(module_builder_plan.builder_plan.external_buffer_count, 6u);
     ASSERT_EQ(module_builder_plan.builder_plan.external_output_buffer_count, 1u);
     ASSERT_EQ(module_builder_plan.builder_plan.external_buffer_roles, abi.buffer_roles);
+}
+
+TEST(GfxMlir, StageManifestSuppliesKernelRuntimeMetadataAheadOfLegacyOperandAttrs) {
+    mlir::MLIRContext ctx;
+    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+
+    const auto plan = ov::gfx_plugin::select_stage_optimization_plan(nullptr,
+                                                                     ov::gfx_plugin::GpuBackend::Metal,
+                                                                     "Add",
+                                                                     nullptr,
+                                                                     ov::element::f16,
+                                                                     /*has_bias=*/false,
+                                                                     /*has_activation=*/false,
+                                                                     /*has_batchnorm=*/false,
+                                                                     {});
+    ov::gfx_plugin::annotate_msl_module_with_stage_plan(module, plan, "Add");
+
+    mlir::Builder builder(module.getContext());
+    module->setAttr("gfx.kernel_operand_kinds",
+                    builder.getArrayAttr({builder.getI32IntegerAttr(1)}));
+    module->setAttr("gfx.kernel_operand_arg_indices",
+                    builder.getArrayAttr({builder.getI32IntegerAttr(42)}));
+
+    const auto metadata = ov::gfx_plugin::extract_kernel_runtime_metadata(
+        module,
+        /*output_arg_count=*/1,
+        /*fallback_input_arg_count=*/999,
+        "eltwise_fused_buffer");
+    ASSERT_TRUE(metadata.valid);
+    ASSERT_EQ(metadata.kernel_input_arg_count, 5u);
+    ASSERT_EQ(metadata.operands.operand_kinds,
+              std::vector<int32_t>({1, 1, 1, 0, 0, 1, 1, 1}));
+    ASSERT_EQ(metadata.operands.operand_arg_indices,
+              std::vector<int32_t>({0, 1, 5, -1, -1, 2, 3, 4}));
+
+    module->setAttr("gfx.fixed_arg_count", builder.getI32IntegerAttr(3));
+    ASSERT_EQ(ov::gfx_plugin::infer_kernel_arg_count_from_module(module,
+                                                                 /*fallback=*/999,
+                                                                 "eltwise_fused_buffer"),
+              6u);
+    ASSERT_EQ(ov::gfx_plugin::infer_kernel_arg_count_from_module(module,
+                                                                 /*fallback=*/999,
+                                                                 "binary_bias_add"),
+              3u);
+}
+
+TEST(GfxMlir, MpsrtOpsExternalAbiSuppliesKernelRuntimeMetadata) {
+    mlir::MLIRContext ctx;
+    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+
+    auto lhs = ov::gfx_plugin::gfx_mpsrt_make_tensor_desc({1, 8, 16},
+                                                          ov::element::f16,
+                                                          ov::gfx_plugin::GfxStageStorageKind::Matrix,
+                                                          ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo);
+    auto rhs = ov::gfx_plugin::gfx_mpsrt_make_tensor_desc({1, 16, 4},
+                                                          ov::element::f16,
+                                                          ov::gfx_plugin::GfxStageStorageKind::Matrix,
+                                                          ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo);
+    auto output = ov::gfx_plugin::gfx_mpsrt_make_tensor_desc({1, 8, 4},
+                                                             ov::element::f16,
+                                                             ov::gfx_plugin::GfxStageStorageKind::Matrix,
+                                                             ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo);
+    const auto plan = ov::gfx_plugin::select_stage_optimization_plan(nullptr,
+                                                                     ov::gfx_plugin::GpuBackend::Metal,
+                                                                     "MatMul",
+                                                                     nullptr,
+                                                                     ov::element::f16,
+                                                                     /*has_bias=*/false,
+                                                                     /*has_activation=*/false,
+                                                                     /*has_batchnorm=*/false,
+                                                                     {});
+    auto stage = ov::gfx_plugin::gfx_mpsrt_make_stage_desc(plan, "MatMul");
+    ASSERT_EQ(stage.kind, ov::gfx_plugin::GfxMpsrtStageKind::MPSGemm);
+
+    ov::gfx_plugin::GfxMpsrtProgram program{};
+    program.valid = true;
+    program.record_key = "mpsrt_external_abi_metadata";
+    program.inputs = {lhs, rhs};
+    program.output_values = {2u};
+    program.stages.push_back({stage,
+                              ov::gfx_plugin::gfx_mpsrt_stage_record_key(stage),
+                              {0u, 1u},
+                              {2u},
+                              {output}});
+    program.external_buffer_abi.valid = true;
+    program.external_buffer_abi.has_buffer_count = true;
+    program.external_buffer_abi.has_output_buffer_count = true;
+    program.external_buffer_abi.has_buffer_roles = true;
+    program.external_buffer_abi.buffer_count = 4u;
+    program.external_buffer_abi.output_buffer_count = 1u;
+    program.external_buffer_abi.buffer_roles = {
+        ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorInput,
+        ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorInput,
+        ov::gfx_plugin::GfxMpsrtExternalBufferRole::RuntimeParams,
+        ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorOutput};
+
+    ASSERT_TRUE(ov::gfx_plugin::materialize_module_mpsrt_ops(module, program));
+    const auto metadata = ov::gfx_plugin::extract_kernel_runtime_metadata(
+        module,
+        /*output_arg_count=*/1,
+        /*fallback_input_arg_count=*/999);
+    ASSERT_TRUE(metadata.valid);
+    ASSERT_EQ(metadata.kernel_input_arg_count, 3u);
+    EXPECT_EQ(metadata.operands.operand_kinds, std::vector<int32_t>({1, 1, 1, 1}));
+    EXPECT_EQ(metadata.operands.operand_arg_indices, std::vector<int32_t>({0, 1, 2, 3}));
+}
+
+TEST(GfxMlir, MslRuntimeBindingPlanDoesNotWriteLegacyOperandAttrs) {
+    mlir::MLIRContext ctx;
+    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+    mlir::Builder builder(module.getContext());
+    module->setAttr("gfx.kernel_operand_kinds",
+                    builder.getArrayAttr({builder.getI32IntegerAttr(1)}));
+    module->setAttr("gfx.kernel_operand_arg_indices",
+                    builder.getArrayAttr({builder.getI32IntegerAttr(42)}));
+    module->setAttr("gfx.kernel_scalar_values",
+                    builder.getArrayAttr({builder.getI32IntegerAttr(7)}));
+
+    const auto plan = ov::gfx_plugin::make_msl_runtime_binding_plan_for_custom_kernel(
+        "Add",
+        "eltwise_kernel",
+        {0, 1});
+    ASSERT_TRUE(plan.valid());
+    ASSERT_TRUE(ov::gfx_plugin::annotate_msl_module_with_runtime_binding_plan(module, plan));
+
+    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.kernel.entry_point").str(),
+              "eltwise_fused_buffer");
+    ASSERT_TRUE(module->hasAttr("gfx.stage_manifest.kernel.external_buffer_abi.roles"));
+    ASSERT_FALSE(module->hasAttr("gfx.kernel_operand_kinds"));
+    ASSERT_FALSE(module->hasAttr("gfx.kernel_operand_arg_indices"));
+    ASSERT_FALSE(module->hasAttr("gfx.kernel_scalar_values"));
+
+    const auto metadata = ov::gfx_plugin::extract_kernel_runtime_metadata(
+        module,
+        /*output_arg_count=*/1,
+        /*fallback_input_arg_count=*/999,
+        "eltwise_fused_buffer");
+    ASSERT_TRUE(metadata.valid);
+    ASSERT_EQ(metadata.kernel_input_arg_count, 5u);
+    ASSERT_EQ(metadata.operands.operand_kinds,
+              std::vector<int32_t>({1, 1, 1, 0, 0, 1, 1, 1}));
+    ASSERT_EQ(metadata.operands.operand_arg_indices,
+              std::vector<int32_t>({0, 1, 5, -1, -1, 2, 3, 4}));
+}
+
+TEST(GfxMlir, MslScalarRuntimeArgsAreStoredOnStageManifest) {
+    mlir::MLIRContext ctx;
+    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+
+    const auto plan = ov::gfx_plugin::make_msl_runtime_binding_plan_for_custom_kernel(
+        "Tile",
+        "tile_kernel",
+        {0},
+        {16, 4});
+    ASSERT_TRUE(plan.valid());
+    ASSERT_TRUE(ov::gfx_plugin::annotate_msl_module_with_runtime_binding_plan(module, plan));
+
+    ASSERT_FALSE(module->hasAttr("gfx.kernel_scalar_values"));
+    auto scalar_attr =
+        module->getAttrOfType<mlir::ArrayAttr>("gfx.stage_manifest.kernel.scalar_args");
+    ASSERT_TRUE(scalar_attr);
+    ASSERT_EQ(scalar_attr.size(), 2u);
+
+    const auto metadata = ov::gfx_plugin::extract_kernel_runtime_metadata(
+        module,
+        /*output_arg_count=*/1,
+        /*fallback_input_arg_count=*/999,
+        "gather_scatter_indexed");
+    ASSERT_TRUE(metadata.valid);
+    EXPECT_EQ(metadata.operands.scalar_args, std::vector<int32_t>({16, 4}));
+    EXPECT_EQ(metadata.operands.operand_kinds, std::vector<int32_t>({1, 1, 0, 0, 1, 1, 1, 1}));
+    EXPECT_EQ(metadata.operands.operand_arg_indices,
+              std::vector<int32_t>({0, 5, -1, -1, 1, 2, 3, 4}));
 }
 
 TEST(GfxMlir, StageManifestSuppliesElementwiseRoleAbiWithoutLegacyMpsrtAttrs) {

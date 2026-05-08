@@ -148,6 +148,12 @@ struct GfxMpsrtPool2DAbiDesc {
     uint32_t exclude_pad = 0;
 };
 
+struct GfxMpsrtResize2DAbiDesc {
+    uint32_t nearest = 0;
+    uint32_t align_corners = 0;
+    uint32_t half_pixel_centers = 1;
+};
+
 struct GfxMpsrtSoftmaxAbiDesc {
     uint32_t axis = 0;
     uint32_t log_softmax = 0;

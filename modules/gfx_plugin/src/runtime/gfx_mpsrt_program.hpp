@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "runtime/gfx_mpsrt_builder_plan.hpp"
@@ -23,6 +24,39 @@ struct GfxMpsrtExternalBufferAbiPlan {
     uint32_t output_buffer_count = 0;
     std::vector<GfxMpsrtExternalBufferRole> buffer_roles;
 };
+
+inline uint32_t gfx_mpsrt_count_program_external_output_roles(
+    const std::vector<GfxMpsrtExternalBufferRole>& roles) {
+    uint32_t count = 0;
+    for (const auto role : roles) {
+        if (role == GfxMpsrtExternalBufferRole::TensorOutput) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+inline GfxMpsrtExternalBufferAbiPlan gfx_mpsrt_make_external_buffer_abi_from_roles(
+    std::vector<GfxMpsrtExternalBufferRole> roles) {
+    GfxMpsrtExternalBufferAbiPlan abi{};
+    abi.valid = true;
+    abi.has_buffer_count = true;
+    abi.has_output_buffer_count = true;
+    abi.has_buffer_roles = true;
+    abi.buffer_count = static_cast<uint32_t>(roles.size());
+    abi.output_buffer_count = gfx_mpsrt_count_program_external_output_roles(roles);
+    abi.buffer_roles = std::move(roles);
+    return abi;
+}
+
+inline GfxMpsrtExternalBufferAbiPlan gfx_mpsrt_make_external_io_abi(size_t input_count,
+                                                                    size_t output_count) {
+    std::vector<GfxMpsrtExternalBufferRole> roles;
+    roles.reserve(input_count + output_count);
+    roles.insert(roles.end(), input_count, GfxMpsrtExternalBufferRole::TensorInput);
+    roles.insert(roles.end(), output_count, GfxMpsrtExternalBufferRole::TensorOutput);
+    return gfx_mpsrt_make_external_buffer_abi_from_roles(std::move(roles));
+}
 
 struct GfxMpsrtProgram {
     bool valid = false;

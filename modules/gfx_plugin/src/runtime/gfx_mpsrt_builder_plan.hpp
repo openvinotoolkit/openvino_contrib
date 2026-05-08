@@ -43,6 +43,7 @@ struct GfxMpsrtBuilderRecord {
     GfxMpsrtConv2DAbiDesc conv2d_desc{};
     GfxMpsrtGemmAbiDesc gemm_desc{};
     GfxMpsrtPool2DAbiDesc pool2d_desc{};
+    GfxMpsrtResize2DAbiDesc resize2d_desc{};
     GfxMpsrtSoftmaxAbiDesc softmax_desc{};
     GfxMpsrtTopKAbiDesc topk_desc{};
     GfxMpsrtMslDispatchAbiDesc msl_dispatch_desc{};
@@ -96,6 +97,10 @@ inline bool gfx_mpsrt_stage_uses_conv2d_desc(GfxMpsrtStageKind kind) {
 
 inline bool gfx_mpsrt_stage_uses_pool2d_desc(GfxMpsrtStageKind kind) {
     return kind == GfxMpsrtStageKind::MPSPool2D;
+}
+
+inline bool gfx_mpsrt_stage_uses_resize2d_desc(GfxMpsrtStageKind kind) {
+    return kind == GfxMpsrtStageKind::MPSResize2D;
 }
 
 inline bool gfx_mpsrt_stage_uses_softmax_desc(GfxMpsrtStageKind kind) {
@@ -207,6 +212,8 @@ inline GfxMpsrtBuilderRecord gfx_mpsrt_make_encode_stage_record(const GfxMpsrtSt
         encode.gemm_desc = stage.gemm_desc;
     } else if (gfx_mpsrt_stage_uses_pool2d_desc(stage.kind)) {
         encode.pool2d_desc = stage.pool2d_desc;
+    } else if (gfx_mpsrt_stage_uses_resize2d_desc(stage.kind)) {
+        encode.resize2d_desc = stage.resize2d_desc;
     } else if (gfx_mpsrt_stage_uses_softmax_desc(stage.kind)) {
         encode.softmax_desc = stage.softmax_desc;
     } else if (gfx_mpsrt_stage_uses_topk_desc(stage.kind)) {

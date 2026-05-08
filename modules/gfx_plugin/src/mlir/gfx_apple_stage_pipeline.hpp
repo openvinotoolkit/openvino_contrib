@@ -21,12 +21,15 @@ struct GfxAppleStagePipelineOptions {
     std::string stage_type;
     std::string kernel_entry_point;
     std::vector<GfxKernelBufferRole> semantic_input_roles;
+    std::vector<GfxMpsrtTensorDesc> input_descs;
+    std::vector<GfxMpsrtTensorDesc> output_descs;
     struct VendorPrimitiveDescriptor {
         enum class Kind {
             None,
             Gemm,
             Conv2D,
             Pool2D,
+            Resize2D,
             Softmax,
             TopK,
         };
@@ -35,6 +38,7 @@ struct GfxAppleStagePipelineOptions {
         GfxMpsrtGemmAbiDesc gemm{};
         GfxMpsrtConv2DAbiDesc conv2d{};
         GfxMpsrtPool2DAbiDesc pool2d{};
+        GfxMpsrtResize2DAbiDesc resize2d{};
         GfxMpsrtSoftmaxAbiDesc softmax{};
         GfxMpsrtTopKAbiDesc topk{};
     } vendor_descriptor;
@@ -133,21 +137,36 @@ GfxAppleProgramPipelineResult materialize_apple_mps_pool2d_program(
     const GfxStageOptimizationPlan& plan,
     const std::string& stage_type,
     const GfxMpsrtPool2DAbiDesc& desc,
-    const std::vector<GfxKernelBufferRole>& semantic_input_roles = {});
+    const std::vector<GfxKernelBufferRole>& semantic_input_roles = {},
+    const std::vector<GfxMpsrtTensorDesc>& input_descs = {},
+    const std::vector<GfxMpsrtTensorDesc>& output_descs = {});
+
+GfxAppleProgramPipelineResult materialize_apple_mps_resize2d_program(
+    mlir::ModuleOp module,
+    const GfxStageOptimizationPlan& plan,
+    const std::string& stage_type,
+    const GfxMpsrtResize2DAbiDesc& desc,
+    const std::vector<GfxKernelBufferRole>& semantic_input_roles = {},
+    const std::vector<GfxMpsrtTensorDesc>& input_descs = {},
+    const std::vector<GfxMpsrtTensorDesc>& output_descs = {});
 
 GfxAppleProgramPipelineResult materialize_apple_mps_softmax_program(
     mlir::ModuleOp module,
     const GfxStageOptimizationPlan& plan,
     const std::string& stage_type,
     const GfxMpsrtSoftmaxAbiDesc& desc,
-    const std::vector<GfxKernelBufferRole>& semantic_input_roles = {});
+    const std::vector<GfxKernelBufferRole>& semantic_input_roles = {},
+    const std::vector<GfxMpsrtTensorDesc>& input_descs = {},
+    const std::vector<GfxMpsrtTensorDesc>& output_descs = {});
 
 GfxAppleProgramPipelineResult materialize_apple_mps_topk_program(
     mlir::ModuleOp module,
     const GfxStageOptimizationPlan& plan,
     const std::string& stage_type,
     const GfxMpsrtTopKAbiDesc& desc,
-    const std::vector<GfxKernelBufferRole>& semantic_input_roles = {});
+    const std::vector<GfxKernelBufferRole>& semantic_input_roles = {},
+    const std::vector<GfxMpsrtTensorDesc>& input_descs = {},
+    const std::vector<GfxMpsrtTensorDesc>& output_descs = {});
 
 GfxAppleProgramPipelineResult materialize_apple_mpsrt_program(
     mlir::ModuleOp module,

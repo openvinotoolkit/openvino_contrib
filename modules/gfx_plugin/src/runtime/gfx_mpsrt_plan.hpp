@@ -50,6 +50,7 @@ struct GfxMpsrtStageDesc {
     GfxMpsrtConv2DAbiDesc conv2d_desc{};
     GfxMpsrtGemmAbiDesc gemm_desc{};
     GfxMpsrtPool2DAbiDesc pool2d_desc{};
+    GfxMpsrtResize2DAbiDesc resize2d_desc{};
     GfxMpsrtSoftmaxAbiDesc softmax_desc{};
     GfxMpsrtTopKAbiDesc topk_desc{};
 };
@@ -416,6 +417,10 @@ inline bool gfx_mpsrt_pool2d_desc_has_non_default_fields(const GfxMpsrtPool2DAbi
            desc.exclude_pad != 0;
 }
 
+inline bool gfx_mpsrt_resize2d_desc_has_non_default_fields(const GfxMpsrtResize2DAbiDesc& desc) {
+    return desc.nearest != 0 || desc.align_corners != 0 || desc.half_pixel_centers != 1;
+}
+
 inline bool gfx_mpsrt_softmax_desc_has_non_default_fields(const GfxMpsrtSoftmaxAbiDesc& desc) {
     return desc.axis != 0 || desc.log_softmax != 0;
 }
@@ -522,6 +527,13 @@ inline std::string gfx_mpsrt_stage_record_key(const GfxMpsrtStageDesc& desc) {
         if (desc.pool2d_desc.exclude_pad != 0) {
             key += ":exclude_pad";
         }
+    }
+    if (desc.kind == GfxMpsrtStageKind::MPSResize2D &&
+        gfx_mpsrt_resize2d_desc_has_non_default_fields(desc.resize2d_desc)) {
+        key += "|resize2d:";
+        key += desc.resize2d_desc.nearest != 0 ? "nearest" : "bilinear";
+        key += desc.resize2d_desc.align_corners != 0 ? ":align_corners" : "";
+        key += desc.resize2d_desc.half_pixel_centers != 0 ? ":half_pixel" : "";
     }
     if (desc.kind == GfxMpsrtStageKind::MPSSoftmax &&
         gfx_mpsrt_softmax_desc_has_non_default_fields(desc.softmax_desc)) {

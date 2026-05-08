@@ -55,9 +55,9 @@ Recent additions in the tree include:
 - `tests/unit/infer_pipeline_reuse_test.cpp` for reusable pipeline, prepared-input plans, prepared-output plans, and reusable host-output coverage
 - `tests/unit/gfx_profiling_report_test.cpp` for compile/infer profiling JSON assembly and merge behavior
 - `tests/unit/gfx_stage_policy_test.cpp` for submit-weight and route-policy heuristics
-- `tests/unit/gfx_stage_policy_test.cpp` now also covers Metal placement domains, MPSRT tensor descriptors, typed program validation, stage record keys, custom-kernel family manifests, dispatch policies, semantic input/output roles, builder-plan serialization, runtime-model ABI adaptation, and storage-bridge descriptors for image, matrix, ndarray, and alias contracts
+- `tests/unit/gfx_stage_policy_test.cpp` now also covers Metal placement domains, MPSRT tensor descriptors, typed program validation, stage record keys, custom-kernel family manifests, dispatch policies, semantic input/output roles, builder-plan serialization, runtime-model ABI adaptation, Apple MPS Resize2D descriptor/source-plan coverage, resource-table external bindings, and storage-bridge descriptors for image, matrix, ndarray, and alias contracts
 - `tests/backends/metal/gpu_backend_test.mm` now covers MPSRT-backed Metal compile, prepared-pipeline caching, and request-time MSL-dispatch execution
-- `tests/backends/metal/gpu_backend_test.mm` now also covers manifest-driven buffer ordering, runtime-parameter roles, storage bridges, vendor `MPSGemm` / Conv2D / Pool2D / Softmax / TopK, and hybrid multi-stage execution
+- `tests/backends/metal/gpu_backend_test.mm` now also covers manifest-driven buffer ordering, runtime-parameter roles, storage bridges, MPSRT resource tables, prepared resource heaps, vendor `MPSGemm` / Conv2D / Pool2D / Resize2D / Softmax / TopK, and hybrid multi-stage execution
 - Metal MSL binding-plan coverage now includes compressed `MatMul`, SDPA and causal SDPA kernel roles, output-before-runtime-params ordering, scalar-param expansion, and request-time rejection of MSL dispatch stages without materialized kernel-buffer order
 - `tests/unit/gfx_parallelism_test.cpp` now also covers Broadcom V3D-specific matmul and convolution tuning behavior
 - `tests/unit/runtime_subgraph_test.cpp` for targeted runtime subgraph execution checks through `ov_gfx_runtime_micro_tests`
@@ -89,7 +89,7 @@ Add or update tests when you change:
 - Metal placement-domain selection, MPSRT ABI metadata, or MSL kernel-family mapping
 - kernel-manifest execution-kind changes such as vendor-primitive versus custom-kernel routing
 - generated `gfx_mpsrt_ops` / `GfxMpsrtProgram` materialization or legacy-attr cleanup rules
-- generated runtime-ABI call-plan metadata or storage-bridge contracts for Metal MPSRT execution
+- generated runtime-ABI call-plan metadata, runtime resource tables, external-resource bindings, or storage-bridge contracts for Metal MPSRT execution
 - Apple stage-pipeline pass sequencing or typed `gfx.mpsrt` dialect verification rules
 - custom-kernel family classification, dispatch-grid policy, or external-buffer ABI role inference
 - Metal MSL runtime binding plans, inferred MSL buffer-argument counts, compressed `MatMul` source plans, or SDPA source plans

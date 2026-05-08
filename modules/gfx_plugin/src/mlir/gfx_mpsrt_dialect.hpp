@@ -68,6 +68,14 @@ public:
     }
 };
 
+class Resize2DOp final : public GfxMpsrtOp<Resize2DOp> {
+public:
+    using GfxMpsrtOp<Resize2DOp>::GfxMpsrtOp;
+    static llvm::StringRef getOperationName() {
+        return "gfx.mpsrt.resize2d";
+    }
+};
+
 class GemmOp final : public GfxMpsrtOp<GemmOp> {
 public:
     using GfxMpsrtOp<GemmOp>::GfxMpsrtOp;

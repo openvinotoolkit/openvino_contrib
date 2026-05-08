@@ -270,6 +270,32 @@ GfxKernelExternalBufferAbiSpec gfx_kernel_external_buffer_abi_spec_for_stage(
                                           GfxKernelBufferRole::TensorInput,
                                           GfxKernelBufferRole::TensorOutput});
     }
+    if (family == GfxKernelFamily::RmsnormRopeFused &&
+        entry_point == "rms_kernel") {
+        if (stage_type == "RMSResidual") {
+            return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
+                                              GfxKernelBufferRole::TensorInput,
+                                              GfxKernelBufferRole::TensorInput,
+                                              GfxKernelBufferRole::TensorOutput});
+        }
+        return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
+                                          GfxKernelBufferRole::TensorInput,
+                                          GfxKernelBufferRole::TensorOutput});
+    }
+    if (family == GfxKernelFamily::RmsnormRopeFused &&
+        entry_point == "rope_kernel") {
+        if (stage_type == "RoPEWithPosition") {
+            return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
+                                              GfxKernelBufferRole::TensorInput,
+                                              GfxKernelBufferRole::TensorInput,
+                                              GfxKernelBufferRole::TensorInput,
+                                              GfxKernelBufferRole::TensorOutput});
+        }
+        return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
+                                          GfxKernelBufferRole::TensorInput,
+                                          GfxKernelBufferRole::TensorInput,
+                                          GfxKernelBufferRole::TensorOutput});
+    }
     if (family == GfxKernelFamily::ReductionBuffer && entry_point == "reduce_kernel") {
         return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
                                           GfxKernelBufferRole::TensorOutput,
@@ -591,7 +617,9 @@ GfxKernelFamily classify_gfx_custom_kernel_family(std::string_view stage_type,
     }
     if (stage_type == "RMS" ||
         stage_type == "RMSNorm" ||
+        stage_type == "RMSResidual" ||
         stage_type == "RoPE" ||
+        stage_type == "RoPEWithPosition" ||
         stage_type == "RotaryEmbedding" ||
         entry_point == "rms_kernel" ||
         entry_point == "rope_kernel") {

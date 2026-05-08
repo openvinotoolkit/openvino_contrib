@@ -166,10 +166,11 @@ The compile path now also emits two generated MLIR helper functions through `gfx
 The runtime-ABI call plan serializes:
 - model record keys and record counts
 - external-buffer roles and counts
-- per-stage ABI descriptors for GEMM, Conv2D, Pool2D, Softmax, TopK, or MSL dispatch
+- per-stage ABI descriptors for GEMM, Conv2D, Pool2D, Resize2D, Softmax, TopK, or MSL dispatch
+- runtime resource tables that classify external, model-owned, and transient resources before request-time binding
 - explicit storage bridges such as `buffer_to_image` and `image_to_buffer`
 
-The new Apple stage pipeline in `gfx_apple_stage_pipeline.*` sits earlier in this path. It canonicalizes an Apple-targeted module, materializes placement/storage/fusion metadata, lowers that metadata into the canonical stage manifest, and can then materialize the typed MPSRT program facade from the resulting stage plan.
+The Apple stage pipeline in `gfx_apple_stage_pipeline.*` sits earlier in this path. It canonicalizes an Apple-targeted module, materializes placement/storage/fusion metadata, lowers that metadata into the canonical stage manifest, and can then materialize the typed MPSRT program facade from the resulting stage plan. Vendor descriptor extraction for Apple MPS stages is shared through `gfx_apple_vendor_descriptors.*`, so Conv2D, Pool2D, Resize2D, Softmax, and TopK all feed the same descriptor and tensor-desc path.
 
 ## Profiling Stack
 Profiling is split into compile-time and infer-time collection.
@@ -198,8 +199,8 @@ Stage policy now splits Metal work into two internal domains:
 
 The Metal path also now has a local MPSRT runtime layer under `src/backends/metal/runtime/mpsrt/`:
 - `mpsrt_model.*` validates builder records and reconstructs compact runtime models
-- `mpsrt_context.*` prepares and caches Metal pipeline states for annotated MSL-dispatch stages
-- `mpsrt_request.*` binds external or transient buffers and encodes prepared dispatches into a command buffer
+- `mpsrt_context.*` prepares and caches Metal pipeline states or Apple MPS kernels, prepares model resources, and allocates transient buffers/images through a Metal heap
+- `mpsrt_request.*` binds resources from the explicit runtime resource table and encodes prepared dispatches into a command buffer
 - `gfx_mpsrt_storage_bridge.hpp` describes explicit conversions between external buffer bindings and Apple MPS image storage when a stage crosses that boundary
 - `gfx_mpsrt_program.hpp` defines the typed MPSRT program contract validated before builder-plan generation
 - `gfx_mpsrt_dialect.*` defines typed `gfx.mpsrt.*` helper ops used by the generated program facade, including explicit storage-conversion ops such as `to_image`, `to_matrix`, `to_ndarray`, `to_buffer`, and `alias`
@@ -210,9 +211,11 @@ Recent Metal compile/runtime changes extend the MPSRT path beyond one standalone
 - vendor-only plans such as `MPSGemm` can now execute through the MPSRT runtime boundary without requiring generated MSL source
 - hybrid multi-stage plans such as `MPSGemm + MSL epilogue` can be serialized as one MPSRT model with semantic inputs/outputs, explicit intermediate value edges, storage bridges, and stage-local descriptors
 - request-time execution can choose full-context MPSRT execution for those mixed models instead of falling back to one raw compiled-kernel dispatch
-- vendor primitive coverage now also includes Apple MPS convolution, group convolution, pooling, softmax, and TopK stages when stage policy selects those routes
+- vendor primitive coverage now also includes Apple MPS convolution, group convolution, pooling, spatial bilinear Resize2D, softmax, and TopK stages when stage policy selects those routes
 - compile-time source planning now uses `gfx_mpsrt_source_plan.hpp` to pick `SingleStage` versus `MultiStage` source contracts directly from the typed program/module metadata, while `gfx_mpsrt_const_tensor_sources.hpp` can attach evaluated constant payloads for vendor convolution-family stages
 - metadata cleanup now removes stale flat `gfx.mpsrt.*` stage attrs after the generated program/ops facade is materialized, so current readers should prefer `read_module_mpsrt_program()`, typed `gfx.mpsrt.*` ops, and runtime-ABI helpers over direct attribute scraping
+- runtime-model finalization now builds `MpsrtRuntimeResource` entries and `external_buffer_bindings`, then request binding validates external IO, runtime-parameter resources, model-owned const buffers, and prepared transient resources against that table
+- prepared MPSRT execution can allocate transient buffer and image resources from one Metal heap and call `makeAliasable` after each resource's live window, so non-overlapping intermediate resources may reuse heap storage
 
 MatMul is the clearest current example of that split:
 - plain supported GEMM shapes can lower to vendor `MPSGemm`
@@ -222,6 +225,7 @@ MatMul is the clearest current example of that split:
 Convolution follows the same direction on the metadata side:
 - Apple MPS convolution/group-convolution stages now serialize explicit `GfxMpsrtConv2DAbiDesc` stride, dilation, pad, and grouping metadata
 - the custom Metal Conv2D kernel family is also represented through the same manifest path, so legacy MSL `conv2d_kernel` dispatch still shares the common kernel-family and ABI contract
+Interpolate follows the vendor-primitive path for the supported static NCHW spatial bilinear cases: the Apple stage pipeline emits a `GfxMpsrtResize2DAbiDesc`, source planning treats it as an IO-only MPS vendor stage, and the Metal runtime prepares/encodes `MPSImageBilinearScale`.
 When those Apple MPS image-backed stages connect to public buffer inputs or outputs, the runtime model carries storage-bridge descriptors and the request path materializes the needed bridge resources explicitly rather than assuming one storage class end-to-end.
 Metal custom MSL source generation is centralized in MLIR source-plan helpers and `MlirStage` binding-plan annotation. That path covers dynamically shaped or metadata-heavy kernels such as `Softmax`, `Select`, `ScatterUpdate`, `RMS`, `RoPE`, binary `Concat`, rank-4 `ScaledDotProductAttention`, fused causal-mask `ScaledDotProductAttention`, compressed `MatMul`, and slice handling including negative-step `StridedSlice`.
 `GfxMslRuntimeBindingPlan` converts each manifest role order into the module/runtime operand metadata used by request-time binding. For direct MSL dispatch inside MPSRT, the runtime model must carry materialized `kernel_buffer_order`; request execution rejects an MSL dispatch stage when that order is absent.

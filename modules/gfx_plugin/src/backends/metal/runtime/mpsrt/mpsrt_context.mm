@@ -7,6 +7,7 @@
 #import <Foundation/Foundation.h>
 #import <MetalPerformanceShaders/MetalPerformanceShaders.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <iomanip>
@@ -16,6 +17,7 @@
 #include "kernel_ir/gfx_kernel_cache.hpp"
 #include "openvino/core/except.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
+#include "runtime/gfx_mpsrt_storage_bridge.hpp"
 
 @interface OVGfxMpsrtConv2DDataSource : NSObject <MPSCNNConvolutionDataSource> {
 @private
@@ -176,6 +178,470 @@ MPSDataType mps_data_type_from_gfx(uint32_t dtype) {
         default:
             return MPSDataTypeInvalid;
     }
+}
+
+MTLPixelFormat texture_pixel_format_from_gfx(uint32_t dtype) {
+    switch (static_cast<GfxMpsrtDType>(dtype)) {
+        case GfxMpsrtDType::F16:
+            return MTLPixelFormatRGBA16Float;
+        case GfxMpsrtDType::F32:
+            return MTLPixelFormatRGBA32Float;
+        default:
+            return MTLPixelFormatInvalid;
+    }
+}
+
+uint32_t image_slice_count(uint32_t feature_channels) {
+    return (feature_channels + 3u) / 4u;
+}
+
+bool tensor_requires_image_resource(const GfxMpsrtTensorAbiDesc& desc) {
+    return desc.storage == static_cast<uint32_t>(GfxMpsrtStorage::Image);
+}
+
+MTLTextureDescriptor* new_transient_image_texture_descriptor(const GfxMpsrtTensorAbiDesc& desc,
+                                                            std::string* log) {
+    if (!tensor_requires_image_resource(desc)) {
+        (void)fail(log, "GFX MPSRT: cannot prepare transient texture descriptor for non-image resource");
+        return nil;
+    }
+    if (desc.image_width == 0 || desc.image_height == 0 ||
+        desc.image_feature_channels == 0 || desc.image_batch == 0) {
+        (void)fail(log, "GFX MPSRT: cannot prepare transient texture descriptor for incomplete image descriptor");
+        return nil;
+    }
+    const MTLPixelFormat pixel_format = texture_pixel_format_from_gfx(desc.dtype);
+    if (pixel_format == MTLPixelFormatInvalid) {
+        (void)fail(log, "GFX MPSRT: cannot prepare transient texture descriptor for unsupported image dtype");
+        return nil;
+    }
+
+    MTLTextureDescriptor* descriptor =
+        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:pixel_format
+                                                          width:desc.image_width
+                                                         height:desc.image_height
+                                                      mipmapped:false];
+    descriptor.textureType = MTLTextureType2DArray;
+    descriptor.arrayLength = static_cast<NSUInteger>(desc.image_batch *
+                                                     image_slice_count(desc.image_feature_channels));
+    descriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+    descriptor.storageMode = MTLStorageModePrivate;
+    return descriptor;
+}
+
+id<MTLTexture> new_transient_image_texture(id<MTLHeap> heap,
+                                           const GfxMpsrtTensorAbiDesc& desc,
+                                           std::string* log) {
+    if (!heap) {
+        (void)fail(log, "GFX MPSRT: prepared resource heap is required for transient texture");
+        return nil;
+    }
+    MTLTextureDescriptor* descriptor = new_transient_image_texture_descriptor(desc, log);
+    if (!descriptor) {
+        return nil;
+    }
+    id<MTLTexture> texture = [heap newTextureWithDescriptor:descriptor];
+    if (!texture) {
+        (void)fail(log, "GFX MPSRT: failed to allocate prepared transient texture from resource heap");
+    }
+    return texture;
+}
+
+uint64_t transient_buffer_allocation_bytes(const GfxMpsrtTensorAbiDesc& desc) {
+    const uint64_t logical_bytes = desc.byte_length != 0 ? desc.byte_length : tensor_dense_bytes(desc);
+    if (logical_bytes == 0) {
+        return 0;
+    }
+    return desc.byte_offset + logical_bytes;
+}
+
+bool allocate_prepared_transient_resource_from_heap(id<MTLHeap> heap,
+                                                    MpsrtPreparedResource& prepared,
+                                                    std::string* log) {
+    if (!prepared.has_tensor_value) {
+        return fail(log, "GFX MPSRT: transient resource is not a tensor");
+    }
+    if (tensor_requires_image_resource(prepared.tensor_desc)) {
+        prepared.texture = new_transient_image_texture(heap, prepared.tensor_desc, log);
+        if (!prepared.texture) {
+            return false;
+        }
+        prepared.byte_length = 0;
+        prepared.offset = 0;
+        return true;
+    }
+
+    const uint64_t allocation_bytes = transient_buffer_allocation_bytes(prepared.tensor_desc);
+    if (allocation_bytes == 0) {
+        return fail(log, "GFX MPSRT: transient buffer resource has invalid byte size");
+    }
+    id<MTLBuffer> buffer = [heap newBufferWithLength:static_cast<NSUInteger>(allocation_bytes)
+                                             options:MTLResourceStorageModePrivate];
+    if (!buffer) {
+        return fail(log, "GFX MPSRT: failed to allocate prepared transient buffer from resource heap");
+    }
+    prepared.byte_length = static_cast<size_t>(allocation_bytes);
+    prepared.offset = 0;
+    prepared.buffer = buffer;
+    return true;
+}
+
+NSUInteger align_heap_size(NSUInteger value, NSUInteger alignment) {
+    if (alignment <= 1) {
+        return value;
+    }
+    const NSUInteger remainder = value % alignment;
+    return remainder == 0 ? value : value + alignment - remainder;
+}
+
+struct PreparedResourceHeapPlanEntry {
+    uint32_t resource_index = 0;
+    size_t allocation_size = 0;
+    size_t alignment = 1;
+    size_t first_stage_index = 0;
+    size_t last_stage_index = 0;
+};
+
+struct PreparedImageBridgeHeapPlanEntry {
+    GfxMpsrtValue value = 0;
+    GfxMpsrtStorageBridgeDirection direction = GfxMpsrtStorageBridgeDirection::Unknown;
+    GfxMpsrtTensorAbiDesc tensor_desc{};
+    size_t allocation_size = 0;
+    size_t alignment = 1;
+};
+
+struct ActivePreparedHeapResource {
+    id<MTLResource> resource = nil;
+    size_t last_stage_index = 0;
+};
+
+const PreparedResourceHeapPlanEntry* find_heap_plan_entry(const std::vector<PreparedResourceHeapPlanEntry>& entries,
+                                                          uint32_t resource_index) {
+    for (const auto& entry : entries) {
+        if (entry.resource_index == resource_index) {
+            return &entry;
+        }
+    }
+    return nullptr;
+}
+
+MpsrtPreparedResource* find_prepared_resource(std::vector<MpsrtPreparedResource>& resources,
+                                              uint32_t resource_index) {
+    for (auto& resource : resources) {
+        if (resource.resource_index == resource_index) {
+            return &resource;
+        }
+    }
+    return nullptr;
+}
+
+id<MTLResource> prepared_heap_resource(const MpsrtPreparedResource& prepared) {
+    if (prepared.buffer) {
+        return prepared.buffer;
+    }
+    if (prepared.texture) {
+        return prepared.texture;
+    }
+    return nil;
+}
+
+bool has_value(const std::vector<GfxMpsrtValue>& values, GfxMpsrtValue value) {
+    return std::find(values.begin(), values.end(), value) != values.end();
+}
+
+const GfxMpsrtStorageBridgeDesc* find_storage_bridge(const MpsrtModel& model,
+                                                     GfxMpsrtValue value) {
+    for (const auto& bridge : model.storage_bridges) {
+        if (bridge.value == value) {
+            return &bridge;
+        }
+    }
+    return nullptr;
+}
+
+GfxMpsrtStorageBridgeDirection external_image_bridge_direction_for_value(
+    const MpsrtModel& model,
+    GfxMpsrtValue value,
+    GfxMpsrtStorageBridgeDirection fallback_direction) {
+    if (model.storage_bridges.empty()) {
+        return fallback_direction;
+    }
+    if (const auto* bridge = find_storage_bridge(model, value)) {
+        return bridge->direction;
+    }
+    return GfxMpsrtStorageBridgeDirection::Unknown;
+}
+
+bool stage_uses_value(const MpsrtRuntimeStage& stage, GfxMpsrtValue value) {
+    return has_value(stage.inputs, value) ||
+           has_value(stage.outputs, value) ||
+           has_value(stage.kernel_buffer_order, value);
+}
+
+std::pair<size_t, size_t> transient_resource_live_window(const MpsrtModel& model,
+                                                         const MpsrtRuntimeResource& resource) {
+    if (!resource.has_tensor_value || model.stages.empty()) {
+        return {0, 0};
+    }
+
+    const size_t sentinel = model.stages.size();
+    size_t first_stage = sentinel;
+    size_t last_stage = 0;
+    for (size_t stage_index = 0; stage_index < model.stages.size(); ++stage_index) {
+        if (!stage_uses_value(model.stages[stage_index], resource.value)) {
+            continue;
+        }
+        first_stage = std::min(first_stage, stage_index);
+        last_stage = std::max(last_stage, stage_index);
+    }
+    if (first_stage == sentinel) {
+        return {0, model.stages.size() - 1};
+    }
+    return {first_stage, last_stage};
+}
+
+bool has_image_bridge_heap_plan_entry(const std::vector<PreparedImageBridgeHeapPlanEntry>& entries,
+                                      GfxMpsrtValue value,
+                                      GfxMpsrtStorageBridgeDirection direction) {
+    for (const auto& entry : entries) {
+        if (entry.value == value && entry.direction == direction) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool append_image_bridge_heap_plan_entry(id<MTLDevice> device,
+                                         const MpsrtModel& model,
+                                         GfxMpsrtValue value,
+                                         GfxMpsrtStorageBridgeDirection fallback_direction,
+                                         NSUInteger& required_size,
+                                         std::vector<PreparedImageBridgeHeapPlanEntry>& entries,
+                                         std::string* log) {
+    const auto direction = external_image_bridge_direction_for_value(model, value, fallback_direction);
+    if (direction == GfxMpsrtStorageBridgeDirection::Unknown ||
+        has_image_bridge_heap_plan_entry(entries, value, direction)) {
+        return true;
+    }
+    const auto* tensor = find_tensor(model, value);
+    if (!tensor || !gfx_mpsrt_tensor_is_image(tensor->desc)) {
+        return true;
+    }
+    if (!gfx_mpsrt_image_bridge_supported(tensor->desc)) {
+        std::ostringstream stream;
+        stream << "GFX MPSRT: image bridge supports only static rank-4 f16/f32 image tensors"
+               << " value=" << value
+               << " rank=" << tensor->desc.rank
+               << " storage=" << tensor->desc.storage
+               << " flags=" << tensor->desc.flags;
+        return fail(log, stream.str());
+    }
+    GfxMpsrtStorageBridgeDesc bridge_desc{};
+    if (!gfx_mpsrt_make_image_bridge_desc(value, tensor->desc, direction, bridge_desc)) {
+        return fail(log, "GFX MPSRT: image bridge storage contract is invalid");
+    }
+    MTLTextureDescriptor* descriptor = new_transient_image_texture_descriptor(tensor->desc, log);
+    if (!descriptor) {
+        return false;
+    }
+    const MTLSizeAndAlign size_align = [device heapTextureSizeAndAlignWithDescriptor:descriptor];
+    if (size_align.size == 0) {
+        return fail(log, "GFX MPSRT: image bridge texture has invalid heap allocation size");
+    }
+    required_size = align_heap_size(required_size, size_align.align);
+    required_size += size_align.size;
+    entries.push_back({bridge_desc.value,
+                       bridge_desc.direction,
+                       bridge_desc.tensor,
+                       static_cast<size_t>(size_align.size),
+                       static_cast<size_t>(size_align.align)});
+    return true;
+}
+
+bool append_image_bridge_heap_plan_entries(id<MTLDevice> device,
+                                           const MpsrtModel& model,
+                                           NSUInteger& required_size,
+                                           std::vector<PreparedImageBridgeHeapPlanEntry>& entries,
+                                           std::string* log) {
+    std::vector<GfxMpsrtValue> external_output_values = model.external_output_values;
+    if (external_output_values.empty()) {
+        external_output_values = model.output_values;
+    }
+
+    if (!model.external_buffer_bindings.empty()) {
+        for (const auto& external : model.external_buffer_bindings) {
+            const auto* resource = find_mpsrt_external_resource(model, external);
+            if (!resource || !resource->has_tensor_value) {
+                continue;
+            }
+            const auto fallback_direction =
+                gfx_mpsrt_external_image_bridge_direction(has_value(external_output_values,
+                                                                    resource->value));
+            if (!append_image_bridge_heap_plan_entry(device,
+                                                     model,
+                                                     resource->value,
+                                                     fallback_direction,
+                                                     required_size,
+                                                     entries,
+                                                     log)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    for (const auto value : model.external_values) {
+        const auto fallback_direction =
+            gfx_mpsrt_external_image_bridge_direction(has_value(external_output_values, value));
+        if (!append_image_bridge_heap_plan_entry(device,
+                                                 model,
+                                                 value,
+                                                 fallback_direction,
+                                                 required_size,
+                                                 entries,
+                                                 log)) {
+            return false;
+        }
+    }
+    for (const auto value : model.input_values) {
+        if (!append_image_bridge_heap_plan_entry(device,
+                                                 model,
+                                                 value,
+                                                 GfxMpsrtStorageBridgeDirection::BufferToImage,
+                                                 required_size,
+                                                 entries,
+                                                 log)) {
+            return false;
+        }
+    }
+    for (const auto value : model.output_values) {
+        if (!append_image_bridge_heap_plan_entry(device,
+                                                 model,
+                                                 value,
+                                                 GfxMpsrtStorageBridgeDirection::ImageToBuffer,
+                                                 required_size,
+                                                 entries,
+                                                 log)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool plan_prepared_resource_heap(id<MTLDevice> device,
+                                 const MpsrtModel& model,
+                                 id<MTLHeap>& heap,
+                                 size_t& heap_size,
+                                 size_t& heap_unaliased_size,
+                                 size_t& heap_aliasable_size,
+                                 size_t& transient_buffer_count,
+                                 size_t& transient_image_count,
+                                 std::vector<PreparedResourceHeapPlanEntry>& entries,
+                                 std::vector<PreparedImageBridgeHeapPlanEntry>& image_bridge_entries,
+                                 std::string* log) {
+    heap = nil;
+    heap_size = 0;
+    heap_unaliased_size = 0;
+    heap_aliasable_size = 0;
+    transient_buffer_count = 0;
+    transient_image_count = 0;
+    entries.clear();
+    image_bridge_entries.clear();
+
+    NSUInteger required_size = 0;
+    for (const auto& resource : model.resources) {
+        if (resource.lifetime != MpsrtRuntimeResourceLifetime::Transient) {
+            continue;
+        }
+        if (!resource.has_tensor_value) {
+            return fail(log, "GFX MPSRT: transient resource is not a tensor");
+        }
+        if (tensor_requires_image_resource(resource.tensor_desc)) {
+            MTLTextureDescriptor* descriptor = new_transient_image_texture_descriptor(resource.tensor_desc, log);
+            if (!descriptor) {
+                return false;
+            }
+            const MTLSizeAndAlign size_align = [device heapTextureSizeAndAlignWithDescriptor:descriptor];
+            if (size_align.size == 0) {
+                return fail(log, "GFX MPSRT: transient texture has invalid heap allocation size");
+            }
+            required_size = align_heap_size(required_size, size_align.align);
+            required_size += size_align.size;
+            const auto live_window = transient_resource_live_window(model, resource);
+            entries.push_back({resource.resource_index,
+                               static_cast<size_t>(size_align.size),
+                               static_cast<size_t>(size_align.align),
+                               live_window.first,
+                               live_window.second});
+            ++transient_image_count;
+            continue;
+        }
+
+        const uint64_t allocation_bytes = transient_buffer_allocation_bytes(resource.tensor_desc);
+        if (allocation_bytes == 0) {
+            return fail(log, "GFX MPSRT: transient buffer resource has invalid byte size");
+        }
+        const MTLSizeAndAlign size_align =
+            [device heapBufferSizeAndAlignWithLength:static_cast<NSUInteger>(allocation_bytes)
+                                             options:MTLResourceStorageModePrivate];
+        if (size_align.size == 0) {
+            return fail(log, "GFX MPSRT: transient buffer has invalid heap allocation size");
+        }
+        required_size = align_heap_size(required_size, size_align.align);
+        required_size += size_align.size;
+        const auto live_window = transient_resource_live_window(model, resource);
+        entries.push_back({resource.resource_index,
+                           static_cast<size_t>(size_align.size),
+                           static_cast<size_t>(size_align.align),
+                           live_window.first,
+                           live_window.second});
+        ++transient_buffer_count;
+    }
+
+    if (!append_image_bridge_heap_plan_entries(device, model, required_size, image_bridge_entries, log)) {
+        return false;
+    }
+    NSUInteger always_live_image_bridge_size = 0;
+    for (const auto& entry : image_bridge_entries) {
+        always_live_image_bridge_size =
+            align_heap_size(always_live_image_bridge_size, static_cast<NSUInteger>(entry.alignment));
+        always_live_image_bridge_size += static_cast<NSUInteger>(entry.allocation_size);
+    }
+
+    heap_unaliased_size = static_cast<size_t>(required_size);
+    for (size_t stage_index = 0; stage_index < std::max<size_t>(model.stages.size(), 1); ++stage_index) {
+        NSUInteger active_size = always_live_image_bridge_size;
+        for (const auto& entry : entries) {
+            if (entry.first_stage_index > stage_index || entry.last_stage_index < stage_index) {
+                continue;
+            }
+            active_size = align_heap_size(active_size, static_cast<NSUInteger>(entry.alignment));
+            active_size += static_cast<NSUInteger>(entry.allocation_size);
+        }
+        heap_aliasable_size = std::max(heap_aliasable_size, static_cast<size_t>(active_size));
+    }
+    if (entries.empty() && image_bridge_entries.empty()) {
+        heap_aliasable_size = 0;
+    } else if (heap_aliasable_size == 0) {
+        heap_aliasable_size = heap_unaliased_size;
+    }
+
+    if (required_size == 0) {
+        return true;
+    }
+
+    const NSUInteger planned_heap_size =
+        heap_aliasable_size != 0 ? static_cast<NSUInteger>(heap_aliasable_size) : required_size;
+    MTLHeapDescriptor* descriptor = [[MTLHeapDescriptor alloc] init];
+    descriptor.storageMode = MTLStorageModePrivate;
+    descriptor.size = planned_heap_size;
+    heap = [device newHeapWithDescriptor:descriptor];
+    [descriptor release];
+    if (!heap) {
+        return fail(log, "GFX MPSRT: failed to allocate prepared transient resource heap");
+    }
+    heap_size = static_cast<size_t>(planned_heap_size);
+    return true;
 }
 
 MPSNNNeuronDescriptor* make_conv_fused_neuron_descriptor(uint32_t fused_activation,
@@ -387,6 +853,36 @@ bool make_mps_pool2d_cache_key(const MpsrtRuntimeStage& stage,
            << '|' << stage.pool2d_desc.exclude_pad
            << '|' << input.image_feature_channels
            << '|' << input.dtype;
+    key = stream.str();
+    return true;
+}
+
+bool make_mps_resize2d_cache_key(const MpsrtRuntimeStage& stage,
+                                 const GfxMpsrtTensorAbiDesc& input,
+                                 const GfxMpsrtTensorAbiDesc& output,
+                                 std::string& key,
+                                 std::string* log) {
+    if (input.dtype != output.dtype) {
+        return fail(log, "GFX MPSRT: MPS Resize2D input and output dtype must match");
+    }
+    if (stage.resize2d_desc.nearest != 0) {
+        return fail(log, "GFX MPSRT: MPS Resize2D nearest mode is not supported by this ABI");
+    }
+    if (input.image_batch != output.image_batch ||
+        input.image_feature_channels != output.image_feature_channels) {
+        return fail(log, "GFX MPSRT: MPS Resize2D input/output image channel or batch mismatch");
+    }
+    std::ostringstream stream;
+    stream << "mps_resize2d|bilinear"
+           << '|' << input.image_width
+           << '|' << input.image_height
+           << '|' << output.image_width
+           << '|' << output.image_height
+           << '|' << input.image_feature_channels
+           << '|' << input.image_batch
+           << '|' << input.dtype
+           << '|' << stage.resize2d_desc.align_corners
+           << '|' << stage.resize2d_desc.half_pixel_centers;
     key = stream.str();
     return true;
 }
@@ -645,6 +1141,11 @@ struct MpsrtContext::MpsPool2DCacheEntry {
     id kernel = nil;
 };
 
+struct MpsrtContext::MpsResize2DCacheEntry {
+    std::string key;
+    id kernel = nil;
+};
+
 struct MpsrtContext::MpsSoftmaxCacheEntry {
     std::string key;
     id kernel = nil;
@@ -696,6 +1197,10 @@ MpsrtContext::~MpsrtContext() {
         entry.data_source = nil;
     }
     for (auto& entry : m_mps_pool2d_cache) {
+        [entry.kernel release];
+        entry.kernel = nil;
+    }
+    for (auto& entry : m_mps_resize2d_cache) {
         [entry.kernel release];
         entry.kernel = nil;
     }
@@ -801,6 +1306,156 @@ bool MpsrtContext::has_const_tensor(GfxMpsrtValue value) const {
         }
     }
     return false;
+}
+
+bool MpsrtContext::prepare_model_resources(const MpsrtModel& model,
+                                           MpsrtPreparedModel& out,
+                                           std::string* log) const {
+    out.resources.clear();
+    out.resource_heap = nil;
+    out.resource_heap_size = 0;
+    out.resource_heap_unaliased_size = 0;
+    out.resource_heap_aliasable_size = 0;
+    out.resource_heap_alias_reuse_count = 0;
+    out.transient_buffer_resource_count = 0;
+    out.transient_image_resource_count = 0;
+    out.image_bridge_resource_count = 0;
+    out.image_bridge_resources.clear();
+    if (model.resources.empty() && !model.tensors.empty()) {
+        return fail(log, "GFX MPSRT: runtime resource table is required for model preparation");
+    }
+    std::vector<PreparedResourceHeapPlanEntry> heap_plan_entries;
+    std::vector<PreparedImageBridgeHeapPlanEntry> image_bridge_heap_plan_entries;
+    if (!plan_prepared_resource_heap(m_device,
+                                     model,
+                                     out.resource_heap,
+                                     out.resource_heap_size,
+                                     out.resource_heap_unaliased_size,
+                                     out.resource_heap_aliasable_size,
+                                     out.transient_buffer_resource_count,
+                                     out.transient_image_resource_count,
+                                     heap_plan_entries,
+                                     image_bridge_heap_plan_entries,
+                                     log)) {
+        return false;
+    }
+    out.image_bridge_resource_count = image_bridge_heap_plan_entries.size();
+    out.resources.reserve(model.resources.size());
+    for (const auto& resource : model.resources) {
+        MpsrtPreparedResource prepared{};
+        prepared.resource_index = resource.resource_index;
+        prepared.role = resource.role;
+        prepared.lifetime = resource.lifetime;
+        prepared.has_tensor_value = resource.has_tensor_value;
+        prepared.value = resource.value;
+        prepared.tensor_desc = resource.tensor_desc;
+        if (const auto* heap_entry = find_heap_plan_entry(heap_plan_entries, resource.resource_index)) {
+            prepared.heap_allocation_size = heap_entry->allocation_size;
+            prepared.heap_alignment = heap_entry->alignment;
+            prepared.first_stage_index = heap_entry->first_stage_index;
+            prepared.last_stage_index = heap_entry->last_stage_index;
+        }
+
+        switch (resource.lifetime) {
+            case MpsrtRuntimeResourceLifetime::External:
+                if (resource.has_tensor_value) {
+                    prepared.byte_length = static_cast<size_t>(resource.tensor_desc.byte_length);
+                    prepared.offset = static_cast<size_t>(resource.tensor_desc.byte_offset);
+                }
+                break;
+            case MpsrtRuntimeResourceLifetime::Transient: {
+                if (!resource.has_tensor_value) {
+                    return fail(log, "GFX MPSRT: transient resource is not a tensor");
+                }
+                break;
+            }
+            case MpsrtRuntimeResourceLifetime::Model: {
+                if (!resource.has_tensor_value) {
+                    return fail(log, "GFX MPSRT: model resource is not a tensor");
+                }
+                if (resource.role != GfxMpsrtExternalBufferRole::ConstBuffer ||
+                    (resource.tensor_desc.flags & GfxMpsrtTensorFlagConst) == 0) {
+                    return fail(log, "GFX MPSRT: model resource must be a const tensor buffer");
+                }
+                const ConstTensorCacheEntry* const_entry = nullptr;
+                for (const auto& entry : m_const_tensor_cache) {
+                    if (entry.value == resource.value) {
+                        const_entry = &entry;
+                        break;
+                    }
+                }
+                if (!const_entry || !const_entry->buffer) {
+                    return fail(log,
+                                "GFX MPSRT: model resource is not materialized in the MPSRT const-pack cache");
+                }
+                const uint64_t expected_bytes = tensor_dense_bytes(resource.tensor_desc);
+                if (expected_bytes == 0 || expected_bytes != const_entry->bytes) {
+                    return fail(log, "GFX MPSRT: model resource const-pack byte size mismatch");
+                }
+                prepared.byte_length = const_entry->bytes;
+                prepared.buffer = const_entry->buffer;
+                prepared.offset = 0;
+                break;
+            }
+            case MpsrtRuntimeResourceLifetime::Unknown:
+                return fail(log, "GFX MPSRT: cannot prepare resource with unknown lifetime");
+        }
+        out.resources.push_back(prepared);
+    }
+    out.image_bridge_resources.reserve(image_bridge_heap_plan_entries.size());
+    for (const auto& heap_entry : image_bridge_heap_plan_entries) {
+        MpsrtPreparedImageBridgeResource prepared{};
+        prepared.value = heap_entry.value;
+        prepared.direction = heap_entry.direction;
+        prepared.tensor_desc = heap_entry.tensor_desc;
+        prepared.heap_allocation_size = heap_entry.allocation_size;
+        prepared.heap_alignment = heap_entry.alignment;
+        prepared.texture = new_transient_image_texture(out.resource_heap, heap_entry.tensor_desc, log);
+        if (!prepared.texture) {
+            return false;
+        }
+        out.image_bridge_resources.push_back(prepared);
+    }
+    std::vector<PreparedResourceHeapPlanEntry> transient_allocation_entries = heap_plan_entries;
+    std::sort(transient_allocation_entries.begin(),
+              transient_allocation_entries.end(),
+              [](const PreparedResourceHeapPlanEntry& lhs, const PreparedResourceHeapPlanEntry& rhs) {
+                  if (lhs.first_stage_index != rhs.first_stage_index) {
+                      return lhs.first_stage_index < rhs.first_stage_index;
+                  }
+                  if (lhs.last_stage_index != rhs.last_stage_index) {
+                      return lhs.last_stage_index < rhs.last_stage_index;
+                  }
+                  return lhs.resource_index < rhs.resource_index;
+              });
+
+    std::vector<ActivePreparedHeapResource> active_heap_resources;
+    for (const auto& heap_entry : transient_allocation_entries) {
+        auto active_it = active_heap_resources.begin();
+        while (active_it != active_heap_resources.end()) {
+            if (active_it->last_stage_index < heap_entry.first_stage_index) {
+                [active_it->resource makeAliasable];
+                ++out.resource_heap_alias_reuse_count;
+                active_it = active_heap_resources.erase(active_it);
+                continue;
+            }
+            ++active_it;
+        }
+
+        auto* prepared = find_prepared_resource(out.resources, heap_entry.resource_index);
+        if (!prepared) {
+            return fail(log, "GFX MPSRT: transient heap plan references an unknown prepared resource");
+        }
+        if (!allocate_prepared_transient_resource_from_heap(out.resource_heap, *prepared, log)) {
+            return false;
+        }
+        id<MTLResource> heap_resource = prepared_heap_resource(*prepared);
+        if (!heap_resource) {
+            return fail(log, "GFX MPSRT: prepared transient resource allocation returned no Metal resource");
+        }
+        active_heap_resources.push_back({heap_resource, heap_entry.last_stage_index});
+    }
+    return true;
 }
 
 id<MTLComputePipelineState> MpsrtContext::get_or_create_pipeline(const MpsrtRuntimeStage& stage,
@@ -1250,6 +1905,74 @@ bool MpsrtContext::prepare_mps_pool2d(const MpsrtModel& model,
     return true;
 }
 
+bool MpsrtContext::prepare_mps_resize2d(const MpsrtModel& model,
+                                        const MpsrtRuntimeStage& stage,
+                                        MpsrtPreparedMpsResize2D& out,
+                                        std::string* log) {
+    out = {};
+    if (stage.kind != GfxMpsrtStageKind::MPSResize2D) {
+        return fail(log, "GFX MPSRT: requested MPS Resize2D preparation for non-Resize2D stage");
+    }
+    if (!MPSSupportsMTLDevice(m_device)) {
+        return fail(log, "GFX MPSRT: Metal device does not support MPS");
+    }
+    if (stage.inputs.size() != 1 || stage.outputs.size() != 1 || stage.output_descs.size() != 1) {
+        return fail(log, "GFX MPSRT: MPS Resize2D requires one input and one output");
+    }
+
+    const auto* input_tensor = find_tensor(model, stage.inputs[0]);
+    if (!input_tensor) {
+        return fail(log, "GFX MPSRT: MPS Resize2D input tensor descriptor is missing");
+    }
+    const auto& input = input_tensor->desc;
+    const auto& output = stage.output_descs.front();
+    if (!validate_image_desc(input, "mps_resize2d", "input", log) ||
+        !validate_image_desc(output, "mps_resize2d", "output", log)) {
+        return false;
+    }
+
+    std::string key;
+    if (!make_mps_resize2d_cache_key(stage, input, output, key, log)) {
+        return false;
+    }
+
+    auto fill_prepared = [&](bool kernel_cache_hit, id kernel) {
+        out.stage_record_key = stage.stage_record_key;
+        out.resize2d_desc = stage.resize2d_desc;
+        out.input_width = input.image_width;
+        out.input_height = input.image_height;
+        out.output_width = output.image_width;
+        out.output_height = output.image_height;
+        out.output_batch = output.image_batch;
+        out.output_feature_channels = output.image_feature_channels;
+        out.data_type = output.dtype;
+        out.kernel_cache_hit = kernel_cache_hit;
+        out.kernel = kernel;
+    };
+
+    for (const auto& entry : m_mps_resize2d_cache) {
+        if (entry.key == key) {
+            ++m_mps_resize2d_cache_hits;
+            increment_compile_counter("mpsrt_mps_resize2d_kernel_cache_hit_count");
+            fill_prepared(true, entry.kernel);
+            return true;
+        }
+    }
+
+    ++m_mps_resize2d_cache_misses;
+    increment_compile_counter("mpsrt_mps_resize2d_kernel_cache_miss_count");
+
+    MPSImageBilinearScale* kernel = [[MPSImageBilinearScale alloc] initWithDevice:m_device];
+    if (!kernel) {
+        return fail(log, "GFX MPSRT: failed to create MPSImageBilinearScale kernel");
+    }
+
+    m_mps_resize2d_cache.push_back({key, kernel});
+    fill_prepared(false, kernel);
+    increment_compile_counter("mpsrt_prepare_mps_resize2d_count");
+    return true;
+}
+
 bool MpsrtContext::prepare_mps_softmax(const MpsrtModel& model,
                                        const MpsrtRuntimeStage& stage,
                                        MpsrtPreparedMpsSoftmax& out,
@@ -1389,6 +2112,9 @@ bool MpsrtContext::prepare_model(const MpsrtModel& model,
                                  MpsrtPreparedModel& out,
                                  std::string* log) {
     out = {};
+    if (!prepare_model_resources(model, out, log)) {
+        return false;
+    }
     for (size_t i = 0; i < model.stages.size(); ++i) {
         const auto& stage = model.stages[i];
         if (stage.kind == GfxMpsrtStageKind::MSLDispatch) {
@@ -1419,6 +2145,13 @@ bool MpsrtContext::prepare_model(const MpsrtModel& model,
             }
             prepared.stage_index = i;
             out.mps_pool2d_stages.push_back(prepared);
+        } else if (stage.kind == GfxMpsrtStageKind::MPSResize2D) {
+            MpsrtPreparedMpsResize2D prepared;
+            if (!prepare_mps_resize2d(model, stage, prepared, log)) {
+                return false;
+            }
+            prepared.stage_index = i;
+            out.mps_resize2d_stages.push_back(prepared);
         } else if (stage.kind == GfxMpsrtStageKind::MPSSoftmax) {
             MpsrtPreparedMpsSoftmax prepared;
             if (!prepare_mps_softmax(model, stage, prepared, log)) {

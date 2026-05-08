@@ -164,39 +164,6 @@ bool finalize_apple_program_stage_desc(GfxMpsrtStageDesc& stage) {
            !stage.builder_symbol.empty();
 }
 
-GfxMpsrtExternalBufferAbiPlan make_external_io_abi(size_t input_count,
-                                                   size_t output_count) {
-    GfxMpsrtExternalBufferAbiPlan abi{};
-    abi.has_buffer_count = true;
-    abi.has_output_buffer_count = true;
-    abi.has_buffer_roles = true;
-    abi.buffer_count = static_cast<uint32_t>(input_count + output_count);
-    abi.output_buffer_count = static_cast<uint32_t>(output_count);
-    abi.buffer_roles.insert(abi.buffer_roles.end(),
-                            input_count,
-                            GfxMpsrtExternalBufferRole::TensorInput);
-    abi.buffer_roles.insert(abi.buffer_roles.end(),
-                            output_count,
-                            GfxMpsrtExternalBufferRole::TensorOutput);
-    (void)gfx_mpsrt_finalize_external_buffer_abi(abi);
-    return abi;
-}
-
-GfxMpsrtExternalBufferAbiPlan make_external_abi_from_roles(
-    std::vector<GfxMpsrtExternalBufferRole> roles) {
-    GfxMpsrtExternalBufferAbiPlan abi{};
-    abi.has_buffer_count = true;
-    abi.has_output_buffer_count = true;
-    abi.has_buffer_roles = true;
-    abi.buffer_count = static_cast<uint32_t>(roles.size());
-    abi.output_buffer_count = gfx_mpsrt_count_external_output_roles(roles);
-    abi.buffer_roles = std::move(roles);
-    if (!gfx_mpsrt_finalize_external_buffer_abi(abi)) {
-        return {};
-    }
-    return abi;
-}
-
 GfxMpsrtProgram make_apple_mpsrt_program_from_plan(
     const GfxAppleMpsrtProgramPlan& plan) {
     GfxMpsrtProgram program{};
@@ -242,7 +209,7 @@ GfxMpsrtProgram make_apple_mpsrt_program_from_plan(
 
     if (!program.external_buffer_abi.valid) {
         program.external_buffer_abi =
-            make_external_io_abi(program.inputs.size(), program.output_values.size());
+            gfx_mpsrt_make_external_io_abi(program.inputs.size(), program.output_values.size());
     } else {
         auto abi = program.external_buffer_abi;
         if (!gfx_mpsrt_finalize_external_buffer_abi(abi)) {
@@ -335,6 +302,8 @@ const char* vendor_descriptor_kind_name(
             return "conv2d";
         case Kind::Pool2D:
             return "pool2d";
+        case Kind::Resize2D:
+            return "resize2d";
         case Kind::Softmax:
             return "softmax";
         case Kind::TopK:
@@ -357,6 +326,8 @@ bool apple_vendor_descriptor_matches_stage(
                    stage_kind == GfxMpsrtStageKind::MPSGroupConv2D;
         case Kind::Pool2D:
             return stage_kind == GfxMpsrtStageKind::MPSPool2D;
+        case Kind::Resize2D:
+            return stage_kind == GfxMpsrtStageKind::MPSResize2D;
         case Kind::Softmax:
             return stage_kind == GfxMpsrtStageKind::MPSSoftmax;
         case Kind::TopK:
@@ -393,6 +364,9 @@ bool apply_apple_vendor_descriptor(
         case Kind::Pool2D:
             stage_plan.stage.pool2d_desc = descriptor.pool2d;
             break;
+        case Kind::Resize2D:
+            stage_plan.stage.resize2d_desc = descriptor.resize2d;
+            break;
         case Kind::Softmax:
             stage_plan.stage.softmax_desc = descriptor.softmax;
             break;
@@ -408,13 +382,50 @@ bool apply_apple_vendor_descriptor(
     return stage_plan.valid;
 }
 
+bool apply_apple_stage_tensor_desc_overrides(GfxMpsrtModuleStagePlan& stage_plan,
+                                             const GfxAppleStagePipelineOptions& options) {
+    if (!stage_plan.valid) {
+        return false;
+    }
+    if (options.input_descs.empty() && options.output_descs.empty()) {
+        return true;
+    }
+    if (!options.input_descs.empty()) {
+        if (stage_plan.inputs.size() != options.input_descs.size()) {
+            return false;
+        }
+        stage_plan.inputs = options.input_descs;
+    }
+    if (!options.output_descs.empty()) {
+        if (stage_plan.outputs.size() != options.output_descs.size()) {
+            return false;
+        }
+        stage_plan.outputs = options.output_descs;
+    }
+
+    stage_plan.stage.input_storage = !stage_plan.inputs.empty()
+                                         ? stage_plan.inputs.front().storage
+                                         : GfxMpsrtStorage::Unknown;
+    stage_plan.stage.output_storage = !stage_plan.outputs.empty()
+                                          ? stage_plan.outputs.front().storage
+                                          : stage_plan.stage.input_storage;
+    stage_plan.stage.layout = stage_plan.stage.output_storage != GfxMpsrtStorage::Unknown
+                                  ? gfx_mpsrt_stage_layout_for_storage(stage_plan.stage.output_storage)
+                                  : GfxMpsrtLayout::Unknown;
+    stage_plan.stage_record_key = gfx_mpsrt_stage_record_key(stage_plan.stage);
+    stage_plan.valid = !stage_plan.stage_record_key.empty();
+    return stage_plan.valid;
+}
+
 GfxAppleProgramPipelineResult materialize_apple_mps_vendor_program(
     mlir::ModuleOp module,
     const GfxStageOptimizationPlan& plan,
     const std::string& stage_type,
     const GfxAppleStagePipelineOptions::VendorPrimitiveDescriptor& vendor_descriptor,
     const std::vector<GfxKernelBufferRole>& semantic_input_roles,
-    const GfxMpsrtExternalBufferAbiPlan& external_buffer_abi) {
+    const GfxMpsrtExternalBufferAbiPlan& external_buffer_abi,
+    const std::vector<GfxMpsrtTensorDesc>& input_descs,
+    const std::vector<GfxMpsrtTensorDesc>& output_descs) {
     GfxAppleProgramPipelineResult result{};
     if (!module || !external_buffer_abi.valid) {
         return result;
@@ -424,6 +435,8 @@ GfxAppleProgramPipelineResult materialize_apple_mps_vendor_program(
     options.plan = plan;
     options.stage_type = stage_type;
     options.semantic_input_roles = semantic_input_roles;
+    options.input_descs = input_descs;
+    options.output_descs = output_descs;
     options.vendor_descriptor = vendor_descriptor;
     options.materialize_typed_program = false;
     const auto stage_pipeline = run_gfx_apple_stage_pipeline(module, options);
@@ -539,7 +552,8 @@ public:
                                            m_options.stage_type,
                                            m_options.kernel_entry_point,
                                            stage_plan,
-                                           m_options.semantic_input_roles)) {
+                                           m_options.semantic_input_roles) ||
+            !apply_apple_stage_tensor_desc_overrides(stage_plan, m_options)) {
             module->emitError("failed to assign Apple storage bridges for ")
                 << m_options.stage_type;
             signalPassFailure();
@@ -630,6 +644,7 @@ public:
                                            m_options.kernel_entry_point,
                                            stage_plan,
                                            m_options.semantic_input_roles) ||
+            !apply_apple_stage_tensor_desc_overrides(stage_plan, m_options) ||
             !apply_apple_vendor_descriptor(stage_plan,
                                            m_options.vendor_descriptor)) {
             module->emitError("failed to enrich Apple vendor descriptor for ")
@@ -668,6 +683,7 @@ public:
                                            m_options.kernel_entry_point,
                                            stage_plan,
                                            m_options.semantic_input_roles) ||
+            !apply_apple_stage_tensor_desc_overrides(stage_plan, m_options) ||
             !apply_apple_vendor_descriptor(stage_plan,
                                            m_options.vendor_descriptor)) {
             getOperation()->emitError("failed to materialize Apple stage manifest for ")
@@ -710,6 +726,7 @@ public:
                                            m_options.kernel_entry_point,
                                            stage_plan,
                                            m_options.semantic_input_roles) ||
+            !apply_apple_stage_tensor_desc_overrides(stage_plan, m_options) ||
             !apply_apple_vendor_descriptor(stage_plan,
                                            m_options.vendor_descriptor)) {
             signalPassFailure();
@@ -833,7 +850,8 @@ GfxAppleStagePipelineResult run_gfx_apple_stage_pipeline(
                                        options.stage_type,
                                        options.kernel_entry_point,
                                        result.stage_plan,
-                                       options.semantic_input_roles)) {
+                                       options.semantic_input_roles) ||
+        !apply_apple_stage_tensor_desc_overrides(result.stage_plan, options)) {
         return result;
     }
     if (!apply_apple_vendor_descriptor(result.stage_plan,
@@ -879,15 +897,17 @@ GfxAppleProgramPipelineResult materialize_apple_mps_conv2d_program(
         stage_type,
         vendor_descriptor,
         roles,
-        make_external_abi_from_roles({GfxMpsrtExternalBufferRole::TensorInput,
-                                      GfxMpsrtExternalBufferRole::ConstBuffer,
-                                      GfxMpsrtExternalBufferRole::ConstBuffer,
-                                      GfxMpsrtExternalBufferRole::ConstBuffer,
-                                      GfxMpsrtExternalBufferRole::ConstBuffer,
-                                      GfxMpsrtExternalBufferRole::ConstBuffer,
-                                      GfxMpsrtExternalBufferRole::ConstBuffer,
-                                      GfxMpsrtExternalBufferRole::RuntimeParams,
-                                      GfxMpsrtExternalBufferRole::TensorOutput}));
+        gfx_mpsrt_make_external_buffer_abi_from_roles({GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::ConstBuffer,
+                                                       GfxMpsrtExternalBufferRole::ConstBuffer,
+                                                       GfxMpsrtExternalBufferRole::ConstBuffer,
+                                                       GfxMpsrtExternalBufferRole::ConstBuffer,
+                                                       GfxMpsrtExternalBufferRole::ConstBuffer,
+                                                       GfxMpsrtExternalBufferRole::ConstBuffer,
+                                                       GfxMpsrtExternalBufferRole::RuntimeParams,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput}),
+        {},
+        {});
 }
 
 GfxAppleProgramPipelineResult materialize_apple_mps_pool2d_program(
@@ -895,7 +915,9 @@ GfxAppleProgramPipelineResult materialize_apple_mps_pool2d_program(
     const GfxStageOptimizationPlan& plan,
     const std::string& stage_type,
     const GfxMpsrtPool2DAbiDesc& desc,
-    const std::vector<GfxKernelBufferRole>& semantic_input_roles) {
+    const std::vector<GfxKernelBufferRole>& semantic_input_roles,
+    const std::vector<GfxMpsrtTensorDesc>& input_descs,
+    const std::vector<GfxMpsrtTensorDesc>& output_descs) {
     GfxAppleStagePipelineOptions::VendorPrimitiveDescriptor vendor_descriptor{};
     vendor_descriptor.kind =
         GfxAppleStagePipelineOptions::VendorPrimitiveDescriptor::Kind::Pool2D;
@@ -906,9 +928,35 @@ GfxAppleProgramPipelineResult materialize_apple_mps_pool2d_program(
         stage_type,
         vendor_descriptor,
         semantic_input_roles,
-        make_external_abi_from_roles({GfxMpsrtExternalBufferRole::TensorInput,
-                                      GfxMpsrtExternalBufferRole::RuntimeParams,
-                                      GfxMpsrtExternalBufferRole::TensorOutput}));
+        gfx_mpsrt_make_external_buffer_abi_from_roles({GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::RuntimeParams,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput}),
+        input_descs,
+        output_descs);
+}
+
+GfxAppleProgramPipelineResult materialize_apple_mps_resize2d_program(
+    mlir::ModuleOp module,
+    const GfxStageOptimizationPlan& plan,
+    const std::string& stage_type,
+    const GfxMpsrtResize2DAbiDesc& desc,
+    const std::vector<GfxKernelBufferRole>& semantic_input_roles,
+    const std::vector<GfxMpsrtTensorDesc>& input_descs,
+    const std::vector<GfxMpsrtTensorDesc>& output_descs) {
+    GfxAppleStagePipelineOptions::VendorPrimitiveDescriptor vendor_descriptor{};
+    vendor_descriptor.kind =
+        GfxAppleStagePipelineOptions::VendorPrimitiveDescriptor::Kind::Resize2D;
+    vendor_descriptor.resize2d = desc;
+    return materialize_apple_mps_vendor_program(
+        module,
+        plan,
+        stage_type,
+        vendor_descriptor,
+        semantic_input_roles,
+        gfx_mpsrt_make_external_buffer_abi_from_roles({GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput}),
+        input_descs,
+        output_descs);
 }
 
 GfxAppleProgramPipelineResult materialize_apple_mps_softmax_program(
@@ -916,7 +964,9 @@ GfxAppleProgramPipelineResult materialize_apple_mps_softmax_program(
     const GfxStageOptimizationPlan& plan,
     const std::string& stage_type,
     const GfxMpsrtSoftmaxAbiDesc& desc,
-    const std::vector<GfxKernelBufferRole>& semantic_input_roles) {
+    const std::vector<GfxKernelBufferRole>& semantic_input_roles,
+    const std::vector<GfxMpsrtTensorDesc>& input_descs,
+    const std::vector<GfxMpsrtTensorDesc>& output_descs) {
     GfxAppleStagePipelineOptions::VendorPrimitiveDescriptor vendor_descriptor{};
     vendor_descriptor.kind =
         GfxAppleStagePipelineOptions::VendorPrimitiveDescriptor::Kind::Softmax;
@@ -933,8 +983,10 @@ GfxAppleProgramPipelineResult materialize_apple_mps_softmax_program(
         stage_type,
         vendor_descriptor,
         roles,
-        make_external_abi_from_roles({GfxMpsrtExternalBufferRole::TensorInput,
-                                      GfxMpsrtExternalBufferRole::TensorOutput}));
+        gfx_mpsrt_make_external_buffer_abi_from_roles({GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput}),
+        input_descs,
+        output_descs);
 }
 
 GfxAppleProgramPipelineResult materialize_apple_mps_topk_program(
@@ -942,7 +994,9 @@ GfxAppleProgramPipelineResult materialize_apple_mps_topk_program(
     const GfxStageOptimizationPlan& plan,
     const std::string& stage_type,
     const GfxMpsrtTopKAbiDesc& desc,
-    const std::vector<GfxKernelBufferRole>& semantic_input_roles) {
+    const std::vector<GfxKernelBufferRole>& semantic_input_roles,
+    const std::vector<GfxMpsrtTensorDesc>& input_descs,
+    const std::vector<GfxMpsrtTensorDesc>& output_descs) {
     GfxAppleStagePipelineOptions::VendorPrimitiveDescriptor vendor_descriptor{};
     vendor_descriptor.kind =
         GfxAppleStagePipelineOptions::VendorPrimitiveDescriptor::Kind::TopK;
@@ -953,9 +1007,11 @@ GfxAppleProgramPipelineResult materialize_apple_mps_topk_program(
         stage_type,
         vendor_descriptor,
         semantic_input_roles,
-        make_external_abi_from_roles({GfxMpsrtExternalBufferRole::TensorInput,
-                                      GfxMpsrtExternalBufferRole::TensorOutput,
-                                      GfxMpsrtExternalBufferRole::TensorOutput}));
+        gfx_mpsrt_make_external_buffer_abi_from_roles({GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput}),
+        input_descs,
+        output_descs);
 }
 
 GfxAppleProgramPipelineResult materialize_apple_mpsrt_program(
@@ -1010,18 +1066,10 @@ GfxAppleProgramPipelineResult materialize_apple_mps_gemm_program(
                            {0u, 1u},
                            {2u},
                            {desc.output}});
-    plan.external_buffer_abi.buffer_roles = {GfxMpsrtExternalBufferRole::TensorInput,
-                                             GfxMpsrtExternalBufferRole::TensorInput,
-                                             GfxMpsrtExternalBufferRole::TensorOutput};
-    plan.external_buffer_abi.has_buffer_roles = true;
-    plan.external_buffer_abi.has_buffer_count = true;
-    plan.external_buffer_abi.has_output_buffer_count = true;
-    plan.external_buffer_abi.buffer_count =
-        static_cast<uint32_t>(plan.external_buffer_abi.buffer_roles.size());
-    plan.external_buffer_abi.output_buffer_count = 1u;
-    if (!gfx_mpsrt_finalize_external_buffer_abi(plan.external_buffer_abi)) {
-        return {};
-    }
+    plan.external_buffer_abi =
+        gfx_mpsrt_make_external_buffer_abi_from_roles({GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput});
 
     return materialize_apple_mpsrt_program_plan(module, plan);
 }
@@ -1036,8 +1084,10 @@ GfxAppleProgramPipelineResult materialize_apple_mps_gemm_msl_epilogue_program(
     GfxAppleMpsrtProgramPlan plan{};
     plan.record_key = desc.record_key;
     plan.inputs = {desc.lhs, desc.rhs};
-    plan.external_buffer_abi.buffer_roles = {GfxMpsrtExternalBufferRole::TensorInput,
-                                             GfxMpsrtExternalBufferRole::TensorInput};
+    std::vector<GfxMpsrtExternalBufferRole> external_roles{
+        GfxMpsrtExternalBufferRole::TensorInput,
+        GfxMpsrtExternalBufferRole::TensorInput,
+    };
     GfxMpsrtValue next_external_value = static_cast<GfxMpsrtValue>(plan.inputs.size());
     GfxMpsrtValue next_transient_value = next_external_value;
     GfxMpsrtValue bias_value = 0u;
@@ -1045,7 +1095,7 @@ GfxAppleProgramPipelineResult materialize_apple_mps_gemm_msl_epilogue_program(
         bias_value = next_external_value++;
         next_transient_value = next_external_value;
         plan.inputs.push_back(desc.bias);
-        plan.external_buffer_abi.buffer_roles.push_back(GfxMpsrtExternalBufferRole::TensorInput);
+        external_roles.push_back(GfxMpsrtExternalBufferRole::TensorInput);
     }
 
     const auto gemm_output_value = next_transient_value++;
@@ -1064,16 +1114,9 @@ GfxAppleProgramPipelineResult materialize_apple_mps_gemm_msl_epilogue_program(
                            {output_value},
                            {desc.output}});
     plan.output_values = {output_value};
-    plan.external_buffer_abi.buffer_roles.push_back(GfxMpsrtExternalBufferRole::TensorOutput);
-    plan.external_buffer_abi.has_buffer_roles = true;
-    plan.external_buffer_abi.has_buffer_count = true;
-    plan.external_buffer_abi.has_output_buffer_count = true;
-    plan.external_buffer_abi.buffer_count =
-        static_cast<uint32_t>(plan.external_buffer_abi.buffer_roles.size());
-    plan.external_buffer_abi.output_buffer_count = 1u;
-    if (!gfx_mpsrt_finalize_external_buffer_abi(plan.external_buffer_abi)) {
-        return {};
-    }
+    external_roles.push_back(GfxMpsrtExternalBufferRole::TensorOutput);
+    plan.external_buffer_abi =
+        gfx_mpsrt_make_external_buffer_abi_from_roles(std::move(external_roles));
 
     return materialize_apple_mpsrt_program_plan(module, plan);
 }

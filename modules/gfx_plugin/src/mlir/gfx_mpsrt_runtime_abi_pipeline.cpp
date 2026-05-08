@@ -353,6 +353,23 @@ void read_pool2d_desc_attrs(mlir::Operation* op, GfxMpsrtPool2DAbiDesc& desc) {
     (void)read_u32_attr(op, "gfx.mpsrt.runtime_abi.pool2d.exclude_pad", desc.exclude_pad);
 }
 
+void set_resize2d_desc_attrs(mlir::Operation* op,
+                             mlir::Builder& builder,
+                             const GfxMpsrtResize2DAbiDesc& desc) {
+    op->setAttr("gfx.mpsrt.runtime_abi.resize2d.nearest",
+                builder.getI32IntegerAttr(static_cast<int32_t>(desc.nearest)));
+    op->setAttr("gfx.mpsrt.runtime_abi.resize2d.align_corners",
+                builder.getI32IntegerAttr(static_cast<int32_t>(desc.align_corners)));
+    op->setAttr("gfx.mpsrt.runtime_abi.resize2d.half_pixel_centers",
+                builder.getI32IntegerAttr(static_cast<int32_t>(desc.half_pixel_centers)));
+}
+
+void read_resize2d_desc_attrs(mlir::Operation* op, GfxMpsrtResize2DAbiDesc& desc) {
+    (void)read_u32_attr(op, "gfx.mpsrt.runtime_abi.resize2d.nearest", desc.nearest);
+    (void)read_u32_attr(op, "gfx.mpsrt.runtime_abi.resize2d.align_corners", desc.align_corners);
+    (void)read_u32_attr(op, "gfx.mpsrt.runtime_abi.resize2d.half_pixel_centers", desc.half_pixel_centers);
+}
+
 void set_softmax_desc_attrs(mlir::Operation* op,
                             mlir::Builder& builder,
                             const GfxMpsrtSoftmaxAbiDesc& desc) {
@@ -454,6 +471,8 @@ void annotate_runtime_abi_stage_desc(mlir::Operation* op,
         set_gemm_desc_attrs(op, builder, record.gemm_desc);
     } else if (gfx_mpsrt_stage_uses_pool2d_desc(record.stage_kind)) {
         set_pool2d_desc_attrs(op, builder, record.pool2d_desc);
+    } else if (gfx_mpsrt_stage_uses_resize2d_desc(record.stage_kind)) {
+        set_resize2d_desc_attrs(op, builder, record.resize2d_desc);
     } else if (gfx_mpsrt_stage_uses_softmax_desc(record.stage_kind)) {
         set_softmax_desc_attrs(op, builder, record.softmax_desc);
     } else if (gfx_mpsrt_stage_uses_topk_desc(record.stage_kind)) {
@@ -488,6 +507,8 @@ void read_runtime_abi_stage_desc(mlir::Operation* op, GfxMpsrtBuilderRecord& rec
         read_gemm_desc_attrs(op, record.gemm_desc);
     } else if (gfx_mpsrt_stage_uses_pool2d_desc(record.stage_kind)) {
         read_pool2d_desc_attrs(op, record.pool2d_desc);
+    } else if (gfx_mpsrt_stage_uses_resize2d_desc(record.stage_kind)) {
+        read_resize2d_desc_attrs(op, record.resize2d_desc);
     } else if (gfx_mpsrt_stage_uses_softmax_desc(record.stage_kind)) {
         read_softmax_desc_attrs(op, record.softmax_desc);
     } else if (gfx_mpsrt_stage_uses_topk_desc(record.stage_kind)) {

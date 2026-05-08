@@ -5,6 +5,7 @@
 #include "mlir/msl_codegen.hpp"
 
 #include "mlir/gfx_apple_stage_pipeline.hpp"
+#include "mlir/gfx_apple_vendor_descriptors.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/gfx_mpsrt_const_tensor_sources.hpp"
 #include "mlir/gfx_mpsrt_conv_metadata.hpp"
@@ -107,16 +108,6 @@ ov::element::Type resolve_matmul_buffer_type(const ov::element::Type& type,
         return type;
     }
     return fallback == ov::element::dynamic ? ov::element::f32 : fallback;
-}
-
-mlir::ArrayAttr make_i32_array_attr(mlir::MLIRContext* ctx, const std::vector<int32_t>& values) {
-    mlir::Builder builder(ctx);
-    std::vector<mlir::Attribute> attrs;
-    attrs.reserve(values.size());
-    for (const auto value : values) {
-        attrs.push_back(builder.getI32IntegerAttr(value));
-    }
-    return builder.getArrayAttr(attrs);
 }
 
 void force_apple_msl_buffer_placement(GfxStageOptimizationPlan& plan,
@@ -377,30 +368,6 @@ std::optional<ActivationKind> activation_kind_from_module_attr(mlir::ModuleOp mo
     if (value == "HSwish") return ActivationKind::HSwish;
     if (value == "HSigmoid") return ActivationKind::HSigmoid;
     return std::nullopt;
-}
-
-std::string generate_bias_broadcast_add_msl(const std::shared_ptr<const ov::Node>& node) {
-    OPENVINO_ASSERT(node, "GFX Metal: bias-broadcast Add node is null");
-    OPENVINO_ASSERT(is_bias_broadcast_add(node), "GFX Metal: expected bias-broadcast Add");
-    const auto out_shape = node->get_output_shape(0);
-    OPENVINO_ASSERT(out_shape.size() == 4, "GFX Metal: bias-broadcast Add expects rank-4 output");
-    const auto scalar_type = msl_type_from_element(node->get_output_element_type(0));
-    const uint32_t total = static_cast<uint32_t>(ov::shape_size(out_shape));
-    const uint32_t channels = static_cast<uint32_t>(out_shape[1]);
-    const uint32_t hw = static_cast<uint32_t>(out_shape[2] * out_shape[3]);
-
-    std::ostringstream ss;
-    ss << "#include <metal_stdlib>\nusing namespace metal;\n";
-    ss << "kernel void binary_bias_add(\n";
-    ss << "  device const " << scalar_type << "* A [[buffer(0)]],\n";
-    ss << "  device const " << scalar_type << "* B [[buffer(1)]],\n";
-    ss << "  device " << scalar_type << "* C [[buffer(2)]],\n";
-    ss << "  uint gid [[thread_position_in_grid]]) {\n";
-    ss << "  if (gid >= " << total << "u) return;\n";
-    ss << "  uint c = (gid / " << hw << "u) % " << channels << "u;\n";
-    ss << "  C[gid] = A[gid] + B[c];\n";
-    ss << "}\n";
-    return ss.str();
 }
 
 std::vector<int64_t> get_slice_const_i64(const ov::Output<ov::Node>& source, const char* what) {
@@ -778,7 +745,16 @@ static bool configure_apple_metal_msl_kernel_source(
     bool has_runtime_slice_params,
     const std::optional<ov::Shape>& runtime_input_shape = std::nullopt);
 
-static GfxMpsrtKernelSourcePlan configure_apple_metal_kernel_source_plan_for_node(
+static bool has_apple_msl_custom_kernel_manifest(mlir::ModuleOp module) {
+    GfxKernelStageManifest manifest{};
+    return module &&
+           detail::gfx_mpsrt_read_stage_manifest_attrs(module, manifest) &&
+           manifest.valid &&
+           manifest.backend_domain == GfxKernelBackendDomain::AppleMsl &&
+           manifest.execution_kind == GfxKernelExecutionKind::CustomKernel;
+}
+
+static GfxMpsrtKernelSourcePlan try_configure_apple_mps_vendor_kernel_source_plan_for_node(
     KernelSource source,
     const std::shared_ptr<const ov::Node>& node,
     const GpuBufferManager* buffer_manager,
@@ -788,6 +764,9 @@ static GfxMpsrtKernelSourcePlan configure_apple_metal_kernel_source_plan_for_nod
     bool has_batchnorm,
     ActivationKind activation) {
     if (!source.module || !node) {
+        return {};
+    }
+    if (has_apple_msl_custom_kernel_manifest(source.module)) {
         return {};
     }
 
@@ -825,13 +804,195 @@ static GfxMpsrtKernelSourcePlan configure_apple_metal_kernel_source_plan_for_nod
         }
     }
 
-    return configure_msl_kernel_source_plan_for_node(std::move(source),
-                                                     node,
-                                                     buffer_manager,
-                                                     stage_type,
-                                                     has_bias,
-                                                     has_activation,
-                                                     has_batchnorm);
+    if (stage_type == "MaxPool" || stage_type == "AvgPool") {
+        GfxMpsrtPool2DAbiDesc pool_desc{};
+        if (gfx_apple_make_mps_pool2d_desc(node, pool_desc)) {
+            const auto plan = select_stage_optimization_plan(buffer_manager,
+                                                             GpuBackend::Metal,
+                                                             std::string(stage_type),
+                                                             node,
+                                                             node->get_output_element_type(0),
+                                                             /*has_bias=*/false,
+                                                             /*has_activation=*/false,
+                                                             /*has_batchnorm=*/false,
+                                                             GfxStageRuntimeTraits{});
+            if (plan.placement.domain == GfxStageBackendDomain::AppleMps &&
+                plan.placement.storage == GfxStageStorageKind::Image) {
+                std::vector<GfxMpsrtTensorDesc> input_descs;
+                std::vector<GfxMpsrtTensorDesc> output_descs;
+                if (!gfx_apple_make_mps_io_tensor_descs_for_node(node,
+                                                                 GfxStageStorageKind::Image,
+                                                                 input_descs,
+                                                                 output_descs) ||
+                    input_descs.front().image_feature_channels % 4u != 0) {
+                    return {};
+                }
+                auto source_module = source.module;
+                const auto materialized = materialize_apple_mps_pool2d_program(source_module,
+                                                                               plan,
+                                                                               std::string(stage_type),
+                                                                               pool_desc,
+                                                                               {},
+                                                                               input_descs,
+                                                                               output_descs);
+                if (materialized.valid) {
+                    auto source_plan = make_mpsrt_kernel_source_plan_from_module(source_module);
+                    if (source_plan.valid()) {
+                        return source_plan;
+                    }
+                }
+            }
+        }
+    }
+
+    if (stage_type == "Interpolate") {
+        GfxMpsrtResize2DAbiDesc resize_desc{};
+        if (gfx_apple_make_mps_resize2d_desc(node, resize_desc)) {
+            const auto plan = select_stage_optimization_plan(buffer_manager,
+                                                             GpuBackend::Metal,
+                                                             "Interpolate",
+                                                             node,
+                                                             node->get_output_element_type(0),
+                                                             /*has_bias=*/false,
+                                                             /*has_activation=*/false,
+                                                             /*has_batchnorm=*/false,
+                                                             GfxStageRuntimeTraits{});
+            if (plan.placement.domain == GfxStageBackendDomain::AppleMps &&
+                plan.placement.storage == GfxStageStorageKind::Image) {
+                std::vector<GfxMpsrtTensorDesc> input_descs;
+                std::vector<GfxMpsrtTensorDesc> output_descs;
+                if (!gfx_apple_make_mps_io_tensor_descs_for_node(node,
+                                                                 GfxStageStorageKind::Image,
+                                                                 input_descs,
+                                                                 output_descs)) {
+                    return {};
+                }
+                auto source_module = source.module;
+                const auto materialized = materialize_apple_mps_resize2d_program(source_module,
+                                                                                 plan,
+                                                                                 "Interpolate",
+                                                                                 resize_desc,
+                                                                                 {},
+                                                                                 input_descs,
+                                                                                 output_descs);
+                if (materialized.valid) {
+                    auto source_plan = make_mpsrt_kernel_source_plan_from_module(source_module);
+                    if (source_plan.valid()) {
+                        return source_plan;
+                    }
+                }
+            }
+        }
+    }
+
+    if (stage_type == "Softmax") {
+        GfxMpsrtSoftmaxAbiDesc softmax_desc{};
+        if (gfx_apple_make_mps_softmax_desc(node, softmax_desc)) {
+            const auto plan = select_stage_optimization_plan(buffer_manager,
+                                                             GpuBackend::Metal,
+                                                             "Softmax",
+                                                             node,
+                                                             node->get_output_element_type(0),
+                                                             /*has_bias=*/false,
+                                                             /*has_activation=*/false,
+                                                             /*has_batchnorm=*/false,
+                                                             GfxStageRuntimeTraits{});
+            if (plan.placement.domain == GfxStageBackendDomain::AppleMps &&
+                plan.placement.storage == GfxStageStorageKind::Matrix) {
+                std::vector<GfxMpsrtTensorDesc> input_descs;
+                std::vector<GfxMpsrtTensorDesc> output_descs;
+                if (!gfx_apple_make_mps_io_tensor_descs_for_node(node,
+                                                                 GfxStageStorageKind::Matrix,
+                                                                 input_descs,
+                                                                 output_descs)) {
+                    return {};
+                }
+                auto source_module = source.module;
+                const auto materialized = materialize_apple_mps_softmax_program(source_module,
+                                                                                plan,
+                                                                                "Softmax",
+                                                                                softmax_desc,
+                                                                                {},
+                                                                                input_descs,
+                                                                                output_descs);
+                if (materialized.valid) {
+                    auto source_plan = make_mpsrt_kernel_source_plan_from_module(source_module);
+                    if (source_plan.valid()) {
+                        return source_plan;
+                    }
+                }
+            }
+        }
+    }
+
+    if (stage_type == "TopK") {
+        GfxMpsrtTopKAbiDesc topk_desc{};
+        if (gfx_apple_make_mps_topk_desc(node, topk_desc)) {
+            const auto plan = select_stage_optimization_plan(buffer_manager,
+                                                             GpuBackend::Metal,
+                                                             "TopK",
+                                                             node,
+                                                             node->get_output_element_type(0),
+                                                             /*has_bias=*/false,
+                                                             /*has_activation=*/false,
+                                                             /*has_batchnorm=*/false,
+                                                             GfxStageRuntimeTraits{});
+            if (plan.placement.domain == GfxStageBackendDomain::AppleMps &&
+                plan.placement.storage == GfxStageStorageKind::Matrix) {
+                std::vector<GfxMpsrtTensorDesc> input_descs;
+                std::vector<GfxMpsrtTensorDesc> output_descs;
+                if (!gfx_apple_make_mps_io_tensor_descs_for_node(node,
+                                                                 GfxStageStorageKind::Matrix,
+                                                                 input_descs,
+                                                                 output_descs)) {
+                    return {};
+                }
+                auto source_module = source.module;
+                const auto materialized = materialize_apple_mps_topk_program(source_module,
+                                                                             plan,
+                                                                             "TopK",
+                                                                             topk_desc,
+                                                                             {},
+                                                                             input_descs,
+                                                                             output_descs);
+                if (materialized.valid) {
+                    auto source_plan = make_mpsrt_kernel_source_plan_from_module(source_module);
+                    if (source_plan.valid()) {
+                        return source_plan;
+                    }
+                }
+            }
+        }
+    }
+
+    return {};
+}
+
+static GfxMpsrtKernelSourcePlan try_configure_clean_apple_mps_vendor_kernel_source_plan_for_node(
+    const std::shared_ptr<const ov::Node>& node,
+    const GpuBufferManager* buffer_manager,
+    std::string_view stage_type,
+    bool has_bias,
+    bool has_activation,
+    bool has_batchnorm,
+    ActivationKind activation) {
+    if (!node) {
+        return {};
+    }
+
+    KernelSource clean_source;
+    clean_source.module = build_mlir_for_node(node, gfx_mlir_context());
+    if (!clean_source.module) {
+        return {};
+    }
+    return try_configure_apple_mps_vendor_kernel_source_plan_for_node(clean_source,
+                                                                      node,
+                                                                      buffer_manager,
+                                                                      stage_type,
+                                                                      has_bias,
+                                                                      has_activation,
+                                                                      has_batchnorm,
+                                                                      activation);
 }
 
 static GfxKernelStageFamily resolve_apple_metal_msl_stage_family(const KernelSource& source,
@@ -921,6 +1082,34 @@ GfxMpsrtKernelSourcePlan configure_apple_metal_kernel_source_plan_for_stage(
     const ov::element::Type& storage_type,
     bool has_runtime_slice_params,
     const std::optional<ov::Shape>& runtime_input_shape) {
+    if (source.module) {
+        auto vendor_source_plan =
+            try_configure_apple_mps_vendor_kernel_source_plan_for_node(source,
+                                                                       node,
+                                                                       buffer_manager,
+                                                                       stage_type,
+                                                                       has_bias,
+                                                                       has_activation,
+                                                                       has_batchnorm,
+                                                                       activation);
+        if (vendor_source_plan.valid()) {
+            return vendor_source_plan;
+        }
+        if (has_apple_msl_custom_kernel_manifest(source.module)) {
+            auto clean_vendor_source_plan =
+                try_configure_clean_apple_mps_vendor_kernel_source_plan_for_node(node,
+                                                                                 buffer_manager,
+                                                                                 stage_type,
+                                                                                 has_bias,
+                                                                                 has_activation,
+                                                                                 has_batchnorm,
+                                                                                 activation);
+            if (clean_vendor_source_plan.valid()) {
+                return clean_vendor_source_plan;
+            }
+        }
+    }
+
     configure_apple_metal_msl_kernel_source(source,
                                             node,
                                             stage_type,
@@ -930,14 +1119,13 @@ GfxMpsrtKernelSourcePlan configure_apple_metal_kernel_source_plan_for_stage(
     if (!source.module) {
         return {};
     }
-    return configure_apple_metal_kernel_source_plan_for_node(source,
-                                                             node,
-                                                             buffer_manager,
-                                                             stage_type,
-                                                             has_bias,
-                                                             has_activation,
-                                                             has_batchnorm,
-                                                             activation);
+    return configure_msl_kernel_source_plan_for_node(source,
+                                                     node,
+                                                     buffer_manager,
+                                                     stage_type,
+                                                     has_bias,
+                                                     has_activation,
+                                                     has_batchnorm);
 }
 
 static bool configure_apple_metal_slice_kernel_source(KernelSource& source,
@@ -970,6 +1158,42 @@ static bool configure_apple_metal_slice_kernel_source(KernelSource& source,
         return generate_msl_for_slice_generic(desc, module);
     };
     return true;
+}
+
+static bool annotate_apple_msl_custom_kernel_binding(mlir::ModuleOp module,
+                                                     std::string_view stage_type,
+                                                     std::string_view entry_point,
+                                                     std::vector<size_t> tensor_input_indices,
+                                                     std::vector<int32_t> scalar_args = {}) {
+    if (!module) {
+        return false;
+    }
+
+    auto plan = scalar_args.empty()
+                    ? make_msl_runtime_binding_plan_for_custom_kernel(stage_type,
+                                                                      entry_point,
+                                                                      std::move(tensor_input_indices))
+                    : make_msl_runtime_binding_plan_for_custom_kernel(stage_type,
+                                                                      entry_point,
+                                                                      std::move(tensor_input_indices),
+                                                                      std::move(scalar_args));
+    return annotate_msl_module_with_runtime_binding_plan(module, plan);
+}
+
+static void require_apple_msl_custom_kernel_binding(mlir::ModuleOp module,
+                                                    std::string_view stage_type,
+                                                    std::string_view entry_point,
+                                                    std::vector<size_t> tensor_input_indices,
+                                                    std::vector<int32_t> scalar_args = {}) {
+    OPENVINO_ASSERT(annotate_apple_msl_custom_kernel_binding(module,
+                                                            stage_type,
+                                                            entry_point,
+                                                            std::move(tensor_input_indices),
+                                                            std::move(scalar_args)),
+                    "GFX Metal MSL: failed to derive runtime binding from stage manifest for ",
+                    stage_type,
+                    " / ",
+                    entry_point);
 }
 
 static bool configure_apple_metal_compute_kernel_source(KernelSource& source,
@@ -1018,7 +1242,10 @@ static bool configure_apple_metal_compute_kernel_source(KernelSource& source,
             desc.outW = static_cast<uint32_t>(out_shape.at(4));
             set_desc(desc, "conv3d_kernel");
             if (source.module) {
-                annotate_msl_module_with_runtime_operands(source.module, {1, 1, 1, 1}, {0, 1, 2, 3}, {});
+                require_apple_msl_custom_kernel_binding(source.module,
+                                                        "Convolution",
+                                                        "conv3d_kernel",
+                                                        {0});
             }
             return true;
         }
@@ -1055,10 +1282,10 @@ static bool configure_apple_metal_compute_kernel_source(KernelSource& source,
         desc.output_width_per_thread = gfx_conv2d_output_width_block(desc);
         set_desc(desc, "conv2d_kernel");
         if (source.module) {
-            annotate_msl_module_with_runtime_operands(source.module,
-                                                      {1, 1, 1, 1, 1, 1, 1, 1, 1},
-                                                      {0, 1, 2, 3, 4, 5, 6, 7, 8},
-                                                      {});
+            require_apple_msl_custom_kernel_binding(source.module,
+                                                    "Convolution",
+                                                    "conv2d_kernel",
+                                                    {0});
         }
         return true;
     }
@@ -1091,10 +1318,10 @@ static bool configure_apple_metal_compute_kernel_source(KernelSource& source,
         desc.padRight = static_cast<uint32_t>(group_conv->get_pads_end().at(1));
         set_desc(desc, "conv2d_kernel");
         if (source.module) {
-            annotate_msl_module_with_runtime_operands(source.module,
-                                                      {1, 1, 1, 1, 1, 1, 1, 1, 1},
-                                                      {0, 1, 2, 3, 4, 5, 6, 7, 8},
-                                                      {});
+            require_apple_msl_custom_kernel_binding(source.module,
+                                                    "GroupConvolution",
+                                                    "conv2d_kernel",
+                                                    {0});
         }
         return true;
     }
@@ -1124,7 +1351,10 @@ static bool configure_apple_metal_compute_kernel_source(KernelSource& source,
         desc.batch = static_cast<int64_t>(ov::shape_size(out_shape) / (desc.M * desc.N));
         set_desc(desc, "matmul_kernel");
         if (source.module) {
-            annotate_msl_module_with_runtime_operands(source.module, {1, 1, 1}, {0, 1, 2}, {});
+            require_apple_msl_custom_kernel_binding(source.module,
+                                                    "MatMul",
+                                                    "matmul_kernel",
+                                                    {0, 1});
         }
         return true;
     }
@@ -1146,11 +1376,11 @@ static bool configure_apple_metal_compute_kernel_source(KernelSource& source,
         desc.has_residual_add = source.module && source.module->hasAttr("gfx.fused_residual_add");
         set_desc(desc, "rms_kernel");
         if (source.module) {
-            const std::vector<int32_t> kinds = desc.has_residual_add ? std::vector<int32_t>{1, 1, 1, 1}
-                                                                     : std::vector<int32_t>{1, 1, 1};
-            const std::vector<int32_t> arg_idx = desc.has_residual_add ? std::vector<int32_t>{0, 1, 2, 3}
-                                                                       : std::vector<int32_t>{0, 1, 2};
-            annotate_msl_module_with_runtime_operands(source.module, kinds, arg_idx, {});
+            require_apple_msl_custom_kernel_binding(source.module,
+                                                    desc.has_residual_add ? "RMSResidual" : "RMS",
+                                                    "rms_kernel",
+                                                    desc.has_residual_add ? std::vector<size_t>{0, 1, 2}
+                                                                          : std::vector<size_t>{0, 1});
         }
         return true;
     }
@@ -1223,13 +1453,11 @@ static bool configure_apple_metal_compute_kernel_source(KernelSource& source,
         desc.has_position = cfg.gather_position_arg_id == 3 && rope->get_input_size() > 3;
         set_desc(desc, "rope_kernel");
         if (source.module) {
-            std::vector<int32_t> kinds(desc.has_position ? 5 : 4, 1);
-            std::vector<int32_t> arg_idx;
-            arg_idx.reserve(kinds.size());
-            for (int32_t i = 0; i < static_cast<int32_t>(kinds.size()); ++i) {
-                arg_idx.push_back(i);
-            }
-            annotate_msl_module_with_runtime_operands(source.module, kinds, arg_idx, {});
+            require_apple_msl_custom_kernel_binding(source.module,
+                                                    desc.has_position ? "RoPEWithPosition" : "RoPE",
+                                                    "rope_kernel",
+                                                    desc.has_position ? std::vector<size_t>{0, 1, 2, 3}
+                                                                      : std::vector<size_t>{0, 1, 2});
         }
         return true;
     }
@@ -1341,7 +1569,10 @@ static bool configure_apple_metal_pool2d_kernel_source(KernelSource& source,
         return generate_msl_from_mlir(module, desc);
     };
     if (source.module) {
-        annotate_msl_module_with_runtime_operands(source.module, {1, 1, 1}, {0, 1, 2}, {});
+        require_apple_msl_custom_kernel_binding(source.module,
+                                                node->get_type_name(),
+                                                "pool2d_kernel",
+                                                {0});
     }
     return true;
 }
@@ -1376,7 +1607,11 @@ static bool configure_apple_metal_unary_kernel_source(KernelSource& source,
     const auto out_shape = output_shape_for_codegen(source.module, node);
     const int32_t num_elements = static_cast<int32_t>(ov::shape_size(out_shape));
     if (source.module) {
-        annotate_msl_module_with_runtime_operands(source.module, {1, 1, 0}, {0, 1, -1}, {num_elements});
+        require_apple_msl_custom_kernel_binding(source.module,
+                                                node->get_type_name(),
+                                                "unary_kernel",
+                                                {0},
+                                                {num_elements});
     }
     return true;
 }
@@ -1395,20 +1630,14 @@ static bool configure_apple_metal_elementwise_kernel_source(KernelSource& source
             return generate_msl_for_select(module, element_type);
         };
         if (source.module) {
-            const std::vector<int32_t> kinds{1, 1, 1, 1, 0, 0, 1, 1, 1, 1};
-            const std::vector<int32_t> arg_idx{0, 1, 2, 7, -1, -1, 3, 4, 5, 6};
             const std::vector<int32_t> scalars{static_cast<int32_t>(ov::shape_size(out_shape)),
                                                static_cast<int32_t>(out_shape.empty() ? 1 : out_shape.size())};
-            annotate_msl_module_with_runtime_operands(source.module, kinds, arg_idx, scalars);
+            require_apple_msl_custom_kernel_binding(source.module,
+                                                    "Select",
+                                                    "select_kernel",
+                                                    {0, 1, 2},
+                                                    scalars);
         }
-        return true;
-    }
-
-    if (type == "Add" && is_bias_broadcast_add(node)) {
-        source.entry_point = "binary_bias_add";
-        source.msl_generator = [node](mlir::ModuleOp) {
-            return generate_bias_broadcast_add_msl(node);
-        };
         return true;
     }
 
@@ -1472,11 +1701,13 @@ static bool configure_apple_metal_elementwise_kernel_source(KernelSource& source
         return generate_msl_from_mlir(module, desc);
     };
     if (source.module) {
-        std::vector<int32_t> kinds = {1, 1, 1, 0, 0, 1, 1, 1};
-        std::vector<int32_t> arg_idx = {0, 1, 5, -1, -1, 2, 3, 4};
         std::vector<int32_t> scalars = {static_cast<int32_t>(desc.num_elements),
                                         static_cast<int32_t>(out_shape.size())};
-        annotate_msl_module_with_runtime_operands(source.module, kinds, arg_idx, scalars);
+        require_apple_msl_custom_kernel_binding(source.module,
+                                                type,
+                                                "eltwise_kernel",
+                                                {0, 1},
+                                                scalars);
     }
     return true;
 }
@@ -1498,10 +1729,10 @@ static bool configure_apple_metal_structural_kernel_source(KernelSource& source,
             return generate_msl_from_mlir(module, desc);
         };
         if (source.module) {
-            annotate_msl_module_with_runtime_operands(source.module,
-                                                      {1, 1, 0, 0, 1, 1, 1, 1, 1},
-                                                      {0, 1, -1, -1, 2, 3, 4, 5, 6},
-                                                      {});
+            require_apple_msl_custom_kernel_binding(source.module,
+                                                    node->get_type_name(),
+                                                    "reduce_kernel",
+                                                    {0});
         }
         return true;
     }
@@ -1635,7 +1866,10 @@ static bool configure_apple_metal_structural_kernel_source(KernelSource& source,
             return generate_msl_from_mlir(module, desc);
         };
         if (source.module) {
-            annotate_msl_module_with_runtime_operands(source.module, {1, 1, 1}, {0, 1, 2}, {});
+            require_apple_msl_custom_kernel_binding(source.module,
+                                                    "Transpose",
+                                                    "transpose_kernel",
+                                                    {0});
         }
         return true;
     }
@@ -1651,7 +1885,10 @@ static bool configure_apple_metal_structural_kernel_source(KernelSource& source,
             return generate_msl_from_mlir(module, desc);
         };
         if (source.module) {
-            annotate_msl_module_with_runtime_operands(source.module, {1, 1, 0}, {0, 1, -1}, {});
+            require_apple_msl_custom_kernel_binding(source.module,
+                                                    "Convert",
+                                                    "convert_kernel",
+                                                    {0});
         }
         return true;
     }
@@ -1708,10 +1945,10 @@ static bool configure_apple_metal_structural_kernel_source(KernelSource& source,
             return generate_msl_from_mlir(module, desc);
         };
         if (source.module) {
-            annotate_msl_module_with_runtime_operands(source.module,
-                                                      {1, 1, 0, 0, 0, 1, 1, 1, 1},
-                                                      {0, 1, -1, -1, -1, 2, 3, 4, 5},
-                                                      {});
+            require_apple_msl_custom_kernel_binding(source.module,
+                                                    "Broadcast",
+                                                    "broadcast_kernel",
+                                                    {0});
         }
         return true;
     }
@@ -1729,10 +1966,10 @@ static bool configure_apple_metal_structural_kernel_source(KernelSource& source,
             return generate_msl_from_mlir(module, desc);
         };
         if (source.module) {
-            annotate_msl_module_with_runtime_operands(source.module,
-                                                      {1, 1, 1, 1, 0},
-                                                      {0, 1, 2, 3, -1},
-                                                      {});
+            require_apple_msl_custom_kernel_binding(source.module,
+                                                    "Range",
+                                                    "range_kernel",
+                                                    {0, 1, 2});
         }
         return true;
     }
@@ -1918,10 +2155,10 @@ static bool configure_apple_metal_data_movement_kernel_source(KernelSource& sour
             return generate_msl_for_slice_generic(desc, module);
         };
         if (source.module) {
-            annotate_msl_module_with_runtime_operands(source.module,
-                                                      {1, 1, 1, 1, 1, 1, 1, 1},
-                                                      {0, 1, 2, 3, 4, 5, 6, 7},
-                                                      {});
+            require_apple_msl_custom_kernel_binding(source.module,
+                                                    node->get_type_name(),
+                                                    "slice_kernel",
+                                                    {0});
         }
         return true;
     }
@@ -1997,7 +2234,10 @@ static bool configure_apple_metal_data_movement_kernel_source(KernelSource& sour
         desc.index_type = scatter->get_input_element_type(1);
         set_desc(desc, "scatter_update_kernel");
         if (source.module) {
-            annotate_msl_module_with_runtime_operands(source.module, {1, 1, 1, 1, 1}, {0, 1, 2, 4, 3}, {});
+            require_apple_msl_custom_kernel_binding(source.module,
+                                                    "ScatterUpdate",
+                                                    "scatter_update_kernel",
+                                                    {0, 1, 2});
         }
         return true;
     }
@@ -2131,68 +2371,15 @@ GfxMslRuntimeBindingPlan make_msl_runtime_binding_plan_from_stage_manifest(
     const GfxKernelStageManifest& manifest,
     std::vector<size_t> tensor_input_indices) {
     GfxMslRuntimeBindingPlan plan{};
-    if (!manifest.valid ||
-        !manifest.custom_kernel.valid ||
-        !manifest.custom_kernel.external_buffer_abi.valid) {
+    const auto runtime_plan =
+        make_kernel_runtime_binding_plan_from_stage_manifest(manifest,
+                                                             std::move(tensor_input_indices));
+    if (!runtime_plan.valid) {
         return plan;
     }
-
-    const auto& abi = manifest.custom_kernel.external_buffer_abi;
-    std::vector<GfxKernelBufferRole> roles = abi.roles;
-    if (roles.empty() && (abi.leading_input_count != 0 || abi.leading_output_count != 0)) {
-        roles.insert(roles.end(), abi.leading_input_count, GfxKernelBufferRole::TensorInput);
-        roles.insert(roles.end(), abi.leading_output_count, GfxKernelBufferRole::TensorOutput);
-    }
-    if (roles.empty()) {
-        return plan;
-    }
-
-    plan.stage_manifest = manifest;
-    plan.operand_kinds.reserve(roles.size());
-    plan.operand_arg_indices.reserve(roles.size());
-
-    size_t next_tensor_input = 0;
-    size_t output_count = 0;
-    size_t buffer_arg_index = 0;
-    std::optional<size_t> first_output_arg_index;
-    for (const auto role : roles) {
-        if (is_gfx_kernel_scalar_role(role)) {
-            plan.operand_kinds.push_back(0);
-            plan.operand_arg_indices.push_back(-1);
-            ++plan.scalar_arg_count;
-            continue;
-        }
-
-        plan.operand_kinds.push_back(1);
-        plan.operand_arg_indices.push_back(static_cast<int32_t>(buffer_arg_index));
-        switch (role) {
-            case GfxKernelBufferRole::TensorInput:
-                if (next_tensor_input >= tensor_input_indices.size()) {
-                    return {};
-                }
-                plan.kernel_inputs.push_back(tensor_input_indices[next_tensor_input++]);
-                break;
-            case GfxKernelBufferRole::ConstTensor:
-            case GfxKernelBufferRole::RuntimeParams:
-                break;
-            case GfxKernelBufferRole::TensorOutput:
-                if (!first_output_arg_index.has_value()) {
-                    first_output_arg_index = buffer_arg_index;
-                }
-                ++output_count;
-                break;
-            case GfxKernelBufferRole::ScalarParam:
-                break;
-            case GfxKernelBufferRole::Unknown:
-            default:
-                return {};
-        }
-        ++buffer_arg_index;
-    }
-    if (next_tensor_input != tensor_input_indices.size() || output_count == 0) {
-        return {};
-    }
-    plan.kernel_input_arg_count = first_output_arg_index.value_or(buffer_arg_index);
+    plan.stage_manifest = runtime_plan.stage_manifest;
+    plan.runtime_binding = runtime_plan.runtime_binding;
+    plan.scalar_arg_count = runtime_plan.scalar_arg_count;
     return plan;
 }
 
@@ -2219,7 +2406,104 @@ GfxMslRuntimeBindingPlan make_msl_runtime_binding_plan_for_custom_kernel(
     if (!plan.valid() || plan.scalar_arg_count != scalar_args.size()) {
         return {};
     }
-    plan.scalar_args = std::move(scalar_args);
+    plan.runtime_binding.scalar_args = std::move(scalar_args);
+    plan.stage_manifest.custom_kernel.scalar_args = plan.runtime_binding.scalar_args;
+    return plan;
+}
+
+GfxMslRuntimeBindingPlan make_msl_runtime_binding_plan_for_direct_io_custom_kernel(
+    std::string_view stage_type,
+    std::string_view entry_point,
+    std::vector<size_t> tensor_input_indices,
+    size_t output_count) {
+    if (tensor_input_indices.empty() || output_count == 0) {
+        return {};
+    }
+
+    auto custom_kernel_plan = make_gfx_custom_kernel_stage_plan(stage_type, entry_point);
+    if (!custom_kernel_plan.valid || !custom_kernel_plan.stage_manifest.valid) {
+        return {};
+    }
+
+    auto manifest = custom_kernel_plan.stage_manifest;
+    manifest.custom_kernel.external_buffer_abi =
+        make_gfx_kernel_direct_io_abi(static_cast<uint32_t>(tensor_input_indices.size()),
+                                      static_cast<uint32_t>(output_count));
+    return make_msl_runtime_binding_plan_from_stage_manifest(manifest,
+                                                            std::move(tensor_input_indices));
+}
+
+GfxDirectSplitMslKernelSourcePlan make_direct_split_msl_kernel_source_plan(
+    std::string_view stage_type,
+    const ov::element::Type& element_type,
+    const ov::Shape& input_shape,
+    const std::vector<size_t>& split_sizes,
+    uint32_t axis_len,
+    uint32_t inner_stride,
+    mlir::ModuleOp module) {
+    GfxDirectSplitMslKernelSourcePlan plan{};
+    if (input_shape.empty() || split_sizes.empty() || axis_len == 0 || inner_stride == 0) {
+        return plan;
+    }
+
+    const auto binding = make_msl_runtime_binding_plan_for_direct_io_custom_kernel(stage_type,
+                                                                                  "split_kernel",
+                                                                                  {0},
+                                                                                  split_sizes.size());
+    if (!binding.valid()) {
+        return plan;
+    }
+    mlir::ModuleOp manifest_module;
+    if (module) {
+        manifest_module = mlir::ModuleOp::create(mlir::UnknownLoc::get(module.getContext()));
+        OPENVINO_ASSERT(annotate_msl_module_with_runtime_binding_plan(manifest_module, binding),
+                        "GFX MSL: failed to annotate direct Split stage manifest");
+    }
+
+    const auto total_elems = ov::shape_size(input_shape);
+    const auto scalar = msl_type_from_element(element_type);
+    std::ostringstream msl;
+    msl << "#include <metal_stdlib>\nusing namespace metal;\n";
+    msl << "constant uint OFFSETS[" << (split_sizes.size() + 1) << "] = {0";
+    uint64_t prefix = 0;
+    for (auto sz : split_sizes) {
+        prefix += static_cast<uint64_t>(sz);
+        msl << ", " << prefix;
+    }
+    msl << "};\n";
+    msl << "constant uint AXIS_DIM = " << axis_len << ";\n";
+    msl << "constant uint STRIDE_AFTER = " << inner_stride << ";\n";
+    msl << "constant uint OUTER_STRIDE = AXIS_DIM * STRIDE_AFTER;\n";
+    msl << "kernel void split_kernel(\n";
+    msl << "  device const " << scalar << "* input [[buffer(0)]],\n";
+    for (size_t oi = 0; oi < split_sizes.size(); ++oi) {
+        msl << "  device " << scalar << "* out" << oi << " [[buffer(" << (oi + 1) << ")]],\n";
+    }
+    msl << "  uint gid [[thread_position_in_grid]]) {\n";
+    msl << "    uint total = " << static_cast<uint32_t>(total_elems) << ";\n";
+    msl << "    if (gid >= total) return;\n";
+    msl << "    uint axis_idx = (gid / STRIDE_AFTER) % AXIS_DIM;\n";
+    msl << "    uint outer = gid / OUTER_STRIDE;\n";
+    msl << "    uint inner = gid % STRIDE_AFTER;\n";
+    msl << "    uint o = 0;\n";
+    msl << "    while (o + 1 < " << (split_sizes.size() + 1) << " && axis_idx >= OFFSETS[o + 1]) ++o;\n";
+    msl << "    uint local_axis = axis_idx - OFFSETS[o];\n";
+    msl << "    uint dst_axis_extent = OFFSETS[o + 1] - OFFSETS[o];\n";
+    msl << "    uint dst_idx = (outer * dst_axis_extent + local_axis) * STRIDE_AFTER + inner;\n";
+    msl << "    switch (o) {\n";
+    for (size_t oi = 0; oi < split_sizes.size(); ++oi) {
+        msl << "      case " << oi << ": out" << oi << "[dst_idx] = input[gid]; break;\n";
+    }
+    msl << "      default: break;\n";
+    msl << "    }\n";
+    msl << "}\n";
+
+    plan.source = make_kernel_source(manifest_module,
+                                     "split_kernel",
+                                     msl.str(),
+                                     static_cast<uint32_t>(1 + split_sizes.size()));
+    plan.source.signature.output_arg_count = static_cast<uint32_t>(split_sizes.size());
+    plan.binding = binding;
     return plan;
 }
 
@@ -2229,27 +2513,9 @@ bool annotate_msl_module_with_runtime_binding_plan(mlir::ModuleOp module,
         return false;
     }
     detail::gfx_mpsrt_set_stage_manifest_attrs(module, plan.stage_manifest);
-    return annotate_msl_module_with_runtime_operands(module,
-                                                     plan.operand_kinds,
-                                                     plan.operand_arg_indices,
-                                                     plan.scalar_args);
-}
-
-bool annotate_msl_module_with_runtime_operands(mlir::ModuleOp module,
-                                               const std::vector<int32_t>& operand_kinds,
-                                               const std::vector<int32_t>& operand_arg_indices,
-                                               const std::vector<int32_t>& scalar_values) {
-    if (!module || operand_kinds.empty() || operand_kinds.size() != operand_arg_indices.size()) {
-        return false;
-    }
-    module->setAttr("gfx.kernel_operand_kinds",
-                    make_i32_array_attr(module.getContext(), operand_kinds));
-    module->setAttr("gfx.kernel_operand_arg_indices",
-                    make_i32_array_attr(module.getContext(), operand_arg_indices));
-    if (!scalar_values.empty()) {
-        module->setAttr("gfx.kernel_scalar_values",
-                        make_i32_array_attr(module.getContext(), scalar_values));
-    }
+    module->removeAttr("gfx.kernel_operand_kinds");
+    module->removeAttr("gfx.kernel_operand_arg_indices");
+    module->removeAttr("gfx.kernel_scalar_values");
     return true;
 }
 

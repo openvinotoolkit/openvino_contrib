@@ -62,7 +62,7 @@ public:
     KernelRuntimeMetadata runtime_metadata(const KernelArgMappingInfo& mapping,
                                            const std::shared_ptr<const ov::Node>& node,
                                            size_t outputs_hint = 0) const {
-        return extract_kernel_runtime_metadata(m_module, mapping, node, outputs_hint);
+        return extract_kernel_runtime_metadata(m_module, mapping, node, outputs_hint, m_entry_point);
     }
 
     static KernelDispatch make_default_dispatch(const ov::Shape& shape,
@@ -85,7 +85,7 @@ private:
 inline uint32_t infer_kernel_arg_count(mlir::ModuleOp module, const std::string& entry_point) {
     const auto sig = infer_kernel_signature(module, entry_point);
     const size_t fallback = static_cast<size_t>(sig.total());
-    return static_cast<uint32_t>(infer_kernel_arg_count_from_module(module, fallback));
+    return static_cast<uint32_t>(infer_kernel_arg_count_from_module(module, fallback, entry_point));
 }
 
 }  // namespace gfx_plugin

@@ -11,6 +11,7 @@
 #include "openvino/op/convolution.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/group_conv.hpp"
+#include "openvino/op/interpolate.hpp"
 #include "openvino/op/matmul.hpp"
 #include "openvino/op/max_pool.hpp"
 #include "openvino/op/parameter.hpp"
@@ -26,6 +27,9 @@
 #include "runtime/gfx_mpsrt_program.hpp"
 #include "runtime/gfx_mpsrt_storage_bridge.hpp"
 #include "runtime/gfx_stage_policy.hpp"
+#include "mlir/gfx_apple_vendor_descriptors.hpp"
+#include "mlir/gfx_mlir_kernel_builder.hpp"
+#include "mlir/gfx_mpsrt_runtime_abi_pipeline.hpp"
 #include "mlir/msl_codegen.hpp"
 
 using namespace ov::gfx_plugin;
@@ -116,6 +120,37 @@ std::shared_ptr<const ov::Node> make_aligned_maxpool_node() {
                                                  ov::Shape{0, 0},
                                                  ov::Shape{2, 2},
                                                  ov::op::RoundingType::FLOOR);
+}
+
+std::shared_ptr<const ov::Node> make_bilinear_interpolate_node() {
+    auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 4, 16, 16});
+    auto output_shape = ov::op::v0::Constant::create(ov::element::i64,
+                                                     ov::Shape{2},
+                                                     std::vector<int64_t>{32, 32});
+    ov::op::v0::Interpolate::Attributes attrs;
+    attrs.axes = ov::AxisSet{2, 3};
+    attrs.mode = "linear";
+    attrs.align_corners = false;
+    return std::make_shared<ov::op::v0::Interpolate>(input, output_shape, attrs);
+}
+
+std::shared_ptr<const ov::Node> make_v4_non_spatial_bilinear_interpolate_node() {
+    auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 4, 16, 16});
+    auto output_shape = ov::op::v0::Constant::create(ov::element::i64,
+                                                     ov::Shape{2},
+                                                     std::vector<int64_t>{1, 4});
+    auto scales = ov::op::v0::Constant::create(ov::element::f32,
+                                               ov::Shape{2},
+                                               std::vector<float>{1.f, 1.f});
+    auto axes = ov::op::v0::Constant::create(ov::element::i64,
+                                             ov::Shape{2},
+                                             std::vector<int64_t>{0, 1});
+    using Base = ov::op::util::InterpolateBase;
+    ov::op::v4::Interpolate::InterpolateAttrs attrs;
+    attrs.mode = Base::InterpolateMode::LINEAR;
+    attrs.shape_calculation_mode = Base::ShapeCalcMode::SIZES;
+    attrs.coordinate_transformation_mode = Base::CoordinateTransformMode::HALF_PIXEL;
+    return std::make_shared<ov::op::v4::Interpolate>(input, output_shape, scales, axes, attrs);
 }
 
 std::shared_ptr<const ov::Node> make_last_dim_softmax_node() {
@@ -384,6 +419,64 @@ TEST(GfxStagePolicyTest, MetalDepthwiseGroupConvolutionPlansAppleMpsImageStorage
     EXPECT_EQ(desc.stage_manifest.stage_family, GfxKernelStageFamily::GroupConvolution);
     EXPECT_EQ(desc.stage_manifest.backend_domain, GfxKernelBackendDomain::AppleMps);
     EXPECT_EQ(desc.stage_manifest.execution_kind, GfxKernelExecutionKind::VendorPrimitive);
+}
+
+TEST(GfxStagePolicyTest, MetalBilinearInterpolatePlansAppleMpsResizeImageStorage) {
+    const auto resize = make_bilinear_interpolate_node();
+    const auto plan = select_stage_optimization_plan(nullptr,
+                                                     GpuBackend::Metal,
+                                                     "Interpolate",
+                                                     resize,
+                                                     ov::element::f16,
+                                                     /*has_bias=*/false,
+                                                     /*has_activation=*/false,
+                                                     /*has_batchnorm=*/false,
+                                                     {});
+
+    EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMps);
+    EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Image);
+    EXPECT_TRUE(plan.placement.uses_vendor_primitive);
+    EXPECT_FALSE(plan.placement.uses_custom_kernel);
+
+    const auto desc = gfx_mpsrt_make_stage_desc(plan, "Interpolate");
+    EXPECT_EQ(desc.kind, GfxMpsrtStageKind::MPSResize2D);
+    EXPECT_EQ(desc.stage_manifest.stage_family, GfxKernelStageFamily::Resize);
+    EXPECT_EQ(desc.stage_manifest.backend_domain, GfxKernelBackendDomain::AppleMps);
+    EXPECT_EQ(desc.stage_manifest.execution_kind, GfxKernelExecutionKind::VendorPrimitive);
+    EXPECT_EQ(desc.stage_manifest.storage, GfxKernelStorageKind::Image);
+}
+
+TEST(GfxStagePolicyTest, AppleMpsResize2DDescriptorAcceptsSpatialBilinearInterpolate) {
+    GfxMpsrtResize2DAbiDesc desc{};
+    ASSERT_TRUE(gfx_apple_make_mps_resize2d_desc(make_bilinear_interpolate_node(), desc));
+    EXPECT_EQ(desc.nearest, 0u);
+    EXPECT_EQ(desc.align_corners, 0u);
+    EXPECT_EQ(desc.half_pixel_centers, 1u);
+}
+
+TEST(GfxStagePolicyTest, AppleMpsResize2DDescriptorRejectsNonSpatialInterpolateAxes) {
+    GfxMpsrtResize2DAbiDesc desc{};
+    EXPECT_FALSE(gfx_apple_make_mps_resize2d_desc(make_v4_non_spatial_bilinear_interpolate_node(), desc));
+}
+
+TEST(GfxStagePolicyTest, AppleMpsPoolSoftmaxTopKDescriptorsAcceptSupportedVendorCases) {
+    GfxMpsrtPool2DAbiDesc pool_desc{};
+    ASSERT_TRUE(gfx_apple_make_mps_pool2d_desc(make_aligned_maxpool_node(), pool_desc));
+    EXPECT_EQ(pool_desc.is_avg, 0u);
+    EXPECT_EQ(pool_desc.kernel[0], 2u);
+    EXPECT_EQ(pool_desc.strides[1], 2u);
+
+    GfxMpsrtSoftmaxAbiDesc softmax_desc{};
+    ASSERT_TRUE(gfx_apple_make_mps_softmax_desc(make_last_dim_softmax_node(), softmax_desc));
+    EXPECT_EQ(softmax_desc.axis, 2u);
+    EXPECT_EQ(softmax_desc.log_softmax, 0u);
+
+    GfxMpsrtTopKAbiDesc topk_desc{};
+    ASSERT_TRUE(gfx_apple_make_mps_topk_desc(make_last_dim_topk_node(), topk_desc));
+    EXPECT_EQ(topk_desc.axis, 2u);
+    EXPECT_EQ(topk_desc.k, 4u);
+    EXPECT_EQ(topk_desc.mode_max, 1u);
+    EXPECT_EQ(topk_desc.sort_type, 1u);
 }
 
 TEST(GfxStagePolicyTest, MetalMatMulPlansAppleMpsMatrixStorage) {
@@ -781,6 +874,19 @@ TEST(GfxStagePolicyTest, MpsrtConv2DBuilderPlanCarriesVendorPrimitiveDescriptor)
     EXPECT_EQ(model.stages.front().kind, GfxMpsrtStageKind::MPSConv2D);
     EXPECT_EQ(model.stages.front().conv2d_desc.pads[0], 1u);
     EXPECT_EQ(model.stages.front().conv2d_desc.pads[3], 1u);
+    EXPECT_EQ(metal::mpsrt::mpsrt_model_resource_lifetime_count(
+                  model,
+                  metal::mpsrt::MpsrtRuntimeResourceLifetime::External),
+              2u);
+    EXPECT_EQ(metal::mpsrt::mpsrt_model_resource_lifetime_count(
+                  model,
+                  metal::mpsrt::MpsrtRuntimeResourceLifetime::Model),
+              1u);
+    const auto* weight_resource = metal::mpsrt::find_mpsrt_resource_for_value(model, 1u);
+    ASSERT_NE(weight_resource, nullptr);
+    EXPECT_EQ(weight_resource->role, GfxMpsrtExternalBufferRole::ConstBuffer);
+    EXPECT_EQ(weight_resource->lifetime, metal::mpsrt::MpsrtRuntimeResourceLifetime::Model);
+    EXPECT_TRUE((weight_resource->tensor_desc.flags & GfxMpsrtTensorFlagConst) != 0);
 }
 
 TEST(GfxStagePolicyTest, MpsrtPool2DBuilderPlanCarriesVendorPrimitiveDescriptor) {
@@ -827,6 +933,322 @@ TEST(GfxStagePolicyTest, MpsrtPool2DBuilderPlanCarriesVendorPrimitiveDescriptor)
     EXPECT_EQ(model.stages.front().kind, GfxMpsrtStageKind::MPSPool2D);
     EXPECT_EQ(model.stages.front().pool2d_desc.kernel[0], 2u);
     EXPECT_EQ(model.stages.front().pool2d_desc.strides[1], 2u);
+}
+
+TEST(GfxStagePolicyTest, MpsrtResize2DBuilderPlanCarriesVendorPrimitiveDescriptor) {
+    GfxStageOptimizationPlan plan{};
+    plan.placement.domain = GfxStageBackendDomain::AppleMps;
+    plan.placement.storage = GfxStageStorageKind::Image;
+    plan.placement.uses_vendor_primitive = true;
+    plan.placement.uses_custom_kernel = false;
+    plan.placement.specialization_key = "apple_mps:image:Interpolate";
+    auto stage = gfx_mpsrt_make_stage_desc(plan, "Interpolate");
+    stage.resize2d_desc.nearest = 0;
+    stage.resize2d_desc.align_corners = 0;
+    stage.resize2d_desc.half_pixel_centers = 1;
+
+    const auto input = gfx_mpsrt_make_tensor_desc({1, 4, 16, 16},
+                                                  ov::element::f16,
+                                                  GfxStageStorageKind::Image,
+                                                  GfxMpsrtTensorFlagExternalIo);
+    const auto output = gfx_mpsrt_make_tensor_desc({1, 4, 32, 32},
+                                                   ov::element::f16,
+                                                   GfxStageStorageKind::Image,
+                                                   GfxMpsrtTensorFlagTransient);
+    const auto record_key = gfx_mpsrt_stage_record_key(stage);
+    EXPECT_EQ(record_key.find("|resize2d:"), std::string::npos);
+
+    const auto builder_plan = gfx_mpsrt_make_builder_plan(stage, {input}, {output}, record_key);
+    ASSERT_TRUE(builder_plan.valid);
+    ASSERT_EQ(builder_plan.records.size(), 4u);
+    EXPECT_EQ(builder_plan.records[2].stage_kind, GfxMpsrtStageKind::MPSResize2D);
+    EXPECT_EQ(builder_plan.records[2].resize2d_desc.nearest, 0u);
+    EXPECT_EQ(builder_plan.records[2].resize2d_desc.half_pixel_centers, 1u);
+
+    ov::gfx_plugin::metal::mpsrt::MpsrtModel model;
+    std::string error;
+    ASSERT_TRUE(ov::gfx_plugin::metal::mpsrt::build_mpsrt_model_from_builder_plan(builder_plan, model, &error))
+        << error;
+    ASSERT_EQ(model.stages.size(), 1u);
+    EXPECT_EQ(model.stages.front().kind, GfxMpsrtStageKind::MPSResize2D);
+    EXPECT_EQ(model.stages.front().resize2d_desc.nearest, 0u);
+    ASSERT_EQ(model.stages.front().output_descs.size(), 1u);
+    EXPECT_EQ(model.stages.front().output_descs.front().image_width, 32u);
+}
+
+TEST(GfxStagePolicyTest, MetalBilinearInterpolateSourcePlanUsesMpsResize2DInsteadOfMslFallback) {
+    const auto resize = make_bilinear_interpolate_node();
+    auto& ctx = gfx_mlir_context();
+    auto module = build_mlir_for_node(resize, ctx);
+    ASSERT_TRUE(module);
+
+    KernelSource source;
+    source.module = module;
+    source.entry_point = "interpolate_kernel";
+    const auto source_plan =
+        configure_apple_metal_kernel_source_plan_for_stage(source,
+                                                           resize,
+                                                           nullptr,
+                                                           "Interpolate",
+                                                           /*has_bias=*/false,
+                                                           /*has_activation=*/false,
+                                                           /*has_batchnorm=*/false,
+                                                           ActivationKind::Identity,
+                                                           ov::element::f16,
+                                                           /*has_runtime_slice_params=*/false);
+    ASSERT_TRUE(source_plan.valid());
+    EXPECT_TRUE(source_plan.requires_mpsrt_model);
+    EXPECT_EQ(source_plan.first_stage_kind, GfxMpsrtStageKind::MPSResize2D);
+    EXPECT_EQ(source_plan.last_stage_kind, GfxMpsrtStageKind::MPSResize2D);
+    EXPECT_TRUE(gfx_mpsrt_source_plan_is_io_only_apple_mps_vendor(source_plan));
+    EXPECT_TRUE(source_plan.has_runtime_binding);
+    EXPECT_EQ(source_plan.runtime_binding.inputs, std::vector<size_t>({0}));
+    EXPECT_EQ(source_plan.runtime_binding.input_arg_count, 1u);
+    EXPECT_EQ(source_plan.source.signature.arg_count, 2u);
+    EXPECT_EQ(source_plan.source.signature.output_arg_count, 1u);
+    EXPECT_TRUE(source_plan.source.msl_source.empty());
+    EXPECT_FALSE(static_cast<bool>(source_plan.source.msl_generator));
+
+    GfxMpsrtProgram program;
+    ASSERT_TRUE(read_module_mpsrt_program(module, program));
+    ASSERT_TRUE(program.external_buffer_abi.valid);
+    EXPECT_EQ(program.external_buffer_abi.buffer_roles,
+              std::vector<GfxMpsrtExternalBufferRole>({GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput}));
+    ASSERT_EQ(program.stages.size(), 1u);
+    EXPECT_EQ(program.stages.front().stage.kind, GfxMpsrtStageKind::MPSResize2D);
+    EXPECT_EQ(program.stages.front().stage.stage_manifest.backend_domain, GfxKernelBackendDomain::AppleMps);
+    EXPECT_EQ(program.stages.front().stage.stage_manifest.execution_kind, GfxKernelExecutionKind::VendorPrimitive);
+}
+
+TEST(GfxStagePolicyTest, MetalMaxPoolSourcePlanUsesMpsPool2DInsteadOfMslFallback) {
+    const auto pool = make_aligned_maxpool_node();
+    auto& ctx = gfx_mlir_context();
+    auto module = build_mlir_for_node(pool, ctx);
+    ASSERT_TRUE(module);
+
+    KernelSource source;
+    source.module = module;
+    source.entry_point = "pool2d_kernel";
+    const auto source_plan =
+        configure_apple_metal_kernel_source_plan_for_stage(source,
+                                                           pool,
+                                                           nullptr,
+                                                           "MaxPool",
+                                                           /*has_bias=*/false,
+                                                           /*has_activation=*/false,
+                                                           /*has_batchnorm=*/false,
+                                                           ActivationKind::Identity,
+                                                           ov::element::f16,
+                                                           /*has_runtime_slice_params=*/false);
+    ASSERT_TRUE(source_plan.valid());
+    EXPECT_TRUE(source_plan.requires_mpsrt_model);
+    EXPECT_EQ(source_plan.first_stage_kind, GfxMpsrtStageKind::MPSPool2D);
+    EXPECT_EQ(source_plan.last_stage_kind, GfxMpsrtStageKind::MPSPool2D);
+    EXPECT_TRUE(gfx_mpsrt_source_plan_is_io_only_apple_mps_vendor(source_plan));
+    EXPECT_TRUE(source_plan.has_runtime_binding);
+    EXPECT_EQ(source_plan.runtime_binding.inputs, std::vector<size_t>({0, 1}));
+    EXPECT_EQ(source_plan.runtime_binding.input_arg_count, 2u);
+    EXPECT_TRUE(source_plan.source.msl_source.empty());
+    EXPECT_FALSE(static_cast<bool>(source_plan.source.msl_generator));
+
+    GfxMpsrtProgram program;
+    ASSERT_TRUE(read_module_mpsrt_program(module, program));
+    ASSERT_TRUE(program.external_buffer_abi.valid);
+    EXPECT_EQ(program.external_buffer_abi.buffer_roles,
+              std::vector<GfxMpsrtExternalBufferRole>({GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::RuntimeParams,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput}));
+    ASSERT_EQ(program.stages.size(), 1u);
+    EXPECT_EQ(program.stages.front().stage.kind, GfxMpsrtStageKind::MPSPool2D);
+    EXPECT_EQ(program.stages.front().stage.stage_manifest.backend_domain, GfxKernelBackendDomain::AppleMps);
+    EXPECT_EQ(program.stages.front().stage.stage_manifest.execution_kind, GfxKernelExecutionKind::VendorPrimitive);
+}
+
+TEST(GfxStagePolicyTest, MetalSoftmaxSourcePlanUsesMpsSoftmaxInsteadOfMslFallback) {
+    const auto softmax = make_last_dim_softmax_node();
+    auto& ctx = gfx_mlir_context();
+    auto module = build_mlir_for_node(softmax, ctx);
+    ASSERT_TRUE(module);
+
+    KernelSource source;
+    source.module = module;
+    source.entry_point = "softmax_kernel";
+    const auto source_plan =
+        configure_apple_metal_kernel_source_plan_for_stage(source,
+                                                           softmax,
+                                                           nullptr,
+                                                           "Softmax",
+                                                           /*has_bias=*/false,
+                                                           /*has_activation=*/false,
+                                                           /*has_batchnorm=*/false,
+                                                           ActivationKind::Identity,
+                                                           ov::element::f16,
+                                                           /*has_runtime_slice_params=*/false);
+    ASSERT_TRUE(source_plan.valid());
+    EXPECT_TRUE(source_plan.requires_mpsrt_model);
+    EXPECT_EQ(source_plan.first_stage_kind, GfxMpsrtStageKind::MPSSoftmax);
+    EXPECT_EQ(source_plan.last_stage_kind, GfxMpsrtStageKind::MPSSoftmax);
+    EXPECT_TRUE(gfx_mpsrt_source_plan_is_io_only_apple_mps_vendor(source_plan));
+    EXPECT_TRUE(source_plan.has_runtime_binding);
+    EXPECT_EQ(source_plan.runtime_binding.inputs, std::vector<size_t>({0}));
+    EXPECT_EQ(source_plan.runtime_binding.input_arg_count, 1u);
+    EXPECT_TRUE(source_plan.source.msl_source.empty());
+    EXPECT_FALSE(static_cast<bool>(source_plan.source.msl_generator));
+
+    GfxMpsrtProgram program;
+    ASSERT_TRUE(read_module_mpsrt_program(module, program));
+    ASSERT_TRUE(program.external_buffer_abi.valid);
+    EXPECT_EQ(program.external_buffer_abi.buffer_roles,
+              std::vector<GfxMpsrtExternalBufferRole>({GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput}));
+    ASSERT_EQ(program.stages.size(), 1u);
+    EXPECT_EQ(program.stages.front().stage.kind, GfxMpsrtStageKind::MPSSoftmax);
+    EXPECT_EQ(program.stages.front().stage.softmax_desc.axis, 2u);
+    EXPECT_EQ(program.stages.front().stage.stage_manifest.backend_domain, GfxKernelBackendDomain::AppleMps);
+    EXPECT_EQ(program.stages.front().stage.stage_manifest.execution_kind, GfxKernelExecutionKind::VendorPrimitive);
+}
+
+TEST(GfxStagePolicyTest, MetalTopKSourcePlanUsesMpsTopKInsteadOfMslFallback) {
+    const auto topk = make_last_dim_topk_node();
+    auto& ctx = gfx_mlir_context();
+    auto module = build_mlir_for_node(topk, ctx);
+    ASSERT_TRUE(module);
+
+    KernelSource source;
+    source.module = module;
+    source.entry_point = "topk_kernel";
+    const auto source_plan =
+        configure_apple_metal_kernel_source_plan_for_stage(source,
+                                                           topk,
+                                                           nullptr,
+                                                           "TopK",
+                                                           /*has_bias=*/false,
+                                                           /*has_activation=*/false,
+                                                           /*has_batchnorm=*/false,
+                                                           ActivationKind::Identity,
+                                                           ov::element::f16,
+                                                           /*has_runtime_slice_params=*/false);
+    ASSERT_TRUE(source_plan.valid());
+    EXPECT_TRUE(source_plan.requires_mpsrt_model);
+    EXPECT_EQ(source_plan.first_stage_kind, GfxMpsrtStageKind::MPSTopK);
+    EXPECT_EQ(source_plan.last_stage_kind, GfxMpsrtStageKind::MPSTopK);
+    EXPECT_TRUE(gfx_mpsrt_source_plan_is_io_only_apple_mps_vendor(source_plan));
+    EXPECT_TRUE(source_plan.has_runtime_binding);
+    EXPECT_EQ(source_plan.runtime_binding.inputs, std::vector<size_t>({0}));
+    EXPECT_EQ(source_plan.runtime_binding.input_arg_count, 1u);
+    EXPECT_TRUE(source_plan.source.msl_source.empty());
+    EXPECT_FALSE(static_cast<bool>(source_plan.source.msl_generator));
+
+    GfxMpsrtProgram program;
+    ASSERT_TRUE(read_module_mpsrt_program(module, program));
+    ASSERT_TRUE(program.external_buffer_abi.valid);
+    EXPECT_EQ(program.external_buffer_abi.buffer_roles,
+              std::vector<GfxMpsrtExternalBufferRole>({GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput}));
+    ASSERT_EQ(program.stages.size(), 1u);
+    EXPECT_EQ(program.stages.front().stage.kind, GfxMpsrtStageKind::MPSTopK);
+    EXPECT_EQ(program.stages.front().stage.topk_desc.k, 4u);
+    EXPECT_EQ(program.stages.front().stage.stage_manifest.backend_domain, GfxKernelBackendDomain::AppleMps);
+    EXPECT_EQ(program.stages.front().stage.stage_manifest.execution_kind, GfxKernelExecutionKind::VendorPrimitive);
+}
+
+TEST(GfxStagePolicyTest, MetalSoftmaxSourcePlanRebuildsCleanMpsModuleWhenInputModuleIsAlreadyMsl) {
+    const auto softmax = make_last_dim_softmax_node();
+    auto& ctx = gfx_mlir_context();
+    auto msl_module = build_mlir_for_node(softmax, ctx);
+    ASSERT_TRUE(msl_module);
+
+    GfxStageOptimizationPlan msl_plan{};
+    msl_plan.placement.domain = GfxStageBackendDomain::AppleMsl;
+    msl_plan.placement.storage = GfxStageStorageKind::Buffer;
+    msl_plan.placement.uses_custom_kernel = true;
+    msl_plan.placement.specialization_key = "apple_msl:buffer:Softmax";
+    annotate_msl_module_with_stage_plan(msl_module, msl_plan, "Softmax", "softmax_kernel");
+
+    GfxMpsrtModuleStagePlan original_stage_plan{};
+    ASSERT_TRUE(read_module_mpsrt_stage_plan(msl_module, original_stage_plan));
+    ASSERT_EQ(original_stage_plan.stage.kind, GfxMpsrtStageKind::MSLDispatch);
+    ASSERT_EQ(original_stage_plan.stage.stage_manifest.backend_domain, GfxKernelBackendDomain::AppleMsl);
+
+    KernelSource source;
+    source.module = msl_module;
+    source.entry_point = "softmax_kernel";
+    const auto source_plan =
+        configure_apple_metal_kernel_source_plan_for_stage(source,
+                                                           softmax,
+                                                           nullptr,
+                                                           "Softmax",
+                                                           /*has_bias=*/false,
+                                                           /*has_activation=*/false,
+                                                           /*has_batchnorm=*/false,
+                                                           ActivationKind::Identity,
+                                                           ov::element::f16,
+                                                           /*has_runtime_slice_params=*/false);
+    ASSERT_TRUE(source_plan.valid());
+    auto vendor_module = source_plan.source.module;
+    EXPECT_NE(vendor_module.getOperation(), msl_module.getOperation());
+    EXPECT_TRUE(source_plan.requires_mpsrt_model);
+    EXPECT_EQ(source_plan.first_stage_kind, GfxMpsrtStageKind::MPSSoftmax);
+    EXPECT_EQ(source_plan.last_stage_kind, GfxMpsrtStageKind::MPSSoftmax);
+    EXPECT_TRUE(gfx_mpsrt_source_plan_is_io_only_apple_mps_vendor(source_plan));
+    EXPECT_TRUE(source_plan.has_runtime_binding);
+    EXPECT_EQ(source_plan.runtime_binding.inputs, std::vector<size_t>({0}));
+    EXPECT_EQ(source_plan.runtime_binding.input_arg_count, 1u);
+    EXPECT_TRUE(source_plan.source.msl_source.empty());
+    EXPECT_FALSE(static_cast<bool>(source_plan.source.msl_generator));
+
+    GfxMpsrtProgram program;
+    ASSERT_TRUE(read_module_mpsrt_program(vendor_module, program));
+    ASSERT_TRUE(program.external_buffer_abi.valid);
+    EXPECT_EQ(program.external_buffer_abi.buffer_roles,
+              std::vector<GfxMpsrtExternalBufferRole>({GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput}));
+    ASSERT_EQ(program.stages.size(), 1u);
+    EXPECT_EQ(program.stages.front().stage.kind, GfxMpsrtStageKind::MPSSoftmax);
+    EXPECT_EQ(program.stages.front().stage.stage_manifest.backend_domain, GfxKernelBackendDomain::AppleMps);
+    EXPECT_EQ(program.stages.front().stage.stage_manifest.execution_kind, GfxKernelExecutionKind::VendorPrimitive);
+
+    ASSERT_TRUE(materialize_gfx_apple_mpsrt_runtime_abi_call_plan(vendor_module));
+    GfxMpsrtBuilderPlan builder_plan{};
+    ASSERT_TRUE(read_gfx_apple_mpsrt_runtime_abi_call_plan(vendor_module, builder_plan));
+    ASSERT_EQ(builder_plan.records.size(), 4u);
+    ASSERT_EQ(builder_plan.records[1].tensor_descs.size(), 1u);
+    ASSERT_EQ(builder_plan.records[2].tensor_descs.size(), 1u);
+    EXPECT_EQ(builder_plan.records[1].tensor_descs.front().storage,
+              static_cast<uint32_t>(GfxMpsrtStorage::Matrix));
+    EXPECT_EQ(builder_plan.records[2].tensor_descs.front().storage,
+              static_cast<uint32_t>(GfxMpsrtStorage::Matrix));
+
+    ov::gfx_plugin::metal::mpsrt::MpsrtModel model;
+    std::string error;
+    ASSERT_TRUE(ov::gfx_plugin::metal::mpsrt::build_mpsrt_model_from_builder_plan(builder_plan,
+                                                                                  model,
+                                                                                  &error))
+        << error;
+    ASSERT_TRUE(ov::gfx_plugin::metal::mpsrt::adapt_mpsrt_model_to_external_buffer_abi(
+                    model,
+                    source_plan.source.signature.arg_count,
+                    source_plan.source.signature.output_arg_count,
+                    &error))
+        << error;
+    ASSERT_EQ(model.stages.size(), 1u);
+    ASSERT_EQ(model.stages.front().output_descs.size(), 1u);
+    const auto* input_tensor = ov::gfx_plugin::metal::mpsrt::find_mpsrt_resource_for_value(
+        model,
+        model.stages.front().inputs.front());
+    ASSERT_NE(input_tensor, nullptr);
+    EXPECT_EQ(input_tensor->tensor_desc.storage, static_cast<uint32_t>(GfxMpsrtStorage::Matrix));
+    EXPECT_EQ(model.stages.front().output_descs.front().storage,
+              static_cast<uint32_t>(GfxMpsrtStorage::Matrix));
+    EXPECT_NE(input_tensor->tensor_desc.matrix_rows, 0u);
+    EXPECT_NE(model.stages.front().output_descs.front().matrix_rows, 0u);
+
+    GfxMpsrtModuleStagePlan fallback_stage_plan{};
+    ASSERT_TRUE(read_module_mpsrt_stage_plan(msl_module, fallback_stage_plan));
+    EXPECT_EQ(fallback_stage_plan.stage.kind, GfxMpsrtStageKind::MSLDispatch);
+    EXPECT_EQ(fallback_stage_plan.stage.stage_manifest.backend_domain, GfxKernelBackendDomain::AppleMsl);
 }
 
 TEST(GfxStagePolicyTest, MpsrtSoftmaxBuilderPlanCarriesVendorPrimitiveDescriptor) {
@@ -1062,10 +1484,10 @@ TEST(GfxStagePolicyTest, CustomKernelStagePlanClassifiesCompressedMatMulWithExpl
     const auto binding =
         make_msl_runtime_binding_plan_from_stage_manifest(plan.stage_manifest, {0});
     ASSERT_TRUE(binding.valid());
-    EXPECT_EQ(binding.kernel_inputs, std::vector<size_t>({0}));
-    EXPECT_EQ(binding.kernel_input_arg_count, 3u);
-    EXPECT_EQ(binding.operand_kinds, std::vector<int32_t>({1, 1, 1, 1}));
-    EXPECT_EQ(binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2, 3}));
+    EXPECT_EQ(binding.runtime_binding.inputs, std::vector<size_t>({0}));
+    EXPECT_EQ(binding.runtime_binding.input_arg_count, 3u);
+    EXPECT_EQ(binding.runtime_binding.operand_kinds, std::vector<int32_t>({1, 1, 1, 1}));
+    EXPECT_EQ(binding.runtime_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2, 3}));
 }
 
 TEST(GfxStagePolicyTest, CustomKernelStagePlanClassifiesSdpaKernelsWithRuntimeParamsTail) {
@@ -1084,9 +1506,9 @@ TEST(GfxStagePolicyTest, CustomKernelStagePlanClassifiesSdpaKernelsWithRuntimePa
     const auto sdpa_binding =
         make_msl_runtime_binding_plan_from_stage_manifest(sdpa_plan.stage_manifest, {0, 1, 2, 3});
     ASSERT_TRUE(sdpa_binding.valid());
-    EXPECT_EQ(sdpa_binding.kernel_inputs, std::vector<size_t>({0, 1, 2, 3}));
-    EXPECT_EQ(sdpa_binding.kernel_input_arg_count, 5u);
-    EXPECT_EQ(sdpa_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2, 3, 4, 5}));
+    EXPECT_EQ(sdpa_binding.runtime_binding.inputs, std::vector<size_t>({0, 1, 2, 3}));
+    EXPECT_EQ(sdpa_binding.runtime_binding.input_arg_count, 5u);
+    EXPECT_EQ(sdpa_binding.runtime_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2, 3, 4, 5}));
 
     const auto causal_plan =
         make_gfx_custom_kernel_stage_plan("GfxSDPAWithCausalMask", "sdpa_causal_mask_kernel");
@@ -1103,9 +1525,9 @@ TEST(GfxStagePolicyTest, CustomKernelStagePlanClassifiesSdpaKernelsWithRuntimePa
     const auto causal_binding =
         make_msl_runtime_binding_plan_from_stage_manifest(causal_plan.stage_manifest, {0, 1, 2, 3, 4});
     ASSERT_TRUE(causal_binding.valid());
-    EXPECT_EQ(causal_binding.kernel_inputs, std::vector<size_t>({0, 1, 2, 3, 4}));
-    EXPECT_EQ(causal_binding.kernel_input_arg_count, 6u);
-    EXPECT_EQ(causal_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2, 3, 4, 5, 6}));
+    EXPECT_EQ(causal_binding.runtime_binding.inputs, std::vector<size_t>({0, 1, 2, 3, 4}));
+    EXPECT_EQ(causal_binding.runtime_binding.input_arg_count, 6u);
+    EXPECT_EQ(causal_binding.runtime_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2, 3, 4, 5, 6}));
 }
 
 TEST(GfxStagePolicyTest, MslRuntimeBindingPlanPreservesOutputBeforeRuntimeParamsOrder) {
@@ -1121,36 +1543,68 @@ TEST(GfxStagePolicyTest, MslRuntimeBindingPlanPreservesOutputBeforeRuntimeParams
     const auto gather_binding =
         make_msl_runtime_binding_plan_from_stage_manifest(gather_plan.stage_manifest, {0, 1});
     ASSERT_TRUE(gather_binding.valid());
-    EXPECT_EQ(gather_binding.kernel_inputs, std::vector<size_t>({0, 1}));
-    EXPECT_EQ(gather_binding.kernel_input_arg_count, 2u);
-    EXPECT_EQ(gather_binding.operand_kinds, std::vector<int32_t>({1, 1, 1, 1}));
-    EXPECT_EQ(gather_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2, 3}));
+    EXPECT_EQ(gather_binding.runtime_binding.inputs, std::vector<size_t>({0, 1}));
+    EXPECT_EQ(gather_binding.runtime_binding.input_arg_count, 3u);
+    EXPECT_EQ(gather_binding.runtime_binding.operand_kinds, std::vector<int32_t>({1, 1, 1, 1}));
+    EXPECT_EQ(gather_binding.runtime_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 3, 2}));
 
     const auto gather_elements_binding =
         make_msl_runtime_binding_plan_for_custom_kernel("GatherElements", "gather_elements_kernel", {0, 1});
     ASSERT_TRUE(gather_elements_binding.valid());
-    EXPECT_EQ(gather_elements_binding.kernel_inputs, std::vector<size_t>({0, 1}));
-    EXPECT_EQ(gather_elements_binding.kernel_input_arg_count, 2u);
-    EXPECT_EQ(gather_elements_binding.operand_kinds, std::vector<int32_t>({1, 1, 1, 1}));
-    EXPECT_EQ(gather_elements_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2, 3}));
+    EXPECT_EQ(gather_elements_binding.runtime_binding.inputs, std::vector<size_t>({0, 1}));
+    EXPECT_EQ(gather_elements_binding.runtime_binding.input_arg_count, 3u);
+    EXPECT_EQ(gather_elements_binding.runtime_binding.operand_kinds, std::vector<int32_t>({1, 1, 1, 1}));
+    EXPECT_EQ(gather_elements_binding.runtime_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 3, 2}));
 
     const auto tile_binding =
         make_msl_runtime_binding_plan_for_custom_kernel("Tile", "tile_kernel", {0}, {16, 4});
     ASSERT_TRUE(tile_binding.valid());
-    EXPECT_EQ(tile_binding.kernel_inputs, std::vector<size_t>({0}));
-    EXPECT_EQ(tile_binding.kernel_input_arg_count, 1u);
+    EXPECT_EQ(tile_binding.runtime_binding.inputs, std::vector<size_t>({0}));
+    EXPECT_EQ(tile_binding.runtime_binding.input_arg_count, 5u);
     EXPECT_EQ(tile_binding.scalar_arg_count, 2u);
-    EXPECT_EQ(tile_binding.scalar_args, std::vector<int32_t>({16, 4}));
-    EXPECT_EQ(tile_binding.operand_kinds, std::vector<int32_t>({1, 1, 0, 0, 1, 1, 1, 1}));
-    EXPECT_EQ(tile_binding.operand_arg_indices,
-              std::vector<int32_t>({0, 1, -1, -1, 2, 3, 4, 5}));
+    EXPECT_EQ(tile_binding.runtime_binding.scalar_args, std::vector<int32_t>({16, 4}));
+    EXPECT_EQ(tile_binding.runtime_binding.operand_kinds, std::vector<int32_t>({1, 1, 0, 0, 1, 1, 1, 1}));
+    EXPECT_EQ(tile_binding.runtime_binding.operand_arg_indices,
+              std::vector<int32_t>({0, 5, -1, -1, 1, 2, 3, 4}));
 
     const auto softmax_binding =
         make_msl_runtime_binding_plan_for_custom_kernel("Softmax", "softmax_kernel", {0});
     ASSERT_TRUE(softmax_binding.valid());
-    EXPECT_EQ(softmax_binding.kernel_inputs, std::vector<size_t>({0}));
-    EXPECT_EQ(softmax_binding.kernel_input_arg_count, 1u);
-    EXPECT_EQ(softmax_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2}));
+    EXPECT_EQ(softmax_binding.runtime_binding.inputs, std::vector<size_t>({0}));
+    EXPECT_EQ(softmax_binding.runtime_binding.input_arg_count, 2u);
+    EXPECT_EQ(softmax_binding.runtime_binding.operand_arg_indices, std::vector<int32_t>({0, 2, 1}));
+
+    const auto split_binding =
+        make_msl_runtime_binding_plan_for_direct_io_custom_kernel("VariadicSplit",
+                                                                  "split_kernel",
+                                                                  {0},
+                                                                  3);
+    ASSERT_TRUE(split_binding.valid());
+    EXPECT_EQ(split_binding.runtime_binding.inputs, std::vector<size_t>({0}));
+    EXPECT_EQ(split_binding.runtime_binding.input_arg_count, 1u);
+    EXPECT_EQ(split_binding.runtime_binding.operand_kinds, std::vector<int32_t>({1, 1, 1, 1}));
+    EXPECT_EQ(split_binding.runtime_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2, 3}));
+    EXPECT_TRUE(split_binding.stage_manifest.custom_kernel.external_buffer_abi.roles.empty());
+    EXPECT_EQ(split_binding.stage_manifest.custom_kernel.external_buffer_abi.direct_input_count, 1u);
+    EXPECT_EQ(split_binding.stage_manifest.custom_kernel.external_buffer_abi.direct_output_count, 3u);
+    EXPECT_EQ(materialize_gfx_kernel_external_buffer_roles(
+                  split_binding.stage_manifest.custom_kernel.external_buffer_abi),
+              std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
+                                                GfxKernelBufferRole::TensorOutput,
+                                                GfxKernelBufferRole::TensorOutput,
+                                                GfxKernelBufferRole::TensorOutput}));
+    const auto split_source_plan = make_direct_split_msl_kernel_source_plan("VariadicSplit",
+                                                                           ov::element::f32,
+                                                                           ov::Shape{1, 6, 2},
+                                                                           {2, 2, 2},
+                                                                           6,
+                                                                           2);
+    ASSERT_TRUE(split_source_plan.valid());
+    EXPECT_EQ(split_source_plan.source.entry_point, "split_kernel");
+    EXPECT_EQ(split_source_plan.source.signature.arg_count, 4u);
+    EXPECT_EQ(split_source_plan.source.signature.output_arg_count, 3u);
+    EXPECT_EQ(split_source_plan.binding.runtime_binding.operand_arg_indices,
+              std::vector<int32_t>({0, 1, 2, 3}));
 
     const auto select_binding =
         make_msl_runtime_binding_plan_for_custom_kernel("Select",
@@ -1158,13 +1612,41 @@ TEST(GfxStagePolicyTest, MslRuntimeBindingPlanPreservesOutputBeforeRuntimeParams
                                                         {0, 1, 2},
                                                         {16, 4});
     ASSERT_TRUE(select_binding.valid());
-    EXPECT_EQ(select_binding.kernel_inputs, std::vector<size_t>({0, 1, 2}));
-    EXPECT_EQ(select_binding.kernel_input_arg_count, 3u);
+    EXPECT_EQ(select_binding.runtime_binding.inputs, std::vector<size_t>({0, 1, 2}));
+    EXPECT_EQ(select_binding.runtime_binding.input_arg_count, 7u);
     EXPECT_EQ(select_binding.scalar_arg_count, 2u);
-    EXPECT_EQ(select_binding.scalar_args, std::vector<int32_t>({16, 4}));
-    EXPECT_EQ(select_binding.operand_kinds, std::vector<int32_t>({1, 1, 1, 1, 0, 0, 1, 1, 1, 1}));
-    EXPECT_EQ(select_binding.operand_arg_indices,
-              std::vector<int32_t>({0, 1, 2, 3, -1, -1, 4, 5, 6, 7}));
+    EXPECT_EQ(select_binding.runtime_binding.scalar_args, std::vector<int32_t>({16, 4}));
+    EXPECT_EQ(select_binding.runtime_binding.operand_kinds, std::vector<int32_t>({1, 1, 1, 1, 0, 0, 1, 1, 1, 1}));
+    EXPECT_EQ(select_binding.runtime_binding.operand_arg_indices,
+              std::vector<int32_t>({0, 1, 2, 7, -1, -1, 3, 4, 5, 6}));
+
+    const auto rms_binding =
+        make_msl_runtime_binding_plan_for_custom_kernel("RMS", "rms_kernel", {0, 1});
+    ASSERT_TRUE(rms_binding.valid());
+    EXPECT_EQ(rms_binding.runtime_binding.inputs, std::vector<size_t>({0, 1}));
+    EXPECT_EQ(rms_binding.runtime_binding.input_arg_count, 2u);
+    EXPECT_EQ(rms_binding.runtime_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2}));
+
+    const auto rms_residual_binding =
+        make_msl_runtime_binding_plan_for_custom_kernel("RMSResidual", "rms_kernel", {0, 1, 2});
+    ASSERT_TRUE(rms_residual_binding.valid());
+    EXPECT_EQ(rms_residual_binding.runtime_binding.inputs, std::vector<size_t>({0, 1, 2}));
+    EXPECT_EQ(rms_residual_binding.runtime_binding.input_arg_count, 3u);
+    EXPECT_EQ(rms_residual_binding.runtime_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2, 3}));
+
+    const auto rope_binding =
+        make_msl_runtime_binding_plan_for_custom_kernel("RoPE", "rope_kernel", {0, 1, 2});
+    ASSERT_TRUE(rope_binding.valid());
+    EXPECT_EQ(rope_binding.runtime_binding.inputs, std::vector<size_t>({0, 1, 2}));
+    EXPECT_EQ(rope_binding.runtime_binding.input_arg_count, 3u);
+    EXPECT_EQ(rope_binding.runtime_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2, 3}));
+
+    const auto rope_pos_binding =
+        make_msl_runtime_binding_plan_for_custom_kernel("RoPEWithPosition", "rope_kernel", {0, 1, 2, 3});
+    ASSERT_TRUE(rope_pos_binding.valid());
+    EXPECT_EQ(rope_pos_binding.runtime_binding.inputs, std::vector<size_t>({0, 1, 2, 3}));
+    EXPECT_EQ(rope_pos_binding.runtime_binding.input_arg_count, 4u);
+    EXPECT_EQ(rope_pos_binding.runtime_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2, 3, 4}));
 }
 
 TEST(GfxStagePolicyTest, CustomKernelStagePlanCoversExistingUnaryAndBinaryMslOps) {
@@ -1341,6 +1823,20 @@ TEST(GfxStagePolicyTest, CustomKernelStagePlanCoversExistingUnaryAndBinaryMslOps
                                                 GfxKernelBufferRole::TensorInput,
                                                 GfxKernelBufferRole::TensorOutput,
                                                 GfxKernelBufferRole::ScalarParam}));
+    const auto range_binding = make_kernel_runtime_binding_plan_for_custom_kernel("Range",
+                                                                                  "range_kernel",
+                                                                                  {0, 1, 2},
+                                                                                  {32},
+                                                                                  GfxKernelBackendDomain::Spirv,
+                                                                                  GfxKernelStorageKind::Buffer,
+                                                                                  "spirv:buffer:");
+    ASSERT_TRUE(range_binding.valid);
+    EXPECT_EQ(range_binding.stage_manifest.backend_domain, GfxKernelBackendDomain::Spirv);
+    EXPECT_EQ(range_binding.runtime_binding.inputs, std::vector<size_t>({0, 1, 2}));
+    EXPECT_EQ(range_binding.runtime_binding.input_arg_count, 3u);
+    EXPECT_EQ(range_binding.runtime_binding.scalar_args, std::vector<int32_t>({32}));
+    EXPECT_EQ(range_binding.runtime_binding.operand_kinds, std::vector<int32_t>({1, 1, 1, 1, 0}));
+    EXPECT_EQ(range_binding.runtime_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 2, 3, -1}));
 
     const auto scatter_init_plan =
         make_gfx_custom_kernel_stage_plan("ScatterElementsUpdate", "scatter_elements_init");
@@ -1397,6 +1893,12 @@ TEST(GfxStagePolicyTest, CustomKernelStagePlanCoversExistingUnaryAndBinaryMslOps
                                                 GfxKernelBufferRole::ConstTensor,
                                                 GfxKernelBufferRole::TensorOutput,
                                                 GfxKernelBufferRole::RuntimeParams}));
+    const auto conv3d_binding =
+        make_msl_runtime_binding_plan_from_stage_manifest(conv3d_plan.stage_manifest, {0});
+    ASSERT_TRUE(conv3d_binding.valid());
+    EXPECT_EQ(conv3d_binding.runtime_binding.inputs, std::vector<size_t>({0}));
+    EXPECT_EQ(conv3d_binding.runtime_binding.input_arg_count, 3u);
+    EXPECT_EQ(conv3d_binding.runtime_binding.operand_arg_indices, std::vector<int32_t>({0, 1, 3, 2}));
     ASSERT_TRUE(conv3d_plan.stage_manifest.custom_kernel.dispatch_policy.valid);
     EXPECT_EQ(conv3d_plan.stage_manifest.custom_kernel.dispatch_policy.grid, GfxKernelDispatchGrid::Linear1D);
     EXPECT_EQ(conv3d_plan.stage_manifest.custom_kernel.dispatch_policy.threads_per_threadgroup, 128u);
@@ -1731,7 +2233,35 @@ TEST(GfxStagePolicyTest, MpsrtMultiStageBuilderPlanSerializesMpsGemmPlusMslDispa
     EXPECT_EQ(runtime_param_model.external_buffer_roles,
               std::vector<GfxMpsrtExternalBufferRole>({GfxMpsrtExternalBufferRole::TensorInput,
                                                        GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::RuntimeParams,
                                                        GfxMpsrtExternalBufferRole::TensorOutput}));
+    ASSERT_EQ(runtime_param_model.external_buffer_bindings.size(), 4u);
+    ASSERT_EQ(runtime_param_model.resources.size(), 5u);
+    EXPECT_EQ(runtime_param_model.external_buffer_bindings[0].arg_index, 0u);
+    EXPECT_EQ(runtime_param_model.external_buffer_bindings[0].resource_index, 0u);
+    EXPECT_EQ(runtime_param_model.resources[0].role, GfxMpsrtExternalBufferRole::TensorInput);
+    EXPECT_TRUE(runtime_param_model.resources[0].has_tensor_value);
+    EXPECT_EQ(runtime_param_model.resources[0].value, 0u);
+    EXPECT_EQ(runtime_param_model.external_buffer_bindings[1].arg_index, 1u);
+    EXPECT_EQ(runtime_param_model.external_buffer_bindings[1].resource_index, 1u);
+    EXPECT_EQ(runtime_param_model.resources[1].role, GfxMpsrtExternalBufferRole::TensorInput);
+    EXPECT_TRUE(runtime_param_model.resources[1].has_tensor_value);
+    EXPECT_EQ(runtime_param_model.resources[1].value, 1u);
+    EXPECT_EQ(runtime_param_model.external_buffer_bindings[2].arg_index, 2u);
+    EXPECT_EQ(runtime_param_model.external_buffer_bindings[2].resource_index, 2u);
+    EXPECT_EQ(runtime_param_model.resources[2].role, GfxMpsrtExternalBufferRole::RuntimeParams);
+    EXPECT_FALSE(runtime_param_model.resources[2].has_tensor_value);
+    EXPECT_EQ(runtime_param_model.external_buffer_bindings[3].arg_index, 3u);
+    EXPECT_EQ(runtime_param_model.external_buffer_bindings[3].resource_index, 3u);
+    EXPECT_EQ(runtime_param_model.resources[3].role, GfxMpsrtExternalBufferRole::TensorOutput);
+    EXPECT_TRUE(runtime_param_model.resources[3].has_tensor_value);
+    EXPECT_EQ(runtime_param_model.resources[3].value, 3u);
+    const auto* transient_resource = metal::mpsrt::find_mpsrt_resource_for_value(runtime_param_model, 2u);
+    ASSERT_NE(transient_resource, nullptr);
+    EXPECT_EQ(transient_resource->role, GfxMpsrtExternalBufferRole::Unknown);
+    EXPECT_EQ(transient_resource->lifetime, metal::mpsrt::MpsrtRuntimeResourceLifetime::Transient);
+    EXPECT_TRUE((transient_resource->tensor_desc.flags & GfxMpsrtTensorFlagExternalIo) == 0);
+    EXPECT_TRUE((transient_resource->tensor_desc.flags & GfxMpsrtTensorFlagConst) == 0);
 }
 
 TEST(GfxStagePolicyTest, MpsrtRuntimeModelBuildsMslDispatchStage) {

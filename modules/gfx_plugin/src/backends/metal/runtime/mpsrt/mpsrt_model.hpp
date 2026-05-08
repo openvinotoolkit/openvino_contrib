@@ -3,6 +3,7 @@
 //
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -34,12 +35,35 @@ struct MpsrtRuntimeStage {
     GfxMpsrtConv2DAbiDesc conv2d_desc{};
     GfxMpsrtGemmAbiDesc gemm_desc{};
     GfxMpsrtPool2DAbiDesc pool2d_desc{};
+    GfxMpsrtResize2DAbiDesc resize2d_desc{};
     GfxMpsrtSoftmaxAbiDesc softmax_desc{};
     GfxMpsrtTopKAbiDesc topk_desc{};
     std::vector<GfxMpsrtValue> inputs;
     std::vector<GfxMpsrtValue> outputs;
     std::vector<GfxMpsrtValue> kernel_buffer_order;
     std::vector<GfxMpsrtTensorAbiDesc> output_descs;
+};
+
+enum class MpsrtRuntimeResourceLifetime : uint32_t {
+    Unknown = 0,
+    External = 1,
+    Model = 2,
+    Transient = 3,
+};
+
+struct MpsrtRuntimeResource {
+    uint32_t resource_index = 0;
+    GfxMpsrtExternalBufferRole role = GfxMpsrtExternalBufferRole::Unknown;
+    MpsrtRuntimeResourceLifetime lifetime = MpsrtRuntimeResourceLifetime::Unknown;
+    uint32_t arg_index = 0;
+    bool has_tensor_value = false;
+    GfxMpsrtValue value = 0;
+    GfxMpsrtTensorAbiDesc tensor_desc{};
+};
+
+struct MpsrtExternalBufferBinding {
+    uint32_t arg_index = 0;
+    uint32_t resource_index = 0;
 };
 
 struct MpsrtModel {
@@ -54,8 +78,26 @@ struct MpsrtModel {
     std::vector<GfxMpsrtValue> external_input_values;
     std::vector<GfxMpsrtValue> external_output_values;
     std::vector<GfxMpsrtExternalBufferRole> external_buffer_roles;
+    std::vector<MpsrtRuntimeResource> resources;
+    std::vector<MpsrtExternalBufferBinding> external_buffer_bindings;
     std::vector<GfxMpsrtStorageBridgeDesc> storage_bridges;
 };
+
+const MpsrtRuntimeResource* find_mpsrt_external_resource(const MpsrtModel& model,
+                                                        const MpsrtExternalBufferBinding& binding);
+
+const MpsrtRuntimeResource* find_mpsrt_resource_for_value(const MpsrtModel& model,
+                                                         GfxMpsrtValue value);
+
+bool mpsrt_model_has_external_resource_entries(const MpsrtModel& model);
+
+size_t mpsrt_model_external_buffer_abi_count(const MpsrtModel& model);
+
+size_t mpsrt_model_resource_lifetime_count(const MpsrtModel& model,
+                                           MpsrtRuntimeResourceLifetime lifetime);
+
+bool finalize_mpsrt_model_resources(MpsrtModel& model,
+                                    std::string* error = nullptr);
 
 MpsrtRuntimeStage make_mpsrt_runtime_stage_from_desc(const GfxMpsrtStageDesc& desc,
                                                      const std::string& stage_record_key,

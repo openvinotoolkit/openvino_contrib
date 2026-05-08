@@ -11,6 +11,7 @@
 
 #include "backends/metal/runtime/metal_command_encoder.hpp"
 #include "openvino/core/except.hpp"
+#include "runtime/gfx_mpsrt_kernel_manifest_adapter.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -65,6 +66,16 @@ const MpsrtPreparedMpsPool2D* find_prepared_mps_pool2d(const MpsrtPreparedModel&
     return nullptr;
 }
 
+const MpsrtPreparedMpsResize2D* find_prepared_mps_resize2d(const MpsrtPreparedModel& prepared_model,
+                                                           size_t stage_index) {
+    for (const auto& resize : prepared_model.mps_resize2d_stages) {
+        if (resize.stage_index == stage_index) {
+            return &resize;
+        }
+    }
+    return nullptr;
+}
+
 const MpsrtPreparedMpsSoftmax* find_prepared_mps_softmax(const MpsrtPreparedModel& prepared_model,
                                                          size_t stage_index) {
     for (const auto& softmax : prepared_model.mps_softmax_stages) {
@@ -88,15 +99,6 @@ const MpsrtPreparedMpsTopK* find_prepared_mps_topk(const MpsrtPreparedModel& pre
 bool is_mps_conv2d_stage(GfxMpsrtStageKind kind) {
     return kind == GfxMpsrtStageKind::MPSConv2D ||
            kind == GfxMpsrtStageKind::MPSGroupConv2D;
-}
-
-bool has_value(const std::vector<GfxMpsrtValue>& values, GfxMpsrtValue value) {
-    for (const auto known : values) {
-        if (known == value) {
-            return true;
-        }
-    }
-    return false;
 }
 
 const MpsrtRuntimeTensor* find_tensor(const MpsrtModel& model, GfxMpsrtValue value) {
@@ -131,18 +133,6 @@ bool validate_bound_resource(const GfxMpsrtTensorAbiDesc& desc,
     return true;
 }
 
-bool validate_bound_value_resource(const MpsrtModel& model,
-                                   GfxMpsrtValue value,
-                                   const MpsrtBoundBuffer& bound,
-                                   const std::string& name,
-                                   std::string* error) {
-    const auto* tensor = find_tensor(model, value);
-    if (!tensor) {
-        return fail(error, "GFX MPSRT: " + name + " tensor descriptor is missing");
-    }
-    return validate_bound_resource(tensor->desc, bound, name, error);
-}
-
 void count_transient_resource(const GfxMpsrtTensorAbiDesc& desc, MpsrtBindingBuildResult* result) {
     if (!result) {
         return;
@@ -152,6 +142,197 @@ void count_transient_resource(const GfxMpsrtTensorAbiDesc& desc, MpsrtBindingBui
     } else {
         ++result->transient_buffers_allocated;
     }
+}
+
+void count_external_tensor_resource(GfxMpsrtExternalBufferRole role, MpsrtBindingBuildResult* result) {
+    if (!result) {
+        return;
+    }
+    if (gfx_mpsrt_is_external_output_buffer_role(role)) {
+        ++result->external_outputs_bound;
+    } else {
+        ++result->external_inputs_bound;
+    }
+}
+
+const MpsrtRuntimeResource* find_resource_for_value_and_lifetime(const MpsrtModel& model,
+                                                                 GfxMpsrtValue value,
+                                                                 MpsrtRuntimeResourceLifetime lifetime) {
+    for (const auto& resource : model.resources) {
+        if (resource.has_tensor_value &&
+            resource.value == value &&
+            resource.lifetime == lifetime) {
+            return &resource;
+        }
+    }
+    return nullptr;
+}
+
+const MpsrtPreparedResource* find_prepared_resource(const MpsrtPreparedModel* prepared_model,
+                                                   uint32_t resource_index) {
+    if (!prepared_model) {
+        return nullptr;
+    }
+    for (const auto& resource : prepared_model->resources) {
+        if (resource.resource_index == resource_index) {
+            return &resource;
+        }
+    }
+    return nullptr;
+}
+
+bool validate_bound_resource(const MpsrtRuntimeResource& resource,
+                             const MpsrtBoundBuffer& bound,
+                             const std::string& name,
+                             std::string* error) {
+    if (!resource.has_tensor_value) {
+        return fail(error, "GFX MPSRT: " + name + " resource is not a tensor");
+    }
+    return validate_bound_resource(resource.tensor_desc, bound, name, error);
+}
+
+bool bind_external_tensor_resource(const MpsrtRuntimeResource& resource,
+                                   const MpsrtBoundBuffer& bound,
+                                   const std::string& name,
+                                   MpsrtTensorBindings& bindings,
+                                   MpsrtBindingBuildResult* result,
+                                   std::string* error) {
+    if (resource.lifetime != MpsrtRuntimeResourceLifetime::External) {
+        return fail(error, "GFX MPSRT: " + name + " resource is not external");
+    }
+    if (!validate_bound_resource(resource, bound, name, error)) {
+        return false;
+    }
+    bindings.bind(resource.value, bound);
+    count_external_tensor_resource(resource.role, result);
+    return true;
+}
+
+bool bind_external_value_resource(const MpsrtModel& model,
+                                  GfxMpsrtValue value,
+                                  const MpsrtBoundBuffer& bound,
+                                  const std::string& name,
+                                  MpsrtTensorBindings& bindings,
+                                  MpsrtBindingBuildResult* result,
+                                  std::string* error) {
+    const auto* resource = find_resource_for_value_and_lifetime(model,
+                                                                value,
+                                                                MpsrtRuntimeResourceLifetime::External);
+    if (!resource) {
+        return fail(error, "GFX MPSRT: " + name + " has no external runtime resource");
+    }
+    return bind_external_tensor_resource(*resource, bound, name, bindings, result, error);
+}
+
+bool bind_model_owned_resource(const MpsrtRuntimeResource& resource,
+                               const MpsrtPreparedModel* prepared_model,
+                               MpsrtTensorBindings& bindings,
+                               MpsrtBindingBuildResult* result,
+                               std::string* error) {
+    if (!resource.has_tensor_value) {
+        return fail(error, "GFX MPSRT: model-owned non-tensor resources are not supported");
+    }
+    if (resource.role != GfxMpsrtExternalBufferRole::ConstBuffer) {
+        return fail(error, "GFX MPSRT: model-owned resource must be a const buffer");
+    }
+    const auto* prepared = find_prepared_resource(prepared_model, resource.resource_index);
+    if (!prepared) {
+        return fail(error,
+                    "GFX MPSRT: model-owned resource " +
+                        std::to_string(resource.resource_index) + " is missing from prepared resources");
+    }
+    if (prepared->lifetime != MpsrtRuntimeResourceLifetime::Model ||
+        !prepared->has_tensor_value ||
+        prepared->value != resource.value ||
+        !prepared->buffer) {
+        return fail(error, "GFX MPSRT: prepared model resource is not bindable");
+    }
+    MpsrtBoundBuffer bound{(__bridge void*)prepared->buffer, prepared->offset};
+    if (!validate_bound_resource(resource,
+                                 bound,
+                                 "model-owned binding for resource " +
+                                     std::to_string(resource.resource_index),
+                                 error)) {
+        return false;
+    }
+    bindings.bind(resource.value, bound);
+    if (result) {
+        ++result->model_resources_bound;
+    }
+    return true;
+}
+
+bool bind_prepared_transient_resource(const MpsrtRuntimeResource& resource,
+                                      const MpsrtPreparedModel* prepared_model,
+                                      MpsrtTensorBindings& bindings,
+                                      MpsrtBindingBuildResult* result,
+                                      std::string* error) {
+    if (!resource.has_tensor_value) {
+        return fail(error, "GFX MPSRT: transient non-tensor resources are not supported");
+    }
+    const auto* prepared = find_prepared_resource(prepared_model, resource.resource_index);
+    if (!prepared) {
+        return fail(error,
+                    "GFX MPSRT: transient resource " +
+                        std::to_string(resource.resource_index) + " is missing from prepared resources");
+    }
+    if (prepared->lifetime != MpsrtRuntimeResourceLifetime::Transient ||
+        !prepared->has_tensor_value ||
+        prepared->value != resource.value) {
+        return fail(error, "GFX MPSRT: prepared transient resource is not bindable");
+    }
+    MpsrtBoundBuffer allocated{};
+    if (tensor_requires_image_binding(resource.tensor_desc)) {
+        allocated = make_mpsrt_bound_image((__bridge void*)prepared->texture);
+    } else {
+        allocated = {(__bridge void*)prepared->buffer, prepared->offset};
+    }
+    if (!validate_bound_resource(resource,
+                                 allocated,
+                                 "transient binding for resource " + std::to_string(resource.resource_index),
+                                 error)) {
+        return false;
+    }
+    bindings.bind(resource.value, allocated);
+    count_transient_resource(resource.tensor_desc, result);
+    return true;
+}
+
+bool bind_unbound_owned_resources(const MpsrtModel& model,
+                                  const MpsrtPreparedModel* prepared_model,
+                                  MpsrtTensorBindings& bindings,
+                                  MpsrtBindingBuildResult* result,
+                                  std::string* error) {
+    for (const auto& resource : model.resources) {
+        switch (resource.lifetime) {
+            case MpsrtRuntimeResourceLifetime::External:
+                if (resource.has_tensor_value && !bindings.lookup(resource.value)) {
+                    return fail(error,
+                                "GFX MPSRT: external tensor resource " +
+                                    std::to_string(resource.resource_index) + " is not bound");
+                }
+                break;
+            case MpsrtRuntimeResourceLifetime::Model:
+                if (resource.has_tensor_value && bindings.lookup(resource.value)) {
+                    break;
+                }
+                if (!bind_model_owned_resource(resource, prepared_model, bindings, result, error)) {
+                    return false;
+                }
+                break;
+            case MpsrtRuntimeResourceLifetime::Transient:
+                if (resource.has_tensor_value && bindings.lookup(resource.value)) {
+                    break;
+                }
+                if (!bind_prepared_transient_resource(resource, prepared_model, bindings, result, error)) {
+                    return false;
+                }
+                break;
+            case MpsrtRuntimeResourceLifetime::Unknown:
+                return fail(error, "GFX MPSRT: runtime resource has unknown lifetime");
+        }
+    }
+    return true;
 }
 
 MPSDataType mps_data_type_from_gfx(uint32_t dtype) {
@@ -427,10 +608,10 @@ MpsrtBoundBuffer make_mpsrt_bound_image(void* texture) {
 bool build_mpsrt_tensor_bindings(const MpsrtModel& model,
                                  const std::vector<MpsrtBoundBuffer>& input_buffers,
                                  const std::vector<MpsrtBoundBuffer>& output_buffers,
-                                 const MpsrtTransientAllocator& transient_allocator,
                                  MpsrtTensorBindings& bindings,
                                  MpsrtBindingBuildResult* result,
-                                 std::string* error) {
+                                 std::string* error,
+                                 const MpsrtPreparedModel* prepared_model) {
     if (result) {
         *result = {};
     }
@@ -442,75 +623,44 @@ bool build_mpsrt_tensor_bindings(const MpsrtModel& model,
         return fail(error, "GFX MPSRT: output binding count does not match model output values");
     }
 
+    if (model.resources.empty()) {
+        return fail(error, "GFX MPSRT: runtime resource table is required for tensor bindings");
+    }
     for (size_t i = 0; i < model.input_values.size(); ++i) {
-        if (!validate_bound_value_resource(model,
-                                           model.input_values[i],
-                                           input_buffers[i],
-                                           "input binding at index " + std::to_string(i),
-                                           error)) {
+        if (!bind_external_value_resource(model,
+                                          model.input_values[i],
+                                          input_buffers[i],
+                                          "input binding at index " + std::to_string(i),
+                                          bindings,
+                                          result,
+                                          error)) {
             return false;
-        }
-        bindings.bind(model.input_values[i], input_buffers[i]);
-        if (result) {
-            ++result->external_inputs_bound;
         }
     }
     for (size_t i = 0; i < model.output_values.size(); ++i) {
-        if (!validate_bound_value_resource(model,
-                                           model.output_values[i],
-                                           output_buffers[i],
-                                           "output binding at index " + std::to_string(i),
-                                           error)) {
+        if (!bind_external_value_resource(model,
+                                          model.output_values[i],
+                                          output_buffers[i],
+                                          "output binding at index " + std::to_string(i),
+                                          bindings,
+                                          result,
+                                          error)) {
             return false;
         }
-        bindings.bind(model.output_values[i], output_buffers[i]);
-        if (result) {
-            ++result->external_outputs_bound;
-        }
     }
-
-    for (const auto& tensor : model.tensors) {
-        if (bindings.lookup(tensor.value)) {
-            continue;
-        }
-
-        const bool is_const = (tensor.desc.flags & GfxMpsrtTensorFlagConst) != 0;
-        if (is_const) {
-            if (result) {
-                ++result->const_tensors_skipped;
-            }
-            continue;
-        }
-
-        const bool is_transient = (tensor.desc.flags & GfxMpsrtTensorFlagTransient) != 0 ||
-                                  (!has_value(model.input_values, tensor.value) &&
-                                   !has_value(model.output_values, tensor.value));
-        if (!is_transient) {
-            return fail(error, "GFX MPSRT: tensor value " + std::to_string(tensor.value) +
-                                   " is neither externally bound nor transient");
-        }
-        if (!transient_allocator) {
-            return fail(error, "GFX MPSRT: transient tensor allocator is not set");
-        }
-        MpsrtBoundBuffer allocated = transient_allocator(tensor);
-        if (!validate_bound_resource(tensor.desc,
-                                     allocated,
-                                     "transient binding for value " + std::to_string(tensor.value),
-                                     error)) {
-            return false;
-        }
-        bindings.bind(tensor.value, allocated);
-        count_transient_resource(tensor.desc, result);
-    }
-    return true;
+    return bind_unbound_owned_resources(model,
+                                        prepared_model,
+                                        bindings,
+                                        result,
+                                        error);
 }
 
 bool build_mpsrt_external_tensor_bindings(const MpsrtModel& model,
                                           const std::vector<MpsrtBoundBuffer>& external_buffers,
-                                          const MpsrtTransientAllocator& transient_allocator,
                                           MpsrtTensorBindings& bindings,
                                           MpsrtBindingBuildResult* result,
-                                          std::string* error) {
+                                          std::string* error,
+                                          const MpsrtPreparedModel* prepared_model) {
     if (result) {
         *result = {};
     }
@@ -521,67 +671,55 @@ bool build_mpsrt_external_tensor_bindings(const MpsrtModel& model,
         external_values = model.input_values;
         external_values.insert(external_values.end(), model.output_values.begin(), model.output_values.end());
     }
-    std::vector<GfxMpsrtValue> external_output_values = model.external_output_values;
-    if (external_output_values.empty()) {
-        external_output_values = model.output_values;
+    if (model.resources.empty()) {
+        return fail(error, "GFX MPSRT: runtime resource table is required for external tensor bindings");
     }
-    if (external_buffers.size() != external_values.size()) {
-        return fail(error, "GFX MPSRT: external binding count does not match model external values");
+    if (external_buffers.size() != mpsrt_model_external_buffer_abi_count(model)) {
+        return fail(error, "GFX MPSRT: external binding count does not match model external buffer ABI");
     }
-
-    for (size_t i = 0; i < external_values.size(); ++i) {
-        if (!validate_bound_value_resource(model,
-                                           external_values[i],
-                                           external_buffers[i],
-                                           "external binding at index " + std::to_string(i),
-                                           error)) {
-            return false;
+    if (!model.external_buffer_bindings.empty()) {
+        for (const auto& external : model.external_buffer_bindings) {
+            const auto* resource = find_mpsrt_external_resource(model, external);
+            if (!resource) {
+                return fail(error, "GFX MPSRT: external binding references an invalid resource");
+            }
+            if (!resource->has_tensor_value) {
+                if (result) {
+                    ++result->external_resources_bound;
+                }
+                continue;
+            }
+            if (external.arg_index >= external_buffers.size()) {
+                return fail(error, "GFX MPSRT: external buffer ABI index is out of range");
+            }
+            if (!bind_external_tensor_resource(*resource,
+                                               external_buffers[external.arg_index],
+                                               "external binding at ABI index " +
+                                                   std::to_string(external.arg_index),
+                                               bindings,
+                                               result,
+                                               error)) {
+                return false;
+            }
         }
-        bindings.bind(external_values[i], external_buffers[i]);
-        if (result) {
-            if (has_value(external_output_values, external_values[i])) {
-                ++result->external_outputs_bound;
-            } else {
-                ++result->external_inputs_bound;
+    } else {
+        for (size_t i = 0; i < external_values.size(); ++i) {
+            if (!bind_external_value_resource(model,
+                                              external_values[i],
+                                              external_buffers[i],
+                                              "external binding at index " + std::to_string(i),
+                                              bindings,
+                                              result,
+                                              error)) {
+                return false;
             }
         }
     }
-
-    for (const auto& tensor : model.tensors) {
-        if (bindings.lookup(tensor.value)) {
-            continue;
-        }
-
-        const bool is_const = (tensor.desc.flags & GfxMpsrtTensorFlagConst) != 0;
-        if (is_const) {
-            if (result) {
-                ++result->const_tensors_skipped;
-            }
-            continue;
-        }
-
-        const bool is_transient = (tensor.desc.flags & GfxMpsrtTensorFlagTransient) != 0 ||
-                                  (!has_value(model.input_values, tensor.value) &&
-                                   !has_value(model.output_values, tensor.value) &&
-                                   !has_value(external_values, tensor.value));
-        if (!is_transient) {
-            return fail(error, "GFX MPSRT: tensor value " + std::to_string(tensor.value) +
-                                   " is neither externally bound nor transient");
-        }
-        if (!transient_allocator) {
-            return fail(error, "GFX MPSRT: transient tensor allocator is not set");
-        }
-        MpsrtBoundBuffer allocated = transient_allocator(tensor);
-        if (!validate_bound_resource(tensor.desc,
-                                     allocated,
-                                     "transient binding for value " + std::to_string(tensor.value),
-                                     error)) {
-            return false;
-        }
-        bindings.bind(tensor.value, allocated);
-        count_transient_resource(tensor.desc, result);
-    }
-    return true;
+    return bind_unbound_owned_resources(model,
+                                        prepared_model,
+                                        bindings,
+                                        result,
+                                        error);
 }
 
 MpsrtPreparedMslDispatch make_prepared_msl_dispatch_from_pipeline(const MpsrtRuntimeStage& stage,
@@ -1084,6 +1222,98 @@ bool MpsrtRequest::encode_mps_pool2d(GpuCommandBufferHandle command_buffer,
     return true;
 }
 
+bool MpsrtRequest::encode_mps_resize2d(GpuCommandBufferHandle command_buffer,
+                                       const MpsrtModel& model,
+                                       const MpsrtRuntimeStage& stage,
+                                       const MpsrtPreparedMpsResize2D& prepared,
+                                       const MpsrtTensorBindings& bindings,
+                                       const KernelExecutionHooks* hooks,
+                                       MpsrtMpsResize2DEncodeResult* result,
+                                       std::string* error) const {
+    if (result) {
+        *result = {};
+    }
+    OPENVINO_ASSERT(command_buffer, "GFX MPSRT: command buffer is null");
+    if (stage.kind != GfxMpsrtStageKind::MPSResize2D) {
+        return fail(error, "GFX MPSRT: cannot encode non-Resize2D stage with MPS Resize2D");
+    }
+    if (!prepared.kernel) {
+        return fail(error, "GFX MPSRT: prepared MPS Resize2D kernel is null");
+    }
+    if (stage.resize2d_desc.nearest != 0) {
+        return fail(error, "GFX MPSRT: MPS Resize2D encode supports bilinear mode only");
+    }
+    if (stage.inputs.size() != 1 || stage.outputs.size() != 1 || stage.output_descs.size() != 1) {
+        return fail(error, "GFX MPSRT: MPS Resize2D requires one input and one output");
+    }
+
+    const auto* input_tensor = find_tensor(model, stage.inputs[0]);
+    if (!input_tensor) {
+        return fail(error, "GFX MPSRT: MPS Resize2D input tensor descriptor is missing");
+    }
+
+    MpsrtBoundBuffer input_binding;
+    MpsrtBoundBuffer output_binding;
+    if (!lookup_bound_image(bindings, stage.inputs[0], "input", input_binding, error) ||
+        !lookup_bound_image(bindings, stage.outputs[0], "output", output_binding, error)) {
+        return false;
+    }
+
+    MPSImage* input_image = nil;
+    MPSImage* output_image = nil;
+    if (!make_mps_image_wrapper(input_tensor->desc, input_binding, "input", input_image, error) ||
+        !make_mps_image_wrapper(stage.output_descs.front(), output_binding, "output", output_image, error)) {
+        [input_image release];
+        [output_image release];
+        return false;
+    }
+
+    metal_end_compute_encoder(command_buffer);
+    id<MTLCommandBuffer> command = static_cast<id<MTLCommandBuffer>>(command_buffer);
+    const auto encode_start = hooks && hooks->on_segment ? std::chrono::steady_clock::now()
+                                                         : std::chrono::steady_clock::time_point{};
+
+    MPSImageBilinearScale* kernel = static_cast<MPSImageBilinearScale*>(prepared.kernel);
+    kernel.edgeMode = MPSImageEdgeModeClamp;
+    kernel.clipRect = MTLRegionMake3D(0,
+                                      0,
+                                      0,
+                                      stage.output_descs.front().image_width,
+                                      stage.output_descs.front().image_height,
+                                      stage.output_descs.front().image_batch);
+    kernel.scaleTransform = nullptr;
+    [kernel encodeToCommandBuffer:command sourceImage:input_image destinationImage:output_image];
+    [input_image release];
+    [output_image release];
+
+    if (result) {
+        result->bound_resources = 2;
+        result->kernel_encodes = 1;
+    }
+    if (hooks && hooks->on_counter) {
+        hooks->on_counter("mpsrt_mps_resize2d_request_encode_count", 1);
+        hooks->on_counter("mpsrt_mps_resize2d_kernel_encode_count", 1);
+        hooks->on_counter("mpsrt_mps_resize2d_bound_resource_count", 2);
+    }
+    if (hooks && hooks->on_segment) {
+        const auto setup_cpu_us = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - encode_start);
+        hooks->on_segment("mpsrt_encode",
+                          stage.stage_record_key,
+                          setup_cpu_us,
+                          0,
+                          2,
+                          0,
+                          0,
+                          0,
+                          0,
+                          -1,
+                          0,
+                          reinterpret_cast<uint64_t>(command_buffer));
+    }
+    return true;
+}
+
 bool MpsrtRequest::encode_mps_softmax(GpuCommandBufferHandle command_buffer,
                                       const MpsrtModel& model,
                                       const MpsrtRuntimeStage& stage,
@@ -1399,6 +1629,32 @@ bool MpsrtRequest::encode_prepared_model(GpuCommandBufferHandle command_buffer,
             }
             if (hooks && hooks->on_counter) {
                 hooks->on_counter("mpsrt_model_request_mps_pool2d_stage_encode_count", 1);
+            }
+            continue;
+        }
+
+        if (stage.kind == GfxMpsrtStageKind::MPSResize2D) {
+            const auto* prepared = find_prepared_mps_resize2d(prepared_model, stage_index);
+            if (!prepared) {
+                return fail(error, "GFX MPSRT: missing prepared MPS Resize2D for stage " + std::to_string(stage_index));
+            }
+            MpsrtMpsResize2DEncodeResult stage_result;
+            if (!encode_mps_resize2d(command_buffer,
+                                     model,
+                                     stage,
+                                     *prepared,
+                                     bindings,
+                                     hooks,
+                                     &stage_result,
+                                     error)) {
+                return false;
+            }
+            if (result) {
+                ++result->encoded_mps_resize2d_stages;
+                result->bound_buffers += stage_result.bound_resources;
+            }
+            if (hooks && hooks->on_counter) {
+                hooks->on_counter("mpsrt_model_request_mps_resize2d_stage_encode_count", 1);
             }
             continue;
         }

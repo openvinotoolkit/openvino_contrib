@@ -184,6 +184,20 @@ inline std::vector<GfxMpsrtExternalBufferRole> gfx_mpsrt_external_buffer_roles_f
     return roles;
 }
 
+inline std::vector<GfxMpsrtExternalBufferRole> gfx_mpsrt_external_buffer_roles_from_direct_io_spec(
+    const GfxKernelExternalBufferAbiSpec& spec) {
+    const uint32_t direct_io_count = spec.direct_input_count + spec.direct_output_count;
+    if (!spec.valid || direct_io_count == 0 || spec.direct_output_count == 0) {
+        return {};
+    }
+
+    std::vector<GfxMpsrtExternalBufferRole> roles;
+    roles.reserve(direct_io_count);
+    roles.insert(roles.end(), spec.direct_input_count, GfxMpsrtExternalBufferRole::TensorInput);
+    roles.insert(roles.end(), spec.direct_output_count, GfxMpsrtExternalBufferRole::TensorOutput);
+    return roles;
+}
+
 inline std::vector<GfxMpsrtValue> gfx_mpsrt_kernel_buffer_order_from_kernel_abi(
     const GfxKernelExternalBufferAbiSpec& spec,
     const std::vector<GfxMpsrtValue>& input_values,
@@ -196,6 +210,8 @@ inline std::vector<GfxMpsrtValue> gfx_mpsrt_kernel_buffer_order_from_kernel_abi(
     const uint32_t semantic_buffer_count = static_cast<uint32_t>(input_values.size() + output_values.size());
     if (!spec.roles.empty()) {
         roles = gfx_mpsrt_external_buffer_roles_from_kernel_roles(spec.roles);
+    } else if (spec.direct_input_count != 0 || spec.direct_output_count != 0) {
+        roles = gfx_mpsrt_external_buffer_roles_from_direct_io_spec(spec);
     } else if (spec.leading_input_count != 0 || spec.leading_output_count != 0) {
         roles = gfx_mpsrt_external_buffer_roles_from_leading_io_spec(spec, semantic_buffer_count);
     }

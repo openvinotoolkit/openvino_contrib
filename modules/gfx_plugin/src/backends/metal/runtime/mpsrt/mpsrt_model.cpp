@@ -62,6 +62,151 @@ bool has_value(const std::unordered_set<GfxMpsrtValue>& values, GfxMpsrtValue va
     return values.find(value) != values.end();
 }
 
+bool has_value(const std::vector<GfxMpsrtValue>& values, GfxMpsrtValue value) {
+    return std::find(values.begin(), values.end(), value) != values.end();
+}
+
+bool tensor_descs_match(const GfxMpsrtTensorAbiDesc& lhs, const GfxMpsrtTensorAbiDesc& rhs) {
+    if (lhs.rank != rhs.rank ||
+        lhs.dtype != rhs.dtype ||
+        lhs.storage != rhs.storage ||
+        lhs.layout != rhs.layout ||
+        lhs.flags != rhs.flags ||
+        lhs.byte_offset != rhs.byte_offset ||
+        lhs.byte_length != rhs.byte_length ||
+        lhs.image_width != rhs.image_width ||
+        lhs.image_height != rhs.image_height ||
+        lhs.image_feature_channels != rhs.image_feature_channels ||
+        lhs.image_batch != rhs.image_batch ||
+        lhs.matrix_rows != rhs.matrix_rows ||
+        lhs.matrix_columns != rhs.matrix_columns ||
+        lhs.matrix_row_bytes != rhs.matrix_row_bytes ||
+        lhs.matrix_count != rhs.matrix_count ||
+        lhs.alias_of != rhs.alias_of) {
+        return false;
+    }
+    for (uint32_t i = 0; i < 8; ++i) {
+        if (lhs.dims[i] != rhs.dims[i] || lhs.strides[i] != rhs.strides[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool resource_table_has_tensor_value(const std::vector<MpsrtRuntimeResource>& resources,
+                                     GfxMpsrtValue value) {
+    return std::any_of(resources.begin(),
+                       resources.end(),
+                       [&](const auto& resource) {
+                           return resource.has_tensor_value && resource.value == value;
+                       });
+}
+
+GfxMpsrtExternalBufferRole tensor_resource_role(const MpsrtModel& model,
+                                                const MpsrtRuntimeTensor& tensor) {
+    if (has_value(model.external_output_values, tensor.value) ||
+        has_value(model.output_values, tensor.value)) {
+        return GfxMpsrtExternalBufferRole::TensorOutput;
+    }
+    if (has_value(model.external_input_values, tensor.value) ||
+        has_value(model.input_values, tensor.value)) {
+        return GfxMpsrtExternalBufferRole::TensorInput;
+    }
+    if ((tensor.desc.flags & GfxMpsrtTensorFlagConst) != 0) {
+        return GfxMpsrtExternalBufferRole::ConstBuffer;
+    }
+    return GfxMpsrtExternalBufferRole::Unknown;
+}
+
+MpsrtRuntimeResourceLifetime tensor_resource_lifetime(const MpsrtModel& model,
+                                                      const MpsrtRuntimeTensor& tensor) {
+    if (has_value(model.external_values, tensor.value) ||
+        has_value(model.input_values, tensor.value) ||
+        has_value(model.output_values, tensor.value) ||
+        (tensor.desc.flags & GfxMpsrtTensorFlagExternalIo) != 0) {
+        return MpsrtRuntimeResourceLifetime::External;
+    }
+    if ((tensor.desc.flags & GfxMpsrtTensorFlagConst) != 0) {
+        return MpsrtRuntimeResourceLifetime::Model;
+    }
+    return MpsrtRuntimeResourceLifetime::Transient;
+}
+
+void append_missing_tensor_resources(MpsrtModel& model) {
+    for (const auto& tensor : model.tensors) {
+        if (resource_table_has_tensor_value(model.resources, tensor.value)) {
+            continue;
+        }
+        MpsrtRuntimeResource resource{};
+        resource.resource_index = static_cast<uint32_t>(model.resources.size());
+        resource.role = tensor_resource_role(model, tensor);
+        resource.lifetime = tensor_resource_lifetime(model, tensor);
+        resource.has_tensor_value = true;
+        resource.value = tensor.value;
+        resource.tensor_desc = tensor.desc;
+        model.resources.push_back(resource);
+    }
+}
+
+bool validate_mpsrt_model_resources(const MpsrtModel& model, std::string* error) {
+    for (size_t i = 0; i < model.resources.size(); ++i) {
+        const auto& resource = model.resources[i];
+        if (resource.resource_index != i) {
+            return fail(error, "GFX MPSRT: resource table index mismatch");
+        }
+        if (resource.lifetime == MpsrtRuntimeResourceLifetime::Unknown) {
+            return fail(error, "GFX MPSRT: resource has unknown lifetime");
+        }
+        if (resource.lifetime == MpsrtRuntimeResourceLifetime::External &&
+            !gfx_mpsrt_is_valid_external_buffer_role(resource.role)) {
+            return fail(error, "GFX MPSRT: external resource has invalid role");
+        }
+        if (!resource.has_tensor_value) {
+            if (resource.lifetime != MpsrtRuntimeResourceLifetime::External) {
+                return fail(error, "GFX MPSRT: non-tensor resource must be external");
+            }
+            continue;
+        }
+        const auto* desc = find_tensor_desc(model.tensors, resource.value);
+        if (!desc) {
+            return fail(error, "GFX MPSRT: tensor resource references unknown value");
+        }
+        if (!tensor_descs_match(resource.tensor_desc, *desc)) {
+            return fail(error, "GFX MPSRT: tensor resource descriptor does not match model tensor");
+        }
+        if (resource.lifetime == MpsrtRuntimeResourceLifetime::Model &&
+            (resource.tensor_desc.flags & GfxMpsrtTensorFlagConst) == 0) {
+            return fail(error, "GFX MPSRT: model resource must be backed by a const tensor");
+        }
+        if (resource.lifetime == MpsrtRuntimeResourceLifetime::Transient &&
+            ((resource.tensor_desc.flags & GfxMpsrtTensorFlagConst) != 0 ||
+             (resource.tensor_desc.flags & GfxMpsrtTensorFlagExternalIo) != 0)) {
+            return fail(error, "GFX MPSRT: transient resource has external or const tensor flags");
+        }
+    }
+    for (const auto& binding : model.external_buffer_bindings) {
+        if (binding.resource_index >= model.resources.size()) {
+            return fail(error, "GFX MPSRT: external binding references missing resource");
+        }
+        const auto& resource = model.resources[binding.resource_index];
+        if (resource.resource_index != binding.resource_index ||
+            resource.arg_index != binding.arg_index ||
+            resource.lifetime != MpsrtRuntimeResourceLifetime::External) {
+            return fail(error, "GFX MPSRT: external binding resource contract mismatch");
+        }
+    }
+    return true;
+}
+
+}  // namespace
+
+bool finalize_mpsrt_model_resources(MpsrtModel& model, std::string* error) {
+    append_missing_tensor_resources(model);
+    return validate_mpsrt_model_resources(model, error);
+}
+
+namespace {
+
 bool validate_value_list(const std::vector<GfxMpsrtValue>& values,
                          const std::unordered_set<GfxMpsrtValue>& known_values,
                          size_t record_index,
@@ -186,32 +331,48 @@ bool materialize_multi_stage_external_buffer_abi(MpsrtModel& model,
     std::vector<GfxMpsrtValue> external_values;
     std::vector<GfxMpsrtValue> external_input_values;
     std::vector<GfxMpsrtValue> external_output_values;
-    std::vector<GfxMpsrtExternalBufferRole> materialized_roles;
+    std::vector<MpsrtRuntimeResource> resources;
+    std::vector<MpsrtExternalBufferBinding> external_buffer_bindings;
     external_values.reserve(roles.size());
     external_input_values.reserve(model.semantic_input_values.size());
     external_output_values.reserve(model.semantic_output_values.size());
-    materialized_roles.reserve(roles.size());
+    resources.reserve(roles.size());
+    external_buffer_bindings.reserve(roles.size());
 
     size_t next_input = 0;
     size_t next_output = 0;
-    for (const auto role : roles) {
+    for (size_t arg_index = 0; arg_index < roles.size(); ++arg_index) {
+        const auto role = roles[arg_index];
+        MpsrtRuntimeResource resource{};
+        resource.resource_index = static_cast<uint32_t>(resources.size());
+        resource.role = role;
+        resource.lifetime = MpsrtRuntimeResourceLifetime::External;
+        resource.arg_index = static_cast<uint32_t>(arg_index);
         switch (role) {
             case GfxMpsrtExternalBufferRole::TensorInput:
                 if (next_input >= model.semantic_input_values.size()) {
                     return fail(error, "GFX MPSRT: external input role has no semantic input value");
                 }
-                external_values.push_back(model.semantic_input_values[next_input]);
-                external_input_values.push_back(model.semantic_input_values[next_input]);
-                materialized_roles.push_back(role);
+                resource.has_tensor_value = true;
+                resource.value = model.semantic_input_values[next_input];
+                if (const auto* desc = find_tensor_desc(model.tensors, resource.value)) {
+                    resource.tensor_desc = *desc;
+                }
+                external_values.push_back(resource.value);
+                external_input_values.push_back(resource.value);
                 ++next_input;
                 break;
             case GfxMpsrtExternalBufferRole::TensorOutput:
                 if (next_output >= model.semantic_output_values.size()) {
                     return fail(error, "GFX MPSRT: external output role has no semantic output value");
                 }
-                external_values.push_back(model.semantic_output_values[next_output]);
-                external_output_values.push_back(model.semantic_output_values[next_output]);
-                materialized_roles.push_back(role);
+                resource.has_tensor_value = true;
+                resource.value = model.semantic_output_values[next_output];
+                if (const auto* desc = find_tensor_desc(model.tensors, resource.value)) {
+                    resource.tensor_desc = *desc;
+                }
+                external_values.push_back(resource.value);
+                external_output_values.push_back(resource.value);
                 ++next_output;
                 break;
             case GfxMpsrtExternalBufferRole::ConstBuffer:
@@ -222,17 +383,21 @@ bool materialize_multi_stage_external_buffer_abi(MpsrtModel& model,
             default:
                 return fail(error, "GFX MPSRT: external buffer role is unknown");
         }
+        external_buffer_bindings.push_back({resource.arg_index, resource.resource_index});
+        resources.push_back(resource);
     }
     if (next_input != model.semantic_input_values.size() ||
         next_output != model.semantic_output_values.size()) {
         return fail(error, "GFX MPSRT: external buffer ABI does not cover semantic model IO");
     }
 
-    model.external_buffer_roles = std::move(materialized_roles);
+    model.external_buffer_roles = std::move(roles);
+    model.resources = std::move(resources);
+    model.external_buffer_bindings = std::move(external_buffer_bindings);
     model.external_values = std::move(external_values);
     model.external_input_values = std::move(external_input_values);
     model.external_output_values = std::move(external_output_values);
-    return true;
+    return finalize_mpsrt_model_resources(model, error);
 }
 
 MpsrtRuntimeStage make_runtime_stage(const GfxMpsrtBuilderRecord& record) {
@@ -250,6 +415,7 @@ MpsrtRuntimeStage make_runtime_stage(const GfxMpsrtBuilderRecord& record) {
     stage.conv2d_desc = record.conv2d_desc;
     stage.gemm_desc = record.gemm_desc;
     stage.pool2d_desc = record.pool2d_desc;
+    stage.resize2d_desc = record.resize2d_desc;
     stage.softmax_desc = record.softmax_desc;
     stage.topk_desc = record.topk_desc;
     stage.inputs = record.inputs;
@@ -293,6 +459,8 @@ bool build_mpsrt_model_from_builder_plan(const GfxMpsrtBuilderPlan& plan,
     model.external_values = plan.input_values;
     model.external_values.insert(model.external_values.end(), plan.output_values.begin(), plan.output_values.end());
     model.external_buffer_roles = plan.external_buffer_roles;
+    model.resources.clear();
+    model.external_buffer_bindings.clear();
     model.storage_bridges = plan.storage_bridges;
 
     for (size_t i = 0; i < plan.records.size(); ++i) {
@@ -394,7 +562,7 @@ bool build_mpsrt_model_from_builder_plan(const GfxMpsrtBuilderPlan& plan,
                                  model.external_output_values.begin(),
                                  model.external_output_values.end());
 
-    return true;
+    return finalize_mpsrt_model_resources(model, error);
 }
 
 MpsrtRuntimeStage make_mpsrt_runtime_stage_from_desc(const GfxMpsrtStageDesc& desc,
@@ -450,6 +618,52 @@ MpsrtModel build_mpsrt_model_from_builder_plan_or_throw(const GfxMpsrtBuilderPla
         OPENVINO_THROW(error);
     }
     return model;
+}
+
+const MpsrtRuntimeResource* find_mpsrt_external_resource(const MpsrtModel& model,
+                                                        const MpsrtExternalBufferBinding& binding) {
+    if (binding.resource_index >= model.resources.size()) {
+        return nullptr;
+    }
+    const auto& resource = model.resources[binding.resource_index];
+    if (resource.resource_index != binding.resource_index || resource.arg_index != binding.arg_index ||
+        resource.lifetime != MpsrtRuntimeResourceLifetime::External) {
+        return nullptr;
+    }
+    return &resource;
+}
+
+const MpsrtRuntimeResource* find_mpsrt_resource_for_value(const MpsrtModel& model,
+                                                         GfxMpsrtValue value) {
+    for (const auto& resource : model.resources) {
+        if (resource.has_tensor_value && resource.value == value) {
+            return &resource;
+        }
+    }
+    return nullptr;
+}
+
+bool mpsrt_model_has_external_resource_entries(const MpsrtModel& model) {
+    return std::any_of(model.external_buffer_bindings.begin(),
+                       model.external_buffer_bindings.end(),
+                       [&](const auto& binding) {
+                           const auto* resource = find_mpsrt_external_resource(model, binding);
+                           return resource && !resource->has_tensor_value;
+                       });
+}
+
+size_t mpsrt_model_external_buffer_abi_count(const MpsrtModel& model) {
+    return model.external_buffer_bindings.empty() ? model.external_values.size()
+                                                 : model.external_buffer_bindings.size();
+}
+
+size_t mpsrt_model_resource_lifetime_count(const MpsrtModel& model,
+                                           MpsrtRuntimeResourceLifetime lifetime) {
+    return static_cast<size_t>(std::count_if(model.resources.begin(),
+                                             model.resources.end(),
+                                             [&](const auto& resource) {
+                                                 return resource.lifetime == lifetime;
+                                             }));
 }
 
 bool adapt_mpsrt_model_to_external_buffer_abi(MpsrtModel& model,
@@ -515,7 +729,27 @@ bool adapt_mpsrt_model_to_external_buffer_abi(MpsrtModel& model,
                                                model.output_values.size(),
                                                GfxMpsrtExternalBufferRole::TensorOutput);
         }
-        return true;
+        model.resources.clear();
+        model.resources.reserve(model.external_buffer_roles.size());
+        model.external_buffer_bindings.clear();
+        model.external_buffer_bindings.reserve(model.external_buffer_roles.size());
+        for (size_t i = 0; i < model.external_buffer_roles.size(); ++i) {
+            MpsrtRuntimeResource resource{};
+            resource.resource_index = static_cast<uint32_t>(model.resources.size());
+            resource.role = model.external_buffer_roles[i];
+            resource.lifetime = MpsrtRuntimeResourceLifetime::External;
+            resource.arg_index = static_cast<uint32_t>(i);
+            if (i < model.external_values.size()) {
+                resource.has_tensor_value = true;
+                resource.value = model.external_values[i];
+                if (const auto* desc = find_tensor_desc(model.tensors, resource.value)) {
+                    resource.tensor_desc = *desc;
+                }
+            }
+            model.external_buffer_bindings.push_back({resource.arg_index, resource.resource_index});
+            model.resources.push_back(resource);
+        }
+        return finalize_mpsrt_model_resources(model, error);
     }
 
     const uint32_t input_arg_count = has_explicit_roles ? (arg_count - role_output_count)
@@ -526,6 +760,8 @@ bool adapt_mpsrt_model_to_external_buffer_abi(MpsrtModel& model,
     model.external_values.clear();
     model.external_input_values.clear();
     model.external_output_values.clear();
+    model.resources.clear();
+    model.external_buffer_bindings.clear();
     model.storage_bridges.clear();
     if (!has_explicit_roles) {
         model.external_buffer_roles.clear();
@@ -535,6 +771,7 @@ bool adapt_mpsrt_model_to_external_buffer_abi(MpsrtModel& model,
     model.output_values.reserve(has_explicit_roles ? role_output_count : output_arg_count);
     model.external_values.reserve(arg_count);
     model.external_buffer_roles.reserve(arg_count);
+    model.resources.reserve(arg_count);
 
     for (uint32_t i = 0; i < arg_count; ++i) {
         const auto value = static_cast<GfxMpsrtValue>(i);
@@ -555,6 +792,16 @@ bool adapt_mpsrt_model_to_external_buffer_abi(MpsrtModel& model,
             model.input_values.push_back(value);
             model.external_input_values.push_back(value);
         }
+        MpsrtRuntimeResource resource{};
+        resource.resource_index = static_cast<uint32_t>(model.resources.size());
+        resource.role = role;
+        resource.lifetime = MpsrtRuntimeResourceLifetime::External;
+        resource.arg_index = i;
+        resource.has_tensor_value = true;
+        resource.value = value;
+        resource.tensor_desc = desc;
+        model.external_buffer_bindings.push_back({resource.arg_index, resource.resource_index});
+        model.resources.push_back(resource);
         model.tensors.push_back({value, desc});
     }
 
@@ -570,7 +817,7 @@ bool adapt_mpsrt_model_to_external_buffer_abi(MpsrtModel& model,
     stage.kernel_buffer_order = std::move(kernel_buffer_order);
     stage.msl_dispatch_desc.input_count = input_arg_count;
     stage.msl_dispatch_desc.output_count = output_arg_count;
-    return true;
+    return finalize_mpsrt_model_resources(model, error);
 }
 
 }  // namespace mpsrt

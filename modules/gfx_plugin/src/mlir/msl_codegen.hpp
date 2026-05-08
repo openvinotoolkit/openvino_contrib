@@ -7,6 +7,7 @@
 #include "kernel_ir/gfx_codegen_backend.hpp"
 #include "kernel_ir/gfx_kernel_spec.hpp"
 #include "mlir/codegen_common.hpp"
+#include "mlir/gfx_mlir_kernel_metadata.hpp"
 #include "mlir/gfx_mpsrt_matmul_metadata.hpp"
 #include "mlir/gfx_mpsrt_source_plan.hpp"
 #include "mlir/IR/MLIRContext.h"
@@ -133,19 +134,19 @@ std::string generate_msl_for_sdpa(ov::element::Type type);
 std::string generate_msl_for_sdpa_with_causal_mask(ov::element::Type type);
 
 struct GfxMslRuntimeBindingPlan {
-    std::vector<size_t> kernel_inputs;
-    size_t kernel_input_arg_count = 0;
-    std::vector<int32_t> operand_kinds;
-    std::vector<int32_t> operand_arg_indices;
-    std::vector<int32_t> scalar_args;
+    KernelRuntimeBindingState runtime_binding;
     size_t scalar_arg_count = 0;
     GfxKernelStageManifest stage_manifest;
 
+    KernelRuntimeBindingState kernel_runtime_binding() const {
+        return runtime_binding;
+    }
+
     bool valid() const {
         return stage_manifest.valid &&
-               !operand_kinds.empty() &&
-               operand_kinds.size() == operand_arg_indices.size() &&
-               (scalar_args.empty() || scalar_args.size() == scalar_arg_count);
+               !runtime_binding.operand_kinds.empty() &&
+               runtime_binding.operand_kinds.size() == runtime_binding.operand_arg_indices.size() &&
+               (runtime_binding.scalar_args.empty() || runtime_binding.scalar_args.size() == scalar_arg_count);
     }
 };
 
@@ -161,12 +162,31 @@ GfxMslRuntimeBindingPlan make_msl_runtime_binding_plan_for_custom_kernel(
     std::string_view entry_point,
     std::vector<size_t> tensor_input_indices,
     std::vector<int32_t> scalar_args);
+GfxMslRuntimeBindingPlan make_msl_runtime_binding_plan_for_direct_io_custom_kernel(
+    std::string_view stage_type,
+    std::string_view entry_point,
+    std::vector<size_t> tensor_input_indices,
+    size_t output_count);
 bool annotate_msl_module_with_runtime_binding_plan(mlir::ModuleOp module,
                                                    const GfxMslRuntimeBindingPlan& plan);
-bool annotate_msl_module_with_runtime_operands(mlir::ModuleOp module,
-                                               const std::vector<int32_t>& operand_kinds,
-                                               const std::vector<int32_t>& operand_arg_indices,
-                                               const std::vector<int32_t>& scalar_values = {});
+
+struct GfxDirectSplitMslKernelSourcePlan {
+    KernelSource source;
+    GfxMslRuntimeBindingPlan binding;
+
+    bool valid() const {
+        return !source.msl_source.empty() && binding.valid();
+    }
+};
+
+GfxDirectSplitMslKernelSourcePlan make_direct_split_msl_kernel_source_plan(
+    std::string_view stage_type,
+    const ov::element::Type& element_type,
+    const ov::Shape& input_shape,
+    const std::vector<size_t>& split_sizes,
+    uint32_t axis_len,
+    uint32_t inner_stride,
+    mlir::ModuleOp module = {});
 
 struct GfxCompressedMatMulMslKernelSourcePlan {
     KernelSource source;

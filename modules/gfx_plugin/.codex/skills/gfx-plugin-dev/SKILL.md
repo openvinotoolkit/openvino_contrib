@@ -43,6 +43,8 @@ Then read the relevant code path:
 - When changing stateful graph behavior, treat `ReadValue` / `Assign` as a dedicated infer-request-state path, not just generic stateless runtime stages.
 - For Metal placement work, keep `gfx_stage_policy.*`, `gfx_mpsrt_*`, `gfx_kernel_manifest.hpp`, `gfx_custom_kernel_families.*`, MLIR attrs, and `src/backends/metal/runtime/mpsrt/*` aligned as one contract.
 - For hybrid Metal paths, also keep `gfx_kernel_manifest.hpp`, `gfx_custom_kernel_families.*`, `gfx_mpsrt_program.hpp`, `gfx_mpsrt_dialect.*`, `gfx_mpsrt_ops.*`, `gfx_apple_stage_pipeline.*`, `gfx_mpsrt_kernel_manifest_adapter.hpp`, `gfx_mpsrt_runtime_abi_pipeline.*`, `gfx_mpsrt_storage_bridge.hpp`, and `gfx_mpsrt_source_plan.hpp` aligned with that contract.
+- For Apple MPS vendor primitive changes, prefer `src/mlir/gfx_apple_vendor_descriptors.*` and `GfxAppleStagePipelineOptions` so Conv2D, Pool2D, Resize2D, Softmax, and TopK descriptor extraction stays shared.
+- For MPSRT request-binding changes, keep `MpsrtRuntimeResource`, `external_buffer_bindings`, prepared model resources, storage bridges, and request-time validation aligned instead of reintroducing ad-hoc transient allocation.
 - For Metal custom MSL source changes, prefer `src/mlir/msl_codegen.*` and `GfxMslRuntimeBindingPlan`; keep module operand annotations, manifest external-buffer roles, inferred `[[buffer(N)]]` counts, and MPSRT `kernel_buffer_order` aligned.
 
 ## Common Workflows
@@ -66,11 +68,11 @@ Check whether the change belongs to one of the current special families:
 - backend-only fused LLM ops such as `GfxSDPAWithCausalMask`
 - Metal-native op contracts that now carry more ABI metadata, such as dilated MaxPool, generalized TopK, ShapeOf, or blocked Conv2D dispatch
 - Metal placement-domain and storage selection, such as Apple MPS image or matrix stages versus Apple MSL buffer dispatch
-- MPSRT runtime-model boundaries, including tensor descriptors, stage record keys, external-buffer roles, and prepared MSL-dispatch pipeline caching
-- generated runtime-ABI call plans, storage bridges, and const-tensor-source attachment for Apple MPS models
+- MPSRT runtime-model boundaries, including tensor descriptors, runtime resources, stage record keys, external-buffer roles, and prepared MSL-dispatch pipeline caching
+- generated runtime-ABI call plans, storage bridges, resource tables, prepared Metal heaps, and const-tensor-source attachment for Apple MPS models
 - typed `GfxMpsrtProgram` validation and generated `gfx_mpsrt_ops` materialization, including cleanup of stale legacy attrs
-- Apple stage-pipeline passes and typed storage-conversion ops for image, matrix, ndarray, or alias boundaries
-- manifest-backed execution-kind routing, including vendor-only stages and mixed vendor-plus-custom multi-stage plans
+- Apple stage-pipeline passes, shared vendor descriptors, and typed storage-conversion ops for image, matrix, ndarray, or alias boundaries
+- manifest-backed execution-kind routing, including vendor-only stages such as MPS Resize2D and mixed vendor-plus-custom multi-stage plans
 - custom-kernel family classification, external-buffer ABI roles, semantic input/output roles, and dispatch-grid policy in `src/kernel_ir/gfx_custom_kernel_families.*`
 - Metal MSL runtime binding plans for tensor inputs, tensor outputs, const tensors, scalar params, and runtime params
 - MLIR-owned Metal MSL source plans such as compressed `MatMul`, SDPA, causal SDPA, and shape/data-movement custom kernels

@@ -4,7 +4,9 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <string>
+#include <vector>
 
 #include "kernel_ir/gfx_codegen_backend.hpp"
 #include "backends/metal/runtime/memory/buffer.hpp"
@@ -22,6 +24,7 @@ class MetalDeviceReuseContext;
 namespace metal {
 namespace mpsrt {
 class MpsrtContext;
+struct MpsrtPreparedModel;
 }  // namespace mpsrt
 }  // namespace metal
 
@@ -68,11 +71,33 @@ public:
     const void* shared_binding_schema_identity() const;
 
 private:
+    enum class MpsrtPreparedModelCacheKind {
+        None,
+        ContextExecution,
+        SingleMslDispatch,
+    };
+
+    struct MpsrtPreparedModelCacheSlot {
+        std::shared_ptr<metal::mpsrt::MpsrtPreparedModel> model;
+        MpsrtPreparedModelCacheKind kind = MpsrtPreparedModelCacheKind::None;
+    };
+
+    void reset_mpsrt_prepared_model_cache();
+    std::shared_ptr<const metal::mpsrt::MpsrtPreparedModel> get_or_prepare_mpsrt_model(
+        MpsrtPreparedModelCacheKind kind,
+        std::string* error,
+        bool* cache_hit);
+
+    static constexpr size_t kMpsrtPreparedModelCacheSlotCount = 3;
+
     MetalDeviceHandle m_device = nullptr;
     void* m_pipeline = nullptr;
     std::shared_ptr<MetalBindingSchema> m_binding_schema;
     std::shared_ptr<const metal::mpsrt::MpsrtModel> m_mpsrt_model;
     std::shared_ptr<metal::mpsrt::MpsrtContext> m_mpsrt_context;
+    std::mutex m_mpsrt_prepared_model_cache_mutex;
+    std::vector<MpsrtPreparedModelCacheSlot> m_mpsrt_prepared_model_cache_slots;
+    size_t m_mpsrt_prepared_model_cache_next_slot = 0;
     std::string m_mpsrt_msl_source;
 };
 

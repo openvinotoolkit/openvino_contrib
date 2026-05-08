@@ -41,6 +41,7 @@ Additional operational docs:
    - backend-specific route selection
    - Metal placement-domain or storage selection such as `apple_mps` image/matrix stages versus `apple_msl` buffer dispatch
    - manifest-backed execution-kind or hybrid-stage planning such as vendor `MPSGemm` plus custom MSL epilogues
+   - Apple MPS vendor primitive descriptor support such as Conv2D, Pool2D, Resize2D, Softmax, or TopK
    - supported-shape or dispatch constraints
    - stateful execution semantics for `ReadValue` / `Assign`
    - dedicated lowering families such as `RMS`, `ScatterUpdate`, or `RoPE`
@@ -58,6 +59,7 @@ Additional operational docs:
    - Metal MSL runtime binding plans, explicit kernel-buffer order, or inferred MSL buffer-argument counts
    - MLIR-owned Metal MSL source generation such as compressed `MatMul`, SDPA, or causal SDPA helpers
    - generated runtime-ABI call-plan or storage-bridge behavior on Metal
+   - MPSRT runtime resource tables, external-buffer bindings, prepared resource heaps, or model/transient resource lifetimes
    - typed `GfxMpsrtProgram` / generated `gfx_mpsrt_ops` behavior or cleanup of stale legacy MPSRT attrs
    - Apple stage-pipeline or typed `gfx.mpsrt` dialect behavior
    - stage-level profiling estimates such as `bytes_in`, `bytes_out`, `macs_est`, or `flops_est`

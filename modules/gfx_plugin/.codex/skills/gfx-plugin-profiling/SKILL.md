@@ -83,6 +83,7 @@ Check:
 - `descriptor_update_count`
 - `binding_prepare_in_infer`
 - backend setup spans in trace output
+- Metal MPSRT counters such as `mpsrt_*_bound_resource_count`, `mpsrt_mps_resize2d_*`, and `mpsrt_encode` segments when resource-table or storage-bridge binding is in the path
 
 ### Compile or cache regression suspicion
 
@@ -90,6 +91,7 @@ Check:
 
 - `compile_ms`
 - `pipeline_creation_count`
+- MPSRT vendor-kernel cache counters such as `mpsrt_mps_resize2d_kernel_cache_hit_count` and `mpsrt_mps_resize2d_kernel_cache_miss_count`
 - `ov::cache_dir` usage
 - whether pipeline creation moved into infer-time spans
 

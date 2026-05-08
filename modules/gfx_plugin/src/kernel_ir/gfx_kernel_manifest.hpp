@@ -229,6 +229,8 @@ struct GfxKernelExternalBufferAbiSpec {
     bool valid = false;
     uint32_t leading_input_count = 0;
     uint32_t leading_output_count = 0;
+    uint32_t direct_input_count = 0;
+    uint32_t direct_output_count = 0;
     std::vector<GfxKernelBufferRole> roles;
 };
 
@@ -246,6 +248,7 @@ struct GfxKernelCustomManifest {
     std::string entry_point;
     GfxKernelExternalBufferAbiSpec external_buffer_abi;
     GfxKernelDispatchPolicy dispatch_policy;
+    std::vector<int32_t> scalar_args;
 };
 
 struct GfxKernelStageManifest {
@@ -274,6 +277,29 @@ inline GfxKernelExternalBufferAbiSpec make_gfx_kernel_roles_abi(std::vector<GfxK
     spec.valid = true;
     spec.roles = std::move(roles);
     return spec;
+}
+
+inline GfxKernelExternalBufferAbiSpec make_gfx_kernel_direct_io_abi(uint32_t input_count,
+                                                                    uint32_t output_count) {
+    GfxKernelExternalBufferAbiSpec spec{};
+    spec.valid = true;
+    spec.direct_input_count = input_count;
+    spec.direct_output_count = output_count;
+    return spec;
+}
+
+inline std::vector<GfxKernelBufferRole> materialize_gfx_kernel_external_buffer_roles(
+    const GfxKernelExternalBufferAbiSpec& abi) {
+    std::vector<GfxKernelBufferRole> roles = abi.roles;
+    if (roles.empty() && (abi.direct_input_count != 0 || abi.direct_output_count != 0)) {
+        roles.insert(roles.end(), abi.direct_input_count, GfxKernelBufferRole::TensorInput);
+        roles.insert(roles.end(), abi.direct_output_count, GfxKernelBufferRole::TensorOutput);
+    }
+    if (roles.empty() && (abi.leading_input_count != 0 || abi.leading_output_count != 0)) {
+        roles.insert(roles.end(), abi.leading_input_count, GfxKernelBufferRole::TensorInput);
+        roles.insert(roles.end(), abi.leading_output_count, GfxKernelBufferRole::TensorOutput);
+    }
+    return roles;
 }
 
 inline GfxKernelDispatchPolicy make_gfx_kernel_dispatch_policy(

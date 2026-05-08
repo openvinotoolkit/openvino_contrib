@@ -43,17 +43,7 @@ mlir::MemRefType to_memref_type(const ov::PartialShape& pshape,
 }
 
 void set_buffer_operand_attrs(mlir::ModuleOp module, mlir::OpBuilder& builder) {
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        mlir::SmallVector<mlir::Attribute, 8> attrs;
-        attrs.reserve(values.size());
-        for (int32_t value : values) {
-            attrs.push_back(builder.getI32IntegerAttr(value));
-        }
-        return builder.getArrayAttr(attrs);
-    };
     module->setAttr("gfx.fixed_arg_count", builder.getI32IntegerAttr(3));
-    module->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1}));
-    module->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2}));
 }
 
 void set_dispatch_attrs(mlir::ModuleOp module,

@@ -191,12 +191,38 @@ inline std::vector<uint32_t> gfx_mpsrt_read_u32_vector_attr(mlir::Operation* mod
     return values;
 }
 
+inline std::vector<int32_t> gfx_mpsrt_read_i32_vector_attr(mlir::Operation* module,
+                                                           const std::string& name) {
+    std::vector<int32_t> values;
+    auto attr = module->getAttrOfType<mlir::ArrayAttr>(name);
+    if (!attr) {
+        return values;
+    }
+    values.reserve(attr.size());
+    for (auto value_attr : attr) {
+        if (auto int_attr = mlir::dyn_cast<mlir::IntegerAttr>(value_attr)) {
+            values.push_back(static_cast<int32_t>(int_attr.getInt()));
+        }
+    }
+    return values;
+}
+
 inline mlir::ArrayAttr gfx_mpsrt_u32_vector_attr(mlir::Builder& builder,
                                                  const std::vector<uint32_t>& values) {
     llvm::SmallVector<mlir::Attribute, 8> attrs;
     attrs.reserve(values.size());
     for (const auto value : values) {
         attrs.push_back(builder.getI32IntegerAttr(static_cast<int32_t>(value)));
+    }
+    return builder.getArrayAttr(attrs);
+}
+
+inline mlir::ArrayAttr gfx_mpsrt_i32_vector_attr(mlir::Builder& builder,
+                                                 const std::vector<int32_t>& values) {
+    llvm::SmallVector<mlir::Attribute, 8> attrs;
+    attrs.reserve(values.size());
+    for (const auto value : values) {
+        attrs.push_back(builder.getI32IntegerAttr(value));
     }
     return builder.getArrayAttr(attrs);
 }
@@ -287,6 +313,10 @@ inline void gfx_mpsrt_set_stage_manifest_attrs(mlir::Operation* module,
         module->setAttr(prefix + ".kernel.dispatch_policy.precompiled_binary_required",
                         builder.getBoolAttr(dispatch_policy.precompiled_binary_required));
     }
+    if (!manifest.custom_kernel.scalar_args.empty()) {
+        module->setAttr(prefix + ".kernel.scalar_args",
+                        gfx_mpsrt_i32_vector_attr(builder, manifest.custom_kernel.scalar_args));
+    }
 
     const auto& abi = manifest.custom_kernel.external_buffer_abi;
     if (!abi.valid) {
@@ -297,6 +327,10 @@ inline void gfx_mpsrt_set_stage_manifest_attrs(mlir::Operation* module,
                     builder.getI32IntegerAttr(static_cast<int32_t>(abi.leading_input_count)));
     module->setAttr(prefix + ".kernel.external_buffer_abi.leading_output_count",
                     builder.getI32IntegerAttr(static_cast<int32_t>(abi.leading_output_count)));
+    module->setAttr(prefix + ".kernel.external_buffer_abi.direct_input_count",
+                    builder.getI32IntegerAttr(static_cast<int32_t>(abi.direct_input_count)));
+    module->setAttr(prefix + ".kernel.external_buffer_abi.direct_output_count",
+                    builder.getI32IntegerAttr(static_cast<int32_t>(abi.direct_output_count)));
     if (!abi.roles.empty()) {
         module->setAttr(prefix + ".kernel.external_buffer_abi.roles",
                         gfx_mpsrt_u32_vector_attr(builder, gfx_kernel_buffer_roles_to_attr_values(abi.roles)));
@@ -393,6 +427,12 @@ inline bool gfx_mpsrt_read_stage_manifest_attrs(mlir::Operation* module,
         (void)gfx_mpsrt_read_i32_attr(module,
                                       prefix + ".kernel.external_buffer_abi.leading_output_count",
                                       abi.leading_output_count);
+        (void)gfx_mpsrt_read_i32_attr(module,
+                                      prefix + ".kernel.external_buffer_abi.direct_input_count",
+                                      abi.direct_input_count);
+        (void)gfx_mpsrt_read_i32_attr(module,
+                                      prefix + ".kernel.external_buffer_abi.direct_output_count",
+                                      abi.direct_output_count);
         const auto role_values = gfx_mpsrt_read_u32_vector_attr(module,
                                                                 prefix + ".kernel.external_buffer_abi.roles");
         abi.roles.reserve(role_values.size());
@@ -400,6 +440,7 @@ inline bool gfx_mpsrt_read_stage_manifest_attrs(mlir::Operation* module,
             abi.roles.push_back(static_cast<GfxKernelBufferRole>(role_value));
         }
     }
+    custom.scalar_args = gfx_mpsrt_read_i32_vector_attr(module, prefix + ".kernel.scalar_args");
     return true;
 }
 
@@ -717,6 +758,28 @@ inline bool gfx_mpsrt_read_pool2d_desc_attrs(mlir::Operation* module,
     return read_any;
 }
 
+inline void gfx_mpsrt_set_resize2d_desc_attrs(mlir::Operation* module,
+                                              const std::string& prefix,
+                                              const GfxMpsrtResize2DAbiDesc& desc) {
+    mlir::Builder builder(module->getContext());
+    module->setAttr(prefix + ".nearest",
+                    builder.getI32IntegerAttr(static_cast<int32_t>(desc.nearest)));
+    module->setAttr(prefix + ".align_corners",
+                    builder.getI32IntegerAttr(static_cast<int32_t>(desc.align_corners)));
+    module->setAttr(prefix + ".half_pixel_centers",
+                    builder.getI32IntegerAttr(static_cast<int32_t>(desc.half_pixel_centers)));
+}
+
+inline bool gfx_mpsrt_read_resize2d_desc_attrs(mlir::Operation* module,
+                                               const std::string& prefix,
+                                               GfxMpsrtResize2DAbiDesc& desc) {
+    bool read_any = false;
+    read_any |= gfx_mpsrt_read_i32_attr(module, prefix + ".nearest", desc.nearest);
+    read_any |= gfx_mpsrt_read_i32_attr(module, prefix + ".align_corners", desc.align_corners);
+    read_any |= gfx_mpsrt_read_i32_attr(module, prefix + ".half_pixel_centers", desc.half_pixel_centers);
+    return read_any;
+}
+
 inline void gfx_mpsrt_set_softmax_desc_attrs(mlir::Operation* module,
                                              const std::string& prefix,
                                              const GfxMpsrtSoftmaxAbiDesc& desc) {
@@ -836,6 +899,16 @@ inline void gfx_mpsrt_set_pool2d_desc_attrs(mlir::Operation* module,
 inline bool gfx_mpsrt_read_pool2d_desc_attrs(mlir::Operation* module,
                                              GfxMpsrtPool2DAbiDesc& desc) {
     return gfx_mpsrt_read_pool2d_desc_attrs(module, "gfx.mpsrt.pool2d", desc);
+}
+
+inline void gfx_mpsrt_set_resize2d_desc_attrs(mlir::Operation* module,
+                                              const GfxMpsrtResize2DAbiDesc& desc) {
+    gfx_mpsrt_set_resize2d_desc_attrs(module, "gfx.mpsrt.resize2d", desc);
+}
+
+inline bool gfx_mpsrt_read_resize2d_desc_attrs(mlir::Operation* module,
+                                               GfxMpsrtResize2DAbiDesc& desc) {
+    return gfx_mpsrt_read_resize2d_desc_attrs(module, "gfx.mpsrt.resize2d", desc);
 }
 
 inline void gfx_mpsrt_set_softmax_desc_attrs(mlir::Operation* module,
@@ -1046,6 +1119,9 @@ inline void gfx_mpsrt_set_stage_desc_attrs(mlir::Operation* module,
     if (stage.kind == GfxMpsrtStageKind::MPSPool2D) {
         gfx_mpsrt_set_pool2d_desc_attrs(module, prefix + ".pool2d", stage.pool2d_desc);
     }
+    if (stage.kind == GfxMpsrtStageKind::MPSResize2D) {
+        gfx_mpsrt_set_resize2d_desc_attrs(module, prefix + ".resize2d", stage.resize2d_desc);
+    }
     if (stage.kind == GfxMpsrtStageKind::MPSSoftmax) {
         gfx_mpsrt_set_softmax_desc_attrs(module, prefix + ".softmax", stage.softmax_desc);
     }
@@ -1108,6 +1184,9 @@ inline bool gfx_mpsrt_read_stage_desc_attrs(mlir::Operation* module,
     }
     if (stage.kind == GfxMpsrtStageKind::MPSPool2D) {
         (void)gfx_mpsrt_read_pool2d_desc_attrs(module, prefix + ".pool2d", stage.pool2d_desc);
+    }
+    if (stage.kind == GfxMpsrtStageKind::MPSResize2D) {
+        (void)gfx_mpsrt_read_resize2d_desc_attrs(module, prefix + ".resize2d", stage.resize2d_desc);
     }
     if (stage.kind == GfxMpsrtStageKind::MPSSoftmax) {
         (void)gfx_mpsrt_read_softmax_desc_attrs(module, prefix + ".softmax", stage.softmax_desc);
@@ -1186,6 +1265,25 @@ inline bool gfx_mpsrt_external_buffer_abi_from_kernel_manifest(mlir::ModuleOp mo
         return gfx_mpsrt_finalize_external_buffer_abi(abi);
     }
 
+    if (spec.direct_input_count != 0 || spec.direct_output_count != 0) {
+        if (spec.direct_output_count == 0) {
+            return false;
+        }
+        abi.has_buffer_count = true;
+        abi.buffer_count = spec.direct_input_count + spec.direct_output_count;
+        abi.has_output_buffer_count = true;
+        abi.output_buffer_count = spec.direct_output_count;
+        abi.has_buffer_roles = true;
+        abi.buffer_roles.reserve(abi.buffer_count);
+        abi.buffer_roles.insert(abi.buffer_roles.end(),
+                                spec.direct_input_count,
+                                GfxMpsrtExternalBufferRole::TensorInput);
+        abi.buffer_roles.insert(abi.buffer_roles.end(),
+                                spec.direct_output_count,
+                                GfxMpsrtExternalBufferRole::TensorOutput);
+        return gfx_mpsrt_finalize_external_buffer_abi(abi);
+    }
+
     const uint32_t hinted_buffer_count = known_buffer_count;
     (void)known_output_buffer_count;
 
@@ -1218,6 +1316,12 @@ inline GfxMpsrtExternalBufferAbiPlan read_module_mpsrt_external_buffer_abi(mlir:
 
     if (gfx_mpsrt_external_buffer_abi_from_kernel_manifest(module, abi)) {
         return abi;
+    }
+
+    GfxMpsrtProgram ops_program{};
+    if (read_module_mpsrt_ops_program(module, ops_program) &&
+        ops_program.external_buffer_abi.valid) {
+        return ops_program.external_buffer_abi;
     }
 
     return abi;
@@ -1260,6 +1364,9 @@ inline bool read_module_mpsrt_stage_plan(mlir::ModuleOp module,
     }
     if (out.stage.kind == GfxMpsrtStageKind::MPSPool2D) {
         (void)detail::gfx_mpsrt_read_pool2d_desc_attrs(module, out.stage.pool2d_desc);
+    }
+    if (out.stage.kind == GfxMpsrtStageKind::MPSResize2D) {
+        (void)detail::gfx_mpsrt_read_resize2d_desc_attrs(module, out.stage.resize2d_desc);
     }
     if (out.stage.kind == GfxMpsrtStageKind::MPSSoftmax) {
         (void)detail::gfx_mpsrt_read_softmax_desc_attrs(module, out.stage.softmax_desc);

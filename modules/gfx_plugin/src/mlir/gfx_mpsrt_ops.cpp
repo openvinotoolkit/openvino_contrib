@@ -29,6 +29,8 @@ std::string mpsrt_op_name_for_stage(GfxMpsrtStageKind kind) {
             return "gfx.mpsrt.group_conv2d";
         case GfxMpsrtStageKind::MPSPool2D:
             return "gfx.mpsrt.pool2d";
+        case GfxMpsrtStageKind::MPSResize2D:
+            return "gfx.mpsrt.resize2d";
         case GfxMpsrtStageKind::MPSGemm:
             return "gfx.mpsrt.gemm";
         case GfxMpsrtStageKind::MPSSoftmax:

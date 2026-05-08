@@ -6,16 +6,23 @@
 #include <algorithm>
 #include <cstddef>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
+#include "kernel_ir/gfx_custom_kernel_families.hpp"
 #include "kernel_ir/gfx_kernel_dispatch.hpp"
 #include "kernel_ir/gfx_kernel_inputs.hpp"
+#include "kernel_ir/gfx_kernel_manifest.hpp"
 #include "kernel_ir/gfx_kernel_signature.hpp"
+#include "mlir/gfx_mpsrt_metadata.hpp"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Builders.h"
+#include "openvino/core/except.hpp"
 #include "llvm/Support/Casting.h"
 
 namespace ov {
@@ -26,6 +33,158 @@ struct KernelOperandMetadata {
     std::vector<int32_t> operand_arg_indices;
     std::vector<int32_t> scalar_args;
 };
+
+struct KernelRuntimeBindingState {
+    std::vector<size_t> inputs;
+    size_t input_arg_count = 0;
+    std::vector<int32_t> operand_kinds;
+    std::vector<int32_t> operand_arg_indices;
+    std::vector<int32_t> scalar_args;
+};
+
+struct GfxKernelRuntimeBindingPlan {
+    bool valid = false;
+    KernelRuntimeBindingState runtime_binding;
+    size_t scalar_arg_count = 0;
+    GfxKernelStageManifest stage_manifest;
+};
+
+inline KernelRuntimeBindingState make_kernel_runtime_binding_state(std::vector<size_t> inputs,
+                                                                   size_t input_arg_count,
+                                                                   std::vector<int32_t> operand_kinds,
+                                                                   std::vector<int32_t> operand_arg_indices,
+                                                                   std::vector<int32_t> scalar_args = {}) {
+    return KernelRuntimeBindingState{std::move(inputs),
+                                     input_arg_count,
+                                     std::move(operand_kinds),
+                                     std::move(operand_arg_indices),
+                                     std::move(scalar_args)};
+}
+
+inline GfxKernelRuntimeBindingPlan make_kernel_runtime_binding_plan_from_stage_manifest(
+    const GfxKernelStageManifest& manifest,
+    std::vector<size_t> tensor_input_indices) {
+    GfxKernelRuntimeBindingPlan plan{};
+    if (!manifest.valid ||
+        !manifest.custom_kernel.valid ||
+        !manifest.custom_kernel.external_buffer_abi.valid) {
+        return plan;
+    }
+
+    const auto roles = materialize_gfx_kernel_external_buffer_roles(manifest.custom_kernel.external_buffer_abi);
+    if (roles.empty()) {
+        return plan;
+    }
+
+    plan.valid = true;
+    plan.stage_manifest = manifest;
+    plan.runtime_binding.operand_kinds.reserve(roles.size());
+    plan.runtime_binding.operand_arg_indices.reserve(roles.size());
+
+    size_t logical_input_arg_count = 0;
+    for (const auto role : roles) {
+        if (is_gfx_kernel_buffer_role(role) && !is_gfx_kernel_output_role(role)) {
+            ++logical_input_arg_count;
+        }
+    }
+
+    size_t next_tensor_input = 0;
+    size_t next_extra_buffer = 0;
+    size_t output_count = 0;
+    for (const auto role : roles) {
+        if (is_gfx_kernel_scalar_role(role)) {
+            plan.runtime_binding.operand_kinds.push_back(0);
+            plan.runtime_binding.operand_arg_indices.push_back(-1);
+            ++plan.scalar_arg_count;
+            continue;
+        }
+
+        plan.runtime_binding.operand_kinds.push_back(1);
+        switch (role) {
+            case GfxKernelBufferRole::TensorInput:
+                if (next_tensor_input >= tensor_input_indices.size()) {
+                    return {};
+                }
+                plan.runtime_binding.operand_arg_indices.push_back(static_cast<int32_t>(next_tensor_input));
+                plan.runtime_binding.inputs.push_back(tensor_input_indices[next_tensor_input++]);
+                break;
+            case GfxKernelBufferRole::ConstTensor:
+            case GfxKernelBufferRole::RuntimeParams:
+                plan.runtime_binding.operand_arg_indices.push_back(
+                    static_cast<int32_t>(tensor_input_indices.size() + next_extra_buffer++));
+                break;
+            case GfxKernelBufferRole::TensorOutput:
+                plan.runtime_binding.operand_arg_indices.push_back(
+                    static_cast<int32_t>(logical_input_arg_count + output_count));
+                ++output_count;
+                break;
+            case GfxKernelBufferRole::ScalarParam:
+                break;
+            case GfxKernelBufferRole::Unknown:
+            default:
+                return {};
+        }
+    }
+    if (next_tensor_input != tensor_input_indices.size() || output_count == 0) {
+        return {};
+    }
+    plan.runtime_binding.input_arg_count = logical_input_arg_count;
+    return plan;
+}
+
+inline GfxKernelRuntimeBindingPlan make_kernel_runtime_binding_plan_for_custom_kernel(
+    std::string_view stage_type,
+    std::string_view entry_point,
+    std::vector<size_t> tensor_input_indices,
+    std::vector<int32_t> scalar_args = {},
+    GfxKernelBackendDomain backend_domain = GfxKernelBackendDomain::AppleMsl,
+    GfxKernelStorageKind storage = GfxKernelStorageKind::Buffer,
+    std::string_view specialization_prefix = "apple_msl:buffer:") {
+    const auto custom_kernel_plan =
+        make_gfx_custom_kernel_stage_plan(stage_type,
+                                          entry_point,
+                                          backend_domain,
+                                          storage,
+                                          specialization_prefix);
+    if (!custom_kernel_plan.valid) {
+        return {};
+    }
+    auto plan = make_kernel_runtime_binding_plan_from_stage_manifest(custom_kernel_plan.stage_manifest,
+                                                                     std::move(tensor_input_indices));
+    if (!plan.valid || plan.scalar_arg_count != scalar_args.size()) {
+        return {};
+    }
+    plan.runtime_binding.scalar_args = std::move(scalar_args);
+    plan.stage_manifest.custom_kernel.scalar_args = plan.runtime_binding.scalar_args;
+    return plan;
+}
+
+inline mlir::ArrayAttr make_kernel_i32_array_attr(mlir::MLIRContext* ctx, const std::vector<int32_t>& vals) {
+    mlir::OpBuilder builder(ctx);
+    llvm::SmallVector<mlir::Attribute, 8> attrs;
+    attrs.reserve(vals.size());
+    for (auto v : vals) {
+        attrs.push_back(builder.getI32IntegerAttr(v));
+    }
+    return builder.getArrayAttr(attrs);
+}
+
+inline void annotate_kernel_operand_abi_attrs_for_spirv_adapter(mlir::ModuleOp module,
+                                                                const KernelRuntimeBindingState& binding) {
+    OPENVINO_ASSERT(module, "GFX MLIR: SPIR-V kernel operand adapter attrs require a module");
+    OPENVINO_ASSERT(binding.operand_kinds.size() == binding.operand_arg_indices.size(),
+                    "GFX MLIR: SPIR-V kernel operand adapter attr sizes mismatch");
+    module->setAttr("gfx.kernel_operand_kinds",
+                    make_kernel_i32_array_attr(module.getContext(), binding.operand_kinds));
+    module->setAttr("gfx.kernel_operand_arg_indices",
+                    make_kernel_i32_array_attr(module.getContext(), binding.operand_arg_indices));
+    if (!binding.scalar_args.empty()) {
+        module->setAttr("gfx.kernel_scalar_values",
+                        make_kernel_i32_array_attr(module.getContext(), binding.scalar_args));
+    } else {
+        module->removeAttr("gfx.kernel_scalar_values");
+    }
+}
 
 struct KernelRuntimeMetadata {
     bool valid = false;
@@ -330,6 +489,188 @@ inline KernelOperandMetadata extract_kernel_operand_metadata(mlir::ModuleOp modu
     return meta;
 }
 
+inline std::vector<GfxKernelBufferRole> materialize_kernel_external_buffer_roles(
+    const GfxKernelExternalBufferAbiSpec& abi) {
+    return materialize_gfx_kernel_external_buffer_roles(abi);
+}
+
+inline bool extract_kernel_operand_metadata_from_stage_manifest(mlir::ModuleOp module,
+                                                               KernelOperandMetadata& meta,
+                                                               size_t& kernel_input_arg_count,
+                                                               std::string_view entry_point = {}) {
+    GfxKernelStageManifest manifest{};
+    if (!detail::gfx_mpsrt_read_stage_manifest_attrs(module, manifest) ||
+        !manifest.valid ||
+        manifest.backend_domain != GfxKernelBackendDomain::AppleMsl ||
+        manifest.execution_kind != GfxKernelExecutionKind::CustomKernel ||
+        !manifest.custom_kernel.valid ||
+        !manifest.custom_kernel.external_buffer_abi.valid) {
+        return false;
+    }
+    if (!entry_point.empty() && manifest.custom_kernel.entry_point != entry_point) {
+        return false;
+    }
+
+    const auto roles = materialize_kernel_external_buffer_roles(manifest.custom_kernel.external_buffer_abi);
+    if (roles.empty()) {
+        return false;
+    }
+
+    size_t tensor_input_count = 0;
+    size_t logical_input_arg_count = 0;
+    for (const auto role : roles) {
+        if (role == GfxKernelBufferRole::TensorInput) {
+            ++tensor_input_count;
+        }
+        if (is_gfx_kernel_buffer_role(role) && !is_gfx_kernel_output_role(role)) {
+            ++logical_input_arg_count;
+        }
+    }
+
+    KernelOperandMetadata manifest_meta;
+    manifest_meta.operand_kinds.reserve(roles.size());
+    manifest_meta.operand_arg_indices.reserve(roles.size());
+    manifest_meta.scalar_args = manifest.custom_kernel.scalar_args;
+
+    size_t next_tensor_input = 0;
+    size_t next_extra_buffer = 0;
+    size_t output_count = 0;
+    for (const auto role : roles) {
+        if (is_gfx_kernel_scalar_role(role)) {
+            manifest_meta.operand_kinds.push_back(0);
+            manifest_meta.operand_arg_indices.push_back(-1);
+            continue;
+        }
+
+        if (!is_gfx_kernel_buffer_role(role)) {
+            return false;
+        }
+        manifest_meta.operand_kinds.push_back(1);
+        switch (role) {
+            case GfxKernelBufferRole::TensorInput:
+                manifest_meta.operand_arg_indices.push_back(static_cast<int32_t>(next_tensor_input++));
+                break;
+            case GfxKernelBufferRole::ConstTensor:
+            case GfxKernelBufferRole::RuntimeParams:
+                manifest_meta.operand_arg_indices.push_back(
+                    static_cast<int32_t>(tensor_input_count + next_extra_buffer++));
+                break;
+            case GfxKernelBufferRole::TensorOutput:
+                manifest_meta.operand_arg_indices.push_back(
+                    static_cast<int32_t>(logical_input_arg_count + output_count));
+                ++output_count;
+                break;
+            case GfxKernelBufferRole::ScalarParam:
+            case GfxKernelBufferRole::Unknown:
+            default:
+                return false;
+        }
+    }
+    if (next_tensor_input != tensor_input_count || output_count == 0) {
+        return false;
+    }
+
+    meta = std::move(manifest_meta);
+    kernel_input_arg_count = logical_input_arg_count;
+    return true;
+}
+
+inline bool extract_kernel_operand_metadata_from_mpsrt_external_buffer_abi(
+    mlir::ModuleOp module,
+    KernelOperandMetadata& meta,
+    size_t& kernel_input_arg_count) {
+    const auto external_buffer_abi = read_module_mpsrt_external_buffer_abi(module);
+    if (!external_buffer_abi.valid ||
+        !external_buffer_abi.has_buffer_roles ||
+        external_buffer_abi.buffer_roles.empty()) {
+        return false;
+    }
+
+    size_t tensor_input_count = 0;
+    size_t logical_input_arg_count = 0;
+    for (const auto role : external_buffer_abi.buffer_roles) {
+        if (role == GfxMpsrtExternalBufferRole::TensorInput) {
+            ++tensor_input_count;
+        }
+        if (role != GfxMpsrtExternalBufferRole::TensorOutput) {
+            ++logical_input_arg_count;
+        }
+    }
+
+    KernelOperandMetadata abi_meta;
+    abi_meta.operand_kinds.reserve(external_buffer_abi.buffer_roles.size());
+    abi_meta.operand_arg_indices.reserve(external_buffer_abi.buffer_roles.size());
+    abi_meta.scalar_args = extract_kernel_scalar_values(module);
+
+    size_t next_tensor_input = 0;
+    size_t next_extra_buffer = 0;
+    size_t output_count = 0;
+    for (const auto role : external_buffer_abi.buffer_roles) {
+        abi_meta.operand_kinds.push_back(1);
+        switch (role) {
+            case GfxMpsrtExternalBufferRole::TensorInput:
+                abi_meta.operand_arg_indices.push_back(static_cast<int32_t>(next_tensor_input++));
+                break;
+            case GfxMpsrtExternalBufferRole::ConstBuffer:
+            case GfxMpsrtExternalBufferRole::RuntimeParams:
+            case GfxMpsrtExternalBufferRole::Metadata:
+                abi_meta.operand_arg_indices.push_back(
+                    static_cast<int32_t>(tensor_input_count + next_extra_buffer++));
+                break;
+            case GfxMpsrtExternalBufferRole::TensorOutput:
+                abi_meta.operand_arg_indices.push_back(
+                    static_cast<int32_t>(logical_input_arg_count + output_count));
+                ++output_count;
+                break;
+            case GfxMpsrtExternalBufferRole::Unknown:
+            default:
+                return false;
+        }
+    }
+
+    if (next_tensor_input != tensor_input_count ||
+        output_count == 0 ||
+        output_count != external_buffer_abi.output_buffer_count) {
+        return false;
+    }
+
+    meta = std::move(abi_meta);
+    kernel_input_arg_count = logical_input_arg_count;
+    return true;
+}
+
+inline bool infer_kernel_arg_count_from_stage_manifest(mlir::ModuleOp module,
+                                                       size_t& arg_count,
+                                                       std::string_view entry_point = {}) {
+    GfxKernelStageManifest manifest{};
+    if (!detail::gfx_mpsrt_read_stage_manifest_attrs(module, manifest) ||
+        !manifest.valid ||
+        manifest.backend_domain != GfxKernelBackendDomain::AppleMsl ||
+        manifest.execution_kind != GfxKernelExecutionKind::CustomKernel ||
+        !manifest.custom_kernel.valid ||
+        !manifest.custom_kernel.external_buffer_abi.valid) {
+        return false;
+    }
+    if (!entry_point.empty() && manifest.custom_kernel.entry_point != entry_point) {
+        return false;
+    }
+    const auto roles = materialize_kernel_external_buffer_roles(manifest.custom_kernel.external_buffer_abi);
+    if (roles.empty()) {
+        return false;
+    }
+    size_t buffer_arg_count = 0;
+    for (const auto role : roles) {
+        if (is_gfx_kernel_buffer_role(role)) {
+            ++buffer_arg_count;
+        }
+    }
+    if (buffer_arg_count == 0) {
+        return false;
+    }
+    arg_count = buffer_arg_count + manifest.custom_kernel.scalar_args.size();
+    return true;
+}
+
 inline size_t resolve_kernel_runtime_output_args(const KernelArgMappingInfo& mapping,
                                                  const std::shared_ptr<const ov::Node>& node,
                                                  size_t outputs_hint = 0) {
@@ -369,7 +710,8 @@ inline size_t infer_kernel_input_arg_count_from_operand_indices(const std::vecto
 
 inline KernelRuntimeMetadata extract_kernel_runtime_metadata(mlir::ModuleOp module,
                                                              size_t output_arg_count,
-                                                             size_t fallback_input_arg_count) {
+                                                             size_t fallback_input_arg_count,
+                                                             std::string_view entry_point = {}) {
     KernelRuntimeMetadata meta;
     if (!module) {
         return meta;
@@ -377,6 +719,17 @@ inline KernelRuntimeMetadata extract_kernel_runtime_metadata(mlir::ModuleOp modu
     meta.valid = true;
     meta.dispatch = extract_kernel_dispatch_metadata(module);
     meta.force_single_dispatch = extract_kernel_force_single_dispatch(module);
+    if (extract_kernel_operand_metadata_from_stage_manifest(module,
+                                                            meta.operands,
+                                                            meta.kernel_input_arg_count,
+                                                            entry_point)) {
+        return meta;
+    }
+    if (extract_kernel_operand_metadata_from_mpsrt_external_buffer_abi(module,
+                                                                       meta.operands,
+                                                                       meta.kernel_input_arg_count)) {
+        return meta;
+    }
     meta.operands = extract_kernel_operand_metadata(module);
     meta.kernel_input_arg_count =
         infer_kernel_input_arg_count_from_operand_indices(meta.operands.operand_arg_indices,
@@ -388,14 +741,21 @@ inline KernelRuntimeMetadata extract_kernel_runtime_metadata(mlir::ModuleOp modu
 inline KernelRuntimeMetadata extract_kernel_runtime_metadata(mlir::ModuleOp module,
                                                              const KernelArgMappingInfo& mapping,
                                                              const std::shared_ptr<const ov::Node>& node,
-                                                             size_t outputs_hint = 0) {
+                                                             size_t outputs_hint = 0,
+                                                             std::string_view entry_point = {}) {
     const size_t output_arg_count = resolve_kernel_runtime_output_args(mapping, node, outputs_hint);
-    return extract_kernel_runtime_metadata(module, output_arg_count, mapping.buffer_inputs);
+    return extract_kernel_runtime_metadata(module, output_arg_count, mapping.buffer_inputs, entry_point);
 }
 
-inline size_t infer_kernel_arg_count_from_module(mlir::ModuleOp module, size_t fallback) {
+inline size_t infer_kernel_arg_count_from_module(mlir::ModuleOp module,
+                                                size_t fallback,
+                                                std::string_view entry_point = {}) {
     if (!module) {
         return fallback;
+    }
+    size_t manifest_arg_count = 0;
+    if (infer_kernel_arg_count_from_stage_manifest(module, manifest_arg_count, entry_point)) {
+        return manifest_arg_count;
     }
     if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.fixed_arg_count")) {
         const auto value = attr.getInt();

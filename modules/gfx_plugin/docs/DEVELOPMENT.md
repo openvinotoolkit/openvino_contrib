@@ -130,12 +130,14 @@ If the behavior depends on route or scheduling selection, also read:
 - `src/kernel_ir/gfx_kernel_manifest.hpp`
 - `src/kernel_ir/gfx_custom_kernel_families.*`
 - `src/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp`
+- `src/mlir/gfx_apple_vendor_descriptors.*`
 - `src/mlir/gfx_apple_stage_pipeline.*`
 - `src/mlir/gfx_mpsrt_dialect.*`
 - `src/mlir/gfx_mpsrt_ops.*`
 - `src/mlir/gfx_mpsrt_runtime_abi_pipeline.*`
 - `src/mlir/gfx_mpsrt_source_plan.hpp`
 - `src/mlir/gfx_mpsrt_const_tensor_sources.hpp`
+- `src/mlir/gfx_kernel_runtime_params.hpp`
 - `src/mlir/msl_codegen.hpp`
 - `src/mlir/msl_codegen_attention.cpp`
 - `src/mlir/msl_codegen_compressed_matmul.cpp`
@@ -155,9 +157,9 @@ The current planning path is no longer just backend-wide. It includes family-spe
 - Metal placement decisions between Apple MPS image or matrix primitives and Apple MSL buffer dispatch
 - manifest-backed execution-kind selection between vendor primitives and custom kernels
 - custom-kernel family classification, external-buffer ABI roles, semantic input/output roles, and dispatch policies from `src/kernel_ir/gfx_custom_kernel_families.*`
-- generated MPSRT runtime-ABI plans and storage bridges that must stay aligned with request-time binding and stage reconstruction
+- generated MPSRT runtime-ABI plans, resource tables, and storage bridges that must stay aligned with request-time binding and stage reconstruction
 - the typed `GfxMpsrtProgram` facade and generated `gfx_mpsrt_ops` materialization, which now sit between legacy module attrs and final runtime-ABI call-plan lowering
-- the Apple stage pipeline and typed `gfx.mpsrt` helper ops, which now mediate storage assignment and program materialization for Apple MPS routes
+- the Apple stage pipeline, shared vendor descriptor helpers, and typed `gfx.mpsrt` helper ops, which now mediate descriptor extraction, storage assignment, and program materialization for Apple MPS routes
 
 For current convolution work, there are now two important lowering details to keep in mind:
 - full interior tiles in conv parallel lowering can skip lane-level bounds guards on the fast path
@@ -250,8 +252,9 @@ The current MPSRT path can now represent:
 - vendor-only stages such as `MPSGemm`
 - custom-kernel-only MSL dispatch stages
 - hybrid multi-stage plans such as `MPSGemm + MSL epilogue`
-- vendor-only Conv2D, GroupConv, Pool2D, Softmax, and TopK stages when Apple MPS placement is selected
+- vendor-only Conv2D, GroupConv, Pool2D, Resize2D, Softmax, and TopK stages when Apple MPS placement is selected
 - explicit storage-conversion stages for image, matrix, ndarray, and alias contracts when external bindings do not match the internal storage class
+- explicit runtime resource tables for external IO, runtime-parameter buffers, model-owned const buffers, and transient tensor/image resources
 
 So do not assume one stage equals one dispatch source anymore. For MatMul specifically, the Metal path may choose:
 - plain vendor `MPSGemm`
@@ -263,11 +266,12 @@ When touching the Metal MPSRT boundary, keep four layers aligned:
 - the typed program contract in `gfx_mpsrt_program.hpp`
 - generated `gfx_mpsrt_ops` plus the runtime-ABI call plan in `gfx_mpsrt_ops.*` and `gfx_mpsrt_runtime_abi_pipeline.*`
 - storage-bridge descriptors in `gfx_mpsrt_storage_bridge.hpp`
-- request-time execution and validation in `src/backends/metal/runtime/mpsrt/*`
+- runtime resource finalization in `mpsrt_model.*` and request-time execution/validation in `src/backends/metal/runtime/mpsrt/*`
 
-The current request path can no longer assume one storage class for all external bindings. Image-backed Apple MPS stages may require explicit `buffer_to_image` or `image_to_buffer` bridges, and those bridges are part of the serialized builder plan and reconstructed runtime model.
+The current request path can no longer assume one storage class for all external bindings. Image-backed Apple MPS stages may require explicit `buffer_to_image` or `image_to_buffer` bridges, and those bridges are part of the serialized builder plan and reconstructed runtime model. The request path also no longer treats unbound tensors as ad-hoc transient allocations: it binds against finalized `MpsrtRuntimeResource` entries, prepared model-owned const buffers, and heap-backed transient resources.
 Also, do not build new tooling on top of stale flat `gfx.mpsrt.*` stage attrs. Current code intentionally materializes generated helpers and erases legacy attrs after the program facade is available.
 For Apple-targeted lowering, also prefer the dedicated `run_gfx_apple_stage_pipeline()` path over reintroducing per-op ad-hoc metadata assembly. The current code treats placement, storage, fusion, stage-manifest lowering, typed program materialization, and later runtime-ABI generation as one connected flow.
+For Apple MPS vendor stages, prefer adding descriptor support in `gfx_apple_vendor_descriptors.*` and threading it through `GfxAppleStagePipelineOptions` rather than duplicating per-op ABI extraction inside older metadata helpers.
 For Metal custom-kernel source or request-time binding changes, route new behavior through `GfxMslRuntimeBindingPlan` and the helpers in `src/mlir/msl_codegen.*`. Keep the generated module operands, `GfxKernelStageManifest` external-buffer roles, inferred MSL `[[buffer(N)]]` argument count, and MPSRT `kernel_buffer_order` coherent. The request path treats a missing materialized buffer order for MSL dispatch as invalid runtime-model state.
 
 For layout-cleanup work around DFL-style postprocessing tails, the current rewrite target is a value-preserving `Softmax -> MatMul -> Reshape/Transpose` form. Do not describe the older synthetic 1x1 convolution rewrite as the active implementation.

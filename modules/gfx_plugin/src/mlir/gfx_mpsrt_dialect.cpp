@@ -23,6 +23,9 @@ llvm::StringRef expected_stage_kind_for_op(llvm::StringRef op_name) {
     if (op_name == "gfx.mpsrt.pool2d") {
         return "mps_pool2d";
     }
+    if (op_name == "gfx.mpsrt.resize2d") {
+        return "mps_resize2d";
+    }
     if (op_name == "gfx.mpsrt.gemm") {
         return "mps_gemm";
     }
@@ -161,6 +164,7 @@ GfxMpsrtDialect::GfxMpsrtDialect(mlir::MLIRContext* context)
     addOperations<Conv2DOp,
                   GroupConv2DOp,
                   Pool2DOp,
+                  Resize2DOp,
                   GemmOp,
                   SoftmaxOp,
                   TopKOp,

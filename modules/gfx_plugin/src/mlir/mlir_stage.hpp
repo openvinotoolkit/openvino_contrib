@@ -78,9 +78,6 @@ protected:
     virtual bool is_vulkan_backend() const { return false; }
     virtual bool prefer_specialized_concat_execution() const { return true; }
     virtual bool should_skip_generic_kernel_compile(const GfxStageOptimizationPlan& /*plan*/) const { return false; }
-    KernelSource make_runtime_matmul_kernel_source(const MatMulCodegenDesc& desc,
-                                                   const ov::Shape& shape_a,
-                                                   const ov::Shape& shape_b) const;
     GpuBackend backend_kind() const { return is_vulkan_backend() ? GpuBackend::Vulkan : GpuBackend::Metal; }
     virtual KernelExecutionHooks* prepare_profiling(ProfileState& state,
                                                     KernelExecutionHooks& hooks);
@@ -88,14 +85,8 @@ protected:
 
     void clone_into(MlirStage& dst) const;
     bool has_absorbed_input_transpose() const;
-    void apply_msl_runtime_binding_plan(const GfxMslRuntimeBindingPlan& plan);
-    void apply_msl_custom_kernel_binding_plan(std::string_view stage_type,
-                                              std::string_view entry_point,
-                                              std::vector<size_t> tensor_input_indices);
-    void apply_msl_custom_kernel_binding_plan(std::string_view stage_type,
-                                              std::string_view entry_point,
-                                              std::vector<size_t> tensor_input_indices,
-                                              std::vector<int32_t> scalar_args);
+    void apply_kernel_runtime_binding_state(KernelRuntimeBindingState binding);
+    void apply_source_plan_kernel_runtime_binding_state(KernelRuntimeBindingState binding);
     void annotate_msl_custom_kernel_binding_plan(mlir::ModuleOp module,
                                                  std::string_view stage_type,
                                                  std::string_view entry_point,
@@ -115,23 +106,19 @@ protected:
     bool m_is_view_op = false;
     std::shared_ptr<const ov::Node> m_node;
     std::shared_ptr<ICompiledKernel> m_kernel;
-    std::shared_ptr<ICompiledKernel> m_concat_binary_kernel;
     bool m_is_compressed_matmul = false;
     std::string m_name;
     std::string m_type;
     std::vector<GpuTensor*> m_inputs;
     std::vector<GpuTensor*> m_outputs;
     std::vector<GfxInputTransform> m_input_transforms;
-    std::vector<size_t> m_kernel_inputs;
-    size_t m_kernel_input_arg_count = 0;
-    std::vector<int32_t> m_kernel_operand_kinds;
-    std::vector<int32_t> m_kernel_operand_arg_indices;
-    std::vector<int32_t> m_kernel_scalar_args;
+    KernelRuntimeBindingState m_kernel_binding;
     std::vector<GpuTensor> m_kernel_extra_inputs;
     GpuTensor* m_output = nullptr;
     std::shared_ptr<ConstBufferSet> m_const_buffers;
     ov::Shape m_output_shape;
     ov::Shape m_last_input_shape;
+    bool m_kernel_binding_owned_by_source_plan = false;
     GpuBufferManager* m_buffer_manager = nullptr;
     bool m_profiling_enabled = false;
     ParallelDispatchConfig m_parallel_cfg{};
@@ -160,11 +147,11 @@ protected:
     BatchNormParams m_bn_params{};
     bool m_has_bias = false;
     BiasParams m_bias_params{};
-    std::vector<ov::float16> m_bias_f16;
     void* m_profiler = nullptr;
     uint32_t m_profile_node_id = 0;
     std::string m_profile_node_name;
     std::string m_profile_node_type;
+    std::string m_last_compiled_kernel_entry_point;
 
 private:
     std::vector<KernelArg> materialize_bound_kernel_args(const std::vector<GpuTensor*>& outputs) const;
@@ -185,6 +172,10 @@ private:
     void apply_input_transform_attrs(mlir::ModuleOp module) const;
     void set_parallel_preference(mlir::ModuleOp module);
     void apply_fused_operations(mlir::ModuleOp module);
+    void compile_prebuilt_kernel_source(const KernelSource& source,
+                                        KernelRuntimeBindingState binding,
+                                        std::string_view stage_kind);
+    KernelRuntimeBindingState resolved_kernel_runtime_binding_state() const;
     std::vector<std::vector<int64_t>> m_cached_constant_i64_inputs;
     std::vector<bool> m_cached_constant_i64_input_valid;
     std::vector<GpuTensor> m_small_i64_const_output_cache;

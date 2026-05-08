@@ -163,11 +163,17 @@ std::shared_ptr<ICompiledKernel> MetalStage::compile_kernel(const KernelSource& 
                                                                           !m_kernel_extra_inputs.empty(),
                                                                           runtime_input_shape);
     if (source_plan.valid()) {
-        return backend.compile(source_plan.source, log);
+        m_last_compiled_kernel_entry_point = source_plan.source.entry_point;
+        auto kernel = backend.compile(source_plan.source, log);
+        if (source_plan.has_runtime_binding) {
+            apply_source_plan_kernel_runtime_binding_state(source_plan.runtime_binding);
+        }
+        return kernel;
     }
     OPENVINO_ASSERT(src.msl_generator || !src.msl_source.empty(),
                     "MetalStage: missing MSL source/generator for op ",
                     m_node ? m_node->get_type_name() : "");
+    m_last_compiled_kernel_entry_point = src.entry_point;
     return backend.compile(src, log);
 }
 

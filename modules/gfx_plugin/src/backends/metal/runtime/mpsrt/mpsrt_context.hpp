@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "backends/metal/runtime/mpsrt/mpsrt_model.hpp"
+#include "runtime/gfx_mpsrt_storage_bridge.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -75,6 +76,21 @@ struct MpsrtPreparedMpsPool2D {
     id kernel = nil;
 };
 
+struct MpsrtPreparedMpsResize2D {
+    size_t stage_index = 0;
+    std::string stage_record_key;
+    GfxMpsrtResize2DAbiDesc resize2d_desc{};
+    uint32_t input_width = 0;
+    uint32_t input_height = 0;
+    uint32_t output_width = 0;
+    uint32_t output_height = 0;
+    uint32_t output_batch = 0;
+    uint32_t output_feature_channels = 0;
+    uint32_t data_type = static_cast<uint32_t>(GfxMpsrtDType::Unknown);
+    bool kernel_cache_hit = false;
+    id kernel = nil;
+};
+
 struct MpsrtPreparedMpsSoftmax {
     size_t stage_index = 0;
     std::string stage_record_key;
@@ -101,11 +117,48 @@ struct MpsrtPreparedMpsTopK {
     id kernel = nil;
 };
 
+struct MpsrtPreparedResource {
+    uint32_t resource_index = 0;
+    GfxMpsrtExternalBufferRole role = GfxMpsrtExternalBufferRole::Unknown;
+    MpsrtRuntimeResourceLifetime lifetime = MpsrtRuntimeResourceLifetime::Unknown;
+    bool has_tensor_value = false;
+    GfxMpsrtValue value = 0;
+    GfxMpsrtTensorAbiDesc tensor_desc{};
+    size_t byte_length = 0;
+    size_t offset = 0;
+    size_t heap_allocation_size = 0;
+    size_t heap_alignment = 0;
+    size_t first_stage_index = 0;
+    size_t last_stage_index = 0;
+    id<MTLBuffer> buffer = nil;
+    id<MTLTexture> texture = nil;
+};
+
+struct MpsrtPreparedImageBridgeResource {
+    GfxMpsrtValue value = 0;
+    GfxMpsrtStorageBridgeDirection direction = GfxMpsrtStorageBridgeDirection::Unknown;
+    GfxMpsrtTensorAbiDesc tensor_desc{};
+    size_t heap_allocation_size = 0;
+    size_t heap_alignment = 0;
+    id<MTLTexture> texture = nil;
+};
+
 struct MpsrtPreparedModel {
+    id<MTLHeap> resource_heap = nil;
+    size_t resource_heap_size = 0;
+    size_t resource_heap_unaliased_size = 0;
+    size_t resource_heap_aliasable_size = 0;
+    size_t resource_heap_alias_reuse_count = 0;
+    size_t transient_buffer_resource_count = 0;
+    size_t transient_image_resource_count = 0;
+    size_t image_bridge_resource_count = 0;
+    std::vector<MpsrtPreparedResource> resources;
+    std::vector<MpsrtPreparedImageBridgeResource> image_bridge_resources;
     std::vector<MpsrtPreparedMslDispatch> msl_dispatches;
     std::vector<MpsrtPreparedMpsGemm> mps_gemm_stages;
     std::vector<MpsrtPreparedMpsConv2D> mps_conv2d_stages;
     std::vector<MpsrtPreparedMpsPool2D> mps_pool2d_stages;
+    std::vector<MpsrtPreparedMpsResize2D> mps_resize2d_stages;
     std::vector<MpsrtPreparedMpsSoftmax> mps_softmax_stages;
     std::vector<MpsrtPreparedMpsTopK> mps_topk_stages;
     uint32_t skipped_non_msl_stages = 0;
@@ -154,6 +207,11 @@ public:
                             MpsrtPreparedMpsPool2D& out,
                             std::string* log = nullptr);
 
+    bool prepare_mps_resize2d(const MpsrtModel& model,
+                              const MpsrtRuntimeStage& stage,
+                              MpsrtPreparedMpsResize2D& out,
+                              std::string* log = nullptr);
+
     bool prepare_mps_softmax(const MpsrtModel& model,
                              const MpsrtRuntimeStage& stage,
                              MpsrtPreparedMpsSoftmax& out,
@@ -181,12 +239,16 @@ public:
                                                        const std::string& msl_source,
                                                        bool& cache_hit,
                                                        std::string* log);
+    bool prepare_model_resources(const MpsrtModel& model,
+                                 MpsrtPreparedModel& out,
+                                 std::string* log) const;
 
 private:
     struct PipelineCacheEntry;
     struct MpsGemmCacheEntry;
     struct MpsConv2DCacheEntry;
     struct MpsPool2DCacheEntry;
+    struct MpsResize2DCacheEntry;
     struct MpsSoftmaxCacheEntry;
     struct MpsTopKCacheEntry;
     struct ConstTensorCacheEntry;
@@ -198,6 +260,7 @@ private:
     std::vector<MpsGemmCacheEntry> m_mps_gemm_cache;
     std::vector<MpsConv2DCacheEntry> m_mps_conv2d_cache;
     std::vector<MpsPool2DCacheEntry> m_mps_pool2d_cache;
+    std::vector<MpsResize2DCacheEntry> m_mps_resize2d_cache;
     std::vector<MpsSoftmaxCacheEntry> m_mps_softmax_cache;
     std::vector<MpsTopKCacheEntry> m_mps_topk_cache;
     std::vector<ConstTensorCacheEntry> m_const_tensor_cache;
@@ -209,6 +272,8 @@ private:
     uint64_t m_mps_conv2d_cache_misses = 0;
     uint64_t m_mps_pool2d_cache_hits = 0;
     uint64_t m_mps_pool2d_cache_misses = 0;
+    uint64_t m_mps_resize2d_cache_hits = 0;
+    uint64_t m_mps_resize2d_cache_misses = 0;
     uint64_t m_mps_softmax_cache_hits = 0;
     uint64_t m_mps_softmax_cache_misses = 0;
     uint64_t m_mps_topk_cache_hits = 0;

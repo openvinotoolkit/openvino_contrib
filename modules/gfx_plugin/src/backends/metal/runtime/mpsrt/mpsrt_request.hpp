@@ -7,7 +7,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <string>
 #include <vector>
 
@@ -47,6 +46,11 @@ struct MpsrtMpsPool2DEncodeResult {
     size_t kernel_encodes = 0;
 };
 
+struct MpsrtMpsResize2DEncodeResult {
+    size_t bound_resources = 0;
+    size_t kernel_encodes = 0;
+};
+
 struct MpsrtMpsSoftmaxEncodeResult {
     size_t bound_buffers = 0;
     size_t kernel_encodes = 0;
@@ -62,6 +66,7 @@ struct MpsrtModelEncodeResult {
     size_t encoded_mps_gemm_stages = 0;
     size_t encoded_mps_conv2d_stages = 0;
     size_t encoded_mps_pool2d_stages = 0;
+    size_t encoded_mps_resize2d_stages = 0;
     size_t encoded_mps_softmax_stages = 0;
     size_t encoded_mps_topk_stages = 0;
     size_t skipped_non_msl_stages = 0;
@@ -76,12 +81,11 @@ struct MpsrtBoundTensor {
 struct MpsrtBindingBuildResult {
     size_t external_inputs_bound = 0;
     size_t external_outputs_bound = 0;
+    size_t external_resources_bound = 0;
+    size_t model_resources_bound = 0;
     size_t transient_buffers_allocated = 0;
     size_t transient_images_allocated = 0;
-    size_t const_tensors_skipped = 0;
 };
-
-using MpsrtTransientAllocator = std::function<MpsrtBoundBuffer(const MpsrtRuntimeTensor& tensor)>;
 
 class MpsrtTensorBindings final {
 public:
@@ -103,17 +107,17 @@ MpsrtBoundBuffer make_mpsrt_bound_image(void* texture);
 bool build_mpsrt_tensor_bindings(const MpsrtModel& model,
                                  const std::vector<MpsrtBoundBuffer>& input_buffers,
                                  const std::vector<MpsrtBoundBuffer>& output_buffers,
-                                 const MpsrtTransientAllocator& transient_allocator,
                                  MpsrtTensorBindings& bindings,
                                  MpsrtBindingBuildResult* result = nullptr,
-                                 std::string* error = nullptr);
+                                 std::string* error = nullptr,
+                                 const MpsrtPreparedModel* prepared_model = nullptr);
 
 bool build_mpsrt_external_tensor_bindings(const MpsrtModel& model,
                                           const std::vector<MpsrtBoundBuffer>& external_buffers,
-                                          const MpsrtTransientAllocator& transient_allocator,
                                           MpsrtTensorBindings& bindings,
                                           MpsrtBindingBuildResult* result = nullptr,
-                                          std::string* error = nullptr);
+                                          std::string* error = nullptr,
+                                          const MpsrtPreparedModel* prepared_model = nullptr);
 
 MpsrtPreparedMslDispatch make_prepared_msl_dispatch_from_pipeline(const MpsrtRuntimeStage& stage,
                                                                   size_t stage_index,
@@ -159,6 +163,15 @@ public:
                            const KernelExecutionHooks* hooks = nullptr,
                            MpsrtMpsPool2DEncodeResult* result = nullptr,
                            std::string* error = nullptr) const;
+
+    bool encode_mps_resize2d(GpuCommandBufferHandle command_buffer,
+                             const MpsrtModel& model,
+                             const MpsrtRuntimeStage& stage,
+                             const MpsrtPreparedMpsResize2D& prepared,
+                             const MpsrtTensorBindings& bindings,
+                             const KernelExecutionHooks* hooks = nullptr,
+                             MpsrtMpsResize2DEncodeResult* result = nullptr,
+                             std::string* error = nullptr) const;
 
     bool encode_mps_softmax(GpuCommandBufferHandle command_buffer,
                             const MpsrtModel& model,

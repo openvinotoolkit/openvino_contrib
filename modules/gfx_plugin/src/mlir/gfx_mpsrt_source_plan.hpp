@@ -4,6 +4,7 @@
 #pragma once
 
 #include "kernel_ir/gfx_codegen_backend.hpp"
+#include "mlir/gfx_mlir_kernel_metadata.hpp"
 #include "mlir/gfx_mpsrt_metadata.hpp"
 
 #include <functional>
@@ -27,6 +28,8 @@ struct GfxMpsrtKernelSourcePlan {
     std::string record_key;
     GfxMpsrtStageKind first_stage_kind = GfxMpsrtStageKind::Unknown;
     GfxMpsrtStageKind last_stage_kind = GfxMpsrtStageKind::Unknown;
+    bool has_runtime_binding = false;
+    KernelRuntimeBindingState runtime_binding;
 
     bool valid() const {
         return kind != GfxMpsrtKernelSourcePlanKind::None && source.module;
@@ -50,6 +53,72 @@ inline bool gfx_mpsrt_stage_needs_custom_kernel_source(const GfxMpsrtStageDesc& 
     return stage.kind == GfxMpsrtStageKind::MSLDispatch ||
            stage.kind == GfxMpsrtStageKind::SPIRVDispatch ||
            stage.uses_custom_kernel;
+}
+
+inline bool gfx_mpsrt_stage_is_io_only_apple_mps_vendor(GfxMpsrtStageKind kind) {
+    switch (kind) {
+        case GfxMpsrtStageKind::MPSPool2D:
+        case GfxMpsrtStageKind::MPSResize2D:
+        case GfxMpsrtStageKind::MPSSoftmax:
+        case GfxMpsrtStageKind::MPSTopK:
+            return true;
+        default:
+            return false;
+    }
+}
+
+inline bool gfx_mpsrt_source_plan_is_io_only_apple_mps_vendor(
+    const GfxMpsrtKernelSourcePlan& plan) {
+    return plan.requires_mpsrt_model &&
+           plan.kind == GfxMpsrtKernelSourcePlanKind::SingleStage &&
+           plan.first_stage_kind == plan.last_stage_kind &&
+           gfx_mpsrt_stage_is_io_only_apple_mps_vendor(plan.first_stage_kind) &&
+           plan.source.msl_source.empty() &&
+           !static_cast<bool>(plan.source.msl_generator);
+}
+
+inline bool make_gfx_mpsrt_io_only_source_plan_runtime_binding(
+    const GfxMpsrtBuilderPlan& builder_plan,
+    KernelRuntimeBindingState& out) {
+    out = {};
+    if (!builder_plan.external_buffer_abi_valid ||
+        builder_plan.external_buffer_roles.empty()) {
+        return false;
+    }
+
+    uint32_t input_arg_count = 0;
+    uint32_t output_arg_count = 0;
+    for (const auto role : builder_plan.external_buffer_roles) {
+        switch (role) {
+            case GfxMpsrtExternalBufferRole::TensorInput:
+            case GfxMpsrtExternalBufferRole::ConstBuffer:
+            case GfxMpsrtExternalBufferRole::RuntimeParams:
+            case GfxMpsrtExternalBufferRole::Metadata:
+                ++input_arg_count;
+                break;
+            case GfxMpsrtExternalBufferRole::TensorOutput:
+                ++output_arg_count;
+                break;
+            case GfxMpsrtExternalBufferRole::Unknown:
+            default:
+                return false;
+        }
+    }
+    if (input_arg_count == 0 || output_arg_count == 0) {
+        return false;
+    }
+
+    std::vector<size_t> inputs;
+    inputs.reserve(input_arg_count);
+    for (uint32_t input_index = 0; input_index < input_arg_count; ++input_index) {
+        inputs.push_back(input_index);
+    }
+    out = make_kernel_runtime_binding_state(std::move(inputs),
+                                            input_arg_count,
+                                            {},
+                                            {},
+                                            {});
+    return true;
 }
 
 inline std::string gfx_mpsrt_stage_entry_point(const GfxMpsrtStageDesc& stage) {
@@ -151,6 +220,13 @@ inline GfxMpsrtKernelSourcePlan make_mpsrt_kernel_source_plan_from_module(
     plan.source.spirv_generator = std::move(options.spirv_generator);
     plan.source.signature.arg_count = gfx_mpsrt_source_plan_arg_count(module_plan, options);
     plan.source.signature.output_arg_count = gfx_mpsrt_source_plan_output_arg_count(module_plan, options);
+    if (gfx_mpsrt_source_plan_is_io_only_apple_mps_vendor(plan)) {
+        if (!make_gfx_mpsrt_io_only_source_plan_runtime_binding(module_plan.builder_plan,
+                                                                plan.runtime_binding)) {
+            return {};
+        }
+        plan.has_runtime_binding = true;
+    }
     return plan;
 }
 
