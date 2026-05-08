@@ -83,7 +83,7 @@ Check:
 - `descriptor_update_count`
 - `binding_prepare_in_infer`
 - backend setup spans in trace output
-- Metal MPSRT counters such as `mpsrt_*_bound_resource_count`, `mpsrt_mps_resize2d_*`, and `mpsrt_encode` segments when resource-table or storage-bridge binding is in the path
+- Metal MPSRT counters such as `mpsrt_*_bound_resource_count`, `mpsrt_mps_resize2d_*`, and `mpsrt_encode` segments when the shared `gfx_mpsrt_model.*` resource table, external-buffer binding plan, prepared heap, or storage-bridge path is in use
 
 ### Compile or cache regression suspicion
 

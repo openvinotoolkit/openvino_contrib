@@ -81,9 +81,9 @@ Treat these as triage flags, not as automatic proof of a bug.
   Read from: `profile_digest.descriptor_update_count`, `binding_prepare_in_infer`, diagnostics.
   Triage meaning: descriptor churn is visible.
 
-- `mpsrt_mps_resize2d_*`, `mpsrt_*_bound_resource_count`, or prepared-resource diagnostics
+- `mpsrt_mps_resize2d_*`, `mpsrt_*_bound_resource_count`, `mpsrt_prepared_resource_heap_*`, or prepared-resource diagnostics
   Meaning: Metal MPSRT work is spending CPU time preparing or binding Apple MPS vendor resources, image bridges, runtime-parameter buffers, or heap-backed transient resources.
-  Read from: `extended.summary.counter_map`, `mpsrt_encode` segments, and compile counters such as `mpsrt_prepare_mps_resize2d_count`.
+  Read from: `extended.summary.counter_map`, `mpsrt_encode` segments, prepared-model counters such as `mpsrt_prepared_resource_heap_alias_reuse_count`, and compile counters such as `mpsrt_prepare_mps_resize2d_count`.
   Triage meaning: the MPSRT resource table, storage bridges, or prepared heap path should be inspected before treating the kernel itself as the bottleneck.
 
 ## Microbench Commands

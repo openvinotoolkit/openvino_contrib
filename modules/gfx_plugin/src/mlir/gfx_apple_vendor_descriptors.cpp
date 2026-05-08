@@ -258,6 +258,60 @@ bool gfx_apple_make_mps_conv2d_desc(const std::shared_ptr<const ov::Node>& node,
     return true;
 }
 
+bool gfx_apple_make_mps_conv2d_contract(const std::shared_ptr<const ov::Node>& node,
+                                        bool has_activation,
+                                        ActivationKind activation,
+                                        GfxAppleMpsVendorPrimitiveContract& contract) {
+    contract = {};
+    if (!gfx_apple_make_mps_conv2d_desc(node,
+                                        contract.descriptor.conv2d,
+                                        has_activation,
+                                        activation)) {
+        return false;
+    }
+    contract.descriptor.kind = GfxAppleMpsVendorPrimitiveKind::Conv2D;
+    contract.semantic_input_roles = {GfxKernelBufferRole::TensorInput,
+                                     GfxKernelBufferRole::ConstTensor};
+    contract.external_buffer_abi =
+        gfx_mpsrt_make_external_buffer_abi_from_roles({GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::ConstBuffer,
+                                                       GfxMpsrtExternalBufferRole::ConstBuffer,
+                                                       GfxMpsrtExternalBufferRole::ConstBuffer,
+                                                       GfxMpsrtExternalBufferRole::ConstBuffer,
+                                                       GfxMpsrtExternalBufferRole::ConstBuffer,
+                                                       GfxMpsrtExternalBufferRole::ConstBuffer,
+                                                       GfxMpsrtExternalBufferRole::RuntimeParams,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput});
+    contract.valid = contract.external_buffer_abi.valid;
+    if (!contract.valid) {
+        contract = {};
+    }
+    return contract.valid;
+}
+
+bool gfx_apple_make_mps_gemm_contract(const GfxMpsrtGemmAbiDesc& desc,
+                                      const GfxMpsrtTensorDesc& lhs,
+                                      const GfxMpsrtTensorDesc& rhs,
+                                      const GfxMpsrtTensorDesc& output,
+                                      GfxAppleMpsVendorPrimitiveContract& contract) {
+    contract = {};
+    contract.descriptor.kind = GfxAppleMpsVendorPrimitiveKind::Gemm;
+    contract.descriptor.gemm = desc;
+    contract.semantic_input_roles = {GfxKernelBufferRole::TensorInput,
+                                     GfxKernelBufferRole::TensorInput};
+    contract.input_descs = {lhs, rhs};
+    contract.output_descs = {output};
+    contract.external_buffer_abi =
+        gfx_mpsrt_make_external_buffer_abi_from_roles({GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput});
+    contract.valid = contract.external_buffer_abi.valid;
+    if (!contract.valid) {
+        contract = {};
+    }
+    return contract.valid;
+}
+
 bool gfx_apple_make_mps_pool2d_desc(const std::shared_ptr<const ov::Node>& node,
                                     GfxMpsrtPool2DAbiDesc& desc) {
     desc = {};
@@ -465,6 +519,92 @@ bool gfx_apple_make_mps_io_tensor_descs_for_node(const std::shared_ptr<const ov:
                                                      GfxMpsrtTensorFlagTransient));
     }
     return true;
+}
+
+bool gfx_apple_make_mps_pool2d_contract(const std::shared_ptr<const ov::Node>& node,
+                                        const GfxMpsrtPool2DAbiDesc& desc,
+                                        GfxAppleMpsVendorPrimitiveContract& contract) {
+    contract = {};
+    contract.descriptor.kind = GfxAppleMpsVendorPrimitiveKind::Pool2D;
+    contract.descriptor.pool2d = desc;
+    if (!gfx_apple_make_mps_io_tensor_descs_for_node(node,
+                                                     GfxStageStorageKind::Image,
+                                                     contract.input_descs,
+                                                     contract.output_descs) ||
+        contract.input_descs.front().image_feature_channels % 4u != 0) {
+        contract = {};
+        return false;
+    }
+    contract.external_buffer_abi =
+        gfx_mpsrt_make_external_buffer_abi_from_roles({GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::RuntimeParams,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput});
+    contract.valid = contract.external_buffer_abi.valid;
+    return contract.valid;
+}
+
+bool gfx_apple_make_mps_resize2d_contract(const std::shared_ptr<const ov::Node>& node,
+                                          const GfxMpsrtResize2DAbiDesc& desc,
+                                          GfxAppleMpsVendorPrimitiveContract& contract) {
+    contract = {};
+    contract.descriptor.kind = GfxAppleMpsVendorPrimitiveKind::Resize2D;
+    contract.descriptor.resize2d = desc;
+    if (!gfx_apple_make_mps_io_tensor_descs_for_node(node,
+                                                     GfxStageStorageKind::Image,
+                                                     contract.input_descs,
+                                                     contract.output_descs)) {
+        contract = {};
+        return false;
+    }
+    contract.external_buffer_abi =
+        gfx_mpsrt_make_external_buffer_abi_from_roles({GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput});
+    contract.valid = contract.external_buffer_abi.valid;
+    return contract.valid;
+}
+
+bool gfx_apple_make_mps_softmax_contract(const std::shared_ptr<const ov::Node>& node,
+                                         const GfxMpsrtSoftmaxAbiDesc& desc,
+                                         GfxAppleMpsVendorPrimitiveContract& contract) {
+    contract = {};
+    contract.descriptor.kind = GfxAppleMpsVendorPrimitiveKind::Softmax;
+    contract.descriptor.softmax = desc;
+    if (!gfx_apple_make_mps_io_tensor_descs_for_node(node,
+                                                     GfxStageStorageKind::Matrix,
+                                                     contract.input_descs,
+                                                     contract.output_descs)) {
+        contract = {};
+        return false;
+    }
+    contract.semantic_input_roles = {GfxKernelBufferRole::TensorInput,
+                                     GfxKernelBufferRole::TensorOutput,
+                                     GfxKernelBufferRole::RuntimeParams};
+    contract.external_buffer_abi =
+        gfx_mpsrt_make_external_buffer_abi_from_roles({GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput});
+    contract.valid = contract.external_buffer_abi.valid;
+    return contract.valid;
+}
+
+bool gfx_apple_make_mps_topk_contract(const std::shared_ptr<const ov::Node>& node,
+                                      const GfxMpsrtTopKAbiDesc& desc,
+                                      GfxAppleMpsVendorPrimitiveContract& contract) {
+    contract = {};
+    contract.descriptor.kind = GfxAppleMpsVendorPrimitiveKind::TopK;
+    contract.descriptor.topk = desc;
+    if (!gfx_apple_make_mps_io_tensor_descs_for_node(node,
+                                                     GfxStageStorageKind::Matrix,
+                                                     contract.input_descs,
+                                                     contract.output_descs)) {
+        contract = {};
+        return false;
+    }
+    contract.external_buffer_abi =
+        gfx_mpsrt_make_external_buffer_abi_from_roles({GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput});
+    contract.valid = contract.external_buffer_abi.valid;
+    return contract.valid;
 }
 
 }  // namespace gfx_plugin

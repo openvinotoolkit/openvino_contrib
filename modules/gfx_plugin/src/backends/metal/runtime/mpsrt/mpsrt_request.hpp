@@ -104,104 +104,74 @@ std::vector<MpsrtBoundBuffer> make_mpsrt_bound_buffers(const std::vector<void*>&
                                                        const std::vector<size_t>& offsets);
 MpsrtBoundBuffer make_mpsrt_bound_image(void* texture);
 
-bool build_mpsrt_tensor_bindings(const MpsrtModel& model,
+bool build_mpsrt_tensor_bindings(const ::ov::gfx_plugin::mpsrt::MpsrtModel& model,
                                  const std::vector<MpsrtBoundBuffer>& input_buffers,
-                                 const std::vector<MpsrtBoundBuffer>& output_buffers,
-                                 MpsrtTensorBindings& bindings,
-                                 MpsrtBindingBuildResult* result = nullptr,
-                                 std::string* error = nullptr,
+                                 const std::vector<MpsrtBoundBuffer>& output_buffers, MpsrtTensorBindings& bindings,
+                                 MpsrtBindingBuildResult* result = nullptr, std::string* error = nullptr,
                                  const MpsrtPreparedModel* prepared_model = nullptr);
 
-bool build_mpsrt_external_tensor_bindings(const MpsrtModel& model,
+bool build_mpsrt_external_tensor_bindings(const ::ov::gfx_plugin::mpsrt::MpsrtModel& model,
                                           const std::vector<MpsrtBoundBuffer>& external_buffers,
-                                          MpsrtTensorBindings& bindings,
-                                          MpsrtBindingBuildResult* result = nullptr,
+                                          MpsrtTensorBindings& bindings, MpsrtBindingBuildResult* result = nullptr,
                                           std::string* error = nullptr,
                                           const MpsrtPreparedModel* prepared_model = nullptr);
 
-MpsrtPreparedMslDispatch make_prepared_msl_dispatch_from_pipeline(const MpsrtRuntimeStage& stage,
-                                                                  size_t stage_index,
-                                                                  id<MTLComputePipelineState> pipeline);
+MpsrtPreparedMslDispatch
+make_prepared_msl_dispatch_from_pipeline(const ::ov::gfx_plugin::mpsrt::MpsrtRuntimeStage& stage, size_t stage_index,
+                                         id<MTLComputePipelineState> pipeline);
 
 class MpsrtRequest final {
 public:
-    bool encode_msl_dispatch(GpuCommandBufferHandle command_buffer,
-                             const MpsrtPreparedMslDispatch& prepared,
-                             const KernelDispatch& dispatch,
-                             const std::vector<MpsrtBoundBuffer>& buffers,
-                             const KernelExecutionHooks* hooks = nullptr,
-                             MpsrtMslEncodeResult* result = nullptr) const;
+    bool encode_msl_dispatch(GpuCommandBufferHandle command_buffer, const MpsrtPreparedMslDispatch& prepared,
+                             const KernelDispatch& dispatch, const std::vector<MpsrtBoundBuffer>& buffers,
+                             const KernelExecutionHooks* hooks = nullptr, MpsrtMslEncodeResult* result = nullptr) const;
 
-    bool build_msl_stage_buffers(const MpsrtRuntimeStage& stage,
-                                 const MpsrtTensorBindings& bindings,
-                                 std::vector<MpsrtBoundBuffer>& buffers,
+    bool build_msl_stage_buffers(const ::ov::gfx_plugin::mpsrt::MpsrtRuntimeStage& stage,
+                                 const MpsrtTensorBindings& bindings, std::vector<MpsrtBoundBuffer>& buffers,
                                  std::string* error = nullptr) const;
 
-    bool encode_mps_gemm(GpuCommandBufferHandle command_buffer,
-                         const MpsrtModel& model,
-                         const MpsrtRuntimeStage& stage,
-                         const MpsrtPreparedMpsGemm& prepared,
-                         const MpsrtTensorBindings& bindings,
-                         const KernelExecutionHooks* hooks = nullptr,
-                         MpsrtMpsGemmEncodeResult* result = nullptr,
-                         std::string* error = nullptr) const;
+    bool encode_mps_gemm(GpuCommandBufferHandle command_buffer, const ::ov::gfx_plugin::mpsrt::MpsrtModel& model,
+                         const ::ov::gfx_plugin::mpsrt::MpsrtRuntimeStage& stage, const MpsrtPreparedMpsGemm& prepared,
+                         const MpsrtTensorBindings& bindings, const KernelExecutionHooks* hooks = nullptr,
+                         MpsrtMpsGemmEncodeResult* result = nullptr, std::string* error = nullptr) const;
 
-    bool encode_mps_conv2d(GpuCommandBufferHandle command_buffer,
-                           const MpsrtModel& model,
-                           const MpsrtRuntimeStage& stage,
-                           const MpsrtPreparedMpsConv2D& prepared,
-                           const MpsrtTensorBindings& bindings,
-                           const KernelExecutionHooks* hooks = nullptr,
-                           MpsrtMpsConv2DEncodeResult* result = nullptr,
+    bool encode_mps_conv2d(GpuCommandBufferHandle command_buffer, const ::ov::gfx_plugin::mpsrt::MpsrtModel& model,
+                           const ::ov::gfx_plugin::mpsrt::MpsrtRuntimeStage& stage,
+                           const MpsrtPreparedMpsConv2D& prepared, const MpsrtTensorBindings& bindings,
+                           const KernelExecutionHooks* hooks = nullptr, MpsrtMpsConv2DEncodeResult* result = nullptr,
                            std::string* error = nullptr) const;
 
-    bool encode_mps_pool2d(GpuCommandBufferHandle command_buffer,
-                           const MpsrtModel& model,
-                           const MpsrtRuntimeStage& stage,
-                           const MpsrtPreparedMpsPool2D& prepared,
-                           const MpsrtTensorBindings& bindings,
-                           const KernelExecutionHooks* hooks = nullptr,
-                           MpsrtMpsPool2DEncodeResult* result = nullptr,
+    bool encode_mps_pool2d(GpuCommandBufferHandle command_buffer, const ::ov::gfx_plugin::mpsrt::MpsrtModel& model,
+                           const ::ov::gfx_plugin::mpsrt::MpsrtRuntimeStage& stage,
+                           const MpsrtPreparedMpsPool2D& prepared, const MpsrtTensorBindings& bindings,
+                           const KernelExecutionHooks* hooks = nullptr, MpsrtMpsPool2DEncodeResult* result = nullptr,
                            std::string* error = nullptr) const;
 
-    bool encode_mps_resize2d(GpuCommandBufferHandle command_buffer,
-                             const MpsrtModel& model,
-                             const MpsrtRuntimeStage& stage,
-                             const MpsrtPreparedMpsResize2D& prepared,
-                             const MpsrtTensorBindings& bindings,
+    bool encode_mps_resize2d(GpuCommandBufferHandle command_buffer, const ::ov::gfx_plugin::mpsrt::MpsrtModel& model,
+                             const ::ov::gfx_plugin::mpsrt::MpsrtRuntimeStage& stage,
+                             const MpsrtPreparedMpsResize2D& prepared, const MpsrtTensorBindings& bindings,
                              const KernelExecutionHooks* hooks = nullptr,
-                             MpsrtMpsResize2DEncodeResult* result = nullptr,
-                             std::string* error = nullptr) const;
+                             MpsrtMpsResize2DEncodeResult* result = nullptr, std::string* error = nullptr) const;
 
-    bool encode_mps_softmax(GpuCommandBufferHandle command_buffer,
-                            const MpsrtModel& model,
-                            const MpsrtRuntimeStage& stage,
-                            const MpsrtPreparedMpsSoftmax& prepared,
-                            const MpsrtTensorBindings& bindings,
-                            const KernelExecutionHooks* hooks = nullptr,
-                            MpsrtMpsSoftmaxEncodeResult* result = nullptr,
+    bool encode_mps_softmax(GpuCommandBufferHandle command_buffer, const ::ov::gfx_plugin::mpsrt::MpsrtModel& model,
+                            const ::ov::gfx_plugin::mpsrt::MpsrtRuntimeStage& stage,
+                            const MpsrtPreparedMpsSoftmax& prepared, const MpsrtTensorBindings& bindings,
+                            const KernelExecutionHooks* hooks = nullptr, MpsrtMpsSoftmaxEncodeResult* result = nullptr,
                             std::string* error = nullptr) const;
 
-    bool encode_mps_topk(GpuCommandBufferHandle command_buffer,
-                         const MpsrtModel& model,
-                         const MpsrtRuntimeStage& stage,
-                         const MpsrtPreparedMpsTopK& prepared,
-                         const MpsrtTensorBindings& bindings,
-                         const KernelExecutionHooks* hooks = nullptr,
-                         MpsrtMpsTopKEncodeResult* result = nullptr,
-                         std::string* error = nullptr) const;
+    bool encode_mps_topk(GpuCommandBufferHandle command_buffer, const ::ov::gfx_plugin::mpsrt::MpsrtModel& model,
+                         const ::ov::gfx_plugin::mpsrt::MpsrtRuntimeStage& stage, const MpsrtPreparedMpsTopK& prepared,
+                         const MpsrtTensorBindings& bindings, const KernelExecutionHooks* hooks = nullptr,
+                         MpsrtMpsTopKEncodeResult* result = nullptr, std::string* error = nullptr) const;
 
-    bool encode_prepared_model(GpuCommandBufferHandle command_buffer,
-                               const MpsrtModel& model,
+    bool encode_prepared_model(GpuCommandBufferHandle command_buffer, const ::ov::gfx_plugin::mpsrt::MpsrtModel& model,
                                const MpsrtPreparedModel& prepared_model,
-                               const std::vector<KernelDispatch>& stage_dispatches,
-                               const MpsrtTensorBindings& bindings,
-                               const KernelExecutionHooks* hooks = nullptr,
-                               MpsrtModelEncodeResult* result = nullptr,
+                               const std::vector<KernelDispatch>& stage_dispatches, const MpsrtTensorBindings& bindings,
+                               const KernelExecutionHooks* hooks = nullptr, MpsrtModelEncodeResult* result = nullptr,
                                std::string* error = nullptr) const;
 };
 
-}  // namespace mpsrt
-}  // namespace metal
-}  // namespace gfx_plugin
-}  // namespace ov
+} // namespace mpsrt
+} // namespace metal
+} // namespace gfx_plugin
+} // namespace ov

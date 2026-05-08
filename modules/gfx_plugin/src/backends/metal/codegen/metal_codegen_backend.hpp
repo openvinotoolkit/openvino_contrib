@@ -10,7 +10,7 @@
 
 #include "kernel_ir/gfx_codegen_backend.hpp"
 #include "backends/metal/runtime/memory/buffer.hpp"
-#include "backends/metal/runtime/mpsrt/mpsrt_model.hpp"
+#include "runtime/gfx_mpsrt_model.hpp"
 
 #ifdef __OBJC__
 #import <Metal/Metal.h>
@@ -21,6 +21,9 @@ namespace gfx_plugin {
 
 class MetalBindingSchema;
 class MetalDeviceReuseContext;
+namespace mpsrt {
+struct MpsrtModel;
+}  // namespace mpsrt
 namespace metal {
 namespace mpsrt {
 class MpsrtContext;
@@ -56,9 +59,9 @@ public:
     size_t clamp_threadgroup_size(size_t desired) const override;
     std::shared_ptr<ICompiledKernel> fork() const override;
     void prewarm_bindings(const std::vector<KernelArg>& args) override;
-    void set_mpsrt_model(std::shared_ptr<const metal::mpsrt::MpsrtModel> model);
+    void set_mpsrt_model(std::shared_ptr<const mpsrt::MpsrtModel> model);
     void set_mpsrt_msl_source(std::string msl_source);
-    const metal::mpsrt::MpsrtModel* mpsrt_model() const;
+    const mpsrt::MpsrtModel* mpsrt_model() const;
     bool register_mpsrt_const_tensor_data(GfxMpsrtValue value,
                                           GfxMpsrtTensorAbiDesc desc,
                                           const void* data,
@@ -93,7 +96,7 @@ private:
     MetalDeviceHandle m_device = nullptr;
     void* m_pipeline = nullptr;
     std::shared_ptr<MetalBindingSchema> m_binding_schema;
-    std::shared_ptr<const metal::mpsrt::MpsrtModel> m_mpsrt_model;
+    std::shared_ptr<const mpsrt::MpsrtModel> m_mpsrt_model;
     std::shared_ptr<metal::mpsrt::MpsrtContext> m_mpsrt_context;
     std::mutex m_mpsrt_prepared_model_cache_mutex;
     std::vector<MpsrtPreparedModelCacheSlot> m_mpsrt_prepared_model_cache_slots;

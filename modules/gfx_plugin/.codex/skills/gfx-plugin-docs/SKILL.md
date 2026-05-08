@@ -57,9 +57,10 @@ Additional operational docs:
    - MPSRT runtime-model, kernel-family-manifest, or external-buffer-ABI behavior on Metal
    - custom-kernel family classification, semantic input/output roles, or dispatch-grid policy
    - Metal MSL runtime binding plans, explicit kernel-buffer order, or inferred MSL buffer-argument counts
-   - MLIR-owned Metal MSL source generation such as compressed `MatMul`, SDPA, or causal SDPA helpers
+   - MLIR-owned Metal MSL source generation such as Apple MSL adapter/common/compute/data-movement/dispatch/structural helpers, Apple MPS vendor source plans, MatMul direct/MPSRT helpers, compressed `MatMul`, SDPA, or causal SDPA helpers
+   - SPIR-V fixed-argument binding adapters or compact Vulkan ABI metadata
    - generated runtime-ABI call-plan or storage-bridge behavior on Metal
-   - MPSRT runtime resource tables, external-buffer bindings, prepared resource heaps, or model/transient resource lifetimes
+   - backend-neutral MPSRT runtime-model reconstruction, runtime resource tables, external-buffer bindings, prepared resource heaps, or model/transient resource lifetimes
    - typed `GfxMpsrtProgram` / generated `gfx_mpsrt_ops` behavior or cleanup of stale legacy MPSRT attrs
    - Apple stage-pipeline or typed `gfx.mpsrt` dialect behavior
    - stage-level profiling estimates such as `bytes_in`, `bytes_out`, `macs_est`, or `flops_est`
@@ -86,6 +87,12 @@ Additional operational docs:
   - `docs/ARCHITECTURE.md`
   - `docs/DEVELOPMENT.md`
   - `docs/TESTING.md` if regression coverage changes
+
+- `src/runtime/gfx_mpsrt_model.*`, `src/backends/metal/runtime/mpsrt/`, or split Apple MSL/MPS source-plan changes:
+  - `README.md`
+  - `docs/ARCHITECTURE.md`
+  - `docs/DEVELOPMENT.md`
+  - `docs/TESTING.md` if resource-model, binding, or runtime coverage changed
 
 - test-only changes:
   - `docs/TESTING.md`

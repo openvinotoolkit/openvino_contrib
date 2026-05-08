@@ -55,18 +55,13 @@ inline GfxConvMpsrtLoweringKind annotate_module_with_conv_mpsrt_plan(
     }
 
     const auto stage_type = gfx_mpsrt_canonical_conv_stage_type(node, fallback_stage_type);
-    GfxMpsrtConv2DAbiDesc conv_desc{};
-    if (!gfx_apple_make_mps_conv2d_desc(node, conv_desc, has_activation, activation)) {
+    GfxAppleMpsVendorPrimitiveContract contract{};
+    if (!gfx_apple_make_mps_conv2d_contract(node, has_activation, activation, contract)) {
         return GfxConvMpsrtLoweringKind::None;
     }
 
     const auto materialized =
-        materialize_apple_mps_conv2d_program(module,
-                                             plan,
-                                             stage_type,
-                                             conv_desc,
-                                             {GfxKernelBufferRole::TensorInput,
-                                              GfxKernelBufferRole::ConstTensor});
+        materialize_apple_mps_vendor_contract_program(module, plan, stage_type, contract);
     if (!materialized.valid || !materialized.typed_program_materialized) {
         return GfxConvMpsrtLoweringKind::None;
     }

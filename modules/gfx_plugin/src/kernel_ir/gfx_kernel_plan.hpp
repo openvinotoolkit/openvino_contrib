@@ -16,21 +16,56 @@
 namespace ov {
 namespace gfx_plugin {
 
-uint32_t infer_kernel_arg_count(mlir::ModuleOp module, const std::string& entry_point);
+enum class LegacyOperandAttrsPolicy {
+    Allow,
+    Reject,
+};
+
+inline bool allow_legacy_operand_attrs(LegacyOperandAttrsPolicy policy) {
+    return policy == LegacyOperandAttrsPolicy::Allow;
+}
+
+uint32_t infer_kernel_arg_count(mlir::ModuleOp module,
+                                const std::string& entry_point,
+                                LegacyOperandAttrsPolicy legacy_operand_attrs_policy =
+                                    LegacyOperandAttrsPolicy::Allow);
 
 class KernelPlan {
 public:
-    KernelPlan(mlir::ModuleOp module, std::string entry_point, uint32_t arg_count)
+    KernelPlan(mlir::ModuleOp module,
+               std::string entry_point,
+               uint32_t arg_count,
+               LegacyOperandAttrsPolicy legacy_operand_attrs_policy =
+                   LegacyOperandAttrsPolicy::Allow)
         : m_module(module),
           m_entry_point(std::move(entry_point)),
-          m_arg_count(arg_count) {}
+          m_arg_count(arg_count),
+          m_legacy_operand_attrs_policy(legacy_operand_attrs_policy) {}
 
     mlir::ModuleOp module() const { return m_module; }
     const std::string& entry_point() const { return m_entry_point; }
     uint32_t arg_count() const { return m_arg_count; }
+    LegacyOperandAttrsPolicy legacy_operand_attrs_policy() const {
+        return m_legacy_operand_attrs_policy;
+    }
+    bool allows_legacy_operand_attrs() const {
+        return allow_legacy_operand_attrs(m_legacy_operand_attrs_policy);
+    }
+
+    void set_legacy_operand_attrs_policy(LegacyOperandAttrsPolicy policy) {
+        m_legacy_operand_attrs_policy = policy;
+    }
+
+    KernelPlan with_legacy_operand_attrs_policy(LegacyOperandAttrsPolicy policy) const {
+        KernelPlan plan = *this;
+        plan.set_legacy_operand_attrs_policy(policy);
+        return plan;
+    }
 
     KernelSource to_source() const {
-        const uint32_t inferred = m_arg_count ? m_arg_count : infer_kernel_arg_count(m_module, m_entry_point);
+        const uint32_t inferred = m_arg_count ? m_arg_count : infer_kernel_arg_count(m_module,
+                                                                                     m_entry_point,
+                                                                                     m_legacy_operand_attrs_policy);
         return make_kernel_source_from_mlir(m_module, m_entry_point, inferred);
     }
 
@@ -62,7 +97,12 @@ public:
     KernelRuntimeMetadata runtime_metadata(const KernelArgMappingInfo& mapping,
                                            const std::shared_ptr<const ov::Node>& node,
                                            size_t outputs_hint = 0) const {
-        return extract_kernel_runtime_metadata(m_module, mapping, node, outputs_hint, m_entry_point);
+        return extract_kernel_runtime_metadata(m_module,
+                                               mapping,
+                                               node,
+                                               outputs_hint,
+                                               m_entry_point,
+                                               allows_legacy_operand_attrs());
     }
 
     static KernelDispatch make_default_dispatch(const ov::Shape& shape,
@@ -80,12 +120,19 @@ private:
     mlir::ModuleOp m_module;
     std::string m_entry_point;
     uint32_t m_arg_count = 0;
+    LegacyOperandAttrsPolicy m_legacy_operand_attrs_policy = LegacyOperandAttrsPolicy::Allow;
 };
 
-inline uint32_t infer_kernel_arg_count(mlir::ModuleOp module, const std::string& entry_point) {
+inline uint32_t infer_kernel_arg_count(mlir::ModuleOp module,
+                                       const std::string& entry_point,
+                                       LegacyOperandAttrsPolicy legacy_operand_attrs_policy) {
     const auto sig = infer_kernel_signature(module, entry_point);
     const size_t fallback = static_cast<size_t>(sig.total());
-    return static_cast<uint32_t>(infer_kernel_arg_count_from_module(module, fallback, entry_point));
+    return static_cast<uint32_t>(infer_kernel_arg_count_from_module(module,
+                                                                   fallback,
+                                                                   entry_point,
+                                                                   allow_legacy_operand_attrs(
+                                                                       legacy_operand_attrs_policy)));
 }
 
 }  // namespace gfx_plugin

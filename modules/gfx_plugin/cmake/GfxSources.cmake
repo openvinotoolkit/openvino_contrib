@@ -85,6 +85,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/gfx_logger.hpp
     ${_gfx_src_dir}/runtime/gfx_mpsrt_abi.hpp
     ${_gfx_src_dir}/runtime/gfx_mpsrt_builder_plan.hpp
+    ${_gfx_src_dir}/runtime/gfx_mpsrt_model.hpp
     ${_gfx_src_dir}/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp
     ${_gfx_src_dir}/runtime/gfx_mpsrt_plan.hpp
     ${_gfx_src_dir}/runtime/gfx_mpsrt_program.hpp
@@ -115,6 +116,7 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/gfx_remote_tensor.cpp
     ${_gfx_src_dir}/runtime/gfx_stage_policy.cpp
     ${_gfx_src_dir}/runtime/gfx_tensor_utils.cpp
+    ${_gfx_src_dir}/runtime/gfx_mpsrt_model.cpp
 )
 
 set(GFX_RUNTIME_MLIR_HEADERS
@@ -134,6 +136,7 @@ set(GFX_RUNTIME_MLIR_HEADERS
     ${_gfx_src_dir}/mlir/mlir_kernel_plan_utils.hpp
     ${_gfx_src_dir}/mlir/mlir_stage.hpp
     ${_gfx_src_dir}/mlir/mlir_support.hpp
+    ${_gfx_src_dir}/mlir/spirv_kernel_binding_adapter.hpp
 )
 
 set(GFX_RUNTIME_MLIR_SOURCES
@@ -141,6 +144,7 @@ set(GFX_RUNTIME_MLIR_SOURCES
     ${_gfx_src_dir}/mlir/gfx_apple_vendor_descriptors.cpp
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.cpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_dialect.cpp
+    ${_gfx_src_dir}/mlir/gfx_mpsrt_matmul_metadata.cpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_ops.cpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_runtime_abi_pipeline.cpp
     ${_gfx_src_dir}/mlir/mlir_stage.cpp
@@ -150,7 +154,13 @@ set(GFX_RUNTIME_MLIR_SOURCES
 set(GFX_RUNTIME_METAL_MSL_HEADERS
     ${_gfx_src_dir}/mlir/codegen_common.hpp
     ${_gfx_src_dir}/mlir/index_expr_utils.hpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl.hpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_ops.hpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_common.hpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_mps.hpp
     ${_gfx_src_dir}/mlir/msl_codegen.hpp
+    ${_gfx_src_dir}/mlir/msl_codegen_matmul_metal.hpp
+    ${_gfx_src_dir}/mlir/msl_codegen_matmul_mpsrt.hpp
 )
 
 set(GFX_RUNTIME_METAL_MSL_SOURCES
@@ -167,9 +177,18 @@ set(GFX_RUNTIME_METAL_MSL_SOURCES
     ${_gfx_src_dir}/mlir/gathernd_codegen.cpp
     ${_gfx_src_dir}/mlir/interpolate_codegen.cpp
     ${_gfx_src_dir}/mlir/matmul_codegen.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_adapter.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_data_movement.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_structural.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_dispatch.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_compute.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_common.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_mps.cpp
     ${_gfx_src_dir}/mlir/msl_codegen.cpp
     ${_gfx_src_dir}/mlir/msl_codegen_attention.cpp
     ${_gfx_src_dir}/mlir/msl_codegen_compressed_matmul.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_matmul_metal.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_matmul_mpsrt.cpp
     ${_gfx_src_dir}/mlir/pad_codegen.cpp
     ${_gfx_src_dir}/mlir/pool_avg_codegen.cpp
     ${_gfx_src_dir}/mlir/pool_max_codegen.cpp
@@ -198,7 +217,6 @@ set(GFX_RUNTIME_METAL_SOURCES
     ${_gfx_src_dir}/backends/metal/runtime/memory_ops.mm
     ${_gfx_src_dir}/backends/metal/runtime/metal_executor.cpp
     ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_context.mm
-    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_model.cpp
     ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_request.mm
     ${_gfx_src_dir}/backends/metal/runtime/gpu_memory.mm
     ${_gfx_src_dir}/backends/metal/codegen/metal_compiler.mm
@@ -237,7 +255,6 @@ set(GFX_RUNTIME_METAL_HEADERS
     ${_gfx_src_dir}/backends/metal/runtime/memory/memory_stats.hpp
     ${_gfx_src_dir}/backends/metal/runtime/memory/staging_pool.hpp
     ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_context.hpp
-    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_model.hpp
     ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_request.hpp
     ${_gfx_src_dir}/backends/metal/runtime/profiling/gpu_timestamps.hpp
     ${_gfx_src_dir}/backends/metal/runtime/profiling/profiler.hpp

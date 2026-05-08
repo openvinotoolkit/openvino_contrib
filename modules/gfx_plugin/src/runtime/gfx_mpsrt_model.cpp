@@ -1,7 +1,7 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
-#include "backends/metal/runtime/mpsrt/mpsrt_model.hpp"
+#include "runtime/gfx_mpsrt_model.hpp"
 
 #include <algorithm>
 #include <sstream>
@@ -13,7 +13,6 @@
 
 namespace ov {
 namespace gfx_plugin {
-namespace metal {
 namespace mpsrt {
 namespace {
 
@@ -130,6 +129,35 @@ MpsrtRuntimeResourceLifetime tensor_resource_lifetime(const MpsrtModel& model,
         return MpsrtRuntimeResourceLifetime::Model;
     }
     return MpsrtRuntimeResourceLifetime::Transient;
+}
+
+const MpsrtRuntimeResource* find_resource_for_value_and_lifetime(const MpsrtModel& model,
+                                                                 GfxMpsrtValue value,
+                                                                 MpsrtRuntimeResourceLifetime lifetime) {
+    for (const auto& resource : model.resources) {
+        if (resource.has_tensor_value && resource.value == value && resource.lifetime == lifetime) {
+            return &resource;
+        }
+    }
+    return nullptr;
+}
+
+GfxMpsrtStorageBridgeDirection external_tensor_bridge_direction(const MpsrtModel& model,
+                                                                GfxMpsrtValue value,
+                                                                bool external_output) {
+    const auto* desc = find_tensor_desc(model.tensors, value);
+    const auto storage = desc ? static_cast<GfxMpsrtStorage>(desc->storage)
+                              : GfxMpsrtStorage::Unknown;
+    const auto storage_direction =
+        gfx_mpsrt_external_bridge_direction_for_storage(storage, external_output);
+    const auto fallback_direction =
+        storage_direction == GfxMpsrtStorageBridgeDirection::Unknown
+            ? gfx_mpsrt_external_image_bridge_direction(external_output)
+            : storage_direction;
+    if (const auto* bridge = find_mpsrt_storage_bridge(model, value)) {
+        return bridge->direction;
+    }
+    return fallback_direction;
 }
 
 void append_missing_tensor_resources(MpsrtModel& model) {
@@ -643,6 +671,31 @@ const MpsrtRuntimeResource* find_mpsrt_resource_for_value(const MpsrtModel& mode
     return nullptr;
 }
 
+const MpsrtRuntimeTensor* find_mpsrt_tensor(const MpsrtModel& model,
+                                           GfxMpsrtValue value) {
+    for (const auto& tensor : model.tensors) {
+        if (tensor.value == value) {
+            return &tensor;
+        }
+    }
+    return nullptr;
+}
+
+const GfxMpsrtStorageBridgeDesc* find_mpsrt_storage_bridge(const MpsrtModel& model,
+                                                           GfxMpsrtValue value) {
+    for (const auto& bridge : model.storage_bridges) {
+        if (bridge.value == value) {
+            return &bridge;
+        }
+    }
+    return nullptr;
+}
+
+bool mpsrt_value_list_contains(const std::vector<GfxMpsrtValue>& values,
+                               GfxMpsrtValue value) {
+    return has_value(values, value);
+}
+
 bool mpsrt_model_has_external_resource_entries(const MpsrtModel& model) {
     return std::any_of(model.external_buffer_bindings.begin(),
                        model.external_buffer_bindings.end(),
@@ -664,6 +717,143 @@ size_t mpsrt_model_resource_lifetime_count(const MpsrtModel& model,
                                              [&](const auto& resource) {
                                                  return resource.lifetime == lifetime;
                                              }));
+}
+
+GfxMpsrtStorageBridgeDirection mpsrt_model_external_bridge_direction_for_value(
+    const MpsrtModel& model,
+    GfxMpsrtValue value,
+    GfxMpsrtStorageBridgeDirection fallback_direction) {
+    if (model.storage_bridges.empty()) {
+        return fallback_direction;
+    }
+    if (const auto* bridge = find_mpsrt_storage_bridge(model, value)) {
+        return bridge->direction;
+    }
+    return GfxMpsrtStorageBridgeDirection::Unknown;
+}
+
+bool mpsrt_model_external_tensor_bindings(const MpsrtModel& model,
+                                          std::vector<MpsrtExternalTensorBinding>& bindings,
+                                          std::string* error) {
+    bindings.clear();
+    std::vector<GfxMpsrtValue> external_output_values = model.external_output_values;
+    if (external_output_values.empty()) {
+        external_output_values = model.output_values;
+    }
+
+    auto append_binding = [&](uint32_t arg_index,
+                              GfxMpsrtValue value,
+                              GfxMpsrtExternalBufferRole role) -> bool {
+        const bool external_output = has_value(external_output_values, value);
+        bindings.push_back({arg_index,
+                            value,
+                            role,
+                            external_tensor_bridge_direction(model, value, external_output)});
+        return true;
+    };
+
+    if (!model.external_buffer_bindings.empty()) {
+        bindings.reserve(model.external_buffer_bindings.size());
+        for (const auto& external : model.external_buffer_bindings) {
+            const auto* resource = find_mpsrt_external_resource(model, external);
+            if (!resource) {
+                return fail(error, "GFX MPSRT: external binding references an invalid resource");
+            }
+            if (!resource->has_tensor_value) {
+                continue;
+            }
+            if (!append_binding(external.arg_index, resource->value, resource->role)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bindings.reserve(model.external_values.size());
+    for (size_t i = 0; i < model.external_values.size(); ++i) {
+        const auto role = i < model.external_buffer_roles.size()
+                              ? model.external_buffer_roles[i]
+                              : GfxMpsrtExternalBufferRole::Unknown;
+        if (!append_binding(static_cast<uint32_t>(i), model.external_values[i], role)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool mpsrt_model_tensor_binding_plan(const MpsrtModel& model,
+                                     std::vector<MpsrtTensorBindingPlanEntry>& plan,
+                                     std::string* error) {
+    plan.clear();
+    std::vector<GfxMpsrtValue> external_values = model.external_values;
+    if (external_values.empty()) {
+        external_values = model.input_values;
+        external_values.insert(external_values.end(), model.output_values.begin(), model.output_values.end());
+    }
+    std::vector<GfxMpsrtValue> external_output_values = model.external_output_values;
+    if (external_output_values.empty()) {
+        external_output_values = model.output_values;
+    }
+
+    auto append_resource = [&](const MpsrtRuntimeResource& resource,
+                               uint32_t arg_index) -> bool {
+        MpsrtTensorBindingPlanEntry entry{};
+        entry.resource_index = resource.resource_index;
+        entry.lifetime = resource.lifetime;
+        entry.arg_index = arg_index;
+        entry.role = resource.role;
+        entry.has_tensor_value = resource.has_tensor_value;
+        entry.value = resource.value;
+        entry.tensor_desc = resource.tensor_desc;
+        if (resource.has_tensor_value) {
+            entry.bridge_direction =
+                external_tensor_bridge_direction(model,
+                                                 resource.value,
+                                                 has_value(external_output_values, resource.value));
+        }
+        plan.push_back(entry);
+        return true;
+    };
+
+    if (!model.external_buffer_bindings.empty()) {
+        plan.reserve(model.external_buffer_bindings.size() + model.resources.size());
+        for (const auto& external : model.external_buffer_bindings) {
+            const auto* resource = find_mpsrt_external_resource(model, external);
+            if (!resource) {
+                return fail(error, "GFX MPSRT: external binding references an invalid resource");
+            }
+            if (!append_resource(*resource, external.arg_index)) {
+                return false;
+            }
+        }
+    } else {
+        plan.reserve(external_values.size() + model.resources.size());
+        for (size_t i = 0; i < external_values.size(); ++i) {
+            const auto* resource = find_resource_for_value_and_lifetime(model,
+                                                                        external_values[i],
+                                                                        MpsrtRuntimeResourceLifetime::External);
+            if (!resource) {
+                return fail(error, "GFX MPSRT: external value has no external runtime resource");
+            }
+            if (!append_resource(*resource, static_cast<uint32_t>(i))) {
+                return false;
+            }
+        }
+    }
+
+    for (const auto& resource : model.resources) {
+        if (resource.lifetime != MpsrtRuntimeResourceLifetime::Model &&
+            resource.lifetime != MpsrtRuntimeResourceLifetime::Transient) {
+            continue;
+        }
+        if (!resource.has_tensor_value) {
+            return fail(error, "GFX MPSRT: owned runtime resource is not a tensor");
+        }
+        if (!append_resource(resource, resource.arg_index)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool adapt_mpsrt_model_to_external_buffer_abi(MpsrtModel& model,
@@ -821,6 +1011,5 @@ bool adapt_mpsrt_model_to_external_buffer_abi(MpsrtModel& model,
 }
 
 }  // namespace mpsrt
-}  // namespace metal
 }  // namespace gfx_plugin
 }  // namespace ov

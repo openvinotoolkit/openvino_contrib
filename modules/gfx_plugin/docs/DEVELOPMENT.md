@@ -45,6 +45,7 @@ Current build-system notes:
 - the module now reuses installed package exports when present and otherwise falls back to build-tree exports during bootstrap
 - Android and generic cross-compiling flows forward toolchain settings into the vendored LLVM/MLIR configure step
 - that bootstrap path also forwards `CMAKE_C_FLAGS`, `CMAKE_CXX_FLAGS`, and the executable/shared/module linker flag families into the nested LLVM configure step
+- Apple MSL source planning now builds with `gfx_runtime_mlir`; keep target wiring in `cmake/GfxSources.cmake` and `src/CMakeLists.txt` aligned when adding `msl_codegen_apple_*` or `msl_codegen_matmul_*` files
 - the module build treats warnings as errors by default through `-Werror` on Clang/GCC and `/WX` on MSVC
 - `cmake/GfxAndroidRuntimeBundle.cmake.in` is used to copy Android runtime-side dependencies next to deployed plugin artifacts
 
@@ -125,6 +126,7 @@ If the behavior depends on route or scheduling selection, also read:
 - `src/runtime/gfx_mpsrt_abi.hpp`
 - `src/runtime/gfx_mpsrt_plan.hpp`
 - `src/runtime/gfx_mpsrt_builder_plan.hpp`
+- `src/runtime/gfx_mpsrt_model.*`
 - `src/runtime/gfx_mpsrt_program.hpp`
 - `src/runtime/gfx_mpsrt_storage_bridge.hpp`
 - `src/kernel_ir/gfx_kernel_manifest.hpp`
@@ -139,8 +141,13 @@ If the behavior depends on route or scheduling selection, also read:
 - `src/mlir/gfx_mpsrt_const_tensor_sources.hpp`
 - `src/mlir/gfx_kernel_runtime_params.hpp`
 - `src/mlir/msl_codegen.hpp`
+- `src/mlir/msl_codegen_apple_msl*.{cpp,hpp}`
+- `src/mlir/msl_codegen_apple_mps.*`
+- `src/mlir/msl_codegen_matmul_metal.*`
+- `src/mlir/msl_codegen_matmul_mpsrt.*`
 - `src/mlir/msl_codegen_attention.cpp`
 - `src/mlir/msl_codegen_compressed_matmul.cpp`
+- `src/mlir/spirv_kernel_binding_adapter.hpp`
 
 `tests/unit/gfx_parallelism_test.cpp` now covers Broadcom-oriented matmul
 selection plus dense stride-1, huge-spatial, and ultra-dense convolution
@@ -158,6 +165,7 @@ The current planning path is no longer just backend-wide. It includes family-spe
 - manifest-backed execution-kind selection between vendor primitives and custom kernels
 - custom-kernel family classification, external-buffer ABI roles, semantic input/output roles, and dispatch policies from `src/kernel_ir/gfx_custom_kernel_families.*`
 - generated MPSRT runtime-ABI plans, resource tables, and storage bridges that must stay aligned with request-time binding and stage reconstruction
+- backend-neutral MPSRT runtime-model reconstruction in `src/runtime/gfx_mpsrt_model.*`, which now owns resource finalization, tensor binding plans, and external-buffer ABI adaptation before Metal consumes the model
 - the typed `GfxMpsrtProgram` facade and generated `gfx_mpsrt_ops` materialization, which now sit between legacy module attrs and final runtime-ABI call-plan lowering
 - the Apple stage pipeline, shared vendor descriptor helpers, and typed `gfx.mpsrt` helper ops, which now mediate descriptor extraction, storage assignment, and program materialization for Apple MPS routes
 
@@ -177,7 +185,7 @@ If the change touches infer-request throughput or resource reuse, also read:
 - `src/runtime/gpu_buffer_manager.hpp`
 - `src/plugin/infer_io_utils.*`
 - `src/backends/vulkan/runtime/vulkan_buffer_manager.*` when Vulkan const-upload batching or shared upload-recording behavior changes
-- `src/backends/metal/runtime/mpsrt/*` when Metal request-time binding, prepared dispatch caching, or external-buffer ABI rules changed
+- `src/runtime/gfx_mpsrt_model.*` and `src/backends/metal/runtime/mpsrt/*` when Metal request-time binding, prepared dispatch caching, or external-buffer ABI rules changed
 
 For stage-output reuse changes, also inspect:
 - `StageOutputBufferWorkspace` in `src/plugin/infer_pipeline.hpp`
@@ -227,7 +235,7 @@ For `ShapeOf`, keep the runtime-materialized dims path aligned with the builder 
 
 For Metal kernel-dispatch work, inspect `src/backends/metal/runtime/metal_command_encoder.*` before adding new ad-hoc encoder setup code. The current runtime keeps one compute encoder per active command buffer, caches the last bound pipeline plus buffer table, and ends that encoder explicitly before blit/copy paths or command-buffer commit.
 For Metal Conv2D / MaxPool work, keep dilation handling and dispatch blocking coherent across `gfx_codegen_desc.hpp`, MLIR/MSL source planning, and request-time dispatch metadata. The current code shares the same dilation and output-block metadata between compile-time codegen and runtime dispatch sizing.
-For Metal placement or codegen work, also keep the MPSRT boundary coherent. The current code expects stage policy, MLIR attrs, `gfx_kernel_manifest.hpp`, `gfx_custom_kernel_families.*`, and `src/backends/metal/runtime/mpsrt/*` to agree on:
+For Metal placement or codegen work, also keep the MPSRT boundary coherent. The current code expects stage policy, MLIR attrs, `gfx_kernel_manifest.hpp`, `gfx_custom_kernel_families.*`, `src/runtime/gfx_mpsrt_model.*`, and `src/backends/metal/runtime/mpsrt/*` to agree on:
 - the selected placement domain (`apple_mps` vs `apple_msl`)
 - the storage kind (`image`, `matrix`, `buffer`)
 - the execution kind (`vendor_primitive` vs `custom_kernel`)
@@ -237,6 +245,7 @@ For Metal placement or codegen work, also keep the MPSRT boundary coherent. The 
 
 If the change touches manifest-backed Metal lowering, also inspect:
 - `src/runtime/gfx_mpsrt_program.hpp`
+- `src/runtime/gfx_mpsrt_model.*`
 - `src/kernel_ir/gfx_kernel_manifest.hpp`
 - `src/kernel_ir/gfx_custom_kernel_families.*`
 - `src/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp`
@@ -266,13 +275,14 @@ When touching the Metal MPSRT boundary, keep four layers aligned:
 - the typed program contract in `gfx_mpsrt_program.hpp`
 - generated `gfx_mpsrt_ops` plus the runtime-ABI call plan in `gfx_mpsrt_ops.*` and `gfx_mpsrt_runtime_abi_pipeline.*`
 - storage-bridge descriptors in `gfx_mpsrt_storage_bridge.hpp`
-- runtime resource finalization in `mpsrt_model.*` and request-time execution/validation in `src/backends/metal/runtime/mpsrt/*`
+- runtime resource finalization in `src/runtime/gfx_mpsrt_model.*` and request-time execution/validation in `src/backends/metal/runtime/mpsrt/*`
 
 The current request path can no longer assume one storage class for all external bindings. Image-backed Apple MPS stages may require explicit `buffer_to_image` or `image_to_buffer` bridges, and those bridges are part of the serialized builder plan and reconstructed runtime model. The request path also no longer treats unbound tensors as ad-hoc transient allocations: it binds against finalized `MpsrtRuntimeResource` entries, prepared model-owned const buffers, and heap-backed transient resources.
 Also, do not build new tooling on top of stale flat `gfx.mpsrt.*` stage attrs. Current code intentionally materializes generated helpers and erases legacy attrs after the program facade is available.
 For Apple-targeted lowering, also prefer the dedicated `run_gfx_apple_stage_pipeline()` path over reintroducing per-op ad-hoc metadata assembly. The current code treats placement, storage, fusion, stage-manifest lowering, typed program materialization, and later runtime-ABI generation as one connected flow.
-For Apple MPS vendor stages, prefer adding descriptor support in `gfx_apple_vendor_descriptors.*` and threading it through `GfxAppleStagePipelineOptions` rather than duplicating per-op ABI extraction inside older metadata helpers.
-For Metal custom-kernel source or request-time binding changes, route new behavior through `GfxMslRuntimeBindingPlan` and the helpers in `src/mlir/msl_codegen.*`. Keep the generated module operands, `GfxKernelStageManifest` external-buffer roles, inferred MSL `[[buffer(N)]]` argument count, and MPSRT `kernel_buffer_order` coherent. The request path treats a missing materialized buffer order for MSL dispatch as invalid runtime-model state.
+For Apple MPS vendor stages, prefer adding descriptor support in `gfx_apple_vendor_descriptors.*` and threading it through `GfxAppleMpsVendorPrimitiveContract` plus `materialize_apple_mps_vendor_contract_program()` rather than duplicating per-op ABI extraction inside older metadata helpers.
+For Metal custom-kernel source or request-time binding changes, route new behavior through `GfxMslRuntimeBindingPlan` and the split helpers in `src/mlir/msl_codegen_apple_msl*`, `src/mlir/msl_codegen_apple_mps.*`, and `src/mlir/msl_codegen_matmul_*`. Keep the generated module operands, `GfxKernelStageManifest` external-buffer roles, inferred MSL `[[buffer(N)]]` argument count, and MPSRT `kernel_buffer_order` coherent. The request path treats a missing materialized buffer order for MSL dispatch as invalid runtime-model state.
+For Vulkan compact-ABI changes, use `src/mlir/spirv_kernel_binding_adapter.hpp` so SPIR-V fixed-argument metadata stays separate from Apple MSL runtime-binding attrs.
 
 For layout-cleanup work around DFL-style postprocessing tails, the current rewrite target is a value-preserving `Softmax -> MatMul -> Reshape/Transpose` form. Do not describe the older synthetic 1x1 convolution rewrite as the active implementation.
 

@@ -54,6 +54,8 @@
 #include "mlir/codegen_common.hpp"
 #include "mlir/mlir_passes.hpp"
 #include "mlir/msl_codegen.hpp"
+#include "mlir/msl_codegen_apple_msl.hpp"
+#include "mlir/spirv_kernel_binding_adapter.hpp"
 #include "mlir/IR/Verifier.h"
 #include "runtime/gfx_mpsrt_builder_plan.hpp"
 #include "runtime/gfx_stage_policy.hpp"
@@ -804,33 +806,48 @@ TEST(GfxMlir, MatMulMpsrtMetadataAnnotatesPlacementAndTensorDescriptors) {
         }
         return dims;
     };
-    ov::gfx_plugin::GfxAppleMpsGemmProgramDesc program_desc{};
-    program_desc.lhs = ov::gfx_plugin::gfx_mpsrt_make_tensor_desc(
+    ov::gfx_plugin::GfxMpsrtGemmAbiDesc gemm_desc{};
+    gemm_desc.transpose_rhs = 1;
+    gemm_desc.alpha = 1.0f;
+    ov::gfx_plugin::GfxAppleMpsVendorPrimitiveContract contract{};
+    ASSERT_TRUE(ov::gfx_plugin::gfx_apple_make_mps_gemm_contract(
+        gemm_desc,
+        ov::gfx_plugin::gfx_mpsrt_make_tensor_desc(
         to_i64_dims(lhs->get_shape()),
         ov::element::f32,
         ov::gfx_plugin::GfxStageStorageKind::Matrix,
-        ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo);
-    program_desc.rhs = ov::gfx_plugin::gfx_mpsrt_make_tensor_desc(
+            ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo),
+        ov::gfx_plugin::gfx_mpsrt_make_tensor_desc(
         to_i64_dims(rhs->get_shape()),
         ov::element::f32,
         ov::gfx_plugin::GfxStageStorageKind::Matrix,
-        ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo);
-    program_desc.output = ov::gfx_plugin::gfx_mpsrt_make_tensor_desc(
+            ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo),
+        ov::gfx_plugin::gfx_mpsrt_make_tensor_desc(
         to_i64_dims(matmul->get_output_shape(0)),
         ov::element::f32,
         ov::gfx_plugin::GfxStageStorageKind::Matrix,
-        ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo);
-    program_desc.gemm.transpose_rhs = 1;
-    program_desc.gemm.alpha = 1.0f;
-    const auto materialized = ov::gfx_plugin::materialize_apple_mps_gemm_program(module,
-                                                                                program_desc);
+            ov::gfx_plugin::GfxMpsrtTensorFlagExternalIo),
+        contract));
+    const auto plan = ov::gfx_plugin::select_stage_optimization_plan(nullptr,
+                                                                     ov::gfx_plugin::GpuBackend::Metal,
+                                                                     "MatMul",
+                                                                     matmul,
+                                                                     ov::element::f32,
+                                                                     false,
+                                                                     false,
+                                                                     false,
+                                                                     {});
+    const auto materialized =
+        ov::gfx_plugin::materialize_apple_mps_vendor_contract_program(module,
+                                                                      plan,
+                                                                      "MatMul",
+                                                                      contract);
     ASSERT_TRUE(materialized.valid);
     ASSERT_TRUE(materialized.typed_program_materialized);
     ASSERT_TRUE(static_cast<bool>(module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_ops")));
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.apple.pipeline.program.kind").str(),
-              "single_stage");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.apple.pipeline.program.record_key").str(),
-              "mps_gemm_model|MatMul");
+    ASSERT_FALSE(module->hasAttr("gfx.apple.pipeline.program.kind"));
+    ASSERT_FALSE(module->hasAttr("gfx.apple.pipeline.program.record_key"));
+    ASSERT_FALSE(module->hasAttr("gfx.apple.pipeline.program.stage_count"));
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.apple.pipeline.pass4.name").str(),
               "gfx-apple-vendor-descriptor");
 
@@ -873,7 +890,7 @@ TEST(GfxMlir, MatMulMpsrtMetadataAnnotatesPlacementAndTensorDescriptors) {
     ASSERT_TRUE(ov::gfx_plugin::read_module_mpsrt_program(module, program));
     ASSERT_TRUE(program.valid);
     ASSERT_FALSE(program.multi_stage);
-    ASSERT_EQ(program.record_key, "mps_gemm_model|MatMul");
+    ASSERT_EQ(program.record_key, extracted.stage_record_key);
     ASSERT_EQ(program.external_buffer_abi.buffer_roles,
               std::vector<ov::gfx_plugin::GfxMpsrtExternalBufferRole>(
                   {ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorInput,
@@ -1314,13 +1331,10 @@ TEST(GfxMlir, MpsrtModuleMetadataRoundTripsMultiStageMpsGemmPlusMslDispatch) {
     ASSERT_FALSE(module->hasAttr("gfx.mpsrt.stage1.backend"));
     ASSERT_FALSE(module->hasAttr("gfx.mpsrt.stage1.stage_manifest.kernel.entry_point"));
     ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.apple.pipeline.pass_boundary_count").getInt(), 8);
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.apple.pipeline.program.kind").str(),
-              "multi_stage");
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.apple.pipeline.program.stage_count").getInt(), 2);
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.apple.pipeline.program.stage0.backend_domain").str(),
-              "apple_mps");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.apple.pipeline.program.stage1.execution_kind").str(),
-              "custom_kernel");
+    ASSERT_FALSE(module->hasAttr("gfx.apple.pipeline.program.kind"));
+    ASSERT_FALSE(module->hasAttr("gfx.apple.pipeline.program.stage_count"));
+    ASSERT_FALSE(module->hasAttr("gfx.apple.pipeline.program.stage0.backend_domain"));
+    ASSERT_FALSE(module->hasAttr("gfx.apple.pipeline.program.stage1.execution_kind"));
 
     ov::gfx_plugin::GfxMpsrtProgram extracted;
     ASSERT_TRUE(ov::gfx_plugin::read_module_mpsrt_program(module, extracted));
@@ -1625,11 +1639,9 @@ TEST(GfxMlir, MatMulMpsrtLoweringEntryPointSelectsSingleAndMultiStagePlans) {
     ov::gfx_plugin::GfxMpsrtProgram gemm_program;
     ASSERT_TRUE(ov::gfx_plugin::read_module_mpsrt_program(gemm_module, gemm_program));
     ASSERT_FALSE(gemm_program.multi_stage);
-    ASSERT_EQ(gemm_program.record_key, "mps_gemm_model|MatMul");
-    ASSERT_EQ(gemm_module->getAttrOfType<mlir::StringAttr>("gfx.apple.pipeline.program.kind").str(),
-              "single_stage");
-    ASSERT_EQ(gemm_module->getAttrOfType<mlir::StringAttr>("gfx.apple.pipeline.program.stage0.kind").str(),
-              "mps_gemm");
+    ASSERT_EQ(gemm_program.record_key, stage_plan.stage_record_key);
+    ASSERT_FALSE(gemm_module->hasAttr("gfx.apple.pipeline.program.kind"));
+    ASSERT_FALSE(gemm_module->hasAttr("gfx.apple.pipeline.program.stage0.kind"));
     const auto generic_gemm_source_plan =
         ov::gfx_plugin::make_mpsrt_kernel_source_plan_from_module(gemm_module);
     ASSERT_TRUE(generic_gemm_source_plan.valid());
@@ -1786,12 +1798,9 @@ TEST(GfxMlir, AppleMpsrtRuntimeAbiPipelineMaterializesMultiStageBuilderRecords) 
     ASSERT_EQ(lowering, ov::gfx_plugin::GfxMatMulMpsrtLoweringKind::MpsGemmWithMslEpilogue);
     ASSERT_FALSE(static_cast<bool>(module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_program")));
     ASSERT_TRUE(static_cast<bool>(module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_ops")));
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.apple.pipeline.program.kind").str(),
-              "multi_stage");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.apple.pipeline.program.stage0.kind").str(),
-              "mps_gemm");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.apple.pipeline.program.stage1.kind").str(),
-              "msl_dispatch");
+    ASSERT_FALSE(module->hasAttr("gfx.apple.pipeline.program.kind"));
+    ASSERT_FALSE(module->hasAttr("gfx.apple.pipeline.program.stage0.kind"));
+    ASSERT_FALSE(module->hasAttr("gfx.apple.pipeline.program.stage1.kind"));
     ov::gfx_plugin::GfxMpsrtProgram program;
     ASSERT_TRUE(ov::gfx_plugin::read_module_mpsrt_program(module, program));
     ASSERT_EQ(program.stages.size(), 2u);
@@ -1813,27 +1822,18 @@ TEST(GfxMlir, AppleMpsrtRuntimeAbiPipelineMaterializesMultiStageBuilderRecords) 
                           "gfx.apple.pipeline.runtime_abi.call_plan_materialized")
                     .getValue());
 
-    ASSERT_TRUE(module->getAttrOfType<mlir::BoolAttr>("gfx.mpsrt.runtime_abi.valid").getValue());
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.runtime_abi.kind").str(), "multi_stage");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.runtime_abi.record_key").str(),
-              "mps_gemm_plus_msl_epilogue_model|MatMul");
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.runtime_abi.record_count").getInt(), 7);
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.runtime_abi.external_buffer_count").getInt(), 4);
-    ASSERT_EQ(module->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.runtime_abi.external_output_buffer_count").getInt(),
-              1);
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.runtime_abi.record4.stage_kind").str(),
-              "mps_gemm");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.runtime_abi.record5.stage_kind").str(),
-              "msl_dispatch");
-    ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.runtime_abi.record5.kernel_name").str(),
-              "eltwise_fused_buffer");
-    const auto epilogue_order =
-        module->getAttrOfType<mlir::ArrayAttr>("gfx.mpsrt.runtime_abi.record5.kernel_buffer_order");
-    ASSERT_TRUE(epilogue_order);
-    ASSERT_EQ(epilogue_order.size(), 3u);
-
     ASSERT_EQ(module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.runtime_abi.call_plan_symbol").str(),
               "gfx_mpsrt_runtime_abi_plan");
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.runtime_abi.valid"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.runtime_abi.kind"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.runtime_abi.record_key"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.runtime_abi.record_count"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.runtime_abi.external_buffer_count"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.runtime_abi.external_output_buffer_count"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.runtime_abi.record4.stage_kind"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.runtime_abi.record5.stage_kind"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.runtime_abi.record5.kernel_name"));
+    ASSERT_FALSE(module->hasAttr("gfx.mpsrt.runtime_abi.record5.kernel_buffer_order"));
     ASSERT_FALSE(module->hasAttr("gfx.mpsrt.model_stage_count"));
     ASSERT_FALSE(module->hasAttr("gfx.mpsrt.input_count"));
     ASSERT_FALSE(module->hasAttr("gfx.mpsrt.storage_bridge_count"));
@@ -1856,6 +1856,14 @@ TEST(GfxMlir, AppleMpsrtRuntimeAbiPipelineMaterializesMultiStageBuilderRecords) 
     auto call_plan = module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_runtime_abi_plan");
     ASSERT_TRUE(static_cast<bool>(call_plan));
     ASSERT_TRUE(call_plan->getAttrOfType<mlir::BoolAttr>("gfx.mpsrt.runtime_abi.generated").getValue());
+    ASSERT_EQ(call_plan->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.runtime_abi.kind").str(), "multi_stage");
+    ASSERT_EQ(call_plan->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.runtime_abi.record_key").str(),
+              "mps_gemm_plus_msl_epilogue_model|MatMul");
+    ASSERT_EQ(call_plan->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.runtime_abi.record_count").getInt(), 7);
+    ASSERT_EQ(call_plan->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.runtime_abi.external_buffer_count").getInt(), 4);
+    ASSERT_EQ(
+        call_plan->getAttrOfType<mlir::IntegerAttr>("gfx.mpsrt.runtime_abi.external_output_buffer_count").getInt(),
+        1);
     std::vector<mlir::func::CallOp> calls;
     call_plan.walk([&](mlir::func::CallOp call) {
         calls.push_back(call);
@@ -2195,6 +2203,37 @@ TEST(GfxMlir, AppleStagePipelineRunsNamedPassBoundariesBeforeTypedProgram) {
     ASSERT_TRUE(ov::gfx_plugin::has_gfx_apple_mpsrt_runtime_abi_call_plan(module));
 }
 
+TEST(GfxMlir, SpirvStageManifestDoesNotMaterializeAppleMpsrtOps) {
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 2});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 1, 1});
+    auto multiply = std::make_shared<ov::op::v1::Multiply>(lhs, rhs);
+
+    auto& ctx = ov::gfx_plugin::gfx_mlir_context();
+    auto module = ov::gfx_plugin::build_mlir_for_node(multiply, ctx);
+    ASSERT_TRUE(module);
+
+    const auto plan = ov::gfx_plugin::select_stage_optimization_plan(nullptr,
+                                                                     ov::gfx_plugin::GpuBackend::Vulkan,
+                                                                     "Multiply",
+                                                                     multiply,
+                                                                     ov::element::f32,
+                                                                     /*has_bias=*/false,
+                                                                     /*has_activation=*/false,
+                                                                     /*has_batchnorm=*/false,
+                                                                     {});
+    ASSERT_EQ(plan.placement.domain, ov::gfx_plugin::GfxStageBackendDomain::Spirv);
+
+    const auto result = ov::gfx_plugin::run_gfx_apple_stage_pipeline(module,
+                                                                     plan,
+                                                                     "Multiply",
+                                                                     "eltwise_main",
+                                                                     /*materialize_typed_program=*/false);
+    ASSERT_TRUE(result.valid);
+    ASSERT_FALSE(result.typed_program_materialized);
+    ASSERT_TRUE(module->hasAttr("gfx.apple.pipeline.placement.backend_domain"));
+    ASSERT_FALSE(static_cast<bool>(module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_ops")));
+}
+
 TEST(GfxMlir, AppleStagePipelineOwnsImageStorageBridgeAssignment) {
     auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 16, 32, 32});
     auto weights = ov::op::v0::Constant::create(ov::element::f16,
@@ -2298,10 +2337,15 @@ TEST(GfxMlir, AppleMpsPrimitiveMaterializersOwnDescriptorEnrichment) {
     pool_desc.strides[1] = 2;
     pool_desc.dilations[0] = 1;
     pool_desc.dilations[1] = 1;
-    const auto pool_materialized = ov::gfx_plugin::materialize_apple_mps_pool2d_program(pool_module,
-                                                                                       pool_plan,
-                                                                                       "MaxPool",
-                                                                                       pool_desc);
+    ov::gfx_plugin::GfxAppleMpsVendorPrimitiveContract pool_contract{};
+    ASSERT_TRUE(ov::gfx_plugin::gfx_apple_make_mps_pool2d_contract(max_pool,
+                                                                    pool_desc,
+                                                                    pool_contract));
+    const auto pool_materialized =
+        ov::gfx_plugin::materialize_apple_mps_vendor_contract_program(pool_module,
+                                                                      pool_plan,
+                                                                      "MaxPool",
+                                                                      pool_contract);
     ASSERT_TRUE(pool_materialized.valid);
     ASSERT_TRUE(pool_materialized.typed_program_materialized);
 
@@ -2316,11 +2360,15 @@ TEST(GfxMlir, AppleMpsPrimitiveMaterializersOwnDescriptorEnrichment) {
                                                                              {});
     ov::gfx_plugin::GfxMpsrtSoftmaxAbiDesc softmax_desc{};
     softmax_desc.axis = 2;
+    ov::gfx_plugin::GfxAppleMpsVendorPrimitiveContract softmax_contract{};
+    ASSERT_TRUE(ov::gfx_plugin::gfx_apple_make_mps_softmax_contract(softmax,
+                                                                    softmax_desc,
+                                                                    softmax_contract));
     const auto softmax_materialized =
-        ov::gfx_plugin::materialize_apple_mps_softmax_program(softmax_module,
-                                                              softmax_plan,
-                                                              "Softmax",
-                                                              softmax_desc);
+        ov::gfx_plugin::materialize_apple_mps_vendor_contract_program(softmax_module,
+                                                                      softmax_plan,
+                                                                      "Softmax",
+                                                                      softmax_contract);
     ASSERT_TRUE(softmax_materialized.valid);
     ASSERT_TRUE(softmax_materialized.typed_program_materialized);
 
@@ -2338,10 +2386,15 @@ TEST(GfxMlir, AppleMpsPrimitiveMaterializersOwnDescriptorEnrichment) {
     topk_desc.k = 4;
     topk_desc.mode_max = 1;
     topk_desc.sort_type = static_cast<uint32_t>(ov::gfx_plugin::TopKSortType::SortValues);
-    const auto topk_materialized = ov::gfx_plugin::materialize_apple_mps_topk_program(topk_module,
-                                                                                     topk_plan,
-                                                                                     "TopK",
-                                                                                     topk_desc);
+    ov::gfx_plugin::GfxAppleMpsVendorPrimitiveContract topk_contract{};
+    ASSERT_TRUE(ov::gfx_plugin::gfx_apple_make_mps_topk_contract(topk,
+                                                                 topk_desc,
+                                                                 topk_contract));
+    const auto topk_materialized =
+        ov::gfx_plugin::materialize_apple_mps_vendor_contract_program(topk_module,
+                                                                      topk_plan,
+                                                                      "TopK",
+                                                                      topk_contract);
     ASSERT_TRUE(topk_materialized.valid);
     ASSERT_TRUE(topk_materialized.typed_program_materialized);
 
@@ -2477,6 +2530,41 @@ TEST(GfxMlir, StageManifestSuppliesMslDispatchMetadataWhenLegacyStageAttrsAreMis
     ASSERT_EQ(module_builder_plan.builder_plan.records[3].msl_dispatch_desc.threads_per_threadgroup, 256u);
     ASSERT_EQ(module_builder_plan.builder_plan.records[3].msl_dispatch_desc.flags,
               ov::gfx_plugin::GfxMpsrtMslDispatchFlagPrecompiledMetallibRequired);
+}
+
+TEST(GfxMlir, StageManifestAloneDoesNotMaterializeMpsrtProgramReader) {
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 64, 80, 80});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1, 64, 80, 80});
+    auto add = std::make_shared<ov::op::v1::Add>(lhs, rhs);
+
+    auto& ctx = ov::gfx_plugin::gfx_mlir_context();
+    auto module = ov::gfx_plugin::build_mlir_for_node(add, ctx);
+    ASSERT_TRUE(module);
+
+    const auto plan = ov::gfx_plugin::select_stage_optimization_plan(nullptr,
+                                                                     ov::gfx_plugin::GpuBackend::Metal,
+                                                                     "Add",
+                                                                     add,
+                                                                     ov::element::f16,
+                                                                     /*has_bias=*/false,
+                                                                     /*has_activation=*/false,
+                                                                     /*has_batchnorm=*/false,
+                                                                     {});
+    ov::gfx_plugin::annotate_msl_module_with_stage_plan(module, plan, "Add");
+    ASSERT_TRUE(static_cast<bool>(module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_ops")));
+
+    ov::gfx_plugin::erase_module_mpsrt_ops(module);
+    ASSERT_FALSE(static_cast<bool>(module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_ops")));
+
+    ov::gfx_plugin::GfxMpsrtModuleStagePlan stage_plan;
+    ASSERT_TRUE(ov::gfx_plugin::read_module_mpsrt_stage_plan(module, stage_plan));
+    ASSERT_TRUE(stage_plan.valid);
+    ASSERT_EQ(stage_plan.stage.kind, ov::gfx_plugin::GfxMpsrtStageKind::MSLDispatch);
+
+    ov::gfx_plugin::GfxMpsrtProgram program;
+    ASSERT_FALSE(ov::gfx_plugin::read_module_mpsrt_program(module, program));
+    const auto module_builder_plan = ov::gfx_plugin::build_module_mpsrt_builder_plan(module);
+    ASSERT_FALSE(module_builder_plan.valid);
 }
 
 TEST(GfxMlir, LegacyMpsrtStageAttrsWithoutManifestAreRejected) {
@@ -2656,6 +2744,146 @@ TEST(GfxMlir, StageManifestSuppliesKernelRuntimeMetadataAheadOfLegacyOperandAttr
               3u);
 }
 
+TEST(GfxMlir, AppleMslRuntimeMetadataRejectsLegacyOperandAttrsWithoutManifest) {
+    mlir::MLIRContext ctx;
+    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+
+    mlir::Builder builder(module.getContext());
+    module->setAttr("gfx.kernel_operand_kinds",
+                    builder.getArrayAttr({builder.getI32IntegerAttr(1),
+                                          builder.getI32IntegerAttr(1),
+                                          builder.getI32IntegerAttr(1)}));
+    module->setAttr("gfx.kernel_operand_arg_indices",
+                    builder.getArrayAttr({builder.getI32IntegerAttr(0),
+                                          builder.getI32IntegerAttr(1),
+                                          builder.getI32IntegerAttr(2)}));
+    module->setAttr("gfx.fixed_arg_count", builder.getI32IntegerAttr(3));
+    module->setAttr("gfx.kernel_scalar_args",
+                    builder.getArrayAttr({builder.getI32IntegerAttr(9)}));
+
+    const auto legacy_metadata = ov::gfx_plugin::extract_kernel_runtime_metadata(
+        module,
+        /*output_arg_count=*/1,
+        /*fallback_input_arg_count=*/999,
+        "eltwise_fused_buffer",
+        /*allow_legacy_operand_attrs=*/true);
+    ASSERT_TRUE(legacy_metadata.valid);
+    ASSERT_EQ(legacy_metadata.kernel_input_arg_count, 2u);
+    ASSERT_EQ(legacy_metadata.operands.operand_arg_indices,
+              std::vector<int32_t>({0, 1, 2}));
+    ASSERT_EQ(ov::gfx_plugin::infer_kernel_arg_count_from_module(
+                  module,
+                  /*fallback=*/999,
+                  "eltwise_fused_buffer",
+                  /*allow_legacy_operand_attrs=*/true),
+              4u);
+
+    const auto msl_metadata = ov::gfx_plugin::extract_kernel_runtime_metadata(
+        module,
+        /*output_arg_count=*/1,
+        /*fallback_input_arg_count=*/999,
+        "eltwise_fused_buffer",
+        /*allow_legacy_operand_attrs=*/false);
+    ASSERT_FALSE(msl_metadata.valid);
+    ASSERT_TRUE(msl_metadata.operands.operand_kinds.empty());
+    ASSERT_TRUE(msl_metadata.operands.operand_arg_indices.empty());
+    ASSERT_EQ(ov::gfx_plugin::infer_kernel_arg_count_from_module(
+                  module,
+                  /*fallback=*/999,
+                  "eltwise_fused_buffer",
+                  /*allow_legacy_operand_attrs=*/false),
+              999u);
+}
+
+TEST(GfxMlir, KernelPlanRejectsLegacyArgCountAttrsForAppleMslPolicy) {
+    mlir::MLIRContext ctx;
+    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+
+    mlir::Builder builder(module.getContext());
+    module->setAttr("gfx.fixed_arg_count", builder.getI32IntegerAttr(3));
+    module->setAttr("gfx.kernel_scalar_args",
+                    builder.getArrayAttr({builder.getI32IntegerAttr(9)}));
+
+    ov::gfx_plugin::KernelPlan legacy_plan(
+        module,
+        "eltwise_fused_buffer",
+        /*arg_count=*/0,
+        ov::gfx_plugin::LegacyOperandAttrsPolicy::Allow);
+    ASSERT_TRUE(legacy_plan.allows_legacy_operand_attrs());
+    ASSERT_EQ(legacy_plan.to_source().signature.arg_count, 4u);
+
+    ov::gfx_plugin::KernelPlan msl_plan(
+        module,
+        "eltwise_fused_buffer",
+        /*arg_count=*/0,
+        ov::gfx_plugin::LegacyOperandAttrsPolicy::Reject);
+    ASSERT_FALSE(msl_plan.allows_legacy_operand_attrs());
+    ASSERT_EQ(msl_plan.to_source().signature.arg_count, 0u);
+}
+
+TEST(GfxMlir, SpirvFixedArgRuntimeMetadataIgnoresLegacyScalarsWithoutOperandManifest) {
+    mlir::MLIRContext ctx;
+    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+
+    mlir::Builder builder(module.getContext());
+    module->setAttr("gfx.fixed_arg_count", builder.getI32IntegerAttr(3));
+    module->setAttr("gfx.kernel_scalar_values",
+                    builder.getArrayAttr({builder.getI32IntegerAttr(7),
+                                          builder.getI32IntegerAttr(11)}));
+    module->setAttr("gfx.kernel_scalar_args",
+                    builder.getArrayAttr({builder.getI32IntegerAttr(7),
+                                          builder.getI32IntegerAttr(11)}));
+
+    const auto metadata = ov::gfx_plugin::extract_kernel_runtime_metadata(
+        module,
+        /*output_arg_count=*/1,
+        /*fallback_input_arg_count=*/999,
+        "gfx_kernel",
+        /*allow_legacy_operand_attrs=*/true);
+
+    ASSERT_TRUE(metadata.valid);
+    EXPECT_EQ(metadata.kernel_input_arg_count, 2u);
+    EXPECT_TRUE(metadata.operands.operand_kinds.empty());
+    EXPECT_TRUE(metadata.operands.operand_arg_indices.empty());
+    EXPECT_TRUE(metadata.operands.scalar_args.empty());
+}
+
+TEST(GfxMlir, AppleMslArgCountCanUseStageManifestWithoutMlirEntryMatch) {
+    mlir::MLIRContext ctx;
+    auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+
+    const auto binding =
+        ov::gfx_plugin::make_msl_runtime_binding_plan_for_custom_kernel(
+            "Slice", "slice_kernel");
+    ASSERT_TRUE(binding.valid());
+    ASSERT_TRUE(ov::gfx_plugin::annotate_msl_module_with_runtime_binding_plan(
+        module, binding));
+
+    ASSERT_EQ(ov::gfx_plugin::infer_kernel_arg_count_from_module(
+                  module,
+                  /*fallback=*/2,
+                  "slice_main",
+                  /*allow_legacy_operand_attrs=*/false),
+              2u);
+    ASSERT_EQ(ov::gfx_plugin::infer_kernel_arg_count_from_module(
+                  module,
+                  /*fallback=*/2,
+                  /*entry_point=*/{},
+                  /*allow_legacy_operand_attrs=*/false),
+              8u);
+
+    const auto metadata = ov::gfx_plugin::extract_kernel_runtime_metadata(
+        module,
+        /*output_arg_count=*/1,
+        /*fallback_input_arg_count=*/1,
+        /*entry_point=*/{},
+        /*allow_legacy_operand_attrs=*/false);
+    ASSERT_TRUE(metadata.valid);
+    ASSERT_EQ(metadata.kernel_input_arg_count, 7u);
+    ASSERT_EQ(metadata.operands.operand_arg_indices,
+              std::vector<int32_t>({0, 7, 1, 2, 3, 4, 5, 6}));
+}
+
 TEST(GfxMlir, MpsrtOpsExternalAbiSuppliesKernelRuntimeMetadata) {
     mlir::MLIRContext ctx;
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
@@ -2730,8 +2958,7 @@ TEST(GfxMlir, MslRuntimeBindingPlanDoesNotWriteLegacyOperandAttrs) {
 
     const auto plan = ov::gfx_plugin::make_msl_runtime_binding_plan_for_custom_kernel(
         "Add",
-        "eltwise_kernel",
-        {0, 1});
+        "eltwise_kernel");
     ASSERT_TRUE(plan.valid());
     ASSERT_TRUE(ov::gfx_plugin::annotate_msl_module_with_runtime_binding_plan(module, plan));
 
@@ -2762,7 +2989,6 @@ TEST(GfxMlir, MslScalarRuntimeArgsAreStoredOnStageManifest) {
     const auto plan = ov::gfx_plugin::make_msl_runtime_binding_plan_for_custom_kernel(
         "Tile",
         "tile_kernel",
-        {0},
         {16, 4});
     ASSERT_TRUE(plan.valid());
     ASSERT_TRUE(ov::gfx_plugin::annotate_msl_module_with_runtime_binding_plan(module, plan));
@@ -2906,6 +3132,32 @@ TEST(GfxMlir, SoftmaxMslMetadataUsesRoleBasedExternalAbi) {
                    ov::gfx_plugin::GfxMpsrtExternalBufferRole::RuntimeParams}));
 }
 
+TEST(GfxMlir, SdpaMslSourcePlansUseManifestRolesWithoutSignatureHints) {
+    const auto masked =
+        ov::gfx_plugin::make_sdpa_msl_kernel_source_plan(ov::element::f16,
+                                                         /*has_mask=*/true);
+    ASSERT_TRUE(masked.valid());
+    EXPECT_NE(masked.source.msl_source.find("device const scalar_t* mask"),
+              std::string::npos);
+    EXPECT_EQ(masked.binding.runtime_binding.inputs,
+              std::vector<size_t>({0u, 1u, 2u, 3u}));
+    EXPECT_EQ(masked.binding.runtime_binding.input_arg_count, 5u);
+    EXPECT_EQ(masked.binding.runtime_binding.operand_arg_indices,
+              std::vector<int32_t>({0, 1, 2, 3, 4, 5}));
+
+    const auto nomask =
+        ov::gfx_plugin::make_sdpa_msl_kernel_source_plan(ov::element::f16,
+                                                         /*has_mask=*/false);
+    ASSERT_TRUE(nomask.valid());
+    EXPECT_EQ(nomask.source.msl_source.find("device const scalar_t* mask"),
+              std::string::npos);
+    EXPECT_EQ(nomask.binding.runtime_binding.inputs,
+              std::vector<size_t>({0u, 1u, 2u}));
+    EXPECT_EQ(nomask.binding.runtime_binding.input_arg_count, 4u);
+    EXPECT_EQ(nomask.binding.runtime_binding.operand_arg_indices,
+              std::vector<int32_t>({0, 1, 2, 3, 4}));
+}
+
 TEST(GfxMlir, TopKMslMetadataUsesRoleBasedExternalAbi) {
     mlir::MLIRContext ctx;
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
@@ -3001,6 +3253,73 @@ TEST(GfxMlir, SliceMslMetadataUsesRolePatternForTrailingRuntimeParams) {
     EXPECT_EQ(abi.buffer_roles[1], ov::gfx_plugin::GfxMpsrtExternalBufferRole::TensorOutput);
     for (size_t i = 2; i < abi.buffer_roles.size(); ++i) {
         EXPECT_EQ(abi.buffer_roles[i], ov::gfx_plugin::GfxMpsrtExternalBufferRole::RuntimeParams);
+    }
+}
+
+TEST(GfxMlir, AppleMslStructuralArgCountsComeFromStageManifest) {
+    struct Case {
+        const char* stage_type;
+        const char* entry_point;
+        std::vector<int32_t> scalar_args;
+        size_t expected_arg_count;
+    };
+    const std::vector<Case> cases = {
+        {"ShapeOf", "shapeof_kernel", {0}, 4u},
+        {"Tile", "tile_kernel", {16, 4}, 8u},
+        {"GatherElements", "gather_elements_kernel", {}, 4u},
+        {"MaxPool", "pool2d_kernel", {}, 3u},
+        {"AvgPool", "pool2d_kernel", {}, 3u},
+        {"Concat", "concat_kernel", {}, 3u},
+    };
+
+    for (const auto& c : cases) {
+        mlir::MLIRContext ctx;
+        auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+        mlir::OpBuilder builder(&ctx);
+        auto plan = ov::gfx_plugin::make_msl_runtime_binding_plan_for_custom_kernel(
+            c.stage_type,
+            c.entry_point,
+            c.scalar_args);
+        ASSERT_TRUE(plan.valid()) << c.stage_type;
+        ASSERT_TRUE(ov::gfx_plugin::annotate_msl_module_with_runtime_binding_plan(module, plan))
+            << c.stage_type;
+        module->setAttr("gfx.fixed_arg_count", builder.getI32IntegerAttr(999));
+
+        EXPECT_EQ(ov::gfx_plugin::infer_apple_msl_custom_kernel_arg_count(
+                      module, /*fallback=*/2),
+                  c.expected_arg_count)
+            << c.stage_type;
+    }
+}
+
+TEST(GfxMlir, SpirvFixedArgAdapterOwnsCompactAbiAttrs) {
+    auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{4, 2, 32, 400});
+    auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{4, 2, 32, 400});
+    auto matmul = std::make_shared<ov::op::v0::MatMul>(lhs, rhs, true, false);
+
+    auto& ctx = ov::gfx_plugin::gfx_mlir_context();
+    auto module = ov::gfx_plugin::build_mlir_for_node(matmul, ctx);
+    ASSERT_TRUE(module);
+
+    ov::gfx_plugin::annotate_spirv_fixed_arg_count(module, 3);
+    ov::gfx_plugin::annotate_spirv_fixed_arg_entry_metadata(
+        module, /*output_arg_count=*/1);
+
+    auto fixed_arg_count = module->getAttrOfType<mlir::IntegerAttr>("gfx.fixed_arg_count");
+    ASSERT_TRUE(fixed_arg_count);
+    EXPECT_EQ(fixed_arg_count.getInt(), 3);
+    auto output_arg_count = module->getAttrOfType<mlir::IntegerAttr>("gfx.kernel_output_arg_count");
+    ASSERT_TRUE(output_arg_count);
+    EXPECT_EQ(output_arg_count.getInt(), 1);
+
+    auto func = ov::gfx_plugin::get_entry_func(module);
+    ASSERT_TRUE(func);
+    ASSERT_GE(func.getNumArguments(), 2u);
+    for (unsigned arg_idx = 0; arg_idx < 2; ++arg_idx) {
+        auto runtime_index =
+            func.getArgAttrOfType<mlir::IntegerAttr>(arg_idx, "gfx.kernel_runtime_arg_index");
+        ASSERT_TRUE(runtime_index);
+        EXPECT_EQ(runtime_index.getInt(), static_cast<int64_t>(arg_idx));
     }
 }
 
@@ -3173,18 +3492,9 @@ TEST(GfxMlir, MatMulCompactAbiSpirvLoweringExpandsOperandMetadata) {
     auto module = ov::gfx_plugin::build_mlir_for_node(matmul, ctx);
     ASSERT_TRUE(module);
 
-    auto func = ov::gfx_plugin::get_entry_func(module);
-    ASSERT_TRUE(func);
-    ASSERT_GE(func.getNumArguments(), 3u);
-    for (unsigned arg_idx = 0; arg_idx < 2; ++arg_idx) {
-        func.setArgAttr(arg_idx,
-                        "gfx.kernel_runtime_arg_index",
-                        mlir::IntegerAttr::get(mlir::IntegerType::get(module.getContext(), 32),
-                                               static_cast<int32_t>(arg_idx)));
-    }
-    mlir::Builder b(module.getContext());
-    module->setAttr("gfx.fixed_arg_count", b.getI32IntegerAttr(3));
-    module->setAttr("gfx.kernel_output_arg_count", b.getI32IntegerAttr(1));
+    ov::gfx_plugin::annotate_spirv_fixed_arg_count(module, 3);
+    ov::gfx_plugin::annotate_spirv_fixed_arg_entry_metadata(
+        module, /*output_arg_count=*/1);
 
     std::string log;
     const auto spirv = ov::gfx_plugin::lower_to_spirv(module, "gfx_kernel", &log);

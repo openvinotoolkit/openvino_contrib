@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-#include "backends/metal/runtime/mpsrt/mpsrt_model.hpp"
+#include "runtime/gfx_mpsrt_model.hpp"
 #include "runtime/gfx_mpsrt_storage_bridge.hpp"
 
 namespace ov {
@@ -120,7 +120,8 @@ struct MpsrtPreparedMpsTopK {
 struct MpsrtPreparedResource {
     uint32_t resource_index = 0;
     GfxMpsrtExternalBufferRole role = GfxMpsrtExternalBufferRole::Unknown;
-    MpsrtRuntimeResourceLifetime lifetime = MpsrtRuntimeResourceLifetime::Unknown;
+    ::ov::gfx_plugin::mpsrt::MpsrtRuntimeResourceLifetime lifetime =
+        ::ov::gfx_plugin::mpsrt::MpsrtRuntimeResourceLifetime::Unknown;
     bool has_tensor_value = false;
     GfxMpsrtValue value = 0;
     GfxMpsrtTensorAbiDesc tensor_desc{};
@@ -180,52 +181,39 @@ public:
         return m_command_queue;
     }
 
-    bool register_const_tensor_data(GfxMpsrtValue value,
-                                    const GfxMpsrtTensorAbiDesc& desc,
-                                    const void* data,
-                                    size_t bytes,
-                                    std::string* log = nullptr);
+    bool register_const_tensor_data(GfxMpsrtValue value, const GfxMpsrtTensorAbiDesc& desc, const void* data,
+                                    size_t bytes, std::string* log = nullptr);
     bool has_const_tensor(GfxMpsrtValue value) const;
 
-    bool prepare_msl_dispatch(const MpsrtRuntimeStage& stage,
-                              const std::string& msl_source,
-                              MpsrtPreparedMslDispatch& out,
-                              std::string* log = nullptr);
+    bool prepare_msl_dispatch(const ::ov::gfx_plugin::mpsrt::MpsrtRuntimeStage& stage, const std::string& msl_source,
+                              MpsrtPreparedMslDispatch& out, std::string* log = nullptr);
 
-    bool prepare_mps_gemm(const MpsrtModel& model,
-                          const MpsrtRuntimeStage& stage,
-                          MpsrtPreparedMpsGemm& out,
+    bool prepare_mps_gemm(const ::ov::gfx_plugin::mpsrt::MpsrtModel& model,
+                          const ::ov::gfx_plugin::mpsrt::MpsrtRuntimeStage& stage, MpsrtPreparedMpsGemm& out,
                           std::string* log = nullptr);
 
-    bool prepare_mps_conv2d(const MpsrtModel& model,
-                            const MpsrtRuntimeStage& stage,
-                            MpsrtPreparedMpsConv2D& out,
+    bool prepare_mps_conv2d(const ::ov::gfx_plugin::mpsrt::MpsrtModel& model,
+                            const ::ov::gfx_plugin::mpsrt::MpsrtRuntimeStage& stage, MpsrtPreparedMpsConv2D& out,
                             std::string* log = nullptr);
 
-    bool prepare_mps_pool2d(const MpsrtModel& model,
-                            const MpsrtRuntimeStage& stage,
-                            MpsrtPreparedMpsPool2D& out,
+    bool prepare_mps_pool2d(const ::ov::gfx_plugin::mpsrt::MpsrtModel& model,
+                            const ::ov::gfx_plugin::mpsrt::MpsrtRuntimeStage& stage, MpsrtPreparedMpsPool2D& out,
                             std::string* log = nullptr);
 
-    bool prepare_mps_resize2d(const MpsrtModel& model,
-                              const MpsrtRuntimeStage& stage,
-                              MpsrtPreparedMpsResize2D& out,
+    bool prepare_mps_resize2d(const ::ov::gfx_plugin::mpsrt::MpsrtModel& model,
+                              const ::ov::gfx_plugin::mpsrt::MpsrtRuntimeStage& stage, MpsrtPreparedMpsResize2D& out,
                               std::string* log = nullptr);
 
-    bool prepare_mps_softmax(const MpsrtModel& model,
-                             const MpsrtRuntimeStage& stage,
-                             MpsrtPreparedMpsSoftmax& out,
+    bool prepare_mps_softmax(const ::ov::gfx_plugin::mpsrt::MpsrtModel& model,
+                             const ::ov::gfx_plugin::mpsrt::MpsrtRuntimeStage& stage, MpsrtPreparedMpsSoftmax& out,
                              std::string* log = nullptr);
 
-    bool prepare_mps_topk(const MpsrtModel& model,
-                          const MpsrtRuntimeStage& stage,
-                          MpsrtPreparedMpsTopK& out,
+    bool prepare_mps_topk(const ::ov::gfx_plugin::mpsrt::MpsrtModel& model,
+                          const ::ov::gfx_plugin::mpsrt::MpsrtRuntimeStage& stage, MpsrtPreparedMpsTopK& out,
                           std::string* log = nullptr);
 
-    bool prepare_model(const MpsrtModel& model,
-                       const std::string& msl_source,
-                       MpsrtPreparedModel& out,
-                       std::string* log = nullptr);
+    bool prepare_model(const ::ov::gfx_plugin::mpsrt::MpsrtModel& model, const std::string& msl_source,
+                       MpsrtPreparedModel& out, std::string* log = nullptr);
 
     size_t pipeline_cache_size() const;
     uint64_t pipeline_cache_hits() const {
@@ -235,12 +223,10 @@ public:
         return m_pipeline_cache_misses;
     }
 
-    id<MTLComputePipelineState> get_or_create_pipeline(const MpsrtRuntimeStage& stage,
-                                                       const std::string& msl_source,
-                                                       bool& cache_hit,
+    id<MTLComputePipelineState> get_or_create_pipeline(const ::ov::gfx_plugin::mpsrt::MpsrtRuntimeStage& stage,
+                                                       const std::string& msl_source, bool& cache_hit,
                                                        std::string* log);
-    bool prepare_model_resources(const MpsrtModel& model,
-                                 MpsrtPreparedModel& out,
+    bool prepare_model_resources(const ::ov::gfx_plugin::mpsrt::MpsrtModel& model, MpsrtPreparedModel& out,
                                  std::string* log) const;
 
 private:
@@ -282,7 +268,7 @@ private:
     uint64_t m_const_tensor_cache_misses = 0;
 };
 
-}  // namespace mpsrt
-}  // namespace metal
-}  // namespace gfx_plugin
-}  // namespace ov
+} // namespace mpsrt
+} // namespace metal
+} // namespace gfx_plugin
+} // namespace ov

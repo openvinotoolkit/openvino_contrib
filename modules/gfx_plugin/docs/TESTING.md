@@ -47,7 +47,7 @@ Recent additions in the tree include:
 - `tests/unit/mlir_conv_parallel_test.cpp` for canonical Conv2D lowering, per-axis and combined interior-tile bounds checks, Vulkan batch-1 parallel-launch coverage, batch>1 serial-fallback coverage, im2col rewrite coverage, and absorbed-input-transform regression checks
 - `tests/unit/gfx_parallelism_test.cpp` for backend-neutral parallelism-plan selection
 - `tests/unit/mlir_matmul_parallel_test.cpp` for linear matmul parallel-lowering behavior
-- `tests/unit/basic_ops_internal_test.cpp` for internal transform, fusion, plugin regression coverage, focused builder coverage such as ReduceSum, generated `gfx_mpsrt_ops` / `GfxMpsrtProgram` readback, Apple stage-pipeline cleanup behavior, and generated MPSRT runtime-ABI call-plan readback
+- `tests/unit/basic_ops_internal_test.cpp` for internal transform, fusion, plugin regression coverage, focused builder coverage such as ReduceSum, generated `gfx_mpsrt_ops` / `GfxMpsrtProgram` readback, Apple stage-pipeline cleanup behavior, manifest-only Apple MSL metadata checks, SPIR-V fixed-argument adapter checks, and generated MPSRT runtime-ABI call-plan readback
 - `tests/unit/layout_cleanup_test.cpp` for MLIR layout-cleanup behavior, including DFL softmax expectation rewrites
 - `tests/backends/vulkan/vulkan_runtime_test.cpp` for Vulkan runtime regressions
 - `tests/unit/memory_device_integration_test.mm` for Metal memory/device integration behavior
@@ -55,10 +55,11 @@ Recent additions in the tree include:
 - `tests/unit/infer_pipeline_reuse_test.cpp` for reusable pipeline, prepared-input plans, prepared-output plans, and reusable host-output coverage
 - `tests/unit/gfx_profiling_report_test.cpp` for compile/infer profiling JSON assembly and merge behavior
 - `tests/unit/gfx_stage_policy_test.cpp` for submit-weight and route-policy heuristics
-- `tests/unit/gfx_stage_policy_test.cpp` now also covers Metal placement domains, MPSRT tensor descriptors, typed program validation, stage record keys, custom-kernel family manifests, dispatch policies, semantic input/output roles, builder-plan serialization, runtime-model ABI adaptation, Apple MPS Resize2D descriptor/source-plan coverage, resource-table external bindings, and storage-bridge descriptors for image, matrix, ndarray, and alias contracts
+- `tests/unit/gfx_stage_policy_test.cpp` now also covers Metal placement domains, MPSRT tensor descriptors, typed program validation, stage record keys, custom-kernel family manifests, dispatch policies, semantic input/output roles, builder-plan serialization, backend-neutral runtime-model ABI adaptation, explicit external tensor bindings, Apple MPS Resize2D descriptor/source-plan coverage, resource-table external bindings, and storage-bridge descriptors for image, matrix, ndarray, and alias contracts
 - `tests/backends/metal/gpu_backend_test.mm` now covers MPSRT-backed Metal compile, prepared-pipeline caching, and request-time MSL-dispatch execution
 - `tests/backends/metal/gpu_backend_test.mm` now also covers manifest-driven buffer ordering, runtime-parameter roles, storage bridges, MPSRT resource tables, prepared resource heaps, vendor `MPSGemm` / Conv2D / Pool2D / Resize2D / Softmax / TopK, and hybrid multi-stage execution
-- Metal MSL binding-plan coverage now includes compressed `MatMul`, SDPA and causal SDPA kernel roles, output-before-runtime-params ordering, scalar-param expansion, and request-time rejection of MSL dispatch stages without materialized kernel-buffer order
+- Metal MSL binding-plan coverage now includes compressed `MatMul`, SDPA and causal SDPA kernel roles, manifest-derived MSL argument counts, output-before-runtime-params ordering, scalar-param expansion, and request-time rejection of MSL dispatch stages without materialized kernel-buffer order
+- SPIR-V binding-adapter coverage now keeps compact fixed-argument metadata isolated from legacy Apple MSL operand/scalar attrs
 - `tests/unit/gfx_parallelism_test.cpp` now also covers Broadcom V3D-specific matmul and convolution tuning behavior
 - `tests/unit/runtime_subgraph_test.cpp` for targeted runtime subgraph execution checks through `ov_gfx_runtime_micro_tests`
 - `tests/unit/gpu_const_cache_test.cpp`, `tests/unit/kernel_arg_reuse_test.cpp`, and `tests/unit/gpu_backend_base_test.cpp` for cache and binding reuse layers
@@ -93,6 +94,7 @@ Add or update tests when you change:
 - Apple stage-pipeline pass sequencing or typed `gfx.mpsrt` dialect verification rules
 - custom-kernel family classification, dispatch-grid policy, or external-buffer ABI role inference
 - Metal MSL runtime binding plans, inferred MSL buffer-argument counts, compressed `MatMul` source plans, or SDPA source plans
+- SPIR-V fixed-argument adapter metadata or Vulkan compact-ABI binding overrides
 - backend-specialized routes such as chunked or direct Vulkan execution
 - infer submission thresholds, submission ordering, or command-buffer lifecycle
 - immutable const-cache behavior or prepared-binding reuse

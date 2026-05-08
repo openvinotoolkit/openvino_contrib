@@ -1514,8 +1514,7 @@ bool VulkanStage::should_use_softmax_chunked() const {
         return false;
     }
     const ov::element::Type et = resolve_stage_element_type(m_node, nullptr);
-    return is_supported_linear_elem_type(et) &&
-           tensor_elements(dispatch_shape) >= kLargeLinearChunkElems;
+    return is_supported_linear_elem_type(et);
 }
 
 bool VulkanStage::should_use_transpose_chunked() const {

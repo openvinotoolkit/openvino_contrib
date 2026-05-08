@@ -110,7 +110,9 @@ set_target_properties(gfx_runtime_common PROPERTIES POSITION_INDEPENDENT_CODE ON
 add_library(gfx_runtime_mlir STATIC)
 target_sources(gfx_runtime_mlir PRIVATE
     ${GFX_RUNTIME_MLIR_HEADERS}
-    ${GFX_RUNTIME_MLIR_SOURCES})
+    ${GFX_RUNTIME_MLIR_SOURCES}
+    ${GFX_RUNTIME_METAL_MSL_HEADERS}
+    ${GFX_RUNTIME_METAL_MSL_SOURCES})
 target_link_libraries(gfx_runtime_mlir PRIVATE
     gfx_plugin_build_settings
     gfx_plugin_public_headers
@@ -195,9 +197,7 @@ if(GFX_BACKEND_METAL_AVAILABLE)
     target_sources(gfx_runtime_metal PRIVATE
         ${GFX_RUNTIME_COMMON_HEADERS}
         ${GFX_RUNTIME_METAL_SOURCES}
-        ${GFX_RUNTIME_METAL_HEADERS}
-        ${GFX_RUNTIME_METAL_MSL_HEADERS}
-        ${GFX_RUNTIME_METAL_MSL_SOURCES})
+        ${GFX_RUNTIME_METAL_HEADERS})
     target_include_directories(gfx_runtime_metal PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/codegen)
     target_link_libraries(gfx_runtime_metal PRIVATE

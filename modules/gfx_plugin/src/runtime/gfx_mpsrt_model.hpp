@@ -13,7 +13,6 @@
 
 namespace ov {
 namespace gfx_plugin {
-namespace metal {
 namespace mpsrt {
 
 struct MpsrtRuntimeTensor {
@@ -66,6 +65,24 @@ struct MpsrtExternalBufferBinding {
     uint32_t resource_index = 0;
 };
 
+struct MpsrtExternalTensorBinding {
+    uint32_t arg_index = 0;
+    GfxMpsrtValue value = 0;
+    GfxMpsrtExternalBufferRole role = GfxMpsrtExternalBufferRole::Unknown;
+    GfxMpsrtStorageBridgeDirection bridge_direction = GfxMpsrtStorageBridgeDirection::Unknown;
+};
+
+struct MpsrtTensorBindingPlanEntry {
+    uint32_t resource_index = 0;
+    MpsrtRuntimeResourceLifetime lifetime = MpsrtRuntimeResourceLifetime::Unknown;
+    uint32_t arg_index = 0;
+    GfxMpsrtExternalBufferRole role = GfxMpsrtExternalBufferRole::Unknown;
+    bool has_tensor_value = false;
+    GfxMpsrtValue value = 0;
+    GfxMpsrtTensorAbiDesc tensor_desc{};
+    GfxMpsrtStorageBridgeDirection bridge_direction = GfxMpsrtStorageBridgeDirection::Unknown;
+};
+
 struct MpsrtModel {
     std::string stage_record_key;
     std::vector<MpsrtRuntimeTensor> tensors;
@@ -89,12 +106,34 @@ const MpsrtRuntimeResource* find_mpsrt_external_resource(const MpsrtModel& model
 const MpsrtRuntimeResource* find_mpsrt_resource_for_value(const MpsrtModel& model,
                                                          GfxMpsrtValue value);
 
+const MpsrtRuntimeTensor* find_mpsrt_tensor(const MpsrtModel& model,
+                                           GfxMpsrtValue value);
+
+const GfxMpsrtStorageBridgeDesc* find_mpsrt_storage_bridge(const MpsrtModel& model,
+                                                           GfxMpsrtValue value);
+
+bool mpsrt_value_list_contains(const std::vector<GfxMpsrtValue>& values,
+                               GfxMpsrtValue value);
+
 bool mpsrt_model_has_external_resource_entries(const MpsrtModel& model);
 
 size_t mpsrt_model_external_buffer_abi_count(const MpsrtModel& model);
 
 size_t mpsrt_model_resource_lifetime_count(const MpsrtModel& model,
                                            MpsrtRuntimeResourceLifetime lifetime);
+
+GfxMpsrtStorageBridgeDirection mpsrt_model_external_bridge_direction_for_value(
+    const MpsrtModel& model,
+    GfxMpsrtValue value,
+    GfxMpsrtStorageBridgeDirection fallback_direction);
+
+bool mpsrt_model_external_tensor_bindings(const MpsrtModel& model,
+                                          std::vector<MpsrtExternalTensorBinding>& bindings,
+                                          std::string* error = nullptr);
+
+bool mpsrt_model_tensor_binding_plan(const MpsrtModel& model,
+                                     std::vector<MpsrtTensorBindingPlanEntry>& plan,
+                                     std::string* error = nullptr);
 
 bool finalize_mpsrt_model_resources(MpsrtModel& model,
                                     std::string* error = nullptr);
@@ -117,6 +156,5 @@ bool adapt_mpsrt_model_to_external_buffer_abi(MpsrtModel& model,
                                               std::string* error = nullptr);
 
 }  // namespace mpsrt
-}  // namespace metal
 }  // namespace gfx_plugin
 }  // namespace ov

@@ -1525,35 +1525,7 @@ inline bool read_module_mpsrt_program(mlir::ModuleOp module,
     if (!module) {
         return false;
     }
-    if (read_module_mpsrt_ops_program(module, out)) {
-        return true;
-    }
-
-    GfxMpsrtModuleStagePlan stage_plan{};
-    if (!read_module_mpsrt_stage_plan(module, stage_plan)) {
-        return false;
-    }
-    out.multi_stage = false;
-    out.record_key = stage_plan.stage_record_key;
-    out.inputs = std::move(stage_plan.inputs);
-    GfxMpsrtBuilderStageSpec stage{};
-    stage.stage = std::move(stage_plan.stage);
-    stage.stage_record_key = stage_plan.stage_record_key;
-    stage.inputs = gfx_mpsrt_make_sequential_values(out.inputs.size());
-    stage.outputs = gfx_mpsrt_make_sequential_values(stage_plan.outputs.size(),
-                                                     static_cast<GfxMpsrtValue>(out.inputs.size()));
-    stage.output_descs = std::move(stage_plan.outputs);
-    out.output_values = stage.outputs;
-    out.stages.push_back(std::move(stage));
-
-    out.external_buffer_abi = read_module_mpsrt_external_buffer_abi(module);
-    if (detail::gfx_mpsrt_read_storage_bridges_attrs(module, out.storage_bridges)) {
-        out.has_storage_bridges = true;
-    }
-
-    GfxMpsrtBuilderPlan builder_plan{};
-    out.valid = gfx_mpsrt_build_builder_plan_from_program(out, builder_plan);
-    return out.valid;
+    return read_module_mpsrt_ops_program(module, out);
 }
 
 struct GfxMpsrtModuleBuilderPlan {

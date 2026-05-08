@@ -77,11 +77,7 @@ mlir::func::FuncOp lookup_generated_ops_func(mlir::ModuleOp module) {
     if (!module) {
         return {};
     }
-    std::string symbol = kGfxMpsrtOpsSymbol;
-    if (auto attr = module->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.ops.symbol")) {
-        symbol = attr.str();
-    }
-    auto ops_func = module.lookupSymbol<mlir::func::FuncOp>(symbol);
+    auto ops_func = module.lookupSymbol<mlir::func::FuncOp>(kGfxMpsrtOpsSymbol);
     if (!ops_func ||
         !ops_func->getAttrOfType<mlir::BoolAttr>("gfx.mpsrt.ops.generated")) {
         return {};
@@ -294,9 +290,9 @@ void erase_module_mpsrt_legacy_attrs(mlir::ModuleOp module) {
         return;
     }
 
-    // These module-level placement/MSL fields are a transitional adapter surface.
-    // Once a generated gfx.mpsrt program exists, the canonical contract lives
-    // on the generated stage op via gfx.stage_manifest and typed stage attrs.
+    // These module-level placement/MSL/runtime fields are a transitional
+    // adapter surface. Once generated gfx.mpsrt ops and the runtime ABI call
+    // plan exist, the canonical contracts live on typed ops/plan calls.
     for (const char* name : {
              "gfx.backend",
              "gfx.storage",
@@ -311,13 +307,16 @@ void erase_module_mpsrt_legacy_attrs(mlir::ModuleOp module) {
     std::vector<std::string> attrs_to_remove;
     for (const auto& named_attr : module->getAttrs()) {
         const auto name = named_attr.getName().strref();
+        if (name.starts_with("gfx.apple.pipeline.program.")) {
+            attrs_to_remove.push_back(name.str());
+            continue;
+        }
         if (!name.starts_with("gfx.mpsrt.")) {
             if (!name.starts_with("gfx.msl.")) {
                 continue;
             }
         }
-        if (name.starts_with("gfx.mpsrt.ops.") ||
-            name.starts_with("gfx.mpsrt.runtime_abi.")) {
+        if (name == "gfx.mpsrt.runtime_abi.call_plan_symbol") {
             continue;
         }
         attrs_to_remove.push_back(name.str());
@@ -355,6 +354,10 @@ bool materialize_module_mpsrt_ops(mlir::ModuleOp module,
     ops_func->setAttr("gfx.mpsrt.ops.generated", builder.getBoolAttr(true));
     set_program_common_attrs(ops_func.getOperation(), builder, program);
     ops_func.addEntryBlock();
+    auto fail = [&]() {
+        erase_module_mpsrt_ops(module);
+        return false;
+    };
 
     mlir::OpBuilder body_builder(ops_func.getBody());
     body_builder.setInsertionPointToEnd(&ops_func.getBody().front());
@@ -363,13 +366,13 @@ bool materialize_module_mpsrt_ops(mlir::ModuleOp module,
                                          loc,
                                          program.storage_bridges,
                                          /*external_inputs=*/true)) {
-        return false;
+        return fail();
     }
     for (size_t i = 0; i < program.stages.size(); ++i) {
         const auto& spec = program.stages[i];
         const auto op_name = mpsrt_op_name_for_stage(spec.stage.kind);
         if (op_name.empty() || mpsrt_stage_op_name(spec.stage).empty()) {
-            return false;
+            return fail();
         }
         auto* op = create_mpsrt_op(body_builder, loc, op_name);
         op->setAttr("gfx.mpsrt.op.generated", body_builder.getBoolAttr(true));
@@ -391,7 +394,7 @@ bool materialize_module_mpsrt_ops(mlir::ModuleOp module,
                                          loc,
                                          program.storage_bridges,
                                          /*external_inputs=*/false)) {
-        return false;
+        return fail();
     }
 
     auto* return_op = create_mpsrt_op(body_builder, loc, kGfxMpsrtReturnOpName);
@@ -400,7 +403,6 @@ bool materialize_module_mpsrt_ops(mlir::ModuleOp module,
                        detail::gfx_mpsrt_u32_vector_attr(body_builder, program.output_values));
     mlir::func::ReturnOp::create(body_builder, loc);
 
-    module->setAttr("gfx.mpsrt.ops.symbol", builder.getStringAttr(kGfxMpsrtOpsSymbol));
     return true;
 }
 

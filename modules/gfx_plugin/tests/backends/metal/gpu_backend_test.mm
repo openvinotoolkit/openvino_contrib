@@ -34,6 +34,9 @@
 
 namespace ov {
 namespace gfx_plugin {
+
+namespace runtime_mpsrt = ::ov::gfx_plugin::mpsrt;
+
 namespace {
 
 void annotate_test_msl_dispatch_module(
@@ -644,7 +647,7 @@ kernel void add_const_buffer(device const float* input [[buffer(0)]],
     ASSERT_NE(pipeline, nil) << log;
 
     constexpr uint32_t kCount = 8;
-    metal::mpsrt::MpsrtModel model;
+    runtime_mpsrt::MpsrtModel model;
     model.stage_record_key = "single_msl_const_resource_model";
     model.semantic_input_values = {0};
     model.semantic_output_values = {2};
@@ -675,16 +678,16 @@ kernel void add_const_buffer(device const float* input [[buffer(0)]],
     model.tensors.push_back({1, bias_abi});
     model.tensors.push_back({2, output_abi});
     model.resources = {
-        {0u, GfxMpsrtExternalBufferRole::TensorInput, metal::mpsrt::MpsrtRuntimeResourceLifetime::External, 0u, true, 0u, input_abi},
-        {1u, GfxMpsrtExternalBufferRole::ConstBuffer, metal::mpsrt::MpsrtRuntimeResourceLifetime::Model, 0u, true, 1u, bias_abi},
-        {2u, GfxMpsrtExternalBufferRole::TensorOutput, metal::mpsrt::MpsrtRuntimeResourceLifetime::External, 1u, true, 2u, output_abi},
+        {0u, GfxMpsrtExternalBufferRole::TensorInput, runtime_mpsrt::MpsrtRuntimeResourceLifetime::External, 0u, true, 0u, input_abi},
+        {1u, GfxMpsrtExternalBufferRole::ConstBuffer, runtime_mpsrt::MpsrtRuntimeResourceLifetime::Model, 0u, true, 1u, bias_abi},
+        {2u, GfxMpsrtExternalBufferRole::TensorOutput, runtime_mpsrt::MpsrtRuntimeResourceLifetime::External, 1u, true, 2u, output_abi},
     };
     model.external_buffer_bindings = {
         {0u, 0u},
         {1u, 2u},
     };
 
-    metal::mpsrt::MpsrtRuntimeStage stage;
+    runtime_mpsrt::MpsrtRuntimeStage stage;
     stage.kind = GfxMpsrtStageKind::MSLDispatch;
     stage.stage_record_key = "msl_dispatch|apple_msl|buffer|buffer|linear|AddConst|"
                               "apple_msl:buffer:AddConst|dispatch:add_const_buffer:"
@@ -711,7 +714,7 @@ kernel void add_const_buffer(device const float* input [[buffer(0)]],
 
     float bias = 3.5f;
     auto kernel = std::make_shared<MetalCompiledKernel>((MetalDeviceHandle)device, (void*)pipeline, 2);
-    kernel->set_mpsrt_model(std::make_shared<metal::mpsrt::MpsrtModel>(model));
+    kernel->set_mpsrt_model(std::make_shared<runtime_mpsrt::MpsrtModel>(model));
     ASSERT_TRUE(kernel->register_mpsrt_const_tensor_data(1,
                                                          bias_abi,
                                                          &bias,
@@ -1300,7 +1303,7 @@ kernel void mul2(device const float* temp [[buffer(0)]],
                          const char* entry,
                          GfxMpsrtValue input,
                          GfxMpsrtValue output) {
-        metal::mpsrt::MpsrtRuntimeStage stage;
+        runtime_mpsrt::MpsrtRuntimeStage stage;
         stage.kind = GfxMpsrtStageKind::MSLDispatch;
         stage.stage_record_key = key;
         stage.kernel_name = entry;
@@ -1322,7 +1325,7 @@ kernel void mul2(device const float* temp [[buffer(0)]],
         return stage;
     };
 
-    metal::mpsrt::MpsrtModel model;
+    runtime_mpsrt::MpsrtModel model;
     constexpr uint32_t kCount = 16;
     model.stage_record_key = "two_stage_msl_model";
     model.input_values = {0};
@@ -1348,7 +1351,7 @@ kernel void mul2(device const float* temp [[buffer(0)]],
     metal::mpsrt::MpsrtContext context(device);
     metal::mpsrt::MpsrtPreparedModel prepared_model;
     std::string log;
-    ASSERT_TRUE(metal::mpsrt::finalize_mpsrt_model_resources(model, &log)) << log;
+    ASSERT_TRUE(runtime_mpsrt::finalize_mpsrt_model_resources(model, &log)) << log;
     ASSERT_TRUE(context.prepare_model(model, source, prepared_model, &log)) << log;
     ASSERT_EQ(prepared_model.msl_dispatches.size(), 2u);
     EXPECT_NE(prepared_model.resource_heap, nil);
@@ -1432,7 +1435,7 @@ kernel void mul2(device const float* temp [[buffer(0)]],
 }
 
 TEST(GfxBackendTest, MpsrtRequestRejectsMslDispatchWithoutManifestBufferOrder) {
-    metal::mpsrt::MpsrtRuntimeStage stage;
+    runtime_mpsrt::MpsrtRuntimeStage stage;
     stage.kind = GfxMpsrtStageKind::MSLDispatch;
     stage.stage_record_key = "missing_buffer_order";
     stage.kernel_name = "eltwise_fused_buffer";
@@ -1460,7 +1463,7 @@ TEST(GfxBackendTest, MpsrtTensorBindingsAcceptImageExternalAndTransientResources
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     ASSERT_NE(device, nil);
 
-    metal::mpsrt::MpsrtModel model;
+    runtime_mpsrt::MpsrtModel model;
     model.stage_record_key = "image_binding_smoke";
     model.input_values = {0};
     model.output_values = {2};
@@ -1500,7 +1503,7 @@ TEST(GfxBackendTest, MpsrtTensorBindingsAcceptImageExternalAndTransientResources
     metal::mpsrt::MpsrtTensorBindings bindings;
     metal::mpsrt::MpsrtBindingBuildResult binding_result;
     std::string log;
-    ASSERT_TRUE(metal::mpsrt::finalize_mpsrt_model_resources(model, &log)) << log;
+    ASSERT_TRUE(runtime_mpsrt::finalize_mpsrt_model_resources(model, &log)) << log;
     metal::mpsrt::MpsrtContext context(device);
     metal::mpsrt::MpsrtPreparedModel prepared_model;
     ASSERT_TRUE(context.prepare_model_resources(model, prepared_model, &log)) << log;
@@ -1536,7 +1539,7 @@ TEST(GfxBackendTest, MpsrtPrepareModelAllocatesImageBridgeScratchTextureFromReso
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     ASSERT_NE(device, nil);
 
-    metal::mpsrt::MpsrtModel model;
+    runtime_mpsrt::MpsrtModel model;
     model.stage_record_key = "image_bridge_prepared_scratch";
     model.input_values = {0};
     model.output_values = {1};
@@ -1559,8 +1562,8 @@ TEST(GfxBackendTest, MpsrtPrepareModelAllocatesImageBridgeScratchTextureFromReso
     model.tensors.push_back({0, image_input_abi});
     model.tensors.push_back({1, buffer_output_abi});
     model.resources = {
-        {0u, GfxMpsrtExternalBufferRole::TensorInput, metal::mpsrt::MpsrtRuntimeResourceLifetime::External, 0u, true, 0u, image_input_abi},
-        {1u, GfxMpsrtExternalBufferRole::TensorOutput, metal::mpsrt::MpsrtRuntimeResourceLifetime::External, 1u, true, 1u, buffer_output_abi},
+        {0u, GfxMpsrtExternalBufferRole::TensorInput, runtime_mpsrt::MpsrtRuntimeResourceLifetime::External, 0u, true, 0u, image_input_abi},
+        {1u, GfxMpsrtExternalBufferRole::TensorOutput, runtime_mpsrt::MpsrtRuntimeResourceLifetime::External, 1u, true, 1u, buffer_output_abi},
     };
     model.external_buffer_bindings = {
         {0u, 0u},
@@ -1595,7 +1598,7 @@ TEST(GfxBackendTest, MpsrtPrepareModelAllocatesImageBridgeScratchTextureFromReso
 }
 
 TEST(GfxBackendTest, MpsrtTensorBindingsRejectResourceLessConstTensors) {
-    metal::mpsrt::MpsrtModel model;
+    runtime_mpsrt::MpsrtModel model;
     model.stage_record_key = "resource_less_const_rejected";
     model.input_values = {0};
     model.output_values = {2};
@@ -1644,7 +1647,7 @@ TEST(GfxBackendTest, MpsrtTensorBindingsRejectResourceLessConstTensors) {
 }
 
 TEST(GfxBackendTest, MpsrtExternalTensorBindingsPreserveNonTensorResourceAbiEntries) {
-    metal::mpsrt::MpsrtModel model;
+    runtime_mpsrt::MpsrtModel model;
     model.stage_record_key = "external_resource_abi_smoke";
     model.input_values = {0};
     model.output_values = {1};
@@ -1655,10 +1658,10 @@ TEST(GfxBackendTest, MpsrtExternalTensorBindingsPreserveNonTensorResourceAbiEntr
                                    GfxMpsrtExternalBufferRole::RuntimeParams,
                                    GfxMpsrtExternalBufferRole::TensorOutput};
     model.resources = {
-        {0u, GfxMpsrtExternalBufferRole::TensorInput, metal::mpsrt::MpsrtRuntimeResourceLifetime::External, 0u, true, 0u},
-        {1u, GfxMpsrtExternalBufferRole::RuntimeParams, metal::mpsrt::MpsrtRuntimeResourceLifetime::External, 1u, false, 0u},
-        {2u, GfxMpsrtExternalBufferRole::TensorOutput, metal::mpsrt::MpsrtRuntimeResourceLifetime::External, 2u, true, 1u},
-        {3u, GfxMpsrtExternalBufferRole::Unknown, metal::mpsrt::MpsrtRuntimeResourceLifetime::Transient, 0u, true, 2u},
+        {0u, GfxMpsrtExternalBufferRole::TensorInput, runtime_mpsrt::MpsrtRuntimeResourceLifetime::External, 0u, true, 0u},
+        {1u, GfxMpsrtExternalBufferRole::RuntimeParams, runtime_mpsrt::MpsrtRuntimeResourceLifetime::External, 1u, false, 0u},
+        {2u, GfxMpsrtExternalBufferRole::TensorOutput, runtime_mpsrt::MpsrtRuntimeResourceLifetime::External, 2u, true, 1u},
+        {3u, GfxMpsrtExternalBufferRole::Unknown, runtime_mpsrt::MpsrtRuntimeResourceLifetime::Transient, 0u, true, 2u},
     };
     model.external_buffer_bindings = {
         {0u, 0u},
@@ -1730,7 +1733,7 @@ TEST(GfxBackendTest, MpsrtPrepareModelPlansTransientResourceLiveWindowsForHeapAl
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     ASSERT_NE(device, nil);
 
-    metal::mpsrt::MpsrtModel model;
+    runtime_mpsrt::MpsrtModel model;
     model.stage_record_key = "transient_live_window_plan";
     model.input_values = {0};
     model.output_values = {2, 4};
@@ -1750,7 +1753,7 @@ TEST(GfxBackendTest, MpsrtPrepareModelPlansTransientResourceLiveWindowsForHeapAl
     model.tensors.push_back({4, gfx_mpsrt_to_abi_desc(external_desc)});
 
     auto make_stage = [](GfxMpsrtValue input, GfxMpsrtValue output) {
-        metal::mpsrt::MpsrtRuntimeStage stage;
+        runtime_mpsrt::MpsrtRuntimeStage stage;
         stage.kind = GfxMpsrtStageKind::MSLDispatch;
         stage.inputs = {input};
         stage.outputs = {output};
@@ -1763,7 +1766,7 @@ TEST(GfxBackendTest, MpsrtPrepareModelPlansTransientResourceLiveWindowsForHeapAl
     model.stages.push_back(make_stage(3, 4));
 
     std::string log;
-    ASSERT_TRUE(metal::mpsrt::finalize_mpsrt_model_resources(model, &log)) << log;
+    ASSERT_TRUE(runtime_mpsrt::finalize_mpsrt_model_resources(model, &log)) << log;
 
     metal::mpsrt::MpsrtContext context(device);
     metal::mpsrt::MpsrtPreparedModel prepared_model;
@@ -1804,7 +1807,7 @@ TEST(GfxBackendTest, MpsrtRequestEncodesPreparedMpsResize2DModelWithImageBinding
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     ASSERT_NE(device, nil);
 
-    metal::mpsrt::MpsrtModel model;
+    runtime_mpsrt::MpsrtModel model;
     model.stage_record_key =
         "mps_resize2d|apple_mps|image|image|nhwc4|Interpolate|apple_mps:image:Interpolate";
     model.semantic_input_values = {0};
@@ -1830,7 +1833,7 @@ TEST(GfxBackendTest, MpsrtRequestEncodesPreparedMpsResize2DModelWithImageBinding
     model.tensors.push_back({0, input_abi});
     model.tensors.push_back({1, output_abi});
 
-    metal::mpsrt::MpsrtRuntimeStage stage;
+    runtime_mpsrt::MpsrtRuntimeStage stage;
     stage.kind = GfxMpsrtStageKind::MPSResize2D;
     stage.stage_record_key = model.stage_record_key;
     stage.kernel_name = "mps_resize2d";
@@ -1845,7 +1848,7 @@ TEST(GfxBackendTest, MpsrtRequestEncodesPreparedMpsResize2DModelWithImageBinding
     metal::mpsrt::MpsrtContext context(device);
     metal::mpsrt::MpsrtPreparedModel prepared_model;
     std::string log;
-    ASSERT_TRUE(metal::mpsrt::finalize_mpsrt_model_resources(model, &log)) << log;
+    ASSERT_TRUE(runtime_mpsrt::finalize_mpsrt_model_resources(model, &log)) << log;
     ASSERT_TRUE(context.prepare_model(model, "", prepared_model, &log)) << log;
     ASSERT_TRUE(prepared_model.msl_dispatches.empty());
     ASSERT_EQ(prepared_model.mps_resize2d_stages.size(), 1u);
@@ -1936,7 +1939,7 @@ TEST(GfxBackendTest, MpsrtRequestEncodesPreparedMpsGemmModelWithMatrixBindings) 
     constexpr uint32_t kInner = 3;
     constexpr uint32_t kColumns = 2;
 
-    metal::mpsrt::MpsrtModel model;
+    runtime_mpsrt::MpsrtModel model;
     model.stage_record_key = "mps_gemm_model";
     model.semantic_input_values = {0, 1};
     model.semantic_output_values = {2};
@@ -1965,7 +1968,7 @@ TEST(GfxBackendTest, MpsrtRequestEncodesPreparedMpsGemmModelWithMatrixBindings) 
     model.tensors.push_back({1, gfx_mpsrt_to_abi_desc(rhs_desc)});
     model.tensors.push_back({2, gfx_mpsrt_to_abi_desc(output_desc)});
 
-    metal::mpsrt::MpsrtRuntimeStage stage;
+    runtime_mpsrt::MpsrtRuntimeStage stage;
     stage.kind = GfxMpsrtStageKind::MPSGemm;
     stage.stage_record_key = "mps_gemm|apple_mps|matrix|matrix|row_major|MatMul|apple_mps:matrix:MatMul";
     stage.kernel_name = "mps_gemm";
@@ -1979,7 +1982,7 @@ TEST(GfxBackendTest, MpsrtRequestEncodesPreparedMpsGemmModelWithMatrixBindings) 
     metal::mpsrt::MpsrtContext context(device);
     metal::mpsrt::MpsrtPreparedModel prepared_model;
     std::string log;
-    ASSERT_TRUE(metal::mpsrt::finalize_mpsrt_model_resources(model, &log)) << log;
+    ASSERT_TRUE(runtime_mpsrt::finalize_mpsrt_model_resources(model, &log)) << log;
     ASSERT_TRUE(context.prepare_model(model, "", prepared_model, &log)) << log;
     ASSERT_EQ(prepared_model.msl_dispatches.size(), 0u);
     ASSERT_EQ(prepared_model.mps_gemm_stages.size(), 1u);
@@ -2073,7 +2076,7 @@ TEST(GfxBackendTest, MpsrtPrepareModelRejectsMpsConv2DUntilConstPackOwnsWeights)
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     ASSERT_NE(device, nil);
 
-    metal::mpsrt::MpsrtModel model;
+    runtime_mpsrt::MpsrtModel model;
     model.stage_record_key =
         "mps_conv2d|apple_mps|image|image|nhwc4|Convolution|apple_mps:image:Convolution|"
         "conv2d:g1:s1x1:d1x1:p1,1,1,1";
@@ -2103,12 +2106,12 @@ TEST(GfxBackendTest, MpsrtPrepareModelRejectsMpsConv2DUntilConstPackOwnsWeights)
     model.tensors.push_back({1, gfx_mpsrt_to_abi_desc(weights_desc)});
     model.tensors.push_back({2, gfx_mpsrt_to_abi_desc(output_desc)});
     model.resources = {
-        {0u, GfxMpsrtExternalBufferRole::TensorInput, metal::mpsrt::MpsrtRuntimeResourceLifetime::External, 0u, true, 0u, model.tensors[0].desc},
-        {1u, GfxMpsrtExternalBufferRole::ConstBuffer, metal::mpsrt::MpsrtRuntimeResourceLifetime::Model, 0u, true, 1u, model.tensors[1].desc},
-        {2u, GfxMpsrtExternalBufferRole::TensorOutput, metal::mpsrt::MpsrtRuntimeResourceLifetime::External, 1u, true, 2u, model.tensors[2].desc},
+        {0u, GfxMpsrtExternalBufferRole::TensorInput, runtime_mpsrt::MpsrtRuntimeResourceLifetime::External, 0u, true, 0u, model.tensors[0].desc},
+        {1u, GfxMpsrtExternalBufferRole::ConstBuffer, runtime_mpsrt::MpsrtRuntimeResourceLifetime::Model, 0u, true, 1u, model.tensors[1].desc},
+        {2u, GfxMpsrtExternalBufferRole::TensorOutput, runtime_mpsrt::MpsrtRuntimeResourceLifetime::External, 1u, true, 2u, model.tensors[2].desc},
     };
 
-    metal::mpsrt::MpsrtRuntimeStage stage;
+    runtime_mpsrt::MpsrtRuntimeStage stage;
     stage.kind = GfxMpsrtStageKind::MPSConv2D;
     stage.stage_record_key = model.stage_record_key;
     stage.kernel_name = "mps_conv2d";
@@ -2141,7 +2144,7 @@ TEST(GfxBackendTest, MpsrtPrepareModelMaterializesMpsConv2DWeightsFromConstPack)
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     ASSERT_NE(device, nil);
 
-    metal::mpsrt::MpsrtModel model;
+    runtime_mpsrt::MpsrtModel model;
     model.stage_record_key =
         "mps_conv2d|apple_mps|image|image|nhwc4|Convolution|apple_mps:image:Convolution|"
         "conv2d:g1:s1x1:d1x1:p1,1,1,1";
@@ -2174,12 +2177,12 @@ TEST(GfxBackendTest, MpsrtPrepareModelMaterializesMpsConv2DWeightsFromConstPack)
     model.tensors.push_back({1, weights_abi});
     model.tensors.push_back({2, output_abi});
     model.resources = {
-        {0u, GfxMpsrtExternalBufferRole::TensorInput, metal::mpsrt::MpsrtRuntimeResourceLifetime::External, 0u, true, 0u, input_abi},
-        {1u, GfxMpsrtExternalBufferRole::ConstBuffer, metal::mpsrt::MpsrtRuntimeResourceLifetime::Model, 0u, true, 1u, weights_abi},
-        {2u, GfxMpsrtExternalBufferRole::TensorOutput, metal::mpsrt::MpsrtRuntimeResourceLifetime::External, 1u, true, 2u, output_abi},
+        {0u, GfxMpsrtExternalBufferRole::TensorInput, runtime_mpsrt::MpsrtRuntimeResourceLifetime::External, 0u, true, 0u, input_abi},
+        {1u, GfxMpsrtExternalBufferRole::ConstBuffer, runtime_mpsrt::MpsrtRuntimeResourceLifetime::Model, 0u, true, 1u, weights_abi},
+        {2u, GfxMpsrtExternalBufferRole::TensorOutput, runtime_mpsrt::MpsrtRuntimeResourceLifetime::External, 1u, true, 2u, output_abi},
     };
 
-    metal::mpsrt::MpsrtRuntimeStage stage;
+    runtime_mpsrt::MpsrtRuntimeStage stage;
     stage.kind = GfxMpsrtStageKind::MPSConv2D;
     stage.stage_record_key = model.stage_record_key;
     stage.kernel_name = "mps_conv2d";
@@ -2212,7 +2215,7 @@ TEST(GfxBackendTest, MpsrtPrepareModelMaterializesMpsConv2DWeightsFromConstPack)
     ASSERT_TRUE(context.prepare_model(model, "", prepared_model, &log)) << log;
     ASSERT_EQ(prepared_model.resources.size(), 3u);
     EXPECT_EQ(prepared_model.resources[1].resource_index, 1u);
-    EXPECT_EQ(prepared_model.resources[1].lifetime, metal::mpsrt::MpsrtRuntimeResourceLifetime::Model);
+    EXPECT_EQ(prepared_model.resources[1].lifetime, runtime_mpsrt::MpsrtRuntimeResourceLifetime::Model);
     EXPECT_EQ(prepared_model.resources[1].role, GfxMpsrtExternalBufferRole::ConstBuffer);
     EXPECT_EQ(prepared_model.resources[1].value, 1u);
     EXPECT_EQ(prepared_model.resources[1].byte_length, weights.size() * sizeof(ov::float16));
@@ -2345,7 +2348,7 @@ TEST(GfxBackendTest, MpsrtPrepareModelMaterializesMpsGroupConv2DDepthwiseWeights
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     ASSERT_NE(device, nil);
 
-    metal::mpsrt::MpsrtModel model;
+    runtime_mpsrt::MpsrtModel model;
     model.stage_record_key =
         "mps_group_conv2d|apple_mps|image|image|nhwc4|GroupConvolution|apple_mps:image:GroupConvolution|"
         "conv2d:g4:s1x1:d1x1:p1,1,1,1";
@@ -2378,7 +2381,7 @@ TEST(GfxBackendTest, MpsrtPrepareModelMaterializesMpsGroupConv2DDepthwiseWeights
     model.tensors.push_back({1, weights_abi});
     model.tensors.push_back({2, output_abi});
 
-    metal::mpsrt::MpsrtRuntimeStage stage;
+    runtime_mpsrt::MpsrtRuntimeStage stage;
     stage.kind = GfxMpsrtStageKind::MPSGroupConv2D;
     stage.stage_record_key = model.stage_record_key;
     stage.kernel_name = "mps_group_conv2d";
@@ -2407,7 +2410,7 @@ TEST(GfxBackendTest, MpsrtPrepareModelMaterializesMpsGroupConv2DDepthwiseWeights
         << log;
 
     metal::mpsrt::MpsrtPreparedModel prepared_model;
-    ASSERT_TRUE(metal::mpsrt::finalize_mpsrt_model_resources(model, &log)) << log;
+    ASSERT_TRUE(runtime_mpsrt::finalize_mpsrt_model_resources(model, &log)) << log;
     ASSERT_TRUE(context.prepare_model(model, "", prepared_model, &log)) << log;
     ASSERT_TRUE(prepared_model.msl_dispatches.empty());
     ASSERT_TRUE(prepared_model.mps_gemm_stages.empty());
@@ -2435,7 +2438,7 @@ TEST(GfxBackendTest, MpsrtRequestEncodesPreparedBatchedMpsGemmModelWithMatrixBin
     constexpr uint32_t kInner = 3;
     constexpr uint32_t kColumns = 2;
 
-    metal::mpsrt::MpsrtModel model;
+    runtime_mpsrt::MpsrtModel model;
     model.stage_record_key = "mps_batched_gemm_model";
     model.semantic_input_values = {0, 1};
     model.semantic_output_values = {2};
@@ -2467,7 +2470,7 @@ TEST(GfxBackendTest, MpsrtRequestEncodesPreparedBatchedMpsGemmModelWithMatrixBin
     model.tensors.push_back({1, gfx_mpsrt_to_abi_desc(rhs_desc)});
     model.tensors.push_back({2, gfx_mpsrt_to_abi_desc(output_desc)});
 
-    metal::mpsrt::MpsrtRuntimeStage stage;
+    runtime_mpsrt::MpsrtRuntimeStage stage;
     stage.kind = GfxMpsrtStageKind::MPSGemm;
     stage.stage_record_key = "mps_gemm|apple_mps|matrix|matrix|row_major|MatMul|apple_mps:matrix:MatMul";
     stage.kernel_name = "mps_gemm";
@@ -2479,7 +2482,7 @@ TEST(GfxBackendTest, MpsrtRequestEncodesPreparedBatchedMpsGemmModelWithMatrixBin
     metal::mpsrt::MpsrtContext context(device);
     metal::mpsrt::MpsrtPreparedModel prepared_model;
     std::string log;
-    ASSERT_TRUE(metal::mpsrt::finalize_mpsrt_model_resources(model, &log)) << log;
+    ASSERT_TRUE(runtime_mpsrt::finalize_mpsrt_model_resources(model, &log)) << log;
     ASSERT_TRUE(context.prepare_model(model, "", prepared_model, &log)) << log;
     ASSERT_EQ(prepared_model.mps_gemm_stages.size(), 1u);
 
@@ -2570,7 +2573,7 @@ TEST(GfxBackendTest, MpsrtRequestEncodesPreparedBatchBroadcastMpsGemmModelWithMa
     constexpr uint32_t kInner = 3;
     constexpr uint32_t kColumns = 2;
 
-    metal::mpsrt::MpsrtModel model;
+    runtime_mpsrt::MpsrtModel model;
     model.stage_record_key = "mps_broadcast_gemm_model";
     model.semantic_input_values = {0, 1};
     model.semantic_output_values = {2};
@@ -2602,7 +2605,7 @@ TEST(GfxBackendTest, MpsrtRequestEncodesPreparedBatchBroadcastMpsGemmModelWithMa
     model.tensors.push_back({1, gfx_mpsrt_to_abi_desc(rhs_desc)});
     model.tensors.push_back({2, gfx_mpsrt_to_abi_desc(output_desc)});
 
-    metal::mpsrt::MpsrtRuntimeStage stage;
+    runtime_mpsrt::MpsrtRuntimeStage stage;
     stage.kind = GfxMpsrtStageKind::MPSGemm;
     stage.stage_record_key = "mps_gemm|apple_mps|matrix|matrix|row_major|MatMul|apple_mps:matrix:MatMul";
     stage.kernel_name = "mps_gemm";
@@ -2614,7 +2617,7 @@ TEST(GfxBackendTest, MpsrtRequestEncodesPreparedBatchBroadcastMpsGemmModelWithMa
     metal::mpsrt::MpsrtContext context(device);
     metal::mpsrt::MpsrtPreparedModel prepared_model;
     std::string log;
-    ASSERT_TRUE(metal::mpsrt::finalize_mpsrt_model_resources(model, &log)) << log;
+    ASSERT_TRUE(runtime_mpsrt::finalize_mpsrt_model_resources(model, &log)) << log;
     ASSERT_TRUE(context.prepare_model(model, "", prepared_model, &log)) << log;
     ASSERT_EQ(prepared_model.mps_gemm_stages.size(), 1u);
     EXPECT_EQ(prepared_model.mps_gemm_stages.front().batch_count, kBatch);
@@ -2717,7 +2720,7 @@ kernel void eltwise_fused_buffer(device const float* gemm [[buffer(0)]],
 }
 )MSL";
 
-    metal::mpsrt::MpsrtModel model;
+    runtime_mpsrt::MpsrtModel model;
     model.stage_record_key = "mps_gemm_plus_msl_epilogue_model";
     model.semantic_input_values = {0, 1, 3};
     model.semantic_output_values = {4};
@@ -2757,7 +2760,7 @@ kernel void eltwise_fused_buffer(device const float* gemm [[buffer(0)]],
     model.tensors.push_back({3, gfx_mpsrt_to_abi_desc(bias_desc)});
     model.tensors.push_back({4, gfx_mpsrt_to_abi_desc(output_desc)});
 
-    metal::mpsrt::MpsrtRuntimeStage gemm_stage;
+    runtime_mpsrt::MpsrtRuntimeStage gemm_stage;
     gemm_stage.kind = GfxMpsrtStageKind::MPSGemm;
     gemm_stage.stage_record_key = "mps_gemm|apple_mps|matrix|matrix|row_major|MatMul|apple_mps:matrix:MatMul";
     gemm_stage.kernel_name = "mps_gemm";
@@ -2766,7 +2769,7 @@ kernel void eltwise_fused_buffer(device const float* gemm [[buffer(0)]],
     gemm_stage.output_descs = {gfx_mpsrt_to_abi_desc(gemm_desc)};
     model.stages.push_back(gemm_stage);
 
-    metal::mpsrt::MpsrtRuntimeStage epilogue_stage;
+    runtime_mpsrt::MpsrtRuntimeStage epilogue_stage;
     epilogue_stage.kind = GfxMpsrtStageKind::MSLDispatch;
     epilogue_stage.stage_record_key = "msl_dispatch|apple_msl|buffer|buffer|linear|MatMulEpilogue|"
                                       "apple_msl:buffer:MatMulEpilogue|dispatch:eltwise_fused_buffer:"
@@ -2817,9 +2820,9 @@ kernel void eltwise_fused_buffer(device const float* gemm [[buffer(0)]],
     }
 
     std::string log;
-    ASSERT_TRUE(metal::mpsrt::finalize_mpsrt_model_resources(model, &log)) << log;
+    ASSERT_TRUE(runtime_mpsrt::finalize_mpsrt_model_resources(model, &log)) << log;
     auto kernel = std::make_shared<MetalCompiledKernel>((MetalDeviceHandle)device, nullptr, 4);
-    kernel->set_mpsrt_model(std::make_shared<metal::mpsrt::MpsrtModel>(model));
+    kernel->set_mpsrt_model(std::make_shared<runtime_mpsrt::MpsrtModel>(model));
     kernel->set_mpsrt_msl_source(source);
 
     MetalBuffer lhs_gpu{};

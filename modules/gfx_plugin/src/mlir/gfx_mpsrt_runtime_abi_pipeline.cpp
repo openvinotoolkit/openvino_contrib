@@ -628,13 +628,7 @@ bool read_runtime_abi_program_plan(mlir::ModuleOp module,
 
     GfxMpsrtProgram program{};
     if (!read_module_mpsrt_ops_program(module, program)) {
-        if (!read_module_mpsrt_program(module, program)) {
-            return false;
-        }
-        if (!materialize_module_mpsrt_ops(module, program) ||
-            !read_module_mpsrt_ops_program(module, program)) {
-            return false;
-        }
+        return false;
     }
     GfxMpsrtBuilderPlan builder_plan{};
     if (!gfx_mpsrt_build_builder_plan_from_program(program, builder_plan)) {
@@ -644,70 +638,6 @@ bool read_runtime_abi_program_plan(mlir::ModuleOp module,
     out.valid = true;
     out.program = std::move(program);
     out.builder_plan = std::move(builder_plan);
-    return true;
-}
-
-bool annotate_module_with_runtime_abi_attrs_from_program_plan(
-    mlir::ModuleOp module,
-    const GfxMpsrtRuntimeAbiProgramPlan& program_plan) {
-    if (!module || !program_plan.valid || !program_plan.builder_plan.valid) {
-        return false;
-    }
-
-    const auto& builder_plan = program_plan.builder_plan;
-    mlir::Builder builder(module->getContext());
-    constexpr const char* kPrefix = "gfx.mpsrt.runtime_abi";
-    module->setAttr(std::string(kPrefix) + ".valid", builder.getBoolAttr(true));
-    module->setAttr(std::string(kPrefix) + ".kind",
-                    builder.getStringAttr(program_plan.program.multi_stage ? "multi_stage" : "single_stage"));
-    module->setAttr(std::string(kPrefix) + ".record_key",
-                    builder.getStringAttr(builder_plan.stage_record_key));
-    module->setAttr(std::string(kPrefix) + ".record_count",
-                    builder.getI32IntegerAttr(static_cast<int32_t>(builder_plan.records.size())));
-    module->setAttr(std::string(kPrefix) + ".input_value_count",
-                    builder.getI32IntegerAttr(static_cast<int32_t>(builder_plan.input_values.size())));
-    module->setAttr(std::string(kPrefix) + ".output_value_count",
-                    builder.getI32IntegerAttr(static_cast<int32_t>(builder_plan.output_values.size())));
-    module->setAttr(std::string(kPrefix) + ".storage_bridge_count",
-                    builder.getI32IntegerAttr(static_cast<int32_t>(builder_plan.storage_bridges.size())));
-    if (builder_plan.external_buffer_abi_valid) {
-        module->setAttr(std::string(kPrefix) + ".external_buffer_count",
-                        builder.getI32IntegerAttr(static_cast<int32_t>(builder_plan.external_buffer_count)));
-        module->setAttr(std::string(kPrefix) + ".external_output_buffer_count",
-                        builder.getI32IntegerAttr(
-                            static_cast<int32_t>(builder_plan.external_output_buffer_count)));
-    }
-    for (size_t i = 0; i < builder_plan.records.size(); ++i) {
-        const auto& record = builder_plan.records[i];
-        const std::string prefix = std::string(kPrefix) + ".record" + std::to_string(i);
-        module->setAttr(prefix + ".kind",
-                        builder.getStringAttr(gfx_mpsrt_builder_record_kind_name(record.kind)));
-        if (!record.symbol.empty()) {
-            module->setAttr(prefix + ".symbol", builder.getStringAttr(record.symbol));
-        }
-        if (!record.stage_record_key.empty()) {
-            module->setAttr(prefix + ".stage_record_key", builder.getStringAttr(record.stage_record_key));
-        }
-        if (record.stage_kind != GfxMpsrtStageKind::Unknown) {
-            module->setAttr(prefix + ".stage_kind",
-                            builder.getStringAttr(gfx_mpsrt_stage_kind_name(record.stage_kind)));
-        }
-        if (!record.kernel_name.empty()) {
-            module->setAttr(prefix + ".kernel_name", builder.getStringAttr(record.kernel_name));
-        }
-        if (!record.inputs.empty()) {
-            module->setAttr(prefix + ".input_values",
-                            detail::gfx_mpsrt_u32_vector_attr(builder, record.inputs));
-        }
-        if (!record.outputs.empty()) {
-            module->setAttr(prefix + ".output_values",
-                            detail::gfx_mpsrt_u32_vector_attr(builder, record.outputs));
-        }
-        if (!record.kernel_buffer_order.empty()) {
-            module->setAttr(prefix + ".kernel_buffer_order",
-                            detail::gfx_mpsrt_u32_vector_attr(builder, record.kernel_buffer_order));
-        }
-    }
     return true;
 }
 
@@ -825,7 +755,7 @@ public:
     }
 
     llvm::StringRef getDescription() const final {
-        return "Materialize the Apple MPSRT host-builder call plan from canonical stage manifests";
+        return "Materialize the Apple MPSRT host-builder call plan from typed MPSRT ops";
     }
 
     void runOnOperation() final {
@@ -836,13 +766,8 @@ public:
         if (!read_runtime_abi_program_plan(module, program_plan)) {
             return;
         }
-        if (!annotate_module_with_runtime_abi_attrs_from_program_plan(module, program_plan)) {
-            module.emitError("failed to materialize MPSRT runtime ABI from MPSRT program facade");
-            signalPassFailure();
-            return;
-        }
         if (!materialize_runtime_abi_call_plan(module, program_plan)) {
-            module.emitError("failed to materialize MPSRT runtime ABI call plan from MPSRT program facade");
+            module.emitError("failed to materialize MPSRT runtime ABI call plan from typed MPSRT ops");
             signalPassFailure();
             return;
         }
@@ -880,7 +805,7 @@ bool materialize_gfx_apple_mpsrt_runtime_abi_call_plan(mlir::ModuleOp module) {
         return false;
     }
     GfxMpsrtProgram program{};
-    if (!read_module_mpsrt_program(module, program)) {
+    if (!read_module_mpsrt_ops_program(module, program)) {
         return false;
     }
     if (has_gfx_apple_mpsrt_runtime_abi_call_plan(module)) {

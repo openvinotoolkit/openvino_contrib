@@ -11,9 +11,9 @@ This document describes the current architecture implemented in `modules/gfx_plu
 ## Top-Level Structure
 - `src/plugin/`: OpenVINO-facing integration
 - `src/runtime/`: backend-neutral runtime interfaces and helpers
-- `src/runtime/gfx_mpsrt_*`: Apple MPS/MSL ABI, stage-plan, builder-plan, program, storage-bridge, and kernel-manifest helpers
+- `src/runtime/gfx_mpsrt_*`: Apple MPS/MSL ABI, stage-plan, builder-plan, runtime-model, program, storage-bridge, and kernel-manifest helpers
 - `src/kernel_ir/gfx_kernel_manifest.hpp`: backend-neutral manifest for stage family, execution kind, storage, and custom-kernel ABI
-- `src/mlir/`: MLIR support probing, Apple stage-pipeline lowering, typed MPSRT dialect/materialization, Metal MSL source/binding-plan helpers, and shared codegen helpers
+- `src/mlir/`: MLIR support probing, Apple stage-pipeline lowering, typed MPSRT dialect/materialization, split Apple MSL/MPS source-plan helpers, MatMul Metal/MPSRT helpers, SPIR-V binding adapters, and shared codegen helpers
 - `src/backends/metal/`: Metal-specific plugin, runtime, memory, profiling, and codegen pieces
 - `src/backends/vulkan/`: Vulkan-specific plugin, runtime, profiling, and codegen pieces
 - `src/transforms/`: graph rewrites and fusion logic
@@ -136,7 +136,7 @@ Recent MLIR-specific changes reflected in the current code:
 - the backend-aware transform pipeline can fuse the common LLaMA rotate-half arithmetic pattern into native `RoPE` before stage compilation on Metal
 - the backend-aware transform pipeline can also fuse selected LLM `ScaledDotProductAttention` masking graphs into `GfxSDPAWithCausalMask`, including peeling some broadcast-expanded GQA K/V views back to their compact tensors
 - the backend-aware transform pipeline can regroup compatible compressed `MatMul` nodes that share one data input into a fused horizontal `MatMul` plus `VariadicSplit`
-- Metal MSL source planning now includes dedicated compressed `MatMul` and SDPA source-plan helpers and uses runtime binding plans so generated modules carry tensor, output, scalar, runtime-parameter, and const-tensor roles explicitly
+- Metal MSL source planning now includes dedicated compressed `MatMul`, SDPA, Apple MSL custom-kernel, Apple MPS vendor, and MatMul MPSRT source-plan helpers and uses runtime binding plans so generated modules carry tensor, output, scalar, runtime-parameter, and const-tensor roles explicitly
 - `ShapeOf` has a dedicated runtime-materialized dims path, while `TopK` and unary codegen now respect more of the concrete output/index typing rules from the original node
 - Slice lowering now prefers `tensor.extract_slice`, while slice metadata extraction still accepts both `tensor.extract_slice` and the older `linalg.generic` form
 - shape and data-movement lowering is now more permissive for dynamic shapes in paths such as `ShapeOf`, `Concat`, `Broadcast`, `Select`, `StridedSlice`, and `Range`
@@ -158,6 +158,7 @@ Prepared-binding caches are no longer hard-capped at one fixed size. They start 
 
 Outside kernel execution, `src/plugin/infer_pipeline.cpp` can also materialize constant graph outputs into synthetic pipeline tensors so output resolution stays uniform even when the public output does not come from a runtime stage.
 On Metal, MLIR and stage-policy metadata can also be serialized into a compact MPSRT runtime-model boundary: stage placement is converted into `GfxMpsrtStageDesc`, tensor/storage metadata becomes `GfxMpsrtTensorDesc` or ABI structs, and MSL-dispatch stages carry kernel-family plus external-buffer-role metadata so request-time binding does not rely on a hard-coded argument convention.
+The runtime-model reconstruction and resource-table logic lives in the backend-neutral `src/runtime/gfx_mpsrt_model.*` files. Metal-specific files consume that model to prepare pipelines, Apple MPS kernels, resource heaps, and request-time encodes.
 That boundary is now manifest-driven rather than ad-hoc. `GfxKernelStageManifest` describes whether a stage is a vendor primitive or a custom kernel, which backend/storage family it belongs to, and what external-buffer ABI the custom kernel expects. The MPSRT adapter layer converts that manifest into the runtime record and buffer-order form used by Metal execution.
 The compile path now also emits two generated MLIR helper functions through `gfx_mpsrt_ops.*` and `gfx_mpsrt_runtime_abi_pipeline.*`:
 - `gfx_mpsrt_ops`, a typed stage/program facade derived from `GfxMpsrtProgram`
@@ -197,8 +198,8 @@ Stage policy now splits Metal work into two internal domains:
 - Apple MPS image or matrix stages for selected conv/pool/interpolate/matmul/softmax/topk shapes
 - Apple MSL buffer dispatch for the remaining custom-kernel cases
 
-The Metal path also now has a local MPSRT runtime layer under `src/backends/metal/runtime/mpsrt/`:
-- `mpsrt_model.*` validates builder records and reconstructs compact runtime models
+The Metal path also now has a local MPSRT execution layer under `src/backends/metal/runtime/mpsrt/`:
+- `src/runtime/gfx_mpsrt_model.*` validates builder records, reconstructs compact runtime models, finalizes runtime resources, and derives external/tensor binding plans used by Metal execution
 - `mpsrt_context.*` prepares and caches Metal pipeline states or Apple MPS kernels, prepares model resources, and allocates transient buffers/images through a Metal heap
 - `mpsrt_request.*` binds resources from the explicit runtime resource table and encodes prepared dispatches into a command buffer
 - `gfx_mpsrt_storage_bridge.hpp` describes explicit conversions between external buffer bindings and Apple MPS image storage when a stage crosses that boundary
@@ -228,7 +229,9 @@ Convolution follows the same direction on the metadata side:
 Interpolate follows the vendor-primitive path for the supported static NCHW spatial bilinear cases: the Apple stage pipeline emits a `GfxMpsrtResize2DAbiDesc`, source planning treats it as an IO-only MPS vendor stage, and the Metal runtime prepares/encodes `MPSImageBilinearScale`.
 When those Apple MPS image-backed stages connect to public buffer inputs or outputs, the runtime model carries storage-bridge descriptors and the request path materializes the needed bridge resources explicitly rather than assuming one storage class end-to-end.
 Metal custom MSL source generation is centralized in MLIR source-plan helpers and `MlirStage` binding-plan annotation. That path covers dynamically shaped or metadata-heavy kernels such as `Softmax`, `Select`, `ScatterUpdate`, `RMS`, `RoPE`, binary `Concat`, rank-4 `ScaledDotProductAttention`, fused causal-mask `ScaledDotProductAttention`, compressed `MatMul`, and slice handling including negative-step `StridedSlice`.
+The source-plan files are now split by responsibility: `msl_codegen_apple_msl_*` owns Apple MSL adapter/common/compute/data-movement/dispatch/structural routing, `msl_codegen_apple_mps.*` owns vendor source-plan selection, and `msl_codegen_matmul_metal.*` plus `msl_codegen_matmul_mpsrt.*` own the direct Metal and MPSRT MatMul routes.
 `GfxMslRuntimeBindingPlan` converts each manifest role order into the module/runtime operand metadata used by request-time binding. For direct MSL dispatch inside MPSRT, the runtime model must carry materialized `kernel_buffer_order`; request execution rejects an MSL dispatch stage when that order is absent.
+SPIR-V compact-ABI annotation is kept separate in `spirv_kernel_binding_adapter.hpp`, so Vulkan fixed-argument kernels do not inherit legacy Apple MSL operand or scalar attrs.
 For dynamic-shape `MatMul`, the current MLIR stage path may also pack a constant RHS from `f32` to `f16` before wrapping it as an immutable const buffer. Compile profiling counters track the original and packed byte sizes for that optimization.
 The backend-aware transform pipeline is also important for Metal now: compressed `MatMul` decompression subgraphs can be marked as decompression and protected from generic folding so later stage compilation can still recognize weight-only compressed patterns.
 That same transform pipeline can also collapse supported LLaMA rotate-half arithmetic into native `RoPE`, letting Metal compile one backend kernel instead of preserving the original Multiply/Add subgraph.
