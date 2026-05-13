@@ -26,6 +26,7 @@
 #include "openvino/op/unsqueeze.hpp"
 #include "openvino/op/util/unary_elementwise_arithmetic.hpp"
 #include "openvino/runtime/tensor.hpp"
+#include "transformations/rt_info/disable_fp16_compression.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -48,6 +49,20 @@ bool is_identity_permutation(const std::shared_ptr<const ov::Node>& perm_source,
         }
     }
     return true;
+}
+
+void mark_fp32_sensitive(std::initializer_list<std::shared_ptr<ov::Node>> nodes) {
+    for (const auto& node : nodes) {
+        if (!node) {
+            continue;
+        }
+        for (size_t i = 0; i < node->get_output_size(); ++i) {
+            if (node->get_output_element_type(i).is_real()) {
+                ov::disable_fp16_compression(node);
+                break;
+            }
+        }
+    }
 }
 
 std::optional<std::vector<int64_t>> get_constant_permutation(const ov::Output<ov::Node>& perm_source) {
@@ -288,6 +303,10 @@ bool fold_dfl_softmax_expectation(const std::shared_ptr<ov::Node>& node) {
         transpose_before->output(0).get_target_inputs().size() != 1) {
         return false;
     }
+    auto dfl_source = transpose_before->input_value(0).get_node_shared_ptr();
+    auto dfl_source_input = dfl_source && dfl_source->get_input_size() > 0
+                                ? dfl_source->input_value(0).get_node_shared_ptr()
+                                : nullptr;
 
     const auto perm_before = get_constant_permutation(transpose_before->input_value(1));
     const auto perm_after = get_constant_permutation(transpose_after->input_value(1));
@@ -354,6 +373,16 @@ bool fold_dfl_softmax_expectation(const std::shared_ptr<ov::Node>& node) {
                                          final_transpose_perm,
                                          final_transpose,
                                          replacement});
+    mark_fp32_sensitive({dfl_source_input,
+                         dfl_source,
+                         transpose_before,
+                         softmax_node,
+                         flatten,
+                         expectation_weights,
+                         expectation,
+                         restore,
+                         final_transpose,
+                         replacement});
     ov::replace_node(final_reshape, replacement);
     return true;
 }

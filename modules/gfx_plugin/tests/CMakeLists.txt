@@ -115,6 +115,21 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     GFX_PLUGIN_PATH="$<TARGET_FILE:openvino_gfx_plugin>"
     GFX_BACKEND_METAL_AVAILABLE=$<BOOL:${GFX_BACKEND_METAL_AVAILABLE}>
     GFX_BACKEND_VULKAN_AVAILABLE=$<BOOL:${GFX_BACKEND_VULKAN_AVAILABLE}>)
+
+if(ENABLE_TEMPLATE)
+    set(GFX_TEMPLATE_PLUGIN_LIBRARY
+        "${CMAKE_SHARED_MODULE_PREFIX}openvino_template_plugin${OV_BUILD_POSTFIX}${CMAKE_SHARED_MODULE_SUFFIX}")
+    add_custom_target(${TARGET_NAME}_plugins_xml
+        COMMAND
+            "${CMAKE_COMMAND}"
+            -D "OV_GFX_PLUGINS_XML=${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/plugins.xml"
+            -D "OV_TEMPLATE_PLUGIN_LIBRARY=${GFX_TEMPLATE_PLUGIN_LIBRARY}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/write_gfx_test_plugins_xml.cmake"
+        COMMENT "Generate plugins.xml for TEMPLATE-dependent shared tests"
+        VERBATIM)
+    add_dependencies(${TARGET_NAME} ${TARGET_NAME}_plugins_xml)
+endif()
+
 target_include_directories(${TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
@@ -249,6 +264,19 @@ if(TARGET gfx_plugin_build_settings)
     target_link_libraries(ov_gfx_compare_runner PRIVATE gfx_plugin_build_settings)
 endif()
 target_compile_definitions(ov_gfx_compare_runner PRIVATE
+    GFX_PLUGIN_PATH="$<TARGET_FILE:openvino_gfx_plugin>"
+)
+
+add_executable(ov_gfx_conv_shape_bench
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools/ov_gfx_conv_shape_bench.cpp
+)
+target_link_libraries(ov_gfx_conv_shape_bench PRIVATE
+    openvino::runtime
+)
+if(TARGET gfx_plugin_build_settings)
+    target_link_libraries(ov_gfx_conv_shape_bench PRIVATE gfx_plugin_build_settings)
+endif()
+target_compile_definitions(ov_gfx_conv_shape_bench PRIVATE
     GFX_PLUGIN_PATH="$<TARGET_FILE:openvino_gfx_plugin>"
 )
 

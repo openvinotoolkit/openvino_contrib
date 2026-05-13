@@ -20,6 +20,7 @@
 #include "openvino/op/result.hpp"
 #include "openvino/op/softmax.hpp"
 #include "openvino/op/transpose.hpp"
+#include "transformations/rt_info/disable_fp16_compression.hpp"
 
 namespace {
 
@@ -257,6 +258,7 @@ TEST(GfxTransforms, FoldDflSoftmaxExpectationToMatMul) {
     int conv_count = 0;
     int matmul_count = 0;
     std::shared_ptr<ov::Node> folded_softmax;
+    std::shared_ptr<ov::Node> folded_matmul;
     for (const auto& node : transformed->get_ordered_ops()) {
         if (ov::as_type_ptr<ov::op::v1::Transpose>(node)) {
             ++transpose_count;
@@ -266,6 +268,7 @@ TEST(GfxTransforms, FoldDflSoftmaxExpectationToMatMul) {
         }
         if (ov::as_type_ptr<ov::op::v0::MatMul>(node)) {
             ++matmul_count;
+            folded_matmul = node;
         }
         if (ov::as_type_ptr<ov::op::v8::Softmax>(node) || ov::as_type_ptr<ov::op::v1::Softmax>(node)) {
             folded_softmax = node;
@@ -284,6 +287,9 @@ TEST(GfxTransforms, FoldDflSoftmaxExpectationToMatMul) {
         EXPECT_EQ(softmax_v1->get_axis(), 3);
     }
     EXPECT_EQ(transformed->output(0).get_partial_shape(), ov::PartialShape({1, 4, 8400}));
+    ASSERT_TRUE(folded_matmul);
+    EXPECT_TRUE(ov::fp16_compression_is_disabled(folded_softmax));
+    EXPECT_TRUE(ov::fp16_compression_is_disabled(folded_matmul));
 }
 
 TEST(GfxTransforms, FoldDflSoftmaxExpectationMatMulPreservesValues) {

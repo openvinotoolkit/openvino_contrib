@@ -12,7 +12,7 @@ This skill is for test selection, regression coverage, and profiling-oriented va
 - The task asks what tests to add or run.
 - The task changes MLIR lowering, backend routes, properties, scheduling, caches, infer submission, or output planning.
 - The task changes Metal placement domains, MPSRT ABI metadata, or MSL kernel-family routing.
-- The task changes kernel-manifest execution kind, typed MPSRT programs, generated runtime-ABI call plans, storage bridges, vendor-stage coverage, or hybrid MPS+MSL prepared-model execution.
+- The task changes kernel-manifest execution kind, typed MPSRT programs, builder-plan/runtime-model records, storage bridges, vendor-stage coverage, or hybrid MPS+MSL prepared-model execution.
 - The task changes Apple MPS vendor descriptors or vendor stage coverage such as Conv2D, Pool2D, Resize2D, Softmax, or TopK.
 - The task changes MPSRT resource tables, external-buffer bindings, prepared resource heaps, or model/transient resource lifetimes.
 - The task changes custom-kernel family classification, external-buffer ABI roles, semantic input/output roles, or dispatch-grid policy.
@@ -84,11 +84,12 @@ If the change is Metal-dispatch specific, also look for focused coverage around 
 If the change affects Apple MPS versus Apple MSL placement, extend `tests/unit/gfx_stage_policy_test.cpp` first, then use `tests/backends/metal/gpu_backend_test.mm` for compile/prepare/encode coverage.
 If the change introduces or changes a hybrid vendor-plus-custom plan, make sure coverage includes both manifest serialization in `tests/unit/gfx_stage_policy_test.cpp` and request-time execution in `tests/backends/metal/gpu_backend_test.mm`.
 If the change touches Apple MPS vendor descriptors, cover descriptor acceptance/rejection and source-plan selection in `tests/unit/gfx_stage_policy_test.cpp`, then cover prepared Metal encode behavior in `tests/backends/metal/gpu_backend_test.mm` when the route is executable.
-If the change touches `GfxMpsrtProgram`, generated `gfx_mpsrt_ops`, the Apple stage pipeline, runtime-ABI plans, storage bridges, or runtime resource tables, also extend `tests/unit/basic_ops_internal_test.cpp` for program/call-plan readback and `tests/unit/gfx_stage_policy_test.cpp` for serialized bridge/resource/record validation before relying on end-to-end Metal tests.
+If the change touches `GfxMpsrtProgram`, generated `gfx_mpsrt_ops`, the Apple stage pipeline, builder-plan/runtime-model records, storage bridges, or runtime resource tables, also extend `tests/unit/basic_ops_internal_test.cpp` for program/model readback and `tests/unit/gfx_stage_policy_test.cpp` for serialized bridge/resource/record validation before relying on end-to-end Metal tests.
 If the change touches `gfx_custom_kernel_families.*`, also cover the family id, required entry point, dispatch policy, and external-buffer role inference in `tests/unit/gfx_stage_policy_test.cpp` or `tests/unit/basic_ops_internal_test.cpp`.
 If the change touches `GfxMslRuntimeBindingPlan` or MLIR-owned MSL source plans, cover role-to-argument mapping in `tests/unit/gfx_stage_policy_test.cpp`, module/call-plan materialization in `tests/unit/basic_ops_internal_test.cpp`, and request-time `kernel_buffer_order` validation in `tests/backends/metal/gpu_backend_test.mm`.
 If the change touches `src/runtime/gfx_mpsrt_model.*`, cover external tensor bindings, tensor binding plans, resource lifetime classification, and ABI adaptation in `tests/unit/gfx_stage_policy_test.cpp`, then cover Metal prepared resource binding in `tests/backends/metal/gpu_backend_test.mm` when the behavior reaches encode time.
 If the change touches `spirv_kernel_binding_adapter.hpp`, cover fixed-argument compact ABI attrs in `tests/unit/basic_ops_internal_test.cpp` and a Vulkan-facing plan path in `tests/unit/gfx_stage_policy_test.cpp` when route selection is affected.
+If the change touches `gfx_backend_custom_kernel_adapter.*`, `gfx_stage_kernel_binding.hpp`, or `gfx_stage_runtime_values.*`, cover both the shared manifest/binding contract and at least one backend-facing Apple MSL or SPIR-V route that consumes it.
 
 ## Practical Command Pattern
 

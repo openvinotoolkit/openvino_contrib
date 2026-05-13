@@ -259,6 +259,8 @@ bool gfx_apple_make_mps_conv2d_desc(const std::shared_ptr<const ov::Node>& node,
 }
 
 bool gfx_apple_make_mps_conv2d_contract(const std::shared_ptr<const ov::Node>& node,
+                                        bool has_bias,
+                                        const BiasParams* bias_params,
                                         bool has_activation,
                                         ActivationKind activation,
                                         GfxAppleMpsVendorPrimitiveContract& contract) {
@@ -272,16 +274,44 @@ bool gfx_apple_make_mps_conv2d_contract(const std::shared_ptr<const ov::Node>& n
     contract.descriptor.kind = GfxAppleMpsVendorPrimitiveKind::Conv2D;
     contract.semantic_input_roles = {GfxKernelBufferRole::TensorInput,
                                      GfxKernelBufferRole::ConstTensor};
+    std::vector<GfxMpsrtTensorDesc> inputs;
+    std::vector<GfxMpsrtTensorDesc> outputs;
+    if (!gfx_apple_make_mps_io_tensor_descs_for_node(node, GfxStageStorageKind::Image, inputs, outputs) ||
+        node->get_input_size() < 2 ||
+        !node->get_input_partial_shape(1).is_static()) {
+        contract = {};
+        return false;
+    }
+    inputs.push_back(gfx_mpsrt_make_tensor_desc(gfx_shape_to_i64_vector(node->get_input_shape(1)),
+                                                node->get_input_element_type(1),
+                                                GfxStageStorageKind::Buffer,
+                                                GfxMpsrtTensorFlagConst));
+    if (has_bias) {
+        if (!bias_params || bias_params->empty()) {
+            contract = {};
+            return false;
+        }
+        contract.semantic_input_roles.push_back(GfxKernelBufferRole::ConstTensor);
+        const auto bias_type = bias_params->element_type == ov::element::dynamic
+                                   ? node->get_output_element_type(0)
+                                   : bias_params->element_type;
+        inputs.push_back(gfx_mpsrt_make_tensor_desc({static_cast<int64_t>(bias_params->values.size())},
+                                                    bias_type,
+                                                    GfxStageStorageKind::Buffer,
+                                                    GfxMpsrtTensorFlagConst));
+    }
+    contract.input_descs = std::move(inputs);
+    contract.output_descs = std::move(outputs);
+    std::vector<GfxMpsrtExternalBufferRole> roles = {
+        GfxMpsrtExternalBufferRole::TensorInput,
+        GfxMpsrtExternalBufferRole::ConstBuffer,
+    };
+    if (has_bias) {
+        roles.push_back(GfxMpsrtExternalBufferRole::ConstBuffer);
+    }
+    roles.push_back(GfxMpsrtExternalBufferRole::TensorOutput);
     contract.external_buffer_abi =
-        gfx_mpsrt_make_external_buffer_abi_from_roles({GfxMpsrtExternalBufferRole::TensorInput,
-                                                       GfxMpsrtExternalBufferRole::ConstBuffer,
-                                                       GfxMpsrtExternalBufferRole::ConstBuffer,
-                                                       GfxMpsrtExternalBufferRole::ConstBuffer,
-                                                       GfxMpsrtExternalBufferRole::ConstBuffer,
-                                                       GfxMpsrtExternalBufferRole::ConstBuffer,
-                                                       GfxMpsrtExternalBufferRole::ConstBuffer,
-                                                       GfxMpsrtExternalBufferRole::RuntimeParams,
-                                                       GfxMpsrtExternalBufferRole::TensorOutput});
+        gfx_mpsrt_make_external_buffer_abi_from_roles(std::move(roles));
     contract.valid = contract.external_buffer_abi.valid;
     if (!contract.valid) {
         contract = {};
@@ -447,7 +477,7 @@ bool gfx_apple_make_mps_softmax_desc(const std::shared_ptr<const ov::Node>& node
 bool gfx_apple_make_mps_topk_desc(const std::shared_ptr<const ov::Node>& node,
                                   GfxMpsrtTopKAbiDesc& desc) {
     desc = {};
-    auto topk = ov::as_type_ptr<const ov::op::v11::TopK>(node);
+    auto topk = ov::as_type_ptr<const ov::op::util::TopKBase>(node);
     if (!topk ||
         !topk->get_input_partial_shape(0).is_static() ||
         !topk->get_output_partial_shape(0).is_static() ||
@@ -464,12 +494,13 @@ bool gfx_apple_make_mps_topk_desc(const std::shared_ptr<const ov::Node>& node,
         return false;
     }
     const auto k = topk->get_k();
-    if (k == 0 || k > 16 ||
-        topk->get_mode() != ov::op::TopKMode::MAX) {
+    if (k == 0 || k > 16 || topk->get_mode() != ov::op::TopKMode::MAX) {
         return false;
     }
     const auto index_type = topk->get_output_element_type(1);
-    if (index_type != ov::element::i32 && index_type != ov::element::u32) {
+    if (index_type != ov::element::i32 &&
+        index_type != ov::element::u32 &&
+        index_type != ov::element::i64) {
         return false;
     }
 
@@ -527,6 +558,10 @@ bool gfx_apple_make_mps_pool2d_contract(const std::shared_ptr<const ov::Node>& n
     contract = {};
     contract.descriptor.kind = GfxAppleMpsVendorPrimitiveKind::Pool2D;
     contract.descriptor.pool2d = desc;
+    if (!node || node->get_output_size() != 1) {
+        contract = {};
+        return false;
+    }
     if (!gfx_apple_make_mps_io_tensor_descs_for_node(node,
                                                      GfxStageStorageKind::Image,
                                                      contract.input_descs,

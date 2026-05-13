@@ -218,9 +218,5 @@ KernelPlan MlirKernelPlanBuilder::build_plan(const std::shared_ptr<const ov::Nod
     return KernelPlan(module, std::move(entry), arg_count);
 }
 
-KernelPlan MlirKernelPlanBuilder::build_plan(const KernelSpec& spec, mlir::MLIRContext& ctx) const {
-    return build_plan(spec.node(), ctx, spec.arg_count());
-}
-
 }  // namespace gfx_plugin
 }  // namespace ov

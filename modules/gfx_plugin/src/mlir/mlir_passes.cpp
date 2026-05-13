@@ -81,6 +81,43 @@ static void runConvEltwiseFusion(mlir::ModuleOp module) {
     }
 }
 
+static bool hasCompactMemrefAbi(mlir::ModuleOp module) {
+    if (!module) {
+        return false;
+    }
+    auto abi_valid = module->getAttrOfType<mlir::BoolAttr>(
+        "gfx.stage_manifest.kernel.external_buffer_abi.valid");
+    if (!abi_valid || !abi_valid.getValue()) {
+        return false;
+    }
+
+    if (auto direct_inputs = module->getAttrOfType<mlir::IntegerAttr>(
+            "gfx.stage_manifest.kernel.external_buffer_abi.direct_input_count")) {
+        auto direct_outputs = module->getAttrOfType<mlir::IntegerAttr>(
+            "gfx.stage_manifest.kernel.external_buffer_abi.direct_output_count");
+        if (direct_inputs.getInt() > 0 && direct_outputs && direct_outputs.getInt() > 0) {
+            return true;
+        }
+    }
+    auto roles_attr = module->getAttrOfType<mlir::ArrayAttr>(
+        "gfx.stage_manifest.kernel.external_buffer_abi.roles");
+    if (!roles_attr) {
+        return false;
+    }
+    bool has_buffer_role = false;
+    bool has_output_role = false;
+    for (auto attr : roles_attr) {
+        auto role = mlir::dyn_cast<mlir::IntegerAttr>(attr);
+        if (!role) {
+            continue;
+        }
+        const auto value = role.getInt();
+        has_buffer_role = has_buffer_role || (value >= 1 && value <= 4);
+        has_output_role = has_output_role || value == 2;
+    }
+    return has_buffer_role && has_output_role;
+}
+
 static mlir::LogicalResult promote_compact_memref_results_to_trailing_out_params(mlir::ModuleOp module) {
     for (auto func : module.getOps<mlir::func::FuncOp>()) {
         if (func.isExternal()) {
@@ -310,18 +347,58 @@ static void normalize_operand_segment_sizes_simple(mlir::ModuleOp module) {
 }
 
 static void fix_shape_cast_memory_spaces(mlir::ModuleOp module) {
+    auto is_effectively_identity_layout = [](mlir::MemRefType type) {
+        if (type.getLayout().isIdentity()) {
+            return true;
+        }
+        if (!type.hasStaticShape()) {
+            return false;
+        }
+        auto layout = mlir::dyn_cast<mlir::StridedLayoutAttr>(type.getLayout());
+        if (!layout || layout.getOffset() != 0) {
+            return false;
+        }
+        const auto shape = type.getShape();
+        const auto strides = layout.getStrides();
+        if (strides.size() != shape.size()) {
+            return false;
+        }
+        int64_t expected_stride = 1;
+        for (int64_t i = static_cast<int64_t>(shape.size()) - 1; i >= 0; --i) {
+            const auto stride = strides[static_cast<size_t>(i)];
+            if (stride == mlir::ShapedType::kDynamic ||
+                stride != expected_stride) {
+                return false;
+            }
+            expected_stride *= shape[static_cast<size_t>(i)];
+        }
+        return true;
+    };
+
+    auto canonical_shape_cast_layout = [](mlir::MemRefType src_type, mlir::MemRefType res_type) {
+        if (res_type.hasStaticShape()) {
+            return mlir::MemRefLayoutAttrInterface{};
+        }
+        return res_type.getLayout();
+    };
+
     module.walk([&](mlir::memref::CollapseShapeOp op) {
         auto src_type = mlir::dyn_cast<mlir::MemRefType>(op.getSrcType());
         auto res_type = mlir::dyn_cast<mlir::MemRefType>(op.getType());
         if (!src_type || !res_type) {
             return;
         }
-        if (src_type.getMemorySpace() == res_type.getMemorySpace()) {
+        const auto fixed_layout =
+            is_effectively_identity_layout(src_type)
+                ? canonical_shape_cast_layout(src_type, res_type)
+                : res_type.getLayout();
+        if (src_type.getMemorySpace() == res_type.getMemorySpace() &&
+            fixed_layout == res_type.getLayout()) {
             return;
         }
         auto fixed = mlir::MemRefType::get(res_type.getShape(),
                                            res_type.getElementType(),
-                                           res_type.getLayout(),
+                                           fixed_layout,
                                            src_type.getMemorySpace());
         op.getResult().setType(fixed);
     });
@@ -332,12 +409,17 @@ static void fix_shape_cast_memory_spaces(mlir::ModuleOp module) {
         if (!src_type || !res_type) {
             return;
         }
-        if (src_type.getMemorySpace() == res_type.getMemorySpace()) {
+        const auto fixed_layout =
+            is_effectively_identity_layout(src_type)
+                ? canonical_shape_cast_layout(src_type, res_type)
+                : res_type.getLayout();
+        if (src_type.getMemorySpace() == res_type.getMemorySpace() &&
+            fixed_layout == res_type.getLayout()) {
             return;
         }
         auto fixed = mlir::MemRefType::get(res_type.getShape(),
                                            res_type.getElementType(),
-                                           res_type.getLayout(),
+                                           fixed_layout,
                                            src_type.getMemorySpace());
         op.getResult().setType(fixed);
     });
@@ -642,7 +724,7 @@ void run_pass_manager_with_guard(mlir::MLIRContext* ctx,
 
 void run_mlir_pipeline(mlir::ModuleOp module, bool use_alloca, bool use_parallel_loops) {
     auto* ctx = module.getContext();
-    const bool preserve_compact_memref_abi = module->getAttr("gfx.fixed_arg_count") != nullptr;
+    const bool preserve_compact_memref_abi = hasCompactMemrefAbi(module);
     mlir::DialectRegistry registry;
     mlir::arith::registerBufferizableOpInterfaceExternalModels(registry);
     mlir::tensor::registerBufferizableOpInterfaceExternalModels(registry);

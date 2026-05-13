@@ -53,6 +53,8 @@ struct Options {
     size_t warmup = 1;
     size_t iterations = 3;
     std::vector<std::string> devices{"CPU", "GFX"};
+    std::vector<std::string> case_filters;
+    bool list_cases = false;
 };
 
 Options parse_options(int argc, char** argv) {
@@ -65,8 +67,13 @@ Options parse_options(int argc, char** argv) {
             options.iterations = static_cast<size_t>(std::stoul(argv[++i]));
         } else if (arg == "--device" && i + 1 < argc) {
             options.devices = {argv[++i]};
+        } else if (arg == "--case" && i + 1 < argc) {
+            options.case_filters.push_back(argv[++i]);
+        } else if (arg == "--list-cases") {
+            options.list_cases = true;
         } else if (arg == "--help") {
-            std::cout << "Usage: ov_gfx_conv_shape_bench [--warmup N] [--iterations N] [--device CPU|GFX]\n";
+            std::cout << "Usage: ov_gfx_conv_shape_bench [--warmup N] [--iterations N]"
+                         " [--device CPU|GFX] [--case SUBSTRING] [--list-cases]\n";
             std::exit(0);
         } else {
             throw std::runtime_error("unknown argument: " + arg);
@@ -76,6 +83,15 @@ Options parse_options(int argc, char** argv) {
         throw std::runtime_error("--iterations must be > 0");
     }
     return options;
+}
+
+bool case_matches_filters(const ShapeCase& c, const std::vector<std::string>& filters) {
+    if (filters.empty()) {
+        return true;
+    }
+    return std::any_of(filters.begin(), filters.end(), [&](const std::string& filter) {
+        return !filter.empty() && c.name.find(filter) != std::string::npos;
+    });
 }
 
 std::vector<float> make_data(size_t count, size_t salt, float scale) {
@@ -190,16 +206,33 @@ int main(int argc, char** argv) {
         const Options options = parse_options(argc, argv);
         ov::Core core;
         register_gfx_plugin(core);
+        const auto cases = yolo26x_cases();
+
+        if (options.list_cases) {
+            for (const auto& c : cases) {
+                std::cout << c.name << "\n";
+            }
+            return 0;
+        }
 
         std::cout << std::fixed << std::setprecision(3);
         std::cout << "case,device,compile_ms,median_infer_ms,min_infer_ms,fps\n";
-        for (const auto& c : yolo26x_cases()) {
+        bool ran_any_case = false;
+        for (const auto& c : cases) {
+            if (!case_matches_filters(c, options.case_filters)) {
+                continue;
+            }
+            ran_any_case = true;
             for (const auto& device : options.devices) {
                 const RunStats stats = run_case(core, c, device, options);
                 const double fps = stats.median_infer_ms > 0.0 ? 1000.0 / stats.median_infer_ms : 0.0;
                 std::cout << c.name << "," << device << "," << stats.compile_ms << ","
                           << stats.median_infer_ms << "," << stats.min_infer_ms << "," << fps << "\n";
             }
+        }
+        if (!ran_any_case) {
+            std::cerr << "fatal: no shape cases matched --case filters\n";
+            return 1;
         }
         return 0;
     } catch (const std::exception& ex) {

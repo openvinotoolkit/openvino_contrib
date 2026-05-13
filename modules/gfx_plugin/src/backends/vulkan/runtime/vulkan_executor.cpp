@@ -11,9 +11,11 @@
 #include "kernel_ir/gfx_codegen_desc.hpp"
 #include "kernel_ir/gfx_kernel_args.hpp"
 #include "kernel_ir/gfx_kernel_plan.hpp"
+#include "mlir/gfx_backend_custom_kernel_adapter.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
 #include "mlir/gfx_mlir_kernel_metadata.hpp"
 #include "mlir/gfx_mlir_type_utils.hpp"
+#include "mlir/gfx_stage_runtime_values.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/concat.hpp"
@@ -40,6 +42,7 @@
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_parallelism.hpp"
 #include "runtime/gfx_stage_policy.hpp"
+#include "runtime/memory_manager.hpp"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
@@ -53,6 +56,7 @@
 #include "runtime/gfx_shape_utils.hpp"
 #include "mlir/mlir_support.hpp"
 
+#include <initializer_list>
 #include <limits>
 
 namespace ov {
@@ -141,17 +145,73 @@ bool is_supported_gather_linear_type(const ov::element::Type& data_et,
     return data_supported && (idx_et == ov::element::i32 || idx_et == ov::element::i64);
 }
 
+void ensure_vulkan_stage_output_buffer(GpuBufferManager* buffer_manager,
+                                       GpuTensor* output,
+                                       const ov::Shape& shape,
+                                       const ov::element::Type& elem_type,
+                                       const std::string& stage_name,
+                                       const char* error_prefix) {
+    OPENVINO_ASSERT(output, error_prefix, ": missing output tensor");
+    OPENVINO_ASSERT(elem_type != ov::element::dynamic, error_prefix, ": output element type is dynamic");
+    output->shape = shape;
+    output->expected_type = elem_type;
+    const size_t bytes = ov::shape_size(shape) * elem_type.size();
+    if (bytes == 0) {
+        return;
+    }
+    if (output->buf.valid() && output->buf.size >= bytes) {
+        return;
+    }
+    OPENVINO_ASSERT(buffer_manager, error_prefix, ": buffer manager is not set");
+    if (output->buf.valid() && output->buf.owned && !output->buf.external && !output->buf.from_handle) {
+        buffer_manager->release_temp(std::move(output->buf));
+    }
+    GpuBufferDesc desc{};
+    desc.bytes = bytes;
+    desc.type = elem_type;
+    desc.usage = output->prefer_private ? BufferUsage::Intermediate : BufferUsage::IO;
+    desc.cpu_read = !output->prefer_private;
+    desc.cpu_write = !output->prefer_private;
+    desc.prefer_device_local = output->prefer_private;
+    desc.label = stage_name.c_str();
+    output->buf = buffer_manager->allocate_temp(desc);
+    OPENVINO_ASSERT(output->buf.valid(), error_prefix, ": failed to allocate output buffer");
+}
+
 bool is_vulkan_pipeline_creation_failure(const std::exception& ex) {
     return std::string(ex.what()).find("vkCreateComputePipelines failed") != std::string::npos;
 }
 
-Conv2DDirectPlan make_safe_conv2d_direct_plan(const GfxParallelismCaps& caps) {
-    Conv2DDirectPlan plan;
-    plan.output_channel_block = 1;
-    plan.threads_per_group = std::max<uint32_t>(1u, std::min(std::max<uint32_t>(caps.subgroup_size, caps.preferred_simd_width),
-                                                             caps.max_total_threads_per_group));
-    plan.variant = "conv2d_direct_oc1_tg" + std::to_string(plan.threads_per_group);
-    return plan;
+void annotate_vulkan_specialized_kernel_abi(mlir::ModuleOp module,
+                                            std::string_view stage_type,
+                                            std::string_view entry_point,
+                                            std::initializer_list<GfxKernelBufferRole> roles) {
+    auto plan = make_backend_custom_kernel_roles_binding_plan(stage_type,
+                                                              entry_point,
+                                                              std::vector<GfxKernelBufferRole>(roles),
+                                                              GfxKernelBackendDomain::Spirv,
+                                                              GfxKernelStorageKind::Buffer,
+                                                              "spirv:buffer:");
+    OPENVINO_ASSERT(plan.valid,
+                    "GFX Vulkan: failed to build custom-kernel stage manifest for ",
+                    stage_type,
+                    " / ",
+                    entry_point);
+    annotate_backend_custom_kernel_module_with_binding_plan(module, plan);
+}
+
+KernelSource make_vulkan_manifest_kernel_source(mlir::ModuleOp module,
+                                                std::string_view entry_point,
+                                                std::string_view stage_type,
+                                                std::initializer_list<GfxKernelBufferRole> roles) {
+    annotate_vulkan_specialized_kernel_abi(module, stage_type, entry_point, roles);
+    KernelSource src = make_kernel_source_from_mlir(module, std::string(entry_point), /*arg_count=*/0);
+    OPENVINO_ASSERT(configure_backend_custom_kernel_source_signature_from_module(src),
+                    "GFX Vulkan: failed to configure manifest-backed source signature for ",
+                    stage_type,
+                    " / ",
+                    entry_point);
+    return src;
 }
 
 std::optional<int32_t> eval_launch_scalar_value(mlir::Value value) {
@@ -546,10 +606,10 @@ void VulkanStage::compile(GpuBufferManager* buffer_manager) {
 
 std::shared_ptr<ICompiledKernel> VulkanStage::compile_specialized_kernel_from_mlir(mlir::ModuleOp module,
                                                                                    const std::string& entry_name,
-                                                                                   uint32_t arg_count,
+                                                                                   std::string_view stage_type,
+                                                                                   std::initializer_list<GfxKernelBufferRole> roles,
                                                                                    const char* error_prefix) {
-    KernelSource src = make_kernel_source_from_mlir(module, entry_name, arg_count);
-    src.signature.output_arg_count = 1;
+    KernelSource src = make_vulkan_manifest_kernel_source(module, entry_name, stage_type, roles);
     VulkanCodegenBackend backend;
     std::string log;
     auto kernel = backend.compile(src, &log);
@@ -559,7 +619,6 @@ std::shared_ptr<ICompiledKernel> VulkanStage::compile_specialized_kernel_from_ml
 }
 
 void VulkanStage::prepare_specialized_kernels() {
-    const auto conv_plan = conv_route_plan();
     if ((m_type == "Split" || m_type == "VariadicSplit") && !has_absorbed_input_transpose()) {
         prepare_split_kernel();
         return;
@@ -616,28 +675,6 @@ void VulkanStage::prepare_specialized_kernels() {
         prepare_softmax_kernel();
         return;
     }
-    if (should_use_group_conv2d_chunked()) {
-        prepare_group_conv2d_kernel();
-        return;
-    }
-    if (conv_plan.kind == GfxConvRouteKind::Direct3x3) {
-        prepare_conv2d_3x3_direct_kernel();
-        return;
-    }
-    if (conv_plan.kind == GfxConvRouteKind::Chunked &&
-        conv_plan.algorithm.kind != GfxConvAlgorithmKind::Im2ColMatMul &&
-        conv_plan.algorithm.kind != GfxConvAlgorithmKind::Indirect) {
-        prepare_conv2d_chunk_kernel();
-        return;
-    }
-    if (should_use_binary_same_shape()) {
-        prepare_binary_same_shape_kernel();
-        return;
-    }
-    if (should_use_binary_bias_add()) {
-        prepare_binary_bias_add_kernel();
-        return;
-    }
     if (should_use_binary_chunked()) {
         prepare_binary_kernel();
         return;
@@ -659,8 +696,14 @@ void VulkanStage::prepare_unary_kernel() {
     }
     auto& ctx = gfx_mlir_context();
     auto module = build_linear_unary_module(ctx, elem_type, op_key);
-    m_linear_unary_kernel =
-        compile_specialized_kernel_from_mlir(module, "linear_unary", 3, "GFX Vulkan unary chunked: kernel compile failed: ");
+    m_linear_unary_kernel = compile_specialized_kernel_from_mlir(
+        module,
+        "linear_unary",
+        m_type,
+        {GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::TensorOutput},
+        "GFX Vulkan unary chunked: kernel compile failed: ");
     m_linear_unary_elem_type = elem_type;
     m_linear_unary_key = op_key;
     m_linear_unary_launch_abi = extract_launch_operand_abi(module);
@@ -699,201 +742,21 @@ void VulkanStage::prepare_binary_kernel() {
     }
     auto& ctx = gfx_mlir_context();
     auto module = build_linear_binary_module(ctx, src0_et, src1_et, dst_et, op_key, meta_rank);
-    m_linear_binary_kernel =
-        compile_specialized_kernel_from_mlir(module, "linear_binary", 4, "GFX Vulkan binary chunked: kernel compile failed: ");
+    m_linear_binary_kernel = compile_specialized_kernel_from_mlir(
+        module,
+        "linear_binary",
+        m_type,
+        {GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::TensorOutput},
+        "GFX Vulkan binary chunked: kernel compile failed: ");
     m_linear_binary_src0_elem_type = src0_et;
     m_linear_binary_src1_elem_type = src1_et;
     m_linear_binary_dst_elem_type = dst_et;
     m_linear_binary_key = op_key;
     m_linear_binary_rank = meta_rank;
     m_linear_binary_launch_abi = extract_launch_operand_abi(module);
-}
-
-void VulkanStage::prepare_binary_same_shape_kernel() {
-    const auto op_key = binary_chunk_key(m_type);
-    OPENVINO_ASSERT(!op_key.empty(), "GFX Vulkan same-shape binary: unsupported op ", m_type);
-    const ov::element::Type src0_et = resolve_stage_input_element_type(m_node, 0, !m_inputs.empty() ? m_inputs[0] : nullptr);
-    const ov::element::Type src1_et = resolve_stage_input_element_type(m_node, 1, m_inputs.size() > 1 ? m_inputs[1] : nullptr);
-    const ov::element::Type dst_et = resolve_stage_element_type(m_node, !m_outputs.empty() ? m_outputs.front() : m_output);
-    OPENVINO_ASSERT(is_supported_binary_io_types(src0_et, src1_et, dst_et, op_key),
-                    "GFX Vulkan same-shape binary: unsupported element types ",
-                    src0_et,
-                    " / ",
-                    src1_et,
-                    " -> ",
-                    dst_et,
-                    " for op ",
-                    op_key);
-    if (m_linear_binary_same_shape_kernel &&
-        m_linear_binary_same_shape_src0_elem_type == src0_et &&
-        m_linear_binary_same_shape_src1_elem_type == src1_et &&
-        m_linear_binary_same_shape_dst_elem_type == dst_et &&
-        m_linear_binary_same_shape_key == op_key) {
-        return;
-    }
-    auto& ctx = gfx_mlir_context();
-    auto module = build_linear_binary_same_shape_module(ctx, src0_et, src1_et, dst_et, op_key);
-    m_linear_binary_same_shape_kernel = compile_specialized_kernel_from_mlir(
-        module,
-        "linear_binary_same_shape",
-        3,
-        "GFX Vulkan same-shape binary: kernel compile failed: ");
-    m_linear_binary_same_shape_src0_elem_type = src0_et;
-    m_linear_binary_same_shape_src1_elem_type = src1_et;
-    m_linear_binary_same_shape_dst_elem_type = dst_et;
-    m_linear_binary_same_shape_key = op_key;
-}
-
-void VulkanStage::prepare_binary_bias_add_kernel() {
-    const ov::element::Type elem_type = resolve_stage_element_type(m_node, !m_outputs.empty() ? m_outputs.front() : m_output);
-    OPENVINO_ASSERT(is_supported_linear_elem_type(elem_type),
-                    "GFX Vulkan bias add: unsupported element type ",
-                    elem_type);
-    if (m_binary_bias_add_kernel && m_binary_bias_add_elem_type == elem_type) {
-        return;
-    }
-    auto& ctx = gfx_mlir_context();
-    auto module = build_binary_bias_add_module(ctx, elem_type);
-    m_binary_bias_add_kernel = compile_specialized_kernel_from_mlir(
-        module,
-        "binary_bias_add",
-        3,
-        "GFX Vulkan bias add: kernel compile failed: ");
-    m_binary_bias_add_elem_type = elem_type;
-}
-
-void VulkanStage::prepare_conv2d_1x1_kernel() {
-    auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
-    OPENVINO_ASSERT(conv, "GFX Vulkan conv2d 1x1: node cast failed");
-    const ov::element::Type elem_type = resolve_stage_element_type(m_node, !m_outputs.empty() ? m_outputs.front() : m_output);
-    OPENVINO_ASSERT(is_supported_linear_elem_type(elem_type),
-                    "GFX Vulkan conv2d 1x1: unsupported element type ",
-                    elem_type);
-    const auto caps = query_parallelism_caps(m_buffer_manager);
-    const auto total = static_cast<uint64_t>(tensor_elements(conv->get_output_shape(0)));
-    const auto launch_plan =
-        select_chunk_dispatch_plan(caps, "conv2d_1x1", total, static_cast<uint64_t>(conv->get_input_shape(0).at(1)));
-    if (m_conv2d_1x1_kernel && m_conv2d_1x1_elem_type == elem_type &&
-        m_conv2d_1x1_threads_per_group == launch_plan.threads_per_group) {
-        return;
-    }
-    auto& ctx = gfx_mlir_context();
-    auto module = build_conv2d_1x1_module(ctx, elem_type, launch_plan.threads_per_group);
-    m_conv2d_1x1_kernel =
-        compile_specialized_kernel_from_mlir(module,
-                                             "conv2d_1x1",
-                                             m_has_bias ? 5 : 4,
-                                             "GFX Vulkan conv2d 1x1: kernel compile failed: ");
-    m_conv2d_1x1_elem_type = elem_type;
-    m_conv2d_1x1_threads_per_group = launch_plan.threads_per_group;
-}
-
-void VulkanStage::prepare_conv2d_3x3_direct_kernel() {
-    auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
-    OPENVINO_ASSERT(conv, "GFX Vulkan conv2d 3x3 direct: node cast failed");
-    const ov::element::Type elem_type = resolve_stage_element_type(m_node, !m_outputs.empty() ? m_outputs.front() : m_output);
-    OPENVINO_ASSERT(is_supported_linear_elem_type(elem_type),
-                    "GFX Vulkan conv2d 3x3 direct: unsupported element type ",
-                    elem_type);
-    const auto caps = query_parallelism_caps(m_buffer_manager);
-    auto plan = select_conv2d_direct_plan(caps,
-                                          conv->get_output_shape(0),
-                                          conv->get_input_shape(0).at(1),
-                                          conv->get_output_shape(0).at(1),
-                                          conv->get_input_shape(0).at(1) *
-                                              conv->get_input_shape(1).at(2) *
-                                              conv->get_input_shape(1).at(3),
-                                          conv->get_strides().at(0) == 2 &&
-                                              conv->get_strides().at(1) == 2);
-    if (m_conv2d_3x3_force_safe_variant) {
-        plan = make_safe_conv2d_direct_plan(caps);
-    }
-    if (m_conv2d_3x3_direct_kernel && m_conv2d_3x3_direct_elem_type == elem_type &&
-        m_conv2d_3x3_direct_oc_block == plan.output_channel_block &&
-        m_conv2d_3x3_direct_threads_per_group == plan.threads_per_group &&
-        m_conv2d_3x3_direct_variant == plan.variant) {
-        return;
-    }
-    auto& ctx = gfx_mlir_context();
-    auto module =
-        build_conv2d_3x3_direct_module(ctx, elem_type, plan.output_channel_block, plan.threads_per_group, plan.variant);
-    const char* entry_name = plan.variant.rfind("conv2d_direct_xy", 0) == 0
-                                 ? "conv2d_3x3_direct_xy"
-                                 : (plan.output_channel_block == 1 ? "conv2d_3x3_direct" : "conv2d_3x3_direct_oc2");
-    m_conv2d_3x3_direct_kernel = compile_specialized_kernel_from_mlir(
-        module,
-        entry_name,
-        m_has_bias ? 4 : 3,
-        "GFX Vulkan conv2d 3x3 direct: kernel compile failed: ");
-    m_conv2d_3x3_direct_elem_type = elem_type;
-    m_conv2d_3x3_direct_oc_block = plan.output_channel_block;
-    m_conv2d_3x3_direct_threads_per_group = plan.threads_per_group;
-    m_conv2d_3x3_direct_variant = plan.variant;
-}
-
-void VulkanStage::prepare_conv2d_chunk_kernel() {
-    const ov::element::Type elem_type = resolve_stage_element_type(m_node, !m_outputs.empty() ? m_outputs.front() : m_output);
-    OPENVINO_ASSERT(is_supported_linear_elem_type(elem_type),
-                    "GFX Vulkan conv2d chunked: unsupported element type ",
-                    elem_type);
-    auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
-    OPENVINO_ASSERT(conv, "GFX Vulkan conv2d chunked: node cast failed");
-    const auto caps = query_parallelism_caps(m_buffer_manager);
-    const auto& out_shape = conv->get_output_shape(0);
-    const auto& in_shape = conv->get_input_shape(0);
-    const auto& w_shape = conv->get_input_shape(1);
-    const auto work_per_elem =
-        static_cast<uint64_t>(in_shape.at(1)) * static_cast<uint64_t>(w_shape.at(2)) *
-        static_cast<uint64_t>(w_shape.at(3));
-    const bool stride2 = conv->get_strides().at(0) > 1 || conv->get_strides().at(1) > 1;
-    const auto spatial_plan = select_conv_parallelism(caps,
-                                                      out_shape,
-                                                      static_cast<uint64_t>(in_shape.at(1)),
-                                                      static_cast<uint64_t>(w_shape.at(0)),
-                                                      work_per_elem,
-                                                      stride2,
-                                                      /*depthwise=*/false);
-    const uint32_t threads_h = std::max<uint32_t>(1u, spatial_plan.dispatch.threads_h);
-    const uint32_t threads_w = std::max<uint32_t>(1u, spatial_plan.dispatch.threads_w);
-    if (m_conv2d_chunk_kernel && m_conv2d_chunk_elem_type == elem_type &&
-        m_conv2d_chunk_threads_h == threads_h &&
-        m_conv2d_chunk_threads_w == threads_w) {
-        return;
-    }
-    auto& ctx = gfx_mlir_context();
-    auto module = build_conv2d_chunk_module(ctx, elem_type, threads_h, threads_w);
-    m_conv2d_chunk_kernel =
-        compile_specialized_kernel_from_mlir(module, "conv2d_chunk", 3, "GFX Vulkan conv2d chunked: kernel compile failed: ");
-    m_conv2d_chunk_elem_type = elem_type;
-    m_conv2d_chunk_threads_h = threads_h;
-    m_conv2d_chunk_threads_w = threads_w;
-}
-
-void VulkanStage::prepare_group_conv2d_kernel() {
-    const ov::element::Type elem_type = resolve_stage_element_type(m_node, !m_outputs.empty() ? m_outputs.front() : m_output);
-    OPENVINO_ASSERT(is_supported_linear_elem_type(elem_type),
-                    "GFX Vulkan group_conv2d chunked: unsupported element type ",
-                    elem_type);
-    auto gconv = ov::as_type_ptr<const ov::op::v1::GroupConvolution>(m_node);
-    OPENVINO_ASSERT(gconv, "GFX Vulkan group_conv2d chunked: node cast failed");
-    const auto caps = query_parallelism_caps(m_buffer_manager);
-    const auto total = static_cast<uint64_t>(tensor_elements(gconv->get_output_shape(0)));
-    const auto work_per_elem =
-        static_cast<uint64_t>(gconv->get_input_shape(1).at(3)) * static_cast<uint64_t>(gconv->get_input_shape(1).at(4));
-    const auto launch_plan = select_chunk_dispatch_plan(caps, "group_conv2d", total, work_per_elem);
-    if (m_group_conv2d_kernel && m_group_conv2d_elem_type == elem_type &&
-        m_group_conv2d_threads_per_group == launch_plan.threads_per_group) {
-        return;
-    }
-    auto& ctx = gfx_mlir_context();
-    auto module = build_group_conv2d_chunk_module(ctx, elem_type, launch_plan.threads_per_group);
-    m_group_conv2d_kernel = compile_specialized_kernel_from_mlir(
-        module,
-        "group_conv2d_direct",
-        3,
-        "GFX Vulkan group_conv2d chunked: kernel compile failed: ");
-    m_group_conv2d_elem_type = elem_type;
-    m_group_conv2d_threads_per_group = launch_plan.threads_per_group;
 }
 
 void VulkanStage::prepare_softmax_kernel() {
@@ -916,7 +779,10 @@ void VulkanStage::prepare_softmax_kernel() {
     m_softmax_row_kernel = compile_specialized_kernel_from_mlir(
         module,
         log_softmax ? "logsoftmax_row" : "softmax_row",
-        3,
+        log_softmax ? "LogSoftmax" : "Softmax",
+        {GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::TensorOutput},
         "GFX Vulkan Softmax: kernel compile failed: ");
     m_softmax_elem_type = elem_type;
     m_softmax_log_kernel = log_softmax;
@@ -933,8 +799,14 @@ void VulkanStage::prepare_concat_kernel() {
     auto& ctx = gfx_mlir_context();
     if (!m_concat_single_kernel || m_concat_elem_type != elem_type) {
         auto module = build_concat_single_module(ctx, elem_type);
-        m_concat_single_kernel =
-            compile_specialized_kernel_from_mlir(module, "concat_single", 3, "GFX Vulkan Concat: kernel compile failed: ");
+        m_concat_single_kernel = compile_specialized_kernel_from_mlir(
+            module,
+            "concat_single",
+            "Concat",
+            {GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::TensorOutput},
+            "GFX Vulkan Concat: kernel compile failed: ");
         m_concat_elem_type = elem_type;
     }
     if (m_node && m_node->get_input_size() == 2 &&
@@ -943,7 +815,11 @@ void VulkanStage::prepare_concat_kernel() {
         m_concat_binary_kernel = compile_specialized_kernel_from_mlir(
             module,
             "concat_binary",
-            4,
+            "Concat",
+            {GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::TensorOutput},
             "GFX Vulkan Concat binary: kernel compile failed: ");
         m_concat_binary_elem_type = elem_type;
     }
@@ -956,8 +832,19 @@ void VulkanStage::prepare_slice_kernel() {
     }
     auto& ctx = gfx_mlir_context();
     auto module = build_slice_linear_module(ctx, elem_type);
-    m_slice_linear_kernel =
-        compile_specialized_kernel_from_mlir(module, "slice_linear", 8, "GFX Vulkan Slice: kernel compile failed: ");
+    m_slice_linear_kernel = compile_specialized_kernel_from_mlir(
+        module,
+        "slice_linear",
+        "Slice",
+        {GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::TensorOutput},
+        "GFX Vulkan Slice: kernel compile failed: ");
     m_slice_elem_type = elem_type;
 }
 
@@ -971,8 +858,14 @@ void VulkanStage::prepare_split_kernel() {
     }
     auto& ctx = gfx_mlir_context();
     auto module = build_split_single_module(ctx, elem_type);
-    m_split_single_kernel =
-        compile_specialized_kernel_from_mlir(module, "split_single", 3, "GFX Vulkan Split: kernel compile failed: ");
+    m_split_single_kernel = compile_specialized_kernel_from_mlir(
+        module,
+        "split_single",
+        "Split",
+        {GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::TensorOutput},
+        "GFX Vulkan Split: kernel compile failed: ");
     m_split_elem_type = elem_type;
 }
 
@@ -986,7 +879,9 @@ void VulkanStage::prepare_transpose_kernel() {
     m_transpose_kernel = compile_specialized_kernel_from_mlir(
         module,
         "transpose_direct",
-        2,
+        "Transpose",
+        {GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::TensorOutput},
         "GFX Vulkan Transpose: kernel compile failed: ");
     m_transpose_elem_type = elem_type;
 }
@@ -1004,7 +899,10 @@ void VulkanStage::prepare_interpolate_kernel() {
     m_interpolate_kernel = compile_specialized_kernel_from_mlir(
         module,
         "interpolate_direct",
-        3,
+        "Interpolate",
+        {GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::TensorOutput},
         "GFX Vulkan Interpolate: kernel compile failed: ");
     m_interpolate_elem_type = elem_type;
 }
@@ -1025,7 +923,10 @@ void VulkanStage::prepare_convert_kernel() {
     m_convert_linear_kernel = compile_specialized_kernel_from_mlir(
         module,
         "convert_linear",
-        3,
+        "Convert",
+        {GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::TensorOutput},
         "GFX Vulkan Convert: kernel compile failed: ");
     m_convert_src_elem_type = src_et;
     m_convert_dst_elem_type = dst_et;
@@ -1050,7 +951,11 @@ void VulkanStage::prepare_gather_linear_kernel() {
     m_gather_linear_kernel = compile_specialized_kernel_from_mlir(
         module,
         "gather_linear",
-        4,
+        "Gather",
+        {GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::TensorOutput},
         "GFX Vulkan Gather: kernel compile failed: ");
     m_gather_linear_data_elem_type = data_et;
     m_gather_linear_index_elem_type = idx_et;
@@ -1080,7 +985,11 @@ void VulkanStage::prepare_gather_embedding_kernel() {
     m_gather_embedding_kernel = compile_specialized_kernel_from_mlir(
         module,
         "gather_embedding",
-        4,
+        "Gather",
+        {GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::TensorOutput},
         "GFX Vulkan Gather: kernel compile failed: ");
     m_gather_data_elem_type = data_et;
     m_gather_index_elem_type = idx_et;
@@ -1105,7 +1014,10 @@ void VulkanStage::prepare_reduce_last_axis_kernel() {
     m_reduce_last_axis_kernel = compile_specialized_kernel_from_mlir(
         module,
         "reduce_last_axis",
-        3,
+        m_type,
+        {GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::TensorOutput},
         "GFX Vulkan reduce last-axis: kernel compile failed: ");
     m_reduce_last_axis_elem_type = elem_type;
     m_reduce_last_axis_key = op_key;
@@ -1156,8 +1068,14 @@ void VulkanStage::prepare_rms_kernel() {
                                    gamma_size,
                                    reduction_threads,
                                    static_cast<float>(rms->get_epsilon()));
-    m_rms_kernel =
-        compile_specialized_kernel_from_mlir(module, "rms_linear", 3, "GFX Vulkan RMS: kernel compile failed: ");
+    m_rms_kernel = compile_specialized_kernel_from_mlir(
+        module,
+        "rms_linear",
+        "RMS",
+        {GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::TensorOutput},
+        "GFX Vulkan RMS: kernel compile failed: ");
     m_rms_input_elem_type = input_et;
     m_rms_gamma_elem_type = gamma_et;
     m_rms_output_elem_type = output_et;
@@ -1187,7 +1105,11 @@ void VulkanStage::prepare_matmul_linear_kernel() {
     m_matmul_linear_kernel = compile_specialized_kernel_from_mlir(
         module,
         "matmul_linear",
-        4,
+        "MatMul",
+        {GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::TensorOutput},
         "GFX Vulkan MatMul: kernel compile failed: ");
     m_matmul_linear_elem_type = elem_type;
     m_matmul_linear_transpose_a = ta;
@@ -1209,7 +1131,10 @@ void VulkanStage::prepare_broadcast_kernel() {
     m_broadcast_kernel = compile_specialized_kernel_from_mlir(
         module,
         "broadcast_linear",
-        3,
+        "Broadcast",
+        {GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::TensorOutput},
         "GFX Vulkan Broadcast: kernel compile failed: ");
     m_broadcast_elem_type = elem_type;
     m_broadcast_rank = rank;
@@ -1237,7 +1162,12 @@ void VulkanStage::prepare_select_kernel() {
     m_select_kernel = compile_specialized_kernel_from_mlir(
         module,
         "select_linear",
-        5,
+        "Select",
+        {GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::TensorInput,
+         GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::TensorOutput},
         "GFX Vulkan Select: kernel compile failed: ");
     m_select_cond_elem_type = cond_type;
     m_select_data_elem_type = data_type;
@@ -1245,17 +1175,10 @@ void VulkanStage::prepare_select_kernel() {
 }
 
 GpuStageSubmitPolicy VulkanStage::submit_policy() const {
-    const auto opt_plan = optimization_plan();
-    const auto& conv_plan = opt_plan.conv;
     GfxStageRuntimeTraits traits{};
     traits.binary_chunked = should_use_binary_chunked();
-    traits.binary_same_shape = should_use_binary_same_shape();
-    traits.binary_bias_add = should_use_binary_bias_add();
     traits.unary_chunked = should_use_unary_chunked();
     traits.softmax_chunked = should_use_softmax_chunked();
-    traits.conv2d_3x3_direct = conv_plan.kind == GfxConvRouteKind::Direct3x3;
-    traits.conv2d_chunked = conv_plan.kind == GfxConvRouteKind::Chunked;
-    traits.group_conv2d_chunked = should_use_group_conv2d_chunked();
     traits.transpose_chunked = should_use_transpose_chunked();
     traits.split_concat_chunked = should_use_concat_chunked() ||
                                   ((m_type == "Split" || m_type == "VariadicSplit") && !has_absorbed_input_transpose());
@@ -1273,7 +1196,6 @@ GpuStageSubmitPolicy VulkanStage::submit_policy() const {
 }
 
 void VulkanStage::execute(GpuCommandBufferHandle command_buffer) {
-    const auto conv_plan = conv_route_plan();
     // Keep Split/Concat on compact Vulkan kernels. The generic tensor-result
     // lowering is correct on Metal but still too expensive on current mobile
     // Vulkan stacks for these layout-heavy stages.
@@ -1333,23 +1255,6 @@ void VulkanStage::execute(GpuCommandBufferHandle command_buffer) {
         execute_softmax_chunked(command_buffer);
         return;
     }
-    if (should_use_group_conv2d_chunked()) {
-        execute_group_conv2d_chunked(command_buffer);
-        return;
-    }
-    if (conv_plan.kind == GfxConvRouteKind::Direct3x3) {
-        execute_conv2d_3x3_direct(command_buffer);
-        return;
-    }
-    if (conv_plan.kind == GfxConvRouteKind::Chunked) {
-        if (conv_plan.algorithm.kind == GfxConvAlgorithmKind::Im2ColMatMul ||
-            conv_plan.algorithm.kind == GfxConvAlgorithmKind::Indirect) {
-            MlirStage::execute(command_buffer);
-            return;
-        }
-        execute_conv2d_chunked(command_buffer);
-        return;
-    }
     if (gfx_log_debug_enabled() && (m_type == "Add" || m_type == "Swish" || m_type == "Multiply" || m_type == "Sigmoid")) {
         GpuTensor* output = !m_outputs.empty() ? m_outputs.front() : m_output;
         const ov::Shape& dispatch_shape = !m_output_shape.empty() ? m_output_shape : (output ? output->shape : ov::Shape{});
@@ -1357,21 +1262,11 @@ void VulkanStage::execute(GpuCommandBufferHandle command_buffer) {
         gfx_log_debug("VulkanExec") << "Chunked candidates: type=" << m_type
                                     << " unary=" << (should_use_unary_chunked() ? "yes" : "no")
                                     << " binary=" << (should_use_binary_chunked() ? "yes" : "no")
-                                    << " bias_broadcast_add="
-                                    << ((m_type == "Add" && is_bias_broadcast_add(m_node)) ? "yes" : "no")
                                     << " inputs=" << m_inputs.size()
                                     << " extras=" << m_kernel_extra_inputs.size()
                                     << " out_rank=" << dispatch_shape.size()
                                     << " out_elems=" << (dispatch_shape.empty() ? 0 : tensor_elements(dispatch_shape))
                                     << " elem_type=" << elem_type;
-    }
-    if (should_use_binary_same_shape()) {
-        execute_binary_same_shape(command_buffer);
-        return;
-    }
-    if (should_use_binary_bias_add()) {
-        execute_binary_bias_add(command_buffer);
-        return;
     }
     if (should_use_binary_chunked()) {
         execute_binary_chunked(command_buffer);
@@ -1549,25 +1444,19 @@ bool VulkanStage::should_skip_generic_kernel_compile(const GfxStageOptimizationP
     if (should_use_slice_chunked()) {
         return true;
     }
-    if (should_use_interpolate_chunked() || should_use_convert_chunked() || should_use_softmax_chunked() || should_use_binary_same_shape() ||
-        should_use_gather_linear() || should_use_gather_embedding() || should_use_matmul_linear() || should_use_broadcast_chunked() || should_use_select_chunked() || should_use_reduce_last_axis() || should_use_rms_chunked() || should_use_binary_bias_add() || should_use_binary_chunked() || should_use_unary_chunked() ||
+    if (should_use_interpolate_chunked() || should_use_convert_chunked() || should_use_softmax_chunked() ||
+        should_use_gather_linear() || should_use_gather_embedding() || should_use_matmul_linear() ||
+        should_use_broadcast_chunked() || should_use_select_chunked() || should_use_reduce_last_axis() ||
+        should_use_rms_chunked() || should_use_binary_chunked() || should_use_unary_chunked() ||
         should_use_transpose_chunked()) {
         return true;
     }
-    if (should_use_group_conv2d_chunked() ||
-        plan.conv.kind == GfxConvRouteKind::Direct3x3) {
-        return true;
-    }
-    return plan.conv.kind == GfxConvRouteKind::Chunked &&
-           plan.conv.algorithm.kind != GfxConvAlgorithmKind::Im2ColMatMul &&
-           plan.conv.algorithm.kind != GfxConvAlgorithmKind::Indirect;
+    return false;
 }
 
 GfxStageOptimizationPlan VulkanStage::optimization_plan() const {
     GfxStageRuntimeTraits traits{};
     traits.binary_chunked = should_use_binary_chunked();
-    traits.binary_same_shape = should_use_binary_same_shape();
-    traits.binary_bias_add = should_use_binary_bias_add();
     traits.unary_chunked = should_use_unary_chunked();
     traits.softmax_chunked = should_use_softmax_chunked();
     traits.transpose_chunked = should_use_transpose_chunked();
@@ -1587,10 +1476,6 @@ GfxStageOptimizationPlan VulkanStage::optimization_plan() const {
 
 GfxConvRoutePlan VulkanStage::conv_route_plan() const {
     return optimization_plan().conv;
-}
-
-bool VulkanStage::should_use_conv2d_chunked() const {
-    return conv_route_plan().kind == GfxConvRouteKind::Chunked;
 }
 
 bool VulkanStage::should_use_interpolate_chunked() const {
@@ -1613,18 +1498,6 @@ bool VulkanStage::should_use_interpolate_chunked() const {
     return is_supported_linear_elem_type(resolve_stage_element_type(m_node, !m_outputs.empty() ? m_outputs.front() : m_output));
 }
 
-bool VulkanStage::should_use_conv2d_1x1_chunked() const {
-    return conv_route_plan().kind == GfxConvRouteKind::Direct1x1;
-}
-
-bool VulkanStage::should_use_conv2d_3x3_direct() const {
-    return conv_route_plan().kind == GfxConvRouteKind::Direct3x3;
-}
-
-bool VulkanStage::should_use_group_conv2d_chunked() const {
-    return conv_route_plan().kind == GfxConvRouteKind::GroupChunked && !has_absorbed_input_transpose();
-}
-
 bool VulkanStage::should_use_binary_chunked() const {
     const auto op_key = binary_chunk_key(m_type);
     if (op_key.empty()) {
@@ -1645,52 +1518,13 @@ bool VulkanStage::should_use_binary_chunked() const {
     if (out_pshape.rank().get_length() == 0) {
         return false;
     }
-    ov::Shape dispatch_shape;
-    if (!m_output_shape.empty()) {
-        dispatch_shape = m_output_shape;
-    } else if (out_pshape.is_static()) {
-        dispatch_shape = m_node->get_output_shape(0);
-    }
     if (!is_supported_binary_io_types(m_node->get_input_element_type(0),
                                       m_node->get_input_element_type(1),
                                       m_node->get_output_element_type(0),
                                       op_key)) {
         return false;
     }
-    return dispatch_shape.empty() || tensor_elements(dispatch_shape) >= kLargeLinearChunkElems;
-}
-
-bool VulkanStage::should_use_binary_same_shape() const {
-    const auto op_key = binary_chunk_key(m_type);
-    if (op_key.empty() || !m_node || m_node->get_input_size() != 2 || m_node->get_output_size() != 1) {
-        return false;
-    }
-    if (has_absorbed_input_transpose()) {
-        return false;
-    }
-    if (!m_node->get_input_partial_shape(0).is_static() ||
-        !m_node->get_input_partial_shape(1).is_static() ||
-        !m_node->get_output_partial_shape(0).is_static()) {
-        return false;
-    }
-    const auto& out_shape = m_node->get_output_shape(0);
-    if (out_shape.empty()) {
-        return false;
-    }
-    return m_node->get_input_shape(0) == out_shape &&
-           m_node->get_input_shape(1) == out_shape &&
-           is_supported_binary_io_types(m_node->get_input_element_type(0),
-                                        m_node->get_input_element_type(1),
-                                        m_node->get_output_element_type(0),
-                                        op_key) &&
-           tensor_elements(out_shape) >= kLargeLinearChunkElems;
-}
-
-bool VulkanStage::should_use_binary_bias_add() const {
-    // Keep bias-shaped Add on the shared MLIR/SPIR-V path for Vulkan.
-    // The dedicated fast-path has shown correctness issues on mobile-class
-    // drivers even when fed with clean externalized inputs.
-    return false;
+    return true;
 }
 
 bool VulkanStage::should_use_convert_chunked() const {
@@ -2069,19 +1903,12 @@ mlir::ModuleOp VulkanStage::build_linear_unary_module(mlir::MLIRContext& ctx,
     mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
     mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
     mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), m_has_bias ? 4 : 3));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        attrs.reserve(values.size());
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds",
-                 m_has_bias ? make_i32_array_attr({1, 1, 1, 1}) : make_i32_array_attr({1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices",
-                 m_has_bias ? make_i32_array_attr({0, 1, 2, 3}) : make_i32_array_attr({0, 1, 2}));
+    annotate_vulkan_specialized_kernel_abi(mod,
+                                           m_type,
+                                           "linear_unary",
+                                           {GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::TensorOutput});
     auto in_ty = MemRefType::get({ShapedType::kDynamic}, elem_ty);
     auto out_ty = MemRefType::get({ShapedType::kDynamic}, elem_ty);
     auto param_ty = MemRefType::get({2}, IntegerType::get(&ctx, 32));
@@ -2199,821 +2026,12 @@ mlir::ModuleOp VulkanStage::build_linear_unary_module(mlir::MLIRContext& ctx,
     return mod;
 }
 
-mlir::ModuleOp VulkanStage::build_conv2d_1x1_module(mlir::MLIRContext& ctx,
-                                                    const ov::element::Type& et,
-                                                    uint32_t threads_per_group) {
-    using namespace mlir;
-    auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
-    OPENVINO_ASSERT(conv, "GFX Vulkan conv2d 1x1: node cast failed");
-
-    ctx.loadDialect<func::FuncDialect,
-                    gpu::GPUDialect,
-                    scf::SCFDialect,
-                    memref::MemRefDialect,
-                    arith::ArithDialect,
-                    math::MathDialect>();
-
-    Type elem_ty;
-    switch (et) {
-        case ov::element::f16: elem_ty = Float16Type::get(&ctx); break;
-        case ov::element::f32: elem_ty = Float32Type::get(&ctx); break;
-        default: OPENVINO_THROW("GFX Vulkan conv2d 1x1: unsupported element type ", et);
-    }
-    Type compute_ty = elem_ty;
-    OPENVINO_ASSERT(!m_has_activation || m_activation == ActivationKind::Relu,
-                    "GFX Vulkan conv2d 1x1: only Relu activation fusion is supported");
-
-    auto mod = ModuleOp::create(UnknownLoc::get(&ctx));
-    OpBuilder b(mod.getBody(), mod.getBody()->begin());
-    mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
-    mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), m_has_bias ? 5 : 4));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        attrs.reserve(values.size());
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds",
-                 m_has_bias ? make_i32_array_attr({1, 1, 1, 1, 1}) : make_i32_array_attr({1, 1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices",
-                 m_has_bias ? make_i32_array_attr({0, 1, 2, 3, 4}) : make_i32_array_attr({0, 1, 2, 3}));
-
-    auto input_ty = MemRefType::get({ShapedType::kDynamic}, elem_ty);
-    auto weight_ty = MemRefType::get({ShapedType::kDynamic}, elem_ty);
-    auto bias_ty = MemRefType::get({ShapedType::kDynamic}, elem_ty);
-    auto param_ty = MemRefType::get({7}, IntegerType::get(&ctx, 32));
-    auto output_ty = MemRefType::get({ShapedType::kDynamic}, elem_ty);
-
-    auto gpu_mod = b.create<gpu::GPUModuleOp>(UnknownLoc::get(&ctx), "gfx_kernels");
-    OpBuilder gpu_builder = OpBuilder::atBlockBegin(gpu_mod.getBody());
-    auto fn = gpu_builder.create<gpu::GPUFuncOp>(UnknownLoc::get(&ctx),
-                                                 "conv2d_1x1",
-                                                 b.getFunctionType(m_has_bias ? TypeRange{input_ty, weight_ty, bias_ty, param_ty, output_ty}
-                                                                              : TypeRange{input_ty, weight_ty, param_ty, output_ty},
-                                                                   {}),
-                                                 TypeRange{},
-                                                 TypeRange{});
-    fn->setAttr(gpu::GPUDialect::getKernelFuncAttrName(), b.getUnitAttr());
-    fn.setKnownBlockSizeAttr(mlir::DenseI32ArrayAttr::get(&ctx, {static_cast<int32_t>(std::max<uint32_t>(1u, threads_per_group)), 1, 1}));
-
-    auto* entry = &fn.getBody().front();
-    OpBuilder body(entry, entry->begin());
-    auto loc = fn.getLoc();
-    auto cast_to_compute = [&](OpBuilder& builder, Value value) -> Value {
-        if (value.getType() == compute_ty) {
-            return value;
-        }
-        return builder.create<arith::ExtFOp>(loc, compute_ty, value);
-    };
-    auto cast_to_output = [&](OpBuilder& builder, Value value) -> Value {
-        if (value.getType() == elem_ty) {
-            return value;
-        }
-        return builder.create<arith::TruncFOp>(loc, elem_ty, value);
-    };
-    auto load_param = [&](OpBuilder& builder, int idx) -> Value {
-        auto idx_val = builder.create<arith::ConstantIndexOp>(loc, idx);
-        auto arg_idx = m_has_bias ? 3 : 2;
-        auto v_i32 = builder.create<memref::LoadOp>(loc, fn.getArgument(arg_idx), ValueRange{idx_val});
-        return builder.create<arith::IndexCastOp>(loc, builder.getIndexType(), v_i32);
-    };
-
-    Value c_in = load_param(body, 1);
-    Value out_h = load_param(body, 5);
-    Value out_w = load_param(body, 6);
-    Value c_out = load_param(body, 4);
-    Value total = body.create<arith::MulIOp>(loc,
-                                             load_param(body, 0),
-                                             body.create<arith::MulIOp>(loc,
-                                                                        c_out,
-                                                                        body.create<arith::MulIOp>(loc, out_h, out_w)));
-    auto zero = body.create<arith::ConstantOp>(loc, FloatAttr::get(compute_ty, 0.0f));
-    Value bid = body.create<gpu::BlockIdOp>(loc, gpu::Dimension::x);
-    Value bdim = body.create<gpu::BlockDimOp>(loc, gpu::Dimension::x);
-    Value tid = body.create<gpu::ThreadIdOp>(loc, gpu::Dimension::x);
-    Value global_idx = body.create<arith::AddIOp>(loc,
-                                                  body.create<arith::MulIOp>(loc, bid, bdim),
-                                                  tid);
-    auto active = body.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, global_idx, total);
-    auto active_if = body.create<scf::IfOp>(loc, active, /*withElseRegion=*/false);
-    {
-        auto then_builder = active_if.getThenBodyBuilder();
-        Value rem = global_idx;
-        Value ow = then_builder.create<arith::RemUIOp>(loc, rem, out_w);
-        rem = then_builder.create<arith::DivUIOp>(loc, rem, out_w);
-        Value oh = then_builder.create<arith::RemUIOp>(loc, rem, out_h);
-        rem = then_builder.create<arith::DivUIOp>(loc, rem, out_h);
-        Value oc = then_builder.create<arith::RemUIOp>(loc, rem, c_out);
-        Value n = then_builder.create<arith::DivUIOp>(loc, rem, c_out);
-
-        Value acc = zero.getResult();
-        auto for_ic = then_builder.create<scf::ForOp>(loc,
-                                                      then_builder.create<arith::ConstantIndexOp>(loc, 0),
-                                                      c_in,
-                                                      then_builder.create<arith::ConstantIndexOp>(loc, 1),
-                                                      ValueRange{acc});
-        {
-            auto loop_builder = OpBuilder::atBlockBegin(for_ic.getBody());
-            Value ic = for_ic.getInductionVar();
-            Value input_offset = loop_builder.create<arith::AddIOp>(
-                loc,
-                loop_builder.create<arith::MulIOp>(
-                    loc,
-                    loop_builder.create<arith::AddIOp>(
-                        loc,
-                        loop_builder.create<arith::MulIOp>(loc, n, c_in),
-                        ic),
-                    loop_builder.create<arith::MulIOp>(loc, out_h, out_w)),
-                loop_builder.create<arith::AddIOp>(
-                    loc,
-                    loop_builder.create<arith::MulIOp>(loc, oh, out_w),
-                    ow));
-            Value weight_offset = loop_builder.create<arith::AddIOp>(
-                loc,
-                loop_builder.create<arith::MulIOp>(loc, oc, c_in),
-                ic);
-            Value input_val = loop_builder.create<memref::LoadOp>(loc, fn.getArgument(0), ValueRange{input_offset});
-            Value weight_val = loop_builder.create<memref::LoadOp>(loc, fn.getArgument(1), ValueRange{weight_offset});
-            Value prod = loop_builder.create<arith::MulFOp>(
-                loc,
-                cast_to_compute(loop_builder, input_val),
-                cast_to_compute(loop_builder, weight_val));
-            Value next = loop_builder.create<arith::AddFOp>(loc, for_ic.getRegionIterArgs()[0], prod);
-            loop_builder.create<scf::YieldOp>(loc, next);
-        }
-        acc = for_ic.getResult(0);
-        if (m_has_bias) {
-            Value bias_val = then_builder.create<memref::LoadOp>(loc, fn.getArgument(2), ValueRange{oc});
-            acc = then_builder.create<arith::AddFOp>(loc, acc, cast_to_compute(then_builder, bias_val));
-        }
-        if (m_has_activation) {
-            acc = then_builder.create<arith::MaximumFOp>(loc, acc, zero);
-        }
-        Value output_offset = then_builder.create<arith::AddIOp>(
-            loc,
-            then_builder.create<arith::MulIOp>(
-                loc,
-                then_builder.create<arith::AddIOp>(
-                    loc,
-                    then_builder.create<arith::MulIOp>(loc, n, c_out),
-                    oc),
-                then_builder.create<arith::MulIOp>(loc, out_h, out_w)),
-            then_builder.create<arith::AddIOp>(
-                loc,
-                then_builder.create<arith::MulIOp>(loc, oh, out_w),
-                ow));
-        then_builder.create<memref::StoreOp>(loc,
-                                             cast_to_output(then_builder, acc),
-                                             fn.getArgument(m_has_bias ? 4 : 3),
-                                             ValueRange{output_offset});
-    }
-    body.setInsertionPointAfter(active_if);
-    body.create<gpu::ReturnOp>(loc);
-    return mod;
-}
-
-mlir::ModuleOp VulkanStage::build_conv2d_3x3_direct_module(mlir::MLIRContext& ctx,
-                                                           const ov::element::Type& et,
-                                                           uint32_t output_channel_block,
-                                                           uint32_t threads_per_group,
-                                                           const std::string& variant) {
-    using namespace mlir;
-    auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
-    OPENVINO_ASSERT(conv, "GFX Vulkan conv2d 3x3 direct: node cast failed");
-    const auto& in_shape = conv->get_input_shape(0);
-    const auto& w_shape = conv->get_input_shape(1);
-    const auto& out_shape = conv->get_output_shape(0);
-
-    ctx.loadDialect<func::FuncDialect,
-                    gpu::GPUDialect,
-                    scf::SCFDialect,
-                    memref::MemRefDialect,
-                    arith::ArithDialect,
-                    math::MathDialect>();
-
-    Type elem_ty;
-    switch (et) {
-        case ov::element::f16: elem_ty = Float16Type::get(&ctx); break;
-        case ov::element::f32: elem_ty = Float32Type::get(&ctx); break;
-        default: OPENVINO_THROW("GFX Vulkan conv2d 3x3 direct: unsupported element type ", et);
-    }
-    Type compute_ty = elem_ty;
-    OPENVINO_ASSERT(!m_has_activation || m_activation == ActivationKind::Relu,
-                    "GFX Vulkan conv2d 3x3 direct: only Relu activation fusion is supported");
-    const uint32_t oc_block = std::max<uint32_t>(1u, output_channel_block);
-    const bool spatial_xy_variant = variant.rfind("conv2d_direct_xy", 0) == 0;
-    const bool xy32x2_variant = variant == "conv2d_direct_xy32x2" || variant == "conv2d_direct_xy32x2_dense_s2";
-    const bool xy16x4_variant = variant == "conv2d_direct_xy16x4" || variant == "conv2d_direct_xy16x4_dense_s2";
-    const int32_t tile_x = xy32x2_variant ? 32 : (xy16x4_variant ? 16 : 8);
-    const int32_t tile_y = xy32x2_variant ? 2 : (xy16x4_variant ? 4 : 8);
-
-    auto mod = ModuleOp::create(UnknownLoc::get(&ctx));
-    OpBuilder b(mod.getBody(), mod.getBody()->begin());
-    mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
-    mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), m_has_bias ? 4 : 3));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        attrs.reserve(values.size());
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds",
-                 m_has_bias ? make_i32_array_attr({1, 1, 1, 1}) : make_i32_array_attr({1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices",
-                 m_has_bias ? make_i32_array_attr({0, 1, 2, 3}) : make_i32_array_attr({0, 1, 2}));
-
-    auto input_ty = MemRefType::get({static_cast<int64_t>(in_shape.at(0)),
-                                     static_cast<int64_t>(in_shape.at(1)),
-                                     static_cast<int64_t>(in_shape.at(2)),
-                                     static_cast<int64_t>(in_shape.at(3))},
-                                    elem_ty);
-    auto weight_ty = MemRefType::get({static_cast<int64_t>(w_shape.at(0)),
-                                      static_cast<int64_t>(w_shape.at(1)),
-                                      static_cast<int64_t>(w_shape.at(2)),
-                                      static_cast<int64_t>(w_shape.at(3))},
-                                     elem_ty);
-    auto bias_ty = MemRefType::get({static_cast<int64_t>(out_shape.at(1))}, elem_ty);
-    auto output_ty = MemRefType::get({static_cast<int64_t>(out_shape.at(0)),
-                                      static_cast<int64_t>(out_shape.at(1)),
-                                      static_cast<int64_t>(out_shape.at(2)),
-                                      static_cast<int64_t>(out_shape.at(3))},
-                                     elem_ty);
-
-    auto gpu_mod = b.create<gpu::GPUModuleOp>(UnknownLoc::get(&ctx), "gfx_kernels");
-    OpBuilder gpu_builder = OpBuilder::atBlockBegin(gpu_mod.getBody());
-    SmallVector<Type, 4> arg_types{input_ty, weight_ty};
-    if (m_has_bias) {
-        arg_types.push_back(bias_ty);
-    }
-    arg_types.push_back(output_ty);
-    auto fn = gpu_builder.create<gpu::GPUFuncOp>(UnknownLoc::get(&ctx),
-                                                 spatial_xy_variant ? "conv2d_3x3_direct_xy"
-                                                                    : (oc_block == 1 ? "conv2d_3x3_direct"
-                                                                                     : "conv2d_3x3_direct_oc2"),
-                                                 b.getFunctionType(arg_types, {}),
-                                                 TypeRange{},
-                                                 TypeRange{});
-    fn->setAttr(gpu::GPUDialect::getKernelFuncAttrName(), b.getUnitAttr());
-    fn.setKnownBlockSizeAttr(DenseI32ArrayAttr::get(
-        &ctx,
-        spatial_xy_variant ? SmallVector<int32_t, 3>{tile_x, tile_y, 1}
-                           : SmallVector<int32_t, 3>{static_cast<int32_t>(threads_per_group), 1, 1}));
-
-    auto* entry = &fn.getBody().front();
-    OpBuilder body(entry, entry->begin());
-    auto loc = fn.getLoc();
-    auto cast_to_compute = [&](OpBuilder& builder, Value value) -> Value {
-        if (value.getType() == compute_ty) {
-            return value;
-        }
-        return builder.create<arith::ExtFOp>(loc, compute_ty, value);
-    };
-    auto cast_to_output = [&](OpBuilder& builder, Value value) -> Value {
-        if (value.getType() == elem_ty) {
-            return value;
-        }
-        return builder.create<arith::TruncFOp>(loc, elem_ty, value);
-    };
-
-    Value c0 = body.create<arith::ConstantIndexOp>(loc, 0);
-    Value c1 = body.create<arith::ConstantIndexOp>(loc, 1);
-    Value c_out = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(out_shape.at(1)));
-    Value oc_block_val = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(oc_block));
-    Value c_out_groups = body.create<arith::ConstantIndexOp>(
-        loc, static_cast<int64_t>((out_shape.at(1) + oc_block - 1) / oc_block));
-    Value in_h = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(in_shape.at(2)));
-    Value in_w = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(in_shape.at(3)));
-    Value out_h = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(out_shape.at(2)));
-    Value out_w = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(out_shape.at(3)));
-    Value stride_h = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(conv->get_strides().at(0)));
-    Value stride_w = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(conv->get_strides().at(1)));
-    Value pad_top = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(conv->get_pads_begin().at(0)));
-    Value pad_left = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(conv->get_pads_begin().at(1)));
-    auto zero = body.create<arith::ConstantOp>(loc, FloatAttr::get(compute_ty, 0.0f));
-    Value ow;
-    Value oh;
-    Value n;
-    Value oc_base;
-    scf::IfOp active_if;
-    if (spatial_xy_variant) {
-        Value bid_x = body.create<gpu::BlockIdOp>(loc, gpu::Dimension::x);
-        Value bid_y = body.create<gpu::BlockIdOp>(loc, gpu::Dimension::y);
-        Value bid_z = body.create<gpu::BlockIdOp>(loc, gpu::Dimension::z);
-        Value bdim_x = body.create<gpu::BlockDimOp>(loc, gpu::Dimension::x);
-        Value bdim_y = body.create<gpu::BlockDimOp>(loc, gpu::Dimension::y);
-        Value tid_x = body.create<gpu::ThreadIdOp>(loc, gpu::Dimension::x);
-        Value tid_y = body.create<gpu::ThreadIdOp>(loc, gpu::Dimension::y);
-        ow = body.create<arith::AddIOp>(loc, body.create<arith::MulIOp>(loc, bid_x, bdim_x), tid_x);
-        oh = body.create<arith::AddIOp>(loc, body.create<arith::MulIOp>(loc, bid_y, bdim_y), tid_y);
-        Value oc_group = body.create<arith::RemUIOp>(loc, bid_z, c_out_groups);
-        n = body.create<arith::DivUIOp>(loc, bid_z, c_out_groups);
-        oc_base = body.create<arith::MulIOp>(loc, oc_group, oc_block_val);
-        auto ow_valid = body.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, ow, out_w);
-        auto oh_valid = body.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, oh, out_h);
-        auto active = body.create<arith::AndIOp>(loc, ow_valid, oh_valid);
-        active_if = body.create<scf::IfOp>(loc, active, /*withElseRegion=*/false);
-    } else {
-        Value total = body.create<arith::ConstantIndexOp>(
-            loc,
-            static_cast<int64_t>(out_shape.at(0) * ((out_shape.at(1) + oc_block - 1) / oc_block) * out_shape.at(2) *
-                                 out_shape.at(3)));
-        Value bid = body.create<gpu::BlockIdOp>(loc, gpu::Dimension::x);
-        Value bdim = body.create<gpu::BlockDimOp>(loc, gpu::Dimension::x);
-        Value tid = body.create<gpu::ThreadIdOp>(loc, gpu::Dimension::x);
-        Value global_idx = body.create<arith::AddIOp>(loc,
-                                                      body.create<arith::MulIOp>(loc, bid, bdim),
-                                                      tid);
-        auto active = body.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, global_idx, total);
-        active_if = body.create<scf::IfOp>(loc, active, /*withElseRegion=*/false);
-        OpBuilder then_builder = active_if.getThenBodyBuilder();
-        Value rem = global_idx;
-        ow = then_builder.create<arith::RemUIOp>(loc, rem, out_w);
-        rem = then_builder.create<arith::DivUIOp>(loc, rem, out_w);
-        oh = then_builder.create<arith::RemUIOp>(loc, rem, out_h);
-        rem = then_builder.create<arith::DivUIOp>(loc, rem, out_h);
-        Value oc_group = then_builder.create<arith::RemUIOp>(loc, rem, c_out_groups);
-        n = then_builder.create<arith::DivUIOp>(loc, rem, c_out_groups);
-        oc_base = then_builder.create<arith::MulIOp>(loc, oc_group, oc_block_val);
-    }
-    {
-        auto then_builder = active_if.getThenBodyBuilder();
-        SmallVector<Value, 4> accs;
-        SmallVector<Value, 4> oc_values;
-        SmallVector<Value, 4> oc_valids;
-        accs.reserve(oc_block);
-        oc_values.reserve(oc_block);
-        oc_valids.reserve(oc_block);
-        for (uint32_t lane = 0; lane < oc_block; ++lane) {
-            Value lane_val = then_builder.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(lane));
-            Value oc = then_builder.create<arith::AddIOp>(loc, oc_base, lane_val);
-            oc_values.push_back(oc);
-            oc_valids.push_back(
-                then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, oc, c_out));
-            accs.push_back(zero.getResult());
-        }
-        Value base_ih = then_builder.create<arith::SubIOp>(
-            loc, then_builder.create<arith::MulIOp>(loc, oh, stride_h), pad_top);
-        Value base_iw = then_builder.create<arith::SubIOp>(
-            loc, then_builder.create<arith::MulIOp>(loc, ow, stride_w), pad_left);
-        auto one = then_builder.create<arith::ConstantOp>(loc, FloatAttr::get(compute_ty, 1.0f));
-        const auto in_channels = static_cast<int64_t>(in_shape.at(1));
-        for (int64_t ic_idx = 0; ic_idx < in_channels; ++ic_idx) {
-            Value ic = then_builder.create<arith::ConstantIndexOp>(loc, ic_idx);
-            for (int64_t kh_idx = 0; kh_idx < 3; ++kh_idx) {
-                Value kh = then_builder.create<arith::ConstantIndexOp>(loc, kh_idx);
-                for (int64_t kw_idx = 0; kw_idx < 3; ++kw_idx) {
-                    Value kw = then_builder.create<arith::ConstantIndexOp>(loc, kw_idx);
-                    Value ih = then_builder.create<arith::AddIOp>(loc, base_ih, kh);
-                    Value iw = then_builder.create<arith::AddIOp>(loc, base_iw, kw);
-
-                    auto ih_ge0 = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sge, ih, c0);
-                    auto ih_lt = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, ih, in_h);
-                    auto iw_ge0 = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sge, iw, c0);
-                    auto iw_lt = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, iw, in_w);
-                    auto in_bounds = then_builder.create<arith::AndIOp>(loc, ih_ge0, ih_lt);
-                    in_bounds = then_builder.create<arith::AndIOp>(loc, in_bounds, iw_ge0);
-                    in_bounds = then_builder.create<arith::AndIOp>(loc, in_bounds, iw_lt);
-
-                    Value ih_nonneg = then_builder.create<arith::SelectOp>(loc, ih_ge0, ih, c0);
-                    Value iw_nonneg = then_builder.create<arith::SelectOp>(loc, iw_ge0, iw, c0);
-                    Value in_h_last = then_builder.create<arith::SubIOp>(loc, in_h, c1);
-                    Value in_w_last = then_builder.create<arith::SubIOp>(loc, in_w, c1);
-                    auto ih_bounded =
-                        then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, ih_nonneg, in_h);
-                    auto iw_bounded =
-                        then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, iw_nonneg, in_w);
-                    Value ih_safe = then_builder.create<arith::SelectOp>(loc, ih_bounded, ih_nonneg, in_h_last);
-                    Value iw_safe = then_builder.create<arith::SelectOp>(loc, iw_bounded, iw_nonneg, in_w_last);
-                    Value input_val = then_builder.create<memref::LoadOp>(
-                        loc, fn.getArgument(0), ValueRange{n, ic, ih_safe, iw_safe});
-                    Value input_comp = cast_to_compute(then_builder, input_val);
-                    Value mask = then_builder.create<arith::SelectOp>(loc, in_bounds, one, zero);
-                    Value masked_input = then_builder.create<arith::MulFOp>(loc, input_comp, mask);
-
-                    for (uint32_t lane = 0; lane < oc_block; ++lane) {
-                        Value safe_oc =
-                            then_builder.create<arith::SelectOp>(loc, oc_valids[lane], oc_values[lane], c0);
-                        Value weight_val = then_builder.create<memref::LoadOp>(
-                            loc, fn.getArgument(1), ValueRange{safe_oc, ic, kh, kw});
-                        Value prod = then_builder.create<arith::MulFOp>(
-                            loc, masked_input, cast_to_compute(then_builder, weight_val));
-                        Value updated = then_builder.create<arith::AddFOp>(loc, accs[lane], prod);
-                        accs[lane] = then_builder.create<arith::SelectOp>(loc, oc_valids[lane], updated, accs[lane]);
-                    }
-                }
-            }
-        }
-        for (uint32_t lane = 0; lane < oc_block; ++lane) {
-            if (m_has_bias) {
-                Value safe_oc =
-                    then_builder.create<arith::SelectOp>(loc, oc_valids[lane], oc_values[lane], c0);
-                Value bias_val = then_builder.create<memref::LoadOp>(loc, fn.getArgument(2), ValueRange{safe_oc});
-                accs[lane] = then_builder.create<arith::AddFOp>(loc, accs[lane], cast_to_compute(then_builder, bias_val));
-            }
-            if (m_has_activation) {
-                accs[lane] = then_builder.create<arith::MaximumFOp>(loc, accs[lane], zero);
-            }
-            auto store_if = then_builder.create<scf::IfOp>(loc, oc_valids[lane], /*withElseRegion=*/false);
-            auto store_builder = store_if.getThenBodyBuilder();
-            store_builder.create<memref::StoreOp>(loc,
-                                                  cast_to_output(store_builder, accs[lane]),
-                                                  fn.getArgument(m_has_bias ? 3 : 2),
-                                                  ValueRange{n, oc_values[lane], oh, ow});
-        }
-    }
-    body.setInsertionPointAfter(active_if);
-    body.create<gpu::ReturnOp>(loc);
-    return mod;
-}
-
-mlir::ModuleOp VulkanStage::build_conv2d_chunk_module(mlir::MLIRContext& ctx,
-                                                      const ov::element::Type& et,
-                                                      uint32_t threads_h,
-                                                      uint32_t threads_w) {
-    using namespace mlir;
-    auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
-    OPENVINO_ASSERT(conv, "GFX Vulkan conv2d chunked: node cast failed");
-    const auto& in_shape = conv->get_input_shape(0);
-    const auto& w_shape = conv->get_input_shape(1);
-    const auto& out_shape = conv->get_output_shape(0);
-
-    ctx.loadDialect<func::FuncDialect,
-                    gpu::GPUDialect,
-                    scf::SCFDialect,
-                    memref::MemRefDialect,
-                    arith::ArithDialect,
-                    math::MathDialect>();
-
-    Type elem_ty;
-    switch (et) {
-        case ov::element::f16: elem_ty = Float16Type::get(&ctx); break;
-        case ov::element::f32: elem_ty = Float32Type::get(&ctx); break;
-        default: OPENVINO_THROW("GFX Vulkan conv2d chunked: unsupported element type ", et);
-    }
-    Type compute_ty = elem_ty;
-
-    auto mod = ModuleOp::create(UnknownLoc::get(&ctx));
-    OpBuilder b(mod.getBody(), mod.getBody()->begin());
-    mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
-    mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 3));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        attrs.reserve(values.size());
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2}));
-    auto input_ty = MemRefType::get({static_cast<int64_t>(in_shape.at(0)),
-                                     static_cast<int64_t>(in_shape.at(1)),
-                                     static_cast<int64_t>(in_shape.at(2)),
-                                     static_cast<int64_t>(in_shape.at(3))},
-                                    elem_ty);
-    auto weight_ty = MemRefType::get({static_cast<int64_t>(w_shape.at(0)),
-                                      static_cast<int64_t>(w_shape.at(1)),
-                                      static_cast<int64_t>(w_shape.at(2)),
-                                      static_cast<int64_t>(w_shape.at(3))},
-                                     elem_ty);
-    auto output_ty = MemRefType::get({static_cast<int64_t>(out_shape.at(0)),
-                                      static_cast<int64_t>(out_shape.at(1)),
-                                      static_cast<int64_t>(out_shape.at(2)),
-                                      static_cast<int64_t>(out_shape.at(3))},
-                                     elem_ty);
-    auto gpu_mod = b.create<gpu::GPUModuleOp>(UnknownLoc::get(&ctx), "gfx_kernels");
-    OpBuilder gpu_builder = OpBuilder::atBlockBegin(gpu_mod.getBody());
-    auto fn = gpu_builder.create<gpu::GPUFuncOp>(UnknownLoc::get(&ctx),
-                                                 "conv2d_chunk",
-                                                 b.getFunctionType(TypeRange{input_ty, weight_ty, output_ty}, {}),
-                                                 TypeRange{},
-                                                 TypeRange{});
-    fn->setAttr(gpu::GPUDialect::getKernelFuncAttrName(), b.getUnitAttr());
-    fn.setKnownBlockSizeAttr(
-        mlir::DenseI32ArrayAttr::get(&ctx,
-                                     {static_cast<int32_t>(std::max<uint32_t>(1u, threads_w)),
-                                      static_cast<int32_t>(std::max<uint32_t>(1u, threads_h)),
-                                      1}));
-    auto* entry = &fn.getBody().front();
-    OpBuilder body(entry, entry->begin());
-    auto loc = fn.getLoc();
-    auto c0 = body.create<arith::ConstantIndexOp>(loc, 0);
-    auto c1 = body.create<arith::ConstantIndexOp>(loc, 1);
-    auto cast_to_compute = [&](OpBuilder& builder, Value value) -> Value {
-        if (value.getType() == compute_ty) {
-            return value;
-        }
-        return builder.create<arith::ExtFOp>(loc, compute_ty, value);
-    };
-    auto cast_to_output = [&](OpBuilder& builder, Value value) -> Value {
-        if (value.getType() == elem_ty) {
-            return value;
-        }
-        return builder.create<arith::TruncFOp>(loc, elem_ty, value);
-    };
-
-    Value batch = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(out_shape.at(0)));
-    Value c_in = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(in_shape.at(1)));
-    Value in_h = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(in_shape.at(2)));
-    Value in_w = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(in_shape.at(3)));
-    Value c_out = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(w_shape.at(0)));
-    Value k_h = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(w_shape.at(2)));
-    Value k_w = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(w_shape.at(3)));
-    Value stride_h = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(conv->get_strides().at(0)));
-    Value stride_w = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(conv->get_strides().at(1)));
-    Value dil_h = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(conv->get_dilations().at(0)));
-    Value dil_w = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(conv->get_dilations().at(1)));
-    Value pad_top = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(conv->get_pads_begin().at(0)));
-    Value pad_left = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(conv->get_pads_begin().at(1)));
-    Value out_h = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(out_shape.at(2)));
-    Value out_w = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(out_shape.at(3)));
-    auto zero = body.create<arith::ConstantOp>(loc, FloatAttr::get(compute_ty, 0.0f));
-    const auto in_channels = static_cast<int64_t>(in_shape.at(1));
-    const auto kernel_h = static_cast<int64_t>(w_shape.at(2));
-    const auto kernel_w = static_cast<int64_t>(w_shape.at(3));
-    Value bid_x = body.create<gpu::BlockIdOp>(loc, gpu::Dimension::x);
-    Value bid_y = body.create<gpu::BlockIdOp>(loc, gpu::Dimension::y);
-    Value bid_z = body.create<gpu::BlockIdOp>(loc, gpu::Dimension::z);
-    Value bdim_x = body.create<gpu::BlockDimOp>(loc, gpu::Dimension::x);
-    Value bdim_y = body.create<gpu::BlockDimOp>(loc, gpu::Dimension::y);
-    Value tid_x = body.create<gpu::ThreadIdOp>(loc, gpu::Dimension::x);
-    Value tid_y = body.create<gpu::ThreadIdOp>(loc, gpu::Dimension::y);
-    Value ow = body.create<arith::AddIOp>(loc, body.create<arith::MulIOp>(loc, bid_x, bdim_x), tid_x);
-    Value oh = body.create<arith::AddIOp>(loc, body.create<arith::MulIOp>(loc, bid_y, bdim_y), tid_y);
-    Value oc = body.create<arith::RemUIOp>(loc, bid_z, c_out);
-    Value n = body.create<arith::DivUIOp>(loc, bid_z, c_out);
-    auto ow_valid = body.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, ow, out_w);
-    auto oh_valid = body.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, oh, out_h);
-    auto n_valid = body.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, n, batch);
-    auto active = body.create<arith::AndIOp>(loc, ow_valid, oh_valid);
-    active = body.create<arith::AndIOp>(loc, active, n_valid);
-    auto active_if = body.create<scf::IfOp>(loc, active, /*withElseRegion=*/false);
-    {
-        auto then_builder = active_if.getThenBodyBuilder();
-        Value acc = zero.getResult();
-        Value base_ih = then_builder.create<arith::SubIOp>(
-            loc, then_builder.create<arith::MulIOp>(loc, oh, stride_h), pad_top);
-        Value base_iw = then_builder.create<arith::SubIOp>(
-            loc, then_builder.create<arith::MulIOp>(loc, ow, stride_w), pad_left);
-        auto one = then_builder.create<arith::ConstantOp>(loc, FloatAttr::get(compute_ty, 1.0f));
-        Value in_h_last = then_builder.create<arith::SubIOp>(loc, in_h, c1);
-        Value in_w_last = then_builder.create<arith::SubIOp>(loc, in_w, c1);
-        for (int64_t ic_idx = 0; ic_idx < in_channels; ++ic_idx) {
-            Value ic = then_builder.create<arith::ConstantIndexOp>(loc, ic_idx);
-            for (int64_t kh_idx = 0; kh_idx < kernel_h; ++kh_idx) {
-                Value kh = then_builder.create<arith::ConstantIndexOp>(loc, kh_idx);
-                for (int64_t kw_idx = 0; kw_idx < kernel_w; ++kw_idx) {
-                    Value kw = then_builder.create<arith::ConstantIndexOp>(loc, kw_idx);
-                    Value ih = then_builder.create<arith::AddIOp>(
-                        loc, base_ih, then_builder.create<arith::MulIOp>(loc, kh, dil_h));
-                    Value iw = then_builder.create<arith::AddIOp>(
-                        loc, base_iw, then_builder.create<arith::MulIOp>(loc, kw, dil_w));
-
-                    auto ih_ge0 = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sge, ih, c0);
-                    auto ih_lt = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, ih, in_h);
-                    auto iw_ge0 = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sge, iw, c0);
-                    auto iw_lt = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, iw, in_w);
-                    auto in_bounds = then_builder.create<arith::AndIOp>(loc, ih_ge0, ih_lt);
-                    in_bounds = then_builder.create<arith::AndIOp>(loc, in_bounds, iw_ge0);
-                    in_bounds = then_builder.create<arith::AndIOp>(loc, in_bounds, iw_lt);
-
-                    Value ih_nonneg = then_builder.create<arith::SelectOp>(loc, ih_ge0, ih, c0);
-                    Value iw_nonneg = then_builder.create<arith::SelectOp>(loc, iw_ge0, iw, c0);
-                    auto ih_bounded =
-                        then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, ih_nonneg, in_h);
-                    auto iw_bounded =
-                        then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, iw_nonneg, in_w);
-                    Value ih_safe = then_builder.create<arith::SelectOp>(loc, ih_bounded, ih_nonneg, in_h_last);
-                    Value iw_safe = then_builder.create<arith::SelectOp>(loc, iw_bounded, iw_nonneg, in_w_last);
-                    Value input_val = then_builder.create<memref::LoadOp>(
-                        loc, fn.getArgument(0), ValueRange{n, ic, ih_safe, iw_safe});
-                    Value weight_val = then_builder.create<memref::LoadOp>(
-                        loc, fn.getArgument(1), ValueRange{oc, ic, kh, kw});
-                    Value input_comp = cast_to_compute(then_builder, input_val);
-                    Value mask = then_builder.create<arith::SelectOp>(loc, in_bounds, one, zero);
-                    Value masked_input = then_builder.create<arith::MulFOp>(loc, input_comp, mask);
-                    Value prod = then_builder.create<arith::MulFOp>(
-                        loc, masked_input, cast_to_compute(then_builder, weight_val));
-                    acc = then_builder.create<arith::AddFOp>(loc, acc, prod);
-                }
-            }
-        }
-        then_builder.create<memref::StoreOp>(loc,
-                                             cast_to_output(then_builder, acc),
-                                             fn.getArgument(2),
-                                             ValueRange{n, oc, oh, ow});
-    }
-    body.setInsertionPointAfter(active_if);
-    body.create<gpu::ReturnOp>(loc);
-    return mod;
-}
-
-mlir::ModuleOp VulkanStage::build_group_conv2d_chunk_module(mlir::MLIRContext& ctx,
-                                                            const ov::element::Type& et,
-                                                            uint32_t threads_per_group) {
-    using namespace mlir;
-    auto gconv = ov::as_type_ptr<const ov::op::v1::GroupConvolution>(m_node);
-    OPENVINO_ASSERT(gconv, "GFX Vulkan group_conv2d chunked: node cast failed");
-    const auto& in_shape = gconv->get_input_shape(0);
-    const auto& w_shape = gconv->get_input_shape(1);
-    const auto& out_shape = gconv->get_output_shape(0);
-    OPENVINO_ASSERT(in_shape.size() == 4 && out_shape.size() == 4 && w_shape.size() == 5,
-                    "GFX Vulkan group_conv2d chunked: unexpected ranks");
-    OPENVINO_ASSERT(w_shape[0] == in_shape[1] && w_shape[0] == out_shape[1] && w_shape[1] == 1 && w_shape[2] == 1,
-                    "GFX Vulkan group_conv2d chunked: only depthwise multiplier=1 is supported");
-
-    ctx.loadDialect<func::FuncDialect,
-                    gpu::GPUDialect,
-                    scf::SCFDialect,
-                    memref::MemRefDialect,
-                    arith::ArithDialect>();
-
-    Type elem_ty;
-    switch (et) {
-        case ov::element::f16: elem_ty = Float16Type::get(&ctx); break;
-        case ov::element::f32: elem_ty = Float32Type::get(&ctx); break;
-        default: OPENVINO_THROW("GFX Vulkan group_conv2d chunked: unsupported element type ", et);
-    }
-    Type compute_ty = elem_ty;
-
-    auto mod = ModuleOp::create(UnknownLoc::get(&ctx));
-    OpBuilder b(mod.getBody(), mod.getBody()->begin());
-    mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
-    mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 3));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        attrs.reserve(values.size());
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2}));
-
-    const int64_t input_elems = static_cast<int64_t>(tensor_elements(in_shape));
-    const int64_t weight_elems = static_cast<int64_t>(tensor_elements(w_shape));
-    const int64_t output_elems = static_cast<int64_t>(tensor_elements(out_shape));
-    auto input_ty = MemRefType::get({input_elems}, elem_ty);
-    auto weight_ty = MemRefType::get({weight_elems}, elem_ty);
-    auto output_ty = MemRefType::get({output_elems}, elem_ty);
-
-    auto gpu_mod = b.create<gpu::GPUModuleOp>(UnknownLoc::get(&ctx), "gfx_kernels");
-    OpBuilder gpu_builder = OpBuilder::atBlockBegin(gpu_mod.getBody());
-    auto fn = gpu_builder.create<gpu::GPUFuncOp>(UnknownLoc::get(&ctx),
-                                                 "group_conv2d_direct",
-                                                 b.getFunctionType(TypeRange{input_ty, weight_ty, output_ty}, {}),
-                                                 TypeRange{},
-                                                 TypeRange{});
-    fn->setAttr(gpu::GPUDialect::getKernelFuncAttrName(), b.getUnitAttr());
-    fn.setKnownBlockSizeAttr(DenseI32ArrayAttr::get(
-        &ctx,
-        {static_cast<int32_t>(std::max<uint32_t>(1u, threads_per_group)), 1, 1}));
-
-    auto* entry = &fn.getBody().front();
-    OpBuilder body(entry, entry->begin());
-    auto loc = fn.getLoc();
-    auto cast_to_compute = [&](OpBuilder& builder, Value value) -> Value {
-        if (value.getType() == compute_ty) {
-            return value;
-        }
-        return builder.create<arith::ExtFOp>(loc, compute_ty, value);
-    };
-    auto cast_to_output = [&](OpBuilder& builder, Value value) -> Value {
-        if (value.getType() == elem_ty) {
-            return value;
-        }
-        return builder.create<arith::TruncFOp>(loc, elem_ty, value);
-    };
-
-    auto c0 = body.create<arith::ConstantIndexOp>(loc, 0);
-    auto total = body.create<arith::ConstantIndexOp>(loc, output_elems);
-    Value c_out = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(out_shape[1]));
-    Value in_h = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(in_shape[2]));
-    Value in_w = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(in_shape[3]));
-    Value out_h = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(out_shape[2]));
-    Value out_w = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(out_shape[3]));
-    Value k_h = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(w_shape[3]));
-    Value k_w = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(w_shape[4]));
-    Value stride_h = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(gconv->get_strides()[0]));
-    Value stride_w = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(gconv->get_strides()[1]));
-    Value dil_h = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(gconv->get_dilations()[0]));
-    Value dil_w = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(gconv->get_dilations()[1]));
-    Value pad_top = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(gconv->get_pads_begin()[0]));
-    Value pad_left = body.create<arith::ConstantIndexOp>(loc, static_cast<int64_t>(gconv->get_pads_begin()[1]));
-    auto zero = body.create<arith::ConstantOp>(loc, FloatAttr::get(compute_ty, 0.0f));
-
-    Value bid = body.create<gpu::BlockIdOp>(loc, gpu::Dimension::x);
-    Value bdim = body.create<gpu::BlockDimOp>(loc, gpu::Dimension::x);
-    Value tid = body.create<gpu::ThreadIdOp>(loc, gpu::Dimension::x);
-    Value linear_idx = body.create<arith::AddIOp>(loc,
-                                                  body.create<arith::MulIOp>(loc, bid, bdim),
-                                                  tid);
-    auto active = body.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, linear_idx, total);
-    auto active_if = body.create<scf::IfOp>(loc, active, /*withElseRegion=*/false);
-    {
-        auto then_builder = active_if.getThenBodyBuilder();
-        Value rem = linear_idx;
-        Value ow = then_builder.create<arith::RemUIOp>(loc, rem, out_w);
-        rem = then_builder.create<arith::DivUIOp>(loc, rem, out_w);
-        Value oh = then_builder.create<arith::RemUIOp>(loc, rem, out_h);
-        rem = then_builder.create<arith::DivUIOp>(loc, rem, out_h);
-        Value oc = then_builder.create<arith::RemUIOp>(loc, rem, c_out);
-        Value n = then_builder.create<arith::DivUIOp>(loc, rem, c_out);
-        Value acc = zero.getResult();
-
-        for (int64_t kh_idx = 0; kh_idx < static_cast<int64_t>(w_shape[3]); ++kh_idx) {
-            Value kh = then_builder.create<arith::ConstantIndexOp>(loc, kh_idx);
-            for (int64_t kw_idx = 0; kw_idx < static_cast<int64_t>(w_shape[4]); ++kw_idx) {
-                Value kw = then_builder.create<arith::ConstantIndexOp>(loc, kw_idx);
-                Value ih = then_builder.create<arith::AddIOp>(
-                    loc,
-                    then_builder.create<arith::MulIOp>(loc, oh, stride_h),
-                    then_builder.create<arith::MulIOp>(loc, kh, dil_h));
-                ih = then_builder.create<arith::SubIOp>(loc, ih, pad_top);
-                Value iw = then_builder.create<arith::AddIOp>(
-                    loc,
-                    then_builder.create<arith::MulIOp>(loc, ow, stride_w),
-                    then_builder.create<arith::MulIOp>(loc, kw, dil_w));
-                iw = then_builder.create<arith::SubIOp>(loc, iw, pad_left);
-
-                auto ih_ge0 = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sge, ih, c0);
-                auto ih_lt = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, ih, in_h);
-                auto iw_ge0 = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sge, iw, c0);
-                auto iw_lt = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, iw, in_w);
-                auto in_bounds = then_builder.create<arith::AndIOp>(loc, ih_ge0, ih_lt);
-                in_bounds = then_builder.create<arith::AndIOp>(loc, in_bounds, iw_ge0);
-                in_bounds = then_builder.create<arith::AndIOp>(loc, in_bounds, iw_lt);
-
-                auto if_in_bounds = then_builder.create<scf::IfOp>(loc, TypeRange{compute_ty}, in_bounds, true);
-                {
-                    auto then_inner = if_in_bounds.getThenBodyBuilder();
-                    Value input_offset = then_inner.create<arith::AddIOp>(
-                        loc,
-                        then_inner.create<arith::MulIOp>(
-                            loc,
-                            then_inner.create<arith::AddIOp>(
-                                loc,
-                                then_inner.create<arith::MulIOp>(loc, n, c_out),
-                                oc),
-                            then_inner.create<arith::MulIOp>(loc, in_h, in_w)),
-                        then_inner.create<arith::AddIOp>(
-                            loc,
-                            then_inner.create<arith::MulIOp>(loc, ih, in_w),
-                            iw));
-                    Value weight_offset = then_inner.create<arith::AddIOp>(
-                        loc,
-                        then_inner.create<arith::MulIOp>(
-                            loc,
-                            oc,
-                            then_inner.create<arith::MulIOp>(loc, k_h, k_w)),
-                        then_inner.create<arith::AddIOp>(
-                            loc,
-                            then_inner.create<arith::MulIOp>(loc, kh, k_w),
-                            kw));
-                    Value input_val = then_inner.create<memref::LoadOp>(loc, fn.getArgument(0), ValueRange{input_offset});
-                    Value weight_val = then_inner.create<memref::LoadOp>(loc, fn.getArgument(1), ValueRange{weight_offset});
-                    Value prod = then_inner.create<arith::MulFOp>(
-                        loc,
-                        cast_to_compute(then_inner, input_val),
-                        cast_to_compute(then_inner, weight_val));
-                    Value sum = then_inner.create<arith::AddFOp>(loc, acc, prod);
-                    then_inner.create<scf::YieldOp>(loc, sum);
-                }
-                {
-                    auto else_inner = if_in_bounds.getElseBodyBuilder();
-                    else_inner.create<scf::YieldOp>(loc, acc);
-                }
-                acc = if_in_bounds.getResult(0);
-            }
-        }
-
-        Value out_val = cast_to_output(then_builder, acc);
-        then_builder.create<memref::StoreOp>(loc, out_val, fn.getArgument(2), ValueRange{linear_idx});
-    }
-    body.setInsertionPointAfter(active_if);
-    body.create<gpu::ReturnOp>(loc);
-    return mod;
-}
-
 mlir::ModuleOp VulkanStage::build_linear_binary_module(mlir::MLIRContext& ctx,
-                                                       const ov::element::Type& src0_et,
-                                                       const ov::element::Type& src1_et,
-                                                       const ov::element::Type& dst_et,
-                                                       const std::string& op_key,
-                                                       size_t meta_rank) {
+                                                      const ov::element::Type& src0_et,
+                                                      const ov::element::Type& src1_et,
+                                                      const ov::element::Type& dst_et,
+                                                      const std::string& op_key,
+                                                      size_t meta_rank) {
     using namespace mlir;
     ctx.loadDialect<func::FuncDialect,
                     gpu::GPUDialect,
@@ -3038,17 +2056,13 @@ mlir::ModuleOp VulkanStage::build_linear_binary_module(mlir::MLIRContext& ctx,
     mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
     mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
     mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 4));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        attrs.reserve(values.size());
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2, 3}));
+    annotate_vulkan_specialized_kernel_abi(mod,
+                                           m_type,
+                                           "linear_binary",
+                                           {GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::TensorOutput});
     auto in0_ty = MemRefType::get({ShapedType::kDynamic}, src0_ty);
     auto in1_ty = MemRefType::get({ShapedType::kDynamic}, src1_ty);
     auto out_ty = MemRefType::get({ShapedType::kDynamic}, dst_ty);
@@ -3230,210 +2244,6 @@ mlir::ModuleOp VulkanStage::build_linear_binary_module(mlir::MLIRContext& ctx,
     return mod;
 }
 
-mlir::ModuleOp VulkanStage::build_linear_binary_same_shape_module(mlir::MLIRContext& ctx,
-                                                                  const ov::element::Type& src0_et,
-                                                                  const ov::element::Type& src1_et,
-                                                                  const ov::element::Type& dst_et,
-                                                                  const std::string& op_key) {
-    using namespace mlir;
-    ctx.loadDialect<func::FuncDialect,
-                    gpu::GPUDialect,
-                    scf::SCFDialect,
-                    memref::MemRefDialect,
-                    arith::ArithDialect,
-                    math::MathDialect>();
-
-    OPENVINO_ASSERT(is_supported_binary_io_types(src0_et, src1_et, dst_et, op_key),
-                    "GFX Vulkan same-shape binary: unsupported element types for op ",
-                    op_key);
-    Type src0_ty = to_binary_storage_type(ctx, src0_et);
-    Type src1_ty = to_binary_storage_type(ctx, src1_et);
-    Type dst_ty = to_binary_storage_type(ctx, dst_et);
-    Type compute_ty = (src0_et == ov::element::f16) ? static_cast<Type>(Float16Type::get(&ctx))
-                                                    : static_cast<Type>(Float32Type::get(&ctx));
-
-    OPENVINO_ASSERT(m_node && m_node->get_output_partial_shape(0).is_static() &&
-                        m_node->get_input_partial_shape(0).is_static() &&
-                        m_node->get_input_partial_shape(1).is_static(),
-                    "GFX Vulkan same-shape binary: static shapes required");
-    const ov::Shape out_shape = m_node->get_output_shape(0);
-    OPENVINO_ASSERT(m_node->get_input_shape(0) == out_shape && m_node->get_input_shape(1) == out_shape,
-                    "GFX Vulkan same-shape binary: shapes must match");
-    const int64_t total = static_cast<int64_t>(tensor_elements(out_shape));
-
-    auto mod = ModuleOp::create(UnknownLoc::get(&ctx));
-    OpBuilder b(mod.getBody(), mod.getBody()->begin());
-    mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
-    mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 3));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2}));
-
-    auto in0_ty = MemRefType::get({total}, src0_ty);
-    auto in1_ty = MemRefType::get({total}, src1_ty);
-    auto out_ty = MemRefType::get({total}, dst_ty);
-    auto gpu_mod = b.create<gpu::GPUModuleOp>(UnknownLoc::get(&ctx), "gfx_kernels");
-    OpBuilder gpu_builder = OpBuilder::atBlockBegin(gpu_mod.getBody());
-    auto fn = gpu_builder.create<gpu::GPUFuncOp>(UnknownLoc::get(&ctx),
-                                                 "linear_binary_same_shape",
-                                                 b.getFunctionType(TypeRange{in0_ty, in1_ty, out_ty}, {}),
-                                                 TypeRange{},
-                                                 TypeRange{});
-    fn->setAttr(gpu::GPUDialect::getKernelFuncAttrName(), b.getUnitAttr());
-    fn.setKnownBlockSizeAttr(DenseI32ArrayAttr::get(&ctx, {64, 1, 1}));
-
-    auto* entry = &fn.getBody().front();
-    OpBuilder body(entry, entry->begin());
-    auto loc = fn.getLoc();
-    auto total_idx = body.create<arith::ConstantIndexOp>(loc, total);
-    auto cast_to_compute = [&](OpBuilder& builder, Value value) -> Value {
-        if (value.getType() == compute_ty) {
-            return value;
-        }
-        return builder.create<arith::ExtFOp>(loc, compute_ty, value);
-    };
-    auto cast_to_output = [&](OpBuilder& builder, Value value) -> Value {
-        if (value.getType() == dst_ty) {
-            return value;
-        }
-        return builder.create<arith::TruncFOp>(loc, dst_ty, value);
-    };
-    auto emit_binary = [&](OpBuilder& builder, Value lhs, Value rhs) -> Value {
-        if (is_arithmetic_binary_key(op_key)) {
-            if (llvm::isa<mlir::FloatType>(lhs.getType())) {
-                auto a = cast_to_compute(builder, lhs);
-                auto bval = cast_to_compute(builder, rhs);
-                if (op_key == "add") {
-                    return cast_to_output(builder, builder.create<arith::AddFOp>(loc, a, bval));
-                }
-                if (op_key == "sub") {
-                    return cast_to_output(builder, builder.create<arith::SubFOp>(loc, a, bval));
-                }
-                if (op_key == "mul") {
-                    return cast_to_output(builder, builder.create<arith::MulFOp>(loc, a, bval));
-                }
-                if (op_key == "div") {
-                    return cast_to_output(builder, builder.create<arith::DivFOp>(loc, a, bval));
-                }
-                if (op_key == "pow") {
-                    return cast_to_output(builder, builder.create<math::PowFOp>(loc, a, bval));
-                }
-            } else {
-                if (op_key == "add") {
-                    return builder.create<arith::AddIOp>(loc, lhs, rhs);
-                }
-                if (op_key == "sub") {
-                    return builder.create<arith::SubIOp>(loc, lhs, rhs);
-                }
-                if (op_key == "mul") {
-                    return builder.create<arith::MulIOp>(loc, lhs, rhs);
-                }
-                if (op_key == "div") {
-                    return builder.create<arith::DivSIOp>(loc, lhs, rhs);
-                }
-            }
-        }
-        if (is_compare_binary_key(op_key)) {
-            if (llvm::isa<mlir::FloatType>(lhs.getType())) {
-                if (op_key == "eq") {
-                    return builder.create<arith::CmpFOp>(loc, arith::CmpFPredicate::OEQ, lhs, rhs);
-                }
-                if (op_key == "ne") {
-                    return builder.create<arith::CmpFOp>(loc, arith::CmpFPredicate::ONE, lhs, rhs);
-                }
-                if (op_key == "lt") {
-                    return builder.create<arith::CmpFOp>(loc, arith::CmpFPredicate::OLT, lhs, rhs);
-                }
-                if (op_key == "gt") {
-                    return builder.create<arith::CmpFOp>(loc, arith::CmpFPredicate::OGT, lhs, rhs);
-                }
-                if (op_key == "le") {
-                    return builder.create<arith::CmpFOp>(loc, arith::CmpFPredicate::OLE, lhs, rhs);
-                }
-                if (op_key == "ge") {
-                    return builder.create<arith::CmpFOp>(loc, arith::CmpFPredicate::OGE, lhs, rhs);
-                }
-            } else {
-                if (op_key == "eq") {
-                    return builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::eq, lhs, rhs);
-                }
-                if (op_key == "ne") {
-                    return builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ne, lhs, rhs);
-                }
-                if (op_key == "lt") {
-                    return builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, lhs, rhs);
-                }
-                if (op_key == "gt") {
-                    return builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sgt, lhs, rhs);
-                }
-                if (op_key == "le") {
-                    return builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sle, lhs, rhs);
-                }
-                if (op_key == "ge") {
-                    return builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sge, lhs, rhs);
-                }
-            }
-        }
-        if (is_logical_binary_key(op_key)) {
-            if (op_key == "land") {
-                return builder.create<arith::AndIOp>(loc, lhs, rhs);
-            }
-            if (op_key == "lor") {
-                return builder.create<arith::OrIOp>(loc, lhs, rhs);
-            }
-            if (op_key == "lxor") {
-                return builder.create<arith::XOrIOp>(loc, lhs, rhs);
-            }
-        }
-        OPENVINO_THROW("GFX Vulkan same-shape binary: unsupported op ", op_key);
-    };
-
-    Value bid = body.create<gpu::BlockIdOp>(loc, gpu::Dimension::x);
-    Value bdim = body.create<gpu::BlockDimOp>(loc, gpu::Dimension::x);
-    Value tid = body.create<gpu::ThreadIdOp>(loc, gpu::Dimension::x);
-    Value idx = body.create<arith::AddIOp>(loc,
-                                           body.create<arith::MulIOp>(loc, bid, bdim),
-                                           tid);
-    auto active = body.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, idx, total_idx);
-    auto active_if = body.create<scf::IfOp>(loc, active, /*withElseRegion=*/false);
-    {
-        auto then_builder = active_if.getThenBodyBuilder();
-        Value lhs = then_builder.create<memref::LoadOp>(loc, fn.getArgument(0), ValueRange{idx});
-        Value rhs = then_builder.create<memref::LoadOp>(loc, fn.getArgument(1), ValueRange{idx});
-        Value out = emit_binary(then_builder, lhs, rhs);
-        then_builder.create<memref::StoreOp>(loc, out, fn.getArgument(2), ValueRange{idx});
-    }
-    body.setInsertionPointAfter(active_if);
-    body.create<gpu::ReturnOp>(loc);
-    return mod;
-}
-
-mlir::ModuleOp VulkanStage::build_binary_bias_add_module(mlir::MLIRContext& ctx,
-                                                         const ov::element::Type& et) {
-    OPENVINO_ASSERT(m_node, "GFX Vulkan bias add: node is null");
-    OPENVINO_ASSERT(m_node->get_input_partial_shape(0).is_static() &&
-                        m_node->get_input_partial_shape(1).is_static() &&
-                        m_node->get_output_partial_shape(0).is_static(),
-                    "GFX Vulkan bias add: static shapes required");
-    OPENVINO_ASSERT(et == ov::element::f16 || et == ov::element::f32,
-                    "GFX Vulkan bias add: unsupported element type ",
-                    et);
-
-    auto add = std::dynamic_pointer_cast<const ov::op::v1::Add>(m_node);
-    OPENVINO_ASSERT(add, "GFX Vulkan bias add: expected ov::op::v1::Add");
-    auto module = build_mlir_for_node(add, ctx);
-    OPENVINO_ASSERT(module, "GFX Vulkan bias add: failed to build shared MLIR module");
-    return module;
-}
-
 void VulkanStage::execute_unary_chunked(GpuCommandBufferHandle command_buffer) {
     auto resolve_input = [&](size_t input_idx) -> GpuTensor* {
         GpuTensor* tensor = input_idx < m_inputs.size() ? m_inputs[input_idx] : nullptr;
@@ -3462,8 +2272,13 @@ void VulkanStage::execute_unary_chunked(GpuCommandBufferHandle command_buffer) {
     if (!m_linear_unary_kernel || m_linear_unary_elem_type != elem_type || m_linear_unary_key != op_key) {
         auto& ctx = gfx_mlir_context();
         auto module = build_linear_unary_module(ctx, elem_type, op_key);
-        KernelSource src = make_kernel_source_from_mlir(module, "linear_unary", /*arg_count=*/3);
-        src.signature.output_arg_count = 1;
+        KernelSource src = make_vulkan_manifest_kernel_source(
+            module,
+            "linear_unary",
+            m_type,
+            {GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::TensorOutput});
         VulkanCodegenBackend backend;
         std::string log;
         m_linear_unary_kernel = backend.compile(src, &log);
@@ -3606,15 +2421,30 @@ void VulkanStage::execute_binary_chunked(GpuCommandBufferHandle command_buffer) 
                     dst_et,
                     " for op ",
                     op_key);
-    ov::Shape in0_shape = input0->shape;
-    ov::Shape in1_shape = input1->shape;
-    if (in0_shape.empty() && m_node && m_node->get_input_partial_shape(0).is_static()) {
-        in0_shape = m_node->get_input_shape(0);
-    }
-    if (in1_shape.empty() && m_node && m_node->get_input_partial_shape(1).is_static()) {
-        in1_shape = m_node->get_input_shape(1);
-    }
-    OPENVINO_ASSERT(!in0_shape.empty() && !in1_shape.empty(),
+    auto resolve_runtime_input_shape = [&](size_t input_idx, const GpuTensor* tensor, ov::Shape& shape) -> bool {
+        shape = tensor ? tensor->shape : ov::Shape{};
+        if (!shape.empty()) {
+            return true;
+        }
+        if (!m_node || input_idx >= m_node->get_input_size()) {
+            return false;
+        }
+        const auto pshape = m_node->get_input_partial_shape(input_idx);
+        if (pshape.rank().is_static() && pshape.rank().get_length() == 0) {
+            shape = ov::Shape{};
+            return true;
+        }
+        if (pshape.is_static()) {
+            shape = m_node->get_input_shape(input_idx);
+            return true;
+        }
+        return false;
+    };
+    ov::Shape in0_shape;
+    ov::Shape in1_shape;
+    const bool in0_shape_known = resolve_runtime_input_shape(0, input0, in0_shape);
+    const bool in1_shape_known = resolve_runtime_input_shape(1, input1, in1_shape);
+    OPENVINO_ASSERT(in0_shape_known && in1_shape_known,
                     "GFX Vulkan binary chunked: input shapes are unknown");
     ov::Shape dispatch_shape;
     if (!m_output_shape.empty()) {
@@ -3658,8 +2488,14 @@ void VulkanStage::execute_binary_chunked(GpuCommandBufferHandle command_buffer) 
         m_linear_binary_rank != meta_rank) {
         auto& ctx = gfx_mlir_context();
         auto module = build_linear_binary_module(ctx, src0_et, src1_et, dst_et, op_key, meta_rank);
-        KernelSource src = make_kernel_source_from_mlir(module, "linear_binary", /*arg_count=*/4);
-        src.signature.output_arg_count = 1;
+        KernelSource src = make_vulkan_manifest_kernel_source(
+            module,
+            "linear_binary",
+            m_type,
+            {GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::TensorOutput});
         VulkanCodegenBackend backend;
         std::string log;
         m_linear_binary_kernel = backend.compile(src, &log);
@@ -3768,523 +2604,6 @@ void VulkanStage::execute_binary_chunked(GpuCommandBufferHandle command_buffer) 
     }
 }
 
-void VulkanStage::execute_binary_same_shape(GpuCommandBufferHandle command_buffer) {
-    auto resolve_input = [&](size_t input_idx) -> GpuTensor* {
-        GpuTensor* tensor = input_idx < m_inputs.size() ? m_inputs[input_idx] : nullptr;
-        if (tensor && tensor->buf.valid()) {
-            return tensor;
-        }
-        if (m_const_buffers &&
-            input_idx < m_const_buffers->buffers.size() &&
-            input_idx < m_const_buffers->present.size() &&
-            m_const_buffers->present[input_idx] &&
-            m_const_buffers->buffers[input_idx].buf.valid()) {
-            return &m_const_buffers->buffers[input_idx];
-        }
-        return nullptr;
-    };
-    GpuTensor* output = !m_outputs.empty() ? m_outputs.front() : m_output;
-    GpuTensor* input0 = resolve_input(0);
-    GpuTensor* input1 = resolve_input(1);
-    OPENVINO_ASSERT(input0 && input1 && output, "GFX Vulkan same-shape binary: missing tensors");
-    const auto op_key = binary_chunk_key(m_type);
-    OPENVINO_ASSERT(!op_key.empty(), "GFX Vulkan same-shape binary: unsupported op ", m_type);
-    const ov::element::Type src0_et = resolve_stage_input_element_type(m_node, 0, input0);
-    const ov::element::Type src1_et = resolve_stage_input_element_type(m_node, 1, input1);
-    const ov::element::Type dst_et = resolve_stage_element_type(m_node, output);
-    OPENVINO_ASSERT(is_supported_binary_io_types(src0_et, src1_et, dst_et, op_key),
-                    "GFX Vulkan same-shape binary: unsupported element types ",
-                    src0_et,
-                    " / ",
-                    src1_et,
-                    " -> ",
-                    dst_et,
-                    " for op ",
-                    op_key);
-
-    if (!m_linear_binary_same_shape_kernel ||
-        m_linear_binary_same_shape_src0_elem_type != src0_et ||
-        m_linear_binary_same_shape_src1_elem_type != src1_et ||
-        m_linear_binary_same_shape_dst_elem_type != dst_et ||
-        m_linear_binary_same_shape_key != op_key) {
-        auto& ctx = gfx_mlir_context();
-        auto module = build_linear_binary_same_shape_module(ctx, src0_et, src1_et, dst_et, op_key);
-        KernelSource src = make_kernel_source_from_mlir(module, "linear_binary_same_shape", /*arg_count=*/3);
-        src.signature.output_arg_count = 1;
-        VulkanCodegenBackend backend;
-        std::string log;
-        m_linear_binary_same_shape_kernel = backend.compile(src, &log);
-        OPENVINO_ASSERT(m_linear_binary_same_shape_kernel,
-                        "GFX Vulkan same-shape binary: kernel compile failed: ",
-                        log);
-        m_linear_binary_same_shape_kernel->prepare_runtime_artifacts();
-        m_linear_binary_same_shape_src0_elem_type = src0_et;
-        m_linear_binary_same_shape_src1_elem_type = src1_et;
-        m_linear_binary_same_shape_dst_elem_type = dst_et;
-        m_linear_binary_same_shape_key = op_key;
-    }
-
-    ov::Shape out_shape = !m_output_shape.empty() ? m_output_shape : output->shape;
-    if (out_shape.empty() && m_node && m_node->get_output_partial_shape(0).is_static()) {
-        out_shape = m_node->get_output_shape(0);
-    }
-    output->shape = out_shape;
-    output->expected_type = dst_et;
-    const uint32_t total = static_cast<uint32_t>(tensor_elements(out_shape));
-    const size_t tg =
-        std::min<size_t>(total, std::max<size_t>(1, m_linear_binary_same_shape_kernel->clamp_threadgroup_size(64)));
-    KernelDispatch dispatch = make_1d_dispatch(total, tg);
-    std::vector<KernelArg> args = {
-        make_buffer_arg(0, input0->buf),
-        make_buffer_arg(1, input1->buf),
-        make_buffer_arg(2, output->buf),
-    };
-    m_linear_binary_same_shape_kernel->execute(command_buffer, dispatch, args, nullptr);
-}
-
-void VulkanStage::execute_binary_bias_add(GpuCommandBufferHandle command_buffer) {
-    auto resolve_input = [&](size_t input_idx) -> GpuTensor* {
-        GpuTensor* tensor = input_idx < m_inputs.size() ? m_inputs[input_idx] : nullptr;
-        if (tensor && tensor->buf.valid()) {
-            return tensor;
-        }
-        if (m_const_buffers &&
-            input_idx < m_const_buffers->buffers.size() &&
-            input_idx < m_const_buffers->present.size() &&
-            m_const_buffers->present[input_idx] &&
-            m_const_buffers->buffers[input_idx].buf.valid()) {
-            return &m_const_buffers->buffers[input_idx];
-        }
-        return nullptr;
-    };
-    GpuTensor* output = !m_outputs.empty() ? m_outputs.front() : m_output;
-    GpuTensor* input0 = resolve_input(0);
-    GpuTensor* input1 = resolve_input(1);
-    OPENVINO_ASSERT(input0 && input1 && output, "GFX Vulkan bias add: missing tensors");
-
-    const ov::element::Type elem_type = resolve_stage_element_type(m_node, output);
-    OPENVINO_ASSERT(is_supported_linear_elem_type(elem_type),
-                    "GFX Vulkan bias add: unsupported element type ",
-                    elem_type);
-    if (!m_binary_bias_add_kernel || m_binary_bias_add_elem_type != elem_type) {
-        auto& ctx = gfx_mlir_context();
-        auto module = build_binary_bias_add_module(ctx, elem_type);
-        KernelSource src = make_kernel_source_from_mlir(module, "binary_bias_add", /*arg_count=*/3);
-        src.signature.output_arg_count = 1;
-        VulkanCodegenBackend backend;
-        std::string log;
-        m_binary_bias_add_kernel = backend.compile(src, &log);
-        OPENVINO_ASSERT(m_binary_bias_add_kernel, "GFX Vulkan bias add: kernel compile failed: ", log);
-        m_binary_bias_add_kernel->prepare_runtime_artifacts();
-        m_binary_bias_add_elem_type = elem_type;
-    }
-
-    const ov::Shape& dispatch_shape = !m_output_shape.empty() ? m_output_shape : output->shape;
-    const uint32_t total = static_cast<uint32_t>(tensor_elements(dispatch_shape));
-    const size_t tg = std::min<size_t>(total,
-                                       std::max<size_t>(1, m_binary_bias_add_kernel->clamp_threadgroup_size(64)));
-    KernelDispatch dispatch = make_1d_dispatch(total, tg);
-    std::vector<KernelArg> args = {
-        make_buffer_arg(0, input0->buf),
-        make_buffer_arg(1, input1->buf),
-        make_buffer_arg(2, output->buf),
-    };
-    m_binary_bias_add_kernel->execute(command_buffer, dispatch, args, nullptr);
-}
-
-void VulkanStage::execute_conv2d_1x1_chunked(GpuCommandBufferHandle command_buffer) {
-    if (m_conv2d_1x1_force_chunked_fallback) {
-        execute_conv2d_chunked(command_buffer);
-        return;
-    }
-    auto resolve_input = [&](size_t input_idx) -> GpuTensor* {
-        GpuTensor* tensor = input_idx < m_inputs.size() ? m_inputs[input_idx] : nullptr;
-        if (tensor && tensor->buf.valid()) {
-            return tensor;
-        }
-        if (m_const_buffers &&
-            input_idx < m_const_buffers->buffers.size() &&
-            input_idx < m_const_buffers->present.size() &&
-            m_const_buffers->present[input_idx] &&
-            m_const_buffers->buffers[input_idx].buf.valid()) {
-            return &m_const_buffers->buffers[input_idx];
-        }
-        return nullptr;
-    };
-    auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
-    OPENVINO_ASSERT(conv, "GFX Vulkan conv2d 1x1: node cast failed");
-    GpuTensor* input0 = resolve_input(0);
-    GpuTensor* input1 = resolve_input(1);
-    GpuTensor* bias = (m_has_bias && !m_kernel_extra_inputs.empty() && m_kernel_extra_inputs[0].buf.valid())
-                          ? &m_kernel_extra_inputs[0]
-                          : nullptr;
-    GpuTensor* output = !m_outputs.empty() ? m_outputs.front() : m_output;
-    OPENVINO_ASSERT(input0 && input1 && output, "GFX Vulkan conv2d 1x1: missing tensors");
-    OPENVINO_ASSERT(!m_has_bias || bias, "GFX Vulkan conv2d 1x1: missing fused bias tensor");
-    if (gfx_log_debug_enabled()) {
-        gfx_log_debug("VulkanExec") << "Using conv2d_1x1 path for " << m_name;
-    }
-
-    const ov::element::Type elem_type = resolve_stage_element_type(m_node, output);
-    OPENVINO_ASSERT(is_supported_linear_elem_type(elem_type),
-                    "GFX Vulkan conv2d 1x1: unsupported element type ",
-                    elem_type);
-    const auto caps = query_parallelism_caps(m_buffer_manager);
-    const auto total = static_cast<uint64_t>(tensor_elements(conv->get_output_shape(0)));
-    const auto launch_plan =
-        select_chunk_dispatch_plan(caps, "conv2d_1x1", total, static_cast<uint64_t>(conv->get_input_shape(0).at(1)));
-    if (!m_conv2d_1x1_kernel || m_conv2d_1x1_elem_type != elem_type ||
-        m_conv2d_1x1_threads_per_group != launch_plan.threads_per_group) {
-        auto& ctx = gfx_mlir_context();
-        auto module = build_conv2d_1x1_module(ctx, elem_type, launch_plan.threads_per_group);
-        if (gfx_log_debug_enabled()) {
-            std::string module_text;
-            llvm::raw_string_ostream os(module_text);
-            module.print(os);
-            gfx_log_debug("VulkanExec") << "conv2d_1x1 module:\n" << module_text;
-        }
-        KernelSource src = make_kernel_source_from_mlir(module, "conv2d_1x1", /*arg_count=*/m_has_bias ? 5 : 4);
-        src.signature.output_arg_count = 1;
-        VulkanCodegenBackend backend;
-        std::string log;
-        m_conv2d_1x1_kernel = backend.compile(src, &log);
-        OPENVINO_ASSERT(m_conv2d_1x1_kernel, "GFX Vulkan conv2d 1x1: kernel compile failed: ", log);
-        m_conv2d_1x1_kernel->prepare_runtime_artifacts();
-        m_conv2d_1x1_elem_type = elem_type;
-        m_conv2d_1x1_threads_per_group = launch_plan.threads_per_group;
-    }
-
-    const size_t tg = std::min<size_t>(total,
-                                       std::max<size_t>(1,
-                                                        m_conv2d_1x1_kernel->clamp_threadgroup_size(
-                                                            launch_plan.threads_per_group)));
-    KernelDispatch dispatch = make_1d_dispatch(total, tg);
-    const auto& in_shape = conv->get_input_shape(0);
-    const auto& out_shape = conv->get_output_shape(0);
-    const int32_t params[] = {
-        static_cast<int32_t>(in_shape.at(0)),
-        static_cast<int32_t>(in_shape.at(1)),
-        static_cast<int32_t>(in_shape.at(2)),
-        static_cast<int32_t>(in_shape.at(3)),
-        static_cast<int32_t>(out_shape.at(1)),
-        static_cast<int32_t>(out_shape.at(2)),
-        static_cast<int32_t>(out_shape.at(3)),
-    };
-    std::vector<KernelArg> args;
-    args.push_back(make_buffer_arg(0, input0->buf));
-    args.push_back(make_buffer_arg(1, input1->buf));
-    if (m_has_bias) {
-        args.push_back(make_buffer_arg(2, bias->buf));
-    }
-    args.push_back(make_bytes_arg(static_cast<uint32_t>(args.size()), &params, sizeof(params)));
-    args.push_back(make_buffer_arg(static_cast<uint32_t>(args.size()), output->buf));
-    auto bound_args = materialize_kernel_bytes_args(args, *m_buffer_manager, m_name.c_str());
-    try {
-        m_conv2d_1x1_kernel->execute(command_buffer, dispatch, bound_args, nullptr);
-    } catch (const std::exception& ex) {
-        if (!is_vulkan_pipeline_creation_failure(ex)) {
-            throw;
-        }
-        m_conv2d_1x1_force_chunked_fallback = true;
-        gfx_log_info("VulkanExec") << "Falling back from conv2d_1x1 direct to chunked variant for "
-                                   << m_name << ": " << ex.what();
-        execute_conv2d_chunked(command_buffer);
-    }
-}
-
-void VulkanStage::execute_conv2d_3x3_direct(GpuCommandBufferHandle command_buffer) {
-    if (m_conv2d_3x3_force_chunked_fallback) {
-        execute_conv2d_chunked(command_buffer);
-        return;
-    }
-    auto resolve_input = [&](size_t input_idx) -> GpuTensor* {
-        GpuTensor* tensor = input_idx < m_inputs.size() ? m_inputs[input_idx] : nullptr;
-        if (tensor && tensor->buf.valid()) {
-            return tensor;
-        }
-        if (m_const_buffers &&
-            input_idx < m_const_buffers->buffers.size() &&
-            input_idx < m_const_buffers->present.size() &&
-            m_const_buffers->present[input_idx] &&
-            m_const_buffers->buffers[input_idx].buf.valid()) {
-            return &m_const_buffers->buffers[input_idx];
-        }
-        return nullptr;
-    };
-    auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
-    OPENVINO_ASSERT(conv, "GFX Vulkan conv2d 3x3 direct: node cast failed");
-    GpuTensor* input0 = resolve_input(0);
-    GpuTensor* input1 = resolve_input(1);
-    GpuTensor* bias = (m_has_bias && !m_kernel_extra_inputs.empty() && m_kernel_extra_inputs[0].buf.valid())
-                          ? &m_kernel_extra_inputs[0]
-                          : nullptr;
-    GpuTensor* output = !m_outputs.empty() ? m_outputs.front() : m_output;
-    OPENVINO_ASSERT(input0 && input1 && output, "GFX Vulkan conv2d 3x3 direct: missing tensors");
-    OPENVINO_ASSERT(!m_has_bias || bias, "GFX Vulkan conv2d 3x3 direct: missing fused bias tensor");
-    if (gfx_log_debug_enabled()) {
-        gfx_log_debug("VulkanExec") << "Using conv2d_3x3_direct path for " << m_name
-                                    << " variant=" << conv_route_plan().algorithm.variant;
-    }
-
-    const ov::element::Type elem_type = resolve_stage_element_type(m_node, output);
-    OPENVINO_ASSERT(is_supported_linear_elem_type(elem_type),
-                    "GFX Vulkan conv2d 3x3 direct: unsupported element type ",
-                    elem_type);
-    const auto caps = query_parallelism_caps(m_buffer_manager);
-    auto plan = select_conv2d_direct_plan(caps,
-                                          conv->get_output_shape(0),
-                                          conv->get_input_shape(0).at(1),
-                                          conv->get_output_shape(0).at(1),
-                                          conv->get_input_shape(0).at(1) *
-                                              conv->get_input_shape(1).at(2) *
-                                              conv->get_input_shape(1).at(3),
-                                          conv->get_strides().at(0) == 2 &&
-                                              conv->get_strides().at(1) == 2);
-    if (m_conv2d_3x3_force_safe_variant) {
-        plan = make_safe_conv2d_direct_plan(caps);
-    }
-    if (!m_conv2d_3x3_direct_kernel || m_conv2d_3x3_direct_elem_type != elem_type ||
-        m_conv2d_3x3_direct_oc_block != plan.output_channel_block ||
-        m_conv2d_3x3_direct_threads_per_group != plan.threads_per_group ||
-        m_conv2d_3x3_direct_variant != plan.variant) {
-        auto& ctx = gfx_mlir_context();
-        auto module =
-            build_conv2d_3x3_direct_module(ctx, elem_type, plan.output_channel_block, plan.threads_per_group, plan.variant);
-        if (gfx_log_debug_enabled()) {
-            std::string module_text;
-            llvm::raw_string_ostream os(module_text);
-            module.print(os);
-            gfx_log_debug("VulkanExec") << "conv2d_3x3_direct module:\n" << module_text;
-        }
-        const char* entry_name = plan.variant.rfind("conv2d_direct_xy", 0) == 0
-                                     ? "conv2d_3x3_direct_xy"
-                                     : (plan.output_channel_block == 1 ? "conv2d_3x3_direct" : "conv2d_3x3_direct_oc2");
-        KernelSource src = make_kernel_source_from_mlir(module, entry_name, /*arg_count=*/m_has_bias ? 4 : 3);
-        src.signature.output_arg_count = 1;
-        VulkanCodegenBackend backend;
-        std::string log;
-        m_conv2d_3x3_direct_kernel = backend.compile(src, &log);
-        OPENVINO_ASSERT(m_conv2d_3x3_direct_kernel, "GFX Vulkan conv2d 3x3 direct: kernel compile failed: ", log);
-        m_conv2d_3x3_direct_kernel->prepare_runtime_artifacts();
-        m_conv2d_3x3_direct_elem_type = elem_type;
-        m_conv2d_3x3_direct_oc_block = plan.output_channel_block;
-        m_conv2d_3x3_direct_threads_per_group = plan.threads_per_group;
-        m_conv2d_3x3_direct_variant = plan.variant;
-    }
-
-    const uint64_t out_groups =
-        (static_cast<uint64_t>(conv->get_output_shape(0).at(1)) + plan.output_channel_block - 1) /
-        plan.output_channel_block;
-    KernelDispatch dispatch{};
-    if (plan.variant.rfind("conv2d_direct_xy", 0) == 0) {
-        const bool xy32x2_variant =
-            plan.variant == "conv2d_direct_xy32x2" || plan.variant == "conv2d_direct_xy32x2_dense_s2";
-        const bool xy16x4_variant =
-            plan.variant == "conv2d_direct_xy16x4" || plan.variant == "conv2d_direct_xy16x4_dense_s2";
-        const size_t tg_x = xy32x2_variant ? 32 : (xy16x4_variant ? 16 : 8);
-        const size_t tg_y = xy32x2_variant ? 2 : (xy16x4_variant ? 4 : 8);
-        dispatch = make_3d_dispatch(conv->get_output_shape(0).at(3),
-                                    conv->get_output_shape(0).at(2),
-                                    static_cast<size_t>(conv->get_output_shape(0).at(0) * out_groups),
-                                    tg_x,
-                                    tg_y,
-                                    1);
-    } else {
-        const uint32_t total = static_cast<uint32_t>(conv->get_output_shape(0).at(0) * out_groups *
-                                                     conv->get_output_shape(0).at(2) * conv->get_output_shape(0).at(3));
-        const size_t tg = std::min<size_t>(total,
-                                           std::max<size_t>(1,
-                                                            m_conv2d_3x3_direct_kernel->clamp_threadgroup_size(
-                                                                plan.threads_per_group)));
-        dispatch = make_1d_dispatch(total, tg);
-    }
-    std::vector<KernelArg> args;
-    args.push_back(make_buffer_arg(0, input0->buf));
-    args.push_back(make_buffer_arg(1, input1->buf));
-    if (m_has_bias) {
-        args.push_back(make_buffer_arg(2, bias->buf));
-    }
-    args.push_back(make_buffer_arg(static_cast<uint32_t>(args.size()), output->buf));
-    try {
-        m_conv2d_3x3_direct_kernel->execute(command_buffer, dispatch, args, nullptr);
-    } catch (const std::exception& ex) {
-        if (!is_vulkan_pipeline_creation_failure(ex)) {
-            throw;
-        }
-        if (!m_conv2d_3x3_force_safe_variant) {
-            m_conv2d_3x3_force_safe_variant = true;
-            gfx_log_info("VulkanExec") << "Retrying conv2d_3x3 direct with safe variant for "
-                                       << m_name << ": " << ex.what();
-            execute_conv2d_3x3_direct(command_buffer);
-            return;
-        }
-        m_conv2d_3x3_force_chunked_fallback = true;
-        gfx_log_info("VulkanExec") << "Falling back from conv2d_3x3 direct to chunked variant for "
-                                   << m_name << ": " << ex.what();
-        execute_conv2d_chunked(command_buffer);
-    }
-}
-
-void VulkanStage::execute_conv2d_chunked(GpuCommandBufferHandle command_buffer) {
-    auto resolve_input = [&](size_t input_idx) -> GpuTensor* {
-        GpuTensor* tensor = input_idx < m_inputs.size() ? m_inputs[input_idx] : nullptr;
-        if (tensor && tensor->buf.valid()) {
-            return tensor;
-        }
-        if (m_const_buffers &&
-            input_idx < m_const_buffers->buffers.size() &&
-            input_idx < m_const_buffers->present.size() &&
-            m_const_buffers->present[input_idx] &&
-            m_const_buffers->buffers[input_idx].buf.valid()) {
-            return &m_const_buffers->buffers[input_idx];
-        }
-        return nullptr;
-    };
-    auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
-    OPENVINO_ASSERT(conv, "GFX Vulkan conv2d chunked: node cast failed");
-    GpuTensor* input0 = resolve_input(0);
-    GpuTensor* input1 = resolve_input(1);
-    GpuTensor* output = !m_outputs.empty() ? m_outputs.front() : m_output;
-    OPENVINO_ASSERT(input0 && input1 && output,
-                    "GFX Vulkan conv2d chunked: missing tensors");
-    if (gfx_log_debug_enabled()) {
-        gfx_log_debug("VulkanExec") << "Using conv2d_chunk path for " << m_name;
-    }
-    if (gfx_log_debug_enabled()) {
-        gfx_log_debug("VulkanExec") << "Conv2D chunked buffers in0=" << input0->buf.buffer
-                                    << " in1=" << input1->buf.buffer
-                                    << " out=" << output->buf.buffer
-                                    << " in0_type=" << input0->buf.type << "/" << input0->expected_type
-                                    << " in1_type=" << input1->buf.type << "/" << input1->expected_type
-                                    << " out_type=" << output->buf.type << "/" << output->expected_type;
-    }
-
-    const ov::element::Type elem_type = resolve_stage_element_type(m_node, output);
-    OPENVINO_ASSERT(is_supported_linear_elem_type(elem_type),
-                    "GFX Vulkan conv2d chunked: unsupported element type ",
-                    elem_type);
-    const auto& out_shape = conv->get_output_shape(0);
-    const auto& in_shape = conv->get_input_shape(0);
-    const auto& w_shape = conv->get_input_shape(1);
-    const uint64_t work_per_elem = static_cast<uint64_t>(in_shape.at(1)) *
-                                   static_cast<uint64_t>(w_shape.at(2)) *
-                                   static_cast<uint64_t>(w_shape.at(3));
-    const auto caps = query_parallelism_caps(m_buffer_manager);
-    const bool stride2 = conv->get_strides().at(0) > 1 || conv->get_strides().at(1) > 1;
-    const auto spatial_plan = select_conv_parallelism(caps,
-                                                      out_shape,
-                                                      static_cast<uint64_t>(in_shape.at(1)),
-                                                      static_cast<uint64_t>(w_shape.at(0)),
-                                                      work_per_elem,
-                                                      stride2,
-                                                      /*depthwise=*/false);
-    const uint32_t threads_h = std::max<uint32_t>(1u, spatial_plan.dispatch.threads_h);
-    const uint32_t threads_w = std::max<uint32_t>(1u, spatial_plan.dispatch.threads_w);
-    if (!m_conv2d_chunk_kernel || m_conv2d_chunk_elem_type != elem_type ||
-        m_conv2d_chunk_threads_h != threads_h ||
-        m_conv2d_chunk_threads_w != threads_w) {
-        auto& ctx = gfx_mlir_context();
-        auto module = build_conv2d_chunk_module(ctx, elem_type, threads_h, threads_w);
-        if (gfx_log_debug_enabled()) {
-            std::string module_text;
-            llvm::raw_string_ostream os(module_text);
-            module.print(os);
-            gfx_log_debug("VulkanExec") << "conv2d_chunk module:\n" << module_text;
-        }
-        KernelSource src = make_kernel_source_from_mlir(module, "conv2d_chunk", /*arg_count=*/3);
-        src.signature.output_arg_count = 1;
-        VulkanCodegenBackend backend;
-        std::string log;
-        m_conv2d_chunk_kernel = backend.compile(src, &log);
-        OPENVINO_ASSERT(m_conv2d_chunk_kernel, "GFX Vulkan conv2d chunked: kernel compile failed: ", log);
-        m_conv2d_chunk_kernel->prepare_runtime_artifacts();
-        m_conv2d_chunk_elem_type = elem_type;
-        m_conv2d_chunk_threads_h = threads_h;
-        m_conv2d_chunk_threads_w = threads_w;
-    }
-    std::vector<KernelArg> args{
-        make_buffer_arg(0, input0->buf),
-        make_buffer_arg(1, input1->buf),
-        make_buffer_arg(2, output->buf),
-    };
-    auto bound_args = materialize_kernel_bytes_args(args, *m_buffer_manager, m_name.c_str());
-    KernelDispatch dispatch = make_3d_dispatch(out_shape.at(3),
-                                               out_shape.at(2),
-                                               out_shape.at(0) * out_shape.at(1),
-                                               threads_w,
-                                               threads_h,
-                                               1);
-    // Record chunked Conv2D into the caller-owned infer command buffer so the
-    // infer path keeps a single queue submit while the kernel maps threads
-    // directly to output [W, H, N*C] coordinates.
-    m_conv2d_chunk_kernel->execute(command_buffer, dispatch, bound_args, nullptr);
-}
-
-void VulkanStage::execute_group_conv2d_chunked(GpuCommandBufferHandle command_buffer) {
-    auto resolve_input = [&](size_t input_idx) -> GpuTensor* {
-        GpuTensor* tensor = input_idx < m_inputs.size() ? m_inputs[input_idx] : nullptr;
-        if (tensor && tensor->buf.valid()) {
-            return tensor;
-        }
-        if (m_const_buffers &&
-            input_idx < m_const_buffers->buffers.size() &&
-            input_idx < m_const_buffers->present.size() &&
-            m_const_buffers->present[input_idx] &&
-            m_const_buffers->buffers[input_idx].buf.valid()) {
-            return &m_const_buffers->buffers[input_idx];
-        }
-        return nullptr;
-    };
-    auto gconv = ov::as_type_ptr<const ov::op::v1::GroupConvolution>(m_node);
-    OPENVINO_ASSERT(gconv, "GFX Vulkan group_conv2d chunked: node cast failed");
-    GpuTensor* input0 = resolve_input(0);
-    GpuTensor* input1 = resolve_input(1);
-    GpuTensor* output = !m_outputs.empty() ? m_outputs.front() : m_output;
-    OPENVINO_ASSERT(input0 && input1 && output,
-                    "GFX Vulkan group_conv2d chunked: missing tensors");
-
-    const ov::element::Type elem_type = resolve_stage_element_type(m_node, output);
-    OPENVINO_ASSERT(is_supported_linear_elem_type(elem_type),
-                    "GFX Vulkan group_conv2d chunked: unsupported element type ",
-                    elem_type);
-    const auto& out_shape = gconv->get_output_shape(0);
-    const auto& w_shape = gconv->get_input_shape(1);
-    const auto caps = query_parallelism_caps(m_buffer_manager);
-    const auto launch_plan = select_chunk_dispatch_plan(caps,
-                                                        "group_conv2d",
-                                                        static_cast<uint64_t>(tensor_elements(out_shape)),
-                                                        static_cast<uint64_t>(w_shape[3]) *
-                                                            static_cast<uint64_t>(w_shape[4]));
-    if (!m_group_conv2d_kernel || m_group_conv2d_elem_type != elem_type ||
-        m_group_conv2d_threads_per_group != launch_plan.threads_per_group) {
-        auto& ctx = gfx_mlir_context();
-        auto module = build_group_conv2d_chunk_module(ctx, elem_type, launch_plan.threads_per_group);
-        KernelSource src = make_kernel_source_from_mlir(module, "group_conv2d_direct", /*arg_count=*/3);
-        src.signature.output_arg_count = 1;
-        VulkanCodegenBackend backend;
-        std::string log;
-        m_group_conv2d_kernel = backend.compile(src, &log);
-        OPENVINO_ASSERT(m_group_conv2d_kernel,
-                        "GFX Vulkan group_conv2d chunked: kernel compile failed: ",
-                        log);
-        m_group_conv2d_kernel->prepare_runtime_artifacts();
-        m_group_conv2d_elem_type = elem_type;
-        m_group_conv2d_threads_per_group = launch_plan.threads_per_group;
-    }
-
-    output->shape = gconv->get_output_shape(0);
-    const uint32_t total = static_cast<uint32_t>(tensor_elements(output->shape));
-    std::vector<KernelArg> args{
-        make_buffer_arg(0, input0->buf),
-        make_buffer_arg(1, input1->buf),
-        make_buffer_arg(2, output->buf),
-    };
-    auto bound_args = materialize_kernel_bytes_args(args, *m_buffer_manager, m_name.c_str());
-    const uint32_t tg = m_group_conv2d_kernel->clamp_threadgroup_size(launch_plan.threads_per_group);
-    KernelDispatch dispatch = make_1d_dispatch(total, tg);
-    m_group_conv2d_kernel->execute(command_buffer, dispatch, bound_args, nullptr);
-}
-
 mlir::ModuleOp VulkanStage::build_split_single_module(mlir::MLIRContext& ctx,
                                                       const ov::element::Type& et) {
     using namespace mlir;
@@ -4299,16 +2618,12 @@ mlir::ModuleOp VulkanStage::build_split_single_module(mlir::MLIRContext& ctx,
     mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
     mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
     mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 3));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2}));
+    annotate_vulkan_specialized_kernel_abi(mod,
+                                           "Split",
+                                           "split_single",
+                                           {GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::TensorOutput});
 
     auto in_ty = MemRefType::get({ShapedType::kDynamic}, elem_ty);
     auto param_ty = MemRefType::get({5}, IntegerType::get(&ctx, 32));
@@ -4384,16 +2699,12 @@ mlir::ModuleOp VulkanStage::build_concat_single_module(mlir::MLIRContext& ctx,
     mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
     mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
     mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 3));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2}));
+    annotate_vulkan_specialized_kernel_abi(mod,
+                                           "Concat",
+                                           "concat_single",
+                                           {GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::TensorOutput});
 
     auto io_ty = MemRefType::get({ShapedType::kDynamic}, elem_ty);
     auto param_ty = MemRefType::get({5}, IntegerType::get(&ctx, 32));
@@ -4469,16 +2780,13 @@ mlir::ModuleOp VulkanStage::build_concat_binary_module(mlir::MLIRContext& ctx,
     mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
     mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
     mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 4));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2, 3}));
+    annotate_vulkan_specialized_kernel_abi(mod,
+                                           "Concat",
+                                           "concat_binary_kernel",
+                                           {GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::TensorOutput});
 
     auto io_ty = MemRefType::get({ShapedType::kDynamic}, elem_ty);
     auto param_ty = MemRefType::get({5}, IntegerType::get(&ctx, 32));
@@ -4576,16 +2884,17 @@ mlir::ModuleOp VulkanStage::build_slice_linear_module(mlir::MLIRContext& ctx,
     mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
     mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
     mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 8));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1, 1, 1, 1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2, 3, 4, 5, 6, 7}));
+    annotate_vulkan_specialized_kernel_abi(mod,
+                                           "Slice",
+                                           "slice_linear",
+                                           {GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::TensorOutput});
 
     auto io_ty = MemRefType::get({ShapedType::kDynamic}, elem_ty);
     auto scalar_ty = MemRefType::get({1}, i32_ty);
@@ -4673,10 +2982,16 @@ mlir::ModuleOp VulkanStage::build_softmax_row_module(mlir::MLIRContext& ctx,
         case ov::element::f32: elem_ty = Float32Type::get(&ctx); break;
         default: OPENVINO_THROW("GFX Vulkan Softmax: unsupported element type ", et);
     }
-    Type compute_ty = elem_ty;
+    Type compute_ty = et == ov::element::f16 ? Float32Type::get(&ctx) : elem_ty;
 
     auto mod = ModuleOp::create(UnknownLoc::get(&ctx));
     OpBuilder b(mod.getBody(), mod.getBody()->begin());
+    annotate_vulkan_specialized_kernel_abi(mod,
+                                           log_softmax ? "LogSoftmax" : "Softmax",
+                                           log_softmax ? "logsoftmax_row" : "softmax_row",
+                                           {GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::TensorOutput});
 
     auto io_ty = MemRefType::get({ShapedType::kDynamic}, elem_ty);
     auto param_ty = MemRefType::get({4}, IntegerType::get(&ctx, 32));
@@ -4785,7 +3100,7 @@ mlir::ModuleOp VulkanStage::build_softmax_row_module(mlir::MLIRContext& ctx,
 }
 
 mlir::ModuleOp VulkanStage::build_interpolate_module(mlir::MLIRContext& ctx,
-                                                     const ov::element::Type& et) {
+                                            const ov::element::Type& et) {
     using namespace mlir;
     ctx.loadDialect<func::FuncDialect,
                     gpu::GPUDialect,
@@ -4808,17 +3123,12 @@ mlir::ModuleOp VulkanStage::build_interpolate_module(mlir::MLIRContext& ctx,
     mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
     mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
     mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(i32_ty, 3));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        attrs.reserve(values.size());
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2}));
+    annotate_vulkan_specialized_kernel_abi(mod,
+                                           "Interpolate",
+                                           "interpolate_direct",
+                                           {GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::TensorOutput});
 
     auto io_ty = MemRefType::get({ShapedType::kDynamic}, elem_ty);
     auto param_ty = MemRefType::get({9}, i32_ty);
@@ -5085,7 +3395,7 @@ mlir::ModuleOp VulkanStage::build_interpolate_module(mlir::MLIRContext& ctx,
 }
 
 mlir::ModuleOp VulkanStage::build_transpose_module(mlir::MLIRContext& ctx,
-                                                   const ov::element::Type& et) {
+                                          const ov::element::Type& et) {
     using namespace mlir;
     ctx.loadDialect<func::FuncDialect,
                     gpu::GPUDialect,
@@ -5129,17 +3439,11 @@ mlir::ModuleOp VulkanStage::build_transpose_module(mlir::MLIRContext& ctx,
     mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
     mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
     mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 2));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        attrs.reserve(values.size());
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1}));
+    annotate_vulkan_specialized_kernel_abi(mod,
+                                           "Transpose",
+                                           "transpose_direct",
+                                           {GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::TensorOutput});
 
     auto flat_ty = MemRefType::get({total_elems}, elem_ty);
     auto gpu_mod = b.create<gpu::GPUModuleOp>(UnknownLoc::get(&ctx), "gfx_kernels");
@@ -5190,8 +3494,8 @@ mlir::ModuleOp VulkanStage::build_transpose_module(mlir::MLIRContext& ctx,
 }
 
 mlir::ModuleOp VulkanStage::build_convert_linear_module(mlir::MLIRContext& ctx,
-                                                        const ov::element::Type& src_et,
-                                                        const ov::element::Type& dst_et) {
+                                               const ov::element::Type& src_et,
+                                               const ov::element::Type& dst_et) {
     using namespace mlir;
     ctx.loadDialect<func::FuncDialect,
                     gpu::GPUDialect,
@@ -5225,16 +3529,12 @@ mlir::ModuleOp VulkanStage::build_convert_linear_module(mlir::MLIRContext& ctx,
     mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
     mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
     mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 3));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2}));
+    annotate_vulkan_specialized_kernel_abi(mod,
+                                           "Convert",
+                                           "convert_linear",
+                                           {GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::TensorOutput});
 
     auto gpu_mod = b.create<gpu::GPUModuleOp>(UnknownLoc::get(&ctx), "gfx_kernels");
     OpBuilder gpu_builder = OpBuilder::atBlockBegin(gpu_mod.getBody());
@@ -5306,8 +3606,8 @@ mlir::ModuleOp VulkanStage::build_convert_linear_module(mlir::MLIRContext& ctx,
 }
 
 mlir::ModuleOp VulkanStage::build_gather_linear_module(mlir::MLIRContext& ctx,
-                                                       const ov::element::Type& data_et,
-                                                       const ov::element::Type& idx_et) {
+                                              const ov::element::Type& data_et,
+                                              const ov::element::Type& idx_et) {
     using namespace mlir;
     ctx.loadDialect<func::FuncDialect,
                     gpu::GPUDialect,
@@ -5315,34 +3615,45 @@ mlir::ModuleOp VulkanStage::build_gather_linear_module(mlir::MLIRContext& ctx,
                     memref::MemRefDialect,
                     arith::ArithDialect>();
 
-    Type data_ty = to_mlir_type(data_et, ctx, /*fallback_f32=*/true, /*allow_unsigned=*/true,
-                                /*allow_small_ints=*/true, /*allow_bf16=*/false,
-                                /*allow_boolean=*/true, /*signless_integers=*/true);
-    Type idx_ty = to_mlir_type(idx_et, ctx, /*fallback_f32=*/true, /*allow_unsigned=*/true,
-                               /*allow_small_ints=*/true, /*allow_bf16=*/false,
-                               /*allow_boolean=*/false, /*signless_integers=*/true);
+    const bool data_i64 = data_et == ov::element::i64;
+    const bool idx_i64 = idx_et == ov::element::i64;
+    Type data_ty = data_i64
+                       ? Type(IntegerType::get(&ctx, 32))
+                       : to_mlir_type(data_et,
+                                      ctx,
+                                      /*fallback_f32=*/true,
+                                      /*allow_unsigned=*/true,
+                                      /*allow_small_ints=*/true,
+                                      /*allow_bf16=*/false,
+                                      /*allow_boolean=*/true,
+                                      /*signless_integers=*/true);
+    Type idx_ty = idx_i64
+                      ? Type(IntegerType::get(&ctx, 32))
+                      : to_mlir_type(idx_et,
+                                     ctx,
+                                     /*fallback_f32=*/true,
+                                     /*allow_unsigned=*/true,
+                                     /*allow_small_ints=*/true,
+                                     /*allow_bf16=*/false,
+                                     /*allow_boolean=*/false,
+                                     /*signless_integers=*/true);
     auto data_memref_ty = MemRefType::get({ShapedType::kDynamic}, data_ty);
     auto idx_memref_ty = MemRefType::get({ShapedType::kDynamic}, idx_ty);
     auto params_ty = MemRefType::get({6}, IntegerType::get(&ctx, 32));
     auto out_memref_ty = MemRefType::get({ShapedType::kDynamic}, data_ty);
-    auto i64_ty = IntegerType::get(&ctx, 64);
 
     auto mod = ModuleOp::create(UnknownLoc::get(&ctx));
     OpBuilder b(mod.getBody(), mod.getBody()->begin());
     mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
     mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
     mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 4));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        attrs.reserve(values.size());
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2, 3}));
+    annotate_vulkan_specialized_kernel_abi(mod,
+                                           "Gather",
+                                           "gather_linear",
+                                           {GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::TensorOutput});
 
     auto gpu_mod = b.create<gpu::GPUModuleOp>(UnknownLoc::get(&ctx), "gfx_kernels");
     OpBuilder gpu_builder = OpBuilder::atBlockBegin(gpu_mod.getBody());
@@ -5357,8 +3668,9 @@ mlir::ModuleOp VulkanStage::build_gather_linear_module(mlir::MLIRContext& ctx,
     auto* entry = &fn.getBody().front();
     OpBuilder body(entry, entry->begin());
     auto loc = fn.getLoc();
-    auto zero_i64 = body.create<arith::ConstantIntOp>(loc, 0, 64);
-    auto one_i64 = body.create<arith::ConstantIntOp>(loc, 1, 64);
+    auto zero_i32 = body.create<arith::ConstantIntOp>(loc, 0, 32);
+    auto one_i32 = body.create<arith::ConstantIntOp>(loc, 1, 32);
+    auto two_index = body.create<arith::ConstantIndexOp>(loc, 2);
     auto load_param = [&](int idx) -> Value {
         auto idx_val = body.create<arith::ConstantIndexOp>(loc, idx);
         auto v_i32 = body.create<memref::LoadOp>(loc, fn.getArgument(2), ValueRange{idx_val});
@@ -5383,22 +3695,23 @@ mlir::ModuleOp VulkanStage::build_gather_linear_module(mlir::MLIRContext& ctx,
         Value rem = then_builder.create<arith::DivUIOp>(loc, out_idx, inner);
         Value gather_idx_pos = then_builder.create<arith::RemUIOp>(loc, rem, indices_count);
         Value outer_idx = then_builder.create<arith::DivUIOp>(loc, rem, indices_count);
-        Value gather_raw = then_builder.create<memref::LoadOp>(loc, fn.getArgument(1), ValueRange{gather_idx_pos});
-        Value gather_i64 = gather_raw;
-        if (idx_ty.isInteger(32)) {
-            gather_i64 = then_builder.create<arith::ExtSIOp>(loc, i64_ty, gather_raw).getResult();
-        } else if (!idx_ty.isInteger(64)) {
+        Value gather_storage_pos = gather_idx_pos;
+        if (idx_i64) {
+            gather_storage_pos = then_builder.create<arith::MulIOp>(loc, gather_idx_pos, two_index);
+        }
+        Value gather_i32 = then_builder.create<memref::LoadOp>(loc, fn.getArgument(1), ValueRange{gather_storage_pos});
+        if (!gather_i32.getType().isInteger(32)) {
             OPENVINO_THROW("GFX Vulkan Gather: only i32/i64 indices are supported");
         }
-        Value axis_dim_i64 = then_builder.create<arith::IndexCastOp>(loc, i64_ty, axis_dim);
-        Value max_i64 = then_builder.create<arith::SubIOp>(loc, axis_dim_i64, one_i64);
-        Value neg_pred = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, gather_i64, zero_i64);
-        Value gather_plus = then_builder.create<arith::AddIOp>(loc, gather_i64, axis_dim_i64);
-        Value gather_fixed = then_builder.create<arith::SelectOp>(loc, neg_pred, gather_plus, gather_i64);
-        Value lt0 = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, gather_fixed, zero_i64);
-        Value gtmax = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sgt, gather_fixed, max_i64);
-        Value gather_clamped = then_builder.create<arith::SelectOp>(loc, lt0, zero_i64, gather_fixed);
-        gather_clamped = then_builder.create<arith::SelectOp>(loc, gtmax, max_i64, gather_clamped);
+        Value axis_dim_i32 = then_builder.create<arith::IndexCastOp>(loc, then_builder.getI32Type(), axis_dim);
+        Value max_i32 = then_builder.create<arith::SubIOp>(loc, axis_dim_i32, one_i32);
+        Value neg_pred = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, gather_i32, zero_i32);
+        Value gather_plus = then_builder.create<arith::AddIOp>(loc, gather_i32, axis_dim_i32);
+        Value gather_fixed = then_builder.create<arith::SelectOp>(loc, neg_pred, gather_plus, gather_i32);
+        Value lt0 = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, gather_fixed, zero_i32);
+        Value gtmax = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sgt, gather_fixed, max_i32);
+        Value gather_clamped = then_builder.create<arith::SelectOp>(loc, lt0, zero_i32, gather_fixed);
+        gather_clamped = then_builder.create<arith::SelectOp>(loc, gtmax, max_i32, gather_clamped);
         Value gather_idx = then_builder.create<arith::IndexCastOp>(loc, then_builder.getIndexType(), gather_clamped);
         Value data_idx = then_builder.create<arith::AddIOp>(
             loc,
@@ -5410,8 +3723,19 @@ mlir::ModuleOp VulkanStage::build_gather_linear_module(mlir::MLIRContext& ctx,
                     gather_idx),
                 inner),
             inner_idx);
-        Value value = then_builder.create<memref::LoadOp>(loc, fn.getArgument(0), ValueRange{data_idx});
-        then_builder.create<memref::StoreOp>(loc, value, fn.getArgument(3), ValueRange{out_idx});
+        if (data_i64) {
+            Value data_lane_idx = then_builder.create<arith::MulIOp>(loc, data_idx, two_index);
+            Value out_lane_idx = then_builder.create<arith::MulIOp>(loc, out_idx, two_index);
+            Value data_hi_idx = then_builder.create<arith::AddIOp>(loc, data_lane_idx, then_builder.create<arith::ConstantIndexOp>(loc, 1));
+            Value out_hi_idx = then_builder.create<arith::AddIOp>(loc, out_lane_idx, then_builder.create<arith::ConstantIndexOp>(loc, 1));
+            Value low = then_builder.create<memref::LoadOp>(loc, fn.getArgument(0), ValueRange{data_lane_idx});
+            Value high = then_builder.create<memref::LoadOp>(loc, fn.getArgument(0), ValueRange{data_hi_idx});
+            then_builder.create<memref::StoreOp>(loc, low, fn.getArgument(3), ValueRange{out_lane_idx});
+            then_builder.create<memref::StoreOp>(loc, high, fn.getArgument(3), ValueRange{out_hi_idx});
+        } else {
+            Value value = then_builder.create<memref::LoadOp>(loc, fn.getArgument(0), ValueRange{data_idx});
+            then_builder.create<memref::StoreOp>(loc, value, fn.getArgument(3), ValueRange{out_idx});
+        }
     }
     body.setInsertionPointAfter(active_if);
     body.create<gpu::ReturnOp>(loc);
@@ -5419,10 +3743,10 @@ mlir::ModuleOp VulkanStage::build_gather_linear_module(mlir::MLIRContext& ctx,
 }
 
 mlir::ModuleOp VulkanStage::build_gather_embedding_module(mlir::MLIRContext& ctx,
-                                                          const ov::element::Type& data_et,
-                                                          const ov::element::Type& idx_et,
-                                                          size_t vocab,
-                                                          size_t hidden) {
+                                                 const ov::element::Type& data_et,
+                                                 const ov::element::Type& idx_et,
+                                                 size_t vocab,
+                                                 size_t hidden) {
     using namespace mlir;
     ctx.loadDialect<func::FuncDialect,
                     gpu::GPUDialect,
@@ -5433,7 +3757,8 @@ mlir::ModuleOp VulkanStage::build_gather_embedding_module(mlir::MLIRContext& ctx
     Type data_ty = data_et == ov::element::f16
                        ? Type(Float16Type::get(&ctx))
                        : Type(Float32Type::get(&ctx));
-    Type idx_ty = idx_et == ov::element::i64 ? IntegerType::get(&ctx, 64) : IntegerType::get(&ctx, 32);
+    const bool idx_i64 = idx_et == ov::element::i64;
+    Type idx_ty = IntegerType::get(&ctx, 32);
     auto weights_ty = MemRefType::get({static_cast<int64_t>(vocab * hidden)}, data_ty);
     auto indices_ty = MemRefType::get({ShapedType::kDynamic}, idx_ty);
     auto params_ty = MemRefType::get({5}, IntegerType::get(&ctx, 32));
@@ -5444,17 +3769,13 @@ mlir::ModuleOp VulkanStage::build_gather_embedding_module(mlir::MLIRContext& ctx
     mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
     mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
     mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 4));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        attrs.reserve(values.size());
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2, 3}));
+    annotate_vulkan_specialized_kernel_abi(mod,
+                                           "Gather",
+                                           "gather_embedding",
+                                           {GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::TensorOutput});
 
     auto gpu_mod = b.create<gpu::GPUModuleOp>(UnknownLoc::get(&ctx), "gfx_kernels");
     OpBuilder gpu_builder = OpBuilder::atBlockBegin(gpu_mod.getBody());
@@ -5469,6 +3790,9 @@ mlir::ModuleOp VulkanStage::build_gather_embedding_module(mlir::MLIRContext& ctx
     auto* entry = &fn.getBody().front();
     OpBuilder body(entry, entry->begin());
     auto loc = fn.getLoc();
+    auto zero_i32 = body.create<arith::ConstantIntOp>(loc, 0, 32);
+    auto one_i32 = body.create<arith::ConstantIntOp>(loc, 1, 32);
+    auto two_index = body.create<arith::ConstantIndexOp>(loc, 2);
     auto load_param = [&](int idx) -> Value {
         auto idx_val = body.create<arith::ConstantIndexOp>(loc, idx);
         auto v_i32 = body.create<memref::LoadOp>(loc, fn.getArgument(2), ValueRange{idx_val});
@@ -5489,24 +3813,20 @@ mlir::ModuleOp VulkanStage::build_gather_embedding_module(mlir::MLIRContext& ctx
         Value out_idx = then_builder.create<arith::AddIOp>(loc, offset, local_idx);
         Value token = then_builder.create<arith::DivUIOp>(loc, out_idx, hidden_v);
         Value channel = then_builder.create<arith::RemUIOp>(loc, out_idx, hidden_v);
-        Value raw = then_builder.create<memref::LoadOp>(loc, fn.getArgument(1), ValueRange{token});
-
-        auto i64_ty = IntegerType::get(&ctx, 64);
-        Value raw_i64 = raw;
-        if (idx_et == ov::element::i32) {
-            raw_i64 = then_builder.create<arith::ExtSIOp>(loc, i64_ty, raw).getResult();
+        Value index_storage_pos = token;
+        if (idx_i64) {
+            index_storage_pos = then_builder.create<arith::MulIOp>(loc, token, two_index);
         }
-        Value vocab_i64 = then_builder.create<arith::IndexCastOp>(loc, i64_ty, vocab_v);
-        Value zero_i64 = then_builder.create<arith::ConstantIntOp>(loc, 0, 64);
-        Value one_i64 = then_builder.create<arith::ConstantIntOp>(loc, 1, 64);
-        Value max_i64 = then_builder.create<arith::SubIOp>(loc, vocab_i64, one_i64);
-        Value neg = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, raw_i64, zero_i64);
-        Value wrapped = then_builder.create<arith::AddIOp>(loc, raw_i64, vocab_i64);
-        Value normalized = then_builder.create<arith::SelectOp>(loc, neg, wrapped, raw_i64);
-        Value lt0 = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, normalized, zero_i64);
-        Value gtmax = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sgt, normalized, max_i64);
-        Value clamped = then_builder.create<arith::SelectOp>(loc, lt0, zero_i64, normalized);
-        clamped = then_builder.create<arith::SelectOp>(loc, gtmax, max_i64, clamped);
+        Value raw_i32 = then_builder.create<memref::LoadOp>(loc, fn.getArgument(1), ValueRange{index_storage_pos});
+        Value vocab_i32 = then_builder.create<arith::IndexCastOp>(loc, then_builder.getI32Type(), vocab_v);
+        Value max_i32 = then_builder.create<arith::SubIOp>(loc, vocab_i32, one_i32);
+        Value neg = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, raw_i32, zero_i32);
+        Value wrapped = then_builder.create<arith::AddIOp>(loc, raw_i32, vocab_i32);
+        Value normalized = then_builder.create<arith::SelectOp>(loc, neg, wrapped, raw_i32);
+        Value lt0 = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, normalized, zero_i32);
+        Value gtmax = then_builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sgt, normalized, max_i32);
+        Value clamped = then_builder.create<arith::SelectOp>(loc, lt0, zero_i32, normalized);
+        clamped = then_builder.create<arith::SelectOp>(loc, gtmax, max_i32, clamped);
         Value gather_idx = then_builder.create<arith::IndexCastOp>(loc, then_builder.getIndexType(), clamped);
         Value weight_offset =
             then_builder.create<arith::AddIOp>(loc,
@@ -5548,17 +3868,12 @@ mlir::ModuleOp VulkanStage::build_reduce_last_axis_module(mlir::MLIRContext& ctx
     mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
     mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
     mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 3));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        attrs.reserve(values.size());
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2}));
+    annotate_vulkan_specialized_kernel_abi(mod,
+                                           m_type,
+                                           "reduce_last_axis",
+                                           {GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::TensorOutput});
 
     auto gpu_mod = b.create<gpu::GPUModuleOp>(UnknownLoc::get(&ctx), "gfx_kernels");
     OpBuilder gpu_builder = OpBuilder::atBlockBegin(gpu_mod.getBody());
@@ -5676,17 +3991,12 @@ mlir::ModuleOp VulkanStage::build_rms_module(mlir::MLIRContext& ctx,
     mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
     mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
     mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 3));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        attrs.reserve(values.size());
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2}));
+    annotate_vulkan_specialized_kernel_abi(mod,
+                                           "RMS",
+                                           "rms_linear",
+                                           {GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::TensorOutput});
 
     auto input_mem_ty = MemRefType::get({ShapedType::kDynamic}, input_ty);
     auto gamma_mem_ty = MemRefType::get({ShapedType::kDynamic}, gamma_ty);
@@ -5849,17 +4159,13 @@ mlir::ModuleOp VulkanStage::build_matmul_linear_module(mlir::MLIRContext& ctx,
     mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
     mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
     mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 4));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        attrs.reserve(values.size());
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2, 3}));
+    annotate_vulkan_specialized_kernel_abi(mod,
+                                           "MatMul",
+                                           "matmul_linear",
+                                           {GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::TensorOutput});
 
     auto gpu_mod = b.create<gpu::GPUModuleOp>(UnknownLoc::get(&ctx), "gfx_kernels");
     OpBuilder gpu_builder = OpBuilder::atBlockBegin(gpu_mod.getBody());
@@ -6007,16 +4313,12 @@ mlir::ModuleOp VulkanStage::build_broadcast_module(mlir::MLIRContext& ctx,
     mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
     mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
     mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 3));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2}));
+    annotate_vulkan_specialized_kernel_abi(mod,
+                                           "Broadcast",
+                                           "broadcast_linear",
+                                           {GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::TensorOutput});
     auto gpu_mod = b.create<gpu::GPUModuleOp>(UnknownLoc::get(&ctx), "gfx_kernels");
     OpBuilder gpu_builder = OpBuilder::atBlockBegin(gpu_mod.getBody());
     auto fn = gpu_builder.create<gpu::GPUFuncOp>(UnknownLoc::get(&ctx),
@@ -6107,16 +4409,14 @@ mlir::ModuleOp VulkanStage::build_select_module(mlir::MLIRContext& ctx,
     mod->setAttr(gpu::GPUDialect::getContainerModuleAttrName(), b.getUnitAttr());
     mod->setAttr("gfx.parallel_dispatch", BoolAttr::get(&ctx, true));
     mod->setAttr("gfx.prefer_parallel", BoolAttr::get(&ctx, true));
-    mod->setAttr("gfx.fixed_arg_count", IntegerAttr::get(IntegerType::get(&ctx, 32), 5));
-    auto make_i32_array_attr = [&](std::initializer_list<int32_t> values) {
-        SmallVector<Attribute, 8> attrs;
-        for (int32_t value : values) {
-            attrs.push_back(b.getI32IntegerAttr(value));
-        }
-        return b.getArrayAttr(attrs);
-    };
-    mod->setAttr("gfx.kernel_operand_kinds", make_i32_array_attr({1, 1, 1, 1, 1}));
-    mod->setAttr("gfx.kernel_operand_arg_indices", make_i32_array_attr({0, 1, 2, 3, 4}));
+    annotate_vulkan_specialized_kernel_abi(mod,
+                                           "Select",
+                                           "select_linear",
+                                           {GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::TensorInput,
+                                            GfxKernelBufferRole::RuntimeParams,
+                                            GfxKernelBufferRole::TensorOutput});
     auto gpu_mod = b.create<gpu::GPUModuleOp>(UnknownLoc::get(&ctx), "gfx_kernels");
     OpBuilder gpu_builder = OpBuilder::atBlockBegin(gpu_mod.getBody());
     auto fn = gpu_builder.create<gpu::GPUFuncOp>(UnknownLoc::get(&ctx),
@@ -6220,8 +4520,13 @@ void VulkanStage::execute_broadcast_chunked(GpuCommandBufferHandle command_buffe
     if (!m_broadcast_kernel || m_broadcast_elem_type != elem_type || m_broadcast_rank != rank) {
         auto& ctx = gfx_mlir_context();
         auto module = build_broadcast_module(ctx, elem_type, rank);
-        KernelSource src = make_kernel_source_from_mlir(module, "broadcast_linear", /*arg_count=*/3);
-        src.signature.output_arg_count = 1;
+        KernelSource src = make_vulkan_manifest_kernel_source(
+            module,
+            "broadcast_linear",
+            "Broadcast",
+            {GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::TensorOutput});
         VulkanCodegenBackend backend;
         std::string log;
         m_broadcast_kernel = backend.compile(src, &log);
@@ -6287,8 +4592,15 @@ void VulkanStage::execute_select_chunked(GpuCommandBufferHandle command_buffer) 
         m_select_data_elem_type != data_type || m_select_rank != rank) {
         auto& ctx = gfx_mlir_context();
         auto module = build_select_module(ctx, cond_type, data_type, rank);
-        KernelSource src = make_kernel_source_from_mlir(module, "select_linear", /*arg_count=*/5);
-        src.signature.output_arg_count = 1;
+        KernelSource src = make_vulkan_manifest_kernel_source(
+            module,
+            "select_linear",
+            "Select",
+            {GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::TensorOutput});
         VulkanCodegenBackend backend;
         std::string log;
         m_select_kernel = backend.compile(src, &log);
@@ -6404,8 +4716,14 @@ void VulkanStage::execute_matmul_linear(GpuCommandBufferHandle command_buffer) {
         m_matmul_linear_transpose_b != effective_tb) {
         auto& ctx = gfx_mlir_context();
         auto module = build_matmul_linear_module(ctx, elem_type, ta, effective_tb);
-        KernelSource src = make_kernel_source_from_mlir(module, "matmul_linear", /*arg_count=*/4);
-        src.signature.output_arg_count = 1;
+        KernelSource src = make_vulkan_manifest_kernel_source(
+            module,
+            "matmul_linear",
+            "MatMul",
+            {GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::TensorOutput});
         VulkanCodegenBackend backend;
         std::string log;
         m_matmul_linear_kernel = backend.compile(src, &log);
@@ -6493,8 +4811,13 @@ void VulkanStage::execute_reduce_last_axis(GpuCommandBufferHandle command_buffer
         m_reduce_last_axis_key != op_key) {
         auto& ctx = gfx_mlir_context();
         auto module = build_reduce_last_axis_module(ctx, elem_type, op_key);
-        KernelSource src = make_kernel_source_from_mlir(module, "reduce_last_axis", /*arg_count=*/3);
-        src.signature.output_arg_count = 1;
+        KernelSource src = make_vulkan_manifest_kernel_source(
+            module,
+            "reduce_last_axis",
+            m_type,
+            {GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::TensorOutput});
         VulkanCodegenBackend backend;
         std::string log;
         m_reduce_last_axis_kernel = backend.compile(src, &log);
@@ -6584,8 +4907,13 @@ void VulkanStage::execute_rms_chunked(GpuCommandBufferHandle command_buffer) {
                                        gamma_size,
                                        reduction_threads,
                                        static_cast<float>(rms->get_epsilon()));
-        KernelSource src = make_kernel_source_from_mlir(module, "rms_linear", /*arg_count=*/3);
-        src.signature.output_arg_count = 1;
+        KernelSource src = make_vulkan_manifest_kernel_source(
+            module,
+            "rms_linear",
+            "RMS",
+            {GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::TensorOutput});
         VulkanCodegenBackend backend;
         std::string log;
         m_rms_kernel = backend.compile(src, &log);
@@ -6652,10 +4980,14 @@ void VulkanStage::execute_softmax_chunked(GpuCommandBufferHandle command_buffer)
         m_softmax_log_kernel = log_softmax;
         auto& ctx = gfx_mlir_context();
         auto module = build_softmax_row_module(ctx, elem_type, log_softmax);
-        KernelSource src = make_kernel_source_from_mlir(module,
-                                                        log_softmax ? "logsoftmax_row" : "softmax_row",
-                                                        /*arg_count=*/3);
-        src.signature.output_arg_count = 1;
+        const char* entry_point = log_softmax ? "logsoftmax_row" : "softmax_row";
+        KernelSource src = make_vulkan_manifest_kernel_source(
+            module,
+            entry_point,
+            log_softmax ? "LogSoftmax" : "Softmax",
+            {GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::TensorOutput});
         VulkanCodegenBackend backend;
         std::string log;
         m_softmax_row_kernel = backend.compile(src, &log);
@@ -6719,8 +5051,13 @@ void VulkanStage::execute_concat_chunked(GpuCommandBufferHandle command_buffer) 
     if (!m_concat_single_kernel || m_concat_elem_type != elem_type) {
         auto& ctx = gfx_mlir_context();
         auto module = build_concat_single_module(ctx, elem_type);
-        KernelSource src = make_kernel_source_from_mlir(module, "concat_single", /*arg_count=*/3);
-        src.signature.output_arg_count = 1;
+        KernelSource src = make_vulkan_manifest_kernel_source(
+            module,
+            "concat_single",
+            "Concat",
+            {GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::TensorOutput});
         VulkanCodegenBackend backend;
         std::string log;
         m_concat_single_kernel = backend.compile(src, &log);
@@ -6758,8 +5095,14 @@ void VulkanStage::execute_concat_chunked(GpuCommandBufferHandle command_buffer) 
         if (!m_concat_binary_kernel || m_concat_binary_elem_type != elem_type) {
             auto& ctx = gfx_mlir_context();
             auto module = build_concat_binary_module(ctx, elem_type);
-            KernelSource src = make_kernel_source_from_mlir(module, "concat_binary", /*arg_count=*/4);
-            src.signature.output_arg_count = 1;
+            KernelSource src = make_vulkan_manifest_kernel_source(
+                module,
+                "concat_binary",
+                "Concat",
+                {GfxKernelBufferRole::TensorInput,
+                 GfxKernelBufferRole::TensorInput,
+                 GfxKernelBufferRole::RuntimeParams,
+                 GfxKernelBufferRole::TensorOutput});
             VulkanCodegenBackend backend;
             std::string log;
             m_concat_binary_kernel = backend.compile(src, &log);
@@ -6859,8 +5202,18 @@ void VulkanStage::execute_slice_chunked(GpuCommandBufferHandle command_buffer) {
     if (!m_slice_linear_kernel || m_slice_elem_type != elem_type) {
         auto& ctx = gfx_mlir_context();
         auto module = build_slice_linear_module(ctx, elem_type);
-        KernelSource src = make_kernel_source_from_mlir(module, "slice_linear", /*arg_count=*/8);
-        src.signature.output_arg_count = 1;
+        KernelSource src = make_vulkan_manifest_kernel_source(
+            module,
+            "slice_linear",
+            "Slice",
+            {GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::TensorOutput});
         VulkanCodegenBackend backend;
         std::string log;
         m_slice_linear_kernel = backend.compile(src, &log);
@@ -6949,8 +5302,12 @@ void VulkanStage::execute_transpose_chunked(GpuCommandBufferHandle command_buffe
     if (!m_transpose_kernel || m_transpose_elem_type != elem_type) {
         auto& ctx = gfx_mlir_context();
         auto module = build_transpose_module(ctx, elem_type);
-        KernelSource src = make_kernel_source_from_mlir(module, "transpose_direct", /*arg_count=*/2);
-        src.signature.output_arg_count = 1;
+        KernelSource src = make_vulkan_manifest_kernel_source(
+            module,
+            "transpose_direct",
+            "Transpose",
+            {GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::TensorOutput});
         VulkanCodegenBackend backend;
         std::string log;
         m_transpose_kernel = backend.compile(src, &log);
@@ -6985,8 +5342,13 @@ void VulkanStage::execute_interpolate_chunked(GpuCommandBufferHandle command_buf
     if (!m_interpolate_kernel || m_interpolate_elem_type != elem_type) {
         auto& ctx = gfx_mlir_context();
         auto module = build_interpolate_module(ctx, elem_type);
-        KernelSource src = make_kernel_source_from_mlir(module, "interpolate_direct", /*arg_count=*/3);
-        src.signature.output_arg_count = 1;
+        KernelSource src = make_vulkan_manifest_kernel_source(
+            module,
+            "interpolate_direct",
+            "Interpolate",
+            {GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::TensorOutput});
         VulkanCodegenBackend backend;
         std::string log;
         m_interpolate_kernel = backend.compile(src, &log);
@@ -7096,8 +5458,13 @@ void VulkanStage::execute_convert_chunked(GpuCommandBufferHandle command_buffer)
     if (!m_convert_linear_kernel || m_convert_src_elem_type != src_et || m_convert_dst_elem_type != dst_et) {
         auto& ctx = gfx_mlir_context();
         auto module = build_convert_linear_module(ctx, src_et, dst_et);
-        KernelSource src = make_kernel_source_from_mlir(module, "convert_linear", /*arg_count=*/3);
-        src.signature.output_arg_count = 1;
+        KernelSource src = make_vulkan_manifest_kernel_source(
+            module,
+            "convert_linear",
+            "Convert",
+            {GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::TensorOutput});
         VulkanCodegenBackend backend;
         std::string log;
         m_convert_linear_kernel = backend.compile(src, &log);
@@ -7158,17 +5525,21 @@ void VulkanStage::execute_gather_linear(GpuCommandBufferHandle command_buffer) {
     GpuTensor* output = !m_outputs.empty() ? m_outputs.front() : m_output;
     OPENVINO_ASSERT(data && data->buf.valid() && indices && indices->buf.valid(),
                     "GFX Vulkan Gather: missing input buffers");
-    OPENVINO_ASSERT(output && output->buf.valid(), "GFX Vulkan Gather: missing output buffer");
+    OPENVINO_ASSERT(output, "GFX Vulkan Gather: missing output tensor");
 
+    bool data_shape_known = !data->shape.empty();
     ov::Shape data_shape = data->shape;
-    if (data_shape.empty() && m_node->get_input_partial_shape(0).is_static()) {
+    if (!data_shape_known && m_node->get_input_partial_shape(0).is_static()) {
         data_shape = m_node->get_input_shape(0);
+        data_shape_known = true;
     }
+    bool indices_shape_known = !indices->shape.empty();
     ov::Shape indices_shape = indices->shape;
-    if (indices_shape.empty() && m_node->get_input_partial_shape(1).is_static()) {
+    if (!indices_shape_known && m_node->get_input_partial_shape(1).is_static()) {
         indices_shape = m_node->get_input_shape(1);
+        indices_shape_known = true;
     }
-    OPENVINO_ASSERT(!data_shape.empty() && !indices_shape.empty(), "GFX Vulkan Gather: runtime shapes are unknown");
+    OPENVINO_ASSERT(data_shape_known && indices_shape_known, "GFX Vulkan Gather: runtime shapes are unknown");
 
     auto axis_c = ov::as_type_ptr<const ov::op::v0::Constant>(m_node->get_input_node_shared_ptr(2));
     OPENVINO_ASSERT(axis_c, "GFX Vulkan Gather: axis must be constant");
@@ -7176,8 +5547,12 @@ void VulkanStage::execute_gather_linear(GpuCommandBufferHandle command_buffer) {
     OPENVINO_ASSERT(axis_v.size() == 1, "GFX Vulkan Gather: axis must be scalar");
     const auto dims = compute_gather_linear_dims(data_shape, indices_shape, axis_v[0], "GFX Vulkan Gather");
     ov::Shape out_shape = compute_gather_output_shape(data_shape, indices_shape, dims.axis, "GFX Vulkan Gather");
-    output->shape = out_shape;
-    output->expected_type = m_node->get_output_element_type(0);
+    ensure_vulkan_stage_output_buffer(m_buffer_manager,
+                                      output,
+                                      out_shape,
+                                      m_node->get_output_element_type(0),
+                                      m_name,
+                                      "GFX Vulkan Gather");
 
     const auto data_et = m_node->get_input_element_type(0);
     const auto idx_et = m_node->get_input_element_type(1);
@@ -7186,8 +5561,14 @@ void VulkanStage::execute_gather_linear(GpuCommandBufferHandle command_buffer) {
         m_gather_linear_index_elem_type != idx_et) {
         auto& ctx = gfx_mlir_context();
         auto module = build_gather_linear_module(ctx, data_et, idx_et);
-        KernelSource src = make_kernel_source_from_mlir(module, "gather_linear", /*arg_count=*/4);
-        src.signature.output_arg_count = 1;
+        KernelSource src = make_vulkan_manifest_kernel_source(
+            module,
+            "gather_linear",
+            "Gather",
+            {GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::TensorOutput});
         VulkanCodegenBackend backend;
         std::string log;
         m_gather_linear_kernel = backend.compile(src, &log);
@@ -7237,21 +5618,27 @@ void VulkanStage::execute_gather_embedding(GpuCommandBufferHandle command_buffer
                         m_inputs[1] && m_inputs[1]->buf.valid(),
                     "GFX Vulkan Gather: missing input buffers");
     GpuTensor* output = !m_outputs.empty() ? m_outputs.front() : m_output;
-    OPENVINO_ASSERT(output && output->buf.valid(), "GFX Vulkan Gather: missing output buffer");
+    OPENVINO_ASSERT(output, "GFX Vulkan Gather: missing output tensor");
     const auto data_shape = m_node->get_input_shape(0);
     OPENVINO_ASSERT(data_shape.size() == 2, "GFX Vulkan Gather: expected embedding table rank 2");
     const uint32_t vocab = static_cast<uint32_t>(data_shape[0]);
     const uint32_t hidden = static_cast<uint32_t>(data_shape[1]);
 
+    bool indices_shape_known = !m_inputs[1]->shape.empty();
     ov::Shape indices_shape = m_inputs[1]->shape;
-    if (indices_shape.empty() && m_node->get_input_partial_shape(1).is_static()) {
+    if (!indices_shape_known && m_node->get_input_partial_shape(1).is_static()) {
         indices_shape = m_node->get_input_shape(1);
+        indices_shape_known = true;
     }
-    OPENVINO_ASSERT(!indices_shape.empty(), "GFX Vulkan Gather: indices shape is unknown");
+    OPENVINO_ASSERT(indices_shape_known, "GFX Vulkan Gather: indices shape is unknown");
     ov::Shape out_shape = indices_shape;
     out_shape.push_back(hidden);
-    output->shape = out_shape;
-    output->expected_type = m_node->get_output_element_type(0);
+    ensure_vulkan_stage_output_buffer(m_buffer_manager,
+                                      output,
+                                      out_shape,
+                                      m_node->get_output_element_type(0),
+                                      m_name,
+                                      "GFX Vulkan Gather");
 
     const auto data_et = m_node->get_input_element_type(0);
     const auto idx_et = m_node->get_input_element_type(1);
@@ -7262,8 +5649,14 @@ void VulkanStage::execute_gather_embedding(GpuCommandBufferHandle command_buffer
         m_gather_hidden != hidden) {
         auto& ctx = gfx_mlir_context();
         auto module = build_gather_embedding_module(ctx, data_et, idx_et, vocab, hidden);
-        KernelSource src = make_kernel_source_from_mlir(module, "gather_embedding", /*arg_count=*/4);
-        src.signature.output_arg_count = 1;
+        KernelSource src = make_vulkan_manifest_kernel_source(
+            module,
+            "gather_embedding",
+            "Gather",
+            {GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::TensorOutput});
         VulkanCodegenBackend backend;
         std::string log;
         m_gather_embedding_kernel = backend.compile(src, &log);
@@ -7313,42 +5706,12 @@ void VulkanStage::execute_split_chunked(GpuCommandBufferHandle command_buffer) {
     const auto& in = *m_inputs[0];
     OPENVINO_ASSERT(!in.shape.empty(), "GFX Vulkan Split: input shape unknown");
 
-    int64_t axis = 0;
-    std::vector<size_t> split_sizes;
-    if (auto s = ov::as_type_ptr<const ov::op::v1::Split>(m_node)) {
-        auto axis_const = ov::as_type_ptr<const ov::op::v0::Constant>(s->input_value(1).get_node_shared_ptr());
-        OPENVINO_ASSERT(axis_const, "Split axis must be constant");
-        axis = axis_const->cast_vector<int64_t>()[0];
-        const auto parts = s->get_num_splits();
-        OPENVINO_ASSERT(parts > 0, "Split parts zero");
-        const size_t axis_len = in.shape.at(static_cast<size_t>(normalize_axis(axis, in.shape.size(), "GFX Vulkan Split")));
-        OPENVINO_ASSERT(axis_len % parts == 0, "Split axis not divisible");
-        split_sizes.assign(parts, axis_len / parts);
-    } else if (auto vs = ov::as_type_ptr<const ov::op::v1::VariadicSplit>(m_node)) {
-        auto axis_const = ov::as_type_ptr<const ov::op::v0::Constant>(vs->input_value(1).get_node_shared_ptr());
-        OPENVINO_ASSERT(axis_const, "VariadicSplit axis must be constant");
-        axis = axis_const->cast_vector<int64_t>()[0];
-        auto lengths_const = ov::as_type_ptr<const ov::op::v0::Constant>(vs->input_value(2).get_node_shared_ptr());
-        OPENVINO_ASSERT(lengths_const, "VariadicSplit lengths must be constant");
-        auto lengths = lengths_const->cast_vector<int64_t>();
-        split_sizes.reserve(lengths.size());
-        size_t axis_len = in.shape.at(static_cast<size_t>(normalize_axis(axis, in.shape.size(), "GFX Vulkan Split")));
-        size_t sum = 0;
-        for (auto v : lengths) {
-            OPENVINO_ASSERT(v >= 0, "VariadicSplit negative length");
-            split_sizes.push_back(static_cast<size_t>(v));
-            sum += static_cast<size_t>(v);
-        }
-        OPENVINO_ASSERT(sum == axis_len, "VariadicSplit sizes mismatch");
-    } else {
-        OPENVINO_THROW("GFX Vulkan Split: unsupported node type");
-    }
-
+    const auto split_plan = plan_split_runtime_values(m_node.get(), in.shape, outputs.size(), m_name);
+    const auto& split_sizes = split_plan.split_sizes;
     const size_t rank = in.shape.size();
-    const size_t axis_norm = static_cast<size_t>(normalize_axis(axis, rank, "GFX Vulkan Split"));
-    const size_t axis_len_total = in.shape[axis_norm];
-    size_t inner = 1;
-    for (size_t d = axis_norm + 1; d < rank; ++d) inner *= in.shape[d];
+    const size_t axis_norm = static_cast<size_t>(split_plan.axis_norm);
+    const size_t axis_len_total = split_plan.axis_len;
+    const size_t inner = split_plan.inner_stride;
     size_t outer = 1;
     for (size_t d = 0; d < axis_norm; ++d) outer *= in.shape[d];
 
@@ -7378,8 +5741,13 @@ void VulkanStage::execute_split_chunked(GpuCommandBufferHandle command_buffer) {
         m_split_elem_type = in.expected_type;
         auto& ctx = gfx_mlir_context();
         auto module = build_split_single_module(ctx, m_split_elem_type);
-        KernelSource src = make_kernel_source_from_mlir(module, "split_single", /*arg_count=*/3);
-        src.signature.output_arg_count = 1;
+        KernelSource src = make_vulkan_manifest_kernel_source(
+            module,
+            "split_single",
+            "Split",
+            {GfxKernelBufferRole::TensorInput,
+             GfxKernelBufferRole::RuntimeParams,
+             GfxKernelBufferRole::TensorOutput});
         VulkanCodegenBackend backend;
         std::string log;
         m_split_single_kernel = backend.compile(src, &log);

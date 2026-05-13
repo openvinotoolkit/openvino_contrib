@@ -324,6 +324,7 @@ struct ConcatCodegenDesc : BaseCodegenDesc {
     uint64_t axis_offset = 0;
     uint64_t axis_len = 0;
     uint64_t axis_total = 0;
+    std::vector<uint64_t> input_axis_lengths;
 };
 
 struct ConvertCodegenDesc : BaseCodegenDesc {

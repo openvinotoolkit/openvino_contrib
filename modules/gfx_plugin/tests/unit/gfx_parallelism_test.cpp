@@ -7,6 +7,7 @@
 
 #include "gtest/gtest.h"
 
+#include "kernel_ir/gfx_kernel_dispatch.hpp"
 #include "runtime/gfx_parallelism.hpp"
 
 namespace {
@@ -152,6 +153,20 @@ TEST(GfxParallelism, SelectBroadcomConvParallelismUsesWiderThreadgroupsForHugeSp
     EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 64u);
 }
 
+TEST(GfxParallelism, SelectBroadcomPointwiseConvUsesHardwareCapForHugeSpatialOutputs) {
+    const auto plan = ov::gfx_plugin::select_conv_parallelism(make_large_broadcom_caps(),
+                                                              ov::Shape{1, 48, 160, 160},
+                                                              48,
+                                                              48,
+                                                              48,
+                                                              false,
+                                                              false);
+
+    ASSERT_TRUE(plan.prefer_parallel);
+    EXPECT_TRUE(plan.dispatch.enabled);
+    EXPECT_EQ(plan.dispatch.threads_h * plan.dispatch.threads_w, 256u);
+}
+
 TEST(GfxParallelism, SelectBroadcomConvParallelismUsesHardwareCapForUltraDenseWorkloads) {
     const auto plan = ov::gfx_plugin::select_conv_parallelism(make_large_broadcom_caps(),
                                                               ov::Shape{1, 256, 80, 80},
@@ -164,6 +179,25 @@ TEST(GfxParallelism, SelectBroadcomConvParallelismUsesHardwareCapForUltraDenseWo
     ASSERT_TRUE(plan.prefer_parallel);
     EXPECT_TRUE(plan.dispatch.enabled);
     EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 128u);
+}
+
+TEST(GfxParallelism, ParallelDispatchUsesRemainingBlockDimsAfterCanonicalizedConvLoop) {
+    ov::gfx_plugin::ParallelDispatchConfig cfg;
+    cfg.enabled = true;
+    cfg.loop_dims = 4;
+    cfg.tile_h = 8;
+    cfg.tile_w = 8;
+    cfg.threads_h = 8;
+    cfg.threads_w = 8;
+
+    const auto dispatch = ov::gfx_plugin::make_parallel_dispatch(ov::Shape{1, 1, 28, 28}, cfg);
+
+    EXPECT_EQ(dispatch.grid[0], 32u);
+    EXPECT_EQ(dispatch.grid[1], 32u);
+    EXPECT_EQ(dispatch.grid[2], 1u);
+    EXPECT_EQ(dispatch.threads_per_group[0], 8u);
+    EXPECT_EQ(dispatch.threads_per_group[1], 8u);
+    EXPECT_EQ(dispatch.threads_per_group[2], 1u);
 }
 
 TEST(GfxParallelism, RememberMatMulParallelismAllowsSerialFallbackOverride) {

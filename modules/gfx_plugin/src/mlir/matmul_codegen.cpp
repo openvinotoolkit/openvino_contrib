@@ -13,6 +13,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/msl_codegen_apple_msl_common.hpp"
 #include "openvino/core/except.hpp"
 #include "runtime/gfx_activation.hpp"
 
@@ -81,15 +82,15 @@ std::string activation_expr(ActivationKind activation, float alpha) {
     switch (activation) {
         case ActivationKind::Relu: return "max(x, 0.0f)";
         case ActivationKind::Sigmoid: return "1.0f / (1.0f + exp(-x))";
-        case ActivationKind::Tanh: return "tanh(x)";
+        case ActivationKind::Tanh: return msl_stable_tanh_expr("x");
         case ActivationKind::Elu:
             return "(x >= 0.0f) ? x : " + std::to_string(alpha) + " * (exp(x) - 1.0f)";
         case ActivationKind::Prelu:
             return "(x >= 0.0f) ? x : x * " + std::to_string(alpha);
         case ActivationKind::Gelu:
-            return "0.5f * x * (1.0f + tanh(0.79788456f * (x + 0.044715f * x * x * x)))";
+            return msl_stable_gelu_tanh_expr("x");
         case ActivationKind::Swish:
-            return "(x >= 0.0f) ? (x / (1.0f + exp(-x))) : (x * exp(x) / (1.0f + exp(x)))";
+            return "x / (1.0f + precise::exp(-x))";
         case ActivationKind::HSwish:
             return "x * clamp(x + 3.0f, 0.0f, 6.0f) / 6.0f";
         case ActivationKind::HSigmoid:
@@ -290,15 +291,15 @@ std::string emit_matmul_msl(const MatMulCodegenDesc& desc, const std::string& sc
             switch (desc.activation) {
                 case ActivationKind::Relu: return "max(x, 0.0f)";
                 case ActivationKind::Sigmoid: return "1.0f / (1.0f + exp(-x))";
-                case ActivationKind::Tanh: return "tanh(x)";
+                case ActivationKind::Tanh: return msl_stable_tanh_expr("x");
                 case ActivationKind::Elu:
                     return "(x >= 0.0f) ? x : " + std::to_string(desc.alpha) + " * (exp(x) - 1.0f)";
                 case ActivationKind::Prelu:
                     return "(x >= 0.0f) ? x : x * " + std::to_string(desc.alpha);
                 case ActivationKind::Gelu:
-                    return "0.5f * x * (1.0f + tanh(0.79788456f * (x + 0.044715f * x * x * x)))";
+                    return msl_stable_gelu_tanh_expr("x");
                 case ActivationKind::Swish:
-                    return "(x >= 0.0f) ? (x / (1.0f + exp(-x))) : (x * exp(x) / (1.0f + exp(x)))";
+                    return "x / (1.0f + precise::exp(-x))";
                 case ActivationKind::HSwish:
                     return "x * clamp(x + 3.0f, 0.0f, 6.0f) / 6.0f";
                 case ActivationKind::HSigmoid:

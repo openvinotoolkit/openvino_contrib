@@ -107,10 +107,10 @@ inline GfxMpsrtProgramValidationResult gfx_mpsrt_validate_program(const GfxMpsrt
         if (stage.stage.kind == GfxMpsrtStageKind::Unknown) {
             return fail("stage " + std::to_string(stage_index) + " has unknown kind");
         }
-        if (stage.stage.builder_symbol.empty()) {
+        if (!gfx_mpsrt_stage_has_builder_symbol(stage.stage.kind)) {
             return fail("stage " + std::to_string(stage_index) + " has no builder symbol");
         }
-        if (stage.stage_record_key.empty()) {
+        if (gfx_mpsrt_stage_record_key(stage.stage).empty()) {
             return fail("stage " + std::to_string(stage_index) + " has no record key");
         }
         if (stage.outputs.empty()) {
@@ -190,8 +190,7 @@ inline bool gfx_mpsrt_build_builder_plan_from_program(const GfxMpsrtProgram& pro
         const auto& stage = program.stages.front();
         out = gfx_mpsrt_make_builder_plan(stage.stage,
                                           program.inputs,
-                                          stage.output_descs,
-                                          stage.stage_record_key);
+                                          stage.output_descs);
     }
     if (!out.valid) {
         return false;

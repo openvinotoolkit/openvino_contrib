@@ -29,6 +29,24 @@ struct MlirKernelPlanContext {
     size_t node_inputs = 0;
 };
 
+inline size_t fallback_arg_count_from_func_signature(
+    const KernelArgMappingInfo& info, size_t output_args_hint) {
+    size_t func_results = info.func_results;
+    if (func_results == 0) {
+        func_results = output_args_hint;
+    }
+    const auto sig = info.signature;
+    return sig.total() ? sig.total() : (info.func_inputs + func_results);
+}
+
+inline size_t fallback_arg_count_from_kernel_mapping(
+    const KernelArgMappingInfo& info, size_t output_args, size_t extra_inputs) {
+    const auto sig = info.signature;
+    return sig.total() ? sig.total()
+                       : (info.mapping.kernel_inputs.size() + output_args +
+                          extra_inputs);
+}
+
 template <typename ArgCountFn>
 inline MlirKernelPlanContext build_mlir_kernel_plan(mlir::ModuleOp module,
                                                     const std::string& entry_hint,

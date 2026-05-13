@@ -17,18 +17,16 @@ namespace gfx_plugin {
 
 std::string generate_msl_for_matmul_mpsrt_epilogue(const MatMulCodegenDesc& desc);
 
-struct GfxMatMulMpsrtKernelSourcePlan {
+struct GfxMatMulMpsrtLoweringResult {
     GfxMatMulMpsrtLoweringKind lowering = GfxMatMulMpsrtLoweringKind::None;
     GfxMpsrtKernelSourcePlan mpsrt_plan;
-    KernelSource source;
-    bool requires_mpsrt_model = false;
 
     bool valid() const {
-        return lowering != GfxMatMulMpsrtLoweringKind::None && mpsrt_plan.valid() && source.module;
+        return lowering != GfxMatMulMpsrtLoweringKind::None && mpsrt_plan.valid();
     }
 };
 
-GfxMatMulMpsrtKernelSourcePlan lower_matmul_module_to_mpsrt_kernel_source(
+GfxMatMulMpsrtLoweringResult lower_matmul_module_to_mpsrt_plan(
     mlir::ModuleOp module,
     const GfxStageOptimizationPlan& plan,
     const MatMulCodegenDesc& desc,

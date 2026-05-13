@@ -7,6 +7,7 @@
 #include <sstream>
 #include <unordered_set>
 
+#include "mlir/msl_codegen_apple_msl_common.hpp"
 #include "openvino/core/except.hpp"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -57,12 +58,12 @@ std::string activation_expr(ActivationKind kind, float alpha) {
     switch (kind) {
         case ActivationKind::Relu: return "max(x, 0.0f)";
         case ActivationKind::Sigmoid: return "1.0f / (1.0f + exp(-x))";
-        case ActivationKind::Tanh: return "tanh(x)";
+        case ActivationKind::Tanh: return msl_stable_tanh_expr("x");
         case ActivationKind::Prelu: return "(x >= 0.0f) ? x : x * " + std::to_string(alpha);
         case ActivationKind::Gelu:
-            return "0.5f * x * (1.0f + tanh(0.79788456f * (x + 0.044715f * x * x * x)))";
+            return msl_stable_gelu_tanh_expr("x");
         case ActivationKind::Swish:
-            return "(x >= 0.0f) ? (x / (1.0f + exp(-x))) : (x * exp(x) / (1.0f + exp(x)))";
+            return "x / (1.0f + precise::exp(-x))";
         case ActivationKind::HSwish:
             return "x * clamp(x + 3.0f, 0.0f, 6.0f) / 6.0f";
         case ActivationKind::HSigmoid:
@@ -76,14 +77,12 @@ std::string activation_expr_for(ActivationKind kind, float alpha, const std::str
     switch (kind) {
         case ActivationKind::Relu: return "(max(" + x + ", 0.0f))";
         case ActivationKind::Sigmoid: return "(1.0f / (1.0f + exp(-" + x + ")))";
-        case ActivationKind::Tanh: return "(tanh(" + x + "))";
+        case ActivationKind::Tanh: return "(" + msl_stable_tanh_expr(x) + ")";
         case ActivationKind::Prelu: return "((" + x + " >= 0.0f) ? " + x + " : " + x + " * " + std::to_string(alpha) + ")";
         case ActivationKind::Gelu:
-            return "(0.5f * " + x + " * (1.0f + tanh(0.79788456f * (" + x + " + 0.044715f * " +
-                   x + " * " + x + " * " + x + "))))";
+            return "(" + msl_stable_gelu_tanh_expr(x) + ")";
         case ActivationKind::Swish:
-            return "((" + x + " >= 0.0f) ? (" + x + " / (1.0f + exp(-" + x + "))) : (" +
-                   x + " * exp(" + x + ") / (1.0f + exp(" + x + "))))";
+            return "(" + x + " / (1.0f + precise::exp(-" + x + ")))";
         case ActivationKind::HSwish:
             return "(" + x + " * clamp(" + x + " + 3.0f, 0.0f, 6.0f) / 6.0f)";
         case ActivationKind::HSigmoid:
@@ -224,7 +223,7 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d,
         } else {
             ss << "    float _a = " << a << ";\n";
             ss << "    float _b = " << b << ";\n";
-            ss << "    float _r = fmod(_a, _b);\n";
+            ss << "    float _r = (_a == _b || _a == 0.0f) ? 0.0f : fmod(_a, _b);\n";
             ss << "    if (_r != 0.0f && ((_r < 0.0f) != (_b < 0.0f))) _r += _b;\n";
             emit_assign(dst, "_r");
         }
@@ -240,7 +239,7 @@ std::string emit_eltwise_msl(const EltwiseCodegenDesc& d,
         } else {
             ss << "    float _a = " << a << ";\n";
             ss << "    float _b = " << b << ";\n";
-            ss << "    float _r = fmod(_a, _b);\n";
+            ss << "    float _r = (_a == _b || _a == 0.0f) ? 0.0f : fmod(_a, _b);\n";
             emit_assign(dst, "_r");
         }
     };

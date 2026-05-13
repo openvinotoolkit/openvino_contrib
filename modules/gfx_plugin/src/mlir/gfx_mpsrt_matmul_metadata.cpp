@@ -7,11 +7,11 @@
 #include <utility>
 #include <vector>
 
-#include "kernel_ir/gfx_custom_kernel_families.hpp"
-#include "kernel_ir/gfx_kernel_manifest.hpp"
 #include "mlir/gfx_apple_stage_pipeline.hpp"
 #include "mlir/gfx_apple_vendor_descriptors.hpp"
+#include "mlir/gfx_backend_custom_kernel_adapter.hpp"
 #include "mlir/gfx_mpsrt_metadata.hpp"
+#include "openvino/core/except.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -63,49 +63,37 @@ GfxMpsrtStageDesc make_mps_gemm_stage_desc(const GfxMpsrtGemmAbiDesc& gemm) {
     stage.input_storage = GfxMpsrtStorage::Matrix;
     stage.output_storage = GfxMpsrtStorage::Matrix;
     stage.layout = GfxMpsrtLayout::RowMajor;
-    stage.uses_vendor_primitive = true;
-    stage.stage_type = "MatMul";
     stage.kernel_name = "mps_gemm";
-    stage.builder_symbol = gfx_mpsrt_builder_symbol(stage.kind);
-    stage.specialization_key = "apple_mps:matrix:MatMul";
     stage.gemm_desc = gemm;
     stage.gemm_desc.alpha = stage.gemm_desc.alpha == 0.0f ? 1.0f : stage.gemm_desc.alpha;
     stage.stage_manifest = make_gfx_vendor_stage_manifest(GfxKernelStageFamily::Gemm,
                                                           GfxKernelBackendDomain::AppleMps,
                                                           GfxKernelStorageKind::Matrix,
-                                                          stage.specialization_key);
+                                                          "apple_mps:matrix:MatMul");
     return stage;
 }
 
 GfxMpsrtStageDesc make_msl_gemm_epilogue_stage_desc(bool has_bias) {
+    const auto binding = make_backend_custom_kernel_roles_binding_plan(
+        "MatMulEpilogue",
+        "eltwise_fused_buffer",
+        has_bias
+            ? std::vector<GfxKernelBufferRole>{GfxKernelBufferRole::TensorInput,
+                                               GfxKernelBufferRole::TensorInput,
+                                               GfxKernelBufferRole::TensorOutput}
+            : std::vector<GfxKernelBufferRole>{GfxKernelBufferRole::TensorInput,
+                                               GfxKernelBufferRole::TensorOutput});
+
     GfxMpsrtStageDesc stage{};
     stage.kind = GfxMpsrtStageKind::MSLDispatch;
     stage.domain = GfxStageBackendDomain::AppleMsl;
     stage.input_storage = GfxMpsrtStorage::Buffer;
     stage.output_storage = GfxMpsrtStorage::Buffer;
     stage.layout = GfxMpsrtLayout::Linear;
-    stage.uses_custom_kernel = true;
-    stage.stage_type = "MatMulEpilogue";
     stage.kernel_name = "eltwise_fused_buffer";
-    stage.builder_symbol = gfx_mpsrt_builder_symbol(stage.kind);
-    stage.specialization_key = "apple_msl:buffer:MatMulEpilogue";
-    stage.stage_manifest = make_gfx_custom_kernel_stage_manifest(
-        GfxKernelStageFamily::Eltwise,
-        GfxKernelBackendDomain::AppleMsl,
-        GfxKernelStorageKind::Buffer,
-        stage.specialization_key,
-        make_gfx_custom_kernel_manifest("eltwise_fused_buffer",
-                                        static_cast<uint32_t>(GfxKernelFamily::EltwiseFusedBuffer),
-                                        "eltwise_fused_buffer",
-                                        has_bias
-                                            ? make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
-                                                                         GfxKernelBufferRole::TensorInput,
-                                                                         GfxKernelBufferRole::TensorOutput})
-                                            : make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
-                                                                         GfxKernelBufferRole::TensorOutput}),
-                                        make_gfx_kernel_linear_dispatch_policy(
-                                            256,
-                                            /*precompiled_binary_required=*/true)));
+    OPENVINO_ASSERT(binding.valid,
+                    "GFX MPSRT MatMul: failed to materialize MSL epilogue custom-kernel manifest");
+    stage.stage_manifest = binding.stage_manifest;
     return stage;
 }
 

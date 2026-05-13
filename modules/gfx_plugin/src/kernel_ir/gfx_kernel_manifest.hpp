@@ -43,6 +43,12 @@ enum class GfxKernelStorageKind : uint32_t {
     Alias = 5,
 };
 
+enum class GfxKernelComputePrecision : uint32_t {
+    Unknown = 0,
+    Native = 1,
+    Fp32 = 2,
+};
+
 enum class GfxKernelStageFamily : uint32_t {
     Unknown = 0,
     Convolution = 1,
@@ -159,6 +165,24 @@ inline GfxKernelStorageKind gfx_kernel_storage_kind_from_name(std::string_view n
     return GfxKernelStorageKind::Unknown;
 }
 
+inline const char* gfx_kernel_compute_precision_name(GfxKernelComputePrecision precision) {
+    switch (precision) {
+        case GfxKernelComputePrecision::Native:
+            return "native";
+        case GfxKernelComputePrecision::Fp32:
+            return "fp32";
+        case GfxKernelComputePrecision::Unknown:
+        default:
+            return "unknown";
+    }
+}
+
+inline GfxKernelComputePrecision gfx_kernel_compute_precision_from_name(std::string_view name) {
+    if (name == "native") return GfxKernelComputePrecision::Native;
+    if (name == "fp32") return GfxKernelComputePrecision::Fp32;
+    return GfxKernelComputePrecision::Unknown;
+}
+
 inline const char* gfx_kernel_stage_family_name(GfxKernelStageFamily family) {
     switch (family) {
         case GfxKernelStageFamily::Convolution:
@@ -227,8 +251,6 @@ inline GfxKernelStageFamily gfx_kernel_stage_family_from_name(std::string_view n
 
 struct GfxKernelExternalBufferAbiSpec {
     bool valid = false;
-    uint32_t leading_input_count = 0;
-    uint32_t leading_output_count = 0;
     uint32_t direct_input_count = 0;
     uint32_t direct_output_count = 0;
     std::vector<GfxKernelBufferRole> roles;
@@ -257,20 +279,12 @@ struct GfxKernelStageManifest {
     GfxKernelBackendDomain backend_domain = GfxKernelBackendDomain::Unknown;
     GfxKernelExecutionKind execution_kind = GfxKernelExecutionKind::Unknown;
     GfxKernelStorageKind storage = GfxKernelStorageKind::Unknown;
+    GfxKernelComputePrecision compute_precision = GfxKernelComputePrecision::Native;
     std::string specialization_key;
     std::vector<GfxKernelBufferRole> semantic_input_roles;
     std::vector<GfxKernelBufferRole> semantic_output_roles;
     GfxKernelCustomManifest custom_kernel;
 };
-
-inline GfxKernelExternalBufferAbiSpec make_gfx_kernel_leading_io_params_abi(uint32_t input_count,
-                                                                           uint32_t output_count) {
-    GfxKernelExternalBufferAbiSpec spec{};
-    spec.valid = true;
-    spec.leading_input_count = input_count;
-    spec.leading_output_count = output_count;
-    return spec;
-}
 
 inline GfxKernelExternalBufferAbiSpec make_gfx_kernel_roles_abi(std::vector<GfxKernelBufferRole> roles) {
     GfxKernelExternalBufferAbiSpec spec{};
@@ -294,10 +308,6 @@ inline std::vector<GfxKernelBufferRole> materialize_gfx_kernel_external_buffer_r
     if (roles.empty() && (abi.direct_input_count != 0 || abi.direct_output_count != 0)) {
         roles.insert(roles.end(), abi.direct_input_count, GfxKernelBufferRole::TensorInput);
         roles.insert(roles.end(), abi.direct_output_count, GfxKernelBufferRole::TensorOutput);
-    }
-    if (roles.empty() && (abi.leading_input_count != 0 || abi.leading_output_count != 0)) {
-        roles.insert(roles.end(), abi.leading_input_count, GfxKernelBufferRole::TensorInput);
-        roles.insert(roles.end(), abi.leading_output_count, GfxKernelBufferRole::TensorOutput);
     }
     return roles;
 }

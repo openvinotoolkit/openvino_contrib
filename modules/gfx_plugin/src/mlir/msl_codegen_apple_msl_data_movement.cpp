@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "mlir/msl_codegen_apple_msl.hpp"
+#include "mlir/msl_codegen_apple_msl_binding.hpp"
 
 #include <algorithm>
 #include <string>
 #include <utility>
 
-#include "mlir/msl_codegen.hpp"
+#include "mlir/codegen_common.hpp"
+#include "mlir/gfx_backend_custom_kernel_adapter.hpp"
 #include "mlir/msl_codegen_apple_msl_common.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
@@ -28,10 +29,10 @@
 namespace ov {
 namespace gfx_plugin {
 
-bool configure_apple_metal_data_movement_kernel_source(
-    KernelSource &source, const std::shared_ptr<const ov::Node> &node) {
+std::optional<KernelSource> make_apple_metal_data_movement_kernel_source(
+    KernelSource source, const std::shared_ptr<const ov::Node> &node) {
   if (!node) {
-    return false;
+    return std::nullopt;
   }
 
   auto set_desc = [&](auto &&desc, const char *entry) {
@@ -39,6 +40,17 @@ bool configure_apple_metal_data_movement_kernel_source(
     source.msl_generator = [desc](mlir::ModuleOp module) mutable {
       return generate_msl_from_mlir(module, desc);
     };
+  };
+  auto require_interpolate_binding = [&]() {
+    const auto binding = make_backend_custom_kernel_roles_binding_plan(
+        "Interpolate", "interpolate_kernel",
+        {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::RuntimeParams,
+         GfxKernelBufferRole::TensorOutput});
+    OPENVINO_ASSERT(binding.valid &&
+                        configure_backend_custom_kernel_source_from_binding_plan(
+                            source, binding),
+                    "GFX Metal Interpolate: failed to configure runtime-param "
+                    "kernel binding");
   };
 
   if (auto interp =
@@ -64,7 +76,8 @@ bool configure_apple_metal_data_movement_kernel_source(
     desc.use_half_pixel = !desc.align_corners;
     desc.nearest_mode = 0;
     set_desc(desc, "interpolate_kernel");
-    return true;
+    require_interpolate_binding();
+    return source;
   }
 
   if (auto interp =
@@ -106,7 +119,8 @@ bool configure_apple_metal_data_movement_kernel_source(
       break;
     }
     set_desc(desc, "interpolate_kernel");
-    return true;
+    require_interpolate_binding();
+    return source;
   }
 
   if (auto interp =
@@ -148,7 +162,8 @@ bool configure_apple_metal_data_movement_kernel_source(
       break;
     }
     set_desc(desc, "interpolate_kernel");
-    return true;
+    require_interpolate_binding();
+    return source;
   }
 
   if (std::dynamic_pointer_cast<const ov::op::v8::Slice>(node) ||
@@ -160,11 +175,9 @@ bool configure_apple_metal_data_movement_kernel_source(
     source.msl_generator = [desc](mlir::ModuleOp module) mutable {
       return generate_msl_for_slice_generic(desc, module);
     };
-    if (source.module) {
-      require_apple_msl_custom_kernel_binding(
-          source.module, node->get_type_name(), "slice_kernel");
-    }
-    return true;
+    require_apple_msl_generated_kernel_source_binding(
+        source, node->get_type_name(), "slice_kernel");
+    return source;
   }
 
   if (auto gather =
@@ -193,7 +206,7 @@ bool configure_apple_metal_data_movement_kernel_source(
     desc.axis_dim = 1;
     desc.indices_count = 1;
     set_desc(desc, "gather_kernel");
-    return true;
+    return source;
   }
 
   if (auto gather_nd =
@@ -216,7 +229,7 @@ bool configure_apple_metal_data_movement_kernel_source(
     desc.inner = desc.strides[desc.k];
     desc.total = static_cast<uint32_t>(ov::shape_size(data));
     set_desc(desc, "gathernd_kernel");
-    return true;
+    return source;
   }
 
   if (auto gather_elements =
@@ -237,8 +250,9 @@ bool configure_apple_metal_data_movement_kernel_source(
       desc.data_strides[i] = static_cast<uint32_t>(data_strides[i]);
     }
     set_desc(desc, "gather_elements_kernel");
-    source.signature.output_arg_count = 1;
-    return true;
+    require_apple_msl_generated_kernel_source_binding(source, "GatherElements",
+                                                      "gather_elements_kernel");
+    return source;
   }
 
   if (auto scatter =
@@ -247,11 +261,9 @@ bool configure_apple_metal_data_movement_kernel_source(
     desc.element_type = scatter->get_output_element_type(0);
     desc.index_type = scatter->get_input_element_type(1);
     set_desc(desc, "scatter_update_kernel");
-    if (source.module) {
-      require_apple_msl_custom_kernel_binding(source.module, "ScatterUpdate",
-                                              "scatter_update_kernel");
-    }
-    return true;
+    require_apple_msl_generated_kernel_source_binding(source, "ScatterUpdate",
+                                                      "scatter_update_kernel");
+    return source;
   }
 
   if (auto scatter =
@@ -275,7 +287,7 @@ bool configure_apple_metal_data_movement_kernel_source(
     desc.total_data = static_cast<uint32_t>(ov::shape_size(data));
     desc.element_type = scatter->get_output_element_type(0);
     set_desc(desc, "scatter_nd_update");
-    return true;
+    return source;
   }
 
   if (auto scatter =
@@ -304,10 +316,10 @@ bool configure_apple_metal_data_movement_kernel_source(
     }
     desc.element_type = scatter->get_output_element_type(0);
     set_desc(desc, "scatter_elements_update");
-    return true;
+    return source;
   }
 
-  return false;
+  return std::nullopt;
 }
 
 } // namespace gfx_plugin

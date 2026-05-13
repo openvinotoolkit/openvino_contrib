@@ -12,25 +12,37 @@ namespace gfx_plugin {
 std::string generate_msl_for_topk(const TopKCodegenDesc& d, mlir::ModuleOp module) {
     std::string val_scalar = "float";
     std::string idx_scalar = d.index_type == ov::element::i64 ? "long" : "int";
-    if (auto func = get_entry_func(module)) {
-        auto ft = func.getFunctionType();
-        if (ft.getNumResults() >= 1) {
-            val_scalar = msl_type_from_mlir(ft.getResult(0));
-        }
-        if (ft.getNumResults() >= 2) {
-            idx_scalar = msl_type_from_mlir(ft.getResult(1));
+    if (module) {
+        if (auto func = get_entry_func(module)) {
+            auto ft = func.getFunctionType();
+            if (ft.getNumResults() >= 1) {
+                val_scalar = msl_type_from_mlir(ft.getResult(0));
+            }
+            if (ft.getNumResults() >= 2) {
+                idx_scalar = msl_type_from_mlir(ft.getResult(1));
+            }
         }
     }
 
+    const bool index_i64 = d.index_type == ov::element::i64;
+    const std::string idx_storage_scalar = index_i64 ? "int" : idx_scalar;
     const bool sort_indices = d.sort_type == TopKSortType::SortIndices;
     const std::string init_val = d.mode_max ? "-INFINITY" : "INFINITY";
     std::ostringstream ss;
     ss << "#include <metal_stdlib>\n";
     ss << "using namespace metal;\n";
+    ss << "inline bool gfx_topk_value_better(float candidate_value, int candidate_index,\n";
+    ss << "                                  float current_value, int current_index,\n";
+    ss << "                                  bool mode_max) {\n";
+    ss << "  if (candidate_value != current_value) {\n";
+    ss << "    return mode_max ? candidate_value > current_value : candidate_value < current_value;\n";
+    ss << "  }\n";
+    ss << "  return candidate_index < current_index;\n";
+    ss << "}\n";
     ss << "kernel void topk_kernel(\n";
     ss << "  device const " << val_scalar << "* in0 [[buffer(0)]],\n";
     ss << "  device " << val_scalar << "* out_vals [[buffer(1)]],\n";
-    ss << "  device " << idx_scalar << "* out_idx [[buffer(2)]],\n";
+    ss << "  device " << idx_storage_scalar << "* out_idx [[buffer(2)]],\n";
     ss << "  uint gid [[thread_position_in_grid]]) {\n";
     ss << "    constexpr uint kTopK = " << d.k << ";\n";
     ss << "    constexpr uint kAxis = " << d.axis_len << ";\n";
@@ -47,11 +59,10 @@ std::string generate_msl_for_topk(const TopKCodegenDesc& d, mlir::ModuleOp modul
     ss << "      const uint idx = (outer * kAxis + a) * kInner + inner;\n";
     ss << "      const float v = (float)in0[idx];\n";
     ss << "      uint insert = kTopK;\n";
-    if (d.mode_max) {
-        ss << "      for (uint i = 0; i < kTopK; ++i) { if (v > top_vals[i]) { insert = i; break; } }\n";
-    } else {
-        ss << "      for (uint i = 0; i < kTopK; ++i) { if (v < top_vals[i]) { insert = i; break; } }\n";
-    }
+    ss << "      for (uint i = 0; i < kTopK; ++i) {\n";
+    ss << "        if (gfx_topk_value_better(v, (int)a, top_vals[i], top_ids[i], "
+       << (d.mode_max ? "true" : "false") << ")) { insert = i; break; }\n";
+    ss << "      }\n";
     ss << "      if (insert < kTopK) {\n";
     ss << "        for (uint j = kTopK - 1; j > insert; --j) { top_vals[j] = top_vals[j - 1]; top_ids[j] = top_ids[j - 1]; }\n";
     ss << "        top_vals[insert] = v;\n";
@@ -72,7 +83,12 @@ std::string generate_msl_for_topk(const TopKCodegenDesc& d, mlir::ModuleOp modul
     ss << "    for (uint k = 0; k < kTopK; ++k) {\n";
     ss << "      const uint out_idx_flat = (outer * kTopK + k) * kInner + inner;\n";
     ss << "      out_vals[out_idx_flat] = (" << val_scalar << ")top_vals[k];\n";
-    ss << "      out_idx[out_idx_flat] = (" << idx_scalar << ")top_ids[k];\n";
+    if (index_i64) {
+        ss << "      out_idx[out_idx_flat * 2] = top_ids[k];\n";
+        ss << "      out_idx[out_idx_flat * 2 + 1] = top_ids[k] < 0 ? -1 : 0;\n";
+    } else {
+        ss << "      out_idx[out_idx_flat] = (" << idx_scalar << ")top_ids[k];\n";
+    }
     ss << "    }\n";
     ss << "}\n";
     return ss.str();

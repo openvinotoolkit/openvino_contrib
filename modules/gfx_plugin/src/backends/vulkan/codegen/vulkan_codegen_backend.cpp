@@ -1042,7 +1042,7 @@ void VulkanCompiledKernel::prepare_runtime_artifacts() {
 }
 
 std::shared_ptr<ICompiledKernel> VulkanCompiledKernel::fork() const {
-    return std::make_shared<VulkanCompiledKernel>(m_program, binding_plan(), prepared_binding_cache());
+    return std::make_shared<VulkanCompiledKernel>(m_program, binding_plan());
 }
 
 size_t VulkanCompiledKernel::cached_descriptor_set_count() {
@@ -1459,11 +1459,20 @@ std::shared_ptr<ICompiledKernel> VulkanCodegenBackend::compile(const KernelSourc
     }
 
     const uint32_t spirv_binding_count = count_bindings_in_spirv(spirv_binary);
+    size_t manifest_arg_count = 0;
+    const bool has_manifest_arg_count = infer_kernel_arg_count_from_stage_manifest(
+        module, manifest_arg_count, entry, GfxKernelBackendDomain::Spirv);
     uint32_t arg_count = static_cast<uint32_t>(
-        infer_kernel_arg_count_from_module(module,
-                                           spirv_binding_count != 0 ? spirv_binding_count
-                                                                    : source.signature.arg_count));
-    if (spirv_binding_count != 0 && spirv_binding_count != arg_count) {
+        has_manifest_arg_count
+            ? manifest_arg_count
+            : infer_kernel_arg_count_from_module(
+                  module,
+                  spirv_binding_count != 0 ? spirv_binding_count
+                                           : source.signature.arg_count,
+                  entry,
+                  GfxKernelBackendDomain::Spirv));
+    if (!has_manifest_arg_count && spirv_binding_count != 0 &&
+        spirv_binding_count != arg_count) {
         arg_count = spirv_binding_count;
     }
     const uint32_t binding_count = arg_count != 0 ? arg_count : spirv_binding_count;
@@ -1475,7 +1484,6 @@ std::shared_ptr<ICompiledKernel> VulkanCodegenBackend::compile(const KernelSourc
         }
     }
     const uintptr_t device_key = reinterpret_cast<uintptr_t>(m_device);
-    auto shared_prepared_cache = acquire_shared_prepared_binding_cache(GpuBackend::Vulkan, device_key, arg_count);
     return lookup_or_compile_kernel(GpuBackend::Vulkan,
                                     device_key,
                                     spirv_binary.data(),
@@ -1504,8 +1512,7 @@ std::shared_ptr<ICompiledKernel> VulkanCodegenBackend::compile(const KernelSourc
                                             arg_count,
                                             resolve_kernel_output_arg_count(source));
                                         return std::make_shared<VulkanCompiledKernel>(std::move(program),
-                                                                                      std::move(binding_plan),
-                                                                                      shared_prepared_cache);
+                                                                                      std::move(binding_plan));
                                     });
 }
 

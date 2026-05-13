@@ -59,7 +59,8 @@ Additional operational docs:
    - Metal MSL runtime binding plans, explicit kernel-buffer order, or inferred MSL buffer-argument counts
    - MLIR-owned Metal MSL source generation such as Apple MSL adapter/common/compute/data-movement/dispatch/structural helpers, Apple MPS vendor source plans, MatMul direct/MPSRT helpers, compressed `MatMul`, SDPA, or causal SDPA helpers
    - SPIR-V fixed-argument binding adapters or compact Vulkan ABI metadata
-   - generated runtime-ABI call-plan or storage-bridge behavior on Metal
+   - typed MPSRT builder-plan/runtime-model or storage-bridge behavior on Metal
+   - backend custom-kernel ABI adapters, runtime-value helpers, or diagnostic Metal placement properties
    - backend-neutral MPSRT runtime-model reconstruction, runtime resource tables, external-buffer bindings, prepared resource heaps, or model/transient resource lifetimes
    - typed `GfxMpsrtProgram` / generated `gfx_mpsrt_ops` behavior or cleanup of stale legacy MPSRT attrs
    - Apple stage-pipeline or typed `gfx.mpsrt` dialect behavior

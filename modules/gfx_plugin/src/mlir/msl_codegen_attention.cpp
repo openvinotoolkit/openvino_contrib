@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "mlir/msl_codegen.hpp"
+#include "mlir/msl_codegen_attention.hpp"
 
 #include <cstring>
 #include <sstream>
 #include <utility>
 
+#include "mlir/gfx_backend_custom_kernel_adapter.hpp"
+#include "mlir/msl_codegen_apple_msl_dispatch.hpp"
 #include "openvino/core/except.hpp"
 
 namespace ov {
@@ -324,82 +326,34 @@ std::string generate_msl_for_sdpa_with_causal_mask(ov::element::Type type) {
   return ss.str();
 }
 
-GfxMslRuntimeBindingPlan make_causal_sdpa_msl_runtime_binding_plan() {
-  auto custom_kernel_plan = make_gfx_custom_kernel_stage_plan(
-      "GfxSDPAWithCausalMask", "sdpa_causal_mask_kernel");
-  if (!custom_kernel_plan.valid) {
-    return {};
-  }
-  return make_msl_runtime_binding_plan_from_stage_manifest(
-      custom_kernel_plan.stage_manifest);
+GfxKernelRuntimeBindingPlan make_causal_sdpa_backend_binding_plan() {
+  return make_backend_custom_kernel_binding_plan(
+      /*is_vulkan_backend=*/false, "GfxSDPAWithCausalMask",
+      "sdpa_causal_mask_kernel");
 }
 
-GfxMslRuntimeBindingPlan make_sdpa_msl_runtime_binding_plan(bool has_mask) {
-  auto custom_kernel_plan = make_gfx_custom_kernel_stage_plan(
-      "ScaledDotProductAttention",
+GfxKernelRuntimeBindingPlan make_sdpa_backend_binding_plan(bool has_mask) {
+  return make_backend_custom_kernel_binding_plan(
+      /*is_vulkan_backend=*/false, "ScaledDotProductAttention",
       has_mask ? "sdpa_kernel" : "sdpa_nomask_kernel");
-  if (!custom_kernel_plan.valid) {
-    return {};
-  }
-  return make_msl_runtime_binding_plan_from_stage_manifest(
-      custom_kernel_plan.stage_manifest);
 }
 
-GfxSdpaMslKernelSourcePlan
+GfxMslGeneratedKernelSourcePlan
 make_sdpa_msl_kernel_source_plan(ov::element::Type type, bool has_mask) {
-  GfxSdpaMslKernelSourcePlan plan{};
-  auto source = make_sdpa_msl_kernel_source(type, has_mask);
-  plan.custom_kernel_plan = make_gfx_custom_kernel_stage_plan(
-      "ScaledDotProductAttention", source.entry_point);
-  if (!plan.custom_kernel_plan.valid) {
-    return {};
-  }
-  source.msl_source = normalize_msl_source_for_kernel_plan(
-      std::move(source.msl_source), source.entry_point,
-      plan.custom_kernel_plan);
-  source.entry_point =
-      plan.custom_kernel_plan.stage_manifest.custom_kernel.entry_point;
-  plan.source = std::move(source);
-  plan.binding = make_msl_runtime_binding_plan_from_stage_manifest(
-      plan.custom_kernel_plan.stage_manifest);
-  return plan;
-}
-
-GfxSdpaMslKernelSourcePlan
-make_causal_sdpa_msl_kernel_source_plan(ov::element::Type type) {
-  GfxSdpaMslKernelSourcePlan plan{};
-  auto source = make_causal_sdpa_msl_kernel_source(type);
-  plan.custom_kernel_plan = make_gfx_custom_kernel_stage_plan(
-      "GfxSDPAWithCausalMask", source.entry_point);
-  if (!plan.custom_kernel_plan.valid) {
-    return {};
-  }
-  source.msl_source = normalize_msl_source_for_kernel_plan(
-      std::move(source.msl_source), source.entry_point,
-      plan.custom_kernel_plan);
-  source.entry_point =
-      plan.custom_kernel_plan.stage_manifest.custom_kernel.entry_point;
-  plan.source = std::move(source);
-  plan.binding = make_msl_runtime_binding_plan_from_stage_manifest(
-      plan.custom_kernel_plan.stage_manifest);
-  return plan;
-}
-
-KernelSource make_sdpa_msl_kernel_source(ov::element::Type type,
-                                         bool has_mask) {
   KernelSource source;
   source.entry_point = has_mask ? "sdpa_kernel" : "sdpa_nomask_kernel";
   source.msl_source = generate_msl_for_sdpa_variant(type, has_mask);
-  source.signature.output_arg_count = 1;
-  return source;
+  return make_msl_generated_custom_kernel_source_plan(
+      std::move(source), "ScaledDotProductAttention");
 }
 
-KernelSource make_causal_sdpa_msl_kernel_source(ov::element::Type type) {
+GfxMslGeneratedKernelSourcePlan
+make_causal_sdpa_msl_kernel_source_plan(ov::element::Type type) {
   KernelSource source;
   source.entry_point = "sdpa_causal_mask_kernel";
   source.msl_source = generate_msl_for_sdpa_with_causal_mask(type);
-  source.signature.output_arg_count = 1;
-  return source;
+  return make_msl_generated_custom_kernel_source_plan(
+      std::move(source), "GfxSDPAWithCausalMask");
 }
 
 GfxSdpaMslRuntimeParamsPlan make_causal_sdpa_msl_runtime_params_plan(
@@ -425,7 +379,7 @@ GfxSdpaMslRuntimeParamsPlan make_causal_sdpa_msl_runtime_params_plan(
       0,
       0,
   };
-  plan.binding = make_causal_sdpa_msl_runtime_binding_plan();
+  plan.binding = make_causal_sdpa_backend_binding_plan();
   return plan;
 }
 
@@ -452,7 +406,7 @@ GfxSdpaMslRuntimeParamsPlan make_sdpa_msl_runtime_params_plan(
       v_gqa ? 1 : 0,
       static_cast<int32_t>(v_heads),
   };
-  plan.binding = make_sdpa_msl_runtime_binding_plan(has_mask);
+  plan.binding = make_sdpa_backend_binding_plan(has_mask);
   return plan;
 }
 

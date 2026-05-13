@@ -4,8 +4,10 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <string_view>
+#include <vector>
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/gfx_apple_stage_pipeline.hpp"
@@ -13,6 +15,7 @@
 #include "mlir/gfx_mpsrt_metadata.hpp"
 #include "openvino/core/node.hpp"
 #include "runtime/gfx_mpsrt_abi.hpp"
+#include "runtime/gfx_bias.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 
 namespace ov {
@@ -42,6 +45,8 @@ inline GfxConvMpsrtLoweringKind annotate_module_with_conv_mpsrt_plan(
     const GfxStageOptimizationPlan& plan,
     const std::shared_ptr<const ov::Node>& node,
     std::string_view fallback_stage_type,
+    bool has_bias = false,
+    const BiasParams* bias_params = nullptr,
     bool has_activation = false,
     ActivationKind activation = ActivationKind::Identity) {
     if (!module ||
@@ -56,7 +61,7 @@ inline GfxConvMpsrtLoweringKind annotate_module_with_conv_mpsrt_plan(
 
     const auto stage_type = gfx_mpsrt_canonical_conv_stage_type(node, fallback_stage_type);
     GfxAppleMpsVendorPrimitiveContract contract{};
-    if (!gfx_apple_make_mps_conv2d_contract(node, has_activation, activation, contract)) {
+    if (!gfx_apple_make_mps_conv2d_contract(node, has_bias, bias_params, has_activation, activation, contract)) {
         return GfxConvMpsrtLoweringKind::None;
     }
 

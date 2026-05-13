@@ -15,6 +15,8 @@ void erase_module_mpsrt_ops(mlir::ModuleOp module);
 
 void erase_module_mpsrt_legacy_attrs(mlir::ModuleOp module);
 
+bool module_has_mpsrt_ops_program(mlir::ModuleOp module);
+
 bool materialize_module_mpsrt_ops(mlir::ModuleOp module,
                                   const GfxMpsrtProgram& program);
 

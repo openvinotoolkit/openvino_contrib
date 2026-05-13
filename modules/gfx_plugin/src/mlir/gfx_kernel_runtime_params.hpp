@@ -1052,35 +1052,5 @@ inline GfxKernelRuntimeParamPayload make_interpolate_runtime_param_payload(GpuBu
                                                    ov::Shape{sizeof(params)});
 }
 
-inline GpuTensor make_concat_runtime_param_tensor(GpuBufferManager& buffer_manager,
-                                                  std::string_view stage_name,
-                                                  size_t input_index,
-                                                  uint32_t outer,
-                                                  uint32_t inner,
-                                                  uint32_t axis_offset,
-                                                  uint32_t axis_len,
-                                                  uint32_t axis_total) {
-    struct GfxConcatRuntimeParams {
-        uint32_t outer = 0;
-        uint32_t inner = 0;
-        uint32_t axis_offset = 0;
-        uint32_t axis_len = 0;
-        uint32_t axis_total = 0;
-    } params{};
-    params.outer = outer;
-    params.inner = inner;
-    params.axis_offset = axis_offset;
-    params.axis_len = axis_len;
-    params.axis_total = axis_total;
-
-    return make_kernel_bytes_param_tensor(buffer_manager,
-                                          stage_name,
-                                          "concat_params/" + std::to_string(input_index),
-                                          &params,
-                                          sizeof(params),
-                                          ov::element::u8,
-                                          ov::Shape{sizeof(params)});
-}
-
 }  // namespace gfx_plugin
 }  // namespace ov

@@ -131,6 +131,8 @@ struct MpsrtPreparedResource {
     size_t heap_alignment = 0;
     size_t first_stage_index = 0;
     size_t last_stage_index = 0;
+    std::string cache_key;
+    std::vector<uint8_t> host_bytes;
     id<MTLBuffer> buffer = nil;
     id<MTLTexture> texture = nil;
 };
@@ -193,7 +195,8 @@ public:
                           std::string* log = nullptr);
 
     bool prepare_mps_conv2d(const ::ov::gfx_plugin::mpsrt::MpsrtModel& model,
-                            const ::ov::gfx_plugin::mpsrt::MpsrtRuntimeStage& stage, MpsrtPreparedMpsConv2D& out,
+                            const ::ov::gfx_plugin::mpsrt::MpsrtRuntimeStage& stage,
+                            const MpsrtPreparedModel& prepared_model, MpsrtPreparedMpsConv2D& out,
                             std::string* log = nullptr);
 
     bool prepare_mps_pool2d(const ::ov::gfx_plugin::mpsrt::MpsrtModel& model,

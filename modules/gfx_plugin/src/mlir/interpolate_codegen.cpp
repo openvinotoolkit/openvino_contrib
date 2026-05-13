@@ -42,8 +42,8 @@ std::string generate_msl_for_interpolate(const InterpolateCodegenDesc& d, mlir::
           "};\n";
     ss << "kernel void interpolate_kernel(\n"
           "  device const scalar_t* src [[buffer(0)]],\n"
-          "  device scalar_t* dst [[buffer(1)]],\n"
-          "  constant InterpolateParams& p [[buffer(2)]],\n"
+          "  constant InterpolateParams& p [[buffer(1)]],\n"
+          "  device scalar_t* dst [[buffer(2)]],\n"
           "  uint gid [[thread_position_in_grid]]) {\n"
           "  uint total = p.N * p.C * p.H_out * p.W_out;\n"
           "  if (gid >= total) return;\n"

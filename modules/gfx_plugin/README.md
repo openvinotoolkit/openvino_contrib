@@ -22,12 +22,13 @@ The codebase uses a shared frontend and a stage-based runtime:
 
 Recent runtime work extends this model in two directions:
 - compile-time stage planning now picks layout, fusion, and execution policy per stage
-- backend runtimes, especially Vulkan, can choose specialized direct or chunked execution routes for selected ops
+- backend runtimes, especially Vulkan, can choose specialized direct or chunked execution routes for selected non-convolution ops while Conv2D and GroupConv stay on the shared MLIR/custom-kernel route
 - infer execution can batch stage recording into submission windows and reuse prepared bindings or immutable device buffers across requests
 - Metal infer execution can now reuse one compute encoder across consecutive dispatches and skip redundant pipeline or buffer rebinds when the command-buffer state is unchanged
 - device-aware scheduling now uses backend-reported execution limits and device-family classification through shared `gfx_parallelism.*` and `gfx_partitioning.*` helpers
 - Metal stage planning now also chooses an internal placement domain per stage: Apple MPS image or matrix primitives for selected ops, or Apple MSL buffer dispatch for custom-kernel paths
-- the Metal compile path can serialize that placement into a backend-neutral MPSRT runtime model under `src/runtime/gfx_mpsrt_model.*` with explicit tensor descriptors, external-buffer roles, a typed `GfxMpsrtProgram` facade, generated `gfx_mpsrt_ops` and `gfx_mpsrt_runtime_abi_plan` helper functions, and explicit storage-bridge descriptors before request-time execution
+- `GFX_DIAGNOSTIC_F32_MPS_IMAGE` and `ov_gfx_compare_runner --diagnostic-f32-mps-image` can force diagnostic `f32` MPSImage Conv/GroupConv/Pool placement through the same planner/MPSRT route; precision-sensitive nodes, indexed Pool, and paths that feed order-sensitive TopK stay on MSL, and default production placement still keeps `f32` image ops on MSL until a narrower full-model quality/performance gate promotes them
+- the Metal compile path can serialize that placement into a backend-neutral MPSRT runtime model under `src/runtime/gfx_mpsrt_model.*` with explicit tensor descriptors, external-buffer roles, a typed `GfxMpsrtProgram` facade, generated `gfx_mpsrt_ops` materialization, and explicit storage-bridge descriptors before request-time execution
 - that MPSRT path is no longer limited to one annotated MSL dispatch; it can now carry vendor-only and hybrid multi-stage plans covering Apple MPS GEMM, Conv2D, GroupConv, Pool2D, Resize2D, Softmax, and TopK stages together with custom MSL epilogues or dispatch stages
 - Metal MSL source planning is now part of the shared MLIR/runtime layer and is split by responsibility into Apple MSL custom-kernel helpers, Apple MPS vendor-source-plan helpers, MatMul-specific Metal/MPSRT helpers, and a SPIR-V binding adapter for the Vulkan side
 - infer requests can also keep per-request stateful variable buffers for `ReadValue` / `Assign` style subgraphs instead of treating them as ordinary stateless stage edges
@@ -59,7 +60,7 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 - `src/runtime/gfx_mpsrt_*`: shared ABI, stage-plan, builder-plan, runtime-model, program, storage-bridge, and manifest-adapter helpers for the Apple MPS/MSL split
 - `src/kernel_ir/gfx_kernel_manifest.hpp`: backend-neutral manifest for vendor-primitive versus custom-kernel stage contracts
 - `src/kernel_ir/gfx_custom_kernel_families.*`: custom-kernel family registry, external-buffer ABI roles, and dispatch-policy defaults shared by Metal MSL source planning and MPSRT runtime-model generation
-- `src/mlir/`: MLIR support probes, Apple stage-pipeline passes, Apple vendor descriptor contracts, typed MPSRT dialect/materialization helpers, generated runtime-ABI planning, split Apple MSL/MPS source-plan helpers, MatMul Metal/MPSRT helpers, SPIR-V binding adapters, runtime-parameter payload helpers, const-tensor-source attachment, and shared codegen helpers
+- `src/mlir/`: MLIR support probes, Apple stage-pipeline passes, Apple vendor descriptor contracts, typed MPSRT dialect/materialization helpers, MPSRT builder-plan materialization, backend custom-kernel ABI adapters, split Apple MSL/MPS source-plan helpers, MatMul Metal/MPSRT helpers, SPIR-V binding adapters, runtime-value helpers, runtime-parameter payload helpers, const-tensor-source attachment, and shared codegen helpers
 - `src/backends/metal/`: Metal-specific plugin glue, runtime, memory, profiling, MSL compilation
 - `src/backends/vulkan/`: Vulkan-specific plugin glue, runtime, buffers, profiling, SPIR-V/Vulkan execution
 - `src/transforms/`: OpenVINO graph passes and fusion logic
@@ -118,7 +119,7 @@ The current infer path is not a naive "execute one stage, submit immediately" lo
 - `gfx_stage_policy.*` now also selects placement domains such as `apple_mps`, `apple_msl`, and `spirv`, together with storage kinds such as `image`, `matrix`, and `buffer`
 - manifest-backed stage metadata now distinguishes vendor-primitive stages from custom-kernel stages and carries stable kernel-family, semantic input/output roles, dispatch policy, and external-buffer-ABI contracts across the MLIR, compile, and runtime layers
 - `gfx_mpsrt_model.*` now lives in `src/runtime/` and owns runtime-model reconstruction, resource-table finalization, tensor binding plans, and external-buffer ABI adaptation shared by Metal preparation/tests rather than a Metal-only model object
-- generated `gfx_mpsrt_ops` and `gfx_mpsrt_runtime_abi_plan` metadata now serialize multi-stage model records, external-buffer roles, per-stage ABI descriptors, runtime resources, and storage bridges into the Metal compile path instead of relying on flat legacy `gfx.mpsrt.*` attrs for stage reconstruction
+- generated `gfx_mpsrt_ops` metadata and typed builder-plan records now serialize multi-stage model records, external-buffer roles, per-stage ABI descriptors, runtime resources, and storage bridges into the Metal compile path instead of relying on flat legacy `gfx.mpsrt.*` attrs for stage reconstruction
 - storage bridges now cover not only image-backed stages but also matrix, ndarray, and alias-style contracts where the typed program/runtime model needs an explicit conversion edge
 - `gfx_parallelism.*` and `gfx_partitioning.*`: backend-neutral device-capability and workgroup planning helpers
 - `immutable_gpu_buffer_cache.*`: backend-neutral cache for immutable device buffers
@@ -134,9 +135,10 @@ The runtime also has explicit reuse layers:
 - compiled kernels can reuse prepared binding tables through shared backend-neutral cache helpers in `gpu_backend_base.hpp`
 - prepared binding-table caches can grow past their initial size when the infer path observes more distinct reusable binding sets
 - infer requests can reuse prepared output bindings and preallocated host output tensors across repeated executions
-- on Metal, MSL-dispatch stages can also be wrapped as compact MPSRT runtime models with explicit external-buffer ABI roles, prepared pipeline-cache entries, generated runtime-ABI call plans, and request-time binding through a resource table
+- on Metal, MSL-dispatch stages can also be wrapped as compact MPSRT runtime models with explicit external-buffer ABI roles, prepared pipeline-cache entries, typed builder-plan records, and request-time binding through a resource table
 - on Metal, MPSRT execution can now cover vendor-only plans such as `MPSGemm`, `MPSCNNConvolution`, `MPSCNNPooling*`, `MPSImageBilinearScale`, `MPSMatrixSoftMax`, and `MPSMatrixFindTopK`, plus hybrid multi-stage plans such as `MPSGemm + MSL epilogue`
-- on Metal, prepared MPSRT models now classify resources as external, model-owned, or transient and allocate transient buffer/image resources from a prepared Metal heap with live-window aliasing
+- on Metal, prepared MPSRT models now classify resources as external, model-owned, or transient; single-stage MSL dispatch keeps const/runtime-parameter ABI buffers external, while vendor/typed owned constants use the prepared-resource table
+- on Metal, transient buffer/image resources are allocated from a prepared Metal heap with live-window aliasing
 
 Profiling now also has two layers:
 - compile-time tracing stored as a JSON `compile` section inside `GFX_PROFILING_REPORT`
@@ -156,8 +158,7 @@ Current family-aware planning distinguishes at least:
 
 Family-aware tuning is now used for more than cache keys. The current code includes:
 - Broadcom V3D-specific matmul and convolution parallelism choices for Raspberry Pi-style Vulkan devices
-- Vulkan chunk/direct convolution kernels compiled with the selected 2D dispatch workgroup shape instead of a fixed 1D block-size assumption
-- manual Vulkan Conv2D MLIR building can emit a parallel GPU launch path for batch-1 shapes and falls back to the serial entry path for larger batches
+- plain Vulkan Conv2D and GroupConv use the shared canonical MLIR builders plus common convolution lowering and no longer route through executor-level direct/chunked convolution kernels
 - MLIR convolution lowering that can honor explicit dispatch tile and thread attributes emitted by the planning path
 - MLIR convolution lowering that now uses a faster full-tile path for interior tiles and falls back to lane guards only on edge tiles
 
@@ -197,7 +198,7 @@ Important constraints:
 Current lowering/runtime special cases:
 - selected transpose inputs can be absorbed into Add, Conv2D, GroupConv2D, and Split lowering instead of staying as standalone runtime stages
 - transformation now depends on the resolved backend, so compile/query can preserve or decompose backend-sensitive patterns differently
-- Vulkan contains specialized direct or chunked paths for unary, binary, softmax, split/concat, transpose, convert, Conv2D, and GroupConv2D cases
+- Vulkan contains specialized direct or chunked paths for unary, binary, softmax, split/concat, transpose, and convert cases; Conv2D and GroupConv2D are intentionally kept on the shared MLIR/SPIR-V custom-kernel path
 - Vulkan now also has specialized chunked paths for `RMS` and binary `Concat`
 - some Conv2D shapes may be lowered through an explicit MLIR `im2col + matmul` route when the selected execution policy prefers it
 - Softmax lowering now supports arbitrary normalized axes instead of only the last axis
@@ -223,7 +224,7 @@ Current lowering/runtime special cases:
 - Metal MPSRT metadata materialization now prefers a typed `GfxMpsrtProgram` plus generated `gfx_mpsrt_ops` function and explicitly cleans stale legacy `gfx.mpsrt.*` stage attrs after materialization
 - Apple MPS stage construction now runs through a dedicated Apple stage pipeline and shared vendor descriptor helpers instead of ad-hoc per-op metadata assembly
 - selected static NCHW bilinear `Interpolate` stages can route to Apple MPS `Resize2D` image storage through the same MPSRT descriptor, storage-bridge, and resource-binding path as other vendor primitives
-- MPSRT request binding now follows an explicit resource table and external-buffer binding list, so runtime-parameter buffers, model-owned const buffers, transient tensors, and image bridge resources are validated before encoding
+- MPSRT request binding now follows an explicit resource table and external-buffer binding list, so MSL dispatch external const/runtime-parameter buffers, model-owned vendor constants, transient tensors, and image bridge resources are validated before encoding
 - Metal Conv2D manifest handling now also covers the legacy custom `conv2d_kernel` family under the same manifest/ABI contract used by other MSL dispatch kernels
 - `ScatterUpdate` now has a dedicated MLIR lowering path instead of falling back to the older scatter-family builders
 - Slice lowering now prefers `tensor.extract_slice`; generic slice metadata extraction still accepts the older generic form when needed
@@ -241,6 +242,7 @@ Commonly used properties:
 - `GFX_PROFILING_LEVEL`
 - `GFX_PROFILING_REPORT`
 - `GFX_MEM_STATS`
+- `GFX_DIAGNOSTIC_F32_MPS_IMAGE`
 - `ov::available_devices`
 - `ov::device::id`
 - `ov::cache_dir`
@@ -256,6 +258,7 @@ Practical meanings:
 - `GFX_PROFILING_LEVEL`: control profiling detail level
 - `GFX_PROFILING_REPORT`: fetch the latest profiling report, including compile and infer sections when profiling is enabled
 - `GFX_MEM_STATS`: fetch backend memory statistics from a compiled model
+- `GFX_DIAGNOSTIC_F32_MPS_IMAGE`: diagnostic-only Metal compile switch for forcing selected `f32` Conv/GroupConv/Pool stages through the MPSImage route during quality investigation
 - `ov::available_devices`: expose stable numeric device ids such as `"0"`; use `ov::device::full_name` for the human-readable backend device name
 - `ov::device::id`: select one of the numeric device ids exposed through `ov::available_devices`
 - `ov::cache_dir`: reuse the standard OpenVINO cache directory for Vulkan pipeline-cache persistence
@@ -358,7 +361,7 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 Recent regression coverage includes:
 - Metal stage-placement and MPSRT descriptor/runtime-model coverage in `tests/unit/gfx_stage_policy_test.cpp`
 - Metal backend tests for MPSRT compile, prepared-pipeline caching, and request-time MSL dispatch execution in `tests/backends/metal/gpu_backend_test.mm`
-- Metal backend tests now also cover manifest-driven buffer ordering, program-to-ops materialization, runtime-parameter roles, generated runtime-ABI call-plan execution, typed storage bridges, MPSRT resource-table binding, prepared resource heaps, vendor `MPSGemm` / Conv2D / Pool2D / Resize2D / Softmax / TopK execution, and hybrid prepared-model execution
+- Metal backend tests now also cover manifest-driven buffer ordering, program-to-ops materialization, runtime-parameter roles, typed builder-plan/runtime-model execution, storage bridges, MPSRT resource-table binding, prepared resource heaps, vendor `MPSGemm` / Conv2D / Pool2D / Resize2D / Softmax / TopK execution, and hybrid prepared-model execution
 - Metal MSL binding-plan tests cover compressed `MatMul`, SDPA, scalar/runtime-parameter ordering, manifest-derived argument counts, output-before-runtime-params ABI ordering, and request-time rejection when an MSL dispatch stage is missing materialized kernel-buffer order
 - SPIR-V binding-adapter tests cover compact fixed-argument metadata without reusing legacy Apple MSL operand/scalar attrs
 - canonical Conv2D MLIR lowering checks
@@ -388,7 +391,9 @@ Useful environment variables from the current codebase:
 - `OV_GFX_DUMP_SPIRV_BINDINGS`: dump Vulkan binding information
 - `OV_GFX_DUMP_SPIRV_MLIR`, `OV_GFX_DUMP_SPIRV_MLIR_FILTER`, `OV_GFX_DUMP_MLIR_PRE_SPIRV`: Vulkan/MLIR dump controls
 
-For output-quality checks against a reference backend, use `ov_gfx_compare_runner`. It is an accuracy-only helper: it registers local plugin builds, compares tensor diffs, can run per-op windows or full-graph per-op output scans, and can also emit `GFX`-only output summaries for quick debugging. Diff reports now identify outputs by `friendly_name:port` and print the worst mismatch index plus reference and GFX values. For performance numbers, use `benchmark_app` instead of the compare tool.
+For output-quality checks against a reference backend, use `ov_gfx_compare_runner`. It is an accuracy-only helper: it registers local plugin builds, compares tensor diffs, can run per-op windows or full-graph per-op output scans, and can also emit `GFX`-only output summaries for quick debugging. Diff reports now identify outputs by `friendly_name:port` and print the worst mismatch index plus reference and GFX values. `--per-op-all` is a real gate: it reports `PER_OP_FIRST_MISMATCH` / `PER_OP_MISMATCH` and exits non-zero when any internal output exceeds the configured thresholds, while `PER_OP_MATCH max_abs=... max_rel=...` records a clean scan. For performance numbers, use `benchmark_app` instead of the compare tool.
+
+Per-op and debug-output modes (`--per-op`, `--per-op-all`, `--single-op-output`) compile GFX with `GFX_ENABLE_FUSION=false` through the normal compile-property mechanism so diagnostic outputs map to original OpenVINO op boundaries. Regular full-graph compilation keeps the configured fusion policy.
 
 For profiling-driven triage, use `ov_gfx_microbench` plus the local references in `docs/MICROBENCH_SCHEMA.md` and `docs/PROFILING_RUNBOOK.md`.
 

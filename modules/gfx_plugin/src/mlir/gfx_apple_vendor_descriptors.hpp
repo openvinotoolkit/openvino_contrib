@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "runtime/gfx_activation.hpp"
+#include "runtime/gfx_bias.hpp"
 #include "runtime/gfx_mpsrt_abi.hpp"
 #include "runtime/gfx_mpsrt_program.hpp"
 #include "runtime/gfx_stage_policy.hpp"
@@ -57,6 +58,8 @@ bool gfx_apple_make_mps_conv2d_desc(const std::shared_ptr<const ov::Node>& node,
                                     bool has_activation = false,
                                     ActivationKind activation = ActivationKind::Identity);
 bool gfx_apple_make_mps_conv2d_contract(const std::shared_ptr<const ov::Node>& node,
+                                        bool has_bias,
+                                        const BiasParams* bias_params,
                                         bool has_activation,
                                         ActivationKind activation,
                                         GfxAppleMpsVendorPrimitiveContract& contract);

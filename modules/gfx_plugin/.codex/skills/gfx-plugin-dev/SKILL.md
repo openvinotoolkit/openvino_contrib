@@ -42,7 +42,7 @@ Then read the relevant code path:
 - When changing plugin-visible behavior, also check properties, `query_model()`, and compiled-model/runtime property exposure.
 - When changing stateful graph behavior, treat `ReadValue` / `Assign` as a dedicated infer-request-state path, not just generic stateless runtime stages.
 - For Metal placement work, keep `gfx_stage_policy.*`, `gfx_mpsrt_*`, `src/runtime/gfx_mpsrt_model.*`, `gfx_kernel_manifest.hpp`, `gfx_custom_kernel_families.*`, MLIR attrs, and `src/backends/metal/runtime/mpsrt/*` aligned as one contract.
-- For hybrid Metal paths, also keep `gfx_kernel_manifest.hpp`, `gfx_custom_kernel_families.*`, `gfx_mpsrt_program.hpp`, `gfx_mpsrt_dialect.*`, `gfx_mpsrt_ops.*`, `gfx_apple_stage_pipeline.*`, `gfx_mpsrt_kernel_manifest_adapter.hpp`, `gfx_mpsrt_runtime_abi_pipeline.*`, `gfx_mpsrt_storage_bridge.hpp`, and `gfx_mpsrt_source_plan.hpp` aligned with that contract.
+- For hybrid Metal paths, also keep `gfx_kernel_manifest.hpp`, `gfx_custom_kernel_families.*`, `gfx_mpsrt_program.hpp`, `gfx_mpsrt_dialect.*`, `gfx_mpsrt_ops.*`, `gfx_apple_stage_pipeline.*`, `gfx_mpsrt_kernel_manifest_adapter.hpp`, `gfx_mpsrt_storage_bridge.hpp`, `gfx_mpsrt_source_plan.hpp`, `gfx_backend_custom_kernel_adapter.*`, `gfx_stage_kernel_binding.hpp`, and `gfx_stage_runtime_values.*` aligned with that contract.
 - For Apple MPS vendor primitive changes, prefer `src/mlir/gfx_apple_vendor_descriptors.*`, `GfxAppleMpsVendorPrimitiveContract`, and `materialize_apple_mps_vendor_contract_program()` so Conv2D, Pool2D, Resize2D, Softmax, and TopK descriptor extraction stays shared.
 - For MPSRT request-binding changes, keep `MpsrtRuntimeResource`, `external_buffer_bindings`, prepared model resources, storage bridges, and request-time validation aligned instead of reintroducing ad-hoc transient allocation.
 - For Metal custom MSL source changes, prefer `src/mlir/msl_codegen_apple_msl*`, `src/mlir/msl_codegen_apple_mps.*`, `src/mlir/msl_codegen_matmul_*`, and `GfxMslRuntimeBindingPlan`; keep module operand annotations, manifest external-buffer roles, inferred `[[buffer(N)]]` counts, and MPSRT `kernel_buffer_order` aligned.
@@ -71,7 +71,7 @@ Check whether the change belongs to one of the current special families:
 - Metal placement-domain and storage selection, such as Apple MPS image or matrix stages versus Apple MSL buffer dispatch
 - MPSRT runtime-model boundaries, including tensor descriptors, runtime resources, stage record keys, external-buffer roles, and prepared MSL-dispatch pipeline caching
 - shared MPSRT runtime-model reconstruction in `src/runtime/gfx_mpsrt_model.*`, including resource finalization, external tensor binding plans, and external-buffer ABI adaptation
-- generated runtime-ABI call plans, storage bridges, resource tables, prepared Metal heaps, and const-tensor-source attachment for Apple MPS models
+- typed MPSRT builder-plan/runtime-model records, storage bridges, resource tables, prepared Metal heaps, and const-tensor-source attachment for Apple MPS models
 - typed `GfxMpsrtProgram` validation and generated `gfx_mpsrt_ops` materialization, including cleanup of stale legacy attrs
 - Apple stage-pipeline passes, shared vendor descriptors, and typed storage-conversion ops for image, matrix, ndarray, or alias boundaries
 - manifest-backed execution-kind routing, including vendor-only stages such as MPS Resize2D and mixed vendor-plus-custom multi-stage plans

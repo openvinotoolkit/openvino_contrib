@@ -10,7 +10,6 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
-#include "mlir/gfx_mpsrt_runtime_abi_pipeline.hpp"
 #include "runtime/gfx_mpsrt_program.hpp"
 
 namespace ov {
@@ -29,36 +28,8 @@ std::vector<GfxAppleStagePipelinePassKind> make_apple_stage_pipeline_boundaries(
     };
     if (materialize_typed_program) {
         passes.push_back(GfxAppleStagePipelinePassKind::RuntimeAbi);
-        passes.push_back(GfxAppleStagePipelinePassKind::RuntimeAbiCallPlan);
     }
     return passes;
-}
-
-void annotate_apple_stage_pipeline_boundaries(
-    mlir::ModuleOp module,
-    const std::vector<GfxAppleStagePipelinePassKind>& passes) {
-    if (!module) {
-        return;
-    }
-    mlir::Builder builder(module.getContext());
-    module->setAttr("gfx.apple.pipeline.pass_boundary_count",
-                    builder.getI32IntegerAttr(static_cast<int32_t>(passes.size())));
-    for (size_t i = 0; i < passes.size(); ++i) {
-        const std::string prefix =
-            "gfx.apple.pipeline.pass" + std::to_string(i);
-        module->setAttr(prefix + ".name",
-                        builder.getStringAttr(
-                            gfx_apple_stage_pipeline_pass_name(passes[i])));
-    }
-}
-
-void annotate_apple_typed_program_boundaries(mlir::ModuleOp module) {
-    if (!module) {
-        return;
-    }
-    annotate_apple_stage_pipeline_boundaries(
-        module,
-        gfx_apple_stage_pipeline_pass_boundaries(/*materialize_typed_program=*/true));
 }
 
 bool validate_apple_program_stage_contract(const GfxMpsrtBuilderStageSpec& spec) {
@@ -99,34 +70,19 @@ bool finalize_apple_program_stage_desc(GfxMpsrtStageDesc& stage) {
                 break;
         }
     }
-    if (stage.stage_type.empty() && stage.stage_manifest.valid) {
-        stage.stage_type = gfx_mpsrt_stage_type_from_manifest(stage.stage_manifest);
-    }
-    if (stage.builder_symbol.empty()) {
-        stage.builder_symbol = gfx_mpsrt_builder_symbol(stage.kind);
-    }
     if (stage.kind == GfxMpsrtStageKind::MSLDispatch) {
         const auto dispatch =
             gfx_mpsrt_custom_dispatch_spec_from_kernel_manifest(stage.stage_manifest.custom_kernel);
         if (dispatch.valid) {
-            stage.dispatch_kernel_family = dispatch.kernel_family;
-            stage.dispatch_entry_point = dispatch.entry_point;
-            stage.dispatch_kernel_family_id = dispatch.kernel_family_id;
-            stage.dispatch_flags = dispatch.flags;
-            stage.dispatch_threads_per_threadgroup = dispatch.threads_per_threadgroup;
-            stage.dispatch_precompiled_kernel_required = dispatch.precompiled_binary_required;
             stage.kernel_name = dispatch.entry_point;
         }
     }
     if (stage.kernel_name.empty()) {
-        stage.kernel_name = gfx_mpsrt_default_kernel_name(stage.kind, stage.stage_type);
-    }
-    if (stage.specialization_key.empty() && stage.stage_manifest.valid) {
-        stage.specialization_key = stage.stage_manifest.specialization_key;
+        stage.kernel_name = gfx_mpsrt_stage_default_kernel_name(stage);
     }
     return stage.kind != GfxMpsrtStageKind::Unknown &&
            stage.domain != GfxStageBackendDomain::Unknown &&
-           !stage.builder_symbol.empty();
+           gfx_mpsrt_stage_has_builder_symbol(stage.kind);
 }
 
 GfxMpsrtProgram make_apple_mpsrt_program_from_plan(
@@ -156,13 +112,11 @@ GfxMpsrtProgram make_apple_mpsrt_program_from_plan(
             program = {};
             return program;
         }
-        const auto stage_record_key = gfx_mpsrt_stage_record_key(stage);
-        if (stage_record_key.empty()) {
+        if (gfx_mpsrt_stage_record_key(stage).empty()) {
             program = {};
             return program;
         }
         program.stages.push_back({std::move(stage),
-                                  stage_record_key,
                                   request.inputs,
                                   request.outputs,
                                   request.output_descs});
@@ -173,8 +127,11 @@ GfxMpsrtProgram make_apple_mpsrt_program_from_plan(
     }
 
     if (!program.external_buffer_abi.valid) {
-        program.external_buffer_abi =
-            gfx_mpsrt_make_external_io_abi(program.inputs.size(), program.output_values.size());
+        program.external_buffer_abi = gfx_mpsrt_external_buffer_abi_from_typed_vendor_program_io(program);
+        if (!program.external_buffer_abi.valid) {
+            program = {};
+            return program;
+        }
     } else {
         auto abi = program.external_buffer_abi;
         if (!gfx_mpsrt_finalize_external_buffer_abi(abi)) {
@@ -199,28 +156,6 @@ GfxMpsrtProgram make_apple_mpsrt_program_from_plan(
         }
     }
     return program;
-}
-
-const char* vendor_descriptor_kind_name(
-    GfxAppleMpsVendorPrimitiveKind kind) {
-    using Kind = GfxAppleMpsVendorPrimitiveKind;
-    switch (kind) {
-        case Kind::None:
-            return "none";
-        case Kind::Gemm:
-            return "gemm";
-        case Kind::Conv2D:
-            return "conv2d";
-        case Kind::Pool2D:
-            return "pool2d";
-        case Kind::Resize2D:
-            return "resize2d";
-        case Kind::Softmax:
-            return "softmax";
-        case Kind::TopK:
-            return "topk";
-    }
-    return "unknown";
 }
 
 bool apple_vendor_descriptor_matches_stage(
@@ -288,9 +223,7 @@ bool apply_apple_vendor_descriptor(
             break;
     }
 
-    stage_plan.stage_record_key = gfx_mpsrt_stage_record_key(stage_plan.stage);
-    stage_plan.valid = !stage_plan.stage_record_key.empty();
-    return stage_plan.valid;
+    return finalize_mpsrt_module_stage_plan(stage_plan);
 }
 
 bool apply_apple_stage_tensor_desc_overrides(GfxMpsrtModuleStagePlan& stage_plan,
@@ -302,13 +235,15 @@ bool apply_apple_stage_tensor_desc_overrides(GfxMpsrtModuleStagePlan& stage_plan
         return true;
     }
     if (!options.input_descs.empty()) {
-        if (stage_plan.inputs.size() != options.input_descs.size()) {
+        if (stage_plan.inputs.size() != options.input_descs.size() &&
+            options.vendor_descriptor.kind == GfxAppleMpsVendorPrimitiveKind::None) {
             return false;
         }
         stage_plan.inputs = options.input_descs;
     }
     if (!options.output_descs.empty()) {
-        if (stage_plan.outputs.size() != options.output_descs.size()) {
+        if (stage_plan.outputs.size() != options.output_descs.size() &&
+            options.vendor_descriptor.kind == GfxAppleMpsVendorPrimitiveKind::None) {
             return false;
         }
         stage_plan.outputs = options.output_descs;
@@ -323,9 +258,14 @@ bool apply_apple_stage_tensor_desc_overrides(GfxMpsrtModuleStagePlan& stage_plan
     stage_plan.stage.layout = stage_plan.stage.output_storage != GfxMpsrtStorage::Unknown
                                   ? gfx_mpsrt_stage_layout_for_storage(stage_plan.stage.output_storage)
                                   : GfxMpsrtLayout::Unknown;
-    stage_plan.stage_record_key = gfx_mpsrt_stage_record_key(stage_plan.stage);
-    stage_plan.valid = !stage_plan.stage_record_key.empty();
-    return stage_plan.valid;
+    if (stage_plan.stage.stage_manifest.valid) {
+        stage_plan.stage.stage_manifest.semantic_input_roles =
+            detail::gfx_mpsrt_normalize_semantic_input_roles(stage_plan.inputs.size(),
+                                                             options.semantic_input_roles);
+        stage_plan.stage.stage_manifest.semantic_output_roles =
+            detail::gfx_mpsrt_default_semantic_output_roles(stage_plan.outputs.size());
+    }
+    return finalize_mpsrt_module_stage_plan(stage_plan);
 }
 
 GfxAppleProgramPipelineResult materialize_apple_mps_vendor_program(
@@ -362,7 +302,7 @@ GfxAppleProgramPipelineResult materialize_apple_mps_vendor_program(
         gfx_mpsrt_make_sequential_values(stage_pipeline.stage_plan.outputs.size(),
                                          static_cast<GfxMpsrtValue>(input_values.size()));
     GfxAppleMpsrtProgramPlan program_plan{};
-    program_plan.record_key = stage_pipeline.stage_plan.stage_record_key;
+    program_plan.record_key = gfx_mpsrt_stage_plan_record_key(stage_pipeline.stage_plan);
     program_plan.inputs = stage_pipeline.stage_plan.inputs;
     program_plan.output_values = output_values;
     program_plan.external_buffer_abi = external_buffer_abi;
@@ -370,27 +310,12 @@ GfxAppleProgramPipelineResult materialize_apple_mps_vendor_program(
                                    input_values,
                                    output_values,
                                    stage_pipeline.stage_plan.outputs});
-    if (read_module_apple_storage_assignment(module, program_plan.storage_bridges)) {
+    if (build_mpsrt_storage_assignment_from_stage_plan(stage_pipeline.stage_plan,
+                                                       program_plan.storage_bridges)) {
         program_plan.has_storage_bridges = true;
     }
 
     return materialize_apple_mpsrt_program_plan(module, program_plan);
-}
-
-const char* execution_kind_name(const GfxStagePlacementPlan& placement) {
-    return placement.uses_vendor_primitive ? "vendor_primitive" : "custom_kernel";
-}
-
-const char* tensor_layout_name(GfxTensorLayoutKind kind) {
-    switch (kind) {
-        case GfxTensorLayoutKind::Materialized:
-            return "materialized";
-        case GfxTensorLayoutKind::ViewOnly:
-            return "view_only";
-        case GfxTensorLayoutKind::Unknown:
-        default:
-            return "unknown";
-    }
 }
 
 class GfxApplePlacementPass final
@@ -407,23 +332,19 @@ public:
     }
 
     llvm::StringRef getDescription() const final {
-        return "Materialize Apple backend placement metadata before stage manifest lowering";
+        return "Validate Apple backend placement before stage manifest lowering";
     }
 
     void runOnOperation() final {
         auto module = getOperation();
-        auto* ctx = module.getContext();
         const auto& placement = m_options.plan.placement;
-        module->setAttr("gfx.apple.pipeline.stage_type",
-                        mlir::StringAttr::get(ctx, m_options.stage_type));
-        module->setAttr("gfx.apple.pipeline.placement.backend_domain",
-                        mlir::StringAttr::get(ctx, gfx_stage_backend_domain_name(placement.domain)));
-        module->setAttr("gfx.apple.pipeline.placement.execution_kind",
-                        mlir::StringAttr::get(ctx, execution_kind_name(placement)));
-        module->setAttr("gfx.apple.pipeline.placement.storage",
-                        mlir::StringAttr::get(ctx, gfx_stage_storage_kind_name(placement.storage)));
-        module->setAttr("gfx.apple.pipeline.placement.specialization_key",
-                        mlir::StringAttr::get(ctx, placement.specialization_key));
+        if (m_options.stage_type.empty() ||
+            placement.domain == GfxStageBackendDomain::Unknown ||
+            placement.storage == GfxStageStorageKind::Unknown) {
+            module->emitError("invalid Apple stage placement for ")
+                << m_options.stage_type;
+            signalPassFailure();
+        }
     }
 
 private:
@@ -444,19 +365,11 @@ public:
     }
 
     llvm::StringRef getDescription() const final {
-        return "Materialize Apple storage contract metadata before stage manifest lowering";
+        return "Assign Apple storage bridge contract before stage manifest lowering";
     }
 
     void runOnOperation() final {
         auto module = getOperation();
-        auto* ctx = module.getContext();
-        module->setAttr("gfx.apple.pipeline.storage.contract",
-                        mlir::StringAttr::get(ctx, gfx_stage_storage_kind_name(m_options.plan.placement.storage)));
-        module->setAttr("gfx.apple.pipeline.storage.view_only",
-                        mlir::BoolAttr::get(ctx, m_options.plan.layout.view_only));
-        module->setAttr("gfx.apple.pipeline.storage.layout",
-                        mlir::StringAttr::get(ctx, tensor_layout_name(m_options.plan.layout.kind)));
-
         GfxMpsrtModuleStagePlan stage_plan{};
         if (!build_module_mpsrt_stage_plan(module,
                                            m_options.plan,
@@ -472,10 +385,10 @@ public:
         }
         if (stage_plan.stage.input_storage == GfxMpsrtStorage::Buffer &&
             stage_plan.stage.output_storage == GfxMpsrtStorage::Buffer) {
-            annotate_module_with_empty_apple_storage_assignment(module);
             return;
         }
-        if (!annotate_module_with_apple_storage_assignment(module, stage_plan)) {
+        std::vector<GfxMpsrtStorageBridgeDesc> bridges;
+        if (!build_mpsrt_storage_assignment_from_stage_plan(stage_plan, bridges)) {
             module->emitError("failed to assign Apple storage bridges for ")
                 << m_options.stage_type;
             signalPassFailure();
@@ -500,19 +413,10 @@ public:
     }
 
     llvm::StringRef getDescription() const final {
-        return "Materialize Apple post-op fusion contract metadata before stage manifest lowering";
+        return "Reserve Apple post-op fusion boundary before stage manifest lowering";
     }
 
-    void runOnOperation() final {
-        auto module = getOperation();
-        auto* ctx = module.getContext();
-        module->setAttr("gfx.apple.pipeline.fusion.bias",
-                        mlir::BoolAttr::get(ctx, m_options.plan.post_ops.bias));
-        module->setAttr("gfx.apple.pipeline.fusion.activation",
-                        mlir::BoolAttr::get(ctx, m_options.plan.post_ops.activation));
-        module->setAttr("gfx.apple.pipeline.fusion.batchnorm",
-                        mlir::BoolAttr::get(ctx, m_options.plan.post_ops.batchnorm));
-    }
+    void runOnOperation() final {}
 
 private:
     GfxAppleStagePipelineOptions m_options;
@@ -537,12 +441,6 @@ public:
 
     void runOnOperation() final {
         auto module = getOperation();
-        auto* ctx = module.getContext();
-        module->setAttr("gfx.apple.pipeline.vendor_descriptor.kind",
-                        mlir::StringAttr::get(
-                            ctx,
-                            vendor_descriptor_kind_name(
-                                m_options.vendor_descriptor.kind)));
         if (m_options.vendor_descriptor.kind ==
             GfxAppleMpsVendorPrimitiveKind::None) {
             return;
@@ -629,7 +527,6 @@ public:
 
     void runOnOperation() final {
         auto module = getOperation();
-        auto* ctx = module.getContext();
         GfxMpsrtModuleStagePlan stage_plan{};
         if (!build_module_mpsrt_stage_plan(module,
                                            m_options.plan,
@@ -645,7 +542,7 @@ public:
         }
 
         GfxMpsrtExternalBufferAbiPlan external_buffer_abi{};
-        if (stage_plan.stage.uses_custom_kernel) {
+        if (stage_plan.stage.stage_manifest.execution_kind == GfxKernelExecutionKind::CustomKernel) {
             (void)gfx_mpsrt_external_buffer_abi_from_kernel_manifest(module,
                                                                     external_buffer_abi);
         }
@@ -653,10 +550,7 @@ public:
                                                           stage_plan,
                                                           external_buffer_abi)) {
             signalPassFailure();
-            return;
         }
-        module->setAttr("gfx.apple.pipeline.runtime_abi.typed_program_materialized",
-                        mlir::BoolAttr::get(ctx, true));
     }
 
 private:
@@ -768,8 +662,6 @@ const char* gfx_apple_stage_pipeline_pass_name(GfxAppleStagePipelinePassKind kin
             return "gfx-apple-stage-manifest";
         case GfxAppleStagePipelinePassKind::RuntimeAbi:
             return "gfx-apple-runtime-abi";
-        case GfxAppleStagePipelinePassKind::RuntimeAbiCallPlan:
-            return "gfx-apple-runtime-abi-call-plan";
     }
     return "gfx-apple-unknown";
 }
@@ -821,10 +713,6 @@ GfxAppleStagePipelineResult run_gfx_apple_stage_pipeline(
         return result;
     }
 
-    annotate_apple_stage_pipeline_boundaries(
-        module,
-        gfx_apple_stage_pipeline_pass_boundaries(options.materialize_typed_program));
-
     mlir::PassManager pm(module.getContext());
     pm.addPass(createGfxAppleCanonicalizePass());
     pm.addPass(mlir::createCSEPass());
@@ -837,7 +725,6 @@ GfxAppleStagePipelineResult run_gfx_apple_stage_pipeline(
     pm.addPass(mlir::createCSEPass());
     if (options.materialize_typed_program) {
         pm.addPass(createGfxAppleRuntimeAbiPass(options));
-        pm.addPass(createGfxAppleMpsrtRuntimeAbiCallPlanPass());
     }
     if (mlir::failed(pm.run(module))) {
         return result;
@@ -863,10 +750,6 @@ GfxAppleStagePipelineResult run_gfx_apple_stage_pipeline(
         GfxMpsrtProgram typed_program{};
         result.typed_program_materialized = read_module_mpsrt_program(module, typed_program);
         if (!result.typed_program_materialized) {
-            result = {};
-            return result;
-        }
-        if (!has_gfx_apple_mpsrt_runtime_abi_call_plan(module)) {
             result = {};
             return result;
         }
@@ -905,13 +788,8 @@ GfxAppleProgramPipelineResult materialize_apple_mpsrt_program(
         }
     }
 
-    annotate_apple_typed_program_boundaries(module);
     result.typed_program_materialized = materialize_module_mpsrt_ops(module, program);
     if (!result.typed_program_materialized) {
-        result = {};
-        return result;
-    }
-    if (!materialize_gfx_apple_mpsrt_runtime_abi_call_plan(module)) {
         result = {};
         return result;
     }

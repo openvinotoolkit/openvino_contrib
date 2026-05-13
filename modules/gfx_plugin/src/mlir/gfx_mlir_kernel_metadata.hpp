@@ -11,7 +11,6 @@
 #include <utility>
 #include <vector>
 
-#include "kernel_ir/gfx_custom_kernel_families.hpp"
 #include "kernel_ir/gfx_kernel_dispatch.hpp"
 #include "kernel_ir/gfx_kernel_inputs.hpp"
 #include "kernel_ir/gfx_kernel_manifest.hpp"
@@ -131,29 +130,6 @@ make_kernel_runtime_binding_plan_from_stage_manifest(
     return {};
   }
   plan.runtime_binding.input_arg_count = logical_input_arg_count;
-  return plan;
-}
-
-inline GfxKernelRuntimeBindingPlan
-make_kernel_runtime_binding_plan_for_custom_kernel(
-    std::string_view stage_type, std::string_view entry_point,
-    std::vector<int32_t> scalar_args = {},
-    GfxKernelBackendDomain backend_domain = GfxKernelBackendDomain::AppleMsl,
-    GfxKernelStorageKind storage = GfxKernelStorageKind::Buffer,
-    std::string_view specialization_prefix = "apple_msl:buffer:") {
-  const auto custom_kernel_plan = make_gfx_custom_kernel_stage_plan(
-      stage_type, entry_point, backend_domain, storage, specialization_prefix);
-  if (!custom_kernel_plan.valid) {
-    return {};
-  }
-  auto plan = make_kernel_runtime_binding_plan_from_stage_manifest(
-      custom_kernel_plan.stage_manifest);
-  if (!plan.valid || plan.scalar_arg_count != scalar_args.size()) {
-    return {};
-  }
-  plan.runtime_binding.scalar_args = std::move(scalar_args);
-  plan.stage_manifest.custom_kernel.scalar_args =
-      plan.runtime_binding.scalar_args;
   return plan;
 }
 
@@ -512,19 +488,21 @@ materialize_kernel_external_buffer_roles(
   return materialize_gfx_kernel_external_buffer_roles(abi);
 }
 
-inline bool extract_kernel_operand_metadata_from_stage_manifest(
-    mlir::ModuleOp module, KernelOperandMetadata &meta,
-    size_t &kernel_input_arg_count, std::string_view entry_point = {}) {
-  GfxKernelStageManifest manifest{};
-  if (!detail::gfx_mpsrt_read_stage_manifest_attrs(module, manifest) ||
-      !manifest.valid ||
-      manifest.backend_domain != GfxKernelBackendDomain::AppleMsl ||
+inline bool extract_kernel_operand_metadata_from_custom_kernel_manifest(
+    const GfxKernelStageManifest &manifest, KernelOperandMetadata &meta,
+    size_t &kernel_input_arg_count, std::string_view entry_point = {},
+    std::optional<GfxKernelBackendDomain> expected_backend_domain =
+        std::nullopt) {
+  if (!manifest.valid ||
+      (expected_backend_domain &&
+       manifest.backend_domain != *expected_backend_domain) ||
       manifest.execution_kind != GfxKernelExecutionKind::CustomKernel ||
       !manifest.custom_kernel.valid ||
       !manifest.custom_kernel.external_buffer_abi.valid) {
     return false;
   }
   if (!entry_point.empty() &&
+      manifest.backend_domain != GfxKernelBackendDomain::Spirv &&
       manifest.custom_kernel.entry_point != entry_point) {
     return false;
   }
@@ -595,6 +573,70 @@ inline bool extract_kernel_operand_metadata_from_stage_manifest(
   return true;
 }
 
+inline bool extract_kernel_operand_metadata_from_stage_manifest(
+    mlir::ModuleOp module, KernelOperandMetadata &meta,
+    size_t &kernel_input_arg_count, std::string_view entry_point = {},
+    std::optional<GfxKernelBackendDomain> expected_backend_domain =
+        std::nullopt) {
+  GfxKernelStageManifest manifest{};
+  if (!detail::gfx_mpsrt_read_stage_manifest_attrs(module, manifest)) {
+    return false;
+  }
+  return extract_kernel_operand_metadata_from_custom_kernel_manifest(
+      manifest, meta, kernel_input_arg_count, entry_point,
+      expected_backend_domain);
+}
+
+inline bool extract_kernel_operand_metadata_from_mpsrt_typed_program_manifest(
+    mlir::ModuleOp module, KernelOperandMetadata &meta,
+    size_t &kernel_input_arg_count, std::string_view entry_point = {},
+    std::optional<GfxKernelBackendDomain> expected_backend_domain =
+        std::nullopt) {
+  if (expected_backend_domain &&
+      *expected_backend_domain != GfxKernelBackendDomain::AppleMsl) {
+    return false;
+  }
+  if (!module_has_mpsrt_ops_program(module)) {
+    return false;
+  }
+  GfxMpsrtProgram program{};
+  if (!read_module_mpsrt_program(module, program) || !program.valid) {
+    return false;
+  }
+
+  bool saw_msl_stage = false;
+  for (const auto &stage_spec : program.stages) {
+    const auto &stage = stage_spec.stage;
+    if (stage.kind != GfxMpsrtStageKind::MSLDispatch &&
+        stage.domain != GfxStageBackendDomain::AppleMsl) {
+      continue;
+    }
+    saw_msl_stage = true;
+    if (extract_kernel_operand_metadata_from_custom_kernel_manifest(
+            stage.stage_manifest, meta, kernel_input_arg_count, entry_point,
+            GfxKernelBackendDomain::AppleMsl)) {
+      return true;
+    }
+  }
+  if (!saw_msl_stage || !entry_point.empty()) {
+    return false;
+  }
+
+  for (const auto &stage_spec : program.stages) {
+    const auto &stage = stage_spec.stage;
+    if (stage.kind != GfxMpsrtStageKind::MSLDispatch &&
+        stage.domain != GfxStageBackendDomain::AppleMsl) {
+      continue;
+    }
+    if (extract_kernel_operand_metadata_from_custom_kernel_manifest(
+            stage.stage_manifest, meta, kernel_input_arg_count,
+            /*entry_point=*/{}, GfxKernelBackendDomain::AppleMsl)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 inline bool extract_kernel_operand_metadata_from_mpsrt_external_buffer_abi(
     mlir::ModuleOp module, KernelOperandMetadata &meta,
     size_t &kernel_input_arg_count) {
@@ -658,20 +700,67 @@ inline bool extract_kernel_operand_metadata_from_mpsrt_external_buffer_abi(
   return true;
 }
 
-inline bool
-infer_kernel_arg_count_from_stage_manifest(mlir::ModuleOp module,
-                                           size_t &arg_count,
-                                           std::string_view entry_point = {}) {
+inline bool extract_spirv_kernel_operand_metadata_from_adapter_attrs(
+    mlir::ModuleOp module, KernelOperandMetadata &meta,
+    size_t &kernel_input_arg_count, size_t output_arg_count,
+    std::optional<GfxKernelBackendDomain> expected_backend_domain =
+        std::nullopt) {
+  if (!module ||
+      (expected_backend_domain &&
+       *expected_backend_domain != GfxKernelBackendDomain::Spirv)) {
+    return false;
+  }
+
   GfxKernelStageManifest manifest{};
   if (!detail::gfx_mpsrt_read_stage_manifest_attrs(module, manifest) ||
-      !manifest.valid ||
-      manifest.backend_domain != GfxKernelBackendDomain::AppleMsl ||
+      !manifest.valid || manifest.backend_domain != GfxKernelBackendDomain::Spirv ||
+      manifest.execution_kind != GfxKernelExecutionKind::CustomKernel ||
+      !manifest.custom_kernel.valid) {
+    return false;
+  }
+
+  auto adapter_meta = extract_kernel_operand_metadata(module);
+  if (adapter_meta.operand_kinds.empty() ||
+      adapter_meta.operand_arg_indices.size() !=
+          adapter_meta.operand_kinds.size()) {
+    return false;
+  }
+
+  meta = std::move(adapter_meta);
+  int32_t max_idx = -1;
+  for (auto idx : meta.operand_arg_indices) {
+    if (idx > max_idx) {
+      max_idx = idx;
+    }
+  }
+  if (max_idx < 0) {
+    return false;
+  }
+  const size_t total_buffer_args = static_cast<size_t>(max_idx) + 1;
+  if (output_arg_count > total_buffer_args) {
+    return false;
+  }
+  kernel_input_arg_count = total_buffer_args - output_arg_count;
+  return true;
+}
+
+inline bool
+infer_kernel_arg_count_from_manifest(const GfxKernelStageManifest &manifest,
+                                     size_t &arg_count,
+                                     std::string_view entry_point = {},
+                                     std::optional<GfxKernelBackendDomain>
+                                         expected_backend_domain =
+                                             std::nullopt) {
+  if (!manifest.valid ||
+      (expected_backend_domain &&
+       manifest.backend_domain != *expected_backend_domain) ||
       manifest.execution_kind != GfxKernelExecutionKind::CustomKernel ||
       !manifest.custom_kernel.valid ||
       !manifest.custom_kernel.external_buffer_abi.valid) {
     return false;
   }
   if (!entry_point.empty() &&
+      manifest.backend_domain != GfxKernelBackendDomain::Spirv &&
       manifest.custom_kernel.entry_point != entry_point) {
     return false;
   }
@@ -680,17 +769,82 @@ infer_kernel_arg_count_from_stage_manifest(mlir::ModuleOp module,
   if (roles.empty()) {
     return false;
   }
-  size_t buffer_arg_count = 0;
+  size_t runtime_arg_count = 0;
   for (const auto role : roles) {
-    if (is_gfx_kernel_buffer_role(role)) {
-      ++buffer_arg_count;
+    if (is_gfx_kernel_buffer_role(role) || is_gfx_kernel_scalar_role(role)) {
+      ++runtime_arg_count;
     }
   }
-  if (buffer_arg_count == 0) {
+  if (runtime_arg_count == 0) {
     return false;
   }
-  arg_count = buffer_arg_count + manifest.custom_kernel.scalar_args.size();
+  arg_count = runtime_arg_count;
   return true;
+}
+
+inline bool
+infer_kernel_arg_count_from_stage_manifest(mlir::ModuleOp module,
+                                           size_t &arg_count,
+                                           std::string_view entry_point = {},
+                                           std::optional<GfxKernelBackendDomain>
+                                               expected_backend_domain =
+                                                   std::nullopt) {
+  GfxKernelStageManifest manifest{};
+  if (!detail::gfx_mpsrt_read_stage_manifest_attrs(module, manifest)) {
+    return false;
+  }
+  return infer_kernel_arg_count_from_manifest(manifest, arg_count, entry_point,
+                                              expected_backend_domain);
+}
+
+inline bool infer_kernel_arg_count_from_mpsrt_typed_program_manifest(
+    mlir::ModuleOp module, size_t &arg_count,
+    std::string_view entry_point = {},
+    std::optional<GfxKernelBackendDomain> expected_backend_domain =
+        std::nullopt) {
+  if (expected_backend_domain &&
+      *expected_backend_domain != GfxKernelBackendDomain::AppleMsl) {
+    return false;
+  }
+  if (!module_has_mpsrt_ops_program(module)) {
+    return false;
+  }
+  GfxMpsrtProgram program{};
+  if (!read_module_mpsrt_program(module, program) || !program.valid) {
+    return false;
+  }
+
+  bool saw_msl_stage = false;
+  for (const auto &stage_spec : program.stages) {
+    const auto &stage = stage_spec.stage;
+    if (stage.kind != GfxMpsrtStageKind::MSLDispatch &&
+        stage.domain != GfxStageBackendDomain::AppleMsl) {
+      continue;
+    }
+    saw_msl_stage = true;
+    if (infer_kernel_arg_count_from_manifest(stage.stage_manifest, arg_count,
+                                             entry_point,
+                                             GfxKernelBackendDomain::AppleMsl)) {
+      return true;
+    }
+  }
+  if (!saw_msl_stage || !entry_point.empty()) {
+    return false;
+  }
+
+  for (const auto &stage_spec : program.stages) {
+    const auto &stage = stage_spec.stage;
+    if (stage.kind != GfxMpsrtStageKind::MSLDispatch &&
+        stage.domain != GfxStageBackendDomain::AppleMsl) {
+      continue;
+    }
+    if (infer_kernel_arg_count_from_manifest(stage.stage_manifest, arg_count,
+                                             /*entry_point=*/{},
+                                             GfxKernelBackendDomain::AppleMsl)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 inline size_t
@@ -731,23 +885,32 @@ inline size_t infer_kernel_input_arg_count_from_operand_indices(
   return total_buffer_args - output_arg_count;
 }
 
-inline std::optional<size_t>
-extract_fixed_buffer_arg_count_without_operand_metadata(mlir::ModuleOp module) {
-  if (!module || module->hasAttr("gfx.kernel_operand_kinds")) {
-    return std::nullopt;
+inline bool has_legacy_kernel_operand_metadata_attrs(mlir::ModuleOp module) {
+  return module &&
+         (module->hasAttr("gfx.fixed_arg_count") ||
+          module->hasAttr("gfx.kernel_operand_kinds") ||
+          module->hasAttr("gfx.kernel_operand_arg_indices") ||
+          module->hasAttr("gfx.kernel_scalar_values") ||
+          module->hasAttr("gfx.kernel_scalar_args"));
+}
+
+inline bool module_has_typed_custom_dispatch_mpsrt_program(mlir::ModuleOp module) {
+  if (!module_has_mpsrt_ops_program(module)) {
+    return false;
   }
-  auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.fixed_arg_count");
-  if (!attr || attr.getInt() <= 0) {
-    return std::nullopt;
+  GfxMpsrtProgram program{};
+  if (!read_module_mpsrt_program(module, program) || !program.valid) {
+    return true;
   }
-  return static_cast<size_t>(attr.getInt());
+  return gfx_mpsrt_program_has_custom_dispatch_stage(program);
 }
 
 inline KernelRuntimeMetadata
 extract_kernel_runtime_metadata(mlir::ModuleOp module, size_t output_arg_count,
                                 size_t fallback_input_arg_count,
                                 std::string_view entry_point = {},
-                                bool allow_legacy_operand_attrs = true) {
+                                std::optional<GfxKernelBackendDomain>
+                                    expected_backend_domain = std::nullopt) {
   KernelRuntimeMetadata meta;
   if (!module) {
     return meta;
@@ -755,31 +918,39 @@ extract_kernel_runtime_metadata(mlir::ModuleOp module, size_t output_arg_count,
   meta.valid = true;
   meta.dispatch = extract_kernel_dispatch_metadata(module);
   meta.force_single_dispatch = extract_kernel_force_single_dispatch(module);
-  if (extract_kernel_operand_metadata_from_stage_manifest(
-          module, meta.operands, meta.kernel_input_arg_count, entry_point)) {
+  if (extract_spirv_kernel_operand_metadata_from_adapter_attrs(
+          module, meta.operands, meta.kernel_input_arg_count,
+          output_arg_count, expected_backend_domain)) {
     return meta;
   }
-  if (extract_kernel_operand_metadata_from_mpsrt_external_buffer_abi(
-          module, meta.operands, meta.kernel_input_arg_count)) {
+  if (extract_kernel_operand_metadata_from_mpsrt_typed_program_manifest(
+          module, meta.operands, meta.kernel_input_arg_count, entry_point,
+          expected_backend_domain)) {
     return meta;
   }
-  if (!allow_legacy_operand_attrs) {
+  if ((!expected_backend_domain ||
+       *expected_backend_domain == GfxKernelBackendDomain::AppleMsl) &&
+      module_has_typed_custom_dispatch_mpsrt_program(module)) {
     meta.valid = false;
     return meta;
   }
-  if (const auto fixed_arg_count =
-          extract_fixed_buffer_arg_count_without_operand_metadata(module)) {
-    meta.operands = {};
-    meta.kernel_input_arg_count =
-        *fixed_arg_count >= output_arg_count ? *fixed_arg_count - output_arg_count
-                                             : fallback_input_arg_count;
+  if (extract_kernel_operand_metadata_from_stage_manifest(
+          module, meta.operands, meta.kernel_input_arg_count, entry_point,
+          expected_backend_domain)) {
     return meta;
   }
-  meta.operands = extract_kernel_operand_metadata(module);
-  meta.kernel_input_arg_count =
-      infer_kernel_input_arg_count_from_operand_indices(
-          meta.operands.operand_arg_indices, output_arg_count,
-          fallback_input_arg_count);
+  if ((!expected_backend_domain ||
+       *expected_backend_domain == GfxKernelBackendDomain::AppleMsl) &&
+      extract_kernel_operand_metadata_from_mpsrt_external_buffer_abi(
+          module, meta.operands, meta.kernel_input_arg_count)) {
+    return meta;
+  }
+  if (has_legacy_kernel_operand_metadata_attrs(module)) {
+    meta.valid = false;
+    return meta;
+  }
+  meta.operands = {};
+  meta.kernel_input_arg_count = fallback_input_arg_count;
   return meta;
 }
 
@@ -787,45 +958,47 @@ inline KernelRuntimeMetadata extract_kernel_runtime_metadata(
     mlir::ModuleOp module, const KernelArgMappingInfo &mapping,
     const std::shared_ptr<const ov::Node> &node, size_t outputs_hint = 0,
     std::string_view entry_point = {},
-    bool allow_legacy_operand_attrs = true) {
+    std::optional<GfxKernelBackendDomain> expected_backend_domain =
+        std::nullopt) {
   const size_t output_arg_count =
       resolve_kernel_runtime_output_args(mapping, node, outputs_hint);
   return extract_kernel_runtime_metadata(module, output_arg_count,
                                          mapping.buffer_inputs, entry_point,
-                                         allow_legacy_operand_attrs);
+                                         expected_backend_domain);
 }
 
 inline size_t
 infer_kernel_arg_count_from_module(mlir::ModuleOp module, size_t fallback,
                                    std::string_view entry_point = {},
-                                   bool allow_legacy_operand_attrs = true) {
+                                   std::optional<GfxKernelBackendDomain>
+                                       expected_backend_domain =
+                                           std::nullopt) {
   if (!module) {
+    return fallback;
+  }
+  KernelOperandMetadata adapter_meta;
+  size_t adapter_arg_count = 0;
+  if (extract_spirv_kernel_operand_metadata_from_adapter_attrs(
+          module, adapter_meta, adapter_arg_count,
+          /*output_arg_count=*/0, expected_backend_domain)) {
+    return adapter_arg_count;
+  }
+  size_t typed_program_arg_count = 0;
+  if (infer_kernel_arg_count_from_mpsrt_typed_program_manifest(
+          module, typed_program_arg_count, entry_point,
+          expected_backend_domain)) {
+    return typed_program_arg_count;
+  }
+  if ((!expected_backend_domain ||
+       *expected_backend_domain == GfxKernelBackendDomain::AppleMsl) &&
+      module_has_typed_custom_dispatch_mpsrt_program(module)) {
     return fallback;
   }
   size_t manifest_arg_count = 0;
   if (infer_kernel_arg_count_from_stage_manifest(module, manifest_arg_count,
-                                                 entry_point)) {
+                                                 entry_point,
+                                                 expected_backend_domain)) {
     return manifest_arg_count;
-  }
-  if (!allow_legacy_operand_attrs) {
-    return fallback;
-  }
-  if (auto attr =
-          module->getAttrOfType<mlir::IntegerAttr>("gfx.fixed_arg_count")) {
-    const auto value = attr.getInt();
-    if (value > 0) {
-      const auto scalar_values = extract_kernel_scalar_values(module);
-      return static_cast<size_t>(value) + scalar_values.size();
-    }
-  }
-  auto kinds = extract_kernel_operand_kinds(module);
-  if (!kinds.empty()) {
-    auto scalars = extract_kernel_scalar_args(module);
-    return kinds.size() + scalars.size();
-  }
-  auto scalars = extract_kernel_scalar_args(module);
-  if (!scalars.empty()) {
-    return fallback + scalars.size();
   }
   size_t launch_operand_count = 0;
   module.walk([&](mlir::gpu::LaunchFuncOp launch) {

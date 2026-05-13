@@ -7,6 +7,7 @@
 #include <sstream>
 
 #include "mlir/codegen_common.hpp"
+#include "mlir/msl_codegen_apple_msl_common.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -27,11 +28,11 @@ std::string matmul_epilogue_activation_expr(ActivationKind activation) {
         case ActivationKind::Sigmoid:
             return "1.0f / (1.0f + exp(-x))";
         case ActivationKind::Tanh:
-            return "tanh(x)";
+            return msl_stable_tanh_expr("x");
         case ActivationKind::Gelu:
-            return "0.5f * x * (1.0f + tanh(0.79788456f * (x + 0.044715f * x * x * x)))";
+            return msl_stable_gelu_tanh_expr("x");
         case ActivationKind::Swish:
-            return "(x >= 0.0f) ? (x / (1.0f + exp(-x))) : (x * exp(x) / (1.0f + exp(x)))";
+            return "x / (1.0f + precise::exp(-x))";
         case ActivationKind::HSwish:
             return "x * clamp(x + 3.0f, 0.0f, 6.0f) / 6.0f";
         case ActivationKind::HSigmoid:
@@ -98,13 +99,13 @@ std::string generate_msl_for_matmul_mpsrt_epilogue(const MatMulCodegenDesc& desc
     return ss.str();
 }
 
-GfxMatMulMpsrtKernelSourcePlan lower_matmul_module_to_mpsrt_kernel_source(
+GfxMatMulMpsrtLoweringResult lower_matmul_module_to_mpsrt_plan(
     mlir::ModuleOp module,
     const GfxStageOptimizationPlan& plan,
     const MatMulCodegenDesc& desc,
     const ov::Shape& shape_a,
     const ov::Shape& shape_b) {
-    GfxMatMulMpsrtKernelSourcePlan result{};
+    GfxMatMulMpsrtLoweringResult result{};
     result.lowering = annotate_module_with_matmul_mpsrt_plan(module, plan, desc, shape_a, shape_b);
     if (result.lowering == GfxMatMulMpsrtLoweringKind::None) {
         return result;
@@ -126,8 +127,6 @@ GfxMatMulMpsrtKernelSourcePlan lower_matmul_module_to_mpsrt_kernel_source(
         result.lowering = GfxMatMulMpsrtLoweringKind::None;
         return result;
     }
-    result.source = result.mpsrt_plan.source;
-    result.requires_mpsrt_model = result.mpsrt_plan.requires_mpsrt_model;
     return result;
 }
 

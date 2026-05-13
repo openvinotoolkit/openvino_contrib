@@ -6,10 +6,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
+#include "kernel_ir/gfx_custom_kernel_families.hpp"
 #include "kernel_ir/gfx_kernel_manifest.hpp"
 #include "runtime/gfx_mpsrt_abi.hpp"
+#include "runtime/gfx_stage_policy.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -23,6 +26,56 @@ struct GfxMpsrtCustomKernelDispatchSpec {
     uint32_t threads_per_threadgroup = 0;
     bool precompiled_binary_required = false;
 };
+
+struct GfxMpsrtResolvedCustomKernelStage {
+    bool valid = false;
+    GfxKernelStageManifest stage_manifest;
+    GfxMpsrtCustomKernelDispatchSpec dispatch;
+};
+
+inline GfxKernelBackendDomain gfx_mpsrt_kernel_backend_domain_from_stage_domain(
+    GfxStageBackendDomain domain) {
+    switch (domain) {
+        case GfxStageBackendDomain::AppleMps:
+            return GfxKernelBackendDomain::AppleMps;
+        case GfxStageBackendDomain::AppleMsl:
+            return GfxKernelBackendDomain::AppleMsl;
+        case GfxStageBackendDomain::Spirv:
+            return GfxKernelBackendDomain::Spirv;
+        case GfxStageBackendDomain::Unknown:
+        default:
+            return GfxKernelBackendDomain::Unknown;
+    }
+}
+
+inline GfxKernelStorageKind gfx_mpsrt_kernel_storage_from_stage_storage(
+    GfxStageStorageKind storage) {
+    switch (storage) {
+        case GfxStageStorageKind::Buffer:
+            return GfxKernelStorageKind::Buffer;
+        case GfxStageStorageKind::Image:
+            return GfxKernelStorageKind::Image;
+        case GfxStageStorageKind::Matrix:
+            return GfxKernelStorageKind::Matrix;
+        case GfxStageStorageKind::NDArray:
+            return GfxKernelStorageKind::NDArray;
+        case GfxStageStorageKind::Alias:
+            return GfxKernelStorageKind::Alias;
+        case GfxStageStorageKind::Unknown:
+        default:
+            return GfxKernelStorageKind::Unknown;
+    }
+}
+
+inline std::string gfx_mpsrt_custom_kernel_specialization_prefix(
+    GfxStageBackendDomain domain,
+    GfxStageStorageKind storage) {
+    std::string prefix(gfx_stage_backend_domain_name(domain));
+    prefix += ":";
+    prefix += gfx_stage_storage_kind_name(storage);
+    prefix += ":";
+    return prefix;
+}
 
 inline GfxMpsrtCustomKernelDispatchSpec gfx_mpsrt_custom_dispatch_spec_from_kernel_manifest(
     const GfxKernelCustomManifest& manifest) {
@@ -47,6 +100,36 @@ inline GfxMpsrtCustomKernelDispatchSpec gfx_mpsrt_custom_dispatch_spec_from_kern
         spec.flags |= GfxMpsrtMslDispatchFlagPrecompiledMetallibRequired;
     }
     return spec;
+}
+
+inline GfxMpsrtResolvedCustomKernelStage gfx_mpsrt_resolve_custom_kernel_stage_manifest(
+    std::string_view stage_type,
+    std::string_view entry_point,
+    GfxStageBackendDomain domain,
+    GfxStageStorageKind storage) {
+    GfxMpsrtResolvedCustomKernelStage resolved{};
+    const auto backend_domain = gfx_mpsrt_kernel_backend_domain_from_stage_domain(domain);
+    const auto kernel_storage = gfx_mpsrt_kernel_storage_from_stage_storage(storage);
+    if (backend_domain == GfxKernelBackendDomain::Unknown ||
+        kernel_storage == GfxKernelStorageKind::Unknown) {
+        return resolved;
+    }
+
+    const auto custom_kernel_plan = make_gfx_custom_kernel_stage_plan(
+        stage_type,
+        entry_point,
+        backend_domain,
+        kernel_storage,
+        gfx_mpsrt_custom_kernel_specialization_prefix(domain, storage));
+    if (!custom_kernel_plan.valid) {
+        return resolved;
+    }
+
+    resolved.stage_manifest = custom_kernel_plan.stage_manifest;
+    resolved.dispatch = gfx_mpsrt_custom_dispatch_spec_from_kernel_manifest(
+        resolved.stage_manifest.custom_kernel);
+    resolved.valid = resolved.stage_manifest.valid;
+    return resolved;
 }
 
 inline GfxMpsrtExternalBufferRole gfx_mpsrt_external_buffer_role_from_kernel_role(
@@ -129,6 +212,8 @@ inline std::vector<GfxMpsrtValue> gfx_mpsrt_kernel_buffer_order_from_external_ro
         switch (role) {
             case GfxMpsrtExternalBufferRole::TensorInput:
             case GfxMpsrtExternalBufferRole::ConstBuffer:
+            case GfxMpsrtExternalBufferRole::RuntimeParams:
+            case GfxMpsrtExternalBufferRole::Metadata:
                 if (next_input >= input_values.size()) {
                     break;
                 }
@@ -139,9 +224,6 @@ inline std::vector<GfxMpsrtValue> gfx_mpsrt_kernel_buffer_order_from_external_ro
                     break;
                 }
                 order.push_back(output_values[next_output++]);
-                break;
-            case GfxMpsrtExternalBufferRole::RuntimeParams:
-            case GfxMpsrtExternalBufferRole::Metadata:
                 break;
             case GfxMpsrtExternalBufferRole::Unknown:
             default:
@@ -168,22 +250,6 @@ inline std::vector<GfxMpsrtValue> gfx_mpsrt_kernel_buffer_order_from_external_va
     return external_values;
 }
 
-inline std::vector<GfxMpsrtExternalBufferRole> gfx_mpsrt_external_buffer_roles_from_leading_io_spec(
-    const GfxKernelExternalBufferAbiSpec& spec,
-    uint32_t buffer_count) {
-    const uint32_t structured_count = spec.leading_input_count + spec.leading_output_count;
-    if (!spec.valid || structured_count == 0 || buffer_count < structured_count) {
-        return {};
-    }
-
-    std::vector<GfxMpsrtExternalBufferRole> roles;
-    roles.reserve(buffer_count);
-    roles.insert(roles.end(), spec.leading_input_count, GfxMpsrtExternalBufferRole::TensorInput);
-    roles.insert(roles.end(), spec.leading_output_count, GfxMpsrtExternalBufferRole::TensorOutput);
-    roles.insert(roles.end(), buffer_count - structured_count, GfxMpsrtExternalBufferRole::RuntimeParams);
-    return roles;
-}
-
 inline std::vector<GfxMpsrtExternalBufferRole> gfx_mpsrt_external_buffer_roles_from_direct_io_spec(
     const GfxKernelExternalBufferAbiSpec& spec) {
     const uint32_t direct_io_count = spec.direct_input_count + spec.direct_output_count;
@@ -207,13 +273,10 @@ inline std::vector<GfxMpsrtValue> gfx_mpsrt_kernel_buffer_order_from_kernel_abi(
     }
 
     std::vector<GfxMpsrtExternalBufferRole> roles;
-    const uint32_t semantic_buffer_count = static_cast<uint32_t>(input_values.size() + output_values.size());
     if (!spec.roles.empty()) {
         roles = gfx_mpsrt_external_buffer_roles_from_kernel_roles(spec.roles);
     } else if (spec.direct_input_count != 0 || spec.direct_output_count != 0) {
         roles = gfx_mpsrt_external_buffer_roles_from_direct_io_spec(spec);
-    } else if (spec.leading_input_count != 0 || spec.leading_output_count != 0) {
-        roles = gfx_mpsrt_external_buffer_roles_from_leading_io_spec(spec, semantic_buffer_count);
     }
 
     return gfx_mpsrt_kernel_buffer_order_from_external_roles(roles, input_values, output_values);

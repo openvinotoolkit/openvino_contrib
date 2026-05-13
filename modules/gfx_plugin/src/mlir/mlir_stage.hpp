@@ -27,7 +27,7 @@ namespace gfx_plugin {
 
 struct MlirKernelPlanContext;
 struct MatMulCodegenDesc;
-struct GfxMslRuntimeBindingPlan;
+struct GfxMslGeneratedKernelSourcePlan;
 
 class MlirStage : public GpuStage {
 public:
@@ -51,6 +51,7 @@ public:
   set_outputs(const std::vector<std::unique_ptr<GpuTensor>> &outputs) override;
   void set_input_transform(size_t input_idx,
                            const GfxInputTransform &transform) override;
+  void set_runtime_options(const GpuStageRuntimeOptions &options) override;
 
   const std::string &name() const override { return m_name; }
   const std::string &type() const override { return m_type; }
@@ -146,6 +147,7 @@ protected:
   BatchNormParams m_bn_params{};
   bool m_has_bias = false;
   BiasParams m_bias_params{};
+  GfxStageRuntimeTraits m_runtime_traits{};
   void *m_profiler = nullptr;
   uint32_t m_profile_node_id = 0;
   std::string m_profile_node_name;
@@ -162,13 +164,19 @@ private:
   GfxStageOptimizationPlan stage_optimization_plan() const;
   bool is_conv_like() const;
   bool is_matmul_like() const;
+  void append_const_kernel_extra_input(std::vector<GpuTensor> &extra_inputs,
+                                       size_t input_idx,
+                                       std::string_view role_name) const;
+  bool refresh_conv2d_kernel_extra_inputs(const ov::Shape &input_shape,
+                                          const ov::Shape &output_shape,
+                                          ov::element::Type output_type);
+  bool refresh_conv3d_kernel_extra_inputs(const ov::Shape &input_shape,
+                                          const ov::Shape &output_shape);
   const GfxInputTransform *input_transform(size_t input_idx) const;
   ov::Shape compile_time_input_shape(size_t input_idx) const;
   std::vector<int32_t>
   compile_time_broadcast_strides(size_t input_idx,
                                  const ov::Shape &out_shape) const;
-  const std::vector<int64_t> &cached_constant_i64_input(size_t input_idx,
-                                                        const char *what);
   void apply_stage_optimization_attrs(mlir::ModuleOp module,
                                       const GfxStageOptimizationPlan &plan);
   void apply_input_transform_attrs(mlir::ModuleOp module) const;
@@ -177,9 +185,10 @@ private:
   void compile_prebuilt_kernel_source(const KernelSource &source,
                                       KernelRuntimeBindingState binding,
                                       std::string_view stage_kind);
+  void compile_generated_msl_source_plan(
+      const GfxMslGeneratedKernelSourcePlan &source_plan,
+      std::string_view stage_kind);
   KernelRuntimeBindingState resolved_kernel_runtime_binding_state() const;
-  std::vector<std::vector<int64_t>> m_cached_constant_i64_inputs;
-  std::vector<bool> m_cached_constant_i64_input_valid;
   std::vector<GpuTensor> m_small_i64_const_output_cache;
 };
 

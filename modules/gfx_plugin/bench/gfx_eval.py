@@ -21,10 +21,27 @@ from typing import Any, Dict, List, Optional
 GLOBAL_RE = re.compile(r"GLOBAL max_abs_diff=([0-9eE+.\-]+) max_rel_diff=([0-9eE+.\-]+)")
 REFERENCE_RE = re.compile(r"REFERENCE device=(.+)")
 GFX_ONLY_RE = re.compile(r"^GFX_ONLY$", re.MULTILINE)
-PER_OP_MATCH_RE = re.compile(r"^PER_OP_MATCH$", re.MULTILINE)
+PER_OP_MATCH_RE = re.compile(
+    r"^PER_OP_MATCH(?: max_abs=([0-9eE+.\-]+) max_rel=([0-9eE+.\-]+))?$",
+    re.MULTILINE,
+)
+PER_OP_MISMATCH_RE = re.compile(
+    r"^PER_OP_MISMATCH count=(\d+) max_abs=([0-9eE+.\-]+) max_rel=([0-9eE+.\-]+)$",
+    re.MULTILINE,
+)
+PER_OP_FIRST_MISMATCH_RE = re.compile(
+    r"^PER_OP_FIRST_MISMATCH op_index=(\d+) output_index=(\d+) name=(.+?) type=([^ ]+) "
+    r"max_index=(\d+) ref=([0-9eE+.\-]+) gfx=([0-9eE+.\-]+)$",
+    re.MULTILINE,
+)
+PER_OP_SKIPPED_COUNT_RE = re.compile(r"^PER_OP_SKIPPED count=(\d+)$", re.MULTILINE)
 PER_OP_RE = re.compile(
     r"^\[op (\d+)\] (.+?) \(([^()]+)\) max_abs_diff=([0-9eE+.\-]+) max_rel_diff=([0-9eE+.\-]+)$",
     re.MULTILINE,
+)
+PER_OP_SKIP_RE = re.compile(
+    r"^\[op (\d+)\] (.+?) \(([^()]+)\) (compile_skip|infer_skip)=(.*?)(?=^\[op \d+\]|^PER_OP_SKIPPED|\Z)",
+    re.MULTILINE | re.DOTALL,
 )
 GFX_OUTPUT_RE = re.compile(
     r"^(\S+)\s+elements=(\d+)\s+finite=(\d+)\s+nan=(\d+)\s+inf=(\d+)\s+min=([0-9eE+.\-]+)\s+max=([0-9eE+.\-]+)\s+mean=([0-9eE+.\-]+)\s+l2=([0-9eE+.\-]+)$",
@@ -64,6 +81,7 @@ def run_subprocess(argv: List[str],
                    *,
                    env: Optional[Dict[str, str]] = None,
                    stream_output: bool = False,
+                   allow_return_codes: Optional[set[int]] = None,
                    error_prefix: str = "command") -> str:
     log(f"run: {sh_join(redact_command(argv))}")
     proc = subprocess.Popen(argv,
@@ -79,7 +97,8 @@ def run_subprocess(argv: List[str],
             print(line, end="", file=sys.stderr, flush=True)
     return_code = proc.wait()
     stdout = "".join(stdout_chunks)
-    if return_code != 0:
+    accepted_return_codes = allow_return_codes or {0}
+    if return_code not in accepted_return_codes:
         raise RuntimeError(f"{error_prefix} failed ({return_code}): {sh_join(redact_command(argv))}\n{stdout}")
     return stdout
 
@@ -144,6 +163,15 @@ def parse_compare_output(stdout: str) -> Dict[str, object]:
             "max_abs_diff": float(match.group(4)),
             "max_rel_diff": float(match.group(5)),
         })
+    per_op_skipped = []
+    for match in PER_OP_SKIP_RE.finditer(stdout):
+        per_op_skipped.append({
+            "index": int(match.group(1)),
+            "name": match.group(2),
+            "type": match.group(3),
+            "stage": match.group(4).replace("_skip", ""),
+            "reason": match.group(5).strip(),
+        })
 
     if GFX_ONLY_RE.search(stdout):
         outputs = []
@@ -168,12 +196,51 @@ def parse_compare_output(stdout: str) -> Dict[str, object]:
 
     global_match = GLOBAL_RE.search(stdout)
     reference_match = REFERENCE_RE.search(stdout)
-    if per_op and not global_match and PER_OP_MATCH_RE.search(stdout):
+    skipped_count_match = PER_OP_SKIPPED_COUNT_RE.search(stdout)
+    mismatch_match = PER_OP_MISMATCH_RE.search(stdout)
+    first_mismatch_match = PER_OP_FIRST_MISMATCH_RE.search(stdout)
+    if skipped_count_match:
+        return {
+            "mode": "per_op_skipped",
+            "per_op_skipped": per_op_skipped,
+            "skipped_count": int(skipped_count_match.group(1)),
+        }
+    if per_op and mismatch_match:
+        result: Dict[str, object] = {
+            "mode": "per_op_mismatch",
+            "per_op": per_op,
+            "mismatch_count": int(mismatch_match.group(1)),
+            "max_abs_diff": float(mismatch_match.group(2)),
+            "max_rel_diff": float(mismatch_match.group(3)),
+        }
+        if first_mismatch_match:
+            result["first_mismatch"] = {
+                "index": int(first_mismatch_match.group(1)),
+                "output_index": int(first_mismatch_match.group(2)),
+                "name": first_mismatch_match.group(3),
+                "type": first_mismatch_match.group(4),
+                "max_index": int(first_mismatch_match.group(5)),
+                "ref": float(first_mismatch_match.group(6)),
+                "gfx": float(first_mismatch_match.group(7)),
+            }
+        return result
+    match_line = PER_OP_MATCH_RE.search(stdout)
+    if per_op and not global_match and match_line:
+        max_abs = (
+            float(match_line.group(1))
+            if match_line.group(1) is not None
+            else max(item["max_abs_diff"] for item in per_op)
+        )
+        max_rel = (
+            float(match_line.group(2))
+            if match_line.group(2) is not None
+            else max(item["max_rel_diff"] for item in per_op)
+        )
         return {
             "mode": "per_op",
             "per_op": per_op,
-            "max_abs_diff": max(item["max_abs_diff"] for item in per_op),
-            "max_rel_diff": max(item["max_rel_diff"] for item in per_op),
+            "max_abs_diff": max_abs,
+            "max_rel_diff": max_rel,
         }
     if not global_match:
         raise RuntimeError("failed to parse ov_gfx_compare_runner output")
@@ -252,7 +319,7 @@ class ExecContext:
     def prepare_lib_dir(self, path_str: str) -> str:
         raise NotImplementedError
 
-    def run(self, argv: List[str], env: Dict[str, str]) -> RunResult:
+    def run(self, argv: List[str], env: Dict[str, str], allow_return_codes: Optional[set[int]] = None) -> RunResult:
         raise NotImplementedError
 
     def make_report_dir(self, name: str) -> str:
@@ -277,10 +344,10 @@ class HostExecContext(ExecContext):
         path = resolve_existing_path(path_str)
         return str(path if path else path_str)
 
-    def run(self, argv: List[str], env: Dict[str, str]) -> RunResult:
+    def run(self, argv: List[str], env: Dict[str, str], allow_return_codes: Optional[set[int]] = None) -> RunResult:
         merged_env = os.environ.copy()
         merged_env.update(env)
-        stdout = run_subprocess(argv, env=merged_env, stream_output=True)
+        stdout = run_subprocess(argv, env=merged_env, stream_output=True, allow_return_codes=allow_return_codes)
         return RunResult(command=argv, stdout=stdout)
 
     def make_report_dir(self, name: str) -> str:
@@ -307,12 +374,17 @@ class AndroidExecContext(ExecContext):
         self._pushed_paths: Dict[str, str] = {}
         self._remote_lib_dirs: Dict[str, str] = {}
 
-    def _adb(self, args: List[str], stream_output: bool = False) -> str:
+    def _adb(self, args: List[str],
+             stream_output: bool = False,
+             allow_return_codes: Optional[set[int]] = None) -> str:
         cmd = ["adb"]
         if self.adb_serial:
             cmd.extend(["-s", self.adb_serial])
         cmd.extend(args)
-        return run_subprocess(cmd, stream_output=stream_output, error_prefix="adb command")
+        return run_subprocess(cmd,
+                              stream_output=stream_output,
+                              allow_return_codes=allow_return_codes,
+                              error_prefix="adb command")
 
     def _ensure_remote_dir(self) -> None:
         if self._created:
@@ -421,11 +493,11 @@ class AndroidExecContext(ExecContext):
         self._remote_lib_dirs[key] = remote_path
         return remote_path
 
-    def run(self, argv: List[str], env: Dict[str, str]) -> RunResult:
+    def run(self, argv: List[str], env: Dict[str, str], allow_return_codes: Optional[set[int]] = None) -> RunResult:
         self._ensure_remote_dir()
         exports = " ".join(f"{key}={shlex.quote(value)}" for key, value in env.items())
         shell_cmd = f"cd {shlex.quote(self.remote_dir)} && {exports} {sh_join(argv)}"
-        stdout = self._adb(["shell", shell_cmd], stream_output=True)
+        stdout = self._adb(["shell", shell_cmd], stream_output=True, allow_return_codes=allow_return_codes)
         return RunResult(command=["adb", "shell", shell_cmd], stdout=stdout)
 
     def make_report_dir(self, name: str) -> str:
@@ -454,6 +526,17 @@ def parse_device_file(path_str: str) -> Dict[str, str]:
         if not sep:
             continue
         payload[key.strip()] = value.strip().replace("\\ ", " ")
+    for prefix in ("ssh", "device"):
+        prefixed_login = f"{prefix}-login"
+        prefixed_password = f"{prefix}-password"
+        if "login" not in payload and prefixed_login in payload:
+            payload["login"] = payload[prefixed_login]
+        if "password" not in payload and prefixed_password in payload:
+            payload["password"] = payload[prefixed_password]
+    if "work_directory" not in payload:
+        work = payload.get("work.work_directory") or payload.get("work-directory")
+        if work:
+            payload["work_directory"] = work
     return payload
 
 
@@ -472,7 +555,10 @@ class SshExecContext(ExecContext):
     def _sshpass_prefix(self) -> List[str]:
         return ["sshpass", "-p", self.password]
 
-    def _ssh(self, remote_command: str, stream_output: bool = False) -> str:
+    def _ssh(self,
+             remote_command: str,
+             stream_output: bool = False,
+             allow_return_codes: Optional[set[int]] = None) -> str:
         cmd = self._sshpass_prefix() + [
             "ssh",
             "-o",
@@ -484,7 +570,10 @@ class SshExecContext(ExecContext):
             f"{self.user}@{self.host}",
             remote_command,
         ]
-        return run_subprocess(cmd, stream_output=stream_output, error_prefix="ssh command")
+        return run_subprocess(cmd,
+                              stream_output=stream_output,
+                              allow_return_codes=allow_return_codes,
+                              error_prefix="ssh command")
 
     def _scp(self, sources: List[str], destination: str, recursive: bool = False) -> None:
         cmd = self._sshpass_prefix() + ["scp"]
@@ -607,11 +696,11 @@ class SshExecContext(ExecContext):
         self._remote_lib_dirs[key] = remote_path
         return remote_path
 
-    def run(self, argv: List[str], env: Dict[str, str]) -> RunResult:
+    def run(self, argv: List[str], env: Dict[str, str], allow_return_codes: Optional[set[int]] = None) -> RunResult:
         self._ensure_remote_dir()
         exports = " ".join(f"{key}={shlex.quote(value)}" for key, value in env.items())
         shell_cmd = f"cd {shlex.quote(self.remote_dir)} && {exports} {sh_join(argv)}"
-        stdout = self._ssh(shell_cmd, stream_output=True)
+        stdout = self._ssh(shell_cmd, stream_output=True, allow_return_codes=allow_return_codes)
         return RunResult(command=["ssh", f"{self.user}@{self.host}", shell_cmd], stdout=stdout)
 
     def make_report_dir(self, name: str) -> str:
@@ -677,7 +766,7 @@ def run_compare(ctx: ExecContext,
         cmd.extend(["--reference-plugin", reference_plugin])
     cmd.extend(args.compare_arg)
     log(f"compare mode={'gfx_only' if args.gfx_only else args.reference_device + '_vs_GFX'}")
-    result = ctx.run(cmd, runtime_env)
+    result = ctx.run(cmd, runtime_env, allow_return_codes={0, 3, 4})
     metrics = parse_compare_output(result.stdout)
     metrics["command"] = sh_join(result.command)
     metrics["raw_output"] = result.stdout
@@ -802,6 +891,21 @@ def main() -> int:
         elif compare.get("mode") == "per_op":
             print(f"PER_OP_SUMMARY max_abs={compare['max_abs_diff']} max_rel={compare['max_rel_diff']}")
             print(f"PER_OP count={len(compare['per_op'])}")
+        elif compare.get("mode") == "per_op_mismatch":
+            print(
+                f"PER_OP_MISMATCH count={compare['mismatch_count']} "
+                f"max_abs={compare['max_abs_diff']} max_rel={compare['max_rel_diff']}"
+            )
+            if compare.get("first_mismatch"):
+                first = compare["first_mismatch"]
+                print(
+                    f"PER_OP_FIRST_MISMATCH op_index={first['index']} "
+                    f"output_index={first['output_index']} name={first['name']} "
+                    f"type={first['type']} max_index={first['max_index']} "
+                    f"ref={first['ref']} gfx={first['gfx']}"
+                )
+        elif compare.get("mode") == "per_op_skipped":
+            print(f"PER_OP_SKIPPED count={compare['skipped_count']}")
         else:
             reference_device = compare.get("reference_device", args.reference_device)
             print(f"ACCURACY {reference_device}_vs_GFX max_abs={compare['max_abs_diff']} max_rel={compare['max_rel_diff']}")

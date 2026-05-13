@@ -81,7 +81,6 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_dispatch.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_manifest.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_plan.hpp
-    ${_gfx_src_dir}/kernel_ir/gfx_kernel_spec.hpp
     ${_gfx_src_dir}/runtime/gfx_logger.hpp
     ${_gfx_src_dir}/runtime/gfx_mpsrt_abi.hpp
     ${_gfx_src_dir}/runtime/gfx_mpsrt_builder_plan.hpp
@@ -120,6 +119,7 @@ set(GFX_RUNTIME_COMMON_SOURCES
 )
 
 set(GFX_RUNTIME_MLIR_HEADERS
+    ${_gfx_src_dir}/mlir/gfx_backend_custom_kernel_adapter.hpp
     ${_gfx_src_dir}/mlir/gfx_apple_stage_pipeline.hpp
     ${_gfx_src_dir}/mlir/gfx_apple_vendor_descriptors.hpp
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.hpp
@@ -130,9 +130,10 @@ set(GFX_RUNTIME_MLIR_HEADERS
     ${_gfx_src_dir}/mlir/gfx_mpsrt_matmul_metadata.hpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_metadata.hpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_ops.hpp
-    ${_gfx_src_dir}/mlir/gfx_mpsrt_runtime_abi_pipeline.hpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_source_plan.hpp
     ${_gfx_src_dir}/mlir/gfx_mlir_debug.hpp
+    ${_gfx_src_dir}/mlir/gfx_stage_kernel_binding.hpp
+    ${_gfx_src_dir}/mlir/gfx_stage_runtime_values.hpp
     ${_gfx_src_dir}/mlir/mlir_kernel_plan_utils.hpp
     ${_gfx_src_dir}/mlir/mlir_stage.hpp
     ${_gfx_src_dir}/mlir/mlir_support.hpp
@@ -140,13 +141,14 @@ set(GFX_RUNTIME_MLIR_HEADERS
 )
 
 set(GFX_RUNTIME_MLIR_SOURCES
+    ${_gfx_src_dir}/mlir/gfx_backend_custom_kernel_adapter.cpp
     ${_gfx_src_dir}/mlir/gfx_apple_stage_pipeline.cpp
     ${_gfx_src_dir}/mlir/gfx_apple_vendor_descriptors.cpp
     ${_gfx_src_dir}/mlir/gfx_mlir_kernel_builder.cpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_dialect.cpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_matmul_metadata.cpp
     ${_gfx_src_dir}/mlir/gfx_mpsrt_ops.cpp
-    ${_gfx_src_dir}/mlir/gfx_mpsrt_runtime_abi_pipeline.cpp
+    ${_gfx_src_dir}/mlir/gfx_stage_runtime_values.cpp
     ${_gfx_src_dir}/mlir/mlir_stage.cpp
     ${_gfx_src_dir}/mlir/mlir_support.cpp
 )
@@ -157,6 +159,8 @@ set(GFX_RUNTIME_METAL_MSL_HEADERS
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_ops.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_common.hpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_op_kinds.hpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_slice_static.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_mps.hpp
     ${_gfx_src_dir}/mlir/msl_codegen.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_matmul_metal.hpp
@@ -177,12 +181,26 @@ set(GFX_RUNTIME_METAL_MSL_SOURCES
     ${_gfx_src_dir}/mlir/gathernd_codegen.cpp
     ${_gfx_src_dir}/mlir/interpolate_codegen.cpp
     ${_gfx_src_dir}/mlir/matmul_codegen.cpp
-    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_adapter.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_binding.cpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_data_movement.cpp
-    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_structural.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_concat_split.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_convert.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_elementwise.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_layout.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_reduction.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_shape.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_slice.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_slice_static.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_topk.cpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_dispatch.cpp
-    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_compute.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_convolution.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_matmul.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_llm.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_softmax.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_pool2d.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_unary.cpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_common.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_op_kinds.cpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_mps.cpp
     ${_gfx_src_dir}/mlir/msl_codegen.cpp
     ${_gfx_src_dir}/mlir/msl_codegen_attention.cpp

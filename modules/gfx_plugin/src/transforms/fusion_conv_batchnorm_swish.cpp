@@ -129,7 +129,7 @@ private:
 
 void add_conv_batchnorm_swish_fusion_patterns(mlir::RewritePatternSet& patterns,
                                               const FusionConfig& config) {
-    if (!config.enable_fusion) {
+    if (!config.enable_fusion || !config.enable_conv_swish_fusion) {
         return;
     }
     patterns.add<ConvBatchNormSwishFusionPattern>(patterns.getContext(), config, "gfx.Convolution");

@@ -578,6 +578,8 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
                         mlir::IntegerAttr::get(mlir::IndexType::get(ctx), kThreadH));
         module->setAttr("gfx.dispatch_threads_w",
                         mlir::IntegerAttr::get(mlir::IndexType::get(ctx), kThreadW));
+        module->setAttr("gfx.parallel_loop_dims",
+                        mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 64), 5));
     }
     auto tileH = rewriter.create<mlir::arith::ConstantIndexOp>(loc, tile_h);
     auto tileW = rewriter.create<mlir::arith::ConstantIndexOp>(loc, tile_w);
@@ -727,8 +729,10 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
                                         llvm::SmallVector<mlir::Value, 8> acc_kw(iter_args3.begin(), iter_args3.end());
                                         auto kh_mul = b5.create<mlir::arith::MulIOp>(loc5, iv_kh, dilH);
                                         auto kw_mul = b5.create<mlir::arith::MulIOp>(loc5, iv_kw, dilW);
-                                        auto w_val = b5.create<mlir::memref::LoadOp>(
-                                            loc5, filter, mlir::ValueRange{iv_oc, iv_ic, iv_kh, iv_kw}).getResult();
+                                        auto load_weight = [&](mlir::OpBuilder& b_acc, mlir::Location acc_loc) {
+                                            return b_acc.create<mlir::memref::LoadOp>(
+                                                acc_loc, filter, mlir::ValueRange{iv_oc, iv_ic, iv_kh, iv_kw}).getResult();
+                                        };
                                         llvm::SmallVector<mlir::Value, 8> next_accs;
                                         next_accs.reserve(acc_kw.size());
                                         for (int64_t i = 0; i < lane_count; ++i) {
@@ -759,6 +763,7 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
                                                             b_acc.setInsertionPointToStart(&ifop2.getThenRegion().front());
                                                             auto in_val = b_acc.create<mlir::memref::LoadOp>(
                                                                 acc_loc, conv_input, mlir::ValueRange{iv_n, iv_ic, ih, iw}).getResult();
+                                                            auto w_val = load_weight(b_acc, acc_loc);
                                                             auto mul = b_acc.create<mlir::arith::MulFOp>(acc_loc, in_val, w_val);
                                                             auto add = b_acc.create<mlir::arith::AddFOp>(acc_loc, acc_value, mul).getResult();
                                                             b_acc.create<mlir::scf::YieldOp>(acc_loc, mlir::ValueRange{add});
@@ -772,11 +777,13 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
                                                     }
                                                     auto in_val = b_acc.create<mlir::memref::LoadOp>(
                                                         acc_loc, conv_input, mlir::ValueRange{iv_n, iv_ic, ih, iw}).getResult();
+                                                    auto w_val = load_weight(b_acc, acc_loc);
                                                     auto mul = b_acc.create<mlir::arith::MulFOp>(acc_loc, in_val, w_val);
                                                     return b_acc.create<mlir::arith::AddFOp>(acc_loc, acc_value, mul).getResult();
                                                 }
                                                 auto in_val = b_acc.create<mlir::memref::LoadOp>(
                                                     acc_loc, conv_input, mlir::ValueRange{iv_n, iv_ic, ih_padded, iw_padded}).getResult();
+                                                auto w_val = load_weight(b_acc, acc_loc);
                                                 auto mul = b_acc.create<mlir::arith::MulFOp>(acc_loc, in_val, w_val);
                                                 return b_acc.create<mlir::arith::AddFOp>(acc_loc, acc_value, mul).getResult();
                                             };

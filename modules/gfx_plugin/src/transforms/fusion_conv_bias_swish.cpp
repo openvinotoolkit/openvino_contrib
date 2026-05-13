@@ -33,6 +33,10 @@ bool is_mul_op(mlir::Operation* op) {
     return op && op->getName().getStringRef() == "gfx.Multiply";
 }
 
+bool is_swish_op(mlir::Operation* op) {
+    return op && op->getName().getStringRef() == "gfx.Swish";
+}
+
 struct ConvBiasSwishFusionPattern final : public mlir::RewritePattern {
     ConvBiasSwishFusionPattern(mlir::MLIRContext* ctx, FusionConfig config, llvm::StringRef conv_name)
         : mlir::RewritePattern(conv_name, /*benefit=*/3, ctx), m_config(config) {}
@@ -67,10 +71,13 @@ struct ConvBiasSwishFusionPattern final : public mlir::RewritePattern {
         }
 
         auto add_out = add->getResult(0);
+        mlir::Operation* direct_swish = nullptr;
         mlir::Operation* sigmoid = nullptr;
         mlir::Operation* mul = nullptr;
         for (auto* user : add_out.getUsers()) {
-            if (is_sigmoid_op(user)) {
+            if (is_swish_op(user)) {
+                direct_swish = user;
+            } else if (is_sigmoid_op(user)) {
                 sigmoid = user;
             } else if (is_mul_op(user)) {
                 mul = user;
@@ -78,54 +85,77 @@ struct ConvBiasSwishFusionPattern final : public mlir::RewritePattern {
                 return mlir::failure();
             }
         }
-        if (!sigmoid || !mul) {
-            return mlir::failure();
-        }
-        if (sigmoid->getNumOperands() != 1 || sigmoid->getOperand(0) != add_out) {
-            return mlir::failure();
-        }
-        if (mul->getNumOperands() != 2) {
-            return mlir::failure();
-        }
-        auto sig_out = sigmoid->getResult(0);
-        const bool mul_ok = (mul->getOperand(0) == add_out && mul->getOperand(1) == sig_out) ||
-                            (mul->getOperand(1) == add_out && mul->getOperand(0) == sig_out);
-        if (!mul_ok) {
-            return mlir::failure();
-        }
-        mlir::Operation* sig_user = nullptr;
-        if (!has_single_user(sig_out, sig_user) || sig_user != mul) {
-            return mlir::failure();
-        }
 
         auto conv_idx = op->getAttrOfType<mlir::IntegerAttr>("gfx.node_index");
         auto add_idx = add->getAttrOfType<mlir::IntegerAttr>("gfx.node_index");
-        auto sig_idx = sigmoid->getAttrOfType<mlir::IntegerAttr>("gfx.node_index");
-        auto mul_idx = mul->getAttrOfType<mlir::IntegerAttr>("gfx.node_index");
-        if (!conv_idx || !add_idx || !sig_idx || !mul_idx) {
+        if (!conv_idx || !add_idx) {
             return mlir::failure();
         }
 
-        mlir::OperationState state(mul->getLoc(), "gfx.FusedConvBiasAct");
+        mlir::Operation* terminal = nullptr;
+        mlir::ArrayAttr fused_nodes;
+        if (direct_swish) {
+            if (sigmoid || mul || direct_swish->getNumOperands() != 1 ||
+                direct_swish->getOperand(0) != add_out) {
+                return mlir::failure();
+            }
+            auto swish_idx = direct_swish->getAttrOfType<mlir::IntegerAttr>("gfx.node_index");
+            if (!swish_idx) {
+                return mlir::failure();
+            }
+            terminal = direct_swish;
+            fused_nodes =
+                rewriter.getI64ArrayAttr({conv_idx.getInt(), add_idx.getInt(), swish_idx.getInt()});
+        } else {
+            if (!sigmoid || !mul) {
+                return mlir::failure();
+            }
+            if (sigmoid->getNumOperands() != 1 || sigmoid->getOperand(0) != add_out) {
+                return mlir::failure();
+            }
+            if (mul->getNumOperands() != 2) {
+                return mlir::failure();
+            }
+            auto sig_out = sigmoid->getResult(0);
+            const bool mul_ok = (mul->getOperand(0) == add_out && mul->getOperand(1) == sig_out) ||
+                                (mul->getOperand(1) == add_out && mul->getOperand(0) == sig_out);
+            if (!mul_ok) {
+                return mlir::failure();
+            }
+            mlir::Operation* sig_user = nullptr;
+            if (!has_single_user(sig_out, sig_user) || sig_user != mul) {
+                return mlir::failure();
+            }
+            auto sig_idx = sigmoid->getAttrOfType<mlir::IntegerAttr>("gfx.node_index");
+            auto mul_idx = mul->getAttrOfType<mlir::IntegerAttr>("gfx.node_index");
+            if (!sig_idx || !mul_idx) {
+                return mlir::failure();
+            }
+            terminal = mul;
+            fused_nodes = rewriter.getI64ArrayAttr(
+                {conv_idx.getInt(), add_idx.getInt(), sig_idx.getInt(), mul_idx.getInt()});
+        }
+
+        mlir::OperationState state(terminal->getLoc(), "gfx.FusedConvBiasAct");
         state.addOperands(op->getOperands());
         state.addOperands(bias);
-        state.addTypes(mul->getResultTypes());
+        state.addTypes(terminal->getResultTypes());
         state.addAttribute("gfx.node_index", conv_idx);
         if (auto name = op->getAttrOfType<mlir::StringAttr>("gfx.node_name")) {
             state.addAttribute("gfx.node_name", name);
         }
         state.addAttribute("gfx.node_type", rewriter.getStringAttr("FusedConvBiasAct"));
-        state.addAttribute(
-            "gfx.fused_nodes",
-            rewriter.getI64ArrayAttr({conv_idx.getInt(), add_idx.getInt(), sig_idx.getInt(), mul_idx.getInt()}));
+        state.addAttribute("gfx.fused_nodes", fused_nodes);
         state.addAttribute("gfx.fusion_kind", rewriter.getStringAttr("ConvBiasActivation"));
         state.addAttribute("gfx.activation_kind", rewriter.getStringAttr("Swish"));
         state.addAttribute("gfx.activation_alpha", rewriter.getF32FloatAttr(0.0f));
 
-        rewriter.setInsertionPoint(mul);
+        rewriter.setInsertionPoint(terminal);
         auto* fused = rewriter.insert(mlir::Operation::create(state));
-        rewriter.replaceOp(mul, fused->getResults());
-        rewriter.eraseOp(sigmoid);
+        rewriter.replaceOp(terminal, fused->getResults());
+        if (sigmoid) {
+            rewriter.eraseOp(sigmoid);
+        }
         rewriter.eraseOp(add);
         rewriter.eraseOp(op);
         return mlir::success();
@@ -139,7 +169,7 @@ private:
 
 void add_conv_bias_swish_fusion_patterns(mlir::RewritePatternSet& patterns,
                                          const FusionConfig& config) {
-    if (!config.enable_fusion) {
+    if (!config.enable_fusion || !config.enable_conv_swish_fusion) {
         return;
     }
     patterns.add<ConvBiasSwishFusionPattern>(patterns.getContext(), config, "gfx.Convolution");

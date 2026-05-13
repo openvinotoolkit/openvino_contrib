@@ -146,8 +146,9 @@ gfx_kernel_external_buffer_abi_spec_for_family(GfxKernelFamily family) {
                                       GfxKernelBufferRole::TensorOutput,
                                       GfxKernelBufferRole::RuntimeParams});
   case GfxKernelFamily::ReductionBuffer:
-    return make_gfx_kernel_leading_io_params_abi(/*input_count=*/1,
-                                                 /*output_count=*/1);
+    return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
+                                      GfxKernelBufferRole::TensorOutput,
+                                      GfxKernelBufferRole::RuntimeParams});
   case GfxKernelFamily::Conv2DDirectOrIm2col:
     return spec;
   case GfxKernelFamily::MatMulBuffer:
@@ -475,8 +476,11 @@ classify_gfx_custom_kernel_family(std::string_view stage_type,
       stage_type == "Acosh" || stage_type == "Atanh" || stage_type == "Sinh" ||
       stage_type == "Cosh" || stage_type == "Round" ||
       stage_type == "Convert" || entry_point == "eltwise_kernel" ||
+      entry_point == "eltwise_fused_buffer" ||
       entry_point == "unary_kernel" || entry_point == "select_kernel" ||
-      entry_point == "broadcast_kernel" || entry_point == "convert_kernel") {
+      entry_point == "broadcast_kernel" || entry_point == "convert_kernel" ||
+      stage_type == "ConvTextureSwishEpilogue" ||
+      entry_point == "gfx_mpsrt_conv_texture_swish_epilogue") {
     return GfxKernelFamily::EltwiseFusedBuffer;
   }
   if (stage_type == "Transpose" || stage_type == "Reshape" ||

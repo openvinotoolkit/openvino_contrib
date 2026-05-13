@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "mlir/msl_codegen_apple_msl_common.hpp"
 #include "openvino/core/except.hpp"
 #include "llvm/Support/Casting.h"
 
@@ -59,24 +60,6 @@ std::vector<int64_t> read_entry_argument_shape(mlir::ModuleOp module, size_t arg
     return shape;
 }
 
-std::vector<int64_t> read_absorbed_input_permutation(mlir::ModuleOp module, size_t input_idx) {
-    std::vector<int64_t> permutation;
-    if (!module) {
-        return permutation;
-    }
-    auto attr = module->getAttrOfType<mlir::ArrayAttr>("gfx.absorbed_input" + std::to_string(input_idx) + "_perm");
-    if (!attr) {
-        return permutation;
-    }
-    permutation.reserve(attr.size());
-    for (auto value : attr) {
-        auto int_attr = llvm::dyn_cast<mlir::IntegerAttr>(value);
-        OPENVINO_ASSERT(int_attr, "Conv2D codegen: absorbed input permutation attr must be integer");
-        permutation.push_back(int_attr.getInt());
-    }
-    return permutation;
-}
-
 bool read_bool_attr(mlir::ModuleOp module, const char* name) {
     if (!module) {
         return false;
@@ -123,7 +106,7 @@ std::string static_activation_expr(const std::string& kind, const char* value) {
         return "1.0f / (1.0f + exp(-" + x + "))";
     }
     if (kind == "Tanh") {
-        return "tanh(" + x + ")";
+        return msl_stable_tanh_expr(x);
     }
     if (kind == "Elu") {
         return "(" + x + " > 0.0f) ? " + x + " : (exp(" + x + ") - 1.0f) * p.alpha";
@@ -132,10 +115,10 @@ std::string static_activation_expr(const std::string& kind, const char* value) {
         return "(" + x + " >= 0.0f) ? " + x + " : " + x + " * p.alpha";
     }
     if (kind == "Gelu") {
-        return "0.5f * " + x + " * (1.0f + tanh(0.79788456f * (" + x + " + 0.044715f * " + x + " * " + x + " * " + x + ")))";
+        return msl_stable_gelu_tanh_expr(x);
     }
     if (kind == "Swish") {
-        return "(" + x + " >= 0.0f) ? (" + x + " / (1.0f + exp(-" + x + "))) : (" + x + " * exp(" + x + ") / (1.0f + exp(" + x + ")))";
+        return x + " / (1.0f + precise::exp(-" + x + "))";
     }
     if (kind == "HSwish") {
         return x + " * clamp(" + x + " + 3.0f, 0.0f, 6.0f) / 6.0f";
@@ -319,11 +302,11 @@ std::string generate_msl_for_conv2d(const Conv2DCodegenDesc& d, mlir::ModuleOp m
             ss << "    switch (p.activation) {\n";
             ss << "      case ActRelu: return max(acc, 0.0f);\n";
             ss << "      case ActSigmoid: return 1.0f / (1.0f + exp(-acc));\n";
-            ss << "      case ActTanh: return tanh(acc);\n";
+            ss << "      case ActTanh: return " << msl_stable_tanh_expr("acc") << ";\n";
             ss << "      case ActElu: return (acc > 0.0f) ? acc : (exp(acc) - 1.0f) * p.alpha;\n";
             ss << "      case ActPrelu: return (acc >= 0.0f) ? acc : acc * p.alpha;\n";
-            ss << "      case ActGelu: return 0.5f * acc * (1.0f + tanh(0.79788456f * (acc + 0.044715f * acc * acc * acc)));\n";
-            ss << "      case ActSwish: return (acc >= 0.0f) ? (acc / (1.0f + exp(-acc))) : (acc * exp(acc) / (1.0f + exp(acc)));\n";
+            ss << "      case ActGelu: return " << msl_stable_gelu_tanh_expr("acc") << ";\n";
+            ss << "      case ActSwish: return acc / (1.0f + precise::exp(-acc));\n";
             ss << "      case ActHSwish: return acc * clamp(acc + 3.0f, 0.0f, 6.0f) / 6.0f;\n";
             ss << "      case ActHSigmoid: return clamp(acc + 3.0f, 0.0f, 6.0f) / 6.0f;\n";
             ss << "      case ActAbs: return fabs(acc);\n";
@@ -597,13 +580,12 @@ std::string generate_msl_for_conv2d(const Conv2DCodegenDesc& d, mlir::ModuleOp m
     ss << "    switch (p.activation) {\n";
     ss << "      case ActRelu: acc = max(acc, static_cast<" << accum << ">(0.0f)); break;\n";
     ss << "      case ActSigmoid: acc = static_cast<" << accum << ">(1.0f) / (static_cast<" << accum << ">(1.0f) + exp(-acc)); break;\n";
-    ss << "      case ActTanh: acc = tanh(acc); break;\n";
+    ss << "      case ActTanh: acc = " << msl_stable_tanh_expr("acc") << "; break;\n";
     ss << "      case ActElu: acc = (acc > static_cast<" << accum << ">(0.0f)) ? acc : (exp(acc) - static_cast<" << accum << ">(1.0f)) * static_cast<" << accum << ">(p.alpha); break;\n";
     ss << "      case ActPrelu: acc = (acc >= static_cast<" << accum << ">(0.0f)) ? acc : acc * static_cast<" << accum << ">(p.alpha); break;\n";
-    ss << "      case ActGelu: acc = static_cast<" << accum << ">(0.5f) * acc * (static_cast<" << accum << ">(1.0f) + tanh(static_cast<" << accum << ">(0.79788456f) * (acc + static_cast<" << accum << ">(0.044715f) * acc * acc * acc))); break;\n";
-    ss << "      case ActSwish: acc = (acc >= static_cast<" << accum << ">(0.0f)) ? "
-          "(acc / (static_cast<" << accum << ">(1.0f) + exp(-acc))) : "
-          "(acc * exp(acc) / (static_cast<" << accum << ">(1.0f) + exp(acc))); break;\n";
+    ss << "      case ActGelu: acc = " << msl_stable_gelu_tanh_expr("acc") << "; break;\n";
+    ss << "      case ActSwish: acc = acc / (static_cast<" << accum
+       << ">(1.0f) + precise::exp(-acc)); break;\n";
     ss << "      case ActHSwish: acc = acc * clamp(acc + static_cast<" << accum << ">(3.0f), static_cast<" << accum << ">(0.0f), static_cast<" << accum << ">(6.0f)) / static_cast<" << accum << ">(6.0f); break;\n";
     ss << "      case ActHSigmoid: acc = clamp(acc + static_cast<" << accum << ">(3.0f), static_cast<" << accum << ">(0.0f), static_cast<" << accum << ">(6.0f)) / static_cast<" << accum << ">(6.0f); break;\n";
     ss << "      case ActAbs: acc = fabs(acc); break;\n";

@@ -5,17 +5,13 @@
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/msl_codegen.hpp"
 #include "openvino/core/node.hpp"
 #include "openvino/core/partial_shape.hpp"
 #include "openvino/core/shape.hpp"
-#include "openvino/core/type/element_type.hpp"
-#include "llvm/ADT/StringRef.h"
 
 namespace ov {
 namespace gfx_plugin {
@@ -35,16 +31,7 @@ ov::Shape output_shape_for_codegen(mlir::ModuleOp module,
                                    const std::shared_ptr<const ov::Node> &node);
 std::vector<int64_t> read_absorbed_input_permutation(mlir::ModuleOp module,
                                                      size_t input_idx);
-std::optional<EltwiseKind> eltwise_kind_from_node(const ov::Node &node);
-std::optional<ReduceKind> reduce_kind_from_node(const ov::Node &node);
-std::optional<ActivationKind>
-unary_activation_kind_from_node(const ov::Node &node);
-std::optional<ActivationKind>
-activation_kind_from_module_attr(mlir::ModuleOp module,
-                                 llvm::StringRef attr_name);
-std::string
-generate_static_msl_for_slice(const std::shared_ptr<const ov::Node> &node,
-                              const ov::element::Type &storage_type);
-
+std::string msl_stable_tanh_expr(const std::string &x);
+std::string msl_stable_gelu_tanh_expr(const std::string &x);
 } // namespace gfx_plugin
 } // namespace ov

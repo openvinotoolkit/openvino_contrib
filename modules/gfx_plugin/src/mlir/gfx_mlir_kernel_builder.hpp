@@ -13,7 +13,6 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "openvino/core/node.hpp"
 #include "kernel_ir/gfx_kernel_plan.hpp"
-#include "kernel_ir/gfx_kernel_spec.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -63,7 +62,6 @@ public:
     KernelPlan build_plan(const std::shared_ptr<const ov::Node>& node,
                           mlir::MLIRContext& ctx,
                           uint32_t arg_count) const;
-    KernelPlan build_plan(const KernelSpec& spec, mlir::MLIRContext& ctx) const;
 };
 
 }  // namespace gfx_plugin

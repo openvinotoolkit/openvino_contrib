@@ -17,10 +17,8 @@
 #include "mlir/IR/BuiltinOps.h"
 
 #include "openvino/core/node.hpp"
-#include "openvino/runtime/tensor.hpp"
 #include "openvino/op/constant.hpp"
-#include "openvino/op/convolution.hpp"
-#include "openvino/op/group_conv.hpp"
+#include "openvino/runtime/tensor.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -61,52 +59,46 @@ inline std::optional<ov::Tensor> gfx_evaluate_constant_source_tensor(const ov::O
     return outputs.at(source.get_index());
 }
 
-inline bool gfx_module_uses_mpsrt_conv_stage(mlir::ModuleOp module) {
-    if (!module) {
-        return false;
-    }
-    GfxMpsrtModuleStagePlan stage_plan;
-    if (read_module_mpsrt_stage_plan(module, stage_plan)) {
-        return stage_plan.stage.kind == GfxMpsrtStageKind::MPSConv2D ||
-               stage_plan.stage.kind == GfxMpsrtStageKind::MPSGroupConv2D;
+inline bool gfx_mpsrt_const_payload_already_attached(const KernelSource& source,
+                                                     GfxMpsrtValue value) {
+    for (const auto& payload : source.mpsrt_const_tensors) {
+        if (payload.value == value) {
+            return true;
+        }
     }
     return false;
 }
 
-inline bool gfx_should_attach_mpsrt_conv_const_weights(const std::shared_ptr<const ov::Node>& node,
-                                                       size_t input_idx,
-                                                       const ov::Tensor& tensor) {
-    if (input_idx != 1 || tensor.get_byte_size() == 0) {
-        return false;
-    }
-    const auto et = tensor.get_element_type();
-    if (et != ov::element::f16 && et != ov::element::f32) {
-        return false;
-    }
-    if (auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(node)) {
-        return conv->get_input_partial_shape(1).is_static() &&
-               conv->get_input_shape(1).size() == 4;
-    }
-    if (auto group_conv = ov::as_type_ptr<const ov::op::v1::GroupConvolution>(node)) {
-        return group_conv->get_input_partial_shape(1).is_static() &&
-               group_conv->get_input_shape(1).size() == 5;
-    }
-    return false;
+inline bool gfx_mpsrt_program_input_is_const(const GfxMpsrtProgram& program,
+                                             size_t input_idx) {
+    return input_idx < program.inputs.size() &&
+           (program.inputs[input_idx].flags & GfxMpsrtTensorFlagConst) != 0;
 }
 
-inline void gfx_attach_mpsrt_conv_const_tensors(KernelSource& source,
-                                                const std::shared_ptr<const ov::Node>& node) {
-    if (!node || !gfx_module_uses_mpsrt_conv_stage(source.module)) {
+inline void gfx_attach_mpsrt_const_tensors(KernelSource& source,
+                                           const std::shared_ptr<const ov::Node>& node) {
+    if (!node || !source.module) {
         return;
     }
-    for (size_t input_idx = 0; input_idx < node->get_input_size(); ++input_idx) {
+    GfxMpsrtProgram program{};
+    if (!read_module_mpsrt_program(source.module, program) || !program.valid) {
+        return;
+    }
+    const size_t input_count = std::min(node->get_input_size(), program.inputs.size());
+    for (size_t input_idx = 0; input_idx < input_count; ++input_idx) {
+        if (!gfx_mpsrt_program_input_is_const(program, input_idx)) {
+            continue;
+        }
         auto const_tensor = gfx_evaluate_constant_source_tensor(node->input_value(input_idx));
-        if (!const_tensor.has_value() ||
-            !gfx_should_attach_mpsrt_conv_const_weights(node, input_idx, *const_tensor)) {
+        if (!const_tensor.has_value() || const_tensor->get_byte_size() == 0) {
+            continue;
+        }
+        const auto value = static_cast<GfxMpsrtValue>(input_idx);
+        if (gfx_mpsrt_const_payload_already_attached(source, value)) {
             continue;
         }
         MpsrtConstTensorSource payload{};
-        payload.value = static_cast<GfxMpsrtValue>(input_idx);
+        payload.value = value;
         payload.bytes.resize(const_tensor->get_byte_size());
         std::memcpy(payload.bytes.data(), const_tensor->data(), payload.bytes.size());
         source.mpsrt_const_tensors.push_back(std::move(payload));

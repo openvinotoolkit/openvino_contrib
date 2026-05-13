@@ -34,7 +34,7 @@ struct ConvScaleActivationFusionPattern final : public mlir::RewritePattern {
 
     mlir::LogicalResult matchAndRewrite(mlir::Operation* op,
                                         mlir::PatternRewriter& rewriter) const override {
-        if (!m_config.enable_fusion) {
+        if (!m_config.enable_fusion || !m_config.enable_conv_activation_fusion) {
             return mlir::failure();
         }
         if (!is_conv_op(op) || op->getNumResults() != 1) {
@@ -111,7 +111,7 @@ private:
 
 void add_conv_scale_activation_fusion_patterns(mlir::RewritePatternSet& patterns,
                                                const FusionConfig& config) {
-    if (!config.enable_fusion) {
+    if (!config.enable_fusion || !config.enable_conv_activation_fusion) {
         return;
     }
     patterns.add<ConvScaleActivationFusionPattern>(patterns.getContext(), config, "gfx.Convolution");

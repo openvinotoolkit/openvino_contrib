@@ -1019,6 +1019,28 @@ TEST(GfxRuntime, VariadicSplitScaledOutputsMatchTemplate) {
 #endif
 }
 
+TEST(GfxRuntime, VariadicSplitInferredLengthOutputsMatchTemplate) {
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 96, 16});
+    auto split_axis = std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{}, std::vector<int64_t>{2});
+    auto split_lengths = std::make_shared<ov::op::v0::Constant>(ov::element::i64,
+                                                                ov::Shape{3},
+                                                                std::vector<int64_t>{24, -1, 24});
+    auto split = std::make_shared<ov::op::v1::VariadicSplit>(param, split_axis, split_lengths);
+    ov::ResultVector results{
+        std::make_shared<ov::op::v0::Result>(split->output(0)),
+        std::make_shared<ov::op::v0::Result>(split->output(1)),
+        std::make_shared<ov::op::v0::Result>(split->output(2)),
+    };
+    auto model = std::make_shared<ov::Model>(results, ov::ParameterVector{param}, "variadic_split_inferred_length");
+
+    ov::Tensor input(ov::element::f32, ov::Shape{1, 4, 96, 16});
+    for (size_t i = 0; i < input.get_size(); ++i) {
+        input.data<float>()[i] = static_cast<float>((static_cast<int>(i % 251) - 125)) * 0.03125f;
+    }
+
+    compare_model_in_subprocess(model, {input}, 20, 1e-4f, 0.f);
+}
+
 TEST(GfxRuntime, VariadicSplitDualScaledMatMulMatchesTemplate) {
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1, 4, 96, 400});
     auto split_axis = std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{}, std::vector<int64_t>{2});

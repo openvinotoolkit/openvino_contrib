@@ -29,6 +29,7 @@ Useful properties include:
 - `GFX_PROFILING_LEVEL`
 - `GFX_PROFILING_REPORT`
 - `GFX_MEM_STATS`
+- `GFX_DIAGNOSTIC_F32_MPS_IMAGE`
 - `ov::available_devices`
 - `ov::device::id`
 - `ov::cache_dir`
@@ -37,6 +38,10 @@ Useful properties include:
 
 `ov::available_devices` now exposes stable numeric ids such as `"0"`. Use
 `ov::device::full_name` when you need the human-readable backend device name.
+
+`GFX_DIAGNOSTIC_F32_MPS_IMAGE` is a Metal-only diagnostic compile property for
+quality investigations of selected `f32` Conv/GroupConv/Pool MPSImage routes.
+Do not use it as a production placement policy.
 
 ## Selecting The Backend
 The backend can be selected globally for the device:

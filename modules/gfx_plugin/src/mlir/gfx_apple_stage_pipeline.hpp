@@ -97,7 +97,6 @@ enum class GfxAppleStagePipelinePassKind {
     VendorDescriptor,
     StageManifest,
     RuntimeAbi,
-    RuntimeAbiCallPlan,
 };
 
 const char* gfx_apple_stage_pipeline_pass_name(GfxAppleStagePipelinePassKind kind);

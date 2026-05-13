@@ -49,6 +49,36 @@ inline bool strip_strided_func_layouts(mlir::ModuleOp module, bool log_debug) {
         updated = true;
     });
 
+    module.walk([&](mlir::memref::CollapseShapeOp op) {
+        auto src_type = mlir::dyn_cast<mlir::MemRefType>(op.getSrcType());
+        auto res_type = mlir::dyn_cast<mlir::MemRefType>(op.getType());
+        if (!src_type || !res_type || !src_type.getLayout().isIdentity() ||
+            res_type.getLayout().isIdentity() || !res_type.hasStaticShape()) {
+            return;
+        }
+        auto fixed = mlir::MemRefType::get(res_type.getShape(),
+                                           res_type.getElementType(),
+                                           mlir::AffineMap(),
+                                           res_type.getMemorySpace());
+        op.getResult().setType(fixed);
+        updated = true;
+    });
+
+    module.walk([&](mlir::memref::ExpandShapeOp op) {
+        auto src_type = mlir::dyn_cast<mlir::MemRefType>(op.getSrcType());
+        auto res_type = mlir::dyn_cast<mlir::MemRefType>(op.getType());
+        if (!src_type || !res_type || !src_type.getLayout().isIdentity() ||
+            res_type.getLayout().isIdentity() || !res_type.hasStaticShape()) {
+            return;
+        }
+        auto fixed = mlir::MemRefType::get(res_type.getShape(),
+                                           res_type.getElementType(),
+                                           mlir::AffineMap(),
+                                           res_type.getMemorySpace());
+        op.getResult().setType(fixed);
+        updated = true;
+    });
+
     if (updated && log_debug) {
         llvm::errs() << "[GFX][MLIR] Stripped strided layouts from func arguments\n";
     }

@@ -1048,12 +1048,17 @@ protected:
             kernel_work >= 512 && input_channels >= wave * 4u && output_channels >= wave * 4u;
         const bool compute_ultra_dense =
             kernel_work >= 1024 && input_channels >= wave * 8u && output_channels >= wave * 8u;
+        const bool pointwise_or_light_reduction =
+            !depthwise && spatially_huge && kernel_work <= wave * 4u && output_channels >= wave * 2u;
         if (!depthwise && spatially_huge) {
             const uint32_t huge_spatial_threads =
                 output_channels >= wave * 2u ? std::max<uint32_t>(wave * 4u, max_threads / 4u) : wave * 2u;
             default_threads = clamp_threadgroup_candidate(caps, huge_spatial_threads);
         } else if (!depthwise && spatially_large && output_channels >= wave * 2u) {
             default_threads = clamp_threadgroup_candidate(caps, wave * 2u);
+        }
+        if (pointwise_or_light_reduction) {
+            default_threads = max_threads;
         }
         if (!depthwise && compute_dense && spatial >= 1024) {
             default_threads = clamp_threadgroup_candidate(caps, stride2 ? wave * 4u : wave * 2u);

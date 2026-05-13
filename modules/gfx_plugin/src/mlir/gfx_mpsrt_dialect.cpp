@@ -13,30 +13,36 @@ namespace gfx_plugin {
 namespace mpsrt {
 namespace {
 
-llvm::StringRef expected_stage_kind_for_op(llvm::StringRef op_name) {
+struct ExpectedStageManifest {
+    llvm::StringRef backend_domain;
+    llvm::StringRef execution_kind;
+    llvm::StringRef stage_family;
+};
+
+ExpectedStageManifest expected_manifest_for_stage_op(llvm::StringRef op_name) {
     if (op_name == "gfx.mpsrt.conv2d") {
-        return "mps_conv2d";
+        return {"apple_mps", "vendor_primitive", "convolution"};
     }
     if (op_name == "gfx.mpsrt.group_conv2d") {
-        return "mps_group_conv2d";
+        return {"apple_mps", "vendor_primitive", "group_convolution"};
     }
     if (op_name == "gfx.mpsrt.pool2d") {
-        return "mps_pool2d";
+        return {"apple_mps", "vendor_primitive", "pooling"};
     }
     if (op_name == "gfx.mpsrt.resize2d") {
-        return "mps_resize2d";
+        return {"apple_mps", "vendor_primitive", "resize"};
     }
     if (op_name == "gfx.mpsrt.gemm") {
-        return "mps_gemm";
+        return {"apple_mps", "vendor_primitive", "gemm"};
     }
     if (op_name == "gfx.mpsrt.softmax") {
-        return "mps_softmax";
+        return {"apple_mps", "vendor_primitive", "softmax"};
     }
     if (op_name == "gfx.mpsrt.topk") {
-        return "mps_topk";
+        return {"apple_mps", "vendor_primitive", "topk"};
     }
     if (op_name == "gfx.mpsrt.dispatch") {
-        return "msl_dispatch";
+        return {"apple_msl", "custom_kernel", {}};
     }
     return {};
 }
@@ -128,17 +134,14 @@ mlir::LogicalResult verify_gfx_mpsrt_op(mlir::Operation* op,
         return verify_storage_conversion_op(op, op_name, expected_target_storage);
     }
 
-    const auto expected_stage_kind = expected_stage_kind_for_op(op_name);
-    if (expected_stage_kind.empty()) {
+    const auto expected_manifest = expected_manifest_for_stage_op(op_name);
+    if (expected_manifest.backend_domain.empty()) {
         return op->emitOpError() << "has unknown MPSRT op name '" << op_name << "'";
     }
     if (mlir::failed(require_integer_attr(op, "gfx.mpsrt.op.stage_index")) ||
         mlir::failed(require_array_attr(op, "gfx.mpsrt.op.input_values")) ||
         mlir::failed(require_array_attr(op, "gfx.mpsrt.op.output_values")) ||
         mlir::failed(require_integer_attr(op, "gfx.mpsrt.op.output_count")) ||
-        mlir::failed(require_string_attr(op, "gfx.mpsrt.op.stage.backend")) ||
-        mlir::failed(require_string_attr(op, "gfx.mpsrt.op.stage.stage_kind")) ||
-        mlir::failed(require_string_attr(op, "gfx.mpsrt.op.stage.stage_record_key")) ||
         mlir::failed(require_string_attr(op, "gfx.stage_manifest.stage_family")) ||
         mlir::failed(require_string_attr(op, "gfx.stage_manifest.backend_domain")) ||
         mlir::failed(require_string_attr(op, "gfx.stage_manifest.execution_kind")) ||
@@ -146,11 +149,25 @@ mlir::LogicalResult verify_gfx_mpsrt_op(mlir::Operation* op,
         return mlir::failure();
     }
 
-    auto stage_kind = op->getAttrOfType<mlir::StringAttr>("gfx.mpsrt.op.stage.stage_kind");
-    if (stage_kind.strref() != expected_stage_kind) {
-        return op->emitOpError() << "stage kind '" << stage_kind.strref()
+    auto backend_domain = op->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.backend_domain");
+    if (backend_domain.strref() != expected_manifest.backend_domain) {
+        return op->emitOpError() << "manifest backend domain '" << backend_domain.strref()
                                  << "' does not match op name; expected '"
-                                 << expected_stage_kind << "'";
+                                 << expected_manifest.backend_domain << "'";
+    }
+    auto execution_kind = op->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.execution_kind");
+    if (execution_kind.strref() != expected_manifest.execution_kind) {
+        return op->emitOpError() << "manifest execution kind '" << execution_kind.strref()
+                                 << "' does not match op name; expected '"
+                                 << expected_manifest.execution_kind << "'";
+    }
+    if (!expected_manifest.stage_family.empty()) {
+        auto stage_family = op->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.stage_family");
+        if (stage_family.strref() != expected_manifest.stage_family) {
+            return op->emitOpError() << "manifest stage family '" << stage_family.strref()
+                                     << "' does not match op name; expected '"
+                                     << expected_manifest.stage_family << "'";
+        }
     }
     if (op_name == "gfx.mpsrt.dispatch" &&
         mlir::failed(require_string_attr(op, "gfx.stage_manifest.kernel.entry_point"))) {

@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "mlir/msl_codegen.hpp"
+#include "mlir/msl_codegen_compressed_matmul.hpp"
 
+#include "mlir/codegen_common.hpp"
+#include "mlir/gfx_backend_custom_kernel_adapter.hpp"
+#include "mlir/msl_codegen_apple_msl_dispatch.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/concat.hpp"
@@ -486,42 +489,16 @@ std::string generate_msl_for_compressed_matmul(const CompressedMatMulInfo &info,
   return ss.str();
 }
 
-KernelSource
-make_compressed_matmul_msl_kernel_source(const CompressedMatMulInfo &info,
-                                         uint32_t reduction_threads,
-                                         uint32_t output_block) {
+GfxMslGeneratedKernelSourcePlan
+make_compressed_matmul_msl_kernel_source_plan(const CompressedMatMulInfo &info,
+                                              uint32_t reduction_threads,
+                                              uint32_t output_block) {
   KernelSource source;
   source.entry_point = "compressed_matmul_kernel";
   source.msl_source =
       generate_msl_for_compressed_matmul(info, reduction_threads, output_block);
-  source.signature.output_arg_count = 1;
-  return source;
-}
-
-GfxCompressedMatMulMslKernelSourcePlan
-make_compressed_matmul_msl_kernel_source_plan(const CompressedMatMulInfo &info,
-                                              uint32_t reduction_threads,
-                                              uint32_t output_block) {
-  GfxCompressedMatMulMslKernelSourcePlan plan{};
-  auto source = make_compressed_matmul_msl_kernel_source(
-      info, reduction_threads, output_block);
-  plan.custom_kernel_plan =
-      make_gfx_custom_kernel_stage_plan("CompressedMatMul", source.entry_point);
-  if (!plan.custom_kernel_plan.valid) {
-    return {};
-  }
-  source.msl_source = normalize_msl_source_for_kernel_plan(
-      std::move(source.msl_source), source.entry_point,
-      plan.custom_kernel_plan);
-  source.entry_point =
-      plan.custom_kernel_plan.stage_manifest.custom_kernel.entry_point;
-  plan.binding = make_msl_runtime_binding_plan_from_stage_manifest(
-      plan.custom_kernel_plan.stage_manifest);
-  if (!plan.binding.valid()) {
-    return {};
-  }
-  plan.source = std::move(source);
-  return plan;
+  return make_msl_generated_custom_kernel_source_plan(std::move(source),
+                                                      "CompressedMatMul");
 }
 
 } // namespace gfx_plugin

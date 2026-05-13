@@ -21,7 +21,14 @@ id<MTLComputePipelineState> MetalKernelCompiler::compile_msl_from_source(const s
     if (gfx_log_config().level >= GfxLogLevel::Trace) {
         gfx_log_trace("msl") << "[GFX MSL] source dump (" << (entry_point ? entry_point : "") << "):\n" << source;
     }
-    opts.fastMathEnabled = NO;
+    if (@available(macOS 15.0, *)) {
+        opts.mathMode = MTLMathModeSafe;
+    } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        opts.fastMathEnabled = NO;
+#pragma clang diagnostic pop
+    }
     const char* dump_env = std::getenv("OV_GFX_DEBUG_MSL");
     if (dump_env && std::string(dump_env) != "0") {
         gfx_log_trace("msl") << "[GFX MSL] source dump (" << (entry_point ? entry_point : "") << "):\n" << source;

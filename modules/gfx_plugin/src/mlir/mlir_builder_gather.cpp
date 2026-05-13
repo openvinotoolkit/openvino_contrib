@@ -137,38 +137,38 @@ mlir::ModuleOp build_mlir_gather_from_model(const std::shared_ptr<const ov::Mode
             }
 
             auto idx_val = gb.create<mlir::tensor::ExtractOp>(gen_loc, func.getArgument(1), idx_indices).getResult();
-            mlir::Value idx_i64 = idx_val;
-            if (idx_val.getType().isInteger(32)) {
-                idx_i64 = gb.create<mlir::arith::ExtSIOp>(gen_loc, mlir::IntegerType::get(&ctx, 64), idx_val).getResult();
-            } else if (!idx_val.getType().isInteger(64)) {
+            mlir::Value idx_index;
+            if (idx_val.getType().isInteger(64)) {
+                auto idx_i32 = gb.create<mlir::arith::TruncIOp>(gen_loc, mlir::IntegerType::get(&ctx, 32), idx_val).getResult();
+                idx_index = gb.create<mlir::arith::IndexCastOp>(gen_loc, gb.getIndexType(), idx_i32).getResult();
+            } else if (idx_val.getType().isInteger(32)) {
+                idx_index = gb.create<mlir::arith::IndexCastOp>(gen_loc, gb.getIndexType(), idx_val).getResult();
+            } else {
                 OPENVINO_THROW("Gather MLIR: only i32/i64 indices are supported");
             }
 
             auto axis_dim = gb.create<mlir::tensor::DimOp>(gen_loc, func.getArgument(0), axis).getResult();
-            auto axis_dim_i64 = gb.create<mlir::arith::IndexCastOp>(gen_loc, mlir::IntegerType::get(&ctx, 64), axis_dim)
-                                    .getResult();
-            auto zero_i64 = gb.create<mlir::arith::ConstantIntOp>(gen_loc, 0, 64).getResult();
-            auto one_i64 = gb.create<mlir::arith::ConstantIntOp>(gen_loc, 1, 64).getResult();
-            auto max_i64 = gb.create<mlir::arith::SubIOp>(gen_loc, axis_dim_i64, one_i64).getResult();
+            auto zero_index = gb.create<mlir::arith::ConstantIndexOp>(gen_loc, 0).getResult();
+            auto one_index = gb.create<mlir::arith::ConstantIndexOp>(gen_loc, 1).getResult();
+            auto max_index = gb.create<mlir::arith::SubIOp>(gen_loc, axis_dim, one_index).getResult();
 
             auto neg_pred =
-                gb.create<mlir::arith::CmpIOp>(gen_loc, mlir::arith::CmpIPredicate::slt, idx_i64, zero_i64).getResult();
-            auto idx_plus = gb.create<mlir::arith::AddIOp>(gen_loc, idx_i64, axis_dim_i64).getResult();
-            auto idx_fixed = gb.create<mlir::arith::SelectOp>(gen_loc, neg_pred, idx_plus, idx_i64).getResult();
+                gb.create<mlir::arith::CmpIOp>(gen_loc, mlir::arith::CmpIPredicate::slt, idx_index, zero_index).getResult();
+            auto idx_plus = gb.create<mlir::arith::AddIOp>(gen_loc, idx_index, axis_dim).getResult();
+            auto idx_fixed = gb.create<mlir::arith::SelectOp>(gen_loc, neg_pred, idx_plus, idx_index).getResult();
 
             auto lt0 = gb.create<mlir::arith::CmpIOp>(gen_loc,
                                                       mlir::arith::CmpIPredicate::slt,
                                                       idx_fixed,
-                                                      zero_i64)
+                                                      zero_index)
                            .getResult();
             auto gtmax = gb.create<mlir::arith::CmpIOp>(gen_loc,
                                                         mlir::arith::CmpIPredicate::sgt,
                                                         idx_fixed,
-                                                        max_i64)
+                                                        max_index)
                              .getResult();
-            auto idx_clamped = gb.create<mlir::arith::SelectOp>(gen_loc, lt0, zero_i64, idx_fixed).getResult();
-            idx_clamped = gb.create<mlir::arith::SelectOp>(gen_loc, gtmax, max_i64, idx_clamped).getResult();
-            auto idx_index = gb.create<mlir::arith::IndexCastOp>(gen_loc, gb.getIndexType(), idx_clamped).getResult();
+            idx_index = gb.create<mlir::arith::SelectOp>(gen_loc, lt0, zero_index, idx_fixed).getResult();
+            idx_index = gb.create<mlir::arith::SelectOp>(gen_loc, gtmax, max_index, idx_index).getResult();
 
             llvm::SmallVector<mlir::Value> data_indices;
             data_indices.reserve(rank_data);
