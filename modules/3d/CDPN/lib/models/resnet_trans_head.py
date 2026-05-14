@@ -45,14 +45,14 @@ class TransHeadNet(nn.Module):
             with torch.no_grad():
                 for i, l in enumerate(self.features):
                     x = l(x)
-                x = x.view(-1, 256*8*8)
+                x = x.reshape(-1, 256*8*8)
                 for i, l in enumerate(self.linears):
                     x = l(x)
                 return x.detach()
         else:
             for i, l in enumerate(self.features):
                 x = l(x)
-            x = x.view(-1, 256*8*8)
+            x = x.reshape(-1, 256*8*8)
             for i, l in enumerate(self.linears):
                 x = l(x)
             return x

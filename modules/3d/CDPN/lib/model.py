@@ -3,7 +3,15 @@ import ref
 import torch
 import torch.nn as nn
 from torch.utils import model_zoo
-from torchvision.models.resnet import model_urls, BasicBlock, Bottleneck
+from torchvision.models.resnet import BasicBlock, Bottleneck
+try:
+    from torchvision.models.resnet import model_urls
+except ImportError:
+    model_urls = {
+        "resnet18": "https://download.pytorch.org/models/resnet18-f37072fd.pth",
+        "resnet34": "https://download.pytorch.org/models/resnet34-b627a593.pth",
+        "resnet50": "https://download.pytorch.org/models/resnet50-0676ba61.pth",
+    }
 import os, sys
 
 cur_dir = os.path.dirname(os.path.abspath(__file__))

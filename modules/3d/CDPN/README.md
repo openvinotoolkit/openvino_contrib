@@ -1,15 +1,39 @@
+# Note
+
+_This directory is a fork from [CDPN_ICCV2019_ZhigangLi](https://github.com/LZGMatrix/CDPN_ICCV2019_ZhigangLi) (commit 625f9a8)._
+-----------------------
+
+<details>
+<summary style="font-size:1.5em; font-weight:600">XPU Inference</summary>
+
+To run the inference in intel xpu for lm_full dataset the following command can be used:
+```bash
+python xpu_infer.py \
+   --cfg tools/exps_cfg/config_rot_trans.yaml \
+   --load_model checkpoints/stage3.checkpoint \
+   --xpu 0 \
+   --dataset_dir dataset/lm_full \
+   --batch_size 4 \
+   --obj_name all \
+   --max_samples 0
+```
+</details>
+
+
+
+
 ## News:
 - Our CDPN wins "The Best RGB-Only Method Awards" on the BOP Challenge on ICCV2019 (code link: https://github.com/LZGMatrix/BOP19_CDPN_2019ICCV).
 - Our CDPNv2 wins the "The Best Methods on Individual Datasets" on the BOP Challenge on ECCV2020 (code link: https://github.com/LZGMatrix/BOP19_CDPN_2019ICCV/tree/bop2020).
 
 # CDPN: Coordinates-based Disentangled Pose Network for Real-time RGB-based 6-DoF Object Pose Estimation
 
-> [CDPN: Coordinates-based Disentangled Pose Network for Real-time RGB-based 6-DoF Object Pose Estimation](https://openaccess.thecvf.com/content_ICCV_2019/papers/Li_CDPN_Coordinates-Based_Disentangled_Pose_Network_for_Real-Time_RGB-Based_6-DoF_Object_ICCV_2019_paper.pdf)  
-> Zhigang Li, Gu Wang, Xiangyang Ji   
-> ICCV 2019 (Oral) 
+> [CDPN: Coordinates-based Disentangled Pose Network for Real-time RGB-based 6-DoF Object Pose Estimation](https://openaccess.thecvf.com/content_ICCV_2019/papers/Li_CDPN_Coordinates-Based_Disentangled_Pose_Network_for_Real-Time_RGB-Based_6-DoF_Object_ICCV_2019_paper.pdf)
+> Zhigang Li, Gu Wang, Xiangyang Ji
+> ICCV 2019 (Oral)
 > [paper](https://openaccess.thecvf.com/content_ICCV_2019/papers/Li_CDPN_Coordinates-Based_Disentangled_Pose_Network_for_Real-Time_RGB-Based_6-DoF_Object_ICCV_2019_paper.pdf), [supplement](https://openaccess.thecvf.com/content_ICCV_2019/supplemental/Li_CDPN_Coordinates-Based_Disentangled_ICCV_2019_supplemental.pdf), [oral](https://www.youtube.com/watch?v=zem03fZWLrQ)
 
-We provide the clean-version training code of our ICCV 2019 paper ["CDPN: Coordinates-based Disentangled Pose Network for Real-time RGB-based 6-DoF Object Pose Estimation"](https://openaccess.thecvf.com/content_ICCV_2019/papers/Li_CDPN_Coordinates-Based_Disentangled_Pose_Network_for_Real-Time_RGB-Based_6-DoF_Object_ICCV_2019_paper.pdf). This code can perfectly reproduce the impressive results of our paper. 
+We provide the clean-version training code of our ICCV 2019 paper ["CDPN: Coordinates-based Disentangled Pose Network for Real-time RGB-based 6-DoF Object Pose Estimation"](https://openaccess.thecvf.com/content_ICCV_2019/papers/Li_CDPN_Coordinates-Based_Disentangled_Pose_Network_for_Real-Time_RGB-Based_6-DoF_Object_ICCV_2019_paper.pdf). This code can perfectly reproduce the impressive results of our paper.
 
 If you find this code useful for your research, please cite our paper:
 
@@ -25,7 +49,7 @@ year = {2019}
 
 ## Overview
 6-DoF object pose estimation from a single RGB image is a fundamental and long-standing problem in computer vision. Current leading approaches solve it by training deep networks to either regress both rotation and translation from image directly or to construct 2D-3D correspondences and further solve them via PnP indirectly. We argue that rotation and translation should be treated differently for their significant difference. In this work, we propose a novel 6-DoF pose estimation approach: Coordinates-based Disentangled Pose Network (CDPN), which disentangles the pose to predict rotation and translation separately to achieve highly accurate and robust pose estimation. Our method is flexible, efficient, highly accurate and can deal with texture-less and occluded objects. Extensive experiments on LINEMOD and Occlusion datasets are conducted and demonstrate the superiority of our approach. Concretely, our approach significantly exceeds the state-of-theart RGB-based methods on commonly used metrics.
-   
+
 ![overview](./asserts/overview.png)
 
 ### Results in our paper
@@ -44,7 +68,7 @@ numpy==1.19.3
 opencv==4.5.0
 tensorboardx==2.1
 
-Other dependencies: 
+Other dependencies:
 yaml, pickle, pyparsing, progress, plyfile, scipy, tqdm, glob, os, sys...
 ```
 
@@ -122,7 +146,7 @@ sh train_stage3.sh
 
 For testing various models trained in stage1, stage2 and stage3:
 
-1. Edit the config file by: 
+1. Edit the config file by:
    - Setting the "test" from False to True.
    - Setting the "load_model" with path of the testing model.
 2. cd tools; and run:
