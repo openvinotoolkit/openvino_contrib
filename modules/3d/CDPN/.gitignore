@@ -127,9 +127,10 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# custom 
+# custom
 dataset
 exp
 cache
 dataset_cache
 dataset_preparation
+checkpoints
