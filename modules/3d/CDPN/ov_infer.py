@@ -633,7 +633,7 @@ def main():
                         help='Run on CPU')
     parser.add_argument('--gpu', action='store_true',
                         help='Run on GPU (Intel Arc)')
-    parser.add_argument('--obj_name', type=str, default=None,
+    parser.add_argument('--obj_name', type=str, default='all',
                         help='Object name(s), comma-separated (default: all)')
     parser.add_argument('--max_samples', type=int, default=0,
                         help='Max samples per object (0 = all)')

@@ -442,7 +442,7 @@ def main():
     parser.add_argument('--dataset_dir', type=str, required=True,
                         help='Dataset dir with models/ and real_test/')
     parser.add_argument('--batch_size', type=int, default=4)
-    parser.add_argument('--obj_name', type=str, default=None,
+    parser.add_argument('--obj_name', type=str, default='all',
                         help='Object name(s), comma-separated (default: all)')
     parser.add_argument('--max_samples', type=int, default=0,
                         help='Max samples per object (0 = all)')

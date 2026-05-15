@@ -13,13 +13,39 @@ python xpu_infer.py \
    --load_model checkpoints/stage3.checkpoint \
    --xpu 0 \
    --dataset_dir dataset/lm_full \
-   --batch_size 4 \
-   --obj_name all \
-   --max_samples 0
+   --batch_size 4
 ```
 </details>
 
+<details>
+<summary style="font-size:1.5em; font-weight:600">OpenVINO Inference</summary>
 
+Build the plugins:
+```bash
+bash ov_plugins/build.sh
+```
+
+Export the model to OpenVINO IR format:
+```bash
+python ov_export.py \
+   --cfg tools/exps_cfg/config_rot_trans.yaml \
+   --load_model /workspace/checkpoints/stage3.checkpoint \
+   --output_dir checkpoints \
+   --basename cdpn_stage3 \
+   --verify
+```
+
+For extended nn (pre/post-processing till pnpsolve in OV graph), add `--extnn` and for end-to-end (full graph with custom ops through OV), add `--e2e --extension ov_plugins/build/cdpn_cpu/cdpn_cpu_extension.so`.
+
+To run the inference through OpenVINO for lm_full dataset the following command can be used:
+```bash
+python ov_infer.py \
+   --model checkpoints/<cdpn_stage3|cdpn_stage3_extnn|cdpn_stage3_e2e>.xml \
+   --dataset_dir dataset/lm_full \
+   --<cpu|gpu> \
+   --batch_size 4
+```
+</details>
 
 
 ## News:
