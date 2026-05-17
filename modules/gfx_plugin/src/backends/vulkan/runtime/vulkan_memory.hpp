@@ -17,7 +17,8 @@ namespace gfx_plugin {
 GpuBuffer vulkan_allocate_buffer(size_t bytes,
                                  ov::element::Type type,
                                  VkBufferUsageFlags usage,
-                                 VkMemoryPropertyFlags properties);
+                                 VkMemoryPropertyFlags properties,
+                                 const char* label = nullptr);
 GpuBuffer vulkan_upload_device_buffer(const void* src,
                                       size_t bytes,
                                       ov::element::Type type,

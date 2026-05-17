@@ -12,6 +12,7 @@
 #include "mlir/gfx_backend_custom_kernel_adapter.hpp"
 #include "mlir/gfx_mpsrt_metadata.hpp"
 #include "openvino/core/except.hpp"
+#include "runtime/gfx_compile_profiling.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -202,11 +203,17 @@ GfxMatMulMpsrtLoweringKind annotate_module_with_matmul_mpsrt_plan(
     const MatMulCodegenDesc& desc,
     const ov::Shape& shape_a,
     const ov::Shape& shape_b) {
-    if (!module || !can_lower_matmul_to_mpsrt_gemm(desc)) {
+    if (!module) {
+        increment_compile_counter("matmul_mpsrt_reject_no_module_count");
+        return GfxMatMulMpsrtLoweringKind::None;
+    }
+    if (!can_lower_matmul_to_mpsrt_gemm(desc)) {
+        increment_compile_counter("matmul_mpsrt_reject_batch_broadcast_count");
         return GfxMatMulMpsrtLoweringKind::None;
     }
     if (plan.placement.domain != GfxStageBackendDomain::AppleMps ||
         !plan.placement.uses_vendor_primitive) {
+        increment_compile_counter("matmul_mpsrt_reject_non_mps_placement_count");
         return GfxMatMulMpsrtLoweringKind::None;
     }
 
@@ -243,22 +250,27 @@ GfxMatMulMpsrtLoweringKind annotate_module_with_matmul_mpsrt_plan(
                                            GfxStageStorageKind::Matrix,
                                            GfxMpsrtTensorFlagExternalIo),
                 contract)) {
+            increment_compile_counter("matmul_mpsrt_reject_contract_count");
             return GfxMatMulMpsrtLoweringKind::None;
         }
 
         const auto materialized =
             materialize_apple_mps_vendor_contract_program(module, plan, "MatMul", contract);
         if (!materialized.valid || !materialized.typed_program_materialized) {
+            increment_compile_counter("matmul_mpsrt_reject_materialization_count");
             return GfxMatMulMpsrtLoweringKind::None;
         }
+        increment_compile_counter("matmul_mpsrt_accept_mps_gemm_count");
         return GfxMatMulMpsrtLoweringKind::MpsGemm;
     }
 
     if (desc.has_activation && !is_supported_mpsrt_matmul_epilogue_activation(desc.activation)) {
+        increment_compile_counter("matmul_mpsrt_reject_unsupported_epilogue_activation_count");
         return GfxMatMulMpsrtLoweringKind::None;
     }
 
     annotate_module_with_matmul_mpsrt_epilogue_plan(module, desc, shape_a, shape_b);
+    increment_compile_counter("matmul_mpsrt_accept_mps_gemm_msl_epilogue_count");
     return GfxMatMulMpsrtLoweringKind::MpsGemmWithMslEpilogue;
 }
 

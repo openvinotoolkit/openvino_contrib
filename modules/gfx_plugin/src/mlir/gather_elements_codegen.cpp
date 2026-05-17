@@ -39,40 +39,49 @@ std::string generate_msl_for_gather_elements(const GatherElementsCodegenDesc& d,
     ss << "#include <metal_stdlib>\nusing namespace metal;\n";
     ss << "using scalar_t = " << scalar_t << ";\n";
     ss << "using index_t = " << index_t << ";\n";
-    ss << "struct GatherElementsParams {\n";
-    ss << "  uint rank;\n";
-    ss << "  uint axis;\n";
-    ss << "  uint total;\n";
-    ss << "  uint out_dims[" << GatherElementsCodegenDesc::kMaxDims << "];\n";
-    ss << "  uint out_strides[" << GatherElementsCodegenDesc::kMaxDims << "];\n";
-    ss << "  uint data_dims[" << GatherElementsCodegenDesc::kMaxDims << "];\n";
-    ss << "  uint data_strides[" << GatherElementsCodegenDesc::kMaxDims << "];\n";
+    ss << "enum : uint {\n";
+    ss << "  kGatherElementsRankOffset = "
+       << GatherElementsCodegenDesc::kRankOffset << ",\n";
+    ss << "  kGatherElementsAxisOffset = "
+       << GatherElementsCodegenDesc::kAxisOffset << ",\n";
+    ss << "  kGatherElementsTotalOffset = "
+       << GatherElementsCodegenDesc::kTotalOffset << ",\n";
+    ss << "  kGatherElementsOutDimsOffset = "
+       << GatherElementsCodegenDesc::kOutDimsOffset << ",\n";
+    ss << "  kGatherElementsOutStridesOffset = "
+       << GatherElementsCodegenDesc::kOutStridesOffset << ",\n";
+    ss << "  kGatherElementsDataDimsOffset = "
+       << GatherElementsCodegenDesc::kDataDimsOffset << ",\n";
+    ss << "  kGatherElementsDataStridesOffset = "
+       << GatherElementsCodegenDesc::kDataStridesOffset << "\n";
     ss << "};\n";
     ss << "kernel void gather_elements_kernel(\n";
     ss << "  device const scalar_t* data [[buffer(0)]],\n";
     ss << "  device const index_t* indices [[buffer(1)]],\n";
     ss << "  device scalar_t* out [[buffer(2)]],\n";
-    ss << "  constant GatherElementsParams& p [[buffer(3)]],\n";
+    ss << "  constant uint* p [[buffer(3)]],\n";
     ss << "  uint gid [[thread_position_in_grid]]) {\n";
-    ss << "  if (gid >= p.total) return;\n";
+    ss << "  uint rank = p[kGatherElementsRankOffset];\n";
+    ss << "  uint axis = p[kGatherElementsAxisOffset];\n";
+    ss << "  uint total = p[kGatherElementsTotalOffset];\n";
+    ss << "  if (gid >= total) return;\n";
     ss << "  uint coord[" << GatherElementsCodegenDesc::kMaxDims << "];\n";
-    ss << "  for (uint i = 0; i < p.rank; ++i) {\n";
-    ss << "    uint stride = p.out_strides[i];\n";
-    ss << "    uint dim = p.out_dims[i];\n";
+    ss << "  for (uint i = 0; i < rank; ++i) {\n";
+    ss << "    uint stride = p[kGatherElementsOutStridesOffset + i];\n";
+    ss << "    uint dim = p[kGatherElementsOutDimsOffset + i];\n";
     ss << "    uint c = stride ? (gid / stride) % dim : 0;\n";
     ss << "    coord[i] = c;\n";
     ss << "  }\n";
     ss << "  long ix = (long)indices[gid];\n";
-    ss << "  uint axis = p.axis;\n";
-    ss << "  long axis_dim = (long)p.data_dims[axis];\n";
+    ss << "  long axis_dim = (long)p[kGatherElementsDataDimsOffset + axis];\n";
     ss << "  if (axis_dim <= 0) return;\n";
     ss << "  if (ix < 0) ix += axis_dim;\n";
     ss << "  if (ix < 0) ix = 0;\n";
     ss << "  if (ix >= axis_dim) ix = axis_dim - 1;\n";
     ss << "  uint in_idx = 0;\n";
-    ss << "  for (uint i = 0; i < p.rank; ++i) {\n";
+    ss << "  for (uint i = 0; i < rank; ++i) {\n";
     ss << "    uint c = (i == axis) ? (uint)ix : coord[i];\n";
-    ss << "    in_idx += c * p.data_strides[i];\n";
+    ss << "    in_idx += c * p[kGatherElementsDataStridesOffset + i];\n";
     ss << "  }\n";
     ss << "  out[gid] = data[in_idx];\n";
     ss << "}\n";

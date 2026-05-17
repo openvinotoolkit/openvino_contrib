@@ -59,6 +59,8 @@ struct KernelDispatch {
 };
 
 struct KernelExecutionHooks {
+    std::string_view stage_name;
+    std::string_view stage_type;
     std::function<void(GpuCommandEncoderHandle)> on_begin;
     std::function<void(GpuCommandEncoderHandle)> on_end;
     std::function<void()> on_complete;

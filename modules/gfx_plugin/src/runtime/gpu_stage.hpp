@@ -34,7 +34,7 @@ struct GpuStageOutputLifetime {
 };
 
 struct GpuStageRuntimeOptions {
-  bool diagnostic_f32_mps_image = false;
+  bool diagnostic_f32_vendor_image = false;
 };
 
 // Backend-neutral execution stage interface.

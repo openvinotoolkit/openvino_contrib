@@ -8,8 +8,8 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Builders.h"
@@ -31,20 +31,10 @@ std::vector<int64_t> get_const_i64(const std::shared_ptr<const ov::Node>& node) 
     return c->cast_vector<int64_t>();
 }
 
-std::vector<int64_t> compute_strides(const ov::Shape& shape) {
-    std::vector<int64_t> strides(shape.size(), 1);
-    int64_t acc = 1;
-    for (int64_t i = static_cast<int64_t>(shape.size()) - 1; i >= 0; --i) {
-        strides[static_cast<size_t>(i)] = acc;
-        acc *= static_cast<int64_t>(shape[static_cast<size_t>(i)]);
-    }
-    return strides;
-}
-
 }  // namespace
 
 mlir::ModuleOp build_mlir_tile_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx) {
-    ctx.loadDialect<mlir::func::FuncDialect, mlir::tensor::TensorDialect, mlir::arith::ArithDialect,
+    ctx.loadDialect<mlir::func::FuncDialect, mlir::memref::MemRefDialect, mlir::arith::ArithDialect,
                     mlir::scf::SCFDialect>();
 
     std::shared_ptr<const ov::op::v0::Tile> tile;
@@ -67,86 +57,98 @@ mlir::ModuleOp build_mlir_tile_from_model(const std::shared_ptr<const ov::Model>
                         i);
     }
 
-    auto elem_ty = to_mlir_type(tile->get_output_element_type(0), ctx, /*fallback_f32=*/false,
+    const auto output_element_type = tile->get_output_element_type(0);
+    auto elem_ty = to_mlir_type(output_element_type, ctx, /*fallback_f32=*/false,
                                 /*allow_unsigned=*/true);
-    mlir::SmallVector<int64_t> in_dims(in_shape.begin(), in_shape.end());
-    mlir::SmallVector<int64_t> out_dims(out_shape.begin(), out_shape.end());
-    auto in_ty = mlir::RankedTensorType::get(in_dims, elem_ty);
-    auto out_ty = mlir::RankedTensorType::get(out_dims, elem_ty);
-
-    auto in_strides = compute_strides(in_shape);
-    auto out_strides = compute_strides(out_shape);
+    const bool use_i64_lane_storage =
+        output_element_type == ov::element::i64 ||
+        output_element_type == ov::element::u64;
     const int64_t out_total = static_cast<int64_t>(ov::shape_size(out_shape));
 
     mlir::OpBuilder mb(&ctx);
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+    module->setAttr("gfx.prefer_parallel", mb.getBoolAttr(true));
+    if (use_i64_lane_storage) {
+        module->setAttr("gfx.i64_storage_i32_lanes", mb.getBoolAttr(true));
+    }
     mb.setInsertionPointToStart(module.getBody());
+    auto storage_ty = use_i64_lane_storage ? static_cast<mlir::Type>(mb.getI32Type()) : elem_ty;
+    auto flat_data_ty = mlir::MemRefType::get({mlir::ShapedType::kDynamic}, storage_ty);
+    auto scalar_ty = mlir::MemRefType::get({1}, mb.getI32Type());
+    auto shape_ty = mlir::MemRefType::get({static_cast<int64_t>(std::max<size_t>(out_shape.size(), 1))},
+                                          mb.getI32Type());
     auto func = mb.create<mlir::func::FuncOp>(mlir::UnknownLoc::get(&ctx), "tile_main",
-                                              mb.getFunctionType({in_ty}, {out_ty}));
+                                              mb.getFunctionType({flat_data_ty,
+                                                                  flat_data_ty,
+                                                                  scalar_ty,
+                                                                  scalar_ty,
+                                                                  shape_ty,
+                                                                  shape_ty,
+                                                                  shape_ty,
+                                                                  shape_ty},
+                                                                 {}));
     func.addEntryBlock();
 
     mlir::OpBuilder b(func.getBody());
     auto loc = mlir::UnknownLoc::get(&ctx);
     b.setInsertionPointToStart(&func.getBody().front());
 
-    auto out_flat_ty = mlir::RankedTensorType::get({out_total}, elem_ty);
-    auto in_flat_ty = mlir::RankedTensorType::get({static_cast<int64_t>(ov::shape_size(in_shape))}, elem_ty);
-
-    auto collapse = [&](size_t rank) {
-        mlir::SmallVector<mlir::ReassociationIndices> reassoc;
-        mlir::ReassociationIndices group;
-        for (size_t i = 0; i < rank; ++i)
-            group.push_back(static_cast<int64_t>(i));
-        reassoc.push_back(group);
-        return reassoc;
-    };
-
-    mlir::Value in_flat = func.getArgument(0);
-    if (in_shape.size() > 1) {
-        in_flat = b.create<mlir::tensor::CollapseShapeOp>(loc, in_flat_ty, in_flat, collapse(in_shape.size()));
-    }
-    mlir::Value out_flat = b.create<mlir::tensor::EmptyOp>(loc, mlir::ArrayRef<int64_t>{out_total}, elem_ty);
-
     auto c0 = b.create<mlir::arith::ConstantIndexOp>(loc, 0);
     auto c1 = b.create<mlir::arith::ConstantIndexOp>(loc, 1);
-    auto c_out = b.create<mlir::arith::ConstantIndexOp>(loc, out_total);
+    auto c2 = b.create<mlir::arith::ConstantIndexOp>(loc, 2);
+    auto load_i32_as_index = [&](mlir::OpBuilder& ib, mlir::Value buffer, mlir::Value index) -> mlir::Value {
+        auto value = ib.create<mlir::memref::LoadOp>(loc, buffer, mlir::ValueRange{index}).getResult();
+        return ib.create<mlir::arith::IndexCastOp>(loc, ib.getIndexType(), value).getResult();
+    };
+    auto c_out = load_i32_as_index(b, func.getArgument(2), c0);
+    auto c_rank = load_i32_as_index(b, func.getArgument(3), c0);
+    auto c_static_out = b.create<mlir::arith::ConstantIndexOp>(loc, out_total);
+    auto out_limit = b.create<mlir::arith::MinUIOp>(loc, c_out, c_static_out).getResult();
 
-    auto loop = b.create<mlir::scf::ForOp>(loc, c0, c_out, c1, mlir::ValueRange{out_flat});
+    auto loop = b.create<mlir::scf::ParallelOp>(loc,
+                                                mlir::ValueRange{c0},
+                                                mlir::ValueRange{out_limit},
+                                                mlir::ValueRange{c1});
     {
         auto* body = loop.getBody();
         mlir::OpBuilder lb(body, body->begin());
-        auto iv = loop.getInductionVar();
-        auto acc = loop.getRegionIterArgs()[0];
+        auto iv = loop.getInductionVars()[0];
 
         mlir::Value idx = iv;
         mlir::Value in_linear = lb.create<mlir::arith::ConstantIndexOp>(loc, 0);
 
         for (size_t d = 0; d < out_shape.size(); ++d) {
-            auto stride = lb.create<mlir::arith::ConstantIndexOp>(loc, out_strides[d]);
+            auto axis = lb.create<mlir::arith::ConstantIndexOp>(loc, static_cast<int64_t>(d));
+            auto stride = load_i32_as_index(lb, func.getArgument(6), axis);
             auto out_i = lb.create<mlir::arith::DivUIOp>(loc, idx, stride).getResult();
             idx = lb.create<mlir::arith::RemUIOp>(loc, idx, stride).getResult();
 
             auto in_i = out_i;
-            auto in_dim = lb.create<mlir::arith::ConstantIndexOp>(loc, static_cast<int64_t>(in_shape[d]));
+            auto in_dim = load_i32_as_index(lb, func.getArgument(5), axis);
             in_i = lb.create<mlir::arith::RemUIOp>(loc, in_i, in_dim).getResult();
 
-            auto in_stride = lb.create<mlir::arith::ConstantIndexOp>(loc, in_strides[d]);
+            auto in_stride = load_i32_as_index(lb, func.getArgument(7), axis);
             auto scaled = lb.create<mlir::arith::MulIOp>(loc, in_i, in_stride).getResult();
             in_linear = lb.create<mlir::arith::AddIOp>(loc, in_linear, scaled).getResult();
         }
 
-        auto val = lb.create<mlir::tensor::ExtractOp>(loc, in_flat, mlir::ValueRange{in_linear}).getResult();
-        auto updated = lb.create<mlir::tensor::InsertOp>(loc, val, acc, mlir::ValueRange{iv}).getResult();
-        lb.create<mlir::scf::YieldOp>(loc, updated);
+        (void)c_rank;
+        if (use_i64_lane_storage) {
+            auto in_base = lb.create<mlir::arith::MulIOp>(loc, in_linear, c2).getResult();
+            auto out_base = lb.create<mlir::arith::MulIOp>(loc, iv, c2).getResult();
+            auto in_hi = lb.create<mlir::arith::AddIOp>(loc, in_base, c1).getResult();
+            auto out_hi = lb.create<mlir::arith::AddIOp>(loc, out_base, c1).getResult();
+            auto low = lb.create<mlir::memref::LoadOp>(loc, func.getArgument(0), mlir::ValueRange{in_base}).getResult();
+            auto high = lb.create<mlir::memref::LoadOp>(loc, func.getArgument(0), mlir::ValueRange{in_hi}).getResult();
+            lb.create<mlir::memref::StoreOp>(loc, low, func.getArgument(1), mlir::ValueRange{out_base});
+            lb.create<mlir::memref::StoreOp>(loc, high, func.getArgument(1), mlir::ValueRange{out_hi});
+        } else {
+            auto val = lb.create<mlir::memref::LoadOp>(loc, func.getArgument(0), mlir::ValueRange{in_linear}).getResult();
+            lb.create<mlir::memref::StoreOp>(loc, val, func.getArgument(1), mlir::ValueRange{iv});
+        }
     }
-    out_flat = loop.getResults()[0];
 
-    mlir::Value out_val = out_flat;
-    if (out_shape.size() > 1) {
-        out_val = b.create<mlir::tensor::ExpandShapeOp>(loc, out_ty, out_flat, collapse(out_shape.size()));
-    }
-
-    b.create<mlir::func::ReturnOp>(loc, out_val);
+    b.create<mlir::func::ReturnOp>(loc);
     return module;
 }
 

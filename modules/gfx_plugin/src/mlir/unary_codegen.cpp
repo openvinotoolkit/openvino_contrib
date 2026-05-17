@@ -15,7 +15,7 @@ namespace {
 std::string activation_expr(ActivationKind kind, float alpha, double clamp_min, double clamp_max) {
     switch (kind) {
         case ActivationKind::Relu: return "max(x, 0.0f)";
-        case ActivationKind::Sigmoid: return "1.0f / (1.0f + exp(-x))";
+        case ActivationKind::Sigmoid: return "1.0f / (1.0f + precise::exp(-x))";
         case ActivationKind::Tanh: return msl_stable_tanh_expr("x");
         case ActivationKind::Elu: return "(x > 0.0f) ? x : (exp(x) - 1.0f) * " + std::to_string(alpha);
         case ActivationKind::Prelu: return "(x >= 0.0f) ? x : x * " + std::to_string(alpha);

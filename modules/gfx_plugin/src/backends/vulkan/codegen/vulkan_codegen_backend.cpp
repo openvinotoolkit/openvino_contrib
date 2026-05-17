@@ -30,6 +30,11 @@ namespace {
 
 constexpr uint32_t kCachedDescriptorSetsPerPool = 32;
 
+bool module_has_spirv_launch_adapter_attrs(mlir::ModuleOp module) {
+    return module && module->hasAttr("gfx.kernel_operand_kinds") &&
+           module->hasAttr("gfx.kernel_operand_arg_indices");
+}
+
 std::string sanitize_cache_path_component(std::string value) {
     for (char& ch : value) {
         const bool ok = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
@@ -1463,17 +1468,19 @@ std::shared_ptr<ICompiledKernel> VulkanCodegenBackend::compile(const KernelSourc
     const bool has_manifest_arg_count = infer_kernel_arg_count_from_stage_manifest(
         module, manifest_arg_count, entry, GfxKernelBackendDomain::Spirv);
     uint32_t arg_count = static_cast<uint32_t>(
-        has_manifest_arg_count
-            ? manifest_arg_count
-            : infer_kernel_arg_count_from_module(
-                  module,
-                  spirv_binding_count != 0 ? spirv_binding_count
-                                           : source.signature.arg_count,
-                  entry,
-                  GfxKernelBackendDomain::Spirv));
-    if (!has_manifest_arg_count && spirv_binding_count != 0 &&
+        infer_kernel_arg_count_from_module(
+            module,
+            spirv_binding_count != 0 ? spirv_binding_count
+                                     : source.signature.arg_count,
+            entry,
+            GfxKernelBackendDomain::Spirv));
+    const bool has_spirv_launch_adapter =
+        module_has_spirv_launch_adapter_attrs(module);
+    if (spirv_binding_count != 0 &&
         spirv_binding_count != arg_count) {
-        arg_count = spirv_binding_count;
+        if (!has_manifest_arg_count && !has_spirv_launch_adapter) {
+            arg_count = spirv_binding_count;
+        }
     }
     const uint32_t binding_count = arg_count != 0 ? arg_count : spirv_binding_count;
     if (const char* dump_env = std::getenv("OV_GFX_DUMP_SPIRV_BINDINGS")) {

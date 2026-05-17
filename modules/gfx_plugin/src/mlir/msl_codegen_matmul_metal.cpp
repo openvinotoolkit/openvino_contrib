@@ -4,14 +4,11 @@
 
 #include "mlir/msl_codegen_matmul_metal.hpp"
 
-#include "kernel_ir/gfx_kernel_manifest.hpp"
-#include "mlir/codegen_common.hpp"
-#include "mlir/gfx_backend_custom_kernel_adapter.hpp"
 #include "mlir/gfx_mlir_kernel_builder.hpp"
-#include "mlir/gfx_mpsrt_metadata.hpp"
-#include "mlir/mlir_kernel_plan_utils.hpp"
-#include "mlir/msl_codegen_apple_msl_dispatch.hpp"
 #include "mlir/msl_codegen_matmul_mpsrt.hpp"
+#include "openvino/core/shape_util.hpp"
+#include "openvino/op/matmul.hpp"
+#include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 #include "transforms/mlir_fused_ops.hpp"
 
@@ -30,71 +27,6 @@ resolve_matmul_buffer_type(const ov::element::Type &type,
     return type;
   }
   return fallback == ov::element::dynamic ? ov::element::f32 : fallback;
-}
-
-GfxKernelExternalBufferAbiSpec make_matmul_bias_external_buffer_abi() {
-  return make_gfx_kernel_roles_abi(
-      {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorInput,
-       GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput});
-}
-
-uint32_t resolve_matmul_source_arg_count(mlir::ModuleOp module,
-                                         uint32_t arg_count,
-                                         const KernelArgMappingInfo &info) {
-  const uint32_t inferred_total = static_cast<uint32_t>(
-      infer_kernel_arg_count_from_module(module, info.signature.total(),
-                                         /*entry_point=*/{}));
-  if (arg_count != 0) {
-    return arg_count;
-  }
-  return inferred_total;
-}
-
-GfxMpsrtKernelSourcePlan make_matmul_msl_fallback_source_plan(
-    mlir::ModuleOp module, const GpuBufferManager *buffer_manager,
-    const std::shared_ptr<const ov::Node> &node,
-    const MatMulCodegenDesc &desc) {
-  if (!module || !node) {
-    return {};
-  }
-
-  constexpr const char *kStageType = "MatMul";
-  constexpr const char *kEntryPoint = "matmul_kernel";
-  const uint32_t arg_count = desc.has_bias ? 4u : 3u;
-  auto plan = select_stage_optimization_plan(
-      buffer_manager, GpuBackend::Metal, kStageType, node, desc.output_type,
-      desc.has_bias, desc.has_activation,
-      /*has_batchnorm=*/false, GfxStageRuntimeTraits{});
-  force_apple_msl_buffer_placement(plan, kStageType);
-  annotate_msl_module_with_stage_plan(module, plan, kStageType, kEntryPoint);
-  if (desc.has_bias) {
-    GfxKernelStageManifest manifest{};
-    if (detail::gfx_mpsrt_read_stage_manifest_attrs(module, manifest) &&
-        manifest.custom_kernel.valid) {
-      manifest.custom_kernel.external_buffer_abi =
-          make_matmul_bias_external_buffer_abi();
-      detail::gfx_mpsrt_set_stage_manifest_attrs(module, manifest);
-    }
-  }
-
-  auto plan_ctx = build_mlir_kernel_plan(
-      module, kEntryPoint, node,
-      /*output_args_override=*/0,
-      /*extra_inputs=*/0, node->get_friendly_name().c_str(), "gfx_kernel",
-      [&](const KernelArgMappingInfo &info) -> size_t {
-        return resolve_matmul_source_arg_count(module, arg_count, info);
-      });
-  auto source_desc = desc;
-  auto source = plan_ctx.build_info.plan.to_source_with_msl_generator(
-      [source_desc](mlir::ModuleOp mod) {
-        return generate_msl_from_mlir(mod, source_desc);
-      });
-  OPENVINO_ASSERT(
-      configure_backend_custom_kernel_source_signature_from_module(source),
-      "GFX Metal MSL: failed to configure MatMul source "
-      "signature from stage manifest");
-
-  return configure_msl_kernel_source_plan(std::move(source), kStageType);
 }
 
 GfxMpsrtKernelSourcePlan lower_matmul_node_to_metal_kernel_source_plan(
@@ -133,14 +65,69 @@ GfxMpsrtKernelSourcePlan lower_matmul_node_to_metal_kernel_source_plan(
   auto mpsrt_source = lower_matmul_module_to_mpsrt_plan(
       module, placement, desc, shape_a, shape_b);
   if (mpsrt_source.valid()) {
+    increment_compile_counter("matmul_metal_source_plan_mpsrt_count");
     return std::move(mpsrt_source.mpsrt_plan);
   }
 
-  return make_matmul_msl_fallback_source_plan(module, buffer_manager, node,
-                                              desc);
+  increment_compile_counter("matmul_metal_source_plan_mpsrt_reject_count");
+  OPENVINO_THROW(
+      "GFX Metal: MatMul/GEMM could not be materialized through the "
+      "MPS/MPSGraph-family MPSRT route. Fix or extend that route before using "
+      "an MSL custom MatMul kernel.");
 }
 
 } // namespace
+
+std::optional<MatMulCodegenDesc> make_static_matmul_codegen_desc_for_node(
+    const std::shared_ptr<const ov::Node> &node) {
+  if (!node) {
+    return std::nullopt;
+  }
+  auto matmul = ov::as_type_ptr<const ov::op::v0::MatMul>(node);
+  if (!matmul || !matmul->get_input_partial_shape(0).is_static() ||
+      !matmul->get_input_partial_shape(1).is_static() ||
+      !matmul->get_output_partial_shape(0).is_static()) {
+    return std::nullopt;
+  }
+
+  const ov::Shape a_shape = matmul->get_input_shape(0);
+  const ov::Shape b_shape = matmul->get_input_shape(1);
+  const ov::Shape out_shape = matmul->get_output_shape(0);
+  if (a_shape.size() < 2 || b_shape.size() < 2 || out_shape.size() < 2) {
+    return std::nullopt;
+  }
+
+  const bool ta = matmul->get_transpose_a();
+  const bool tb = matmul->get_transpose_b();
+  const size_t a_rank = a_shape.size();
+  const size_t out_rank = out_shape.size();
+  const int64_t m = static_cast<int64_t>(out_shape[out_rank - 2]);
+  const int64_t n = static_cast<int64_t>(out_shape[out_rank - 1]);
+  const int64_t k =
+      static_cast<int64_t>(ta ? a_shape[a_rank - 2] : a_shape[a_rank - 1]);
+  if (m <= 0 || n <= 0 || k <= 0) {
+    return std::nullopt;
+  }
+
+  MatMulCodegenDesc desc{};
+  desc.element_type = matmul->get_output_element_type(0);
+  desc.input_a_type = matmul->get_input_element_type(0);
+  desc.input_b_type = matmul->get_input_element_type(1);
+  desc.output_type = matmul->get_output_element_type(0);
+  desc.a_transpose = ta;
+  desc.b_transpose = tb;
+  desc.b_is_nk_layout = tb;
+  desc.M = m;
+  desc.N = n;
+  desc.K = k;
+  desc.batch = static_cast<int64_t>(ov::shape_size(out_shape) /
+                                    static_cast<uint64_t>(m * n));
+  desc.batch_a = static_cast<int64_t>(ov::shape_size(a_shape) /
+                                      static_cast<uint64_t>(m * k));
+  desc.batch_b = static_cast<int64_t>(ov::shape_size(b_shape) /
+                                      static_cast<uint64_t>(k * n));
+  return desc;
+}
 
 GfxMpsrtKernelSourcePlan make_apple_metal_runtime_matmul_kernel_source_plan(
     mlir::MLIRContext &ctx, const GpuBufferManager *buffer_manager,

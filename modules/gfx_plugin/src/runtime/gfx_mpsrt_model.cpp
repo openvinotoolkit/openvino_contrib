@@ -863,6 +863,7 @@ MpsrtRuntimeStage make_mpsrt_runtime_stage_from_desc(
   stage.resize2d_desc = desc.resize2d_desc;
   stage.softmax_desc = desc.softmax_desc;
   stage.topk_desc = desc.topk_desc;
+  stage.sdpa_desc = desc.sdpa_desc;
   stage.inputs = inputs;
   stage.outputs = outputs;
   stage.output_descs = output_descs;

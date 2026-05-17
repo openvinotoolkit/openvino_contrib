@@ -81,7 +81,7 @@ std::vector<LoopInfo> collect_loop_nest(mlir::scf::ForOp root) {
 std::string activation_expr(ActivationKind activation, float alpha) {
     switch (activation) {
         case ActivationKind::Relu: return "max(x, 0.0f)";
-        case ActivationKind::Sigmoid: return "1.0f / (1.0f + exp(-x))";
+        case ActivationKind::Sigmoid: return "1.0f / (1.0f + precise::exp(-x))";
         case ActivationKind::Tanh: return msl_stable_tanh_expr("x");
         case ActivationKind::Elu:
             return "(x >= 0.0f) ? x : " + std::to_string(alpha) + " * (exp(x) - 1.0f)";
@@ -290,7 +290,7 @@ std::string emit_matmul_msl(const MatMulCodegenDesc& desc, const std::string& sc
         auto act = [&]() -> std::string {
             switch (desc.activation) {
                 case ActivationKind::Relu: return "max(x, 0.0f)";
-                case ActivationKind::Sigmoid: return "1.0f / (1.0f + exp(-x))";
+                case ActivationKind::Sigmoid: return "1.0f / (1.0f + precise::exp(-x))";
                 case ActivationKind::Tanh: return msl_stable_tanh_expr("x");
                 case ActivationKind::Elu:
                     return "(x >= 0.0f) ? x : " + std::to_string(desc.alpha) + " * (exp(x) - 1.0f)";

@@ -112,7 +112,7 @@ private:
   ProfilingLevel m_profiling_level = ProfilingLevel::Standard;
   bool m_profiling_level_set = false;
   bool m_enable_fusion = true;
-  bool m_diagnostic_f32_mps_image = false;
+  bool m_diagnostic_f32_vendor_image = false;
   bool m_pipeline_built = false;
   bool m_loaded_from_cache = false;
   mutable std::vector<PipelineStageDesc> m_pipeline;

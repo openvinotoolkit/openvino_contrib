@@ -30,6 +30,7 @@ Useful properties include:
 - `GFX_PROFILING_REPORT`
 - `GFX_MEM_STATS`
 - `GFX_DIAGNOSTIC_F32_MPS_IMAGE`
+- `ov::hint::inference_precision`
 - `ov::available_devices`
 - `ov::device::id`
 - `ov::cache_dir`
@@ -39,9 +40,12 @@ Useful properties include:
 `ov::available_devices` now exposes stable numeric ids such as `"0"`. Use
 `ov::device::full_name` when you need the human-readable backend device name.
 
+`ov::hint::inference_precision` accepts `f16`/`fp16`/`half` or
+`f32`/`fp32`/`float` for GFX compilation; the default is `f16`.
+
 `GFX_DIAGNOSTIC_F32_MPS_IMAGE` is a Metal-only diagnostic compile property for
 quality investigations of selected `f32` Conv/GroupConv/Pool MPSImage routes.
-Do not use it as a production placement policy.
+Do not use it as a runtime switch or test-skip mechanism.
 
 ## Selecting The Backend
 The backend can be selected globally for the device:
@@ -80,6 +84,7 @@ auto model = core.read_model("/path/to/model.xml");
 ov::AnyMap config = {
     {"GFX_BACKEND", "metal"},
     {"GFX_ENABLE_FUSION", true},
+    {ov::hint::inference_precision.name(), ov::element::f16},
     {ov::enable_profiling.name(), true},
 };
 
@@ -156,11 +161,50 @@ Example:
 
 ```bash
 OV_GFX_PROFILE_TRACE=perfetto \
-OV_GFX_PROFILE_TRACE_FILE=/tmp/gfx-trace.json \
+OV_GFX_PROFILE_TRACE_FILE=/path/to/gfx-trace.json \
 ./your_app
 ```
 
 This sink selection is currently an internal activation path. The plugin does not expose a separate public property for trace sink selection.
+
+`ov_gfx_compare_runner` can enable and print the same report without relying on
+environment-only switches:
+
+```bash
+ov_gfx_compare_runner <model.xml> \
+  --reference-device TEMPLATE \
+  --dump-gfx-profile \
+  --gfx-profiling-level detailed
+```
+
+For YOLO-style vision accuracy checks, prefer reproducible real images over
+synthetic random tensors. The compare runner accepts portable RGB PPM files and
+can run a batch of images in one compiled-model session:
+
+```bash
+ov_gfx_compare_runner yolo26x_ir/yolo26x.xml \
+  --reference-device TEMPLATE \
+  --abs-threshold 0.000001 \
+  --rel-threshold 0.000001 \
+  --input-image /path/to/image-a.ppm \
+  --input-image /path/to/image-b.ppm \
+  --input-image /path/to/image-c.ppm
+```
+
+The image path uses RGB resize into the model's rank-4 batch-1 NCHW/NHWC input;
+floating-point tensors receive values in `[0, 1]`. Use `benchmark_app`, not this
+accuracy tool, for performance.
+
+For slow remote targets, generate reference outputs once with
+`--dump-reference-dir DIR` on a machine that can run the reference backend, then
+stage the same PPM inputs and use `--golden-dir DIR` for the target GFX run. The
+target still executes only `GFX`; golden outputs are not a plugin CPU fallback.
+
+For Apple MPSRT placement triage, inspect the compile counters named
+`mpsrt_stage_backend_*`, `mpsrt_stage_family_*`,
+`mpsrt_stage_precision_*`, and `stage_policy_mps_*`. These counters are the
+shared way to decide which `f32` subgraphs are still on Apple MSL and why they
+were rejected by the MPS route before changing placement policy.
 
 ### Vulkan Pipeline Cache Persistence
 On Vulkan, the plugin can reuse the standard OpenVINO cache directory for backend pipeline-cache persistence:

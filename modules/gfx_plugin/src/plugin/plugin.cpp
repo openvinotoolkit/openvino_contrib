@@ -287,7 +287,8 @@ void Plugin::set_property(const ov::AnyMap &properties) {
     } else if (kv.first == kGfxDiagnosticF32MpsImageProperty) {
       m_config[kv.first] = parse_bool_property(kv.second, kv.first);
     } else if (kv.first == ov::hint::inference_precision.name()) {
-      m_config[kv.first] = gfx_default_inference_precision();
+      m_config[kv.first] =
+          parse_inference_precision_property(kv.second, kv.first);
     } else if (kv.first == ov::internal::threads_per_stream.name()) {
       m_config[kv.first] = kv.second.as<uint32_t>();
     } else if (kv.first == ov::hint::num_requests.name() ||

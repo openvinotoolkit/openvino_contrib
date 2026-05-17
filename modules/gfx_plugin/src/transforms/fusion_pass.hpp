@@ -20,6 +20,8 @@ namespace gfx_plugin {
 struct FusionConfig {
     bool enable_fusion = true;
     bool debug_dump_ir = false;
+    bool enable_attention_fusion = true;
+    bool enable_vendor_attention_fusion = false;
     bool enable_conv_activation_fusion = true;
     bool enable_conv_swish_fusion = true;
 };

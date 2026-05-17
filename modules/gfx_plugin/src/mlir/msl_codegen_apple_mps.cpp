@@ -4,7 +4,9 @@
 
 #include "mlir/msl_codegen_apple_mps.hpp"
 
+#include <array>
 #include <cstring>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -18,15 +20,23 @@
 #include "mlir/gfx_mpsrt_const_tensor_sources.hpp"
 #include "mlir/gfx_mpsrt_conv_metadata.hpp"
 #include "mlir/gfx_mpsrt_metadata.hpp"
+#include "mlir/msl_codegen_matmul_metal.hpp"
+#include "mlir/msl_codegen_matmul_mpsrt.hpp"
+#include "openvino/core/except.hpp"
 #include "openvino/core/type/float16.hpp"
 #include "openvino/op/avg_pool.hpp"
 #include "openvino/op/convolution.hpp"
 #include "openvino/op/group_conv.hpp"
 #include "openvino/op/interpolate.hpp"
+#include "openvino/op/matmul.hpp"
 #include "openvino/op/max_pool.hpp"
+#include "openvino/op/scaled_dot_product_attention.hpp"
 #include "openvino/op/softmax.hpp"
 #include "openvino/op/topk.hpp"
+#include "openvino/op/util/topk_base.hpp"
+#include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gfx_stage_policy.hpp"
+#include "transformations/rt_info/disable_fp16_compression.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -41,6 +51,29 @@ bool has_apple_msl_custom_kernel_manifest(mlir::ModuleOp module) {
          manifest.execution_kind == GfxKernelExecutionKind::CustomKernel;
 }
 
+bool is_io_only_apple_mps_vendor_stage(std::string_view stage_type) {
+  return stage_type == "MaxPool" || stage_type == "AvgPool" ||
+         stage_type == "Interpolate" || stage_type == "Softmax" ||
+         stage_type == "LogSoftmax" || stage_type == "TopK";
+}
+
+bool has_legacy_output_arg_abi(mlir::ModuleOp module) {
+  auto func = detail::gfx_mpsrt_entry_func(module);
+  if (!func) {
+    return false;
+  }
+  const auto fn_type = func.getFunctionType();
+  return fn_type.getNumResults() == 0 && fn_type.getNumInputs() > 1;
+}
+
+bool should_prefer_clean_io_only_mps_vendor_source(
+    mlir::ModuleOp module, std::string_view stage_type) {
+  return module && is_io_only_apple_mps_vendor_stage(stage_type) &&
+         !module_has_mpsrt_ops_program(module) &&
+         (has_apple_msl_custom_kernel_manifest(module) ||
+          has_legacy_output_arg_abi(module));
+}
+
 bool conv_bias_is_channel_vector(const BiasParams *bias_params,
                                  const std::shared_ptr<const ov::Node> &node) {
   if (!bias_params || bias_params->empty() || !node ||
@@ -50,6 +83,68 @@ bool conv_bias_is_channel_vector(const BiasParams *bias_params,
   const auto output_shape = node->get_output_shape(0);
   return output_shape.size() == 4 && output_shape[1] != 0 &&
          bias_params->values.size() == output_shape[1];
+}
+
+std::optional<std::array<int64_t, 3>>
+align_matmul_bias_dims_to_bmn(const BiasParams *bias_params,
+                              const MatMulCodegenDesc &desc) {
+  if (!bias_params || bias_params->empty() || bias_params->shape.size() > 3) {
+    return std::nullopt;
+  }
+
+  std::array<int64_t, 3> dims{{1, 1, 1}};
+  const size_t offset = dims.size() - bias_params->shape.size();
+  for (size_t i = 0; i < bias_params->shape.size(); ++i) {
+    dims[offset + i] = bias_params->shape[i];
+  }
+
+  const std::array<int64_t, 3> target{{desc.batch, desc.M, desc.N}};
+  for (size_t i = 0; i < dims.size(); ++i) {
+    if (dims[i] <= 0 || (dims[i] != 1 && dims[i] != target[i])) {
+      return std::nullopt;
+    }
+  }
+
+  const uint64_t bias_elements = static_cast<uint64_t>(dims[0]) *
+                                 static_cast<uint64_t>(dims[1]) *
+                                 static_cast<uint64_t>(dims[2]);
+  if (bias_elements != bias_params->values.size()) {
+    return std::nullopt;
+  }
+  return dims;
+}
+
+std::optional<MatMulCodegenDesc> static_matmul_mpsrt_desc_for_node(
+    const std::shared_ptr<const ov::Node> &node, bool has_bias,
+    bool has_activation, bool has_batchnorm, ActivationKind activation,
+    const BiasParams *bias_params) {
+  if (has_batchnorm) {
+    return std::nullopt;
+  }
+
+  auto desc = make_static_matmul_codegen_desc_for_node(node);
+  if (!desc.has_value()) {
+    return std::nullopt;
+  }
+
+  if (has_activation &&
+      !is_supported_mpsrt_matmul_epilogue_activation(activation)) {
+    return std::nullopt;
+  }
+
+  desc->has_activation = has_activation;
+  desc->activation = activation;
+
+  if (has_bias) {
+    auto bias_dims = align_matmul_bias_dims_to_bmn(bias_params, *desc);
+    if (!bias_dims.has_value()) {
+      return std::nullopt;
+    }
+    desc->has_bias = true;
+    desc->bias_type = bias_params->element_type;
+    desc->bias_dims = *bias_dims;
+  }
+  return desc;
 }
 
 void attach_conv_bias_const_tensor(KernelSource &source,
@@ -268,6 +363,39 @@ try_configure_apple_mps_vendor_kernel_source_plan_for_node(
        ov::is_type<const ov::op::v1::GroupConvolution>(node)) &&
       (!has_bias || conv_bias_is_channel_vector(bias_params, node)) &&
       !has_batchnorm;
+
+  if (stage_type == "MatMul") {
+    auto matmul = ov::as_type_ptr<const ov::op::v0::MatMul>(node);
+    if (!matmul) {
+      return {};
+    }
+    auto desc = static_matmul_mpsrt_desc_for_node(
+        node, has_bias, has_activation, has_batchnorm, activation,
+        bias_params);
+    if (!desc.has_value()) {
+      increment_compile_counter("matmul_metal_source_plan_mpsrt_reject_count");
+      OPENVINO_THROW(
+          "GFX Metal: static MatMul/GEMM source planning requires the "
+          "MPS/MPSGraph-family MPSRT route. Extend that route before using an "
+          "MSL custom MatMul kernel.");
+    }
+    const auto plan = select_stage_optimization_plan(
+        buffer_manager, GpuBackend::Metal, "MatMul", node, desc->output_type,
+        has_bias, has_activation, has_batchnorm, traits);
+    auto source_plan = lower_matmul_module_to_mpsrt_plan(
+        source.module, plan, *desc, matmul->get_input_shape(0),
+        matmul->get_input_shape(1));
+    if (source_plan.valid()) {
+      increment_compile_counter("matmul_metal_source_plan_mpsrt_count");
+      return source_plan.mpsrt_plan;
+    }
+    increment_compile_counter("matmul_metal_source_plan_mpsrt_reject_count");
+    OPENVINO_THROW(
+        "GFX Metal: MatMul/GEMM could not be materialized through the "
+        "MPS/MPSGraph-family MPSRT route. Fix or extend that route before "
+        "using an MSL custom MatMul kernel.");
+  }
+
   if (conv_base_candidate && has_activation &&
       activation == ActivationKind::Swish) {
     const bool group_conv =
@@ -443,6 +571,35 @@ try_configure_apple_mps_vendor_kernel_source_plan_for_node(
     }
   }
 
+  if (stage_type == "ScaledDotProductAttention") {
+    GfxMpsrtSdpaAbiDesc sdpa_desc{};
+    if (gfx_apple_make_mps_sdpa_desc(node, sdpa_desc)) {
+      const auto plan = select_stage_optimization_plan(
+          buffer_manager, GpuBackend::Metal, "ScaledDotProductAttention", node,
+          node->get_output_element_type(0),
+          /*has_bias=*/false,
+          /*has_activation=*/false,
+          /*has_batchnorm=*/false, traits);
+      if (plan.placement.domain == GfxStageBackendDomain::AppleMps &&
+          plan.placement.storage == GfxStageStorageKind::NDArray) {
+        GfxAppleMpsVendorPrimitiveContract contract{};
+        if (!gfx_apple_make_mps_sdpa_contract(node, sdpa_desc, contract)) {
+          return {};
+        }
+        auto source_module = source.module;
+        const auto materialized = materialize_apple_mps_vendor_contract_program(
+            source_module, plan, "ScaledDotProductAttention", contract);
+        if (materialized.valid) {
+          auto source_plan =
+              make_mpsrt_kernel_source_plan_from_module(source_module);
+          if (source_plan.valid()) {
+            return source_plan;
+          }
+        }
+      }
+    }
+  }
+
   return {};
 }
 
@@ -458,7 +615,12 @@ try_configure_clean_apple_mps_vendor_kernel_source_plan_for_node(
   }
 
   KernelSource clean_source;
-  clean_source.module = build_mlir_for_node(node, gfx_mlir_context());
+  auto &ctx = gfx_mlir_context();
+  if (stage_type == "ScaledDotProductAttention") {
+    clean_source.module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+  } else {
+    clean_source.module = build_mlir_for_node(node, ctx);
+  }
   if (!clean_source.module) {
     return {};
   }
@@ -475,6 +637,16 @@ GfxMpsrtKernelSourcePlan configure_apple_mps_vendor_kernel_source_plan_for_node(
     bool has_bias, bool has_activation, bool has_batchnorm,
     ActivationKind activation, const BiasParams *bias_params,
     const GfxStageRuntimeTraits &traits) {
+  if (should_prefer_clean_io_only_mps_vendor_source(source.module,
+                                                   stage_type)) {
+    auto clean_source_plan = try_configure_clean_apple_mps_vendor_kernel_source_plan_for_node(
+        node, buffer_manager, stage_type, has_bias, has_activation, has_batchnorm,
+        activation, bias_params, traits);
+    if (clean_source_plan.valid()) {
+      return clean_source_plan;
+    }
+  }
+
   auto source_plan = try_configure_apple_mps_vendor_kernel_source_plan_for_node(
       source, node, buffer_manager, stage_type, has_bias, has_activation,
       has_batchnorm, activation, bias_params, traits);

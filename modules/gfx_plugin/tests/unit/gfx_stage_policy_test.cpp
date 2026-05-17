@@ -26,8 +26,10 @@
 #include "openvino/op/interpolate.hpp"
 #include "openvino/op/matmul.hpp"
 #include "openvino/op/max_pool.hpp"
+#include "openvino/op/multiply.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/reshape.hpp"
+#include "openvino/op/scaled_dot_product_attention.hpp"
 #include "openvino/op/sigmoid.hpp"
 #include "openvino/op/softmax.hpp"
 #include "openvino/op/topk.hpp"
@@ -62,6 +64,18 @@ public:
 private:
   GpuExecutionDeviceInfo m_info;
 };
+
+GpuExecutionDeviceInfo make_broadcom_v3d_info() {
+  GpuExecutionDeviceInfo info;
+  info.backend = GpuBackend::Vulkan;
+  info.device_key = "test-rpi";
+  info.device_family = GpuDeviceFamily::BroadcomV3D;
+  info.preferred_simd_width = 16u;
+  info.subgroup_size = 16u;
+  info.max_total_threads_per_group = 256u;
+  info.max_threads_per_group = {256u, 256u, 64u};
+  return info;
+}
 
 std::shared_ptr<const ov::Node>
 make_pointwise_conv_node(ov::element::Type element_type = ov::element::f16) {
@@ -113,6 +127,12 @@ std::shared_ptr<const ov::Node> make_large_add_node() {
   auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f16,
                                                      ov::Shape{1, 64, 80, 80});
   return std::make_shared<ov::op::v1::Add>(lhs, rhs);
+}
+
+std::shared_ptr<const ov::Node> make_very_large_sigmoid_node() {
+  auto input = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f16, ov::Shape{1, 384, 160, 160});
+  return std::make_shared<ov::op::v0::Sigmoid>(input);
 }
 
 std::shared_ptr<const ov::Node>
@@ -192,6 +212,17 @@ std::shared_ptr<const ov::Node> make_last_dim_topk_node() {
   return std::make_shared<ov::op::v11::TopK>(input, k, 2, ov::op::TopKMode::MAX,
                                              ov::op::TopKSortType::SORT_VALUES,
                                              ov::element::i32);
+}
+
+std::shared_ptr<const ov::Node> make_sdpa_node(uint32_t value_dim = 4) {
+  auto query = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f32, ov::Shape{1, 2, 3, 4});
+  auto key = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f32, ov::Shape{1, 2, 5, 4});
+  auto value = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f32, ov::Shape{1, 2, 5, value_dim});
+  return std::make_shared<ov::op::v13::ScaledDotProductAttention>(
+      query, key, value, false);
 }
 
 std::shared_ptr<const ov::Node> make_yolo_last_dim_topk_node() {
@@ -362,7 +393,7 @@ TEST(GfxStagePolicyTest, MetalConvolutionPlansAppleMpsImageStorage) {
   EXPECT_TRUE(plan.post_ops.activation);
 }
 
-TEST(GfxStagePolicyTest, MetalF32ConvolutionPlansAppleMslBufferStorage) {
+TEST(GfxStagePolicyTest, MetalF32ConvolutionPlansAppleMpsImageStorage) {
   const auto conv = make_pointwise_conv_node(ov::element::f32);
   const auto plan = select_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f32,
@@ -371,17 +402,17 @@ TEST(GfxStagePolicyTest, MetalF32ConvolutionPlansAppleMslBufferStorage) {
       /*has_batchnorm=*/false, {});
 
   EXPECT_EQ(plan.archetype, GfxStageArchetype::Convolution);
-  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMsl);
-  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Buffer);
-  EXPECT_FALSE(plan.placement.uses_vendor_primitive);
-  EXPECT_TRUE(plan.placement.uses_custom_kernel);
+  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMps);
+  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Image);
+  EXPECT_TRUE(plan.placement.uses_vendor_primitive);
+  EXPECT_FALSE(plan.placement.uses_custom_kernel);
 }
 
 TEST(GfxStagePolicyTest,
-     MetalF32ConvolutionDiagnosticCanPlanAppleMpsImageStorage) {
+     MetalF32ConvolutionDiagnosticUsesProductionMpsImageStorage) {
   const auto conv = make_pointwise_conv_node(ov::element::f32);
   GfxStageRuntimeTraits traits{};
-  traits.diagnostic_f32_mps_image = true;
+  traits.diagnostic_f32_vendor_image = true;
   const auto plan = select_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f32,
       /*has_bias=*/false,
@@ -396,27 +427,74 @@ TEST(GfxStagePolicyTest,
 }
 
 TEST(GfxStagePolicyTest,
-     MetalF32PrecisionSensitiveConvolutionStaysOnMslInDiagnosticMpsImageMode) {
+     MetalF32PrecisionSensitiveConvolutionKeepsMpsImagePlacement) {
   auto conv = std::const_pointer_cast<ov::Node>(
       make_pointwise_conv_node(ov::element::f32));
   ov::disable_fp16_compression(conv);
-  GfxStageRuntimeTraits traits{};
-  traits.diagnostic_f32_mps_image = true;
   const auto plan = select_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
-      /*has_batchnorm=*/false, traits);
+      /*has_batchnorm=*/false, {});
 
   EXPECT_TRUE(plan.precision.keep_fp32);
-  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMsl);
-  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Buffer);
-  EXPECT_FALSE(plan.placement.uses_vendor_primitive);
-  EXPECT_TRUE(plan.placement.uses_custom_kernel);
+  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMps);
+  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Image);
+  EXPECT_TRUE(plan.placement.uses_vendor_primitive);
+  EXPECT_FALSE(plan.placement.uses_custom_kernel);
 }
 
 TEST(GfxStagePolicyTest,
-     MetalF32TopKSensitiveConvolutionStaysOnMslInDiagnosticMpsImageMode) {
+     MetalF32PrecisionSensitiveRgbIngressConvolutionKeepsMpsImagePlacement) {
+  auto input = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f32, ov::Shape{1, 3, 32, 32});
+  auto weights =
+      ov::op::v0::Constant::create(ov::element::f32, ov::Shape{8, 3, 3, 3},
+                                   std::vector<float>(8 * 3 * 3 * 3, 0.25f));
+  auto conv = std::make_shared<ov::op::v1::Convolution>(
+      input, weights, ov::Strides{2, 2}, ov::CoordinateDiff{1, 1},
+      ov::CoordinateDiff{1, 1}, ov::Strides{1, 1});
+  ov::disable_fp16_compression(conv);
+
+  const auto plan = select_stage_optimization_plan(
+      nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f32,
+      /*has_bias=*/false,
+      /*has_activation=*/false,
+      /*has_batchnorm=*/false, {});
+
+  EXPECT_TRUE(plan.precision.keep_fp32);
+  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMps);
+  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Image);
+  EXPECT_TRUE(plan.placement.uses_vendor_primitive);
+  EXPECT_FALSE(plan.placement.uses_custom_kernel);
+}
+
+TEST(GfxStagePolicyTest,
+     MetalF32UnmarkedRgbIngressConvolutionStillStartsWithMpsImagePlacement) {
+  auto input = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f32, ov::Shape{1, 3, 32, 32});
+  auto weights =
+      ov::op::v0::Constant::create(ov::element::f32, ov::Shape{8, 3, 3, 3},
+                                   std::vector<float>(8 * 3 * 3 * 3, 0.25f));
+  auto conv = std::make_shared<ov::op::v1::Convolution>(
+      input, weights, ov::Strides{2, 2}, ov::CoordinateDiff{1, 1},
+      ov::CoordinateDiff{1, 1}, ov::Strides{1, 1});
+
+  const auto plan = select_stage_optimization_plan(
+      nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f32,
+      /*has_bias=*/false,
+      /*has_activation=*/false,
+      /*has_batchnorm=*/false, {});
+
+  EXPECT_FALSE(plan.precision.keep_fp32);
+  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMps);
+  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Image);
+  EXPECT_TRUE(plan.placement.uses_vendor_primitive);
+  EXPECT_FALSE(plan.placement.uses_custom_kernel);
+}
+
+TEST(GfxStagePolicyTest,
+     MetalF32TopKSensitiveConvolutionKeepsMpsImagePlacement) {
   auto input = std::make_shared<ov::op::v0::Parameter>(
       ov::element::f32, ov::Shape{1, 4, 4, 4});
   auto weights =
@@ -435,23 +513,21 @@ TEST(GfxStagePolicyTest,
       reshape, k, 1, ov::op::TopKMode::MAX,
       ov::op::TopKSortType::SORT_VALUES, ov::element::i64);
 
-  GfxStageRuntimeTraits traits{};
-  traits.diagnostic_f32_mps_image = true;
   const auto plan = select_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
-      /*has_batchnorm=*/false, traits);
+      /*has_batchnorm=*/false, {});
 
   EXPECT_EQ(topk->get_output_size(), 2);
-  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMsl);
-  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Buffer);
-  EXPECT_FALSE(plan.placement.uses_vendor_primitive);
-  EXPECT_TRUE(plan.placement.uses_custom_kernel);
+  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMps);
+  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Image);
+  EXPECT_TRUE(plan.placement.uses_vendor_primitive);
+  EXPECT_FALSE(plan.placement.uses_custom_kernel);
 }
 
 TEST(GfxStagePolicyTest,
-     MetalF32TopKDownstreamGuardCrossesHeavyComputeForQuality) {
+     MetalF32TopKDownstreamKeepsMpsImageAcrossComputeChain) {
   auto input = std::make_shared<ov::op::v0::Parameter>(
       ov::element::f32, ov::Shape{1, 4, 4, 4});
   auto weights0 =
@@ -476,24 +552,26 @@ TEST(GfxStagePolicyTest,
       reshape, k, 1, ov::op::TopKMode::MAX,
       ov::op::TopKSortType::SORT_VALUES, ov::element::i64);
 
-  GfxStageRuntimeTraits traits{};
-  traits.diagnostic_f32_mps_image = true;
   const auto early_plan = select_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv0, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
-      /*has_batchnorm=*/false, traits);
+      /*has_batchnorm=*/false, {});
   const auto score_plan = select_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv1, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
-      /*has_batchnorm=*/false, traits);
+      /*has_batchnorm=*/false, {});
 
   EXPECT_EQ(topk->get_output_size(), 2);
-  EXPECT_EQ(early_plan.placement.domain, GfxStageBackendDomain::AppleMsl);
-  EXPECT_EQ(early_plan.placement.storage, GfxStageStorageKind::Buffer);
-  EXPECT_EQ(score_plan.placement.domain, GfxStageBackendDomain::AppleMsl);
-  EXPECT_EQ(score_plan.placement.storage, GfxStageStorageKind::Buffer);
+  EXPECT_EQ(early_plan.placement.domain, GfxStageBackendDomain::AppleMps);
+  EXPECT_EQ(early_plan.placement.storage, GfxStageStorageKind::Image);
+  EXPECT_TRUE(early_plan.placement.uses_vendor_primitive);
+  EXPECT_FALSE(early_plan.placement.uses_custom_kernel);
+  EXPECT_EQ(score_plan.placement.domain, GfxStageBackendDomain::AppleMps);
+  EXPECT_EQ(score_plan.placement.storage, GfxStageStorageKind::Image);
+  EXPECT_TRUE(score_plan.placement.uses_vendor_primitive);
+  EXPECT_FALSE(score_plan.placement.uses_custom_kernel);
 }
 
 TEST(GfxStagePolicyTest, MetalConvolutionWithPostOpsKeepsAppleMpsPlacement) {
@@ -642,7 +720,7 @@ TEST(GfxStagePolicyTest,
       make_v4_non_spatial_bilinear_interpolate_node(), desc));
 }
 
-TEST(GfxStagePolicyTest, MetalF32MaxPoolPlansAppleMslBufferStorage) {
+TEST(GfxStagePolicyTest, MetalF32MaxPoolPlansAppleMpsImageStorage) {
   const auto pool = make_aligned_maxpool_node(ov::element::f32);
   const auto plan = select_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "MaxPool", pool, ov::element::f32,
@@ -650,10 +728,10 @@ TEST(GfxStagePolicyTest, MetalF32MaxPoolPlansAppleMslBufferStorage) {
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
 
-  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMsl);
-  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Buffer);
-  EXPECT_FALSE(plan.placement.uses_vendor_primitive);
-  EXPECT_TRUE(plan.placement.uses_custom_kernel);
+  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMps);
+  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Image);
+  EXPECT_TRUE(plan.placement.uses_vendor_primitive);
+  EXPECT_FALSE(plan.placement.uses_custom_kernel);
 }
 
 TEST(GfxStagePolicyTest, MetalIndexedMaxPoolDoesNotUseMpsPool2DPlacement) {
@@ -666,7 +744,7 @@ TEST(GfxStagePolicyTest, MetalIndexedMaxPoolDoesNotUseMpsPool2DPlacement) {
   ASSERT_EQ(pool->get_output_size(), 2u);
 
   GfxStageRuntimeTraits traits{};
-  traits.diagnostic_f32_mps_image = true;
+  traits.diagnostic_f32_vendor_image = true;
   const auto plan = select_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "MaxPool", pool, ov::element::f16,
       /*has_bias=*/false,
@@ -701,12 +779,26 @@ TEST(GfxStagePolicyTest,
   EXPECT_EQ(topk_desc.k, 4u);
   EXPECT_EQ(topk_desc.mode_max, 1u);
   EXPECT_EQ(topk_desc.sort_type, 1u);
+
+  GfxMpsrtSdpaAbiDesc sdpa_desc{};
+  ASSERT_TRUE(gfx_apple_make_mps_sdpa_desc(make_sdpa_node(), sdpa_desc));
+  EXPECT_EQ(sdpa_desc.has_mask, 0u);
+  EXPECT_EQ(sdpa_desc.causal, 0u);
+  EXPECT_EQ(sdpa_desc.accumulate_fp32, 1u);
+  EXPECT_FLOAT_EQ(sdpa_desc.scale, 0.5f);
+
+  EXPECT_FALSE(gfx_apple_make_mps_sdpa_desc(
+      make_sdpa_node(/*value_dim=*/6), sdpa_desc));
 }
 
-TEST(GfxStagePolicyTest, AppleMpsTopKDescriptorRejectsYoloF32I64LargeK) {
+TEST(GfxStagePolicyTest, AppleMpsTopKDescriptorAcceptsYoloF32I64LargeK) {
   GfxMpsrtTopKAbiDesc topk_desc{};
-  EXPECT_FALSE(
+  ASSERT_TRUE(
       gfx_apple_make_mps_topk_desc(make_yolo_last_dim_topk_node(), topk_desc));
+  EXPECT_EQ(topk_desc.axis, 1u);
+  EXPECT_EQ(topk_desc.k, 300u);
+  EXPECT_EQ(topk_desc.mode_max, 1u);
+  EXPECT_EQ(topk_desc.sort_type, 1u);
 }
 
 TEST(GfxStagePolicyTest, AppleMpsTopKDescriptorAcceptsF32I64SmallK) {
@@ -746,6 +838,100 @@ TEST(GfxStagePolicyTest, MetalF32MatMulPlansAppleMpsMatrixStorage) {
   EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Matrix);
   EXPECT_TRUE(plan.placement.uses_vendor_primitive);
   EXPECT_FALSE(plan.placement.uses_custom_kernel);
+}
+
+TEST(GfxStagePolicyTest, MetalF32TopKSensitiveAttentionMatrixStagesStayOnMps) {
+  auto query = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f32, ov::Shape{1, 100, 64});
+  auto key = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f32, ov::Shape{1, 64, 100});
+  auto score_matmul =
+      std::make_shared<ov::op::v0::MatMul>(query, key, false, false);
+  auto scale = ov::op::v0::Constant::create(ov::element::f32, ov::Shape{},
+                                            std::vector<float>{0.125f});
+  auto scaled_scores = std::make_shared<ov::op::v1::Multiply>(score_matmul, scale);
+  auto softmax = std::make_shared<ov::op::v1::Softmax>(scaled_scores, 2);
+  auto value = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f32, ov::Shape{1, 100, 32});
+  auto value_matmul =
+      std::make_shared<ov::op::v0::MatMul>(softmax, value, false, false);
+  auto shape = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{2},
+                                            std::vector<int64_t>{1, 3200});
+  auto reshape =
+      std::make_shared<ov::op::v1::Reshape>(value_matmul, shape, false);
+  auto k = ov::op::v0::Constant::create(ov::element::i32, ov::Shape{},
+                                        std::vector<int32_t>{32});
+  auto topk = std::make_shared<ov::op::v3::TopK>(
+      reshape, k, 1, ov::op::TopKMode::MAX,
+      ov::op::TopKSortType::SORT_VALUES, ov::element::i64);
+
+  const auto score_plan = select_stage_optimization_plan(
+      nullptr, GpuBackend::Metal, "MatMul", score_matmul, ov::element::f32,
+      /*has_bias=*/false,
+      /*has_activation=*/false,
+      /*has_batchnorm=*/false, {});
+  const auto softmax_plan = select_stage_optimization_plan(
+      nullptr, GpuBackend::Metal, "Softmax", softmax, ov::element::f32,
+      /*has_bias=*/false,
+      /*has_activation=*/false,
+      /*has_batchnorm=*/false, {});
+  const auto value_plan = select_stage_optimization_plan(
+      nullptr, GpuBackend::Metal, "MatMul", value_matmul, ov::element::f32,
+      /*has_bias=*/false,
+      /*has_activation=*/false,
+      /*has_batchnorm=*/false, {});
+
+  EXPECT_EQ(topk->get_output_size(), 2);
+  EXPECT_EQ(score_plan.placement.domain, GfxStageBackendDomain::AppleMps);
+  EXPECT_EQ(score_plan.placement.storage, GfxStageStorageKind::Matrix);
+  EXPECT_TRUE(score_plan.placement.uses_vendor_primitive);
+  EXPECT_FALSE(score_plan.placement.uses_custom_kernel);
+  EXPECT_EQ(softmax_plan.placement.domain, GfxStageBackendDomain::AppleMps);
+  EXPECT_EQ(softmax_plan.placement.storage, GfxStageStorageKind::Matrix);
+  EXPECT_TRUE(softmax_plan.placement.uses_vendor_primitive);
+  EXPECT_FALSE(softmax_plan.placement.uses_custom_kernel);
+  EXPECT_EQ(value_plan.placement.domain, GfxStageBackendDomain::AppleMps);
+  EXPECT_EQ(value_plan.placement.storage, GfxStageStorageKind::Matrix);
+  EXPECT_TRUE(value_plan.placement.uses_vendor_primitive);
+  EXPECT_FALSE(value_plan.placement.uses_custom_kernel);
+}
+
+TEST(GfxStagePolicyTest, MetalF32SoftmaxWithoutRankingKeepsMps) {
+  auto scores = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f32, ov::Shape{1, 100, 100});
+  auto softmax = std::make_shared<ov::op::v1::Softmax>(scores, 2);
+
+  const auto plan = select_stage_optimization_plan(
+      nullptr, GpuBackend::Metal, "Softmax", softmax, ov::element::f32,
+      /*has_bias=*/false,
+      /*has_activation=*/false,
+      /*has_batchnorm=*/false, {});
+
+  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMps);
+  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Matrix);
+  EXPECT_TRUE(plan.placement.uses_vendor_primitive);
+  EXPECT_FALSE(plan.placement.uses_custom_kernel);
+}
+
+TEST(GfxStagePolicyTest, MetalF32AttentionValueMatMulWithoutRankingKeepsMps) {
+  auto scores = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f32, ov::Shape{1, 100, 100});
+  auto softmax = std::make_shared<ov::op::v1::Softmax>(scores, 2);
+  auto value = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f32, ov::Shape{1, 100, 32});
+  auto value_matmul =
+      std::make_shared<ov::op::v0::MatMul>(softmax, value, false, false);
+
+  const auto value_plan = select_stage_optimization_plan(
+      nullptr, GpuBackend::Metal, "MatMul", value_matmul, ov::element::f32,
+      /*has_bias=*/false,
+      /*has_activation=*/false,
+      /*has_batchnorm=*/false, {});
+
+  EXPECT_EQ(value_plan.placement.domain, GfxStageBackendDomain::AppleMps);
+  EXPECT_EQ(value_plan.placement.storage, GfxStageStorageKind::Matrix);
+  EXPECT_TRUE(value_plan.placement.uses_vendor_primitive);
+  EXPECT_FALSE(value_plan.placement.uses_custom_kernel);
 }
 
 TEST(GfxStagePolicyTest, Fp32SensitiveNodePropagatesPrecisionToStageManifest) {
@@ -1323,7 +1509,7 @@ TEST(GfxStagePolicyTest,
   EXPECT_FALSE(static_cast<bool>(source_plan.source.msl_generator));
 
   GfxMpsrtProgram program;
-  ASSERT_TRUE(read_module_mpsrt_program(module, program));
+  ASSERT_TRUE(read_module_mpsrt_program(source_plan.source.module, program));
   ASSERT_TRUE(program.external_buffer_abi.valid);
   EXPECT_EQ(program.external_buffer_abi.buffer_roles,
             std::vector<GfxMpsrtExternalBufferRole>(
@@ -1371,7 +1557,7 @@ TEST(GfxStagePolicyTest,
   EXPECT_EQ(metadata.operands.operand_kinds, std::vector<int32_t>({1, 1, 1}));
 
   GfxMpsrtProgram program;
-  ASSERT_TRUE(read_module_mpsrt_program(module, program));
+  ASSERT_TRUE(read_module_mpsrt_program(source_plan.source.module, program));
   ASSERT_TRUE(program.external_buffer_abi.valid);
   EXPECT_EQ(program.external_buffer_abi.buffer_roles,
             std::vector<GfxMpsrtExternalBufferRole>(
@@ -1418,7 +1604,7 @@ TEST(GfxStagePolicyTest,
   EXPECT_FALSE(static_cast<bool>(source_plan.source.msl_generator));
 
   GfxMpsrtProgram program;
-  ASSERT_TRUE(read_module_mpsrt_program(module, program));
+  ASSERT_TRUE(read_module_mpsrt_program(source_plan.source.module, program));
   ASSERT_TRUE(program.external_buffer_abi.valid);
   EXPECT_EQ(program.external_buffer_abi.buffer_roles,
             std::vector<GfxMpsrtExternalBufferRole>(
@@ -1461,7 +1647,7 @@ TEST(GfxStagePolicyTest,
   EXPECT_FALSE(static_cast<bool>(source_plan.source.msl_generator));
 
   GfxMpsrtProgram program;
-  ASSERT_TRUE(read_module_mpsrt_program(module, program));
+  ASSERT_TRUE(read_module_mpsrt_program(source_plan.source.module, program));
   ASSERT_TRUE(program.external_buffer_abi.valid);
   EXPECT_EQ(program.external_buffer_abi.buffer_roles,
             std::vector<GfxMpsrtExternalBufferRole>(
@@ -1503,7 +1689,7 @@ TEST(GfxStagePolicyTest, MetalTopKSourcePlanUsesMpsTopKInsteadOfMslFallback) {
   EXPECT_FALSE(static_cast<bool>(source_plan.source.msl_generator));
 
   GfxMpsrtProgram program;
-  ASSERT_TRUE(read_module_mpsrt_program(module, program));
+  ASSERT_TRUE(read_module_mpsrt_program(source_plan.source.module, program));
   ASSERT_TRUE(program.external_buffer_abi.valid);
   EXPECT_EQ(program.external_buffer_abi.buffer_roles,
             std::vector<GfxMpsrtExternalBufferRole>(
@@ -1519,17 +1705,96 @@ TEST(GfxStagePolicyTest, MetalTopKSourcePlanUsesMpsTopKInsteadOfMslFallback) {
             GfxKernelExecutionKind::VendorPrimitive);
 }
 
-TEST(GfxStagePolicyTest, MetalYoloTopKLargeKUsesMslFallback) {
+TEST(GfxStagePolicyTest, MetalSdpaSourcePlanUsesMpsGraphInsteadOfMslFallback) {
+  const auto sdpa = make_sdpa_node();
+  auto &ctx = gfx_mlir_context();
+  auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+
+  KernelSource source;
+  source.module = module;
+  source.entry_point = "sdpa_nomask_kernel";
+  const auto source_plan = configure_apple_metal_kernel_source_plan_for_stage(
+      source, sdpa, nullptr, "ScaledDotProductAttention",
+      /*has_bias=*/false,
+      /*has_activation=*/false,
+      /*has_batchnorm=*/false, ActivationKind::Identity, ov::element::f32,
+      /*has_runtime_slice_params=*/false);
+  ASSERT_TRUE(source_plan.valid());
+  EXPECT_TRUE(source_plan.requires_mpsrt_model);
+  EXPECT_EQ(source_plan.first_stage_kind, GfxMpsrtStageKind::MPSSdpa);
+  EXPECT_EQ(source_plan.last_stage_kind, GfxMpsrtStageKind::MPSSdpa);
+  EXPECT_TRUE(gfx_mpsrt_source_plan_is_io_only_apple_mps_vendor(source_plan));
+  EXPECT_TRUE(source_plan.has_runtime_binding);
+  EXPECT_EQ(source_plan.runtime_binding.inputs,
+            std::vector<size_t>({0, 1, 2}));
+  EXPECT_EQ(source_plan.runtime_binding.input_arg_count, 3u);
+  EXPECT_TRUE(source_plan.source.msl_source.empty());
+  EXPECT_FALSE(static_cast<bool>(source_plan.source.msl_generator));
+
+  GfxMpsrtProgram program;
+  ASSERT_TRUE(read_module_mpsrt_program(source_plan.source.module, program));
+  ASSERT_TRUE(program.external_buffer_abi.valid);
+  EXPECT_EQ(program.external_buffer_abi.buffer_roles,
+            std::vector<GfxMpsrtExternalBufferRole>(
+                {GfxMpsrtExternalBufferRole::TensorInput,
+                 GfxMpsrtExternalBufferRole::TensorInput,
+                 GfxMpsrtExternalBufferRole::TensorInput,
+                 GfxMpsrtExternalBufferRole::TensorOutput}));
+  ASSERT_EQ(program.stages.size(), 1u);
+  EXPECT_EQ(program.stages.front().stage.kind, GfxMpsrtStageKind::MPSSdpa);
+  EXPECT_FLOAT_EQ(program.stages.front().stage.sdpa_desc.scale, 0.5f);
+  EXPECT_EQ(program.stages.front().stage.stage_manifest.backend_domain,
+            GfxKernelBackendDomain::AppleMps);
+  EXPECT_EQ(program.stages.front().stage.stage_manifest.execution_kind,
+            GfxKernelExecutionKind::VendorPrimitive);
+}
+
+TEST(GfxStagePolicyTest, MetalYoloLargeKTopKSourcePlanUsesMpsGraphTopK) {
+  const auto topk = make_yolo_last_dim_topk_node();
+  auto &ctx = gfx_mlir_context();
+  auto module = build_mlir_for_node(topk, ctx);
+  ASSERT_TRUE(module);
+
+  KernelSource source;
+  source.module = module;
+  source.entry_point = "topk_kernel";
+  const auto source_plan = configure_apple_metal_kernel_source_plan_for_stage(
+      source, topk, nullptr, "TopK",
+      /*has_bias=*/false,
+      /*has_activation=*/false,
+      /*has_batchnorm=*/false, ActivationKind::Identity, ov::element::f32,
+      /*has_runtime_slice_params=*/false);
+  ASSERT_TRUE(source_plan.valid());
+  EXPECT_TRUE(source_plan.requires_mpsrt_model);
+  EXPECT_EQ(source_plan.first_stage_kind, GfxMpsrtStageKind::MPSTopK);
+  EXPECT_EQ(source_plan.last_stage_kind, GfxMpsrtStageKind::MPSTopK);
+  EXPECT_TRUE(gfx_mpsrt_source_plan_is_io_only_apple_mps_vendor(source_plan));
+  EXPECT_TRUE(source_plan.has_runtime_binding);
+  EXPECT_TRUE(source_plan.source.msl_source.empty());
+  EXPECT_FALSE(static_cast<bool>(source_plan.source.msl_generator));
+
+  GfxMpsrtProgram program;
+  ASSERT_TRUE(read_module_mpsrt_program(source_plan.source.module, program));
+  ASSERT_EQ(program.stages.size(), 1u);
+  EXPECT_EQ(program.stages.front().stage.kind, GfxMpsrtStageKind::MPSTopK);
+  EXPECT_EQ(program.stages.front().stage.topk_desc.k, 300u);
+  EXPECT_EQ(program.stages.front().stage.stage_manifest.backend_domain,
+            GfxKernelBackendDomain::AppleMps);
+  EXPECT_EQ(program.stages.front().stage.stage_manifest.execution_kind,
+            GfxKernelExecutionKind::VendorPrimitive);
+}
+
+TEST(GfxStagePolicyTest, MetalYoloTopKLargeKUsesMpsGraphVendorPath) {
   const auto topk = make_yolo_last_dim_topk_node();
   const auto plan = select_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "TopK", topk, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
-  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMsl);
-  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Buffer);
-  EXPECT_FALSE(plan.placement.uses_vendor_primitive);
-  EXPECT_TRUE(plan.placement.uses_custom_kernel);
+  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMps);
+  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Matrix);
+  EXPECT_TRUE(plan.placement.uses_vendor_primitive);
+  EXPECT_FALSE(plan.placement.uses_custom_kernel);
 }
 
 TEST(GfxStagePolicyTest, MetalF32I64SmallTopKUsesMpsTopK) {
@@ -2884,13 +3149,18 @@ TEST(GfxStagePolicyTest,
 }
 
 TEST(GfxStagePolicyTest,
-     SingleMslDispatchConstBuffersStayExternalRuntimeAbiResources) {
+     ExplicitSingleMslDispatchConstBuffersStayExternalRuntimeAbiResources) {
   const auto conv = make_pointwise_conv_node(ov::element::f32);
-  const auto plan = select_stage_optimization_plan(
+  auto plan = select_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
+  plan.placement.domain = GfxStageBackendDomain::AppleMsl;
+  plan.placement.storage = GfxStageStorageKind::Buffer;
+  plan.placement.uses_vendor_primitive = false;
+  plan.placement.uses_custom_kernel = true;
+  plan.placement.specialization_key = "apple_msl:buffer:Convolution";
   auto stage = gfx_mpsrt_make_stage_desc(plan, "Convolution");
   ASSERT_EQ(stage.kind, GfxMpsrtStageKind::MSLDispatch);
   ASSERT_EQ(stage.stage_manifest.backend_domain, GfxKernelBackendDomain::AppleMsl);
@@ -3361,6 +3631,24 @@ TEST(GfxStagePolicyTest, VulkanConvolutionAllowsOnlyReluActivationFusion) {
       GpuBackend::Vulkan, "GroupConvolution", ActivationKind::Relu));
 }
 
+TEST(GfxStagePolicyTest, MetalConvolutionAllowsOnlyMpsBackedActivationFusion) {
+  EXPECT_TRUE(allow_stage_activation_fusion(GpuBackend::Metal, "Convolution",
+                                            ActivationKind::Relu));
+  EXPECT_TRUE(allow_stage_activation_fusion(GpuBackend::Metal, "Convolution",
+                                            ActivationKind::Sigmoid));
+  EXPECT_TRUE(allow_stage_activation_fusion(GpuBackend::Metal,
+                                            "GroupConvolution",
+                                            ActivationKind::Swish));
+  EXPECT_TRUE(allow_stage_activation_fusion(GpuBackend::Metal, "Convolution",
+                                            ActivationKind::Abs));
+  EXPECT_FALSE(allow_stage_activation_fusion(GpuBackend::Metal, "Convolution",
+                                             ActivationKind::Gelu));
+  EXPECT_FALSE(allow_stage_activation_fusion(GpuBackend::Metal, "Convolution",
+                                             ActivationKind::HSwish));
+  EXPECT_FALSE(allow_stage_activation_fusion(GpuBackend::Metal, "MatMul",
+                                             ActivationKind::Relu));
+}
+
 TEST(GfxStagePolicyTest,
      VulkanGroupConvolutionKeepsSharedMlirRouteWithBiasOrActivation) {
   const auto gconv = make_depthwise_group_conv_node();
@@ -3443,6 +3731,30 @@ TEST(GfxStagePolicyTest,
   EXPECT_GE(plan.execution.submit.weight, 8u);
 }
 
+TEST(GfxStagePolicyTest,
+     VulkanConstrainedLargeUnaryChunkedStageCanShareSubmitWindow) {
+  GpuExecutionDeviceInfo info;
+  info.backend = GpuBackend::Vulkan;
+  info.device_key = "test-rpi";
+  info.preferred_simd_width = 16u;
+  info.subgroup_size = 16u;
+  info.max_total_threads_per_group = 256u;
+  info.max_threads_per_group = {256u, 256u, 64u};
+  FakeDeviceInfoBufferManager buffer_manager(info);
+  const auto sigmoid = make_very_large_sigmoid_node();
+  GfxStageRuntimeTraits traits{};
+  traits.unary_chunked = true;
+  const auto plan = select_stage_optimization_plan(
+      &buffer_manager, GpuBackend::Vulkan, "Sigmoid", sigmoid, ov::element::f16,
+      /*has_bias=*/false,
+      /*has_activation=*/false,
+      /*has_batchnorm=*/false, traits);
+
+  EXPECT_EQ(plan.archetype, GfxStageArchetype::UnaryElementwise);
+  EXPECT_FALSE(plan.execution.submit.isolate);
+  EXPECT_EQ(plan.execution.submit.weight, 6u);
+}
+
 TEST(GfxStagePolicyTest, VulkanConstrainedLargeConcatCanShareSubmitWindow) {
   GpuExecutionDeviceInfo info;
   info.backend = GpuBackend::Vulkan;
@@ -3509,6 +3821,92 @@ TEST(GfxStagePolicyTest,
   EXPECT_EQ(plan.conv.kind, GfxConvRouteKind::None);
   EXPECT_TRUE(plan.execution.submit.isolate);
   EXPECT_GE(plan.execution.submit.weight, 8u);
+}
+
+TEST(GfxStagePolicyTest,
+     BroadcomHeavyPlainConvolutionStaysOnSharedMlirDirectRoute) {
+  FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
+  const auto conv = make_large_chunked_conv_node();
+  const auto plan = select_stage_optimization_plan(
+      &buffer_manager, GpuBackend::Vulkan, "Convolution", conv,
+      ov::element::f16,
+      /*has_bias=*/false,
+      /*has_activation=*/false,
+      /*has_batchnorm=*/false, {});
+
+  EXPECT_EQ(plan.archetype, GfxStageArchetype::Convolution);
+  EXPECT_EQ(plan.conv.kind, GfxConvRouteKind::None);
+  EXPECT_EQ(plan.conv.family, GfxConvFamily::Unknown);
+  EXPECT_EQ(plan.conv.algorithm.kind, GfxConvAlgorithmKind::None);
+  EXPECT_TRUE(plan.conv.algorithm.variant.empty());
+  EXPECT_TRUE(plan.execution.submit.isolate);
+  EXPECT_GE(plan.execution.submit.weight, 8u);
+}
+
+TEST(GfxStagePolicyTest,
+     BroadcomHeavyConvolutionWithBiasStaysOnSharedMlirDirectRoute) {
+  FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
+  const auto conv = make_large_chunked_conv_node();
+  const auto plan = select_stage_optimization_plan(
+      &buffer_manager, GpuBackend::Vulkan, "Convolution", conv,
+      ov::element::f16,
+      /*has_bias=*/true,
+      /*has_activation=*/false,
+      /*has_batchnorm=*/false, {});
+
+  EXPECT_EQ(plan.archetype, GfxStageArchetype::Convolution);
+  EXPECT_EQ(plan.conv.kind, GfxConvRouteKind::None);
+  EXPECT_EQ(plan.conv.family, GfxConvFamily::Unknown);
+  EXPECT_EQ(plan.conv.algorithm.kind, GfxConvAlgorithmKind::None);
+  EXPECT_TRUE(plan.conv.algorithm.variant.empty());
+  EXPECT_TRUE(plan.execution.submit.isolate);
+  EXPECT_GE(plan.execution.submit.weight, 8u);
+}
+
+TEST(GfxStagePolicyTest,
+     BroadcomHeavyConvolutionWithActivationStaysOnSharedMlirDirectRoute) {
+  FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
+  const auto conv = make_large_chunked_conv_node();
+  const auto plan = select_stage_optimization_plan(
+      &buffer_manager, GpuBackend::Vulkan, "Convolution", conv,
+      ov::element::f16,
+      /*has_bias=*/true,
+      /*has_activation=*/true,
+      /*has_batchnorm=*/false, {});
+
+  EXPECT_EQ(plan.conv.kind, GfxConvRouteKind::None);
+  EXPECT_EQ(plan.conv.algorithm.kind, GfxConvAlgorithmKind::None);
+}
+
+TEST(GfxStagePolicyTest,
+     BroadcomHeavyConvolutionWithBatchNormStaysOnSharedMlirDirectRoute) {
+  FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
+  const auto conv = make_large_chunked_conv_node();
+  const auto plan = select_stage_optimization_plan(
+      &buffer_manager, GpuBackend::Vulkan, "Convolution", conv,
+      ov::element::f16,
+      /*has_bias=*/false,
+      /*has_activation=*/false,
+      /*has_batchnorm=*/true, {});
+
+  EXPECT_EQ(plan.conv.kind, GfxConvRouteKind::None);
+  EXPECT_EQ(plan.conv.algorithm.kind, GfxConvAlgorithmKind::None);
+}
+
+TEST(GfxStagePolicyTest,
+     BroadcomPointwiseConvolutionStaysOnSharedMlirDirectRoute) {
+  FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
+  const auto conv = make_pointwise_conv_node();
+  const auto plan = select_stage_optimization_plan(
+      &buffer_manager, GpuBackend::Vulkan, "Convolution", conv,
+      ov::element::f16,
+      /*has_bias=*/false,
+      /*has_activation=*/false,
+      /*has_batchnorm=*/false, {});
+
+  EXPECT_EQ(plan.conv.kind, GfxConvRouteKind::None);
+  EXPECT_EQ(plan.conv.algorithm.kind, GfxConvAlgorithmKind::None);
+  EXPECT_FALSE(plan.execution.submit.isolate);
 }
 
 TEST(

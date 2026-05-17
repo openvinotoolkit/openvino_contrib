@@ -81,9 +81,9 @@ Treat these as triage flags, not as automatic proof of a bug.
   Read from: `profile_digest.descriptor_update_count`, `binding_prepare_in_infer`, diagnostics.
   Triage meaning: descriptor churn is visible.
 
-- `mpsrt_mps_resize2d_*`, `mpsrt_*_bound_resource_count`, `mpsrt_prepared_resource_heap_*`, or prepared-resource diagnostics
+- `mpsrt_mps_resize2d_*`, `mpsrt_mps_graph_*`, `mpsrt_*_bound_resource_count`, `mpsrt_prepared_resource_heap_*`, or prepared-resource diagnostics
   Meaning: Metal MPSRT work is spending CPU time preparing or binding Apple MPS vendor resources, image bridges, runtime-parameter buffers, or heap-backed transient resources.
-  Read from: `extended.summary.counter_map`, `mpsrt_encode` segments, prepared-model counters such as `mpsrt_prepared_resource_heap_alias_reuse_count`, and compile counters such as `mpsrt_prepare_mps_resize2d_count`.
+  Read from: `extended.summary.counter_map`, `mpsrt_encode` segments, prepared-model counters such as `mpsrt_prepared_resource_heap_alias_reuse_count`, request counters such as `mpsrt_mps_graph_sdpa_request_encode_count`, and compile counters such as `mpsrt_prepare_mps_resize2d_count`.
   Triage meaning: the MPSRT resource table, storage bridges, or prepared heap path should be inspected before treating the kernel itself as the bottleneck.
 
 ## Microbench Commands
@@ -91,12 +91,13 @@ Treat these as triage flags, not as automatic proof of a bug.
 ### macOS
 
 ```bash
+mkdir -p .gfx-profile
 /path/to/build-gfx-plugin-macos/output/bin/arm64/RelWithDebInfo/ov_gfx_microbench \
   --backend metal \
   --warmup 3 \
   --iterations 10 \
-  --output /tmp/gfx-microbench-macos.json \
-  --calibration-output /tmp/gfx-calibration-macos.json
+  --output .gfx-profile/gfx-microbench-macos.json \
+  --calibration-output .gfx-profile/gfx-calibration-macos.json
 ```
 
 ### Android
@@ -146,9 +147,29 @@ Recommended environment for trace export:
 
 ```bash
 OV_GFX_PROFILE_TRACE=perfetto \
-OV_GFX_PROFILE_TRACE_FILE=/tmp/gfx-trace.json \
+OV_GFX_PROFILE_TRACE_FILE=/path/to/gfx-trace.json \
 benchmark_app -m <model> -d GFX -pc -niter 10
 ```
+
+For full-graph accuracy runs and cross-device placement triage, prefer the
+compare runner profile switch over ad hoc environment-only setup:
+
+```bash
+ov_gfx_compare_runner <model.xml> \
+  --reference-device TEMPLATE \
+  --dump-gfx-profile \
+  --gfx-profiling-level detailed
+```
+
+The compile section includes MPSRT placement counters such as
+`mpsrt_stage_backend_apple_msl_precision_fp32_count`,
+`mpsrt_stage_backend_apple_mps_family_convolution_count`, and
+`mpsrt_stage_family_topk_count`, plus `stage_policy_mps_*` accept/reject
+counters. Runtime counters such as `mpsrt_mps_graph_gemm_request_encode_count`,
+`mpsrt_mps_graph_topk_request_encode_count`, and
+`mpsrt_mps_graph_sdpa_request_encode_count` identify MPSGraph-backed encodes.
+Use these counters before changing Apple `f32` placement policy or assuming a
+kernel route is the bottleneck.
 
 ## Android Runbook
 
@@ -198,10 +219,11 @@ If the package name is different on your setup, replace `com.intel.openvino.benc
 ### `xctrace`
 
 ```bash
+mkdir -p .gfx-profile
 xcrun xctrace record \
   --template "Time Profiler" \
   --time-limit 10s \
-  --output /tmp/gfx-profile.trace \
+  --output .gfx-profile/gfx-profile.trace \
   --launch -- \
   /path/to/build-gfx-plugin-macos/output/bin/arm64/RelWithDebInfo/benchmark_app \
     -m /path/to/model.xml \
@@ -303,7 +325,7 @@ python3 modules/gfx_plugin/tools/gfx_microbench_smoke.py \
 To summarize external traces:
 
 ```bash
-python3 modules/gfx_plugin/tools/gfx_external_trace_summary.py --input /tmp/gfx-trace.json --kind trace_event
+python3 modules/gfx_plugin/tools/gfx_external_trace_summary.py --input .gfx-profile/gfx-trace.json --kind trace_event
 python3 modules/gfx_plugin/tools/gfx_external_trace_summary.py --input perf-stat.txt --kind perf_stat
 python3 modules/gfx_plugin/tools/gfx_external_trace_summary.py --input perf-report.txt --kind perf_report
 ```

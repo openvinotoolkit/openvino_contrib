@@ -397,6 +397,7 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
         MetalInferSubmissionSession submission(cq, profiler);
         InferSubmissionTuningCaps submission_caps{};
         submission_caps.backend = GpuBackend::Metal;
+        submission_caps.device_family = GpuDeviceFamily::Apple;
         submission_caps.preferred_simd_width = std::max<uint32_t>(caps.preferred_simd_width, 1u);
         submission_caps.subgroup_size = std::max<uint32_t>(caps.preferred_simd_width, 1u);
         submission_caps.max_total_threads_per_group =
@@ -409,6 +410,7 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
                                          << " max_stages=" << submission_tuning.config.max_stages_per_submit
                                          << " max_output_bytes="
                                          << submission_tuning.config.max_output_bytes_per_submit
+                                         << " max_macs=" << submission_tuning.config.max_macs_per_submit
                                          << " simd=" << submission_caps.preferred_simd_width
                                          << " max_threads=" << submission_caps.max_total_threads_per_group
                                          << " incremental="

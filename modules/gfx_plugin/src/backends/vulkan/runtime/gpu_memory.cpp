@@ -18,13 +18,13 @@ VulkanGpuAllocator::VulkanGpuAllocator(VkBufferUsageFlags usage) : m_usage(usage
 GpuBuffer VulkanGpuAllocator::allocate(const GpuBufferDesc& desc) {
     validate_gpu_buffer_desc(desc, "GFX Vulkan");
     VkMemoryPropertyFlags props = 0;
-    if (desc.cpu_read || desc.cpu_write) {
+    if (desc.cpu_read || desc.cpu_write || !desc.prefer_device_local) {
         props = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     } else {
         props = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     }
 
-    GpuBuffer buf = vulkan_allocate_buffer(desc.bytes, desc.type, m_usage, props);
+    GpuBuffer buf = vulkan_allocate_buffer(desc.bytes, desc.type, m_usage, props, desc.label);
     if (!buf.buffer && desc.bytes > 0) {
         OPENVINO_THROW("GFX Vulkan: failed to allocate buffer");
     }

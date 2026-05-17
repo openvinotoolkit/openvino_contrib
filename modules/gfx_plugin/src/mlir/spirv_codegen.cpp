@@ -1048,6 +1048,9 @@ struct CompactMemrefAbiInfo {
     size_t output_arg_count = 0;
 };
 
+constexpr llvm::StringLiteral kKernelRuntimeArgIndexAttr =
+    "gfx.kernel_runtime_arg_index";
+
 std::optional<CompactMemrefAbiInfo> read_compact_memref_abi_info(mlir::ModuleOp module) {
     if (!module) {
         return std::nullopt;
@@ -1095,6 +1098,37 @@ std::optional<CompactMemrefAbiInfo> read_compact_memref_abi_info(mlir::ModuleOp 
     return std::nullopt;
 }
 
+void annotate_compact_memref_runtime_arg_indices(mlir::ModuleOp module) {
+    if (!module) {
+        return;
+    }
+    const auto operand_kinds = extract_kernel_operand_kinds(module);
+    const auto operand_arg_indices = extract_kernel_operand_arg_indices(module);
+    if (operand_kinds.empty() ||
+        operand_kinds.size() != operand_arg_indices.size()) {
+        return;
+    }
+    auto* ctx = module.getContext();
+    module.walk([&](mlir::FunctionOpInterface func) {
+        const unsigned arg_count = func.getNumArguments();
+        const size_t limit =
+            std::min<size_t>(arg_count, operand_kinds.size());
+        for (size_t arg_idx = 0; arg_idx < limit; ++arg_idx) {
+            if (operand_kinds[arg_idx] != 1 ||
+                operand_arg_indices[arg_idx] < 0 ||
+                !mlir::isa<mlir::MemRefType>(
+                    func.getArgument(static_cast<unsigned>(arg_idx)).getType())) {
+                continue;
+            }
+            func.setArgAttr(static_cast<unsigned>(arg_idx),
+                            kKernelRuntimeArgIndexAttr,
+                            mlir::IntegerAttr::get(
+                                mlir::IntegerType::get(ctx, 32),
+                                operand_arg_indices[arg_idx]));
+        }
+    });
+}
+
 void rebuild_compact_memref_operand_indices(mlir::ModuleOp module, const std::string& entry_point) {
     const auto compact_abi = read_compact_memref_abi_info(module);
     if (!compact_abi) {
@@ -1140,7 +1174,7 @@ void rebuild_compact_memref_operand_indices(mlir::ModuleOp module, const std::st
         if (!mlir::isa<mlir::MemRefType>(arg.getType())) {
             continue;
         }
-        if (auto attr = func.getArgAttr(arg_idx, "gfx.kernel_runtime_arg_index")) {
+        if (auto attr = func.getArgAttr(arg_idx, kKernelRuntimeArgIndexAttr)) {
             if (auto idx_attr = mlir::dyn_cast<mlir::IntegerAttr>(attr)) {
                 const int64_t logical_index = idx_attr.getInt();
                 if (logical_index >= 0 && static_cast<size_t>(logical_index) < operand_arg_indices.size()) {
@@ -1180,7 +1214,8 @@ void rebuild_compact_memref_operand_indices(mlir::ModuleOp module, const std::st
 void annotate_kernel_scalar_args(mlir::ModuleOp module) {
     const bool has_compact_memref_abi =
         read_compact_memref_abi_info(module).has_value();
-    if (module->hasAttr("gfx.kernel_operand_kinds") && !has_compact_memref_abi) {
+    if (module->hasAttr("gfx.kernel_operand_kinds") &&
+        !has_compact_memref_abi) {
         return;
     }
     auto strip_memref_casts = [](mlir::Value value) -> mlir::Value {
@@ -1232,7 +1267,20 @@ void annotate_kernel_scalar_args(mlir::ModuleOp module) {
                 int32_t arg_idx = -1;
                 auto base = strip_memref_casts(operand);
                 if (auto barg = mlir::dyn_cast<mlir::BlockArgument>(base)) {
-                    arg_idx = static_cast<int32_t>(barg.getArgNumber());
+                    if (auto func = mlir::dyn_cast<mlir::FunctionOpInterface>(
+                            barg.getOwner()->getParentOp())) {
+                        if (auto attr = func.getArgAttr(
+                                barg.getArgNumber(),
+                                kKernelRuntimeArgIndexAttr)) {
+                            if (auto idx_attr =
+                                    mlir::dyn_cast<mlir::IntegerAttr>(attr)) {
+                                arg_idx = static_cast<int32_t>(idx_attr.getInt());
+                            }
+                        }
+                    }
+                    if (arg_idx < 0) {
+                        arg_idx = static_cast<int32_t>(barg.getArgNumber());
+                    }
                 } else if (preserve_compact_buffers) {
                     while (preserved_buffer_pos < existing_kinds.size() && existing_kinds[preserved_buffer_pos] == 0) {
                         ++preserved_buffer_pos;
@@ -1325,6 +1373,13 @@ void annotate_kernel_scalar_args(mlir::ModuleOp module) {
 
 void reconcile_spirv_stage_manifest_with_launch_abi(mlir::ModuleOp module) {
     if (!module || !module->hasAttr("gfx.kernel_operand_kinds")) {
+        return;
+    }
+
+    bool has_launch_abi = false;
+    module.walk([&](mlir::gpu::LaunchFuncOp) { has_launch_abi = true; });
+    module.walk([&](mlir::gpu::LaunchOp) { has_launch_abi = true; });
+    if (!has_launch_abi) {
         return;
     }
 
@@ -1651,6 +1706,9 @@ static std::vector<uint32_t> lower_to_spirv_impl(mlir::ModuleOp module,
     auto preserved_scalar_args = module->getAttr("gfx.kernel_scalar_args");
     const bool preserve_compact_memref_abi =
         read_compact_memref_abi_info(module).has_value();
+    if (preserve_compact_memref_abi) {
+        annotate_compact_memref_runtime_arg_indices(module);
+    }
     mlir::DialectRegistry registry;
     mlir::arith::registerBufferizableOpInterfaceExternalModels(registry);
     mlir::tensor::registerBufferizableOpInterfaceExternalModels(registry);

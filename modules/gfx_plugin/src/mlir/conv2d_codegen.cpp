@@ -103,7 +103,7 @@ std::string static_activation_expr(const std::string& kind, const char* value) {
         return "max(" + x + ", 0.0f)";
     }
     if (kind == "Sigmoid") {
-        return "1.0f / (1.0f + exp(-" + x + "))";
+        return "1.0f / (1.0f + precise::exp(-" + x + "))";
     }
     if (kind == "Tanh") {
         return msl_stable_tanh_expr(x);
@@ -301,7 +301,7 @@ std::string generate_msl_for_conv2d(const Conv2DCodegenDesc& d, mlir::ModuleOp m
             ss << "inline float gfx_conv_apply_activation(float acc, constant ConvParams& p) {\n";
             ss << "    switch (p.activation) {\n";
             ss << "      case ActRelu: return max(acc, 0.0f);\n";
-            ss << "      case ActSigmoid: return 1.0f / (1.0f + exp(-acc));\n";
+            ss << "      case ActSigmoid: return 1.0f / (1.0f + precise::exp(-acc));\n";
             ss << "      case ActTanh: return " << msl_stable_tanh_expr("acc") << ";\n";
             ss << "      case ActElu: return (acc > 0.0f) ? acc : (exp(acc) - 1.0f) * p.alpha;\n";
             ss << "      case ActPrelu: return (acc >= 0.0f) ? acc : acc * p.alpha;\n";
@@ -579,7 +579,8 @@ std::string generate_msl_for_conv2d(const Conv2DCodegenDesc& d, mlir::ModuleOp m
     ss << "    }\n";
     ss << "    switch (p.activation) {\n";
     ss << "      case ActRelu: acc = max(acc, static_cast<" << accum << ">(0.0f)); break;\n";
-    ss << "      case ActSigmoid: acc = static_cast<" << accum << ">(1.0f) / (static_cast<" << accum << ">(1.0f) + exp(-acc)); break;\n";
+    ss << "      case ActSigmoid: acc = static_cast<" << accum << ">(1.0f) / (static_cast<" << accum
+       << ">(1.0f) + precise::exp(-acc)); break;\n";
     ss << "      case ActTanh: acc = " << msl_stable_tanh_expr("acc") << "; break;\n";
     ss << "      case ActElu: acc = (acc > static_cast<" << accum << ">(0.0f)) ? acc : (exp(acc) - static_cast<" << accum << ">(1.0f)) * static_cast<" << accum << ">(p.alpha); break;\n";
     ss << "      case ActPrelu: acc = (acc >= static_cast<" << accum << ">(0.0f)) ? acc : acc * static_cast<" << accum << ">(p.alpha); break;\n";

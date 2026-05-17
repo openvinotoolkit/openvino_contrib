@@ -13,8 +13,8 @@ This document describes the current architecture implemented in `modules/gfx_plu
 - `src/runtime/`: backend-neutral runtime interfaces and helpers
 - `src/runtime/gfx_mpsrt_*`: Apple MPS/MSL ABI, stage-plan, builder-plan, runtime-model, program, storage-bridge, and kernel-manifest helpers
 - `src/kernel_ir/gfx_kernel_manifest.hpp`: backend-neutral manifest for stage family, execution kind, storage, and custom-kernel ABI
-- `src/mlir/`: MLIR support probing, Apple stage-pipeline lowering, typed MPSRT dialect/materialization, split Apple MSL/MPS source-plan helpers, MatMul Metal/MPSRT helpers, SPIR-V binding adapters, and shared codegen helpers
-- `src/backends/metal/`: Metal-specific plugin, runtime, memory, profiling, and codegen pieces
+- `src/mlir/`: MLIR support probing, Apple stage-pipeline lowering, typed MPSRT dialect/materialization, split Apple MSL/MPS source-plan helpers, attention and MatMul Metal/MPSRT helpers, SPIR-V binding adapters, and shared codegen helpers
+- `src/backends/metal/`: Metal-specific plugin, runtime, memory, profiling, MPSGraph-backed vendor stages, and codegen pieces
 - `src/backends/vulkan/`: Vulkan-specific plugin, runtime, profiling, and codegen pieces
 - `src/transforms/`: graph rewrites and fusion logic
 - `src/kernel_ir/`: shared kernel metadata and planning structures
@@ -68,7 +68,7 @@ Two interface points are important in the current code:
 - `submit_policy()`: a stage reports scheduling weight and isolation hints used by backend infer paths during command-buffer submission
 
 `src/runtime/gfx_stage_policy.*` selects runtime policy from node shape, element type, backend, and backend capabilities. The policy layer currently decides:
-- whether a stage stays on shared SPIR-V dispatch, Apple MSL dispatch, or Apple MPS vendor primitives
+- whether a stage stays on shared SPIR-V dispatch, Apple MSL dispatch, or Apple MPS/MPSGraph vendor primitives
 - which storage kind that route expects, such as `buffer`, `image`, or `matrix`
 - whether a stage should use direct or chunked execution
 - whether bias, activation, or batchnorm can be fused
@@ -261,7 +261,7 @@ MSL source-family files also use the same adapter boundary through
 `require_backend_custom_kernel_source_binding()`; the old Apple-only source
 binding adapter layer was removed instead of being kept as a parallel shortcut.
 
-The Apple stage pipeline in `gfx_apple_stage_pipeline.*` sits earlier in this path. It canonicalizes an Apple-targeted module, validates placement/storage/fusion boundaries, lowers the resulting stage plan into the canonical stage manifest, and can then materialize the typed MPSRT program facade from that same stage plan. It does not use `gfx.apple.pipeline.*` module attributes as a second metadata surface: pass boundaries stay available through the C++ pipeline API, semantic state lives in `gfx.stage_manifest.*`, and storage bridges are serialized only in the typed `GfxMpsrtProgram`/`gfx_mpsrt_ops` records. Vendor descriptor extraction for Apple MPS stages is shared through `gfx_apple_vendor_descriptors.*`, so Conv2D, Pool2D, Resize2D, Softmax, and TopK all feed the same descriptor and tensor-desc path.
+The Apple stage pipeline in `gfx_apple_stage_pipeline.*` sits earlier in this path. It canonicalizes an Apple-targeted module, validates placement/storage/fusion boundaries, lowers the resulting stage plan into the canonical stage manifest, and can then materialize the typed MPSRT program facade from that same stage plan. It does not use `gfx.apple.pipeline.*` module attributes as a second metadata surface: pass boundaries stay available through the C++ pipeline API, semantic state lives in `gfx.stage_manifest.*`, and storage bridges are serialized only in the typed `GfxMpsrtProgram`/`gfx_mpsrt_ops` records. Vendor descriptor extraction for Apple MPS/MPSGraph stages is shared through `gfx_apple_vendor_descriptors.*`, so Conv2D, Pool2D, Resize2D, Softmax, TopK, and SDPA all feed the same descriptor and tensor-desc path.
 
 Generated `gfx.mpsrt.*` stage ops are verified from their op name and canonical `gfx.stage_manifest.*` attributes. They do not emit duplicated `gfx.mpsrt.op.stage.backend`, `gfx.mpsrt.op.stage.stage_kind`, `gfx.mpsrt.op.stage.stage_record_key`, `gfx.mpsrt.op.stage.input_storage`, `gfx.mpsrt.op.stage.output_storage`, or `gfx.mpsrt.op.stage.layout` attrs; those belonged to the older side-channel descriptor surface. Readback reconstructs storage/layout from explicit typed value edges and input/output tensor descriptors, so transient outputs from earlier stages remain part of the same typed program model.
 Builder-plan stage specs, module stage plans, and Apple MPS lowering plans follow the same identity rule: they do not carry a stored per-stage record key, and `gfx_mpsrt_make_builder_plan()` derives the key from `GfxMpsrtStageDesc` at the runtime boundary.
@@ -302,10 +302,10 @@ The Metal path also now has a local MPSRT execution layer under `src/backends/me
 That split is driven by the backend-neutral manifest layer in `gfx_kernel_manifest.hpp` plus the custom-kernel family registry in `gfx_custom_kernel_families.*`. The registry classifies MSL kernels into stable families such as eltwise, transpose/packing, concat/split, gather/scatter, RMS/RoPE, masked softmax-attention, Conv2D/Conv3D, MatMul, pooling, BatchNorm, and reduction dispatch. It also defines the external-buffer ABI roles and dispatch policy expected by request-time binding, while `runtime/gfx_mpsrt_kernel_manifest_adapter.hpp` is the runtime boundary that turns those common manifests into MPSRT custom-dispatch specs.
 The manifest layer now also carries stage-family information for vendor primitives and custom kernels, semantic input/output roles, and dispatch-grid metadata, which lets one MPSRT model mix execution kinds while keeping one stable record key and buffer-order contract.
 Recent Metal compile/runtime changes extend the MPSRT path beyond one standalone MSL stage:
-- vendor-only plans such as `MPSGemm` can now execute through the MPSRT runtime boundary without requiring generated MSL source
+- vendor-only plans such as `MPSGemm` and MPSGraph-backed SDPA can now execute through the MPSRT runtime boundary without requiring generated MSL source
 - hybrid multi-stage plans such as `MPSGemm + MSL epilogue` can be serialized as one MPSRT model with semantic inputs/outputs, explicit intermediate value edges, storage bridges, and stage-local descriptors
 - request-time execution can choose full-context MPSRT execution for those mixed models instead of falling back to one raw compiled-kernel dispatch
-- vendor primitive coverage now also includes Apple MPS convolution, group convolution, pooling, spatial bilinear Resize2D, softmax, and TopK stages when stage policy selects those routes
+- vendor primitive coverage now also includes Apple MPS convolution, group convolution, pooling, spatial bilinear Resize2D, softmax, TopK, and MPSGraph SDPA stages when stage policy selects those routes
 - compile-time source planning now uses `gfx_mpsrt_source_plan.hpp` to pick `SingleStage` versus `MultiStage` source contracts directly from the typed program/module metadata, while `gfx_mpsrt_const_tensor_sources.hpp` attaches evaluated constant payloads from typed MPSRT program inputs marked as `ConstTensor`/`GfxMpsrtTensorFlagConst`
 - metadata cleanup now removes stale flat `gfx.mpsrt.*` stage attrs after the generated program/ops facade is materialized, so current readers should prefer `read_module_mpsrt_program()`, typed `gfx.mpsrt.*` ops, and runtime-ABI helpers over direct attribute scraping
 - runtime-model finalization now builds `MpsrtRuntimeResource` entries and `external_buffer_bindings`, then request binding validates external IO, runtime-parameter resources, model-owned const buffers, and prepared transient resources against that table; Metal vendor-stage preparation also consumes model-owned constants through `MpsrtPreparedResource` instead of scanning the const-pack cache directly
@@ -382,7 +382,7 @@ This is model serialization, not compiled-kernel caching.
 - targeted per-op skips are represented as explicit compare-runner outcomes (`PER_OP_SKIPPED`) and preserved by `bench/gfx_eval.py`; backend gaps should not be hidden as successful matches or per-device test exclusions.
 - once an Apple MPS vendor contract is selected, its typed input/output descriptors own the MPSRT ABI and storage-bridge assignment; the intermediate MLIR helper signature must not remain a second source of descriptor counts.
 - Apple MPS Pool2D materialization is single-output only; indexed `MaxPool` variants with a second indices output must remain in the custom-kernel path until the typed vendor contract can represent both outputs.
-- `f32` MPSImage diagnostic placement is quality-guarded: precision-sensitive nodes and any image producer that can influence an order-sensitive `TopK` remain on Apple MSL, because small score drift can change indices and later detection gathers even when local tensor diffs are below the ordinary numeric threshold.
+- `f32` MPSImage placement is quality-guarded: precision-sensitive nodes and any image producer that can influence an order-sensitive `TopK` must stay on the route selected by stage policy, because small score drift can change indices and later detection gathers even when local tensor diffs are below the ordinary numeric threshold. The diagnostic property is for route localization, not for bypassing that policy.
 - many ops still require static rank, static shape, or constant attributes
 - the plugin remains experimental
 - some lowering and runtime optimizations are intentionally backend-specific, so architecture docs should describe the shared model first and backend specialization second

@@ -101,6 +101,34 @@ TEST(GfxBackendProperty, CompileModelHonorsBackend) {
     }
 }
 
+TEST(GfxPrecisionProperty, PluginAndCompiledModelHonorExplicitPrecision) {
+    ov::Core core;
+    register_gfx_plugin(core);
+
+    if (!ov::gfx_plugin::kGfxBackendMetalAvailable && !ov::gfx_plugin::kGfxBackendVulkanAvailable) {
+        GTEST_SKIP() << "GFX backend unavailable";
+    }
+
+    core.set_property("GFX", {{ov::hint::inference_precision.name(), ov::element::f32}});
+    EXPECT_EQ(core.get_property("GFX", ov::hint::inference_precision), ov::element::f32);
+    EXPECT_THROW(core.set_property("GFX", {{ov::hint::inference_precision.name(), std::string("i8")}}),
+                 ov::Exception);
+
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
+    auto relu = std::make_shared<ov::op::v0::Relu>(param);
+    auto res = std::make_shared<ov::op::v0::Result>(relu);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res}, ov::ParameterVector{param},
+                                             "precision_property_model");
+
+    auto cm = core.compile_model(model, "GFX",
+                                 {{ov::hint::inference_precision.name(), std::string("f32")}});
+    EXPECT_EQ(cm.get_property(ov::hint::inference_precision.name()).as<ov::element::Type>(),
+              ov::element::f32);
+    cm.set_property({{ov::hint::inference_precision.name(), std::string("f16")}});
+    EXPECT_EQ(cm.get_property(ov::hint::inference_precision.name()).as<ov::element::Type>(),
+              ov::element::f16);
+}
+
 TEST(GfxBackendProperty, InferenceWithSelectedBackend) {
     ov::Core core;
     register_gfx_plugin(core);

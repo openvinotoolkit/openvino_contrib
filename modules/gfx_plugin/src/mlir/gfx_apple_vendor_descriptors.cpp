@@ -5,6 +5,7 @@
 #include "mlir/gfx_apple_vendor_descriptors.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 #include "openvino/core/node.hpp"
@@ -15,6 +16,7 @@
 #include "openvino/op/interpolate.hpp"
 #include "openvino/op/log_softmax.hpp"
 #include "openvino/op/max_pool.hpp"
+#include "openvino/op/scaled_dot_product_attention.hpp"
 #include "openvino/op/softmax.hpp"
 #include "openvino/op/topk.hpp"
 #include "openvino/util/common_util.hpp"
@@ -494,7 +496,8 @@ bool gfx_apple_make_mps_topk_desc(const std::shared_ptr<const ov::Node>& node,
         return false;
     }
     const auto k = topk->get_k();
-    if (k == 0 || k > 16 || topk->get_mode() != ov::op::TopKMode::MAX) {
+    if (k == 0 || k > input_shape[static_cast<size_t>(axis)] ||
+        topk->get_mode() != ov::op::TopKMode::MAX) {
         return false;
     }
     const auto index_type = topk->get_output_element_type(1);
@@ -509,6 +512,9 @@ bool gfx_apple_make_mps_topk_desc(const std::shared_ptr<const ov::Node>& node,
     desc.mode_max = 1;
     switch (topk->get_sort_type()) {
         case ov::op::TopKSortType::SORT_INDICES:
+            if (k > 16) {
+                return false;
+            }
             desc.sort_type = 2u;
             break;
         case ov::op::TopKSortType::NONE:
@@ -519,6 +525,38 @@ bool gfx_apple_make_mps_topk_desc(const std::shared_ptr<const ov::Node>& node,
             desc.sort_type = 1u;
             break;
     }
+    return true;
+}
+
+bool gfx_apple_make_mps_sdpa_desc(const std::shared_ptr<const ov::Node>& node,
+                                  GfxMpsrtSdpaAbiDesc& desc) {
+    desc = {};
+    auto sdpa = ov::as_type_ptr<const ov::op::v13::ScaledDotProductAttention>(node);
+    if (!sdpa || sdpa->get_input_size() != 3 || sdpa->get_causal() ||
+        !sdpa->get_input_partial_shape(0).is_static() ||
+        !sdpa->get_input_partial_shape(1).is_static() ||
+        !sdpa->get_input_partial_shape(2).is_static() ||
+        !sdpa->get_output_partial_shape(0).is_static()) {
+        return false;
+    }
+    const auto q_shape = sdpa->get_input_shape(0);
+    const auto k_shape = sdpa->get_input_shape(1);
+    const auto v_shape = sdpa->get_input_shape(2);
+    const auto out_shape = sdpa->get_output_shape(0);
+    if (q_shape.size() != 4 || k_shape.size() != 4 || v_shape.size() != 4 ||
+        out_shape.size() != 4 ||
+        q_shape[0] != k_shape[0] || q_shape[0] != v_shape[0] ||
+        q_shape[1] != k_shape[1] || q_shape[1] != v_shape[1] ||
+        q_shape[3] != k_shape[3] || q_shape[3] != v_shape[3] ||
+        k_shape[2] != v_shape[2] || out_shape[0] != q_shape[0] ||
+        out_shape[1] != q_shape[1] || out_shape[2] != q_shape[2] ||
+        out_shape[3] != v_shape[3]) {
+        return false;
+    }
+    desc.has_mask = 0;
+    desc.causal = 0;
+    desc.accumulate_fp32 = 1;
+    desc.scale = 1.0f / std::sqrt(static_cast<float>(q_shape[3]));
     return true;
 }
 
@@ -634,9 +672,52 @@ bool gfx_apple_make_mps_topk_contract(const std::shared_ptr<const ov::Node>& nod
         contract = {};
         return false;
     }
+    contract.semantic_input_roles = {GfxKernelBufferRole::TensorInput,
+                                     GfxKernelBufferRole::TensorOutput,
+                                     GfxKernelBufferRole::TensorOutput};
     contract.external_buffer_abi =
         gfx_mpsrt_make_external_buffer_abi_from_roles({GfxMpsrtExternalBufferRole::TensorInput,
                                                        GfxMpsrtExternalBufferRole::TensorOutput,
+                                                       GfxMpsrtExternalBufferRole::TensorOutput});
+    contract.valid = contract.external_buffer_abi.valid;
+    return contract.valid;
+}
+
+bool gfx_apple_make_mps_sdpa_contract(const std::shared_ptr<const ov::Node>& node,
+                                      const GfxMpsrtSdpaAbiDesc& desc,
+                                      GfxAppleMpsVendorPrimitiveContract& contract) {
+    contract = {};
+    contract.descriptor.kind = GfxAppleMpsVendorPrimitiveKind::Sdpa;
+    contract.descriptor.sdpa = desc;
+    if (!node || node->get_input_size() != 3 || node->get_output_size() != 1) {
+        return false;
+    }
+    for (size_t input_idx = 0; input_idx < 3; ++input_idx) {
+        if (!node->get_input_partial_shape(input_idx).is_static()) {
+            return false;
+        }
+        contract.input_descs.push_back(gfx_mpsrt_make_tensor_desc(
+            gfx_shape_to_i64_vector(node->get_input_shape(input_idx)),
+            node->get_input_element_type(input_idx),
+            GfxStageStorageKind::NDArray,
+            GfxMpsrtTensorFlagExternalIo));
+    }
+    if (!node->get_output_partial_shape(0).is_static()) {
+        contract = {};
+        return false;
+    }
+    contract.output_descs.push_back(gfx_mpsrt_make_tensor_desc(
+        gfx_shape_to_i64_vector(node->get_output_shape(0)),
+        node->get_output_element_type(0),
+        GfxStageStorageKind::NDArray,
+        GfxMpsrtTensorFlagTransient));
+    contract.semantic_input_roles = {GfxKernelBufferRole::TensorInput,
+                                     GfxKernelBufferRole::TensorInput,
+                                     GfxKernelBufferRole::TensorInput};
+    contract.external_buffer_abi =
+        gfx_mpsrt_make_external_buffer_abi_from_roles({GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::TensorInput,
+                                                       GfxMpsrtExternalBufferRole::TensorInput,
                                                        GfxMpsrtExternalBufferRole::TensorOutput});
     contract.valid = contract.external_buffer_abi.valid;
     return contract.valid;

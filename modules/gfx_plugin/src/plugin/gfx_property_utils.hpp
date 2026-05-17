@@ -5,6 +5,7 @@
 
 #include <string>
 
+#include "openvino/core/type/element_type.hpp"
 #include "openvino/runtime/properties.hpp"
 #include "openvino/util/common_util.hpp"
 #include "openvino/gfx_plugin/properties.hpp"
@@ -60,7 +61,11 @@ bool apply_profiling_property(const std::string& key,
                               bool& profiling_level_set,
                               ov::AnyMap& config);
 
+bool is_diagnostic_f32_vendor_image_property(const std::string& key);
+
 bool parse_bool_property(const ov::Any& value, const std::string& key);
+ov::element::Type parse_inference_precision_property(const ov::Any& value,
+                                                     const std::string& key);
 
 }  // namespace gfx_plugin
 }  // namespace ov

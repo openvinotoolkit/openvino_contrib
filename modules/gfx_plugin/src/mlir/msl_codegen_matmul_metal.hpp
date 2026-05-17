@@ -11,12 +11,17 @@
 #include "openvino/core/shape.hpp"
 
 #include <memory>
+#include <optional>
 #include <string_view>
 
 namespace ov {
 namespace gfx_plugin {
 
 class GpuBufferManager;
+
+std::optional<MatMulCodegenDesc>
+make_static_matmul_codegen_desc_for_node(
+    const std::shared_ptr<const ov::Node>& node);
 
 GfxMpsrtKernelSourcePlan make_apple_metal_runtime_matmul_kernel_source_plan(
     mlir::MLIRContext& ctx,

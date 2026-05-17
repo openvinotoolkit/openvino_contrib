@@ -234,6 +234,7 @@ set(GFX_RUNTIME_METAL_SOURCES
     ${_gfx_src_dir}/backends/metal/runtime/metal_command_encoder.mm
     ${_gfx_src_dir}/backends/metal/runtime/memory_ops.mm
     ${_gfx_src_dir}/backends/metal/runtime/metal_executor.cpp
+    ${_gfx_src_dir}/backends/metal/runtime/mps_graph_attention_stage.mm
     ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_context.mm
     ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_request.mm
     ${_gfx_src_dir}/backends/metal/runtime/gpu_memory.mm
@@ -279,6 +280,7 @@ set(GFX_RUNTIME_METAL_HEADERS
     ${_gfx_src_dir}/backends/metal/runtime/profiling/profiler_config.hpp
     ${_gfx_src_dir}/backends/metal/runtime/profiling/profiling_report.hpp
     ${_gfx_src_dir}/backends/metal/runtime/metal_executor.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/mps_graph_attention_stage.hpp
     ${_gfx_src_dir}/backends/metal/runtime/stage_factory.hpp
 )
 

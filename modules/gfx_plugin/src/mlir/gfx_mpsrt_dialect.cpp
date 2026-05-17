@@ -41,6 +41,9 @@ ExpectedStageManifest expected_manifest_for_stage_op(llvm::StringRef op_name) {
     if (op_name == "gfx.mpsrt.topk") {
         return {"apple_mps", "vendor_primitive", "topk"};
     }
+    if (op_name == "gfx.mpsrt.sdpa") {
+        return {"apple_mps", "vendor_primitive", "attention_softmax"};
+    }
     if (op_name == "gfx.mpsrt.dispatch") {
         return {"apple_msl", "custom_kernel", {}};
     }
@@ -185,6 +188,7 @@ GfxMpsrtDialect::GfxMpsrtDialect(mlir::MLIRContext* context)
                   GemmOp,
                   SoftmaxOp,
                   TopKOp,
+                  SdpaOp,
                   ToImageOp,
                   ToMatrixOp,
                   ToNDArrayOp,

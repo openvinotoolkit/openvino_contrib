@@ -27,6 +27,7 @@
 
 #include "integration/test_constants.hpp"
 #include "gfx_test_utils.hpp"
+#include "gfx_accuracy_tolerance.hpp"
 
 namespace ov {
 namespace test {
@@ -232,25 +233,21 @@ protected:
         ASSERT_EQ(out_ref.size(), out_metal.size())
             << "Reference device returned " << out_ref.size() << " outputs, GFX returned " << out_metal.size();
 
-        bool uses_fp16 = std::any_of(inputs.begin(), inputs.end(), [](const ov::Tensor& t) {
-            auto et = t.get_element_type();
-            return et == ov::element::f16 || et == ov::element::bf16;
-        });
-        float local_abs = abs_tol;
-        float local_rel = rel_tol;
-        if (uses_fp16) {
-            local_abs = std::max(local_abs, 5e-4f);
-            local_rel = std::max(local_rel, 5e-4f);
-        }
+        const auto gfx_inference_precision = gfx_inference_precision_from_config(gfx_config);
 
         for (size_t i = 0; i < out_ref.size(); ++i) {
+            const auto tolerance = gfx_accuracy_tolerance(out_ref[i].get_element_type(),
+                                                          out_metal[i].get_element_type(),
+                                                          gfx_inference_precision,
+                                                          abs_tol,
+                                                          rel_tol);
             const auto ref_t = out_ref[i].get_element_type() == ov::element::f32
                                    ? out_ref[i]
                                    : ov::gfx_plugin::to_float32_tensor(out_ref[i]);
             const auto metal_t = out_metal[i].get_element_type() == ov::element::f32
                                      ? out_metal[i]
                                      : ov::gfx_plugin::to_float32_tensor(out_metal[i]);
-            ov::test::utils::compare(ref_t, metal_t, local_abs, local_rel);
+            ov::test::utils::compare(ref_t, metal_t, tolerance.abs_threshold, tolerance.rel_threshold);
         }
     }
 };

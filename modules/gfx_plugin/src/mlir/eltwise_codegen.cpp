@@ -57,7 +57,7 @@ std::string op_to_msl(EltwiseKind k) {
 std::string activation_expr(ActivationKind kind, float alpha) {
     switch (kind) {
         case ActivationKind::Relu: return "max(x, 0.0f)";
-        case ActivationKind::Sigmoid: return "1.0f / (1.0f + exp(-x))";
+        case ActivationKind::Sigmoid: return "1.0f / (1.0f + precise::exp(-x))";
         case ActivationKind::Tanh: return msl_stable_tanh_expr("x");
         case ActivationKind::Prelu: return "(x >= 0.0f) ? x : x * " + std::to_string(alpha);
         case ActivationKind::Gelu:
@@ -76,7 +76,7 @@ std::string activation_expr_for(ActivationKind kind, float alpha, const std::str
     const std::string x = "(" + value + ")";
     switch (kind) {
         case ActivationKind::Relu: return "(max(" + x + ", 0.0f))";
-        case ActivationKind::Sigmoid: return "(1.0f / (1.0f + exp(-" + x + ")))";
+        case ActivationKind::Sigmoid: return "(1.0f / (1.0f + precise::exp(-" + x + ")))";
         case ActivationKind::Tanh: return "(" + msl_stable_tanh_expr(x) + ")";
         case ActivationKind::Prelu: return "((" + x + " >= 0.0f) ? " + x + " : " + x + " * " + std::to_string(alpha) + ")";
         case ActivationKind::Gelu:

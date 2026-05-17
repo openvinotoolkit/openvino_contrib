@@ -39,6 +39,7 @@ struct MpsrtRuntimeStage {
   GfxMpsrtResize2DAbiDesc resize2d_desc{};
   GfxMpsrtSoftmaxAbiDesc softmax_desc{};
   GfxMpsrtTopKAbiDesc topk_desc{};
+  GfxMpsrtSdpaAbiDesc sdpa_desc{};
   std::vector<GfxMpsrtValue> inputs;
   std::vector<GfxMpsrtValue> outputs;
   std::vector<GfxMpsrtValue> kernel_buffer_order;

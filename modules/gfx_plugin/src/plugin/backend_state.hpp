@@ -5,10 +5,13 @@
 
 #include <cstddef>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "openvino/core/node.hpp"
+#include "openvino/core/shape.hpp"
 #include "openvino/core/any.hpp"
+#include "openvino/core/type/element_type.hpp"
 #include "openvino/runtime/itensor.hpp"
 #include "openvino/runtime/so_ptr.hpp"
 
@@ -22,6 +25,16 @@ namespace gfx_plugin {
 class GpuStage;
 
 struct InferRequestState;
+
+struct VendorAttentionStageSpec {
+    std::string name;
+    ov::element::Type element_type = ov::element::dynamic;
+    ov::Shape query_shape;
+    ov::Shape key_shape;
+    ov::Shape value_shape;
+    ov::Shape output_shape;
+    float scale = 1.0f;
+};
 
 struct BackendResources {
     GpuDeviceHandle device = nullptr;
@@ -40,6 +53,14 @@ struct BackendState {
     virtual void init_infer_state(InferRequestState& /*state*/) const {}
     virtual std::unique_ptr<GfxProfiler> create_profiler(const GfxProfilerConfig& /*cfg*/) const { return {}; }
     virtual std::unique_ptr<GpuStage> create_stage(const std::shared_ptr<const ov::Node>& node) const = 0;
+    virtual bool enable_generic_attention_fusion() const { return true; }
+    virtual bool supports_vendor_attention_stage() const { return false; }
+    virtual bool enable_conv_activation_fusion() const { return true; }
+    virtual bool enable_precision_sensitive_arithmetic_fusion() const { return true; }
+    virtual std::unique_ptr<GpuStage> create_vendor_attention_stage(
+        const VendorAttentionStageSpec& /*spec*/) const {
+        return {};
+    }
     virtual ov::SoPtr<ov::ITensor> get_tensor_override(
         const InferRequestState& /*state*/,
         size_t /*idx*/,

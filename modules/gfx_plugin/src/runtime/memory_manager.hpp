@@ -49,12 +49,9 @@ inline void validate_gpu_buffer_desc(const GpuBufferDesc& desc, const char* erro
         break;
     case BufferUsage::Intermediate:
     case BufferUsage::Temp:
-        OPENVINO_ASSERT(desc.prefer_device_local,
-                        error_prefix,
-                        ": internal buffers must be device-local");
         OPENVINO_ASSERT(!desc.cpu_read && !desc.cpu_write,
                         error_prefix,
-                        ": internal buffers must be device-only");
+                        ": internal buffers must not require CPU access");
         break;
     default:
         break;

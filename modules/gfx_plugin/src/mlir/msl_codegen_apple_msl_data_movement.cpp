@@ -237,9 +237,12 @@ std::optional<KernelSource> make_apple_metal_data_movement_kernel_source(
     GatherElementsCodegenDesc desc{};
     const auto data = gather_elements->get_input_shape(0);
     const auto out = gather_elements->get_output_shape(0);
+    desc.element_type = gather_elements->get_output_element_type(0);
     desc.index_type = gather_elements->get_input_element_type(1);
     desc.rank = static_cast<uint32_t>(out.size());
-    desc.axis = static_cast<uint32_t>(gather_elements->get_axis());
+    desc.axis = static_cast<uint32_t>(
+        normalize_axis(gather_elements->get_axis(), out.size(),
+                       "GFX Metal GatherElements"));
     desc.total = static_cast<uint32_t>(ov::shape_size(out));
     auto data_strides = make_strides(data);
     auto out_strides = make_strides(out);

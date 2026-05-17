@@ -22,6 +22,7 @@ enum class GfxMpsrtStageKind {
     MPSGemm,
     MPSSoftmax,
     MPSTopK,
+    MPSSdpa,
     MSLDispatch,
     SPIRVDispatch,
     Alias,
@@ -41,6 +42,7 @@ struct GfxMpsrtStageDesc {
     GfxMpsrtResize2DAbiDesc resize2d_desc{};
     GfxMpsrtSoftmaxAbiDesc softmax_desc{};
     GfxMpsrtTopKAbiDesc topk_desc{};
+    GfxMpsrtSdpaAbiDesc sdpa_desc{};
 };
 
 inline const char* gfx_mpsrt_stage_kind_name(GfxMpsrtStageKind kind) {
@@ -59,6 +61,8 @@ inline const char* gfx_mpsrt_stage_kind_name(GfxMpsrtStageKind kind) {
             return "mps_softmax";
         case GfxMpsrtStageKind::MPSTopK:
             return "mps_topk";
+        case GfxMpsrtStageKind::MPSSdpa:
+            return "mps_sdpa";
         case GfxMpsrtStageKind::MSLDispatch:
             return "msl_dispatch";
         case GfxMpsrtStageKind::SPIRVDispatch:
@@ -79,6 +83,7 @@ inline GfxMpsrtStageKind gfx_mpsrt_stage_kind_from_name(std::string_view name) {
     if (name == "mps_gemm") return GfxMpsrtStageKind::MPSGemm;
     if (name == "mps_softmax") return GfxMpsrtStageKind::MPSSoftmax;
     if (name == "mps_topk") return GfxMpsrtStageKind::MPSTopK;
+    if (name == "mps_sdpa") return GfxMpsrtStageKind::MPSSdpa;
     if (name == "msl_dispatch") return GfxMpsrtStageKind::MSLDispatch;
     if (name == "spirv_dispatch") return GfxMpsrtStageKind::SPIRVDispatch;
     if (name == "alias") return GfxMpsrtStageKind::Alias;
@@ -118,6 +123,9 @@ inline GfxMpsrtStageKind gfx_mpsrt_stage_kind_from_plan(const GfxStagePlacementP
     if (stage_type == "TopK") {
         return GfxMpsrtStageKind::MPSTopK;
     }
+    if (stage_type == "ScaledDotProductAttention") {
+        return GfxMpsrtStageKind::MPSSdpa;
+    }
     return GfxMpsrtStageKind::Unknown;
 }
 
@@ -154,6 +162,8 @@ inline GfxMpsrtStageKind gfx_mpsrt_stage_kind_from_manifest(const GfxKernelStage
             return GfxMpsrtStageKind::MPSSoftmax;
         case GfxKernelStageFamily::TopK:
             return GfxMpsrtStageKind::MPSTopK;
+        case GfxKernelStageFamily::AttentionSoftmax:
+            return GfxMpsrtStageKind::MPSSdpa;
         default:
             return GfxMpsrtStageKind::Unknown;
     }
@@ -228,6 +238,8 @@ inline GfxKernelStageFamily gfx_kernel_stage_family_from_mpsrt_kind(GfxMpsrtStag
             return GfxKernelStageFamily::Softmax;
         case GfxMpsrtStageKind::MPSTopK:
             return GfxKernelStageFamily::TopK;
+        case GfxMpsrtStageKind::MPSSdpa:
+            return GfxKernelStageFamily::AttentionSoftmax;
         case GfxMpsrtStageKind::MSLDispatch:
         case GfxMpsrtStageKind::SPIRVDispatch:
             if (stage_type == "Convolution") {
@@ -244,6 +256,9 @@ inline GfxKernelStageFamily gfx_kernel_stage_family_from_mpsrt_kind(GfxMpsrtStag
             }
             if (stage_type == "TopK") {
                 return GfxKernelStageFamily::TopK;
+            }
+            if (stage_type == "ScaledDotProductAttention") {
+                return GfxKernelStageFamily::AttentionSoftmax;
             }
             return GfxKernelStageFamily::Unknown;
         case GfxMpsrtStageKind::Alias:
@@ -294,6 +309,8 @@ inline const char* gfx_mpsrt_builder_symbol(GfxMpsrtStageKind kind) {
             return "ovgfx_mpsrt_encode_softmax";
         case GfxMpsrtStageKind::MPSTopK:
             return "ovgfx_mpsrt_encode_topk";
+        case GfxMpsrtStageKind::MPSSdpa:
+            return "ovgfx_mpsrt_encode_sdpa";
         case GfxMpsrtStageKind::MSLDispatch:
         case GfxMpsrtStageKind::SPIRVDispatch:
             return "ovgfx_mpsrt_encode_dispatch";
@@ -406,6 +423,11 @@ inline bool gfx_mpsrt_softmax_desc_has_non_default_fields(const GfxMpsrtSoftmaxA
 
 inline bool gfx_mpsrt_topk_desc_has_non_default_fields(const GfxMpsrtTopKAbiDesc& desc) {
     return desc.axis != 0 || desc.k != 0 || desc.mode_max != 1 || desc.sort_type != 0;
+}
+
+inline bool gfx_mpsrt_sdpa_desc_has_non_default_fields(const GfxMpsrtSdpaAbiDesc& desc) {
+    return desc.has_mask != 0 || desc.causal != 0 || desc.accumulate_fp32 != 1 ||
+           desc.layout != GfxMpsrtSdpaLayoutNativeBHND || desc.scale != 1.0f;
 }
 
 inline std::string gfx_mpsrt_stage_record_key(const GfxMpsrtStageDesc& desc) {
@@ -536,6 +558,22 @@ inline std::string gfx_mpsrt_stage_record_key(const GfxMpsrtStageDesc& desc) {
         key += desc.topk_desc.mode_max != 0 ? ":max" : ":min";
         key += ":sort";
         key += std::to_string(desc.topk_desc.sort_type);
+    }
+    if (desc.kind == GfxMpsrtStageKind::MPSSdpa &&
+        gfx_mpsrt_sdpa_desc_has_non_default_fields(desc.sdpa_desc)) {
+        key += "|sdpa:";
+        key += desc.sdpa_desc.has_mask != 0 ? "mask" : "nomask";
+        key += ":layout";
+        key += std::to_string(desc.sdpa_desc.layout);
+        if (desc.sdpa_desc.causal != 0) {
+            key += ":causal";
+        }
+        key += ":scale";
+        key += std::to_string(desc.sdpa_desc.scale);
+        if (desc.sdpa_desc.accumulate_fp32 != 1) {
+            key += ":acc";
+            key += std::to_string(desc.sdpa_desc.accumulate_fp32);
+        }
     }
     return key;
 }

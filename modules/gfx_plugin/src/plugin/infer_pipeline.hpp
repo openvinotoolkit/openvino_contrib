@@ -352,7 +352,6 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
                 plan.needs_buffer = true;
                 plan.desc = desc;
                 plan.workspace_managed = desc.usage == BufferUsage::Intermediate &&
-                                         desc.prefer_device_local &&
                                          !desc.cpu_read &&
                                          !desc.cpu_write &&
                                          !stage_output_has_multiple_graph_consumers(stage, oi);
@@ -417,15 +416,6 @@ inline void allocate_stage_outputs(std::vector<InferStage>& pipeline,
                 if (producer_output < last_use[producer_idx].size()) {
                     last_use[producer_idx][producer_output] =
                         std::max(last_use[producer_idx][producer_output], view_last_use);
-                }
-            }
-        }
-
-        for (size_t stage_idx = 0; stage_idx < pipeline.size(); ++stage_idx) {
-            for (size_t oi = 0; oi < output_plan[stage_idx].size() && oi < last_use[stage_idx].size(); ++oi) {
-                auto& plan = output_plan[stage_idx][oi];
-                if (plan.workspace_managed && last_use[stage_idx][oi] > stage_idx + 1) {
-                    plan.workspace_managed = false;
                 }
             }
         }

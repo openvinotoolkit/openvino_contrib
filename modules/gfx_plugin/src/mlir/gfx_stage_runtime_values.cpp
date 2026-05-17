@@ -30,6 +30,7 @@
 #include "openvino/op/unsqueeze.hpp"
 #include "openvino/op/variadic_split.hpp"
 #include "runtime/gfx_profiler.hpp"
+#include "runtime/gfx_runtime_value_limits.hpp"
 #include "runtime/gfx_shape_utils.hpp"
 #include "runtime/gpu_buffer_manager.hpp"
 
@@ -1491,7 +1492,7 @@ bool bind_small_i64_const_stage_outputs(
   for (auto *out : outputs) {
     if (!out || out->i64_values.empty() ||
         out->i64_values.size() != ov::shape_size(out->shape) ||
-        out->i64_values.size() > 16) {
+        out->i64_values.size() > kGfxInlineRuntimeI64ValueLimit) {
       return false;
     }
     const auto type = out->expected_type == ov::element::dynamic && node &&

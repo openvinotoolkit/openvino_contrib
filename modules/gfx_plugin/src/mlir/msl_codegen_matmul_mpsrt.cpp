@@ -26,7 +26,7 @@ std::string matmul_epilogue_activation_expr(ActivationKind activation) {
         case ActivationKind::Relu:
             return "max(x, 0.0f)";
         case ActivationKind::Sigmoid:
-            return "1.0f / (1.0f + exp(-x))";
+            return "1.0f / (1.0f + precise::exp(-x))";
         case ActivationKind::Tanh:
             return msl_stable_tanh_expr("x");
         case ActivationKind::Gelu:

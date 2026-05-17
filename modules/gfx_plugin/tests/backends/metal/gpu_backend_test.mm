@@ -35,6 +35,7 @@
 #include "mlir/gfx_backend_custom_kernel_adapter.hpp"
 #include "mlir/gfx_mpsrt_metadata.hpp"
 #include "mlir/msl_codegen_apple_msl_dispatch.hpp"
+#include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gfx_mpsrt_builder_plan.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 
@@ -243,6 +244,16 @@ std::vector<float> reference_group_conv2d_nchw(
     }
   }
   return output;
+}
+
+uint64_t profiling_counter_value(const GfxProfilingTrace &trace,
+                                 std::string_view name) {
+  for (const auto &counter : trace.report().counters) {
+    if (counter.name == name) {
+      return counter.value;
+    }
+  }
+  return 0;
 }
 
 std::vector<float> reference_max_pool2d_nchw(
@@ -2414,6 +2425,71 @@ TEST(GfxBackendTest,
   EXPECT_NE(prepared_model.image_bridge_resources[0].texture, nil);
 }
 
+TEST(GfxBackendTest, MpsrtPreparedModelReleasesOwnedHeapAndBridgeResources) {
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  ASSERT_NE(device, nil);
+
+  runtime_mpsrt::MpsrtModel model;
+  model.stage_record_key = "prepared_model_release_owned_resources";
+  model.input_values = {0};
+  model.output_values = {1};
+  model.external_values = {0, 1};
+  model.external_input_values = {0};
+  model.external_output_values = {1};
+  model.external_buffer_roles = {GfxMpsrtExternalBufferRole::TensorInput,
+                                 GfxMpsrtExternalBufferRole::TensorOutput};
+
+  const auto image_input_desc = gfx_mpsrt_make_tensor_desc(
+      {1, 4, 8, 8}, ov::element::f32, GfxStageStorageKind::Image,
+      GfxMpsrtTensorFlagExternalIo);
+  const auto buffer_output_desc = gfx_mpsrt_make_tensor_desc(
+      {1, 4, 8, 8}, ov::element::f32, GfxStageStorageKind::Buffer,
+      GfxMpsrtTensorFlagExternalIo);
+  const auto image_input_abi = gfx_mpsrt_to_abi_desc(image_input_desc);
+  const auto buffer_output_abi = gfx_mpsrt_to_abi_desc(buffer_output_desc);
+  model.tensors.push_back({0, image_input_abi});
+  model.tensors.push_back({1, buffer_output_abi});
+  model.resources = {
+      {0u, GfxMpsrtExternalBufferRole::TensorInput,
+       runtime_mpsrt::MpsrtRuntimeResourceLifetime::External, 0u, true, 0u,
+       image_input_abi},
+      {1u, GfxMpsrtExternalBufferRole::TensorOutput,
+       runtime_mpsrt::MpsrtRuntimeResourceLifetime::External, 1u, true, 1u,
+       buffer_output_abi},
+  };
+  model.external_buffer_bindings = {
+      {0u, 0u},
+      {1u, 1u},
+  };
+  GfxMpsrtStorageBridgeDesc bridge{};
+  ASSERT_TRUE(gfx_mpsrt_make_image_bridge_desc(
+      0, image_input_abi, GfxMpsrtStorageBridgeDirection::BufferToImage,
+      bridge));
+  model.storage_bridges.push_back(bridge);
+
+  metal::mpsrt::MpsrtContext context(device);
+  metal::mpsrt::MpsrtPreparedModel prepared_model;
+  std::string log;
+  ASSERT_TRUE(context.prepare_model_resources(model, prepared_model, &log))
+      << log;
+  EXPECT_NE(prepared_model.resource_heap, nil);
+  ASSERT_EQ(prepared_model.image_bridge_resources.size(), 1u);
+  EXPECT_NE(prepared_model.image_bridge_resources[0].texture, nil);
+
+  prepared_model.release_owned_resources();
+  EXPECT_EQ(prepared_model.resource_heap, nil);
+  EXPECT_EQ(prepared_model.resource_heap_size, 0u);
+  EXPECT_EQ(prepared_model.image_bridge_resource_count, 0u);
+  EXPECT_TRUE(prepared_model.resources.empty());
+  EXPECT_TRUE(prepared_model.image_bridge_resources.empty());
+
+  ASSERT_TRUE(context.prepare_model_resources(model, prepared_model, &log))
+      << log;
+  EXPECT_NE(prepared_model.resource_heap, nil);
+  ASSERT_EQ(prepared_model.image_bridge_resources.size(), 1u);
+  EXPECT_NE(prepared_model.image_bridge_resources[0].texture, nil);
+}
+
 TEST(GfxBackendTest, MpsrtTensorBindingsRejectResourceLessConstTensors) {
   runtime_mpsrt::MpsrtModel model;
   model.stage_record_key = "resource_less_const_rejected";
@@ -3900,7 +3976,7 @@ TEST(
 }
 
 TEST(GfxBackendTest,
-     MpsrtRequestExecutesF32MpsDepthwiseGroupConv2DWithBufferImageBridges) {
+     MpsrtRequestExecutesF32MpsCnnDepthwiseGroupConv2DWithBufferImageBridges) {
   id<MTLDevice> device = MTLCreateSystemDefaultDevice();
   ASSERT_NE(device, nil);
 
@@ -3976,8 +4052,21 @@ TEST(GfxBackendTest,
   ASSERT_TRUE(runtime_mpsrt::finalize_mpsrt_model_resources(model, &log))
       << log;
   metal::mpsrt::MpsrtPreparedModel prepared_model;
-  ASSERT_TRUE(context.prepare_model(model, "", prepared_model, &log)) << log;
+  GfxProfilingTrace compile_trace;
+  compile_trace.reset(ProfilingLevel::Detailed);
+  {
+    ScopedCompileProfilingContext compile_scope(&compile_trace,
+                                                model.stage_record_key);
+    ASSERT_TRUE(context.prepare_model(model, "", prepared_model, &log)) << log;
+  }
   ASSERT_EQ(prepared_model.mps_conv2d_stages.size(), 1u);
+  EXPECT_EQ(profiling_counter_value(
+                compile_trace, "mpsrt_prepare_mps_cnn_depthwise_conv2d_count"),
+            1u);
+  EXPECT_EQ(profiling_counter_value(
+                compile_trace,
+                "mpsrt_prepare_mps_group_conv2d_dense_sparse_workaround_count"),
+            0u);
 
   id<MTLBuffer> input_buffer =
       [device newBufferWithLength:input.size() * sizeof(float)
@@ -4025,8 +4114,161 @@ TEST(GfxBackendTest,
     EXPECT_NEAR(actual[i], expected[i], 1e-4f) << "index=" << i;
   }
   EXPECT_EQ(result.encoded_mps_conv2d_stages, 1u);
+  EXPECT_EQ(counters["mpsrt_mps_conv2d_request_encode_count"], 1u);
+  EXPECT_EQ(counters["mpsrt_mps_conv2d_kernel_encode_count"], 1u);
+  EXPECT_EQ(counters["mpsrt_model_request_mps_conv2d_stage_encode_count"], 1u);
   EXPECT_EQ(counters["mpsrt_image_bridge_buffer_to_image_encode_count"], 1u);
   EXPECT_EQ(counters["mpsrt_image_bridge_image_to_buffer_encode_count"], 1u);
+}
+
+TEST(GfxBackendTest,
+     MpsrtRequestExecutesF32MpsNativeGroupedConv2DWithFourInputChannelsPerGroup) {
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  ASSERT_NE(device, nil);
+
+  constexpr uint32_t kGroups = 2;
+  constexpr uint32_t kInputChannelsPerGroup = 4;
+  constexpr uint32_t kOutputChannelsPerGroup = 4;
+  constexpr uint32_t kInputChannels = kGroups * kInputChannelsPerGroup;
+  constexpr uint32_t kOutputChannels = kGroups * kOutputChannelsPerGroup;
+  constexpr uint32_t kHeight = 4;
+  constexpr uint32_t kWidth = 4;
+  constexpr uint32_t kKernel = 3;
+
+  runtime_mpsrt::MpsrtModel model;
+  model.stage_record_key = "mps_native_group_conv2d_f32_quality";
+  model.semantic_input_values = {0};
+  model.semantic_output_values = {2};
+  model.input_values = {0};
+  model.output_values = {2};
+  model.external_input_values = {0};
+  model.external_output_values = {2};
+  model.external_values = {0, 2};
+  model.external_buffer_roles = {GfxMpsrtExternalBufferRole::TensorInput,
+                                 GfxMpsrtExternalBufferRole::TensorOutput};
+
+  const auto input_desc = gfx_mpsrt_make_tensor_desc(
+      {1, kInputChannels, kHeight, kWidth}, ov::element::f32,
+      GfxStageStorageKind::Image, GfxMpsrtTensorFlagExternalIo);
+  const auto weights_desc = gfx_mpsrt_make_tensor_desc(
+      {kGroups, kOutputChannelsPerGroup, kInputChannelsPerGroup, kKernel,
+       kKernel},
+      ov::element::f32, GfxStageStorageKind::Buffer, GfxMpsrtTensorFlagConst);
+  const auto output_desc = gfx_mpsrt_make_tensor_desc(
+      {1, kOutputChannels, kHeight, kWidth}, ov::element::f32,
+      GfxStageStorageKind::Image, GfxMpsrtTensorFlagExternalIo);
+  const auto input_abi = gfx_mpsrt_to_abi_desc(input_desc);
+  const auto weights_abi = gfx_mpsrt_to_abi_desc(weights_desc);
+  const auto output_abi = gfx_mpsrt_to_abi_desc(output_desc);
+  model.tensors.push_back({0, input_abi});
+  model.tensors.push_back({1, weights_abi});
+  model.tensors.push_back({2, output_abi});
+
+  runtime_mpsrt::MpsrtRuntimeStage stage;
+  stage.kind = GfxMpsrtStageKind::MPSGroupConv2D;
+  stage.stage_record_key = model.stage_record_key;
+  stage.kernel_name = "mps_group_conv2d";
+  stage.conv2d_desc.groups = kGroups;
+  stage.conv2d_desc.strides[0] = 1;
+  stage.conv2d_desc.strides[1] = 1;
+  stage.conv2d_desc.dilations[0] = 1;
+  stage.conv2d_desc.dilations[1] = 1;
+  stage.conv2d_desc.pads[0] = 1;
+  stage.conv2d_desc.pads[1] = 1;
+  stage.conv2d_desc.pads[2] = 1;
+  stage.conv2d_desc.pads[3] = 1;
+  stage.inputs = {0, 1};
+  stage.outputs = {2};
+  stage.output_descs = {output_abi};
+  model.stages.push_back(stage);
+
+  std::vector<float> input(static_cast<size_t>(kInputChannels) * kHeight *
+                           kWidth);
+  for (size_t i = 0; i < input.size(); ++i) {
+    input[i] = static_cast<float>(static_cast<int>(i % 17) - 8) * 0.0625f;
+  }
+  std::vector<float> weights(static_cast<size_t>(kGroups) *
+                             kOutputChannelsPerGroup *
+                             kInputChannelsPerGroup * kKernel * kKernel);
+  for (size_t i = 0; i < weights.size(); ++i) {
+    weights[i] = static_cast<float>(static_cast<int>(i % 13) - 6) * 0.03125f;
+  }
+  const auto expected = reference_group_conv2d_nchw(
+      input, weights, kGroups, kInputChannelsPerGroup,
+      kOutputChannelsPerGroup, kHeight, kWidth, kKernel, kKernel, 1, 1);
+
+  metal::mpsrt::MpsrtContext context(device);
+  std::string log;
+  ASSERT_TRUE(context.register_const_tensor_data(
+      1, weights_abi, weights.data(), weights.size() * sizeof(float), &log))
+      << log;
+
+  ASSERT_TRUE(runtime_mpsrt::finalize_mpsrt_model_resources(model, &log))
+      << log;
+  metal::mpsrt::MpsrtPreparedModel prepared_model;
+  GfxProfilingTrace compile_trace;
+  compile_trace.reset(ProfilingLevel::Detailed);
+  {
+    ScopedCompileProfilingContext compile_scope(&compile_trace,
+                                                model.stage_record_key);
+    ASSERT_TRUE(context.prepare_model(model, "", prepared_model, &log)) << log;
+  }
+  ASSERT_EQ(prepared_model.mps_conv2d_stages.size(), 1u);
+  EXPECT_EQ(profiling_counter_value(
+                compile_trace,
+                "mpsrt_prepare_mps_group_conv2d_native_groups_count"),
+            1u);
+  EXPECT_EQ(profiling_counter_value(
+                compile_trace,
+                "mpsrt_prepare_mps_group_conv2d_dense_sparse_workaround_count"),
+            0u);
+
+  id<MTLBuffer> input_buffer =
+      [device newBufferWithLength:input.size() * sizeof(float)
+                          options:MTLResourceStorageModeShared];
+  id<MTLBuffer> output_buffer =
+      [device newBufferWithLength:expected.size() * sizeof(float)
+                          options:MTLResourceStorageModeShared];
+  ASSERT_NE(input_buffer, nil);
+  ASSERT_NE(output_buffer, nil);
+  std::memcpy([input_buffer contents], input.data(),
+              input.size() * sizeof(float));
+  std::fill_n(static_cast<float *>([output_buffer contents]), expected.size(),
+              -777.0f);
+
+  metal::mpsrt::MpsrtRequestBindingSet binding_set;
+  std::unordered_map<std::string, uint64_t> counters;
+  ASSERT_TRUE(build_test_mpsrt_binding_set(
+      model,
+      {{(__bridge void *)input_buffer, 0}, {(__bridge void *)output_buffer, 0}},
+      &prepared_model, binding_set, counters, &log))
+      << log;
+  EXPECT_EQ(binding_set.image_bridge_copies.size(), 2u);
+
+  std::vector<KernelDispatch> stage_dispatches(1);
+  KernelExecutionHooks hooks;
+  hooks.on_counter = [&counters](std::string_view name, uint64_t delta) {
+    counters[std::string(name)] += delta;
+  };
+  id<MTLCommandBuffer> cmd = [context.command_queue() commandBuffer];
+  ASSERT_NE(cmd, nil);
+  metal::mpsrt::MpsrtRequest request;
+  metal::mpsrt::MpsrtModelEncodeResult result;
+  ASSERT_TRUE(request.encode_prepared_model_with_binding_set(
+      (GpuCommandBufferHandle)cmd, context, model, prepared_model,
+      stage_dispatches, binding_set, &hooks, &result, &log))
+      << log;
+  metal_end_compute_encoder((GpuCommandBufferHandle)cmd);
+  [cmd commit];
+  [cmd waitUntilCompleted];
+  ASSERT_EQ([cmd status], MTLCommandBufferStatusCompleted);
+
+  const auto *actual = static_cast<const float *>([output_buffer contents]);
+  ASSERT_NE(actual, nullptr);
+  for (size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_NEAR(actual[i], expected[i], 1e-4f) << "index=" << i;
+  }
+  EXPECT_EQ(result.encoded_mps_conv2d_stages, 1u);
 }
 
 TEST(GfxBackendTest,
@@ -4147,6 +4389,129 @@ TEST(GfxBackendTest,
   EXPECT_EQ(counters["mpsrt_mps_gemm_request_encode_count"], 1u);
   for (uint32_t i = 0; i < kBatch * kRows * kColumns; ++i) {
     EXPECT_FLOAT_EQ(output_ptr[i], expected[i]);
+  }
+}
+
+TEST(GfxBackendTest,
+     MpsrtRequestEncodesPreparedBatchedTransposedF32MpsGraphGemmModel) {
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  ASSERT_NE(device, nil);
+
+  constexpr uint32_t kBatch = 2;
+  constexpr uint32_t kRows = 2;
+  constexpr uint32_t kInner = 3;
+  constexpr uint32_t kColumns = 2;
+
+  runtime_mpsrt::MpsrtModel model;
+  model.stage_record_key = "mps_graph_batched_gemm_model";
+  model.semantic_input_values = {0, 1};
+  model.semantic_output_values = {2};
+  model.input_values = {0, 1};
+  model.output_values = {2};
+  model.external_input_values = {0, 1};
+  model.external_output_values = {2};
+  model.external_values = {0, 1, 2};
+  model.external_buffer_roles = {GfxMpsrtExternalBufferRole::TensorInput,
+                                 GfxMpsrtExternalBufferRole::TensorInput,
+                                 GfxMpsrtExternalBufferRole::TensorOutput};
+
+  const auto lhs_desc = gfx_mpsrt_make_tensor_desc(
+      {kBatch, kRows, kInner}, ov::element::f32, GfxStageStorageKind::Matrix,
+      GfxMpsrtTensorFlagExternalIo);
+  const auto rhs_desc = gfx_mpsrt_make_tensor_desc(
+      {kBatch, kColumns, kInner}, ov::element::f32,
+      GfxStageStorageKind::Matrix, GfxMpsrtTensorFlagExternalIo);
+  const auto output_desc = gfx_mpsrt_make_tensor_desc(
+      {kBatch, kRows, kColumns}, ov::element::f32, GfxStageStorageKind::Matrix,
+      GfxMpsrtTensorFlagExternalIo);
+  ASSERT_EQ(lhs_desc.matrix_count, kBatch);
+  ASSERT_EQ(rhs_desc.matrix_count, kBatch);
+  ASSERT_EQ(output_desc.matrix_count, kBatch);
+  model.tensors.push_back({0, gfx_mpsrt_to_abi_desc(lhs_desc)});
+  model.tensors.push_back({1, gfx_mpsrt_to_abi_desc(rhs_desc)});
+  model.tensors.push_back({2, gfx_mpsrt_to_abi_desc(output_desc)});
+
+  runtime_mpsrt::MpsrtRuntimeStage stage;
+  stage.kind = GfxMpsrtStageKind::MPSGemm;
+  stage.stage_record_key = "mps_gemm|apple_mps|matrix|matrix|row_major|MatMul|"
+                           "apple_mps:matrix:MatMul|precision:fp32|"
+                           "gemm:ta0:tb1:alpha1.000000:beta0.000000";
+  stage.kernel_name = "mps_gemm";
+  stage.inputs = {0, 1};
+  stage.outputs = {2};
+  stage.output_descs = {gfx_mpsrt_to_abi_desc(output_desc)};
+  stage.gemm_desc.transpose_rhs = 1;
+  model.stages.push_back(stage);
+
+  metal::mpsrt::MpsrtContext context(device);
+  metal::mpsrt::MpsrtPreparedModel prepared_model;
+  std::string log;
+  ASSERT_TRUE(runtime_mpsrt::finalize_mpsrt_model_resources(model, &log))
+      << log;
+  ASSERT_TRUE(context.prepare_model(model, "", prepared_model, &log)) << log;
+  ASSERT_EQ(prepared_model.mps_gemm_stages.size(), 1u);
+  EXPECT_TRUE(prepared_model.mps_gemm_stages.front().uses_mps_graph_gemm);
+
+  id<MTLBuffer> lhs =
+      [device newBufferWithLength:sizeof(float) * kBatch * kRows * kInner
+                          options:MTLResourceStorageModeShared];
+  id<MTLBuffer> rhs =
+      [device newBufferWithLength:sizeof(float) * kBatch * kColumns * kInner
+                          options:MTLResourceStorageModeShared];
+  id<MTLBuffer> output =
+      [device newBufferWithLength:sizeof(float) * kBatch * kRows * kColumns
+                          options:MTLResourceStorageModeShared];
+  ASSERT_NE(lhs, nil);
+  ASSERT_NE(rhs, nil);
+  ASSERT_NE(output, nil);
+
+  const float lhs_values[] = {1.0f,  2.0f,  3.0f, -1.0f, 0.5f, 4.0f,
+                              0.25f, -2.0f, 1.0f, 3.0f,  0.0f, -0.5f};
+  const float rhs_values[] = {1.0f,  2.0f, 0.5f, 0.0f,  -1.0f, 3.0f,
+                              -2.0f, 4.0f, 1.5f, 1.0f,  0.25f, -0.5f};
+  const float expected[] = {6.5f,  7.0f,   2.0f,   11.5f,
+                            -7.0f, -0.75f, -6.75f, 3.25f};
+  std::memcpy([lhs contents], lhs_values, sizeof(lhs_values));
+  std::memcpy([rhs contents], rhs_values, sizeof(rhs_values));
+  float *output_ptr = static_cast<float *>([output contents]);
+  for (uint32_t i = 0; i < kBatch * kRows * kColumns; ++i) {
+    output_ptr[i] = -1.0f;
+  }
+
+  metal::mpsrt::MpsrtRequestBindingSet binding_set;
+  std::unordered_map<std::string, uint64_t> counters;
+  ASSERT_TRUE(build_test_mpsrt_binding_set(model,
+                                           {{(__bridge void *)lhs, 0},
+                                            {(__bridge void *)rhs, 0},
+                                            {(__bridge void *)output, 0}},
+                                           nullptr, binding_set, counters,
+                                           &log))
+      << log;
+
+  KernelExecutionHooks hooks;
+  hooks.on_counter = [&counters](std::string_view name, uint64_t delta) {
+    counters[std::string(name)] += delta;
+  };
+
+  id<MTLCommandBuffer> cmd = [context.command_queue() commandBuffer];
+  ASSERT_NE(cmd, nil);
+  std::vector<KernelDispatch> stage_dispatches(1);
+  metal::mpsrt::MpsrtRequest request;
+  metal::mpsrt::MpsrtModelEncodeResult result;
+  ASSERT_TRUE(request.encode_prepared_model(
+      (GpuCommandBufferHandle)cmd, model, prepared_model, stage_dispatches,
+      binding_set.bindings, &hooks, &result, &log))
+      << log;
+  metal_end_compute_encoder((GpuCommandBufferHandle)cmd);
+  [cmd commit];
+  [cmd waitUntilCompleted];
+  ASSERT_EQ([cmd status], MTLCommandBufferStatusCompleted);
+
+  EXPECT_EQ(result.encoded_mps_gemm_stages, 1u);
+  EXPECT_EQ(counters["mpsrt_mps_gemm_request_encode_count"], 1u);
+  EXPECT_EQ(counters["mpsrt_mps_graph_gemm_request_encode_count"], 1u);
+  for (uint32_t i = 0; i < kBatch * kRows * kColumns; ++i) {
+    EXPECT_NEAR(output_ptr[i], expected[i], 1e-5f) << "index=" << i;
   }
 }
 
@@ -4444,6 +4809,8 @@ kernel void eltwise_fused_buffer(device const float* gemm [[buffer(0)]],
   dispatch.grid[0] = kElementCount;
   dispatch.threads_per_group[0] = 4;
 
+  kernel->prewarm_bindings(args);
+
   std::unordered_map<std::string, uint64_t> counters;
   KernelExecutionHooks hooks;
   hooks.on_counter = [&counters](std::string_view name, uint64_t delta) {
@@ -4467,8 +4834,8 @@ kernel void eltwise_fused_buffer(device const float* gemm [[buffer(0)]],
     }
   }
 
-  EXPECT_EQ(counters["mpsrt_prepared_model_cache_miss_count"], 3u);
-  EXPECT_EQ(counters["mpsrt_prepared_model_cache_hit_count"], 1u);
+  EXPECT_EQ(counters["mpsrt_prepared_model_cache_miss_count"], 0u);
+  EXPECT_EQ(counters["mpsrt_prepared_model_cache_hit_count"], 4u);
   EXPECT_EQ(counters["mpsrt_model_request_encode_count"], 4u);
   EXPECT_EQ(counters["mpsrt_model_request_mps_gemm_stage_encode_count"], 4u);
   EXPECT_EQ(counters["mpsrt_model_request_msl_stage_encode_count"], 4u);
@@ -4591,6 +4958,618 @@ TEST(GfxBackendTest, MetalCodegenCompilesVendorOnlyMpsGemmWithoutMslSource) {
   EXPECT_FLOAT_EQ(output_ptr[3], 154.0f);
 }
 
+std::vector<float> reference_sdpa_bhnd(const std::vector<float> &query,
+                                       const std::vector<float> &key,
+                                       const std::vector<float> &value,
+                                       uint32_t batch, uint32_t heads,
+                                       uint32_t query_tokens,
+                                       uint32_t key_tokens,
+                                       uint32_t head_dim,
+                                       uint32_t value_dim, float scale) {
+  auto q_index = [&](uint32_t b, uint32_t h, uint32_t n, uint32_t d) {
+    return (((static_cast<size_t>(b) * heads + h) * query_tokens + n) *
+                head_dim +
+            d);
+  };
+  auto k_index = [&](uint32_t b, uint32_t h, uint32_t n, uint32_t d) {
+    return (((static_cast<size_t>(b) * heads + h) * key_tokens + n) *
+                head_dim +
+            d);
+  };
+  auto v_index = [&](uint32_t b, uint32_t h, uint32_t n, uint32_t d) {
+    return (((static_cast<size_t>(b) * heads + h) * key_tokens + n) *
+                value_dim +
+            d);
+  };
+  auto out_index = [&](uint32_t b, uint32_t h, uint32_t n, uint32_t d) {
+    return (((static_cast<size_t>(b) * heads + h) * query_tokens + n) *
+                value_dim +
+            d);
+  };
+
+  std::vector<float> output(static_cast<size_t>(batch) * heads *
+                            query_tokens * value_dim);
+  std::vector<float> scores(key_tokens);
+  for (uint32_t b = 0; b < batch; ++b) {
+    for (uint32_t h = 0; h < heads; ++h) {
+      for (uint32_t q = 0; q < query_tokens; ++q) {
+        float max_score = -std::numeric_limits<float>::infinity();
+        for (uint32_t k = 0; k < key_tokens; ++k) {
+          float dot = 0.0f;
+          for (uint32_t d = 0; d < head_dim; ++d) {
+            dot += query[q_index(b, h, q, d)] * key[k_index(b, h, k, d)];
+          }
+          scores[k] = dot * scale;
+          max_score = std::max(max_score, scores[k]);
+        }
+        float sum = 0.0f;
+        for (uint32_t k = 0; k < key_tokens; ++k) {
+          scores[k] = std::exp(scores[k] - max_score);
+          sum += scores[k];
+        }
+        for (uint32_t d = 0; d < value_dim; ++d) {
+          float accum = 0.0f;
+          for (uint32_t k = 0; k < key_tokens; ++k) {
+            accum += (scores[k] / sum) * value[v_index(b, h, k, d)];
+          }
+          output[out_index(b, h, q, d)] = accum;
+        }
+      }
+    }
+  }
+  return output;
+}
+
+std::vector<float> reference_sdpa_bhdn(const std::vector<float> &query,
+                                       const std::vector<float> &key,
+                                       const std::vector<float> &value,
+                                       uint32_t batch, uint32_t heads,
+                                       uint32_t query_tokens,
+                                       uint32_t key_tokens,
+                                       uint32_t head_dim,
+                                       uint32_t value_dim, float scale) {
+  auto q_index = [&](uint32_t b, uint32_t h, uint32_t d, uint32_t q) {
+    return (((static_cast<size_t>(b) * heads + h) * head_dim + d) *
+                query_tokens +
+            q);
+  };
+  auto k_index = [&](uint32_t b, uint32_t h, uint32_t d, uint32_t k) {
+    return (((static_cast<size_t>(b) * heads + h) * head_dim + d) *
+                key_tokens +
+            k);
+  };
+  auto v_index = [&](uint32_t b, uint32_t h, uint32_t v, uint32_t k) {
+    return (((static_cast<size_t>(b) * heads + h) * value_dim + v) *
+                key_tokens +
+            k);
+  };
+  auto out_index = [&](uint32_t b, uint32_t h, uint32_t v, uint32_t q) {
+    return (((static_cast<size_t>(b) * heads + h) * value_dim + v) *
+                query_tokens +
+            q);
+  };
+
+  std::vector<float> output(static_cast<size_t>(batch) * heads * value_dim *
+                            query_tokens);
+  std::vector<float> scores(key_tokens);
+  for (uint32_t b = 0; b < batch; ++b) {
+    for (uint32_t h = 0; h < heads; ++h) {
+      for (uint32_t q = 0; q < query_tokens; ++q) {
+        float max_score = -std::numeric_limits<float>::infinity();
+        for (uint32_t k = 0; k < key_tokens; ++k) {
+          float dot = 0.0f;
+          for (uint32_t d = 0; d < head_dim; ++d) {
+            dot += query[q_index(b, h, d, q)] * key[k_index(b, h, d, k)];
+          }
+          scores[k] = dot * scale;
+          max_score = std::max(max_score, scores[k]);
+        }
+        float sum = 0.0f;
+        for (uint32_t k = 0; k < key_tokens; ++k) {
+          scores[k] = std::exp(scores[k] - max_score);
+          sum += scores[k];
+        }
+        for (uint32_t v = 0; v < value_dim; ++v) {
+          float accum = 0.0f;
+          for (uint32_t k = 0; k < key_tokens; ++k) {
+            accum += value[v_index(b, h, v, k)] * (scores[k] / sum);
+          }
+          output[out_index(b, h, v, q)] = accum;
+        }
+      }
+    }
+  }
+  return output;
+}
+
+TEST(GfxBackendTest, MetalCodegenCompilesVendorOnlyMpsSdpaWithoutMslSource) {
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  ASSERT_NE(device, nil);
+
+  constexpr uint32_t kBatch = 1;
+  constexpr uint32_t kHeads = 2;
+  constexpr uint32_t kQueryTokens = 3;
+  constexpr uint32_t kKeyTokens = 5;
+  constexpr uint32_t kHeadDim = 4;
+  constexpr uint32_t kValueDim = 4;
+  constexpr float kScale = 1.0f / 2.0f;
+
+  mlir::MLIRContext ctx;
+  auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+  annotate_test_mps_vendor_module(module, "ScaledDotProductAttention",
+                                  GfxKernelStageFamily::AttentionSoftmax,
+                                  GfxKernelStorageKind::NDArray);
+  const auto query_desc = gfx_mpsrt_make_tensor_desc(
+      {kBatch, kHeads, kQueryTokens, kHeadDim}, ov::element::f32,
+      GfxStageStorageKind::NDArray, GfxMpsrtTensorFlagExternalIo);
+  const auto key_desc = gfx_mpsrt_make_tensor_desc(
+      {kBatch, kHeads, kKeyTokens, kHeadDim}, ov::element::f32,
+      GfxStageStorageKind::NDArray, GfxMpsrtTensorFlagExternalIo);
+  const auto value_desc = gfx_mpsrt_make_tensor_desc(
+      {kBatch, kHeads, kKeyTokens, kValueDim}, ov::element::f32,
+      GfxStageStorageKind::NDArray, GfxMpsrtTensorFlagExternalIo);
+  const auto output_desc = gfx_mpsrt_make_tensor_desc(
+      {kBatch, kHeads, kQueryTokens, kValueDim}, ov::element::f32,
+      GfxStageStorageKind::NDArray, GfxMpsrtTensorFlagExternalIo);
+  auto lowering_plan = make_test_mps_vendor_lowering(
+      module, {query_desc, key_desc, value_desc}, {output_desc});
+  GfxMpsrtSdpaAbiDesc sdpa_desc{};
+  sdpa_desc.scale = kScale;
+  sdpa_desc.accumulate_fp32 = 1;
+  lowering_plan.stage_plan.stage.sdpa_desc = sdpa_desc;
+  ASSERT_TRUE(finalize_apple_mps_stage_lowering_plan(lowering_plan));
+  ASSERT_TRUE(materialize_apple_mps_typed_program(module, lowering_plan));
+
+  KernelSource source;
+  source.module = module;
+  source.entry_point = "mps_sdpa";
+  source.signature.arg_count = 99;
+  source.signature.output_arg_count = 99;
+
+  MetalCodegenBackend backend((MetalDeviceHandle)device);
+  std::string log;
+  auto kernel = backend.compile(source, &log);
+  ASSERT_TRUE(kernel) << log;
+  auto *metal_kernel = dynamic_cast<MetalCompiledKernel *>(kernel.get());
+  ASSERT_NE(metal_kernel, nullptr);
+  ASSERT_NE(metal_kernel->mpsrt_model(), nullptr);
+  ASSERT_EQ(metal_kernel->mpsrt_model()->stages.size(), 1u);
+  EXPECT_EQ(metal_kernel->mpsrt_model()->stages.front().kind,
+            GfxMpsrtStageKind::MPSSdpa);
+  EXPECT_FLOAT_EQ(metal_kernel->mpsrt_model()->stages.front().sdpa_desc.scale,
+                  kScale);
+
+  const size_t q_count =
+      static_cast<size_t>(kBatch) * kHeads * kQueryTokens * kHeadDim;
+  const size_t k_count =
+      static_cast<size_t>(kBatch) * kHeads * kKeyTokens * kHeadDim;
+  const size_t v_count =
+      static_cast<size_t>(kBatch) * kHeads * kKeyTokens * kValueDim;
+  const size_t out_count =
+      static_cast<size_t>(kBatch) * kHeads * kQueryTokens * kValueDim;
+  std::vector<float> query(q_count);
+  std::vector<float> key(k_count);
+  std::vector<float> value(v_count);
+  for (size_t i = 0; i < query.size(); ++i) {
+    query[i] = (static_cast<int>(i % 11) - 5) * 0.125f;
+  }
+  for (size_t i = 0; i < key.size(); ++i) {
+    key[i] = (static_cast<int>(i % 13) - 6) * 0.1f;
+  }
+  for (size_t i = 0; i < value.size(); ++i) {
+    value[i] = (static_cast<int>(i % 17) - 8) * 0.05f;
+  }
+
+  id<MTLBuffer> query_buffer =
+      [device newBufferWithLength:sizeof(float) * query.size()
+                          options:MTLResourceStorageModeShared];
+  id<MTLBuffer> key_buffer =
+      [device newBufferWithLength:sizeof(float) * key.size()
+                          options:MTLResourceStorageModeShared];
+  id<MTLBuffer> value_buffer =
+      [device newBufferWithLength:sizeof(float) * value.size()
+                          options:MTLResourceStorageModeShared];
+  id<MTLBuffer> output_buffer =
+      [device newBufferWithLength:sizeof(float) * out_count
+                          options:MTLResourceStorageModeShared];
+  ASSERT_NE(query_buffer, nil);
+  ASSERT_NE(key_buffer, nil);
+  ASSERT_NE(value_buffer, nil);
+  ASSERT_NE(output_buffer, nil);
+  std::memcpy([query_buffer contents], query.data(), sizeof(float) * q_count);
+  std::memcpy([key_buffer contents], key.data(), sizeof(float) * k_count);
+  std::memcpy([value_buffer contents], value.data(), sizeof(float) * v_count);
+  std::fill_n(static_cast<float *>([output_buffer contents]), out_count,
+              -1.0f);
+
+  MetalBuffer query_gpu{};
+  query_gpu.buffer = (__bridge void *)query_buffer;
+  query_gpu.size = sizeof(float) * q_count;
+  query_gpu.type = ov::element::f32;
+  MetalBuffer key_gpu{};
+  key_gpu.buffer = (__bridge void *)key_buffer;
+  key_gpu.size = sizeof(float) * k_count;
+  key_gpu.type = ov::element::f32;
+  MetalBuffer value_gpu{};
+  value_gpu.buffer = (__bridge void *)value_buffer;
+  value_gpu.size = sizeof(float) * v_count;
+  value_gpu.type = ov::element::f32;
+  MetalBuffer output_gpu{};
+  output_gpu.buffer = (__bridge void *)output_buffer;
+  output_gpu.size = sizeof(float) * out_count;
+  output_gpu.type = ov::element::f32;
+
+  std::vector<KernelArg> args;
+  args.push_back(make_buffer_arg(0, query_gpu));
+  args.push_back(make_buffer_arg(1, key_gpu));
+  args.push_back(make_buffer_arg(2, value_gpu));
+  args.push_back(make_buffer_arg(3, output_gpu));
+
+  std::unordered_map<std::string, uint64_t> counters;
+  KernelExecutionHooks hooks;
+  hooks.on_counter = [&counters](std::string_view name, uint64_t delta) {
+    counters[std::string(name)] += delta;
+  };
+
+  id<MTLCommandQueue> queue = [device newCommandQueue];
+  ASSERT_NE(queue, nil);
+  id<MTLCommandBuffer> cmd = [queue commandBuffer];
+  ASSERT_NE(cmd, nil);
+  KernelDispatch dispatch;
+  kernel->execute((GpuCommandBufferHandle)cmd, dispatch, args, &hooks);
+  metal_end_compute_encoder((GpuCommandBufferHandle)cmd);
+  [cmd commit];
+  [cmd waitUntilCompleted];
+  ASSERT_EQ([cmd status], MTLCommandBufferStatusCompleted);
+
+  EXPECT_EQ(counters["mpsrt_model_request_encode_count"], 1u);
+  EXPECT_EQ(counters["mpsrt_model_request_mps_sdpa_stage_encode_count"], 1u);
+  EXPECT_EQ(counters["mpsrt_mps_graph_sdpa_request_encode_count"], 1u);
+  EXPECT_EQ(counters["mpsrt_mps_graph_sdpa_executable_encode_count"], 1u);
+
+  const auto expected = reference_sdpa_bhnd(
+      query, key, value, kBatch, kHeads, kQueryTokens, kKeyTokens, kHeadDim,
+      kValueDim, kScale);
+  const float *actual = static_cast<const float *>([output_buffer contents]);
+  for (size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_NEAR(actual[i], expected[i], 2e-4f) << "index=" << i;
+  }
+}
+
+TEST(GfxBackendTest, MpsrtRequestExecutesF32MpsGraphSdpa) {
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  ASSERT_NE(device, nil);
+
+  constexpr uint32_t kBatch = 1;
+  constexpr uint32_t kHeads = 1;
+  constexpr uint32_t kQueryTokens = 2;
+  constexpr uint32_t kKeyTokens = 3;
+  constexpr uint32_t kHeadDim = 4;
+  constexpr uint32_t kValueDim = 4;
+  constexpr float kScale = 1.0f / 2.0f;
+
+  const auto query_desc = gfx_mpsrt_make_tensor_desc(
+      {kBatch, kHeads, kQueryTokens, kHeadDim}, ov::element::f32,
+      GfxStageStorageKind::NDArray, GfxMpsrtTensorFlagExternalIo);
+  const auto key_desc = gfx_mpsrt_make_tensor_desc(
+      {kBatch, kHeads, kKeyTokens, kHeadDim}, ov::element::f32,
+      GfxStageStorageKind::NDArray, GfxMpsrtTensorFlagExternalIo);
+  const auto value_desc = gfx_mpsrt_make_tensor_desc(
+      {kBatch, kHeads, kKeyTokens, kValueDim}, ov::element::f32,
+      GfxStageStorageKind::NDArray, GfxMpsrtTensorFlagExternalIo);
+  const auto output_desc = gfx_mpsrt_make_tensor_desc(
+      {kBatch, kHeads, kQueryTokens, kValueDim}, ov::element::f32,
+      GfxStageStorageKind::NDArray, GfxMpsrtTensorFlagExternalIo);
+
+  GfxMpsrtSdpaAbiDesc sdpa_desc{};
+  sdpa_desc.scale = kScale;
+  sdpa_desc.accumulate_fp32 = 1;
+
+  GfxMpsrtStageDesc stage_desc{};
+  stage_desc.kind = GfxMpsrtStageKind::MPSSdpa;
+  stage_desc.domain = GfxStageBackendDomain::AppleMps;
+  stage_desc.input_storage = GfxMpsrtStorage::NDArray;
+  stage_desc.output_storage = GfxMpsrtStorage::NDArray;
+  stage_desc.layout = GfxMpsrtLayout::Linear;
+  stage_desc.kernel_name = "mps_sdpa";
+  stage_desc.stage_manifest = make_gfx_vendor_stage_manifest(
+      GfxKernelStageFamily::AttentionSoftmax, GfxKernelBackendDomain::AppleMps,
+      GfxKernelStorageKind::NDArray,
+      "apple_mps:ndarray:ScaledDotProductAttention");
+  stage_desc.sdpa_desc = sdpa_desc;
+
+  runtime_mpsrt::MpsrtModel model;
+  model.stage_record_key = gfx_mpsrt_stage_record_key(stage_desc);
+  model.semantic_input_values = {0, 1, 2};
+  model.semantic_output_values = {3};
+  model.input_values = {0, 1, 2};
+  model.output_values = {3};
+  model.external_values = {0, 1, 2, 3};
+  model.external_input_values = {0, 1, 2};
+  model.external_output_values = {3};
+  model.external_buffer_roles = {GfxMpsrtExternalBufferRole::TensorInput,
+                                 GfxMpsrtExternalBufferRole::TensorInput,
+                                 GfxMpsrtExternalBufferRole::TensorInput,
+                                 GfxMpsrtExternalBufferRole::TensorOutput};
+  model.tensors.push_back({0, gfx_mpsrt_to_abi_desc(query_desc)});
+  model.tensors.push_back({1, gfx_mpsrt_to_abi_desc(key_desc)});
+  model.tensors.push_back({2, gfx_mpsrt_to_abi_desc(value_desc)});
+  model.tensors.push_back({3, gfx_mpsrt_to_abi_desc(output_desc)});
+
+  runtime_mpsrt::MpsrtRuntimeStage stage;
+  stage.kind = GfxMpsrtStageKind::MPSSdpa;
+  stage.stage_record_key = model.stage_record_key;
+  stage.kernel_name = "mps_sdpa";
+  stage.sdpa_desc = sdpa_desc;
+  stage.inputs = {0, 1, 2};
+  stage.outputs = {3};
+  stage.output_descs = {gfx_mpsrt_to_abi_desc(output_desc)};
+  model.stages.push_back(stage);
+
+  std::string log;
+  ASSERT_TRUE(runtime_mpsrt::finalize_mpsrt_model_resources(model, &log))
+      << log;
+
+  metal::mpsrt::MpsrtContext context(device);
+  metal::mpsrt::MpsrtPreparedModel prepared_model;
+  ASSERT_TRUE(context.prepare_model(model, "", prepared_model, &log)) << log;
+  ASSERT_EQ(prepared_model.mps_sdpa_stages.size(), 1u);
+
+  const size_t q_count =
+      static_cast<size_t>(kBatch) * kHeads * kQueryTokens * kHeadDim;
+  const size_t k_count =
+      static_cast<size_t>(kBatch) * kHeads * kKeyTokens * kHeadDim;
+  const size_t v_count =
+      static_cast<size_t>(kBatch) * kHeads * kKeyTokens * kValueDim;
+  const size_t out_count =
+      static_cast<size_t>(kBatch) * kHeads * kQueryTokens * kValueDim;
+  std::vector<float> query(q_count);
+  std::vector<float> key(k_count);
+  std::vector<float> value(v_count);
+  for (size_t i = 0; i < query.size(); ++i) {
+    query[i] = (static_cast<int>(i % 7) - 3) * 0.2f;
+  }
+  for (size_t i = 0; i < key.size(); ++i) {
+    key[i] = (static_cast<int>(i % 5) - 2) * 0.15f;
+  }
+  for (size_t i = 0; i < value.size(); ++i) {
+    value[i] = (static_cast<int>(i % 9) - 4) * 0.07f;
+  }
+
+  id<MTLBuffer> query_buffer =
+      [device newBufferWithLength:sizeof(float) * q_count
+                          options:MTLResourceStorageModeShared];
+  id<MTLBuffer> key_buffer =
+      [device newBufferWithLength:sizeof(float) * k_count
+                          options:MTLResourceStorageModeShared];
+  id<MTLBuffer> value_buffer =
+      [device newBufferWithLength:sizeof(float) * v_count
+                          options:MTLResourceStorageModeShared];
+  id<MTLBuffer> output_buffer =
+      [device newBufferWithLength:sizeof(float) * out_count
+                          options:MTLResourceStorageModeShared];
+  ASSERT_NE(query_buffer, nil);
+  ASSERT_NE(key_buffer, nil);
+  ASSERT_NE(value_buffer, nil);
+  ASSERT_NE(output_buffer, nil);
+  std::memcpy([query_buffer contents], query.data(), sizeof(float) * q_count);
+  std::memcpy([key_buffer contents], key.data(), sizeof(float) * k_count);
+  std::memcpy([value_buffer contents], value.data(), sizeof(float) * v_count);
+  std::fill_n(static_cast<float *>([output_buffer contents]), out_count,
+              -1.0f);
+
+  metal::mpsrt::MpsrtTensorBindings bindings;
+  bindings.bind(0, metal::mpsrt::MpsrtBoundBuffer{(__bridge void *)query_buffer,
+                                                  0});
+  bindings.bind(1, metal::mpsrt::MpsrtBoundBuffer{(__bridge void *)key_buffer,
+                                                  0});
+  bindings.bind(2, metal::mpsrt::MpsrtBoundBuffer{(__bridge void *)value_buffer,
+                                                  0});
+  bindings.bind(3, metal::mpsrt::MpsrtBoundBuffer{(__bridge void *)output_buffer,
+                                                  0});
+
+  std::unordered_map<std::string, uint64_t> counters;
+  KernelExecutionHooks hooks;
+  hooks.on_counter = [&counters](std::string_view name, uint64_t delta) {
+    counters[std::string(name)] += delta;
+  };
+
+  id<MTLCommandQueue> queue = [device newCommandQueue];
+  ASSERT_NE(queue, nil);
+  id<MTLCommandBuffer> cmd = [queue commandBuffer];
+  ASSERT_NE(cmd, nil);
+  std::vector<KernelDispatch> dispatches(1);
+  metal::mpsrt::MpsrtRequest request;
+  metal::mpsrt::MpsrtModelEncodeResult result;
+  ASSERT_TRUE(request.encode_prepared_model(
+      (GpuCommandBufferHandle)cmd, model, prepared_model, dispatches, bindings,
+      &hooks, &result, &log));
+  metal_end_compute_encoder((GpuCommandBufferHandle)cmd);
+  [cmd commit];
+  [cmd waitUntilCompleted];
+  ASSERT_EQ([cmd status], MTLCommandBufferStatusCompleted);
+
+  EXPECT_EQ(result.encoded_mps_sdpa_stages, 1u);
+  EXPECT_EQ(result.bound_buffers, 4u);
+  EXPECT_EQ(counters["mpsrt_mps_graph_sdpa_kernel_encode_count"], 1u);
+  EXPECT_EQ(counters["mpsrt_mps_graph_sdpa_executable_encode_count"], 1u);
+
+  const auto expected = reference_sdpa_bhnd(
+      query, key, value, kBatch, kHeads, kQueryTokens, kKeyTokens, kHeadDim,
+      kValueDim, kScale);
+  const float *actual = static_cast<const float *>([output_buffer contents]);
+  for (size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_NEAR(actual[i], expected[i], 2e-4f) << "index=" << i;
+  }
+}
+
+TEST(GfxBackendTest, MpsrtRequestExecutesF32MpsGraphTransposedSdpa) {
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  ASSERT_NE(device, nil);
+
+  constexpr uint32_t kBatch = 1;
+  constexpr uint32_t kHeads = 2;
+  constexpr uint32_t kQueryTokens = 3;
+  constexpr uint32_t kKeyTokens = 5;
+  constexpr uint32_t kHeadDim = 3;
+  constexpr uint32_t kValueDim = 4;
+  constexpr float kScale = 0.25f;
+
+  const auto query_desc = gfx_mpsrt_make_tensor_desc(
+      {kBatch, kHeads, kHeadDim, kQueryTokens}, ov::element::f32,
+      GfxStageStorageKind::NDArray, GfxMpsrtTensorFlagExternalIo);
+  const auto key_desc = gfx_mpsrt_make_tensor_desc(
+      {kBatch, kHeads, kHeadDim, kKeyTokens}, ov::element::f32,
+      GfxStageStorageKind::NDArray, GfxMpsrtTensorFlagExternalIo);
+  const auto value_desc = gfx_mpsrt_make_tensor_desc(
+      {kBatch, kHeads, kValueDim, kKeyTokens}, ov::element::f32,
+      GfxStageStorageKind::NDArray, GfxMpsrtTensorFlagExternalIo);
+  const auto output_desc = gfx_mpsrt_make_tensor_desc(
+      {kBatch, kHeads, kValueDim, kQueryTokens}, ov::element::f32,
+      GfxStageStorageKind::NDArray, GfxMpsrtTensorFlagExternalIo);
+
+  GfxMpsrtSdpaAbiDesc sdpa_desc{};
+  sdpa_desc.scale = kScale;
+  sdpa_desc.accumulate_fp32 = 1;
+  sdpa_desc.layout = GfxMpsrtSdpaLayoutTransposedBHDN;
+
+  GfxMpsrtStageDesc stage_desc{};
+  stage_desc.kind = GfxMpsrtStageKind::MPSSdpa;
+  stage_desc.domain = GfxStageBackendDomain::AppleMps;
+  stage_desc.input_storage = GfxMpsrtStorage::NDArray;
+  stage_desc.output_storage = GfxMpsrtStorage::NDArray;
+  stage_desc.layout = GfxMpsrtLayout::RowMajor;
+  stage_desc.kernel_name = "mps_sdpa";
+  stage_desc.stage_manifest = make_gfx_vendor_stage_manifest(
+      GfxKernelStageFamily::AttentionSoftmax, GfxKernelBackendDomain::AppleMps,
+      GfxKernelStorageKind::NDArray, "apple_mps:ndarray:TransposedSDPA");
+  stage_desc.sdpa_desc = sdpa_desc;
+
+  runtime_mpsrt::MpsrtModel model;
+  model.stage_record_key = gfx_mpsrt_stage_record_key(stage_desc);
+  model.semantic_input_values = {0, 1, 2};
+  model.semantic_output_values = {3};
+  model.input_values = {0, 1, 2};
+  model.output_values = {3};
+  model.external_values = {0, 1, 2, 3};
+  model.external_input_values = {0, 1, 2};
+  model.external_output_values = {3};
+  model.external_buffer_roles = {GfxMpsrtExternalBufferRole::TensorInput,
+                                 GfxMpsrtExternalBufferRole::TensorInput,
+                                 GfxMpsrtExternalBufferRole::TensorInput,
+                                 GfxMpsrtExternalBufferRole::TensorOutput};
+  model.tensors.push_back({0, gfx_mpsrt_to_abi_desc(query_desc)});
+  model.tensors.push_back({1, gfx_mpsrt_to_abi_desc(key_desc)});
+  model.tensors.push_back({2, gfx_mpsrt_to_abi_desc(value_desc)});
+  model.tensors.push_back({3, gfx_mpsrt_to_abi_desc(output_desc)});
+
+  runtime_mpsrt::MpsrtRuntimeStage stage;
+  stage.kind = GfxMpsrtStageKind::MPSSdpa;
+  stage.stage_record_key = model.stage_record_key;
+  stage.kernel_name = "mps_sdpa";
+  stage.sdpa_desc = sdpa_desc;
+  stage.inputs = {0, 1, 2};
+  stage.outputs = {3};
+  stage.output_descs = {gfx_mpsrt_to_abi_desc(output_desc)};
+  model.stages.push_back(stage);
+
+  std::string log;
+  ASSERT_TRUE(runtime_mpsrt::finalize_mpsrt_model_resources(model, &log))
+      << log;
+
+  metal::mpsrt::MpsrtContext context(device);
+  metal::mpsrt::MpsrtPreparedModel prepared_model;
+  ASSERT_TRUE(context.prepare_model(model, "", prepared_model, &log)) << log;
+  ASSERT_EQ(prepared_model.mps_sdpa_stages.size(), 1u);
+
+  const size_t q_count =
+      static_cast<size_t>(kBatch) * kHeads * kHeadDim * kQueryTokens;
+  const size_t k_count =
+      static_cast<size_t>(kBatch) * kHeads * kHeadDim * kKeyTokens;
+  const size_t v_count =
+      static_cast<size_t>(kBatch) * kHeads * kValueDim * kKeyTokens;
+  const size_t out_count =
+      static_cast<size_t>(kBatch) * kHeads * kValueDim * kQueryTokens;
+  std::vector<float> query(q_count);
+  std::vector<float> key(k_count);
+  std::vector<float> value(v_count);
+  for (size_t i = 0; i < query.size(); ++i) {
+    query[i] = (static_cast<int>(i % 11) - 5) * 0.11f;
+  }
+  for (size_t i = 0; i < key.size(); ++i) {
+    key[i] = (static_cast<int>(i % 13) - 6) * 0.09f;
+  }
+  for (size_t i = 0; i < value.size(); ++i) {
+    value[i] = (static_cast<int>(i % 17) - 8) * 0.07f;
+  }
+
+  id<MTLBuffer> query_buffer =
+      [device newBufferWithLength:sizeof(float) * q_count
+                          options:MTLResourceStorageModeShared];
+  id<MTLBuffer> key_buffer =
+      [device newBufferWithLength:sizeof(float) * k_count
+                          options:MTLResourceStorageModeShared];
+  id<MTLBuffer> value_buffer =
+      [device newBufferWithLength:sizeof(float) * v_count
+                          options:MTLResourceStorageModeShared];
+  id<MTLBuffer> output_buffer =
+      [device newBufferWithLength:sizeof(float) * out_count
+                          options:MTLResourceStorageModeShared];
+  ASSERT_NE(query_buffer, nil);
+  ASSERT_NE(key_buffer, nil);
+  ASSERT_NE(value_buffer, nil);
+  ASSERT_NE(output_buffer, nil);
+  std::memcpy([query_buffer contents], query.data(), sizeof(float) * q_count);
+  std::memcpy([key_buffer contents], key.data(), sizeof(float) * k_count);
+  std::memcpy([value_buffer contents], value.data(), sizeof(float) * v_count);
+  std::fill_n(static_cast<float *>([output_buffer contents]), out_count,
+              -1.0f);
+
+  metal::mpsrt::MpsrtTensorBindings bindings;
+  bindings.bind(0, metal::mpsrt::MpsrtBoundBuffer{(__bridge void *)query_buffer,
+                                                  0});
+  bindings.bind(1, metal::mpsrt::MpsrtBoundBuffer{(__bridge void *)key_buffer,
+                                                  0});
+  bindings.bind(2, metal::mpsrt::MpsrtBoundBuffer{(__bridge void *)value_buffer,
+                                                  0});
+  bindings.bind(3, metal::mpsrt::MpsrtBoundBuffer{(__bridge void *)output_buffer,
+                                                  0});
+
+  std::unordered_map<std::string, uint64_t> counters;
+  KernelExecutionHooks hooks;
+  hooks.on_counter = [&counters](std::string_view name, uint64_t delta) {
+    counters[std::string(name)] += delta;
+  };
+
+  id<MTLCommandQueue> queue = [device newCommandQueue];
+  ASSERT_NE(queue, nil);
+  id<MTLCommandBuffer> cmd = [queue commandBuffer];
+  ASSERT_NE(cmd, nil);
+  std::vector<KernelDispatch> dispatches(1);
+  metal::mpsrt::MpsrtRequest request;
+  metal::mpsrt::MpsrtModelEncodeResult result;
+  ASSERT_TRUE(request.encode_prepared_model(
+      (GpuCommandBufferHandle)cmd, model, prepared_model, dispatches, bindings,
+      &hooks, &result, &log));
+  metal_end_compute_encoder((GpuCommandBufferHandle)cmd);
+  [cmd commit];
+  [cmd waitUntilCompleted];
+  ASSERT_EQ([cmd status], MTLCommandBufferStatusCompleted);
+
+  EXPECT_EQ(result.encoded_mps_sdpa_stages, 1u);
+  EXPECT_EQ(result.bound_buffers, 4u);
+  EXPECT_EQ(counters["mpsrt_mps_graph_sdpa_kernel_encode_count"], 1u);
+  EXPECT_EQ(counters["mpsrt_mps_graph_sdpa_executable_encode_count"], 1u);
+
+  const auto expected = reference_sdpa_bhdn(
+      query, key, value, kBatch, kHeads, kQueryTokens, kKeyTokens, kHeadDim,
+      kValueDim, kScale);
+  const float *actual = static_cast<const float *>([output_buffer contents]);
+  for (size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_NEAR(actual[i], expected[i], 2e-4f) << "index=" << i;
+  }
+}
+
 TEST(GfxBackendTest, MetalCodegenCompilesVendorOnlyMpsTopKWithoutMslSource) {
   id<MTLDevice> device = MTLCreateSystemDefaultDevice();
   ASSERT_NE(device, nil);
@@ -4705,6 +5684,120 @@ TEST(GfxBackendTest, MetalCodegenCompilesVendorOnlyMpsTopKWithoutMslSource) {
   for (uint32_t i = 0; i < kRows * kTopK; ++i) {
     EXPECT_FLOAT_EQ(values_ptr[i], expected_values[i]);
     EXPECT_EQ(indices_ptr[i], expected_indices[i]);
+  }
+}
+
+TEST(GfxBackendTest, MpsrtRequestExecutesLargeF32I64TopKWithMpsGraphExecutable) {
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  ASSERT_NE(device, nil);
+
+  constexpr uint32_t kRows = 1;
+  constexpr uint32_t kColumns = 32;
+  constexpr uint32_t kTopK = 20;
+  mlir::MLIRContext ctx;
+  auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+  annotate_test_mps_vendor_module(module, "TopK", GfxKernelStageFamily::TopK);
+  auto input_desc = gfx_mpsrt_make_tensor_desc(
+      {kRows, kColumns}, ov::element::f32, GfxStageStorageKind::Matrix,
+      GfxMpsrtTensorFlagExternalIo);
+  auto values_desc = gfx_mpsrt_make_tensor_desc(
+      {kRows, kTopK}, ov::element::f32, GfxStageStorageKind::Matrix,
+      GfxMpsrtTensorFlagExternalIo);
+  auto indices_desc = gfx_mpsrt_make_tensor_desc(
+      {kRows, kTopK}, ov::element::i64, GfxStageStorageKind::Matrix,
+      GfxMpsrtTensorFlagExternalIo);
+  auto lowering_plan = make_test_mps_vendor_lowering(
+      module, {input_desc}, {values_desc, indices_desc});
+  GfxMpsrtTopKAbiDesc topk_desc{};
+  topk_desc.axis = 1;
+  topk_desc.k = kTopK;
+  topk_desc.mode_max = 1;
+  topk_desc.sort_type = 1;
+  lowering_plan.stage_plan.stage.topk_desc = topk_desc;
+  ASSERT_TRUE(finalize_apple_mps_stage_lowering_plan(lowering_plan));
+  ASSERT_TRUE(materialize_apple_mps_typed_program(module, lowering_plan));
+
+  KernelSource source;
+  source.module = module;
+  source.entry_point = "mps_topk";
+  source.signature.arg_count = 99;
+  source.signature.output_arg_count = 99;
+
+  MetalCodegenBackend backend((MetalDeviceHandle)device);
+  std::string log;
+  auto kernel = backend.compile(source, &log);
+  ASSERT_TRUE(kernel) << log;
+
+  id<MTLBuffer> input =
+      [device newBufferWithLength:sizeof(float) * kRows * kColumns
+                          options:MTLResourceStorageModeShared];
+  id<MTLBuffer> values =
+      [device newBufferWithLength:sizeof(float) * kRows * kTopK
+                          options:MTLResourceStorageModeShared];
+  id<MTLBuffer> indices =
+      [device newBufferWithLength:sizeof(int64_t) * kRows * kTopK
+                          options:MTLResourceStorageModeShared];
+  ASSERT_NE(input, nil);
+  ASSERT_NE(values, nil);
+  ASSERT_NE(indices, nil);
+
+  float *input_ptr = static_cast<float *>([input contents]);
+  for (uint32_t i = 0; i < kColumns; ++i) {
+    input_ptr[i] = static_cast<float>(i);
+  }
+  std::fill_n(static_cast<float *>([values contents]), kRows * kTopK, -1.0f);
+  std::fill_n(static_cast<int64_t *>([indices contents]), kRows * kTopK,
+              int64_t{-1});
+
+  MetalBuffer input_gpu{};
+  input_gpu.buffer = (__bridge void *)input;
+  input_gpu.size = sizeof(float) * kRows * kColumns;
+  input_gpu.type = ov::element::f32;
+  MetalBuffer values_gpu{};
+  values_gpu.buffer = (__bridge void *)values;
+  values_gpu.size = sizeof(float) * kRows * kTopK;
+  values_gpu.type = ov::element::f32;
+  MetalBuffer indices_gpu{};
+  indices_gpu.buffer = (__bridge void *)indices;
+  indices_gpu.size = sizeof(int64_t) * kRows * kTopK;
+  indices_gpu.type = ov::element::i64;
+
+  std::vector<KernelArg> args;
+  args.push_back(make_buffer_arg(0, input_gpu));
+  args.push_back(make_buffer_arg(1, values_gpu));
+  args.push_back(make_buffer_arg(2, indices_gpu));
+
+  std::unordered_map<std::string, uint64_t> counters;
+  KernelExecutionHooks hooks;
+  hooks.on_counter = [&counters](std::string_view name, uint64_t delta) {
+    counters[std::string(name)] += delta;
+  };
+
+  id<MTLCommandQueue> queue = [device newCommandQueue];
+  ASSERT_NE(queue, nil);
+  id<MTLCommandBuffer> cmd = [queue commandBuffer];
+  ASSERT_NE(cmd, nil);
+  KernelDispatch dispatch;
+  kernel->execute((GpuCommandBufferHandle)cmd, dispatch, args, &hooks);
+  metal_end_compute_encoder((GpuCommandBufferHandle)cmd);
+  [cmd commit];
+  [cmd waitUntilCompleted];
+  ASSERT_EQ([cmd status], MTLCommandBufferStatusCompleted);
+
+  EXPECT_EQ(counters["mpsrt_model_request_mps_topk_stage_encode_count"], 1u);
+  EXPECT_EQ(counters["mpsrt_mps_graph_topk_request_encode_count"], 1u);
+  EXPECT_EQ(counters["mpsrt_mps_graph_topk_executable_encode_count"], 1u);
+  EXPECT_EQ(counters["mpsrt_mps_topk_i64_index_bridge_encode_count"], 1u);
+  EXPECT_EQ(
+      counters["mpsrt_mps_topk_stable_i64_index_resolve_encode_count"], 1u);
+  EXPECT_EQ(counters["mpsrt_mps_topk_i64_pack_bridge_encode_count"], 0u);
+
+  const float *values_ptr = static_cast<const float *>([values contents]);
+  const int64_t *indices_ptr = static_cast<const int64_t *>([indices contents]);
+  for (uint32_t i = 0; i < kTopK; ++i) {
+    const int64_t expected_index = static_cast<int64_t>(kColumns - 1u - i);
+    EXPECT_FLOAT_EQ(values_ptr[i], static_cast<float>(expected_index));
+    EXPECT_EQ(indices_ptr[i], expected_index);
   }
 }
 

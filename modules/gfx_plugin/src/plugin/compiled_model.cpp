@@ -23,16 +23,21 @@
 #include "runtime/gfx_precision.hpp"
 #include "runtime/gfx_profiling_report.hpp"
 #include "runtime/gfx_remote_context.hpp"
+#include "runtime/gfx_stage_policy.hpp"
 #include "runtime/gfx_vulkan_pipeline_cache_scope.hpp"
 
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
+#include "openvino/core/type/float16.hpp"
 #include "openvino/core/validation_util.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/group_conv.hpp"
+#include "openvino/op/matmul.hpp"
+#include "openvino/op/multiply.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/result.hpp"
+#include "openvino/op/softmax.hpp"
 #include "openvino/op/split.hpp"
 #include "openvino/op/transpose.hpp"
 #include "openvino/op/variadic_split.hpp"
@@ -47,9 +52,11 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 namespace ov {
 namespace gfx_plugin {
 
@@ -60,6 +67,205 @@ std::vector<int64_t> evaluate_constant_i64(const ov::Output<ov::Node> &value) {
       ov::as_type_ptr<const ov::op::v0::Constant>(value.get_node_shared_ptr());
   OPENVINO_ASSERT(constant, "GFX: expected constant input");
   return constant->cast_vector<int64_t>();
+}
+
+bool read_const_f32_values(
+    const std::shared_ptr<const ov::op::v0::Constant> &constant,
+    std::vector<float> &values) {
+  if (!constant) {
+    return false;
+  }
+  const auto count = ov::shape_size(constant->get_shape());
+  if (count == 0) {
+    return false;
+  }
+  values.resize(count);
+  if (constant->get_element_type() == ov::element::f32) {
+    const auto *src = constant->get_data_ptr<float>();
+    std::copy(src, src + count, values.begin());
+    return true;
+  }
+  if (constant->get_element_type() == ov::element::f16) {
+    const auto *src = constant->get_data_ptr<ov::float16>();
+    for (size_t i = 0; i < count; ++i) {
+      values[i] = static_cast<float>(src[i]);
+    }
+    return true;
+  }
+  return false;
+}
+
+bool read_uniform_scale_from_multiply(
+    const std::shared_ptr<const ov::op::v1::Multiply> &multiply,
+    const std::shared_ptr<const ov::Node> &producer, float &scale) {
+  if (!multiply || !producer) {
+    return false;
+  }
+  ov::Output<const ov::Node> scale_value;
+  if (multiply->input_value(0).get_node_shared_ptr() == producer) {
+    scale_value = multiply->input_value(1);
+  } else if (multiply->input_value(1).get_node_shared_ptr() == producer) {
+    scale_value = multiply->input_value(0);
+  } else {
+    return false;
+  }
+  auto constant =
+      ov::as_type_ptr<const ov::op::v0::Constant>(scale_value.get_node_shared_ptr());
+  std::vector<float> values;
+  if (!read_const_f32_values(constant, values)) {
+    return false;
+  }
+  scale = values.front();
+  return std::all_of(values.begin(), values.end(),
+                     [&](float value) { return value == scale; });
+}
+
+bool extract_scaled_tensor_input(
+    const std::shared_ptr<const ov::op::v1::Multiply> &multiply,
+    ov::Output<const ov::Node> &tensor, float &scale) {
+  if (!multiply || multiply->get_input_size() != 2) {
+    return false;
+  }
+  auto const0 = ov::util::get_constant_from_source(multiply->input_value(0));
+  auto const1 = ov::util::get_constant_from_source(multiply->input_value(1));
+  ov::Output<const ov::Node> tensor_candidate;
+  std::shared_ptr<const ov::op::v0::Constant> scale_const;
+  if (const0 && !const1) {
+    tensor_candidate = multiply->input_value(1);
+    scale_const = const0;
+  } else if (const1 && !const0) {
+    tensor_candidate = multiply->input_value(0);
+    scale_const = const1;
+  } else {
+    return false;
+  }
+
+  std::vector<float> values;
+  if (!read_const_f32_values(scale_const, values)) {
+    return false;
+  }
+  scale = values.front();
+  if (!std::all_of(values.begin(), values.end(),
+                   [&](float value) { return value == scale; })) {
+    return false;
+  }
+  tensor = tensor_candidate;
+  return true;
+}
+
+bool is_supported_softmax_node(const std::shared_ptr<const ov::Node> &node) {
+  return static_cast<bool>(ov::as_type_ptr<const ov::op::v1::Softmax>(node)) ||
+         static_cast<bool>(ov::as_type_ptr<const ov::op::v8::Softmax>(node));
+}
+
+struct VendorAttentionSubgraphPlan {
+  VendorAttentionStageSpec spec;
+  ov::Output<const ov::Node> query;
+  ov::Output<const ov::Node> key;
+  ov::Output<const ov::Node> value;
+};
+
+std::optional<VendorAttentionSubgraphPlan> make_vendor_attention_subgraph_plan(
+    const FusionGroup &group,
+    const std::vector<std::shared_ptr<ov::Node>> &ordered_ops) {
+  if (group.node_indices.size() != 4) {
+    return std::nullopt;
+  }
+  for (auto idx : group.node_indices) {
+    if (idx >= ordered_ops.size()) {
+      return std::nullopt;
+    }
+  }
+  const auto first = ordered_ops[group.node_indices[0]];
+  const auto second = ordered_ops[group.node_indices[1]];
+  auto softmax = ordered_ops[group.node_indices[2]];
+  auto matmul2 =
+      ov::as_type_ptr<const ov::op::v0::MatMul>(ordered_ops[group.node_indices[3]]);
+  auto matmul1 = ov::as_type_ptr<const ov::op::v0::MatMul>(first);
+  auto scale = ov::as_type_ptr<const ov::op::v1::Multiply>(second);
+  bool pre_scaled_key = false;
+  if (!matmul1 || !scale) {
+    scale = ov::as_type_ptr<const ov::op::v1::Multiply>(first);
+    matmul1 = ov::as_type_ptr<const ov::op::v0::MatMul>(second);
+    pre_scaled_key = static_cast<bool>(scale && matmul1);
+  }
+  if (!matmul1 || !scale || !is_supported_softmax_node(softmax) || !matmul2 ||
+      !matmul1->get_transpose_a() || matmul1->get_transpose_b() ||
+      matmul2->get_transpose_a() || !matmul2->get_transpose_b()) {
+    return std::nullopt;
+  }
+
+  const auto q = matmul1->input_value(0);
+  ov::Output<const ov::Node> k;
+  ov::Output<const ov::Node> value;
+  if (matmul2->input_value(0).get_node() == softmax.get()) {
+    value = matmul2->input_value(1);
+  } else if (matmul2->input_value(1).get_node() == softmax.get()) {
+    value = matmul2->input_value(0);
+  } else {
+    return std::nullopt;
+  }
+  float attention_scale = 1.0f;
+  if (pre_scaled_key) {
+    if (softmax->input_value(0).get_node() != matmul1.get() ||
+        matmul1->input_value(1).get_node() != scale.get() ||
+        !extract_scaled_tensor_input(scale, k, attention_scale)) {
+      return std::nullopt;
+    }
+  } else {
+    if (softmax->input_value(0).get_node() != scale.get() ||
+        !read_uniform_scale_from_multiply(scale, matmul1->shared_from_this(),
+                                          attention_scale)) {
+      return std::nullopt;
+    }
+    k = matmul1->input_value(1);
+  }
+
+  if (!q.get_partial_shape().is_static() || !k.get_partial_shape().is_static() ||
+      !value.get_partial_shape().is_static() ||
+      !matmul2->get_output_partial_shape(0).is_static()) {
+    return std::nullopt;
+  }
+
+  VendorAttentionStageSpec spec;
+  spec.name = matmul2->get_friendly_name();
+  spec.element_type = q.get_element_type();
+  spec.query_shape = q.get_shape();
+  spec.key_shape = k.get_shape();
+  spec.value_shape = value.get_shape();
+  spec.output_shape = matmul2->get_output_shape(0);
+  spec.scale = attention_scale;
+  if (spec.element_type != ov::element::f32 &&
+      spec.element_type != ov::element::f16) {
+    return std::nullopt;
+  }
+  if (k.get_element_type() != spec.element_type ||
+      value.get_element_type() != spec.element_type ||
+      matmul2->get_output_element_type(0) != spec.element_type) {
+    return std::nullopt;
+  }
+  if (spec.query_shape.size() != 4 || spec.key_shape.size() != 4 ||
+      spec.value_shape.size() != 4 || spec.output_shape.size() != 4) {
+    return std::nullopt;
+  }
+  if (spec.query_shape[0] != spec.key_shape[0] ||
+      spec.query_shape[0] != spec.value_shape[0] ||
+      spec.query_shape[1] != spec.key_shape[1] ||
+      spec.query_shape[1] != spec.value_shape[1] ||
+      spec.query_shape[2] != spec.key_shape[2] ||
+      spec.key_shape[3] != spec.value_shape[3] ||
+      spec.output_shape[0] != spec.query_shape[0] ||
+      spec.output_shape[1] != spec.query_shape[1] ||
+      spec.output_shape[2] != spec.value_shape[2] ||
+      spec.output_shape[3] != spec.query_shape[3]) {
+    return std::nullopt;
+  }
+  VendorAttentionSubgraphPlan plan;
+  plan.spec = std::move(spec);
+  plan.query = q;
+  plan.key = k;
+  plan.value = value;
+  return plan;
 }
 
 bool is_supported_absorbing_consumer(
@@ -189,9 +395,12 @@ CompiledModel::CompiledModel(
   // f32 arithmetic for declared f32 and fp32-sensitive stages.
   if (auto it = properties.find(ov::hint::inference_precision.name());
       it != properties.end()) {
-    (void)it;
+    m_inference_precision =
+        parse_inference_precision_property(it->second,
+                                           ov::hint::inference_precision.name());
+  } else {
+    m_inference_precision = gfx_default_inference_precision();
   }
-  m_inference_precision = gfx_default_inference_precision();
   if (auto it = properties.find(ov::enable_profiling.name());
       it != properties.end()) {
     m_enable_profiling =
@@ -206,10 +415,11 @@ CompiledModel::CompiledModel(
       it != properties.end()) {
     m_enable_fusion = parse_bool_property(it->second, kGfxEnableFusionProperty);
   }
-  if (auto it = properties.find(kGfxDiagnosticF32MpsImageProperty);
-      it != properties.end()) {
-    m_diagnostic_f32_mps_image =
-        parse_bool_property(it->second, kGfxDiagnosticF32MpsImageProperty);
+  for (const auto &kv : properties) {
+    if (is_diagnostic_f32_vendor_image_property(kv.first)) {
+      m_diagnostic_f32_vendor_image = parse_bool_property(kv.second, kv.first);
+      break;
+    }
   }
   if (auto it = properties.find(kGfxProfilingLevelProperty);
       it != properties.end()) {
@@ -266,8 +476,8 @@ CompiledModel::CompiledModel(
       m_config[kv.first] = kv.second;
     } else if (kv.first == kGfxEnableFusionProperty) {
       m_config[kv.first] = m_enable_fusion;
-    } else if (kv.first == kGfxDiagnosticF32MpsImageProperty) {
-      m_config[kv.first] = m_diagnostic_f32_mps_image;
+    } else if (is_diagnostic_f32_vendor_image_property(kv.first)) {
+      m_config[kv.first] = m_diagnostic_f32_vendor_image;
     } else {
       m_config[kv.first] = kv.second;
     }
@@ -344,7 +554,8 @@ void CompiledModel::export_model(std::ostream &model) const {
 void CompiledModel::set_property(const ov::AnyMap &properties) {
   for (const auto &kv : properties) {
     if (kv.first == ov::hint::inference_precision.name()) {
-      m_inference_precision = gfx_default_inference_precision();
+      m_inference_precision =
+          parse_inference_precision_property(kv.second, kv.first);
       m_config[kv.first] = m_inference_precision;
     } else if (apply_profiling_property(kv.first, kv.second, m_enable_profiling,
                                         m_profiling_level,
@@ -355,9 +566,9 @@ void CompiledModel::set_property(const ov::AnyMap &properties) {
     } else if (kv.first == kGfxEnableFusionProperty) {
       m_enable_fusion = parse_bool_property(kv.second, kv.first);
       m_config[kv.first] = m_enable_fusion;
-    } else if (kv.first == kGfxDiagnosticF32MpsImageProperty) {
-      m_diagnostic_f32_mps_image = parse_bool_property(kv.second, kv.first);
-      m_config[kv.first] = m_diagnostic_f32_mps_image;
+    } else if (is_diagnostic_f32_vendor_image_property(kv.first)) {
+      m_diagnostic_f32_vendor_image = parse_bool_property(kv.second, kv.first);
+      m_config[kv.first] = m_diagnostic_f32_vendor_image;
     } else {
       OPENVINO_THROW("CompiledModel unsupported property: ", kv.first);
     }
@@ -468,7 +679,7 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
   auto *backend_state = m_backend_state.get();
   OPENVINO_ASSERT(backend_state, "GFX: backend state is not initialized");
   GpuStageRuntimeOptions stage_runtime_options{};
-  stage_runtime_options.diagnostic_f32_mps_image = m_diagnostic_f32_mps_image;
+  stage_runtime_options.diagnostic_f32_vendor_image = m_diagnostic_f32_vendor_image;
   auto configure_stage_runtime_options =
       [&](const std::unique_ptr<GpuStage> &stage) {
         if (stage) {
@@ -529,11 +740,88 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
   std::unordered_set<size_t> planned_fused_indices;
   std::unordered_set<const ov::Node *> planned_fused_nodes;
   std::unordered_set<const ov::Node *> fused_nodes;
+  auto fusion_group_has_fp32_precision = [&](const FusionGroup *group) {
+    if (!group) {
+      return false;
+    }
+    for (const auto node_idx : group->node_indices) {
+      if (node_idx < ordered_ops.size() &&
+          ov::fp16_compression_is_disabled(ordered_ops[node_idx])) {
+        return true;
+      }
+    }
+    return false;
+  };
+  auto is_precision_sensitive_arithmetic_fusion_group =
+      [](const FusionGroup &group) {
+    return group.kind == "ConvActivation" ||
+           group.kind == "ConvBiasActivation" ||
+           group.kind == "ConvBatchNormAct" ||
+           group.kind == "ConvBias" ||
+           group.kind == "ConvBatchNorm" ||
+           group.kind == "ConvScale" ||
+           group.kind == "ConvScaleActivation" ||
+           group.kind == "MatMulActivation" ||
+           group.kind == "MatMulBiasActivation" ||
+           group.kind == "MatMulBias" ||
+           group.kind == "EltwiseActivation" ||
+           group.kind == "EltwiseBiasActivation" ||
+           group.kind == "EltwiseBias" ||
+           group.kind == "EltwiseInputActivation";
+  };
+  auto is_apple_mpsrt_precision_sensitive_arithmetic_fusion_group =
+      [&](const FusionGroup &group) {
+        if (backend_state->backend() != GpuBackend::Metal ||
+            group.node_indices.empty() || group.input_activation.has_value() ||
+            group.batchnorm.has_value()) {
+          return false;
+        }
+        const auto primary_idx = group.node_indices.front();
+        if (primary_idx >= ordered_ops.size() || !ordered_ops[primary_idx]) {
+          return false;
+        }
+        const auto &primary = ordered_ops[primary_idx];
+        const std::string stage_type = primary->get_type_name();
+        if (stage_type != "Convolution" && stage_type != "GroupConvolution") {
+          return false;
+        }
+
+        if (group.kind == "ConvBias") {
+          if (!group.bias.has_value() || group.activation.has_value()) {
+            return false;
+          }
+        } else if (group.kind == "ConvActivation" ||
+                   group.kind == "ConvBiasActivation") {
+          if (!group.activation.has_value() ||
+              (group.kind == "ConvBiasActivation" && !group.bias.has_value()) ||
+              !allow_stage_activation_fusion(GpuBackend::Metal, stage_type,
+                                             *group.activation)) {
+            return false;
+          }
+        } else {
+          return false;
+        }
+
+        const auto plan = select_stage_optimization_plan(
+            resources.const_manager, GpuBackend::Metal, stage_type, primary,
+            primary->get_output_element_type(0), group.bias.has_value(),
+            group.activation.has_value(),
+            /*has_batchnorm=*/false, {});
+        return plan.placement.domain == GfxStageBackendDomain::AppleMps &&
+               plan.placement.storage == GfxStageStorageKind::Image &&
+               plan.placement.uses_vendor_primitive &&
+               !plan.placement.uses_custom_kernel;
+      };
   if (m_enable_fusion && has_unobserved_stage_edges) {
     FusionConfig fusion_cfg;
     fusion_cfg.enable_fusion = true;
     fusion_cfg.debug_dump_ir = gfx_log_debug_enabled();
-    fusion_cfg.enable_conv_activation_fusion = m_backend != GpuBackend::Metal;
+    fusion_cfg.enable_attention_fusion =
+        backend_state->enable_generic_attention_fusion();
+    fusion_cfg.enable_vendor_attention_fusion =
+        backend_state->supports_vendor_attention_stage();
+    fusion_cfg.enable_conv_activation_fusion =
+        backend_state->enable_conv_activation_fusion();
     fusion_cfg.enable_conv_swish_fusion = true;
     fusion_plan = build_fusion_plan(m_runtime_model, fusion_cfg);
     if (compile_trace) {
@@ -543,6 +831,28 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
     }
     fusion_primary.reserve(fusion_plan.groups.size());
     for (const auto &group : fusion_plan.groups) {
+      if (!backend_state->enable_precision_sensitive_arithmetic_fusion() &&
+          is_precision_sensitive_arithmetic_fusion_group(group) &&
+          fusion_group_has_fp32_precision(&group)) {
+        if (is_apple_mpsrt_precision_sensitive_arithmetic_fusion_group(
+                group)) {
+          if (compile_trace) {
+            compile_trace->increment_counter(
+                "fusion_precision_sensitive_mpsrt_allow_count");
+          }
+        } else {
+          if (compile_trace) {
+            compile_trace->increment_counter(
+                "fusion_precision_sensitive_arithmetic_skip_count");
+          }
+          if (gfx_log_debug_enabled()) {
+            gfx_log_debug("Fusion")
+                << "Skipped backend precision-sensitive arithmetic fusion kind="
+                << group.kind;
+          }
+          continue;
+        }
+      }
       if (group.node_indices.size() < 2) {
         continue;
       }
@@ -567,7 +877,14 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
       }
       const bool attention_group =
           group.kind == "Attention" || group.kind == "AttentionScale" ||
-          group.kind == "AttentionScaleMask" || group.kind == "NativeSDPA";
+          group.kind == "AttentionScaleMask" || group.kind == "NativeSDPA" ||
+          group.kind == "VendorAttention";
+      if (group.kind == "VendorAttention") {
+        auto plan = make_vendor_attention_subgraph_plan(group, ordered_ops);
+        if (!plan || !backend_state->create_vendor_attention_stage(plan->spec)) {
+          continue;
+        }
+      }
       const size_t primary_idx = attention_group ? group.node_indices.back()
                                                  : group.node_indices.front();
       fusion_primary[primary_idx] = &group;
@@ -722,18 +1039,6 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
     return kind == "ConvBatchNorm" || kind == "ConvBatchNormAct" ||
            kind == "ConvScale" || kind == "ConvScaleActivation";
   };
-  auto fusion_group_has_fp32_precision = [&](const FusionGroup *group) {
-    if (!group) {
-      return false;
-    }
-    for (const auto node_idx : group->node_indices) {
-      if (node_idx < ordered_ops.size() &&
-          ov::fp16_compression_is_disabled(ordered_ops[node_idx])) {
-        return true;
-      }
-    }
-    return false;
-  };
 
   std::unordered_map<const ov::Node *,
                      std::unordered_map<size_t, GfxInputTransform>>
@@ -798,6 +1103,54 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
     auto f_it = fusion_primary.find(op_index);
     if (f_it != fusion_primary.end() && f_it->second) {
       const auto *group = f_it->second;
+      if (group->kind == "VendorAttention") {
+        auto plan = make_vendor_attention_subgraph_plan(*group, ordered_ops);
+        auto stage = plan ? backend_state->create_vendor_attention_stage(plan->spec)
+                          : nullptr;
+        configure_stage_runtime_options(stage);
+        if (compile_trace) {
+          compile_trace->increment_counter("stage_create_count");
+        }
+        if (stage && !group->node_indices.empty()) {
+          const auto &final_node = ordered_ops[group->node_indices.back()];
+          PipelineStageDesc stage_desc;
+          stage_desc.node = final_node;
+          stage_desc.stage = std::move(stage);
+          stage_desc.inputs.push_back(remap_input_link(
+              plan->query.get_node_shared_ptr(), plan->query.get_index()));
+          stage_desc.inputs.push_back(remap_input_link(
+              plan->key.get_node_shared_ptr(), plan->key.get_index()));
+          stage_desc.inputs.push_back(remap_input_link(
+              plan->value.get_node_shared_ptr(), plan->value.get_index()));
+          stage_desc.outputs.resize(1);
+          stage_desc.outputs[0].shape = plan->spec.output_shape;
+          stage_desc.outputs[0].type = plan->spec.element_type;
+          stage_desc.outputs[0].source_node = final_node;
+          stage_desc.outputs[0].source_port = 0;
+          merge_model_outputs(stage_desc, final_node.get());
+          append_output_alias(stage_desc, final_node, 0, 0);
+          fused_output_port_aliases[{final_node.get(), 0}] = 0;
+
+          if (compile_trace) {
+            compile_trace->increment_counter("fused_stage_count");
+            compile_trace->increment_counter(
+                "fused_node_count",
+                static_cast<uint64_t>(group->node_indices.size()));
+            compile_trace->increment_counter("vendor_attention_stage_count");
+          }
+
+          const size_t idx = m_pipeline.size();
+          m_pipeline.emplace_back(std::move(stage_desc));
+          for (const auto node_idx : group->node_indices) {
+            if (node_idx < ordered_ops.size()) {
+              fused_indices.insert(node_idx);
+              const auto &fused_node = ordered_ops[node_idx];
+              m_node_to_stage[fused_node.get()] = idx;
+            }
+          }
+          continue;
+        }
+      }
       if (group->kind == "Attention" || group->kind == "AttentionScale" ||
           group->kind == "AttentionScaleMask" || group->kind == "NativeSDPA") {
         const size_t stage_count = group->node_indices.size();

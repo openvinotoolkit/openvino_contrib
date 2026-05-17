@@ -249,12 +249,19 @@ mlir::Value append_func_arg(mlir::func::FuncOp func, mlir::Type type, mlir::Loca
 std::optional<mlir::Value> prepare_bias_global(mlir::linalg::Conv2DNchwFchwOp op,
                                                mlir::IRRewriter& rewriter,
                                                mlir::Type elem_ty) {
-    auto bias_attr = op->getAttrOfType<mlir::DenseFPElementsAttr>("gfx.bias");
-    if (!bias_attr) {
+    int64_t channels = -1;
+    if (auto channels_attr = op->getAttrOfType<mlir::IntegerAttr>("gfx.bias_channels")) {
+        channels = channels_attr.getInt();
+    } else if (auto bias_attr = op->getAttrOfType<mlir::DenseFPElementsAttr>("gfx.bias")) {
+        auto bias_type = mlir::dyn_cast<mlir::RankedTensorType>(bias_attr.getType());
+        if (!bias_type || bias_type.getRank() != 1) {
+            return std::nullopt;
+        }
+        channels = bias_type.getDimSize(0);
+    } else {
         return std::nullopt;
     }
-    auto bias_type = mlir::dyn_cast<mlir::RankedTensorType>(bias_attr.getType());
-    if (!bias_type || bias_type.getRank() != 1) {
+    if (channels <= 0) {
         return std::nullopt;
     }
     auto func = op->getParentOfType<mlir::func::FuncOp>();
@@ -262,7 +269,7 @@ std::optional<mlir::Value> prepare_bias_global(mlir::linalg::Conv2DNchwFchwOp op
         return std::nullopt;
     }
     auto loc = op.getLoc();
-    auto memref_type = mlir::MemRefType::get(bias_type.getShape(), elem_ty);
+    auto memref_type = mlir::MemRefType::get({channels}, elem_ty);
     return append_func_arg(func, memref_type, loc);
 }
 
@@ -339,6 +346,11 @@ mlir::Value strip_memref_casts(mlir::Value value) {
         break;
     }
     return current;
+}
+
+bool is_before_in_same_block(mlir::Operation* candidate, mlir::Operation* anchor) {
+    return candidate && anchor && candidate->getBlock() == anchor->getBlock() &&
+           candidate->isBeforeInBlock(anchor);
 }
 
 bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewriter) {
@@ -477,7 +489,7 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
     mlir::Value zero_init;
     for (auto* user : output_base.getUsers()) {
         auto fill = mlir::dyn_cast<mlir::linalg::FillOp>(user);
-        if (!fill || !fill->isBeforeInBlock(op)) {
+        if (!fill || !is_before_in_same_block(fill, op)) {
             continue;
         }
         if (fill.getInputs().empty()) {
@@ -945,22 +957,596 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op, mlir::IRRewriter& rewrit
         rewriter.eraseOp(fill_op);
     }
     if (!using_padded_input) {
+        auto input_alloc = input_base.getDefiningOp<mlir::memref::AllocOp>();
+        auto input_alloca = input_base.getDefiningOp<mlir::memref::AllocaOp>();
         if (pad_copy_loop && pad_copy_loop->getParentOp()) {
             rewriter.eraseOp(pad_copy_loop);
         }
         if (pad_fill_loop && pad_fill_loop->getParentOp() && pad_fill_loop != pad_copy_loop) {
             rewriter.eraseOp(pad_fill_loop);
         }
-        if (auto alloc = input_base.getDefiningOp<mlir::memref::AllocOp>()) {
-            if (alloc->use_empty()) {
-                rewriter.eraseOp(alloc);
+        if (input_alloc && input_alloc->use_empty()) {
+            rewriter.eraseOp(input_alloc);
+        } else if (input_alloca && input_alloca->use_empty()) {
+            rewriter.eraseOp(input_alloca);
+        }
+    }
+    return true;
+}
+
+bool lower_depthwise_group_conv_generic(mlir::linalg::GenericOp op, mlir::IRRewriter& rewriter) {
+    const bool debug = gfx_mlir_debug_enabled();
+    if (debug) {
+        llvm::errs() << "[GFX][MLIR] Depthwise GroupConv lowering begin\n";
+    }
+    auto fail = [&](const char* reason) {
+        if (debug) {
+            llvm::errs() << "[GFX][MLIR] Depthwise GroupConv lowering skip: " << reason << "\n";
+        }
+        return false;
+    };
+
+    auto module = op->getParentOfType<mlir::ModuleOp>();
+    if (!module) {
+        return fail("missing module");
+    }
+    auto algorithm = module->getAttrOfType<mlir::StringAttr>("gfx.conv_algorithm_kind");
+    const bool depthwise_route =
+        algorithm && algorithm.getValue() == "depthwise_direct";
+    const auto backend_domain = module_string_attr(op, "gfx.stage_manifest.backend_domain");
+    const bool apple_msl_custom_kernel =
+        backend_domain && *backend_domain == "apple_msl";
+    if (!depthwise_route && !apple_msl_custom_kernel) {
+        return fail("not a depthwise route");
+    }
+    auto direct_attr = op->getAttrOfType<mlir::BoolAttr>("gfx.depthwise_nchw_direct");
+    if (!direct_attr || !direct_attr.getValue()) {
+        return fail("not direct NCHW depthwise generic");
+    }
+    bool prefer_parallel = true;
+    if (auto attr = module->getAttrOfType<mlir::BoolAttr>("gfx.prefer_parallel")) {
+        prefer_parallel = attr.getValue();
+    }
+    if (!prefer_parallel && !apple_msl_custom_kernel) {
+        return fail("prefer_parallel disabled");
+    }
+    if (op.getNumDpsInputs() != 2 || op.getNumDpsInits() != 1 || op.getNumLoops() != 6) {
+        return fail("unexpected generic arity/loop count");
+    }
+    const auto iters = op.getIteratorTypesArray();
+    if (iters.size() != 6 ||
+        iters[0] != mlir::utils::IteratorType::parallel ||
+        iters[1] != mlir::utils::IteratorType::parallel ||
+        iters[2] != mlir::utils::IteratorType::parallel ||
+        iters[3] != mlir::utils::IteratorType::parallel ||
+        iters[4] != mlir::utils::IteratorType::reduction ||
+        iters[5] != mlir::utils::IteratorType::reduction) {
+        return fail("unexpected iterator types");
+    }
+    if (op->getAttr("gfx.bias_channels") || op->getAttr("gfx.bias") ||
+        op->getAttr("gfx.bn_scale") || op->getAttr("gfx.bn_bias")) {
+        return fail("fused bias/bn not supported for depthwise generic");
+    }
+
+    mlir::Value input = strip_memref_casts(op.getDpsInputs()[0]);
+    mlir::Value filter = strip_memref_casts(op.getDpsInputs()[1]);
+    mlir::Value output = strip_memref_casts(op.getDpsInits()[0]);
+
+    int64_t pad_h = 0;
+    int64_t pad_w = 0;
+    (void)extract_hw(op->getAttrOfType<mlir::DenseIntElementsAttr>("gfx.pad_begin"),
+                     pad_h, pad_w);
+    int64_t pad_end_h = 0;
+    int64_t pad_end_w = 0;
+    (void)extract_hw(op->getAttrOfType<mlir::DenseIntElementsAttr>("gfx.pad_end"),
+                     pad_end_h, pad_end_w);
+
+    mlir::Value padded_input = input;
+    mlir::Value compute_input = input;
+    mlir::Operation* pad_fill_loop = nullptr;
+    mlir::Operation* pad_copy_loop = nullptr;
+    mlir::Operation* pad_subview_op = nullptr;
+    auto find_outer_loop = [](mlir::Operation* nested) -> mlir::Operation* {
+        mlir::Operation* outer = nullptr;
+        for (auto* cur = nested; cur; cur = cur->getParentOp()) {
+            if (mlir::isa<mlir::scf::ForOp, mlir::scf::ParallelOp>(cur)) {
+                outer = cur;
             }
         }
-        if (auto alloca = input_base.getDefiningOp<mlir::memref::AllocaOp>()) {
-            if (alloca->use_empty()) {
-                rewriter.eraseOp(alloca);
+        return outer;
+    };
+    if (auto func = op->getParentOfType<mlir::func::FuncOp>()) {
+        func.walk([&](mlir::linalg::MapOp map) {
+            if (!pad_fill_loop && strip_memref_casts(map.getInit()) == padded_input) {
+                pad_fill_loop = map;
+            }
+        });
+        func.walk([&](mlir::memref::CopyOp copy) {
+            if (pad_copy_loop) {
+                return;
+            }
+            auto target = copy.getTarget();
+            auto target_base = strip_memref_casts(target);
+            if (target_base != padded_input) {
+                return;
+            }
+            auto source = strip_memref_casts(copy.getSource());
+            auto source_type = mlir::dyn_cast<mlir::MemRefType>(source.getType());
+            if (source == padded_input || !source_type || source_type.getRank() != 4) {
+                return;
+            }
+            if (auto subview = target.getDefiningOp<mlir::memref::SubViewOp>()) {
+                auto offsets = subview.getStaticOffsets();
+                if (offsets.size() >= 4) {
+                    if (offsets[2] != mlir::ShapedType::kDynamic) {
+                        pad_h = offsets[2];
+                    }
+                    if (offsets[3] != mlir::ShapedType::kDynamic) {
+                        pad_w = offsets[3];
+                    }
+                }
+                pad_subview_op = subview;
+            }
+            compute_input = source;
+            pad_copy_loop = copy;
+        });
+        func.walk([&](mlir::memref::StoreOp store) {
+            if (strip_memref_casts(store.getMemRef()) != padded_input) {
+                return;
+            }
+            if (!pad_copy_loop) {
+                if (auto load =
+                        store.getValue().getDefiningOp<mlir::memref::LoadOp>()) {
+                    auto source = strip_memref_casts(load.getMemRef());
+                    auto source_type =
+                        mlir::dyn_cast<mlir::MemRefType>(source.getType());
+                    if (source != padded_input && source_type &&
+                        source_type.getRank() == 4) {
+                        auto indices = store.getIndices();
+                        if (indices.size() >= 4) {
+                            (void)extract_addi_offset(indices[2], pad_h);
+                            (void)extract_addi_offset(indices[3], pad_w);
+                        }
+                        compute_input = source;
+                        pad_copy_loop = find_outer_loop(store);
+                        return;
+                    }
+                }
+            }
+            if (!pad_fill_loop) {
+                if (auto cst =
+                        store.getValue().getDefiningOp<mlir::arith::ConstantOp>()) {
+                    if (auto fattr =
+                            mlir::dyn_cast<mlir::FloatAttr>(cst.getValue())) {
+                        if (fattr.getValueAsDouble() == 0.0) {
+                            pad_fill_loop = find_outer_loop(store);
+                        }
+                    }
+                }
+            }
+        });
+    }
+    if (compute_input == padded_input) {
+        if (auto func = op->getParentOfType<mlir::func::FuncOp>()) {
+            auto padded_type = mlir::dyn_cast<mlir::MemRefType>(padded_input.getType());
+            auto output_base = strip_memref_casts(output);
+            if (padded_type && padded_type.getRank() == 4) {
+                const auto padded_shape = padded_type.getShape();
+                const bool static_padded_hw =
+                    padded_shape[2] != mlir::ShapedType::kDynamic &&
+                    padded_shape[3] != mlir::ShapedType::kDynamic;
+                if (static_padded_hw) {
+                    for (auto arg : func.getArguments()) {
+                        auto arg_base = strip_memref_casts(arg);
+                        if (arg_base == output_base) {
+                            continue;
+                        }
+                        auto arg_type = mlir::dyn_cast<mlir::MemRefType>(arg_base.getType());
+                        if (!arg_type || arg_type.getRank() != 4 ||
+                            arg_type.getElementType() != padded_type.getElementType()) {
+                            continue;
+                        }
+                        const auto arg_shape = arg_type.getShape();
+                        if (arg_shape[0] != padded_shape[0] || arg_shape[1] != padded_shape[1] ||
+                            arg_shape[2] == mlir::ShapedType::kDynamic ||
+                            arg_shape[3] == mlir::ShapedType::kDynamic) {
+                            continue;
+                        }
+                        const int64_t inferred_pad_end_h = padded_shape[2] - arg_shape[2] - pad_h;
+                        const int64_t inferred_pad_end_w = padded_shape[3] - arg_shape[3] - pad_w;
+                        if (inferred_pad_end_h < 0 || inferred_pad_end_w < 0) {
+                            continue;
+                        }
+                        if ((pad_end_h != 0 && pad_end_h != inferred_pad_end_h) ||
+                            (pad_end_w != 0 && pad_end_w != inferred_pad_end_w)) {
+                            continue;
+                        }
+                        pad_end_h = inferred_pad_end_h;
+                        pad_end_w = inferred_pad_end_w;
+                        compute_input = arg_base;
+                        break;
+                    }
+                }
             }
         }
+    }
+    if (compute_input != padded_input && (!pad_copy_loop || !pad_fill_loop)) {
+        if (auto func = op->getParentOfType<mlir::func::FuncOp>()) {
+            func.walk([&](mlir::linalg::MapOp map) {
+                if (!pad_fill_loop && strip_memref_casts(map.getInit()) == padded_input) {
+                    pad_fill_loop = map;
+                }
+            });
+            func.walk([&](mlir::memref::CopyOp copy) {
+                if (pad_copy_loop) {
+                    return;
+                }
+                auto target = copy.getTarget();
+                if (strip_memref_casts(target) != padded_input ||
+                    strip_memref_casts(copy.getSource()) != compute_input) {
+                    return;
+                }
+                if (auto subview = target.getDefiningOp<mlir::memref::SubViewOp>()) {
+                    pad_subview_op = subview;
+                }
+                pad_copy_loop = copy;
+            });
+            func.walk([&](mlir::memref::StoreOp store) {
+                if (strip_memref_casts(store.getMemRef()) != padded_input) {
+                    return;
+                }
+                if (!pad_copy_loop) {
+                    if (auto load =
+                            store.getValue().getDefiningOp<mlir::memref::LoadOp>()) {
+                        if (strip_memref_casts(load.getMemRef()) == compute_input) {
+                            pad_copy_loop = find_outer_loop(store);
+                            return;
+                        }
+                    }
+                }
+                if (!pad_fill_loop) {
+                    if (auto cst =
+                            store.getValue().getDefiningOp<mlir::arith::ConstantOp>()) {
+                        if (auto fattr =
+                                mlir::dyn_cast<mlir::FloatAttr>(cst.getValue())) {
+                            if (fattr.getValueAsDouble() == 0.0) {
+                                pad_fill_loop = find_outer_loop(store);
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+    const bool use_unpadded_input = compute_input != padded_input;
+    input = compute_input;
+    auto in_type = mlir::dyn_cast<mlir::MemRefType>(input.getType());
+    auto w_type = mlir::dyn_cast<mlir::MemRefType>(filter.getType());
+    auto out_type = mlir::dyn_cast<mlir::MemRefType>(output.getType());
+    if (!in_type || !w_type || !out_type) {
+        return fail("non-memref operands");
+    }
+    if (in_type.getRank() != 4 || w_type.getRank() != 5 || out_type.getRank() != 4) {
+        return fail("unexpected operand ranks");
+    }
+    auto elem_ty = out_type.getElementType();
+    if (!mlir::isa<mlir::FloatType>(elem_ty)) {
+        return fail("non-float element type");
+    }
+    if (w_type.getDimSize(1) != 1 || w_type.getDimSize(2) != 1) {
+        return fail("not depthwise [G,1,1,KH,KW] weights");
+    }
+    const int64_t out_c_static = out_type.getDimSize(1);
+    const int64_t groups_static = w_type.getDimSize(0);
+    if (out_c_static != mlir::ShapedType::kDynamic &&
+        groups_static != mlir::ShapedType::kDynamic &&
+        out_c_static != groups_static) {
+        return fail("output channels != groups");
+    }
+
+    int64_t stride_h = 0;
+    int64_t stride_w = 0;
+    int64_t dil_h = 0;
+    int64_t dil_w = 0;
+    if (!extract_hw(op->getAttrOfType<mlir::DenseIntElementsAttr>("gfx.strides"), stride_h, stride_w) ||
+        !extract_hw(op->getAttrOfType<mlir::DenseIntElementsAttr>("gfx.dilations"), dil_h, dil_w)) {
+        return fail("missing strides/dilations");
+    }
+
+    const auto loc = op.getLoc();
+    rewriter.setInsertionPoint(op);
+    auto c0 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 0);
+    auto c1 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 1);
+    const auto explicit_thread_h = module_int_attr(op, "gfx.dispatch_threads_h");
+    const auto explicit_thread_w = module_int_attr(op, "gfx.dispatch_threads_w");
+    const auto explicit_tile_h = module_int_attr(op, "gfx.dispatch_tile_h");
+    const auto explicit_tile_w = module_int_attr(op, "gfx.dispatch_tile_w");
+    int64_t thread_h = std::max<int64_t>(1, explicit_thread_h.value_or(8));
+    int64_t thread_w = std::max<int64_t>(1, explicit_thread_w.value_or(4));
+    const int64_t tile_h = std::max<int64_t>(explicit_tile_h.value_or(thread_h), thread_h);
+    const int64_t tile_w = std::max<int64_t>(explicit_tile_w.value_or(thread_w), thread_w);
+    int64_t micro_h = std::max<int64_t>(1, (tile_h + thread_h - 1) / thread_h);
+    int64_t micro_w = std::max<int64_t>(1, (tile_w + thread_w - 1) / thread_w);
+    const int64_t effective_tile_h = thread_h * micro_h;
+    const int64_t effective_tile_w = thread_w * micro_w;
+    auto* ctx = module.getContext();
+    module->setAttr("gfx.dispatch_tile_h",
+                    mlir::IntegerAttr::get(mlir::IndexType::get(ctx), effective_tile_h));
+    module->setAttr("gfx.dispatch_tile_w",
+                    mlir::IntegerAttr::get(mlir::IndexType::get(ctx), effective_tile_w));
+    module->setAttr("gfx.dispatch_threads_h",
+                    mlir::IntegerAttr::get(mlir::IndexType::get(ctx), thread_h));
+    module->setAttr("gfx.dispatch_threads_w",
+                    mlir::IntegerAttr::get(mlir::IndexType::get(ctx), thread_w));
+    module->setAttr("gfx.parallel_loop_dims",
+                    mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 64), 5));
+
+    auto tileH = rewriter.create<mlir::arith::ConstantIndexOp>(loc, effective_tile_h);
+    auto tileW = rewriter.create<mlir::arith::ConstantIndexOp>(loc, effective_tile_w);
+    auto threadH = rewriter.create<mlir::arith::ConstantIndexOp>(loc, thread_h);
+    auto threadW = rewriter.create<mlir::arith::ConstantIndexOp>(loc, thread_w);
+    auto microH = rewriter.create<mlir::arith::ConstantIndexOp>(loc, micro_h);
+    auto microW = rewriter.create<mlir::arith::ConstantIndexOp>(loc, micro_w);
+    auto tileHMinus1 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, effective_tile_h - 1);
+    auto tileWMinus1 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, effective_tile_w - 1);
+    auto strideH = rewriter.create<mlir::arith::ConstantIndexOp>(loc, stride_h);
+    auto strideW = rewriter.create<mlir::arith::ConstantIndexOp>(loc, stride_w);
+    auto dilH = rewriter.create<mlir::arith::ConstantIndexOp>(loc, dil_h);
+    auto dilW = rewriter.create<mlir::arith::ConstantIndexOp>(loc, dil_w);
+    auto padH = rewriter.create<mlir::arith::ConstantIndexOp>(loc, pad_h);
+    auto padW = rewriter.create<mlir::arith::ConstantIndexOp>(loc, pad_w);
+
+    auto get_dim = [&](mlir::Value value, int64_t dim) -> mlir::Value {
+        auto mem_ty = mlir::dyn_cast<mlir::MemRefType>(value.getType());
+        if (mem_ty && dim < mem_ty.getRank()) {
+            const int64_t sz = mem_ty.getDimSize(dim);
+            if (sz != mlir::ShapedType::kDynamic) {
+                return rewriter.create<mlir::arith::ConstantIndexOp>(loc, sz);
+            }
+        }
+        return rewriter.create<mlir::memref::DimOp>(loc, value, dim);
+    };
+
+    auto N = get_dim(output, 0);
+    auto C_out = get_dim(output, 1);
+    auto H_out = get_dim(output, 2);
+    auto W_out = get_dim(output, 3);
+    auto H_in = get_dim(input, 2);
+    auto W_in = get_dim(input, 3);
+    auto kH = get_dim(filter, 3);
+    auto kW = get_dim(filter, 4);
+    auto hTilesNum = rewriter.create<mlir::arith::AddIOp>(loc, H_out, tileHMinus1);
+    auto wTilesNum = rewriter.create<mlir::arith::AddIOp>(loc, W_out, tileWMinus1);
+    auto HTiles = rewriter.create<mlir::arith::DivSIOp>(loc, hTilesNum, tileH);
+    auto WTiles = rewriter.create<mlir::arith::DivSIOp>(loc, wTilesNum, tileW);
+
+    mlir::linalg::FillOp fill_op;
+    for (auto* user : output.getUsers()) {
+        auto fill = mlir::dyn_cast<mlir::linalg::FillOp>(user);
+        if (!fill || !is_before_in_same_block(fill, op) || fill.getInputs().empty()) {
+            continue;
+        }
+        auto cst = fill.getInputs()[0].getDefiningOp<mlir::arith::ConstantOp>();
+        if (!cst) {
+            continue;
+        }
+        if (auto fattr = mlir::dyn_cast<mlir::FloatAttr>(cst.getValue())) {
+            if (fattr.getValueAsDouble() == 0.0) {
+                fill_op = fill;
+                break;
+            }
+        }
+    }
+
+    if (debug) {
+        llvm::errs() << "[GFX][MLIR] Depthwise GroupConv lowering emit parallel"
+                     << " use_unpadded_input=" << (use_unpadded_input ? "true" : "false")
+                     << " tile=" << effective_tile_h << "x" << effective_tile_w
+                     << " threads=" << thread_h << "x" << thread_w
+                     << "\n";
+    }
+
+    auto par = rewriter.create<mlir::scf::ParallelOp>(
+        loc,
+        mlir::ValueRange{c0, c0, c0, c0, c0},
+        mlir::ValueRange{C_out, HTiles, WTiles, threadH, threadW},
+        mlir::ValueRange{c1, c1, c1, c1, c1});
+
+    mlir::OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.setInsertionPoint(par.getBody()->getTerminator());
+    auto ivs = par.getInductionVars();
+    auto iv_c = ivs[0];
+    auto oh_base = rewriter.create<mlir::arith::MulIOp>(loc, ivs[1], tileH);
+    auto ow_base = rewriter.create<mlir::arith::MulIOp>(loc, ivs[2], tileW);
+    auto oh_off = rewriter.create<mlir::arith::MulIOp>(loc, ivs[3], microH);
+    auto ow_off = rewriter.create<mlir::arith::MulIOp>(loc, ivs[4], microW);
+
+    llvm::SmallVector<mlir::Value, 4> oh_vals;
+    llvm::SmallVector<mlir::Value, 4> oh_in_vals;
+    for (int64_t mh = 0; mh < micro_h; ++mh) {
+        mlir::Value off = oh_off;
+        if (mh != 0) {
+            off = rewriter.create<mlir::arith::AddIOp>(
+                loc, oh_off, rewriter.create<mlir::arith::ConstantIndexOp>(loc, mh));
+        }
+        auto oh = rewriter.create<mlir::arith::AddIOp>(loc, oh_base, off);
+        oh_vals.push_back(oh);
+        oh_in_vals.push_back(rewriter.create<mlir::arith::CmpIOp>(
+            loc, mlir::arith::CmpIPredicate::slt, oh, H_out));
+    }
+    llvm::SmallVector<mlir::Value, 4> ow_vals;
+    llvm::SmallVector<mlir::Value, 4> ow_in_vals;
+    for (int64_t mw = 0; mw < micro_w; ++mw) {
+        mlir::Value off = ow_off;
+        if (mw != 0) {
+            off = rewriter.create<mlir::arith::AddIOp>(
+                loc, ow_off, rewriter.create<mlir::arith::ConstantIndexOp>(loc, mw));
+        }
+        auto ow = rewriter.create<mlir::arith::AddIOp>(loc, ow_base, off);
+        ow_vals.push_back(ow);
+        ow_in_vals.push_back(rewriter.create<mlir::arith::CmpIOp>(
+            loc, mlir::arith::CmpIPredicate::slt, ow, W_out));
+    }
+
+    rewriter.create<mlir::scf::ForOp>(
+        loc, c0, N, c1, mlir::ValueRange{},
+        [&](mlir::OpBuilder& b, mlir::Location body_loc, mlir::Value iv_n, mlir::ValueRange) {
+            const int64_t lane_count = micro_h * micro_w;
+            llvm::SmallVector<mlir::Value, 8> lane_in;
+            llvm::SmallVector<mlir::Value, 8> lane_oh;
+            llvm::SmallVector<mlir::Value, 8> lane_ow;
+            lane_in.reserve(static_cast<size_t>(lane_count));
+            lane_oh.reserve(static_cast<size_t>(lane_count));
+            lane_ow.reserve(static_cast<size_t>(lane_count));
+            for (int64_t mh = 0; mh < micro_h; ++mh) {
+                for (int64_t mw = 0; mw < micro_w; ++mw) {
+                    lane_in.push_back(b.create<mlir::arith::AndIOp>(body_loc, oh_in_vals[mh], ow_in_vals[mw]));
+                    lane_oh.push_back(oh_vals[mh]);
+                    lane_ow.push_back(ow_vals[mw]);
+                }
+            }
+            mlir::Value any_lane = lane_in.front();
+            for (size_t i = 1; i < lane_in.size(); ++i) {
+                any_lane = b.create<mlir::arith::OrIOp>(body_loc, any_lane, lane_in[i]);
+            }
+            auto if_tile = b.create<mlir::scf::IfOp>(body_loc, any_lane, /*withElse=*/false);
+            {
+                mlir::OpBuilder::InsertionGuard if_guard(b);
+                b.setInsertionPointToStart(&if_tile.getThenRegion().front());
+                auto zero = b.create<mlir::arith::ConstantOp>(
+                    body_loc, elem_ty, b.getFloatAttr(elem_ty, 0.0));
+                llvm::SmallVector<mlir::Value, 8> acc_init(static_cast<size_t>(lane_count), zero);
+                auto for_kh = b.create<mlir::scf::ForOp>(
+                    body_loc, c0, kH, c1, acc_init,
+                    [&](mlir::OpBuilder& b2, mlir::Location loc2, mlir::Value iv_kh, mlir::ValueRange iter_args) {
+                        llvm::SmallVector<mlir::Value, 8> acc_kh(iter_args.begin(), iter_args.end());
+                        auto for_kw = b2.create<mlir::scf::ForOp>(
+                            loc2, c0, kW, c1, acc_kh,
+                            [&](mlir::OpBuilder& b3, mlir::Location loc3, mlir::Value iv_kw, mlir::ValueRange iter_args2) {
+                                llvm::SmallVector<mlir::Value, 8> next_accs;
+                                next_accs.reserve(iter_args2.size());
+                                auto kh_mul = b3.create<mlir::arith::MulIOp>(loc3, iv_kh, dilH);
+                                auto kw_mul = b3.create<mlir::arith::MulIOp>(loc3, iv_kw, dilW);
+                                auto w_val = b3.create<mlir::memref::LoadOp>(
+                                    loc3, filter, mlir::ValueRange{iv_c, c0, c0, iv_kh, iv_kw}).getResult();
+                                for (int64_t i = 0; i < lane_count; ++i) {
+                                    auto oh_mul = b3.create<mlir::arith::MulIOp>(loc3, lane_oh[i], strideH);
+                                    auto ow_mul = b3.create<mlir::arith::MulIOp>(loc3, lane_ow[i], strideW);
+                                    mlir::Value ih = b3.create<mlir::arith::AddIOp>(loc3, oh_mul, kh_mul);
+                                    mlir::Value iw = b3.create<mlir::arith::AddIOp>(loc3, ow_mul, kw_mul);
+                                    mlir::Value lane_valid = lane_in[i];
+                                    if (use_unpadded_input) {
+                                        if (pad_h != 0) {
+                                            ih = b3.create<mlir::arith::SubIOp>(loc3, ih, padH);
+                                        }
+                                        if (pad_w != 0) {
+                                            iw = b3.create<mlir::arith::SubIOp>(loc3, iw, padW);
+                                        }
+                                        auto ih_ge0 = b3.create<mlir::arith::CmpIOp>(
+                                            loc3, mlir::arith::CmpIPredicate::sge, ih, c0).getResult();
+                                        auto iw_ge0 = b3.create<mlir::arith::CmpIOp>(
+                                            loc3, mlir::arith::CmpIPredicate::sge, iw, c0).getResult();
+                                        auto ih_lt = b3.create<mlir::arith::CmpIOp>(
+                                            loc3, mlir::arith::CmpIPredicate::slt, ih, H_in).getResult();
+                                        auto iw_lt = b3.create<mlir::arith::CmpIOp>(
+                                            loc3, mlir::arith::CmpIPredicate::slt, iw, W_in).getResult();
+                                        auto h_valid = b3.create<mlir::arith::AndIOp>(
+                                            loc3, ih_ge0, ih_lt).getResult();
+                                        auto w_valid = b3.create<mlir::arith::AndIOp>(
+                                            loc3, iw_ge0, iw_lt).getResult();
+                                        auto in_bounds = b3.create<mlir::arith::AndIOp>(
+                                            loc3, h_valid, w_valid).getResult();
+                                        lane_valid = b3.create<mlir::arith::AndIOp>(
+                                            loc3, lane_valid, in_bounds).getResult();
+                                    }
+                                    auto if_lane = b3.create<mlir::scf::IfOp>(
+                                        loc3, iter_args2[i].getType(), lane_valid, /*withElse=*/true);
+                                    {
+                                        mlir::OpBuilder::InsertionGuard then_guard(b3);
+                                        b3.setInsertionPointToStart(&if_lane.getThenRegion().front());
+                                        auto in_val = b3.create<mlir::memref::LoadOp>(
+                                            loc3, input, mlir::ValueRange{iv_n, iv_c, ih, iw}).getResult();
+                                        auto mul = b3.create<mlir::arith::MulFOp>(loc3, in_val, w_val);
+                                        auto add = b3.create<mlir::arith::AddFOp>(loc3, iter_args2[i], mul).getResult();
+                                        b3.create<mlir::scf::YieldOp>(loc3, mlir::ValueRange{add});
+                                    }
+                                    {
+                                        mlir::OpBuilder::InsertionGuard else_guard(b3);
+                                        b3.setInsertionPointToStart(&if_lane.getElseRegion().front());
+                                        b3.create<mlir::scf::YieldOp>(loc3, mlir::ValueRange{iter_args2[i]});
+                                    }
+                                    next_accs.push_back(if_lane.getResult(0));
+                                }
+                                b3.create<mlir::scf::YieldOp>(loc3, next_accs);
+                            });
+                        b2.create<mlir::scf::YieldOp>(loc2, for_kw.getResults());
+                    });
+                llvm::SmallVector<mlir::Value, 8> acc_final(for_kh.getResults().begin(), for_kh.getResults().end());
+                for (int64_t i = 0; i < lane_count; ++i) {
+                    auto if_lane = b.create<mlir::scf::IfOp>(body_loc, lane_in[i], /*withElse=*/false);
+                    {
+                        mlir::OpBuilder::InsertionGuard lane_guard(b);
+                        b.setInsertionPointToStart(&if_lane.getThenRegion().front());
+                        b.create<mlir::memref::StoreOp>(
+                            body_loc, acc_final[i], output, mlir::ValueRange{iv_n, iv_c, lane_oh[i], lane_ow[i]});
+                    }
+                }
+            }
+            b.create<mlir::scf::YieldOp>(body_loc);
+        });
+
+    if (debug) {
+        llvm::errs() << "[GFX][MLIR] Depthwise GroupConv lowering rewrite original\n";
+    }
+    if (op->getNumResults() > 0) {
+        rewriter.replaceOp(op, output);
+    } else {
+        rewriter.eraseOp(op);
+    }
+    if (debug) {
+        llvm::errs() << "[GFX][MLIR] Depthwise GroupConv lowering cleanup begin\n";
+    }
+    if (fill_op) {
+        if (debug) {
+            llvm::errs() << "[GFX][MLIR] Depthwise GroupConv erase output fill\n";
+        }
+        rewriter.eraseOp(fill_op);
+    }
+    if (use_unpadded_input) {
+        auto padded_alloc = padded_input.getDefiningOp<mlir::memref::AllocOp>();
+        auto padded_alloca = padded_input.getDefiningOp<mlir::memref::AllocaOp>();
+        if (pad_copy_loop && pad_copy_loop->getBlock()) {
+            if (debug) {
+                llvm::errs() << "[GFX][MLIR] Depthwise GroupConv erase pad copy\n";
+            }
+            rewriter.eraseOp(pad_copy_loop);
+        }
+        if (pad_subview_op && pad_subview_op->getBlock() && pad_subview_op->use_empty()) {
+            if (debug) {
+                llvm::errs() << "[GFX][MLIR] Depthwise GroupConv erase pad subview\n";
+            }
+            rewriter.eraseOp(pad_subview_op);
+        }
+        if (pad_fill_loop && pad_fill_loop != pad_copy_loop && pad_fill_loop->getBlock()) {
+            if (debug) {
+                llvm::errs() << "[GFX][MLIR] Depthwise GroupConv erase pad fill\n";
+            }
+            rewriter.eraseOp(pad_fill_loop);
+        }
+        if (padded_alloc && padded_alloc->use_empty()) {
+            if (debug) {
+                llvm::errs() << "[GFX][MLIR] Depthwise GroupConv erase pad alloc\n";
+            }
+            rewriter.eraseOp(padded_alloc);
+        } else if (padded_alloca && padded_alloca->use_empty()) {
+            if (debug) {
+                llvm::errs() << "[GFX][MLIR] Depthwise GroupConv erase pad alloca\n";
+            }
+            rewriter.eraseOp(padded_alloca);
+        }
+    }
+    if (debug) {
+        llvm::errs() << "[GFX][MLIR] Depthwise GroupConv lowering done\n";
     }
     return true;
 }
@@ -1043,8 +1629,16 @@ void run_conv2d_parallel_lowering(mlir::ModuleOp module) {
     }
     mlir::IRRewriter rewriter(module.getContext());
     llvm::SmallVector<mlir::linalg::Conv2DNchwFchwOp, 8> convs;
+    llvm::SmallVector<mlir::linalg::GenericOp, 8> depthwise_group_convs;
     module.walk([&](mlir::linalg::Conv2DNchwFchwOp op) {
         convs.push_back(op);
+    });
+    module.walk([&](mlir::linalg::GenericOp op) {
+        if (auto attr = op->getAttrOfType<mlir::BoolAttr>("gfx.depthwise_nchw_direct")) {
+            if (attr.getValue()) {
+                depthwise_group_convs.push_back(op);
+            }
+        }
     });
     size_t rewritten = 0;
     for (auto op : convs) {
@@ -1055,9 +1649,20 @@ void run_conv2d_parallel_lowering(mlir::ModuleOp module) {
             ++rewritten;
         }
     }
+    size_t rewritten_depthwise = 0;
+    for (auto op : depthwise_group_convs) {
+        if (!op || !op->getParentOp()) {
+            continue;
+        }
+        if (lower_depthwise_group_conv_generic(op, rewriter)) {
+            ++rewritten_depthwise;
+        }
+    }
     if (gfx_log_debug_enabled()) {
         gfx_log_debug("MLIR") << "Conv2D parallel lowering: convs=" << convs.size()
-                                                                << " rewritten=" << rewritten;
+                               << " rewritten=" << rewritten
+                               << " depthwise_group_convs=" << depthwise_group_convs.size()
+                               << " depthwise_rewritten=" << rewritten_depthwise;
     }
     if (!convs.empty() && rewritten == 0) {
         if (auto skip = module->getAttrOfType<mlir::BoolAttr>("gfx.skip_conv_parallel")) {
@@ -1065,6 +1670,13 @@ void run_conv2d_parallel_lowering(mlir::ModuleOp module) {
                 return;
         }
         throw std::runtime_error("Conv2D parallel lowering failed");
+    }
+    if (!depthwise_group_convs.empty() && rewritten_depthwise == 0) {
+        if (auto skip = module->getAttrOfType<mlir::BoolAttr>("gfx.skip_conv_parallel")) {
+            if (skip.getValue())
+                return;
+        }
+        throw std::runtime_error("Depthwise GroupConvolution parallel lowering failed");
     }
 }
 

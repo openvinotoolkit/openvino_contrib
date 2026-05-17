@@ -7,13 +7,37 @@
 #include "mlir/gfx_mlir_debug.hpp"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/PatternMatch.h"
 
+#include <optional>
+
+#include "transforms/fusion_utils.hpp"
+#include "transforms/mlir_fused_ops.hpp"
+
 namespace ov {
 namespace gfx_plugin {
 namespace {
+
+struct FusedActivationInfo {
+    std::optional<ActivationKind> kind;
+    float alpha = 0.0f;
+
+    bool active() const {
+        return kind.has_value();
+    }
+};
+
+struct FusedBatchNormInfo {
+    mlir::DenseFPElementsAttr scale;
+    mlir::DenseFPElementsAttr bias;
+
+    bool active() const {
+        return scale && bias;
+    }
+};
 
 mlir::Value make_zero(mlir::RewriterBase& rewriter, mlir::Location loc, mlir::Type elem_ty) {
     if (auto float_ty = mlir::dyn_cast<mlir::FloatType>(elem_ty)) {
@@ -25,12 +49,114 @@ mlir::Value make_zero(mlir::RewriterBase& rewriter, mlir::Location loc, mlir::Ty
     return {};
 }
 
+FusedActivationInfo read_fused_activation(mlir::Operation* op) {
+    FusedActivationInfo info{};
+    if (!op) {
+        return info;
+    }
+    auto kind_attr = op->getAttrOfType<mlir::StringAttr>("gfx.activation_kind");
+    if (!kind_attr) {
+        return info;
+    }
+    info.kind = fusion_utils::parse_activation_kind_name(kind_attr.getValue());
+    if (!info.kind) {
+        return info;
+    }
+    if (auto alpha_attr = op->getAttrOfType<mlir::FloatAttr>("gfx.activation_alpha")) {
+        info.alpha = static_cast<float>(alpha_attr.getValueAsDouble());
+    }
+    return info;
+}
+
+FusedBatchNormInfo read_fused_batchnorm(mlir::Operation* op) {
+    FusedBatchNormInfo info{};
+    if (!op) {
+        return info;
+    }
+    auto scale_attr = op->getAttrOfType<mlir::DenseFPElementsAttr>("gfx.bn_scale");
+    auto bias_attr = op->getAttrOfType<mlir::DenseFPElementsAttr>("gfx.bn_bias");
+    if (!scale_attr || !bias_attr) {
+        return info;
+    }
+    auto scale_type = mlir::dyn_cast<mlir::RankedTensorType>(scale_attr.getType());
+    auto bias_type = mlir::dyn_cast<mlir::RankedTensorType>(bias_attr.getType());
+    if (!scale_type || !bias_type || scale_type.getShape() != bias_type.getShape()) {
+        return info;
+    }
+    info.scale = scale_attr;
+    info.bias = bias_attr;
+    return info;
+}
+
+void attach_fused_activation(mlir::Operation* op, const FusedActivationInfo& activation) {
+    if (!op || !activation.kind) {
+        return;
+    }
+    auto* ctx = op->getContext();
+    op->setAttr("gfx.activation_kind",
+                mlir::StringAttr::get(ctx, fusion_utils::activation_kind_name(*activation.kind)));
+    op->setAttr("gfx.activation_alpha",
+                mlir::FloatAttr::get(mlir::Float32Type::get(ctx), activation.alpha));
+}
+
+void attach_fused_batchnorm(mlir::Operation* op, const FusedBatchNormInfo& batchnorm) {
+    if (!op || !batchnorm.active()) {
+        return;
+    }
+    op->setAttr("gfx.bn_scale", batchnorm.scale);
+    op->setAttr("gfx.bn_bias", batchnorm.bias);
+}
+
+mlir::Value apply_fused_activation_if_needed(mlir::OpBuilder& rewriter,
+                                             mlir::Location loc,
+                                             mlir::Value value,
+                                             const FusedActivationInfo& activation,
+                                             mlir::Type elem_ty) {
+    if (!activation.kind) {
+        return value;
+    }
+    return emit_mlir_activation(rewriter, loc, value, *activation.kind, activation.alpha, elem_ty);
+}
+
 bool module_requests_im2col(mlir::ModuleOp module) {
     if (!module) {
         return false;
     }
     auto attr = module->getAttrOfType<mlir::StringAttr>("gfx.conv_algorithm_kind");
     return attr && attr.getValue() == "im2col_matmul";
+}
+
+std::optional<int64_t> conv_bias_channels(mlir::linalg::Conv2DNchwFchwOp op) {
+    if (auto channels_attr = op->getAttrOfType<mlir::IntegerAttr>("gfx.bias_channels")) {
+        const int64_t channels = channels_attr.getInt();
+        if (channels > 0) {
+            return channels;
+        }
+        return std::nullopt;
+    }
+    if (auto bias_attr = op->getAttrOfType<mlir::DenseFPElementsAttr>("gfx.bias")) {
+        auto bias_ty = mlir::dyn_cast<mlir::RankedTensorType>(bias_attr.getType());
+        if (bias_ty && bias_ty.getRank() == 1 && bias_ty.getDimSize(0) > 0) {
+            return bias_ty.getDimSize(0);
+        }
+    }
+    return std::nullopt;
+}
+
+mlir::Value append_bias_argument(mlir::linalg::Conv2DNchwFchwOp op,
+                                 mlir::RewriterBase& rewriter,
+                                 int64_t channels,
+                                 mlir::Type elem_ty) {
+    auto func = op->getParentOfType<mlir::func::FuncOp>();
+    if (!func || channels <= 0) {
+        return {};
+    }
+    auto bias_ty = mlir::RankedTensorType::get({channels}, elem_ty);
+    auto func_ty = func.getFunctionType();
+    llvm::SmallVector<mlir::Type, 8> inputs(func_ty.getInputs().begin(), func_ty.getInputs().end());
+    inputs.push_back(bias_ty);
+    func.setType(mlir::FunctionType::get(func.getContext(), inputs, func_ty.getResults()));
+    return func.getBody().front().addArgument(bias_ty, op.getLoc());
 }
 
 bool rewrite_conv_to_im2col_matmul(mlir::linalg::Conv2DNchwFchwOp op, mlir::RewriterBase& rewriter) {
@@ -98,6 +224,8 @@ bool rewrite_conv_to_im2col_matmul(mlir::linalg::Conv2DNchwFchwOp op, mlir::Rewr
         kernel_w <= 0) {
         return false;
     }
+    const auto fused_activation = read_fused_activation(op);
+    const auto fused_batchnorm = read_fused_batchnorm(op);
 
     const int64_t m_dim = out_h * out_w;
     const int64_t k_inner = kernel_h * kernel_w;
@@ -105,6 +233,16 @@ bool rewrite_conv_to_im2col_matmul(mlir::linalg::Conv2DNchwFchwOp op, mlir::Rewr
 
     auto* ctx = op.getContext();
     const auto loc = op.getLoc();
+    mlir::Value bias_arg;
+    if (auto bias_channels = conv_bias_channels(op)) {
+        if (*bias_channels != out_channels) {
+            return fail("bias channel count does not match output channels");
+        }
+        bias_arg = append_bias_argument(op, rewriter, *bias_channels, elem_ty);
+        if (!bias_arg) {
+            return fail("failed to append bias argument");
+        }
+    }
     rewriter.setInsertionPoint(op);
     auto b0 = mlir::getAffineDimExpr(0, ctx);
     auto d1 = mlir::getAffineDimExpr(1, ctx);
@@ -182,6 +320,59 @@ bool rewrite_conv_to_im2col_matmul(mlir::linalg::Conv2DNchwFchwOp op, mlir::Rewr
             mlir::ValueRange{weight.getResult(), im2col.getResult(0)},
             mlir::ValueRange{matmul_init.getResult(0)},
             mlir::ArrayRef<mlir::NamedAttribute>{});
+
+        if (bias_arg || fused_batchnorm.active() || fused_activation.active()) {
+            auto result_empty = rewriter.create<mlir::tensor::EmptyOp>(loc, result_ty.getShape(), elem_ty);
+            auto out_map = mlir::AffineMap::getMultiDimIdentityMap(4, ctx);
+            auto oc_expr = mlir::getAffineDimExpr(1, ctx);
+            auto oh_out_expr = mlir::getAffineDimExpr(2, ctx);
+            auto ow_out_expr = mlir::getAffineDimExpr(3, ctx);
+            auto m_expr = oh_out_expr * out_w + ow_out_expr;
+            auto matmul_map = mlir::AffineMap::get(4, 0, {oc_expr, m_expr}, ctx);
+            auto bias_map = mlir::AffineMap::get(4, 0, {oc_expr}, ctx);
+            llvm::SmallVector<mlir::utils::IteratorType, 4> result_iters(4, mlir::utils::IteratorType::parallel);
+            llvm::SmallVector<mlir::Value, 2> result_inputs{matmul.getResult(0)};
+            llvm::SmallVector<mlir::AffineMap, 3> result_maps{matmul_map};
+            if (bias_arg) {
+                result_inputs.push_back(bias_arg);
+                result_maps.push_back(bias_map);
+            }
+            result_maps.push_back(out_map);
+            auto result = rewriter.create<mlir::linalg::GenericOp>(
+                loc,
+                mlir::TypeRange{result_ty},
+                mlir::ValueRange{result_inputs},
+                mlir::ValueRange{result_empty.getResult()},
+                mlir::ArrayRef<mlir::AffineMap>{result_maps},
+                llvm::ArrayRef<mlir::utils::IteratorType>(result_iters));
+            result->setAttr("gfx.im2col_stage", rewriter.getStringAttr("restore_output"));
+            result->setAttr("gfx.im2col_out_w", rewriter.getI64IntegerAttr(out_w));
+            result->setAttr("gfx.im2col_restore_transposed", rewriter.getBoolAttr(true));
+            attach_fused_batchnorm(result, fused_batchnorm);
+            attach_fused_activation(result, fused_activation);
+            {
+                auto& region = result.getRegion();
+                region.getBlocks().clear();
+                auto* block = &region.emplaceBlock();
+                if (bias_arg) {
+                    block->addArguments({elem_ty, elem_ty, elem_ty}, {loc, loc, loc});
+                } else {
+                    block->addArguments({elem_ty, elem_ty}, {loc, loc});
+                }
+                mlir::OpBuilder body(block, block->begin());
+                mlir::Value value = block->getArgument(0);
+                if (bias_arg) {
+                    value = body.create<mlir::arith::AddFOp>(loc, value, block->getArgument(1)).getResult();
+                }
+                value = apply_fused_activation_if_needed(body, loc, value, fused_activation, elem_ty);
+                body.create<mlir::linalg::YieldOp>(loc, value);
+            }
+            rewriter.replaceOp(op, result.getResults());
+            if (debug) {
+                llvm::errs() << "[GFX][MLIR] im2col rewrite applied for batch=1 with restore epilogue\n";
+            }
+            return true;
+        }
 
         llvm::SmallVector<mlir::ReassociationIndices, 4> result_reassoc = {{0, 1}, {2, 3}};
         auto expanded = rewriter.create<mlir::tensor::ExpandShapeOp>(loc, result_ty, matmul.getResult(0), result_reassoc);
@@ -275,23 +466,42 @@ bool rewrite_conv_to_im2col_matmul(mlir::linalg::Conv2DNchwFchwOp op, mlir::Rewr
     auto m_expr = oh_out_expr * out_w + ow_out_expr;
     auto result_in_map = mlir::AffineMap::get(4, 0, {b0, m_expr, oc_expr}, ctx);
     auto result_out_map = mlir::AffineMap::getMultiDimIdentityMap(4, ctx);
+    auto bias_map = mlir::AffineMap::get(4, 0, {oc_expr}, ctx);
     llvm::SmallVector<mlir::utils::IteratorType, 4> result_iters(4, mlir::utils::IteratorType::parallel);
+    llvm::SmallVector<mlir::Value, 2> result_inputs{matmul.getResult(0)};
+    llvm::SmallVector<mlir::AffineMap, 3> result_maps{result_in_map};
+    if (bias_arg) {
+        result_inputs.push_back(bias_arg);
+        result_maps.push_back(bias_map);
+    }
+    result_maps.push_back(result_out_map);
     auto result = rewriter.create<mlir::linalg::GenericOp>(
         loc,
         mlir::TypeRange{result_ty},
-        mlir::ValueRange{matmul.getResult(0)},
+        mlir::ValueRange{result_inputs},
         mlir::ValueRange{result_empty.getResult()},
-        mlir::ArrayRef<mlir::AffineMap>{result_in_map, result_out_map},
+        mlir::ArrayRef<mlir::AffineMap>{result_maps},
         llvm::ArrayRef<mlir::utils::IteratorType>(result_iters));
     result->setAttr("gfx.im2col_stage", rewriter.getStringAttr("restore_output"));
     result->setAttr("gfx.im2col_out_w", rewriter.getI64IntegerAttr(out_w));
+    attach_fused_batchnorm(result, fused_batchnorm);
+    attach_fused_activation(result, fused_activation);
     {
         auto& region = result.getRegion();
         region.getBlocks().clear();
         auto* block = &region.emplaceBlock();
-        block->addArguments({elem_ty, elem_ty}, {loc, loc});
+        if (bias_arg) {
+            block->addArguments({elem_ty, elem_ty, elem_ty}, {loc, loc, loc});
+        } else {
+            block->addArguments({elem_ty, elem_ty}, {loc, loc});
+        }
         mlir::OpBuilder body(block, block->begin());
-        body.create<mlir::linalg::YieldOp>(loc, block->getArgument(0));
+        mlir::Value value = block->getArgument(0);
+        if (bias_arg) {
+            value = body.create<mlir::arith::AddFOp>(loc, value, block->getArgument(1)).getResult();
+        }
+        value = apply_fused_activation_if_needed(body, loc, value, fused_activation, elem_ty);
+        body.create<mlir::linalg::YieldOp>(loc, value);
     }
 
     rewriter.replaceOp(op, result.getResults());

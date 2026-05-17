@@ -68,6 +68,7 @@ gfx_mpsrt_stage_is_io_only_apple_mps_vendor(GfxMpsrtStageKind kind) {
   case GfxMpsrtStageKind::MPSResize2D:
   case GfxMpsrtStageKind::MPSSoftmax:
   case GfxMpsrtStageKind::MPSTopK:
+  case GfxMpsrtStageKind::MPSSdpa:
     return true;
   default:
     return false;

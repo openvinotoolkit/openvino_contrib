@@ -119,6 +119,7 @@ protected:
   ov::Shape m_output_shape;
   ov::Shape m_last_input_shape;
   bool m_kernel_binding_owned_by_source_plan = false;
+  bool m_uses_mpsrt_sdpa_plan = false;
   GpuBufferManager *m_buffer_manager = nullptr;
   bool m_profiling_enabled = false;
   ParallelDispatchConfig m_parallel_cfg{};
@@ -157,6 +158,8 @@ protected:
 private:
   std::vector<KernelArg>
   materialize_bound_kernel_args(const std::vector<GpuTensor *> &outputs) const;
+  void
+  prepare_prewarm_kernel_runtime_state(const std::vector<GpuTensor *> &outputs);
   void apply_kernel_metadata(const KernelRuntimeMetadata &meta,
                              size_t scalar_inputs);
   void compile_from_plan(MlirKernelPlanContext &plan_ctx, mlir::ModuleOp module,

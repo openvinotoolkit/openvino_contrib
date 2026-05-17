@@ -172,6 +172,7 @@ struct KernelRuntimeMetadata {
   ParallelDispatchConfig dispatch;
   bool force_single_dispatch = false;
   KernelOperandMetadata operands;
+  std::vector<size_t> kernel_inputs;
   size_t kernel_input_arg_count = 0;
 };
 
@@ -703,6 +704,7 @@ inline bool extract_kernel_operand_metadata_from_mpsrt_external_buffer_abi(
 inline bool extract_spirv_kernel_operand_metadata_from_adapter_attrs(
     mlir::ModuleOp module, KernelOperandMetadata &meta,
     size_t &kernel_input_arg_count, size_t output_arg_count,
+    std::vector<size_t> *kernel_inputs = nullptr,
     std::optional<GfxKernelBackendDomain> expected_backend_domain =
         std::nullopt) {
   if (!module ||
@@ -724,6 +726,18 @@ inline bool extract_spirv_kernel_operand_metadata_from_adapter_attrs(
       adapter_meta.operand_arg_indices.size() !=
           adapter_meta.operand_kinds.size()) {
     return false;
+  }
+
+  if (kernel_inputs) {
+    kernel_inputs->clear();
+    const auto roles = materialize_kernel_external_buffer_roles(
+        manifest.custom_kernel.external_buffer_abi);
+    size_t next_tensor_input = 0;
+    for (const auto role : roles) {
+      if (role == GfxKernelBufferRole::TensorInput) {
+        kernel_inputs->push_back(next_tensor_input++);
+      }
+    }
   }
 
   meta = std::move(adapter_meta);
@@ -920,7 +934,7 @@ extract_kernel_runtime_metadata(mlir::ModuleOp module, size_t output_arg_count,
   meta.force_single_dispatch = extract_kernel_force_single_dispatch(module);
   if (extract_spirv_kernel_operand_metadata_from_adapter_attrs(
           module, meta.operands, meta.kernel_input_arg_count,
-          output_arg_count, expected_backend_domain)) {
+          output_arg_count, &meta.kernel_inputs, expected_backend_domain)) {
     return meta;
   }
   if (extract_kernel_operand_metadata_from_mpsrt_typed_program_manifest(
@@ -980,7 +994,11 @@ infer_kernel_arg_count_from_module(mlir::ModuleOp module, size_t fallback,
   size_t adapter_arg_count = 0;
   if (extract_spirv_kernel_operand_metadata_from_adapter_attrs(
           module, adapter_meta, adapter_arg_count,
-          /*output_arg_count=*/0, expected_backend_domain)) {
+          /*output_arg_count=*/0, /*kernel_inputs=*/nullptr,
+          expected_backend_domain)) {
+    if (!adapter_meta.operand_kinds.empty()) {
+      return adapter_meta.operand_kinds.size();
+    }
     return adapter_arg_count;
   }
   size_t typed_program_arg_count = 0;

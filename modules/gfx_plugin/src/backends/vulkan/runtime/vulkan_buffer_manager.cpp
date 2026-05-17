@@ -23,6 +23,7 @@ namespace gfx_plugin {
 namespace {
 
 constexpr size_t kDirectMappedConstBytes = 4096;
+constexpr size_t kMaxPendingConstUploadBytes = 16 * 1024 * 1024;
 
 class VulkanConstBufferReuseContext {
 public:
@@ -71,6 +72,7 @@ public:
             device_desc.cpu_read = false;
             device_desc.cpu_write = false;
             device_desc.prefer_device_local = true;
+            device_desc.label = key.c_str();
 
             GpuBuffer device_buf;
             if (bytes <= kDirectMappedConstBytes) {
@@ -91,6 +93,7 @@ public:
             staging_desc.usage = BufferUsage::Staging;
             staging_desc.cpu_write = true;
             staging_desc.prefer_device_local = false;
+            staging_desc.label = key.c_str();
             staging = m_staging_alloc.allocate(staging_desc);
             if (bytes) {
                 gpu_copy_from_host(staging, data, bytes);
@@ -99,7 +102,11 @@ public:
             if (bytes && staging.valid() && device_buf.valid()) {
                 auto& state = batch_state();
                 if (state.depth > 0) {
+                    state.pending_bytes += bytes;
                     state.pending_uploads.push_back(PendingUpload{std::move(staging), device_buf, bytes});
+                    if (state.pending_bytes >= kMaxPendingConstUploadBytes) {
+                        flush_upload_batch_state(state, nullptr, nullptr);
+                    }
                 } else {
                     gpu_copy_buffer(nullptr, staging, device_buf, bytes);
                     m_staging_alloc.release(std::move(staging));
@@ -127,6 +134,7 @@ private:
 
     struct UploadBatchState {
         size_t depth = 0;
+        size_t pending_bytes = 0;
         std::vector<PendingUpload> pending_uploads;
     };
 
@@ -302,6 +310,7 @@ private:
         }
 
         release_pending_uploads(state.pending_uploads, m_staging_alloc);
+        state.pending_bytes = 0;
     }
 
     VulkanGpuAllocator m_device_alloc;

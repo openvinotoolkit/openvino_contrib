@@ -86,10 +86,13 @@ private:
     };
 
     void reset_mpsrt_prepared_model_cache();
+    static const char* mpsrt_prepared_model_cache_kind_name(MpsrtPreparedModelCacheKind kind);
+    MpsrtPreparedModelCacheKind resolve_mpsrt_prepared_model_cache_kind() const;
     std::shared_ptr<const metal::mpsrt::MpsrtPreparedModel> get_or_prepare_mpsrt_model(
         MpsrtPreparedModelCacheKind kind,
         std::string* error,
-        bool* cache_hit);
+        bool* cache_hit,
+        const KernelExecutionHooks* hooks = nullptr);
 
     static constexpr size_t kMpsrtPreparedModelCacheSlotCount = 3;
 

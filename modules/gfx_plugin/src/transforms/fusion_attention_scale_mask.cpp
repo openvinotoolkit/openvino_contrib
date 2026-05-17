@@ -89,7 +89,7 @@ struct AttentionScaleMaskFusionPattern final : public mlir::RewritePattern {
 
     mlir::LogicalResult matchAndRewrite(mlir::Operation* op,
                                         mlir::PatternRewriter& rewriter) const override {
-        if (!m_config.enable_fusion) {
+        if (!m_config.enable_fusion || !m_config.enable_attention_fusion) {
             return mlir::failure();
         }
         if (op->getNumResults() != 1) {
@@ -269,7 +269,7 @@ private:
 
 void add_attention_scale_mask_fusion_patterns(mlir::RewritePatternSet& patterns,
                                               const FusionConfig& config) {
-    if (!config.enable_fusion) {
+    if (!config.enable_fusion || !config.enable_attention_fusion) {
         return;
     }
     patterns.add<AttentionScaleMaskFusionPattern>(patterns.getContext(), config);

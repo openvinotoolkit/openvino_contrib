@@ -178,6 +178,8 @@ bool apple_vendor_descriptor_matches_stage(
             return stage_kind == GfxMpsrtStageKind::MPSSoftmax;
         case Kind::TopK:
             return stage_kind == GfxMpsrtStageKind::MPSTopK;
+        case Kind::Sdpa:
+            return stage_kind == GfxMpsrtStageKind::MPSSdpa;
     }
     return false;
 }
@@ -218,6 +220,9 @@ bool apply_apple_vendor_descriptor(
             break;
         case Kind::TopK:
             stage_plan.stage.topk_desc = descriptor.topk;
+            break;
+        case Kind::Sdpa:
+            stage_plan.stage.sdpa_desc = descriptor.sdpa;
             break;
         case Kind::None:
             break;
@@ -376,9 +381,14 @@ public:
                                            m_options.stage_type,
                                            m_options.kernel_entry_point,
                                            stage_plan,
-                                           m_options.semantic_input_roles) ||
-            !apply_apple_stage_tensor_desc_overrides(stage_plan, m_options)) {
-            module->emitError("failed to assign Apple storage bridges for ")
+                                           m_options.semantic_input_roles)) {
+            module->emitError("failed to build Apple stage plan for ")
+                << m_options.stage_type;
+            signalPassFailure();
+            return;
+        }
+        if (!apply_apple_stage_tensor_desc_overrides(stage_plan, m_options)) {
+            module->emitError("failed to apply Apple tensor descriptor contract for ")
                 << m_options.stage_type;
             signalPassFailure();
             return;
@@ -387,9 +397,13 @@ public:
             stage_plan.stage.output_storage == GfxMpsrtStorage::Buffer) {
             return;
         }
+        if (stage_plan.stage.input_storage != GfxMpsrtStorage::Image &&
+            stage_plan.stage.output_storage != GfxMpsrtStorage::Image) {
+            return;
+        }
         std::vector<GfxMpsrtStorageBridgeDesc> bridges;
         if (!build_mpsrt_storage_assignment_from_stage_plan(stage_plan, bridges)) {
-            module->emitError("failed to assign Apple storage bridges for ")
+            module->emitError("failed to build Apple storage bridge plan for ")
                 << m_options.stage_type;
             signalPassFailure();
         }

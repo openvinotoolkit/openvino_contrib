@@ -51,6 +51,13 @@ mlir::Value cast_scalar_to_i64(mlir::OpBuilder& b, mlir::Location loc, mlir::Val
     return value;
 }
 
+mlir::SmallVector<int64_t> range_bound_tensor_shape(const ov::PartialShape& pshape) {
+    if (pshape.rank().is_static()) {
+        return to_shape(pshape);
+    }
+    return {1};
+}
+
 }  // namespace
 
 mlir::ModuleOp build_mlir_range_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx) {
@@ -81,9 +88,12 @@ mlir::ModuleOp build_mlir_range_from_model(const std::shared_ptr<const ov::Model
                                 /*signless_integers=*/true);
     auto out_ty = mlir::RankedTensorType::get({out_total}, elem_ty);
 
-    mlir::SmallVector<int64_t> start_shape = to_shape(range_node->get_input_partial_shape(0));
-    mlir::SmallVector<int64_t> stop_shape = to_shape(range_node->get_input_partial_shape(1));
-    mlir::SmallVector<int64_t> step_shape = to_shape(range_node->get_input_partial_shape(2));
+    mlir::SmallVector<int64_t> start_shape =
+        range_bound_tensor_shape(range_node->get_input_partial_shape(0));
+    mlir::SmallVector<int64_t> stop_shape =
+        range_bound_tensor_shape(range_node->get_input_partial_shape(1));
+    mlir::SmallVector<int64_t> step_shape =
+        range_bound_tensor_shape(range_node->get_input_partial_shape(2));
 
     auto start_elem_ty = to_mlir_type(range_node->get_input_element_type(0), ctx, /*fallback_f32=*/false,
                                       /*allow_unsigned=*/true,

@@ -549,6 +549,36 @@ void record_mpsrt_plan_counters(mlir::ModuleOp module) {
     increment_compile_counter(std::string("mpsrt_storage_") +
                               gfx_mpsrt_storage_name(stage.output_storage) +
                               "_count");
+    const auto &manifest = stage.stage_manifest;
+    if (manifest.valid) {
+      increment_compile_counter(std::string("mpsrt_stage_family_") +
+                                gfx_kernel_stage_family_name(
+                                    manifest.stage_family) +
+                                "_count");
+      increment_compile_counter(std::string("mpsrt_stage_backend_") +
+                                gfx_kernel_backend_domain_name(
+                                    manifest.backend_domain) +
+                                "_count");
+      increment_compile_counter(std::string("mpsrt_stage_execution_") +
+                                gfx_kernel_execution_kind_name(
+                                    manifest.execution_kind) +
+                                "_count");
+      increment_compile_counter(std::string("mpsrt_stage_precision_") +
+                                gfx_kernel_compute_precision_name(
+                                    manifest.compute_precision) +
+                                "_count");
+      increment_compile_counter(
+          std::string("mpsrt_stage_backend_") +
+          gfx_kernel_backend_domain_name(manifest.backend_domain) +
+          "_precision_" +
+          gfx_kernel_compute_precision_name(manifest.compute_precision) +
+          "_count");
+      increment_compile_counter(
+          std::string("mpsrt_stage_backend_") +
+          gfx_kernel_backend_domain_name(manifest.backend_domain) +
+          "_family_" +
+          gfx_kernel_stage_family_name(manifest.stage_family) + "_count");
+    }
     if (stage.stage_manifest.execution_kind ==
         GfxKernelExecutionKind::VendorPrimitive) {
       increment_compile_counter("mpsrt_vendor_primitive_stage_count");
@@ -910,7 +940,10 @@ bool mpsrt_topk_stage_supported_by_matrix_bridge(
     return false;
   }
   if (stage.topk_desc.mode_max == 0 || stage.topk_desc.k == 0 ||
-      stage.topk_desc.k > 16) {
+      stage.topk_desc.k > input_desc.matrix_columns) {
+    return false;
+  }
+  if (stage.topk_desc.k > 16 && stage.topk_desc.sort_type == 2u) {
     return false;
   }
   if (input_desc.dtype != values_desc.dtype ||
@@ -942,6 +975,85 @@ bool mpsrt_topk_stage_supported_by_matrix_bridge(
   return input_count == values_count && input_count == indices_count;
 }
 
+bool mpsrt_dense_ndarray_graph_tensor_supported(
+    const GfxMpsrtTensorAbiDesc &desc) {
+  if (desc.storage != static_cast<uint32_t>(GfxMpsrtStorage::NDArray)) {
+    return false;
+  }
+  const auto dtype = static_cast<GfxMpsrtDType>(desc.dtype);
+  const uint32_t element_bytes = gfx_mpsrt_element_size_bytes(dtype);
+  if (element_bytes == 0 || desc.byte_offset != 0 || desc.rank == 0 ||
+      desc.rank > 8) {
+    return false;
+  }
+  uint64_t dense_elements = 1;
+  for (uint32_t i = 0; i < desc.rank; ++i) {
+    if (desc.dims[i] == 0) {
+      return false;
+    }
+    dense_elements *= desc.dims[i];
+  }
+  return desc.byte_length == dense_elements * element_bytes;
+}
+
+bool mpsrt_sdpa_stage_supported_by_graph_bridge(
+    const runtime_mpsrt::MpsrtModel &model,
+    const runtime_mpsrt::MpsrtRuntimeStage &stage) {
+  if (stage.inputs.size() != 3 || stage.outputs.size() != 1 ||
+      stage.output_descs.size() != 1 || stage.sdpa_desc.has_mask != 0 ||
+      stage.sdpa_desc.causal != 0) {
+    return false;
+  }
+  const bool transposed_layout =
+      stage.sdpa_desc.layout == GfxMpsrtSdpaLayoutTransposedBHDN;
+  if (!transposed_layout) {
+    if (@available(macOS 15.0, iOS 18.0, tvOS 18.0, *)) {
+    } else {
+      return false;
+    }
+  }
+  const auto *query = runtime_mpsrt::find_mpsrt_tensor(model, stage.inputs[0]);
+  const auto *key = runtime_mpsrt::find_mpsrt_tensor(model, stage.inputs[1]);
+  const auto *value = runtime_mpsrt::find_mpsrt_tensor(model, stage.inputs[2]);
+  if (!query || !key || !value) {
+    return false;
+  }
+  const auto &q = query->desc;
+  const auto &k = key->desc;
+  const auto &v = value->desc;
+  const auto &out = stage.output_descs.front();
+  if (q.dtype != k.dtype || q.dtype != v.dtype || q.dtype != out.dtype ||
+      (q.dtype != static_cast<uint32_t>(GfxMpsrtDType::F16) &&
+       q.dtype != static_cast<uint32_t>(GfxMpsrtDType::F32))) {
+    return false;
+  }
+  if (q.rank != 4 || k.rank != 4 || v.rank != 4 || out.rank != 4) {
+    return false;
+  }
+  if (!mpsrt_dense_ndarray_graph_tensor_supported(q) ||
+      !mpsrt_dense_ndarray_graph_tensor_supported(k) ||
+      !mpsrt_dense_ndarray_graph_tensor_supported(v) ||
+      !mpsrt_dense_ndarray_graph_tensor_supported(out)) {
+    return false;
+  }
+  if (stage.sdpa_desc.layout == GfxMpsrtSdpaLayoutNativeBHND) {
+    return q.dims[0] == k.dims[0] && q.dims[0] == v.dims[0] &&
+           q.dims[1] == k.dims[1] && q.dims[1] == v.dims[1] &&
+           q.dims[3] == k.dims[3] && q.dims[3] == v.dims[3] &&
+           k.dims[2] == v.dims[2] &&
+           out.dims[0] == q.dims[0] && out.dims[1] == q.dims[1] &&
+           out.dims[2] == q.dims[2] && out.dims[3] == v.dims[3];
+  }
+  if (stage.sdpa_desc.layout == GfxMpsrtSdpaLayoutTransposedBHDN) {
+    return q.dims[0] == k.dims[0] && q.dims[0] == v.dims[0] &&
+           q.dims[1] == k.dims[1] && q.dims[1] == v.dims[1] &&
+           q.dims[2] == k.dims[2] && k.dims[3] == v.dims[3] &&
+           out.dims[0] == q.dims[0] && out.dims[1] == q.dims[1] &&
+           out.dims[2] == v.dims[2] && out.dims[3] == q.dims[3];
+  }
+  return false;
+}
+
 bool mpsrt_stage_supported_by_current_runtime(
     const runtime_mpsrt::MpsrtModel &model,
     const runtime_mpsrt::MpsrtRuntimeStage &stage) {
@@ -959,6 +1071,8 @@ bool mpsrt_stage_supported_by_current_runtime(
     return mpsrt_softmax_stage_supported_by_matrix_bridge(model, stage);
   case GfxMpsrtStageKind::MPSTopK:
     return mpsrt_topk_stage_supported_by_matrix_bridge(model, stage);
+  case GfxMpsrtStageKind::MPSSdpa:
+    return mpsrt_sdpa_stage_supported_by_graph_bridge(model, stage);
   default:
     return false;
   }
@@ -992,6 +1106,7 @@ bool mpsrt_model_is_executable_by_mpsrt(
     case GfxMpsrtStageKind::MPSResize2D:
     case GfxMpsrtStageKind::MPSSoftmax:
     case GfxMpsrtStageKind::MPSTopK:
+    case GfxMpsrtStageKind::MPSSdpa:
       if (!mpsrt_stage_supported_by_current_runtime(*model, stage)) {
         return false;
       }
@@ -1028,6 +1143,20 @@ void record_mpsrt_prepared_model_counters(
   if (!hooks || !hooks->on_counter) {
     return;
   }
+  uint64_t transient_resource_bytes = 0;
+  for (const auto &resource : prepared_model.resources) {
+    if (resource.lifetime ==
+        runtime_mpsrt::MpsrtRuntimeResourceLifetime::Transient) {
+      transient_resource_bytes +=
+          static_cast<uint64_t>(resource.heap_allocation_size);
+    }
+  }
+  uint64_t image_bridge_resource_bytes = 0;
+  for (const auto &resource : prepared_model.image_bridge_resources) {
+    image_bridge_resource_bytes +=
+        static_cast<uint64_t>(resource.heap_allocation_size);
+  }
+
   hooks->on_counter("mpsrt_prepared_resource_heap_size_bytes",
                     static_cast<uint64_t>(prepared_model.resource_heap_size));
   hooks->on_counter(
@@ -1042,6 +1171,12 @@ void record_mpsrt_prepared_model_counters(
   hooks->on_counter(
       "mpsrt_prepared_image_bridge_resource_count",
       static_cast<uint64_t>(prepared_model.image_bridge_resource_count));
+  hooks->on_counter(
+      "mpsrt_prepared_transient_resource_size_bytes",
+      transient_resource_bytes);
+  hooks->on_counter(
+      "mpsrt_prepared_image_bridge_resource_size_bytes",
+      image_bridge_resource_bytes);
 }
 
 } // namespace
@@ -1346,9 +1481,49 @@ void MetalCompiledKernel::reset_mpsrt_prepared_model_cache() {
   m_mpsrt_prepared_model_cache_next_slot = 0;
 }
 
+const char *MetalCompiledKernel::mpsrt_prepared_model_cache_kind_name(
+    MpsrtPreparedModelCacheKind kind) {
+  switch (kind) {
+  case MpsrtPreparedModelCacheKind::ContextExecution:
+    return "context_execution";
+  case MpsrtPreparedModelCacheKind::SingleMslDispatch:
+    return "single_msl_dispatch";
+  case MpsrtPreparedModelCacheKind::None:
+    return "none";
+  }
+  return "unknown";
+}
+
+MetalCompiledKernel::MpsrtPreparedModelCacheKind
+MetalCompiledKernel::resolve_mpsrt_prepared_model_cache_kind() const {
+  const auto execution_binding_plan = binding_plan();
+  const bool mpsrt_external_abi_matches_bindings =
+      m_mpsrt_model && execution_binding_plan &&
+      metal::mpsrt::mpsrt_external_abi_matches_exact_binding_plan(
+          *m_mpsrt_model, *execution_binding_plan);
+  const bool mpsrt_has_msl_dispatch =
+      mpsrt_model_has_msl_dispatch(m_mpsrt_model);
+  const bool mpsrt_context_external_abi_ready =
+      !mpsrt_has_msl_dispatch || mpsrt_external_abi_matches_bindings;
+  if (mpsrt_context_external_abi_ready &&
+      mpsrt_model_should_use_context_execution(m_mpsrt_model,
+                                               m_mpsrt_msl_source)) {
+    return MpsrtPreparedModelCacheKind::ContextExecution;
+  }
+
+  if (mpsrt_external_abi_matches_bindings && m_mpsrt_model &&
+      m_mpsrt_model->stages.size() == 1 &&
+      m_mpsrt_model->stages.front().kind == GfxMpsrtStageKind::MSLDispatch) {
+    return MpsrtPreparedModelCacheKind::SingleMslDispatch;
+  }
+
+  return MpsrtPreparedModelCacheKind::None;
+}
+
 std::shared_ptr<const metal::mpsrt::MpsrtPreparedModel>
 MetalCompiledKernel::get_or_prepare_mpsrt_model(
-    MpsrtPreparedModelCacheKind kind, std::string *error, bool *cache_hit) {
+    MpsrtPreparedModelCacheKind kind, std::string *error, bool *cache_hit,
+    const KernelExecutionHooks *hooks) {
   if (cache_hit) {
     *cache_hit = false;
   }
@@ -1367,22 +1542,30 @@ MetalCompiledKernel::get_or_prepare_mpsrt_model(
     m_mpsrt_prepared_model_cache_slots.resize(
         kMpsrtPreparedModelCacheSlotCount);
   }
+
+  for (const auto &cached_slot : m_mpsrt_prepared_model_cache_slots) {
+    if (cached_slot.model && cached_slot.kind == kind) {
+      if (cache_hit) {
+        *cache_hit = true;
+      }
+      return cached_slot.model;
+    }
+  }
+
   const size_t slot_index = m_mpsrt_prepared_model_cache_next_slot;
   m_mpsrt_prepared_model_cache_next_slot =
       (m_mpsrt_prepared_model_cache_next_slot + 1) %
       m_mpsrt_prepared_model_cache_slots.size();
   auto &slot = m_mpsrt_prepared_model_cache_slots[slot_index];
-  if (slot.model && slot.kind == kind) {
-    if (cache_hit) {
-      *cache_hit = true;
-    }
-    return slot.model;
-  }
   if (!m_mpsrt_context) {
     m_mpsrt_context = std::make_shared<metal::mpsrt::MpsrtContext>(
         static_cast<id<MTLDevice>>(m_device));
   }
 
+  const bool trace_prepare = hooks && hooks->on_segment;
+  const auto prepare_start =
+      trace_prepare ? std::chrono::steady_clock::now()
+                    : std::chrono::steady_clock::time_point{};
   auto prepared_model = std::make_shared<metal::mpsrt::MpsrtPreparedModel>();
   switch (kind) {
   case MpsrtPreparedModelCacheKind::ContextExecution:
@@ -1412,6 +1595,24 @@ MetalCompiledKernel::get_or_prepare_mpsrt_model(
     return nullptr;
   }
 
+  if (trace_prepare) {
+    std::string segment_name;
+    if (!hooks->stage_type.empty()) {
+      segment_name += hooks->stage_type;
+      segment_name += ":";
+    }
+    if (!hooks->stage_name.empty()) {
+      segment_name += hooks->stage_name;
+      segment_name += ":";
+    }
+    segment_name += mpsrt_prepared_model_cache_kind_name(kind);
+    hooks->on_segment(
+        "mpsrt_prepare_model", segment_name,
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - prepare_start),
+        0, 0, 0, 0, 0, 0, -1, 0, 0);
+  }
+
   slot.model = std::move(prepared_model);
   slot.kind = kind;
   return slot.model;
@@ -1427,6 +1628,14 @@ void MetalCompiledKernel::prewarm_bindings(const std::vector<KernelArg> &args) {
         return std::make_shared<MetalPreparedState>(
             prepared_base->binding_table());
       });
+
+  const auto mpsrt_cache_kind = resolve_mpsrt_prepared_model_cache_kind();
+  if (mpsrt_cache_kind != MpsrtPreparedModelCacheKind::None) {
+    std::string mpsrt_error;
+    const auto prepared_model =
+        get_or_prepare_mpsrt_model(mpsrt_cache_kind, &mpsrt_error, nullptr);
+    OPENVINO_ASSERT(prepared_model, mpsrt_error);
+  }
 }
 
 void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
@@ -1470,22 +1679,13 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
     hooks->on_counter("prepared_binding_cache_hit_count", 1);
   }
 
-  const bool mpsrt_external_abi_matches_bindings =
-      m_mpsrt_model && execution_binding_plan &&
-      metal::mpsrt::mpsrt_external_abi_matches_exact_binding_plan(
-          *m_mpsrt_model, *execution_binding_plan);
-  const bool mpsrt_has_msl_dispatch =
-      mpsrt_model_has_msl_dispatch(m_mpsrt_model);
-  const bool mpsrt_context_external_abi_ready =
-      !mpsrt_has_msl_dispatch || mpsrt_external_abi_matches_bindings;
-  if (mpsrt_context_external_abi_ready &&
-      mpsrt_model_should_use_context_execution(m_mpsrt_model,
-                                               m_mpsrt_msl_source)) {
+  const auto mpsrt_cache_kind = resolve_mpsrt_prepared_model_cache_kind();
+  if (mpsrt_cache_kind == MpsrtPreparedModelCacheKind::ContextExecution) {
     std::string mpsrt_error;
     bool mpsrt_prepared_cache_hit = false;
     const auto prepared_model = get_or_prepare_mpsrt_model(
         MpsrtPreparedModelCacheKind::ContextExecution, &mpsrt_error,
-        &mpsrt_prepared_cache_hit);
+        &mpsrt_prepared_cache_hit, hooks);
     OPENVINO_ASSERT(prepared_model, mpsrt_error);
     [cb addCompletedHandler:^(id<MTLCommandBuffer> completed_command_buffer) {
       (void)completed_command_buffer;
@@ -1517,16 +1717,14 @@ void MetalCompiledKernel::execute(GpuCommandBufferHandle command_buffer,
     return;
   }
 
-  if (mpsrt_external_abi_matches_bindings && m_mpsrt_model &&
-      m_mpsrt_model->stages.size() == 1 &&
-      m_mpsrt_model->stages.front().kind == GfxMpsrtStageKind::MSLDispatch) {
+  if (mpsrt_cache_kind == MpsrtPreparedModelCacheKind::SingleMslDispatch) {
     OPENVINO_ASSERT(m_pipeline,
                     "MetalCompiledKernel: MSL MPSRT pipeline is null");
     std::string mpsrt_error;
     bool mpsrt_prepared_cache_hit = false;
     const auto prepared_model = get_or_prepare_mpsrt_model(
         MpsrtPreparedModelCacheKind::SingleMslDispatch, &mpsrt_error,
-        &mpsrt_prepared_cache_hit);
+        &mpsrt_prepared_cache_hit, hooks);
     OPENVINO_ASSERT(prepared_model, mpsrt_error);
     [cb addCompletedHandler:^(id<MTLCommandBuffer> completed_command_buffer) {
       (void)completed_command_buffer;

@@ -103,7 +103,7 @@ mlir::ModuleOp build_mlir_topk_from_model(const std::shared_ptr<const ov::Model>
     mlir::SmallVector<int64_t> out1_dims(out1_shape.begin(), out1_shape.end());
     ov::Shape out1_kernel_shape = out1_shape;
     if (emulate_i64_indices) {
-        out1_kernel_shape.at(axis) *= 2;
+        out1_kernel_shape.push_back(2);
         out1_dims.assign(out1_kernel_shape.begin(), out1_kernel_shape.end());
     }
 
@@ -173,6 +173,58 @@ mlir::ModuleOp build_mlir_topk_from_model(const std::shared_ptr<const ov::Model>
         return indices;
     };
 
+    auto make_out1_indices = [&](mlir::OpBuilder& ib,
+                                 mlir::Location iloc,
+                                 mlir::Value outer_linear_value,
+                                 mlir::Value axis_value,
+                                 mlir::Value inner_linear_value,
+                                 mlir::Value lane_value) {
+        auto indices = make_indices(ib, iloc, out1_shape, outer_linear_value, axis_value, inner_linear_value);
+        if (emulate_i64_indices) {
+            indices.push_back(lane_value);
+        }
+        return indices;
+    };
+
+    auto make_value_better = [&](mlir::OpBuilder& ib,
+                                 mlir::Location iloc,
+                                 mlir::Value candidate_value,
+                                 mlir::Value candidate_index,
+                                 mlir::Value current_value,
+                                 mlir::Value current_index) -> mlir::Value {
+        auto candidate_has_lower_index =
+            ib.create<mlir::arith::CmpIOp>(iloc,
+                                           mlir::arith::CmpIPredicate::ult,
+                                           candidate_index,
+                                           current_index)
+                .getResult();
+        mlir::Value value_better;
+        mlir::Value values_equal;
+        if (mlir::isa<mlir::FloatType>(out_val_ty)) {
+            auto pred = topk->get_mode() == ov::op::TopKMode::MAX
+                            ? mlir::arith::CmpFPredicate::OGT
+                            : mlir::arith::CmpFPredicate::OLT;
+            value_better = ib.create<mlir::arith::CmpFOp>(iloc, pred, candidate_value, current_value).getResult();
+            values_equal =
+                ib.create<mlir::arith::CmpFOp>(iloc, mlir::arith::CmpFPredicate::OEQ, candidate_value, current_value)
+                    .getResult();
+        } else {
+            auto ity = mlir::cast<mlir::IntegerType>(out_val_ty);
+            auto pred = topk->get_mode() == ov::op::TopKMode::MAX
+                            ? (ity.isUnsigned() ? mlir::arith::CmpIPredicate::ugt
+                                                : mlir::arith::CmpIPredicate::sgt)
+                            : (ity.isUnsigned() ? mlir::arith::CmpIPredicate::ult
+                                                : mlir::arith::CmpIPredicate::slt);
+            value_better = ib.create<mlir::arith::CmpIOp>(iloc, pred, candidate_value, current_value).getResult();
+            values_equal =
+                ib.create<mlir::arith::CmpIOp>(iloc, mlir::arith::CmpIPredicate::eq, candidate_value, current_value)
+                    .getResult();
+        }
+        auto equal_with_lower_index =
+            ib.create<mlir::arith::AndIOp>(iloc, values_equal, candidate_has_lower_index).getResult();
+        return ib.create<mlir::arith::OrIOp>(iloc, value_better, equal_with_lower_index).getResult();
+    };
+
     auto row_loop = b.create<mlir::scf::ParallelOp>(
         loc,
         mlir::ValueRange{c0},
@@ -195,25 +247,22 @@ mlir::ModuleOp build_mlir_topk_from_model(const std::shared_ptr<const ov::Model>
                                              make_init_value(ib, loc, out_val_ty, topk->get_mode()),
                                              func.getArgument(1),
                                              out0_indices);
-            mlir::Value out1_axis = i;
-            mlir::Value out1_axis_hi;
-            if (emulate_i64_indices) {
-                out1_axis = ib.create<mlir::arith::AddIOp>(loc, i, i).getResult();
-                out1_axis_hi = ib.create<mlir::arith::AddIOp>(loc, out1_axis, c1).getResult();
-            }
-            auto out1_indices = make_indices(ib, loc, out1_kernel_shape, outer_iv, out1_axis, inner_iv);
+            auto out1_indices = make_out1_indices(ib, loc, outer_iv, i, inner_iv, c0.getResult());
             ib.create<mlir::memref::StoreOp>(loc, c_topk_i32_zero, func.getArgument(2), out1_indices);
             if (emulate_i64_indices) {
-                auto out1_hi_indices = make_indices(ib, loc, out1_kernel_shape, outer_iv, out1_axis_hi, inner_iv);
+                auto out1_hi_indices = make_out1_indices(ib, loc, outer_iv, i, inner_iv, c1.getResult());
                 ib.create<mlir::memref::StoreOp>(loc, c_topk_i32_zero, func.getArgument(2), out1_hi_indices);
             }
         }
 
-        auto axis_loop = rb.create<mlir::scf::ForOp>(loc, c0, c_axis, c1);
+        auto axis_loop = rb.create<mlir::scf::ForOp>(
+            loc, c0, c_axis, c1, mlir::ValueRange{c0.getResult(), c0.getResult()});
         {
             auto* abody = axis_loop.getBody();
             mlir::OpBuilder ab(abody, abody->begin());
             auto a = axis_loop.getInductionVar();
+            auto filled_count = axis_loop.getRegionIterArgs()[0];
+            auto worst_pos = axis_loop.getRegionIterArgs()[1];
             auto in_indices = make_indices(ab, loc, in_shape, outer_iv, a, inner_iv);
             auto raw_val = ab.create<mlir::memref::LoadOp>(loc, func.getArgument(0), in_indices).getResult();
             mlir::Value val = raw_val;
@@ -227,136 +276,110 @@ mlir::ModuleOp build_mlir_topk_from_model(const std::shared_ptr<const ov::Model>
                 }
             }
 
-            auto insert_init = ab.create<mlir::arith::ConstantIndexOp>(loc, k).getResult();
-            auto find_loop = ab.create<mlir::scf::ForOp>(loc, c0, c_k, c1, mlir::ValueRange{insert_init});
-            {
-                auto* fbody = find_loop.getBody();
-                mlir::OpBuilder fb(fbody, fbody->begin());
-                auto i = find_loop.getInductionVar();
-                auto insert_acc = find_loop.getRegionIterArgs()[0];
-                auto already_found =
-                    fb.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::slt, insert_acc, c_k).getResult();
-                auto current_indices = make_indices(fb, loc, out0_shape, outer_iv, i, inner_iv);
-                auto current = fb.create<mlir::memref::LoadOp>(loc, func.getArgument(1), current_indices).getResult();
-                mlir::Value current_out1_axis = i;
-                if (emulate_i64_indices) {
-                    current_out1_axis = fb.create<mlir::arith::AddIOp>(loc, i, i).getResult();
-                }
-                auto current_id_indices =
-                    make_indices(fb, loc, out1_kernel_shape, outer_iv, current_out1_axis, inner_iv);
-                auto current_id =
-                    fb.create<mlir::memref::LoadOp>(loc, func.getArgument(2), current_id_indices).getResult();
-                auto current_id_index =
-                    fb.create<mlir::arith::IndexCastOp>(loc, fb.getIndexType(), current_id).getResult();
-                auto candidate_has_lower_index =
-                    fb.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::ult, a, current_id_index)
-                        .getResult();
-                mlir::Value value_better;
-                mlir::Value values_equal;
-                if (mlir::isa<mlir::FloatType>(out_val_ty)) {
-                    auto pred = topk->get_mode() == ov::op::TopKMode::MAX
-                                    ? mlir::arith::CmpFPredicate::OGT
-                                    : mlir::arith::CmpFPredicate::OLT;
-                    value_better = fb.create<mlir::arith::CmpFOp>(loc, pred, val, current).getResult();
-                    values_equal =
-                        fb.create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OEQ, val, current).getResult();
-                } else {
-                    auto ity = mlir::cast<mlir::IntegerType>(out_val_ty);
-                    auto pred = topk->get_mode() == ov::op::TopKMode::MAX
-                                    ? (ity.isUnsigned() ? mlir::arith::CmpIPredicate::ugt
-                                                        : mlir::arith::CmpIPredicate::sgt)
-                                    : (ity.isUnsigned() ? mlir::arith::CmpIPredicate::ult
-                                                        : mlir::arith::CmpIPredicate::slt);
-                    value_better = fb.create<mlir::arith::CmpIOp>(loc, pred, val, current).getResult();
-                    values_equal =
-                        fb.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::eq, val, current).getResult();
-                }
-                auto equal_with_lower_index =
-                    fb.create<mlir::arith::AndIOp>(loc, values_equal, candidate_has_lower_index).getResult();
-                auto better =
-                    fb.create<mlir::arith::OrIOp>(loc, value_better, equal_with_lower_index).getResult();
-                auto take = fb.create<mlir::arith::AndIOp>(
-                    loc,
-                    better,
-                    fb.create<mlir::arith::XOrIOp>(
-                          loc,
-                          already_found,
-                          fb.create<mlir::arith::ConstantIntOp>(loc, 1, 1))
-                        .getResult())
-                                .getResult();
-                auto next_insert = fb.create<mlir::arith::SelectOp>(loc, take, i, insert_acc).getResult();
-                fb.create<mlir::scf::YieldOp>(loc, next_insert);
-            }
-            auto insert_pos = find_loop.getResult(0);
-            auto has_insert =
-                ab.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::slt, insert_pos, c_k).getResult();
-            auto insert_if = ab.create<mlir::scf::IfOp>(loc, has_insert, /*withElseRegion=*/false);
+            auto worst_val_indices = make_indices(ab, loc, out0_shape, outer_iv, worst_pos, inner_iv);
+            auto worst_val = ab.create<mlir::memref::LoadOp>(loc, func.getArgument(1), worst_val_indices).getResult();
+            auto worst_id_indices = make_out1_indices(ab, loc, outer_iv, worst_pos, inner_iv, c0.getResult());
+            auto worst_id = ab.create<mlir::memref::LoadOp>(loc, func.getArgument(2), worst_id_indices).getResult();
+            auto worst_id_index = ab.create<mlir::arith::IndexCastOp>(loc, ab.getIndexType(), worst_id).getResult();
+            auto has_room =
+                ab.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::slt, filled_count, c_k).getResult();
+            auto better_than_worst = make_value_better(ab, loc, val, a, worst_val, worst_id_index);
+            auto should_insert = ab.create<mlir::arith::OrIOp>(loc, has_room, better_than_worst).getResult();
+            auto insert_pos = ab.create<mlir::arith::SelectOp>(loc, has_room, filled_count, worst_pos).getResult();
+            auto insert_if = ab.create<mlir::scf::IfOp>(
+                loc, mlir::TypeRange{ab.getIndexType(), ab.getIndexType()}, should_insert, /*withElseRegion=*/true);
             {
                 auto then_builder = insert_if.getThenBodyBuilder();
-                auto shift_loop = then_builder.create<mlir::scf::ForOp>(loc, c0, c_k, c1);
-                {
-                    auto* sbody = shift_loop.getBody();
-                    mlir::OpBuilder sb(sbody, sbody->begin());
-                    auto shift = shift_loop.getInductionVar();
-                    auto last = sb.create<mlir::arith::SubIOp>(loc, c_k, c1).getResult();
-                    auto j = sb.create<mlir::arith::SubIOp>(loc, last, shift).getResult();
-                    auto do_shift =
-                        sb.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::sgt, j, insert_pos).getResult();
-                    auto shift_if = sb.create<mlir::scf::IfOp>(loc, do_shift, /*withElseRegion=*/false);
-                    auto sib = shift_if.getThenBodyBuilder();
-                    auto from = sib.create<mlir::arith::SubIOp>(loc, j, c1).getResult();
-                    auto prev_val_indices = make_indices(sib, loc, out0_shape, outer_iv, from, inner_iv);
-                    auto dst_val_indices = make_indices(sib, loc, out0_shape, outer_iv, j, inner_iv);
-                    auto prev_val =
-                        sib.create<mlir::memref::LoadOp>(loc, func.getArgument(1), prev_val_indices).getResult();
-                    sib.create<mlir::memref::StoreOp>(loc, prev_val, func.getArgument(1), dst_val_indices);
-
-                    mlir::Value prev_out1_axis = from;
-                    mlir::Value dst_out1_axis = j;
-                    mlir::Value dst_out1_axis_hi;
-                    if (emulate_i64_indices) {
-                        prev_out1_axis = sib.create<mlir::arith::AddIOp>(loc, from, from).getResult();
-                        dst_out1_axis = sib.create<mlir::arith::AddIOp>(loc, j, j).getResult();
-                        dst_out1_axis_hi = sib.create<mlir::arith::AddIOp>(loc, dst_out1_axis, c1).getResult();
-                    }
-                    auto prev_id_indices =
-                        make_indices(sib, loc, out1_kernel_shape, outer_iv, prev_out1_axis, inner_iv);
-                    auto dst_id_indices =
-                        make_indices(sib, loc, out1_kernel_shape, outer_iv, dst_out1_axis, inner_iv);
-                    auto prev_id =
-                        sib.create<mlir::memref::LoadOp>(loc, func.getArgument(2), prev_id_indices).getResult();
-                    sib.create<mlir::memref::StoreOp>(loc, prev_id, func.getArgument(2), dst_id_indices);
-                    if (emulate_i64_indices) {
-                        auto dst_hi_indices =
-                            make_indices(sib, loc, out1_kernel_shape, outer_iv, dst_out1_axis_hi, inner_iv);
-                        sib.create<mlir::memref::StoreOp>(loc, c_topk_i32_zero, func.getArgument(2), dst_hi_indices);
-                    }
-                }
                 auto candidate_idx =
                     then_builder.create<mlir::arith::IndexCastOp>(loc, kernel_out_idx_ty, a).getResult();
                 auto insert_val_indices = make_indices(then_builder, loc, out0_shape, outer_iv, insert_pos, inner_iv);
                 then_builder.create<mlir::memref::StoreOp>(loc, val, func.getArgument(1), insert_val_indices);
-                mlir::Value insert_out1_axis = insert_pos;
-                mlir::Value insert_out1_axis_hi;
-                if (emulate_i64_indices) {
-                    insert_out1_axis =
-                        then_builder.create<mlir::arith::AddIOp>(loc, insert_pos, insert_pos).getResult();
-                    insert_out1_axis_hi =
-                        then_builder.create<mlir::arith::AddIOp>(loc, insert_out1_axis, c1).getResult();
-                }
                 auto insert_id_indices =
-                    make_indices(then_builder, loc, out1_kernel_shape, outer_iv, insert_out1_axis, inner_iv);
+                    make_out1_indices(then_builder, loc, outer_iv, insert_pos, inner_iv, c0.getResult());
                 then_builder.create<mlir::memref::StoreOp>(loc,
                                                            candidate_idx,
                                                            func.getArgument(2),
                                                            insert_id_indices);
                 if (emulate_i64_indices) {
                     auto insert_hi_indices =
-                        make_indices(then_builder, loc, out1_kernel_shape, outer_iv, insert_out1_axis_hi, inner_iv);
+                        make_out1_indices(then_builder, loc, outer_iv, insert_pos, inner_iv, c1.getResult());
                     then_builder.create<mlir::memref::StoreOp>(loc,
                                                                c_topk_i32_zero,
                                                                func.getArgument(2),
                                                                insert_hi_indices);
+                }
+                auto next_filled_candidate = then_builder.create<mlir::arith::AddIOp>(loc, filled_count, c1).getResult();
+                auto next_filled =
+                    then_builder.create<mlir::arith::SelectOp>(loc, has_room, next_filled_candidate, filled_count)
+                        .getResult();
+                auto worst_scan = then_builder.create<mlir::scf::ForOp>(
+                    loc, c1, c_k, c1, mlir::ValueRange{c0.getResult()});
+                {
+                    auto* sbody = worst_scan.getBody();
+                    mlir::OpBuilder sb(sbody, sbody->begin());
+                    auto i = worst_scan.getInductionVar();
+                    auto worst_acc = worst_scan.getRegionIterArgs()[0];
+                    auto acc_val_indices = make_indices(sb, loc, out0_shape, outer_iv, worst_acc, inner_iv);
+                    auto acc_val =
+                        sb.create<mlir::memref::LoadOp>(loc, func.getArgument(1), acc_val_indices).getResult();
+                    auto acc_id_indices = make_out1_indices(sb, loc, outer_iv, worst_acc, inner_iv, c0.getResult());
+                    auto acc_id = sb.create<mlir::memref::LoadOp>(loc, func.getArgument(2), acc_id_indices).getResult();
+                    auto acc_id_index =
+                        sb.create<mlir::arith::IndexCastOp>(loc, sb.getIndexType(), acc_id).getResult();
+                    auto cur_val_indices = make_indices(sb, loc, out0_shape, outer_iv, i, inner_iv);
+                    auto cur_val =
+                        sb.create<mlir::memref::LoadOp>(loc, func.getArgument(1), cur_val_indices).getResult();
+                    auto cur_id_indices = make_out1_indices(sb, loc, outer_iv, i, inner_iv, c0.getResult());
+                    auto cur_id = sb.create<mlir::memref::LoadOp>(loc, func.getArgument(2), cur_id_indices).getResult();
+                    auto cur_id_index =
+                        sb.create<mlir::arith::IndexCastOp>(loc, sb.getIndexType(), cur_id).getResult();
+                    auto acc_better_than_cur =
+                        make_value_better(sb, loc, acc_val, acc_id_index, cur_val, cur_id_index);
+                    auto next_worst = sb.create<mlir::arith::SelectOp>(loc, acc_better_than_cur, i, worst_acc)
+                                          .getResult();
+                    sb.create<mlir::scf::YieldOp>(loc, next_worst);
+                }
+                then_builder.create<mlir::scf::YieldOp>(loc,
+                                                        mlir::ValueRange{next_filled, worst_scan.getResult(0)});
+                auto else_builder = insert_if.getElseBodyBuilder();
+                else_builder.create<mlir::scf::YieldOp>(loc, mlir::ValueRange{filled_count, worst_pos});
+            }
+            ab.create<mlir::scf::YieldOp>(loc, mlir::ValueRange{insert_if.getResult(0), insert_if.getResult(1)});
+        }
+
+        auto sort_outer = rb.create<mlir::scf::ForOp>(loc, c0, c_k, c1);
+        {
+            auto* obody = sort_outer.getBody();
+            mlir::OpBuilder ob(obody, obody->begin());
+            auto i = sort_outer.getInductionVar();
+            auto j_begin = ob.create<mlir::arith::AddIOp>(loc, i, c1).getResult();
+            auto sort_inner = ob.create<mlir::scf::ForOp>(loc, j_begin, c_k, c1);
+            {
+                auto* ibody = sort_inner.getBody();
+                mlir::OpBuilder sb(ibody, ibody->begin());
+                auto j = sort_inner.getInductionVar();
+                auto i_val_indices = make_indices(sb, loc, out0_shape, outer_iv, i, inner_iv);
+                auto j_val_indices = make_indices(sb, loc, out0_shape, outer_iv, j, inner_iv);
+                auto i_val = sb.create<mlir::memref::LoadOp>(loc, func.getArgument(1), i_val_indices).getResult();
+                auto j_val = sb.create<mlir::memref::LoadOp>(loc, func.getArgument(1), j_val_indices).getResult();
+                auto i_id_indices = make_out1_indices(sb, loc, outer_iv, i, inner_iv, c0.getResult());
+                auto j_id_indices = make_out1_indices(sb, loc, outer_iv, j, inner_iv, c0.getResult());
+                auto i_id = sb.create<mlir::memref::LoadOp>(loc, func.getArgument(2), i_id_indices).getResult();
+                auto j_id = sb.create<mlir::memref::LoadOp>(loc, func.getArgument(2), j_id_indices).getResult();
+                auto i_id_index = sb.create<mlir::arith::IndexCastOp>(loc, sb.getIndexType(), i_id).getResult();
+                auto j_id_index = sb.create<mlir::arith::IndexCastOp>(loc, sb.getIndexType(), j_id).getResult();
+                auto swap = make_value_better(sb, loc, j_val, j_id_index, i_val, i_id_index);
+                auto swap_if = sb.create<mlir::scf::IfOp>(loc, swap, /*withElseRegion=*/false);
+                auto sib = swap_if.getThenBodyBuilder();
+                sib.create<mlir::memref::StoreOp>(loc, j_val, func.getArgument(1), i_val_indices);
+                sib.create<mlir::memref::StoreOp>(loc, i_val, func.getArgument(1), j_val_indices);
+                sib.create<mlir::memref::StoreOp>(loc, j_id, func.getArgument(2), i_id_indices);
+                sib.create<mlir::memref::StoreOp>(loc, i_id, func.getArgument(2), j_id_indices);
+                if (emulate_i64_indices) {
+                    auto i_hi_indices = make_out1_indices(sib, loc, outer_iv, i, inner_iv, c1.getResult());
+                    auto j_hi_indices = make_out1_indices(sib, loc, outer_iv, j, inner_iv, c1.getResult());
+                    sib.create<mlir::memref::StoreOp>(loc, c_topk_i32_zero, func.getArgument(2), i_hi_indices);
+                    sib.create<mlir::memref::StoreOp>(loc, c_topk_i32_zero, func.getArgument(2), j_hi_indices);
                 }
             }
         }

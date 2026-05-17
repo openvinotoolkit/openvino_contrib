@@ -186,6 +186,8 @@ MetalStage::prepare_profiling(ProfileState &state,
   const char *node_type = profile_node_type().empty()
                               ? type().c_str()
                               : profile_node_type().c_str();
+  hooks.stage_name = node_name;
+  hooks.stage_type = node_type;
   profiler->begin_node(profile_node_id(), node_name, node_type, "GFX");
   hooks.on_begin = [profiler, &state](GpuCommandEncoderHandle enc) {
     state.sample_begin =

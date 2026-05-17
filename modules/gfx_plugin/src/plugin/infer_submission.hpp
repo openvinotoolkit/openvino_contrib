@@ -5,7 +5,9 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <limits>
 #include <unordered_map>
 #include <vector>
 
@@ -13,6 +15,7 @@
 #include "plugin/infer_pipeline.hpp"
 #include "runtime/gfx_profiler.hpp"
 #include "runtime/gpu_buffer.hpp"
+#include "runtime/gpu_buffer_manager.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -20,11 +23,13 @@ namespace gfx_plugin {
 struct InferSubmissionConfig {
     size_t max_stages_per_submit = 16;
     size_t max_output_bytes_per_submit = 16u * 1024u * 1024u;
+    uint64_t max_macs_per_submit = std::numeric_limits<uint64_t>::max() / 4u;
     bool allow_incremental_submit = true;
 };
 
 struct InferSubmissionTuningCaps {
     GpuBackend backend = GpuBackend::Metal;
+    GpuDeviceFamily device_family = GpuDeviceFamily::Generic;
     uint32_t preferred_simd_width = 1;
     uint32_t subgroup_size = 1;
     uint32_t max_total_threads_per_group = 1;

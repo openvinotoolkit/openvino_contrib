@@ -18,25 +18,49 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
-GLOBAL_RE = re.compile(r"GLOBAL max_abs_diff=([0-9eE+.\-]+) max_rel_diff=([0-9eE+.\-]+)")
+GLOBAL_RE = re.compile(
+    r"GLOBAL max_abs_diff=([0-9eE+.\-]+) max_rel_diff=([0-9eE+.\-]+)"
+    r"(?: tolerance_violations=(\d+))?"
+)
+REAL_IMAGE_GLOBAL_RE = re.compile(
+    r"^REAL_IMAGE_GLOBAL failures=(\d+) max_abs_diff=([0-9eE+.\-]+) "
+    r"max_rel_diff=([0-9eE+.\-]+)$",
+    re.MULTILINE,
+)
+REAL_IMAGE_RESULT_RE = re.compile(
+    r"^REAL_IMAGE_RESULT index=(\d+) path=(.*?) "
+    r"max_abs_diff=([0-9eE+.\-]+) max_rel_diff=([0-9eE+.\-]+) "
+    r"tolerance_violations=(\d+) status=(PASS|FAIL)$",
+    re.MULTILINE,
+)
 REFERENCE_RE = re.compile(r"REFERENCE device=(.+)")
 GFX_ONLY_RE = re.compile(r"^GFX_ONLY$", re.MULTILINE)
 PER_OP_MATCH_RE = re.compile(
-    r"^PER_OP_MATCH(?: max_abs=([0-9eE+.\-]+) max_rel=([0-9eE+.\-]+))?$",
+    r"^PER_OP_MATCH(?: max_abs=([0-9eE+.\-]+) max_rel=([0-9eE+.\-]+)"
+    r"(?: tolerance_violations=(\d+))?)?$",
     re.MULTILINE,
 )
 PER_OP_MISMATCH_RE = re.compile(
-    r"^PER_OP_MISMATCH count=(\d+) max_abs=([0-9eE+.\-]+) max_rel=([0-9eE+.\-]+)$",
+    r"^PER_OP_MISMATCH count=(\d+)(?: tolerance_violations=(\d+))? "
+    r"max_abs=([0-9eE+.\-]+) max_rel=([0-9eE+.\-]+)$",
     re.MULTILINE,
 )
 PER_OP_FIRST_MISMATCH_RE = re.compile(
     r"^PER_OP_FIRST_MISMATCH op_index=(\d+) output_index=(\d+) name=(.+?) type=([^ ]+) "
-    r"max_index=(\d+) ref=([0-9eE+.\-]+) gfx=([0-9eE+.\-]+)$",
+    r"max_index=(\d+) ref=([0-9eE+.\-]+) gfx=([0-9eE+.\-]+)"
+    r"(?: abs_diff=([0-9eE+.\-]+) rel_diff=([0-9eE+.\-]+))?$",
+    re.MULTILINE,
+)
+FIRST_MISMATCH_RE = re.compile(
+    r"^FIRST_MISMATCH output=(\S+) max_index=(\d+) "
+    r"ref=([0-9eE+.\-]+) gfx=([0-9eE+.\-]+)"
+    r"(?: abs_diff=([0-9eE+.\-]+) rel_diff=([0-9eE+.\-]+))?$",
     re.MULTILINE,
 )
 PER_OP_SKIPPED_COUNT_RE = re.compile(r"^PER_OP_SKIPPED count=(\d+)$", re.MULTILINE)
 PER_OP_RE = re.compile(
-    r"^\[op (\d+)\] (.+?) \(([^()]+)\) max_abs_diff=([0-9eE+.\-]+) max_rel_diff=([0-9eE+.\-]+)$",
+    r"^\[op (\d+)\] (.+?) \(([^()]+)\) max_abs_diff=([0-9eE+.\-]+) "
+    r"max_rel_diff=([0-9eE+.\-]+)(?: tolerance_violations=(\d+))?$",
     re.MULTILINE,
 )
 PER_OP_SKIP_RE = re.compile(
@@ -162,6 +186,7 @@ def parse_compare_output(stdout: str) -> Dict[str, object]:
             "type": match.group(3),
             "max_abs_diff": float(match.group(4)),
             "max_rel_diff": float(match.group(5)),
+            "tolerance_violations": int(match.group(6) or 0),
         })
     per_op_skipped = []
     for match in PER_OP_SKIP_RE.finditer(stdout):
@@ -195,7 +220,9 @@ def parse_compare_output(stdout: str) -> Dict[str, object]:
         }
 
     global_match = GLOBAL_RE.search(stdout)
+    real_image_global_match = REAL_IMAGE_GLOBAL_RE.search(stdout)
     reference_match = REFERENCE_RE.search(stdout)
+    first_global_mismatch_match = FIRST_MISMATCH_RE.search(stdout)
     skipped_count_match = PER_OP_SKIPPED_COUNT_RE.search(stdout)
     mismatch_match = PER_OP_MISMATCH_RE.search(stdout)
     first_mismatch_match = PER_OP_FIRST_MISMATCH_RE.search(stdout)
@@ -210,8 +237,9 @@ def parse_compare_output(stdout: str) -> Dict[str, object]:
             "mode": "per_op_mismatch",
             "per_op": per_op,
             "mismatch_count": int(mismatch_match.group(1)),
-            "max_abs_diff": float(mismatch_match.group(2)),
-            "max_rel_diff": float(mismatch_match.group(3)),
+            "tolerance_violations": int(mismatch_match.group(2) or 0),
+            "max_abs_diff": float(mismatch_match.group(3)),
+            "max_rel_diff": float(mismatch_match.group(4)),
         }
         if first_mismatch_match:
             result["first_mismatch"] = {
@@ -223,6 +251,9 @@ def parse_compare_output(stdout: str) -> Dict[str, object]:
                 "ref": float(first_mismatch_match.group(6)),
                 "gfx": float(first_mismatch_match.group(7)),
             }
+            if first_mismatch_match.group(8) is not None:
+                result["first_mismatch"]["abs_diff"] = float(first_mismatch_match.group(8))
+                result["first_mismatch"]["rel_diff"] = float(first_mismatch_match.group(9))
         return result
     match_line = PER_OP_MATCH_RE.search(stdout)
     if per_op and not global_match and match_line:
@@ -241,17 +272,47 @@ def parse_compare_output(stdout: str) -> Dict[str, object]:
             "per_op": per_op,
             "max_abs_diff": max_abs,
             "max_rel_diff": max_rel,
+            "tolerance_violations": int(match_line.group(3) or 0),
         }
     if not global_match:
+        if real_image_global_match:
+            return {
+                "mode": "real_image_batch",
+                "failures": int(real_image_global_match.group(1)),
+                "max_abs_diff": float(real_image_global_match.group(2)),
+                "max_rel_diff": float(real_image_global_match.group(3)),
+                "results": [
+                    {
+                        "index": int(match.group(1)),
+                        "path": match.group(2),
+                        "max_abs_diff": float(match.group(3)),
+                        "max_rel_diff": float(match.group(4)),
+                        "tolerance_violations": int(match.group(5)),
+                        "status": match.group(6),
+                    }
+                    for match in REAL_IMAGE_RESULT_RE.finditer(stdout)
+                ],
+            }
         raise RuntimeError("failed to parse ov_gfx_compare_runner output")
     result: Dict[str, object] = {
         "max_abs_diff": float(global_match.group(1)),
         "max_rel_diff": float(global_match.group(2)),
+        "tolerance_violations": int(global_match.group(3) or 0),
     }
     if per_op:
         result["per_op"] = per_op
     if reference_match:
         result["reference_device"] = reference_match.group(1).strip()
+    if first_global_mismatch_match:
+        result["first_mismatch"] = {
+            "output": first_global_mismatch_match.group(1),
+            "max_index": int(first_global_mismatch_match.group(2)),
+            "ref": float(first_global_mismatch_match.group(3)),
+            "gfx": float(first_global_mismatch_match.group(4)),
+        }
+        if first_global_mismatch_match.group(5) is not None:
+            result["first_mismatch"]["abs_diff"] = float(first_global_mismatch_match.group(5))
+            result["first_mismatch"]["rel_diff"] = float(first_global_mismatch_match.group(6))
     return result
 
 
@@ -764,6 +825,8 @@ def run_compare(ctx: ExecContext,
     if args.reference_plugin and not args.gfx_only:
         reference_plugin = ctx.prepare_runtime_path(args.reference_plugin)
         cmd.extend(["--reference-plugin", reference_plugin])
+    for input_image in args.input_image:
+        cmd.extend(["--input-image", ctx.prepare_runtime_path(input_image)])
     cmd.extend(args.compare_arg)
     log(f"compare mode={'gfx_only' if args.gfx_only else args.reference_device + '_vs_GFX'}")
     result = ctx.run(cmd, runtime_env, allow_return_codes={0, 3, 4})
@@ -799,6 +862,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         help="Run only GFX inference and output tensor summary without a reference backend")
     parser.add_argument("--per-op-all", action="store_true",
                         help="Forward --per-op-all to ov_gfx_compare_runner for full per-op accuracy output")
+    parser.add_argument("--input-image", action="append", default=[],
+                        help="Stage and forward a real PPM image via ov_gfx_compare_runner --input-image. Repeat for batch accuracy.")
     parser.add_argument("--compare-arg", action="append", default=[],
                         help="Extra argument forwarded to ov_gfx_compare_runner. Repeat as needed.")
     parser.add_argument("--adb-serial", help="Optional adb device serial for --platform android")
@@ -838,7 +903,7 @@ def main() -> int:
             raise RuntimeError("--platform ssh requires host/user/password directly or via --ssh-device-file")
         remote_dir = args.remote_dir
         if remote_dir == "/data/local/tmp/gfx_eval":
-            work_directory = device_config.get("work_directory", "/tmp")
+            work_directory = device_config.get("work_directory") or f"/home/{user}"
             remote_dir = f"{work_directory.rstrip('/')}/gfx_eval"
         ctx = SshExecContext(host, user, password, remote_dir)
     else:
@@ -877,6 +942,10 @@ def main() -> int:
         report: Dict[str, object] = {
             "platform": args.platform,
             "model": str(Path(args.model).resolve()) if resolve_existing_path(args.model) else args.model,
+            "input_images": [
+                str(Path(path).resolve()) if resolve_existing_path(path) else path
+                for path in args.input_image
+            ],
         }
 
         compare = run_compare(ctx, args, runtime_env)
@@ -889,26 +958,59 @@ def main() -> int:
                     f"mean={output['mean']} l2={output['l2']}"
                 )
         elif compare.get("mode") == "per_op":
-            print(f"PER_OP_SUMMARY max_abs={compare['max_abs_diff']} max_rel={compare['max_rel_diff']}")
+            print(
+                f"PER_OP_SUMMARY max_abs={compare['max_abs_diff']} "
+                f"max_rel={compare['max_rel_diff']} "
+                f"tolerance_violations={compare.get('tolerance_violations', 0)}"
+            )
             print(f"PER_OP count={len(compare['per_op'])}")
         elif compare.get("mode") == "per_op_mismatch":
             print(
                 f"PER_OP_MISMATCH count={compare['mismatch_count']} "
+                f"tolerance_violations={compare.get('tolerance_violations', 0)} "
                 f"max_abs={compare['max_abs_diff']} max_rel={compare['max_rel_diff']}"
             )
             if compare.get("first_mismatch"):
                 first = compare["first_mismatch"]
-                print(
+                line = (
                     f"PER_OP_FIRST_MISMATCH op_index={first['index']} "
                     f"output_index={first['output_index']} name={first['name']} "
                     f"type={first['type']} max_index={first['max_index']} "
                     f"ref={first['ref']} gfx={first['gfx']}"
                 )
+                if "abs_diff" in first:
+                    line += f" abs_diff={first['abs_diff']} rel_diff={first['rel_diff']}"
+                print(line)
         elif compare.get("mode") == "per_op_skipped":
             print(f"PER_OP_SKIPPED count={compare['skipped_count']}")
+        elif compare.get("mode") == "real_image_batch":
+            print(
+                f"REAL_IMAGE_BATCH failures={compare['failures']} "
+                f"max_abs={compare['max_abs_diff']} max_rel={compare['max_rel_diff']}"
+            )
+            for item in compare.get("results", []):
+                print(
+                    f"REAL_IMAGE_RESULT index={item['index']} status={item['status']} "
+                    f"max_abs={item['max_abs_diff']} max_rel={item['max_rel_diff']} "
+                    f"tolerance_violations={item['tolerance_violations']}"
+                )
         else:
             reference_device = compare.get("reference_device", args.reference_device)
-            print(f"ACCURACY {reference_device}_vs_GFX max_abs={compare['max_abs_diff']} max_rel={compare['max_rel_diff']}")
+            print(
+                f"ACCURACY {reference_device}_vs_GFX max_abs={compare['max_abs_diff']} "
+                f"max_rel={compare['max_rel_diff']} "
+                f"tolerance_violations={compare.get('tolerance_violations', 0)}"
+            )
+            if compare.get("first_mismatch"):
+                first = compare["first_mismatch"]
+                line = (
+                    f"FIRST_MISMATCH output={first['output']} "
+                    f"max_index={first['max_index']} ref={first['ref']} "
+                    f"gfx={first['gfx']}"
+                )
+                if "abs_diff" in first:
+                    line += f" abs_diff={first['abs_diff']} rel_diff={first['rel_diff']}"
+                print(line)
             if compare.get("per_op"):
                 print(f"PER_OP count={len(compare['per_op'])}")
 

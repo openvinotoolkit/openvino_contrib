@@ -59,12 +59,14 @@ mlir::tensor::EmptyOp create_empty_like(mlir::OpBuilder& b,
     return b.create<mlir::tensor::EmptyOp>(loc, shape, type.getElementType(), dyn_dims);
 }
 
-mlir::Value emit_activation(mlir::OpBuilder& b,
-                            mlir::Location loc,
-                            mlir::Value x,
-                            ActivationKind kind,
-                            float alpha,
-                            mlir::Type elem_ty) {
+}  // namespace
+
+mlir::Value emit_mlir_activation(mlir::OpBuilder& b,
+                                 mlir::Location loc,
+                                 mlir::Value x,
+                                 ActivationKind kind,
+                                 float alpha,
+                                 mlir::Type elem_ty) {
     auto make_float_attr = [&](double v) { return mlir::FloatAttr::get(elem_ty, v); };
 
     mlir::Value zero = b.create<mlir::arith::ConstantOp>(loc, make_float_attr(0.0));
@@ -157,6 +159,8 @@ mlir::Value emit_activation(mlir::OpBuilder& b,
     return x;
 }
 
+namespace {
+
 bool annotate_conv_activation(mlir::ModuleOp module, ActivationKind kind, float alpha) {
     mlir::linalg::Conv2DNchwFchwOp conv;
     module.walk([&](mlir::linalg::Conv2DNchwFchwOp op) {
@@ -206,9 +210,9 @@ bool annotate_conv_bias(mlir::ModuleOp module, const BiasParams& params) {
     if (channels <= 0 || params.values.size() != static_cast<size_t>(channels)) {
         return false;
     }
-    auto c_type = mlir::RankedTensorType::get({channels}, elem_ty);
-    auto bias_attr = mlir::DenseFPElementsAttr::get(c_type, params.values);
-    conv->setAttr("gfx.bias", bias_attr);
+    conv->setAttr("gfx.bias_channels",
+                  mlir::IntegerAttr::get(mlir::IntegerType::get(module.getContext(), 64),
+                                         channels));
     return true;
 }
 
@@ -262,7 +266,7 @@ bool apply_activation_to_generic(mlir::ModuleOp module, ActivationKind kind, flo
         auto* block = &region.emplaceBlock();
         block->addArguments({elem_ty, elem_ty}, {loc, loc});
         mlir::OpBuilder body(block, block->begin());
-        auto activated = emit_activation(body, loc, block->getArgument(0), kind, alpha, elem_ty);
+        auto activated = emit_mlir_activation(body, loc, block->getArgument(0), kind, alpha, elem_ty);
         body.create<mlir::linalg::YieldOp>(loc, activated);
         ret.setOperand(0, fused.getResult(0));
         return true;
@@ -279,7 +283,7 @@ bool apply_activation_to_generic(mlir::ModuleOp module, ActivationKind kind, flo
     }
     mlir::OpBuilder b(yield);
     auto loc = yield.getLoc();
-    auto activated = emit_activation(b, loc, yield.getOperand(0), kind, alpha, elem_ty);
+    auto activated = emit_mlir_activation(b, loc, yield.getOperand(0), kind, alpha, elem_ty);
     yield.setOperand(0, activated);
     return true;
 }
@@ -322,7 +326,7 @@ bool apply_activation_to_output(mlir::ModuleOp module, ActivationKind kind, floa
         auto* block = &region.emplaceBlock();
         block->addArguments({elem_ty, elem_ty}, {loc, loc});
         mlir::OpBuilder body(block, block->begin());
-        auto activated = emit_activation(body, loc, block->getArgument(0), kind, alpha, elem_ty);
+        auto activated = emit_mlir_activation(body, loc, block->getArgument(0), kind, alpha, elem_ty);
         body.create<mlir::linalg::YieldOp>(loc, activated);
     }
     ret.setOperand(0, fused.getResult(0));
@@ -381,7 +385,7 @@ bool apply_input_activation_to_generic(mlir::ModuleOp module,
 
     mlir::Operation* first_after = &block->front();
     mlir::OpBuilder b(block, block->begin());
-    auto activated = emit_activation(b, first_after->getLoc(), input, kind, alpha, elem_ty);
+    auto activated = emit_mlir_activation(b, first_after->getLoc(), input, kind, alpha, elem_ty);
     std::unordered_set<mlir::Operation*> activation_ops;
     for (auto it = block->begin(); it != block->end() && &*it != first_after; ++it) {
         activation_ops.insert(&*it);
@@ -414,7 +418,7 @@ bool apply_input_activation_to_tensor_extract(mlir::ModuleOp module,
         mlir::Operation* insertion_limit = extract->getNextNode();
         mlir::OpBuilder b(extract);
         b.setInsertionPointAfter(extract);
-        auto activated = emit_activation(b, extract.getLoc(), extract.getResult(), kind, alpha, elem_ty);
+        auto activated = emit_mlir_activation(b, extract.getLoc(), extract.getResult(), kind, alpha, elem_ty);
 
         std::unordered_set<mlir::Operation*> activation_ops;
         for (auto* op = extract->getNextNode(); op && op != insertion_limit; op = op->getNextNode()) {

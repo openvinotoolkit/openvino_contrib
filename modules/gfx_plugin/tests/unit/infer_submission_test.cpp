@@ -403,6 +403,39 @@ TEST(InferSubmissionTest, DisabledIncrementalSubmitIgnoresIsolateFlushes) {
     EXPECT_EQ(stage1->completion_count, 1u);
 }
 
+TEST(InferSubmissionTest, SubmissionFlushesBeforeRecordingStageThatWouldExceedWindowBudget) {
+    std::vector<InferStage> pipeline;
+    pipeline.emplace_back();
+    pipeline.emplace_back();
+    auto* stage0 = new FakeStage(GpuStageSubmitPolicy{.weight = 2});
+    auto* stage1 = new FakeStage(GpuStageSubmitPolicy{.weight = 2});
+    pipeline[0].stage.reset(stage0);
+    pipeline[1].stage.reset(stage1);
+
+    FakeSubmissionSession submission(/*incremental_submit=*/true);
+    InferSubmissionConfig config;
+    config.max_stages_per_submit = 3;
+    config.max_output_bytes_per_submit = std::numeric_limits<size_t>::max();
+    config.max_macs_per_submit = std::numeric_limits<uint64_t>::max();
+
+    execute_pipeline_with_submission(
+        pipeline,
+        {},
+        {},
+        [](size_t) -> GpuTensor* {
+            return nullptr;
+        },
+        submission,
+        config);
+
+    EXPECT_EQ(submission.submit_count(), 2u);
+    ASSERT_EQ(submission.continue_recording_flags().size(), 2u);
+    EXPECT_TRUE(submission.continue_recording_flags()[0]);
+    EXPECT_FALSE(submission.continue_recording_flags()[1]);
+    EXPECT_EQ(stage0->completion_count, 1u);
+    EXPECT_EQ(stage1->completion_count, 1u);
+}
+
 TEST(InferSubmissionTest, SubmissionTuningUsesMultipleSlotsForDeepIncrementalPipelines) {
     InferSubmissionTuningCaps caps{};
     caps.backend = GpuBackend::Vulkan;
@@ -432,7 +465,7 @@ TEST(InferSubmissionTest, SubmissionTuningWidensWindowBudgetWhenMultipleSlotsAre
     EXPECT_GT(tuning.config.max_output_bytes_per_submit, 32u * 1024u * 1024u);
 }
 
-TEST(InferSubmissionTest, SubmissionTuningPrefersMonolithicSubmitForExtremelyDeepVulkanPipelines) {
+TEST(InferSubmissionTest, SubmissionTuningKeepsBoundedWindowsForExtremelyDeepVulkanPipelines) {
     InferSubmissionTuningCaps caps{};
     caps.backend = GpuBackend::Vulkan;
     caps.preferred_simd_width = 64u;
@@ -442,9 +475,52 @@ TEST(InferSubmissionTest, SubmissionTuningPrefersMonolithicSubmitForExtremelyDee
 
     const auto tuning = select_infer_submission_tuning(caps, /*stage_count=*/390u);
 
-    EXPECT_EQ(tuning.slot_count, 1u);
-    EXPECT_EQ(tuning.config.max_stages_per_submit, 390u);
-    EXPECT_FALSE(tuning.config.allow_incremental_submit);
+    EXPECT_GT(tuning.slot_count, 1u);
+    EXPECT_LT(tuning.config.max_stages_per_submit, 390u);
+    EXPECT_LT(tuning.config.max_output_bytes_per_submit,
+              std::numeric_limits<size_t>::max() / 8u);
+    EXPECT_TRUE(tuning.config.allow_incremental_submit);
+}
+
+TEST(InferSubmissionTest, SubmissionTuningAvoidsTinyWindowsForConstrainedDeepVulkanPipelines) {
+    InferSubmissionTuningCaps caps{};
+    caps.backend = GpuBackend::Vulkan;
+    caps.preferred_simd_width = 16u;
+    caps.subgroup_size = 16u;
+    caps.max_total_threads_per_group = 256u;
+    caps.supports_incremental_submit = true;
+
+    const auto tuning = select_infer_submission_tuning(caps, /*stage_count=*/517u);
+
+    EXPECT_GT(tuning.slot_count, 1u);
+    EXPECT_GE(tuning.config.max_stages_per_submit, 192u);
+    EXPECT_GE(tuning.config.max_output_bytes_per_submit, 128u * 1024u * 1024u);
+    EXPECT_LT(tuning.config.max_output_bytes_per_submit,
+              std::numeric_limits<size_t>::max() / 8u);
+    EXPECT_TRUE(tuning.config.allow_incremental_submit);
+}
+
+TEST(InferSubmissionTest, SubmissionTuningDerivesBroadcomBudgetFromCommonConstrainedProfile) {
+    InferSubmissionTuningCaps caps{};
+    caps.backend = GpuBackend::Vulkan;
+    caps.preferred_simd_width = 16u;
+    caps.subgroup_size = 16u;
+    caps.max_total_threads_per_group = 256u;
+    caps.supports_incremental_submit = true;
+
+    const auto generic_tuning = select_infer_submission_tuning(caps, /*stage_count=*/517u);
+    caps.device_family = GpuDeviceFamily::BroadcomV3D;
+    const auto broadcom_tuning = select_infer_submission_tuning(caps, /*stage_count=*/517u);
+
+    EXPECT_EQ(broadcom_tuning.slot_count, generic_tuning.slot_count);
+    EXPECT_EQ(broadcom_tuning.config.max_stages_per_submit,
+              generic_tuning.config.max_stages_per_submit);
+    EXPECT_EQ(broadcom_tuning.config.max_output_bytes_per_submit,
+              generic_tuning.config.max_output_bytes_per_submit);
+    EXPECT_LT(broadcom_tuning.config.max_macs_per_submit,
+              generic_tuning.config.max_macs_per_submit);
+    EXPECT_EQ(broadcom_tuning.config.max_macs_per_submit,
+              4ull * 1000ull * 1000ull * 1000ull);
 }
 
 TEST(InferSubmissionTest, SubmissionTuningKeepsSingleSlotWithoutIncrementalSubmit) {
@@ -459,6 +535,8 @@ TEST(InferSubmissionTest, SubmissionTuningKeepsSingleSlotWithoutIncrementalSubmi
 
     EXPECT_EQ(tuning.slot_count, 1u);
     EXPECT_EQ(tuning.config.max_stages_per_submit, 390u);
+    EXPECT_GT(tuning.config.max_macs_per_submit,
+              1000ull * 1000ull * 1000ull * 1000ull);
 }
 
 }  // namespace

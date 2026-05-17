@@ -327,6 +327,11 @@ mlir::ModuleOp build_mlir_group_conv2d_from_node(const std::shared_ptr<const ov:
         mlir::ValueRange{out_filled.getResult(0)},
         maps,
         iters);
+    generic->setAttr("gfx.depthwise_nchw_direct", b.getBoolAttr(!has_input_transform));
+    generic->setAttr("gfx.pad_begin", make_i64_attr(b, pads_begin));
+    generic->setAttr("gfx.pad_end", make_i64_attr(b, pads_end));
+    generic->setAttr("gfx.strides", make_i64_attr(b, strides));
+    generic->setAttr("gfx.dilations", make_i64_attr(b, dilations));
     {
         auto& region = generic.getRegion();
         region.getBlocks().clear();

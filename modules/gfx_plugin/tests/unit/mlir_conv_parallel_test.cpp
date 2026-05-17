@@ -9,18 +9,23 @@
 #include "mlir/mlir_passes.hpp"
 #include "transforms/conv_parallel_lowering.hpp"
 #include "transforms/conv_im2col_matmul_rewrite.hpp"
+#include "transforms/mlir_fused_ops.hpp"
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "openvino/core/model.hpp"
 #include "openvino/op/add.hpp"
+#include "openvino/op/avg_pool.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/convolution.hpp"
 #include "openvino/op/group_conv.hpp"
+#include "openvino/op/max_pool.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/result.hpp"
 #include "openvino/op/split.hpp"
@@ -300,6 +305,55 @@ TEST(GfxMlirTransforms, Conv2DIm2ColRewriteUsesPlainMatmulForBatchOne) {
     EXPECT_FALSE(has_restore_output) << "Default batch-1 im2col route should avoid restore_output stage";
 }
 
+TEST(GfxMlirTransforms, Conv2DIm2ColRewriteLowersFusedBiasRestoreStage) {
+    auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                         ov::Shape{1, 64, 40, 40});
+    std::vector<float> weights_data(64 * 64 * 3 * 3, 0.1f);
+    auto weights = ov::op::v0::Constant::create(ov::element::f32,
+                                                ov::Shape{64, 64, 3, 3},
+                                                weights_data);
+    auto conv = std::make_shared<ov::op::v1::Convolution>(
+        input,
+        weights,
+        ov::Strides{1, 1},
+        ov::CoordinateDiff{1, 1},
+        ov::CoordinateDiff{1, 1},
+        ov::Strides{1, 1});
+    auto res = std::make_shared<ov::op::v0::Result>(conv);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{input},
+                                             "conv2d_im2col_bias_restore");
+
+    mlir::MLIRContext ctx;
+    auto module = ov::gfx_plugin::build_mlir_conv2d_from_model(model, ctx);
+    ASSERT_TRUE(module) << "Failed to build MLIR module for Conv2D";
+    module->setAttr("gfx.conv_algorithm_kind", mlir::StringAttr::get(&ctx, "im2col_matmul"));
+
+    ov::gfx_plugin::BiasParams bias;
+    bias.values.assign(64, 0.25f);
+    bias.shape = {64};
+    bias.element_type = ov::element::f32;
+    ASSERT_TRUE(ov::gfx_plugin::apply_fused_bias(module, bias));
+
+    ASSERT_NO_THROW(ov::gfx_plugin::run_mlir_pipeline(module,
+                                                      /*use_alloca=*/false,
+                                                      /*use_parallel_loops=*/true));
+
+    bool has_tagged_generic = false;
+    bool has_parallel = false;
+    module.walk([&](mlir::Operation* op) {
+        if (op->getAttr("gfx.im2col_stage") != nullptr) {
+            has_tagged_generic = true;
+        }
+        if (llvm::isa<mlir::scf::ParallelOp>(op)) {
+            has_parallel = true;
+        }
+    });
+
+    EXPECT_FALSE(has_tagged_generic) << "Bias restore stage should lower before codegen";
+    EXPECT_TRUE(has_parallel) << "Expected scf.parallel after bias-aware im2col lowering";
+}
+
 TEST(GfxMlirTransforms, GroupConv2DBuilderSetsPadAttrsForGroupsOne) {
     auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
                                                          ov::Shape{1, 3, 8, 8});
@@ -455,6 +509,187 @@ TEST(GfxMlirTransforms, GroupConvBuilderAbsorbsInputTransposeIntoDepthwiseGeneri
     ASSERT_NO_THROW(ov::gfx_plugin::run_mlir_pipeline(module,
                                                       /*use_alloca=*/false,
                                                       /*use_parallel_loops=*/true));
+}
+
+TEST(GfxMlirTransforms, DepthwiseGroupConvUsesParallelLoweringForDirectNchw) {
+    auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f16,
+                                                         ov::Shape{1, 32, 20, 20});
+    std::vector<ov::float16> weights_data(32 * 1 * 1 * 3 * 3, ov::float16(0.1f));
+    auto weights = ov::op::v0::Constant::create(ov::element::f16,
+                                                ov::Shape{32, 1, 1, 3, 3},
+                                                weights_data);
+    auto gconv = std::make_shared<ov::op::v1::GroupConvolution>(
+        input,
+        weights,
+        ov::Strides{1, 1},
+        ov::CoordinateDiff{1, 1},
+        ov::CoordinateDiff{1, 1},
+        ov::Strides{1, 1});
+    auto res = std::make_shared<ov::op::v0::Result>(gconv);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{input},
+                                             "depthwise_group_conv_parallel");
+
+    mlir::MLIRContext ctx;
+    auto module = ov::gfx_plugin::build_mlir_group_conv2d_from_model(model, ctx);
+    ASSERT_TRUE(module);
+    module->setAttr("gfx.conv_algorithm_kind",
+                    mlir::StringAttr::get(&ctx, "depthwise_direct"));
+    module->setAttr("gfx.prefer_parallel", mlir::BoolAttr::get(&ctx, true));
+
+    ASSERT_NO_THROW(ov::gfx_plugin::run_mlir_pipeline(module,
+                                                      /*use_alloca=*/false,
+                                                      /*use_parallel_loops=*/true));
+
+    bool has_depthwise_generic = false;
+    size_t parallel_count = 0;
+    bool has_padded_alloc = false;
+    module.walk([&](mlir::Operation* op) {
+        if (auto generic = llvm::dyn_cast<mlir::linalg::GenericOp>(op)) {
+            has_depthwise_generic =
+                has_depthwise_generic ||
+                static_cast<bool>(generic->getAttr("gfx.depthwise_nchw_direct"));
+        }
+        if (llvm::isa<mlir::scf::ParallelOp>(op)) {
+            ++parallel_count;
+        }
+        if (auto alloc = llvm::dyn_cast<mlir::memref::AllocOp>(op)) {
+            if (auto type = llvm::dyn_cast<mlir::MemRefType>(alloc.getType())) {
+                if (type.getRank() == 4 && type.getDimSize(2) == 22 &&
+                    type.getDimSize(3) == 22) {
+                    has_padded_alloc = true;
+                }
+            }
+        }
+    });
+    EXPECT_FALSE(has_depthwise_generic)
+        << "Depthwise GroupConvolution should leave the serial linalg.generic path";
+    EXPECT_EQ(parallel_count, 1u)
+        << "Depthwise GroupConvolution should lower to one compute scf.parallel";
+    EXPECT_FALSE(has_padded_alloc)
+        << "Depthwise GroupConvolution should absorb padding into the compute loop";
+    auto loop_dims = module->getAttrOfType<mlir::IntegerAttr>("gfx.parallel_loop_dims");
+    ASSERT_TRUE(loop_dims);
+    EXPECT_EQ(loop_dims.getInt(), 5);
+}
+
+TEST(GfxMlirTransforms, DepthwiseGroupConvUsesParallelLoweringForAppleMslFp32) {
+    auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                         ov::Shape{1, 32, 20, 20});
+    std::vector<float> weights_data(32 * 1 * 1 * 3 * 3, 0.1f);
+    auto weights = ov::op::v0::Constant::create(ov::element::f32,
+                                                ov::Shape{32, 1, 1, 3, 3},
+                                                weights_data);
+    auto gconv = std::make_shared<ov::op::v1::GroupConvolution>(
+        input,
+        weights,
+        ov::Strides{1, 1},
+        ov::CoordinateDiff{1, 1},
+        ov::CoordinateDiff{1, 1},
+        ov::Strides{1, 1});
+    auto res = std::make_shared<ov::op::v0::Result>(gconv);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{input},
+                                             "depthwise_group_conv_apple_msl_fp32");
+
+    mlir::MLIRContext ctx;
+    auto module = ov::gfx_plugin::build_mlir_group_conv2d_from_model(model, ctx);
+    ASSERT_TRUE(module);
+    module->setAttr("gfx.stage_manifest.backend_domain",
+                    mlir::StringAttr::get(&ctx, "apple_msl"));
+    module->setAttr("gfx.prefer_parallel", mlir::BoolAttr::get(&ctx, false));
+
+    ASSERT_NO_THROW(ov::gfx_plugin::run_mlir_pipeline(module,
+                                                      /*use_alloca=*/false,
+                                                      /*use_parallel_loops=*/true));
+
+    bool has_depthwise_generic = false;
+    bool has_parallel = false;
+    module.walk([&](mlir::Operation* op) {
+        if (auto generic = llvm::dyn_cast<mlir::linalg::GenericOp>(op)) {
+            has_depthwise_generic =
+                has_depthwise_generic ||
+                static_cast<bool>(generic->getAttr("gfx.depthwise_nchw_direct"));
+        }
+        if (llvm::isa<mlir::scf::ParallelOp>(op)) {
+            has_parallel = true;
+        }
+    });
+    EXPECT_FALSE(has_depthwise_generic)
+        << "Apple MSL depthwise GroupConvolution should lower the serial generic";
+    EXPECT_TRUE(has_parallel)
+        << "Expected scf.parallel for Apple MSL fp32 depthwise GroupConvolution";
+}
+
+TEST(GfxMlirTransforms, MaxPool2DBuilderUsesParallelGpuDispatch) {
+    auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                         ov::Shape{1, 384, 20, 20});
+    auto pool = std::make_shared<ov::op::v1::MaxPool>(
+        input,
+        ov::Strides{1, 1},
+        ov::Shape{2, 2},
+        ov::Shape{2, 2},
+        ov::Shape{5, 5},
+        ov::op::RoundingType::FLOOR);
+    auto res = std::make_shared<ov::op::v0::Result>(pool);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{input},
+                                             "maxpool2d_parallel_test");
+
+    mlir::MLIRContext ctx;
+    auto module = ov::gfx_plugin::build_mlir_maxpool_from_model(model, ctx);
+    ASSERT_TRUE(module);
+
+    bool has_parallel = false;
+    module.walk([&](mlir::scf::ParallelOp) {
+        has_parallel = true;
+    });
+
+    EXPECT_TRUE(has_parallel) << "MaxPool2D must not use the legacy serial single-dispatch loop";
+    auto loop_dims = module->getAttrOfType<mlir::IntegerAttr>("gfx.parallel_loop_dims");
+    ASSERT_TRUE(loop_dims);
+    EXPECT_EQ(loop_dims.getInt(), 5);
+    auto threads_h = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_h");
+    auto threads_w = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_w");
+    ASSERT_TRUE(threads_h);
+    ASSERT_TRUE(threads_w);
+    EXPECT_EQ(threads_h.getInt() * threads_w.getInt(), 64);
+}
+
+TEST(GfxMlirTransforms, AvgPool2DBuilderUsesParallelGpuDispatch) {
+    auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                         ov::Shape{1, 64, 16, 16});
+    auto pool = std::make_shared<ov::op::v1::AvgPool>(
+        input,
+        ov::Strides{1, 1},
+        ov::Shape{1, 1},
+        ov::Shape{1, 1},
+        ov::Shape{3, 3},
+        true,
+        ov::op::RoundingType::FLOOR);
+    auto res = std::make_shared<ov::op::v0::Result>(pool);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{input},
+                                             "avgpool2d_parallel_test");
+
+    mlir::MLIRContext ctx;
+    auto module = ov::gfx_plugin::build_mlir_avgpool_from_model(model, ctx);
+    ASSERT_TRUE(module);
+
+    bool has_parallel = false;
+    module.walk([&](mlir::scf::ParallelOp) {
+        has_parallel = true;
+    });
+
+    EXPECT_TRUE(has_parallel) << "AvgPool2D must not use the legacy serial single-dispatch loop";
+    auto loop_dims = module->getAttrOfType<mlir::IntegerAttr>("gfx.parallel_loop_dims");
+    ASSERT_TRUE(loop_dims);
+    EXPECT_EQ(loop_dims.getInt(), 5);
+    auto threads_h = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_h");
+    auto threads_w = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_w");
+    ASSERT_TRUE(threads_h);
+    ASSERT_TRUE(threads_w);
+    EXPECT_EQ(threads_h.getInt() * threads_w.getInt(), 64);
 }
 
 TEST(GfxMlirTransforms, ConvBuilderAbsorbsInputTransposeIntoPointwiseGeneric) {

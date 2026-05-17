@@ -51,7 +51,9 @@ inline bool gfx_mpsrt_matrix_bridge_supported(const GfxMpsrtTensorAbiDesc& desc)
             desc.dtype == static_cast<uint32_t>(GfxMpsrtDType::I8) ||
             desc.dtype == static_cast<uint32_t>(GfxMpsrtDType::U8) ||
             desc.dtype == static_cast<uint32_t>(GfxMpsrtDType::I32) ||
-            desc.dtype == static_cast<uint32_t>(GfxMpsrtDType::U32)) &&
+            desc.dtype == static_cast<uint32_t>(GfxMpsrtDType::U32) ||
+            desc.dtype == static_cast<uint32_t>(GfxMpsrtDType::I64) ||
+            desc.dtype == static_cast<uint32_t>(GfxMpsrtDType::U64)) &&
            desc.matrix_rows != 0 &&
            desc.matrix_columns != 0 &&
            desc.matrix_row_bytes != 0 &&

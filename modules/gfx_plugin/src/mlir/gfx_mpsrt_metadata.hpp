@@ -722,6 +722,30 @@ inline bool gfx_mpsrt_read_topk_desc_attrs(mlir::Operation* module, const std::s
     return read_any;
 }
 
+inline void gfx_mpsrt_set_sdpa_desc_attrs(mlir::Operation* module, const std::string& prefix,
+                                          const GfxMpsrtSdpaAbiDesc& desc) {
+    mlir::Builder builder(module->getContext());
+    module->setAttr(prefix + ".has_mask", builder.getI32IntegerAttr(static_cast<int32_t>(desc.has_mask)));
+    module->setAttr(prefix + ".causal", builder.getI32IntegerAttr(static_cast<int32_t>(desc.causal)));
+    module->setAttr(prefix + ".accumulate_fp32", builder.getI32IntegerAttr(static_cast<int32_t>(desc.accumulate_fp32)));
+    module->setAttr(prefix + ".layout", builder.getI32IntegerAttr(static_cast<int32_t>(desc.layout)));
+    module->setAttr(prefix + ".scale", builder.getF32FloatAttr(desc.scale));
+}
+
+inline bool gfx_mpsrt_read_sdpa_desc_attrs(mlir::Operation* module, const std::string& prefix,
+                                           GfxMpsrtSdpaAbiDesc& desc) {
+    bool read_any = false;
+    read_any |= gfx_mpsrt_read_i32_attr(module, prefix + ".has_mask", desc.has_mask);
+    read_any |= gfx_mpsrt_read_i32_attr(module, prefix + ".causal", desc.causal);
+    read_any |= gfx_mpsrt_read_i32_attr(module, prefix + ".accumulate_fp32", desc.accumulate_fp32);
+    read_any |= gfx_mpsrt_read_i32_attr(module, prefix + ".layout", desc.layout);
+    if (auto attr = module->getAttrOfType<mlir::FloatAttr>(prefix + ".scale")) {
+        desc.scale = static_cast<float>(attr.getValueAsDouble());
+        read_any = true;
+    }
+    return read_any;
+}
+
 inline void gfx_mpsrt_set_conv2d_desc_attrs(mlir::Operation* module, const std::string& prefix,
                                             const GfxMpsrtConv2DAbiDesc& desc) {
     mlir::Builder builder(module->getContext());
@@ -921,6 +945,9 @@ inline void gfx_mpsrt_set_stage_desc_attrs(mlir::Operation* module, const std::s
     if (stage.kind == GfxMpsrtStageKind::MPSTopK) {
         gfx_mpsrt_set_topk_desc_attrs(module, prefix + ".topk", stage.topk_desc);
     }
+    if (stage.kind == GfxMpsrtStageKind::MPSSdpa) {
+        gfx_mpsrt_set_sdpa_desc_attrs(module, prefix + ".sdpa", stage.sdpa_desc);
+    }
 }
 
 inline bool gfx_mpsrt_read_stage_desc_attrs(mlir::Operation* module, const std::string& prefix,
@@ -954,6 +981,9 @@ inline bool gfx_mpsrt_read_stage_desc_attrs(mlir::Operation* module, const std::
     }
     if (stage.kind == GfxMpsrtStageKind::MPSTopK) {
         (void)gfx_mpsrt_read_topk_desc_attrs(module, prefix + ".topk", stage.topk_desc);
+    }
+    if (stage.kind == GfxMpsrtStageKind::MPSSdpa) {
+        (void)gfx_mpsrt_read_sdpa_desc_attrs(module, prefix + ".sdpa", stage.sdpa_desc);
     }
     return stage.domain != GfxStageBackendDomain::Unknown && stage.kind != GfxMpsrtStageKind::Unknown &&
            gfx_mpsrt_stage_has_builder_symbol(stage.kind) && !gfx_mpsrt_stage_record_key(stage).empty();

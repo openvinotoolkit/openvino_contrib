@@ -36,6 +36,8 @@ std::string mpsrt_op_name_for_stage(GfxMpsrtStageKind kind) {
             return "gfx.mpsrt.softmax";
         case GfxMpsrtStageKind::MPSTopK:
             return "gfx.mpsrt.topk";
+        case GfxMpsrtStageKind::MPSSdpa:
+            return "gfx.mpsrt.sdpa";
         case GfxMpsrtStageKind::MSLDispatch:
             return "gfx.mpsrt.dispatch";
         case GfxMpsrtStageKind::Unknown:

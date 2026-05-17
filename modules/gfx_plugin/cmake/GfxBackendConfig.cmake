@@ -62,12 +62,15 @@ function(_gfx_check_metal_backend out_var)
 
     find_library(GFX_METAL_LIBRARY Metal PATHS ${_gfx_framework_paths})
     find_library(GFX_METAL_PERFORMANCE_SHADERS_LIBRARY MetalPerformanceShaders PATHS ${_gfx_framework_paths})
+    find_library(GFX_METAL_PERFORMANCE_SHADERS_GRAPH_LIBRARY MetalPerformanceShadersGraph
+        PATHS ${_gfx_framework_paths})
     find_library(GFX_FOUNDATION_LIBRARY Foundation PATHS ${_gfx_framework_paths})
     find_path(GFX_METAL_INCLUDE_DIR Metal/Metal.h
         PATHS ${_gfx_framework_paths}
         PATH_SUFFIXES Metal.framework/Headers)
 
     if(NOT GFX_METAL_LIBRARY OR NOT GFX_METAL_PERFORMANCE_SHADERS_LIBRARY OR
+       NOT GFX_METAL_PERFORMANCE_SHADERS_GRAPH_LIBRARY OR
        NOT GFX_FOUNDATION_LIBRARY OR NOT GFX_METAL_INCLUDE_DIR)
         return()
     endif()
@@ -82,9 +85,12 @@ function(_gfx_check_metal_backend out_var)
 #include <Foundation/Foundation.h>
 #include <Metal/Metal.h>
 #include <MetalPerformanceShaders/MetalPerformanceShaders.h>
+#include <MetalPerformanceShadersGraph/MetalPerformanceShadersGraph.h>
 int main() {
   id<MTLDevice> dev = MTLCreateSystemDefaultDevice();
   (void)MPSSupportsMTLDevice(dev);
+  MPSGraph* graph = [[MPSGraph alloc] init];
+  (void)graph;
   return 0;
 }
 ]=])
@@ -94,7 +100,7 @@ int main() {
     if(GFX_METAL_COMPILES)
         set(${out_var} ON PARENT_SCOPE)
         set(GFX_METAL_LIBRARIES
-            "${GFX_METAL_LIBRARY};${GFX_METAL_PERFORMANCE_SHADERS_LIBRARY};${GFX_FOUNDATION_LIBRARY}"
+            "${GFX_METAL_LIBRARY};${GFX_METAL_PERFORMANCE_SHADERS_LIBRARY};${GFX_METAL_PERFORMANCE_SHADERS_GRAPH_LIBRARY};${GFX_FOUNDATION_LIBRARY}"
             PARENT_SCOPE)
         set(GFX_METAL_INCLUDE_DIRS "${GFX_METAL_INCLUDE_DIR}" PARENT_SCOPE)
     endif()

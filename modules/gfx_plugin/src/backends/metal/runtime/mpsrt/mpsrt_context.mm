@@ -6,6 +6,7 @@
 
 #import <Foundation/Foundation.h>
 #import <MetalPerformanceShaders/MetalPerformanceShaders.h>
+#import <MetalPerformanceShadersGraph/MetalPerformanceShadersGraph.h>
 
 #include <algorithm>
 #include <chrono>
@@ -236,6 +237,14 @@ MPSDataType mps_data_type_from_gfx(uint32_t dtype) {
     }
 }
 
+NSArray<NSNumber*>* mps_shape_from_tensor_desc(const GfxMpsrtTensorAbiDesc& desc) {
+    NSMutableArray<NSNumber*>* shape = [NSMutableArray arrayWithCapacity:desc.rank];
+    for (uint32_t i = 0; i < desc.rank && i < 8; ++i) {
+        [shape addObject:@(desc.dims[i])];
+    }
+    return shape;
+}
+
 MTLPixelFormat texture_pixel_format_from_gfx(uint32_t dtype) {
     switch (static_cast<GfxMpsrtDType>(dtype)) {
     case GfxMpsrtDType::F16:
@@ -249,10 +258,6 @@ MTLPixelFormat texture_pixel_format_from_gfx(uint32_t dtype) {
 
 uint32_t image_slice_count(uint32_t feature_channels) {
     return (feature_channels + 3u) / 4u;
-}
-
-uint32_t align_channels_for_mps_image(uint32_t channels) {
-    return image_slice_count(channels) * 4u;
 }
 
 bool tensor_requires_image_resource(const GfxMpsrtTensorAbiDesc& desc) {
@@ -687,6 +692,73 @@ uint32_t conv2d_input_channels_per_group(const GfxMpsrtTensorAbiDesc& weights) {
     return weights.rank == 5 ? weights.dims[2] : weights.dims[1];
 }
 
+uint32_t conv2d_output_channels_per_group(const GfxMpsrtTensorAbiDesc& weights) {
+    return weights.rank == 5 ? weights.dims[1] : weights.dims[0];
+}
+
+bool is_mps_cnn_depthwise_conv2d_candidate(const GfxMpsrtTensorAbiDesc& weights,
+                                           const GfxMpsrtTensorAbiDesc& input,
+                                           const GfxMpsrtTensorAbiDesc& output,
+                                           const MpsrtRuntimeStage& stage,
+                                           const GfxMpsrtTensorAbiDesc* bias) {
+    if (stage.kind != GfxMpsrtStageKind::MPSGroupConv2D || weights.rank != 5 ||
+        stage.conv2d_desc.groups == 0 || stage.conv2d_desc.fused_activation != 0) {
+        return false;
+    }
+    const uint32_t groups = weights.dims[0];
+    if (groups == 0 || groups != stage.conv2d_desc.groups ||
+        weights.dims[1] != 1 || weights.dims[2] != 1 ||
+        input.image_feature_channels != groups || output.image_feature_channels != groups) {
+        return false;
+    }
+    if (bias && bias->dtype != output.dtype) {
+        return false;
+    }
+    return true;
+}
+
+uint32_t mps_conv2d_descriptor_groups(const GfxMpsrtTensorAbiDesc& weights, const MpsrtRuntimeStage& stage) {
+    if (weights.rank == 5 && stage.conv2d_desc.groups > 1 && conv2d_input_channels_per_group(weights) % 4u != 0u) {
+        return 1u;
+    }
+    return stage.conv2d_desc.groups;
+}
+
+bool pack_depthwise_weights_to_mps_cnn(const GfxMpsrtTensorAbiDesc& weights,
+                                       const uint8_t* source,
+                                       size_t bytes,
+                                       std::vector<uint8_t>& packed,
+                                       std::string* log) {
+    const uint64_t expected_bytes = tensor_dense_bytes(weights);
+    if (!source || expected_bytes == 0 || expected_bytes != bytes) {
+        return fail(log, "GFX MPSRT: MPS CNN DepthwiseConv2D cannot pack weights with invalid byte size");
+    }
+    if (weights.rank != 5 || weights.dims[1] != 1 || weights.dims[2] != 1) {
+        return fail(log, "GFX MPSRT: MPS CNN DepthwiseConv2D expects GOIHW depthwise weights");
+    }
+    const auto dtype = static_cast<GfxMpsrtDType>(weights.dtype);
+    const uint32_t element_bytes = gfx_mpsrt_element_size_bytes(dtype);
+    if (element_bytes == 0) {
+        return fail(log, "GFX MPSRT: MPS CNN DepthwiseConv2D cannot pack weights with unsupported dtype");
+    }
+
+    const uint32_t channels = weights.dims[0];
+    const uint32_t kernel_h = weights.dims[3];
+    const uint32_t kernel_w = weights.dims[4];
+    packed.assign(static_cast<size_t>(channels) * kernel_h * kernel_w * element_bytes, 0u);
+    for (uint32_t channel = 0; channel < channels; ++channel) {
+        for (uint32_t kh = 0; kh < kernel_h; ++kh) {
+            for (uint32_t kw = 0; kw < kernel_w; ++kw) {
+                const size_t src_index =
+                    (((static_cast<size_t>(channel) * kernel_h + kh) * kernel_w + kw) * element_bytes);
+                const size_t dst_index = src_index;
+                std::memcpy(packed.data() + dst_index, source + src_index, element_bytes);
+            }
+        }
+    }
+    return true;
+}
+
 bool pack_conv_weights_to_mps_ohwi(const GfxMpsrtTensorAbiDesc& weights, const GfxMpsrtTensorAbiDesc& input,
                                    const GfxMpsrtTensorAbiDesc& output, const MpsrtRuntimeStage& stage,
                                    const uint8_t* source, size_t bytes, std::vector<uint8_t>& packed,
@@ -706,10 +778,10 @@ bool pack_conv_weights_to_mps_ohwi(const GfxMpsrtTensorAbiDesc& weights, const G
         const uint32_t input_channels = weights.dims[1];
         const uint32_t kernel_h = weights.dims[2];
         const uint32_t kernel_w = weights.dims[3];
-        const uint32_t mps_input_channels = align_channels_for_mps_image(input.image_feature_channels);
-        const uint32_t mps_output_channels = align_channels_for_mps_image(output.image_feature_channels);
+        const uint32_t mps_input_channels = input.image_feature_channels;
+        const uint32_t mps_output_channels = output.image_feature_channels;
         if (stage.conv2d_desc.groups != 1) {
-            return fail(log, "GFX MPSRT: MPS Conv2D padded OHWI pack supports only groups=1");
+            return fail(log, "GFX MPSRT: MPS Conv2D OHWI pack supports only groups=1");
         }
         if (input_channels != input.image_feature_channels || output_channels != output.image_feature_channels) {
             return fail(log, "GFX MPSRT: MPS Conv2D weights do not match logical image channels");
@@ -742,8 +814,11 @@ bool pack_conv_weights_to_mps_ohwi(const GfxMpsrtTensorAbiDesc& weights, const G
         const uint32_t kernel_w = weights.dims[4];
         const uint32_t input_channels = input.image_feature_channels;
         const uint32_t output_channels = output.image_feature_channels;
-        const uint32_t mps_input_channels = align_channels_for_mps_image(input_channels);
-        const uint32_t mps_output_channels = align_channels_for_mps_image(output_channels);
+        const uint32_t descriptor_groups = mps_conv2d_descriptor_groups(weights, stage);
+        const bool dense_sparse_mps_group_workaround = descriptor_groups == 1u && groups > 1u;
+        const uint32_t mps_input_channels =
+            dense_sparse_mps_group_workaround ? input_channels : input_channels_per_group;
+        const uint32_t mps_output_channels = output_channels;
         if (groups == 0 || stage.conv2d_desc.groups != groups || input_channels != groups * input_channels_per_group ||
             output_channels != groups * output_channels_per_group) {
             return fail(log, "GFX MPSRT: MPS GroupConv2D weights do not match "
@@ -758,7 +833,8 @@ bool pack_conv_weights_to_mps_ohwi(const GfxMpsrtTensorAbiDesc& weights, const G
                 for (uint32_t kh = 0; kh < kernel_h; ++kh) {
                     for (uint32_t kw = 0; kw < kernel_w; ++kw) {
                         for (uint32_t ic = 0; ic < input_channels_per_group; ++ic) {
-                            const uint32_t physical_ic = group * input_channels_per_group + ic;
+                            const uint32_t mps_ic =
+                                dense_sparse_mps_group_workaround ? group * input_channels_per_group + ic : ic;
                             const size_t src_index = (((((static_cast<size_t>(group) * output_channels_per_group + oc) *
                                                              input_channels_per_group +
                                                          ic) *
@@ -770,7 +846,7 @@ bool pack_conv_weights_to_mps_ohwi(const GfxMpsrtTensorAbiDesc& weights, const G
                             const size_t dst_index =
                                 ((((static_cast<size_t>(physical_oc) * kernel_h + kh) * kernel_w + kw) *
                                       mps_input_channels +
-                                  physical_ic) *
+                                  mps_ic) *
                                  element_bytes);
                             std::memcpy(packed.data() + dst_index, source + src_index, element_bytes);
                         }
@@ -781,6 +857,43 @@ bool pack_conv_weights_to_mps_ohwi(const GfxMpsrtTensorAbiDesc& weights, const G
         return true;
     }
     return fail(log, "GFX MPSRT: MPS Conv2D weights must be OIHW or GOIHW");
+}
+
+id<MTLBuffer> new_private_buffer_with_bytes(id<MTLDevice> device,
+                                            id<MTLCommandQueue> command_queue,
+                                            const void* data,
+                                            size_t bytes,
+                                            const char* name,
+                                            std::string* log) {
+    if (!device || !command_queue || !data || bytes == 0) {
+        (void)fail(log, std::string("GFX MPSRT: cannot upload ") + name + " with empty input");
+        return nil;
+    }
+    id<MTLBuffer> staging = [device newBufferWithBytes:data length:bytes options:MTLResourceStorageModeShared];
+    if (!staging) {
+        (void)fail(log, std::string("GFX MPSRT: failed to create staging buffer for ") + name);
+        return nil;
+    }
+    id<MTLBuffer> buffer = [device newBufferWithLength:bytes options:MTLResourceStorageModePrivate];
+    if (!buffer) {
+        [staging release];
+        (void)fail(log, std::string("GFX MPSRT: failed to create private buffer for ") + name);
+        return nil;
+    }
+
+    id<MTLCommandBuffer> command = [command_queue commandBuffer];
+    id<MTLBlitCommandEncoder> blit = [command blitCommandEncoder];
+    [blit copyFromBuffer:staging sourceOffset:0 toBuffer:buffer destinationOffset:0 size:bytes];
+    [blit endEncoding];
+    [command commit];
+    [command waitUntilCompleted];
+    [staging release];
+    if ([command status] != MTLCommandBufferStatusCompleted) {
+        [buffer release];
+        (void)fail(log, std::string("GFX MPSRT: failed to upload ") + name + " into GPU-owned buffer");
+        return nil;
+    }
+    return buffer;
 }
 
 bool unpack_conv_bias_to_float(const GfxMpsrtTensorAbiDesc& bias,
@@ -840,11 +953,13 @@ bool make_mps_conv2d_cache_key(const MpsrtRuntimeStage& stage, const GfxMpsrtTen
         conv2d_output_channels(weights) != output.image_feature_channels) {
         return fail(log, "GFX MPSRT: MPS Conv2D weights do not match image channel contract");
     }
+    const uint32_t descriptor_groups = mps_conv2d_descriptor_groups(weights, stage);
     std::ostringstream stream;
     stream << "mps_conv2d|" << static_cast<uint32_t>(stage.kind) << '|' << input.image_feature_channels << '|'
            << output.image_feature_channels << '|' << conv2d_kernel_width(weights) << '|'
-           << conv2d_kernel_height(weights) << '|' << stage.conv2d_desc.groups << '|' << stage.conv2d_desc.strides[0]
-           << '|' << stage.conv2d_desc.strides[1] << '|' << stage.conv2d_desc.dilations[0] << '|'
+           << conv2d_kernel_height(weights) << '|' << stage.conv2d_desc.groups << '|' << descriptor_groups << '|'
+           << stage.conv2d_desc.strides[0] << '|' << stage.conv2d_desc.strides[1] << '|'
+           << stage.conv2d_desc.dilations[0] << '|'
            << stage.conv2d_desc.dilations[1] << '|' << stage.conv2d_desc.pads[0] << '|' << stage.conv2d_desc.pads[1]
            << '|' << stage.conv2d_desc.pads[2] << '|' << stage.conv2d_desc.pads[3] << '|'
            << stage.conv2d_desc.fused_activation << '|' << output.dtype << '|'
@@ -936,9 +1051,6 @@ bool make_mps_topk_cache_key(const MpsrtRuntimeStage& stage, const GfxMpsrtTenso
     if (stage.topk_desc.k == 0) {
         return fail(log, "GFX MPSRT: MPS TopK k must be positive");
     }
-    if (stage.topk_desc.k > 16) {
-        return fail(log, "GFX MPSRT: MPS TopK k exceeds MPSMatrixFindTopK limit");
-    }
     if (input.dtype != values_output.dtype) {
         return fail(log, "GFX MPSRT: MPS TopK input and values output dtype must match");
     }
@@ -963,16 +1075,119 @@ bool make_mps_topk_cache_key(const MpsrtRuntimeStage& stage, const GfxMpsrtTenso
         indices_output.dtype != static_cast<uint32_t>(GfxMpsrtDType::I64)) {
         return fail(log, "GFX MPSRT: MPS TopK index output must be i32/u32/i64");
     }
+    const bool uses_graph_topk = stage.topk_desc.k > 16;
+    if (stage.topk_desc.k > input.matrix_columns) {
+        return fail(log, "GFX MPSRT: MPS TopK k exceeds source columns");
+    }
+    if (uses_graph_topk && stage.topk_desc.sort_type == 2u) {
+        return fail(log, "GFX MPSRT: MPSGraph TopK does not implement SORT_INDICES");
+    }
+    if (uses_graph_topk && mps_data_type_from_gfx(input.dtype) == MPSDataTypeInvalid) {
+        return fail(log, "GFX MPSRT: MPSGraph TopK dtype is unsupported");
+    }
     std::ostringstream stream;
-    stream << "mps_topk|" << input.matrix_rows << '|' << input.matrix_columns << '|' << matrix_count_or_one(input)
+    stream << "mps_topk|" << (uses_graph_topk ? "graph" : "matrix") << '|' << input.matrix_rows << '|'
+           << input.matrix_columns << '|' << matrix_count_or_one(input)
            << '|' << input.dtype << "|axis" << stage.topk_desc.axis << "|k" << stage.topk_desc.k << "|sort"
            << stage.topk_desc.sort_type;
     key = stream.str();
     return true;
 }
 
+bool is_dense_ndarray_graph_tensor_desc(const GfxMpsrtTensorAbiDesc& desc) {
+    if (desc.storage != static_cast<uint32_t>(GfxMpsrtStorage::NDArray)) {
+        return false;
+    }
+    const auto dtype = static_cast<GfxMpsrtDType>(desc.dtype);
+    const uint32_t element_bytes = gfx_mpsrt_element_size_bytes(dtype);
+    if (element_bytes == 0 || desc.byte_offset != 0 || desc.rank == 0 || desc.rank > 8) {
+        return false;
+    }
+    uint64_t dense_elements = 1;
+    for (uint32_t i = 0; i < desc.rank; ++i) {
+        if (desc.dims[i] == 0) {
+            return false;
+        }
+        dense_elements *= desc.dims[i];
+    }
+    return desc.byte_length == dense_elements * element_bytes;
+}
+
+bool make_mps_sdpa_cache_key(const MpsrtRuntimeStage& stage,
+                             const GfxMpsrtTensorAbiDesc& query,
+                             const GfxMpsrtTensorAbiDesc& key_desc,
+                             const GfxMpsrtTensorAbiDesc& value,
+                             const GfxMpsrtTensorAbiDesc& output,
+                             std::string& key, std::string* log) {
+    if (stage.sdpa_desc.has_mask != 0 || stage.sdpa_desc.causal != 0) {
+        return fail(log, "GFX MPSRT: MPSGraph SDPA supports only unmasked non-causal stages in this ABI");
+    }
+    if (query.dtype != key_desc.dtype || query.dtype != value.dtype || query.dtype != output.dtype) {
+        return fail(log, "GFX MPSRT: MPSGraph SDPA Q/K/V/output dtype mismatch");
+    }
+    if (mps_data_type_from_gfx(output.dtype) == MPSDataTypeInvalid) {
+        return fail(log, "GFX MPSRT: MPSGraph SDPA dtype is unsupported");
+    }
+    if (query.rank != 4 || key_desc.rank != 4 || value.rank != 4 || output.rank != 4) {
+        return fail(log, "GFX MPSRT: MPSGraph SDPA expects rank-4 Q/K/V/output tensors");
+    }
+    if (!is_dense_ndarray_graph_tensor_desc(query) ||
+        !is_dense_ndarray_graph_tensor_desc(key_desc) ||
+        !is_dense_ndarray_graph_tensor_desc(value) ||
+        !is_dense_ndarray_graph_tensor_desc(output)) {
+        return fail(log, "GFX MPSRT: MPSGraph SDPA requires dense zero-offset NDArray tensors");
+    }
+    if (stage.sdpa_desc.layout == GfxMpsrtSdpaLayoutNativeBHND) {
+        if (query.dims[0] != key_desc.dims[0] || query.dims[0] != value.dims[0] ||
+            query.dims[1] != key_desc.dims[1] || query.dims[1] != value.dims[1] ||
+            query.dims[3] != key_desc.dims[3] || query.dims[3] != value.dims[3] ||
+            key_desc.dims[2] != value.dims[2] ||
+            output.dims[0] != query.dims[0] || output.dims[1] != query.dims[1] ||
+            output.dims[2] != query.dims[2] || output.dims[3] != value.dims[3]) {
+            return fail(log, "GFX MPSRT: MPSGraph SDPA native Q/K/V/output shape mismatch");
+        }
+    } else if (stage.sdpa_desc.layout == GfxMpsrtSdpaLayoutTransposedBHDN) {
+        if (query.dims[0] != key_desc.dims[0] || query.dims[0] != value.dims[0] ||
+            query.dims[1] != key_desc.dims[1] || query.dims[1] != value.dims[1] ||
+            query.dims[2] != key_desc.dims[2] || key_desc.dims[3] != value.dims[3] ||
+            output.dims[0] != query.dims[0] || output.dims[1] != query.dims[1] ||
+            output.dims[2] != value.dims[2] || output.dims[3] != query.dims[3]) {
+            return fail(log, "GFX MPSRT: MPSGraph SDPA transposed Q/K/V/output shape mismatch");
+        }
+    } else {
+        return fail(log, "GFX MPSRT: MPSGraph SDPA layout is unsupported");
+    }
+    std::ostringstream stream;
+    stream << "mps_sdpa|graph|layout" << stage.sdpa_desc.layout << '|' << query.dtype
+           << "|scale" << stage.sdpa_desc.scale;
+    for (uint32_t i = 0; i < 4; ++i) {
+        stream << '|' << query.dims[i];
+    }
+    for (uint32_t i = 0; i < 4; ++i) {
+        stream << '|' << key_desc.dims[i];
+    }
+    for (uint32_t i = 0; i < 4; ++i) {
+        stream << '|' << value.dims[i];
+    }
+    key = stream.str();
+    return true;
+}
+
 uint32_t matrix_count_or_one(const GfxMpsrtTensorAbiDesc& desc) {
     return desc.matrix_count == 0 ? 1 : desc.matrix_count;
+}
+
+void configure_mps_graph_full_precision_gpu_compile(MPSGraphCompilationDescriptor* descriptor) {
+    if (!descriptor) {
+        return;
+    }
+    descriptor.waitForCompilationCompletion = YES;
+    if (@available(macOS 12.3, iOS 15.4, tvOS 15.4, *)) {
+        descriptor.optimizationLevel = MPSGraphOptimizationLevel0;
+    }
+    if (@available(macOS 26.0, iOS 26.0, tvOS 26.0, *)) {
+        descriptor.reducedPrecisionFastMath = MPSGraphReducedPrecisionFastMathNone;
+    }
 }
 
 bool matrix_count_can_feed_output(uint32_t input_count, uint32_t output_count) {
@@ -1006,6 +1221,7 @@ bool is_first_class_mps_stage(GfxMpsrtStageKind kind) {
     case GfxMpsrtStageKind::MPSGemm:
     case GfxMpsrtStageKind::MPSSoftmax:
     case GfxMpsrtStageKind::MPSTopK:
+    case GfxMpsrtStageKind::MPSSdpa:
         return true;
     case GfxMpsrtStageKind::MSLDispatch:
     case GfxMpsrtStageKind::SPIRVDispatch:
@@ -1051,10 +1267,60 @@ bool validate_conv_weights_desc(const GfxMpsrtTensorAbiDesc& desc, const MpsrtRu
     return true;
 }
 
+bool is_dense_matrix_graph_tensor_desc(const GfxMpsrtTensorAbiDesc& desc) {
+    if (desc.storage != static_cast<uint32_t>(GfxMpsrtStorage::Matrix)) {
+        return false;
+    }
+    const auto dtype = static_cast<GfxMpsrtDType>(desc.dtype);
+    const uint32_t element_bytes = gfx_mpsrt_element_size_bytes(dtype);
+    if (element_bytes == 0 || desc.byte_offset != 0 || desc.matrix_rows == 0 ||
+        desc.matrix_columns == 0 || desc.matrix_row_bytes == 0 ||
+        desc.rank < 2) {
+        return false;
+    }
+    const uint64_t dense_row_bytes =
+        static_cast<uint64_t>(desc.matrix_columns) * element_bytes;
+    if (desc.matrix_row_bytes != dense_row_bytes) {
+        return false;
+    }
+    const uint64_t dense_matrix_bytes =
+        dense_row_bytes * static_cast<uint64_t>(desc.matrix_rows);
+    const uint64_t dense_total_bytes =
+        dense_matrix_bytes * static_cast<uint64_t>(matrix_count_or_one(desc));
+    return desc.byte_length == dense_total_bytes;
+}
+
+bool should_use_mps_graph_gemm(const MpsrtRuntimeStage& stage,
+                               const GfxMpsrtTensorAbiDesc& lhs,
+                               const GfxMpsrtTensorAbiDesc& rhs,
+                               const GfxMpsrtTensorAbiDesc& output) {
+    if (@available(macOS 11.0, iOS 14.0, tvOS 14.0, *)) {
+        if (stage.gemm_desc.alpha != 1.0f || stage.gemm_desc.beta != 0.0f) {
+            return false;
+        }
+        if (stage.gemm_desc.transpose_lhs == 0 &&
+            stage.gemm_desc.transpose_rhs == 0) {
+            return false;
+        }
+        if (matrix_count_or_one(output) <= 1) {
+            return false;
+        }
+        if (lhs.dtype != static_cast<uint32_t>(GfxMpsrtDType::F32) ||
+            rhs.dtype != static_cast<uint32_t>(GfxMpsrtDType::F32) ||
+            output.dtype != static_cast<uint32_t>(GfxMpsrtDType::F32)) {
+            return false;
+        }
+        return is_dense_matrix_graph_tensor_desc(lhs) &&
+               is_dense_matrix_graph_tensor_desc(rhs) &&
+               is_dense_matrix_graph_tensor_desc(output);
+    }
+    return false;
+}
+
 bool make_mps_gemm_cache_key(const MpsrtRuntimeStage& stage, const GfxMpsrtTensorAbiDesc& lhs,
                              const GfxMpsrtTensorAbiDesc& rhs, const GfxMpsrtTensorAbiDesc& output,
-                             uint32_t result_rows, uint32_t result_columns, uint32_t interior_columns, std::string& key,
-                             std::string* log) {
+                             uint32_t result_rows, uint32_t result_columns, uint32_t interior_columns,
+                             bool uses_graph_gemm, std::string& key, std::string* log) {
     if (lhs.dtype != rhs.dtype || lhs.dtype != output.dtype) {
         return fail(log, "GFX MPSRT: MPS GEMM matrix dtype mismatch");
     }
@@ -1078,7 +1344,8 @@ bool make_mps_gemm_cache_key(const MpsrtRuntimeStage& stage, const GfxMpsrtTenso
     }
 
     std::ostringstream stream;
-    stream << "mps_gemm|" << stage.gemm_desc.transpose_lhs << '|' << stage.gemm_desc.transpose_rhs << '|'
+    stream << "mps_gemm|" << (uses_graph_gemm ? "graph" : "matrix") << '|'
+           << stage.gemm_desc.transpose_lhs << '|' << stage.gemm_desc.transpose_rhs << '|'
            << std::setprecision(9) << stage.gemm_desc.alpha << '|' << std::setprecision(9) << stage.gemm_desc.beta
            << '|' << result_rows << '|' << result_columns << '|' << interior_columns << '|' << lhs.dtype << '|'
            << lhs_count << '|' << rhs_count << '|' << output_count;
@@ -1104,6 +1371,11 @@ struct MpsrtContext::PipelineCacheEntry {
 struct MpsrtContext::MpsGemmCacheEntry {
     std::string key;
     id kernel = nil;
+    id graph_lhs_tensor = nil;
+    id graph_rhs_tensor = nil;
+    id graph_output_tensor = nil;
+    id graph_executable = nil;
+    bool uses_mps_graph_gemm = false;
 };
 
 struct MpsrtContext::MpsConv2DCacheEntry {
@@ -1130,6 +1402,21 @@ struct MpsrtContext::MpsSoftmaxCacheEntry {
 struct MpsrtContext::MpsTopKCacheEntry {
     std::string key;
     id kernel = nil;
+    id graph_input_tensor = nil;
+    id graph_values_tensor = nil;
+    id graph_indices_tensor = nil;
+    id graph_executable = nil;
+    bool uses_mps_graph_topk = false;
+};
+
+struct MpsrtContext::MpsSdpaCacheEntry {
+    std::string key;
+    id kernel = nil;
+    id graph_query_tensor = nil;
+    id graph_key_tensor = nil;
+    id graph_value_tensor = nil;
+    id graph_output_tensor = nil;
+    id graph_executable = nil;
 };
 
 struct MpsrtContext::ConstTensorCacheEntry {
@@ -1140,6 +1427,98 @@ struct MpsrtContext::ConstTensorCacheEntry {
     id<MTLBuffer> buffer = nil;
     std::vector<uint8_t> host_bytes;
 };
+
+MpsrtPreparedModel::~MpsrtPreparedModel() {
+    release_owned_resources();
+}
+
+MpsrtPreparedModel::MpsrtPreparedModel(MpsrtPreparedModel&& other) noexcept {
+    *this = std::move(other);
+}
+
+MpsrtPreparedModel& MpsrtPreparedModel::operator=(MpsrtPreparedModel&& other) noexcept {
+    if (this == &other) {
+        return *this;
+    }
+    release_owned_resources();
+
+    resource_heap = other.resource_heap;
+    other.resource_heap = nil;
+    resource_heap_size = other.resource_heap_size;
+    resource_heap_unaliased_size = other.resource_heap_unaliased_size;
+    resource_heap_aliasable_size = other.resource_heap_aliasable_size;
+    resource_heap_alias_reuse_count = other.resource_heap_alias_reuse_count;
+    transient_buffer_resource_count = other.transient_buffer_resource_count;
+    transient_image_resource_count = other.transient_image_resource_count;
+    image_bridge_resource_count = other.image_bridge_resource_count;
+    resources = std::move(other.resources);
+    image_bridge_resources = std::move(other.image_bridge_resources);
+    msl_dispatches = std::move(other.msl_dispatches);
+    mps_gemm_stages = std::move(other.mps_gemm_stages);
+    mps_conv2d_stages = std::move(other.mps_conv2d_stages);
+    mps_pool2d_stages = std::move(other.mps_pool2d_stages);
+    mps_resize2d_stages = std::move(other.mps_resize2d_stages);
+    mps_softmax_stages = std::move(other.mps_softmax_stages);
+    mps_topk_stages = std::move(other.mps_topk_stages);
+    mps_sdpa_stages = std::move(other.mps_sdpa_stages);
+    skipped_non_msl_stages = other.skipped_non_msl_stages;
+
+    other.resources.clear();
+    other.image_bridge_resources.clear();
+    other.msl_dispatches.clear();
+    other.mps_gemm_stages.clear();
+    other.mps_conv2d_stages.clear();
+    other.mps_pool2d_stages.clear();
+    other.mps_resize2d_stages.clear();
+    other.mps_softmax_stages.clear();
+    other.mps_topk_stages.clear();
+    other.mps_sdpa_stages.clear();
+    other.resource_heap_size = 0;
+    other.resource_heap_unaliased_size = 0;
+    other.resource_heap_aliasable_size = 0;
+    other.resource_heap_alias_reuse_count = 0;
+    other.transient_buffer_resource_count = 0;
+    other.transient_image_resource_count = 0;
+    other.image_bridge_resource_count = 0;
+    other.skipped_non_msl_stages = 0;
+    return *this;
+}
+
+void MpsrtPreparedModel::release_owned_resources() {
+    for (auto& resource : resources) {
+        if (resource.lifetime != MpsrtRuntimeResourceLifetime::Transient) {
+            continue;
+        }
+        [resource.buffer release];
+        [resource.texture release];
+        resource.buffer = nil;
+        resource.texture = nil;
+    }
+    for (auto& resource : image_bridge_resources) {
+        [resource.texture release];
+        resource.texture = nil;
+    }
+    [resource_heap release];
+    resource_heap = nil;
+    resource_heap_size = 0;
+    resource_heap_unaliased_size = 0;
+    resource_heap_aliasable_size = 0;
+    resource_heap_alias_reuse_count = 0;
+    transient_buffer_resource_count = 0;
+    transient_image_resource_count = 0;
+    image_bridge_resource_count = 0;
+    resources.clear();
+    image_bridge_resources.clear();
+    msl_dispatches.clear();
+    mps_gemm_stages.clear();
+    mps_conv2d_stages.clear();
+    mps_pool2d_stages.clear();
+    mps_resize2d_stages.clear();
+    mps_softmax_stages.clear();
+    mps_topk_stages.clear();
+    mps_sdpa_stages.clear();
+    skipped_non_msl_stages = 0;
+}
 
 MpsrtContext::MpsrtContext(id<MTLDevice> device) : m_device([device retain]) {
     OPENVINO_ASSERT(m_device, "GFX MPSRT: Metal device is null");
@@ -1164,7 +1543,15 @@ MpsrtContext::~MpsrtContext() {
     }
     for (auto& entry : m_mps_gemm_cache) {
         [entry.kernel release];
+        [entry.graph_lhs_tensor release];
+        [entry.graph_rhs_tensor release];
+        [entry.graph_output_tensor release];
+        [entry.graph_executable release];
         entry.kernel = nil;
+        entry.graph_lhs_tensor = nil;
+        entry.graph_rhs_tensor = nil;
+        entry.graph_output_tensor = nil;
+        entry.graph_executable = nil;
     }
     for (auto& entry : m_mps_conv2d_cache) {
         [entry.kernel release];
@@ -1186,7 +1573,29 @@ MpsrtContext::~MpsrtContext() {
     }
     for (auto& entry : m_mps_topk_cache) {
         [entry.kernel release];
+        [entry.graph_input_tensor release];
+        [entry.graph_values_tensor release];
+        [entry.graph_indices_tensor release];
+        [entry.graph_executable release];
         entry.kernel = nil;
+        entry.graph_input_tensor = nil;
+        entry.graph_values_tensor = nil;
+        entry.graph_indices_tensor = nil;
+        entry.graph_executable = nil;
+    }
+    for (auto& entry : m_mps_sdpa_cache) {
+        [entry.kernel release];
+        [entry.graph_query_tensor release];
+        [entry.graph_key_tensor release];
+        [entry.graph_value_tensor release];
+        [entry.graph_output_tensor release];
+        [entry.graph_executable release];
+        entry.kernel = nil;
+        entry.graph_query_tensor = nil;
+        entry.graph_key_tensor = nil;
+        entry.graph_value_tensor = nil;
+        entry.graph_output_tensor = nil;
+        entry.graph_executable = nil;
     }
     for (auto& entry : m_const_tensor_cache) {
         [entry.buffer release];
@@ -1277,6 +1686,7 @@ bool MpsrtContext::has_const_tensor(GfxMpsrtValue value) const {
 }
 
 bool MpsrtContext::prepare_model_resources(const MpsrtModel& model, MpsrtPreparedModel& out, std::string* log) const {
+    out.release_owned_resources();
     out.resources.clear();
     out.resource_heap = nil;
     out.resource_heap_size = 0;
@@ -1592,57 +2002,134 @@ bool MpsrtContext::prepare_mps_gemm(const MpsrtModel& model, const MpsrtRuntimeS
     const uint32_t result_rows = output.matrix_rows;
     const uint32_t result_columns = output.matrix_columns;
     const uint32_t interior_columns = stage.gemm_desc.transpose_lhs ? lhs.matrix_rows : lhs.matrix_columns;
+    const bool uses_graph_gemm = should_use_mps_graph_gemm(stage, lhs, rhs, output);
     std::string key;
-    if (!make_mps_gemm_cache_key(stage, lhs, rhs, output, result_rows, result_columns, interior_columns, key, log)) {
+    if (!make_mps_gemm_cache_key(stage, lhs, rhs, output, result_rows, result_columns, interior_columns,
+                                 uses_graph_gemm, key, log)) {
         return false;
     }
+
+    auto fill_prepared = [&](bool kernel_cache_hit, const MpsGemmCacheEntry& entry) {
+        out.stage_record_key = stage.stage_record_key;
+        out.gemm_desc = stage.gemm_desc;
+        out.result_rows = result_rows;
+        out.result_columns = result_columns;
+        out.interior_columns = interior_columns;
+        out.batch_count = matrix_count_or_one(output);
+        out.lhs_batch_broadcast = matrix_count_or_one(lhs) == 1 && out.batch_count > 1;
+        out.rhs_batch_broadcast = matrix_count_or_one(rhs) == 1 && out.batch_count > 1;
+        out.data_type = output.dtype;
+        out.kernel_cache_hit = kernel_cache_hit;
+        out.kernel = entry.kernel;
+        out.graph_lhs_tensor = entry.graph_lhs_tensor;
+        out.graph_rhs_tensor = entry.graph_rhs_tensor;
+        out.graph_output_tensor = entry.graph_output_tensor;
+        out.graph_executable = entry.graph_executable;
+        out.uses_mps_graph_gemm = entry.uses_mps_graph_gemm;
+    };
 
     for (const auto& entry : m_mps_gemm_cache) {
         if (entry.key == key) {
             ++m_mps_gemm_cache_hits;
             increment_compile_counter("mpsrt_mps_gemm_kernel_cache_hit_count");
-            out.stage_record_key = stage.stage_record_key;
-            out.gemm_desc = stage.gemm_desc;
-            out.result_rows = result_rows;
-            out.result_columns = result_columns;
-            out.interior_columns = interior_columns;
-            out.batch_count = matrix_count_or_one(output);
-            out.lhs_batch_broadcast = matrix_count_or_one(lhs) == 1 && out.batch_count > 1;
-            out.rhs_batch_broadcast = matrix_count_or_one(rhs) == 1 && out.batch_count > 1;
-            out.data_type = output.dtype;
-            out.kernel_cache_hit = true;
-            out.kernel = entry.kernel;
+            fill_prepared(true, entry);
             return true;
         }
     }
 
     ++m_mps_gemm_cache_misses;
     increment_compile_counter("mpsrt_mps_gemm_kernel_cache_miss_count");
-    id kernel = [[MPSMatrixMultiplication alloc] initWithDevice:m_device
-                                                  transposeLeft:(stage.gemm_desc.transpose_lhs != 0)
-                                                 transposeRight:(stage.gemm_desc.transpose_rhs != 0)
-                                                     resultRows:result_rows
-                                                  resultColumns:result_columns
-                                                interiorColumns:interior_columns
-                                                          alpha:stage.gemm_desc.alpha
-                                                           beta:stage.gemm_desc.beta];
-    if (!kernel) {
-        return fail(log, "GFX MPSRT: failed to create MPSMatrixMultiplication kernel");
+
+    MpsGemmCacheEntry cache_entry;
+    cache_entry.key = key;
+    cache_entry.uses_mps_graph_gemm = uses_graph_gemm;
+    if (uses_graph_gemm) {
+        const MPSDataType data_type = mps_data_type_from_gfx(output.dtype);
+        if (data_type == MPSDataTypeInvalid) {
+            return fail(log, "GFX MPSRT: MPSGraph GEMM dtype is unsupported");
+        }
+        MPSGraph* graph = [[MPSGraph alloc] init];
+        NSArray<NSNumber*>* lhs_shape = mps_shape_from_tensor_desc(lhs);
+        NSArray<NSNumber*>* rhs_shape = mps_shape_from_tensor_desc(rhs);
+        MPSGraphTensor* graph_lhs = [graph placeholderWithShape:lhs_shape
+                                                       dataType:data_type
+                                                           name:@"gfx_mps_gemm_lhs"];
+        MPSGraphTensor* graph_rhs = [graph placeholderWithShape:rhs_shape
+                                                       dataType:data_type
+                                                           name:@"gfx_mps_gemm_rhs"];
+        MPSGraphTensor* lhs_value = graph_lhs;
+        MPSGraphTensor* rhs_value = graph_rhs;
+        if (stage.gemm_desc.transpose_lhs != 0) {
+            lhs_value = [graph transposeTensor:lhs_value
+                                     dimension:lhs.rank - 2
+                                 withDimension:lhs.rank - 1
+                                          name:@"gfx_mps_gemm_lhs_t"];
+        }
+        if (stage.gemm_desc.transpose_rhs != 0) {
+            rhs_value = [graph transposeTensor:rhs_value
+                                     dimension:rhs.rank - 2
+                                 withDimension:rhs.rank - 1
+                                          name:@"gfx_mps_gemm_rhs_t"];
+        }
+        MPSGraphTensor* graph_output =
+            [graph matrixMultiplicationWithPrimaryTensor:lhs_value
+                                         secondaryTensor:rhs_value
+                                                    name:@"gfx_mps_gemm"];
+        if (!graph || !graph_lhs || !graph_rhs || !graph_output) {
+            [graph release];
+            return fail(log, "GFX MPSRT: failed to create MPSGraph GEMM tensors");
+        }
+
+        MPSGraphShapedType* lhs_type = [[MPSGraphShapedType alloc] initWithShape:lhs_shape
+                                                                        dataType:data_type];
+        MPSGraphShapedType* rhs_type = [[MPSGraphShapedType alloc] initWithShape:rhs_shape
+                                                                        dataType:data_type];
+        NSMutableDictionary<MPSGraphTensor*, MPSGraphShapedType*>* executable_feeds =
+            [NSMutableDictionary dictionaryWithObjectsAndKeys:lhs_type, graph_lhs, rhs_type, graph_rhs, nil];
+        MPSGraphCompilationDescriptor* compilation_descriptor = [[MPSGraphCompilationDescriptor alloc] init];
+        configure_mps_graph_full_precision_gpu_compile(compilation_descriptor);
+        MPSGraphExecutable* graph_executable = nil;
+        if (lhs_type && rhs_type) {
+            MPSGraphDevice* graph_device = [MPSGraphDevice deviceWithMTLDevice:m_device];
+            graph_executable = [[graph compileWithDevice:graph_device
+                                                   feeds:executable_feeds
+                                           targetTensors:@[ graph_output ]
+                                        targetOperations:nil
+                                   compilationDescriptor:compilation_descriptor] retain];
+        }
+        [compilation_descriptor release];
+        [lhs_type release];
+        [rhs_type release];
+
+        cache_entry.kernel = graph;
+        cache_entry.graph_lhs_tensor = [graph_lhs retain];
+        cache_entry.graph_rhs_tensor = [graph_rhs retain];
+        cache_entry.graph_output_tensor = [graph_output retain];
+        cache_entry.graph_executable = graph_executable;
+    } else {
+        id kernel = [[MPSMatrixMultiplication alloc] initWithDevice:m_device
+                                                      transposeLeft:(stage.gemm_desc.transpose_lhs != 0)
+                                                     transposeRight:(stage.gemm_desc.transpose_rhs != 0)
+                                                         resultRows:result_rows
+                                                      resultColumns:result_columns
+                                                    interiorColumns:interior_columns
+                                                              alpha:stage.gemm_desc.alpha
+                                                               beta:stage.gemm_desc.beta];
+        if (!kernel) {
+            return fail(log, "GFX MPSRT: failed to create MPSMatrixMultiplication kernel");
+        }
+        cache_entry.kernel = kernel;
     }
 
-    m_mps_gemm_cache.push_back({key, kernel});
+    m_mps_gemm_cache.push_back(cache_entry);
+    fill_prepared(false, m_mps_gemm_cache.back());
+    if (cache_entry.uses_mps_graph_gemm) {
+        if (cache_entry.graph_executable) {
+            increment_compile_counter("mpsrt_prepare_mps_graph_gemm_executable_count");
+        }
+        increment_compile_counter("mpsrt_prepare_mps_graph_gemm_count");
+    }
     increment_compile_counter("mpsrt_prepare_mps_gemm_count");
-    out.stage_record_key = stage.stage_record_key;
-    out.gemm_desc = stage.gemm_desc;
-    out.result_rows = result_rows;
-    out.result_columns = result_columns;
-    out.interior_columns = interior_columns;
-    out.batch_count = matrix_count_or_one(output);
-    out.lhs_batch_broadcast = matrix_count_or_one(lhs) == 1 && out.batch_count > 1;
-    out.rhs_batch_broadcast = matrix_count_or_one(rhs) == 1 && out.batch_count > 1;
-    out.data_type = output.dtype;
-    out.kernel_cache_hit = false;
-    out.kernel = kernel;
     return true;
 }
 
@@ -1721,8 +2208,12 @@ bool MpsrtContext::prepare_mps_conv2d(const MpsrtModel& model, const MpsrtRuntim
                                    log)) {
         return false;
     }
+    const GfxMpsrtTensorAbiDesc* bias_desc = bias_tensor ? &bias_tensor->desc : nullptr;
+    const bool use_mps_cnn_depthwise =
+        is_mps_cnn_depthwise_conv2d_candidate(weights, input, output, stage, bias_desc);
+    key += use_mps_cnn_depthwise ? "|mps_cnn_depthwise" : "|mps_cnn";
 
-    auto fill_prepared = [&](bool kernel_cache_hit, id kernel) {
+    auto fill_prepared = [&](bool kernel_cache_hit, const MpsConv2DCacheEntry& entry) {
         out.stage_record_key = stage.stage_record_key;
         out.conv2d_desc = stage.conv2d_desc;
         out.weights_value = stage.inputs[1];
@@ -1736,14 +2227,14 @@ bool MpsrtContext::prepare_mps_conv2d(const MpsrtModel& model, const MpsrtRuntim
         out.weights_cache_hit = true;
         out.kernel_cache_hit = kernel_cache_hit;
         out.weights_buffer = weights_resource->buffer;
-        out.kernel = kernel;
+        out.kernel = entry.kernel;
     };
 
     for (const auto& entry : m_mps_conv2d_cache) {
         if (entry.key == key) {
             ++m_mps_conv2d_cache_hits;
             increment_compile_counter("mpsrt_mps_conv2d_kernel_cache_hit_count");
-            fill_prepared(true, entry.kernel);
+            fill_prepared(true, entry);
             return true;
         }
     }
@@ -1751,10 +2242,27 @@ bool MpsrtContext::prepare_mps_conv2d(const MpsrtModel& model, const MpsrtRuntim
     ++m_mps_conv2d_cache_misses;
     increment_compile_counter("mpsrt_mps_conv2d_kernel_cache_miss_count");
 
+    const MPSDataType data_type = mps_data_type_from_gfx(output.dtype);
+    if (data_type == MPSDataTypeInvalid) {
+        return fail(log, "GFX MPSRT: MPS Conv2D dtype is unsupported");
+    }
+
+    MpsConv2DCacheEntry cache_entry;
+    cache_entry.key = key;
     std::vector<uint8_t> mps_weights;
-    if (!pack_conv_weights_to_mps_ohwi(weights, input, output, stage, weights_resource->host_bytes.data(),
-                                       weights_resource->host_bytes.size(), mps_weights, log)) {
-        return false;
+    if (use_mps_cnn_depthwise) {
+        if (!pack_depthwise_weights_to_mps_cnn(weights,
+                                               weights_resource->host_bytes.data(),
+                                               weights_resource->host_bytes.size(),
+                                               mps_weights,
+                                               log)) {
+            return false;
+        }
+    } else {
+        if (!pack_conv_weights_to_mps_ohwi(weights, input, output, stage, weights_resource->host_bytes.data(),
+                                           weights_resource->host_bytes.size(), mps_weights, log)) {
+            return false;
+        }
     }
     std::vector<float> mps_bias;
     if (bias_resource &&
@@ -1765,23 +2273,33 @@ bool MpsrtContext::prepare_mps_conv2d(const MpsrtModel& model, const MpsrtRuntim
                                    log)) {
         return false;
     }
-    const uint32_t mps_input_feature_channels =
-        align_channels_for_mps_image(input.image_feature_channels);
-    const uint32_t mps_output_feature_channels =
-        align_channels_for_mps_image(output.image_feature_channels);
-    if (!mps_bias.empty() && mps_bias.size() < mps_output_feature_channels) {
-        mps_bias.resize(mps_output_feature_channels, 0.0f);
+    const uint32_t mps_input_feature_channels = input.image_feature_channels;
+    const uint32_t mps_output_feature_channels = output.image_feature_channels;
+    const uint32_t descriptor_groups =
+        use_mps_cnn_depthwise ? 1u : mps_conv2d_descriptor_groups(weights, stage);
+    if (weights.rank == 5) {
+        if (use_mps_cnn_depthwise) {
+            increment_compile_counter("mpsrt_prepare_mps_cnn_depthwise_conv2d_count");
+        } else if (descriptor_groups == stage.conv2d_desc.groups) {
+            increment_compile_counter("mpsrt_prepare_mps_group_conv2d_native_groups_count");
+        } else {
+            increment_compile_counter("mpsrt_prepare_mps_group_conv2d_dense_sparse_workaround_count");
+        }
     }
 
-    MPSCNNConvolutionDescriptor* descriptor =
-        [MPSCNNConvolutionDescriptor cnnConvolutionDescriptorWithKernelWidth:conv2d_kernel_width(weights)
-                                                                kernelHeight:conv2d_kernel_height(weights)
-                                                        inputFeatureChannels:mps_input_feature_channels
-                                                       outputFeatureChannels:mps_output_feature_channels];
+    MPSCNNConvolutionDescriptor* descriptor = use_mps_cnn_depthwise
+        ? [MPSCNNDepthWiseConvolutionDescriptor cnnConvolutionDescriptorWithKernelWidth:conv2d_kernel_width(weights)
+                                                                           kernelHeight:conv2d_kernel_height(weights)
+                                                                   inputFeatureChannels:mps_input_feature_channels
+                                                                  outputFeatureChannels:mps_output_feature_channels]
+        : [MPSCNNConvolutionDescriptor cnnConvolutionDescriptorWithKernelWidth:conv2d_kernel_width(weights)
+                                                                  kernelHeight:conv2d_kernel_height(weights)
+                                                          inputFeatureChannels:mps_input_feature_channels
+                                                         outputFeatureChannels:mps_output_feature_channels];
     if (!descriptor) {
         return fail(log, "GFX MPSRT: failed to create MPSCNNConvolutionDescriptor");
     }
-    descriptor.groups = weights.rank == 5 ? 1 : stage.conv2d_desc.groups;
+    descriptor.groups = descriptor_groups;
     descriptor.strideInPixelsX = stage.conv2d_desc.strides[1] == 0 ? 1 : stage.conv2d_desc.strides[1];
     descriptor.strideInPixelsY = stage.conv2d_desc.strides[0] == 0 ? 1 : stage.conv2d_desc.strides[0];
     descriptor.dilationRateX = stage.conv2d_desc.dilations[1] == 0 ? 1 : stage.conv2d_desc.dilations[1];
@@ -1794,10 +2312,6 @@ bool MpsrtContext::prepare_mps_conv2d(const MpsrtModel& model, const MpsrtRuntim
         descriptor.fusedNeuronDescriptor = neuron;
     }
 
-    const MPSDataType data_type = mps_data_type_from_gfx(output.dtype);
-    if (data_type == MPSDataTypeInvalid) {
-        return fail(log, "GFX MPSRT: MPS Conv2D dtype is unsupported");
-    }
     NSString* label = [NSString stringWithUTF8String:stage.stage_record_key.c_str()];
     OVGfxMpsrtConv2DDataSource* data_source =
         [[OVGfxMpsrtConv2DDataSource alloc] initWithDescriptor:descriptor
@@ -1814,10 +2328,11 @@ bool MpsrtContext::prepare_mps_conv2d(const MpsrtModel& model, const MpsrtRuntim
         MPSCNNConvolution* conv_kernel = static_cast<MPSCNNConvolution*>(kernel);
         conv_kernel.accumulatorPrecisionOption = MPSNNConvolutionAccumulatorPrecisionOptionFloat;
     }
+    cache_entry.kernel = kernel;
+    cache_entry.data_source = data_source;
+    m_mps_conv2d_cache.push_back(cache_entry);
 
-    m_mps_conv2d_cache.push_back({key, kernel, data_source});
-
-    fill_prepared(false, kernel);
+    fill_prepared(false, m_mps_conv2d_cache.back());
     increment_compile_counter("mpsrt_prepare_mps_conv2d_count");
     return true;
 }
@@ -2056,7 +2571,7 @@ bool MpsrtContext::prepare_mps_topk(const MpsrtModel& model, const MpsrtRuntimeS
         return false;
     }
 
-    auto fill_prepared = [&](bool kernel_cache_hit, id kernel) {
+    auto fill_prepared = [&](bool kernel_cache_hit, const MpsTopKCacheEntry& entry) {
         out.stage_record_key = stage.stage_record_key;
         out.topk_desc = stage.topk_desc;
         out.rows = values_output.matrix_rows;
@@ -2066,14 +2581,19 @@ bool MpsrtContext::prepare_mps_topk(const MpsrtModel& model, const MpsrtRuntimeS
         out.data_type = values_output.dtype;
         out.index_type = indices_output.dtype;
         out.kernel_cache_hit = kernel_cache_hit;
-        out.kernel = kernel;
+        out.kernel = entry.kernel;
+        out.graph_input_tensor = entry.graph_input_tensor;
+        out.graph_values_tensor = entry.graph_values_tensor;
+        out.graph_indices_tensor = entry.graph_indices_tensor;
+        out.graph_executable = entry.graph_executable;
+        out.uses_mps_graph_topk = entry.uses_mps_graph_topk;
     };
 
     for (const auto& entry : m_mps_topk_cache) {
         if (entry.key == key) {
             ++m_mps_topk_cache_hits;
             increment_compile_counter("mpsrt_mps_topk_kernel_cache_hit_count");
-            fill_prepared(true, entry.kernel);
+            fill_prepared(true, entry);
             return true;
         }
     }
@@ -2081,15 +2601,292 @@ bool MpsrtContext::prepare_mps_topk(const MpsrtModel& model, const MpsrtRuntimeS
     ++m_mps_topk_cache_misses;
     increment_compile_counter("mpsrt_mps_topk_kernel_cache_miss_count");
 
-    id kernel = [[MPSMatrixFindTopK alloc] initWithDevice:m_device numberOfTopKValues:stage.topk_desc.k];
-    if (!kernel) {
-        return fail(log, "GFX MPSRT: failed to create MPSMatrixFindTopK kernel");
+    MpsTopKCacheEntry cache_entry;
+    cache_entry.key = key;
+    if (stage.topk_desc.k > 16) {
+        const MPSDataType data_type = mps_data_type_from_gfx(input.dtype);
+        if (data_type == MPSDataTypeInvalid) {
+            return fail(log, "GFX MPSRT: MPSGraph TopK dtype is unsupported");
+        }
+        MPSGraph* graph = [[MPSGraph alloc] init];
+        NSArray<NSNumber*>* input_shape = mps_shape_from_tensor_desc(input);
+        MPSGraphTensor* graph_input = [graph placeholderWithShape:input_shape
+                                                         dataType:data_type
+                                                             name:@"gfx_mps_topk_input"];
+        NSArray<MPSGraphTensor*>* graph_outputs =
+            [graph topKWithSourceTensor:graph_input k:stage.topk_desc.k name:@"gfx_mps_topk"];
+        if (!graph || !graph_input || graph_outputs.count < 2) {
+            [graph release];
+            return fail(log, "GFX MPSRT: failed to create MPSGraph TopK tensors");
+        }
+        MPSGraphTensor* graph_values = graph_outputs[0];
+        MPSGraphTensor* graph_indices = graph_outputs[1];
+        MPSGraphShapedType* input_type = [[MPSGraphShapedType alloc] initWithShape:input_shape dataType:data_type];
+        NSMutableDictionary<MPSGraphTensor*, MPSGraphShapedType*>* executable_feeds =
+            [NSMutableDictionary dictionaryWithObjectsAndKeys:input_type, graph_input, nil];
+        MPSGraphCompilationDescriptor* compilation_descriptor = [[MPSGraphCompilationDescriptor alloc] init];
+        configure_mps_graph_full_precision_gpu_compile(compilation_descriptor);
+        MPSGraphExecutable* graph_executable = nil;
+        if (input_type) {
+            MPSGraphDevice* graph_device = [MPSGraphDevice deviceWithMTLDevice:m_device];
+            graph_executable = [[graph compileWithDevice:graph_device
+                                                   feeds:executable_feeds
+                                           targetTensors:@[ graph_values, graph_indices ]
+                                        targetOperations:nil
+                                   compilationDescriptor:compilation_descriptor] retain];
+        }
+        [compilation_descriptor release];
+        [input_type release];
+
+        cache_entry.kernel = graph;
+        cache_entry.graph_input_tensor = [graph_input retain];
+        cache_entry.graph_values_tensor = [graph_values retain];
+        cache_entry.graph_indices_tensor = [graph_indices retain];
+        cache_entry.graph_executable = graph_executable;
+        cache_entry.uses_mps_graph_topk = true;
+    } else {
+        id kernel = [[MPSMatrixFindTopK alloc] initWithDevice:m_device numberOfTopKValues:stage.topk_desc.k];
+        if (!kernel) {
+            return fail(log, "GFX MPSRT: failed to create MPSMatrixFindTopK kernel");
+        }
+        cache_entry.kernel = kernel;
     }
 
-    m_mps_topk_cache.push_back({key, kernel});
-    fill_prepared(false, kernel);
+    m_mps_topk_cache.push_back(cache_entry);
+    fill_prepared(false, m_mps_topk_cache.back());
+    if (cache_entry.uses_mps_graph_topk) {
+        if (cache_entry.graph_executable) {
+            increment_compile_counter("mpsrt_prepare_mps_graph_topk_executable_count");
+        }
+        increment_compile_counter("mpsrt_prepare_mps_graph_topk_count");
+    }
     increment_compile_counter("mpsrt_prepare_mps_topk_count");
     return true;
+}
+
+bool MpsrtContext::prepare_mps_sdpa(const MpsrtModel& model, const MpsrtRuntimeStage& stage, MpsrtPreparedMpsSdpa& out,
+                                    std::string* log) {
+    out = {};
+    if (stage.kind != GfxMpsrtStageKind::MPSSdpa) {
+        return fail(log, "GFX MPSRT: requested MPS SDPA preparation for non-SDPA stage");
+    }
+    if (!MPSSupportsMTLDevice(m_device)) {
+        return fail(log, "GFX MPSRT: Metal device does not support MPS");
+    }
+    if (stage.inputs.size() != 3 || stage.outputs.size() != 1 || stage.output_descs.size() != 1) {
+        return fail(log, "GFX MPSRT: MPS SDPA requires Q, K, V and one output");
+    }
+
+    const auto* query_tensor = find_tensor(model, stage.inputs[0]);
+    const auto* key_tensor = find_tensor(model, stage.inputs[1]);
+    const auto* value_tensor = find_tensor(model, stage.inputs[2]);
+    if (!query_tensor || !key_tensor || !value_tensor) {
+        return fail(log, "GFX MPSRT: MPS SDPA input tensor descriptor is missing");
+    }
+    const auto& query = query_tensor->desc;
+    const auto& key_desc = key_tensor->desc;
+    const auto& value = value_tensor->desc;
+    const auto& output = stage.output_descs.front();
+    std::string key;
+    if (!make_mps_sdpa_cache_key(stage, query, key_desc, value, output, key, log)) {
+        return false;
+    }
+
+    auto fill_prepared = [&](bool kernel_cache_hit, const MpsSdpaCacheEntry& entry) {
+        out.stage_record_key = stage.stage_record_key;
+        out.sdpa_desc = stage.sdpa_desc;
+        out.data_type = output.dtype;
+        out.kernel_cache_hit = kernel_cache_hit;
+        out.kernel = entry.kernel;
+        out.graph_query_tensor = entry.graph_query_tensor;
+        out.graph_key_tensor = entry.graph_key_tensor;
+        out.graph_value_tensor = entry.graph_value_tensor;
+        out.graph_output_tensor = entry.graph_output_tensor;
+        out.graph_executable = entry.graph_executable;
+    };
+
+    for (const auto& entry : m_mps_sdpa_cache) {
+        if (entry.key == key) {
+            ++m_mps_sdpa_cache_hits;
+            increment_compile_counter("mpsrt_mps_sdpa_kernel_cache_hit_count");
+            fill_prepared(true, entry);
+            return true;
+        }
+    }
+
+    ++m_mps_sdpa_cache_misses;
+    increment_compile_counter("mpsrt_mps_sdpa_kernel_cache_miss_count");
+
+    const bool transposed_layout = stage.sdpa_desc.layout == GfxMpsrtSdpaLayoutTransposedBHDN;
+    if (transposed_layout) {
+        const MPSDataType data_type = mps_data_type_from_gfx(output.dtype);
+        if (data_type == MPSDataTypeInvalid) {
+            return fail(log, "GFX MPSRT: MPSGraph SDPA dtype is unsupported");
+        }
+        MPSGraph* graph = [[MPSGraph alloc] init];
+        NSArray<NSNumber*>* query_shape = mps_shape_from_tensor_desc(query);
+        NSArray<NSNumber*>* key_shape = mps_shape_from_tensor_desc(key_desc);
+        NSArray<NSNumber*>* value_shape = mps_shape_from_tensor_desc(value);
+        MPSGraphTensor* graph_query = [graph placeholderWithShape:query_shape
+                                                         dataType:data_type
+                                                             name:@"gfx_mps_sdpa_query"];
+        MPSGraphTensor* graph_key = [graph placeholderWithShape:key_shape
+                                                       dataType:data_type
+                                                           name:@"gfx_mps_sdpa_key"];
+        MPSGraphTensor* graph_value = [graph placeholderWithShape:value_shape
+                                                         dataType:data_type
+                                                             name:@"gfx_mps_sdpa_value"];
+        MPSGraphTensor* query_bhnd = [graph transposeTensor:graph_query
+                                                  dimension:2
+                                              withDimension:3
+                                                       name:@"gfx_mps_sdpa_query_bhnd"];
+        MPSGraphTensor* scores =
+            [graph matrixMultiplicationWithPrimaryTensor:query_bhnd
+                                         secondaryTensor:graph_key
+                                                    name:@"gfx_mps_sdpa_scores"];
+        MPSGraphTensor* scale =
+            [graph constantWithScalar:stage.sdpa_desc.scale
+                              dataType:data_type];
+        MPSGraphTensor* scaled_scores =
+            [graph multiplicationWithPrimaryTensor:scores
+                                   secondaryTensor:scale
+                                              name:@"gfx_mps_sdpa_scaled_scores"];
+        MPSGraphTensor* weights = [graph softMaxWithTensor:scaled_scores
+                                                      axis:-1
+                                                      name:@"gfx_mps_sdpa_weights"];
+        MPSGraphTensor* value_bhnv = [graph transposeTensor:graph_value
+                                                  dimension:2
+                                              withDimension:3
+                                                       name:@"gfx_mps_sdpa_value_bhnv"];
+        MPSGraphTensor* output_bhnv =
+            [graph matrixMultiplicationWithPrimaryTensor:weights
+                                         secondaryTensor:value_bhnv
+                                                    name:@"gfx_mps_sdpa_output_bhnv"];
+        MPSGraphTensor* graph_output = [graph transposeTensor:output_bhnv
+                                                    dimension:2
+                                                withDimension:3
+                                                         name:@"gfx_mps_sdpa"];
+        if (!graph || !graph_query || !graph_key || !graph_value || !graph_output) {
+            [graph release];
+            return fail(log, "GFX MPSRT: failed to create MPSGraph SDPA tensors");
+        }
+
+        MPSGraphShapedType* query_type = [[MPSGraphShapedType alloc] initWithShape:query_shape
+                                                                          dataType:data_type];
+        MPSGraphShapedType* key_type = [[MPSGraphShapedType alloc] initWithShape:key_shape
+                                                                        dataType:data_type];
+        MPSGraphShapedType* value_type = [[MPSGraphShapedType alloc] initWithShape:value_shape
+                                                                          dataType:data_type];
+        NSMutableDictionary<MPSGraphTensor*, MPSGraphShapedType*>* executable_feeds =
+            [NSMutableDictionary dictionaryWithObjectsAndKeys:query_type, graph_query, key_type, graph_key,
+                                                               value_type, graph_value, nil];
+        MPSGraphCompilationDescriptor* compilation_descriptor = [[MPSGraphCompilationDescriptor alloc] init];
+        configure_mps_graph_full_precision_gpu_compile(compilation_descriptor);
+        MPSGraphExecutable* graph_executable = nil;
+        if (query_type && key_type && value_type) {
+            MPSGraphDevice* graph_device = [MPSGraphDevice deviceWithMTLDevice:m_device];
+            graph_executable = [[graph compileWithDevice:graph_device
+                                                   feeds:executable_feeds
+                                           targetTensors:@[ graph_output ]
+                                        targetOperations:nil
+                                   compilationDescriptor:compilation_descriptor] retain];
+        }
+        [compilation_descriptor release];
+        [query_type release];
+        [key_type release];
+        [value_type release];
+
+        MpsSdpaCacheEntry cache_entry;
+        cache_entry.key = key;
+        cache_entry.kernel = graph;
+        cache_entry.graph_query_tensor = [graph_query retain];
+        cache_entry.graph_key_tensor = [graph_key retain];
+        cache_entry.graph_value_tensor = [graph_value retain];
+        cache_entry.graph_output_tensor = [graph_output retain];
+        cache_entry.graph_executable = graph_executable;
+        m_mps_sdpa_cache.push_back(cache_entry);
+        fill_prepared(false, m_mps_sdpa_cache.back());
+        if (graph_executable) {
+            increment_compile_counter("mpsrt_prepare_mps_graph_sdpa_executable_count");
+        }
+        increment_compile_counter("mpsrt_prepare_mps_graph_sdpa_count");
+        increment_compile_counter("mpsrt_prepare_mps_sdpa_count");
+        return true;
+    }
+
+    if (@available(macOS 15.0, iOS 18.0, tvOS 18.0, *)) {
+        const MPSDataType data_type = mps_data_type_from_gfx(output.dtype);
+        if (data_type == MPSDataTypeInvalid) {
+            return fail(log, "GFX MPSRT: MPSGraph SDPA dtype is unsupported");
+        }
+        MPSGraph* graph = [[MPSGraph alloc] init];
+        NSArray<NSNumber*>* query_shape = mps_shape_from_tensor_desc(query);
+        NSArray<NSNumber*>* key_shape = mps_shape_from_tensor_desc(key_desc);
+        NSArray<NSNumber*>* value_shape = mps_shape_from_tensor_desc(value);
+        MPSGraphTensor* graph_query = [graph placeholderWithShape:query_shape
+                                                         dataType:data_type
+                                                             name:@"gfx_mps_sdpa_query"];
+        MPSGraphTensor* graph_key = [graph placeholderWithShape:key_shape
+                                                       dataType:data_type
+                                                           name:@"gfx_mps_sdpa_key"];
+        MPSGraphTensor* graph_value = [graph placeholderWithShape:value_shape
+                                                         dataType:data_type
+                                                             name:@"gfx_mps_sdpa_value"];
+        MPSGraphTensor* graph_output =
+            [graph scaledDotProductAttentionWithQueryTensor:graph_query
+                                                  keyTensor:graph_key
+                                                valueTensor:graph_value
+                                                      scale:stage.sdpa_desc.scale
+                                                       name:@"gfx_mps_sdpa"];
+        if (!graph || !graph_query || !graph_key || !graph_value || !graph_output) {
+            [graph release];
+            return fail(log, "GFX MPSRT: failed to create MPSGraph SDPA tensors");
+        }
+
+        MPSGraphShapedType* query_type = [[MPSGraphShapedType alloc] initWithShape:query_shape
+                                                                          dataType:data_type];
+        MPSGraphShapedType* key_type = [[MPSGraphShapedType alloc] initWithShape:key_shape
+                                                                        dataType:data_type];
+        MPSGraphShapedType* value_type = [[MPSGraphShapedType alloc] initWithShape:value_shape
+                                                                          dataType:data_type];
+        NSMutableDictionary<MPSGraphTensor*, MPSGraphShapedType*>* executable_feeds =
+            [NSMutableDictionary dictionaryWithObjectsAndKeys:query_type, graph_query, key_type, graph_key,
+                                                               value_type, graph_value, nil];
+        MPSGraphCompilationDescriptor* compilation_descriptor = [[MPSGraphCompilationDescriptor alloc] init];
+        configure_mps_graph_full_precision_gpu_compile(compilation_descriptor);
+        MPSGraphExecutable* graph_executable = nil;
+        if (query_type && key_type && value_type) {
+            MPSGraphDevice* graph_device = [MPSGraphDevice deviceWithMTLDevice:m_device];
+            graph_executable = [[graph compileWithDevice:graph_device
+                                                   feeds:executable_feeds
+                                           targetTensors:@[ graph_output ]
+                                        targetOperations:nil
+                                   compilationDescriptor:compilation_descriptor] retain];
+        }
+        [compilation_descriptor release];
+        [query_type release];
+        [key_type release];
+        [value_type release];
+
+        MpsSdpaCacheEntry cache_entry;
+        cache_entry.key = key;
+        cache_entry.kernel = graph;
+        cache_entry.graph_query_tensor = [graph_query retain];
+        cache_entry.graph_key_tensor = [graph_key retain];
+        cache_entry.graph_value_tensor = [graph_value retain];
+        cache_entry.graph_output_tensor = [graph_output retain];
+        cache_entry.graph_executable = graph_executable;
+        m_mps_sdpa_cache.push_back(cache_entry);
+        fill_prepared(false, m_mps_sdpa_cache.back());
+        if (graph_executable) {
+            increment_compile_counter("mpsrt_prepare_mps_graph_sdpa_executable_count");
+        }
+        increment_compile_counter("mpsrt_prepare_mps_graph_sdpa_count");
+        increment_compile_counter("mpsrt_prepare_mps_sdpa_count");
+        return true;
+    }
+
+    return fail(log, "GFX MPSRT: MPSGraph SDPA requires macOS 15.0/iOS 18.0/tvOS 18.0 or newer");
 }
 
 bool MpsrtContext::prepare_model(const MpsrtModel& model, const std::string& msl_source, MpsrtPreparedModel& out,
@@ -2149,6 +2946,13 @@ bool MpsrtContext::prepare_model(const MpsrtModel& model, const std::string& msl
             }
             prepared.stage_index = i;
             out.mps_topk_stages.push_back(prepared);
+        } else if (stage.kind == GfxMpsrtStageKind::MPSSdpa) {
+            MpsrtPreparedMpsSdpa prepared;
+            if (!prepare_mps_sdpa(model, stage, prepared, log)) {
+                return false;
+            }
+            prepared.stage_index = i;
+            out.mps_sdpa_stages.push_back(prepared);
         } else if (is_first_class_mps_stage(stage.kind)) {
             return fail(log, unsupported_mps_stage_message(stage));
         } else {

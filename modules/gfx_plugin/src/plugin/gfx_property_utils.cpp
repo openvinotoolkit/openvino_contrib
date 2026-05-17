@@ -130,6 +130,10 @@ bool apply_profiling_property(const std::string& key,
     return false;
 }
 
+bool is_diagnostic_f32_vendor_image_property(const std::string& key) {
+    return key == kGfxDiagnosticF32MpsImageProperty;
+}
+
 bool parse_bool_property(const ov::Any& value, const std::string& key) {
     if (value.is<bool>()) {
         return value.as<bool>();
@@ -156,6 +160,32 @@ bool parse_bool_property(const ov::Any& value, const std::string& key) {
         return value.as<uint64_t>() != 0;
     }
     OPENVINO_THROW("GFX: property '", key, "' expects a boolean value");
+}
+
+ov::element::Type parse_inference_precision_property(const ov::Any& value,
+                                                     const std::string& key) {
+    ov::element::Type precision;
+    if (value.is<ov::element::Type>()) {
+        precision = value.as<ov::element::Type>();
+    } else if (value.is<std::string>()) {
+        const auto text = ov::util::to_lower(value.as<std::string>());
+        if (text == "f16" || text == "fp16" || text == "half") {
+            precision = ov::element::f16;
+        } else if (text == "f32" || text == "fp32" || text == "float") {
+            precision = ov::element::f32;
+        } else {
+            OPENVINO_THROW("GFX: property '", key,
+                           "' supports only f16/fp16/half or f32/fp32/float");
+        }
+    } else {
+        OPENVINO_THROW("GFX: property '", key,
+                       "' expects ov::element::Type or string");
+    }
+
+    if (precision != ov::element::f16 && precision != ov::element::f32) {
+        OPENVINO_THROW("GFX: property '", key, "' supports only f16 or f32");
+    }
+    return precision;
 }
 
 }  // namespace gfx_plugin

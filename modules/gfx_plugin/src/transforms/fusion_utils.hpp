@@ -3,6 +3,9 @@
 //
 #pragma once
 
+#include <optional>
+
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Operation.h"
 #include "runtime/gfx_activation.hpp"
@@ -164,6 +167,43 @@ inline const char* activation_kind_name(ActivationKind kind) {
         default:
             return "Relu";
     }
+}
+
+inline std::optional<ActivationKind> parse_activation_kind_name(llvm::StringRef name) {
+    if (name == "Relu") {
+        return ActivationKind::Relu;
+    }
+    if (name == "Sigmoid") {
+        return ActivationKind::Sigmoid;
+    }
+    if (name == "Tanh") {
+        return ActivationKind::Tanh;
+    }
+    if (name == "Elu") {
+        return ActivationKind::Elu;
+    }
+    if (name == "Prelu") {
+        return ActivationKind::Prelu;
+    }
+    if (name == "Gelu") {
+        return ActivationKind::Gelu;
+    }
+    if (name == "Swish") {
+        return ActivationKind::Swish;
+    }
+    if (name == "HSwish") {
+        return ActivationKind::HSwish;
+    }
+    if (name == "HSigmoid") {
+        return ActivationKind::HSigmoid;
+    }
+    if (name == "Abs") {
+        return ActivationKind::Abs;
+    }
+    if (name == "Sign") {
+        return ActivationKind::Sign;
+    }
+    return std::nullopt;
 }
 
 }  // namespace fusion_utils

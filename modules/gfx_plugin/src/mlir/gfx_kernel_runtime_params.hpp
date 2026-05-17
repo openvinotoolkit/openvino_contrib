@@ -675,35 +675,24 @@ inline GfxKernelRuntimeParamPayload make_gather_elements_runtime_param_payload(G
     OPENVINO_ASSERT(output_shape.size() <= GatherElementsCodegenDesc::kMaxDims,
                     "GFX MLIR: GatherElements rank exceeds kernel metadata capacity for stage ",
                     stage_name);
-    struct GatherElementsParams {
-        uint32_t rank = 0;
-        uint32_t axis = 0;
-        uint32_t total = 0;
-        uint32_t out_dims[GatherElementsCodegenDesc::kMaxDims] = {};
-        uint32_t out_strides[GatherElementsCodegenDesc::kMaxDims] = {};
-        uint32_t data_dims[GatherElementsCodegenDesc::kMaxDims] = {};
-        uint32_t data_strides[GatherElementsCodegenDesc::kMaxDims] = {};
-    } params{};
+    std::vector<uint32_t> params(GatherElementsCodegenDesc::kParamU32Count, 0);
     const auto data_strides_i64 = make_element_strides(data_shape);
     const auto out_strides_i64 = make_element_strides(output_shape);
-    params.rank = static_cast<uint32_t>(output_shape.size());
-    params.axis = axis;
-    params.total = static_cast<uint32_t>(ov::shape_size(output_shape));
+    params[GatherElementsCodegenDesc::kRankOffset] = static_cast<uint32_t>(output_shape.size());
+    params[GatherElementsCodegenDesc::kAxisOffset] = axis;
+    params[GatherElementsCodegenDesc::kTotalOffset] = static_cast<uint32_t>(ov::shape_size(output_shape));
     for (size_t i = 0; i < output_shape.size(); ++i) {
-        params.out_dims[i] = static_cast<uint32_t>(output_shape[i]);
-        params.out_strides[i] = static_cast<uint32_t>(out_strides_i64[i]);
-        params.data_dims[i] = static_cast<uint32_t>(data_shape[i]);
-        params.data_strides[i] = static_cast<uint32_t>(data_strides_i64[i]);
+        params[GatherElementsCodegenDesc::kOutDimsOffset + i] = static_cast<uint32_t>(output_shape[i]);
+        params[GatherElementsCodegenDesc::kOutStridesOffset + i] = static_cast<uint32_t>(out_strides_i64[i]);
+        params[GatherElementsCodegenDesc::kDataDimsOffset + i] = static_cast<uint32_t>(data_shape[i]);
+        params[GatherElementsCodegenDesc::kDataStridesOffset + i] = static_cast<uint32_t>(data_strides_i64[i]);
     }
 
     GfxKernelRuntimeParamPayload payload;
-    payload.extra_inputs.push_back(make_kernel_bytes_param_tensor(buffer_manager,
-                                                                  stage_name,
-                                                                  "gather_elements_params",
-                                                                  &params,
-                                                                  sizeof(params),
-                                                                  ov::element::u8,
-                                                                  ov::Shape{sizeof(params)}));
+    payload.extra_inputs.push_back(make_kernel_u32_param_tensor(buffer_manager,
+                                                               stage_name,
+                                                               "gather_elements_params",
+                                                               params));
     return payload;
 }
 

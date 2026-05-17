@@ -5,10 +5,13 @@
 #include "transforms/conv_im2col_parallel_lowering.hpp"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "runtime/gfx_logger.hpp"
+#include "transforms/fusion_utils.hpp"
+#include "transforms/mlir_fused_ops.hpp"
 
 #include <optional>
 
@@ -67,6 +70,67 @@ llvm::StringRef stage_attr(mlir::Operation* op) {
         return attr.getValue();
     }
     return {};
+}
+
+struct FusedActivationInfo {
+    std::optional<ActivationKind> kind;
+    float alpha = 0.0f;
+};
+
+struct BnGlobals {
+    mlir::Value scale;
+    mlir::Value bias;
+};
+
+mlir::Value append_func_arg(mlir::func::FuncOp func, mlir::Type type, mlir::Location loc) {
+    auto fn_type = func.getFunctionType();
+    llvm::SmallVector<mlir::Type, 8> inputs(fn_type.getInputs().begin(), fn_type.getInputs().end());
+    inputs.push_back(type);
+    auto new_type = mlir::FunctionType::get(func.getContext(), inputs, fn_type.getResults());
+    func.setType(new_type);
+    return func.getBody().front().addArgument(type, loc);
+}
+
+FusedActivationInfo read_fused_activation(mlir::Operation* op) {
+    FusedActivationInfo info{};
+    if (!op) {
+        return info;
+    }
+    auto kind_attr = op->getAttrOfType<mlir::StringAttr>("gfx.activation_kind");
+    if (!kind_attr) {
+        return info;
+    }
+    info.kind = fusion_utils::parse_activation_kind_name(kind_attr.getValue());
+    if (!info.kind) {
+        return info;
+    }
+    if (auto alpha_attr = op->getAttrOfType<mlir::FloatAttr>("gfx.activation_alpha")) {
+        info.alpha = static_cast<float>(alpha_attr.getValueAsDouble());
+    }
+    return info;
+}
+
+std::optional<BnGlobals> prepare_bn_globals(mlir::linalg::GenericOp op,
+                                            mlir::IRRewriter& rewriter,
+                                            mlir::Type elem_ty) {
+    auto scale_attr = op->getAttrOfType<mlir::DenseFPElementsAttr>("gfx.bn_scale");
+    auto bias_attr = op->getAttrOfType<mlir::DenseFPElementsAttr>("gfx.bn_bias");
+    if (!scale_attr || !bias_attr) {
+        return std::nullopt;
+    }
+    auto scale_type = mlir::dyn_cast<mlir::RankedTensorType>(scale_attr.getType());
+    auto bias_type = mlir::dyn_cast<mlir::RankedTensorType>(bias_attr.getType());
+    if (!scale_type || !bias_type || scale_type.getShape() != bias_type.getShape()) {
+        return std::nullopt;
+    }
+    auto func = op->getParentOfType<mlir::func::FuncOp>();
+    if (!func) {
+        return std::nullopt;
+    }
+    auto memref_type = mlir::MemRefType::get(scale_type.getShape(), elem_ty);
+    auto scale_arg = append_func_arg(func, memref_type, op.getLoc());
+    auto bias_arg = append_func_arg(func, memref_type, op.getLoc());
+    return BnGlobals{scale_arg, bias_arg};
 }
 
 bool lower_im2col_extract(mlir::linalg::GenericOp op, mlir::IRRewriter& rewriter) {
@@ -221,10 +285,18 @@ bool lower_im2col_pack_weight(mlir::linalg::GenericOp op, mlir::IRRewriter& rewr
 
 bool lower_im2col_restore_output(mlir::linalg::GenericOp op, mlir::IRRewriter& rewriter) {
     auto input = strip_memref_casts_impl(op.getDpsInputs()[0]);
+    mlir::Value bias;
+    if (op.getNumDpsInputs() == 2) {
+        bias = strip_memref_casts_impl(op.getDpsInputs()[1]);
+    }
     auto output = strip_memref_casts_impl(op.getDpsInits()[0]);
     auto input_ty = mlir::dyn_cast<mlir::MemRefType>(input.getType());
+    auto bias_ty = bias ? mlir::dyn_cast<mlir::MemRefType>(bias.getType()) : mlir::MemRefType{};
     auto output_ty = mlir::dyn_cast<mlir::MemRefType>(output.getType());
     if (!input_ty || !output_ty || output_ty.getRank() != 4 || (input_ty.getRank() != 2 && input_ty.getRank() != 3)) {
+        return false;
+    }
+    if (bias && (!bias_ty || bias_ty.getRank() != 1)) {
         return false;
     }
     const auto out_w = int_attr(op, "gfx.im2col_out_w");
@@ -233,6 +305,7 @@ bool lower_im2col_restore_output(mlir::linalg::GenericOp op, mlir::IRRewriter& r
     }
     const bool transposed_input = op->getAttrOfType<mlir::BoolAttr>("gfx.im2col_restore_transposed") &&
                                   op->getAttrOfType<mlir::BoolAttr>("gfx.im2col_restore_transposed").getValue();
+    const auto bn_globals = prepare_bn_globals(op, rewriter, output_ty.getElementType());
 
     const auto loc = op.getLoc();
     rewriter.setInsertionPoint(op);
@@ -266,6 +339,20 @@ bool lower_im2col_restore_output(mlir::linalg::GenericOp op, mlir::IRRewriter& r
     } else {
         value = rewriter.create<mlir::memref::LoadOp>(loc, input, mlir::ValueRange{m, ivs[1]});
     }
+    if (bn_globals.has_value()) {
+        auto scale = rewriter.create<mlir::memref::LoadOp>(loc, bn_globals->scale, mlir::ValueRange{ivs[1]}).getResult();
+        auto bn_bias = rewriter.create<mlir::memref::LoadOp>(loc, bn_globals->bias, mlir::ValueRange{ivs[1]}).getResult();
+        auto scaled = rewriter.create<mlir::arith::MulFOp>(loc, value, scale).getResult();
+        value = rewriter.create<mlir::arith::AddFOp>(loc, scaled, bn_bias).getResult();
+    }
+    if (bias) {
+        auto bias_value = rewriter.create<mlir::memref::LoadOp>(loc, bias, mlir::ValueRange{ivs[1]}).getResult();
+        value = rewriter.create<mlir::arith::AddFOp>(loc, value, bias_value).getResult();
+    }
+    const auto activation = read_fused_activation(op);
+    if (activation.kind) {
+        value = emit_mlir_activation(rewriter, loc, value, *activation.kind, activation.alpha, output_ty.getElementType());
+    }
     rewriter.create<mlir::memref::StoreOp>(loc, value, output, mlir::ValueRange{ivs[0], ivs[1], ivs[2], ivs[3]});
 
     if (op->getNumResults() > 0) {
@@ -280,16 +367,25 @@ bool lower_op(mlir::linalg::GenericOp op, mlir::IRRewriter& rewriter) {
     if (stage.empty()) {
         return false;
     }
-    if (op.getNumDpsInputs() != 1 || op.getNumDpsInits() != 1) {
+    if (op.getNumDpsInits() != 1) {
         return false;
     }
     if (stage == "extract") {
+        if (op.getNumDpsInputs() != 1) {
+            return false;
+        }
         return lower_im2col_extract(op, rewriter);
     }
     if (stage == "pack_weight") {
+        if (op.getNumDpsInputs() != 1) {
+            return false;
+        }
         return lower_im2col_pack_weight(op, rewriter);
     }
     if (stage == "restore_output") {
+        if (op.getNumDpsInputs() != 1 && op.getNumDpsInputs() != 2) {
+            return false;
+        }
         return lower_im2col_restore_output(op, rewriter);
     }
     return false;

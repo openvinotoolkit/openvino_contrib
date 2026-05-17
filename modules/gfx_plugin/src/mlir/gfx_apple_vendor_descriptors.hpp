@@ -27,6 +27,7 @@ enum class GfxAppleMpsVendorPrimitiveKind {
     Resize2D,
     Softmax,
     TopK,
+    Sdpa,
 };
 
 struct GfxAppleMpsVendorPrimitiveDescriptor {
@@ -37,6 +38,7 @@ struct GfxAppleMpsVendorPrimitiveDescriptor {
     GfxMpsrtResize2DAbiDesc resize2d{};
     GfxMpsrtSoftmaxAbiDesc softmax{};
     GfxMpsrtTopKAbiDesc topk{};
+    GfxMpsrtSdpaAbiDesc sdpa{};
 };
 
 struct GfxAppleMpsVendorPrimitiveContract {
@@ -76,6 +78,8 @@ bool gfx_apple_make_mps_softmax_desc(const std::shared_ptr<const ov::Node>& node
                                      GfxMpsrtSoftmaxAbiDesc& desc);
 bool gfx_apple_make_mps_topk_desc(const std::shared_ptr<const ov::Node>& node,
                                   GfxMpsrtTopKAbiDesc& desc);
+bool gfx_apple_make_mps_sdpa_desc(const std::shared_ptr<const ov::Node>& node,
+                                  GfxMpsrtSdpaAbiDesc& desc);
 bool gfx_apple_make_mps_io_tensor_descs_for_node(const std::shared_ptr<const ov::Node>& node,
                                                  GfxStageStorageKind storage,
                                                  std::vector<GfxMpsrtTensorDesc>& inputs,
@@ -91,6 +95,9 @@ bool gfx_apple_make_mps_softmax_contract(const std::shared_ptr<const ov::Node>& 
                                          GfxAppleMpsVendorPrimitiveContract& contract);
 bool gfx_apple_make_mps_topk_contract(const std::shared_ptr<const ov::Node>& node,
                                       const GfxMpsrtTopKAbiDesc& desc,
+                                      GfxAppleMpsVendorPrimitiveContract& contract);
+bool gfx_apple_make_mps_sdpa_contract(const std::shared_ptr<const ov::Node>& node,
+                                      const GfxMpsrtSdpaAbiDesc& desc,
                                       GfxAppleMpsVendorPrimitiveContract& contract);
 
 }  // namespace gfx_plugin

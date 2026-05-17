@@ -9,6 +9,7 @@
 
 #include "openvino/core/except.hpp"
 #include "backends/vulkan/runtime/vulkan_backend.hpp"
+#include "runtime/gfx_logger.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -183,7 +184,8 @@ void record_vulkan_copy_regions(VkCommandBuffer command_buffer,
 GpuBuffer vulkan_allocate_buffer(size_t bytes,
                                  ov::element::Type type,
                                  VkBufferUsageFlags usage,
-                                 VkMemoryPropertyFlags properties) {
+                                 VkMemoryPropertyFlags properties,
+                                 const char* label) {
     GpuBuffer buf{};
     if (bytes == 0) {
         return buf;
@@ -217,12 +219,32 @@ GpuBuffer vulkan_allocate_buffer(size_t bytes,
     alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     alloc_info.allocationSize = mem_req.size;
     alloc_info.memoryTypeIndex = mem_type;
+    if (gfx_log_debug_enabled() && bytes >= 8 * 1024 * 1024) {
+        gfx_log_debug("VulkanMemory")
+            << "Alloc buffer bytes=" << bytes
+            << " aligned_bytes=" << static_cast<size_t>(mem_req.size)
+            << " usage=0x" << std::hex << static_cast<uint64_t>(usage)
+            << " properties=0x" << static_cast<uint64_t>(properties)
+            << std::dec << " label=" << (label ? label : "<unnamed>");
+    }
 
     VkDeviceMemory memory = VK_NULL_HANDLE;
     res = vkAllocateMemory(device, &alloc_info, nullptr, &memory);
     if (res != VK_SUCCESS) {
         vkDestroyBuffer(device, buffer, nullptr);
-        OPENVINO_THROW("GFX Vulkan: vkAllocateMemory failed");
+        OPENVINO_THROW("GFX Vulkan: vkAllocateMemory failed",
+                       " bytes=",
+                       bytes,
+                       " aligned_bytes=",
+                       static_cast<size_t>(mem_req.size),
+                       " usage=0x",
+                       std::hex,
+                       static_cast<uint64_t>(usage),
+                       " properties=0x",
+                       static_cast<uint64_t>(properties),
+                       std::dec,
+                       " label=",
+                       (label ? label : "<unnamed>"));
     }
 
     res = vkBindBufferMemory(device, buffer, memory, 0);

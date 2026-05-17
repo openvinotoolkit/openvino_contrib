@@ -6,7 +6,6 @@
 
 #include <algorithm>
 #include <string_view>
-#include <unordered_set>
 #include <vector>
 
 #include "openvino/op/avg_pool.hpp"
@@ -17,9 +16,11 @@
 #include "openvino/op/log_softmax.hpp"
 #include "openvino/op/matmul.hpp"
 #include "openvino/op/max_pool.hpp"
+#include "openvino/op/scaled_dot_product_attention.hpp"
 #include "openvino/op/softmax.hpp"
 #include "openvino/op/topk.hpp"
 #include "openvino/op/transpose.hpp"
+#include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gfx_parallelism.hpp"
 #include "runtime/gfx_shape_utils.hpp"
 #include "transformations/rt_info/disable_fp16_compression.hpp"
@@ -319,7 +320,7 @@ bool is_last_dim_topk(const std::shared_ptr<const ov::Node> &node) {
   if (rank <= 0) {
     return false;
   }
-  if (topk->get_k() == 0 || topk->get_k() > 16) {
+  if (topk->get_k() == 0) {
     return false;
   }
   const int64_t axis =
@@ -352,91 +353,30 @@ GfxStagePlacementPlan make_placement(GfxStageBackendDomain domain,
   return plan;
 }
 
+void record_stage_policy_counter(std::string_view name,
+                                 std::string_view stage_type) {
+  increment_compile_counter(std::string("stage_policy_") + std::string(name) +
+                            "_count");
+  if (!stage_type.empty()) {
+    increment_compile_counter(std::string("stage_policy_") +
+                              std::string(name) + "_" +
+                              std::string(stage_type) + "_count");
+  }
+}
+
 bool is_mps_vendor_element_type(const ov::element::Type &element_type) {
   return element_type == ov::element::f16 || element_type == ov::element::f32;
 }
 
 bool is_mps_image_vendor_element_type(const ov::element::Type &element_type,
-                                      const GfxStageRuntimeTraits &traits) {
-  if (element_type == ov::element::f16) {
-    return true;
-  }
-  return traits.diagnostic_f32_mps_image && element_type == ov::element::f32;
+                                      const GfxStageRuntimeTraits & /*traits*/) {
+  return element_type == ov::element::f16 || element_type == ov::element::f32;
 }
 
-bool is_fp32_precision_sensitive_image_candidate(
-    const std::shared_ptr<const ov::Node> &node,
-    const ov::element::Type &element_type) {
-  return node && element_type == ov::element::f32 &&
-         ov::fp16_compression_is_disabled(node);
-}
-
-bool is_order_sensitive_topk_node(const std::shared_ptr<const ov::Node> &node) {
-  auto topk = ov::as_type_ptr<const ov::op::util::TopKBase>(node);
-  if (!topk || topk->get_input_size() == 0 ||
-      !topk->get_input_element_type(0).is_real()) {
-    return false;
-  }
-  if (!topk->get_output_partial_shape(0).is_static() ||
-      !topk->get_output_partial_shape(1).is_static()) {
-    return true;
-  }
-  const auto &input_shape = topk->get_input_partial_shape(0);
-  if (!input_shape.rank().is_static()) {
-    return true;
-  }
-  const auto rank = input_shape.rank().get_length();
-  if (rank <= 0) {
-    return true;
-  }
-  const int64_t raw_axis = topk->get_axis();
-  const int64_t axis = raw_axis < 0 ? raw_axis + rank : raw_axis;
-  return topk->get_k() > 16 || axis < 0 || axis >= rank ||
-         topk->get_sort_type() != ov::op::TopKSortType::NONE;
-}
-
-bool reaches_order_sensitive_topk_downstream(
-    const std::shared_ptr<const ov::Node> &node,
-    std::unordered_set<const ov::Node *> &visited,
-    size_t depth = 0) {
-  if (!node || depth > 128 || !visited.insert(node.get()).second) {
-    return false;
-  }
-  for (size_t output_index = 0; output_index < node->get_output_size();
-       ++output_index) {
-    const auto output = node->output(output_index);
-    if (!output.get_element_type().is_real()) {
-      continue;
-    }
-    for (const auto &target_input : output.get_target_inputs()) {
-      if (!target_input.get_element_type().is_real()) {
-        continue;
-      }
-      auto *consumer_ptr = target_input.get_node();
-      if (!consumer_ptr) {
-        continue;
-      }
-      const auto consumer = consumer_ptr->shared_from_this();
-      if (is_order_sensitive_topk_node(consumer)) {
-        return true;
-      }
-      if (reaches_order_sensitive_topk_downstream(consumer, visited,
-                                                  depth + 1)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-bool is_fp32_order_sensitive_image_candidate(
-    const std::shared_ptr<const ov::Node> &node,
-    const ov::element::Type &element_type) {
-  if (!node || element_type != ov::element::f32) {
-    return false;
-  }
-  std::unordered_set<const ov::Node *> visited;
-  return reaches_order_sensitive_topk_downstream(node, visited);
+bool is_mps_image_stage_type(std::string_view stage_type) {
+  return stage_type == "Convolution" || stage_type == "GroupConvolution" ||
+         stage_type == "MaxPool" || stage_type == "AvgPool" ||
+         stage_type == "BatchNormInference" || stage_type == "Interpolate";
 }
 
 bool stage_has_real_output(const std::shared_ptr<const ov::Node> &node) {
@@ -481,31 +421,48 @@ bool is_mps_image_candidate(std::string_view stage_type,
                             const std::shared_ptr<const ov::Node> &node,
                             const ov::element::Type &element_type,
                             const GfxStageRuntimeTraits &traits) {
-  const auto declared_type = declared_stage_element_type(node, element_type);
-  if (is_fp32_precision_sensitive_image_candidate(node, declared_type) ||
-      is_fp32_order_sensitive_image_candidate(node, declared_type)) {
+  if (!is_mps_image_stage_type(stage_type)) {
     return false;
   }
+  const auto declared_type = declared_stage_element_type(node, element_type);
   if (stage_type == "Convolution" || stage_type == "GroupConvolution") {
     if (!is_mps_image_vendor_element_type(declared_type, traits)) {
+      record_stage_policy_counter("mps_image_reject_element_type",
+                                  stage_type);
       return false;
     }
-    return has_static_output_rank(node, 4) &&
-           has_mps_image_conv_channel_contract(node);
+    const bool accepted = has_static_output_rank(node, 4) &&
+                          has_mps_image_conv_channel_contract(node);
+    record_stage_policy_counter(
+        accepted ? "mps_image_accept" : "mps_image_reject_shape_contract",
+        stage_type);
+    return accepted;
   }
   if (stage_type == "MaxPool" || stage_type == "AvgPool" ||
       stage_type == "BatchNormInference") {
     if (!is_mps_image_vendor_element_type(declared_type, traits)) {
+      record_stage_policy_counter("mps_image_reject_element_type",
+                                  stage_type);
       return false;
     }
     if ((stage_type == "MaxPool" || stage_type == "AvgPool") && node &&
         node->get_output_size() != 1) {
+      record_stage_policy_counter("mps_image_reject_multi_output_pool",
+                                  stage_type);
       return false;
     }
-    return has_static_output_rank(node, 4);
+    const bool accepted = has_static_output_rank(node, 4);
+    record_stage_policy_counter(
+        accepted ? "mps_image_accept" : "mps_image_reject_shape_contract",
+        stage_type);
+    return accepted;
   }
   if (stage_type == "Interpolate") {
-    return is_mps_resize2d_candidate(node);
+    const bool accepted = is_mps_resize2d_candidate(node);
+    record_stage_policy_counter(
+        accepted ? "mps_image_accept" : "mps_image_reject_shape_contract",
+        stage_type);
+    return accepted;
   }
   return false;
 }
@@ -513,8 +470,8 @@ bool is_mps_image_candidate(std::string_view stage_type,
 bool is_mps_matrix_candidate(std::string_view stage_type,
                              const std::shared_ptr<const ov::Node> &node,
                              const ov::element::Type &element_type) {
-  if (!is_mps_matrix_vendor_element_type(
-          stage_type, declared_stage_element_type(node, element_type))) {
+  const auto declared_type = declared_stage_element_type(node, element_type);
+  if (!is_mps_matrix_vendor_element_type(stage_type, declared_type)) {
     return false;
   }
   if (stage_type == "MatMul") {
@@ -528,6 +485,34 @@ bool is_mps_matrix_candidate(std::string_view stage_type,
     return true;
   }
   return false;
+}
+
+bool is_mps_ndarray_candidate(std::string_view stage_type,
+                              const std::shared_ptr<const ov::Node> &node,
+                              const ov::element::Type &element_type) {
+  const auto declared_type = declared_stage_element_type(node, element_type);
+  if (!is_mps_vendor_element_type(declared_type) ||
+      stage_type != "ScaledDotProductAttention") {
+    return false;
+  }
+  auto sdpa = ov::as_type_ptr<const ov::op::v13::ScaledDotProductAttention>(node);
+  if (!sdpa || sdpa->get_input_size() != 3 || sdpa->get_causal() ||
+      !sdpa->get_input_partial_shape(0).is_static() ||
+      !sdpa->get_input_partial_shape(1).is_static() ||
+      !sdpa->get_input_partial_shape(2).is_static() ||
+      !sdpa->get_output_partial_shape(0).is_static()) {
+    return false;
+  }
+  const auto q_shape = sdpa->get_input_shape(0);
+  const auto k_shape = sdpa->get_input_shape(1);
+  const auto v_shape = sdpa->get_input_shape(2);
+  if (q_shape.size() != 4 || k_shape.size() != 4 || v_shape.size() != 4) {
+    return false;
+  }
+  return q_shape[0] == k_shape[0] && q_shape[0] == v_shape[0] &&
+         q_shape[1] == k_shape[1] && q_shape[1] == v_shape[1] &&
+         q_shape[3] == k_shape[3] && q_shape[3] == v_shape[3] &&
+         k_shape[2] == v_shape[2];
 }
 
 GfxStagePlacementPlan
@@ -551,11 +536,23 @@ select_stage_placement(GpuBackend backend, const std::string &stage_type,
                           /*vendor_primitive=*/true,
                           /*custom_kernel=*/false);
   }
+  if (is_mps_ndarray_candidate(stage_type, node, element_type)) {
+    record_stage_policy_counter("mps_ndarray_accept", stage_type);
+    return make_placement(GfxStageBackendDomain::AppleMps,
+                          GfxStageStorageKind::NDArray, stage_type,
+                          /*vendor_primitive=*/true,
+                          /*custom_kernel=*/false);
+  }
   if (is_mps_matrix_candidate(stage_type, node, element_type)) {
+    record_stage_policy_counter("mps_matrix_accept", stage_type);
     return make_placement(GfxStageBackendDomain::AppleMps,
                           GfxStageStorageKind::Matrix, stage_type,
                           /*vendor_primitive=*/true,
                           /*custom_kernel=*/false);
+  }
+  if (stage_type == "MatMul" || stage_type == "Softmax" ||
+      stage_type == "LogSoftmax" || stage_type == "TopK") {
+    record_stage_policy_counter("mps_matrix_reject", stage_type);
   }
 
   return make_placement(GfxStageBackendDomain::AppleMsl,
@@ -620,6 +617,19 @@ bool is_safe_shared_activation(ActivationKind kind) {
   case ActivationKind::HSigmoid:
   case ActivationKind::Abs:
   case ActivationKind::Sign:
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool is_apple_mpsrt_conv_activation_fusion_supported(ActivationKind kind) {
+  switch (kind) {
+  case ActivationKind::Relu:
+  case ActivationKind::Sigmoid:
+  case ActivationKind::Tanh:
+  case ActivationKind::Abs:
+  case ActivationKind::Swish:
     return true;
   default:
     return false;
@@ -739,6 +749,10 @@ bool allow_stage_activation_fusion(GpuBackend backend,
   }
   if (backend == GpuBackend::Vulkan) {
     return stage_type == "Convolution" && kind == ActivationKind::Relu;
+  }
+  if (backend == GpuBackend::Metal) {
+    return is_conv_like(stage_type) &&
+           is_apple_mpsrt_conv_activation_fusion_supported(kind);
   }
   return is_conv_like(stage_type);
 }
@@ -882,7 +896,8 @@ GfxStageOptimizationPlan select_stage_optimization_plan(
   }
   if (traits.binary_chunked) {
     plan.execution.submit.weight = 8;
-    plan.execution.submit.isolate = out_elems >= large_chunked_output_elems;
+    plan.execution.submit.isolate =
+        !constrained_vulkan_submit && out_elems >= large_chunked_output_elems;
     return plan;
   }
   if ((traits.unary_chunked || traits.softmax_chunked) &&
@@ -893,7 +908,8 @@ GfxStageOptimizationPlan select_stage_optimization_plan(
   }
   if (traits.unary_chunked || traits.softmax_chunked) {
     plan.execution.submit.weight = 6;
-    plan.execution.submit.isolate = out_elems >= large_chunked_output_elems;
+    plan.execution.submit.isolate =
+        !constrained_vulkan_submit && out_elems >= large_chunked_output_elems;
     return plan;
   }
   if ((plan.archetype == GfxStageArchetype::Convolution ||
@@ -948,13 +964,13 @@ select_stage_execution_policy(const GpuBufferManager *buffer_manager,
 }
 
 GfxConvRoutePlan
-select_conv_route_plan(const GpuBufferManager * /*buffer_manager*/,
+select_conv_route_plan(const GpuBufferManager *buffer_manager,
                        GpuBackend backend,
                        const std::shared_ptr<const ov::Node> &node,
-                       const ov::element::Type &element_type, bool /*has_bias*/,
-                       bool /*has_activation*/, bool has_batchnorm) {
+                       const ov::element::Type &element_type, bool has_bias,
+                       bool has_activation, bool has_batchnorm) {
   GfxConvRoutePlan plan{};
-  if (backend != GpuBackend::Vulkan || !node || has_batchnorm) {
+  if (backend != GpuBackend::Vulkan || !node) {
     return plan;
   }
   if (element_type != ov::element::f16 && element_type != ov::element::f32) {
@@ -1006,12 +1022,14 @@ select_conv_route_plan(const GpuBufferManager * /*buffer_manager*/,
     return plan;
   }
 
-  // Plain Conv2D has a single active Vulkan route: the shared MLIR/SPIR-V
-  // custom-kernel path. Dedicated direct/chunked Conv2D route tags used to
-  // leak into lowering and submit policy even when execution no longer used
-  // the old executor kernels, which made sequential Conv2D suites depend on
-  // stale route state. Keep route selection reserved for GroupConvolution
-  // until that path is migrated too.
+  // Plain Conv2D normally stays on the shared MLIR/SPIR-V custom-kernel path.
+  // Multi-kernel decompositions such as im2col+matmul require a subgraph/stage
+  // manifest that owns intermediate buffers and all launches. They must not be
+  // selected as a single custom-kernel stage.
+  (void)buffer_manager;
+  (void)has_bias;
+  (void)has_activation;
+  (void)has_batchnorm;
   return plan;
 }
 

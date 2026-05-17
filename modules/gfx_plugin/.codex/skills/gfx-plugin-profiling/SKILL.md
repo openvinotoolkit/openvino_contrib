@@ -83,7 +83,7 @@ Check:
 - `descriptor_update_count`
 - `binding_prepare_in_infer`
 - backend setup spans in trace output
-- Metal MPSRT counters such as `mpsrt_*_bound_resource_count`, `mpsrt_mps_resize2d_*`, and `mpsrt_encode` segments when the shared `gfx_mpsrt_model.*` resource table, external-buffer binding plan, prepared heap, or storage-bridge path is in use
+- Metal MPSRT counters such as `mpsrt_*_bound_resource_count`, `mpsrt_mps_resize2d_*`, `mpsrt_mps_graph_*`, and `mpsrt_encode` segments when the shared `gfx_mpsrt_model.*` resource table, external-buffer binding plan, prepared heap, storage-bridge path, or MPSGraph-backed vendor route is in use
 
 ### Compile or cache regression suspicion
 
@@ -101,6 +101,7 @@ Check:
 - Use `ov_gfx_compare_runner` for correctness and `ov_gfx_microbench` for profiling triage; do not mix their purposes.
 - Distinguish wall-time, GPU-time, and overhead-subtracted estimates.
 - Correlate plugin-internal profiling with platform-native traces before concluding that a backend route is the bottleneck.
+- Prefer `ov_gfx_compare_runner --dump-gfx-profile --gfx-profiling-level detailed` when accuracy triage and placement counters need to be captured in the same run; keep it accuracy-only and use `benchmark_app` or microbench tools for performance numbers.
 
 ## Platform Notes
 

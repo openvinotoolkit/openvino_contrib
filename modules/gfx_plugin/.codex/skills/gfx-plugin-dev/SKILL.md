@@ -43,7 +43,7 @@ Then read the relevant code path:
 - When changing stateful graph behavior, treat `ReadValue` / `Assign` as a dedicated infer-request-state path, not just generic stateless runtime stages.
 - For Metal placement work, keep `gfx_stage_policy.*`, `gfx_mpsrt_*`, `src/runtime/gfx_mpsrt_model.*`, `gfx_kernel_manifest.hpp`, `gfx_custom_kernel_families.*`, MLIR attrs, and `src/backends/metal/runtime/mpsrt/*` aligned as one contract.
 - For hybrid Metal paths, also keep `gfx_kernel_manifest.hpp`, `gfx_custom_kernel_families.*`, `gfx_mpsrt_program.hpp`, `gfx_mpsrt_dialect.*`, `gfx_mpsrt_ops.*`, `gfx_apple_stage_pipeline.*`, `gfx_mpsrt_kernel_manifest_adapter.hpp`, `gfx_mpsrt_storage_bridge.hpp`, `gfx_mpsrt_source_plan.hpp`, `gfx_backend_custom_kernel_adapter.*`, `gfx_stage_kernel_binding.hpp`, and `gfx_stage_runtime_values.*` aligned with that contract.
-- For Apple MPS vendor primitive changes, prefer `src/mlir/gfx_apple_vendor_descriptors.*`, `GfxAppleMpsVendorPrimitiveContract`, and `materialize_apple_mps_vendor_contract_program()` so Conv2D, Pool2D, Resize2D, Softmax, and TopK descriptor extraction stays shared.
+- For Apple MPS/MPSGraph vendor primitive changes, prefer `src/mlir/gfx_apple_vendor_descriptors.*`, `GfxAppleMpsVendorPrimitiveContract`, and `materialize_apple_mps_vendor_contract_program()` so Conv2D, Pool2D, Resize2D, Softmax, TopK, GEMM, and SDPA descriptor extraction stays shared.
 - For MPSRT request-binding changes, keep `MpsrtRuntimeResource`, `external_buffer_bindings`, prepared model resources, storage bridges, and request-time validation aligned instead of reintroducing ad-hoc transient allocation.
 - For Metal custom MSL source changes, prefer `src/mlir/msl_codegen_apple_msl*`, `src/mlir/msl_codegen_apple_mps.*`, `src/mlir/msl_codegen_matmul_*`, and `GfxMslRuntimeBindingPlan`; keep module operand annotations, manifest external-buffer roles, inferred `[[buffer(N)]]` counts, and MPSRT `kernel_buffer_order` aligned.
 - For Vulkan compact-ABI changes, prefer `src/mlir/spirv_kernel_binding_adapter.hpp` so SPIR-V fixed-argument metadata stays separate from Apple MSL binding attrs.
@@ -66,7 +66,7 @@ Check whether the change belongs to one of the current special families:
 - source-node-aware output routing for fused stages or direct stateful-assign prebinding
 - output aliases or storage-source reuse inside `FusedSequenceStage` and infer output planning
 - backend-specialized launch paths that now depend on final runtime shape or final shader binding counts
-- backend-only fused LLM ops such as `GfxSDPAWithCausalMask`
+- backend-only fused LLM ops such as `GfxSDPAWithCausalMask` and vendor attention groups routed to MPSGraph-backed `MPSSdpa`
 - Metal-native op contracts that now carry more ABI metadata, such as dilated MaxPool, generalized TopK, ShapeOf, or blocked Conv2D dispatch
 - Metal placement-domain and storage selection, such as Apple MPS image or matrix stages versus Apple MSL buffer dispatch
 - MPSRT runtime-model boundaries, including tensor descriptors, runtime resources, stage record keys, external-buffer roles, and prepared MSL-dispatch pipeline caching
@@ -74,16 +74,17 @@ Check whether the change belongs to one of the current special families:
 - typed MPSRT builder-plan/runtime-model records, storage bridges, resource tables, prepared Metal heaps, and const-tensor-source attachment for Apple MPS models
 - typed `GfxMpsrtProgram` validation and generated `gfx_mpsrt_ops` materialization, including cleanup of stale legacy attrs
 - Apple stage-pipeline passes, shared vendor descriptors, and typed storage-conversion ops for image, matrix, ndarray, or alias boundaries
-- manifest-backed execution-kind routing, including vendor-only stages such as MPS Resize2D and mixed vendor-plus-custom multi-stage plans
+- manifest-backed execution-kind routing, including vendor-only stages such as MPS Resize2D, MPSGraph SDPA, and mixed vendor-plus-custom multi-stage plans
 - custom-kernel family classification, external-buffer ABI roles, semantic input/output roles, and dispatch-grid policy in `src/kernel_ir/gfx_custom_kernel_families.*`
 - Metal MSL runtime binding plans for tensor inputs, tensor outputs, const tensors, scalar params, and runtime params
-- MLIR-owned Metal MSL source plans such as compressed `MatMul`, SDPA, causal SDPA, Apple MSL adapter/compute/data-movement/structural kernels, Apple MPS vendor plans, and direct/MPSRT MatMul helpers
+- MLIR-owned Metal MSL source plans such as compressed `MatMul`, SDPA, causal SDPA, Apple MSL binding/dispatch/op-family kernels, Apple MPS/MPSGraph vendor plans, and direct/MPSRT MatMul helpers
 - SPIR-V compact-ABI adapter metadata for fixed-argument Vulkan kernels
 - compile-time data repacking paths, such as Metal dynamic-shape `MatMul` packing a constant RHS from `f32` to `f16` and recompiling against the effective runtime tensor types
 - backend-aware transform preservation, such as keeping compressed `MatMul` decompression subgraphs intact for Metal-only downstream routes
 - backend-aware transform fusion, such as LLaMA rotate-half rewriting into native `RoPE` on Metal or compatible compressed `MatMul` nodes regrouping into a fused horizontal path
 - backend-side fused epilogues, such as Metal `RMS` absorbing a residual `Add`
 - input-side fusion paths, such as `Multiply` absorbing an activation on one selected input instead of only post-op activation on the output
+- public `ov::hint::inference_precision` handling and precision-aware accuracy expectations
 
 ### Runtime or backend scheduling change
 

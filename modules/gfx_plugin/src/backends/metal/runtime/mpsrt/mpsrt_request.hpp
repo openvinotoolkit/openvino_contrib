@@ -71,6 +71,11 @@ struct MpsrtMpsTopKEncodeResult {
   size_t kernel_encodes = 0;
 };
 
+struct MpsrtMpsSdpaEncodeResult {
+  size_t bound_buffers = 0;
+  size_t kernel_encodes = 0;
+};
+
 struct MpsrtModelEncodeResult {
   size_t encoded_msl_dispatches = 0;
   size_t encoded_mps_gemm_stages = 0;
@@ -79,6 +84,7 @@ struct MpsrtModelEncodeResult {
   size_t encoded_mps_resize2d_stages = 0;
   size_t encoded_mps_softmax_stages = 0;
   size_t encoded_mps_topk_stages = 0;
+  size_t encoded_mps_sdpa_stages = 0;
   size_t skipped_non_msl_stages = 0;
   size_t bound_buffers = 0;
 };
@@ -212,6 +218,15 @@ public:
                        const MpsrtTensorBindings &bindings,
                        const KernelExecutionHooks *hooks = nullptr,
                        MpsrtMpsTopKEncodeResult *result = nullptr,
+                       std::string *error = nullptr) const;
+
+  bool encode_mps_sdpa(GpuCommandBufferHandle command_buffer,
+                       const ::ov::gfx_plugin::mpsrt::MpsrtModel &model,
+                       const ::ov::gfx_plugin::mpsrt::MpsrtRuntimeStage &stage,
+                       const MpsrtPreparedMpsSdpa &prepared,
+                       const MpsrtTensorBindings &bindings,
+                       const KernelExecutionHooks *hooks = nullptr,
+                       MpsrtMpsSdpaEncodeResult *result = nullptr,
                        std::string *error = nullptr) const;
 
   bool encode_prepared_model(

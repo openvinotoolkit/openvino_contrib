@@ -11,11 +11,19 @@ namespace gfx_plugin {
 
 std::string generate_msl_for_tile(const TileCodegenDesc& d, mlir::ModuleOp module) {
     std::string scalar = (d.element_type == ov::element::f16) ? "half" : "float";
+    const bool use_i64_lane_storage =
+        (d.element_type == ov::element::i64 || d.element_type == ov::element::u64) &&
+        module &&
+        module->getAttrOfType<mlir::BoolAttr>("gfx.i64_storage_i32_lanes") &&
+        module->getAttrOfType<mlir::BoolAttr>("gfx.i64_storage_i32_lanes").getValue();
     if (auto func = get_entry_func(module)) {
         auto ft = func.getFunctionType();
         if (ft.getNumInputs() >= 1) {
             scalar = msl_type_from_mlir(ft.getInput(0));
         }
+    }
+    if (use_i64_lane_storage) {
+        scalar = "int";
     }
 
     std::ostringstream ss;
@@ -38,7 +46,14 @@ std::string generate_msl_for_tile(const TileCodegenDesc& d, mlir::ModuleOp modul
     ss << "      int in_coord = (in_dims[i] == 0) ? 0 : (coord % in_dims[i]);\n";
     ss << "      in_index += in_coord * in_strides[i];\n";
     ss << "    }\n";
-    ss << "    out[gid] = in0[in_index];\n";
+    if (use_i64_lane_storage) {
+        ss << "    uint in_base = uint(in_index) * 2u;\n";
+        ss << "    uint out_base = gid * 2u;\n";
+        ss << "    out[out_base] = in0[in_base];\n";
+        ss << "    out[out_base + 1u] = in0[in_base + 1u];\n";
+    } else {
+        ss << "    out[gid] = in0[in_index];\n";
+    }
     ss << "}\n";
     return ss.str();
 }

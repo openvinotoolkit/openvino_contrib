@@ -8,6 +8,8 @@
 #include <openvino/openvino.hpp>
 
 #include <algorithm>
+#include <array>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -15,6 +17,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -27,6 +31,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "../gfx_accuracy_tolerance.hpp"
 #include "common_test_utils/ov_plugin_cache.hpp"
 
 namespace {
@@ -45,6 +50,23 @@ const char *resolve_gfx_plugin_path() {
 #else
   return nullptr;
 #endif
+}
+
+bool trace_compare_phases_enabled() {
+  const char *env = std::getenv("OV_GFX_COMPARE_TRACE_PHASES");
+  return env && *env && std::string(env) != "0";
+}
+
+void trace_compare_phase(const std::string &phase,
+                         const std::string &detail = {}) {
+  if (!trace_compare_phases_enabled()) {
+    return;
+  }
+  std::cerr << "COMPARE_PHASE " << phase;
+  if (!detail.empty()) {
+    std::cerr << ' ' << detail;
+  }
+  std::cerr << std::endl;
 }
 
 void register_gfx_plugin(ov::Core &core) {
@@ -100,6 +122,8 @@ uint64_t deterministic_validation_seed(uint64_t base, size_t index) {
   return mix_input_value(base ^ (0x9e3779b97f4a7c15ULL * (index + 1)));
 }
 
+std::string shape_to_string(const ov::Shape &shape);
+
 template <typename T>
 void fill_tensor_data(ov::Tensor &tensor, uint64_t input_seed) {
   T *data = tensor.data<T>();
@@ -145,6 +169,212 @@ void fill_tensor(ov::Tensor &tensor, uint64_t input_seed = 0) {
   }
 }
 
+struct RgbImage {
+  size_t width = 0;
+  size_t height = 0;
+  std::vector<uint8_t> rgb;
+};
+
+std::string read_netpbm_token(std::istream &input) {
+  std::string token;
+  char ch = 0;
+  while (input.get(ch)) {
+    if (ch == '#') {
+      input.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+      continue;
+    }
+    if (!std::isspace(static_cast<unsigned char>(ch))) {
+      token.push_back(ch);
+      break;
+    }
+  }
+  while (input.get(ch)) {
+    if (ch == '#') {
+      input.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+      break;
+    }
+    if (std::isspace(static_cast<unsigned char>(ch))) {
+      break;
+    }
+    token.push_back(ch);
+  }
+  if (token.empty()) {
+    throw std::runtime_error("unexpected end of Netpbm image");
+  }
+  return token;
+}
+
+RgbImage load_ppm_image(const std::string &path) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    throw std::runtime_error("failed to open input image: " + path);
+  }
+  const std::string magic = read_netpbm_token(input);
+  if (magic != "P6" && magic != "P3") {
+    throw std::runtime_error("unsupported input image format for " + path +
+                             ": expected Netpbm P6/P3 RGB PPM");
+  }
+  const size_t width = static_cast<size_t>(std::stoull(read_netpbm_token(input)));
+  const size_t height =
+      static_cast<size_t>(std::stoull(read_netpbm_token(input)));
+  const unsigned max_value =
+      static_cast<unsigned>(std::stoul(read_netpbm_token(input)));
+  if (width == 0 || height == 0 || max_value == 0 || max_value > 65535) {
+    throw std::runtime_error("invalid PPM header in " + path);
+  }
+
+  RgbImage image;
+  image.width = width;
+  image.height = height;
+  image.rgb.resize(width * height * 3);
+  if (magic == "P6") {
+    if (max_value <= 255) {
+      std::vector<uint8_t> raw(width * height * 3);
+      input.read(reinterpret_cast<char *>(raw.data()),
+                 static_cast<std::streamsize>(raw.size()));
+      if (input.gcount() != static_cast<std::streamsize>(raw.size())) {
+        throw std::runtime_error("truncated PPM payload in " + path);
+      }
+      if (max_value == 255) {
+        image.rgb = std::move(raw);
+      } else {
+        for (size_t i = 0; i < raw.size(); ++i) {
+          image.rgb[i] = static_cast<uint8_t>(
+              std::lround((static_cast<double>(raw[i]) * 255.0) /
+                          static_cast<double>(max_value)));
+        }
+      }
+      return image;
+    }
+    for (size_t i = 0; i < image.rgb.size(); ++i) {
+      const int hi = input.get();
+      const int lo = input.get();
+      if (hi == EOF || lo == EOF) {
+        throw std::runtime_error("truncated 16-bit PPM payload in " + path);
+      }
+      const unsigned value =
+          (static_cast<unsigned>(hi) << 8) | static_cast<unsigned>(lo);
+      image.rgb[i] = static_cast<uint8_t>(
+          std::lround((static_cast<double>(value) * 255.0) /
+                      static_cast<double>(max_value)));
+    }
+    return image;
+  }
+
+  for (size_t i = 0; i < image.rgb.size(); ++i) {
+    const unsigned value =
+        static_cast<unsigned>(std::stoul(read_netpbm_token(input)));
+    if (value > max_value) {
+      throw std::runtime_error("PPM sample exceeds max value in " + path);
+    }
+    image.rgb[i] = static_cast<uint8_t>(
+        std::lround((static_cast<double>(value) * 255.0) /
+                    static_cast<double>(max_value)));
+  }
+  return image;
+}
+
+std::array<float, 3> resized_rgb01_at(const RgbImage &image, size_t y, size_t x,
+                                      size_t target_h, size_t target_w) {
+  const double src_y =
+      (static_cast<double>(y) + 0.5) * static_cast<double>(image.height) /
+          static_cast<double>(target_h) -
+      0.5;
+  const double src_x =
+      (static_cast<double>(x) + 0.5) * static_cast<double>(image.width) /
+          static_cast<double>(target_w) -
+      0.5;
+  const int y0 =
+      std::max(0, std::min(static_cast<int>(image.height) - 1,
+                           static_cast<int>(std::floor(src_y))));
+  const int x0 =
+      std::max(0, std::min(static_cast<int>(image.width) - 1,
+                           static_cast<int>(std::floor(src_x))));
+  const int y1 = std::min(static_cast<int>(image.height) - 1, y0 + 1);
+  const int x1 = std::min(static_cast<int>(image.width) - 1, x0 + 1);
+  const float wy =
+      static_cast<float>(std::max(0.0, std::min(1.0, src_y - y0)));
+  const float wx =
+      static_cast<float>(std::max(0.0, std::min(1.0, src_x - x0)));
+
+  std::array<float, 3> out = {0.0f, 0.0f, 0.0f};
+  const auto sample = [&](int sy, int sx, size_t c) -> float {
+    const size_t index =
+        (static_cast<size_t>(sy) * image.width + static_cast<size_t>(sx)) * 3 + c;
+    return static_cast<float>(image.rgb[index]) / 255.0f;
+  };
+  for (size_t c = 0; c < 3; ++c) {
+    const float v00 = sample(y0, x0, c);
+    const float v01 = sample(y0, x1, c);
+    const float v10 = sample(y1, x0, c);
+    const float v11 = sample(y1, x1, c);
+    const float v0 = v00 * (1.0f - wx) + v01 * wx;
+    const float v1 = v10 * (1.0f - wx) + v11 * wx;
+    out[c] = v0 * (1.0f - wy) + v1 * wy;
+  }
+  return out;
+}
+
+template <typename T>
+void set_image_tensor_value(ov::Tensor &tensor, size_t offset, float value) {
+  tensor.data<T>()[offset] = static_cast<T>(value);
+}
+
+template <>
+void set_image_tensor_value<uint8_t>(ov::Tensor &tensor, size_t offset,
+                                     float value) {
+  tensor.data<uint8_t>()[offset] = static_cast<uint8_t>(
+      std::lround(std::max(0.0f, std::min(1.0f, value)) * 255.0f));
+}
+
+void set_image_tensor_value_by_type(ov::Tensor &tensor, size_t offset,
+                                    float value) {
+  switch (tensor.get_element_type()) {
+  case ov::element::f32:
+    set_image_tensor_value<float>(tensor, offset, value);
+    return;
+  case ov::element::f16:
+    set_image_tensor_value<ov::float16>(tensor, offset, value);
+    return;
+  case ov::element::u8:
+    set_image_tensor_value<uint8_t>(tensor, offset, value);
+    return;
+  default:
+    throw std::runtime_error("input image supports only f32/f16/u8 tensors, got " +
+                             tensor.get_element_type().to_string());
+  }
+}
+
+void fill_tensor_from_rgb_image(ov::Tensor &tensor, const RgbImage &image,
+                                const std::string &path) {
+  const auto shape = tensor.get_shape();
+  if (shape.size() != 4 || shape[0] != 1) {
+    throw std::runtime_error("--input-image requires a static rank-4 batch-1 "
+                             "input tensor, got shape " +
+                             shape_to_string(shape) + " for " + path);
+  }
+  const bool nchw = shape[1] == 3;
+  const bool nhwc = shape[3] == 3;
+  if (!nchw && !nhwc) {
+    throw std::runtime_error("--input-image requires RGB NCHW or NHWC input, "
+                             "got shape " +
+                             shape_to_string(shape) + " for " + path);
+  }
+  const size_t height = nchw ? shape[2] : shape[1];
+  const size_t width = nchw ? shape[3] : shape[2];
+  for (size_t y = 0; y < height; ++y) {
+    for (size_t x = 0; x < width; ++x) {
+      const auto rgb = resized_rgb01_at(image, y, x, height, width);
+      for (size_t c = 0; c < 3; ++c) {
+        const size_t offset =
+            nchw ? (c * height * width + y * width + x)
+                 : (y * width * 3 + x * 3 + c);
+        set_image_tensor_value_by_type(tensor, offset, rgb[c]);
+      }
+    }
+  }
+}
+
 ov::Tensor clone_tensor_data(const ov::Tensor &tensor) {
   ov::Tensor clone(tensor.get_element_type(), tensor.get_shape());
   const size_t byte_size = tensor.get_byte_size();
@@ -154,6 +384,132 @@ ov::Tensor clone_tensor_data(const ov::Tensor &tensor) {
   return clone;
 }
 
+std::filesystem::path tensor_file_path(const std::filesystem::path &dir,
+                                       size_t index) {
+  return dir / ("output_" + std::to_string(index) + ".ovtensor");
+}
+
+std::string element_type_to_token(const ov::element::Type &type) {
+  return type.to_string();
+}
+
+ov::element::Type element_type_from_token(const std::string &token) {
+  if (token == "f32") {
+    return ov::element::f32;
+  }
+  if (token == "f16") {
+    return ov::element::f16;
+  }
+  if (token == "i32") {
+    return ov::element::i32;
+  }
+  if (token == "i64") {
+    return ov::element::i64;
+  }
+  if (token == "u8") {
+    return ov::element::u8;
+  }
+  if (token == "boolean" || token == "bool") {
+    return ov::element::boolean;
+  }
+  throw std::runtime_error("unsupported golden tensor element type: " + token);
+}
+
+void write_tensor_file(const ov::Tensor &tensor,
+                       const std::filesystem::path &path) {
+  std::filesystem::create_directories(path.parent_path());
+  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+  if (!out) {
+    throw std::runtime_error("failed to open golden tensor for write: " +
+                             path.string());
+  }
+  const auto shape = tensor.get_shape();
+  out << "OVGFX_TENSOR_V1 " << element_type_to_token(tensor.get_element_type())
+      << ' ' << shape.size();
+  for (size_t dim : shape) {
+    out << ' ' << dim;
+  }
+  out << ' ' << tensor.get_byte_size() << '\n';
+  if (tensor.get_byte_size() > 0) {
+    out.write(static_cast<const char *>(tensor.data()), tensor.get_byte_size());
+  }
+  if (!out) {
+    throw std::runtime_error("failed to write golden tensor: " +
+                             path.string());
+  }
+}
+
+ov::Tensor read_tensor_file(const std::filesystem::path &path) {
+  std::ifstream in(path, std::ios::binary);
+  if (!in) {
+    throw std::runtime_error("failed to open golden tensor for read: " +
+                             path.string());
+  }
+  std::string magic;
+  std::string element_type_token;
+  size_t rank = 0;
+  in >> magic >> element_type_token >> rank;
+  if (magic != "OVGFX_TENSOR_V1") {
+    throw std::runtime_error("unsupported golden tensor format: " +
+                             path.string());
+  }
+  ov::Shape shape(rank);
+  for (size_t i = 0; i < rank; ++i) {
+    in >> shape[i];
+  }
+  size_t byte_size = 0;
+  in >> byte_size;
+  if (!in) {
+    throw std::runtime_error("truncated golden tensor header: " +
+                             path.string());
+  }
+  const int newline = in.get();
+  if (newline != '\n') {
+    throw std::runtime_error("invalid golden tensor header terminator: " +
+                             path.string());
+  }
+  ov::Tensor tensor(element_type_from_token(element_type_token), shape);
+  if (byte_size != tensor.get_byte_size()) {
+    throw std::runtime_error("golden tensor byte size mismatch for " +
+                             path.string());
+  }
+  if (byte_size > 0) {
+    in.read(static_cast<char *>(tensor.data()), byte_size);
+    if (static_cast<size_t>(in.gcount()) != byte_size) {
+      throw std::runtime_error("truncated golden tensor payload: " +
+                               path.string());
+    }
+  }
+  return tensor;
+}
+
+void write_tensor_dir(const std::filesystem::path &dir,
+                      const std::vector<ov::Tensor> &tensors) {
+  std::filesystem::create_directories(dir);
+  std::ofstream manifest(dir / "manifest.txt", std::ios::trunc);
+  if (!manifest) {
+    throw std::runtime_error("failed to write golden manifest: " +
+                             (dir / "manifest.txt").string());
+  }
+  manifest << "OVGFX_TENSOR_DIR_V1 " << tensors.size() << '\n';
+  for (size_t i = 0; i < tensors.size(); ++i) {
+    write_tensor_file(tensors[i], tensor_file_path(dir, i));
+    manifest << i << " " << tensor_file_path({}, i).filename().string()
+             << " " << element_type_to_token(tensors[i].get_element_type())
+             << " " << shape_to_string(tensors[i].get_shape()) << '\n';
+  }
+}
+
+std::vector<ov::Tensor> read_tensor_dir(const std::filesystem::path &dir,
+                                        size_t expected_count) {
+  std::vector<ov::Tensor> tensors;
+  tensors.reserve(expected_count);
+  for (size_t i = 0; i < expected_count; ++i) {
+    tensors.push_back(read_tensor_file(tensor_file_path(dir, i)));
+  }
+  return tensors;
+}
+
 struct DiffStats {
   double max_abs_diff = 0.0;
   double max_rel_diff = 0.0;
@@ -161,10 +517,31 @@ struct DiffStats {
   size_t max_index = 0;
   double lhs_at_max = 0.0;
   double rhs_at_max = 0.0;
+  size_t max_rel_index = 0;
+  double lhs_at_max_rel = 0.0;
+  double rhs_at_max_rel = 0.0;
+  size_t tolerance_violations = 0;
+  size_t first_violation_index = 0;
+  double first_violation_lhs = 0.0;
+  double first_violation_rhs = 0.0;
+  double first_violation_abs = 0.0;
+  double first_violation_rel = 0.0;
 };
 
+struct CompareTolerance {
+  double abs_threshold = 0.0;
+  double rel_threshold = 0.0;
+};
+
+bool outside_tolerance(double abs_diff, double rel_diff,
+                       const CompareTolerance &tolerance) {
+  return abs_diff > tolerance.abs_threshold &&
+         rel_diff > tolerance.rel_threshold;
+}
+
 template <typename T>
-DiffStats compare_typed(const ov::Tensor &a, const ov::Tensor &b) {
+DiffStats compare_typed(const ov::Tensor &a, const ov::Tensor &b,
+                        std::optional<CompareTolerance> tolerance = std::nullopt) {
   const T *lhs = a.data<const T>();
   const T *rhs = b.data<const T>();
   DiffStats stats;
@@ -181,12 +558,30 @@ DiffStats compare_typed(const ov::Tensor &a, const ov::Tensor &b) {
       stats.lhs_at_max = da;
       stats.rhs_at_max = db;
     }
-    stats.max_rel_diff = std::max(stats.max_rel_diff, rel_diff);
+    if (rel_diff > stats.max_rel_diff) {
+      stats.max_rel_diff = rel_diff;
+      stats.max_rel_index = i;
+      stats.lhs_at_max_rel = da;
+      stats.rhs_at_max_rel = db;
+    }
+    if (tolerance.has_value() &&
+        outside_tolerance(abs_diff, rel_diff, *tolerance)) {
+      if (stats.tolerance_violations == 0) {
+        stats.first_violation_index = i;
+        stats.first_violation_lhs = da;
+        stats.first_violation_rhs = db;
+        stats.first_violation_abs = abs_diff;
+        stats.first_violation_rel = rel_diff;
+      }
+      ++stats.tolerance_violations;
+    }
   }
   return stats;
 }
 
-DiffStats compare_tensors(const ov::Tensor &a, const ov::Tensor &b) {
+DiffStats compare_tensors(
+    const ov::Tensor &a, const ov::Tensor &b,
+    std::optional<CompareTolerance> tolerance = std::nullopt) {
   if (a.get_element_type() != b.get_element_type()) {
     throw std::runtime_error("output type mismatch");
   }
@@ -195,17 +590,17 @@ DiffStats compare_tensors(const ov::Tensor &a, const ov::Tensor &b) {
   }
   switch (a.get_element_type()) {
   case ov::element::f32:
-    return compare_typed<float>(a, b);
+    return compare_typed<float>(a, b, tolerance);
   case ov::element::f16:
-    return compare_typed<ov::float16>(a, b);
+    return compare_typed<ov::float16>(a, b, tolerance);
   case ov::element::i32:
-    return compare_typed<int32_t>(a, b);
+    return compare_typed<int32_t>(a, b, tolerance);
   case ov::element::i64:
-    return compare_typed<int64_t>(a, b);
+    return compare_typed<int64_t>(a, b, tolerance);
   case ov::element::u8:
-    return compare_typed<uint8_t>(a, b);
+    return compare_typed<uint8_t>(a, b, tolerance);
   case ov::element::boolean:
-    return compare_typed<uint8_t>(a, b);
+    return compare_typed<uint8_t>(a, b, tolerance);
   default:
     throw std::runtime_error("unsupported output type: " +
                              a.get_element_type().to_string());
@@ -288,6 +683,22 @@ PerOpInputMode parse_per_op_input_mode(const std::string &value) {
   throw std::runtime_error("unsupported --per-op-input-mode: " + value);
 }
 
+ov::element::Type parse_gfx_inference_precision(const std::string &value) {
+  std::string lowered;
+  lowered.reserve(value.size());
+  for (const char ch : value) {
+    lowered.push_back(
+        static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+  }
+  if (lowered == "f16" || lowered == "fp16" || lowered == "half") {
+    return ov::element::f16;
+  }
+  if (lowered == "f32" || lowered == "fp32" || lowered == "float") {
+    return ov::element::f32;
+  }
+  throw std::runtime_error("unsupported --gfx-inference-precision: " + value);
+}
+
 struct CompareOptions {
   bool per_op = false;
   bool per_op_all = false;
@@ -300,17 +711,44 @@ struct CompareOptions {
   std::optional<size_t> stop_after_op;
   std::optional<size_t> single_output_op;
   size_t single_output_port = 0;
-  double abs_threshold = 1e-4;
-  double rel_threshold = 1e-4;
+  std::optional<double> abs_threshold;
+  std::optional<double> rel_threshold;
   uint64_t input_seed = 0;
   size_t random_seed_count = 0;
   uint64_t random_seed_base = 0;
-  bool diagnostic_f32_mps_image = false;
+  std::vector<std::string> input_image_paths;
+  std::optional<std::string> active_input_image_path;
+  std::string dump_reference_dir;
+  std::string golden_dir;
+  bool diagnostic_f32_vendor_image = false;
+  ov::element::Type gfx_inference_precision = ov::element::f16;
+  bool dump_gfx_profile = false;
+  std::string gfx_profiling_level;
   bool tinyllama_prompt_inputs = false;
   PerOpInputMode per_op_input_mode = PerOpInputMode::Reference;
   size_t per_op_recursive_limit = 0;
   size_t per_op_recursive_trace_every = 0;
 };
+
+CompareTolerance make_tolerance(const CompareOptions &options,
+                                const ov::element::Type &expected_type =
+                                    ov::element::dynamic,
+                                const ov::element::Type &actual_type =
+                                    ov::element::dynamic) {
+  constexpr double kCompareRunnerToleranceFloor = 1e-4;
+  const auto tolerance = ov::test::utils::gfx_accuracy_tolerance(
+      expected_type, actual_type, options.gfx_inference_precision,
+      kCompareRunnerToleranceFloor, kCompareRunnerToleranceFloor,
+      options.abs_threshold, options.rel_threshold);
+  return {tolerance.abs_threshold, tolerance.rel_threshold};
+}
+
+CompareTolerance make_tolerance(const CompareOptions &options,
+                                const ov::Tensor &expected,
+                                const ov::Tensor &actual) {
+  return make_tolerance(options, expected.get_element_type(),
+                        actual.get_element_type());
+}
 
 struct RecursiveMaterializationState {
   size_t limit = 0;
@@ -342,7 +780,8 @@ ov::InferRequest make_request(
     ov::CompiledModel &compiled_model,
     const std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>>
         &inputs);
-void maybe_print_gfx_profile(const ov::CompiledModel &compiled_model);
+void maybe_print_gfx_profile(const ov::CompiledModel &compiled_model,
+                             const CompareOptions *options = nullptr);
 std::optional<ov::Tensor> evaluate_source_tensor(
     const ov::Output<ov::Node> &source,
     const std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>>
@@ -372,9 +811,11 @@ struct TensorSummary {
 
 ov::AnyMap make_compile_config(bool for_gfx, const CompareOptions *options) {
   ov::AnyMap config;
-  config[ov::hint::inference_precision.name()] = ov::element::f16;
+  config[ov::hint::inference_precision.name()] =
+      (for_gfx && options) ? options->gfx_inference_precision
+                           : ov::element::f16;
   if (for_gfx) {
-    if (options && options->diagnostic_f32_mps_image) {
+    if (options && options->diagnostic_f32_vendor_image) {
       config[kGfxDiagnosticF32MpsImageProperty] = true;
     }
     if (options &&
@@ -382,12 +823,26 @@ ov::AnyMap make_compile_config(bool for_gfx, const CompareOptions *options) {
          options->single_output_op.has_value())) {
       config["GFX_ENABLE_FUSION"] = false;
     }
-    if (const char *profiling_level = std::getenv("OV_GFX_PROFILING_LEVEL")) {
-      if (*profiling_level) {
-        config["GFX_PROFILING_LEVEL"] = std::string(profiling_level);
-        config[ov::enable_profiling.name()] = true;
-        config["PERF_COUNT"] = true;
+    std::string profiling_level;
+    if (options && !options->gfx_profiling_level.empty()) {
+      profiling_level = options->gfx_profiling_level;
+    } else if (const char *env_level = std::getenv("OV_GFX_PROFILING_LEVEL")) {
+      if (*env_level) {
+        profiling_level = env_level;
       }
+    }
+    const char *dump_profile_env = std::getenv("OV_GFX_DUMP_PROFILE");
+    const bool env_dump_profile =
+        dump_profile_env && *dump_profile_env &&
+        std::string(dump_profile_env) != "0";
+    if (profiling_level.empty() &&
+        ((options && options->dump_gfx_profile) || env_dump_profile)) {
+      profiling_level = "2";
+    }
+    if (!profiling_level.empty()) {
+      config["GFX_PROFILING_LEVEL"] = profiling_level;
+      config[ov::enable_profiling.name()] = true;
+      config["PERF_COUNT"] = true;
     }
     if (const char *disable_fusion = std::getenv("OV_GFX_DISABLE_FUSION")) {
       if (std::string(disable_fusion) != "0" &&
@@ -410,9 +865,12 @@ ov::InferRequest make_request(
   return request;
 }
 
-void maybe_print_gfx_profile(const ov::CompiledModel &compiled_model) {
-  const char *dump_profile = std::getenv("OV_GFX_DUMP_PROFILE");
-  if (!dump_profile || !*dump_profile) {
+void maybe_print_gfx_profile(const ov::CompiledModel &compiled_model,
+                             const CompareOptions *options) {
+  const char *dump_profile_env = std::getenv("OV_GFX_DUMP_PROFILE");
+  const bool env_enabled =
+      dump_profile_env && *dump_profile_env && std::string(dump_profile_env) != "0";
+  if (!env_enabled && !(options && options->dump_gfx_profile)) {
     return;
   }
   try {
@@ -642,12 +1100,26 @@ ov::Shape make_input_shape(const ov::Output<const ov::Node> &input,
 std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>>
 make_inputs(const std::shared_ptr<ov::Model> &model,
             const CompareOptions &options) {
+  std::optional<RgbImage> input_image;
+  if (options.active_input_image_path.has_value()) {
+    if (options.tinyllama_prompt_inputs) {
+      throw std::runtime_error("--input-image cannot be combined with "
+                               "--tinyllama-prompt-inputs");
+    }
+    if (model->inputs().size() != 1) {
+      throw std::runtime_error("--input-image requires a single model input");
+    }
+    input_image = load_ppm_image(*options.active_input_image_path);
+  }
   std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>> inputs;
   inputs.reserve(model->inputs().size());
   for (const auto &input : model->inputs()) {
     ov::Tensor tensor(input.get_element_type(),
                       make_input_shape(input, options));
-    if (options.tinyllama_prompt_inputs) {
+    if (input_image.has_value()) {
+      fill_tensor_from_rgb_image(tensor, *input_image,
+                                 *options.active_input_image_path);
+    } else if (options.tinyllama_prompt_inputs) {
       fill_tinyllama_prompt_tensor(input.get_any_name(), tensor);
     } else {
       fill_tensor(tensor, options.input_seed);
@@ -683,12 +1155,17 @@ DiffStats compare_model_outputs(
     ov::CompiledModel &ref_model, ov::CompiledModel &gfx_model,
     const std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>>
         &inputs,
-    bool print_outputs, std::vector<ov::Tensor> *ref_outputs = nullptr) {
+    bool print_outputs, std::vector<ov::Tensor> *ref_outputs = nullptr,
+    const CompareOptions *options = nullptr) {
   auto ref_req = make_request(ref_model, inputs);
   auto gfx_req = make_request(gfx_model, inputs);
 
+  trace_compare_phase("ref_infer_begin");
   ref_req.infer();
+  trace_compare_phase("ref_infer_end");
+  trace_compare_phase("gfx_infer_begin");
   gfx_req.infer();
+  trace_compare_phase("gfx_infer_end");
 
   DiffStats total;
   if (ref_outputs) {
@@ -696,19 +1173,37 @@ DiffStats compare_model_outputs(
     ref_outputs->reserve(ref_model.outputs().size());
   }
   for (size_t i = 0; i < ref_model.outputs().size(); ++i) {
+    trace_compare_phase("output_compare_begin", std::to_string(i));
     const auto ref_tensor = ref_req.get_tensor(ref_model.output(i));
     const auto gfx_tensor = gfx_req.get_tensor(gfx_model.output(i));
     if (ref_outputs) {
-      ref_outputs->push_back(ref_tensor);
+      ref_outputs->push_back(clone_tensor_data(ref_tensor));
     }
-    const auto stats = compare_tensors(ref_tensor, gfx_tensor);
+    const auto tolerance =
+        options ? std::optional<CompareTolerance>(
+                      make_tolerance(*options, ref_tensor, gfx_tensor))
+                : std::nullopt;
+    const auto stats = compare_tensors(ref_tensor, gfx_tensor, tolerance);
     if (stats.max_abs_diff > total.max_abs_diff) {
       total.max_abs_diff = stats.max_abs_diff;
       total.max_index = stats.max_index;
       total.lhs_at_max = stats.lhs_at_max;
       total.rhs_at_max = stats.rhs_at_max;
     }
-    total.max_rel_diff = std::max(total.max_rel_diff, stats.max_rel_diff);
+    if (stats.max_rel_diff > total.max_rel_diff) {
+      total.max_rel_diff = stats.max_rel_diff;
+      total.max_rel_index = stats.max_rel_index;
+      total.lhs_at_max_rel = stats.lhs_at_max_rel;
+      total.rhs_at_max_rel = stats.rhs_at_max_rel;
+    }
+    if (stats.tolerance_violations > 0 && total.tolerance_violations == 0) {
+      total.first_violation_index = stats.first_violation_index;
+      total.first_violation_lhs = stats.first_violation_lhs;
+      total.first_violation_rhs = stats.first_violation_rhs;
+      total.first_violation_abs = stats.first_violation_abs;
+      total.first_violation_rel = stats.first_violation_rel;
+    }
+    total.tolerance_violations += stats.tolerance_violations;
     total.elements += stats.elements;
     if (print_outputs) {
       std::cout << "output[" << i << "]"
@@ -717,8 +1212,64 @@ DiffStats compare_model_outputs(
                 << stats.max_abs_diff << " max_rel_diff=" << stats.max_rel_diff
                 << " max_index=" << stats.max_index
                 << " ref=" << stats.lhs_at_max << " gfx=" << stats.rhs_at_max
+                << " tolerance_violations=" << stats.tolerance_violations
                 << '\n';
     }
+    trace_compare_phase("output_compare_end", std::to_string(i));
+  }
+  return total;
+}
+
+DiffStats compare_gfx_outputs_to_golden(
+    ov::CompiledModel &gfx_model,
+    const std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>>
+        &inputs,
+    const std::filesystem::path &golden_dir, const CompareOptions &options,
+    bool print_outputs) {
+  auto golden = read_tensor_dir(golden_dir, gfx_model.outputs().size());
+  auto gfx_req = make_request(gfx_model, inputs);
+  trace_compare_phase("gfx_infer_begin");
+  gfx_req.infer();
+  trace_compare_phase("gfx_infer_end");
+
+  DiffStats total;
+  for (size_t i = 0; i < gfx_model.outputs().size(); ++i) {
+    trace_compare_phase("output_compare_begin", std::to_string(i));
+    const auto gfx_tensor = gfx_req.get_tensor(gfx_model.output(i));
+    const auto tolerance = make_tolerance(options, golden[i], gfx_tensor);
+    const auto stats = compare_tensors(golden[i], gfx_tensor, tolerance);
+    if (stats.max_abs_diff > total.max_abs_diff) {
+      total.max_abs_diff = stats.max_abs_diff;
+      total.max_index = stats.max_index;
+      total.lhs_at_max = stats.lhs_at_max;
+      total.rhs_at_max = stats.rhs_at_max;
+    }
+    if (stats.max_rel_diff > total.max_rel_diff) {
+      total.max_rel_diff = stats.max_rel_diff;
+      total.max_rel_index = stats.max_rel_index;
+      total.lhs_at_max_rel = stats.lhs_at_max_rel;
+      total.rhs_at_max_rel = stats.rhs_at_max_rel;
+    }
+    if (stats.tolerance_violations > 0 && total.tolerance_violations == 0) {
+      total.first_violation_index = stats.first_violation_index;
+      total.first_violation_lhs = stats.first_violation_lhs;
+      total.first_violation_rhs = stats.first_violation_rhs;
+      total.first_violation_abs = stats.first_violation_abs;
+      total.first_violation_rel = stats.first_violation_rel;
+    }
+    total.tolerance_violations += stats.tolerance_violations;
+    total.elements += stats.elements;
+    if (print_outputs) {
+      std::cout << "golden_output[" << i << "]"
+                << " elements=" << stats.elements
+                << " max_abs_diff=" << std::setprecision(10)
+                << stats.max_abs_diff << " max_rel_diff=" << stats.max_rel_diff
+                << " max_index=" << stats.max_index
+                << " ref=" << stats.lhs_at_max << " gfx=" << stats.rhs_at_max
+                << " tolerance_violations=" << stats.tolerance_violations
+                << '\n';
+    }
+    trace_compare_phase("output_compare_end", std::to_string(i));
   }
   return total;
 }
@@ -1414,6 +1965,9 @@ make_full_graph_debug_model(const std::shared_ptr<ov::Model> &model,
       continue;
     }
     for (size_t port = 0; port < node->get_output_size(); ++port) {
+      if (node->output(port).get_target_inputs().empty()) {
+        continue;
+      }
       results.push_back(
           std::make_shared<ov::op::v0::Result>(node->output(port)));
       FullGraphOutputDesc desc;
@@ -1448,8 +2002,10 @@ int run_full_graph_per_op_compare(ov::Core &core,
 
   ref_req.infer();
   gfx_req.infer();
+  maybe_print_gfx_profile(gfx_model, &options);
 
   size_t mismatch_count = 0;
+  size_t global_tolerance_violations = 0;
   double global_max_abs = 0.0;
   double global_max_rel = 0.0;
   std::optional<size_t> first_mismatch_output;
@@ -1457,12 +2013,13 @@ int run_full_graph_per_op_compare(ov::Core &core,
   for (size_t i = 0; i < output_descs.size(); ++i) {
     const auto ref_tensor = ref_req.get_tensor(ref_model.output(i));
     const auto gfx_tensor = gfx_req.get_tensor(gfx_model.output(i));
-    const auto stats = compare_tensors(ref_tensor, gfx_tensor);
+    const auto tolerance = make_tolerance(options, ref_tensor, gfx_tensor);
+    const auto stats = compare_tensors(ref_tensor, gfx_tensor, tolerance);
     const auto &desc = output_descs[i];
     global_max_abs = std::max(global_max_abs, stats.max_abs_diff);
     global_max_rel = std::max(global_max_rel, stats.max_rel_diff);
-    const bool mismatch = stats.max_abs_diff > options.abs_threshold &&
-                          stats.max_rel_diff > options.rel_threshold;
+    const bool mismatch = stats.tolerance_violations > 0;
+    global_tolerance_violations += stats.tolerance_violations;
     if (mismatch) {
       ++mismatch_count;
       if (!first_mismatch_output.has_value()) {
@@ -1473,7 +2030,9 @@ int run_full_graph_per_op_compare(ov::Core &core,
     std::cout << "[op " << desc.op_index << "] " << desc.name << " ("
               << desc.type << ")"
               << " max_abs_diff=" << std::setprecision(10) << stats.max_abs_diff
-              << " max_rel_diff=" << stats.max_rel_diff << '\n';
+              << " max_rel_diff=" << stats.max_rel_diff
+              << " tolerance_violations=" << stats.tolerance_violations
+              << '\n';
   }
   if (first_mismatch_output.has_value()) {
     const auto &desc = output_descs[*first_mismatch_output];
@@ -1481,18 +2040,127 @@ int run_full_graph_per_op_compare(ov::Core &core,
               << " op_index=" << desc.op_index
               << " output_index=" << *first_mismatch_output
               << " name=" << desc.name << " type=" << desc.type
-              << " max_index=" << first_mismatch_stats.max_index
+              << " max_index=" << first_mismatch_stats.first_violation_index
               << " ref=" << std::setprecision(10)
-              << first_mismatch_stats.lhs_at_max
-              << " gfx=" << first_mismatch_stats.rhs_at_max << '\n';
+              << first_mismatch_stats.first_violation_lhs
+              << " gfx=" << first_mismatch_stats.first_violation_rhs
+              << " abs_diff=" << first_mismatch_stats.first_violation_abs
+              << " rel_diff=" << first_mismatch_stats.first_violation_rel
+              << '\n';
     std::cout << "PER_OP_MISMATCH count=" << mismatch_count
+              << " tolerance_violations=" << global_tolerance_violations
               << " max_abs=" << std::setprecision(10) << global_max_abs
               << " max_rel=" << global_max_rel << '\n';
     return 3;
   }
   std::cout << "PER_OP_MATCH max_abs=" << std::setprecision(10)
-            << global_max_abs << " max_rel=" << global_max_rel << '\n';
+            << global_max_abs << " max_rel=" << global_max_rel
+            << " tolerance_violations=" << global_tolerance_violations
+            << '\n';
   return 0;
+}
+
+void prefill_reference_outputs_for_per_op_range(
+    ov::Core &core, const std::string &ref_device,
+    const std::shared_ptr<ov::Model> &model,
+    const std::vector<std::shared_ptr<ov::Node>> &ordered_ops,
+    const std::vector<size_t> &relevant_indices,
+    const std::unordered_map<const ov::Node *, size_t> &relevant_pos,
+    const std::vector<std::pair<ov::Output<const ov::Node>, ov::Tensor>>
+        &inputs,
+    const CompareOptions &options,
+    std::unordered_map<OutputKey, ov::Tensor, OutputKeyHash> &cache) {
+  if (options.per_op_input_mode != PerOpInputMode::Reference) {
+    return;
+  }
+
+  std::vector<ov::Output<ov::Node>> outputs;
+  std::vector<OutputKey> output_keys;
+  std::unordered_set<OutputKey, OutputKeyHash> requested;
+  size_t checked = 0;
+
+  for (size_t idx = 0; idx < ordered_ops.size(); ++idx) {
+    const auto &node = ordered_ops[idx];
+    if (idx < options.start_op) {
+      continue;
+    }
+    if (is_debug_skippable_node(node)) {
+      continue;
+    }
+    if (options.stop_after_op.has_value() &&
+        checked >= *options.stop_after_op) {
+      break;
+    }
+
+    const auto pos_it = relevant_pos.find(node.get());
+    if (pos_it == relevant_pos.end()) {
+      continue;
+    }
+    const size_t pos = pos_it->second;
+    const size_t window_begin_pos =
+        (options.window_size > 0 && pos + 1 > options.window_size)
+            ? (pos + 1 - options.window_size)
+            : 0;
+
+    std::unordered_set<OutputKey, OutputKeyHash> produced_in_window;
+    for (size_t p = window_begin_pos; p <= pos; ++p) {
+      const auto &stage_node = ordered_ops[relevant_indices[p]];
+      for (const auto &source : stage_node->input_values()) {
+        OutputKey key{source.get_node(), source.get_index()};
+        if (produced_in_window.count(key) || cache.count(key)) {
+          continue;
+        }
+        if (auto tensor = evaluate_source_tensor(source, inputs)) {
+          cache.insert_or_assign(key, *tensor);
+          continue;
+        }
+        if (!source.get_node_shared_ptr()) {
+          continue;
+        }
+        if (!requested.insert(key).second) {
+          continue;
+        }
+        outputs.push_back(source);
+        output_keys.push_back(key);
+      }
+      for (size_t out_idx = 0; out_idx < stage_node->get_output_size();
+           ++out_idx) {
+        produced_in_window.insert({stage_node.get(), out_idx});
+      }
+    }
+    ++checked;
+  }
+
+  if (outputs.empty()) {
+    return;
+  }
+
+  ov::OutputVector result_outputs;
+  result_outputs.reserve(outputs.size());
+  for (const auto &output : outputs) {
+    result_outputs.push_back(std::make_shared<ov::op::v0::Result>(output));
+  }
+  auto ref_prefetch_model = std::make_shared<ov::Model>(
+      result_outputs, model->get_parameters(),
+      model->get_friendly_name() + "_per_op_ref_prefetch");
+
+  try {
+    auto compiled =
+        core.compile_model(ref_prefetch_model, ref_device,
+                           make_compile_config(/*for_gfx=*/false));
+    auto request = make_request(compiled, inputs);
+    request.infer();
+    for (size_t i = 0; i < output_keys.size(); ++i) {
+      cache.insert_or_assign(output_keys[i],
+                             clone_tensor_data(request.get_tensor(
+                                 compiled.output(i))));
+    }
+  } catch (const std::exception &ex) {
+    if (options.per_op_recursive_trace_every > 0) {
+      std::cout << "PER_OP_REFERENCE_PREFETCH skipped reason=" << ex.what()
+                << '\n';
+    }
+  }
 }
 
 int run_per_op_compare(
@@ -1517,6 +2185,9 @@ int run_per_op_compare(
   size_t skipped = 0;
   std::unordered_map<OutputKey, ov::Tensor, OutputKeyHash>
       cached_reference_outputs;
+  prefill_reference_outputs_for_per_op_range(
+      core, ref_device, model, ordered_ops, relevant_indices, relevant_pos,
+      inputs, options, cached_reference_outputs);
   for (size_t idx = 0; idx < ordered_ops.size(); ++idx) {
     const auto &node = ordered_ops[idx];
     if (idx < options.start_op) {
@@ -1657,8 +2328,18 @@ int run_per_op_compare(
     OPENVINO_ASSERT(cloned_target, "per-op debug: isolated target is null");
     ov::OutputVector outputs;
     outputs.reserve(cloned_target->get_output_size());
-    for (const auto &output : cloned_target->outputs()) {
-      outputs.push_back(std::make_shared<ov::op::v0::Result>(output));
+    for (size_t out_idx = 0; out_idx < cloned_target->get_output_size();
+         ++out_idx) {
+      if (node->output(out_idx).get_target_inputs().empty()) {
+        continue;
+      }
+      outputs.push_back(
+          std::make_shared<ov::op::v0::Result>(cloned_target->output(out_idx)));
+    }
+    if (outputs.empty()) {
+      ++skipped;
+      ++checked;
+      continue;
     }
     auto submodel = std::make_shared<ov::Model>(outputs, isolated_params,
                                                 node->get_friendly_name());
@@ -1684,7 +2365,8 @@ int run_per_op_compare(
     try {
       stats =
           compare_model_outputs(ref_submodel, gfx_submodel,
-                                isolated_input_tensors, false, &ref_outputs);
+                                isolated_input_tensors, false, &ref_outputs,
+                                &options);
     } catch (const std::exception &ex) {
       std::cout << "[op " << idx << "] " << node->get_friendly_name() << " ("
                 << node->get_type_name() << ") infer_skip=" << ex.what()
@@ -1701,10 +2383,10 @@ int run_per_op_compare(
     std::cout << "[op " << idx << "] " << node->get_friendly_name() << " ("
               << node->get_type_name()
               << ") max_abs_diff=" << std::setprecision(10)
-              << stats.max_abs_diff << " max_rel_diff=" << stats.max_rel_diff;
+              << stats.max_abs_diff << " max_rel_diff=" << stats.max_rel_diff
+              << " tolerance_violations=" << stats.tolerance_violations;
     std::cout << '\n';
-    if (!options.per_op_all && stats.max_abs_diff > options.abs_threshold &&
-        stats.max_rel_diff > options.rel_threshold) {
+    if (!options.per_op_all && stats.tolerance_violations > 0) {
       print_conv_probe(core, ref_device, node, inputs, stats);
       if (!ref_outputs.empty()) {
         print_select_mismatch_probe(core, ref_device, node, inputs, stats,
@@ -1713,9 +2395,12 @@ int run_per_op_compare(
       std::cout << "FIRST_MISMATCH op_index=" << idx
                 << " name=" << node->get_friendly_name()
                 << " type=" << node->get_type_name()
-                << " max_index=" << stats.max_index
-                << " ref=" << std::setprecision(10) << stats.lhs_at_max
-                << " gfx=" << stats.rhs_at_max << '\n';
+                << " max_index=" << stats.first_violation_index
+                << " ref=" << std::setprecision(10)
+                << stats.first_violation_lhs
+                << " gfx=" << stats.first_violation_rhs
+                << " abs_diff=" << stats.first_violation_abs
+                << " rel_diff=" << stats.first_violation_rel << '\n';
       return 3;
     }
     ++checked;
@@ -1742,11 +2427,17 @@ int main(int argc, char **argv) try {
            "[--single-op-output-index N] "
            "[--abs-threshold V] [--rel-threshold V] "
            "[--input-seed S] [--random-seed-count N] [--random-seed-base S] "
+           "[--input-image PATH] "
+           "[--dump-reference-dir DIR] [--golden-dir DIR] "
+           "[--gfx-inference-precision f16|f32] "
            "[--diagnostic-f32-mps-image] "
+           "[--dump-gfx-profile] [--gfx-profiling-level LEVEL] "
            "[--tinyllama-prompt-inputs] "
            "[--per-op-input-mode reference|generated|gfx-recursive] "
            "[--per-op-recursive-limit N] [--per-op-recursive-trace N] "
-           "[--per-op-generated-inputs]\n";
+           "[--per-op-generated-inputs]\n"
+           "Default tolerance is precision-aware; --abs-threshold and "
+           "--rel-threshold are strict overrides.\n";
     return 2;
   }
 
@@ -1856,8 +2547,48 @@ int main(int argc, char **argv) try {
       options.random_seed_base = static_cast<uint64_t>(std::stoull(argv[++i]));
       continue;
     }
+    if (arg == "--input-image") {
+      if (i + 1 >= argc) {
+        throw std::runtime_error("--input-image requires a value");
+      }
+      options.input_image_paths.emplace_back(argv[++i]);
+      continue;
+    }
+    if (arg == "--dump-reference-dir") {
+      if (i + 1 >= argc) {
+        throw std::runtime_error("--dump-reference-dir requires a value");
+      }
+      options.dump_reference_dir = argv[++i];
+      continue;
+    }
+    if (arg == "--golden-dir") {
+      if (i + 1 >= argc) {
+        throw std::runtime_error("--golden-dir requires a value");
+      }
+      options.golden_dir = argv[++i];
+      continue;
+    }
+    if (arg == "--gfx-inference-precision") {
+      if (i + 1 >= argc) {
+        throw std::runtime_error("--gfx-inference-precision requires a value");
+      }
+      options.gfx_inference_precision =
+          parse_gfx_inference_precision(argv[++i]);
+      continue;
+    }
     if (arg == "--diagnostic-f32-mps-image") {
-      options.diagnostic_f32_mps_image = true;
+      options.diagnostic_f32_vendor_image = true;
+      continue;
+    }
+    if (arg == "--dump-gfx-profile") {
+      options.dump_gfx_profile = true;
+      continue;
+    }
+    if (arg == "--gfx-profiling-level") {
+      if (i + 1 >= argc) {
+        throw std::runtime_error("--gfx-profiling-level requires a value");
+      }
+      options.gfx_profiling_level = argv[++i];
       continue;
     }
     if (arg == "--tinyllama-prompt-inputs") {
@@ -1904,7 +2635,25 @@ int main(int argc, char **argv) try {
                             options.reference_plugin_path);
 
   auto model = core.read_model(model_path);
-  const auto inputs = make_inputs(model, options);
+  if (!options.input_image_paths.empty()) {
+    if (options.random_seed_count > 0) {
+      throw std::runtime_error(
+          "--input-image cannot be combined with --random-seed-count");
+    }
+    options.active_input_image_path = options.input_image_paths.front();
+  }
+  if (!options.golden_dir.empty()) {
+    if (!options.dump_reference_dir.empty()) {
+      throw std::runtime_error(
+          "--golden-dir cannot be combined with --dump-reference-dir");
+    }
+    if (options.gfx_only || options.per_op || options.per_op_all ||
+        options.random_seed_count > 0) {
+      throw std::runtime_error(
+          "--golden-dir is supported only for full-graph or single-output "
+          "image accuracy");
+    }
+  }
 
   if (options.print_ops) {
     const auto ordered_ops = model->get_ordered_ops();
@@ -1918,6 +2667,97 @@ int main(int argc, char **argv) try {
     }
     return 0;
   }
+
+  if (options.input_image_paths.size() > 1) {
+    if (options.gfx_only || options.per_op || options.per_op_all ||
+        options.single_output_op.has_value()) {
+      throw std::runtime_error("--input-image batch is supported only for full "
+                               "graph accuracy compare");
+    }
+    if (!options.golden_dir.empty()) {
+      auto gfx_model =
+          core.compile_model(model, "GFX", make_compile_config(true, &options));
+
+      size_t failures = 0;
+      double batch_max_abs = 0.0;
+      double batch_max_rel = 0.0;
+      std::cout << "REAL_IMAGE_GOLDEN_BATCH count="
+                << options.input_image_paths.size()
+                << " golden_dir=" << options.golden_dir << '\n';
+      for (size_t i = 0; i < options.input_image_paths.size(); ++i) {
+        CompareOptions image_options = options;
+        image_options.active_input_image_path = options.input_image_paths[i];
+        const auto image_inputs = make_inputs(model, image_options);
+        const auto image_golden_dir =
+            std::filesystem::path(options.golden_dir) /
+            ("image_" + std::to_string(i));
+        const auto stats = compare_gfx_outputs_to_golden(
+            gfx_model, image_inputs, image_golden_dir, options, false);
+        batch_max_abs = std::max(batch_max_abs, stats.max_abs_diff);
+        batch_max_rel = std::max(batch_max_rel, stats.max_rel_diff);
+        const bool failed = stats.tolerance_violations > 0;
+        failures += failed ? 1u : 0u;
+        std::cout << "REAL_IMAGE_RESULT index=" << i
+                  << " path=" << options.input_image_paths[i]
+                  << " golden_dir=" << image_golden_dir.string()
+                  << " max_abs_diff=" << std::setprecision(10)
+                  << stats.max_abs_diff
+                  << " max_rel_diff=" << stats.max_rel_diff
+                  << " tolerance_violations=" << stats.tolerance_violations
+                  << " status=" << (failed ? "FAIL" : "PASS") << '\n';
+      }
+      std::cout << "REAL_IMAGE_GLOBAL failures=" << failures
+                << " max_abs_diff=" << std::setprecision(10) << batch_max_abs
+                << " max_rel_diff=" << batch_max_rel << '\n';
+      maybe_print_gfx_profile(gfx_model, &options);
+      return failures == 0 ? 0 : 3;
+    }
+    const auto ref_device = reference_device(core, options.reference_device);
+    auto ref_model =
+        core.compile_model(model, ref_device, make_compile_config(false));
+    auto gfx_model =
+        core.compile_model(model, "GFX", make_compile_config(true, &options));
+
+    size_t failures = 0;
+    double batch_max_abs = 0.0;
+    double batch_max_rel = 0.0;
+    std::cout << "REAL_IMAGE_BATCH count=" << options.input_image_paths.size()
+              << " reference_device=" << ref_device << '\n';
+    for (size_t i = 0; i < options.input_image_paths.size(); ++i) {
+      CompareOptions image_options = options;
+      image_options.active_input_image_path = options.input_image_paths[i];
+      const auto image_inputs = make_inputs(model, image_options);
+      std::vector<ov::Tensor> ref_outputs;
+      const auto stats = compare_model_outputs(ref_model, gfx_model,
+                                               image_inputs, false, &ref_outputs,
+                                               &options);
+      if (!options.dump_reference_dir.empty()) {
+        const auto image_ref_dir =
+            std::filesystem::path(options.dump_reference_dir) /
+            ("image_" + std::to_string(i));
+        write_tensor_dir(image_ref_dir, ref_outputs);
+        std::cout << "REAL_IMAGE_REFERENCE_DUMP index=" << i
+                  << " dir=" << image_ref_dir.string() << '\n';
+      }
+      batch_max_abs = std::max(batch_max_abs, stats.max_abs_diff);
+      batch_max_rel = std::max(batch_max_rel, stats.max_rel_diff);
+      const bool failed = stats.tolerance_violations > 0;
+      failures += failed ? 1u : 0u;
+      std::cout << "REAL_IMAGE_RESULT index=" << i
+                << " path=" << options.input_image_paths[i]
+                << " max_abs_diff=" << std::setprecision(10)
+                << stats.max_abs_diff << " max_rel_diff=" << stats.max_rel_diff
+                << " tolerance_violations=" << stats.tolerance_violations
+                << " status=" << (failed ? "FAIL" : "PASS") << '\n';
+    }
+    std::cout << "REAL_IMAGE_GLOBAL failures=" << failures
+              << " max_abs_diff=" << std::setprecision(10) << batch_max_abs
+              << " max_rel_diff=" << batch_max_rel << '\n';
+    maybe_print_gfx_profile(gfx_model, &options);
+    return failures == 0 ? 0 : 3;
+  }
+
+  const auto inputs = make_inputs(model, options);
 
   if (options.random_seed_count > 0) {
     if (options.gfx_only || options.per_op || options.per_op_all ||
@@ -1953,26 +2793,31 @@ int main(int argc, char **argv) try {
 
       double seed_max_abs = 0.0;
       double seed_max_rel = 0.0;
+      size_t seed_tolerance_violations = 0;
       for (const auto &output : model->outputs()) {
-        const auto stats = compare_tensors(ref_req.get_tensor(output),
-                                           gfx_req.get_tensor(output));
+        const auto ref_tensor = ref_req.get_tensor(output);
+        const auto gfx_tensor = gfx_req.get_tensor(output);
+        const auto tolerance = make_tolerance(options, ref_tensor, gfx_tensor);
+        const auto stats = compare_tensors(ref_tensor, gfx_tensor, tolerance);
         seed_max_abs = std::max(seed_max_abs, stats.max_abs_diff);
         seed_max_rel = std::max(seed_max_rel, stats.max_rel_diff);
+        seed_tolerance_violations += stats.tolerance_violations;
       }
       batch_max_abs = std::max(batch_max_abs, seed_max_abs);
       batch_max_rel = std::max(batch_max_rel, seed_max_rel);
-      const bool failed = seed_max_abs > options.abs_threshold &&
-                          seed_max_rel > options.rel_threshold;
+      const bool failed = seed_tolerance_violations > 0;
       failures += failed ? 1u : 0u;
       std::cout << "RANDOM_SEED_RESULT index=" << i
                 << " seed=" << seed_options.input_seed
                 << " max_abs_diff=" << std::setprecision(10) << seed_max_abs
                 << " max_rel_diff=" << seed_max_rel
+                << " tolerance_violations=" << seed_tolerance_violations
                 << " status=" << (failed ? "FAIL" : "PASS") << '\n';
     }
     std::cout << "RANDOM_SEED_GLOBAL failures=" << failures
               << " max_abs_diff=" << std::setprecision(10) << batch_max_abs
               << " max_rel_diff=" << batch_max_rel << '\n';
+    maybe_print_gfx_profile(gfx_model, &options);
     return failures == 0 ? 0 : 3;
   }
 
@@ -1996,6 +2841,24 @@ int main(int argc, char **argv) try {
         model->get_parameters(), node->get_friendly_name() + "_debug_output");
     const auto debug_inputs = make_inputs(debug_model, options);
     const auto ref_device = reference_device(core, options.reference_device);
+    if (!options.golden_dir.empty()) {
+      auto gfx_model = core.compile_model(debug_model, "GFX",
+                                          make_compile_config(true, &options));
+      std::cout << "SINGLE_OP_OUTPUT op_index=" << *options.single_output_op
+                << " output_index=" << options.single_output_port
+                << " name=" << node->get_friendly_name()
+                << " type=" << node->get_type_name() << '\n';
+      const auto stats = compare_gfx_outputs_to_golden(
+          gfx_model, debug_inputs, options.golden_dir, options, true);
+      maybe_print_gfx_profile(gfx_model, &options);
+      std::cout << "GOLDEN_COMPARE dir=" << options.golden_dir
+                << " max_abs_diff=" << std::setprecision(10)
+                << stats.max_abs_diff
+                << " max_rel_diff=" << stats.max_rel_diff
+                << " tolerance_violations=" << stats.tolerance_violations
+                << '\n';
+      return stats.tolerance_violations > 0 ? 3 : 0;
+    }
     auto ref_model =
         core.compile_model(debug_model, ref_device, make_compile_config(false));
     auto gfx_model = core.compile_model(debug_model, "GFX",
@@ -2004,15 +2867,22 @@ int main(int argc, char **argv) try {
               << " output_index=" << options.single_output_port
               << " name=" << node->get_friendly_name()
               << " type=" << node->get_type_name() << '\n';
+    std::vector<ov::Tensor> ref_outputs;
     const auto stats =
-        compare_model_outputs(ref_model, gfx_model, debug_inputs, true);
+        compare_model_outputs(ref_model, gfx_model, debug_inputs, true,
+                              options.dump_reference_dir.empty() ? nullptr
+                                                                 : &ref_outputs,
+                              &options);
+    if (!options.dump_reference_dir.empty()) {
+      write_tensor_dir(options.dump_reference_dir, ref_outputs);
+      std::cout << "REFERENCE_DUMP dir=" << options.dump_reference_dir << '\n';
+    }
+    maybe_print_gfx_profile(gfx_model, &options);
     std::cout << "GLOBAL max_abs_diff=" << std::setprecision(10)
               << stats.max_abs_diff << " max_rel_diff=" << stats.max_rel_diff
+              << " tolerance_violations=" << stats.tolerance_violations
               << '\n';
-    return (stats.max_abs_diff > options.abs_threshold &&
-            stats.max_rel_diff > options.rel_threshold)
-               ? 3
-               : 0;
+    return stats.tolerance_violations > 0 ? 3 : 0;
   }
 
   if (options.per_op_all) {
@@ -2028,7 +2898,7 @@ int main(int argc, char **argv) try {
         core.compile_model(model, "GFX", make_compile_config(true, &options));
     auto gfx_req = make_request(gfx_model, inputs);
     gfx_req.infer();
-    maybe_print_gfx_profile(gfx_model);
+    maybe_print_gfx_profile(gfx_model, &options);
 
     std::cout << "GFX_ONLY\n";
     for (const auto &output : model->outputs()) {
@@ -2045,36 +2915,115 @@ int main(int argc, char **argv) try {
     return 0;
   }
 
+  if (!options.golden_dir.empty()) {
+    trace_compare_phase("gfx_compile_begin");
+    auto gfx_model =
+        core.compile_model(model, "GFX", make_compile_config(true, &options));
+    trace_compare_phase("gfx_compile_end");
+    const auto stats = compare_gfx_outputs_to_golden(
+        gfx_model, inputs, options.golden_dir, options, true);
+    maybe_print_gfx_profile(gfx_model, &options);
+    std::cout << "GOLDEN_COMPARE dir=" << options.golden_dir
+              << " max_abs_diff=" << std::setprecision(10)
+              << stats.max_abs_diff << " max_rel_diff=" << stats.max_rel_diff
+              << " tolerance_violations=" << stats.tolerance_violations
+              << '\n';
+    return stats.tolerance_violations > 0 ? 3 : 0;
+  }
+
   const auto ref_device = reference_device(core, options.reference_device);
   std::cout << "REFERENCE device=" << ref_device << '\n';
+  trace_compare_phase("ref_compile_begin", ref_device);
   auto ref_model =
       core.compile_model(model, ref_device, make_compile_config(false));
+  trace_compare_phase("ref_compile_end", ref_device);
+  trace_compare_phase("gfx_compile_begin");
   auto gfx_model =
       core.compile_model(model, "GFX", make_compile_config(true, &options));
+  trace_compare_phase("gfx_compile_end");
   auto ref_req = make_request(ref_model, inputs);
   auto gfx_req = make_request(gfx_model, inputs);
 
+  trace_compare_phase("ref_infer_begin");
   ref_req.infer();
+  trace_compare_phase("ref_infer_end");
+  if (!options.dump_reference_dir.empty()) {
+    std::vector<ov::Tensor> ref_outputs;
+    ref_outputs.reserve(model->outputs().size());
+    for (const auto &output : model->outputs()) {
+      ref_outputs.push_back(clone_tensor_data(ref_req.get_tensor(output)));
+    }
+    write_tensor_dir(options.dump_reference_dir, ref_outputs);
+    std::cout << "REFERENCE_DUMP dir=" << options.dump_reference_dir << '\n';
+  }
+  trace_compare_phase("gfx_infer_begin");
   gfx_req.infer();
-  maybe_print_gfx_profile(gfx_model);
+  trace_compare_phase("gfx_infer_end");
+  maybe_print_gfx_profile(gfx_model, &options);
 
   double global_max_abs = 0.0;
   double global_max_rel = 0.0;
+  size_t tolerance_violations = 0;
+  std::optional<std::string> max_abs_output_name;
+  DiffStats max_abs_stats;
+  std::optional<std::string> first_violation_output_name;
+  DiffStats first_violation_stats;
   for (const auto &output : model->outputs()) {
+    trace_compare_phase("output_compare_begin",
+                        output.get_node()->get_friendly_name() + ":" +
+                            std::to_string(output.get_index()));
     const auto ref_tensor = ref_req.get_tensor(output);
     const auto gfx_tensor = gfx_req.get_tensor(output);
-    const auto stats = compare_tensors(ref_tensor, gfx_tensor);
+    const auto tolerance = make_tolerance(options, ref_tensor, gfx_tensor);
+    const auto stats = compare_tensors(ref_tensor, gfx_tensor, tolerance);
+    const auto output_name = output.get_node()->get_friendly_name() + ":" +
+                             std::to_string(output.get_index());
+    if (!max_abs_output_name.has_value() ||
+        stats.max_abs_diff > max_abs_stats.max_abs_diff) {
+      max_abs_output_name = output_name;
+      max_abs_stats = stats;
+    }
     global_max_abs = std::max(global_max_abs, stats.max_abs_diff);
     global_max_rel = std::max(global_max_rel, stats.max_rel_diff);
+    if (stats.tolerance_violations > 0 &&
+        !first_violation_output_name.has_value()) {
+      first_violation_output_name = output_name;
+      first_violation_stats = stats;
+    }
+    tolerance_violations += stats.tolerance_violations;
     std::cout << output.get_node()->get_friendly_name() << ':'
               << output.get_index() << " elements=" << stats.elements
               << " max_abs_diff=" << std::setprecision(10) << stats.max_abs_diff
-              << " max_rel_diff=" << stats.max_rel_diff << '\n';
+              << " max_rel_diff=" << stats.max_rel_diff
+              << " tolerance_violations=" << stats.tolerance_violations
+              << '\n';
+    trace_compare_phase("output_compare_end",
+                        output.get_node()->get_friendly_name() + ":" +
+                            std::to_string(output.get_index()));
   }
 
   std::cout << "GLOBAL max_abs_diff=" << std::setprecision(10) << global_max_abs
-            << " max_rel_diff=" << global_max_rel << '\n';
-  return 0;
+            << " max_rel_diff=" << global_max_rel
+            << " tolerance_violations=" << tolerance_violations << '\n';
+  if (max_abs_output_name.has_value()) {
+    std::cout << "MAX_ABS output=" << *max_abs_output_name
+              << " max_index=" << max_abs_stats.max_index
+              << " ref=" << std::setprecision(10) << max_abs_stats.lhs_at_max
+              << " gfx=" << max_abs_stats.rhs_at_max
+              << " abs_diff=" << max_abs_stats.max_abs_diff
+              << '\n';
+  }
+  if (first_violation_output_name.has_value()) {
+    std::cout << "FIRST_MISMATCH output=" << *first_violation_output_name
+              << " max_index=" << first_violation_stats.first_violation_index
+              << " ref=" << std::setprecision(10)
+              << first_violation_stats.first_violation_lhs
+              << " gfx=" << first_violation_stats.first_violation_rhs
+              << " abs_diff=" << first_violation_stats.first_violation_abs
+              << " rel_diff=" << first_violation_stats.first_violation_rel
+              << '\n';
+  }
+  return tolerance_violations > 0 ? 3 : 0;
 } catch (const std::exception &ex) {
   std::cerr << "ERROR: " << ex.what() << '\n';
   return 1;

@@ -153,7 +153,7 @@ TEST(GfxParallelism, SelectBroadcomConvParallelismUsesWiderThreadgroupsForHugeSp
     EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 64u);
 }
 
-TEST(GfxParallelism, SelectBroadcomPointwiseConvUsesHardwareCapForHugeSpatialOutputs) {
+TEST(GfxParallelism, SelectBroadcomPointwiseConvKeepsOccupancyHeadroomForHugeSpatialOutputs) {
     const auto plan = ov::gfx_plugin::select_conv_parallelism(make_large_broadcom_caps(),
                                                               ov::Shape{1, 48, 160, 160},
                                                               48,
@@ -164,10 +164,10 @@ TEST(GfxParallelism, SelectBroadcomPointwiseConvUsesHardwareCapForHugeSpatialOut
 
     ASSERT_TRUE(plan.prefer_parallel);
     EXPECT_TRUE(plan.dispatch.enabled);
-    EXPECT_EQ(plan.dispatch.threads_h * plan.dispatch.threads_w, 256u);
+    EXPECT_EQ(plan.dispatch.threads_h * plan.dispatch.threads_w, 64u);
 }
 
-TEST(GfxParallelism, SelectBroadcomConvParallelismUsesHardwareCapForUltraDenseWorkloads) {
+TEST(GfxParallelism, SelectBroadcomConvParallelismAvoidsFullThreadgroupForUltraDenseWorkloads) {
     const auto plan = ov::gfx_plugin::select_conv_parallelism(make_large_broadcom_caps(),
                                                               ov::Shape{1, 256, 80, 80},
                                                               256,
@@ -178,7 +178,7 @@ TEST(GfxParallelism, SelectBroadcomConvParallelismUsesHardwareCapForUltraDenseWo
 
     ASSERT_TRUE(plan.prefer_parallel);
     EXPECT_TRUE(plan.dispatch.enabled);
-    EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 128u);
+    EXPECT_EQ(plan.dispatch.threads_h * plan.dispatch.threads_w, 128u);
 }
 
 TEST(GfxParallelism, ParallelDispatchUsesRemainingBlockDimsAfterCanonicalizedConvLoop) {

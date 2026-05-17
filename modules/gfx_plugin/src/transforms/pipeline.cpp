@@ -25,11 +25,14 @@
 #include "openvino/op/matmul.hpp"
 #include "openvino/op/multiply.hpp"
 #include "openvino/op/parameter.hpp"
+#include "openvino/op/reduce_max.hpp"
 #include "openvino/op/scaled_dot_product_attention.hpp"
 #include "openvino/op/reshape.hpp"
 #include "openvino/op/shape_of.hpp"
+#include "openvino/op/sigmoid.hpp"
 #include "openvino/op/slice.hpp"
 #include "openvino/op/strided_slice.hpp"
+#include "openvino/op/transpose.hpp"
 #include "openvino/op/unsqueeze.hpp"
 #include "openvino/op/util/topk_base.hpp"
 #include "openvino/op/variadic_split.hpp"
@@ -171,6 +174,336 @@ bool is_topk_precision_sensitive(const std::shared_ptr<ov::Node>& node) {
            topk->get_sort_type() != ov::op::TopKSortType::NONE;
 }
 
+bool is_index_amplifying_consumer_input(const std::shared_ptr<ov::Node>& node,
+                                        size_t input_index) {
+    if (!node) {
+        return false;
+    }
+    const std::string type = node->get_type_name();
+    return input_index == 1 &&
+           (type == "Gather" ||
+            type == "GatherElements" ||
+            type == "GatherND" ||
+            type == "ScatterElementsUpdate" ||
+            type == "ScatterNDUpdate" ||
+            type == "ScatterUpdate");
+}
+
+bool value_reaches_index_amplifying_consumer(const ov::Output<ov::Node>& value,
+                                             std::unordered_set<const ov::Node*>& visited,
+                                             size_t depth = 0) {
+    if (depth > 64) {
+        return false;
+    }
+    for (const auto& target : value.get_target_inputs()) {
+        auto* consumer_ptr = target.get_node();
+        if (!consumer_ptr) {
+            continue;
+        }
+        auto consumer = consumer_ptr->shared_from_this();
+        if (!consumer || !visited.insert(consumer.get()).second) {
+            continue;
+        }
+        if (is_index_amplifying_consumer_input(consumer, target.get_index())) {
+            return true;
+        }
+        for (size_t output_index = 0; output_index < consumer->get_output_size(); ++output_index) {
+            if (value_reaches_index_amplifying_consumer(consumer->output(output_index),
+                                                        visited,
+                                                        depth + 1)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool topk_indices_are_index_amplified(const std::shared_ptr<ov::Node>& node) {
+    auto topk = ov::as_type_ptr<ov::op::util::TopKBase>(node);
+    if (!topk || topk->get_output_size() < 2) {
+        return false;
+    }
+    std::unordered_set<const ov::Node*> visited;
+    return value_reaches_index_amplifying_consumer(topk->output(1), visited);
+}
+
+bool topk_indices_are_observable(const std::shared_ptr<ov::Node>& node) {
+    auto topk = ov::as_type_ptr<ov::op::util::TopKBase>(node);
+    return topk && topk->get_output_size() >= 2 &&
+           !topk->output(1).get_target_inputs().empty();
+}
+
+bool topk_values_are_observable(const std::shared_ptr<ov::Node>& node) {
+    auto topk = ov::as_type_ptr<ov::op::util::TopKBase>(node);
+    return topk && topk->get_output_size() >= 1 &&
+           !topk->output(0).get_target_inputs().empty();
+}
+
+bool value_reaches_observable_topk_indices(const ov::Output<ov::Node>& value,
+                                           std::unordered_set<const ov::Node*>& visited,
+                                           size_t depth = 0) {
+    if (depth > 64) {
+        return false;
+    }
+    for (const auto& target : value.get_target_inputs()) {
+        auto* consumer_ptr = target.get_node();
+        if (!consumer_ptr) {
+            continue;
+        }
+        auto consumer = consumer_ptr->shared_from_this();
+        if (!consumer || !visited.insert(consumer.get()).second) {
+            continue;
+        }
+        if (target.get_index() == 0 &&
+            ov::as_type_ptr<ov::op::util::TopKBase>(consumer) &&
+            topk_indices_are_observable(consumer)) {
+            return true;
+        }
+        for (size_t output_index = 0; output_index < consumer->get_output_size(); ++output_index) {
+            if (value_reaches_observable_topk_indices(consumer->output(output_index),
+                                                      visited,
+                                                      depth + 1)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool is_real_sigmoid_output(const ov::Output<ov::Node>& value) {
+    if (!value.get_element_type().is_real()) {
+        return false;
+    }
+    return ov::as_type_ptr<ov::op::v0::Sigmoid>(value.get_node_shared_ptr()) != nullptr;
+}
+
+std::optional<std::vector<int64_t>> constant_i64_values(const ov::Output<ov::Node>& value) {
+    auto constant = as_constant(value);
+    if (!constant) {
+        return std::nullopt;
+    }
+    return constant->cast_vector<int64_t>();
+}
+
+std::optional<int64_t> constant_i64_scalar(const ov::Output<ov::Node>& value) {
+    auto values = constant_i64_values(value);
+    if (!values || values->size() != 1) {
+        return std::nullopt;
+    }
+    return values->front();
+}
+
+std::optional<int64_t> normalize_axis(int64_t axis, const ov::PartialShape& shape) {
+    if (shape.rank().is_dynamic()) {
+        return std::nullopt;
+    }
+    const int64_t rank = shape.rank().get_length();
+    if (axis < 0) {
+        axis += rank;
+    }
+    if (axis < 0 || axis >= rank) {
+        return std::nullopt;
+    }
+    return axis;
+}
+
+std::optional<ov::Output<ov::Node>> strip_sigmoid_from_split_transpose_concat_path(
+    const ov::Output<ov::Node>& value) {
+    auto split = ov::as_type_ptr<ov::op::v1::VariadicSplit>(value.get_node_shared_ptr());
+    if (!split || split->get_input_size() != 3) {
+        return std::nullopt;
+    }
+    auto split_axis = constant_i64_scalar(split->input_value(1));
+    auto split_lengths = constant_i64_values(split->input_value(2));
+    if (!split_axis || !split_lengths || value.get_index() >= split_lengths->size()) {
+        return std::nullopt;
+    }
+    auto normalized_split_axis = normalize_axis(*split_axis, split->input_value(0).get_partial_shape());
+    if (!normalized_split_axis) {
+        return std::nullopt;
+    }
+
+    auto concat_value = split->input_value(0);
+    std::shared_ptr<ov::op::v1::Transpose> transpose;
+    std::optional<std::vector<int64_t>> permutation;
+    int64_t concat_axis = *normalized_split_axis;
+    if ((transpose = ov::as_type_ptr<ov::op::v1::Transpose>(concat_value.get_node_shared_ptr()))) {
+        permutation = constant_i64_values(transpose->input_value(1));
+        if (!permutation || *normalized_split_axis >= static_cast<int64_t>(permutation->size())) {
+            return std::nullopt;
+        }
+        concat_axis = (*permutation)[static_cast<size_t>(*normalized_split_axis)];
+        concat_value = transpose->input_value(0);
+    }
+
+    auto concat = ov::as_type_ptr<ov::op::v0::Concat>(concat_value.get_node_shared_ptr());
+    if (!concat) {
+        return std::nullopt;
+    }
+    const auto normalized_concat_axis = normalize_axis(concat->get_axis(), concat_value.get_partial_shape());
+    if (!normalized_concat_axis || *normalized_concat_axis != concat_axis ||
+        concat->get_input_size() != split_lengths->size()) {
+        return std::nullopt;
+    }
+    for (size_t input_index = 0; input_index < concat->get_input_size(); ++input_index) {
+        const auto input_shape = concat->input_value(input_index).get_partial_shape();
+        if (input_shape.rank().is_dynamic() ||
+            *normalized_concat_axis >= input_shape.rank().get_length() ||
+            input_shape[static_cast<size_t>(*normalized_concat_axis)].is_dynamic() ||
+            input_shape[static_cast<size_t>(*normalized_concat_axis)].get_length() != (*split_lengths)[input_index]) {
+            return std::nullopt;
+        }
+    }
+
+    auto selected = concat->input_value(value.get_index());
+    auto sigmoid = ov::as_type_ptr<ov::op::v0::Sigmoid>(selected.get_node_shared_ptr());
+    if (!sigmoid || !selected.get_element_type().is_real()) {
+        return std::nullopt;
+    }
+    auto logits = sigmoid->input_value(0);
+    if (!transpose) {
+        return logits;
+    }
+
+    auto logits_transpose = transpose->clone_with_new_inputs({logits, transpose->input_value(1)});
+    logits_transpose->set_friendly_name(transpose->get_friendly_name() + "/gfx_logits");
+    ov::copy_runtime_info({sigmoid, transpose, split}, logits_transpose);
+    logits_transpose->validate_and_infer_types();
+    return logits_transpose->output(0);
+}
+
+std::optional<ov::Output<ov::Node>> clone_ranking_path_without_sigmoid(
+    const ov::Output<ov::Node>& value,
+    size_t depth = 0) {
+    if (depth > 32 || !value.get_element_type().is_real()) {
+        return std::nullopt;
+    }
+    if (auto sigmoid = ov::as_type_ptr<ov::op::v0::Sigmoid>(value.get_node_shared_ptr())) {
+        return sigmoid->input_value(0);
+    }
+    if (auto stripped_split = strip_sigmoid_from_split_transpose_concat_path(value)) {
+        return stripped_split;
+    }
+
+    auto node = value.get_node_shared_ptr();
+    if (!node) {
+        return std::nullopt;
+    }
+
+    auto clone_with_rewritten_data_input =
+        [&](size_t data_input_index) -> std::optional<ov::Output<ov::Node>> {
+        if (data_input_index >= node->get_input_size()) {
+            return std::nullopt;
+        }
+        auto stripped = clone_ranking_path_without_sigmoid(node->input_value(data_input_index), depth + 1);
+        if (!stripped) {
+            return std::nullopt;
+        }
+        ov::OutputVector inputs;
+        inputs.reserve(node->get_input_size());
+        for (size_t input_index = 0; input_index < node->get_input_size(); ++input_index) {
+            inputs.push_back(input_index == data_input_index ? *stripped : node->input_value(input_index));
+        }
+        auto clone = node->clone_with_new_inputs(inputs);
+        clone->set_friendly_name(node->get_friendly_name() + "/gfx_logits");
+        ov::copy_runtime_info(node, clone);
+        clone->validate_and_infer_types();
+        if (value.get_index() >= clone->get_output_size()) {
+            return std::nullopt;
+        }
+        return clone->output(value.get_index());
+    };
+
+    const std::string type = node->get_type_name();
+    if (type == "ReduceMax" ||
+        type == "Reshape" ||
+        type == "Transpose" ||
+        type == "Split" ||
+        type == "VariadicSplit" ||
+        type == "Slice" ||
+        type == "StridedSlice" ||
+        type == "Unsqueeze") {
+        return clone_with_rewritten_data_input(0);
+    }
+    return std::nullopt;
+}
+
+size_t canonicalize_sigmoid_before_ranking_ops(const std::shared_ptr<ov::Model>& model) {
+    size_t rewrites = 0;
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (const auto& node : model->get_ordered_ops()) {
+            if (auto reduce = ov::as_type_ptr<ov::op::v1::ReduceMax>(node)) {
+                if (!is_real_sigmoid_output(reduce->input_value(0))) {
+                    continue;
+                }
+                std::unordered_set<const ov::Node*> visited;
+                if (value_reaches_observable_topk_indices(reduce->output(0), visited)) {
+                    continue;
+                }
+                auto sigmoid = ov::as_type_ptr<ov::op::v0::Sigmoid>(reduce->input_value(0).get_node_shared_ptr());
+                auto logits_reduce =
+                    reduce->clone_with_new_inputs({sigmoid->input_value(0), reduce->input_value(1)});
+                logits_reduce->set_friendly_name(reduce->get_friendly_name() + "/gfx_logits");
+                auto restored_scores = std::make_shared<ov::op::v0::Sigmoid>(logits_reduce);
+                restored_scores->set_friendly_name(reduce->get_friendly_name());
+                ov::copy_runtime_info({sigmoid, reduce}, logits_reduce);
+                ov::copy_runtime_info({sigmoid, reduce}, restored_scores);
+                logits_reduce->validate_and_infer_types();
+                restored_scores->validate_and_infer_types();
+                reduce->output(0).replace(restored_scores->output(0));
+                ++rewrites;
+                changed = true;
+                break;
+            }
+
+            auto topk = ov::as_type_ptr<ov::op::util::TopKBase>(node);
+            if (!topk || topk->get_output_size() < 2 ||
+                !topk->get_output_element_type(0).is_real()) {
+                continue;
+            }
+            const bool values_observable = topk_values_are_observable(topk);
+            auto stripped_input = clone_ranking_path_without_sigmoid(topk->input_value(0));
+            if (!stripped_input) {
+                continue;
+            }
+            auto logits_topk = topk->clone_with_new_inputs({*stripped_input, topk->input_value(1)});
+            logits_topk->set_friendly_name(topk->get_friendly_name() + "/gfx_logits");
+            ov::copy_runtime_info(topk, logits_topk);
+            logits_topk->validate_and_infer_types();
+            if (values_observable) {
+                auto restored_values = std::make_shared<ov::op::v0::Sigmoid>(logits_topk->output(0));
+                restored_values->set_friendly_name(topk->get_friendly_name());
+                ov::copy_runtime_info(topk, restored_values);
+                restored_values->validate_and_infer_types();
+                topk->output(0).replace(restored_values->output(0));
+            } else {
+                topk->output(0).replace(logits_topk->output(0));
+            }
+            topk->output(1).replace(logits_topk->output(1));
+            ++rewrites;
+            changed = true;
+            break;
+        }
+    }
+    return rewrites;
+}
+
+bool is_index_selected_data_input(const std::shared_ptr<ov::Node>& node,
+                                  size_t input_index) {
+    if (!node || input_index != 0) {
+        return false;
+    }
+    const std::string type = node->get_type_name();
+    return type == "Gather" ||
+           type == "GatherElements" ||
+           type == "GatherND" ||
+           type == "ScatterElementsUpdate" ||
+           type == "ScatterNDUpdate" ||
+           type == "ScatterUpdate";
+}
+
 void mark_fp32_if_real(const std::shared_ptr<ov::Node>& node, size_t& marked) {
     if (!has_real_output(node) || ov::fp16_compression_is_disabled(node)) {
         return;
@@ -179,8 +512,94 @@ void mark_fp32_if_real(const std::shared_ptr<ov::Node>& node, size_t& marked) {
     ++marked;
 }
 
+void mark_full_real_upstream_fp32(const ov::Output<ov::Node>& value,
+                                  std::unordered_set<const ov::Node*>& visited,
+                                  size_t& marked,
+                                  size_t depth = 0) {
+    if (depth > 256 || !value.get_element_type().is_real()) {
+        return;
+    }
+    auto node = value.get_node_shared_ptr();
+    if (!node || !visited.insert(node.get()).second) {
+        return;
+    }
+    mark_fp32_if_real(node, marked);
+    for (size_t i = 0; i < node->get_input_size(); ++i) {
+        const auto input = node->input_value(i);
+        if (input.get_element_type().is_real()) {
+            mark_full_real_upstream_fp32(input, visited, marked, depth + 1);
+        }
+    }
+}
+
+void mark_index_selected_data_inputs_fp32(
+    const ov::Output<ov::Node>& value,
+    std::unordered_set<const ov::Node*>& visited,
+    size_t& marked,
+    size_t depth = 0) {
+    if (depth > 64) {
+        return;
+    }
+    for (const auto& target : value.get_target_inputs()) {
+        auto* consumer_ptr = target.get_node();
+        if (!consumer_ptr) {
+            continue;
+        }
+        auto consumer = consumer_ptr->shared_from_this();
+        if (!consumer || !visited.insert(consumer.get()).second) {
+            continue;
+        }
+        if (is_index_amplifying_consumer_input(consumer, target.get_index())) {
+            for (size_t input_index = 0; input_index < consumer->get_input_size(); ++input_index) {
+                if (!is_index_selected_data_input(consumer, input_index)) {
+                    continue;
+                }
+                const auto data_input = consumer->input_value(input_index);
+                if (!data_input.get_element_type().is_real()) {
+                    continue;
+                }
+                std::unordered_set<const ov::Node*> upstream_visited;
+                mark_full_real_upstream_fp32(data_input, upstream_visited, marked);
+            }
+        }
+        for (size_t output_index = 0; output_index < consumer->get_output_size(); ++output_index) {
+            mark_index_selected_data_inputs_fp32(consumer->output(output_index),
+                                                visited, marked, depth + 1);
+        }
+    }
+}
+
+void mark_terminal_feature_boundary_fp32(
+    const ov::Output<ov::Node>& value,
+    std::unordered_set<const ov::Node*>& visited,
+    std::unordered_set<const ov::Node*>& terminal_boundaries,
+    size_t& marked,
+    size_t depth = 0) {
+    if (depth > 128 || !value.get_element_type().is_real()) {
+        return;
+    }
+    auto node = value.get_node_shared_ptr();
+    if (!node || !visited.insert(node.get()).second) {
+        return;
+    }
+    mark_fp32_if_real(node, marked);
+    if (is_heavy_precision_boundary(node)) {
+        terminal_boundaries.insert(node.get());
+        return;
+    }
+    for (size_t i = 0; i < node->get_input_size(); ++i) {
+        const auto input = node->input_value(i);
+        if (input.get_element_type().is_real()) {
+            mark_terminal_feature_boundary_fp32(input, visited,
+                                               terminal_boundaries, marked,
+                                               depth + 1);
+        }
+    }
+}
+
 void mark_topk_upstream_fp32(const ov::Output<ov::Node>& value,
                              std::unordered_set<const ov::Node*>& visited,
+                             std::unordered_set<const ov::Node*>& terminal_boundaries,
                              size_t& marked,
                              size_t depth = 0) {
     if (depth > 128) {
@@ -190,6 +609,21 @@ void mark_topk_upstream_fp32(const ov::Output<ov::Node>& value,
     if (!node || !visited.insert(node.get()).second) {
         return;
     }
+    if (is_conv_precision_boundary(node)) {
+        mark_fp32_if_real(node, marked);
+        if (node->get_input_size() > 0) {
+            const auto data_input = node->input_value(0);
+            if (can_extend_fp32_island_through_conv_data_input(data_input)) {
+                mark_topk_upstream_fp32(data_input, visited,
+                                        terminal_boundaries, marked, depth + 1);
+            } else {
+                mark_terminal_feature_boundary_fp32(data_input, visited,
+                                                   terminal_boundaries, marked,
+                                                   depth + 1);
+            }
+        }
+        return;
+    }
     mark_fp32_if_real(node, marked);
     if (is_heavy_precision_boundary(node)) {
         return;
@@ -197,7 +631,8 @@ void mark_topk_upstream_fp32(const ov::Output<ov::Node>& value,
     for (size_t i = 0; i < node->get_input_size(); ++i) {
         const auto input = node->input_value(i);
         if (input.get_element_type().is_real()) {
-            mark_topk_upstream_fp32(input, visited, marked, depth + 1);
+            mark_topk_upstream_fp32(input, visited, terminal_boundaries,
+                                    marked, depth + 1);
         }
     }
 }
@@ -233,7 +668,9 @@ size_t count_fp32_precision_marks(const std::shared_ptr<ov::Model>& model) {
     return count;
 }
 
-size_t mark_gfx_order_sensitive_topk_subgraphs(const std::shared_ptr<ov::Model>& model) {
+size_t mark_gfx_order_sensitive_topk_subgraphs(
+    const std::shared_ptr<ov::Model>& model,
+    std::unordered_set<const ov::Node*>& terminal_boundaries) {
     size_t marked = 0;
     for (const auto& node : model->get_ordered_ops()) {
         if (!is_topk_precision_sensitive(node)) {
@@ -241,14 +678,26 @@ size_t mark_gfx_order_sensitive_topk_subgraphs(const std::shared_ptr<ov::Model>&
         }
         mark_fp32_if_real(node, marked);
         std::unordered_set<const ov::Node*> upstream_visited;
-        mark_topk_upstream_fp32(node->input_value(0), upstream_visited, marked);
+        const bool index_amplified = topk_indices_are_index_amplified(node);
+        if (index_amplified) {
+            mark_full_real_upstream_fp32(node->input_value(0), upstream_visited,
+                                         marked);
+            std::unordered_set<const ov::Node*> data_visited;
+            mark_index_selected_data_inputs_fp32(node->output(1), data_visited,
+                                                marked);
+        } else {
+            mark_topk_upstream_fp32(node->input_value(0), upstream_visited,
+                                    terminal_boundaries, marked);
+        }
         std::unordered_set<const ov::Node*> downstream_visited;
         mark_topk_downstream_fp32(node, downstream_visited, marked);
     }
     return marked;
 }
 
-size_t propagate_fp32_marks_upstream_to_boundaries(const std::shared_ptr<ov::Model>& model) {
+size_t propagate_fp32_marks_upstream_to_boundaries(
+    const std::shared_ptr<ov::Model>& model,
+    const std::unordered_set<const ov::Node*>& terminal_boundaries) {
     size_t marked = 0;
     constexpr size_t kMaxIterations = 16;
     for (size_t iteration = 0; iteration < kMaxIterations; ++iteration) {
@@ -261,16 +710,36 @@ size_t propagate_fp32_marks_upstream_to_boundaries(const std::shared_ptr<ov::Mod
             if (is_heavy_precision_boundary(node) && !conv_boundary) {
                 continue;
             }
+            const bool terminal_conv_boundary =
+                conv_boundary && terminal_boundaries.count(node.get()) != 0;
             for (size_t i = 0; i < node->get_input_size(); ++i) {
                 const auto input = node->input_value(i);
                 if (!input.get_element_type().is_real()) {
+                    continue;
+                }
+                if (terminal_conv_boundary && i == 0) {
+                    continue;
+                }
+                auto producer = input.get_node_shared_ptr();
+                if (is_conv_precision_boundary(producer)) {
+                    if (can_extend_fp32_island_through_conv_data_input(input)) {
+                        mark_fp32_if_real(producer, iteration_marks);
+                    }
+                    if (ov::fp16_compression_is_disabled(producer) &&
+                        terminal_boundaries.count(producer.get()) == 0 &&
+                        producer->get_input_size() > 0) {
+                        const auto data_input = producer->input_value(0);
+                        if (can_extend_fp32_island_through_conv_data_input(data_input)) {
+                            mark_fp32_if_real(data_input.get_node_shared_ptr(), iteration_marks);
+                        }
+                    }
                     continue;
                 }
                 if (conv_boundary && i == 0 &&
                     !can_extend_fp32_island_through_conv_data_input(input)) {
                     continue;
                 }
-                mark_fp32_if_real(input.get_node_shared_ptr(), iteration_marks);
+                mark_fp32_if_real(producer, iteration_marks);
             }
         }
         marked += iteration_marks;
@@ -289,8 +758,11 @@ size_t apply_gfx_fp32_precision_policy(const std::shared_ptr<ov::Model>& model) 
     precision_manager.run_passes(model);
 
     const auto after_common = count_fp32_precision_marks(model);
-    const auto gfx_topk_marks = mark_gfx_order_sensitive_topk_subgraphs(model);
-    const auto propagated_marks = propagate_fp32_marks_upstream_to_boundaries(model);
+    std::unordered_set<const ov::Node*> terminal_boundaries;
+    const auto gfx_topk_marks =
+        mark_gfx_order_sensitive_topk_subgraphs(model, terminal_boundaries);
+    const auto propagated_marks =
+        propagate_fp32_marks_upstream_to_boundaries(model, terminal_boundaries);
     return (after_common - before) + gfx_topk_marks + propagated_marks;
 }
 
@@ -964,9 +1436,22 @@ std::shared_ptr<const ov::Model> run_pipeline(const std::shared_ptr<const ov::Mo
     // Keep compressed weight decompression subgraphs intact for backend-side weight-only kernels.
     pass_config->disable<ov::pass::ConvertCompressedOnlyToLegacy>();
 
+    const bool canonicalize_sigmoid_ranking =
+        backend == GpuBackend::Metal;
+    size_t sigmoid_ranking_rewrites = 0;
+    if (canonicalize_sigmoid_ranking) {
+        sigmoid_ranking_rewrites = canonicalize_sigmoid_before_ranking_ops(cloned);
+    }
     protect_compressed_matmul_decompressions(cloned);
     cloned->validate_nodes_and_infer_types();
     manager.run_passes(cloned);
+    if (canonicalize_sigmoid_ranking) {
+        sigmoid_ranking_rewrites += canonicalize_sigmoid_before_ranking_ops(cloned);
+    }
+    if (gfx_log_debug_enabled() && sigmoid_ranking_rewrites != 0) {
+        gfx_log_debug("GfxTransforms") << "Canonicalized sigmoid ranking ops="
+                                       << sigmoid_ranking_rewrites;
+    }
     const auto precision_sensitive_count = apply_gfx_fp32_precision_policy(cloned);
     if (gfx_log_debug_enabled() && precision_sensitive_count != 0) {
         gfx_log_debug("GfxTransforms") << "Marked fp32 precision-sensitive nodes="

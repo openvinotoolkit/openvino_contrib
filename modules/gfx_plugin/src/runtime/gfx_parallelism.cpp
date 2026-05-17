@@ -1040,6 +1040,10 @@ protected:
         const uint64_t spatial = shape_prefix_product(output_shape) * out_h * out_w;
         const uint32_t max_threads =
             clamp_threadgroup_candidate(caps, std::max<uint32_t>(1u, caps.max_total_threads_per_group));
+        const uint32_t occupancy_balanced_threads =
+            clamp_threadgroup_candidate(caps, std::max<uint32_t>(wave * 4u, max_threads / 4u));
+        const uint32_t occupancy_dense_threads =
+            clamp_threadgroup_candidate(caps, std::max<uint32_t>(wave * 8u, max_threads / 2u));
         uint32_t default_threads = wave;
         const bool spatially_large = spatial >= 4096;
         const bool spatially_huge = spatial >= 16384;
@@ -1052,23 +1056,23 @@ protected:
             !depthwise && spatially_huge && kernel_work <= wave * 4u && output_channels >= wave * 2u;
         if (!depthwise && spatially_huge) {
             const uint32_t huge_spatial_threads =
-                output_channels >= wave * 2u ? std::max<uint32_t>(wave * 4u, max_threads / 4u) : wave * 2u;
+                output_channels >= wave * 2u ? occupancy_balanced_threads : wave * 2u;
             default_threads = clamp_threadgroup_candidate(caps, huge_spatial_threads);
         } else if (!depthwise && spatially_large && output_channels >= wave * 2u) {
             default_threads = clamp_threadgroup_candidate(caps, wave * 2u);
         }
         if (pointwise_or_light_reduction) {
-            default_threads = max_threads;
+            default_threads = occupancy_balanced_threads;
         }
         if (!depthwise && compute_dense && spatial >= 1024) {
             default_threads = clamp_threadgroup_candidate(caps, stride2 ? wave * 4u : wave * 2u);
             if (!stride2 && compute_very_dense && spatially_large) {
-                default_threads = clamp_threadgroup_candidate(caps, std::max<uint32_t>(wave * 4u, max_threads / 2u));
+                default_threads = occupancy_dense_threads;
             } else if (stride2 && compute_very_dense && spatial >= 2048) {
-                default_threads = clamp_threadgroup_candidate(caps, std::max<uint32_t>(wave * 4u, max_threads / 2u));
+                default_threads = occupancy_dense_threads;
             }
             if (compute_ultra_dense && spatially_huge) {
-                default_threads = max_threads;
+                default_threads = occupancy_dense_threads;
             }
         }
         plan = make_conv_parallelism_plan(caps,

@@ -5,6 +5,7 @@
 #include "transforms/fusion_pass.hpp"
 
 #include <algorithm>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -30,6 +31,7 @@
 #include "openvino/op/constant.hpp"
 #include "openvino/op/convert.hpp"
 #include "openvino/op/elu.hpp"
+#include "openvino/op/matmul.hpp"
 #include "openvino/op/multiply.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/prelu.hpp"
@@ -37,6 +39,7 @@
 #include "openvino/op/result.hpp"
 #include "openvino/op/slice.hpp"
 #include "openvino/op/scaled_dot_product_attention.hpp"
+#include "openvino/op/softmax.hpp"
 #include "openvino/op/split.hpp"
 #include "openvino/op/squeeze.hpp"
 #include "openvino/op/strided_slice.hpp"
@@ -229,7 +232,92 @@ bool extract_scale_as_batchnorm_params(const std::shared_ptr<const ov::Node>& sc
 
 bool is_attention_group_kind(const std::string& kind) {
     return kind == "Attention" || kind == "AttentionScale" || kind == "AttentionScaleMask" ||
-           kind == "NativeSDPA";
+           kind == "NativeSDPA" || kind == "VendorAttention";
+}
+
+bool is_single_consumer_output(const std::shared_ptr<const ov::Node>& node) {
+    return node && node->get_output_size() == 1 && node->output(0).get_target_inputs().size() == 1;
+}
+
+std::optional<int64_t> softmax_axis(const std::shared_ptr<const ov::Node>& node) {
+    if (auto softmax = ov::as_type_ptr<const ov::op::v1::Softmax>(node)) {
+        return static_cast<int64_t>(softmax->get_axis());
+    }
+    if (auto softmax = ov::as_type_ptr<const ov::op::v8::Softmax>(node)) {
+        return softmax->get_axis();
+    }
+    return std::nullopt;
+}
+
+bool is_last_axis_softmax(const std::shared_ptr<const ov::Node>& node) {
+    auto axis = softmax_axis(node);
+    if (!axis || !node->get_input_partial_shape(0).rank().is_static()) {
+        return false;
+    }
+    const auto rank = static_cast<int64_t>(node->get_input_partial_shape(0).rank().get_length());
+    int64_t normalized_axis = *axis;
+    if (normalized_axis < 0) {
+        normalized_axis += rank;
+    }
+    return normalized_axis == rank - 1;
+}
+
+bool extract_uniform_scale(const ov::Output<const ov::Node>& value,
+                           const std::shared_ptr<const ov::Node>& producer,
+                           float& scale) {
+    auto mul = ov::as_type_ptr<const ov::op::v1::Multiply>(value.get_node_shared_ptr());
+    if (!mul) {
+        return false;
+    }
+    ov::Output<const ov::Node> scale_value;
+    if (mul->input_value(0).get_node_shared_ptr() == producer) {
+        scale_value = mul->input_value(1);
+    } else if (mul->input_value(1).get_node_shared_ptr() == producer) {
+        scale_value = mul->input_value(0);
+    } else {
+        return false;
+    }
+    auto scale_const = ov::as_type_ptr<const ov::op::v0::Constant>(
+        scale_value.get_node_shared_ptr());
+    std::vector<float> values;
+    if (!read_const_f32(scale_const, values) || values.empty()) {
+        return false;
+    }
+    scale = values.front();
+    return std::all_of(values.begin(), values.end(), [&](float v) { return v == scale; });
+}
+
+bool extract_scaled_tensor_input(const std::shared_ptr<const ov::op::v1::Multiply>& mul,
+                                 ov::Output<const ov::Node>& tensor,
+                                 float& scale) {
+    if (!mul || mul->get_input_size() != 2) {
+        return false;
+    }
+
+    auto const0 = ov::util::get_constant_from_source(mul->input_value(0));
+    auto const1 = ov::util::get_constant_from_source(mul->input_value(1));
+    ov::Output<const ov::Node> tensor_candidate;
+    std::shared_ptr<const ov::op::v0::Constant> scale_const;
+    if (const0 && !const1) {
+        tensor_candidate = mul->input_value(1);
+        scale_const = const0;
+    } else if (const1 && !const0) {
+        tensor_candidate = mul->input_value(0);
+        scale_const = const1;
+    } else {
+        return false;
+    }
+
+    std::vector<float> values;
+    if (!read_const_f32(scale_const, values) || values.empty()) {
+        return false;
+    }
+    scale = values.front();
+    if (!std::all_of(values.begin(), values.end(), [&](float v) { return v == scale; })) {
+        return false;
+    }
+    tensor = tensor_candidate;
+    return true;
 }
 
 bool is_attention_layout_node(const std::shared_ptr<const ov::Node>& node) {
@@ -617,8 +705,10 @@ void run_fusion_passes(mlir::ModuleOp module, const FusionConfig& config) {
         return;
     }
     mlir::RewritePatternSet patterns(module.getContext());
-    add_attention_scale_mask_fusion_patterns(patterns, config);
-    add_attention_fusion_patterns(patterns, config);
+    if (config.enable_attention_fusion) {
+        add_attention_scale_mask_fusion_patterns(patterns, config);
+        add_attention_fusion_patterns(patterns, config);
+    }
     add_conv_batchnorm_swish_fusion_patterns(patterns, config);
     add_conv_batchnorm_act_fusion_patterns(patterns, config);
     add_conv_batchnorm_fusion_patterns(patterns, config);
@@ -738,6 +828,153 @@ void materialize_post_op_payloads(const std::shared_ptr<const ov::Model>& model,
     }
 }
 
+void add_vendor_attention_groups(const std::shared_ptr<const ov::Model>& model, FusionPlan& plan) {
+    if (!model) {
+        return;
+    }
+    const auto ordered_ops = model->get_ordered_ops();
+    const auto model_outputs = collect_model_outputs(model);
+    std::unordered_map<const ov::Node*, size_t> node_indices;
+    node_indices.reserve(ordered_ops.size());
+    for (size_t idx = 0; idx < ordered_ops.size(); ++idx) {
+        node_indices[ordered_ops[idx].get()] = idx;
+    }
+
+    auto add_group = [&](const std::vector<std::shared_ptr<const ov::Node>>& nodes) {
+        auto find_idx = [&](const std::shared_ptr<const ov::Node>& node) -> std::optional<size_t> {
+            auto it = node_indices.find(node.get());
+            if (it == node_indices.end()) {
+                return std::nullopt;
+            }
+            return it->second;
+        };
+        FusionGroup group;
+        group.kind = "VendorAttention";
+        group.node_indices.reserve(nodes.size());
+        for (const auto& candidate : nodes) {
+            auto idx = find_idx(candidate);
+            if (!idx) {
+                return;
+            }
+            group.node_indices.push_back(*idx);
+        }
+        plan.groups.emplace_back(std::move(group));
+    };
+
+    for (const auto& node : ordered_ops) {
+        auto matmul2 = ov::as_type_ptr<const ov::op::v0::MatMul>(node);
+        if (!matmul2 || matmul2->get_transpose_a() || !matmul2->get_transpose_b() ||
+            matmul2->get_input_size() != 2) {
+            continue;
+        }
+
+        std::shared_ptr<const ov::Node> softmax_node;
+        ov::Output<const ov::Node> value_input;
+        if (is_last_axis_softmax(matmul2->input_value(0).get_node_shared_ptr())) {
+            softmax_node = matmul2->input_value(0).get_node_shared_ptr();
+            value_input = matmul2->input_value(1);
+        } else if (is_last_axis_softmax(matmul2->input_value(1).get_node_shared_ptr())) {
+            softmax_node = matmul2->input_value(1).get_node_shared_ptr();
+            value_input = matmul2->input_value(0);
+        } else {
+            continue;
+        }
+        if (!is_single_consumer_output(softmax_node)) {
+            continue;
+        }
+
+        std::shared_ptr<const ov::Node> matmul1_node;
+        std::shared_ptr<const ov::Node> scale_node;
+        ov::Output<const ov::Node> q;
+        ov::Output<const ov::Node> k;
+        float scale_value = 1.0f;
+        bool pre_scaled_key = false;
+        const auto softmax_input_node = softmax_node->input_value(0).get_node_shared_ptr();
+        if (auto scale = ov::as_type_ptr<const ov::op::v1::Multiply>(softmax_input_node)) {
+            scale_node = softmax_input_node;
+            if (!is_single_consumer_output(scale_node)) {
+                continue;
+            }
+            if (auto candidate = scale->input_value(0).get_node_shared_ptr();
+                ov::as_type_ptr<const ov::op::v0::MatMul>(candidate)) {
+                matmul1_node = candidate;
+            } else if (auto candidate = scale->input_value(1).get_node_shared_ptr();
+                       ov::as_type_ptr<const ov::op::v0::MatMul>(candidate)) {
+                matmul1_node = candidate;
+            }
+            if (!extract_uniform_scale(scale_node->output(0), matmul1_node, scale_value)) {
+                continue;
+            }
+        } else if (auto matmul1_candidate = ov::as_type_ptr<const ov::op::v0::MatMul>(softmax_input_node)) {
+            matmul1_node = softmax_input_node;
+            scale_node = matmul1_candidate->input_value(1).get_node_shared_ptr();
+            auto scale = ov::as_type_ptr<const ov::op::v1::Multiply>(scale_node);
+            if (!scale || !is_single_consumer_output(scale_node) ||
+                !extract_scaled_tensor_input(scale, k, scale_value)) {
+                continue;
+            }
+            pre_scaled_key = true;
+        } else {
+            continue;
+        }
+        auto matmul1 = ov::as_type_ptr<const ov::op::v0::MatMul>(matmul1_node);
+        if (!matmul1 || !matmul1->get_transpose_a() || matmul1->get_transpose_b() ||
+            !is_single_consumer_output(matmul1_node)) {
+            continue;
+        }
+        q = matmul1->input_value(0);
+        if (!pre_scaled_key) {
+            k = matmul1->input_value(1);
+        }
+        if (model_outputs.count(matmul1_node.get()) != 0 ||
+            model_outputs.count(scale_node.get()) != 0 ||
+            model_outputs.count(softmax_node.get()) != 0) {
+            continue;
+        }
+
+        const auto v = value_input;
+        const auto out = matmul2->output(0);
+        if (!q.get_partial_shape().is_static() || !k.get_partial_shape().is_static() ||
+            !v.get_partial_shape().is_static() || !out.get_partial_shape().is_static()) {
+            continue;
+        }
+        const auto q_shape = q.get_shape();
+        const auto k_shape = k.get_shape();
+        const auto v_shape = v.get_shape();
+        const auto out_shape = out.get_shape();
+        if (q_shape.size() != 4 || k_shape.size() != 4 || v_shape.size() != 4 ||
+            out_shape.size() != 4) {
+            continue;
+        }
+        if (q_shape[0] != k_shape[0] || q_shape[0] != v_shape[0] ||
+            q_shape[1] != k_shape[1] || q_shape[1] != v_shape[1] ||
+            q_shape[2] != k_shape[2] || k_shape[3] != v_shape[3] ||
+            out_shape[0] != q_shape[0] || out_shape[1] != q_shape[1] ||
+            out_shape[2] != v_shape[2] || out_shape[3] != q_shape[3]) {
+            continue;
+        }
+        if (matmul1->get_output_shape(0).size() != 4 ||
+            matmul1->get_output_shape(0)[2] != q_shape[3] ||
+            matmul1->get_output_shape(0)[3] != k_shape[3]) {
+            continue;
+        }
+        if (matmul2->get_output_element_type(0) != q.get_element_type() ||
+            k.get_element_type() != q.get_element_type() ||
+            v.get_element_type() != q.get_element_type()) {
+            continue;
+        }
+        if (q.get_element_type() != ov::element::f32 &&
+            q.get_element_type() != ov::element::f16) {
+            continue;
+        }
+        if (pre_scaled_key) {
+            add_group({scale_node, matmul1_node, softmax_node, node});
+        } else {
+            add_group({matmul1_node, scale_node, softmax_node, node});
+        }
+    }
+}
+
 }  // namespace
 
 FusionPlan build_fusion_plan(const std::shared_ptr<const ov::Model>& model,
@@ -769,8 +1006,13 @@ FusionPlan build_fusion_plan(const std::shared_ptr<const ov::Model>& model,
 
     plan = extract_plan(module);
     materialize_post_op_payloads(model, plan);
-    add_native_sdpa_groups(model, plan);
-    expand_attention_groups(model, plan);
+    if (config.enable_vendor_attention_fusion) {
+        add_vendor_attention_groups(model, plan);
+    }
+    if (config.enable_attention_fusion) {
+        add_native_sdpa_groups(model, plan);
+        expand_attention_groups(model, plan);
+    }
     return plan;
 }
 

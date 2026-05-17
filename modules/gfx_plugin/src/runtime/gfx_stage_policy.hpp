@@ -22,7 +22,7 @@ struct GfxStageRuntimeTraits {
   bool transpose_chunked = false;
   bool split_concat_chunked = false;
   bool convert_chunked = false;
-  bool diagnostic_f32_mps_image = false;
+  bool diagnostic_f32_vendor_image = false;
 };
 
 struct GfxStageFusionPolicy {

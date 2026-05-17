@@ -100,6 +100,14 @@ public:
     }
 };
 
+class SdpaOp final : public GfxMpsrtOp<SdpaOp> {
+public:
+    using GfxMpsrtOp<SdpaOp>::GfxMpsrtOp;
+    static llvm::StringRef getOperationName() {
+        return "gfx.mpsrt.sdpa";
+    }
+};
+
 class ToImageOp final : public GfxMpsrtOp<ToImageOp> {
 public:
     using GfxMpsrtOp<ToImageOp>::GfxMpsrtOp;

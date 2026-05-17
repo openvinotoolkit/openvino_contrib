@@ -5,6 +5,7 @@
 
 #include <cstddef>
 
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 
 #include "runtime/gfx_activation.hpp"
@@ -13,6 +14,13 @@
 
 namespace ov {
 namespace gfx_plugin {
+
+mlir::Value emit_mlir_activation(mlir::OpBuilder& b,
+                                 mlir::Location loc,
+                                 mlir::Value x,
+                                 ActivationKind kind,
+                                 float alpha,
+                                 mlir::Type elem_ty);
 
 bool apply_fused_activation(mlir::ModuleOp module, ActivationKind kind, float alpha);
 

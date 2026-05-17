@@ -65,12 +65,12 @@ private:
     void prepare_unary_kernel();
     void prepare_binary_kernel();
     void prepare_softmax_kernel();
-    void prepare_concat_kernel();
     void prepare_split_kernel();
     void prepare_slice_kernel();
     void prepare_interpolate_kernel();
     void prepare_transpose_kernel();
     void prepare_convert_kernel();
+    void prepare_range_kernel();
     void prepare_gather_linear_kernel();
     void prepare_gather_embedding_kernel();
     void prepare_reduce_last_axis_kernel();
@@ -79,18 +79,14 @@ private:
     void prepare_broadcast_kernel();
     void prepare_select_kernel();
     bool is_vulkan_backend() const override { return true; }
-    bool prefer_specialized_concat_execution() const override { return true; }
+    bool prefer_specialized_concat_execution() const override { return false; }
     KernelExecutionHooks* prepare_profiling(ProfileState& state,
                                             KernelExecutionHooks& hooks) override;
     void finalize_profiling(const ProfileState& state) override;
 
     // Chunked Split support to stay within mobile descriptor limits.
     std::shared_ptr<ICompiledKernel> m_split_single_kernel;
-    std::shared_ptr<ICompiledKernel> m_concat_single_kernel;
-    std::shared_ptr<ICompiledKernel> m_concat_binary_kernel;
     ov::element::Type m_split_elem_type{};
-    ov::element::Type m_concat_elem_type{};
-    ov::element::Type m_concat_binary_elem_type{};
     std::shared_ptr<ICompiledKernel> m_slice_linear_kernel;
     ov::element::Type m_slice_elem_type{};
     std::shared_ptr<ICompiledKernel> m_softmax_row_kernel;
@@ -103,6 +99,11 @@ private:
     std::shared_ptr<ICompiledKernel> m_convert_linear_kernel;
     ov::element::Type m_convert_src_elem_type{};
     ov::element::Type m_convert_dst_elem_type{};
+    std::shared_ptr<ICompiledKernel> m_range_kernel;
+    ov::element::Type m_range_start_elem_type{};
+    ov::element::Type m_range_stop_elem_type{};
+    ov::element::Type m_range_step_elem_type{};
+    ov::element::Type m_range_output_elem_type{};
     std::shared_ptr<ICompiledKernel> m_gather_linear_kernel;
     ov::element::Type m_gather_linear_data_elem_type{};
     ov::element::Type m_gather_linear_index_elem_type{};
@@ -145,12 +146,12 @@ private:
     std::string m_linear_binary_key;
 
     void execute_split_chunked(GpuCommandBufferHandle command_buffer);
-    void execute_concat_chunked(GpuCommandBufferHandle command_buffer);
     void execute_slice_chunked(GpuCommandBufferHandle command_buffer);
     void execute_softmax_chunked(GpuCommandBufferHandle command_buffer);
     void execute_interpolate_chunked(GpuCommandBufferHandle command_buffer);
     void execute_transpose_chunked(GpuCommandBufferHandle command_buffer);
     void execute_convert_chunked(GpuCommandBufferHandle command_buffer);
+    void execute_range_chunked(GpuCommandBufferHandle command_buffer);
     void execute_gather_linear(GpuCommandBufferHandle command_buffer);
     void execute_gather_embedding(GpuCommandBufferHandle command_buffer);
     void execute_reduce_last_axis(GpuCommandBufferHandle command_buffer);
@@ -161,8 +162,6 @@ private:
     void execute_unary_chunked(GpuCommandBufferHandle command_buffer);
     void execute_binary_chunked(GpuCommandBufferHandle command_buffer);
     mlir::ModuleOp build_split_single_module(mlir::MLIRContext& ctx, const ov::element::Type& et);
-    mlir::ModuleOp build_concat_single_module(mlir::MLIRContext& ctx, const ov::element::Type& et);
-    mlir::ModuleOp build_concat_binary_module(mlir::MLIRContext& ctx, const ov::element::Type& et);
     mlir::ModuleOp build_slice_linear_module(mlir::MLIRContext& ctx, const ov::element::Type& et);
     mlir::ModuleOp build_softmax_row_module(mlir::MLIRContext& ctx,
                                             const ov::element::Type& et,
@@ -174,6 +173,11 @@ private:
     mlir::ModuleOp build_convert_linear_module(mlir::MLIRContext& ctx,
                                                const ov::element::Type& src_et,
                                                const ov::element::Type& dst_et);
+    mlir::ModuleOp build_range_module(mlir::MLIRContext& ctx,
+                                      const ov::element::Type& start_et,
+                                      const ov::element::Type& stop_et,
+                                      const ov::element::Type& step_et,
+                                      const ov::element::Type& output_et);
     mlir::ModuleOp build_gather_linear_module(mlir::MLIRContext& ctx,
                                               const ov::element::Type& data_et,
                                               const ov::element::Type& idx_et);
@@ -214,7 +218,6 @@ private:
                                               const std::string& op_key,
                                               size_t meta_rank);
     bool should_use_unary_chunked() const;
-    bool should_use_concat_chunked() const;
     bool should_use_slice_chunked() const;
     bool should_use_softmax_chunked() const;
     bool should_use_binary_chunked() const;
@@ -223,6 +226,7 @@ private:
     bool should_use_interpolate_chunked() const;
     bool should_use_transpose_chunked() const;
     bool should_use_convert_chunked() const;
+    bool should_use_range_chunked() const;
     bool should_use_gather_linear() const;
     bool should_use_gather_embedding() const;
     bool should_use_reduce_last_axis() const;

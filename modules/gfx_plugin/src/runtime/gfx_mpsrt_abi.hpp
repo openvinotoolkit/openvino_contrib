@@ -166,6 +166,19 @@ struct GfxMpsrtTopKAbiDesc {
     uint32_t sort_type = 0;
 };
 
+enum GfxMpsrtSdpaLayout : uint32_t {
+    GfxMpsrtSdpaLayoutNativeBHND = 0,
+    GfxMpsrtSdpaLayoutTransposedBHDN = 1,
+};
+
+struct GfxMpsrtSdpaAbiDesc {
+    uint32_t has_mask = 0;
+    uint32_t causal = 0;
+    uint32_t accumulate_fp32 = 1;
+    uint32_t layout = GfxMpsrtSdpaLayoutNativeBHND;
+    float scale = 1.0f;
+};
+
 enum GfxMpsrtMslDispatchFlags : uint32_t {
     GfxMpsrtMslDispatchFlagNone = 0,
     GfxMpsrtMslDispatchFlagPrecompiledMetallibRequired = 1u << 0,

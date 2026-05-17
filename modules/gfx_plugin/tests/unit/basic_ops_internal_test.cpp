@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -12,12 +13,14 @@
 #include "openvino/op/add.hpp"
 #include "openvino/op/avg_pool.hpp"
 #include "openvino/op/batch_norm.hpp"
+#include "openvino/op/concat.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/convert.hpp"
 #include "openvino/op/convolution.hpp"
 #include "openvino/op/elu.hpp"
 #include "openvino/op/exp.hpp"
 #include "openvino/op/gelu.hpp"
+#include "openvino/op/gather_elements.hpp"
 #include "openvino/op/group_conv.hpp"
 #include "openvino/op/hsigmoid.hpp"
 #include "openvino/op/hswish.hpp"
@@ -26,6 +29,7 @@
 #include "openvino/op/maximum.hpp"
 #include "openvino/op/multiply.hpp"
 #include "openvino/op/prelu.hpp"
+#include "openvino/op/reduce_max.hpp"
 #include "openvino/op/reduce_sum.hpp"
 #include "openvino/op/reshape.hpp"
 #include "openvino/op/sigmoid.hpp"
@@ -33,8 +37,10 @@
 #include "openvino/op/split.hpp"
 #include "openvino/op/swish.hpp"
 #include "openvino/op/tanh.hpp"
+#include "openvino/op/tile.hpp"
 #include "openvino/op/topk.hpp"
 #include "openvino/op/transpose.hpp"
+#include "openvino/op/variadic_split.hpp"
 #include "openvino/openvino.hpp"
 #define HAS_OV_LAYER_NORM 0
 #include "mlir/IR/Verifier.h"
@@ -49,6 +55,7 @@
 #include "mlir/gfx_mpsrt_ops.hpp"
 #include "mlir/gfx_stage_kernel_binding.hpp"
 #include "mlir/mlir_kernel_plan_utils.hpp"
+#include "mlir/mlir_builder.hpp"
 #include "mlir/mlir_passes.hpp"
 #include "mlir/mlir_support.hpp"
 #include "mlir/msl_codegen.hpp"
@@ -71,6 +78,7 @@
 #include "transforms/fusion_pass.hpp"
 #include "transforms/pipeline.hpp"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #if GFX_BACKEND_VULKAN_AVAILABLE
 #include "mlir/spirv_codegen.hpp"
 #endif
@@ -531,6 +539,102 @@ TEST(GfxTransforms, MlirFusionAttentionPlan) {
     if (ov::as_type_ptr<const ov::op::v0::MatMul>(mm1_node) &&
         ov::as_type_ptr<const ov::op::v1::Softmax>(sm_node) &&
         ov::as_type_ptr<const ov::op::v0::MatMul>(mm2_node)) {
+      found = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found);
+}
+
+TEST(GfxTransforms, MlirFusionAttentionCanBeDisabledForVendorFirstPlacement) {
+  auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                       ov::Shape{1, 4});
+  auto w1 = std::make_shared<ov::op::v0::Constant>(
+      ov::element::f32, ov::Shape{4, 4}, std::vector<float>(16, 0.5f));
+  auto w2 = std::make_shared<ov::op::v0::Constant>(
+      ov::element::f32, ov::Shape{4, 4}, std::vector<float>(16, 0.25f));
+  auto mm1 = std::make_shared<ov::op::v0::MatMul>(param, w1, false, false);
+  auto sm = std::make_shared<ov::op::v1::Softmax>(mm1, 1);
+  auto mm2 = std::make_shared<ov::op::v0::MatMul>(sm, w2, false, false);
+  auto res = std::make_shared<ov::op::v0::Result>(mm2);
+  auto model = std::make_shared<ov::Model>(
+      ov::ResultVector{res}, ov::ParameterVector{param},
+      "attn_plan_vendor_first");
+
+  ov::gfx_plugin::FusionConfig cfg;
+  cfg.enable_fusion = true;
+  cfg.enable_attention_fusion = false;
+  auto plan = ov::gfx_plugin::build_fusion_plan(model, cfg);
+
+  for (const auto &group : plan.groups) {
+    EXPECT_NE(group.kind, "Attention");
+    EXPECT_NE(group.kind, "AttentionScale");
+    EXPECT_NE(group.kind, "AttentionScaleMask");
+    EXPECT_NE(group.kind, "NativeSDPA");
+  }
+}
+
+TEST(GfxTransforms, MlirFusionVendorAttentionPlan) {
+  auto q = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                   ov::Shape{1, 2, 3, 5});
+  auto k = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                   ov::Shape{1, 2, 3, 7});
+  auto v = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                   ov::Shape{1, 2, 4, 7});
+  auto scale = std::make_shared<ov::op::v0::Constant>(
+      ov::element::f32, ov::Shape{1}, std::vector<float>{0.57735026f});
+  auto scores = std::make_shared<ov::op::v0::MatMul>(q, k, true, false);
+  auto scaled = std::make_shared<ov::op::v1::Multiply>(scores, scale);
+  auto softmax = std::make_shared<ov::op::v8::Softmax>(scaled, -1);
+  auto out = std::make_shared<ov::op::v0::MatMul>(v, softmax, false, true);
+  auto res = std::make_shared<ov::op::v0::Result>(out);
+  auto model = std::make_shared<ov::Model>(
+      ov::ResultVector{res}, ov::ParameterVector{q, k, v},
+      "vendor_attention_plan");
+
+  ov::gfx_plugin::FusionConfig cfg;
+  cfg.enable_fusion = true;
+  cfg.enable_attention_fusion = false;
+  cfg.enable_vendor_attention_fusion = true;
+  auto plan = ov::gfx_plugin::build_fusion_plan(model, cfg);
+
+  bool found = false;
+  for (const auto &group : plan.groups) {
+    if (group.kind == "VendorAttention" && group.node_indices.size() == 4) {
+      found = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found);
+}
+
+TEST(GfxTransforms, MlirFusionVendorAttentionPreScaledKeyPlan) {
+  auto q = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                   ov::Shape{1, 2, 3, 5});
+  auto k = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                   ov::Shape{1, 2, 3, 7});
+  auto v = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                   ov::Shape{1, 2, 4, 7});
+  auto scale = std::make_shared<ov::op::v0::Constant>(
+      ov::element::f32, ov::Shape{1, 1, 1, 1}, std::vector<float>{0.57735026f});
+  auto scaled_k = std::make_shared<ov::op::v1::Multiply>(k, scale);
+  auto scores = std::make_shared<ov::op::v0::MatMul>(q, scaled_k, true, false);
+  auto softmax = std::make_shared<ov::op::v8::Softmax>(scores, -1);
+  auto out = std::make_shared<ov::op::v0::MatMul>(v, softmax, false, true);
+  auto res = std::make_shared<ov::op::v0::Result>(out);
+  auto model = std::make_shared<ov::Model>(
+      ov::ResultVector{res}, ov::ParameterVector{q, k, v},
+      "vendor_attention_prescaled_key_plan");
+
+  ov::gfx_plugin::FusionConfig cfg;
+  cfg.enable_fusion = true;
+  cfg.enable_attention_fusion = false;
+  cfg.enable_vendor_attention_fusion = true;
+  auto plan = ov::gfx_plugin::build_fusion_plan(model, cfg);
+
+  bool found = false;
+  for (const auto &group : plan.groups) {
+    if (group.kind == "VendorAttention" && group.node_indices.size() == 4) {
       found = true;
       break;
     }
@@ -1878,48 +1982,11 @@ TEST(GfxMlir, MatMulMpsrtLoweringEntryPointSelectsSingleAndMultiStagePlans) {
   fallback_desc.batch = 3;
   fallback_desc.batch_a = 2;
   fallback_desc.batch_b = 3;
-  const auto fallback_source_plan =
-      ov::gfx_plugin::make_apple_metal_runtime_matmul_kernel_source_plan(
+  EXPECT_THROW(
+      (void)ov::gfx_plugin::make_apple_metal_runtime_matmul_kernel_source_plan(
           ctx, nullptr, matmul, fallback_desc, lhs->get_shape(),
-          rhs->get_shape(), "matmul_fallback_test");
-  ASSERT_TRUE(fallback_source_plan.valid());
-  const auto &fallback_source = fallback_source_plan.source;
-  ASSERT_TRUE(fallback_source.module);
-  ASSERT_EQ(fallback_source.entry_point, "matmul_buffer");
-  ASSERT_EQ(fallback_source.signature.arg_count, 3u);
-  ASSERT_EQ(fallback_source.signature.output_arg_count, 1u);
-  const auto fallback_metadata =
-      ov::gfx_plugin::extract_kernel_runtime_metadata(
-          fallback_source.module, fallback_source.signature.output_arg_count,
-          /*fallback_input_arg_count=*/999, fallback_source.entry_point);
-  ASSERT_TRUE(fallback_metadata.valid);
-  ASSERT_EQ(fallback_metadata.kernel_input_arg_count, 2u);
-  EXPECT_EQ(fallback_metadata.operands.operand_kinds,
-            std::vector<int32_t>({1, 1, 1}));
-  EXPECT_EQ(fallback_metadata.operands.operand_arg_indices,
-            std::vector<int32_t>({0, 1, 2}));
-
-  ov::gfx_plugin::GfxMpsrtModuleStagePlan fallback_stage_plan;
-  ASSERT_TRUE(ov::gfx_plugin::read_module_mpsrt_stage_plan(
-      fallback_source.module, fallback_stage_plan));
-  ASSERT_EQ(fallback_stage_plan.stage.kind,
-            ov::gfx_plugin::GfxMpsrtStageKind::MSLDispatch);
-  ASSERT_EQ(fallback_stage_plan.stage.stage_manifest.stage_family,
-            ov::gfx_plugin::GfxKernelStageFamily::Gemm);
-  ASSERT_EQ(fallback_stage_plan.stage.stage_manifest.backend_domain,
-            ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl);
-  ASSERT_TRUE(fallback_stage_plan.stage.stage_manifest.custom_kernel.valid);
-  ASSERT_EQ(
-      fallback_stage_plan.stage.stage_manifest.custom_kernel.kernel_family,
-      "matmul_buffer");
-  ASSERT_TRUE(fallback_stage_plan.stage.stage_manifest.custom_kernel
-                  .external_buffer_abi.valid);
-  EXPECT_EQ(fallback_stage_plan.stage.stage_manifest.custom_kernel
-                .external_buffer_abi.roles,
-            std::vector<ov::gfx_plugin::GfxKernelBufferRole>(
-                {ov::gfx_plugin::GfxKernelBufferRole::TensorInput,
-                 ov::gfx_plugin::GfxKernelBufferRole::TensorInput,
-                 ov::gfx_plugin::GfxKernelBufferRole::TensorOutput}));
+          rhs->get_shape(), "matmul_mpsrt_reject_test"),
+      ov::Exception);
 }
 
 TEST(GfxMlir, AppleMpsrtTypedProgramMaterializesMultiStageBuilderRecords) {
@@ -2092,6 +2159,65 @@ TEST(GfxMlir, MatMulMpsrtEpilogueMslSourceUsesCanonicalCustomKernelAbi) {
   ASSERT_NE(msl.find("constant uint M = 4;"), std::string::npos);
   ASSERT_NE(msl.find("constant uint N = 8;"), std::string::npos);
   ASSERT_NE(msl.find("x = x / (1.0f + precise::exp(-x));"),
+            std::string::npos);
+}
+
+TEST(GfxMlir, SigmoidMslCodegenUsesPreciseExpForScoreStability) {
+  mlir::MLIRContext ctx;
+  auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+
+  ov::gfx_plugin::UnaryCodegenDesc unary{};
+  unary.element_type = ov::element::f32;
+  unary.activation = ov::gfx_plugin::ActivationKind::Sigmoid;
+  EXPECT_NE(ov::gfx_plugin::generate_msl_for_unary(unary, module)
+                .find("precise::exp(-x)"),
+            std::string::npos);
+
+  ov::gfx_plugin::EltwiseCodegenDesc eltwise{};
+  eltwise.element_type = ov::element::f32;
+  eltwise.input0_type = ov::element::f32;
+  eltwise.input1_type = ov::element::f32;
+  eltwise.output_type = ov::element::f32;
+  eltwise.eltwise_kind = ov::gfx_plugin::EltwiseKind::Add;
+  eltwise.num_elements = 16;
+  eltwise.has_activation = true;
+  eltwise.activation = ov::gfx_plugin::ActivationKind::Sigmoid;
+  EXPECT_NE(ov::gfx_plugin::generate_msl_for_eltwise(eltwise, module)
+                .find("precise::exp(-x)"),
+            std::string::npos);
+
+  ov::gfx_plugin::MatMulCodegenDesc matmul{};
+  matmul.element_type = ov::element::f32;
+  matmul.output_type = ov::element::f32;
+  matmul.M = 2;
+  matmul.N = 3;
+  matmul.K = 4;
+  matmul.has_activation = true;
+  matmul.activation = ov::gfx_plugin::ActivationKind::Sigmoid;
+  EXPECT_NE(ov::gfx_plugin::generate_msl_for_matmul(matmul, module)
+                .find("precise::exp(-x)"),
+            std::string::npos);
+
+  ov::gfx_plugin::Conv2DCodegenDesc conv{};
+  conv.element_type = ov::element::f32;
+  conv.input_type = ov::element::f32;
+  conv.weight_type = ov::element::f32;
+  conv.output_type = ov::element::f32;
+  conv.N = 1;
+  conv.C_in = 3;
+  conv.H = 4;
+  conv.W = 4;
+  conv.C_out = 2;
+  conv.C_in_pg = 3;
+  conv.C_out_pg = 2;
+  conv.kH = 1;
+  conv.kW = 1;
+  conv.outH = 4;
+  conv.outW = 4;
+  conv.has_activation = true;
+  conv.activation = ov::gfx_plugin::ActivationKind::Sigmoid;
+  EXPECT_NE(ov::gfx_plugin::generate_msl_for_conv2d(conv, module)
+                .find("precise::exp(-acc)"),
             std::string::npos);
 }
 
@@ -3424,6 +3550,48 @@ TEST(GfxMlir, SpirvFinalAdapterAttrsOverridePreLoweringConv2DManifestBinding) {
             9u);
 }
 
+TEST(GfxMlir, SpirvFinalAdapterArgCountIncludesNegativeIndexedScalars) {
+  mlir::MLIRContext ctx;
+  auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+
+  const auto plan =
+      ov::gfx_plugin::make_backend_custom_kernel_roles_binding_plan(
+          "Convolution", "conv2d_kernel",
+          {ov::gfx_plugin::GfxKernelBufferRole::TensorInput,
+           ov::gfx_plugin::GfxKernelBufferRole::ConstTensor,
+           ov::gfx_plugin::GfxKernelBufferRole::TensorOutput},
+          ov::gfx_plugin::GfxKernelBackendDomain::Spirv,
+          ov::gfx_plugin::GfxKernelStorageKind::Buffer, "spirv:buffer:");
+  ASSERT_TRUE(plan.valid);
+  ASSERT_TRUE(
+      ov::gfx_plugin::annotate_backend_custom_kernel_module_with_binding_plan(
+          module, plan));
+
+  ov::gfx_plugin::replace_spirv_kernel_binding_attrs(
+      module,
+      /*operand_kinds=*/{0, 0, 1, 1, 0, 1},
+      /*operand_arg_indices=*/{-1, -1, 0, 1, -1, 2},
+      /*scalar_values=*/{7, 11, 13},
+      /*scalar_args=*/{7, 11, 13});
+
+  const auto metadata = ov::gfx_plugin::extract_kernel_runtime_metadata(
+      module,
+      /*output_arg_count=*/1,
+      /*fallback_input_arg_count=*/999, "conv2d_kernel",
+      ov::gfx_plugin::GfxKernelBackendDomain::Spirv);
+  ASSERT_TRUE(metadata.valid);
+  EXPECT_EQ(metadata.kernel_input_arg_count, 2u);
+  EXPECT_EQ(metadata.operands.operand_kinds,
+            std::vector<int32_t>({0, 0, 1, 1, 0, 1}));
+  EXPECT_EQ(metadata.operands.operand_arg_indices,
+            std::vector<int32_t>({-1, -1, 0, 1, -1, 2}));
+  EXPECT_EQ(ov::gfx_plugin::infer_kernel_arg_count_from_module(
+                module,
+                /*fallback=*/999, "conv2d_kernel",
+                ov::gfx_plugin::GfxKernelBackendDomain::Spirv),
+            6u);
+}
+
 TEST(GfxMlir, AppleMslArgCountCanUseStageManifestWithoutMlirEntryMatch) {
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
@@ -3559,6 +3727,82 @@ TEST(GfxMlir, TypedVendorProgramDerivesExternalIoAbiFromTypedStagePlan) {
   EXPECT_EQ(module_builder_plan.builder_plan.external_buffer_roles,
             abi.buffer_roles);
 }
+
+TEST(GfxMlir, TileBuilderUsesFlatMemrefCustomKernelAbiWithoutTensorReshapes) {
+  auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::i64,
+                                                       ov::Shape{1, 300, 1});
+  auto repeats = ov::op::v0::Constant::create(ov::element::i64,
+                                              ov::Shape{3},
+                                              {1, 1, 80});
+  auto tile = std::make_shared<ov::op::v0::Tile>(input, repeats);
+  auto result = std::make_shared<ov::op::v0::Result>(tile);
+  auto model = std::make_shared<ov::Model>(ov::ResultVector{result},
+                                           ov::ParameterVector{input});
+
+  mlir::MLIRContext ctx;
+  auto module = ov::gfx_plugin::build_mlir_tile_from_model(model, ctx);
+  ASSERT_TRUE(module);
+  auto func = module.lookupSymbol<mlir::func::FuncOp>("tile_main");
+  ASSERT_TRUE(func);
+  EXPECT_EQ(func.getFunctionType().getNumInputs(), 8u);
+  EXPECT_EQ(func.getFunctionType().getNumResults(), 0u);
+  EXPECT_TRUE(module->getAttrOfType<mlir::BoolAttr>("gfx.prefer_parallel")
+                  .getValue());
+  EXPECT_TRUE(module->getAttrOfType<mlir::BoolAttr>(
+                        "gfx.i64_storage_i32_lanes")
+                  .getValue());
+
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  module.print(os);
+  EXPECT_EQ(text.find("tensor.empty"), std::string::npos);
+  EXPECT_EQ(text.find("tensor.collapse_shape"), std::string::npos);
+  EXPECT_EQ(text.find("tensor.expand_shape"), std::string::npos);
+  EXPECT_EQ(text.find("memref.alloc"), std::string::npos);
+  EXPECT_EQ(text.find("memref<?xi64>"), std::string::npos);
+  EXPECT_NE(text.find("memref<?xi32>"), std::string::npos);
+}
+
+#if GFX_BACKEND_VULKAN_AVAILABLE
+TEST(GfxMlir, TileSpirvLoweringPreservesCompactCustomKernelRuntimeMapping) {
+  auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::i64,
+                                                       ov::Shape{1, 300, 1});
+  auto repeats = ov::op::v0::Constant::create(ov::element::i64,
+                                              ov::Shape{3},
+                                              {1, 1, 80});
+  auto tile = std::make_shared<ov::op::v0::Tile>(input, repeats);
+  auto result = std::make_shared<ov::op::v0::Result>(tile);
+  auto model = std::make_shared<ov::Model>(ov::ResultVector{result},
+                                           ov::ParameterVector{input});
+
+  mlir::MLIRContext ctx;
+  auto module = ov::gfx_plugin::build_mlir_tile_from_model(model, ctx);
+  ASSERT_TRUE(module);
+  auto binding = ov::gfx_plugin::annotate_required_backend_custom_kernel_binding(
+      module,
+      /*is_vulkan_backend=*/true,
+      "Tile",
+      "tile_kernel",
+      {24000, 3},
+      "tile_stage");
+  ASSERT_TRUE(binding.valid);
+  const std::vector<int32_t> expected_arg_indices{0, 5, -1, -1, 1, 2, 3, 4};
+  ASSERT_EQ(binding.runtime_binding.operand_arg_indices, expected_arg_indices);
+
+  std::string log;
+  auto spirv = ov::gfx_plugin::lower_to_spirv(module, "tile_main", &log);
+  ASSERT_FALSE(spirv.empty()) << log;
+  std::string lowered_text;
+  llvm::raw_string_ostream lowered_os(lowered_text);
+  module.print(lowered_os);
+  EXPECT_EQ(lowered_text.find("Int64"), std::string::npos);
+  EXPECT_EQ(lowered_text.find("xi64"), std::string::npos);
+  EXPECT_EQ(ov::gfx_plugin::extract_kernel_operand_arg_indices(module),
+            expected_arg_indices);
+  EXPECT_EQ(ov::gfx_plugin::extract_kernel_operand_kinds(module),
+            std::vector<int32_t>({1, 1, 0, 0, 1, 1, 1, 1}));
+}
+#endif
 
 TEST(GfxMlir, TypedMslStageManifestSuppliesRuntimeMetadataOverExternalAbi) {
   mlir::MLIRContext ctx;
@@ -4499,6 +4743,37 @@ TEST(GfxMlir, TopKMslSupportsI64IndexPackingWithoutMlirModule) {
   EXPECT_NE(source.find("return candidate_index < current_index"),
             std::string::npos);
   EXPECT_NE(source.find("out_idx[out_idx_flat * 2]"), std::string::npos);
+}
+
+TEST(GfxMlir, TopKI64IndexMlirUsesTrailingLaneStorage) {
+  auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                       ov::Shape{1, 24000});
+  auto k = ov::op::v0::Constant::create(ov::element::i32, ov::Shape{},
+                                        std::vector<int32_t>{300});
+  auto topk = std::make_shared<ov::op::v3::TopK>(
+      input, k, 1, ov::op::TopKMode::MAX,
+      ov::op::TopKSortType::SORT_VALUES, ov::element::i64);
+  auto values = std::make_shared<ov::op::v0::Result>(topk->output(0));
+  auto indices = std::make_shared<ov::op::v0::Result>(topk->output(1));
+  auto model = std::make_shared<ov::Model>(
+      ov::ResultVector{values, indices}, ov::ParameterVector{input},
+      "topk_i64_lane_storage");
+
+  mlir::MLIRContext ctx;
+  auto module = ov::gfx_plugin::build_mlir_topk_from_model(model, ctx);
+  ASSERT_TRUE(module);
+  auto func = module.lookupSymbol<mlir::func::FuncOp>("topk_main");
+  ASSERT_TRUE(func);
+  EXPECT_EQ(func.getFunctionType().getNumInputs(), 3u);
+  EXPECT_EQ(func.getFunctionType().getNumResults(), 0u);
+
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  module.print(os);
+  EXPECT_NE(text.find("memref<1x300x2xi32>"), std::string::npos);
+  EXPECT_EQ(text.find("memref<1x600xi32>"), std::string::npos);
+  EXPECT_EQ(text.find("memref<1x300xi64>"), std::string::npos);
+  EXPECT_NE(text.find("iter_args"), std::string::npos);
 }
 
 TEST(GfxMlir, GatherMslMetadataUsesRolePatternWithRuntimeParams) {
@@ -5533,7 +5808,7 @@ TEST(GfxStagePolicyTest, MetalConvSwishSourcePlanUsesMpsTextureEpilogue) {
             std::string::npos);
 }
 
-TEST(GfxStagePolicyTest, MetalF32ConvSwishSourcePlanStaysOnMsl) {
+TEST(GfxStagePolicyTest, MetalF32ConvSwishSourcePlanUsesMpsTextureEpilogue) {
   auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
                                                        ov::Shape{1, 3, 4, 4});
   auto weights = std::make_shared<ov::op::v0::Constant>(
@@ -5555,7 +5830,21 @@ TEST(GfxStagePolicyTest, MetalF32ConvSwishSourcePlanStaysOnMsl) {
           /*has_activation=*/true,
           /*has_batchnorm=*/false, ov::gfx_plugin::ActivationKind::Swish,
           nullptr);
-  EXPECT_FALSE(source_plan.valid());
+  ASSERT_TRUE(source_plan.valid());
+  EXPECT_TRUE(source_plan.requires_mpsrt_model);
+  EXPECT_EQ(source_plan.kind,
+            ov::gfx_plugin::GfxMpsrtKernelSourcePlanKind::MultiStage);
+  EXPECT_EQ(source_plan.first_stage_kind,
+            ov::gfx_plugin::GfxMpsrtStageKind::MPSConv2D);
+  EXPECT_EQ(source_plan.last_stage_kind,
+            ov::gfx_plugin::GfxMpsrtStageKind::MSLDispatch);
+  EXPECT_EQ(source_plan.source.entry_point,
+            "gfx_mpsrt_conv_texture_swish_epilogue");
+  EXPECT_TRUE(source_plan.has_runtime_binding);
+  EXPECT_NE(source_plan.source.msl_source.find("texture2d_array"),
+            std::string::npos);
+  EXPECT_NE(source_plan.source.msl_source.find("precise::exp(-x)"),
+            std::string::npos);
 }
 
 TEST(GfxTransforms, MlirFusionConvBiasPlan) {
@@ -5807,6 +6096,39 @@ TEST(GfxTransforms, CommonOptimizationsConstantFolding) {
   EXPECT_GE(constants, 1u);
 }
 
+TEST(GfxTransforms, PrecisionPolicyPreservesDeclaredF32ElementTypesByDefault) {
+  auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                       ov::Shape{2, 3});
+  auto bias = ov::op::v0::Constant::create(
+      ov::element::f32, ov::Shape{1, 3}, std::vector<float>{1.f, 2.f, 3.f});
+  auto add = std::make_shared<ov::op::v1::Add>(input, bias);
+  add->set_friendly_name("plain_f32_add");
+  auto relu = std::make_shared<ov::op::v0::Relu>(add);
+  relu->set_friendly_name("plain_f32_relu");
+  auto res = std::make_shared<ov::op::v0::Result>(relu);
+  auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                           ov::ParameterVector{input},
+                                           "precision_policy_plain_f32");
+
+  auto transformed = ov::gfx_plugin::transforms::run_pipeline(
+      model, ov::gfx_plugin::GpuBackend::Metal);
+
+  bool saw_add = false;
+  bool saw_relu = false;
+  for (const auto &op : transformed->get_ops()) {
+    if (op->get_friendly_name() == "plain_f32_add") {
+      saw_add = true;
+      EXPECT_EQ(op->get_output_element_type(0), ov::element::f32);
+    }
+    if (op->get_friendly_name() == "plain_f32_relu") {
+      saw_relu = true;
+      EXPECT_EQ(op->get_output_element_type(0), ov::element::f32);
+    }
+  }
+  EXPECT_TRUE(saw_add);
+  EXPECT_TRUE(saw_relu);
+}
+
 TEST(GfxTransforms, PrecisionPolicyMarksExpReducePathForFp32) {
   auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
                                                        ov::Shape{1, 8});
@@ -5867,7 +6189,237 @@ TEST(GfxTransforms, PrecisionPolicyMarksLargeTopKIslandForFp32) {
   EXPECT_TRUE(saw_marked_parameter);
 }
 
-TEST(GfxTransforms, PrecisionPolicyPropagatesThroughFusibleConvBiasTopKPath) {
+TEST(GfxTransforms, RankingCanonicalizationMovesSigmoidAfterReduceMaxAndTopKWhenIndicesUnused) {
+  auto logits = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                        ov::Shape{1, 3, 8});
+  logits->set_friendly_name("score_logits");
+  auto sigmoid = std::make_shared<ov::op::v0::Sigmoid>(logits);
+  sigmoid->set_friendly_name("score_sigmoid");
+  auto reduce_axes = ov::op::v0::Constant::create(ov::element::i64,
+                                                  ov::Shape{1},
+                                                  std::vector<int64_t>{1});
+  auto reduce = std::make_shared<ov::op::v1::ReduceMax>(sigmoid, reduce_axes,
+                                                        false);
+  reduce->set_friendly_name("score_reduce");
+  auto k = ov::op::v0::Constant::create(ov::element::i32, ov::Shape{},
+                                        std::vector<int32_t>{2});
+  auto topk = std::make_shared<ov::op::v3::TopK>(
+      reduce, k, 1, ov::op::TopKMode::MAX,
+      ov::op::TopKSortType::SORT_VALUES, ov::element::i64);
+  topk->set_friendly_name("score_topk");
+  auto values = std::make_shared<ov::op::v0::Result>(topk->output(0));
+  auto model = std::make_shared<ov::Model>(
+      ov::ResultVector{values}, ov::ParameterVector{logits},
+      "ranking_canonicalization_sigmoid_topk");
+
+  auto transformed = ov::gfx_plugin::transforms::run_pipeline(
+      model, ov::gfx_plugin::GpuBackend::Metal);
+
+  bool saw_topk = false;
+  bool saw_values_sigmoid_after_topk = false;
+  bool saw_topk_on_sigmoid = false;
+  size_t sigmoid_count = 0;
+  for (const auto &op : transformed->get_ops()) {
+    if (auto rewritten_topk = ov::as_type_ptr<ov::op::util::TopKBase>(op)) {
+      saw_topk = true;
+      saw_topk_on_sigmoid |= ov::is_type<ov::op::v0::Sigmoid>(
+          rewritten_topk->input_value(0).get_node_shared_ptr());
+    }
+    if (auto restored_sigmoid = ov::as_type_ptr<ov::op::v0::Sigmoid>(op)) {
+      ++sigmoid_count;
+      saw_values_sigmoid_after_topk |=
+          ov::as_type_ptr<ov::op::util::TopKBase>(
+              restored_sigmoid->input_value(0).get_node_shared_ptr()) != nullptr;
+    }
+  }
+  EXPECT_TRUE(saw_topk);
+  EXPECT_TRUE(saw_values_sigmoid_after_topk);
+  EXPECT_EQ(sigmoid_count, 1u);
+  EXPECT_FALSE(saw_topk_on_sigmoid);
+}
+
+TEST(GfxTransforms, RankingCanonicalizationMovesSigmoidForObservableTopKValuesAndIndices) {
+  auto logits = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                        ov::Shape{1, 3, 8});
+  logits->set_friendly_name("score_logits");
+  auto sigmoid = std::make_shared<ov::op::v0::Sigmoid>(logits);
+  sigmoid->set_friendly_name("score_sigmoid");
+  auto reduce_axes = ov::op::v0::Constant::create(ov::element::i64,
+                                                  ov::Shape{1},
+                                                  std::vector<int64_t>{1});
+  auto reduce = std::make_shared<ov::op::v1::ReduceMax>(sigmoid, reduce_axes,
+                                                        false);
+  reduce->set_friendly_name("score_reduce");
+  auto k = ov::op::v0::Constant::create(ov::element::i32, ov::Shape{},
+                                        std::vector<int32_t>{2});
+  auto topk = std::make_shared<ov::op::v3::TopK>(
+      reduce, k, 1, ov::op::TopKMode::MAX,
+      ov::op::TopKSortType::SORT_VALUES, ov::element::i64);
+  topk->set_friendly_name("score_topk");
+  auto values = std::make_shared<ov::op::v0::Result>(topk->output(0));
+  auto indices = std::make_shared<ov::op::v0::Result>(topk->output(1));
+  auto model = std::make_shared<ov::Model>(
+      ov::ResultVector{values, indices}, ov::ParameterVector{logits},
+      "ranking_canonicalization_observable_values_indices");
+
+  auto transformed = ov::gfx_plugin::transforms::run_pipeline(
+      model, ov::gfx_plugin::GpuBackend::Metal);
+
+  bool saw_restored_sigmoid_after_topk = false;
+  bool saw_topk_on_sigmoid_domain = false;
+  size_t sigmoid_count = 0;
+  std::function<bool(const std::shared_ptr<ov::Node>&, size_t)>
+      input_path_reaches_sigmoid =
+          [&](const std::shared_ptr<ov::Node>& node, size_t depth) -> bool {
+    if (!node || depth > 16) {
+      return false;
+    }
+    if (node->get_type_name() == std::string("Sigmoid")) {
+      return true;
+    }
+    if (node->get_input_size() == 0) {
+      return false;
+    }
+    return input_path_reaches_sigmoid(
+        node->input_value(0).get_node_shared_ptr(), depth + 1);
+  };
+  for (const auto &op : transformed->get_ops()) {
+    if (auto rewritten_topk = ov::as_type_ptr<ov::op::util::TopKBase>(op)) {
+      auto topk_input = rewritten_topk->input_value(0).get_node_shared_ptr();
+      saw_topk_on_sigmoid_domain |=
+          input_path_reaches_sigmoid(topk_input, 0);
+    }
+    if (auto restored_sigmoid = ov::as_type_ptr<ov::op::v0::Sigmoid>(op)) {
+      ++sigmoid_count;
+      saw_restored_sigmoid_after_topk |=
+          ov::as_type_ptr<ov::op::util::TopKBase>(
+              restored_sigmoid->input_value(0).get_node_shared_ptr()) != nullptr;
+    }
+  }
+  EXPECT_FALSE(saw_topk_on_sigmoid_domain);
+  EXPECT_EQ(sigmoid_count, 1u);
+  EXPECT_TRUE(saw_restored_sigmoid_after_topk);
+}
+
+TEST(GfxTransforms, RankingCanonicalizationMovesSigmoidWhenOnlyTopKIndicesAreObservable) {
+  auto logits = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                        ov::Shape{1, 3, 8});
+  logits->set_friendly_name("score_logits");
+  auto sigmoid = std::make_shared<ov::op::v0::Sigmoid>(logits);
+  sigmoid->set_friendly_name("score_sigmoid");
+  auto reduce_axes = ov::op::v0::Constant::create(ov::element::i64,
+                                                  ov::Shape{1},
+                                                  std::vector<int64_t>{1});
+  auto reduce = std::make_shared<ov::op::v1::ReduceMax>(sigmoid, reduce_axes,
+                                                        false);
+  reduce->set_friendly_name("score_reduce");
+  auto k = ov::op::v0::Constant::create(ov::element::i32, ov::Shape{},
+                                        std::vector<int32_t>{2});
+  auto topk = std::make_shared<ov::op::v3::TopK>(
+      reduce, k, 1, ov::op::TopKMode::MAX,
+      ov::op::TopKSortType::SORT_VALUES, ov::element::i64);
+  topk->set_friendly_name("score_topk");
+  auto indices = std::make_shared<ov::op::v0::Result>(topk->output(1));
+  auto model = std::make_shared<ov::Model>(
+      ov::ResultVector{indices}, ov::ParameterVector{logits},
+      "ranking_canonicalization_indices_only");
+
+  auto transformed = ov::gfx_plugin::transforms::run_pipeline(
+      model, ov::gfx_plugin::GpuBackend::Metal);
+
+  bool saw_topk = false;
+  bool saw_topk_on_sigmoid_domain = false;
+  size_t sigmoid_count = 0;
+  std::function<bool(const std::shared_ptr<ov::Node>&, size_t)>
+      input_path_reaches_sigmoid =
+          [&](const std::shared_ptr<ov::Node>& node, size_t depth) -> bool {
+    if (!node || depth > 16) {
+      return false;
+    }
+    if (node->get_type_name() == std::string("Sigmoid")) {
+      return true;
+    }
+    if (node->get_input_size() == 0) {
+      return false;
+    }
+    return input_path_reaches_sigmoid(
+        node->input_value(0).get_node_shared_ptr(), depth + 1);
+  };
+  for (const auto &op : transformed->get_ops()) {
+    if (auto rewritten_topk = ov::as_type_ptr<ov::op::util::TopKBase>(op)) {
+      saw_topk = true;
+      auto topk_input = rewritten_topk->input_value(0).get_node_shared_ptr();
+      saw_topk_on_sigmoid_domain |=
+          input_path_reaches_sigmoid(topk_input, 0);
+    }
+    if (ov::as_type_ptr<ov::op::v0::Sigmoid>(op)) {
+      ++sigmoid_count;
+    }
+  }
+  EXPECT_TRUE(saw_topk);
+  EXPECT_FALSE(saw_topk_on_sigmoid_domain);
+  EXPECT_EQ(sigmoid_count, 0u);
+}
+
+TEST(GfxTransforms, RankingCanonicalizationTracesYoloConcatSplitScorePathWhenIndicesUnused) {
+  auto boxes = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                       ov::Shape{1, 2, 8});
+  auto score_logits = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f32, ov::Shape{1, 3, 8});
+  auto score_sigmoid = std::make_shared<ov::op::v0::Sigmoid>(score_logits);
+  auto concat = std::make_shared<ov::op::v0::Concat>(
+      ov::OutputVector{boxes, score_sigmoid}, 1);
+  auto permutation = ov::op::v0::Constant::create(
+      ov::element::i64, ov::Shape{3}, std::vector<int64_t>{0, 2, 1});
+  auto transpose = std::make_shared<ov::op::v1::Transpose>(concat, permutation);
+  auto split_axis = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{},
+                                                 std::vector<int64_t>{2});
+  auto split_lengths = ov::op::v0::Constant::create(
+      ov::element::i64, ov::Shape{2}, std::vector<int64_t>{2, 3});
+  auto split = std::make_shared<ov::op::v1::VariadicSplit>(
+      transpose, split_axis, split_lengths);
+  auto reduce_axis = ov::op::v0::Constant::create(
+      ov::element::i64, ov::Shape{1}, std::vector<int64_t>{2});
+  auto reduce =
+      std::make_shared<ov::op::v1::ReduceMax>(split->output(1), reduce_axis,
+                                              false);
+  auto k = ov::op::v0::Constant::create(ov::element::i32, ov::Shape{},
+                                        std::vector<int32_t>{2});
+  auto topk = std::make_shared<ov::op::v3::TopK>(
+      reduce, k, 1, ov::op::TopKMode::MAX,
+      ov::op::TopKSortType::SORT_VALUES, ov::element::i64);
+  auto values = std::make_shared<ov::op::v0::Result>(topk->output(0));
+  auto model = std::make_shared<ov::Model>(
+      ov::ResultVector{values}, ov::ParameterVector{boxes, score_logits},
+      "ranking_canonicalization_yolo_score_path");
+
+  auto transformed = ov::gfx_plugin::transforms::run_pipeline(
+      model, ov::gfx_plugin::GpuBackend::Metal);
+
+  bool saw_topk = false;
+  bool saw_values_sigmoid_after_topk = false;
+  bool saw_topk_on_sigmoid = false;
+  size_t sigmoid_count = 0;
+  for (const auto &op : transformed->get_ops()) {
+    if (auto rewritten_topk = ov::as_type_ptr<ov::op::util::TopKBase>(op)) {
+      saw_topk = true;
+      saw_topk_on_sigmoid |= ov::is_type<ov::op::v0::Sigmoid>(
+          rewritten_topk->input_value(0).get_node_shared_ptr());
+    }
+    if (auto restored_sigmoid = ov::as_type_ptr<ov::op::v0::Sigmoid>(op)) {
+      ++sigmoid_count;
+      saw_values_sigmoid_after_topk |=
+          ov::as_type_ptr<ov::op::util::TopKBase>(
+              restored_sigmoid->input_value(0).get_node_shared_ptr()) != nullptr;
+    }
+  }
+  EXPECT_TRUE(saw_topk);
+  EXPECT_TRUE(saw_values_sigmoid_after_topk);
+  EXPECT_EQ(sigmoid_count, 1u);
+  EXPECT_FALSE(saw_topk_on_sigmoid);
+}
+
+TEST(GfxTransforms, PrecisionPolicyKeepsFusibleConvBiasTopKDecodeFp32IncludingConv) {
   auto input = std::make_shared<ov::op::v0::Parameter>(
       ov::element::f32, ov::Shape{1, 4, 4, 4});
   auto weights =
@@ -5897,12 +6449,13 @@ TEST(GfxTransforms, PrecisionPolicyPropagatesThroughFusibleConvBiasTopKPath) {
   auto transformed = ov::gfx_plugin::transforms::run_pipeline(
       model, ov::gfx_plugin::GpuBackend::Metal);
 
-  bool saw_marked_conv = false;
   bool saw_marked_add = false;
   bool saw_marked_topk = false;
+  bool saw_marked_conv = false;
   for (const auto &op : transformed->get_ops()) {
     if (ov::is_type<ov::op::v1::Convolution>(op)) {
-      saw_marked_conv = ov::fp16_compression_is_disabled(op);
+      saw_marked_conv = op->get_output_element_type(0) == ov::element::f32 &&
+                        ov::fp16_compression_is_disabled(op);
     }
     if (ov::is_type<ov::op::v1::Add>(op)) {
       saw_marked_add = ov::fp16_compression_is_disabled(op);
@@ -5916,7 +6469,7 @@ TEST(GfxTransforms, PrecisionPolicyPropagatesThroughFusibleConvBiasTopKPath) {
   EXPECT_TRUE(saw_marked_topk);
 }
 
-TEST(GfxTransforms, PrecisionPolicyExtendsSingleConsumerScoreHeadForLargeTopK) {
+TEST(GfxTransforms, PrecisionPolicyExtendsSingleConsumerScoreHeadAroundConvForLargeTopK) {
   auto input = std::make_shared<ov::op::v0::Parameter>(
       ov::element::f32, ov::Shape{1, 4, 4, 4});
   auto weights0 =
@@ -5962,14 +6515,15 @@ TEST(GfxTransforms, PrecisionPolicyExtendsSingleConsumerScoreHeadForLargeTopK) {
   auto transformed = ov::gfx_plugin::transforms::run_pipeline(
       model, ov::gfx_plugin::GpuBackend::Metal);
 
-  bool saw_marked_conv0 = false;
   bool saw_marked_add0 = false;
   bool saw_marked_swish0 = false;
-  bool saw_marked_conv1 = false;
   bool saw_marked_add1 = false;
+  bool saw_marked_conv0 = false;
+  bool saw_marked_conv1 = false;
   for (const auto &op : transformed->get_ops()) {
     if (op->get_friendly_name() == "score_conv0") {
-      saw_marked_conv0 = ov::fp16_compression_is_disabled(op);
+      saw_marked_conv0 = op->get_output_element_type(0) == ov::element::f32 &&
+                         ov::fp16_compression_is_disabled(op);
     }
     if (op->get_friendly_name() == "score_add0") {
       saw_marked_add0 = ov::fp16_compression_is_disabled(op);
@@ -5978,7 +6532,8 @@ TEST(GfxTransforms, PrecisionPolicyExtendsSingleConsumerScoreHeadForLargeTopK) {
       saw_marked_swish0 = ov::fp16_compression_is_disabled(op);
     }
     if (op->get_friendly_name() == "score_conv1") {
-      saw_marked_conv1 = ov::fp16_compression_is_disabled(op);
+      saw_marked_conv1 = op->get_output_element_type(0) == ov::element::f32 &&
+                         ov::fp16_compression_is_disabled(op);
     }
     if (op->get_friendly_name() == "score_add1") {
       saw_marked_add1 = ov::fp16_compression_is_disabled(op);
@@ -5991,9 +6546,10 @@ TEST(GfxTransforms, PrecisionPolicyExtendsSingleConsumerScoreHeadForLargeTopK) {
   EXPECT_TRUE(saw_marked_add1);
 }
 
-TEST(GfxTransforms, PrecisionPolicyStopsAtSharedFeatureBoundaryForLargeTopK) {
+TEST(GfxTransforms, PrecisionPolicyStopsAtSharedFeatureBoundaryWithoutCrossingInput) {
   auto input = std::make_shared<ov::op::v0::Parameter>(
       ov::element::f32, ov::Shape{1, 4, 4, 4});
+  input->set_friendly_name("model_input");
   auto shared_weights =
       ov::op::v0::Constant::create(ov::element::f32, ov::Shape{4, 4, 1, 1},
                                    std::vector<float>(4 * 4, 0.5f));
@@ -6029,15 +6585,100 @@ TEST(GfxTransforms, PrecisionPolicyStopsAtSharedFeatureBoundaryForLargeTopK) {
       model, ov::gfx_plugin::GpuBackend::Metal);
 
   bool saw_shared_conv = false;
-  bool saw_score_conv = false;
+  bool saw_marked_score_conv = false;
+  bool saw_marked_input = false;
   for (const auto &op : transformed->get_ops()) {
+    if (op->get_friendly_name() == "model_input") {
+      saw_marked_input = ov::fp16_compression_is_disabled(op);
+    }
     if (op->get_friendly_name() == "shared_feature_conv") {
-      saw_shared_conv = ov::fp16_compression_is_disabled(op);
+      saw_shared_conv = op->get_output_element_type(0) == ov::element::f32 &&
+                        ov::fp16_compression_is_disabled(op);
     }
     if (op->get_friendly_name() == "score_boundary_conv") {
-      saw_score_conv = ov::fp16_compression_is_disabled(op);
+      saw_marked_score_conv = op->get_output_element_type(0) == ov::element::f32 &&
+                              ov::fp16_compression_is_disabled(op);
     }
   }
-  EXPECT_FALSE(saw_shared_conv);
-  EXPECT_TRUE(saw_score_conv);
+  EXPECT_FALSE(saw_marked_input);
+  EXPECT_TRUE(saw_shared_conv);
+  EXPECT_TRUE(saw_marked_score_conv);
+}
+
+TEST(GfxTransforms, PrecisionPolicyMarksFullUpstreamForIndexAmplifiedTopK) {
+  auto input = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f32, ov::Shape{1, 4, 4, 4});
+  input->set_friendly_name("model_input");
+  auto shared_weights =
+      ov::op::v0::Constant::create(ov::element::f32, ov::Shape{4, 4, 1, 1},
+                                   std::vector<float>(4 * 4, 0.5f));
+  auto shared_conv = std::make_shared<ov::op::v1::Convolution>(
+      input, shared_weights, ov::Strides{1, 1}, ov::CoordinateDiff{0, 0},
+      ov::CoordinateDiff{0, 0}, ov::Strides{1, 1});
+  shared_conv->set_friendly_name("shared_feature_conv");
+  auto tap = std::make_shared<ov::op::v0::Relu>(shared_conv);
+  auto tap_result = std::make_shared<ov::op::v0::Result>(tap);
+
+  auto score_weights =
+      ov::op::v0::Constant::create(ov::element::f32, ov::Shape{8, 4, 1, 1},
+                                   std::vector<float>(8 * 4, 0.25f));
+  auto score_conv = std::make_shared<ov::op::v1::Convolution>(
+      shared_conv, score_weights, ov::Strides{1, 1}, ov::CoordinateDiff{0, 0},
+      ov::CoordinateDiff{0, 0}, ov::Strides{1, 1});
+  score_conv->set_friendly_name("score_boundary_conv");
+  auto shape = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{2},
+                                            std::vector<int64_t>{1, 128});
+  auto reshape =
+      std::make_shared<ov::op::v1::Reshape>(score_conv, shape, false);
+  auto k = ov::op::v0::Constant::create(ov::element::i32, ov::Shape{},
+                                        std::vector<int32_t>{32});
+  auto topk = std::make_shared<ov::op::v3::TopK>(
+      reshape, k, 1, ov::op::TopKMode::MAX,
+      ov::op::TopKSortType::SORT_VALUES, ov::element::i64);
+  auto gather_data = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f32, ov::Shape{1, 32});
+  gather_data->set_friendly_name("gather_data");
+  auto gather =
+      std::make_shared<ov::op::v6::GatherElements>(gather_data, topk->output(1), 1);
+  auto values = std::make_shared<ov::op::v0::Result>(topk->output(0));
+  auto gathered = std::make_shared<ov::op::v0::Result>(gather);
+  auto model = std::make_shared<ov::Model>(
+      ov::ResultVector{tap_result, values, gathered},
+      ov::ParameterVector{input, gather_data},
+      "precision_policy_index_amplified_topk");
+
+  auto transformed = ov::gfx_plugin::transforms::run_pipeline(
+      model, ov::gfx_plugin::GpuBackend::Metal);
+
+  bool saw_marked_input = false;
+  bool saw_marked_shared_conv = false;
+  bool saw_marked_score_conv = false;
+  bool saw_marked_gather_data = false;
+  bool saw_marked_gather = false;
+  for (const auto &op : transformed->get_ops()) {
+    if (op->get_friendly_name() == "model_input") {
+      saw_marked_input = ov::fp16_compression_is_disabled(op);
+    }
+    if (op->get_friendly_name() == "gather_data") {
+      saw_marked_gather_data = ov::fp16_compression_is_disabled(op);
+    }
+    if (op->get_friendly_name() == "shared_feature_conv") {
+      saw_marked_shared_conv =
+          op->get_output_element_type(0) == ov::element::f32 &&
+          ov::fp16_compression_is_disabled(op);
+    }
+    if (op->get_friendly_name() == "score_boundary_conv") {
+      saw_marked_score_conv =
+          op->get_output_element_type(0) == ov::element::f32 &&
+          ov::fp16_compression_is_disabled(op);
+    }
+    if (ov::is_type<ov::op::v6::GatherElements>(op)) {
+      saw_marked_gather = ov::fp16_compression_is_disabled(op);
+    }
+  }
+  EXPECT_TRUE(saw_marked_input);
+  EXPECT_TRUE(saw_marked_shared_conv);
+  EXPECT_TRUE(saw_marked_score_conv);
+  EXPECT_TRUE(saw_marked_gather_data);
+  EXPECT_TRUE(saw_marked_gather);
 }

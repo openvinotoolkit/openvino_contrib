@@ -378,9 +378,9 @@ void begin_vulkan_infer_commands(VulkanCommandSubmission& submission, size_t slo
     OPENVINO_ASSERT(submission.fences[slot_index], "GFX Vulkan: infer fence is not initialized");
 
     if (submission.fence_pending[slot_index]) {
-        const bool profiling = (profiler != nullptr);
-        const auto wait_start = profiling ? std::chrono::steady_clock::now()
-                                          : std::chrono::steady_clock::time_point{};
+        const bool measure_wait = (profiler != nullptr) || gfx_log_debug_enabled();
+        const auto wait_start = measure_wait ? std::chrono::steady_clock::now()
+                                             : std::chrono::steady_clock::time_point{};
         VkResult wait_res = vkWaitForFences(submission.device,
                                             1,
                                             &submission.fences[slot_index],
@@ -390,12 +390,18 @@ void begin_vulkan_infer_commands(VulkanCommandSubmission& submission, size_t slo
             OPENVINO_THROW("GFX Vulkan: vkWaitForFences failed for infer command buffer: ",
                            vk_result_to_string(wait_res));
         }
-        if (profiling) {
+        if (measure_wait) {
             const auto wait_cpu_us =
                 std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - wait_start);
-            profiler->record_segment("wait", "slot_reuse_wait", wait_cpu_us, 0, 0, 0, 0, 0, 0,
-                                     static_cast<int64_t>(slot_index));
-            profiler->increment_counter("fence_wait_count");
+            if (profiler) {
+                profiler->record_segment("wait", "slot_reuse_wait", wait_cpu_us, 0, 0, 0, 0, 0, 0,
+                                         static_cast<int64_t>(slot_index));
+                profiler->increment_counter("fence_wait_count");
+            }
+            if (gfx_log_debug_enabled()) {
+                gfx_log_debug("InferSubmit") << "Slot reuse wait slot=" << slot_index
+                                             << " cpu_us=" << wait_cpu_us.count();
+            }
         }
         submission.fence_pending[slot_index] = false;
     }
@@ -536,9 +542,9 @@ void wait_vulkan_infer_commands(VulkanCommandSubmission& submission, size_t slot
     if (slot_index >= submission.fence_pending.size() || !submission.fence_pending[slot_index]) {
         return;
     }
-    const bool profiling = (profiler != nullptr);
-    const auto wait_start = profiling ? std::chrono::steady_clock::now()
-                                      : std::chrono::steady_clock::time_point{};
+    const bool measure_wait = (profiler != nullptr) || gfx_log_debug_enabled();
+    const auto wait_start = measure_wait ? std::chrono::steady_clock::now()
+                                         : std::chrono::steady_clock::time_point{};
     VkResult res = vkWaitForFences(submission.device,
                                    1,
                                    &submission.fences[slot_index],
@@ -548,12 +554,18 @@ void wait_vulkan_infer_commands(VulkanCommandSubmission& submission, size_t slot
         OPENVINO_THROW("GFX Vulkan: vkWaitForFences failed for infer command buffer: ",
                        vk_result_to_string(res));
     }
-    if (profiling) {
+    if (measure_wait) {
         const auto wait_cpu_us =
             std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - wait_start);
-        profiler->record_segment("wait", "final_fence_wait", wait_cpu_us, 0, 0, 0, 0, 0, 0,
-                                 static_cast<int64_t>(slot_index));
-        profiler->increment_counter("fence_wait_count");
+        if (profiler) {
+            profiler->record_segment("wait", "final_fence_wait", wait_cpu_us, 0, 0, 0, 0, 0, 0,
+                                     static_cast<int64_t>(slot_index));
+            profiler->increment_counter("fence_wait_count");
+        }
+        if (gfx_log_debug_enabled()) {
+            gfx_log_debug("InferSubmit") << "Final fence wait slot=" << slot_index
+                                         << " cpu_us=" << wait_cpu_us.count();
+        }
     }
     submission.fence_pending[slot_index] = false;
 }
@@ -664,6 +676,7 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
     void* stage_profiler = profiler ? profiler->native_handle() : nullptr;
     const auto pipeline_prepare_start = profiling ? std::chrono::steady_clock::now()
                                                   : std::chrono::steady_clock::time_point{};
+    const auto& vk_ctx = VulkanContext::instance();
     VulkanGpuAllocator allocator;
     GpuBufferPool pool(allocator);
     ScopedConstUploadBatch const_upload_batch(resources.const_manager);
@@ -727,9 +740,9 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
                                      std::chrono::steady_clock::now() - pipeline_prepare_start));
     }
 
-    const auto& vk_ctx = VulkanContext::instance();
     InferSubmissionTuningCaps submission_caps{};
     submission_caps.backend = GpuBackend::Vulkan;
+    submission_caps.device_family = vk_ctx.device_family();
     submission_caps.preferred_simd_width = std::max<uint32_t>(vk_ctx.subgroup_size(), 1u);
     submission_caps.subgroup_size = std::max<uint32_t>(vk_ctx.subgroup_size(), 1u);
     submission_caps.max_total_threads_per_group =
@@ -741,6 +754,8 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
         gfx_log_debug("InferSubmit") << "Vulkan submission tuning: slots=" << submission_tuning.slot_count
                                      << " max_stages=" << submission_tuning.config.max_stages_per_submit
                                      << " max_output_bytes=" << submission_tuning.config.max_output_bytes_per_submit
+                                     << " max_macs=" << submission_tuning.config.max_macs_per_submit
+                                     << " family=" << gpu_device_family_name(submission_caps.device_family)
                                      << " simd=" << submission_caps.preferred_simd_width
                                      << " max_threads=" << submission_caps.max_total_threads_per_group
                                      << " pipeline_stages=" << pipeline.size();
