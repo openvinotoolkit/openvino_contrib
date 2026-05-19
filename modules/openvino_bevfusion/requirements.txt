@@ -1,0 +1,9 @@
+numpy==2.2.6
+openvino==2025.4.1
+opencv-python-headless==4.13.0.90
+torch==2.10.0
+onnx==1.18.0
+setuptools==80.10.2
+nncf==3.0.0
+shapely
+torchvision
