@@ -76,6 +76,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
+#include <string>
 #include <algorithm>
 #include <mutex>
 #include <unordered_map>
@@ -134,6 +135,8 @@ struct SpirvCachedMetadata {
     std::optional<int32_t> dispatch_tile_w;
     std::optional<int32_t> dispatch_threads_h;
     std::optional<int32_t> dispatch_threads_w;
+    std::optional<int32_t> dispatch_channel_block;
+    std::optional<std::string> dispatch_channel_block_accumulation;
 };
 
 SpirvCachedMetadata capture_spirv_cached_metadata(mlir::ModuleOp module) {
@@ -162,6 +165,12 @@ SpirvCachedMetadata capture_spirv_cached_metadata(mlir::ModuleOp module) {
     }
     if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_w")) {
         meta.dispatch_threads_w = static_cast<int32_t>(attr.getInt());
+    }
+    if (auto attr = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_channel_block")) {
+        meta.dispatch_channel_block = static_cast<int32_t>(attr.getInt());
+    }
+    if (auto attr = module->getAttrOfType<mlir::StringAttr>("gfx.dispatch_channel_block_accumulation")) {
+        meta.dispatch_channel_block_accumulation = attr.getValue().str();
     }
     return meta;
 }
@@ -230,6 +239,18 @@ void restore_spirv_cached_metadata(mlir::ModuleOp module, const SpirvCachedMetad
         module->setAttr("gfx.dispatch_threads_w", b.getI32IntegerAttr(*meta.dispatch_threads_w));
     } else {
         module->removeAttr("gfx.dispatch_threads_w");
+    }
+    if (meta.dispatch_channel_block) {
+        mlir::Builder b(ctx);
+        module->setAttr("gfx.dispatch_channel_block", b.getI32IntegerAttr(*meta.dispatch_channel_block));
+    } else {
+        module->removeAttr("gfx.dispatch_channel_block");
+    }
+    if (meta.dispatch_channel_block_accumulation) {
+        mlir::Builder b(ctx);
+        module->setAttr("gfx.dispatch_channel_block_accumulation", b.getStringAttr(*meta.dispatch_channel_block_accumulation));
+    } else {
+        module->removeAttr("gfx.dispatch_channel_block_accumulation");
     }
     reconcile_spirv_stage_manifest_with_launch_abi(module);
 }
@@ -1342,17 +1363,30 @@ void annotate_kernel_scalar_args(mlir::ModuleOp module) {
                 final_scalar_values.assign(scalar_values.begin(),
                                            scalar_values.end());
             }
-            const bool update_scalar_args =
+            bool update_scalar_args =
                 prefix && all_scalars_known && !scalar_values.empty();
             if (prefix && all_scalars_known && !scalar_values.empty()) {
                 final_scalar_args = final_scalar_values;
             }
+            std::vector<int32_t> final_operand_kinds(operand_kinds.begin(), operand_kinds.end());
+            std::vector<int32_t> final_operand_arg_indices(operand_arg_indices.begin(),
+                                                           operand_arg_indices.end());
+            const bool existing_covers_launch_operands =
+                preserve_compact_buffers &&
+                compact_kernel_operand_layout_matches_launch(
+                    existing_kinds, existing_indices, final_operand_kinds);
+            if (existing_covers_launch_operands) {
+                final_operand_kinds = existing_kinds;
+                final_operand_arg_indices = existing_indices;
+                update_scalar_args = false;
+            }
             replace_spirv_kernel_binding_attrs(
                 module,
-                std::vector<int32_t>(operand_kinds.begin(), operand_kinds.end()),
-                std::vector<int32_t>(operand_arg_indices.begin(),
-                                     operand_arg_indices.end()),
-                final_scalar_values, final_scalar_args, update_scalar_args);
+                final_operand_kinds,
+                final_operand_arg_indices,
+                final_scalar_values,
+                final_scalar_args,
+                update_scalar_args);
             if (gfx_log_debug_enabled()) {
                 std::ostringstream oss;
                 oss << "Kernel operand kinds=" << operand_kinds.size()

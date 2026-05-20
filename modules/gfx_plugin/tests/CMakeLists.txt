@@ -102,6 +102,7 @@ ov_add_test_target(
 )
 
 target_sources(${TARGET_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/gfx_shared_gtest_allow.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/plugin_tests.cpp
 )
 if(APPLE)
@@ -116,19 +117,12 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     GFX_BACKEND_METAL_AVAILABLE=$<BOOL:${GFX_BACKEND_METAL_AVAILABLE}>
     GFX_BACKEND_VULKAN_AVAILABLE=$<BOOL:${GFX_BACKEND_VULKAN_AVAILABLE}>)
 
-if(ENABLE_TEMPLATE)
-    set(GFX_TEMPLATE_PLUGIN_LIBRARY
-        "${CMAKE_SHARED_MODULE_PREFIX}openvino_template_plugin${OV_BUILD_POSTFIX}${CMAKE_SHARED_MODULE_SUFFIX}")
-    add_custom_target(${TARGET_NAME}_plugins_xml
-        COMMAND
-            "${CMAKE_COMMAND}"
-            -D "OV_GFX_PLUGINS_XML=${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/plugins.xml"
-            -D "OV_TEMPLATE_PLUGIN_LIBRARY=${GFX_TEMPLATE_PLUGIN_LIBRARY}"
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/write_gfx_test_plugins_xml.cmake"
-        COMMENT "Generate plugins.xml for TEMPLATE-dependent shared tests"
-        VERBATIM)
-    add_dependencies(${TARGET_NAME} ${TARGET_NAME}_plugins_xml)
-endif()
+add_custom_target(${TARGET_NAME}_remove_plugins_xml
+    COMMAND "${CMAKE_COMMAND}" -E rm -f "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/plugins.xml"
+    COMMENT "Remove implicit plugins.xml so GFX tests use explicit GFX/TEMPLATE registration"
+    VERBATIM)
+add_dependencies(${TARGET_NAME}_remove_plugins_xml ${GFX_TEST_DEPENDENCIES})
+add_dependencies(${TARGET_NAME} ${TARGET_NAME}_remove_plugins_xml)
 
 target_include_directories(${TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}

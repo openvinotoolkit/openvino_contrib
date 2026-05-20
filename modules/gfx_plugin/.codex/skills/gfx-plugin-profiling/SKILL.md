@@ -82,6 +82,8 @@ Check:
 
 - `descriptor_update_count`
 - `binding_prepare_in_infer`
+- `submission_dependency_window_extension_count`
+- `submission_dependency_extension_budget_num` / `submission_dependency_extension_budget_den`
 - backend setup spans in trace output
 - Metal MPSRT counters such as `mpsrt_*_bound_resource_count`, `mpsrt_mps_resize2d_*`, `mpsrt_mps_graph_*`, and `mpsrt_encode` segments when the shared `gfx_mpsrt_model.*` resource table, external-buffer binding plan, prepared heap, storage-bridge path, or MPSGraph-backed vendor route is in use
 

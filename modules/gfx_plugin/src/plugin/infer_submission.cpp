@@ -8,6 +8,8 @@
 #include <chrono>
 #include <limits>
 #include <sstream>
+#include <string_view>
+#include <unordered_map>
 
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/convolution.hpp"
@@ -72,6 +74,16 @@ struct SubmissionBudget {
     uint64_t macs = 1;
 };
 
+struct SubmissionDependencyGraph {
+    std::vector<std::vector<size_t>> input_producers;
+};
+
+struct SubmissionWindowTotals {
+    size_t weighted_stages = 0;
+    size_t output_bytes = 0;
+    uint64_t macs = 0;
+};
+
 bool is_deep(SubmissionDepthClass depth_class) {
     return depth_class == SubmissionDepthClass::Deep ||
            depth_class == SubmissionDepthClass::VeryDeep ||
@@ -128,9 +140,10 @@ SubmissionDeviceProfile make_submission_device_profile(const InferSubmissionTuni
     case SubmissionDeviceClass::Constrained:
         profile.max_slots = 6u;
         profile.stages_per_slot = workload.simd_width >= 64u ? 64u : 48u;
-        profile.extremely_deep_vulkan_stage_floor = workload.simd_width >= 64u ? 96u : 128u;
-        profile.extremely_deep_vulkan_output_floor = MiB(96u);
-        profile.extremely_deep_vulkan_mac_floor = workload.simd_width >= 64u ? GMacs(8u) : GMacs(6u);
+        profile.extremely_deep_vulkan_stage_floor =
+            profile.stages_per_slot + profile.stages_per_slot / 2u;
+        profile.extremely_deep_vulkan_output_floor = workload.simd_width >= 64u ? MiB(96u) : MiB(64u);
+        profile.extremely_deep_vulkan_mac_floor = workload.simd_width >= 64u ? GMacs(8u) : GMacs(4u);
         break;
     case SubmissionDeviceClass::Wide:
         profile.max_slots = caps.backend == GpuBackend::Vulkan ? 6u : 4u;
@@ -267,6 +280,40 @@ void add_saturating(uint64_t& dst, uint64_t value) {
     dst += value;
 }
 
+size_t add_saturating_size(size_t lhs, size_t rhs) {
+    if (std::numeric_limits<size_t>::max() - lhs < rhs) {
+        return std::numeric_limits<size_t>::max();
+    }
+    return lhs + rhs;
+}
+
+uint64_t add_saturating_u64(uint64_t lhs, uint64_t rhs) {
+    if (std::numeric_limits<uint64_t>::max() - lhs < rhs) {
+        return std::numeric_limits<uint64_t>::max();
+    }
+    return lhs + rhs;
+}
+
+size_t scale_size_budget(size_t value, uint32_t numerator, uint32_t denominator) {
+    if (denominator == 0u || numerator == denominator) {
+        return value;
+    }
+    if (numerator > denominator && value > std::numeric_limits<size_t>::max() / numerator) {
+        return std::numeric_limits<size_t>::max();
+    }
+    return std::max<size_t>((value * numerator) / denominator, 1u);
+}
+
+uint64_t scale_u64_budget(uint64_t value, uint32_t numerator, uint32_t denominator) {
+    if (denominator == 0u || numerator == denominator) {
+        return value;
+    }
+    if (numerator > denominator && value > std::numeric_limits<uint64_t>::max() / numerator) {
+        return std::numeric_limits<uint64_t>::max();
+    }
+    return std::max<uint64_t>((value * numerator) / denominator, 1u);
+}
+
 uint64_t mul_saturating(uint64_t lhs, uint64_t rhs) {
     if (lhs == 0 || rhs == 0) {
         return 0;
@@ -376,6 +423,176 @@ StageProfileEstimate estimate_stage_profile(const InferStage& stage,
     return estimate;
 }
 
+size_t stage_output_bytes_for_budget(uint64_t bytes_out) {
+    return static_cast<size_t>(std::min<uint64_t>(bytes_out, std::numeric_limits<size_t>::max()));
+}
+
+void register_submission_stage_output(
+    std::unordered_map<NodePortKey, StageOutputRef, NodePortKeyHash>& output_by_source,
+    const std::shared_ptr<const ov::Node>& node,
+    size_t source_port,
+    size_t stage_index,
+    size_t output_index,
+    const InferStage& stage) {
+    if (!node || output_index >= stage.outputs.size()) {
+        return;
+    }
+    output_by_source[NodePortKey{node.get(), source_port}] = StageOutputRef{stage_index, output_index};
+}
+
+SubmissionDependencyGraph build_submission_dependency_graph(const std::vector<InferStage>& pipeline) {
+    SubmissionDependencyGraph graph{};
+    graph.input_producers.resize(pipeline.size());
+    std::unordered_map<NodePortKey, StageOutputRef, NodePortKeyHash> output_by_source;
+
+    for (size_t stage_index = 0; stage_index < pipeline.size(); ++stage_index) {
+        const auto& stage = pipeline[stage_index];
+        if (stage.node) {
+            for (size_t output_index = 0; output_index < stage.outputs.size(); ++output_index) {
+                register_submission_stage_output(output_by_source,
+                                                 stage.node,
+                                                 output_index,
+                                                 stage_index,
+                                                 output_index,
+                                                 stage);
+            }
+        }
+        for (size_t output_index = 0; output_index < stage.output_sources.size(); ++output_index) {
+            const auto& source = stage.output_sources[output_index];
+            register_submission_stage_output(output_by_source,
+                                             source.node,
+                                             source.port,
+                                             stage_index,
+                                             output_index,
+                                             stage);
+        }
+        for (const auto& alias : stage.output_aliases) {
+            register_submission_stage_output(output_by_source,
+                                             alias.node,
+                                             alias.source_port,
+                                             stage_index,
+                                             alias.output_port,
+                                             stage);
+        }
+    }
+
+    for (size_t stage_index = 0; stage_index < pipeline.size(); ++stage_index) {
+        auto& producers = graph.input_producers[stage_index];
+        const auto& stage = pipeline[stage_index];
+        for (const auto& input : stage.inputs) {
+            if (!input.node) {
+                continue;
+            }
+            const auto it = output_by_source.find(NodePortKey{input.node.get(), input.port});
+            if (it == output_by_source.end() || it->second.stage == stage_index) {
+                continue;
+            }
+            producers.push_back(it->second.stage);
+        }
+        std::sort(producers.begin(), producers.end());
+        producers.erase(std::unique(producers.begin(), producers.end()), producers.end());
+    }
+
+    return graph;
+}
+
+bool stage_depends_on_recording_window(size_t stage_index,
+                                       const SubmissionDependencyGraph& graph,
+                                       const std::vector<bool>& recorded_stage_mask) {
+    if (stage_index >= graph.input_producers.size()) {
+        return false;
+    }
+    for (const auto producer_index : graph.input_producers[stage_index]) {
+        if (producer_index < recorded_stage_mask.size() && recorded_stage_mask[producer_index]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool is_dependency_extension_boundary(std::string_view stage_type) {
+    return stage_type == "Concat" ||
+           stage_type == "Split" ||
+           stage_type == "VariadicSplit" ||
+           stage_type == "Transpose" ||
+           stage_type == "Reshape" ||
+           stage_type == "Squeeze" ||
+           stage_type == "Unsqueeze" ||
+           stage_type == "Softmax" ||
+           stage_type == "LogSoftmax" ||
+           stage_type == "FusedAttention";
+}
+
+bool dependency_extension_crosses_boundary(size_t stage_index,
+                                           const SubmissionDependencyGraph& graph,
+                                           const std::vector<bool>& recorded_stage_mask,
+                                           const std::vector<InferStage>& pipeline) {
+    if (stage_index >= pipeline.size()) {
+        return true;
+    }
+    const auto& stage = pipeline[stage_index];
+    if (stage.stage && is_dependency_extension_boundary(stage.stage->type())) {
+        return true;
+    }
+    if (stage_index >= graph.input_producers.size()) {
+        return false;
+    }
+    for (const auto producer_index : graph.input_producers[stage_index]) {
+        if (producer_index >= recorded_stage_mask.size() || !recorded_stage_mask[producer_index] ||
+            producer_index >= pipeline.size()) {
+            continue;
+        }
+        const auto& producer = pipeline[producer_index];
+        if (producer.stage && is_dependency_extension_boundary(producer.stage->type())) {
+            return true;
+        }
+    }
+    return false;
+}
+
+size_t next_executable_stage_index(size_t stage_index, const std::vector<InferStage>& pipeline) {
+    for (size_t next_index = stage_index + 1u; next_index < pipeline.size(); ++next_index) {
+        if (pipeline[next_index].stage) {
+            return next_index;
+        }
+    }
+    return std::numeric_limits<size_t>::max();
+}
+
+SubmissionWindowTotals extended_window_totals(size_t recorded_stage_count,
+                                              size_t recorded_output_bytes,
+                                              uint64_t recorded_macs,
+                                              size_t stage_weight,
+                                              const StageProfileEstimate& estimate) {
+    SubmissionWindowTotals totals{};
+    totals.weighted_stages = add_saturating_size(recorded_stage_count, stage_weight);
+    totals.output_bytes =
+        add_saturating_size(recorded_output_bytes, stage_output_bytes_for_budget(estimate.bytes_out));
+    totals.macs = add_saturating_u64(recorded_macs, estimate.macs);
+    return totals;
+}
+
+bool within_dependency_extension_cap(const SubmissionWindowTotals& totals,
+                                     const InferSubmissionConfig& config) {
+    // Direct producer -> consumer chains may extend past the soft window budget,
+    // but the extension cap is still a scheduler budget derived from the common
+    // workload/device-class tuning, not a device-name shortcut.
+    const uint32_t numerator = std::max<uint32_t>(config.dependency_extension_budget_num, 1u);
+    const uint32_t denominator = std::max<uint32_t>(config.dependency_extension_budget_den, 1u);
+    const size_t stage_cap = scale_size_budget(config.max_stages_per_submit,
+                                               numerator,
+                                               denominator);
+    const size_t output_cap = scale_size_budget(config.max_output_bytes_per_submit,
+                                                numerator,
+                                                denominator);
+    const uint64_t mac_cap = scale_u64_budget(config.max_macs_per_submit,
+                                              numerator,
+                                              denominator);
+    return totals.weighted_stages <= stage_cap &&
+           totals.output_bytes <= output_cap &&
+           totals.macs <= mac_cap;
+}
+
 }  // namespace
 
 InferSubmissionTuning select_infer_submission_tuning(const InferSubmissionTuningCaps& caps, size_t stage_count) {
@@ -395,21 +612,40 @@ InferSubmissionTuning select_infer_submission_tuning(const InferSubmissionTuning
     SubmissionBudget budget = make_base_submission_budget(workload);
     apply_submission_profile_budget(caps, workload, device_profile, budget);
     tuning.slot_count = select_submission_slot_count(workload, device_profile);
+    size_t slot_parallelism = 1u;
 
     if (caps.supports_incremental_submit && tuning.slot_count > 1u) {
-        const size_t slot_parallelism = std::min<size_t>(tuning.slot_count, 4u);
+        slot_parallelism = std::min<size_t>(tuning.slot_count, 4u);
         const size_t extra_stage_budget =
             (slot_parallelism - 1u) * std::max<size_t>(budget.weighted_stages / 3u, 2u);
         const size_t extra_output_budget =
             (slot_parallelism - 1u) * std::max<size_t>(budget.output_bytes / 4u, MiB(4u));
+        uint64_t extra_mac_budget = 0;
+        for (size_t slot = 1u; slot < slot_parallelism; ++slot) {
+            add_saturating(extra_mac_budget, std::max<uint64_t>(budget.macs / 3u, GMacs(1u)));
+        }
+        constexpr uint64_t kMaxWindowMacBudget = std::numeric_limits<uint64_t>::max() / 4u;
         budget.weighted_stages = std::min(workload.pipeline_stages, budget.weighted_stages + extra_stage_budget);
         budget.output_bytes =
             std::min(std::numeric_limits<size_t>::max() / 4u, budget.output_bytes + extra_output_budget);
+        if (budget.macs < kMaxWindowMacBudget) {
+            budget.macs = std::min(kMaxWindowMacBudget,
+                                   budget.macs + std::min(extra_mac_budget, kMaxWindowMacBudget - budget.macs));
+        } else {
+            budget.macs = kMaxWindowMacBudget;
+        }
     }
 
     tuning.config.max_stages_per_submit = std::max<size_t>(budget.weighted_stages, 1u);
     tuning.config.max_output_bytes_per_submit = std::max<size_t>(budget.output_bytes, 1u);
     tuning.config.max_macs_per_submit = std::max<uint64_t>(budget.macs, 1u);
+    if (caps.backend == GpuBackend::Vulkan &&
+        workload.depth_class == SubmissionDepthClass::ExtremelyDeep &&
+        workload.device_class != SubmissionDeviceClass::Wide &&
+        slot_parallelism > 1u) {
+        tuning.config.dependency_extension_budget_num = static_cast<uint32_t>(slot_parallelism + 1u);
+        tuning.config.dependency_extension_budget_den = static_cast<uint32_t>(slot_parallelism);
+    }
     tuning.config.allow_incremental_submit = true;
     return tuning;
 }
@@ -424,6 +660,10 @@ void record_infer_submission_tuning_counters(const InferSubmissionTuning& tuning
     profiler->set_counter("submission_max_stages_per_window", tuning.config.max_stages_per_submit);
     profiler->set_counter("submission_max_output_bytes_per_window", tuning.config.max_output_bytes_per_submit);
     profiler->set_counter("submission_max_macs_per_window", tuning.config.max_macs_per_submit);
+    profiler->set_counter("submission_dependency_extension_budget_num",
+                          tuning.config.dependency_extension_budget_num);
+    profiler->set_counter("submission_dependency_extension_budget_den",
+                          tuning.config.dependency_extension_budget_den);
     profiler->set_counter("submission_preferred_simd_width", std::max<uint32_t>(caps.preferred_simd_width, 1u));
     profiler->set_counter("submission_subgroup_size", std::max<uint32_t>(caps.subgroup_size, 1u));
     profiler->set_counter("submission_max_total_threads_per_group",
@@ -478,6 +718,8 @@ void execute_pipeline_with_submission(
     uint64_t recorded_macs = 0;
     uint64_t recorded_flops = 0;
     std::vector<InferStage*> recorded_stages;
+    std::vector<bool> recorded_stage_mask(pipeline.size(), false);
+    const auto dependency_graph = build_submission_dependency_graph(pipeline);
     size_t submission_window_index = 0;
     auto would_exceed_size_budget = [](size_t current, size_t addition, size_t limit) {
         return current >= limit || addition > limit - current;
@@ -546,6 +788,7 @@ void execute_pipeline_with_submission(
         recorded_macs = 0;
         recorded_flops = 0;
         recorded_stages.clear();
+        std::fill(recorded_stage_mask.begin(), recorded_stage_mask.end(), false);
     };
 
     execute_pipeline(
@@ -554,6 +797,7 @@ void execute_pipeline_with_submission(
         param_map,
         input_lookup,
         [&](InferStage& stage, const std::vector<GpuTensor*>& resolved) {
+            const size_t stage_index = static_cast<size_t>(&stage - pipeline.data());
             const auto policy = stage.stage->submit_policy();
             const size_t stage_weight = std::max<size_t>(policy.weight, 1);
             if (policy.isolate && recorded_stage_count > 0) {
@@ -562,17 +806,32 @@ void execute_pipeline_with_submission(
 
             const std::string& stage_type = stage.stage->type();
             const auto estimate = estimate_stage_profile(stage, resolved);
-            if (recorded_stage_count > 0 &&
+            const bool exceeds_soft_budget =
+                recorded_stage_count > 0 &&
                 (would_exceed_size_budget(recorded_stage_count,
                                           stage_weight,
                                           config.max_stages_per_submit) ||
                  would_exceed_size_budget(recorded_output_bytes,
-                                          static_cast<size_t>(std::min<uint64_t>(
-                                              estimate.bytes_out,
-                                              std::numeric_limits<size_t>::max())),
+                                          stage_output_bytes_for_budget(estimate.bytes_out),
                                           config.max_output_bytes_per_submit) ||
-                 would_exceed_u64_budget(recorded_macs, estimate.macs, config.max_macs_per_submit))) {
-                flush_submission(true);
+                 would_exceed_u64_budget(recorded_macs, estimate.macs, config.max_macs_per_submit));
+            if (exceeds_soft_budget) {
+                const auto totals = extended_window_totals(recorded_stage_count,
+                                                           recorded_output_bytes,
+                                                           recorded_macs,
+                                                           stage_weight,
+                                                           estimate);
+                const bool keep_direct_dependency =
+                    stage_depends_on_recording_window(stage_index, dependency_graph, recorded_stage_mask) &&
+                    !dependency_extension_crosses_boundary(stage_index, dependency_graph, recorded_stage_mask, pipeline) &&
+                    within_dependency_extension_cap(totals, config);
+                if (keep_direct_dependency) {
+                    if (profiler) {
+                        profiler->increment_counter("submission_dependency_window_extension_count");
+                    }
+                } else {
+                    flush_submission(true);
+                }
             }
 
             const auto command_buffer = submission.current_command_buffer();
@@ -632,13 +891,16 @@ void execute_pipeline_with_submission(
                                              reinterpret_cast<uint64_t>(command_buffer));
                 }
             }
-            recorded_stage_count += stage_weight;
+            recorded_stage_count = add_saturating_size(recorded_stage_count, stage_weight);
             add_saturating(recorded_macs, estimate.macs);
             add_saturating(recorded_flops, estimate.flops);
             recorded_stages.push_back(&stage);
+            if (stage_index < recorded_stage_mask.size()) {
+                recorded_stage_mask[stage_index] = true;
+            }
             for (const auto& out : stage.outputs) {
                 if (out && out->buf.valid()) {
-                    recorded_output_bytes += out->buf.size;
+                    recorded_output_bytes = add_saturating_size(recorded_output_bytes, out->buf.size);
                 }
             }
 
@@ -647,18 +909,47 @@ void execute_pipeline_with_submission(
             // stage and its immediate epilogue/consumer chain in the same command
             // buffer avoids pathological submit-wait-submit fragmentation on deep
             // mobile Vulkan graphs while still respecting the weighted window budget.
-            if (recorded_stage_count >= config.max_stages_per_submit ||
+            const bool window_reached_soft_budget =
+                recorded_stage_count >= config.max_stages_per_submit ||
                 recorded_output_bytes >= config.max_output_bytes_per_submit ||
-                recorded_macs >= config.max_macs_per_submit) {
-                flush_submission(true);
+                recorded_macs >= config.max_macs_per_submit;
+            if (window_reached_soft_budget) {
+                bool hold_for_direct_consumer = false;
+                const size_t next_index = next_executable_stage_index(stage_index, pipeline);
+                if (next_index != std::numeric_limits<size_t>::max()) {
+                    if (stage_depends_on_recording_window(next_index, dependency_graph, recorded_stage_mask)) {
+                        const auto& next_stage = pipeline[next_index];
+                        const auto next_policy = next_stage.stage->submit_policy();
+                        if (!next_policy.isolate &&
+                            !dependency_extension_crosses_boundary(next_index,
+                                                                   dependency_graph,
+                                                                   recorded_stage_mask,
+                                                                   pipeline)) {
+                            const auto next_estimate = estimate_stage_profile(next_stage, {});
+                            const auto totals = extended_window_totals(recorded_stage_count,
+                                                                       recorded_output_bytes,
+                                                                       recorded_macs,
+                                                                       std::max<size_t>(next_policy.weight, 1),
+                                                                       next_estimate);
+                            hold_for_direct_consumer = within_dependency_extension_cap(totals, config);
+                        }
+                    }
+                    if (hold_for_direct_consumer) {
+                        if (profiler) {
+                            profiler->increment_counter("submission_dependency_window_hold_count");
+                        }
+                    } else {
+                        flush_submission(true);
+                    }
+                }
             }
         },
         prepared_plan);
 
     if (on_before_final_submit) {
         const auto extra_work = on_before_final_submit(submission.current_command_buffer());
-        recorded_stage_count += extra_work.weight;
-        recorded_output_bytes += extra_work.output_bytes;
+        recorded_stage_count = add_saturating_size(recorded_stage_count, extra_work.weight);
+        recorded_output_bytes = add_saturating_size(recorded_output_bytes, extra_work.output_bytes);
     }
 
     flush_submission(false);

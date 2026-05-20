@@ -3786,8 +3786,8 @@ TEST(GfxMlir, TileSpirvLoweringPreservesCompactCustomKernelRuntimeMapping) {
       {24000, 3},
       "tile_stage");
   ASSERT_TRUE(binding.valid);
-  const std::vector<int32_t> expected_arg_indices{0, 5, -1, -1, 1, 2, 3, 4};
-  ASSERT_EQ(binding.runtime_binding.operand_arg_indices, expected_arg_indices);
+  const std::vector<int32_t> expected_plan_arg_indices{0, 5, -1, -1, 1, 2, 3, 4};
+  ASSERT_EQ(binding.runtime_binding.operand_arg_indices, expected_plan_arg_indices);
 
   std::string log;
   auto spirv = ov::gfx_plugin::lower_to_spirv(module, "tile_main", &log);
@@ -3797,10 +3797,13 @@ TEST(GfxMlir, TileSpirvLoweringPreservesCompactCustomKernelRuntimeMapping) {
   module.print(lowered_os);
   EXPECT_EQ(lowered_text.find("Int64"), std::string::npos);
   EXPECT_EQ(lowered_text.find("xi64"), std::string::npos);
+  // SPIR-V lowering rewrites the high-level custom-kernel binding into the
+  // compact launch ABI order. The runtime metadata must follow the lowered
+  // launch operands, not the pre-lowering logical plan.
   EXPECT_EQ(ov::gfx_plugin::extract_kernel_operand_arg_indices(module),
-            expected_arg_indices);
+            std::vector<int32_t>({-1, -1, 3, 2, 4, -1, 0, 5}));
   EXPECT_EQ(ov::gfx_plugin::extract_kernel_operand_kinds(module),
-            std::vector<int32_t>({1, 1, 0, 0, 1, 1, 1, 1}));
+            std::vector<int32_t>({0, 0, 1, 1, 1, 0, 1, 1}));
 }
 #endif
 
@@ -5185,6 +5188,19 @@ TEST(GfxMlir, BiasBroadcastAddMlirPipelineUsesGenericAddPath) {
       module, /*use_alloca=*/true, /*use_parallel_loops=*/false));
 }
 
+TEST(GfxMlir, CompactAbiPreserveRequiresSameLaunchOperandKinds) {
+  const std::vector<int32_t> existing_buffer_only_kinds{1, 1, 1, 1, 1,
+                                                       1, 1, 1, 1};
+  const std::vector<int32_t> existing_indices{0, 1, 2, 3, 4, 5, 6, 7, 8};
+  const std::vector<int32_t> launch_scalar_buffer_kinds{0, 0, 0, 0, 1,
+                                                        1, 0, 0, 1};
+
+  EXPECT_FALSE(ov::gfx_plugin::compact_kernel_operand_layout_matches_launch(
+      existing_buffer_only_kinds, existing_indices, launch_scalar_buffer_kinds));
+  EXPECT_TRUE(ov::gfx_plugin::compact_kernel_operand_layout_matches_launch(
+      existing_buffer_only_kinds, existing_indices, existing_buffer_only_kinds));
+}
+
 #if GFX_BACKEND_VULKAN_AVAILABLE
 TEST(GfxMlir, MatMulCompactAbiSpirvLoweringExpandsOperandMetadata) {
   auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
@@ -5234,6 +5250,65 @@ TEST(GfxMlir, MatMulCompactAbiSpirvLoweringExpandsOperandMetadata) {
   EXPECT_EQ(arg_indices,
             std::vector<int32_t>({-1, -1, -1, -1, 2, 0, -1, -1, 1}));
   EXPECT_EQ(scalar_values, std::vector<int32_t>({1, 0, 8, 400, 32, 0}));
+}
+
+TEST(GfxMlir, DepthwiseGroupConvCompactAbiSpirvLoweringUsesLaunchOperandLayout) {
+  auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                       ov::Shape{1, 8, 20, 20});
+  std::vector<float> weights_data(8 * 1 * 1 * 3 * 3, 0.1f);
+  auto weights = ov::op::v0::Constant::create(ov::element::f32,
+                                              ov::Shape{8, 1, 1, 3, 3},
+                                              weights_data);
+  auto gconv = std::make_shared<ov::op::v1::GroupConvolution>(
+      input,
+      weights,
+      ov::Strides{1, 1},
+      ov::CoordinateDiff{1, 1},
+      ov::CoordinateDiff{1, 1},
+      ov::Strides{1, 1});
+  auto result = std::make_shared<ov::op::v0::Result>(gconv);
+  auto model = std::make_shared<ov::Model>(ov::ResultVector{result},
+                                           ov::ParameterVector{input},
+                                           "depthwise_group_conv_spirv_abi");
+
+  auto &ctx = ov::gfx_plugin::gfx_mlir_context();
+  auto module = ov::gfx_plugin::build_mlir_group_conv2d_from_model(model, ctx);
+  ASSERT_TRUE(module);
+  module->setAttr("gfx.conv_algorithm_kind",
+                  mlir::StringAttr::get(&ctx, "depthwise_direct"));
+  module->setAttr("gfx.prefer_parallel", mlir::BoolAttr::get(&ctx, true));
+
+  auto plan = ov::gfx_plugin::annotate_required_backend_custom_kernel_abi_binding(
+      module, /*is_vulkan_backend=*/true, "GroupConvolution", "conv2d_kernel",
+      "depthwise_group_conv_spirv_abi");
+  ASSERT_TRUE(plan.valid);
+  ASSERT_EQ(ov::gfx_plugin::extract_kernel_operand_kinds(module),
+            std::vector<int32_t>({1, 1, 1, 1, 1, 1, 1, 1, 1}));
+
+  std::string log;
+  const auto spirv =
+      ov::gfx_plugin::lower_to_spirv(module, "group_conv2d_main", &log);
+  ASSERT_FALSE(spirv.empty()) << log;
+
+  const auto kinds = ov::gfx_plugin::extract_kernel_operand_kinds(module);
+  const auto arg_indices =
+      ov::gfx_plugin::extract_kernel_operand_arg_indices(module);
+  const auto scalar_values =
+      ov::gfx_plugin::extract_kernel_scalar_values(module);
+
+  EXPECT_EQ(kinds, std::vector<int32_t>({0, 0, 0, 0, 0, 1, 1, 0, 0, 1}));
+  ASSERT_EQ(arg_indices.size(), kinds.size());
+  for (size_t i = 0; i < kinds.size(); ++i) {
+    if (kinds[i] == 0) {
+      EXPECT_EQ(arg_indices[i], -1) << "scalar operand " << i;
+    }
+  }
+  EXPECT_EQ(arg_indices[5], 1);
+  EXPECT_EQ(arg_indices[6], 0);
+  EXPECT_EQ(arg_indices[9], 2);
+  EXPECT_EQ(scalar_values.size(),
+            static_cast<size_t>(
+                std::count(kinds.begin(), kinds.end(), int32_t{0})));
 }
 #endif
 
@@ -6605,7 +6680,7 @@ TEST(GfxTransforms, PrecisionPolicyStopsAtSharedFeatureBoundaryWithoutCrossingIn
   EXPECT_TRUE(saw_marked_score_conv);
 }
 
-TEST(GfxTransforms, PrecisionPolicyMarksFullUpstreamForIndexAmplifiedTopK) {
+TEST(GfxTransforms, PrecisionPolicyKeepsBoundedFp32IslandsForIndexAmplifiedTopK) {
   auto input = std::make_shared<ov::op::v0::Parameter>(
       ov::element::f32, ov::Shape{1, 4, 4, 4});
   input->set_friendly_name("model_input");
@@ -6676,7 +6751,7 @@ TEST(GfxTransforms, PrecisionPolicyMarksFullUpstreamForIndexAmplifiedTopK) {
       saw_marked_gather = ov::fp16_compression_is_disabled(op);
     }
   }
-  EXPECT_TRUE(saw_marked_input);
+  EXPECT_FALSE(saw_marked_input);
   EXPECT_TRUE(saw_marked_shared_conv);
   EXPECT_TRUE(saw_marked_score_conv);
   EXPECT_TRUE(saw_marked_gather_data);

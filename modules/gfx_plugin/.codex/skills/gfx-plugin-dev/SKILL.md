@@ -47,6 +47,7 @@ Then read the relevant code path:
 - For MPSRT request-binding changes, keep `MpsrtRuntimeResource`, `external_buffer_bindings`, prepared model resources, storage bridges, and request-time validation aligned instead of reintroducing ad-hoc transient allocation.
 - For Metal custom MSL source changes, prefer `src/mlir/msl_codegen_apple_msl*`, `src/mlir/msl_codegen_apple_mps.*`, `src/mlir/msl_codegen_matmul_*`, and `GfxMslRuntimeBindingPlan`; keep module operand annotations, manifest external-buffer roles, inferred `[[buffer(N)]]` counts, and MPSRT `kernel_buffer_order` aligned.
 - For Vulkan compact-ABI changes, prefer `src/mlir/spirv_kernel_binding_adapter.hpp` so SPIR-V fixed-argument metadata stays separate from Apple MSL binding attrs.
+- For Vulkan Conv2D dispatch tuning, keep output-channel blocking and spatial micro-tiling in `gfx_parallelism.*`, `gfx.dispatch_channel_block` metadata, and shared convolution lowering; do not add executor-local Conv variants or device-name tables.
 
 ## Common Workflows
 
@@ -85,6 +86,7 @@ Check whether the change belongs to one of the current special families:
 - backend-side fused epilogues, such as Metal `RMS` absorbing a residual `Add`
 - input-side fusion paths, such as `Multiply` absorbing an activation on one selected input instead of only post-op activation on the output
 - public `ov::hint::inference_precision` handling and precision-aware accuracy expectations
+- Vulkan Conv2D output-channel blocking, including `GpuExecutionDeviceInfo` capability flags, dispatch metadata, SPIR-V cache metadata, and shared lowering support
 
 ### Runtime or backend scheduling change
 
@@ -94,6 +96,7 @@ Check whether the change belongs to one of the current special families:
 4. Add tests in `tests/unit/` and backend tests when behavior is externally visible.
 5. On Metal, inspect `src/backends/metal/runtime/metal_command_encoder.*` before adding new encoder/pipeline/buffer binding logic.
 6. If the change affects Apple placement or request-time Metal binding, also inspect `src/runtime/gfx_mpsrt_model.*`, `src/backends/metal/runtime/mpsrt/*`, `src/kernel_ir/gfx_kernel_manifest.hpp`, `src/kernel_ir/gfx_custom_kernel_families.*`, and the split `src/mlir/msl_codegen_apple_*` / `src/mlir/msl_codegen_matmul_*` files.
+7. For infer submission changes, keep direct producer-consumer dependency extension bounded by common stage/output/MAC budgets and keep layout, split, transpose, softmax, and attention stages as hard extension boundaries.
 
 ### Stateful or reusable infer-path change
 

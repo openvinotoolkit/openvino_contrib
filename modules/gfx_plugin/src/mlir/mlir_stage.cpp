@@ -4106,6 +4106,14 @@ void MlirStage::set_parallel_preference(mlir::ModuleOp module) {
           module->setAttr("gfx.dispatch_threads_w",
                           mlir::IntegerAttr::get(mlir::IndexType::get(ctx),
                                                  plan.dispatch.threads_w));
+          module->setAttr("gfx.dispatch_channel_block",
+                          mlir::IntegerAttr::get(mlir::IndexType::get(ctx),
+                                                 plan.output_channel_block));
+          module->setAttr(
+              "gfx.dispatch_channel_block_accumulation",
+              mlir::StringAttr::get(
+                  ctx, conv_channel_block_accumulation_name(
+                           plan.channel_block_accumulation)));
         }
       }
     }
@@ -4145,6 +4153,14 @@ void MlirStage::set_parallel_preference(mlir::ModuleOp module) {
           module->setAttr("gfx.dispatch_threads_w",
                           mlir::IntegerAttr::get(mlir::IndexType::get(ctx),
                                                  plan.dispatch.threads_w));
+          module->setAttr("gfx.dispatch_channel_block",
+                          mlir::IntegerAttr::get(mlir::IndexType::get(ctx),
+                                                 plan.output_channel_block));
+          module->setAttr(
+              "gfx.dispatch_channel_block_accumulation",
+              mlir::StringAttr::get(
+                  ctx, conv_channel_block_accumulation_name(
+                           plan.channel_block_accumulation)));
         }
       }
     } else {

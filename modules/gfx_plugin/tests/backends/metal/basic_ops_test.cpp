@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "../../gfx_test_utils.hpp"
 #include "openvino/openvino.hpp"
 #include "openvino/core/graph_util.hpp"
 #include "openvino/op/constant.hpp"
@@ -93,21 +94,20 @@ bool register_gfx_plugin(ov::Core& core) {
         gfx_skip_reason = std::string("GFX backend property unavailable: ") + e.what();
         return false;
     }
-    try {
-        ov::test::utils::register_template_plugin(core);
-    } catch (const std::exception& e) {
-        gfx_skip_reason = std::string("TEMPLATE plugin unavailable: ") + e.what();
+    if (!ov::test::utils::ensure_template_plugin(core)) {
+        gfx_skip_reason = "TEMPLATE plugin unavailable";
         return false;
     }
     return true;
 }
 
 std::string reference_device(const ov::Core& core) {
-    const auto devices = core.get_available_devices();
-    if (std::find(devices.begin(), devices.end(), "TEMPLATE") != devices.end()) {
+    try {
+        (void)core.get_property("TEMPLATE", ov::supported_properties);
         return "TEMPLATE";
+    } catch (...) {
+        throw std::runtime_error("TEMPLATE reference device not available");
     }
-    throw std::runtime_error("TEMPLATE reference device not available");
 }
 
 void expect_allclose(const ov::Tensor& a, const ov::Tensor& b, float atol = 1e-5f, float rtol = 0.f) {

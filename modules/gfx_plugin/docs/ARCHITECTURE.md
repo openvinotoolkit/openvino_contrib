@@ -79,6 +79,7 @@ Two interface points are important in the current code:
 - backend-neutral parallelism caps
 - preferred 1D thread counts
 - ranked 2D workgroup shapes for partitioned execution
+- capability-gated Conv2D output-channel blocking and spatial micro-tile hints
 - stable device keys used by runtime planning caches
 
 Those caps are no longer purely backend-wide defaults. The current runtime tags devices by family through `GpuDeviceFamily` and feeds that into planning and cache keys. Current families include:
@@ -91,11 +92,14 @@ During inference, `execute_pipeline_with_submission()` groups recorded stages in
 - `GpuStageSubmitPolicy`
 - maximum stages per submit
 - maximum recorded output bytes per submit
+- maximum recorded MAC estimates per submit
+- direct producer-consumer dependency tracking for soft-budget extension
 - backend support for incremental submit versus single-flight submit
 
 This lets Metal and Vulkan keep different submission mechanics while sharing the same stage-level batching logic.
 
 Submission tuning is no longer a fixed constant table. The current infer path derives per-backend submit-window sizing from backend capability snapshots and records the selected tuning into the profiling path when profiling is enabled.
+When a stage directly consumes an output already recorded in the current window, the submit layer may extend past the soft stage/output/MAC budget up to a configured dependency-extension cap. That extension is deliberately blocked at layout or fan-out boundaries such as `Concat`, `Split`, `VariadicSplit`, `Transpose`, `Reshape`, `Softmax`, `LogSoftmax`, and fused attention so dependency tracking does not hide required synchronization points.
 Vulkan infer paths can also batch immutable constant uploads through the shared infer command buffer path instead of forcing one upload submit per constant buffer materialization.
 Metal infer paths now also keep one compute encoder alive across consecutive dispatches on the same command buffer and skip redundant pipeline-state or buffer rebinds when the cached encoder state already matches the next kernel launch.
 
@@ -143,6 +147,7 @@ Recent MLIR-specific changes reflected in the current code:
 - buffer-results-to-out-params promotion now allows public function signatures to be rewritten when required by the lowering pipeline
 - shared helpers now prefer the common `gfx_mlir_context()` path instead of ad-hoc local MLIR contexts in selected code paths
 - convolution parallel lowering can now consume explicit module-level dispatch attrs such as `gfx.dispatch_threads_*` and `gfx.dispatch_tile_*` instead of relying only on coarse algorithm variants
+- convolution parallel lowering also consumes `gfx.dispatch_channel_block` and `gfx.dispatch_channel_block_accumulation` so Vulkan can compute multiple adjacent output channels per work item without introducing a separate Conv executor path
 - convolution parallel lowering now has a separate interior-tile fast path that skips lane guards for full tiles and keeps guarded edge handling only where needed
 - interior-tile eligibility is now factored through separate height and width window checks before the combined 2D interior fast path is selected
 - manual Vulkan MLIR kernels can now emit `gpu.func` entry points while materializing buffer ABI through the common `GfxKernelStageManifest` custom-kernel adapter rather than local `gfx.fixed_arg_count` shortcuts; this covers the executor's unary/binary, concat/split, slice, interpolate, transpose, convert, gather, reduce, RMS, MatMul, broadcast, and select routes; Conv2D and GroupConv no longer have separate manual Vulkan builders or executor-level direct/chunked routes and use the shared canonical MLIR lowering path instead

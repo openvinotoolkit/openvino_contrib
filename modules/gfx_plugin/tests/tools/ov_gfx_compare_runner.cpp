@@ -32,7 +32,9 @@
 #include <vector>
 
 #include "../gfx_accuracy_tolerance.hpp"
+#include "common_test_utils/file_utils.hpp"
 #include "common_test_utils/ov_plugin_cache.hpp"
+#include "openvino/util/file_util.hpp"
 
 namespace {
 
@@ -82,16 +84,21 @@ void register_reference_plugin(ov::Core &core,
                                const std::string &reference_device_name,
                                const std::string &reference_plugin_path) {
   if (!reference_plugin_path.empty()) {
-    const auto devices = core.get_available_devices();
-    if (std::find(devices.begin(), devices.end(), reference_device_name) ==
-        devices.end()) {
+    try {
       core.register_plugin(reference_plugin_path, reference_device_name);
+    } catch (...) {
+      // compile_model() below is the authoritative availability check. Avoid
+      // get_available_devices() here: it loads unrelated compile-time plugins.
     }
   }
   if (reference_device_name == "TEMPLATE") {
     try {
-      ov::test::utils::register_template_plugin(core);
+      const auto plugin_path = ov::util::make_plugin_library_name(
+          ov::test::utils::getExecutableDirectory(),
+          std::string(ov::test::utils::TEMPLATE_LIB) + OV_BUILD_POSTFIX);
+      core.register_plugin(plugin_path, "TEMPLATE");
     } catch (...) {
+      // TEMPLATE may already be present through plugins.xml.
     }
   }
 }
@@ -102,13 +109,7 @@ std::string reference_device(const ov::Core &core,
     throw std::runtime_error(
         "CPU reference device is not supported; use TEMPLATE");
   }
-  const auto devices = core.get_available_devices();
-  if (std::find(devices.begin(), devices.end(), requested_device) !=
-      devices.end()) {
-    return requested_device;
-  }
-  throw std::runtime_error(requested_device +
-                           " reference device not available");
+  return requested_device;
 }
 
 uint64_t mix_input_value(uint64_t value) {

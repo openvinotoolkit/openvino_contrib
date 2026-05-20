@@ -217,6 +217,62 @@ if(ENABLE_GFX_MLIR)
         endif()
     endforeach()
 
+    set(_gfx_llvm_optional_deps_off
+        -DLLVM_ENABLE_ZLIB=OFF
+        -DLLVM_ENABLE_ZSTD=OFF
+        -DLLVM_ENABLE_LIBEDIT=OFF
+        -DLLVM_ENABLE_LIBXML2=OFF
+        -DLLVM_ENABLE_TERMINFO=OFF
+        -DLLVM_ENABLE_BACKTRACES=OFF)
+
+    if(CMAKE_CROSSCOMPILING)
+        set(_gfx_llvm_native_toolchain_args
+            ${_gfx_llvm_optional_deps_off})
+
+        if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+            find_program(_gfx_xcrun_EXECUTABLE xcrun)
+            if(_gfx_xcrun_EXECUTABLE)
+                execute_process(
+                    COMMAND "${_gfx_xcrun_EXECUTABLE}" --sdk macosx --find clang
+                    OUTPUT_VARIABLE _gfx_llvm_native_c_compiler
+                    OUTPUT_STRIP_TRAILING_WHITESPACE
+                    ERROR_QUIET)
+                execute_process(
+                    COMMAND "${_gfx_xcrun_EXECUTABLE}" --sdk macosx --find clang++
+                    OUTPUT_VARIABLE _gfx_llvm_native_cxx_compiler
+                    OUTPUT_STRIP_TRAILING_WHITESPACE
+                    ERROR_QUIET)
+                execute_process(
+                    COMMAND "${_gfx_xcrun_EXECUTABLE}" --sdk macosx --show-sdk-path
+                    OUTPUT_VARIABLE _gfx_llvm_native_osx_sysroot
+                    OUTPUT_STRIP_TRAILING_WHITESPACE
+                    ERROR_QUIET)
+            endif()
+
+            if(_gfx_llvm_native_c_compiler)
+                list(APPEND _gfx_llvm_native_toolchain_args
+                    -DCMAKE_C_COMPILER=${_gfx_llvm_native_c_compiler})
+            endif()
+            if(_gfx_llvm_native_cxx_compiler)
+                list(APPEND _gfx_llvm_native_toolchain_args
+                    -DCMAKE_CXX_COMPILER=${_gfx_llvm_native_cxx_compiler})
+            endif()
+            if(_gfx_llvm_native_osx_sysroot AND EXISTS "${_gfx_llvm_native_osx_sysroot}")
+                list(APPEND _gfx_llvm_native_toolchain_args
+                    -DCMAKE_OSX_SYSROOT=${_gfx_llvm_native_osx_sysroot})
+            endif()
+            if(CMAKE_HOST_SYSTEM_PROCESSOR)
+                list(APPEND _gfx_llvm_native_toolchain_args
+                    -DCMAKE_OSX_ARCHITECTURES=${CMAKE_HOST_SYSTEM_PROCESSOR})
+            endif()
+        endif()
+
+        list(JOIN _gfx_llvm_native_toolchain_args "|" _gfx_llvm_native_toolchain_value)
+        list(APPEND _gfx_llvm_toolchain_args
+            "-DCROSS_TOOLCHAIN_FLAGS_NATIVE=${_gfx_llvm_native_toolchain_value}"
+            "-DCROSS_TOOLCHAIN_FLAGS_LLVM_NATIVE=${_gfx_llvm_native_toolchain_value}")
+    endif()
+
     # llvmorg-22.1.2 unconditionally enters mlir-parser-fuzzer from mlir/tools,
     # but the fuzzer subdirs assume add_llvm_fuzzer created a target. Supplying
     # a tiny local fuzzing engine archive keeps llvm-project pristine while
@@ -251,6 +307,7 @@ if(ENABLE_GFX_MLIR)
         SOURCE_DIR ${GFX_LLVM_PROJECT_SOURCE_DIR}/llvm
         BINARY_DIR ${GFX_LLVM_BUILD_DIR}
         DEPENDS gfx_llvm_fuzzing_engine_stub
+        LIST_SEPARATOR |
         BUILD_BYPRODUCTS
             ${_gfx_llvm_byproducts}
         CMAKE_ARGS
@@ -286,14 +343,9 @@ if(ENABLE_GFX_MLIR)
             -DLLVM_INCLUDE_DOCS=OFF
             -DLLVM_INCLUDE_EXAMPLES=OFF
             -DLLVM_INCLUDE_TESTS=OFF
-            -DLLVM_INCLUDE_TOOLS=ON
+            -DLLVM_INCLUDE_TOOLS=OFF
             -DLLVM_INCLUDE_UTILS=OFF
-            -DLLVM_ENABLE_ZLIB=OFF
-            -DLLVM_ENABLE_ZSTD=OFF
-            -DLLVM_ENABLE_LIBEDIT=OFF
-            -DLLVM_ENABLE_LIBXML2=OFF
-            -DLLVM_ENABLE_TERMINFO=OFF
-            -DLLVM_ENABLE_BACKTRACES=OFF
+            ${_gfx_llvm_optional_deps_off}
             -DMLIR_BUILD_TOOLS=OFF
             -DMLIR_INCLUDE_TOOLS=OFF
             -DMLIR_INCLUDE_TESTS=OFF

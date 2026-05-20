@@ -34,6 +34,7 @@ struct ParallelDispatchConfig {
     uint32_t tile_w = 1;
     uint32_t threads_h = 1;
     uint32_t threads_w = 1;
+    uint32_t channel_block = 1;
 };
 
 inline KernelDispatch make_parallel_dispatch(const ov::Shape& shape,
@@ -56,6 +57,8 @@ inline KernelDispatch make_parallel_dispatch(const ov::Shape& shape,
         dispatch.grid[1] = wants_threads ? (shape[1] * thread_h) : shape[1];
     } else if (rank >= 3) {
         const uint64_t c = shape[rank - 3];
+        const uint64_t channel_block = std::max<uint32_t>(cfg.channel_block, 1);
+        const uint64_t c_blocks = (c + channel_block - 1) / channel_block;
         const uint64_t h = shape[rank - 2];
         const uint64_t w = shape[rank - 1];
         const uint64_t h_tiles = (h + tile_h - 1) / tile_h;
@@ -63,24 +66,24 @@ inline KernelDispatch make_parallel_dispatch(const ov::Shape& shape,
         if (wants_threads && cfg.loop_dims >= 3) {
             const size_t block_dims = cfg.loop_dims > 2 ? cfg.loop_dims - 2 : 0;
             if (cfg.loop_dims == 3) {
-                dispatch.grid[0] = c * thread_w;
+                dispatch.grid[0] = c_blocks * thread_w;
                 dispatch.grid[1] = h_tiles * thread_h;
                 dispatch.grid[2] = w_tiles;
             } else if (block_dims >= 3) {
-                dispatch.grid[0] = c * thread_w;
+                dispatch.grid[0] = c_blocks * thread_w;
                 dispatch.grid[1] = h_tiles * thread_h;
                 dispatch.grid[2] = w_tiles;
             } else if (block_dims == 2) {
-                dispatch.grid[0] = h_tiles * thread_h;
-                dispatch.grid[1] = w_tiles * thread_w;
+                dispatch.grid[0] = h_tiles * thread_w;
+                dispatch.grid[1] = w_tiles * thread_h;
                 dispatch.grid[2] = 1;
             } else {
-                dispatch.grid[0] = (c > 1) ? c : (h_tiles * w_tiles);
+                dispatch.grid[0] = (c_blocks > 1) ? c_blocks : (h_tiles * w_tiles);
                 dispatch.grid[1] = 1;
                 dispatch.grid[2] = 1;
             }
         } else {
-            dispatch.grid[0] = c * thread_w;
+            dispatch.grid[0] = c_blocks * thread_w;
             dispatch.grid[1] = h_tiles * thread_h;
             dispatch.grid[2] = w_tiles;
         }

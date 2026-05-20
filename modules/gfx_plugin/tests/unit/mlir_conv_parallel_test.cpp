@@ -73,6 +73,46 @@ TEST(GfxMlirTransforms, Conv2DParallelLowering) {
     EXPECT_TRUE(has_parallel) << "Expected scf.parallel after lowering";
 }
 
+TEST(GfxMlirTransforms, Conv2DParallelLoweringKeepsChannelBlockDispatchMetadata) {
+    auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                         ov::Shape{1, 32, 8, 8});
+    std::vector<float> weights_data(16 * 32 * 3 * 3, 0.1f);
+    auto weights = ov::op::v0::Constant::create(ov::element::f32,
+                                                ov::Shape{16, 32, 3, 3},
+                                                weights_data);
+    auto conv = std::make_shared<ov::op::v1::Convolution>(
+        input,
+        weights,
+        ov::Strides{1, 1},
+        ov::CoordinateDiff{1, 1},
+        ov::CoordinateDiff{1, 1},
+        ov::Strides{1, 1});
+    auto res = std::make_shared<ov::op::v0::Result>(conv);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{input},
+                                             "conv2d_channel_block_test");
+
+    mlir::MLIRContext ctx;
+    auto module = ov::gfx_plugin::build_mlir_conv2d_from_model(model, ctx);
+    ASSERT_TRUE(module) << "Failed to build MLIR module for Conv2D";
+    module->setAttr("gfx.dispatch_channel_block",
+                    mlir::IntegerAttr::get(mlir::IndexType::get(&ctx), 2));
+    module->setAttr("gfx.dispatch_channel_block_accumulation",
+                    mlir::StringAttr::get(&ctx, "serial"));
+
+    ASSERT_NO_THROW(ov::gfx_plugin::run_mlir_pipeline(module,
+                                                      /*use_alloca=*/false,
+                                                      /*use_parallel_loops=*/true));
+
+    auto block = module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_channel_block");
+    ASSERT_TRUE(block);
+    EXPECT_EQ(block.getInt(), 2);
+    auto accumulation =
+        module->getAttrOfType<mlir::StringAttr>("gfx.dispatch_channel_block_accumulation");
+    ASSERT_TRUE(accumulation);
+    EXPECT_EQ(accumulation.getValue(), "serial");
+}
+
 TEST(GfxMlirTransforms, Conv2DInteriorTileInputWindowCheckIsStrictlyBoundsSafe) {
     EXPECT_FALSE(ov::gfx_plugin::detail::is_conv_tile_input_h_interior(
         /*oh_base=*/0,

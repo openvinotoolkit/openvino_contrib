@@ -4,14 +4,16 @@
 
 #include "functional_test_utils/skip_tests_config.hpp"
 
-#include <string>
+#include <regex>
 #include <vector>
 
-#include "openvino/core/core_visibility.hpp"
-
-std::vector<std::string> disabledTestPatterns() {
-    std::vector<std::string> retVector{
+const std::vector<std::regex>& disabled_test_patterns() {
+    static const std::vector<std::regex> patterns{
+        // GFX tests must compile either explicit GFX target or TEMPLATE reference.
+        // OpenVINO's default-device path can select a host plugin and violates the
+        // GFX no-CPU-inference contract.
+        std::regex(R"(.*OVCompiledModelBaseTest\.canCompileModelToDefaultDevice.*)"),
         // HETERO synthetic splits not yet supported by GFX backend
-        R"(.*OVHeteroSyntheticTest.*)"};
-    return retVector;
+        std::regex(R"(.*OVHeteroSyntheticTest.*)")};
+    return patterns;
 }

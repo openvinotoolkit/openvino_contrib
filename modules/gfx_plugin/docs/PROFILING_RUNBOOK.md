@@ -71,6 +71,11 @@ Treat these as triage flags, not as automatic proof of a bug.
   Read from: `barrier_count`, `cross_submit_barrier_seen`, segment names.
   Triage meaning: submit partitioning or dependency tracking may still be too coarse.
 
+- `submission_dependency_window_extension_count`
+  Meaning: a direct producer-consumer chain stayed in the current command-buffer window after a soft stage/output/MAC budget boundary.
+  Read from: `extended.summary.counter_map`, together with `submission_dependency_extension_budget_num` and `submission_dependency_extension_budget_den`.
+  Triage meaning: dependency-aware batching is active; if synchronization still dominates, inspect whether a boundary stage is forcing the next submit.
+
 - `pipeline_creation_count`
   Meaning: pipeline or shader creation happened during infer.
   Read from: `profile_digest.pipeline_creation_count`.

@@ -18,6 +18,8 @@ This skill is for test selection, regression coverage, and profiling-oriented va
 - The task changes custom-kernel family classification, external-buffer ABI roles, semantic input/output roles, or dispatch-grid policy.
 - The task changes Metal MSL runtime binding plans, explicit kernel-buffer order, inferred MSL buffer-argument counts, split Apple MSL/MPS source plans, compressed `MatMul` source plans, or SDPA source plans.
 - The task changes SPIR-V fixed-argument adapters, compact Vulkan ABI metadata, or MLIR-side binding overrides.
+- The task changes Vulkan Conv2D output-channel blocking, `gfx.dispatch_channel_block`, or capability-gated spatial micro-tiling.
+- The task changes infer submission dependency-window extension, soft-budget caps, or boundary-stage behavior.
 - The user wants compare-runner, microbench, profiling-runbook, Android, or Raspberry Pi validation guidance.
 
 ## Primary References
@@ -92,6 +94,7 @@ If the change touches `spirv_kernel_binding_adapter.hpp`, cover fixed-argument c
 If the change touches `gfx_backend_custom_kernel_adapter.*`, `gfx_stage_kernel_binding.hpp`, or `gfx_stage_runtime_values.*`, cover both the shared manifest/binding contract and at least one backend-facing Apple MSL or SPIR-V route that consumes it.
 If the change touches MPSGraph-backed GEMM, TopK, or SDPA routes, include both compile/source-plan coverage in `tests/unit/gfx_stage_policy_test.cpp` or `tests/unit/basic_ops_internal_test.cpp` and encode/counter coverage in `tests/backends/metal/gpu_backend_test.mm`.
 If the change touches `ov_gfx_compare_runner`, shared-test tolerances, or `ov::hint::inference_precision`, keep `tests/gfx_accuracy_tolerance.hpp`, `tests/shared_tests_instances/test_utils.hpp`, and `tests/tools/ov_gfx_compare_runner.cpp` aligned.
+If the change touches functional shared-test wiring, keep explicit GFX/TEMPLATE registration helpers and `tests/gfx_shared_gtest_allow.cpp` aligned, and avoid relying on implicit `plugins.xml` or `get_available_devices()` host-plugin discovery.
 
 ## Practical Command Pattern
 

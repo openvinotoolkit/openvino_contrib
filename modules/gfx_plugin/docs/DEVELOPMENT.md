@@ -45,6 +45,8 @@ Current build-system notes:
 - the module now reuses installed package exports when present and otherwise falls back to build-tree exports during bootstrap
 - Android and generic cross-compiling flows forward toolchain settings into the vendored LLVM/MLIR configure step
 - that bootstrap path also forwards `CMAKE_C_FLAGS`, `CMAKE_CXX_FLAGS`, and the executable/shared/module linker flag families into the nested LLVM configure step
+- when cross-compiling, the nested LLVM native-tool build also receives host compiler/sysroot flags via `CROSS_TOOLCHAIN_FLAGS_NATIVE` / `CROSS_TOOLCHAIN_FLAGS_LLVM_NATIVE`; keep the `|` list separator intact because those values are passed as CMake list payloads
+- LLVM tools are disabled in the vendored external build; do not re-enable them for the plugin path unless a concrete build target starts consuming those tools
 - Apple MSL source planning now builds with `gfx_runtime_mlir`; keep target wiring in `cmake/GfxSources.cmake` and `src/CMakeLists.txt` aligned when adding `msl_codegen_apple_*` or `msl_codegen_matmul_*` files
 - the module build treats warnings as errors by default through `-Werror` on Clang/GCC and `/WX` on MSVC
 - `cmake/GfxAndroidRuntimeBundle.cmake.in` is used to copy Android runtime-side dependencies next to deployed plugin artifacts
@@ -177,6 +179,7 @@ For current convolution work, there are now two important lowering details to ke
 - Vulkan specialized kernel compilation may re-resolve effective argument count from final SPIR-V bindings instead of trusting only pre-SPIR-V metadata
 - plain Vulkan Conv2D and GroupConv now stay on the shared canonical MLIR builders plus the common convolution lowering pipeline; the older manual `gpu.func` convolution builders and executor-level direct/chunked convolution routes were deleted so correctness, binding ABI, and dispatch metadata flow through one MLIR route. Keep rank-4 Conv2D/GroupConv const weights and packed runtime payloads on the shared `MlirStage` extra-input helper for both compile-time and request-time paths; Vulkan request-time refresh may rebuild the buffers, but must not overwrite the final SPIR-V binding metadata with the pre-lowering source binding.
 - Broadcom V3D pointwise/light-reduction Conv2D tuning belongs in `gfx_parallelism.*` and must flow through the same MLIR dispatch attrs as other convolution plans. For huge-spatial 1x1-style workloads, the V3D policy keeps occupancy headroom instead of choosing the full hardware-cap `16x16`/256-thread tile: pointwise/light-reduction Conv uses a 64-thread target, and ultra-dense Conv is capped at 128 threads per group. Do not implement this as a Vulkan executor shortcut or a separate Conv2D route.
+- Direct Vulkan Conv2D output-channel blocking must also be selected only by `gfx_parallelism.*` and carried through `gfx.dispatch_channel_block` into Kernel IR metadata, SPIR-V cache metadata, `MlirStage`, and `conv_parallel_lowering`. The lowering may compute several adjacent output channels per work item while keeping the same single shared Conv kernel and binding ABI. Device policy may tune the block through common workload/capability heuristics, but must not add executor-level Conv variants, hard-coded device tables, or im2col shortcuts.
 - Decomposed Conv2D algorithms such as `im2col + matmul + restore` are not a valid replacement for a single custom-kernel stage until the planner/runtime has a typed subgraph or multi-kernel manifest that owns all intermediate buffers and launches. A device policy must not select such a decomposition through `gfx.conv_algorithm_kind` if the final `KernelSource` still has one entry point and one request-time binding plan; that silently compiles only part of the decomposition and breaks accuracy.
 - MaxPool2D and AvgPool2D custom-kernel builders must also stay on the shared MLIR dispatch contract. They emit `scf.parallel` over channel/tiled-spatial/thread lanes with explicit `gfx.dispatch_tile_*`, `gfx.dispatch_threads_*`, and `gfx.parallel_loop_dims` attrs; do not reintroduce serial `scf.for` Pool2D builders that force Vulkan/SPIR-V into `grid=(1,1,1)` single-dispatch execution.
 - Conv3D custom kernels use the common `GfxKernelStageManifest` ABI on every backend that executes them. Keep the role order as `TensorInput`, `ConstTensor`, `TensorOutput`, `RuntimeParams`; `MlirStage` must materialize the const weights and packed runtime params as extra buffers in that order, annotate rank-5 convolution modules as the `conv3d` custom-kernel family before `KernelSource` creation, and derive source signatures from that exact manifest on Metal and Vulkan. Do not add Conv3D-only binding shortcuts, do not let the Conv2D direct/im2col manifest leak into Conv3D, and do not revive `gfx.fixed_arg_count` for this path.
@@ -190,6 +193,13 @@ define, or CPU fallback. For example, Broadcom V3D uses the same constrained
 Vulkan stage/output window as generic constrained Vulkan, then only lowers the
 MAC budget coefficient for Conv-heavy windows.
 
+The submit layer may extend a recording window past the soft budget only for a
+direct dependency chain already inside the current window and only inside the
+configured dependency-extension cap. Keep boundary stages such as `Concat`,
+`Split`, `VariadicSplit`, `Transpose`, `Reshape`, `Squeeze`, `Unsqueeze`,
+`Softmax`, `LogSoftmax`, and `FusedAttention` as hard extension boundaries so
+layout/fan-out synchronization does not get hidden by the throughput heuristic.
+
 If the change touches infer-request throughput or resource reuse, also read:
 - `src/plugin/infer_submission.*`
 - `src/plugin/infer_pipeline.*`
@@ -201,6 +211,12 @@ If the change touches infer-request throughput or resource reuse, also read:
 - `src/plugin/infer_io_utils.*`
 - `src/backends/vulkan/runtime/vulkan_buffer_manager.*` when Vulkan const-upload batching or shared upload-recording behavior changes
 - `src/runtime/gfx_mpsrt_model.*` and `src/backends/metal/runtime/mpsrt/*` when Metal request-time binding, prepared dispatch caching, or external-buffer ABI rules changed
+
+Functional test wiring must not depend on an implicit runtime `plugins.xml`.
+Keep `ov_gfx_func_tests` on explicit GFX/TEMPLATE registration and keep shared
+OpenVINO parameterized-test allow-listing centralized in
+`tests/gfx_shared_gtest_allow.cpp` instead of scattering per-suite runtime
+filters.
 
 For stage-output reuse changes, also inspect:
 - `StageOutputBufferWorkspace` in `src/plugin/infer_pipeline.hpp`

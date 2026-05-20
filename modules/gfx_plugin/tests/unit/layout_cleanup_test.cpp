@@ -7,6 +7,7 @@
 #include "common_test_utils/ov_plugin_cache.hpp"
 #include "openvino/openvino.hpp"
 
+#include "../gfx_test_utils.hpp"
 #include "transforms/pipeline.hpp"
 
 #include "openvino/core/model.hpp"
@@ -26,7 +27,7 @@ namespace {
 
 ov::Tensor infer_with_template(const std::shared_ptr<const ov::Model>& model) {
     ov::Core core;
-    ov::test::utils::register_template_plugin(core);
+    OPENVINO_ASSERT(ov::test::utils::ensure_template_plugin(core), "TEMPLATE reference device not available");
     auto compiled = core.compile_model(model, "TEMPLATE");
     auto request = compiled.create_infer_request();
     request.infer();

@@ -24,6 +24,8 @@ struct InferSubmissionConfig {
     size_t max_stages_per_submit = 16;
     size_t max_output_bytes_per_submit = 16u * 1024u * 1024u;
     uint64_t max_macs_per_submit = std::numeric_limits<uint64_t>::max() / 4u;
+    uint32_t dependency_extension_budget_num = 2;
+    uint32_t dependency_extension_budget_den = 1;
     bool allow_incremental_submit = true;
 };
 

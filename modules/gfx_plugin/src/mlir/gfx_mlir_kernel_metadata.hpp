@@ -34,6 +34,17 @@ struct KernelOperandMetadata {
   std::vector<int32_t> scalar_args;
 };
 
+inline bool compact_kernel_operand_layout_matches_launch(
+    const std::vector<int32_t> &existing_kinds,
+    const std::vector<int32_t> &existing_indices,
+    const std::vector<int32_t> &launch_kinds) {
+  return !existing_kinds.empty() &&
+         existing_kinds.size() == existing_indices.size() &&
+         existing_kinds.size() == launch_kinds.size() &&
+         std::equal(existing_kinds.begin(), existing_kinds.end(),
+                    launch_kinds.begin());
+}
+
 struct KernelRuntimeBindingState {
   std::vector<size_t> inputs;
   size_t input_arg_count = 0;
@@ -243,6 +254,10 @@ extract_kernel_dispatch_metadata(mlir::ModuleOp module) {
   if (auto attr =
           module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_threads_w")) {
     meta.threads_w = static_cast<uint32_t>(attr.getInt());
+  }
+  if (auto attr =
+          module->getAttrOfType<mlir::IntegerAttr>("gfx.dispatch_channel_block")) {
+    meta.channel_block = static_cast<uint32_t>(attr.getInt());
   }
   if (meta.threads_h == 1) {
     meta.threads_h = meta.tile_h;

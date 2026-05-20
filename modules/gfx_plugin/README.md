@@ -24,8 +24,10 @@ Recent runtime work extends this model in two directions:
 - compile-time stage planning now picks layout, fusion, and execution policy per stage
 - backend runtimes, especially Vulkan, can choose specialized direct or chunked execution routes for selected non-convolution ops while Conv2D and GroupConv stay on the shared MLIR/custom-kernel route
 - infer execution can batch stage recording into submission windows and reuse prepared bindings or immutable device buffers across requests
+- infer submission can keep a direct producer-consumer chain in one command-buffer window even after a soft budget boundary, while still stopping at layout, split, transpose, softmax, and attention boundaries
 - Metal infer execution can now reuse one compute encoder across consecutive dispatches and skip redundant pipeline or buffer rebinds when the command-buffer state is unchanged
 - device-aware scheduling now uses backend-reported execution limits and device-family classification through shared `gfx_parallelism.*` and `gfx_partitioning.*` helpers
+- Vulkan Conv2D dispatch planning can block several output channels per work item through the same `gfx_parallelism.*` plan and `gfx.dispatch_channel_block` MLIR/SPIR-V metadata used by the shared convolution lowering path
 - Metal stage planning now also chooses an internal placement domain per stage: Apple MPS/MPSGraph vendor primitives for selected ops, or Apple MSL buffer dispatch for custom-kernel paths
 - `GFX_DIAGNOSTIC_F32_MPS_IMAGE` and `ov_gfx_compare_runner --diagnostic-f32-mps-image` keep the selected `f32` Conv/GroupConv/Pool image route available as a diagnostic localization switch through the same planner/MPSRT route; production placement is still owned by normal stage policy and quality gates
 - the Metal compile path can serialize that placement into a backend-neutral MPSRT runtime model under `src/runtime/gfx_mpsrt_model.*` with explicit tensor descriptors, external-buffer roles, a typed `GfxMpsrtProgram` facade, generated `gfx_mpsrt_ops` materialization, and explicit storage-bridge descriptors before request-time execution
@@ -106,6 +108,7 @@ The current infer path is not a naive "execute one stage, submit immediately" lo
 - prepared output-resolution plans for stage outputs, passthrough parameters, and materialized constant outputs
 - reusable host output tensors for static output signatures when the user does not bind explicit output storage
 - submission windows driven by stage submit policy, stage count, and output-byte thresholds
+- direct dependency-aware window extension for producer-consumer chains that would otherwise be split only because a soft stage/output/MAC budget was reached
 - backend-specific submission sessions for Metal and Vulkan
 - self-healing reusable host outputs that are recreated if a cached host tensor no longer matches the required type or shape
 - workspace-managed stage-output allocation that can recycle intermediate buffers across compatible stage lifetimes and report slot usage through profiling counters
@@ -158,6 +161,7 @@ Current family-aware planning distinguishes at least:
 
 Family-aware tuning is now used for more than cache keys. The current code includes:
 - Broadcom V3D-specific matmul and convolution parallelism choices for Raspberry Pi-style Vulkan devices, including occupancy-aware 64-thread pointwise/light Conv groups and 128-thread caps for ultra-dense Conv groups
+- capability-gated Conv2D output-channel blocking and optional spatial micro-tiling for backends that report support through `GpuExecutionDeviceInfo`
 - plain Vulkan Conv2D and GroupConv use the shared canonical MLIR builders plus common convolution lowering and no longer route through executor-level direct/chunked convolution kernels
 - MLIR convolution lowering that can honor explicit dispatch tile and thread attributes emitted by the planning path
 - MLIR convolution lowering that now uses a faster full-tile path for interior tiles and falls back to lane guards only on edge tiles
@@ -291,6 +295,7 @@ Build notes:
 - the external LLVM bootstrap now injects a tiny local dummy fuzzing-engine archive so `mlir-parser-fuzzer` configure paths do not break the bundled llvmorg-22.1.2 flow
 - Android and generic cross-compiling flows forward toolchain settings into that external LLVM/MLIR build
 - that external LLVM bootstrap also forwards `CMAKE_C_FLAGS`, `CMAKE_CXX_FLAGS`, and the executable/shared/module linker flag families into the nested LLVM configure step
+- when cross-compiling, the nested LLVM native-tool bootstrap also receives host compiler/sysroot flags through `CROSS_TOOLCHAIN_FLAGS_NATIVE` / `CROSS_TOOLCHAIN_FLAGS_LLVM_NATIVE`; LLVM tools are disabled because the plugin only needs the MLIR libraries for this external build
 - the module build treats compiler warnings as errors by default through `-Werror` on Clang/GCC and `/WX` on MSVC
 - `cmake/GfxAndroidRuntimeBundle.cmake.in` provides helper copy logic for Android-side runtime dependency bundling
 - `third_party/Vulkan-Headers` is tracked as a git submodule pinned to the module-tested upstream release
@@ -375,8 +380,10 @@ Recent regression coverage includes:
 - absorbed input-transform tests for Add, Conv2D, GroupConv2D, and Split
 - Vulkan runtime regression coverage in `tests/backends/vulkan/`
 - infer submission, prepared-pipeline reuse, immutable-const-cache reuse, and shared kernel-binding reuse tests
+- dependency-aware submit-window extension coverage in `tests/unit/infer_submission_test.cpp`, including direct producer-consumer chains and boundaries that must still force a new window
 - Vulkan batched constant-upload behavior through the shared infer command buffer path
-- Broadcom-oriented dense stride-1, huge-spatial, and ultra-dense convolution tuning coverage in `tests/unit/gfx_parallelism_test.cpp`
+- Broadcom-oriented dense stride-1, huge-spatial, ultra-dense, and output-channel-blocked convolution tuning coverage in `tests/unit/gfx_parallelism_test.cpp`
+- explicit shared-test plugin registration coverage: the functional test target removes implicit `plugins.xml`, registers GFX/TEMPLATE directly where needed, and keeps uninstantiated shared-test allow-listing centralized in `tests/gfx_shared_gtest_allow.cpp`
 - reusable output-resolution and reusable host-output coverage in `tests/unit/infer_pipeline_reuse_test.cpp`
 - internal transform and plugin coverage in `tests/unit/basic_ops_internal_test.cpp`
 - DFL softmax expectation rewrite coverage, including value-preservation checks for the MatMul form, in `tests/unit/layout_cleanup_test.cpp`

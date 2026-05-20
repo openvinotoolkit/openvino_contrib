@@ -19,6 +19,7 @@ using ov::test::behavior::OVClassCompiledModelGetIncorrectPropertyTest;
 using ov::test::behavior::OVClassCompiledModelGetPropertyTest;
 using ov::test::behavior::OVClassCompiledModelGetPropertyTest_EXEC_DEVICES;
 using ov::test::behavior::OVClassCompiledModelSetIncorrectConfigTest;
+using ov::test::behavior::CompiledModelSetType;
 using ov::test::behavior::OVCompiledGraphImportExportTest;
 using ov::test::behavior::OVCompiledModelBaseTest;
 using ov::test::behavior::OVCompiledModelBaseTestOptional;

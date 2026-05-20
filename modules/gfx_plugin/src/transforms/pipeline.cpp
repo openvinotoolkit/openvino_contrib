@@ -512,63 +512,6 @@ void mark_fp32_if_real(const std::shared_ptr<ov::Node>& node, size_t& marked) {
     ++marked;
 }
 
-void mark_full_real_upstream_fp32(const ov::Output<ov::Node>& value,
-                                  std::unordered_set<const ov::Node*>& visited,
-                                  size_t& marked,
-                                  size_t depth = 0) {
-    if (depth > 256 || !value.get_element_type().is_real()) {
-        return;
-    }
-    auto node = value.get_node_shared_ptr();
-    if (!node || !visited.insert(node.get()).second) {
-        return;
-    }
-    mark_fp32_if_real(node, marked);
-    for (size_t i = 0; i < node->get_input_size(); ++i) {
-        const auto input = node->input_value(i);
-        if (input.get_element_type().is_real()) {
-            mark_full_real_upstream_fp32(input, visited, marked, depth + 1);
-        }
-    }
-}
-
-void mark_index_selected_data_inputs_fp32(
-    const ov::Output<ov::Node>& value,
-    std::unordered_set<const ov::Node*>& visited,
-    size_t& marked,
-    size_t depth = 0) {
-    if (depth > 64) {
-        return;
-    }
-    for (const auto& target : value.get_target_inputs()) {
-        auto* consumer_ptr = target.get_node();
-        if (!consumer_ptr) {
-            continue;
-        }
-        auto consumer = consumer_ptr->shared_from_this();
-        if (!consumer || !visited.insert(consumer.get()).second) {
-            continue;
-        }
-        if (is_index_amplifying_consumer_input(consumer, target.get_index())) {
-            for (size_t input_index = 0; input_index < consumer->get_input_size(); ++input_index) {
-                if (!is_index_selected_data_input(consumer, input_index)) {
-                    continue;
-                }
-                const auto data_input = consumer->input_value(input_index);
-                if (!data_input.get_element_type().is_real()) {
-                    continue;
-                }
-                std::unordered_set<const ov::Node*> upstream_visited;
-                mark_full_real_upstream_fp32(data_input, upstream_visited, marked);
-            }
-        }
-        for (size_t output_index = 0; output_index < consumer->get_output_size(); ++output_index) {
-            mark_index_selected_data_inputs_fp32(consumer->output(output_index),
-                                                visited, marked, depth + 1);
-        }
-    }
-}
-
 void mark_terminal_feature_boundary_fp32(
     const ov::Output<ov::Node>& value,
     std::unordered_set<const ov::Node*>& visited,
@@ -593,6 +536,48 @@ void mark_terminal_feature_boundary_fp32(
             mark_terminal_feature_boundary_fp32(input, visited,
                                                terminal_boundaries, marked,
                                                depth + 1);
+        }
+    }
+}
+
+void mark_index_selected_data_inputs_fp32(
+    const ov::Output<ov::Node>& value,
+    std::unordered_set<const ov::Node*>& visited,
+    std::unordered_set<const ov::Node*>& terminal_boundaries,
+    size_t& marked,
+    size_t depth = 0) {
+    if (depth > 64) {
+        return;
+    }
+    for (const auto& target : value.get_target_inputs()) {
+        auto* consumer_ptr = target.get_node();
+        if (!consumer_ptr) {
+            continue;
+        }
+        auto consumer = consumer_ptr->shared_from_this();
+        if (!consumer || !visited.insert(consumer.get()).second) {
+            continue;
+        }
+        if (is_index_amplifying_consumer_input(consumer, target.get_index())) {
+            for (size_t input_index = 0; input_index < consumer->get_input_size(); ++input_index) {
+                if (!is_index_selected_data_input(consumer, input_index)) {
+                    continue;
+                }
+                const auto data_input = consumer->input_value(input_index);
+                if (!data_input.get_element_type().is_real()) {
+                    continue;
+                }
+                std::unordered_set<const ov::Node*> upstream_visited;
+                mark_terminal_feature_boundary_fp32(data_input,
+                                                   upstream_visited,
+                                                   terminal_boundaries,
+                                                   marked);
+            }
+        }
+        for (size_t output_index = 0; output_index < consumer->get_output_size(); ++output_index) {
+            mark_index_selected_data_inputs_fp32(consumer->output(output_index),
+                                                visited, terminal_boundaries,
+                                                marked, depth + 1);
         }
     }
 }
@@ -679,15 +664,12 @@ size_t mark_gfx_order_sensitive_topk_subgraphs(
         mark_fp32_if_real(node, marked);
         std::unordered_set<const ov::Node*> upstream_visited;
         const bool index_amplified = topk_indices_are_index_amplified(node);
+        mark_topk_upstream_fp32(node->input_value(0), upstream_visited,
+                                terminal_boundaries, marked);
         if (index_amplified) {
-            mark_full_real_upstream_fp32(node->input_value(0), upstream_visited,
-                                         marked);
             std::unordered_set<const ov::Node*> data_visited;
             mark_index_selected_data_inputs_fp32(node->output(1), data_visited,
-                                                marked);
-        } else {
-            mark_topk_upstream_fp32(node->input_value(0), upstream_visited,
-                                    terminal_boundaries, marked);
+                                                terminal_boundaries, marked);
         }
         std::unordered_set<const ov::Node*> downstream_visited;
         mark_topk_downstream_fp32(node, downstream_visited, marked);

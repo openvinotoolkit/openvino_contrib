@@ -68,11 +68,28 @@ inline bool device_available(const std::string& name) {
     try {
         ov::Core core;
         try_register_gfx_plugin(core);
-        const auto devices = core.get_available_devices();
-        return std::find(devices.begin(), devices.end(), name) != devices.end();
+        (void)core.get_property(name, ov::supported_properties);
+        return true;
     } catch (...) {
         return false;
     }
+}
+
+inline bool core_has_device(const ov::Core& core, const std::string& name) {
+    try {
+        (void)core.get_property(name, ov::supported_properties);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+inline bool ensure_template_plugin(ov::Core& core) {
+    if (core_has_device(core, "TEMPLATE")) {
+        return true;
+    }
+    ov::test::utils::register_template_plugin(core);
+    return core_has_device(core, "TEMPLATE");
 }
 
 inline std::string require_gfx_backend() {

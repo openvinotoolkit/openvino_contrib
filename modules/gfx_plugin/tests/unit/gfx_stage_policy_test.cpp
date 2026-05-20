@@ -272,6 +272,18 @@ std::shared_ptr<const ov::Node> make_large_chunked_conv_node() {
       ov::CoordinateDiff{2, 2}, ov::Strides{1, 1});
 }
 
+std::shared_ptr<const ov::Node> make_conv_adjacent_large_sigmoid_node() {
+  auto conv = std::const_pointer_cast<ov::Node>(make_large_chunked_conv_node());
+  return std::make_shared<ov::op::v0::Sigmoid>(conv);
+}
+
+std::shared_ptr<const ov::Node> make_conv_adjacent_large_add_node() {
+  auto conv = std::const_pointer_cast<ov::Node>(make_large_chunked_conv_node());
+  auto rhs = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f16, ov::Shape{1, 128, 64, 64});
+  return std::make_shared<ov::op::v1::Add>(conv, rhs);
+}
+
 std::shared_ptr<const ov::Node> make_medium_chunked_conv_node() {
   auto input = std::make_shared<ov::op::v0::Parameter>(
       ov::element::f16, ov::Shape{1, 64, 32, 32});
@@ -3622,9 +3634,11 @@ TEST(GfxStagePolicyTest,
   EXPECT_EQ(binding_plan[2].arg_index, 1u);
 }
 
-TEST(GfxStagePolicyTest, VulkanConvolutionAllowsOnlyReluActivationFusion) {
+TEST(GfxStagePolicyTest, VulkanConvolutionAllowsReluAndSwishActivationFusion) {
   EXPECT_TRUE(allow_stage_activation_fusion(GpuBackend::Vulkan, "Convolution",
                                             ActivationKind::Relu));
+  EXPECT_TRUE(allow_stage_activation_fusion(GpuBackend::Vulkan, "Convolution",
+                                            ActivationKind::Swish));
   EXPECT_FALSE(allow_stage_activation_fusion(GpuBackend::Vulkan, "Convolution",
                                              ActivationKind::Sigmoid));
   EXPECT_FALSE(allow_stage_activation_fusion(
@@ -3692,6 +3706,22 @@ TEST(GfxStagePolicyTest,
   EXPECT_GE(plan.execution.submit.weight, 8u);
 }
 
+TEST(GfxStagePolicyTest,
+     VulkanConvAdjacentLargeBinaryChunkedStageCanShareSubmitWindow) {
+  const auto add = make_conv_adjacent_large_add_node();
+  GfxStageRuntimeTraits traits{};
+  traits.binary_chunked = true;
+  const auto plan = select_stage_optimization_plan(
+      nullptr, GpuBackend::Vulkan, "Add", add, ov::element::f16,
+      /*has_bias=*/false,
+      /*has_activation=*/false,
+      /*has_batchnorm=*/false, traits);
+
+  EXPECT_EQ(plan.archetype, GfxStageArchetype::BinaryElementwise);
+  EXPECT_FALSE(plan.execution.submit.isolate);
+  EXPECT_GE(plan.execution.submit.weight, 8u);
+}
+
 TEST(GfxStagePolicyTest, VulkanLargeConcatUsesIsolatedSubmitWindow) {
   const auto concat = make_large_concat_node();
   GfxStageRuntimeTraits traits{};
@@ -3746,6 +3776,22 @@ TEST(GfxStagePolicyTest,
   traits.unary_chunked = true;
   const auto plan = select_stage_optimization_plan(
       &buffer_manager, GpuBackend::Vulkan, "Sigmoid", sigmoid, ov::element::f16,
+      /*has_bias=*/false,
+      /*has_activation=*/false,
+      /*has_batchnorm=*/false, traits);
+
+  EXPECT_EQ(plan.archetype, GfxStageArchetype::UnaryElementwise);
+  EXPECT_FALSE(plan.execution.submit.isolate);
+  EXPECT_EQ(plan.execution.submit.weight, 6u);
+}
+
+TEST(GfxStagePolicyTest,
+     VulkanConvAdjacentLargeUnaryChunkedStageCanShareSubmitWindow) {
+  const auto sigmoid = make_conv_adjacent_large_sigmoid_node();
+  GfxStageRuntimeTraits traits{};
+  traits.unary_chunked = true;
+  const auto plan = select_stage_optimization_plan(
+      nullptr, GpuBackend::Vulkan, "Sigmoid", sigmoid, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, traits);

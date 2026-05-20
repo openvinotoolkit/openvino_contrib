@@ -12,225 +12,457 @@
 
 namespace {
 
-class TestDeviceInfoBufferManager final : public ov::gfx_plugin::GpuBufferManager {
+class TestDeviceInfoBufferManager final
+    : public ov::gfx_plugin::GpuBufferManager {
 public:
-    explicit TestDeviceInfoBufferManager(ov::gfx_plugin::GpuExecutionDeviceInfo info) : m_info(std::move(info)) {}
+  explicit TestDeviceInfoBufferManager(
+      ov::gfx_plugin::GpuExecutionDeviceInfo info)
+      : m_info(std::move(info)) {}
 
-    std::optional<ov::gfx_plugin::GpuExecutionDeviceInfo> query_execution_device_info() const override {
-        return m_info;
-    }
+  std::optional<ov::gfx_plugin::GpuExecutionDeviceInfo>
+  query_execution_device_info() const override {
+    return m_info;
+  }
 
 private:
-    ov::gfx_plugin::GpuExecutionDeviceInfo m_info;
+  ov::gfx_plugin::GpuExecutionDeviceInfo m_info;
 };
 
 ov::gfx_plugin::GfxParallelismCaps make_caps() {
-    ov::gfx_plugin::GfxParallelismCaps caps;
-    caps.backend = ov::gfx_plugin::GpuBackend::Vulkan;
-    caps.device_key = "test:vulkan";
-    caps.preferred_simd_width = 32;
-    caps.subgroup_size = 32;
-    caps.max_total_threads_per_group = 64;
-    caps.max_threads_per_group = {64, 64, 1};
-    return caps;
+  ov::gfx_plugin::GfxParallelismCaps caps;
+  caps.backend = ov::gfx_plugin::GpuBackend::Vulkan;
+  caps.device_key = "test:vulkan";
+  caps.preferred_simd_width = 32;
+  caps.subgroup_size = 32;
+  caps.max_total_threads_per_group = 64;
+  caps.max_threads_per_group = {64, 64, 1};
+  return caps;
 }
 
 ov::gfx_plugin::GfxParallelismCaps make_broadcom_caps() {
-    auto caps = make_caps();
-    caps.device_key = "test:broadcom";
-    caps.device_family = ov::gfx_plugin::GpuDeviceFamily::BroadcomV3D;
-    caps.preferred_simd_width = 16;
-    caps.subgroup_size = 16;
-    return caps;
+  auto caps = make_caps();
+  caps.device_key = "test:broadcom";
+  caps.device_family = ov::gfx_plugin::GpuDeviceFamily::BroadcomV3D;
+  caps.preferred_simd_width = 16;
+  caps.subgroup_size = 16;
+  return caps;
 }
 
 ov::gfx_plugin::GfxParallelismCaps make_large_broadcom_caps() {
-    auto caps = make_broadcom_caps();
-    caps.max_total_threads_per_group = 256;
-    caps.max_threads_per_group = {256, 256, 1};
-    return caps;
+  auto caps = make_broadcom_caps();
+  caps.max_total_threads_per_group = 256;
+  caps.max_threads_per_group = {256, 256, 1};
+  return caps;
 }
 
-}  // namespace
+ov::gfx_plugin::GfxParallelismCaps make_broadcom_channel_blocking_caps() {
+  auto caps = make_large_broadcom_caps();
+  caps.device_key = "test:broadcom:channel-blocking";
+  caps.supports_conv_output_channel_blocking = true;
+  return caps;
+}
 
-TEST(GfxParallelism, SelectMatMulParallelismPrefersSquareTilesForSquareOutputs) {
-    const auto plan = ov::gfx_plugin::select_matmul_parallelism(make_caps(), ov::Shape{1, 256, 256});
+ov::gfx_plugin::GfxParallelismCaps make_channel_blocking_caps() {
+  ov::gfx_plugin::GfxParallelismCaps caps;
+  caps.backend = ov::gfx_plugin::GpuBackend::Metal;
+  caps.device_family = ov::gfx_plugin::GpuDeviceFamily::Apple;
+  caps.device_key = "test:metal:channel-blocking";
+  caps.preferred_simd_width = 32;
+  caps.subgroup_size = 32;
+  caps.max_total_threads_per_group = 256;
+  caps.max_threads_per_group = {256, 256, 1};
+  caps.supports_conv_output_channel_blocking = true;
+  caps.supports_conv_channel_block_spatial_tiling = true;
+  return caps;
+}
 
-    ASSERT_TRUE(plan.prefer_parallel);
-    EXPECT_EQ(plan.dispatch.threads_h, 8u);
-    EXPECT_EQ(plan.dispatch.threads_w, 8u);
+} // namespace
+
+TEST(GfxParallelism,
+     SelectMatMulParallelismPrefersSquareTilesForSquareOutputs) {
+  const auto plan = ov::gfx_plugin::select_matmul_parallelism(
+      make_caps(), ov::Shape{1, 256, 256});
+
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_EQ(plan.dispatch.threads_h, 8u);
+  EXPECT_EQ(plan.dispatch.threads_w, 8u);
 }
 
 TEST(GfxParallelism, QueryParallelismCapsUsesBackendNeutralDeviceInfo) {
-    ov::gfx_plugin::GpuExecutionDeviceInfo info;
-    info.backend = ov::gfx_plugin::GpuBackend::Vulkan;
-    info.device_key = "test-device";
-    info.preferred_simd_width = 16;
-    info.subgroup_size = 32;
-    info.max_total_threads_per_group = 128;
-    info.max_threads_per_group = {128, 32, 8};
+  ov::gfx_plugin::GpuExecutionDeviceInfo info;
+  info.backend = ov::gfx_plugin::GpuBackend::Vulkan;
+  info.device_key = "test-device";
+  info.preferred_simd_width = 16;
+  info.subgroup_size = 32;
+  info.max_total_threads_per_group = 128;
+  info.max_threads_per_group = {128, 32, 8};
+  info.supports_conv_output_channel_blocking = true;
+  info.supports_conv_channel_block_spatial_tiling = true;
 
-    TestDeviceInfoBufferManager buffer_manager(info);
-    const auto caps = ov::gfx_plugin::query_parallelism_caps(&buffer_manager);
+  TestDeviceInfoBufferManager buffer_manager(info);
+  const auto caps = ov::gfx_plugin::query_parallelism_caps(&buffer_manager);
 
-    EXPECT_EQ(caps.backend, ov::gfx_plugin::GpuBackend::Vulkan);
-    EXPECT_EQ(caps.device_key, "test-device");
-    EXPECT_EQ(caps.preferred_simd_width, 16u);
-    EXPECT_EQ(caps.subgroup_size, 32u);
-    EXPECT_EQ(caps.max_total_threads_per_group, 128u);
-    EXPECT_EQ(caps.max_threads_per_group[0], 128u);
-    EXPECT_EQ(caps.max_threads_per_group[1], 32u);
-    EXPECT_EQ(caps.max_threads_per_group[2], 8u);
+  EXPECT_EQ(caps.backend, ov::gfx_plugin::GpuBackend::Vulkan);
+  EXPECT_EQ(caps.device_key, "test-device");
+  EXPECT_EQ(caps.preferred_simd_width, 16u);
+  EXPECT_EQ(caps.subgroup_size, 32u);
+  EXPECT_EQ(caps.max_total_threads_per_group, 128u);
+  EXPECT_EQ(caps.max_threads_per_group[0], 128u);
+  EXPECT_EQ(caps.max_threads_per_group[1], 32u);
+  EXPECT_EQ(caps.max_threads_per_group[2], 8u);
+  EXPECT_TRUE(caps.supports_conv_output_channel_blocking);
+  EXPECT_TRUE(caps.supports_conv_channel_block_spatial_tiling);
 }
 
 TEST(GfxParallelism, SelectMatMulParallelismPrefersWideTilesForWideOutputs) {
-    const auto plan = ov::gfx_plugin::select_matmul_parallelism(make_caps(), ov::Shape{128, 1600});
+  const auto plan = ov::gfx_plugin::select_matmul_parallelism(
+      make_caps(), ov::Shape{128, 1600});
 
-    ASSERT_TRUE(plan.prefer_parallel);
-    EXPECT_TRUE(plan.dispatch.enabled);
-    EXPECT_GT(plan.dispatch.threads_h, 0u);
-    EXPECT_GT(plan.dispatch.threads_w, 0u);
-    EXPECT_GE(plan.dispatch.threads_w, plan.dispatch.threads_h);
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_TRUE(plan.dispatch.enabled);
+  EXPECT_GT(plan.dispatch.threads_h, 0u);
+  EXPECT_GT(plan.dispatch.threads_w, 0u);
+  EXPECT_GE(plan.dispatch.threads_w, plan.dispatch.threads_h);
 }
 
-TEST(GfxParallelism, SelectMatMulParallelismUsesSkinnyTilesForWideBroadcomOutputs) {
-    const auto plan = ov::gfx_plugin::select_matmul_parallelism(make_broadcom_caps(), ov::Shape{128, 1600});
+TEST(GfxParallelism,
+     SelectMatMulParallelismUsesSkinnyTilesForWideBroadcomOutputs) {
+  const auto plan = ov::gfx_plugin::select_matmul_parallelism(
+      make_broadcom_caps(), ov::Shape{128, 1600});
 
-    ASSERT_TRUE(plan.prefer_parallel);
-    EXPECT_TRUE(plan.dispatch.enabled);
-    EXPECT_LE(plan.dispatch.threads_h, 2u);
-    EXPECT_GE(plan.dispatch.threads_w, 8u);
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_TRUE(plan.dispatch.enabled);
+  EXPECT_LE(plan.dispatch.threads_h, 2u);
+  EXPECT_GE(plan.dispatch.threads_w, 8u);
 }
 
 TEST(GfxParallelism, SelectMatMulParallelismKeepsBroadcomSquareOutputsDense) {
-    const auto plan = ov::gfx_plugin::select_matmul_parallelism(make_broadcom_caps(), ov::Shape{1, 1024, 1024});
+  const auto plan = ov::gfx_plugin::select_matmul_parallelism(
+      make_broadcom_caps(), ov::Shape{1, 1024, 1024});
 
-    ASSERT_TRUE(plan.prefer_parallel);
-    EXPECT_TRUE(plan.dispatch.enabled);
-    EXPECT_EQ(plan.dispatch.threads_h, plan.dispatch.threads_w);
-    EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 32u);
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_TRUE(plan.dispatch.enabled);
+  EXPECT_EQ(plan.dispatch.threads_h, plan.dispatch.threads_w);
+  EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 32u);
 }
 
-TEST(GfxParallelism, SelectBroadcomConvParallelismUsesDenserStride1Threadgroups) {
-    const auto plan = ov::gfx_plugin::select_conv_parallelism(make_broadcom_caps(),
-                                                              ov::Shape{1, 64, 80, 80},
-                                                              64,
-                                                              64,
-                                                              64 * 3 * 3,
-                                                              false,
-                                                              false);
+TEST(GfxParallelism,
+     SelectBroadcomConvParallelismUsesDenserStride1Threadgroups) {
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      make_broadcom_caps(), ov::Shape{1, 64, 80, 80}, 64, 64, 64 * 3 * 3, false,
+      false);
 
-    ASSERT_TRUE(plan.prefer_parallel);
-    EXPECT_TRUE(plan.dispatch.enabled);
-    EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 64u);
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_TRUE(plan.dispatch.enabled);
+  EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 64u);
 }
 
-TEST(GfxParallelism, SelectBroadcomConvParallelismUsesDenserStride2Threadgroups) {
-    const auto plan = ov::gfx_plugin::select_conv_parallelism(make_broadcom_caps(),
-                                                              ov::Shape{1, 64, 80, 80},
-                                                              64,
-                                                              64,
-                                                              64 * 3 * 3,
-                                                              true,
-                                                              false);
+TEST(GfxParallelism,
+     SelectBroadcomConvParallelismUsesDenserStride2Threadgroups) {
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      make_broadcom_caps(), ov::Shape{1, 64, 80, 80}, 64, 64, 64 * 3 * 3, true,
+      false);
 
-    ASSERT_TRUE(plan.prefer_parallel);
-    EXPECT_TRUE(plan.dispatch.enabled);
-    EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 64u);
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_TRUE(plan.dispatch.enabled);
+  EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 64u);
 }
 
-TEST(GfxParallelism, SelectBroadcomConvParallelismUsesWiderThreadgroupsForHugeSpatialOutputs) {
-    const auto plan = ov::gfx_plugin::select_conv_parallelism(make_large_broadcom_caps(),
-                                                              ov::Shape{1, 16, 320, 320},
-                                                              16,
-                                                              32,
-                                                              16 * 3 * 3,
-                                                              false,
-                                                              false);
+TEST(GfxParallelism,
+     SelectBroadcomConvParallelismUsesWiderThreadgroupsForHugeSpatialOutputs) {
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      make_large_broadcom_caps(), ov::Shape{1, 16, 320, 320}, 16, 32,
+      16 * 3 * 3, false, false);
 
-    ASSERT_TRUE(plan.prefer_parallel);
-    EXPECT_TRUE(plan.dispatch.enabled);
-    EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 64u);
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_TRUE(plan.dispatch.enabled);
+  EXPECT_GE(plan.dispatch.threads_h * plan.dispatch.threads_w, 64u);
 }
 
-TEST(GfxParallelism, SelectBroadcomPointwiseConvKeepsOccupancyHeadroomForHugeSpatialOutputs) {
-    const auto plan = ov::gfx_plugin::select_conv_parallelism(make_large_broadcom_caps(),
-                                                              ov::Shape{1, 48, 160, 160},
-                                                              48,
-                                                              48,
-                                                              48,
-                                                              false,
-                                                              false);
+TEST(GfxParallelism,
+     SelectBroadcomPointwiseConvKeepsOccupancyHeadroomForHugeSpatialOutputs) {
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      make_large_broadcom_caps(), ov::Shape{1, 48, 160, 160}, 48, 48, 48, false,
+      false);
 
-    ASSERT_TRUE(plan.prefer_parallel);
-    EXPECT_TRUE(plan.dispatch.enabled);
-    EXPECT_EQ(plan.dispatch.threads_h * plan.dispatch.threads_w, 64u);
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_TRUE(plan.dispatch.enabled);
+  EXPECT_EQ(plan.dispatch.threads_h * plan.dispatch.threads_w, 64u);
 }
 
-TEST(GfxParallelism, SelectBroadcomConvParallelismAvoidsFullThreadgroupForUltraDenseWorkloads) {
-    const auto plan = ov::gfx_plugin::select_conv_parallelism(make_large_broadcom_caps(),
-                                                              ov::Shape{1, 256, 80, 80},
-                                                              256,
-                                                              256,
-                                                              256 * 3 * 3,
-                                                              false,
-                                                              false);
+TEST(GfxParallelism,
+     SelectBroadcomDensePointwiseConvUsesOccupancyDenseThreadgroups) {
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      make_large_broadcom_caps(), ov::Shape{1, 384, 160, 160}, 384, 384, 384,
+      false, false);
 
-    ASSERT_TRUE(plan.prefer_parallel);
-    EXPECT_TRUE(plan.dispatch.enabled);
-    EXPECT_EQ(plan.dispatch.threads_h * plan.dispatch.threads_w, 128u);
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_TRUE(plan.dispatch.enabled);
+  EXPECT_EQ(plan.dispatch.threads_h * plan.dispatch.threads_w, 128u);
 }
 
-TEST(GfxParallelism, ParallelDispatchUsesRemainingBlockDimsAfterCanonicalizedConvLoop) {
-    ov::gfx_plugin::ParallelDispatchConfig cfg;
-    cfg.enabled = true;
-    cfg.loop_dims = 4;
-    cfg.tile_h = 8;
-    cfg.tile_w = 8;
-    cfg.threads_h = 8;
-    cfg.threads_w = 8;
+TEST(GfxParallelism,
+     SelectBroadcomConvParallelismAvoidsFullThreadgroupForUltraDenseWorkloads) {
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      make_large_broadcom_caps(), ov::Shape{1, 256, 80, 80}, 256, 256,
+      256 * 3 * 3, false, false);
 
-    const auto dispatch = ov::gfx_plugin::make_parallel_dispatch(ov::Shape{1, 1, 28, 28}, cfg);
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_TRUE(plan.dispatch.enabled);
+  EXPECT_EQ(plan.dispatch.threads_h * plan.dispatch.threads_w, 128u);
+}
 
-    EXPECT_EQ(dispatch.grid[0], 32u);
-    EXPECT_EQ(dispatch.grid[1], 32u);
-    EXPECT_EQ(dispatch.grid[2], 1u);
-    EXPECT_EQ(dispatch.threads_per_group[0], 8u);
-    EXPECT_EQ(dispatch.threads_per_group[1], 8u);
-    EXPECT_EQ(dispatch.threads_per_group[2], 1u);
+TEST(
+    GfxParallelism,
+    SelectBroadcomDenseConvKeepsScalarChannelsUntilBackendCapabilityIsEnabled) {
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      make_large_broadcom_caps(), ov::Shape{1, 256, 80, 80}, 256, 256,
+      256 * 3 * 3, false, false);
+
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_EQ(plan.output_channel_block, 1u);
+  EXPECT_EQ(plan.dispatch.channel_block, 1u);
+}
+
+TEST(GfxParallelism,
+     SelectBroadcomCapabilityEnabledDenseConvUsesFusedOutputChannelBlockWhenAccumulatorBudgetFits) {
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      make_broadcom_channel_blocking_caps(), ov::Shape{1, 256, 80, 80}, 256,
+      256, 256 * 3 * 3, false, false);
+
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_EQ(plan.output_channel_block, 4u);
+  EXPECT_EQ(plan.dispatch.channel_block, 4u);
+  EXPECT_EQ(plan.channel_block_accumulation,
+            ov::gfx_plugin::ConvChannelBlockAccumulation::Fused);
+  EXPECT_EQ(plan.dispatch.tile_h, plan.dispatch.threads_h);
+  EXPECT_EQ(plan.dispatch.tile_w, plan.dispatch.threads_w);
+}
+
+TEST(GfxParallelism,
+     SelectBroadcomCapabilityEnabledDenseConvKeepsFusedAccumulationWithSpatialMicroTile) {
+  auto caps = make_broadcom_channel_blocking_caps();
+  caps.supports_conv_channel_block_spatial_tiling = true;
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      caps, ov::Shape{1, 256, 80, 80}, 256, 256, 256 * 3 * 3, false, false);
+
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_EQ(plan.output_channel_block, 4u);
+  EXPECT_EQ(plan.dispatch.channel_block, 4u);
+  EXPECT_EQ(plan.channel_block_accumulation,
+            ov::gfx_plugin::ConvChannelBlockAccumulation::Fused);
+  EXPECT_GT(plan.dispatch.tile_h * plan.dispatch.tile_w,
+            plan.dispatch.threads_h * plan.dispatch.threads_w);
+}
+
+TEST(GfxParallelism,
+     SelectBroadcomCapabilityEnabledStride2DenseConvUsesAccumulatorBudgetBlock) {
+  auto caps = make_broadcom_channel_blocking_caps();
+  caps.supports_conv_channel_block_spatial_tiling = true;
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      caps, ov::Shape{1, 768, 40, 40}, 768, 768, 768 * 3 * 3, true, false);
+
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_EQ(plan.output_channel_block, 8u);
+  EXPECT_EQ(plan.dispatch.channel_block, 8u);
+  EXPECT_EQ(plan.channel_block_accumulation,
+            ov::gfx_plugin::ConvChannelBlockAccumulation::Fused);
+}
+
+TEST(GfxParallelism,
+     SelectBroadcomCapabilityEnabledLightConvKeepsFusedOutputChannelBlock) {
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      make_broadcom_channel_blocking_caps(), ov::Shape{1, 64, 160, 160}, 64,
+      64, 64, false, false);
+
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_EQ(plan.output_channel_block, 4u);
+  EXPECT_EQ(plan.dispatch.channel_block, 4u);
+  EXPECT_EQ(plan.channel_block_accumulation,
+            ov::gfx_plugin::ConvChannelBlockAccumulation::Fused);
+}
+
+TEST(
+    GfxParallelism,
+    SelectCapabilityEnabledDenseConvUsesHardwareRelativeOutputChannelBlocking) {
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      make_channel_blocking_caps(), ov::Shape{1, 256, 80, 80}, 256, 256,
+      256 * 3 * 3, false, false);
+
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_EQ(plan.output_channel_block, 8u);
+  EXPECT_EQ(plan.dispatch.channel_block, 8u);
+  EXPECT_EQ(plan.channel_block_accumulation,
+            ov::gfx_plugin::ConvChannelBlockAccumulation::Fused);
+}
+
+TEST(
+    GfxParallelism,
+    SelectCapabilityEnabledDenseConvKeepsOneSpatialOutputWithoutMicroTileCapability) {
+  auto caps = make_channel_blocking_caps();
+  caps.device_key = "test:vulkan:channel-blocking-no-microtile";
+  caps.backend = ov::gfx_plugin::GpuBackend::Vulkan;
+  caps.supports_conv_channel_block_spatial_tiling = false;
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      caps, ov::Shape{1, 256, 80, 80}, 256, 256, 256 * 3 * 3, false, false);
+
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_EQ(plan.output_channel_block, 8u);
+  EXPECT_EQ(plan.dispatch.channel_block, 8u);
+  EXPECT_EQ(plan.dispatch.tile_h, plan.dispatch.threads_h);
+  EXPECT_EQ(plan.dispatch.tile_w, plan.dispatch.threads_w);
+}
+
+TEST(
+    GfxParallelism,
+    SelectCapabilityEnabledDenseConvUsesSpatialMicroTilesFromAccumulatorBudget) {
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      make_channel_blocking_caps(), ov::Shape{1, 256, 80, 80}, 256, 256,
+      256 * 3 * 3, false, false);
+
+  ASSERT_TRUE(plan.prefer_parallel);
+  const uint32_t thread_lanes =
+      plan.dispatch.threads_h * plan.dispatch.threads_w;
+  const uint32_t tile_lanes = plan.dispatch.tile_h * plan.dispatch.tile_w;
+  EXPECT_GT(tile_lanes, thread_lanes);
+  EXPECT_EQ(tile_lanes % thread_lanes, 0u);
+  EXPECT_LE(tile_lanes, 4u * thread_lanes);
+}
+
+TEST(
+    GfxParallelism,
+    SelectCapabilityEnabledDenseConvBacksChannelBlockDownToDivisibleLaneCount) {
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      make_channel_blocking_caps(), ov::Shape{1, 130, 80, 80}, 256, 130,
+      256 * 3 * 3, false, false);
+
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_EQ(plan.output_channel_block, 2u);
+  EXPECT_EQ(plan.dispatch.channel_block, 2u);
+}
+
+TEST(GfxParallelism,
+     SelectBroadcomDepthwiseConvKeepsOneSpatialOutputPerThread) {
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      make_large_broadcom_caps(), ov::Shape{1, 64, 80, 80}, 1, 64, 3 * 3, false,
+      true);
+
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_EQ(plan.dispatch.tile_h, plan.dispatch.threads_h);
+  EXPECT_EQ(plan.dispatch.tile_w, plan.dispatch.threads_w);
+  EXPECT_EQ(plan.dispatch.channel_block, 1u);
+}
+
+TEST(GfxParallelism,
+     SelectBroadcomUnblockedConvKeepsOneSpatialOutputPerThread) {
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      make_large_broadcom_caps(), ov::Shape{1, 5, 80, 80}, 3, 5, 3 * 3 * 3,
+      false, false);
+
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_EQ(plan.dispatch.tile_h, plan.dispatch.threads_h);
+  EXPECT_EQ(plan.dispatch.tile_w, plan.dispatch.threads_w);
+  EXPECT_EQ(plan.dispatch.channel_block, 1u);
+}
+
+TEST(GfxParallelism,
+     ParallelDispatchUsesRemainingBlockDimsAfterCanonicalizedConvLoop) {
+  ov::gfx_plugin::ParallelDispatchConfig cfg;
+  cfg.enabled = true;
+  cfg.loop_dims = 4;
+  cfg.tile_h = 8;
+  cfg.tile_w = 8;
+  cfg.threads_h = 8;
+  cfg.threads_w = 8;
+
+  const auto dispatch =
+      ov::gfx_plugin::make_parallel_dispatch(ov::Shape{1, 1, 28, 28}, cfg);
+
+  EXPECT_EQ(dispatch.grid[0], 32u);
+  EXPECT_EQ(dispatch.grid[1], 32u);
+  EXPECT_EQ(dispatch.grid[2], 1u);
+  EXPECT_EQ(dispatch.threads_per_group[0], 8u);
+  EXPECT_EQ(dispatch.threads_per_group[1], 8u);
+  EXPECT_EQ(dispatch.threads_per_group[2], 1u);
+}
+
+TEST(GfxParallelism,
+     ParallelDispatchKeepsThreadAxesWithCanonicalizedAsymmetricConvLoop) {
+  ov::gfx_plugin::ParallelDispatchConfig cfg;
+  cfg.enabled = true;
+  cfg.loop_dims = 4;
+  cfg.tile_h = 8;
+  cfg.tile_w = 16;
+  cfg.threads_h = 8;
+  cfg.threads_w = 16;
+  cfg.channel_block = 4;
+
+  const auto dispatch =
+      ov::gfx_plugin::make_parallel_dispatch(ov::Shape{1, 4, 80, 80}, cfg);
+
+  EXPECT_EQ(dispatch.grid[0], 10u * 16u);
+  EXPECT_EQ(dispatch.grid[1], 5u * 8u);
+  EXPECT_EQ(dispatch.grid[2], 1u);
+  EXPECT_EQ(dispatch.threads_per_group[0], 16u);
+  EXPECT_EQ(dispatch.threads_per_group[1], 8u);
+  EXPECT_EQ(dispatch.threads_per_group[2], 1u);
+}
+
+TEST(GfxParallelism, ParallelDispatchUsesChannelBlocksForConvLoop) {
+  ov::gfx_plugin::ParallelDispatchConfig cfg;
+  cfg.enabled = true;
+  cfg.loop_dims = 5;
+  cfg.tile_h = 8;
+  cfg.tile_w = 8;
+  cfg.threads_h = 8;
+  cfg.threads_w = 8;
+  cfg.channel_block = 2;
+
+  const auto dispatch =
+      ov::gfx_plugin::make_parallel_dispatch(ov::Shape{1, 64, 28, 28}, cfg);
+
+  EXPECT_EQ(dispatch.grid[0], 32u * 8u);
+  EXPECT_EQ(dispatch.grid[1], 4u * 8u);
+  EXPECT_EQ(dispatch.grid[2], 4u);
 }
 
 TEST(GfxParallelism, RememberMatMulParallelismAllowsSerialFallbackOverride) {
-    const auto caps = make_caps();
-    const ov::Shape output_shape{1, 256, 256};
+  const auto caps = make_caps();
+  const ov::Shape output_shape{1, 256, 256};
 
-    const auto initial = ov::gfx_plugin::select_matmul_parallelism(caps, output_shape);
-    ASSERT_TRUE(initial.prefer_parallel);
+  const auto initial =
+      ov::gfx_plugin::select_matmul_parallelism(caps, output_shape);
+  ASSERT_TRUE(initial.prefer_parallel);
 
-    ov::gfx_plugin::MatMulParallelismPlan serial_plan;
-    serial_plan.prefer_parallel = false;
-    serial_plan.variant = "serial";
+  ov::gfx_plugin::MatMulParallelismPlan serial_plan;
+  serial_plan.prefer_parallel = false;
+  serial_plan.variant = "serial";
 
-    ov::gfx_plugin::remember_matmul_parallelism(caps, output_shape, serial_plan);
+  ov::gfx_plugin::remember_matmul_parallelism(caps, output_shape, serial_plan);
 
-    const auto overridden = ov::gfx_plugin::select_matmul_parallelism(caps, output_shape);
-    EXPECT_FALSE(overridden.prefer_parallel);
-    EXPECT_EQ(overridden.variant, "serial");
-    EXPECT_FALSE(overridden.dispatch.enabled);
+  const auto overridden =
+      ov::gfx_plugin::select_matmul_parallelism(caps, output_shape);
+  EXPECT_FALSE(overridden.prefer_parallel);
+  EXPECT_EQ(overridden.variant, "serial");
+  EXPECT_FALSE(overridden.dispatch.enabled);
 }
 
-TEST(GfxParallelism, SelectChunkDispatchPlanUsesLargeSingleDispatchForMidSizeVulkanWorkloads) {
-    const auto plan = ov::gfx_plugin::select_chunk_dispatch_plan(make_caps(), "conv2d", 8192, 576);
+TEST(GfxParallelism,
+     SelectChunkDispatchPlanUsesLargeSingleDispatchForMidSizeVulkanWorkloads) {
+  const auto plan = ov::gfx_plugin::select_chunk_dispatch_plan(
+      make_caps(), "conv2d", 8192, 576);
 
-    EXPECT_EQ(plan.threads_per_group, 64u);
-    EXPECT_EQ(plan.elems_per_dispatch, 8192u);
-    EXPECT_EQ(plan.variant, "conv2d_chunk_8192");
+  EXPECT_EQ(plan.threads_per_group, 64u);
+  EXPECT_EQ(plan.elems_per_dispatch, 8192u);
+  EXPECT_EQ(plan.variant, "conv2d_chunk_8192");
 }
 
-TEST(GfxParallelism, SelectChunkDispatchPlanCapsLargeVulkanWorkloadsToFewDispatches) {
-    const auto plan = ov::gfx_plugin::select_chunk_dispatch_plan(make_caps(), "conv2d", 131072, 1152);
+TEST(GfxParallelism,
+     SelectChunkDispatchPlanCapsLargeVulkanWorkloadsToFewDispatches) {
+  const auto plan = ov::gfx_plugin::select_chunk_dispatch_plan(
+      make_caps(), "conv2d", 131072, 1152);
 
-    EXPECT_EQ(plan.threads_per_group, 64u);
-    EXPECT_EQ(plan.elems_per_dispatch, 16384u);
-    EXPECT_EQ(plan.variant, "conv2d_chunk_16384");
+  EXPECT_EQ(plan.threads_per_group, 64u);
+  EXPECT_EQ(plan.elems_per_dispatch, 16384u);
+  EXPECT_EQ(plan.variant, "conv2d_chunk_16384");
 }

@@ -51,7 +51,7 @@ Recent additions in the tree include:
 - `tests/unit/layout_cleanup_test.cpp` for MLIR layout-cleanup behavior, including DFL softmax expectation rewrites
 - `tests/backends/vulkan/vulkan_runtime_test.cpp` for Vulkan runtime regressions
 - `tests/unit/memory_device_integration_test.mm` for Metal memory/device integration behavior
-- `tests/unit/infer_submission_test.cpp` for submission-window behavior, including common workload-profile tuning and device-family MAC budget scaling
+- `tests/unit/infer_submission_test.cpp` for submission-window behavior, including common workload-profile tuning, device-family MAC budget scaling, dependency-aware soft-budget extension, and boundary cases that must still force a new command-buffer window
 - `tests/unit/infer_pipeline_reuse_test.cpp` for reusable pipeline, prepared-input plans, prepared-output plans, and reusable host-output coverage
 - `tests/unit/gfx_profiling_report_test.cpp` for compile/infer profiling JSON assembly and merge behavior
 - `tests/unit/gfx_stage_policy_test.cpp` for submit-weight and route-policy heuristics
@@ -62,8 +62,9 @@ Recent additions in the tree include:
 - `tests/backends/metal/gpu_backend_test.mm` now also covers manifest-driven buffer ordering, runtime-parameter roles, storage bridges, MPSRT resource tables, prepared resource heaps, vendor `MPSGemm` / Conv2D / Pool2D / Resize2D / Softmax / TopK / SDPA, MPSGraph executable paths, and hybrid multi-stage execution
 - Metal MSL binding-plan coverage now includes compressed `MatMul`, SDPA and causal SDPA kernel roles, manifest-derived MSL argument counts, output-before-runtime-params ordering, scalar-param expansion, and request-time rejection of MSL dispatch stages without materialized kernel-buffer order
 - SPIR-V binding-adapter coverage now keeps compact ABI reconstruction manifest-driven, while no-manifest legacy operand/scalar attrs and `gfx.fixed_arg_count` are rejected instead of being used as runtime metadata
-- `tests/unit/gfx_parallelism_test.cpp` now also covers Broadcom V3D-specific matmul and convolution tuning behavior, including huge-spatial pointwise/light Conv2D selection of occupancy-aware 64-thread groups and ultra-dense Conv capping at 128 threads per group
+- `tests/unit/gfx_parallelism_test.cpp` now also covers Broadcom V3D-specific matmul and convolution tuning behavior, including huge-spatial pointwise/light Conv2D selection of occupancy-aware 64-thread groups, ultra-dense Conv capping at 128 threads per group, capability-gated output-channel blocking, and spatial micro-tile decisions
 - `tests/unit/mlir_conv_parallel_test.cpp` now locks Pool2D away from the legacy serial MLIR route: MaxPool2D and AvgPool2D builders must produce `scf.parallel`, `gfx.parallel_loop_dims=5`, and a 64-thread dispatch shape before backend codegen.
+- `tests/gfx_shared_gtest_allow.cpp` centralizes shared OpenVINO parameterized-test allow-listing, and `ov_gfx_func_tests` removes implicit `plugins.xml` before running so tests exercise explicit GFX/TEMPLATE registration instead of host-plugin discovery side effects
 - `tests/gfx_accuracy_tolerance.hpp` keeps shared and compare-runner tolerances precision-aware so FP16 GFX runs are not evaluated with FP32-only epsilon floors unless a test explicitly overrides them
 - `tests/unit/runtime_subgraph_test.cpp` for targeted runtime subgraph execution checks through `ov_gfx_runtime_micro_tests`
 - `tests/unit/gpu_const_cache_test.cpp`, `tests/unit/kernel_arg_reuse_test.cpp`, and `tests/unit/gpu_backend_base_test.cpp` for cache and binding reuse layers
@@ -102,6 +103,7 @@ Add or update tests when you change:
 - SPIR-V fixed-argument adapter metadata, Vulkan compact-ABI binding overrides, or module-cache reuse of lowered launch metadata
 - backend-specialized routes such as chunked or direct Vulkan execution; Conv2D and GroupConv regressions should exercise the shared MLIR/SPIR-V path, not a separate Vulkan direct/chunked path
 - infer submission thresholds, submission ordering, command-buffer lifecycle, or device-family budget inheritance from the common workload profile
+- dependency-aware submit-window extension and the boundary list that prevents layout, split, transpose, softmax, and attention stages from being pulled across a soft-budget boundary
 - immutable const-cache behavior or prepared-binding reuse
 - output-resolution planning, passthrough-output handling, or reusable host-output allocation
 - stage-output aliasing, fused-stage lifetime reuse, or source-node-aware output routing
@@ -133,6 +135,7 @@ If you change MLIR lowering, prefer a unit test that inspects the emitted IR for
 - Some tests skip when the corresponding backend is unavailable on the current machine
 - Metal tests require a valid Metal runtime environment
 - Vulkan tests depend on Vulkan being enabled and available in the build
+- Shared-test registration should use explicit GFX/TEMPLATE registration helpers rather than `get_available_devices()` as an availability gate; `get_property(device, ov::supported_properties)` is the preferred probe because it avoids loading unrelated host plugins through discovery metadata
 - `ov_gfx_compare_runner` is useful for numeric diffs and per-op narrowing when a failure is hard to isolate from the full suite; it also supports `--per-op-all`, `--reference-device`, `--reference-plugin`, `--input-image`, `--dump-reference-dir`, `--golden-dir`, `--gfx-inference-precision f16|f32`, `--per-op-input-mode`, `--per-op-generated-inputs`, `--per-op-recursive-limit`, `--per-op-recursive-trace`, and `--gfx-only`
 - Accuracy thresholds are precision-aware by default, following the same principle as OpenVINO shared/Intel GPU tests: the reference device remains `TEMPLATE`, but the tolerance floor is derived from the model/output types and the actual GFX inference precision. FP16 GFX runs must not be judged with FP32-only epsilons unless the command explicitly passes strict overrides such as `--abs-threshold 1e-6 --rel-threshold 1e-6`. Manual thresholds are still hard gates and are not relaxed by the default policy.
 - YOLO26x accuracy/data-dependence gates should use at least three reproducible real RGB images through repeated `--input-image` arguments rather than relying only on `--random-seed-count`. The runner accepts portable Netpbm PPM (`P6`/`P3`) so the same files can be staged by `bench/gfx_eval.py` on macOS, Android, and SSH/RPi without adding OpenCV/ImageIO dependencies to the test binary. The preprocessing contract is RGB resize to the model's rank-4 batch-1 NCHW or NHWC input, normalized to `[0, 1]` for floating-point tensors and `[0, 255]` for `u8`.

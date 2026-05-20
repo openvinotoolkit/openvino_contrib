@@ -176,6 +176,19 @@ bool is_chainable_mobile_conv(const std::shared_ptr<const ov::Node> &node) {
                                       "Multiply", "Relu", "Sigmoid", "Gelu"});
 }
 
+bool is_conv_chain_elementwise_stage(
+    const std::shared_ptr<const ov::Node> &node) {
+  if (!node) {
+    return false;
+  }
+  if (has_any_adjacent_type(node, {"Concat", "MatMul", "Softmax", "LogSoftmax",
+                                   "Transpose", "Reshape", "Split",
+                                   "VariadicSplit"})) {
+    return false;
+  }
+  return has_any_adjacent_type(node, {"Convolution", "GroupConvolution"});
+}
+
 bool is_conv_like(std::string_view stage_type) {
   return stage_type == "Convolution" || stage_type == "GroupConvolution";
 }
@@ -358,9 +371,8 @@ void record_stage_policy_counter(std::string_view name,
   increment_compile_counter(std::string("stage_policy_") + std::string(name) +
                             "_count");
   if (!stage_type.empty()) {
-    increment_compile_counter(std::string("stage_policy_") +
-                              std::string(name) + "_" +
-                              std::string(stage_type) + "_count");
+    increment_compile_counter(std::string("stage_policy_") + std::string(name) +
+                              "_" + std::string(stage_type) + "_count");
   }
 }
 
@@ -368,8 +380,9 @@ bool is_mps_vendor_element_type(const ov::element::Type &element_type) {
   return element_type == ov::element::f16 || element_type == ov::element::f32;
 }
 
-bool is_mps_image_vendor_element_type(const ov::element::Type &element_type,
-                                      const GfxStageRuntimeTraits & /*traits*/) {
+bool is_mps_image_vendor_element_type(
+    const ov::element::Type &element_type,
+    const GfxStageRuntimeTraits & /*traits*/) {
   return element_type == ov::element::f16 || element_type == ov::element::f32;
 }
 
@@ -427,22 +440,20 @@ bool is_mps_image_candidate(std::string_view stage_type,
   const auto declared_type = declared_stage_element_type(node, element_type);
   if (stage_type == "Convolution" || stage_type == "GroupConvolution") {
     if (!is_mps_image_vendor_element_type(declared_type, traits)) {
-      record_stage_policy_counter("mps_image_reject_element_type",
-                                  stage_type);
+      record_stage_policy_counter("mps_image_reject_element_type", stage_type);
       return false;
     }
     const bool accepted = has_static_output_rank(node, 4) &&
                           has_mps_image_conv_channel_contract(node);
-    record_stage_policy_counter(
-        accepted ? "mps_image_accept" : "mps_image_reject_shape_contract",
-        stage_type);
+    record_stage_policy_counter(accepted ? "mps_image_accept"
+                                         : "mps_image_reject_shape_contract",
+                                stage_type);
     return accepted;
   }
   if (stage_type == "MaxPool" || stage_type == "AvgPool" ||
       stage_type == "BatchNormInference") {
     if (!is_mps_image_vendor_element_type(declared_type, traits)) {
-      record_stage_policy_counter("mps_image_reject_element_type",
-                                  stage_type);
+      record_stage_policy_counter("mps_image_reject_element_type", stage_type);
       return false;
     }
     if ((stage_type == "MaxPool" || stage_type == "AvgPool") && node &&
@@ -452,16 +463,16 @@ bool is_mps_image_candidate(std::string_view stage_type,
       return false;
     }
     const bool accepted = has_static_output_rank(node, 4);
-    record_stage_policy_counter(
-        accepted ? "mps_image_accept" : "mps_image_reject_shape_contract",
-        stage_type);
+    record_stage_policy_counter(accepted ? "mps_image_accept"
+                                         : "mps_image_reject_shape_contract",
+                                stage_type);
     return accepted;
   }
   if (stage_type == "Interpolate") {
     const bool accepted = is_mps_resize2d_candidate(node);
-    record_stage_policy_counter(
-        accepted ? "mps_image_accept" : "mps_image_reject_shape_contract",
-        stage_type);
+    record_stage_policy_counter(accepted ? "mps_image_accept"
+                                         : "mps_image_reject_shape_contract",
+                                stage_type);
     return accepted;
   }
   return false;
@@ -495,7 +506,8 @@ bool is_mps_ndarray_candidate(std::string_view stage_type,
       stage_type != "ScaledDotProductAttention") {
     return false;
   }
-  auto sdpa = ov::as_type_ptr<const ov::op::v13::ScaledDotProductAttention>(node);
+  auto sdpa =
+      ov::as_type_ptr<const ov::op::v13::ScaledDotProductAttention>(node);
   if (!sdpa || sdpa->get_input_size() != 3 || sdpa->get_causal() ||
       !sdpa->get_input_partial_shape(0).is_static() ||
       !sdpa->get_input_partial_shape(1).is_static() ||
@@ -722,6 +734,8 @@ GfxParallelismCaps query_stage_caps(const GpuBufferManager *buffer_manager,
     caps.subgroup_size = 32;
     caps.max_total_threads_per_group = 256;
     caps.max_threads_per_group = {256, 256, 64};
+    caps.supports_conv_output_channel_blocking = true;
+    caps.supports_conv_channel_block_spatial_tiling = true;
   }
   return caps;
 }
@@ -748,7 +762,8 @@ bool allow_stage_activation_fusion(GpuBackend backend,
     return false;
   }
   if (backend == GpuBackend::Vulkan) {
-    return stage_type == "Convolution" && kind == ActivationKind::Relu;
+    return stage_type == "Convolution" &&
+           (kind == ActivationKind::Relu || kind == ActivationKind::Swish);
   }
   if (backend == GpuBackend::Metal) {
     return is_conv_like(stage_type) &&
@@ -896,8 +911,9 @@ GfxStageOptimizationPlan select_stage_optimization_plan(
   }
   if (traits.binary_chunked) {
     plan.execution.submit.weight = 8;
-    plan.execution.submit.isolate =
-        !constrained_vulkan_submit && out_elems >= large_chunked_output_elems;
+    plan.execution.submit.isolate = !is_conv_chain_elementwise_stage(node) &&
+                                    !constrained_vulkan_submit &&
+                                    out_elems >= large_chunked_output_elems;
     return plan;
   }
   if ((traits.unary_chunked || traits.softmax_chunked) &&
@@ -909,6 +925,7 @@ GfxStageOptimizationPlan select_stage_optimization_plan(
   if (traits.unary_chunked || traits.softmax_chunked) {
     plan.execution.submit.weight = 6;
     plan.execution.submit.isolate =
+        !(traits.unary_chunked && is_conv_chain_elementwise_stage(node)) &&
         !constrained_vulkan_submit && out_elems >= large_chunked_output_elems;
     return plan;
   }
