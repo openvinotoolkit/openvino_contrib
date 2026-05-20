@@ -1,0 +1,280 @@
+name: Quality
+
+on:
+  workflow_call:
+
+env:
+  ANDROID_API_LEVEL: "37.0"
+  ANDROID_BUILD_TOOLS: "37.0.0"
+  JAVA_VERSION: "21"
+
+jobs:
+  quality-foundation:
+    name: Quality Foundation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      security-events: write
+      checks: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Set up toolchain
+        uses: ./.github/actions/setup-android-gradle
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          android-api-level: ${{ env.ANDROID_API_LEVEL }}
+          android-build-tools: ${{ env.ANDROID_BUILD_TOOLS }}
+
+      - name: Format, static analysis, and lint
+        shell: bash
+        run: bash .github/scripts/quality/run_foundation.sh
+
+      - name: Publish lint and static analysis summary
+        if: always()
+        shell: bash
+        run: bash .github/scripts/quality/write_foundation_summary.sh
+
+      - name: Upload detekt SARIF for ai
+        if: always() && hashFiles('ai/build/reports/detekt/detekt.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4.35.3
+        with:
+          sarif_file: ai/build/reports/detekt/detekt.sarif
+          category: detekt-ai
+
+      - name: Upload detekt SARIF for app
+        if: always() && hashFiles('app/build/reports/detekt/detekt.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4.35.3
+        with:
+          sarif_file: app/build/reports/detekt/detekt.sarif
+          category: detekt-app
+
+      - name: Upload detekt SARIF for data
+        if: always() && hashFiles('data/build/reports/detekt/detekt.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4.35.3
+        with:
+          sarif_file: data/build/reports/detekt/detekt.sarif
+          category: detekt-data
+
+      - name: Upload detekt SARIF for domain
+        if: always() && hashFiles('domain/build/reports/detekt/detekt.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4.35.3
+        with:
+          sarif_file: domain/build/reports/detekt/detekt.sarif
+          category: detekt-domain
+
+      - name: Upload foundation artifacts
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: quality-foundation-reports
+          if-no-files-found: ignore
+          path: |
+            **/build/reports/detekt/**
+            **/build/reports/ktlint/**
+            **/build/reports/lint-results-*.html
+            **/build/reports/lint-results-*.xml
+
+  build-quality-x86:
+    name: Build Quality (x86_64)
+    needs: quality-foundation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Set up toolchain
+        uses: ./.github/actions/setup-android-gradle
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          android-api-level: ${{ env.ANDROID_API_LEVEL }}
+          android-build-tools: ${{ env.ANDROID_BUILD_TOOLS }}
+
+      - name: Debug build and unit tests
+        shell: bash
+        run: bash .github/scripts/quality/run_debug_build_and_unit_tests.sh
+
+      - name: Upload quality artifacts
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: quality-build-reports-x86_64
+          if-no-files-found: ignore
+          path: |
+            **/build/test-results/**
+            **/build/reports/tests/**
+            **/build/outputs/unit_test_code_coverage/**
+
+      - name: Upload debug APK artifacts
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: debug-apks-x86_64
+          if-no-files-found: error
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+  build-quality-arm64:
+    name: Build Quality (arm64)
+    needs: quality-foundation
+    runs-on: macos-15
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Set up toolchain
+        uses: ./.github/actions/setup-android-gradle
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          android-api-level: ${{ env.ANDROID_API_LEVEL }}
+          android-build-tools: ${{ env.ANDROID_BUILD_TOOLS }}
+
+      - name: Debug build and unit tests
+        shell: bash
+        run: bash .github/scripts/quality/run_debug_build_and_unit_tests.sh
+
+      - name: Upload quality artifacts
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: quality-build-reports-arm64
+          if-no-files-found: ignore
+          path: |
+            **/build/test-results/**
+            **/build/reports/tests/**
+            **/build/outputs/unit_test_code_coverage/**
+
+      - name: Upload debug APK artifacts
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: debug-apks-arm64
+          if-no-files-found: error
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+  build-quality-windows:
+    name: Build Quality (windows-x86_64)
+    needs: quality-foundation
+    runs-on: windows-2025
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Set up Java
+        uses: actions/setup-java@v5.2.0
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4.0.1
+        with:
+          packages: platform-tools
+
+      - name: Restore Android SDK package cache
+        uses: actions/cache@v4.2.4
+        with:
+          path: |
+            ${{ env.ANDROID_HOME }}/platforms/android-${{ env.ANDROID_API_LEVEL }}
+            ${{ env.ANDROID_HOME }}/build-tools/${{ env.ANDROID_BUILD_TOOLS }}
+          key: android-sdk-packages-${{ runner.os }}-${{ env.ANDROID_API_LEVEL }}-${{ env.ANDROID_BUILD_TOOLS }}
+          restore-keys: |
+            android-sdk-packages-${{ runner.os }}-${{ env.ANDROID_API_LEVEL }}-
+            android-sdk-packages-${{ runner.os }}-
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6.1.0
+
+      - name: Install Android SDK packages
+        shell: pwsh
+        env:
+          ANDROID_API_LEVEL: ${{ env.ANDROID_API_LEVEL }}
+          ANDROID_BUILD_TOOLS: ${{ env.ANDROID_BUILD_TOOLS }}
+          INSTALL_SYSTEM_IMAGE: "false"
+          ANDROID_SYSTEM_IMAGE: ""
+        run: ./.github/scripts/setup/install_android_sdk_packages_windows.ps1
+
+      - name: Materialize Google services placeholder
+        shell: bash
+        env:
+          GOOGLE_SERVICES_JSON_ALLOW_PLACEHOLDER: "true"
+        run: bash .github/scripts/release/materialize_google_services_json.sh
+
+      - name: Debug build and unit tests
+        shell: pwsh
+        run: ./.github/scripts/quality/run_debug_build_and_unit_tests_windows.ps1
+
+      - name: Upload quality artifacts
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: quality-build-reports-windows-x86_64
+          if-no-files-found: ignore
+          path: |
+            **/build/test-results/**
+            **/build/reports/tests/**
+            **/build/outputs/unit_test_code_coverage/**
+
+      - name: Upload debug APK artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apks-windows-x86_64
+          if-no-files-found: error
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+  coverage:
+    name: Coverage
+    needs: quality-foundation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Set up toolchain
+        uses: ./.github/actions/setup-android-gradle
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          android-api-level: ${{ env.ANDROID_API_LEVEL }}
+          android-build-tools: ${{ env.ANDROID_BUILD_TOOLS }}
+
+      - name: Coverage reports and gate
+        shell: bash
+        run: bash .github/scripts/quality/run_coverage.sh
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: quality-coverage-reports
+          if-no-files-found: ignore
+          path: |
+            **/build/reports/kover/**
+
+      - name: Publish coverage summary
+        if: always()
+        shell: bash
+        run: bash .github/scripts/quality/write_coverage_summary.sh

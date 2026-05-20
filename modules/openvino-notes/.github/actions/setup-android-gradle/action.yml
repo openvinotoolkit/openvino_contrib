@@ -1,0 +1,71 @@
+name: Setup Android Gradle
+description: Sets up Java, Android SDK, Gradle, and required SDK packages
+
+inputs:
+  java-version:
+    description: Java version to install
+    required: false
+    default: "17"
+  android-api-level:
+    description: Android API level platform to install
+    required: true
+  android-build-tools:
+    description: Android build tools version to install
+    required: true
+  install-system-image:
+    description: Whether to install an emulator system image
+    required: false
+    default: "false"
+  android-system-image:
+    description: Full sdkmanager system image coordinate
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Materialize Google services placeholder when absent
+      shell: bash
+      env:
+        GOOGLE_SERVICES_JSON_ALLOW_PLACEHOLDER: "true"
+      run: |
+        if [[ -f "${GITHUB_WORKSPACE}/app/google-services.json" ]]; then
+          echo "Google services config already exists."
+        else
+          bash "${GITHUB_WORKSPACE}/.github/scripts/release/materialize_google_services_json.sh"
+        fi
+
+    - name: Set up Java
+      uses: actions/setup-java@v5.2.0
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.java-version }}
+        cache: gradle
+
+    - name: Set up Android SDK
+      uses: android-actions/setup-android@v4.0.1
+      with:
+        packages: platform-tools
+
+    - name: Restore Android SDK package cache
+      uses: actions/cache@v4.2.4
+      with:
+        path: |
+          ${{ env.ANDROID_HOME }}/platforms/android-${{ inputs.android-api-level }}
+          ${{ env.ANDROID_HOME }}/build-tools/${{ inputs.android-build-tools }}
+        key: android-sdk-packages-${{ runner.os }}-${{ inputs.android-api-level }}-${{ inputs.android-build-tools }}
+        restore-keys: |
+          android-sdk-packages-${{ runner.os }}-${{ inputs.android-api-level }}-
+          android-sdk-packages-${{ runner.os }}-
+
+    - name: Set up Gradle
+      uses: gradle/actions/setup-gradle@v6.1.0
+
+    - name: Install Android SDK packages
+      shell: bash
+      env:
+        ANDROID_API_LEVEL: ${{ inputs.android-api-level }}
+        ANDROID_BUILD_TOOLS: ${{ inputs.android-build-tools }}
+        INSTALL_SYSTEM_IMAGE: ${{ inputs.install-system-image }}
+        ANDROID_SYSTEM_IMAGE: ${{ inputs.android-system-image }}
+      run: bash "$GITHUB_ACTION_PATH/../../scripts/setup/install_android_sdk_packages.sh"

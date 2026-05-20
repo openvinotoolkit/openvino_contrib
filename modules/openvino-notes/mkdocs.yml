@@ -1,0 +1,48 @@
+site_name: OpenVINO Notes — Документация проекта
+site_description: Умные заметки с локальной ИИ-обработкой и облачной синхронизацией
+
+theme:
+  name: material
+  language: ru
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Включить темную тему
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Включить светлую тему
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - content.code.copy
+    - content.code.annotate
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - 'Введение': index.md
+  - 'Архитектура системы':
+      - 'Общий обзор и DI': architecture/overview.md
+  - Интерфейс и UI-слой: app/ui.md
+  - Локальный ИИ (OpenVINO): openvino/openvino.md
+  - Сценарии использования (Use Cases): architecture/use_cases.md
+  - 'Слой данных и СУБД':
+      - 'Схема Room и медиа-архитектура': database/schema.md
+  - 'Модуль синхронизации':
+      - 'Оркестрация SyncManager': sync/manager.md
+      - 'Фоновые задачи (WorkManager)': sync/workmanager.md

@@ -18,6 +18,7 @@ This list gives an overview of all modules available inside the contrib reposito
 * [**ov_training_kit**](./modules/ov_training_kit): Training Kit Python library -- provides scikit-learn, PyTorch and Tensorflow wrappers for training, optimization, and deployment with OpenVINO on AI PCs.
 * [**3D Point Pillars**](./modules/3d/pointPillars): Use OpenVINO to perform 3D object detection with PointPillars model.
 * [**OpenVino BEVFusion**](./modules/openvino_bevfusion): OpenVino supported implementation of the BEVFusion model.
+* [**OpenVINO Notes**](./modules/openvino-notes): AI-powered Android notes app using OpenVINO for on-device text processing.
 
 ## How to build OpenVINO with extra modules
 You can build OpenVINO, so it will include the modules from this repository. Contrib modules are under constant development and it is recommended to use them alongside the master branch or latest releases of OpenVINO.
@@ -44,6 +45,7 @@ Additional build instructions are available for the following modules:
 * [**openvino-langchain**](./modules/openvino-langchain): LangChain.js integrations for OpenVINO™
 * [**3D Point Pillars**](./modules/3d/pointPillars): Check the [README](./modules/3d/pointPillars/README.md) for detailed usage and build instructions.
 * [**OpenVino BEVFusion**](./modules/openvino_bevfusion): Check the [INSTRUCTIONS](./modules/openvino_bevfusion/EXPORT_AND_INFERENCE_GUIDE.md) for detailed usage and build instructions.
+* [**OpenVINO Notes**](./modules/openvino-notes): Check the [README](./modules/openvino-notes/README.md) for Android build and run instructions.
 
 ## Update the repository documentation
 In order to keep a clean overview containing all contributed modules, the following files need to be created/adapted:

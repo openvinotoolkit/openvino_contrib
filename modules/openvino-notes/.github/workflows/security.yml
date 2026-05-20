@@ -1,0 +1,41 @@
+name: Security
+
+on:
+  workflow_call:
+
+env:
+  ANDROID_API_LEVEL: "37.0"
+  ANDROID_BUILD_TOOLS: "37.0.0"
+  JAVA_VERSION: "21"
+
+jobs:
+  secrets:
+    name: Secrets
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        shell: bash
+        run: bash .github/scripts/security/run_gitleaks.sh
+
+      - name: Upload gitleaks SARIF
+        if: always() && hashFiles('build/reports/gitleaks/gitleaks.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4.35.3
+        with:
+          sarif_file: build/reports/gitleaks/gitleaks.sarif
+          category: gitleaks
+
+      - name: Upload secrets artifacts
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: secret-reports
+          if-no-files-found: ignore
+          path: build/reports/gitleaks/**

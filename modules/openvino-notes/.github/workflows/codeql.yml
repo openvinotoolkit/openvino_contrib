@@ -1,0 +1,42 @@
+name: CodeQL
+
+on:
+  workflow_call:
+
+env:
+  ANDROID_API_LEVEL: "37.0"
+  ANDROID_BUILD_TOOLS: "37.0.0"
+  JAVA_VERSION: "21"
+
+jobs:
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Set up toolchain
+        uses: ./.github/actions/setup-android-gradle
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          android-api-level: ${{ env.ANDROID_API_LEVEL }}
+          android-build-tools: ${{ env.ANDROID_BUILD_TOOLS }}
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4.35.3
+        with:
+          languages: java-kotlin
+          build-mode: manual
+
+      - name: Build for CodeQL
+        shell: bash
+        run: bash .github/scripts/codeql/build_for_codeql.sh
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4.35.3

@@ -1,0 +1,65 @@
+name: Preflight
+
+on:
+  workflow_call:
+    outputs:
+      run_android_tests:
+        description: Whether Android managed-device tests should run
+        value: ${{ jobs.detect-changes.outputs.run_android_tests }}
+      run_release:
+        description: Whether release checks should run
+        value: ${{ jobs.detect-changes.outputs.run_release }}
+      run_codeql:
+        description: Whether CodeQL should run
+        value: ${{ jobs.detect-changes.outputs.run_codeql }}
+      changed_paths:
+        description: Newline-delimited changed paths
+        value: ${{ jobs.detect-changes.outputs.changed_paths }}
+
+jobs:
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-24.04
+    outputs:
+      run_android_tests: ${{ steps.classify.outputs.run_android_tests }}
+      run_release: ${{ steps.classify.outputs.run_release }}
+      run_codeql: ${{ steps.classify.outputs.run_codeql }}
+      changed_paths: ${{ steps.classify.outputs.changed_paths }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Classify changes
+        id: classify
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          BEFORE_SHA: ${{ github.event.before || '' }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: bash .github/scripts/preflight/classify_changes.sh
+
+  preflight-summary:
+    name: Preflight
+    needs: detect-changes
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Summarize preflight
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_RELEASE: ${{ needs.detect-changes.outputs.run_release }}
+          RUN_CODEQL: ${{ needs.detect-changes.outputs.run_codeql }}
+          RUN_ANDROID_TESTS: ${{ needs.detect-changes.outputs.run_android_tests }}
+          CHANGED_PATHS: ${{ needs.detect-changes.outputs.changed_paths }}
+        run: bash .github/scripts/preflight/write_summary.sh
