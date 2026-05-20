@@ -16,7 +16,11 @@ class SuggestSummaryUseCase(
             .filterIsInstance<ContentItem.Text>()
             .joinToString("\n") { it.text }
 
-    suspend operator fun invoke(noteId: String): Result<String> =
+    suspend operator fun invoke(
+        noteId: String,
+        maxInputTokens: Int = 512,
+        maxNewTokens: Int = 128,
+    ): Result<String> =
         runCatching {
             val userId = getUserIdUseCase()
 
@@ -29,6 +33,10 @@ class SuggestSummaryUseCase(
                     ?: throw IllegalArgumentException("Note not found: $noteId")
 
             val text = extractText(note)
-            ai.summarize(text)
+            ai.summarize(
+                text = text,
+                maxInputTokens = maxInputTokens,
+                maxNewTokens = maxNewTokens,
+            )
         }
 }

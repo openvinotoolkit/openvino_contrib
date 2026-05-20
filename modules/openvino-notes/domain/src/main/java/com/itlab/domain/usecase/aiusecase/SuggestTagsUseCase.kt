@@ -16,14 +16,11 @@ class SuggestTagsUseCase(
             .filterIsInstance<ContentItem.Text>()
             .joinToString("\n") { it.text }
 
-    private fun extractImages(note: Note): List<String> =
-        note.contentItems
-            .filterIsInstance<ContentItem.Image>()
-            .mapNotNull { image ->
-                image.source.localPath ?: image.source.remoteUrl
-            }
-
-    suspend operator fun invoke(noteId: String): Result<Set<String>> =
+    suspend operator fun invoke(
+        noteId: String,
+        maxInputTokens: Int = 384,
+        maxTags: Int = 4,
+    ): Result<Set<String>> =
         runCatching {
             val userId = getUserIdUseCase()
 
@@ -35,9 +32,10 @@ class SuggestTagsUseCase(
                 repo.getNoteById(noteId, userId)
                     ?: throw IllegalArgumentException("Note not found: $noteId")
 
-            val text = extractText(note)
-            val imageUrls = extractImages(note)
-
-            ai.tagTXT(text) + ai.tagIMGs(imageUrls)
+            ai.suggestTags(
+                text = extractText(note),
+                maxInputTokens = maxInputTokens,
+                maxTags = maxTags,
+            )
         }
 }

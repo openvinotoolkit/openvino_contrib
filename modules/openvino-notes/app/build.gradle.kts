@@ -62,6 +62,14 @@ android {
     buildFeatures {
         compose = true
     }
+    androidResources {
+        noCompress += "bin"
+    }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
     testOptions {
         managedDevices {
             localDevices {

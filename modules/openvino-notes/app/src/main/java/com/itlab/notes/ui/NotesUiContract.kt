@@ -32,6 +32,8 @@ data class NotesUiState(
     val screen: NotesUiScreen = NotesUiScreen.Directories,
     val directories: List<DirectoryItemUi> = emptyList(),
     val notes: List<NoteItemUi> = emptyList(),
+    val aiState: AiUiState = AiUiState(),
+    val imageTaggingState: ImageTaggingUiState = ImageTaggingUiState(),
     val notesSearchQuery: String = "",
     val directorySearchQuery: String = "",
     /** Note ids currently uploading to cloud (visible in list + editor). */
@@ -39,6 +41,29 @@ data class NotesUiState(
     /** Pull-to-refresh / download from cloud in progress. */
     val isCloudDownloadActive: Boolean = false,
 )
+
+data class AiUiState(
+    val isWarmingUp: Boolean = false,
+    val isReady: Boolean = false,
+    val isGeneratingSummary: Boolean = false,
+    val isGeneratingTags: Boolean = false,
+    val isRewriting: Boolean = false,
+    val errorMessage: String? = null,
+) {
+    val isGenerating: Boolean
+        get() = isGeneratingSummary || isGeneratingTags || isRewriting
+
+    val canGenerate: Boolean
+        get() = isReady && !isWarmingUp && !isGenerating
+}
+
+data class ImageTaggingUiState(
+    val isTagging: Boolean = false,
+    val errorMessage: String? = null,
+) {
+    val canTagImages: Boolean
+        get() = !isTagging
+}
 
 sealed interface NotesUiEvent {
     data class OpenDirectory(
@@ -72,6 +97,24 @@ sealed interface NotesUiEvent {
     data class PersistNote(
         val note: NoteItemUi,
     ) : NotesUiEvent
+
+    data class SuggestSummary(
+        val note: NoteItemUi,
+    ) : NotesUiEvent
+
+    data class SuggestTags(
+        val note: NoteItemUi,
+    ) : NotesUiEvent
+
+    data class SuggestImageTags(
+        val note: NoteItemUi,
+    ) : NotesUiEvent
+
+    data class RewriteNote(
+        val note: NoteItemUi,
+    ) : NotesUiEvent
+
+    data object CancelAiGeneration : NotesUiEvent
 
     data class DeleteNote(
         val noteId: String,

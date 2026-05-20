@@ -1,23 +1,30 @@
 package com.itlab.domain
 
 import com.itlab.domain.ai.NoteAiService
+import com.itlab.domain.ai.RewriteStyle
 import com.itlab.domain.model.ContentItem
 import com.itlab.domain.model.DataSource
 import com.itlab.domain.model.Note
 import com.itlab.domain.repository.NotesRepository
+import com.itlab.domain.usecase.aiusecase.ReleaseNoteAiUseCase
+import com.itlab.domain.usecase.aiusecase.RewriteNoteUseCase
+import com.itlab.domain.usecase.aiusecase.SuggestImageTagsUseCase
 import com.itlab.domain.usecase.aiusecase.SuggestSummaryUseCase
 import com.itlab.domain.usecase.aiusecase.SuggestTagsUseCase
+import com.itlab.domain.usecase.aiusecase.WarmUpNoteAiUseCase
 import com.itlab.domain.usecase.noteusecase.ApplySummaryUseCase
 import com.itlab.domain.usecase.noteusecase.ApplyTagsUseCase
 import com.itlab.domain.usecase.noteusecase.GetUserIdUseCase
 import io.mockk.MockKAnnotations
 import io.mockk.every
 import io.mockk.impl.annotations.MockK
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -66,13 +73,26 @@ class AIUseCasesTest {
     private class FakeNoteAiService : NoteAiService {
         var summaryInput: String? = null
         var textTagsInput: String? = null
+        var rewriteInput: String? = null
+        var rewriteMaxNewTokens: Int? = null
         var imageTagsInput: List<String> = emptyList()
 
         var summaryResult: String = "AI summary"
+        var rewriteResult: String = "AI rewrite"
         var textTagsResult: Set<String> = setOf("text-tag-1", "text-tag-2")
         var imageTagsResult: Set<String> = setOf("image-tag-1", "image-tag-2")
+        var releaseCalled: Boolean = false
+        var warmUpError: Throwable? = null
 
-        override suspend fun summarize(text: String): String {
+        override suspend fun warmUp() {
+            warmUpError?.let { throw it }
+        }
+
+        override suspend fun summarize(
+            text: String,
+            maxInputTokens: Int,
+            maxNewTokens: Int,
+        ): String {
             summaryInput = text
             return summaryResult
         }
@@ -82,9 +102,28 @@ class AIUseCasesTest {
             return imageTagsResult
         }
 
-        override suspend fun tagTXT(text: String): Set<String> {
+        override suspend fun suggestTags(
+            text: String,
+            maxInputTokens: Int,
+            maxTags: Int,
+        ): Set<String> {
             textTagsInput = text
             return textTagsResult
+        }
+
+        override suspend fun rewrite(
+            text: String,
+            style: RewriteStyle,
+            maxInputTokens: Int,
+            maxNewTokens: Int,
+        ): String {
+            rewriteInput = text
+            rewriteMaxNewTokens = maxNewTokens
+            return rewriteResult
+        }
+
+        override fun release() {
+            releaseCalled = true
         }
     }
 
@@ -137,7 +176,7 @@ class AIUseCasesTest {
         }
 
     @Test
-    fun suggestTags_returnsMergedTags_andSendsTextAndImagesToAi() =
+    fun suggestTags_returnsTextTags_andDoesNotSendImagesToAi() =
         runBlocking {
             val repo = FakeNotesRepo()
             val ai = FakeNoteAiService()
@@ -169,16 +208,8 @@ class AIUseCasesTest {
             val result = useCase("n2")
 
             assertEquals("First line\nSecond line", ai.textTagsInput)
-
-            assertEquals(
-                listOf("/local/image.png", "https://example.com/image.jpg"),
-                ai.imageTagsInput,
-            )
-
-            assertEquals(
-                setOf("text-tag-1", "text-tag-2", "image-tag-1", "image-tag-2"),
-                result.getOrThrow(),
-            )
+            assertEquals(emptyList<String>(), ai.imageTagsInput)
+            assertEquals(setOf("text-tag-1", "text-tag-2"), result.getOrThrow())
         }
 
     @Test
@@ -191,6 +222,128 @@ class AIUseCasesTest {
             val result = useCase("missing_id")
             assertEquals(true, result.isFailure)
             assertEquals("Note not found: missing_id", result.exceptionOrNull()?.message)
+        }
+
+    @Test
+    fun suggestImageTags_returnsImageTagsAndSendsOnlyImagesToAi() =
+        runBlocking {
+            val repo = FakeNotesRepo()
+            val ai =
+                FakeNoteAiService().apply {
+                    imageTagsResult = setOf("image-1", "image-2")
+                }
+            val useCase = SuggestImageTagsUseCase(ai, repo, getUserIdUsecase)
+
+            repo.createNote(
+                Note(
+                    id = "n-img-tags",
+                    title = "Image tags",
+                    userId = testUserId,
+                    contentItems =
+                        listOf(
+                            ContentItem.Text(text = "Text is ignored for image tags"),
+                            ContentItem.Image(
+                                source = DataSource(localPath = "/local/image.png"),
+                                mimeType = "image/png",
+                            ),
+                        ),
+                ),
+            )
+
+            val result = useCase("n-img-tags", maxTags = 4)
+
+            assertEquals(null, ai.textTagsInput)
+            assertEquals(listOf("/local/image.png"), ai.imageTagsInput)
+            assertEquals(setOf("image-1", "image-2"), result.getOrThrow())
+        }
+
+    @Test
+    fun suggestImageTags_capsGeneratedTags() =
+        runBlocking {
+            val repo = FakeNotesRepo()
+            val ai =
+                FakeNoteAiService().apply {
+                    imageTagsResult = setOf("image-1", "image-2", "image-3")
+                }
+            val useCase = SuggestImageTagsUseCase(ai, repo, getUserIdUsecase)
+
+            repo.createNote(
+                Note(
+                    id = "n-img-tags-limit",
+                    title = "Image tags",
+                    userId = testUserId,
+                    contentItems =
+                        listOf(
+                            ContentItem.Image(
+                                source = DataSource(remoteUrl = "https://example.com/image.jpg"),
+                                mimeType = "image/jpg",
+                            ),
+                        ),
+                ),
+            )
+
+            val result = useCase("n-img-tags-limit", maxTags = 2)
+
+            assertEquals(setOf("image-1", "image-2"), result.getOrThrow())
+        }
+
+    @Test
+    fun suggestImageTags_throwsIfNoteNotFound() =
+        runBlocking {
+            val repo = FakeNotesRepo()
+            val ai = FakeNoteAiService()
+            val useCase = SuggestImageTagsUseCase(ai, repo, getUserIdUsecase)
+
+            val result = useCase("missing_id")
+            assertEquals(true, result.isFailure)
+            assertEquals("Note not found: missing_id", result.exceptionOrNull()?.message)
+        }
+
+    @Test
+    fun releaseNoteAi_releasesAiService() {
+        val ai = FakeNoteAiService()
+        val useCase = ReleaseNoteAiUseCase(ai)
+
+        useCase().getOrThrow()
+
+        assertEquals(true, ai.releaseCalled)
+    }
+
+    @Test
+    fun warmUpNoteAi_propagatesCancellation() =
+        runBlocking {
+            val ai =
+                FakeNoteAiService().apply {
+                    warmUpError = CancellationException("warm-up was cancelled")
+                }
+            val useCase = WarmUpNoteAiUseCase(ai)
+
+            val error = runCatching<Result<Unit>> { useCase() }.exceptionOrNull()
+
+            assertTrue(error is CancellationException)
+        }
+
+    @Test
+    fun rewriteNote_usesRewriteSizedGenerationBudget() =
+        runBlocking {
+            val repo = FakeNotesRepo()
+            val ai = FakeNoteAiService()
+            val useCase = RewriteNoteUseCase(ai, repo, getUserIdUsecase)
+
+            repo.createNote(
+                Note(
+                    id = "n-rewrite",
+                    title = "Rewrite",
+                    userId = testUserId,
+                    contentItems = listOf(ContentItem.Text(text = "Long editor note")),
+                ),
+            )
+
+            val result = useCase("n-rewrite")
+
+            assertEquals("AI rewrite", result.getOrThrow())
+            assertEquals("Long editor note", ai.rewriteInput)
+            assertEquals(192, ai.rewriteMaxNewTokens)
         }
 
     @Test

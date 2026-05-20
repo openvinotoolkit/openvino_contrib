@@ -200,6 +200,7 @@ private fun notesMain(
                 directoryName = screen.directory.name,
                 directoryId = screen.directory.id,
                 note = screen.note,
+                aiState = state.aiState,
                 cloudSyncStatus =
                     if (editorUploading) {
                         EditorCloudSyncStatus.Uploading
@@ -207,12 +208,28 @@ private fun notesMain(
                         screen.cloudSyncStatus
                     },
                 isCloudDownloadActive = state.isCloudDownloadActive,
+                imageTaggingState = state.imageTaggingState,
                 onBack = { draft -> viewModel.onEvent(NotesUiEvent.LeaveEditor(draft)) },
                 onPersist = { draft ->
                     viewModel.onEvent(NotesUiEvent.PersistNote(draft))
                 },
                 onToggleFavorite = {
                     viewModel.onEvent(NotesUiEvent.ToggleNoteFavorite(screen.note.id))
+                },
+                onSuggestSummary = { draft ->
+                    viewModel.onEvent(NotesUiEvent.SuggestSummary(draft))
+                },
+                onSuggestTags = { draft ->
+                    viewModel.onEvent(NotesUiEvent.SuggestTags(draft))
+                },
+                onSuggestImageTags = { draft ->
+                    viewModel.onEvent(NotesUiEvent.SuggestImageTags(draft))
+                },
+                onRewrite = { draft ->
+                    viewModel.onEvent(NotesUiEvent.RewriteNote(draft))
+                },
+                onCancelAi = {
+                    viewModel.onEvent(NotesUiEvent.CancelAiGeneration)
                 },
             )
         }

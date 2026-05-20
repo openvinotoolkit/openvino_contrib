@@ -4,11 +4,11 @@ This guide explains how to reproduce repository checks locally on Linux, macOS, 
 
 ## Toolchain Baseline
 
-- JDK 17
+- JDK 21
 - Android SDK command-line tools
 - Android platform-tools
-- Android platform `android-36`
-- Android build-tools `36.0.0`
+- Android platform `android-37`
+- Android build-tools `37.0.0`
 - Git
 
 ## Validation Status
@@ -30,7 +30,7 @@ Validated locally:
 
 Environment used:
 
-- Homebrew `openjdk@17`
+- Homebrew `openjdk@21`
 - Android SDK root: `~/Library/Android/sdk`
 - emulator target: `android-34`, `google_apis`, `arm64-v8a`
 
@@ -58,12 +58,12 @@ This is the closest path to GitHub CI and should be treated as the reference Lin
 ### macOS
 
 ```bash
-export JAVA_HOME="$(brew --prefix openjdk@17)/libexec/openjdk.jdk/Contents/Home"
+export JAVA_HOME="$(brew --prefix openjdk@21)/libexec/openjdk.jdk/Contents/Home"
 export PATH="$JAVA_HOME/bin:$PATH"
 export ANDROID_SDK_ROOT="$HOME/Library/Android/sdk"
 export ANDROID_HOME="$ANDROID_SDK_ROOT"
-export ANDROID_API_LEVEL=36
-export ANDROID_BUILD_TOOLS=36.0.0
+export ANDROID_API_LEVEL=37.0
+export ANDROID_BUILD_TOOLS=37.0.0
 export INSTALL_SYSTEM_IMAGE=false
 export ANDROID_SYSTEM_IMAGE=
 
@@ -73,12 +73,12 @@ bash .github/scripts/setup/install_android_sdk_packages.sh
 ### Linux
 
 ```bash
-export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 export PATH="$JAVA_HOME/bin:$PATH"
 export ANDROID_SDK_ROOT="$HOME/Android/Sdk"
 export ANDROID_HOME="$ANDROID_SDK_ROOT"
-export ANDROID_API_LEVEL=36
-export ANDROID_BUILD_TOOLS=36.0.0
+export ANDROID_API_LEVEL=37.0
+export ANDROID_BUILD_TOOLS=37.0.0
 export INSTALL_SYSTEM_IMAGE=false
 export ANDROID_SYSTEM_IMAGE=
 
@@ -90,8 +90,8 @@ If your Linux host is `arm64`, native SDK installation can still work, but Andro
 ### Windows PowerShell
 
 ```powershell
-$env:ANDROID_API_LEVEL = "36"
-$env:ANDROID_BUILD_TOOLS = "36.0.0"
+$env:ANDROID_API_LEVEL = "37.0"
+$env:ANDROID_BUILD_TOOLS = "37.0.0"
 $env:INSTALL_SYSTEM_IMAGE = "false"
 $env:ANDROID_SYSTEM_IMAGE = ""
 
@@ -140,7 +140,7 @@ bash .github/scripts/quality/run_coverage.sh
 
 ### Foundation
 
-CI script: [run_foundation.sh](/Users/anesterov/repos/openvino-notes/.github/scripts/quality/run_foundation.sh)
+CI script: [run_foundation.sh](../../.github/scripts/quality/run_foundation.sh)
 
 Tasks:
 
@@ -178,8 +178,8 @@ Linux arm64 note:
 
 CI scripts:
 
-- [run_debug_build_and_unit_tests.sh](/Users/anesterov/repos/openvino-notes/.github/scripts/quality/run_debug_build_and_unit_tests.sh)
-- [run_debug_build_and_unit_tests_windows.ps1](/Users/anesterov/repos/openvino-notes/.github/scripts/quality/run_debug_build_and_unit_tests_windows.ps1)
+- [run_debug_build_and_unit_tests.sh](../../.github/scripts/quality/run_debug_build_and_unit_tests.sh)
+- [run_debug_build_and_unit_tests_windows.ps1](../../.github/scripts/quality/run_debug_build_and_unit_tests_windows.ps1)
 
 Tasks:
 
@@ -215,7 +215,7 @@ Outputs:
 
 ### Coverage
 
-CI script: [run_coverage.sh](/Users/anesterov/repos/openvino-notes/.github/scripts/quality/run_coverage.sh)
+CI script: [run_coverage.sh](../../.github/scripts/quality/run_coverage.sh)
 
 Tasks:
 
@@ -246,8 +246,8 @@ Output:
 
 CI scripts:
 
-- [assemble_release.sh](/Users/anesterov/repos/openvino-notes/.github/scripts/release/assemble_release.sh)
-- [lint_release.sh](/Users/anesterov/repos/openvino-notes/.github/scripts/release/lint_release.sh)
+- [assemble_release.sh](../../.github/scripts/release/assemble_release.sh)
+- [lint_release.sh](../../.github/scripts/release/lint_release.sh)
 
 Linux or macOS:
 
@@ -265,7 +265,7 @@ Windows:
 
 ### Secrets
 
-CI script: [run_gitleaks.sh](/Users/anesterov/repos/openvino-notes/.github/scripts/security/run_gitleaks.sh)
+CI script: [run_gitleaks.sh](../../.github/scripts/security/run_gitleaks.sh)
 
 Linux x86_64:
 
@@ -285,7 +285,7 @@ Linux arm64 note:
 
 ### Preflight
 
-CI script: [classify_changes.sh](/Users/anesterov/repos/openvino-notes/.github/scripts/preflight/classify_changes.sh)
+CI script: [classify_changes.sh](../../.github/scripts/preflight/classify_changes.sh)
 
 The script expects `GITHUB_OUTPUT`, so a plain local invocation is not enough.
 
@@ -306,7 +306,7 @@ rm -f "$tmpfile"
 
 ### CodeQL Build
 
-CI script: [build_for_codeql.sh](/Users/anesterov/repos/openvino-notes/.github/scripts/codeql/build_for_codeql.sh)
+CI script: [build_for_codeql.sh](../../.github/scripts/codeql/build_for_codeql.sh)
 
 Linux or macOS:
 
@@ -329,9 +329,9 @@ Limitation:
 
 CI scripts:
 
-- [validate_debug_apk_tasks.sh](/Users/anesterov/repos/openvino-notes/.github/scripts/android/validate_debug_apk_tasks.sh)
-- [run_emulator_instrumentation.sh](/Users/anesterov/repos/openvino-notes/.github/scripts/android/run_emulator_instrumentation.sh)
-- [run_all_instrumentation_variants.sh](/Users/anesterov/repos/openvino-notes/.github/scripts/android/run_all_instrumentation_variants.sh)
+- [validate_debug_apk_tasks.sh](../../.github/scripts/android/validate_debug_apk_tasks.sh)
+- [run_emulator_instrumentation.sh](../../.github/scripts/android/run_emulator_instrumentation.sh)
+- [run_all_instrumentation_variants.sh](../../.github/scripts/android/run_all_instrumentation_variants.sh)
 
 GitHub CI target:
 
@@ -339,6 +339,8 @@ GitHub CI target:
 - API 34
 - `x86_64`
 - `pixel_7`
+
+On-device OpenVINO LLM tests are different from the standard emulator checks: the host may be Linux x86_64, but the Android target must support `arm64-v8a` unless an x86_64 OpenVINO prebuild is provided.
 
 Validated local macOS target:
 
@@ -376,7 +378,7 @@ APK_DIR=app/build/outputs/apk bash .github/scripts/android/run_emulator_instrume
 Validated macOS arm64 flow:
 
 ```bash
-export JAVA_HOME="$(brew --prefix openjdk@17)/libexec/openjdk.jdk/Contents/Home"
+export JAVA_HOME="$(brew --prefix openjdk@21)/libexec/openjdk.jdk/Contents/Home"
 export PATH="$JAVA_HOME/bin:$PATH:$HOME/Library/Android/sdk/emulator:$HOME/Library/Android/sdk/platform-tools"
 export ANDROID_SDK_ROOT="$HOME/Library/Android/sdk"
 export ANDROID_HOME="$ANDROID_SDK_ROOT"

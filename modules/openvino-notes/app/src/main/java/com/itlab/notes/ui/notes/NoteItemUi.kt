@@ -10,4 +10,6 @@ data class NoteItemUi(
     val folderId: String? = null,
     val attachments: List<ContentItem> = emptyList(),
     val isFavorite: Boolean = false,
+    val tags: Set<String> = emptySet(),
+    val summary: String? = null,
 )

@@ -2,12 +2,13 @@
 
 This documentation is intended for contributors working on `openvino-notes`.
 
-The repository already has a meaningful CI and build setup, while the application code is still at an early implementation stage. The goal of these documents is to help contributors understand the project quickly and reproduce the same checks that gate pull requests and `main`.
+The repository has a meaningful CI/build setup and an active Android application with local storage, editor flows, and on-device text AI. The goal of these documents is to help contributors understand the project quickly and reproduce the same checks that gate pull requests and `main`.
 
 ## Recommended Reading Order
 
 1. [Local CI Reproduction](./ci-local.md)
 2. [Project Overview](./project.md)
+3. [On-Device AI](./on-device-ai.md)
 
 ## Current State
 
@@ -16,13 +17,13 @@ What is already in place:
 - a four-module Android build
 - reusable GitHub Actions workflows
 - shared formatting, lint, and coverage policy
+- on-device OpenVINO GenAI text assistance for summary, tags, and rewrite
 
-What is still mostly scaffolded:
+What is intentionally still limited:
 
-- domain contracts
-- data-layer behavior
-- OpenVINO integration
-- app-level product flows
+- image tagging is not implemented in the text LLM path
+- model and OpenVINO runtime bundles are large and are consumed from release assets instead of being stored in git
+- full model-behavior validation requires an Android target matching the selected OpenVINO runtime prebuild ABI; `arm64-v8a` is the default, and `x86_64` is selected with `-PopenvinoAndroidAbi=x86_64`
 
 ## Main Work Areas
 
@@ -169,16 +170,24 @@ Repositories abstract storage for testable domain logic.
 
 Interface for AI operations.
 
-- `suspend fun summarize(text: String): String`
-- `suspend fun tagTXT(text: String): Set<String>`
-- `suspend fun tagIMGs(images: List<String>): Set<String>`
+- `suspend fun warmUp()`
+- `fun release()`
+- `suspend fun summarize(text: String, maxInputTokens: Int, maxNewTokens: Int): String`
+- `suspend fun suggestTags(text: String, maxInputTokens: Int, maxTags: Int): Set<String>`
+- `suspend fun rewrite(text: String, style: RewriteStyle, maxInputTokens: Int, maxNewTokens: Int): String`
+- `suspend fun tagIMGs(img: List<String>): Set<String>`
+- `tagTXT` is deprecated and remains only as a compatibility shim over `suggestTags`.
 
 ## AI Use Cases
 
 - `SuggestSummaryUseCase`: extract text, call AI, return proposed summary
-- `SuggestTagsUseCase`: extract text/images, call AI, return combined tags
+- `SuggestTagsUseCase`: extract text, call AI, return text tags
+- `RewriteNoteUseCase`: extract text, call AI, return a rewritten note proposal
+- `WarmUpNoteAiUseCase`: initialize reusable model resources before the first user request
+- `ReleaseNoteAiUseCase`: release model resources when the editor no longer needs them
 - `ApplySummaryUseCase`: update note with AI-generated summary
 - `ApplyTagsUseCase`: update note with AI-generated tags
+- `ApplyRewriteUseCase`: update note text with an accepted rewrite proposal
 
 AI operations are separated into **suggest** (proposal) and **apply** (commit) stages.
 
@@ -196,13 +205,13 @@ AI operations are separated into **suggest** (proposal) and **apply** (commit) s
 ### AI Operations
 
 1. UI triggers AI action
-2. ViewModel calls `SuggestSummaryUseCase` or `SuggestTagsUseCase`
+2. ViewModel calls `SuggestSummaryUseCase`, `SuggestTagsUseCase`, or `RewriteNoteUseCase`
 3. Use case retrieves note from repository
-4. Use case extracts content
+4. Use case extracts text content
 5. Use case calls `NoteAiService`
-6. AI returns results
-7. ViewModel receives results
-8. If confirmed, `ApplySummaryUseCase` or `ApplyTagsUseCase` updates the note
+6. AI returns a proposed result
+7. ViewModel receives the proposal
+8. If confirmed, `ApplySummaryUseCase`, `ApplyTagsUseCase`, or `ApplyRewriteUseCase` updates the note
 
 ## Principles
 
@@ -219,8 +228,8 @@ Unit tests cover:
 - Creating, updating, deleting notes and folders
 - Moving notes between folders
 - Observing notes and folders
-- Getting AI-generated summaries and tags
-- Applying summaries and tags
+- Getting AI-generated summaries, tags, and rewrites
+- Applying summaries, tags, and rewrites
 - Error handling for missing notes
 
 Fake repositories and fake AI service enable testing without Android or OpenVINO dependencies.

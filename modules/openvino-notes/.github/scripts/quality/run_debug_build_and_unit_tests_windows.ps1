@@ -1,7 +1,10 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+$openvinoAndroidAbi = if ($env:OPENVINO_ANDROID_ABI) { $env:OPENVINO_ANDROID_ABI } else { "arm64-v8a" }
+
 & .\gradlew.bat `
+  "-PopenvinoAndroidAbi=$openvinoAndroidAbi" `
   ai:assembleDebug `
   app:assembleDebug `
   app:assembleDebugAndroidTest `

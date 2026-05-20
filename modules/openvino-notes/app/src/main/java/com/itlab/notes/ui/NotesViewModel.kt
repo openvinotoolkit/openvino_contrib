@@ -26,8 +26,6 @@ import com.itlab.notes.ui.toSingleLineText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -58,6 +56,15 @@ class NotesViewModel(
     private var initialFullSyncJob: Job? = null
     private val lastCloudHashByNoteId = mutableMapOf<String, Int>()
     private var editorHasLocalChanges = false
+    private val aiController =
+        NotesAiController(
+            scope = viewModelScope,
+            useCases = useCases,
+            getUiState = { uiState },
+            setUiState = { uiState = it },
+            upsertEditorNote = ::upsertEditorNote,
+            updateEditorNote = ::updateEditorNote,
+        )
 
     init {
         viewModelScope.launch {
@@ -77,6 +84,7 @@ class NotesViewModel(
         viewModelScope.launch {
             useCases.getUserIdUseCase()?.let { ensureInitialFullSync(it) }
         }
+        aiController.warmUp()
     }
 
     fun ensureInitialFullSyncForCurrentUser() {
@@ -98,10 +106,22 @@ class NotesViewModel(
 
     override fun onEvent(event: NotesUiEvent) {
         when (event) {
-            is NotesUiEvent.OpenDirectory -> openDirectory(event.directory)
-            NotesUiEvent.BackToDirectories -> backToDirectories()
-            is NotesUiEvent.OpenNote -> openNote(event.note)
-            NotesUiEvent.CreateNote -> createNote()
+            is NotesUiEvent.OpenDirectory -> {
+                aiController.cancelGeneration()
+                openDirectory(event.directory)
+            }
+            NotesUiEvent.BackToDirectories -> {
+                aiController.cancelGeneration()
+                backToDirectories()
+            }
+            is NotesUiEvent.OpenNote -> {
+                aiController.cancelGeneration()
+                openNote(event.note)
+            }
+            NotesUiEvent.CreateNote -> {
+                aiController.cancelGeneration()
+                createNote()
+            }
             is NotesUiEvent.CreateDirectory -> {
                 val normalized =
                     event.name
@@ -132,9 +152,20 @@ class NotesViewModel(
                 }
             }
             is NotesUiEvent.ToggleNoteFavorite -> toggleNoteFavorite(event.noteId)
-            NotesUiEvent.BackToDirectoryNotes -> backToDirectoryNotes()
-            is NotesUiEvent.LeaveEditor -> leaveEditor(event.note)
+            NotesUiEvent.BackToDirectoryNotes -> {
+                aiController.cancelGeneration()
+                backToDirectoryNotes()
+            }
+            is NotesUiEvent.LeaveEditor -> {
+                aiController.cancelGeneration()
+                leaveEditor(event.note)
+            }
             is NotesUiEvent.PersistNote -> persistNote(event.note)
+            is NotesUiEvent.SuggestSummary -> aiController.suggestAi(event.note, AiSuggestion.Summary)
+            is NotesUiEvent.SuggestTags -> aiController.suggestAi(event.note, AiSuggestion.Tags)
+            is NotesUiEvent.SuggestImageTags -> aiController.suggestImageTags(event.note)
+            is NotesUiEvent.RewriteNote -> aiController.suggestAi(event.note, AiSuggestion.Rewrite)
+            NotesUiEvent.CancelAiGeneration -> aiController.cancelGeneration()
             is NotesUiEvent.DeleteNote -> {
                 viewModelScope.launch {
                     useCases.deleteNoteUseCase(event.noteId)
@@ -224,6 +255,8 @@ class NotesViewModel(
                 screen = NotesUiScreen.DirectoryNotes(directory = directory),
                 notes = emptyList(),
                 notesSearchQuery = "",
+                aiState = aiController.freshAiState(),
+                imageTaggingState = ImageTaggingUiState(),
             )
         startNotesCollection(directory, searchQuery = "")
     }
@@ -235,7 +268,7 @@ class NotesViewModel(
         notesJob?.cancel()
         notesJob =
             viewModelScope.launch {
-                notesFlow(directory, searchQuery).collect { notes ->
+                notesFlowForDirectory(useCases, latestFolders, directory, searchQuery).collect { notes ->
                     val opened = uiState.screen as? NotesUiScreen.DirectoryNotes ?: return@collect
                     uiState =
                         uiState.copy(
@@ -250,59 +283,14 @@ class NotesViewModel(
             }
     }
 
-    private fun notesFlow(
-        directory: DirectoryItemUi,
-        searchQuery: String,
-    ): Flow<List<Note>> {
-        val normalizedQuery = searchQuery.trim()
-        return if (normalizedQuery.isBlank()) {
-            when (directory.id) {
-                ALL_DIRECTORY_ID ->
-                    useCases.observeNotesUseCase().map { notesInActiveFolders(it) }
-                FAVORITES_DIRECTORY_ID ->
-                    useCases.getAllFavoritesUseCase().map { notesInActiveFolders(it) }
-                RECENT_DIRECTORY_ID ->
-                    useCases.observeNotesUseCase().map { notes ->
-                        notesInActiveFolders(notes).sortedByDescending { it.updatedAt }
-                    }
-                else -> useCases.observeNotesByFolderUseCase(directory.id)
-            }
-        } else {
-            val searchFlow =
-                useCases.searchNotesUseCase(
-                    query = normalizedQuery,
-                    folderId = directory.folderIdForSearch(),
-                )
-            when (directory.id) {
-                FAVORITES_DIRECTORY_ID ->
-                    searchFlow.map { notes ->
-                        notesInActiveFolders(notes).filter { it.isFavorite }
-                    }
-                ALL_DIRECTORY_ID -> searchFlow.map { notesInActiveFolders(it) }
-                RECENT_DIRECTORY_ID ->
-                    searchFlow.map { notes ->
-                        notesInActiveFolders(notes).sortedByDescending { it.updatedAt }
-                    }
-                else -> searchFlow
-            }
-        }
-    }
-
-    /** Notes whose folder was deleted stay in DB until sync; hide them from All/Recent. */
-    private fun notesInActiveFolders(notes: List<Note>): List<Note> {
-        val activeFolderIds = latestFolders.map { it.id }.toSet()
-        return notes.filter { note ->
-            val folderId = note.folderId ?: return@filter true
-            folderId in activeFolderIds
-        }
-    }
-
     private val backToDirectories: () -> Unit = {
         uiState =
             uiState.copy(
                 screen = NotesUiScreen.Directories,
                 notes = emptyList(),
                 notesSearchQuery = "",
+                aiState = aiController.freshAiState(),
+                imageTaggingState = ImageTaggingUiState(),
             )
     }
 
@@ -317,7 +305,10 @@ class NotesViewModel(
             uiState =
                 uiState.copy(
                     screen = NotesUiScreen.NoteEditor(directory = dir, note = enriched),
+                    aiState = aiController.freshAiState(),
+                    imageTaggingState = ImageTaggingUiState(),
                 )
+            aiController.warmUp()
         }
     }
 
@@ -331,7 +322,10 @@ class NotesViewModel(
         uiState =
             uiState.copy(
                 screen = NotesUiScreen.NoteEditor(directory = dir, note = newNote),
+                aiState = aiController.freshAiState(),
+                imageTaggingState = ImageTaggingUiState(),
             )
+        aiController.warmUp()
     }
 
     private fun resetEditorCloudBaseline(note: NoteItemUi) {
@@ -342,7 +336,12 @@ class NotesViewModel(
     private fun backToDirectoryNotes() {
         val editor = uiState.screen as? NotesUiScreen.NoteEditor ?: return
         val directory = editor.directory
-        uiState = uiState.copy(screen = NotesUiScreen.DirectoryNotes(directory = directory))
+        uiState =
+            uiState.copy(
+                screen = NotesUiScreen.DirectoryNotes(directory = directory),
+                aiState = aiController.freshAiState(),
+                imageTaggingState = ImageTaggingUiState(),
+            )
         startNotesCollection(directory, uiState.notesSearchQuery)
     }
 
@@ -515,7 +514,12 @@ class NotesViewModel(
     fun isNoteUploading(noteId: String): Boolean = noteId in uiState.noteIdsUploading
 
     private fun navigateBackToDirectoryNotes(directory: DirectoryItemUi) {
-        uiState = uiState.copy(screen = NotesUiScreen.DirectoryNotes(directory = directory))
+        uiState =
+            uiState.copy(
+                screen = NotesUiScreen.DirectoryNotes(directory = directory),
+                aiState = aiController.freshAiState(),
+                imageTaggingState = ImageTaggingUiState(),
+            )
         startNotesCollection(directory, uiState.notesSearchQuery)
     }
 
@@ -574,41 +578,57 @@ class NotesViewModel(
         return true
     }
 
-    private fun recomputeDirectories() {
-        val activeNotes = notesInActiveFolders(latestNotes)
-        val countsByFolderId = activeNotes.groupingBy { it.folderId }.eachCount()
-        val allNotesCount = activeNotes.size
-
-        val favoritesCount = activeNotes.count { it.isFavorite }
-        val allNotesDir = DirectoryItemUi(id = ALL_DIRECTORY_ID, name = "All Notes", noteCount = allNotesCount)
-        val favoritesDir =
-            DirectoryItemUi(
-                id = FAVORITES_DIRECTORY_ID,
-                name = "Favorites",
-                noteCount = favoritesCount,
-            )
-
-        val directories =
-            listOf(allNotesDir, favoritesDir) +
-                latestFolders.map { folder ->
-                    val count = countsByFolderId[folder.id] ?: 0
-                    folder.toUi(noteCount = count)
-                }
-
-        uiState = uiState.copy(directories = directories)
-
-        // If a directory screen is currently open, keep the directory object in sync with the new count.
-        val opened = uiState.screen as? NotesUiScreen.DirectoryNotes
-        if (opened != null) {
-            val updatedDir = directories.firstOrNull { it.id == opened.directory.id }
-            if (updatedDir != null && updatedDir.noteCount != opened.directory.noteCount) {
-                uiState = uiState.copy(screen = NotesUiScreen.DirectoryNotes(directory = updatedDir))
+    private suspend fun upsertEditorNote(
+        note: NoteItemUi,
+        directory: DirectoryItemUi,
+    ): Result<NoteItemUi> =
+        runCatching {
+            require(note.title.trim().isNotEmpty()) { "Title is required" }
+            val targetFolderId = note.folderId ?: directory.id.asDomainFolderId()
+            val authUserId = useCases.getUserIdUseCase()
+            val existing = useCases.getNoteUseCase(note.id)
+            if (existing != null) {
+                useCases.updateNoteUseCase(existing.applyUiUpdate(note, targetFolderId)).getOrThrow()
+                note.copy(
+                    userId = authUserId ?: note.userId,
+                    folderId = targetFolderId,
+                )
+            } else {
+                val domainNote =
+                    note
+                        .toDomain(folderId = targetFolderId)
+                        .let { draft ->
+                            if (authUserId != null) draft.copy(userId = authUserId) else draft
+                        }
+                val savedId = useCases.createNoteUseCase(domainNote).getOrThrow()
+                note.copy(
+                    id = savedId,
+                    userId = authUserId ?: note.userId,
+                    folderId = targetFolderId,
+                )
             }
         }
+
+    private fun updateEditorNote(note: NoteItemUi) {
+        val editor = uiState.screen as? NotesUiScreen.NoteEditor ?: return
+        uiState =
+            uiState.copy(
+                screen = editor.copy(note = note),
+            )
+    }
+
+    private fun recomputeDirectories() {
+        val directories = buildDirectoryItems(latestFolders, latestNotes)
+        uiState =
+            uiState.copy(
+                directories = directories,
+                screen = uiState.screen.withUpdatedDirectoryCount(directories),
+            )
     }
 
     override fun onCleared() {
         notesJob?.cancel()
+        aiController.cancelAll()
         super.onCleared()
     }
 }
@@ -628,6 +648,8 @@ internal fun Note.toUi(): NoteItemUi =
         folderId = folderId,
         attachments = contentItems.withoutTextItems(),
         isFavorite = isFavorite,
+        tags = tags,
+        summary = summary,
     )
 
 internal fun NoteItemUi.toContentItems(): List<ContentItem> =
@@ -644,6 +666,8 @@ internal fun NoteItemUi.toDomain(folderId: String?): Note =
         folderId = folderId,
         contentItems = toContentItems(),
         isFavorite = isFavorite,
+        tags = tags,
+        summary = summary,
     )
 
 internal fun NoteItemUi.contentCloudHash(): Int {
@@ -664,6 +688,8 @@ internal fun Note.applyUiUpdate(
         folderId = targetFolderId,
         contentItems = ui.toContentItems(),
         isFavorite = ui.isFavorite,
+        tags = ui.tags,
+        summary = ui.summary,
         syncStatus = SyncState.PENDING,
     )
 

@@ -14,6 +14,10 @@ class EditorViewModel(
     private val noteId: String = initialNote.id
     private val userId: String = initialNote.userId
     private val folderId: String? = initialNote.folderId
+    private var syncedTitle: String = initialNote.title
+    private var syncedContent: String = initialNote.content
+    private var tags: Set<String> = initialNote.tags
+    private var summary: String? = initialNote.summary
 
     var title: String by mutableStateOf(initialNote.title.toSingleLineText())
         private set
@@ -29,6 +33,20 @@ class EditorViewModel(
 
     fun syncFavoriteFromNote(value: Boolean) {
         isFavorite = value
+    }
+
+    fun syncGeneratedFields(note: NoteItemUi) {
+        tags = note.tags
+        summary = note.summary
+        isFavorite = note.isFavorite
+        if (note.title == title || title == syncedTitle) {
+            title = note.title.toSingleLineText()
+        }
+        syncedTitle = note.title.toSingleLineText()
+        if (note.content == content || content == syncedContent) {
+            content = note.content
+        }
+        syncedContent = note.content
     }
 
     fun onTitleChange(newTitle: String) {
@@ -113,5 +131,7 @@ class EditorViewModel(
             folderId = folderId,
             attachments = attachments,
             isFavorite = isFavorite,
+            tags = tags,
+            summary = summary,
         )
 }
