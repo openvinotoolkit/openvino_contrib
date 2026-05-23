@@ -173,6 +173,9 @@ void InferRequest::infer() {
         case GpuBackend::Metal:
             infer_metal_impl(cm);
             break;
+        case GpuBackend::OpenCL:
+            infer_opencl_impl(cm);
+            break;
         case GpuBackend::Vulkan:
             infer_vulkan_impl(cm);
             break;

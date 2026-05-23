@@ -535,6 +535,17 @@ MetalBufferManager::query_execution_device_info() const {
   const auto caps = query_metal_device_caps(m_core.device());
   info.backend = GpuBackend::Metal;
   info.device_family = GpuDeviceFamily::Apple;
+#ifdef __OBJC__
+  if (auto device = static_cast<id<MTLDevice>>(m_core.device())) {
+    NSString *name = [device name];
+    if (name) {
+      info.device_name = [name UTF8String];
+    }
+  }
+#endif
+  if (info.device_name.empty()) {
+    info.device_name = "apple_metal";
+  }
   info.preferred_simd_width = std::max<uint32_t>(caps.preferred_simd_width, 1u);
   info.subgroup_size = info.preferred_simd_width;
   info.max_total_threads_per_group =
@@ -543,12 +554,17 @@ MetalBufferManager::query_execution_device_info() const {
       std::max<uint32_t>(caps.max_threads_per_threadgroup_x, 1u),
       std::max<uint32_t>(caps.max_threads_per_threadgroup_y, 1u),
       std::max<uint32_t>(caps.max_threads_per_threadgroup_z, 1u)};
+  info.min_storage_buffer_offset_alignment = 16;
+  info.non_coherent_atom_size = 1;
+  info.supports_storage_buffer_16bit = true;
+  info.supports_shader_float16 = true;
   info.supports_conv_output_channel_blocking = true;
   info.supports_conv_channel_block_spatial_tiling = true;
 
   std::ostringstream os;
   os << "metal:" << gpu_device_family_name(info.device_family) << ':'
-     << m_core.device() << ':' << info.preferred_simd_width << ':'
+     << info.device_name << ':' << m_core.device() << ':'
+     << info.preferred_simd_width << ':'
      << info.max_total_threads_per_group << ':' << info.max_threads_per_group[0]
      << ':' << info.max_threads_per_group[1] << ':'
      << info.max_threads_per_group[2];

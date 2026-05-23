@@ -37,11 +37,18 @@ public:
     const std::string& device_name() const { return m_device_name; }
     uint32_t vendor_id() const { return m_vendor_id; }
     uint32_t device_id() const { return m_device_id; }
+    uint32_t driver_version() const { return m_driver_version; }
+    uint32_t api_version() const { return m_api_version; }
     GpuDeviceFamily device_family() const { return m_device_family; }
+    size_t min_storage_buffer_offset_alignment() const { return m_min_storage_buffer_offset_alignment; }
     size_t noncoherent_atom_size() const { return m_noncoherent_atom_size; }
     uint32_t max_compute_workgroup_invocations() const { return m_max_compute_workgroup_invocations; }
     const std::array<uint32_t, 3>& max_compute_workgroup_size() const { return m_max_compute_workgroup_size; }
     uint32_t subgroup_size() const { return m_subgroup_size; }
+    bool supports_storage_buffer_8bit() const { return m_supports_storage_buffer_8bit; }
+    bool supports_storage_buffer_16bit() const { return m_supports_storage_buffer_16bit; }
+    bool supports_shader_float16() const { return m_supports_shader_float16; }
+    bool supports_shader_int8() const { return m_supports_shader_int8; }
 
 private:
     VulkanInstanceHandle m_instance = VK_NULL_HANDLE;
@@ -52,11 +59,18 @@ private:
     std::string m_device_name;
     uint32_t m_vendor_id = 0;
     uint32_t m_device_id = 0;
+    uint32_t m_driver_version = 0;
+    uint32_t m_api_version = 0;
     GpuDeviceFamily m_device_family = GpuDeviceFamily::Generic;
+    size_t m_min_storage_buffer_offset_alignment = 1;
     size_t m_noncoherent_atom_size = 1;
     uint32_t m_max_compute_workgroup_invocations = 1;
     std::array<uint32_t, 3> m_max_compute_workgroup_size{{1, 1, 1}};
     uint32_t m_subgroup_size = 1;
+    bool m_supports_storage_buffer_8bit = false;
+    bool m_supports_storage_buffer_16bit = false;
+    bool m_supports_shader_float16 = false;
+    bool m_supports_shader_int8 = false;
 };
 
 }  // namespace gfx_plugin

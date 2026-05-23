@@ -39,6 +39,7 @@ Additional operational docs:
    - architecture or runtime flow
    - property semantics
    - backend-specific route selection
+   - OpenCL source-artifact coverage, dynamic OpenCL runtime behavior, or non-Apple default-backend resolution
    - Metal placement-domain or storage selection such as `apple_mps` image/matrix stages versus `apple_msl` buffer dispatch
    - manifest-backed execution-kind or hybrid-stage planning such as vendor `MPSGemm` plus custom MSL epilogues
    - Apple MPS/MPSGraph vendor primitive descriptor support such as Conv2D, Pool2D, Resize2D, Softmax, TopK, GEMM, or SDPA
@@ -60,6 +61,7 @@ Additional operational docs:
    - MLIR-owned Metal MSL source generation such as Apple MSL binding/dispatch/op-family helpers, Apple MPS/MPSGraph vendor source plans, MatMul direct/MPSRT helpers, compressed `MatMul`, SDPA, or causal SDPA helpers
    - SPIR-V fixed-argument binding adapters or compact Vulkan ABI metadata
    - Vulkan Conv2D output-channel blocking through `gfx.dispatch_channel_block`, SPIR-V cache metadata, or shared convolution lowering
+   - `GfxTargetProfile`, `GpuExecutionDeviceInfo`, `extended.target_profile`, or `target_backend_*` profiling counters
    - infer submission dependency-window extension, soft-budget caps, or boundary-stage rules
    - typed MPSRT builder-plan/runtime-model or storage-bridge behavior on Metal
    - backend custom-kernel ABI adapters, runtime-value helpers, or diagnostic Metal placement properties
@@ -87,6 +89,13 @@ Additional operational docs:
   - `docs/DEVELOPMENT.md`
   - `docs/PROFILING_RUNBOOK.md` if counters or submit-window diagnostics changed
 
+- `src/backends/opencl/` or `src/kernel_ir/gfx_opencl_source_artifacts.*` changes:
+  - `README.md`
+  - `docs/ARCHITECTURE.md`
+  - `docs/DEVELOPMENT.md`
+  - `docs/TESTING.md`
+  - `docs/USAGE.md` if public backend selection or runtime behavior changed
+
 - `src/mlir/` or `src/transforms/` changes:
   - `README.md` when user-visible behavior shifts
   - `docs/ARCHITECTURE.md`
@@ -105,6 +114,11 @@ Additional operational docs:
 
 - compare/profiling/microbench tool changes:
   - `docs/TESTING.md`
+  - `docs/USAGE.md`
+  - `docs/MICROBENCH_SCHEMA.md`
+  - `docs/PROFILING_RUNBOOK.md`
+
+- target-profile JSON or microbench device-fingerprint changes:
   - `docs/USAGE.md`
   - `docs/MICROBENCH_SCHEMA.md`
   - `docs/PROFILING_RUNBOOK.md`

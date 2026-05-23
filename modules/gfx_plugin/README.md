@@ -12,7 +12,8 @@ This directory is intended to be self-contained. Start here, then read:
 GFX is an OpenVINO runtime plugin that compiles an `ov::Model` into a backend-specific GPU execution pipeline.
 The current direction is mobile-class GPU execution rather than large datacenter GPUs:
 - Metal on macOS
-- Vulkan on non-Apple builds when Vulkan is available at configure time, with current focus on Android Adreno-class and Raspberry Pi Vulkan targets
+- OpenCL source kernels on non-Apple builds when the dynamic OpenCL runtime is available
+- Vulkan as a legacy diagnostic backend for Android Adreno-class and Raspberry Pi Vulkan/SPIR-V investigations
 
 The codebase uses a shared frontend and a stage-based runtime:
 1. OpenVINO graph transformations run in `src/transforms/`
@@ -22,7 +23,7 @@ The codebase uses a shared frontend and a stage-based runtime:
 
 Recent runtime work extends this model in two directions:
 - compile-time stage planning now picks layout, fusion, and execution policy per stage
-- backend runtimes, especially Vulkan, can choose specialized direct or chunked execution routes for selected non-convolution ops while Conv2D and GroupConv stay on the shared MLIR/custom-kernel route
+- backend runtimes can choose specialized direct, source-artifact, or chunked execution routes for selected ops while Conv2D and GroupConv stay on shared custom-kernel contracts
 - infer execution can batch stage recording into submission windows and reuse prepared bindings or immutable device buffers across requests
 - infer submission can keep a direct producer-consumer chain in one command-buffer window even after a soft budget boundary, while still stopping at layout, split, transpose, softmax, and attention boundaries
 - Metal infer execution can now reuse one compute encoder across consecutive dispatches and skip redundant pipeline or buffer rebinds when the command-buffer state is unchanged
@@ -32,23 +33,26 @@ Recent runtime work extends this model in two directions:
 - `GFX_DIAGNOSTIC_F32_MPS_IMAGE` and `ov_gfx_compare_runner --diagnostic-f32-mps-image` keep the selected `f32` Conv/GroupConv/Pool image route available as a diagnostic localization switch through the same planner/MPSRT route; production placement is still owned by normal stage policy and quality gates
 - the Metal compile path can serialize that placement into a backend-neutral MPSRT runtime model under `src/runtime/gfx_mpsrt_model.*` with explicit tensor descriptors, external-buffer roles, a typed `GfxMpsrtProgram` facade, generated `gfx_mpsrt_ops` materialization, and explicit storage-bridge descriptors before request-time execution
 - that MPSRT path is no longer limited to one annotated MSL dispatch; it can now carry vendor-only and hybrid multi-stage plans covering Apple MPS/MPSGraph GEMM, Conv2D, GroupConv, Pool2D, Resize2D, Softmax, TopK, and SDPA stages together with custom MSL epilogues or dispatch stages
-- Metal MSL source planning is now part of the shared MLIR/runtime layer and is split by responsibility into Apple MSL custom-kernel helpers, Apple MPS vendor-source-plan helpers, MatMul-specific Metal/MPSRT helpers, and a SPIR-V binding adapter for the Vulkan side
+- Metal MSL source planning is now part of the shared MLIR/runtime layer and is split by responsibility into Apple MSL custom-kernel helpers, Apple MPS vendor-source-plan helpers, MatMul-specific Metal/MPSRT helpers, an OpenCL source-artifact path, and a SPIR-V binding adapter for the Vulkan side
+- OpenCL source-kernel execution now has its own backend plugin/runtime layer, dynamic OpenCL API loader, source-artifact manifest path, program cache, buffer manager, and baseline f32 data-movement and elementwise kernels
 - infer requests can also keep per-request stateful variable buffers for `ReadValue` / `Assign` style subgraphs instead of treating them as ordinary stateless stage edges
 - output allocation can now reuse workspace-managed intermediate slots across stages based on liveness instead of always keeping one dedicated buffer per stage output
 - shared prepared-binding caches can now grow beyond their initial capacity when a workload introduces many distinct compatible binding tables
 - infer-time stage profiling can now attach lightweight `bytes_in`, `bytes_out`, `macs_est`, and `flops_est` estimates to `stage_execute` segments
+- backend buffer managers now report a shared target profile so profiling can show the resolved backend, device family, workgroup limits, memory alignment, and kernel capability flags through one JSON surface
 
 This is not the old monolithic `MlirBackend` architecture that earlier design notes experimented with.
 
 ## Current Status
 - Device name: `GFX`
-- Backends: `metal`, `vulkan`
+- Backends: `metal`, `opencl`, `vulkan`
 - Target class: mobile and embedded GPUs
 - Expected integration: recent OpenVINO Developer Package builds
 - Tested on:
   - Apple M1 Pro via Metal
   - Samsung Galaxy S25 via Vulkan
   - Raspberry Pi 5B via Vulkan
+- OpenCL is the preferred non-Apple default when enabled and available; Vulkan remains available for legacy SPIR-V diagnostics
 - No partial CPU fallback: unsupported models fail during `compile_model()`
 - `query_model()` is backend-aware and follows the same support probing path as compilation
 - `import_model()` reloads an OpenVINO model and recompiles it
@@ -61,10 +65,12 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 - `src/runtime/`: backend-neutral runtime abstractions and helpers
 - `src/runtime/gfx_mpsrt_*`: shared ABI, stage-plan, builder-plan, runtime-model, program, storage-bridge, and manifest-adapter helpers for the Apple MPS/MSL split
 - `src/kernel_ir/gfx_kernel_manifest.hpp`: backend-neutral manifest for vendor-primitive versus custom-kernel stage contracts
-- `src/kernel_ir/gfx_custom_kernel_families.*`: custom-kernel family registry, external-buffer ABI roles, and dispatch-policy defaults shared by Metal MSL source planning and MPSRT runtime-model generation
+- `src/kernel_ir/gfx_custom_kernel_families.*`: custom-kernel family registry, external-buffer ABI roles, and dispatch-policy defaults shared by Metal MSL source planning, OpenCL source artifacts, Vulkan SPIR-V binding, and MPSRT runtime-model generation
+- `src/kernel_ir/gfx_opencl_source_artifacts.*`: baseline OpenCL source kernels and their role-based manifest contracts
 - `src/mlir/`: MLIR support probes, Apple stage-pipeline passes, Apple vendor descriptor contracts, typed MPSRT dialect/materialization helpers, MPSRT builder-plan materialization, backend custom-kernel ABI adapters, split Apple MSL/MPS source-plan helpers, MatMul Metal/MPSRT helpers, SPIR-V binding adapters, runtime-value helpers, runtime-parameter payload helpers, const-tensor-source attachment, and shared codegen helpers
 - `src/backends/metal/`: Metal-specific plugin glue, runtime, memory, profiling, MSL compilation, and MPSGraph-backed vendor stages
-- `src/backends/vulkan/`: Vulkan-specific plugin glue, runtime, buffers, profiling, SPIR-V/Vulkan execution
+- `src/backends/opencl/`: OpenCL-specific plugin glue, dynamic runtime loader, buffer manager, program cache, source-stage execution, and stubs
+- `src/backends/vulkan/`: legacy Vulkan-specific plugin glue, runtime, buffers, profiling, SPIR-V/Vulkan execution
 - `src/transforms/`: OpenVINO graph passes and fusion logic
 - `src/kernel_ir/`: shared kernel metadata and planning structures
 - `tests/`: unit, integration, backend, and tooling coverage
@@ -109,7 +115,7 @@ The current infer path is not a naive "execute one stage, submit immediately" lo
 - reusable host output tensors for static output signatures when the user does not bind explicit output storage
 - submission windows driven by stage submit policy, stage count, and output-byte thresholds
 - direct dependency-aware window extension for producer-consumer chains that would otherwise be split only because a soft stage/output/MAC budget was reached
-- backend-specific submission sessions for Metal and Vulkan
+- backend-specific submission sessions for Metal, OpenCL, and Vulkan
 - self-healing reusable host outputs that are recreated if a cached host tensor no longer matches the required type or shape
 - workspace-managed stage-output allocation that can recycle intermediate buffers across compatible stage lifetimes and report slot usage through profiling counters
 - stateful `Assign` prebinding that can bind persistent variable outputs through source-node-aware pipeline output links instead of forcing a later copy-only path
@@ -119,12 +125,13 @@ The current infer path is not a naive "execute one stage, submit immediately" lo
 - `GpuStage`: execution-stage interface
 - `GpuStageFactory` / `ExecutionDispatcher`: backend-specific stage dispatch
 - `gfx_stage_policy.*`: runtime route, fusion, and submit-policy selection
-- `gfx_stage_policy.*` now also selects placement domains such as `apple_mps`, `apple_msl`, and `spirv`, together with storage kinds such as `image`, `matrix`, and `buffer`
+- `gfx_stage_policy.*` now also selects placement domains such as `apple_mps`, `apple_msl`, `opencl`, and `spirv`, together with storage kinds such as `image`, `matrix`, and `buffer`
 - manifest-backed stage metadata now distinguishes vendor-primitive stages from custom-kernel stages and carries stable kernel-family, semantic input/output roles, dispatch policy, and external-buffer-ABI contracts across the MLIR, compile, and runtime layers
 - `gfx_mpsrt_model.*` now lives in `src/runtime/` and owns runtime-model reconstruction, resource-table finalization, tensor binding plans, and external-buffer ABI adaptation shared by Metal preparation/tests rather than a Metal-only model object
 - generated `gfx_mpsrt_ops` metadata and typed builder-plan records now serialize multi-stage model records, external-buffer roles, per-stage ABI descriptors, runtime resources, and storage bridges into the Metal compile path instead of relying on flat legacy `gfx.mpsrt.*` attrs for stage reconstruction
 - storage bridges now cover not only image-backed stages but also matrix, ndarray, and alias-style contracts where the typed program/runtime model needs an explicit conversion edge
 - `gfx_parallelism.*` and `gfx_partitioning.*`: backend-neutral device-capability and workgroup planning helpers
+- `gfx_target_profile.*`: shared profiling snapshot for the resolved backend, device family, workgroup limits, memory-alignment traits, and kernel capability flags
 - `immutable_gpu_buffer_cache.*`: backend-neutral cache for immutable device buffers
 - shared remote context/tensor abstractions
 - common tensor, buffer, logging, kernel-binding, and parallelism helpers
@@ -147,9 +154,10 @@ Profiling now also has two layers:
 - compile-time tracing stored as a JSON `compile` section inside `GFX_PROFILING_REPORT`
 - infer-time node, segment, transfer, allocation, and counter reporting through `gfx_profiling_report.*`
 - infer `stage_execute` segments now also carry lightweight data-movement and compute estimates used by the extended roofline-style summaries
+- the active target profile is stored in `extended.target_profile` and mirrored through counters such as `target_backend_opencl`, `target_backend_metal`, and `target_backend_vulkan`
 
 Backend-neutral planning now consumes device info exported by the active buffer manager:
-- Metal and Vulkan buffer managers report subgroup width, workgroup limits, and device family through `GpuExecutionDeviceInfo`
+- Metal, OpenCL, and Vulkan buffer managers report subgroup width, workgroup limits, and device family through `GpuExecutionDeviceInfo`
 - `gfx_parallelism.*` converts that into execution-policy caps
 - `gfx_partitioning.*` derives 1D and 2D workgroup shapes from the same data
 
@@ -170,13 +178,15 @@ Family-aware tuning is now used for more than cache keys. The current code inclu
 The plugin has two layers of backend choice:
 - Build-time availability via CMake:
   - `GFX_ENABLE_METAL`
+  - `GFX_ENABLE_OPENCL`
   - `GFX_ENABLE_VULKAN`
   - `GFX_DEFAULT_BACKEND`
 - Runtime selection via property:
   - `GFX_BACKEND=metal`
+  - `GFX_BACKEND=opencl`
   - `GFX_BACKEND=vulkan`
 
-On macOS, CMake disables Vulkan and Metal becomes the only runtime backend.
+On macOS, CMake disables OpenCL and Vulkan for this module and Metal becomes the only runtime backend. On non-Apple builds, `auto` resolves to OpenCL first when the OpenCL source backend is enabled; Vulkan is selected only when OpenCL is unavailable or explicitly requested for diagnostics.
 
 ## Supported Ops
 Support is driven by MLIR builders in `src/mlir/` and backend runtime implementations. The active set includes:
@@ -197,14 +207,15 @@ Support is driven by MLIR builders in `src/mlir/` and backend runtime implementa
 Important constraints:
 - many paths require static rank or static shape
 - many ops require constant attributes
-- backend parity is not guaranteed between Metal and Vulkan
+- backend parity is not guaranteed between Metal, OpenCL, and Vulkan
 
 Current lowering/runtime special cases:
 - selected transpose inputs can be absorbed into Add, Conv2D, GroupConv2D, and Split lowering instead of staying as standalone runtime stages
 - transformation now depends on the resolved backend, so compile/query can preserve or decompose backend-sensitive patterns differently
+- OpenCL currently executes baseline source artifacts for f32 linear copy/layout, transpose, slice, strided-slice, gather, gather-elements, gather-nd, shapeof, concat, split, variadic-split, unary elementwise, binary elementwise, compare, and select families when their artifact contracts match
 - Vulkan contains specialized direct or chunked paths for unary, binary, softmax, split/concat, transpose, and convert cases; Conv2D and GroupConv2D are intentionally kept on the shared MLIR/SPIR-V custom-kernel path
 - Vulkan now also has specialized chunked paths for `RMS` and binary `Concat`
-- some Conv2D shapes may be lowered through an explicit MLIR `im2col + matmul` route when the selected execution policy prefers it
+- decomposed Conv2D routes such as `im2col + matmul` are not an active production route; convolution policy must stay on a single typed custom-kernel or a future typed multi-kernel manifest
 - Softmax lowering now supports arbitrary normalized axes instead of only the last axis
 - Reduce lowering now extracts axes and `keep_dims` through concrete Reduce op types instead of relying on a generic reduction base path
 - transform cleanup now runs OpenVINO `RMSFusion` before plugin-local cleanup, so common RMSNorm tails can reach dedicated `RMS` lowering and backend codegen
@@ -259,7 +270,7 @@ Commonly used properties:
 See `src/plugin/gfx_property_lists.cpp` for the exact supported property sets exposed by the plugin and by compiled models.
 
 Practical meanings:
-- `GFX_BACKEND`: request `metal` or `vulkan`
+- `GFX_BACKEND`: request `metal`, `opencl`, or `vulkan`
 - `GFX_ENABLE_FUSION`: enable stage fusion during pipeline construction
 - `GFX_PROFILING_LEVEL`: control profiling detail level
 - `GFX_PROFILING_REPORT`: fetch the latest profiling report, including compile and infer sections when profiling is enabled
@@ -287,8 +298,9 @@ cmake --build build-gfx-plugin --target ov_gfx_unit_tests ov_gfx_runtime_micro_t
 
 Useful options:
 - `-DGFX_ENABLE_METAL=ON|OFF`
+- `-DGFX_ENABLE_OPENCL=ON|OFF`
 - `-DGFX_ENABLE_VULKAN=ON|OFF`
-- `-DGFX_DEFAULT_BACKEND=auto|metal|vulkan`
+- `-DGFX_DEFAULT_BACKEND=auto|metal|opencl|vulkan`
 
 Build notes:
 - vendored LLVM/MLIR is now built as a static external toolchain under `third_party/llvm-project`
@@ -301,6 +313,7 @@ Build notes:
 - `third_party/Vulkan-Headers` is tracked as a git submodule pinned to the module-tested upstream release
 - Metal now builds the local MPSRT execution sources under `src/backends/metal/runtime/mpsrt/` together with the shared `src/runtime/gfx_mpsrt_model.*`, `gfx_mpsrt_*`, `gfx_kernel_manifest.hpp`, and `gfx_custom_kernel_families.*` helpers; Apple MSL source planning is compiled into the shared MLIR runtime library rather than the Metal runtime-only target
 - Metal backend detection now also requires `MetalPerformanceShaders.framework` and `MetalPerformanceShadersGraph.framework`, not only `Metal.framework` and `Foundation.framework`
+- OpenCL backend sources build without linking a compile-time OpenCL SDK; the runtime dynamically loads the target OpenCL library and reports the selected GPU through `GpuExecutionDeviceInfo`
 - `tools/gfx_rpi_vulkan_toolchain_builder.py` can assemble a hermetic Raspberry Pi Vulkan cross-toolchain bundle for Raspberry Pi 4/5 class `aarch64` Bookworm-style targets, normalize absolute sysroot symlinks, install both `vulkan/` and `vk_video/` headers into the generated sysroot, and emit portable `-march=armv8-a` compile flags in the generated wrappers and toolchain file
 
 The build produces the `openvino_gfx_plugin` shared library. On Unix-like builds this is typically emitted as `libopenvino_gfx_plugin.so`; the `.so` suffix is also forced on macOS for OpenVINO plugin loading compatibility.
@@ -371,10 +384,11 @@ Recent regression coverage includes:
 - Metal backend tests for MPSRT compile, prepared-pipeline caching, and request-time MSL dispatch execution in `tests/backends/metal/gpu_backend_test.mm`
 - Metal backend tests now also cover manifest-driven buffer ordering, program-to-ops materialization, runtime-parameter roles, typed builder-plan/runtime-model execution, storage bridges, MPSRT resource-table binding, prepared resource heaps, vendor `MPSGemm` / Conv2D / Pool2D / Resize2D / Softmax / TopK / SDPA execution, MPSGraph executable paths, and hybrid prepared-model execution
 - Metal MSL binding-plan tests cover compressed `MatMul`, SDPA, scalar/runtime-parameter ordering, manifest-derived argument counts, output-before-runtime-params ABI ordering, and request-time rejection when an MSL dispatch stage is missing materialized kernel-buffer order
+- OpenCL source-artifact tests in `tests/unit/gfx_opencl_source_artifacts_test.cpp` cover the baseline source manifest and role ABI contracts
 - SPIR-V binding-adapter tests cover compact fixed-argument metadata without reusing legacy Apple MSL operand/scalar attrs
 - canonical Conv2D MLIR lowering checks
 - strict interior-tile bounds checks plus Vulkan batch-1 parallel-launch, batch>1 serial-fallback, and Pool2D parallel-dispatch checks in `tests/unit/mlir_conv_parallel_test.cpp`
-- im2col rewrite coverage, including the batch-1 plain-matmul route
+- regression coverage that keeps decomposed Conv2D experiments out of the production lowering path until a typed multi-kernel manifest exists
 - linear matmul parallel-lowering coverage
 - ReduceSum builder coverage in `tests/unit/basic_ops_internal_test.cpp`
 - absorbed input-transform tests for Add, Conv2D, GroupConv2D, and Split
@@ -389,8 +403,10 @@ Recent regression coverage includes:
 - DFL softmax expectation rewrite coverage, including value-preservation checks for the MatMul form, in `tests/unit/layout_cleanup_test.cpp`
 - backend memory/device integration coverage in `tests/unit/memory_device_integration_test.mm`
 - plugin property coverage for numeric `available_devices` / `ov::device::id` behavior in `tests/unit/plugin_tests.cpp`
+- target-profile profiling coverage in `tests/unit/gfx_profiling_report_test.cpp`
 - precision-aware accuracy tolerance helpers in `tests/gfx_accuracy_tolerance.hpp`, shared by the compare runner and shared-test instances
 - `ov_gfx_conv_shape_bench` in `tests/tools/` for compile-plus-infer sweeps across representative YOLO26x convolution shapes on `GFX`; `CPU` is only a separate performance orienter
+- standalone OpenCL Conv2D microbench tools in `tests/tools/` for deciding whether an OpenCL kernel family is worth promoting into the shared GFX manifest/runtime contracts
 
 ## Debugging And Instrumentation
 Useful environment variables from the current codebase:
@@ -431,5 +447,5 @@ If you add new documentation meant for published consumers of this module, keep 
 - Dynamic-shape support is partial.
 - There is no partial CPU fallback path.
 - Remote tensor support exists but is not yet a fully polished cross-platform feature set.
-- Backend coverage and runtime maturity differ between Metal and Vulkan.
-- Some optimized Vulkan paths depend on device capabilities such as subgroup size and compute workgroup limits.
+- Backend coverage and runtime maturity differ between Metal, OpenCL, and Vulkan.
+- Some optimized OpenCL and Vulkan paths depend on device capabilities such as subgroup size, memory alignment, and compute workgroup limits.

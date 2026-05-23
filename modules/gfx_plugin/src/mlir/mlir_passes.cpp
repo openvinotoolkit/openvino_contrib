@@ -32,8 +32,6 @@
 
 #include "transforms/conv_parallel_lowering.hpp"
 #include "transforms/conv3d_parallel_lowering.hpp"
-#include "transforms/conv_im2col_matmul_rewrite.hpp"
-#include "transforms/conv_im2col_parallel_lowering.hpp"
 #include "transforms/matmul_parallel_lowering.hpp"
 #include "transforms/parallel_fill_fusion.hpp"
 #include "transforms/parallel_post_fusion.hpp"
@@ -765,10 +763,6 @@ void run_mlir_pipeline(mlir::ModuleOp module, bool use_alloca, bool use_parallel
             module.dump();
         }
 
-        run_conv_im2col_matmul_rewrite(module);
-        // The im2col rewrite introduces fresh tensor.collapse/expand and linalg ops.
-        // Canonicalize them before bufferization so both backends see the same
-        // normalized MLIR contract.
         pm_pre.addPass(mlir::createCanonicalizerPass());
         pm_pre.addPass(mlir::createCSEPass());
         mlir::bufferization::OneShotBufferizePassOptions opts;
@@ -785,7 +779,6 @@ void run_mlir_pipeline(mlir::ModuleOp module, bool use_alloca, bool use_parallel
     run_conv2d_parallel_lowering(module);
     run_conv3d_parallel_lowering(module);
     run_matmul_parallel_lowering(module);
-    run_conv_im2col_parallel_lowering(module);
     if (debug) {
         llvm::errs() << "[GFX][MLIR] Module after manual lowerings:\n";
         module.dump();

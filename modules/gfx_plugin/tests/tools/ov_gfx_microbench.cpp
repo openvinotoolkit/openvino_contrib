@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -61,8 +62,21 @@ struct WorkloadEstimate {
     std::string note;
 };
 
+struct ConvProbeShape {
+    uint64_t n = 1;
+    uint64_t input_channels = 0;
+    uint64_t input_h = 0;
+    uint64_t input_w = 0;
+    uint64_t output_channels = 0;
+    uint64_t kernel_h = 0;
+    uint64_t kernel_w = 0;
+    uint64_t output_h = 0;
+    uint64_t output_w = 0;
+};
+
 struct ProfileDigest {
     bool has_extended = false;
+    bool has_compile = false;
     bool counters_supported = false;
     bool counters_used = false;
     uint64_t total_gpu_us = 0;
@@ -80,6 +94,22 @@ struct ProfileDigest {
     uint64_t barrier_count = 0;
     uint64_t descriptor_update_count = 0;
     uint64_t pipeline_creation_count = 0;
+    uint64_t total_node_dispatches = 0;
+    uint64_t conv_requires_multi_kernel_manifest = 0;
+    uint64_t conv_reduction_work = 0;
+    uint64_t conv_output_elements = 0;
+    uint64_t conv_intermediate_elements = 0;
+    uint64_t conv_reduction_chunk_count = 0;
+    uint64_t conv_workgroup_reduction_lanes = 0;
+    uint64_t conv_workgroup_output_lanes = 0;
+    uint64_t conv_output_reuse_lanes = 0;
+    uint64_t conv_multi_kernel_owned_intermediate_bytes = 0;
+    uint64_t conv_multi_kernel_launch_dispatch_count = 0;
+    uint64_t conv_dispatch_tile_h = 0;
+    uint64_t conv_dispatch_tile_w = 0;
+    uint64_t conv_dispatch_threads_h = 0;
+    uint64_t conv_dispatch_threads_w = 0;
+    uint64_t conv_dispatch_channel_block = 0;
     bool sync_heavy = false;
     bool transfer_heavy = false;
     bool compile_in_infer = false;
@@ -114,6 +144,7 @@ struct Options {
     std::string output_path;
     std::string calibration_output_path;
     std::string calibration_input_path;
+    bool include_conv_probe = false;
 };
 
 struct LoadedCalibrationSummary {
@@ -215,6 +246,26 @@ std::vector<ov::float16> make_fp16_constant_data(size_t count, float scale = 1.0
     return values;
 }
 
+std::vector<float> make_f32_constant_data(size_t count, float scale = 1.0f) {
+    std::vector<float> values(count);
+    for (size_t i = 0; i < count; ++i) {
+        values[i] = scale * static_cast<float>(((static_cast<int64_t>(i) % 37) - 18) / 19.0f);
+    }
+    return values;
+}
+
+constexpr ConvProbeShape mb4_yolo26x_model5_conv_shape() {
+    return ConvProbeShape{/*n=*/1,
+                          /*input_channels=*/768,
+                          /*input_h=*/80,
+                          /*input_w=*/80,
+                          /*output_channels=*/768,
+                          /*kernel_h=*/3,
+                          /*kernel_w=*/3,
+                          /*output_h=*/40,
+                          /*output_w=*/40};
+}
+
 WorkloadEstimate estimate_workload(std::string_view bench_name) {
     constexpr uint64_t kFp16Bytes = 2;
     WorkloadEstimate estimate;
@@ -242,6 +293,20 @@ WorkloadEstimate estimate_workload(std::string_view bench_name) {
         estimate.macs_est = m * n * k;
         estimate.flops_est = estimate.macs_est * 2ull;
         estimate.note = "MatMul FLOP estimate assumes 2 FLOPs per MAC and excludes cache-reuse effects.";
+    } else if (bench_name == "MB4") {
+        const auto s = mb4_yolo26x_model5_conv_shape();
+        const uint64_t input_elems = s.n * s.input_channels * s.input_h * s.input_w;
+        const uint64_t weight_elems = s.output_channels * s.input_channels * s.kernel_h * s.kernel_w;
+        const uint64_t bias_elems = s.output_channels;
+        const uint64_t output_elems = s.n * s.output_channels * s.output_h * s.output_w;
+        const uint64_t reduction_work = s.input_channels * s.kernel_h * s.kernel_w;
+        estimate.bytes_in = (input_elems + weight_elems + bias_elems) * kFp16Bytes;
+        estimate.bytes_out = output_elems * kFp16Bytes;
+        estimate.bytes_moved = estimate.bytes_in + estimate.bytes_out;
+        estimate.macs_est = output_elems * reduction_work;
+        estimate.flops_est = estimate.macs_est * 2ull;
+        estimate.note =
+            "YOLO26x model.5 stride-2 3x3 Conv probe; byte estimate uses the effective FP16 GFX kernel storage implied by inference_precision=f16.";
     }
     estimate.arithmetic_intensity = safe_div(static_cast<double>(estimate.flops_est), static_cast<double>(estimate.bytes_moved));
     return estimate;
@@ -276,6 +341,38 @@ std::shared_ptr<ov::Model> make_mb3_model() {
     auto matmul = std::make_shared<MatMul>(input, weights, false, false);
     auto result = std::make_shared<Result>(matmul);
     return std::make_shared<ov::Model>(ov::ResultVector{result}, ov::ParameterVector{input}, "gfx_mb3_gemm");
+}
+
+std::shared_ptr<ov::Model> make_mb4_conv_model() {
+    using namespace ov::opset8;
+    const auto s = mb4_yolo26x_model5_conv_shape();
+    const ov::Shape input_shape{static_cast<size_t>(s.n),
+                                static_cast<size_t>(s.input_channels),
+                                static_cast<size_t>(s.input_h),
+                                static_cast<size_t>(s.input_w)};
+    const ov::Shape weight_shape{static_cast<size_t>(s.output_channels),
+                                 static_cast<size_t>(s.input_channels),
+                                 static_cast<size_t>(s.kernel_h),
+                                 static_cast<size_t>(s.kernel_w)};
+    const ov::Shape bias_shape{1, static_cast<size_t>(s.output_channels), 1, 1};
+    auto input = std::make_shared<Parameter>(ov::element::f32, input_shape);
+    auto weights = Constant::create(ov::element::f32,
+                                    weight_shape,
+                                    make_f32_constant_data(shape_elements(weight_shape), 0.01f));
+    auto conv = std::make_shared<Convolution>(input,
+                                              weights,
+                                              ov::Strides{2, 2},
+                                              ov::CoordinateDiff{1, 1},
+                                              ov::CoordinateDiff{1, 1},
+                                              ov::Strides{1, 1});
+    auto bias = Constant::create(ov::element::f32,
+                                 bias_shape,
+                                 make_f32_constant_data(shape_elements(bias_shape), 0.001f));
+    auto add = std::make_shared<Add>(conv, bias, ov::op::AutoBroadcastType::NUMPY);
+    auto result = std::make_shared<Result>(add);
+    return std::make_shared<ov::Model>(ov::ResultVector{result},
+                                       ov::ParameterVector{input},
+                                       "gfx_mb4_yolo26x_model_5_conv_s2");
 }
 
 ov::AnyMap make_compile_config(const std::string& backend) {
@@ -583,6 +680,41 @@ uint64_t extract_json_object_uint_value(std::string_view object_json, std::strin
 
 ProfileDigest digest_profile_json(std::string_view profile_json) {
     ProfileDigest digest;
+    const auto compile = extract_json_object_field(profile_json, "compile");
+    if (!compile.empty()) {
+        digest.has_compile = true;
+        const auto compile_summary = extract_json_object_field(compile, "summary");
+        const auto compile_counter_map = extract_json_object_field(compile_summary, "counter_map");
+        if (!compile_counter_map.empty()) {
+            digest.conv_requires_multi_kernel_manifest =
+                extract_json_object_uint_value(compile_counter_map, "conv_requires_multi_kernel_manifest");
+            digest.conv_reduction_work = extract_json_object_uint_value(compile_counter_map, "conv_reduction_work");
+            digest.conv_output_elements = extract_json_object_uint_value(compile_counter_map, "conv_output_elements");
+            digest.conv_intermediate_elements =
+                extract_json_object_uint_value(compile_counter_map, "conv_intermediate_elements");
+            digest.conv_reduction_chunk_count =
+                extract_json_object_uint_value(compile_counter_map, "conv_reduction_chunk_count");
+            digest.conv_workgroup_reduction_lanes =
+                extract_json_object_uint_value(compile_counter_map, "conv_workgroup_reduction_lanes");
+            digest.conv_workgroup_output_lanes =
+                extract_json_object_uint_value(compile_counter_map, "conv_workgroup_output_lanes");
+            digest.conv_output_reuse_lanes =
+                extract_json_object_uint_value(compile_counter_map, "conv_output_reuse_lanes");
+            digest.conv_multi_kernel_owned_intermediate_bytes =
+                extract_json_object_uint_value(compile_counter_map, "conv_multi_kernel_owned_intermediate_bytes");
+            digest.conv_multi_kernel_launch_dispatch_count =
+                extract_json_object_uint_value(compile_counter_map, "conv_multi_kernel_launch_dispatch_count");
+            digest.conv_dispatch_tile_h = extract_json_object_uint_value(compile_counter_map, "conv_dispatch_tile_h");
+            digest.conv_dispatch_tile_w = extract_json_object_uint_value(compile_counter_map, "conv_dispatch_tile_w");
+            digest.conv_dispatch_threads_h =
+                extract_json_object_uint_value(compile_counter_map, "conv_dispatch_threads_h");
+            digest.conv_dispatch_threads_w =
+                extract_json_object_uint_value(compile_counter_map, "conv_dispatch_threads_w");
+            digest.conv_dispatch_channel_block =
+                extract_json_object_uint_value(compile_counter_map, "conv_dispatch_channel_block");
+        }
+    }
+
     const auto extended = extract_json_object_field(profile_json, "extended");
     if (extended.empty()) {
         return digest;
@@ -637,6 +769,11 @@ ProfileDigest digest_profile_json(std::string_view profile_json) {
         } else if (name == "cross_submit_memory_barrier") {
             digest.cross_submit_barrier_seen = true;
         }
+    }
+
+    const auto nodes = extract_json_array_field(extended, "nodes");
+    for (const auto& node_object : split_top_level_json_array_objects(nodes)) {
+        digest.total_node_dispatches += extract_json_uint_field(node_object, "dispatches");
     }
 
     const auto diagnostics = extract_json_array_field(summary, "diagnostics");
@@ -699,6 +836,10 @@ BenchDerived analyze_benchmark(const BenchResult& result, const Mb0Result& mb0) 
     }
     if (analysis.profile.binding_prepare_in_infer || analysis.profile.descriptor_update_count > 0) {
         analysis.hints.push_back("binding_or_descriptor_churn");
+    }
+    if (analysis.profile.conv_requires_multi_kernel_manifest > 0 &&
+        analysis.profile.conv_multi_kernel_launch_dispatch_count > analysis.profile.total_node_dispatches) {
+        analysis.hints.push_back("conv_multi_kernel_manifest_not_executed");
     }
     if (analysis.workload.arithmetic_intensity < 4.0) {
         analysis.hints.push_back("memory_pressure_candidate");
@@ -811,6 +952,7 @@ void append_workload_json(std::ostringstream& json, const WorkloadEstimate& work
 void append_profile_digest_json(std::ostringstream& json, const ProfileDigest& profile) {
     json << "{";
     json << "\"has_extended\":" << (profile.has_extended ? "true" : "false") << ",";
+    json << "\"has_compile\":" << (profile.has_compile ? "true" : "false") << ",";
     json << "\"counters_supported\":" << (profile.counters_supported ? "true" : "false") << ",";
     json << "\"counters_used\":" << (profile.counters_used ? "true" : "false") << ",";
     json << "\"total_gpu_us\":" << profile.total_gpu_us << ",";
@@ -828,6 +970,22 @@ void append_profile_digest_json(std::ostringstream& json, const ProfileDigest& p
     json << "\"barrier_count\":" << profile.barrier_count << ",";
     json << "\"descriptor_update_count\":" << profile.descriptor_update_count << ",";
     json << "\"pipeline_creation_count\":" << profile.pipeline_creation_count << ",";
+    json << "\"total_node_dispatches\":" << profile.total_node_dispatches << ",";
+    json << "\"conv_requires_multi_kernel_manifest\":" << profile.conv_requires_multi_kernel_manifest << ",";
+    json << "\"conv_reduction_work\":" << profile.conv_reduction_work << ",";
+    json << "\"conv_output_elements\":" << profile.conv_output_elements << ",";
+    json << "\"conv_intermediate_elements\":" << profile.conv_intermediate_elements << ",";
+    json << "\"conv_reduction_chunk_count\":" << profile.conv_reduction_chunk_count << ",";
+    json << "\"conv_workgroup_reduction_lanes\":" << profile.conv_workgroup_reduction_lanes << ",";
+    json << "\"conv_workgroup_output_lanes\":" << profile.conv_workgroup_output_lanes << ",";
+    json << "\"conv_output_reuse_lanes\":" << profile.conv_output_reuse_lanes << ",";
+    json << "\"conv_multi_kernel_owned_intermediate_bytes\":" << profile.conv_multi_kernel_owned_intermediate_bytes << ",";
+    json << "\"conv_multi_kernel_launch_dispatch_count\":" << profile.conv_multi_kernel_launch_dispatch_count << ",";
+    json << "\"conv_dispatch_tile_h\":" << profile.conv_dispatch_tile_h << ",";
+    json << "\"conv_dispatch_tile_w\":" << profile.conv_dispatch_tile_w << ",";
+    json << "\"conv_dispatch_threads_h\":" << profile.conv_dispatch_threads_h << ",";
+    json << "\"conv_dispatch_threads_w\":" << profile.conv_dispatch_threads_w << ",";
+    json << "\"conv_dispatch_channel_block\":" << profile.conv_dispatch_channel_block << ",";
     json << "\"sync_heavy\":" << (profile.sync_heavy ? "true" : "false") << ",";
     json << "\"transfer_heavy\":" << (profile.transfer_heavy ? "true" : "false") << ",";
     json << "\"compile_in_infer\":" << (profile.compile_in_infer ? "true" : "false") << ",";
@@ -927,9 +1085,12 @@ Options parse_options(int argc, char** argv) {
             options.calibration_output_path = argv[++i];
         } else if (arg == "--calibration-input" && i + 1 < argc) {
             options.calibration_input_path = argv[++i];
+        } else if (arg == "--include-conv-probe") {
+            options.include_conv_probe = true;
         } else if (arg == "--help") {
             std::cout << "Usage: ov_gfx_microbench [--backend auto|metal|vulkan] [--warmup N] [--iterations N] "
-                         "[--output path] [--calibration-output path] [--calibration-input path]\n";
+                         "[--output path] [--calibration-output path] [--calibration-input path] "
+                         "[--include-conv-probe]\n";
             std::exit(0);
         } else {
             throw std::runtime_error("unknown argument: " + std::string(arg));
@@ -1146,10 +1307,21 @@ int main(int argc, char** argv) {
                                           "gemm_model",
                                           "matmul_const<f16>[1x1024x1024]x[1x1024x1024]",
                                           make_mb3_model());
+        std::optional<BenchResult> mb4;
+        if (options.include_conv_probe) {
+            mb4 = run_model_bench(core,
+                                  options,
+                                  "MB4",
+                                  "yolo26x_conv_model",
+                                  "conv2d_bias<f32_graph,f16_hint>[1x768x80x80]x[768x768x3x3],s2,p1",
+                                  make_mb4_conv_model());
+        }
         const DeviceFingerprint device = query_device_fingerprint(options.backend, mb1.actual_backend);
         const BenchDerived mb1_analysis = analyze_benchmark(mb1, mb0);
         const BenchDerived mb2_analysis = analyze_benchmark(mb2, mb0);
         const BenchDerived mb3_analysis = analyze_benchmark(mb3, mb0);
+        const std::optional<BenchDerived> mb4_analysis =
+            mb4.has_value() ? std::optional<BenchDerived>(analyze_benchmark(*mb4, mb0)) : std::nullopt;
         const auto calibration =
             make_calibration_artifact(device, mb0, mb1, mb1_analysis, mb2, mb2_analysis, mb3, mb3_analysis);
 
@@ -1174,6 +1346,7 @@ int main(int argc, char** argv) {
         json << "\"schema_version\":2,";
         json << "\"tool\":\"ov_gfx_microbench\",";
         json << "\"selected_backend\":\"" << escape_json(options.backend) << "\",";
+        json << "\"include_conv_probe\":" << (options.include_conv_probe ? "true" : "false") << ",";
         json << "\"device\":";
         append_device_json(json, device);
         json << ",";
@@ -1182,8 +1355,11 @@ int main(int argc, char** argv) {
         json << "\"assumptions\":["
              << "\"MB0 is a raw backend empty submit or empty command-buffer commit measured with sync.\","
              << "\"MB1-MB3 are synthetic FP16 OpenVINO models run through the GFX plugin with detailed profiling enabled.\","
-             << "\"MB1 approximates copy+dispatch, MB2 approximates bandwidth pressure, MB3 approximates compute-bound GEMM pressure.\""
-             << "],";
+             << "\"MB1 approximates copy+dispatch, MB2 approximates bandwidth pressure, MB3 approximates compute-bound GEMM pressure.\"";
+        if (options.include_conv_probe) {
+            json << ",\"MB4 is an opt-in YOLO26x model.5 Conv probe for microexperiment-first triage; it is not part of the portable MB1-MB3 calibration artifact.\"";
+        }
+        json << "],";
         json << "\"mb0\":{";
         json << "\"backend\":\"" << escape_json(mb0.backend) << "\",";
         json << "\"median_wall_us\":" << mb0.median_wall_us << ",";
@@ -1211,6 +1387,10 @@ int main(int argc, char** argv) {
         append_bench_json(json, mb2, mb2_analysis);
         json << ",";
         append_bench_json(json, mb3, mb3_analysis);
+        if (mb4 && mb4_analysis) {
+            json << ",";
+            append_bench_json(json, *mb4, *mb4_analysis);
+        }
         json << "]";
         json << "}";
 

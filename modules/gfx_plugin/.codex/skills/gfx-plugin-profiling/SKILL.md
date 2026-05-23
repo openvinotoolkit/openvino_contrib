@@ -1,6 +1,6 @@
 ---
 name: gfx-plugin-profiling
-description: Use when analyzing GFX plugin performance, profiling reports, microbench output, trace correlation, or backend overhead on macOS, Android, or Raspberry Pi for Metal and Vulkan paths.
+description: Use when analyzing GFX plugin performance, profiling reports, microbench output, trace correlation, or backend overhead on macOS, Android, or Raspberry Pi for Metal, OpenCL, and Vulkan paths.
 ---
 
 # GFX Plugin Profiling
@@ -12,6 +12,7 @@ This skill is for performance triage and profiling workflows in `modules/gfx_plu
 - The user asks about performance, bottlenecks, slow inference, submit overhead, cache effects, transfer pressure, or synchronization cost.
 - The task mentions `GFX_PROFILING_REPORT`, `ov_gfx_microbench`, `MB0` to `MB3`, Perfetto, AGI, Xcode/Instruments, or `perf`.
 - The task needs interpretation of profiling JSON, calibration artifacts, or trace-event output.
+- The task compares `metal`, `opencl`, `vulkan`, or `auto` backend behavior and needs to confirm which route actually ran.
 
 ## Primary References
 
@@ -54,6 +55,7 @@ Native trace surfaces by platform:
    - `benchmarks[].profile_digest`
    - `GFX_PROFILING_REPORT.compile`
    - `GFX_PROFILING_REPORT.extended`
+   - `GFX_PROFILING_REPORT.extended.target_profile`
 
 ## What To Inspect First
 
@@ -93,6 +95,8 @@ Check:
 
 - `compile_ms`
 - `pipeline_creation_count`
+- `target_backend_opencl`, `target_backend_metal`, `target_backend_vulkan`
+- `extended.target_profile`
 - MPSRT vendor-kernel cache counters such as `mpsrt_mps_resize2d_kernel_cache_hit_count` and `mpsrt_mps_resize2d_kernel_cache_miss_count`
 - `ov::cache_dir` usage
 - whether pipeline creation moved into infer-time spans
@@ -104,6 +108,8 @@ Check:
 - Distinguish wall-time, GPU-time, and overhead-subtracted estimates.
 - Correlate plugin-internal profiling with platform-native traces before concluding that a backend route is the bottleneck.
 - Prefer `ov_gfx_compare_runner --dump-gfx-profile --gfx-profiling-level detailed` when accuracy triage and placement counters need to be captured in the same run; keep it accuracy-only and use `benchmark_app` or microbench tools for performance numbers.
+- Always confirm `extended.target_profile` or `target_backend_*` counters before comparing `auto`, OpenCL, and Vulkan runs from the same target.
+- Treat standalone OpenCL microbench output as kernel evidence only; plugin performance claims need the source artifact route to execute through `GFX`.
 
 ## Platform Notes
 
@@ -116,11 +122,13 @@ Check:
 
 - Use AGI or Perfetto for GPU busy/idle gaps and CPU blocking around queue submit or fence waits.
 - Use validation layers only for correctness, not for performance numbers.
+- Use `--backend opencl` for OpenCL source-kernel triage and `--backend vulkan` only when investigating the legacy SPIR-V route.
 
 ### Raspberry Pi
 
 - Use `perf stat` and `perf record` for coarse CPU-side evidence.
 - Correlate Broadcom/Vulkan driver overhead with plugin-side submit, wait, and transfer counters.
+- When both OpenCL and Vulkan are available, record separate calibration artifacts and keep the backend field in the artifact as part of the comparison key.
 
 ## Output Expectations
 

@@ -66,7 +66,7 @@ Or per compilation request:
 ov::CompiledModel compiled = core.compile_model(
     model,
     "GFX",
-    {{"GFX_BACKEND", "vulkan"}});
+    {{"GFX_BACKEND", "opencl"}});
 ```
 
 The compiled model reports the resolved backend:
@@ -75,7 +75,7 @@ The compiled model reports the resolved backend:
 std::string actual_backend = compiled.get_property("GFX_BACKEND").as<std::string>();
 ```
 
-The selected backend affects both support probing and runtime route selection. In particular, Vulkan may enable specialized direct or chunked execution paths that are not available on Metal for the same graph.
+The selected backend affects both support probing and runtime route selection. `metal` uses the Apple MPS/MPSRT/MSL path, `opencl` uses the source-artifact OpenCL path, and `vulkan` keeps the legacy SPIR-V/Vulkan diagnostic path.
 
 ## Compiling A Model
 ```cpp
@@ -125,7 +125,8 @@ The exact type returned by `GFX_MEM_STATS` depends on the active backend impleme
 - a `compile` section with compile-time stage creation and compilation timings
   compile may also include kernel-cache and backend compiler subphases such as MSL/SPIR-V resolution, backend compilation, and shader/pipeline creation
 - a node-level `nodes` section for standard OpenVINO profiling output
-- an `extended` section with backend/runtime segments, counters, transfer totals, roofline heuristics, and diagnostics
+- an `extended` section with backend/runtime segments, counters, transfer totals, target profile, roofline heuristics, and diagnostics
+- an `extended.target_profile` object with the resolved backend, device family, workgroup limits, alignment traits, and capability flags when the active backend reports them
 
 `GFX_PROFILING_LEVEL` controls the amount of collected data:
 - `0`: off
@@ -206,6 +207,11 @@ For Apple MPSRT placement triage, inspect the compile counters named
 shared way to decide which `f32` subgraphs are still on Apple MSL and why they
 were rejected by the MPS route before changing placement policy.
 
+For target selection triage across backends, inspect `extended.target_profile`
+and counters such as `target_backend_metal`, `target_backend_opencl`, and
+`target_backend_vulkan`. These fields describe the backend that actually ran
+the request and the device limits reported to the shared planner.
+
 ### Vulkan Pipeline Cache Persistence
 On Vulkan, the plugin can reuse the standard OpenVINO cache directory for backend pipeline-cache persistence:
 
@@ -220,6 +226,18 @@ ov::CompiledModel compiled = core.compile_model(
 ```
 
 This does not change `export_model()` semantics. It only gives the Vulkan backend a stable directory for native pipeline-cache files.
+
+### OpenCL Runtime Notes
+The OpenCL backend is selected with `GFX_BACKEND=opencl` when it is available in the build:
+
+```cpp
+ov::CompiledModel compiled = core.compile_model(
+    model,
+    "GFX",
+    {{"GFX_BACKEND", "opencl"}});
+```
+
+The backend loads the target OpenCL runtime dynamically and executes the source-artifact subset described by the plugin's manifest metadata. Unsupported ops fail during compilation or stage creation; they do not fall back to CPU or silently switch to Vulkan.
 
 ### Microbench Suite
 `ov_gfx_microbench` provides the `MB0` to `MB3` suite used by the local profiling workflow docs.
@@ -245,6 +263,8 @@ Assumptions:
 - `MB1` to `MB3` are synthetic OpenVINO graphs, not backend-specific handwritten kernels
 - each synthetic benchmark embeds the raw `GFX_PROFILING_REPORT` JSON so the same diagnostics pipeline can be reused on macOS, Android, and Raspberry Pi
 
+Use `--backend opencl` on OpenCL-capable non-Apple builds when profiling the source-artifact backend.
+
 The microbench JSON also includes a derived `analysis` section plus per-benchmark `workload`, `derived`, and `profile_digest` blocks:
 - `device_key = vendor_id:device_id:driver_version` for device-keyed autotuning caches
 - `fixed_overhead_us` from `MB0`
@@ -268,7 +288,7 @@ For static output signatures, infer requests may also reuse internal host output
 The plugin implements remote context and remote tensor interfaces, but effective capabilities remain backend-specific. If your integration depends on remote memory workflows, inspect:
 - `src/runtime/gfx_remote_context.*`
 - `src/runtime/gfx_remote_tensor.*`
-- the active backend implementation under `src/backends/metal/plugin/` or `src/backends/vulkan/plugin/`
+- the active backend implementation under `src/backends/metal/plugin/`, `src/backends/opencl/plugin/`, or `src/backends/vulkan/plugin/`
 
 ## Error Model
 The plugin intentionally rejects unsupported models during compilation:

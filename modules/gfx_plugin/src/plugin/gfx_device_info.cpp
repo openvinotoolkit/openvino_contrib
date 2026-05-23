@@ -60,6 +60,11 @@ GfxDeviceInfo query_device_info(GpuBackend backend, const ov::AnyMap& properties
         fill_metal_device_info(info, properties);
         break;
     }
+    case GpuBackend::OpenCL: {
+        info.device_name = "OpenCL";
+        info.full_name = "GFX (OpenCL source kernels)";
+        break;
+    }
     case GpuBackend::Vulkan: {
         fill_vulkan_device_info(info, properties);
         break;

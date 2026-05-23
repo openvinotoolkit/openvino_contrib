@@ -200,6 +200,115 @@ uint32_t kernel_activation_code(ActivationKind kind) {
   }
 }
 
+void record_conv_compile_profile(const GfxStageOptimizationPlan &plan) {
+  if (plan.archetype != GfxStageArchetype::Convolution &&
+      plan.archetype != GfxStageArchetype::GroupConvolution) {
+    return;
+  }
+  const auto &algorithm = plan.conv.algorithm;
+  set_compile_counter("conv_requires_multi_kernel_manifest",
+                      algorithm.requires_multi_kernel_manifest ? 1u : 0u);
+  set_compile_counter("conv_reduction_work", algorithm.reduction_work);
+  set_compile_counter("conv_output_elements", algorithm.output_elements);
+  set_compile_counter("conv_intermediate_elements",
+                      algorithm.intermediate_elements);
+  set_compile_counter("conv_reduction_chunk_count",
+                      algorithm.reduction_chunk_count);
+  set_compile_counter("conv_reduction_chunk_size",
+                      algorithm.reduction_chunk_size);
+  set_compile_counter("conv_workgroup_reduction_lanes",
+                      algorithm.workgroup_reduction_lanes);
+  set_compile_counter("conv_workgroup_output_lanes",
+                      algorithm.workgroup_output_lanes);
+  set_compile_counter("conv_output_channel_reuse_lanes",
+                      algorithm.output_channel_reuse_lanes);
+  set_compile_counter("conv_spatial_output_reuse_lanes",
+                      algorithm.spatial_output_reuse_lanes);
+  set_compile_counter("conv_output_reuse_lanes", algorithm.output_reuse_lanes);
+  set_compile_counter("conv_spatial_input_reuse_lanes",
+                      algorithm.spatial_input_reuse_lanes);
+  set_compile_counter("conv_spatial_input_reuse_unique_width_loads",
+                      algorithm.spatial_input_reuse_unique_width_loads);
+  set_compile_counter("conv_spatial_input_reuse_saved_width_loads",
+                      algorithm.spatial_input_reuse_saved_width_loads);
+  const auto &manifest = algorithm.multi_kernel_manifest;
+  set_compile_counter("conv_multi_kernel_stage_count", manifest.stages.size());
+  set_compile_counter("conv_multi_kernel_requires_owned_intermediates",
+                      manifest.requires_owned_intermediates ? 1u : 0u);
+  set_compile_counter("conv_multi_kernel_requires_owned_launch_sequence",
+                      manifest.requires_owned_launch_sequence ? 1u : 0u);
+  set_compile_counter("conv_multi_kernel_requires_output_reuse",
+                      manifest.requires_output_reuse ? 1u : 0u);
+  set_compile_counter("conv_multi_kernel_requires_spatial_input_reuse",
+                      manifest.requires_spatial_input_reuse ? 1u : 0u);
+  set_compile_counter("conv_multi_kernel_requires_coarse_output_tile_preservation",
+                      manifest.requires_coarse_output_tile_preservation ? 1u : 0u);
+  set_compile_counter("conv_multi_kernel_has_workgroup_local_reduction_plan",
+                      manifest.has_workgroup_local_reduction_plan ? 1u : 0u);
+  set_compile_counter("conv_multi_kernel_coarse_spatial_tile_elements",
+                      manifest.coarse_spatial_tile_elements);
+  set_compile_counter("conv_multi_kernel_coarse_output_channel_block",
+                      manifest.coarse_output_channel_block);
+  set_compile_counter("conv_multi_kernel_coarse_output_tile_elements",
+                      manifest.coarse_output_tile_elements);
+  set_compile_counter("conv_multi_kernel_workgroup_output_tile_deficit",
+                      manifest.workgroup_output_tile_deficit);
+  set_compile_counter("conv_multi_kernel_partial_sum_elements",
+                      manifest.partial_sum_elements);
+  set_compile_counter("conv_multi_kernel_reduced_accumulator_elements",
+                      manifest.reduced_accumulator_elements);
+  set_compile_counter("conv_multi_kernel_owned_intermediate_elements",
+                      manifest.owned_intermediate_elements);
+  set_compile_counter("conv_multi_kernel_owned_intermediate_bytes",
+                      manifest.owned_intermediate_bytes);
+  set_compile_counter("conv_multi_kernel_owned_intermediate_buffer_count",
+                      manifest.owned_intermediate_buffer_count);
+  set_compile_counter("conv_multi_kernel_workgroup_local_accumulator_elements",
+                      manifest.workgroup_local_accumulator_elements);
+  set_compile_counter("conv_multi_kernel_workgroup_local_accumulator_bytes",
+                      manifest.workgroup_local_accumulator_bytes);
+  set_compile_counter("conv_multi_kernel_launch_dispatch_count",
+                      manifest.launch_dispatch_count);
+}
+
+void record_conv_dispatch_compile_profile(const ConvParallelismPlan &plan) {
+  set_compile_counter("conv_dispatch_prefer_parallel",
+                      plan.prefer_parallel ? 1u : 0u);
+  set_compile_counter("conv_dispatch_tile_h", plan.dispatch.tile_h);
+  set_compile_counter("conv_dispatch_tile_w", plan.dispatch.tile_w);
+  set_compile_counter("conv_dispatch_threads_h", plan.dispatch.threads_h);
+  set_compile_counter("conv_dispatch_threads_w", plan.dispatch.threads_w);
+  set_compile_counter("conv_dispatch_channel_block", plan.output_channel_block);
+  set_compile_counter("conv_dispatch_channel_block_accumulation_serial",
+                      plan.channel_block_accumulation ==
+                              ConvChannelBlockAccumulation::Serial
+                          ? 1u
+                          : 0u);
+}
+
+void record_runtime_dispatch_profile(GfxProfiler *profiler,
+                                     const ParallelDispatchConfig &cfg,
+                                     const KernelDispatch &dispatch) {
+  if (!profiler || !cfg.enabled) {
+    return;
+  }
+  profiler->set_counter("runtime_parallel_loop_dims", cfg.loop_dims);
+  profiler->set_counter("runtime_dispatch_tile_h", cfg.tile_h);
+  profiler->set_counter("runtime_dispatch_tile_w", cfg.tile_w);
+  profiler->set_counter("runtime_dispatch_threads_h", cfg.threads_h);
+  profiler->set_counter("runtime_dispatch_threads_w", cfg.threads_w);
+  profiler->set_counter("runtime_dispatch_channel_block", cfg.channel_block);
+  profiler->set_counter("runtime_dispatch_grid_x", dispatch.grid[0]);
+  profiler->set_counter("runtime_dispatch_grid_y", dispatch.grid[1]);
+  profiler->set_counter("runtime_dispatch_grid_z", dispatch.grid[2]);
+  profiler->set_counter("runtime_dispatch_tpg_x",
+                        dispatch.threads_per_group[0]);
+  profiler->set_counter("runtime_dispatch_tpg_y",
+                        dispatch.threads_per_group[1]);
+  profiler->set_counter("runtime_dispatch_tpg_z",
+                        dispatch.threads_per_group[2]);
+}
+
 const char *stage_archetype_attr(GfxStageArchetype archetype) {
   switch (archetype) {
   case GfxStageArchetype::Convolution:
@@ -278,8 +387,6 @@ const char *conv_algorithm_kind_attr(GfxConvAlgorithmKind kind) {
     return "depthwise_direct";
   case GfxConvAlgorithmKind::ChunkedDirect:
     return "chunked_direct";
-  case GfxConvAlgorithmKind::Im2ColMatMul:
-    return "im2col_matmul";
   case GfxConvAlgorithmKind::Indirect:
     return "indirect";
   default:
@@ -1015,14 +1122,12 @@ void MlirStage::compile_from_plan(MlirKernelPlanContext &plan_ctx,
   if (src.module) {
     const std::string metadata_entry_point =
         is_vulkan_backend() ? runtime_metadata_entry_point : std::string{};
-    auto runtime_meta =
-        extract_kernel_runtime_metadata(
-            src.module, output_arg_count, buffer_inputs, metadata_entry_point,
-            is_vulkan_backend()
-                ? std::optional<GfxKernelBackendDomain>(
-                      GfxKernelBackendDomain::Spirv)
-                : std::optional<GfxKernelBackendDomain>(
-                      GfxKernelBackendDomain::AppleMsl));
+    auto runtime_meta = extract_kernel_runtime_metadata(
+        src.module, output_arg_count, buffer_inputs, metadata_entry_point,
+        is_vulkan_backend() ? std::optional<GfxKernelBackendDomain>(
+                                  GfxKernelBackendDomain::Spirv)
+                            : std::optional<GfxKernelBackendDomain>(
+                                  GfxKernelBackendDomain::AppleMsl));
     apply_kernel_metadata(runtime_meta, scalar_inputs);
   } else if (module) {
     auto runtime_meta =
@@ -1033,6 +1138,121 @@ void MlirStage::compile_from_plan(MlirKernelPlanContext &plan_ctx,
 
 void MlirStage::init(GpuBufferManager *buffer_manager) {
   m_buffer_manager = buffer_manager;
+}
+
+void MlirStage::prepare_constant_input_buffers(bool skip_matmul_weight_const) {
+  if (!m_node) {
+    return;
+  }
+
+  if (gfx_log_debug_enabled() && m_type == "MatMul") {
+    if (auto mm = std::dynamic_pointer_cast<const ov::op::v0::MatMul>(m_node)) {
+      std::ostringstream meta;
+      meta << "MatMul ta=" << mm->get_transpose_a()
+           << " tb=" << mm->get_transpose_b()
+           << " A=" << mm->get_input_partial_shape(0)
+           << " B=" << mm->get_input_partial_shape(1);
+      gfx_log_debug("MLIRConst") << meta.str();
+    }
+  }
+
+  const size_t in_count = m_node->get_input_size();
+  if (!m_const_buffers) {
+    m_const_buffers = std::make_shared<ConstBufferSet>();
+  }
+  if (m_const_buffers->buffers.size() < in_count) {
+    m_const_buffers->buffers.resize(in_count);
+    m_const_buffers->present.assign(in_count, false);
+  }
+
+  const bool use_const_cache = true;
+  bool const_cache_checked = false;
+  for (size_t i = 0; i < in_count; ++i) {
+    if (skip_matmul_weight_const && i == 1) {
+      continue;
+    }
+    auto const_tensor =
+        gfx_evaluate_constant_source_tensor(m_node->input_value(i));
+    if (!const_tensor.has_value()) {
+      continue;
+    }
+    if (!const_cache_checked) {
+      OPENVINO_ASSERT(
+          m_buffer_manager,
+          "GFX MLIR: const buffer manager is required for constants (stage ",
+          m_name, ")");
+      OPENVINO_ASSERT(m_buffer_manager->supports_const_cache(),
+                      "GFX MLIR: const cache must be supported for stage ",
+                      m_name);
+      const_cache_checked = true;
+    }
+    if (m_const_buffers->present[i] &&
+        m_const_buffers->buffers[i].buf.valid()) {
+      continue;
+    }
+    std::vector<ov::float16> packed_f16;
+    std::vector<uint8_t> packed_conv_weights;
+    const void *const_data = const_tensor->data();
+    size_t bytes = const_tensor->get_byte_size();
+    auto et = const_tensor->get_element_type();
+    if (backend_kind() == GpuBackend::Metal &&
+        should_pack_matmul_const_input_as_f16(m_node, i, *const_tensor)) {
+      const size_t original_bytes = bytes;
+      packed_f16 = pack_f32_tensor_as_f16(*const_tensor);
+      const_data = packed_f16.data();
+      bytes = packed_f16.size() * sizeof(ov::float16);
+      et = ov::element::f16;
+      increment_compile_counter("matmul_const_f32_to_f16_pack_count");
+      increment_compile_counter("matmul_const_f32_to_f16_original_bytes",
+                                original_bytes);
+      increment_compile_counter("matmul_const_f32_to_f16_packed_bytes", bytes);
+    }
+    if (backend_kind() == GpuBackend::Metal &&
+        should_pack_conv2d_const_weights_oc4(m_node, i, *const_tensor)) {
+      const size_t original_bytes = bytes;
+      packed_conv_weights = pack_conv2d_weights_oc4(*const_tensor);
+      et = const_tensor->get_element_type();
+      m_conv_weight_storage_type = et;
+      const_data = packed_conv_weights.data();
+      bytes = packed_conv_weights.size();
+      m_conv_weights_packed_oc4 = true;
+      increment_compile_counter("conv2d_const_oc4_pack_count");
+      increment_compile_counter("conv2d_const_oc4_original_bytes",
+                                original_bytes);
+      increment_compile_counter("conv2d_const_oc4_packed_bytes", bytes);
+    }
+    if (gfx_log_debug_enabled() && et == ov::element::f32 &&
+        bytes >= sizeof(float)) {
+      const float *vals = const_tensor->data<const float>();
+      const size_t count = bytes / sizeof(float);
+      std::ostringstream oss;
+      oss << "const[" << i << "] ";
+      const size_t dump_n = std::min<size_t>(count, 6);
+      for (size_t vi = 0; vi < dump_n; ++vi) {
+        if (vi) {
+          oss << ", ";
+        }
+        oss << vals[vi];
+      }
+      gfx_log_debug("MLIRConst") << oss.str();
+    }
+    if (use_const_cache && bytes) {
+      const uint64_t hash = gfx_hash_bytes(const_data, bytes);
+      std::ostringstream key;
+      key << m_name << "/const/" << i << "/" << et.get_type_name() << "/"
+          << bytes << "/" << hash;
+      GpuBuffer buf =
+          m_buffer_manager->wrap_const(key.str(), const_data, bytes, et);
+      OPENVINO_ASSERT(buf.valid(),
+                      "GFX MLIR: failed to wrap const buffer for stage ",
+                      m_name);
+      buf.owned = false;
+      m_const_buffers->buffers[i].buf = buf;
+    }
+    m_const_buffers->buffers[i].shape = const_tensor->get_shape();
+    m_const_buffers->buffers[i].expected_type = et;
+    m_const_buffers->present[i] = true;
+  }
 }
 
 void MlirStage::compile(GpuBufferManager *buffer_manager) {
@@ -1080,116 +1300,7 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
   if (!is_vulkan_backend()) {
     compressed_matmul_info = detect_compressed_matmul_weights(m_node);
   }
-  if (m_node) {
-    if (gfx_log_debug_enabled() && m_type == "MatMul") {
-      if (auto mm =
-              std::dynamic_pointer_cast<const ov::op::v0::MatMul>(m_node)) {
-        std::ostringstream meta;
-        meta << "MatMul ta=" << mm->get_transpose_a()
-             << " tb=" << mm->get_transpose_b()
-             << " A=" << mm->get_input_partial_shape(0)
-             << " B=" << mm->get_input_partial_shape(1);
-        gfx_log_debug("MLIRConst") << meta.str();
-      }
-    }
-    const size_t in_count = m_node->get_input_size();
-    if (!m_const_buffers) {
-      m_const_buffers = std::make_shared<ConstBufferSet>();
-    }
-    if (m_const_buffers->buffers.size() < in_count) {
-      m_const_buffers->buffers.resize(in_count);
-      m_const_buffers->present.assign(in_count, false);
-    }
-    const bool use_const_cache = true;
-    bool const_cache_checked = false;
-    for (size_t i = 0; i < in_count; ++i) {
-      if (compressed_matmul_info && i == 1) {
-        continue;
-      }
-      auto const_tensor =
-          gfx_evaluate_constant_source_tensor(m_node->input_value(i));
-      if (!const_tensor.has_value()) {
-        continue;
-      }
-      if (!const_cache_checked) {
-        OPENVINO_ASSERT(
-            m_buffer_manager,
-            "GFX MLIR: const buffer manager is required for constants (stage ",
-            m_name, ")");
-        OPENVINO_ASSERT(m_buffer_manager->supports_const_cache(),
-                        "GFX MLIR: const cache must be supported for stage ",
-                        m_name);
-        const_cache_checked = true;
-      }
-      if (m_const_buffers->present[i] &&
-          m_const_buffers->buffers[i].buf.valid()) {
-        continue;
-      }
-      std::vector<ov::float16> packed_f16;
-      std::vector<uint8_t> packed_conv_weights;
-      const void *const_data = const_tensor->data();
-      size_t bytes = const_tensor->get_byte_size();
-      auto et = const_tensor->get_element_type();
-      if (backend_kind() == GpuBackend::Metal &&
-          should_pack_matmul_const_input_as_f16(m_node, i, *const_tensor)) {
-        const size_t original_bytes = bytes;
-        packed_f16 = pack_f32_tensor_as_f16(*const_tensor);
-        const_data = packed_f16.data();
-        bytes = packed_f16.size() * sizeof(ov::float16);
-        et = ov::element::f16;
-        increment_compile_counter("matmul_const_f32_to_f16_pack_count");
-        increment_compile_counter("matmul_const_f32_to_f16_original_bytes",
-                                  original_bytes);
-        increment_compile_counter("matmul_const_f32_to_f16_packed_bytes",
-                                  bytes);
-      }
-      if (backend_kind() == GpuBackend::Metal &&
-          should_pack_conv2d_const_weights_oc4(m_node, i, *const_tensor)) {
-        const size_t original_bytes = bytes;
-        packed_conv_weights = pack_conv2d_weights_oc4(*const_tensor);
-        et = const_tensor->get_element_type();
-        m_conv_weight_storage_type = et;
-        const_data = packed_conv_weights.data();
-        bytes = packed_conv_weights.size();
-        m_conv_weights_packed_oc4 = true;
-        increment_compile_counter("conv2d_const_oc4_pack_count");
-        increment_compile_counter("conv2d_const_oc4_original_bytes",
-                                  original_bytes);
-        increment_compile_counter("conv2d_const_oc4_packed_bytes", bytes);
-      }
-      if (gfx_log_debug_enabled() && et == ov::element::f32 &&
-          bytes >= sizeof(float)) {
-        const float *vals = const_tensor->data<const float>();
-        const size_t count = bytes / sizeof(float);
-        std::ostringstream oss;
-        oss << "const[" << i << "] ";
-        const size_t dump_n = std::min<size_t>(count, 6);
-        for (size_t vi = 0; vi < dump_n; ++vi) {
-          if (vi) {
-            oss << ", ";
-          }
-          oss << vals[vi];
-        }
-        gfx_log_debug("MLIRConst") << oss.str();
-      }
-      if (use_const_cache && bytes) {
-        const uint64_t hash = gfx_hash_bytes(const_data, bytes);
-        std::ostringstream key;
-        key << m_name << "/const/" << i << "/" << et.get_type_name() << "/"
-            << bytes << "/" << hash;
-        GpuBuffer buf =
-            m_buffer_manager->wrap_const(key.str(), const_data, bytes, et);
-        OPENVINO_ASSERT(buf.valid(),
-                        "GFX MLIR: failed to wrap const buffer for stage ",
-                        m_name);
-        buf.owned = false;
-        m_const_buffers->buffers[i].buf = buf;
-      }
-      m_const_buffers->buffers[i].shape = const_tensor->get_shape();
-      m_const_buffers->buffers[i].expected_type = et;
-      m_const_buffers->present[i] = true;
-    }
-  }
+  prepare_constant_input_buffers(compressed_matmul_info.has_value());
   if (compressed_matmul_info) {
     OPENVINO_ASSERT(m_buffer_manager,
                     "GFX MLIR: const buffer manager is required for compressed "
@@ -3595,38 +3706,24 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
     }
   }
 
+  record_runtime_dispatch_profile(static_cast<GfxProfiler *>(m_profiler),
+                                  m_parallel_cfg, dispatch);
+
   try {
     m_kernel->execute(command_buffer, dispatch, bound_args, hooks_ptr);
   } catch (const std::exception &ex) {
     const auto opt_plan = stage_optimization_plan();
-    const bool is_im2col_matmul =
-        is_conv_like() &&
-        opt_plan.conv.algorithm.kind == GfxConvAlgorithmKind::Im2ColMatMul;
     const bool is_shared_vulkan_conv =
         is_vulkan_backend() && is_conv_like() &&
         opt_plan.conv.kind == GfxConvRouteKind::None &&
         !m_vulkan_conv_serial_retry_attempted;
     if (!is_vulkan_backend() || !is_vulkan_pipeline_creation_failure(ex) ||
-        (!is_matmul_like() && !is_im2col_matmul && !is_shared_vulkan_conv) ||
-        !m_buffer_manager ||
-        ((is_matmul_like() || is_im2col_matmul) &&
-         m_matmul_serial_retry_attempted)) {
+        (!is_matmul_like() && !is_shared_vulkan_conv) || !m_buffer_manager ||
+        (is_matmul_like() && m_matmul_serial_retry_attempted)) {
       throw;
     }
 
     ov::Shape tuning_shape = m_output_shape;
-    if (is_im2col_matmul && tuning_shape.size() == 4) {
-      const uint64_t batch =
-          static_cast<uint64_t>(std::max<size_t>(1, tuning_shape[0]));
-      const uint64_t spatial =
-          static_cast<uint64_t>(std::max<size_t>(1, tuning_shape[2])) *
-          static_cast<uint64_t>(std::max<size_t>(1, tuning_shape[3]));
-      const uint64_t channels =
-          static_cast<uint64_t>(std::max<size_t>(1, tuning_shape[1]));
-      tuning_shape = batch == 1 ? ov::Shape{channels, spatial}
-                                : ov::Shape{batch, spatial, channels};
-    }
-
     const auto caps = query_parallelism_caps(m_buffer_manager);
     if (!m_matmul_safe_retry_attempted) {
       auto safe_plan = select_safe_matmul_fallback_plan(caps, tuning_shape);
@@ -3996,6 +4093,185 @@ void MlirStage::apply_stage_optimization_attrs(
                       ctx, conv_algorithm_kind_attr(plan.conv.algorithm.kind)));
   module->setAttr("gfx.conv_variant",
                   mlir::StringAttr::get(ctx, plan.conv.algorithm.variant));
+  module->setAttr("gfx.conv_requires_multi_kernel_manifest",
+                  mlir::BoolAttr::get(
+                      ctx, plan.conv.algorithm.requires_multi_kernel_manifest));
+  module->setAttr(
+      "gfx.conv_multi_kernel_family",
+      mlir::StringAttr::get(ctx, plan.conv.algorithm.multi_kernel_family));
+  module->setAttr(
+      "gfx.conv_reduction_work",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(plan.conv.algorithm.reduction_work)));
+  module->setAttr(
+      "gfx.conv_output_elements",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(plan.conv.algorithm.output_elements)));
+  module->setAttr(
+      "gfx.conv_intermediate_elements",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(plan.conv.algorithm.intermediate_elements)));
+  module->setAttr(
+      "gfx.conv_reduction_chunk_count",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(plan.conv.algorithm.reduction_chunk_count)));
+  module->setAttr(
+      "gfx.conv_reduction_chunk_size",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(plan.conv.algorithm.reduction_chunk_size)));
+  module->setAttr(
+      "gfx.conv_workgroup_reduction_lanes",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(plan.conv.algorithm.workgroup_reduction_lanes)));
+  module->setAttr(
+      "gfx.conv_workgroup_output_lanes",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(plan.conv.algorithm.workgroup_output_lanes)));
+  module->setAttr("gfx.conv_output_channel_reuse_lanes",
+                  mlir::IntegerAttr::get(
+                      mlir::IntegerType::get(ctx, 64),
+                      static_cast<int64_t>(
+                          plan.conv.algorithm.output_channel_reuse_lanes)));
+  module->setAttr("gfx.conv_spatial_output_reuse_lanes",
+                  mlir::IntegerAttr::get(
+                      mlir::IntegerType::get(ctx, 64),
+                      static_cast<int64_t>(
+                          plan.conv.algorithm.spatial_output_reuse_lanes)));
+  module->setAttr(
+      "gfx.conv_output_reuse_lanes",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(plan.conv.algorithm.output_reuse_lanes)));
+  if (plan.conv.algorithm.spatial_input_reuse_saved_width_loads > 0) {
+    module->setAttr("gfx.conv_spatial_input_reuse",
+                    mlir::StringAttr::get(ctx, "width"));
+  }
+  module->setAttr(
+      "gfx.conv_spatial_input_reuse_lanes",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(plan.conv.algorithm.spatial_input_reuse_lanes)));
+  module->setAttr(
+      "gfx.conv_spatial_input_reuse_unique_width_loads",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(
+              plan.conv.algorithm.spatial_input_reuse_unique_width_loads)));
+  module->setAttr(
+      "gfx.conv_spatial_input_reuse_saved_width_loads",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(
+              plan.conv.algorithm.spatial_input_reuse_saved_width_loads)));
+  const auto &manifest = plan.conv.algorithm.multi_kernel_manifest;
+  module->setAttr(
+      "gfx.conv_multi_kernel_stage_count",
+      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 64),
+                             static_cast<int64_t>(manifest.stages.size())));
+  module->setAttr(
+      "gfx.conv_multi_kernel_requires_owned_intermediates",
+      mlir::BoolAttr::get(ctx, manifest.requires_owned_intermediates));
+  module->setAttr(
+      "gfx.conv_multi_kernel_requires_owned_launch_sequence",
+      mlir::BoolAttr::get(ctx, manifest.requires_owned_launch_sequence));
+  module->setAttr("gfx.conv_multi_kernel_requires_output_reuse",
+                  mlir::BoolAttr::get(ctx, manifest.requires_output_reuse));
+  module->setAttr(
+      "gfx.conv_multi_kernel_requires_spatial_input_reuse",
+      mlir::BoolAttr::get(ctx, manifest.requires_spatial_input_reuse));
+  module->setAttr(
+      "gfx.conv_multi_kernel_requires_coarse_output_tile_preservation",
+      mlir::BoolAttr::get(
+          ctx, manifest.requires_coarse_output_tile_preservation));
+  module->setAttr(
+      "gfx.conv_multi_kernel_has_workgroup_local_reduction_plan",
+      mlir::BoolAttr::get(ctx, manifest.has_workgroup_local_reduction_plan));
+  module->setAttr(
+      "gfx.conv_multi_kernel_coarse_spatial_tile_elements",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(manifest.coarse_spatial_tile_elements)));
+  module->setAttr(
+      "gfx.conv_multi_kernel_coarse_output_channel_block",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(manifest.coarse_output_channel_block)));
+  module->setAttr(
+      "gfx.conv_multi_kernel_coarse_output_tile_elements",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(manifest.coarse_output_tile_elements)));
+  module->setAttr(
+      "gfx.conv_multi_kernel_workgroup_output_tile_deficit",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(manifest.workgroup_output_tile_deficit)));
+  module->setAttr("gfx.conv_multi_kernel_partial_sum_elements",
+                  mlir::IntegerAttr::get(
+                      mlir::IntegerType::get(ctx, 64),
+                      static_cast<int64_t>(manifest.partial_sum_elements)));
+  module->setAttr(
+      "gfx.conv_multi_kernel_reduced_accumulator_elements",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(manifest.reduced_accumulator_elements)));
+  module->setAttr(
+      "gfx.conv_multi_kernel_owned_intermediate_elements",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(manifest.owned_intermediate_elements)));
+  module->setAttr("gfx.conv_multi_kernel_owned_intermediate_bytes",
+                  mlir::IntegerAttr::get(
+                      mlir::IntegerType::get(ctx, 64),
+                      static_cast<int64_t>(manifest.owned_intermediate_bytes)));
+  module->setAttr(
+      "gfx.conv_multi_kernel_owned_intermediate_buffer_count",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(manifest.owned_intermediate_buffer_count)));
+  module->setAttr(
+      "gfx.conv_multi_kernel_workgroup_local_accumulator_elements",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(
+              manifest.workgroup_local_accumulator_elements)));
+  module->setAttr(
+      "gfx.conv_multi_kernel_workgroup_local_accumulator_bytes",
+      mlir::IntegerAttr::get(
+          mlir::IntegerType::get(ctx, 64),
+          static_cast<int64_t>(manifest.workgroup_local_accumulator_bytes)));
+  module->setAttr("gfx.conv_multi_kernel_launch_dispatch_count",
+                  mlir::IntegerAttr::get(
+                      mlir::IntegerType::get(ctx, 64),
+                      static_cast<int64_t>(manifest.launch_dispatch_count)));
+  for (size_t i = 0; i < manifest.stages.size(); ++i) {
+    const auto &stage = manifest.stages[i];
+    const auto suffix = std::to_string(i);
+    module->setAttr(
+        "gfx.conv_multi_kernel_stage" + suffix + "_kind",
+        mlir::StringAttr::get(
+            ctx, gfx_conv_multi_kernel_stage_kind_name(stage.kind)));
+    module->setAttr("gfx.conv_multi_kernel_stage" + suffix + "_name",
+                    mlir::StringAttr::get(ctx, stage.name));
+    module->setAttr(
+        "gfx.conv_multi_kernel_stage" + suffix + "_output_elements",
+        mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 64),
+                               static_cast<int64_t>(stage.output_elements)));
+    module->setAttr("gfx.conv_multi_kernel_stage" + suffix +
+                        "_writes_intermediate",
+                    mlir::BoolAttr::get(ctx, stage.writes_intermediate));
+    module->setAttr("gfx.conv_multi_kernel_stage" + suffix +
+                        "_writes_final_output",
+                    mlir::BoolAttr::get(ctx, stage.writes_final_output));
+  }
+  record_conv_compile_profile(plan);
 }
 
 void MlirStage::apply_input_transform_attrs(mlir::ModuleOp module) const {
@@ -4036,41 +4312,7 @@ void MlirStage::set_parallel_preference(mlir::ModuleOp module) {
   }
   bool prefer_parallel = conv2d;
   const auto optimization_plan = stage_optimization_plan();
-  if (conv2d && optimization_plan.conv.algorithm.kind ==
-                    GfxConvAlgorithmKind::Im2ColMatMul) {
-    auto matmul_shape = m_output_shape;
-    if (matmul_shape.size() == 4) {
-      const uint64_t batch =
-          static_cast<uint64_t>(std::max<size_t>(1, matmul_shape[0]));
-      const uint64_t spatial =
-          static_cast<uint64_t>(std::max<size_t>(1, matmul_shape[2])) *
-          static_cast<uint64_t>(std::max<size_t>(1, matmul_shape[3]));
-      const uint64_t channels =
-          static_cast<uint64_t>(std::max<size_t>(1, matmul_shape[1]));
-      if (batch == 1) {
-        matmul_shape = ov::Shape{channels, spatial};
-      } else {
-        matmul_shape = ov::Shape{batch, spatial, channels};
-      }
-    }
-    const auto caps = query_parallelism_caps(m_buffer_manager);
-    const auto plan = select_matmul_parallelism(caps, matmul_shape);
-    prefer_parallel = prefer_parallel || plan.prefer_parallel;
-    if (plan.prefer_parallel) {
-      module->setAttr("gfx.dispatch_tile_h",
-                      mlir::IntegerAttr::get(mlir::IndexType::get(ctx),
-                                             plan.dispatch.tile_h));
-      module->setAttr("gfx.dispatch_tile_w",
-                      mlir::IntegerAttr::get(mlir::IndexType::get(ctx),
-                                             plan.dispatch.tile_w));
-      module->setAttr("gfx.dispatch_threads_h",
-                      mlir::IntegerAttr::get(mlir::IndexType::get(ctx),
-                                             plan.dispatch.threads_h));
-      module->setAttr("gfx.dispatch_threads_w",
-                      mlir::IntegerAttr::get(mlir::IndexType::get(ctx),
-                                             plan.dispatch.threads_w));
-    }
-  } else if (conv2d && m_type == "Convolution") {
+  if (conv2d && m_type == "Convolution") {
     auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
     if (conv && conv->get_input_size() == 2 && conv->get_output_size() == 1) {
       const auto &in_shape = conv->get_input_shape(0);
@@ -4092,6 +4334,7 @@ void MlirStage::set_parallel_preference(mlir::ModuleOp module) {
         const auto plan = select_conv_parallelism(
             caps, m_output_shape, input_channels, output_channels, kernel_work,
             stride2, depthwise);
+        record_conv_dispatch_compile_profile(plan);
         prefer_parallel = prefer_parallel || plan.prefer_parallel;
         if (plan.prefer_parallel) {
           module->setAttr("gfx.dispatch_tile_h",
@@ -4111,9 +4354,8 @@ void MlirStage::set_parallel_preference(mlir::ModuleOp module) {
                                                  plan.output_channel_block));
           module->setAttr(
               "gfx.dispatch_channel_block_accumulation",
-              mlir::StringAttr::get(
-                  ctx, conv_channel_block_accumulation_name(
-                           plan.channel_block_accumulation)));
+              mlir::StringAttr::get(ctx, conv_channel_block_accumulation_name(
+                                             plan.channel_block_accumulation)));
         }
       }
     }
@@ -4139,6 +4381,7 @@ void MlirStage::set_parallel_preference(mlir::ModuleOp module) {
         const auto plan = select_conv_parallelism(
             caps, m_output_shape, input_channels, output_channels, kernel_work,
             stride2, /*depthwise=*/true);
+        record_conv_dispatch_compile_profile(plan);
         prefer_parallel = prefer_parallel || plan.prefer_parallel;
         if (plan.prefer_parallel) {
           module->setAttr("gfx.dispatch_tile_h",
@@ -4158,9 +4401,8 @@ void MlirStage::set_parallel_preference(mlir::ModuleOp module) {
                                                  plan.output_channel_block));
           module->setAttr(
               "gfx.dispatch_channel_block_accumulation",
-              mlir::StringAttr::get(
-                  ctx, conv_channel_block_accumulation_name(
-                           plan.channel_block_accumulation)));
+              mlir::StringAttr::get(ctx, conv_channel_block_accumulation_name(
+                                             plan.channel_block_accumulation)));
         }
       }
     } else {

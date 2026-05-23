@@ -14,6 +14,7 @@ namespace ov {
 namespace gfx_plugin {
 
 inline constexpr const char* kBackendMetal = "metal";
+inline constexpr const char* kBackendOpenCL = "opencl";
 inline constexpr const char* kBackendVulkan = "vulkan";
 
 const char* backend_to_string(GpuBackend backend);

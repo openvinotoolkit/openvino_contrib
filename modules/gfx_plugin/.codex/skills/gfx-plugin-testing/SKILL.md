@@ -1,6 +1,6 @@
 ---
 name: gfx-plugin-testing
-description: Use when validating OpenVINO GFX plugin changes, adding regression tests, choosing the right test target, or running compare, microbench, and profiling workflows for Metal, Vulkan, Android, or Raspberry Pi paths.
+description: Use when validating OpenVINO GFX plugin changes, adding regression tests, choosing the right test target, or running compare, microbench, and profiling workflows for Metal, OpenCL, Vulkan, Android, or Raspberry Pi paths.
 ---
 
 # GFX Plugin Testing
@@ -18,8 +18,10 @@ This skill is for test selection, regression coverage, and profiling-oriented va
 - The task changes custom-kernel family classification, external-buffer ABI roles, semantic input/output roles, or dispatch-grid policy.
 - The task changes Metal MSL runtime binding plans, explicit kernel-buffer order, inferred MSL buffer-argument counts, split Apple MSL/MPS source plans, compressed `MatMul` source plans, or SDPA source plans.
 - The task changes SPIR-V fixed-argument adapters, compact Vulkan ABI metadata, or MLIR-side binding overrides.
+- The task changes OpenCL source-artifact metadata, dynamic OpenCL runtime selection, source-stage execution, or OpenCL baseline op coverage.
 - The task changes Vulkan Conv2D output-channel blocking, `gfx.dispatch_channel_block`, or capability-gated spatial micro-tiling.
 - The task changes infer submission dependency-window extension, soft-budget caps, or boundary-stage behavior.
+- The task changes target-profile reporting through `GpuExecutionDeviceInfo`, `GfxTargetProfile`, `extended.target_profile`, or `target_backend_*` counters.
 - The user wants compare-runner, microbench, profiling-runbook, Android, or Raspberry Pi validation guidance.
 
 ## Primary References
@@ -39,6 +41,8 @@ Read in this order:
 - `ov_gfx_runtime_micro_tests`: smaller runtime-subgraph checks
 - `ov_gfx_compare_runner`: accuracy-only diff tool
 - `ov_gfx_microbench`: `MB0` to `MB3` microbench and calibration workflow
+- `ov_gfx_conv_shape_bench`: representative Conv2D compile-plus-infer smoke tool
+- standalone OpenCL Conv2D microbenches: kernel-family experiments, not plugin acceptance tests
 
 ## Test Selection Rules
 
@@ -92,6 +96,9 @@ If the change touches `GfxMslRuntimeBindingPlan` or MLIR-owned MSL source plans,
 If the change touches `src/runtime/gfx_mpsrt_model.*`, cover external tensor bindings, tensor binding plans, resource lifetime classification, and ABI adaptation in `tests/unit/gfx_stage_policy_test.cpp`, then cover Metal prepared resource binding in `tests/backends/metal/gpu_backend_test.mm` when the behavior reaches encode time.
 If the change touches `spirv_kernel_binding_adapter.hpp`, cover fixed-argument compact ABI attrs in `tests/unit/basic_ops_internal_test.cpp` and a Vulkan-facing plan path in `tests/unit/gfx_stage_policy_test.cpp` when route selection is affected.
 If the change touches `gfx_backend_custom_kernel_adapter.*`, `gfx_stage_kernel_binding.hpp`, or `gfx_stage_runtime_values.*`, cover both the shared manifest/binding contract and at least one backend-facing Apple MSL or SPIR-V route that consumes it.
+If the change touches OpenCL source artifacts, start with `tests/unit/gfx_opencl_source_artifacts_test.cpp`, then add runtime coverage only when the behavior depends on dynamic OpenCL loading, buffer binding, or command execution.
+If the change touches OpenCL device discovery or memory behavior, inspect `src/backends/opencl/runtime/opencl_api.*`, `opencl_buffer_manager.*`, and `opencl_source_stage.*`, and validate with an OpenCL-capable target in addition to unit tests.
+If the change touches target-profile JSON or counters, extend `tests/unit/gfx_profiling_report_test.cpp` and then run a backend path that records a real `GpuExecutionDeviceInfo`.
 If the change touches MPSGraph-backed GEMM, TopK, or SDPA routes, include both compile/source-plan coverage in `tests/unit/gfx_stage_policy_test.cpp` or `tests/unit/basic_ops_internal_test.cpp` and encode/counter coverage in `tests/backends/metal/gpu_backend_test.mm`.
 If the change touches `ov_gfx_compare_runner`, shared-test tolerances, or `ov::hint::inference_precision`, keep `tests/gfx_accuracy_tolerance.hpp`, `tests/shared_tests_instances/test_utils.hpp`, and `tests/tools/ov_gfx_compare_runner.cpp` aligned.
 If the change touches functional shared-test wiring, keep explicit GFX/TEMPLATE registration helpers and `tests/gfx_shared_gtest_allow.cpp` aligned, and avoid relying on implicit `plugins.xml` or `get_available_devices()` host-plugin discovery.
@@ -116,6 +123,7 @@ ctest --test-dir build-gfx-plugin --output-on-failure -L GFX
 - Do not use `ov_gfx_compare_runner` for performance numbers.
 - Use `ov_gfx_microbench` plus `docs/MICROBENCH_SCHEMA.md` and `docs/PROFILING_RUNBOOK.md` for profiling triage.
 - Use `tests/tools/ov_gfx_conv_shape_bench.cpp` when stage-policy or Metal placement changes need a quick compile-plus-infer sample across representative Conv2D shapes.
+- Use `tests/tools/ov_gfx_opencl_conv_microbench.py` or `tests/tools/ov_gfx_opencl_conv_microbench_android.cpp` only to evaluate OpenCL kernel families before promotion into the shared plugin contract.
 - Use `tools/gfx_profile_runbook.py`, `tools/gfx_microbench_smoke.py`, `tools/gfx_calibration_diff.py`, and `tools/gfx_external_trace_summary.py` when the task is operational rather than purely code-level.
 
 ## Output Expectations

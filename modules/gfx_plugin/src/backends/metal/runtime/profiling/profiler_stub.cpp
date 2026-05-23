@@ -37,6 +37,8 @@ void MetalProfiler::record_transfer(const char* /*tag*/,
                                     std::chrono::microseconds /*cpu_us*/,
                                     uint64_t /*gpu_us*/) {}
 
+void MetalProfiler::set_target_profile(const GfxTargetProfile& /*profile*/) {}
+
 void MetalProfiler::increment_counter(std::string_view /*name*/, uint64_t /*delta*/) {}
 
 void MetalProfiler::set_counter(std::string_view /*name*/, uint64_t /*value*/) {}

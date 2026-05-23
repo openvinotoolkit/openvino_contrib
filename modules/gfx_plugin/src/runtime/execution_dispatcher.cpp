@@ -14,14 +14,16 @@ namespace gfx_plugin {
 namespace {
 using StageFactoryFn = GpuStageFactory::StageFactoryFn;
 
-constexpr size_t kBackendCount = 2;
+constexpr size_t kBackendCount = 3;
 
 size_t backend_index(GpuBackend backend) {
     switch (backend) {
     case GpuBackend::Metal:
         return 0;
-    case GpuBackend::Vulkan:
+    case GpuBackend::OpenCL:
         return 1;
+    case GpuBackend::Vulkan:
+        return 2;
     default:
         break;
     }

@@ -12,6 +12,7 @@ set(GFX_PLUGIN_COMMON_SOURCES ${GFX_PLUGIN_SOURCES})
 set(GFX_PLUGIN_ENTRY_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/plugin/plugin.cpp")
 list(FILTER GFX_PLUGIN_COMMON_SOURCES EXCLUDE REGEX "plugin/plugin\\.cpp$")
 set(GFX_PLUGIN_METAL_SOURCES_EFFECTIVE "")
+set(GFX_PLUGIN_OPENCL_SOURCES_EFFECTIVE "")
 set(GFX_PLUGIN_VULKAN_SOURCES_EFFECTIVE "")
 set(GFX_RUNTIME_COMMON_SOURCES ${GFX_RUNTIME_COMMON_SOURCES})
 
@@ -29,6 +30,16 @@ else()
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/runtime_stub.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/profiling/profiler_stub.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/runtime/profiling/gpu_timestamps_stub.cpp)
+endif()
+
+if(GFX_BACKEND_OPENCL_AVAILABLE)
+    list(APPEND GFX_PLUGIN_OPENCL_SOURCES_EFFECTIVE
+        ${GFX_PLUGIN_OPENCL_SOURCES})
+    list(APPEND GFX_RUNTIME_OPENCL_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/opencl/runtime/stage_factory.cpp)
+else()
+    list(APPEND GFX_PLUGIN_OPENCL_SOURCES_EFFECTIVE
+        ${GFX_PLUGIN_OPENCL_STUB_SOURCES})
 endif()
 
 if(GFX_BACKEND_VULKAN_AVAILABLE)
@@ -65,6 +76,7 @@ add_subdirectory(mlir)
 add_library(gfx_plugin_build_settings INTERFACE)
 target_compile_definitions(gfx_plugin_build_settings INTERFACE
     GFX_BACKEND_METAL_AVAILABLE=$<BOOL:${GFX_BACKEND_METAL_AVAILABLE}>
+    GFX_BACKEND_OPENCL_AVAILABLE=$<BOOL:${GFX_BACKEND_OPENCL_AVAILABLE}>
     GFX_BACKEND_VULKAN_AVAILABLE=$<BOOL:${GFX_BACKEND_VULKAN_AVAILABLE}>)
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(gfx_plugin_build_settings INTERFACE -Werror)
@@ -163,6 +175,18 @@ target_link_libraries(gfx_plugin_vulkan PRIVATE
     openvino::runtime::dev)
 set_target_properties(gfx_plugin_vulkan PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+add_library(gfx_plugin_opencl STATIC)
+target_sources(gfx_plugin_opencl PRIVATE
+    ${GFX_PLUGIN_OPENCL_SOURCES_EFFECTIVE}
+    ${GFX_PLUGIN_OPENCL_HEADERS})
+target_link_libraries(gfx_plugin_opencl PRIVATE
+    gfx_plugin_build_settings
+    gfx_plugin_public_headers
+    gfx_plugin_private_headers
+    openvino::runtime
+    openvino::runtime::dev)
+set_target_properties(gfx_plugin_opencl PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 # Build GFX plugin as SHARED (not MODULE) to allow normal linking/registration in OpenVINO
 add_library(${TARGET_NAME} SHARED)
 target_sources(${TARGET_NAME} PRIVATE
@@ -175,6 +199,7 @@ target_link_libraries(${TARGET_NAME}
 target_link_libraries(${TARGET_NAME} PRIVATE
     gfx_plugin_core
     gfx_plugin_metal
+    gfx_plugin_opencl
     gfx_plugin_vulkan)
 
 # On macOS, force ".so" suffix so OpenVINO loader picks the plugin consistently.
@@ -216,6 +241,25 @@ endif()
 
 if(TARGET GFX::Metal)
     target_link_libraries(${TARGET_NAME} PRIVATE GFX::Metal)
+endif()
+
+if(GFX_BACKEND_OPENCL_AVAILABLE)
+    add_library(gfx_runtime_opencl STATIC)
+    target_sources(gfx_runtime_opencl PRIVATE
+        ${GFX_RUNTIME_COMMON_HEADERS}
+        ${GFX_RUNTIME_OPENCL_SOURCES}
+        ${GFX_RUNTIME_OPENCL_HEADERS})
+    target_link_libraries(gfx_runtime_opencl PRIVATE
+        gfx_plugin_build_settings
+        gfx_plugin_public_headers
+        gfx_plugin_private_headers
+        openvino::runtime
+        openvino::runtime::dev)
+    if(CMAKE_DL_LIBS)
+        target_link_libraries(gfx_runtime_opencl PRIVATE ${CMAKE_DL_LIBS})
+    endif()
+    set_target_properties(gfx_runtime_opencl PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_link_libraries(${TARGET_NAME} PRIVATE gfx_runtime_opencl)
 endif()
 
 if(GFX_BACKEND_VULKAN_AVAILABLE)

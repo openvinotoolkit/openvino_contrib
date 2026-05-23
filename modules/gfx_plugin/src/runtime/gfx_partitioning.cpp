@@ -230,10 +230,11 @@ GfxPartitioningDeviceInfo make_default_partitioning_device_info(GpuBackend backe
     info.backend = backend;
     info.preferred_simd_width = 32;
     info.subgroup_size = 32;
-    if (backend == GpuBackend::Vulkan) {
+    if (backend == GpuBackend::OpenCL || backend == GpuBackend::Vulkan) {
         info.max_total_threads_per_group = 128;
         info.max_threads_per_group = {128, 128, 64};
-        info.device_key = "vulkan:default";
+        info.device_key =
+            backend == GpuBackend::OpenCL ? "opencl:default" : "vulkan:default";
     } else {
         info.max_total_threads_per_group = 256;
         info.max_threads_per_group = {256, 256, 64};

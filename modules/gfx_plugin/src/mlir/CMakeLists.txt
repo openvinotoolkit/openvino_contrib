@@ -72,8 +72,6 @@ set(GFX_MLIR_SOURCES
     ../transforms/mlir_fused_ops.cpp
     ../transforms/fusion_attention.cpp
     ../transforms/fusion_attention_scale_mask.cpp
-    ../transforms/conv_im2col_matmul_rewrite.cpp
-    ../transforms/conv_im2col_parallel_lowering.cpp
     ../transforms/conv_parallel_lowering.cpp
     ../transforms/conv3d_parallel_lowering.cpp
     ../transforms/matmul_parallel_lowering.cpp

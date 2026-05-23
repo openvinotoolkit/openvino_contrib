@@ -44,8 +44,9 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 - `tools/`: developer automation scripts for profiling workflows, calibration diffs, and smoke checks
 
 Recent additions in the tree include:
-- `tests/unit/mlir_conv_parallel_test.cpp` for canonical Conv2D lowering, per-axis and combined interior-tile bounds checks, Vulkan batch-1 parallel-launch coverage, batch>1 serial-fallback coverage, im2col rewrite coverage, MaxPool2D/AvgPool2D parallel-dispatch regression checks, and absorbed-input-transform regression checks
+- `tests/unit/mlir_conv_parallel_test.cpp` for canonical Conv2D lowering, per-axis and combined interior-tile bounds checks, Vulkan batch-1 parallel-launch coverage, batch>1 serial-fallback coverage, MaxPool2D/AvgPool2D parallel-dispatch regression checks, absorbed-input-transform regression checks, and guards that keep decomposed Conv2D experiments out of the production lowering path until a typed multi-kernel manifest exists
 - `tests/unit/gfx_parallelism_test.cpp` for backend-neutral parallelism-plan selection
+- `tests/unit/gfx_opencl_source_artifacts_test.cpp` for OpenCL source-artifact manifest coverage, entry-point metadata, role/scalar ABI contracts, and baseline op-family mapping
 - `tests/unit/mlir_matmul_parallel_test.cpp` for linear matmul parallel-lowering behavior
 - `tests/unit/basic_ops_internal_test.cpp` for internal transform, fusion, plugin regression coverage, focused builder coverage such as ReduceSum, generated `gfx_mpsrt_ops` / `GfxMpsrtProgram` readback, Apple stage-pipeline cleanup behavior, manifest-only Apple MSL metadata checks, SPIR-V fixed-argument adapter checks, and typed MPSRT builder-plan/runtime-model readback
 - `tests/unit/layout_cleanup_test.cpp` for MLIR layout-cleanup behavior, including DFL softmax expectation rewrites
@@ -69,6 +70,7 @@ Recent additions in the tree include:
 - `tests/unit/runtime_subgraph_test.cpp` for targeted runtime subgraph execution checks through `ov_gfx_runtime_micro_tests`
 - `tests/unit/gpu_const_cache_test.cpp`, `tests/unit/kernel_arg_reuse_test.cpp`, and `tests/unit/gpu_backend_base_test.cpp` for cache and binding reuse layers
 - `tests/tools/ov_gfx_conv_shape_bench.cpp` builds as `ov_gfx_conv_shape_bench` and provides representative YOLO26x Conv2D compile-plus-infer sweeps. Use `--device GFX` for plugin inference checks; `CPU` is only a separate performance orienter, not a GFX fallback. Use `--case SUBSTRING` or `--list-cases` for bounded Android/RPi smoke runs before the full benchmark route.
+- `tests/tools/ov_gfx_opencl_conv_microbench.py` and `tests/tools/ov_gfx_opencl_conv_microbench_android.cpp` are standalone OpenCL Conv2D experiments. Use them to decide whether an OpenCL kernel family is worth promoting into shared GFX MLIR/runtime contracts; they are not evidence that the plugin OpenCL backend executes Conv2D.
 
 Recent focused updates in existing tests include:
 - stronger Broadcom V3D expectations for dense stride-1, huge-spatial, and ultra-dense convolution threadgroup selection in `tests/unit/gfx_parallelism_test.cpp`
@@ -101,6 +103,7 @@ Add or update tests when you change:
 - custom-kernel family classification, dispatch-grid policy, or external-buffer ABI role inference
 - Metal MSL runtime binding plans, inferred MSL buffer-argument counts, compressed `MatMul` source plans, or SDPA source plans
 - SPIR-V fixed-argument adapter metadata, Vulkan compact-ABI binding overrides, or module-cache reuse of lowered launch metadata
+- OpenCL source-artifact metadata, role/scalar ABI, baseline source op coverage, or dynamic OpenCL runtime selection
 - backend-specialized routes such as chunked or direct Vulkan execution; Conv2D and GroupConv regressions should exercise the shared MLIR/SPIR-V path, not a separate Vulkan direct/chunked path
 - infer submission thresholds, submission ordering, command-buffer lifecycle, or device-family budget inheritance from the common workload profile
 - dependency-aware submit-window extension and the boundary list that prevents layout, split, transpose, softmax, and attention stages from being pulled across a soft-budget boundary
@@ -108,6 +111,7 @@ Add or update tests when you change:
 - output-resolution planning, passthrough-output handling, or reusable host-output allocation
 - stage-output aliasing, fused-stage lifetime reuse, or source-node-aware output routing
 - stage-level profiling payloads such as `bytes_in`, `bytes_out`, `macs_est`, or `flops_est`
+- target-profile fields or counters such as `extended.target_profile`, `target_backend_opencl`, `target_backend_metal`, or `target_backend_vulkan`
 
 ## Practical Strategy
 - run the narrowest relevant gtest filter first
@@ -118,9 +122,10 @@ Add or update tests when you change:
 
 For cross-device acceptance, use one logical test contract but treat backend results separately:
 - Mac validates the Metal/MPS/MSL route.
-- Android and Raspberry Pi validate the Vulkan/SPIR-V route on real devices.
+- OpenCL-capable Android/Linux targets validate the OpenCL source-kernel route when `GFX_BACKEND=opencl` or `auto` resolves to OpenCL.
+- Android and Raspberry Pi Vulkan runs validate the legacy Vulkan/SPIR-V route on real devices when that backend is explicitly selected or OpenCL is unavailable.
 - A Mac pass does not prove Android/RPi correctness, and an Android/RPi failure must not be converted into a skip just because the Metal route passes.
-- If Android and Raspberry Pi fail with the same compare-runner mismatch, fix the shared MLIR/SPIR-V path first before adding backend-specific runtime code.
+- If Android and Raspberry Pi fail with the same compare-runner mismatch on the same backend route, fix the shared manifest/lowering path first before adding backend-specific runtime code.
 - Do not use runtime environment switches to keep alternate routes alive. A new route is acceptable only when it replaces the old path or is selected by the normal compile-time/backend planning contract.
 - For Mac `f32` MPSImage experiments, use `ov_gfx_compare_runner --diagnostic-f32-mps-image` so the route goes through the normal compile property, stage planner, and MPSRT path. Do not turn that diagnostic flag into production placement until the required TEMPLATE/reference model-level gate passes.
 - Keep the Conv2D `ExplicitPadding` -> `AutoPadValid` sequence as a required regression probe for Vulkan serial fallback ABI; it must stay a real pass rather than a skip on supported real devices.
@@ -135,6 +140,7 @@ If you change MLIR lowering, prefer a unit test that inspects the emitted IR for
 - Some tests skip when the corresponding backend is unavailable on the current machine
 - Metal tests require a valid Metal runtime environment
 - Vulkan tests depend on Vulkan being enabled and available in the build
+- OpenCL tests that execute runtime code require a target OpenCL runtime; source-artifact unit tests do not require a GPU
 - Shared-test registration should use explicit GFX/TEMPLATE registration helpers rather than `get_available_devices()` as an availability gate; `get_property(device, ov::supported_properties)` is the preferred probe because it avoids loading unrelated host plugins through discovery metadata
 - `ov_gfx_compare_runner` is useful for numeric diffs and per-op narrowing when a failure is hard to isolate from the full suite; it also supports `--per-op-all`, `--reference-device`, `--reference-plugin`, `--input-image`, `--dump-reference-dir`, `--golden-dir`, `--gfx-inference-precision f16|f32`, `--per-op-input-mode`, `--per-op-generated-inputs`, `--per-op-recursive-limit`, `--per-op-recursive-trace`, and `--gfx-only`
 - Accuracy thresholds are precision-aware by default, following the same principle as OpenVINO shared/Intel GPU tests: the reference device remains `TEMPLATE`, but the tolerance floor is derived from the model/output types and the actual GFX inference precision. FP16 GFX runs must not be judged with FP32-only epsilons unless the command explicitly passes strict overrides such as `--abs-threshold 1e-6 --rel-threshold 1e-6`. Manual thresholds are still hard gates and are not relaxed by the default policy.
@@ -154,6 +160,7 @@ If you change MLIR lowering, prefer a unit test that inspects the emitted IR for
 - `ov_gfx_compare_runner` also supports boolean tensors, `--single-op-output`, `--tinyllama-prompt-inputs`, `--input-image`, and an extra `Select` mismatch probe for harder data-dependent failures
 - `ov_gfx_compare_runner` now prints outputs as `friendly_name:port` and reports `max_index`, reference value, and GFX value for the worst mismatch
 - `ov_gfx_conv_shape_bench` is useful when stage-policy, Metal placement, Vulkan Conv2D retry behavior, or Broadcom V3D dispatch tiling changes need a quick before/after sample on fixed Conv2D shapes without running a full benchmark flow. Keep GFX runs on `--device GFX`; run `CPU` only as a separate comparator when documenting performance corridors. For RPi5 pointwise Conv2D checks, `--case yolo26x_pw_48_48_160` should show the shared MLIR/SPIR-V dispatch using the occupancy-aware V3D policy after `OV_GFX_DEBUG=1`, not a full 256-thread tile.
+- Use the standalone OpenCL Conv2D microbench only as a kernel-family experiment. A result there must be promoted through support probing, `gfx_opencl_source_artifacts.*`, runtime binding, and plugin tests before it is documented as GFX plugin coverage.
 - keep `ov_gfx_compare_runner` accuracy-only and use `benchmark_app` for perf
 - use `ov_gfx_microbench` for `MB0` to `MB3`, calibration artifacts, and profiling triage rather than for acceptance perf numbers
 - for the full profiling workflow and external tracing commands, use `PROFILING_RUNBOOK.md`

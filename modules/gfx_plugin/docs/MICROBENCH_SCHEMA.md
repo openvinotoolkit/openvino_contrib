@@ -14,7 +14,7 @@ Current root contract:
 {
   "schema_version": 2,
   "tool": "ov_gfx_microbench",
-  "selected_backend": "metal|vulkan|auto",
+  "selected_backend": "metal|opencl|vulkan|auto",
   "device": { "...": "..." },
   "warmup": 3,
   "iterations": 10,
@@ -44,14 +44,14 @@ Root fields:
 
 ```json
 {
-  "backend": "metal|vulkan",
+  "backend": "metal|opencl|vulkan",
   "device_name": "Apple M1 Max",
   "full_name": "GFX (Apple M1 Max)",
   "platform": "macos|linux_or_android",
   "vendor_id": "0x5143|apple",
   "device_id": "0x44050001|metal_default",
   "driver_version": "2150760449|metal",
-  "architecture": "vulkan|apple_silicon"
+  "architecture": "opencl|vulkan|apple_silicon"
 }
 ```
 
@@ -63,7 +63,7 @@ Root fields:
 
 ```json
 {
-  "backend": "metal|vulkan",
+  "backend": "metal|opencl|vulkan",
   "median_wall_us": 33.416,
   "min_wall_us": 31.002,
   "max_wall_us": 36.771,
@@ -160,6 +160,7 @@ Reduced summary extracted from `profile.extended`:
 - phase CPU slices for `wait`, `submit`, `barrier`, `upload`, `download`
 - selected counters such as `submit_count`, `barrier_count`, `descriptor_update_count`, `pipeline_creation_count`
 - booleans for `sync_heavy`, `transfer_heavy`, `compile_in_infer`, `binding_prepare_in_infer`, `final_fence_wait_seen`, `cross_submit_barrier_seen`
+- selected target-profile fields when present, including the resolved backend and device family
 
 This digest exists to make calibration consumers independent from the full profiling JSON layout.
 
@@ -175,7 +176,7 @@ Current contract:
   "microbench_schema_version": 2,
   "tool": "ov_gfx_microbench",
   "device_key": "0x5143:0x44050001:2150760449",
-  "backend": "vulkan",
+  "backend": "metal|opencl|vulkan",
   "device_name": "Adreno (TM) 830",
   "platform": "linux_or_android",
   "vendor_id": "0x5143",
@@ -223,7 +224,7 @@ To load and compare an existing artifact:
 
 ```bash
 ./ov_gfx_microbench \
-  --backend vulkan \
+  --backend opencl \
   --warmup 1 \
   --iterations 3 \
   --calibration-input gfx-calibration.json
@@ -240,3 +241,4 @@ When `--calibration-input` is used, the full report includes `loaded_calibration
 - `MB1` approximates copy+dispatch, `MB2` approximates bandwidth pressure, `MB3` approximates compute pressure.
 - `adjusted_*` metrics subtract only `MB0` median fixed overhead.
 - `gpu_*` estimates depend on `extended.total_gpu_us`; if GPU counters are unavailable they may be `0`.
+- `extended.target_profile` and `target_backend_*` counters identify the route that actually ran. Use them when comparing `auto`, `opencl`, and legacy `vulkan` runs from the same device class.

@@ -368,24 +368,44 @@ VulkanBufferManager::query_execution_device_info() const {
   const auto &vk = VulkanContext::instance();
   info.backend = GpuBackend::Vulkan;
   info.device_family = vk.device_family();
+  info.device_name = vk.device_name();
+  info.vendor_id = vk.vendor_id();
+  info.device_id = vk.device_id();
+  info.driver_version = vk.driver_version();
+  info.api_version = vk.api_version();
   info.preferred_simd_width = std::max<uint32_t>(vk.subgroup_size(), 1u);
   info.subgroup_size = std::max<uint32_t>(vk.subgroup_size(), 1u);
   info.max_total_threads_per_group =
       std::max<uint32_t>(vk.max_compute_workgroup_invocations(), 1u);
   info.max_threads_per_group = vk.max_compute_workgroup_size();
-  // These capabilities are only advertised after the mandatory TEMPLATE
-  // real-image gate passes on the concrete device family. Broadcom/V3D keeps
-  // the common selector path available for diagnostics, but production runtime
-  // must not enable ocN/spatial micro-tiles until the RPi result/accuracy gate
-  // is closed.
+  info.min_storage_buffer_offset_alignment =
+      std::max<uint64_t>(static_cast<uint64_t>(vk.min_storage_buffer_offset_alignment()), 1u);
+  info.non_coherent_atom_size =
+      std::max<uint64_t>(static_cast<uint64_t>(vk.noncoherent_atom_size()), 1u);
+  info.supports_storage_buffer_8bit = vk.supports_storage_buffer_8bit();
+  info.supports_storage_buffer_16bit = vk.supports_storage_buffer_16bit();
+  info.supports_shader_float16 = vk.supports_shader_float16();
+  info.supports_shader_int8 = vk.supports_shader_int8();
+  // Keep the Conv capability gates split. Output-channel blocking only widens
+  // the channel lanes in the shared dense-reduction lowering, while spatial
+  // micro-tiling makes one lane produce multiple spatial outputs. Both Adreno
+  // and Broadcom/V3D use the same shared accumulator-budget policy; V3D uses it
+  // to trade some OC lanes for spatial output reuse on dense Conv workloads.
   info.supports_conv_output_channel_blocking =
-      info.device_family == GpuDeviceFamily::QualcommAdreno;
+      info.device_family == GpuDeviceFamily::QualcommAdreno ||
+      info.device_family == GpuDeviceFamily::BroadcomV3D;
   info.supports_conv_channel_block_spatial_tiling =
-      info.supports_conv_output_channel_blocking;
+      info.device_family == GpuDeviceFamily::QualcommAdreno ||
+      info.device_family == GpuDeviceFamily::BroadcomV3D;
 
   std::ostringstream os;
   os << "vulkan:" << gpu_device_family_name(info.device_family) << ':'
      << vk.vendor_id() << ':' << vk.device_id() << ':' << vk.device_name()
+     << ':' << vk.driver_version() << ':' << vk.api_version()
+     << ':' << (info.supports_storage_buffer_8bit ? 1 : 0)
+     << ':' << (info.supports_storage_buffer_16bit ? 1 : 0)
+     << ':' << (info.supports_shader_float16 ? 1 : 0)
+     << ':' << (info.supports_shader_int8 ? 1 : 0)
      << ':' << info.subgroup_size << ':' << info.max_total_threads_per_group
      << ':' << info.max_threads_per_group[0] << ':'
      << info.max_threads_per_group[1] << ':' << info.max_threads_per_group[2];

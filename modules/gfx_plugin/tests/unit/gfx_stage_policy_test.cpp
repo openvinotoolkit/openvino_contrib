@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "kernel_ir/gfx_custom_kernel_families.hpp"
 #include "mlir/codegen_common.hpp"
 #include "mlir/gfx_apple_vendor_descriptors.hpp"
 #include "mlir/gfx_backend_custom_kernel_adapter.hpp"
@@ -87,6 +88,26 @@ make_pointwise_conv_node(ov::element::Type element_type = ov::element::f16) {
   return std::make_shared<ov::op::v1::Convolution>(
       input, weights, ov::Strides{1, 1}, ov::CoordinateDiff{0, 0},
       ov::CoordinateDiff{0, 0}, ov::Strides{1, 1});
+}
+
+std::shared_ptr<const ov::Node> make_heavy_spatial_conv_node() {
+  auto input = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f16, ov::Shape{1, 384, 80, 80});
+  auto weights = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f16, ov::Shape{384, 384, 3, 3});
+  return std::make_shared<ov::op::v1::Convolution>(
+      input, weights, ov::Strides{1, 1}, ov::CoordinateDiff{1, 1},
+      ov::CoordinateDiff{1, 1}, ov::Strides{1, 1});
+}
+
+std::shared_ptr<const ov::Node> make_width_reuse_stride2_conv_node() {
+  auto input = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f16, ov::Shape{1, 128, 160, 160});
+  auto weights = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f16, ov::Shape{128, 128, 3, 3});
+  return std::make_shared<ov::op::v1::Convolution>(
+      input, weights, ov::Strides{2, 2}, ov::CoordinateDiff{1, 1},
+      ov::CoordinateDiff{1, 1}, ov::Strides{1, 1});
 }
 
 std::shared_ptr<const ov::Node> make_non_aligned_channel_conv_node() {
@@ -215,14 +236,14 @@ std::shared_ptr<const ov::Node> make_last_dim_topk_node() {
 }
 
 std::shared_ptr<const ov::Node> make_sdpa_node(uint32_t value_dim = 4) {
-  auto query = std::make_shared<ov::op::v0::Parameter>(
-      ov::element::f32, ov::Shape{1, 2, 3, 4});
-  auto key = std::make_shared<ov::op::v0::Parameter>(
-      ov::element::f32, ov::Shape{1, 2, 5, 4});
+  auto query = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                       ov::Shape{1, 2, 3, 4});
+  auto key = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                     ov::Shape{1, 2, 5, 4});
   auto value = std::make_shared<ov::op::v0::Parameter>(
       ov::element::f32, ov::Shape{1, 2, 5, value_dim});
-  return std::make_shared<ov::op::v13::ScaledDotProductAttention>(
-      query, key, value, false);
+  return std::make_shared<ov::op::v13::ScaledDotProductAttention>(query, key,
+                                                                  value, false);
 }
 
 std::shared_ptr<const ov::Node> make_yolo_last_dim_topk_node() {
@@ -279,8 +300,8 @@ std::shared_ptr<const ov::Node> make_conv_adjacent_large_sigmoid_node() {
 
 std::shared_ptr<const ov::Node> make_conv_adjacent_large_add_node() {
   auto conv = std::const_pointer_cast<ov::Node>(make_large_chunked_conv_node());
-  auto rhs = std::make_shared<ov::op::v0::Parameter>(
-      ov::element::f16, ov::Shape{1, 128, 64, 64});
+  auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f16,
+                                                     ov::Shape{1, 128, 64, 64});
   return std::make_shared<ov::op::v1::Add>(conv, rhs);
 }
 
@@ -382,10 +403,175 @@ TEST(
   EXPECT_TRUE(plan.post_ops.activation);
   EXPECT_TRUE(plan.post_ops.batchnorm);
   EXPECT_EQ(plan.conv.kind, GfxConvRouteKind::None);
-  EXPECT_EQ(plan.conv.family, GfxConvFamily::Unknown);
+  EXPECT_EQ(plan.conv.family, GfxConvFamily::Pointwise1x1);
   EXPECT_EQ(plan.conv.algorithm.kind, GfxConvAlgorithmKind::None);
+  EXPECT_FALSE(plan.conv.algorithm.requires_multi_kernel_manifest);
   EXPECT_FALSE(plan.execution.submit.isolate);
   EXPECT_EQ(plan.execution.submit.weight, 4u);
+}
+
+TEST(
+    GfxStagePolicyTest,
+    HeavyBroadcomConvRequiresCooperativeReductionManifestButDoesNotSelectLegacyAlgorithm) {
+  auto info = make_broadcom_v3d_info();
+  info.supports_conv_output_channel_blocking = true;
+  FakeDeviceInfoBufferManager buffer_manager(info);
+  const auto conv = make_heavy_spatial_conv_node();
+  const auto plan =
+      select_stage_optimization_plan(&buffer_manager, GpuBackend::Vulkan,
+                                     "Convolution", conv, ov::element::f16,
+                                     /*has_bias=*/false,
+                                     /*has_activation=*/false,
+                                     /*has_batchnorm=*/false, {});
+
+  EXPECT_EQ(plan.conv.kind, GfxConvRouteKind::None);
+  EXPECT_EQ(plan.conv.family, GfxConvFamily::Spatial3x3);
+  EXPECT_EQ(plan.conv.algorithm.kind, GfxConvAlgorithmKind::None);
+  EXPECT_TRUE(plan.conv.algorithm.requires_multi_kernel_manifest);
+  EXPECT_EQ(plan.conv.algorithm.multi_kernel_family,
+            "cooperative_direct_reduce");
+  EXPECT_EQ(plan.conv.algorithm.multi_kernel_manifest.family,
+            "cooperative_direct_reduce");
+  EXPECT_FALSE(
+      plan.conv.algorithm.multi_kernel_manifest.requires_owned_intermediates);
+  EXPECT_FALSE(
+      plan.conv.algorithm.multi_kernel_manifest.requires_owned_launch_sequence);
+  EXPECT_TRUE(plan.conv.algorithm.multi_kernel_manifest.requires_output_reuse);
+  EXPECT_TRUE(plan.conv.algorithm.multi_kernel_manifest
+                  .requires_coarse_output_tile_preservation);
+  EXPECT_GT(plan.conv.algorithm.multi_kernel_manifest
+                .coarse_spatial_tile_elements,
+            0u);
+  EXPECT_GT(
+      plan.conv.algorithm.multi_kernel_manifest.coarse_output_channel_block,
+      0u);
+  EXPECT_EQ(plan.conv.algorithm.multi_kernel_manifest
+                .coarse_output_tile_elements,
+            plan.conv.algorithm.multi_kernel_manifest
+                    .coarse_spatial_tile_elements *
+                plan.conv.algorithm.multi_kernel_manifest
+                    .coarse_output_channel_block);
+  EXPECT_EQ(plan.conv.algorithm.workgroup_output_lanes,
+            plan.conv.algorithm.multi_kernel_manifest
+                .coarse_output_tile_elements);
+  ASSERT_GT(plan.conv.algorithm.workgroup_reduction_lanes, 1u);
+  EXPECT_EQ(plan.conv.algorithm.multi_kernel_manifest
+                .workgroup_output_tile_deficit,
+            0u);
+  EXPECT_EQ(plan.conv.algorithm.multi_kernel_manifest.partial_sum_elements,
+            0u);
+  EXPECT_EQ(
+      plan.conv.algorithm.multi_kernel_manifest.reduced_accumulator_elements,
+      0u);
+  EXPECT_EQ(
+      plan.conv.algorithm.multi_kernel_manifest.owned_intermediate_elements,
+      0u);
+  EXPECT_EQ(
+      plan.conv.algorithm.multi_kernel_manifest.owned_intermediate_bytes,
+      0u);
+  EXPECT_EQ(
+      plan.conv.algorithm.multi_kernel_manifest.owned_intermediate_buffer_count,
+      0u);
+  EXPECT_TRUE(plan.conv.algorithm.multi_kernel_manifest
+                  .has_workgroup_local_reduction_plan);
+  EXPECT_EQ(plan.conv.algorithm.multi_kernel_manifest
+                .workgroup_local_accumulator_elements,
+            plan.conv.algorithm.workgroup_reduction_lanes *
+                plan.conv.algorithm.workgroup_output_lanes);
+  EXPECT_EQ(plan.conv.algorithm.multi_kernel_manifest
+                .workgroup_local_accumulator_bytes,
+            plan.conv.algorithm.multi_kernel_manifest
+                .workgroup_local_accumulator_elements *
+                static_cast<uint64_t>(ov::element::f32.size()));
+  EXPECT_GT(plan.conv.algorithm.multi_kernel_manifest
+                .workgroup_local_accumulator_bytes,
+            0u);
+  EXPECT_EQ(plan.conv.algorithm.multi_kernel_manifest.launch_dispatch_count,
+            plan.conv.algorithm.multi_kernel_manifest.stages.size());
+  ASSERT_EQ(plan.conv.algorithm.multi_kernel_manifest.stages.size(), 1u);
+  EXPECT_EQ(plan.conv.algorithm.multi_kernel_manifest.stages[0].kind,
+            GfxConvMultiKernelStageKind::FinalizeOutput);
+  EXPECT_EQ(plan.conv.algorithm.multi_kernel_manifest.stages[0].name,
+            "cooperative_direct_reduce");
+  EXPECT_GT(plan.conv.algorithm.reduction_work, 0u);
+  EXPECT_GT(plan.conv.algorithm.output_elements, 0u);
+  EXPECT_GT(plan.conv.algorithm.intermediate_elements, 0u);
+  EXPECT_GT(plan.conv.algorithm.reduction_chunk_count, 1u);
+  EXPECT_GT(plan.conv.algorithm.reduction_chunk_size, 0u);
+  EXPECT_EQ(plan.conv.algorithm.intermediate_elements,
+            plan.conv.algorithm.output_elements *
+                plan.conv.algorithm.reduction_chunk_count);
+  EXPECT_GT(plan.conv.algorithm.workgroup_reduction_lanes, 1u);
+  EXPECT_GT(plan.conv.algorithm.workgroup_output_lanes, 0u);
+  EXPECT_LE(plan.conv.algorithm.workgroup_reduction_lanes *
+                plan.conv.algorithm.multi_kernel_manifest
+                    .coarse_spatial_tile_elements,
+            static_cast<uint64_t>(info.max_total_threads_per_group));
+  EXPECT_GT(plan.conv.algorithm.output_channel_reuse_lanes, 1u);
+  EXPECT_EQ(plan.conv.algorithm.spatial_output_reuse_lanes, 1u);
+  EXPECT_EQ(plan.conv.algorithm.output_reuse_lanes,
+            plan.conv.algorithm.output_channel_reuse_lanes *
+                plan.conv.algorithm.spatial_output_reuse_lanes);
+  EXPECT_EQ(plan.conv.algorithm.spatial_input_reuse_lanes, 1u);
+  EXPECT_EQ(plan.conv.algorithm.spatial_input_reuse_unique_width_loads, 0u);
+  EXPECT_EQ(plan.conv.algorithm.spatial_input_reuse_saved_width_loads, 0u);
+  EXPECT_FALSE(
+      plan.conv.algorithm.multi_kernel_manifest.requires_spatial_input_reuse);
+}
+
+TEST(GfxStagePolicyTest,
+     CooperativeReductionManifestInheritsSpatialReuseOnlyFromCapability) {
+  auto info = make_broadcom_v3d_info();
+  info.supports_conv_output_channel_blocking = true;
+  info.supports_conv_channel_block_spatial_tiling = true;
+  FakeDeviceInfoBufferManager buffer_manager(info);
+  const auto conv = make_heavy_spatial_conv_node();
+  const auto plan =
+      select_stage_optimization_plan(&buffer_manager, GpuBackend::Vulkan,
+                                     "Convolution", conv, ov::element::f16,
+                                     /*has_bias=*/false,
+                                     /*has_activation=*/false,
+                                     /*has_batchnorm=*/false, {});
+
+  EXPECT_TRUE(plan.conv.algorithm.requires_multi_kernel_manifest);
+  EXPECT_EQ(plan.conv.algorithm.multi_kernel_family,
+            "cooperative_direct_reduce");
+  EXPECT_GT(plan.conv.algorithm.output_channel_reuse_lanes, 1u);
+  EXPECT_GT(plan.conv.algorithm.spatial_output_reuse_lanes, 1u);
+  EXPECT_EQ(plan.conv.algorithm.output_reuse_lanes,
+            plan.conv.algorithm.output_channel_reuse_lanes *
+                plan.conv.algorithm.spatial_output_reuse_lanes);
+  EXPECT_TRUE(plan.conv.algorithm.multi_kernel_manifest.requires_output_reuse);
+  EXPECT_TRUE(plan.conv.algorithm.multi_kernel_manifest
+                  .has_workgroup_local_reduction_plan);
+}
+
+TEST(GfxStagePolicyTest,
+     CooperativeReductionManifestCarriesWidthInputReuseForStride2SpatialTile) {
+  auto info = make_broadcom_v3d_info();
+  info.supports_conv_output_channel_blocking = true;
+  info.supports_conv_channel_block_spatial_tiling = true;
+  FakeDeviceInfoBufferManager buffer_manager(info);
+  const auto conv = make_width_reuse_stride2_conv_node();
+  const auto plan =
+      select_stage_optimization_plan(&buffer_manager, GpuBackend::Vulkan,
+                                     "Convolution", conv, ov::element::f16,
+                                     /*has_bias=*/false,
+                                     /*has_activation=*/false,
+                                     /*has_batchnorm=*/false, {});
+
+  EXPECT_TRUE(plan.conv.algorithm.requires_multi_kernel_manifest);
+  EXPECT_EQ(plan.conv.algorithm.multi_kernel_family,
+            "cooperative_direct_reduce");
+  EXPECT_GT(plan.conv.algorithm.output_channel_reuse_lanes, 1u);
+  EXPECT_GT(plan.conv.algorithm.spatial_output_reuse_lanes, 1u);
+  EXPECT_GT(plan.conv.algorithm.spatial_input_reuse_lanes, 1u);
+  EXPECT_GT(plan.conv.algorithm.spatial_input_reuse_unique_width_loads, 0u);
+  EXPECT_GT(plan.conv.algorithm.spatial_input_reuse_saved_width_loads, 0u);
+  EXPECT_TRUE(
+      plan.conv.algorithm.multi_kernel_manifest.requires_spatial_input_reuse);
+  EXPECT_TRUE(plan.conv.algorithm.multi_kernel_manifest
+                  .has_workgroup_local_reduction_plan);
 }
 
 TEST(GfxStagePolicyTest, MetalConvolutionPlansAppleMpsImageStorage) {
@@ -458,8 +644,8 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest,
      MetalF32PrecisionSensitiveRgbIngressConvolutionKeepsMpsImagePlacement) {
-  auto input = std::make_shared<ov::op::v0::Parameter>(
-      ov::element::f32, ov::Shape{1, 3, 32, 32});
+  auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                       ov::Shape{1, 3, 32, 32});
   auto weights =
       ov::op::v0::Constant::create(ov::element::f32, ov::Shape{8, 3, 3, 3},
                                    std::vector<float>(8 * 3 * 3 * 3, 0.25f));
@@ -483,8 +669,8 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest,
      MetalF32UnmarkedRgbIngressConvolutionStillStartsWithMpsImagePlacement) {
-  auto input = std::make_shared<ov::op::v0::Parameter>(
-      ov::element::f32, ov::Shape{1, 3, 32, 32});
+  auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                       ov::Shape{1, 3, 32, 32});
   auto weights =
       ov::op::v0::Constant::create(ov::element::f32, ov::Shape{8, 3, 3, 3},
                                    std::vector<float>(8 * 3 * 3 * 3, 0.25f));
@@ -507,8 +693,8 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest,
      MetalF32TopKSensitiveConvolutionKeepsMpsImagePlacement) {
-  auto input = std::make_shared<ov::op::v0::Parameter>(
-      ov::element::f32, ov::Shape{1, 4, 4, 4});
+  auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                       ov::Shape{1, 4, 4, 4});
   auto weights =
       ov::op::v0::Constant::create(ov::element::f32, ov::Shape{8, 4, 1, 1},
                                    std::vector<float>(8 * 4, 0.25f));
@@ -522,8 +708,8 @@ TEST(GfxStagePolicyTest,
   auto k = ov::op::v0::Constant::create(ov::element::i32, ov::Shape{},
                                         std::vector<int32_t>{32});
   auto topk = std::make_shared<ov::op::v3::TopK>(
-      reshape, k, 1, ov::op::TopKMode::MAX,
-      ov::op::TopKSortType::SORT_VALUES, ov::element::i64);
+      reshape, k, 1, ov::op::TopKMode::MAX, ov::op::TopKSortType::SORT_VALUES,
+      ov::element::i64);
 
   const auto plan = select_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv, ov::element::f32,
@@ -540,17 +726,16 @@ TEST(GfxStagePolicyTest,
 
 TEST(GfxStagePolicyTest,
      MetalF32TopKDownstreamKeepsMpsImageAcrossComputeChain) {
-  auto input = std::make_shared<ov::op::v0::Parameter>(
-      ov::element::f32, ov::Shape{1, 4, 4, 4});
+  auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                       ov::Shape{1, 4, 4, 4});
   auto weights0 =
       ov::op::v0::Constant::create(ov::element::f32, ov::Shape{4, 4, 1, 1},
                                    std::vector<float>(4 * 4, 0.25f));
   auto conv0 = std::make_shared<ov::op::v1::Convolution>(
       input, weights0, ov::Strides{1, 1}, ov::CoordinateDiff{0, 0},
       ov::CoordinateDiff{0, 0}, ov::Strides{1, 1});
-  auto weights1 =
-      ov::op::v0::Constant::create(ov::element::f32, ov::Shape{8, 4, 1, 1},
-                                   std::vector<float>(8 * 4, 0.5f));
+  auto weights1 = ov::op::v0::Constant::create(
+      ov::element::f32, ov::Shape{8, 4, 1, 1}, std::vector<float>(8 * 4, 0.5f));
   auto conv1 = std::make_shared<ov::op::v1::Convolution>(
       conv0, weights1, ov::Strides{1, 1}, ov::CoordinateDiff{0, 0},
       ov::CoordinateDiff{0, 0}, ov::Strides{1, 1});
@@ -561,8 +746,8 @@ TEST(GfxStagePolicyTest,
   auto k = ov::op::v0::Constant::create(ov::element::i32, ov::Shape{},
                                         std::vector<int32_t>{32});
   auto topk = std::make_shared<ov::op::v3::TopK>(
-      reshape, k, 1, ov::op::TopKMode::MAX,
-      ov::op::TopKSortType::SORT_VALUES, ov::element::i64);
+      reshape, k, 1, ov::op::TopKMode::MAX, ov::op::TopKSortType::SORT_VALUES,
+      ov::element::i64);
 
   const auto early_plan = select_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "Convolution", conv0, ov::element::f32,
@@ -747,8 +932,8 @@ TEST(GfxStagePolicyTest, MetalF32MaxPoolPlansAppleMpsImageStorage) {
 }
 
 TEST(GfxStagePolicyTest, MetalIndexedMaxPoolDoesNotUseMpsPool2DPlacement) {
-  auto input = std::make_shared<ov::op::v0::Parameter>(
-      ov::element::f16, ov::Shape{1, 4, 16, 16});
+  auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f16,
+                                                       ov::Shape{1, 4, 16, 16});
   auto pool = std::make_shared<ov::op::v8::MaxPool>(
       input, ov::Strides{2, 2}, ov::Strides{1, 1}, ov::Shape{0, 0},
       ov::Shape{0, 0}, ov::Shape{2, 2}, ov::op::RoundingType::FLOOR,
@@ -799,8 +984,8 @@ TEST(GfxStagePolicyTest,
   EXPECT_EQ(sdpa_desc.accumulate_fp32, 1u);
   EXPECT_FLOAT_EQ(sdpa_desc.scale, 0.5f);
 
-  EXPECT_FALSE(gfx_apple_make_mps_sdpa_desc(
-      make_sdpa_node(/*value_dim=*/6), sdpa_desc));
+  EXPECT_FALSE(
+      gfx_apple_make_mps_sdpa_desc(make_sdpa_node(/*value_dim=*/6), sdpa_desc));
 }
 
 TEST(GfxStagePolicyTest, AppleMpsTopKDescriptorAcceptsYoloF32I64LargeK) {
@@ -853,18 +1038,19 @@ TEST(GfxStagePolicyTest, MetalF32MatMulPlansAppleMpsMatrixStorage) {
 }
 
 TEST(GfxStagePolicyTest, MetalF32TopKSensitiveAttentionMatrixStagesStayOnMps) {
-  auto query = std::make_shared<ov::op::v0::Parameter>(
-      ov::element::f32, ov::Shape{1, 100, 64});
-  auto key = std::make_shared<ov::op::v0::Parameter>(
-      ov::element::f32, ov::Shape{1, 64, 100});
+  auto query = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                       ov::Shape{1, 100, 64});
+  auto key = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                     ov::Shape{1, 64, 100});
   auto score_matmul =
       std::make_shared<ov::op::v0::MatMul>(query, key, false, false);
   auto scale = ov::op::v0::Constant::create(ov::element::f32, ov::Shape{},
                                             std::vector<float>{0.125f});
-  auto scaled_scores = std::make_shared<ov::op::v1::Multiply>(score_matmul, scale);
+  auto scaled_scores =
+      std::make_shared<ov::op::v1::Multiply>(score_matmul, scale);
   auto softmax = std::make_shared<ov::op::v1::Softmax>(scaled_scores, 2);
-  auto value = std::make_shared<ov::op::v0::Parameter>(
-      ov::element::f32, ov::Shape{1, 100, 32});
+  auto value = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                       ov::Shape{1, 100, 32});
   auto value_matmul =
       std::make_shared<ov::op::v0::MatMul>(softmax, value, false, false);
   auto shape = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{2},
@@ -874,8 +1060,8 @@ TEST(GfxStagePolicyTest, MetalF32TopKSensitiveAttentionMatrixStagesStayOnMps) {
   auto k = ov::op::v0::Constant::create(ov::element::i32, ov::Shape{},
                                         std::vector<int32_t>{32});
   auto topk = std::make_shared<ov::op::v3::TopK>(
-      reshape, k, 1, ov::op::TopKMode::MAX,
-      ov::op::TopKSortType::SORT_VALUES, ov::element::i64);
+      reshape, k, 1, ov::op::TopKMode::MAX, ov::op::TopKSortType::SORT_VALUES,
+      ov::element::i64);
 
   const auto score_plan = select_stage_optimization_plan(
       nullptr, GpuBackend::Metal, "MatMul", score_matmul, ov::element::f32,
@@ -909,8 +1095,8 @@ TEST(GfxStagePolicyTest, MetalF32TopKSensitiveAttentionMatrixStagesStayOnMps) {
 }
 
 TEST(GfxStagePolicyTest, MetalF32SoftmaxWithoutRankingKeepsMps) {
-  auto scores = std::make_shared<ov::op::v0::Parameter>(
-      ov::element::f32, ov::Shape{1, 100, 100});
+  auto scores = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                        ov::Shape{1, 100, 100});
   auto softmax = std::make_shared<ov::op::v1::Softmax>(scores, 2);
 
   const auto plan = select_stage_optimization_plan(
@@ -926,11 +1112,11 @@ TEST(GfxStagePolicyTest, MetalF32SoftmaxWithoutRankingKeepsMps) {
 }
 
 TEST(GfxStagePolicyTest, MetalF32AttentionValueMatMulWithoutRankingKeepsMps) {
-  auto scores = std::make_shared<ov::op::v0::Parameter>(
-      ov::element::f32, ov::Shape{1, 100, 100});
+  auto scores = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                        ov::Shape{1, 100, 100});
   auto softmax = std::make_shared<ov::op::v1::Softmax>(scores, 2);
-  auto value = std::make_shared<ov::op::v0::Parameter>(
-      ov::element::f32, ov::Shape{1, 100, 32});
+  auto value = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                                       ov::Shape{1, 100, 32});
   auto value_matmul =
       std::make_shared<ov::op::v0::MatMul>(softmax, value, false, false);
 
@@ -1034,6 +1220,52 @@ TEST(GfxStagePolicyTest, VulkanPlacementRemainsSharedSpirvBufferDomain) {
   EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::Spirv);
   EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Buffer);
   EXPECT_TRUE(plan.placement.uses_custom_kernel);
+}
+
+TEST(GfxStagePolicyTest, OpenClPlacementUsesSourceKernelBufferDomain) {
+  const auto add = make_large_add_node();
+  GfxStageRuntimeTraits traits{};
+  traits.binary_chunked = true;
+  const auto plan = select_stage_optimization_plan(
+      nullptr, GpuBackend::OpenCL, "Add", add, ov::element::f16,
+      /*has_bias=*/false,
+      /*has_activation=*/false,
+      /*has_batchnorm=*/false, traits);
+
+  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::OpenCl);
+  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Buffer);
+  EXPECT_EQ(plan.placement.specialization_key, "opencl:buffer:Add");
+  EXPECT_FALSE(plan.placement.uses_vendor_primitive);
+  EXPECT_TRUE(plan.placement.uses_custom_kernel);
+}
+
+TEST(GfxStagePolicyTest, OpenClCustomKernelManifestUsesOpenClDomain) {
+  const auto plan = make_gfx_custom_kernel_stage_plan(
+      "Add", "eltwise_kernel", GfxKernelBackendDomain::OpenCl,
+      GfxKernelStorageKind::Buffer, "opencl:buffer:");
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_TRUE(plan.stage_manifest.valid);
+  EXPECT_EQ(plan.stage_manifest.backend_domain, GfxKernelBackendDomain::OpenCl);
+  EXPECT_EQ(gfx_kernel_backend_domain_name(plan.stage_manifest.backend_domain),
+            std::string("opencl"));
+  EXPECT_EQ(gfx_kernel_backend_domain_from_name("opencl"),
+            GfxKernelBackendDomain::OpenCl);
+  EXPECT_EQ(plan.stage_manifest.execution_kind,
+            GfxKernelExecutionKind::CustomKernel);
+  EXPECT_EQ(plan.stage_manifest.storage, GfxKernelStorageKind::Buffer);
+  EXPECT_EQ(plan.stage_manifest.specialization_key, "opencl:buffer:Add");
+  EXPECT_EQ(plan.stage_manifest.custom_kernel.entry_point,
+            std::string("eltwise_fused_buffer"));
+  const auto artifact = make_gfx_kernel_artifact_ref(plan.stage_manifest);
+  EXPECT_TRUE(artifact.valid);
+  EXPECT_EQ(artifact.kind, GfxKernelArtifactKind::OpenClSource);
+  EXPECT_TRUE(gfx_kernel_artifact_is_source(artifact.kind));
+  EXPECT_EQ(gfx_kernel_artifact_kind_name(artifact.kind),
+            std::string("opencl_source"));
+  EXPECT_EQ(artifact.backend_domain, GfxKernelBackendDomain::OpenCl);
+  EXPECT_EQ(artifact.source_id, std::string("eltwise_fused_buffer"));
+  EXPECT_EQ(artifact.entry_point, std::string("eltwise_fused_buffer"));
 }
 
 TEST(GfxStagePolicyTest,
@@ -1737,8 +1969,7 @@ TEST(GfxStagePolicyTest, MetalSdpaSourcePlanUsesMpsGraphInsteadOfMslFallback) {
   EXPECT_EQ(source_plan.last_stage_kind, GfxMpsrtStageKind::MPSSdpa);
   EXPECT_TRUE(gfx_mpsrt_source_plan_is_io_only_apple_mps_vendor(source_plan));
   EXPECT_TRUE(source_plan.has_runtime_binding);
-  EXPECT_EQ(source_plan.runtime_binding.inputs,
-            std::vector<size_t>({0, 1, 2}));
+  EXPECT_EQ(source_plan.runtime_binding.inputs, std::vector<size_t>({0, 1, 2}));
   EXPECT_EQ(source_plan.runtime_binding.input_arg_count, 3u);
   EXPECT_TRUE(source_plan.source.msl_source.empty());
   EXPECT_FALSE(static_cast<bool>(source_plan.source.msl_generator));
@@ -2129,15 +2360,14 @@ TEST(GfxStagePolicyTest,
   const auto dispatch = gfx_mpsrt_custom_dispatch_spec_from_kernel_manifest(
       desc.stage_manifest.custom_kernel);
   ASSERT_TRUE(dispatch.valid);
-  EXPECT_EQ(dispatch.kernel_family, "conv3d_direct_or_im2col");
-  EXPECT_EQ(dispatch.entry_point, "conv3d_direct_or_im2col");
+  EXPECT_EQ(dispatch.kernel_family, "conv3d_direct");
+  EXPECT_EQ(dispatch.entry_point, "conv3d_direct");
   EXPECT_EQ(dispatch.kernel_family_id,
-            static_cast<uint32_t>(GfxKernelFamily::Conv3DDirectOrIm2col));
+            static_cast<uint32_t>(GfxKernelFamily::Conv3DDirect));
   EXPECT_EQ(gfx_mpsrt_stage_record_key(desc),
             "msl_dispatch|apple_msl|buffer|buffer|linear|Convolution|apple_msl:"
             "buffer:Convolution|"
-            "dispatch:conv3d_direct_or_im2col:conv3d_direct_or_im2col:linear_"
-            "1d:tg128:metallib");
+            "dispatch:conv3d_direct:conv3d_direct:linear_1d:tg128:metallib");
 }
 
 TEST(GfxStagePolicyTest,
@@ -2146,7 +2376,7 @@ TEST(GfxStagePolicyTest,
       make_gfx_custom_kernel_stage_plan("Convolution", "conv2d_kernel");
 
   ASSERT_TRUE(plan.valid);
-  EXPECT_EQ(plan.family, GfxKernelFamily::Conv2DDirectOrIm2col);
+  EXPECT_EQ(plan.family, GfxKernelFamily::Conv2DDirect);
   ASSERT_TRUE(plan.stage_manifest.valid);
   EXPECT_EQ(plan.stage_manifest.stage_family,
             GfxKernelStageFamily::Convolution);
@@ -2156,10 +2386,8 @@ TEST(GfxStagePolicyTest,
             GfxKernelExecutionKind::CustomKernel);
   EXPECT_EQ(plan.stage_manifest.storage, GfxKernelStorageKind::Buffer);
   ASSERT_TRUE(plan.stage_manifest.custom_kernel.valid);
-  EXPECT_EQ(plan.stage_manifest.custom_kernel.kernel_family,
-            "conv2d_direct_or_im2col");
-  EXPECT_EQ(plan.stage_manifest.custom_kernel.entry_point,
-            "conv2d_direct_or_im2col");
+  EXPECT_EQ(plan.stage_manifest.custom_kernel.kernel_family, "conv2d_direct");
+  EXPECT_EQ(plan.stage_manifest.custom_kernel.entry_point, "conv2d_direct");
   EXPECT_EQ(
       plan.stage_manifest.custom_kernel.external_buffer_abi.roles,
       std::vector<GfxKernelBufferRole>(
@@ -2782,9 +3010,9 @@ TEST(GfxStagePolicyTest,
   const auto conv3d_plan =
       make_gfx_custom_kernel_stage_plan("Convolution", "conv3d_kernel");
   ASSERT_TRUE(conv3d_plan.valid);
-  EXPECT_EQ(conv3d_plan.family, GfxKernelFamily::Conv3DDirectOrIm2col);
+  EXPECT_EQ(conv3d_plan.family, GfxKernelFamily::Conv3DDirect);
   EXPECT_EQ(conv3d_plan.stage_manifest.custom_kernel.entry_point,
-            "conv3d_direct_or_im2col");
+            "conv3d_direct");
   EXPECT_EQ(
       conv3d_plan.stage_manifest.custom_kernel.external_buffer_abi.roles,
       std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
@@ -3175,7 +3403,8 @@ TEST(GfxStagePolicyTest,
   plan.placement.specialization_key = "apple_msl:buffer:Convolution";
   auto stage = gfx_mpsrt_make_stage_desc(plan, "Convolution");
   ASSERT_EQ(stage.kind, GfxMpsrtStageKind::MSLDispatch);
-  ASSERT_EQ(stage.stage_manifest.backend_domain, GfxKernelBackendDomain::AppleMsl);
+  ASSERT_EQ(stage.stage_manifest.backend_domain,
+            GfxKernelBackendDomain::AppleMsl);
   ASSERT_TRUE(stage.stage_manifest.custom_kernel.external_buffer_abi.valid);
   const auto roles = gfx_mpsrt_external_buffer_roles_from_kernel_roles(
       materialize_gfx_kernel_external_buffer_roles(
@@ -3191,8 +3420,8 @@ TEST(GfxStagePolicyTest,
   const auto output = gfx_mpsrt_make_tensor_desc(
       {1, 128, 64, 64}, ov::element::f32, GfxStageStorageKind::Buffer,
       GfxMpsrtTensorFlagTransient);
-  auto builder_plan = gfx_mpsrt_make_builder_plan(stage, {input, weights},
-                                                  {output});
+  auto builder_plan =
+      gfx_mpsrt_make_builder_plan(stage, {input, weights}, {output});
   ASSERT_TRUE(builder_plan.valid);
   builder_plan.external_buffer_roles = roles;
 
@@ -3650,9 +3879,8 @@ TEST(GfxStagePolicyTest, MetalConvolutionAllowsOnlyMpsBackedActivationFusion) {
                                             ActivationKind::Relu));
   EXPECT_TRUE(allow_stage_activation_fusion(GpuBackend::Metal, "Convolution",
                                             ActivationKind::Sigmoid));
-  EXPECT_TRUE(allow_stage_activation_fusion(GpuBackend::Metal,
-                                            "GroupConvolution",
-                                            ActivationKind::Swish));
+  EXPECT_TRUE(allow_stage_activation_fusion(
+      GpuBackend::Metal, "GroupConvolution", ActivationKind::Swish));
   EXPECT_TRUE(allow_stage_activation_fusion(GpuBackend::Metal, "Convolution",
                                             ActivationKind::Abs));
   EXPECT_FALSE(allow_stage_activation_fusion(GpuBackend::Metal, "Convolution",
@@ -3873,18 +4101,27 @@ TEST(GfxStagePolicyTest,
      BroadcomHeavyPlainConvolutionStaysOnSharedMlirDirectRoute) {
   FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
   const auto conv = make_large_chunked_conv_node();
-  const auto plan = select_stage_optimization_plan(
-      &buffer_manager, GpuBackend::Vulkan, "Convolution", conv,
-      ov::element::f16,
-      /*has_bias=*/false,
-      /*has_activation=*/false,
-      /*has_batchnorm=*/false, {});
+  const auto plan =
+      select_stage_optimization_plan(&buffer_manager, GpuBackend::Vulkan,
+                                     "Convolution", conv, ov::element::f16,
+                                     /*has_bias=*/false,
+                                     /*has_activation=*/false,
+                                     /*has_batchnorm=*/false, {});
 
   EXPECT_EQ(plan.archetype, GfxStageArchetype::Convolution);
   EXPECT_EQ(plan.conv.kind, GfxConvRouteKind::None);
-  EXPECT_EQ(plan.conv.family, GfxConvFamily::Unknown);
+  EXPECT_EQ(plan.conv.family, GfxConvFamily::General);
   EXPECT_EQ(plan.conv.algorithm.kind, GfxConvAlgorithmKind::None);
-  EXPECT_TRUE(plan.conv.algorithm.variant.empty());
+  EXPECT_TRUE(plan.conv.algorithm.requires_multi_kernel_manifest);
+  EXPECT_EQ(plan.conv.algorithm.multi_kernel_family,
+            "cooperative_direct_reduce");
+  ASSERT_EQ(plan.conv.algorithm.multi_kernel_manifest.stages.size(), 1u);
+  EXPECT_FALSE(
+      plan.conv.algorithm.multi_kernel_manifest.requires_owned_intermediates);
+  EXPECT_FALSE(
+      plan.conv.algorithm.multi_kernel_manifest.requires_owned_launch_sequence);
+  EXPECT_TRUE(plan.conv.algorithm.multi_kernel_manifest
+                  .has_workgroup_local_reduction_plan);
   EXPECT_TRUE(plan.execution.submit.isolate);
   EXPECT_GE(plan.execution.submit.weight, 8u);
 }
@@ -3893,18 +4130,20 @@ TEST(GfxStagePolicyTest,
      BroadcomHeavyConvolutionWithBiasStaysOnSharedMlirDirectRoute) {
   FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
   const auto conv = make_large_chunked_conv_node();
-  const auto plan = select_stage_optimization_plan(
-      &buffer_manager, GpuBackend::Vulkan, "Convolution", conv,
-      ov::element::f16,
-      /*has_bias=*/true,
-      /*has_activation=*/false,
-      /*has_batchnorm=*/false, {});
+  const auto plan =
+      select_stage_optimization_plan(&buffer_manager, GpuBackend::Vulkan,
+                                     "Convolution", conv, ov::element::f16,
+                                     /*has_bias=*/true,
+                                     /*has_activation=*/false,
+                                     /*has_batchnorm=*/false, {});
 
   EXPECT_EQ(plan.archetype, GfxStageArchetype::Convolution);
   EXPECT_EQ(plan.conv.kind, GfxConvRouteKind::None);
-  EXPECT_EQ(plan.conv.family, GfxConvFamily::Unknown);
+  EXPECT_EQ(plan.conv.family, GfxConvFamily::General);
   EXPECT_EQ(plan.conv.algorithm.kind, GfxConvAlgorithmKind::None);
-  EXPECT_TRUE(plan.conv.algorithm.variant.empty());
+  EXPECT_TRUE(plan.conv.algorithm.requires_multi_kernel_manifest);
+  EXPECT_EQ(plan.conv.algorithm.multi_kernel_family,
+            "cooperative_direct_reduce");
   EXPECT_TRUE(plan.execution.submit.isolate);
   EXPECT_GE(plan.execution.submit.weight, 8u);
 }
@@ -3913,45 +4152,49 @@ TEST(GfxStagePolicyTest,
      BroadcomHeavyConvolutionWithActivationStaysOnSharedMlirDirectRoute) {
   FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
   const auto conv = make_large_chunked_conv_node();
-  const auto plan = select_stage_optimization_plan(
-      &buffer_manager, GpuBackend::Vulkan, "Convolution", conv,
-      ov::element::f16,
-      /*has_bias=*/true,
-      /*has_activation=*/true,
-      /*has_batchnorm=*/false, {});
+  const auto plan =
+      select_stage_optimization_plan(&buffer_manager, GpuBackend::Vulkan,
+                                     "Convolution", conv, ov::element::f16,
+                                     /*has_bias=*/true,
+                                     /*has_activation=*/true,
+                                     /*has_batchnorm=*/false, {});
 
   EXPECT_EQ(plan.conv.kind, GfxConvRouteKind::None);
   EXPECT_EQ(plan.conv.algorithm.kind, GfxConvAlgorithmKind::None);
+  EXPECT_TRUE(plan.conv.algorithm.requires_multi_kernel_manifest);
 }
 
 TEST(GfxStagePolicyTest,
      BroadcomHeavyConvolutionWithBatchNormStaysOnSharedMlirDirectRoute) {
   FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
   const auto conv = make_large_chunked_conv_node();
-  const auto plan = select_stage_optimization_plan(
-      &buffer_manager, GpuBackend::Vulkan, "Convolution", conv,
-      ov::element::f16,
-      /*has_bias=*/false,
-      /*has_activation=*/false,
-      /*has_batchnorm=*/true, {});
+  const auto plan =
+      select_stage_optimization_plan(&buffer_manager, GpuBackend::Vulkan,
+                                     "Convolution", conv, ov::element::f16,
+                                     /*has_bias=*/false,
+                                     /*has_activation=*/false,
+                                     /*has_batchnorm=*/true, {});
 
   EXPECT_EQ(plan.conv.kind, GfxConvRouteKind::None);
   EXPECT_EQ(plan.conv.algorithm.kind, GfxConvAlgorithmKind::None);
+  EXPECT_TRUE(plan.conv.algorithm.requires_multi_kernel_manifest);
 }
 
 TEST(GfxStagePolicyTest,
      BroadcomPointwiseConvolutionStaysOnSharedMlirDirectRoute) {
   FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
   const auto conv = make_pointwise_conv_node();
-  const auto plan = select_stage_optimization_plan(
-      &buffer_manager, GpuBackend::Vulkan, "Convolution", conv,
-      ov::element::f16,
-      /*has_bias=*/false,
-      /*has_activation=*/false,
-      /*has_batchnorm=*/false, {});
+  const auto plan =
+      select_stage_optimization_plan(&buffer_manager, GpuBackend::Vulkan,
+                                     "Convolution", conv, ov::element::f16,
+                                     /*has_bias=*/false,
+                                     /*has_activation=*/false,
+                                     /*has_batchnorm=*/false, {});
 
   EXPECT_EQ(plan.conv.kind, GfxConvRouteKind::None);
+  EXPECT_EQ(plan.conv.family, GfxConvFamily::Pointwise1x1);
   EXPECT_EQ(plan.conv.algorithm.kind, GfxConvAlgorithmKind::None);
+  EXPECT_FALSE(plan.conv.algorithm.requires_multi_kernel_manifest);
   EXPECT_FALSE(plan.execution.submit.isolate);
 }
 

@@ -4,7 +4,7 @@ This document describes the current architecture implemented in `modules/gfx_plu
 
 ## Design Goals
 - expose a single OpenVINO device named `"GFX"`
-- share as much logic as possible between Metal and Vulkan
+- share as much logic as possible between Metal, OpenCL, and Vulkan
 - keep backend-specific code isolated under `src/backends/`
 - reject unsupported models early instead of silently falling back to CPU
 
@@ -12,10 +12,12 @@ This document describes the current architecture implemented in `modules/gfx_plu
 - `src/plugin/`: OpenVINO-facing integration
 - `src/runtime/`: backend-neutral runtime interfaces and helpers
 - `src/runtime/gfx_mpsrt_*`: Apple MPS/MSL ABI, stage-plan, builder-plan, runtime-model, program, storage-bridge, and kernel-manifest helpers
-- `src/kernel_ir/gfx_kernel_manifest.hpp`: backend-neutral manifest for stage family, execution kind, storage, and custom-kernel ABI
+- `src/kernel_ir/gfx_kernel_manifest.hpp`: backend-neutral manifest for stage family, execution kind, storage, backend domain, and custom-kernel ABI
+- `src/kernel_ir/gfx_opencl_source_artifacts.*`: OpenCL source-kernel artifacts plus their role/scalar ABI metadata
 - `src/mlir/`: MLIR support probing, Apple stage-pipeline lowering, typed MPSRT dialect/materialization, split Apple MSL/MPS source-plan helpers, attention and MatMul Metal/MPSRT helpers, SPIR-V binding adapters, and shared codegen helpers
 - `src/backends/metal/`: Metal-specific plugin, runtime, memory, profiling, MPSGraph-backed vendor stages, and codegen pieces
-- `src/backends/vulkan/`: Vulkan-specific plugin, runtime, profiling, and codegen pieces
+- `src/backends/opencl/`: OpenCL-specific plugin, dynamic runtime loader, source-stage runtime, buffer manager, and program cache
+- `src/backends/vulkan/`: legacy Vulkan-specific plugin, runtime, profiling, and codegen pieces
 - `src/transforms/`: graph rewrites and fusion logic
 - `src/kernel_ir/`: shared kernel metadata and planning structures
 
@@ -26,7 +28,7 @@ Defined through `src/plugin/plugin.cpp` and the public header in `include/openvi
 Responsibilities:
 - register the `GFX` device
 - validate and normalize properties
-- resolve the backend (`metal` or `vulkan`)
+- resolve the backend (`metal`, `opencl`, or `vulkan`)
 - run backend-aware `transforms::run_pipeline()`
 - answer `query_model()`
 - create remote contexts
@@ -68,7 +70,7 @@ Two interface points are important in the current code:
 - `submit_policy()`: a stage reports scheduling weight and isolation hints used by backend infer paths during command-buffer submission
 
 `src/runtime/gfx_stage_policy.*` selects runtime policy from node shape, element type, backend, and backend capabilities. The policy layer currently decides:
-- whether a stage stays on shared SPIR-V dispatch, Apple MSL dispatch, or Apple MPS/MPSGraph vendor primitives
+- whether a stage stays on OpenCL source dispatch, shared SPIR-V dispatch, Apple MSL dispatch, or Apple MPS/MPSGraph vendor primitives
 - which storage kind that route expects, such as `buffer`, `image`, or `matrix`
 - whether a stage should use direct or chunked execution
 - whether bias, activation, or batchnorm can be fused
@@ -82,7 +84,7 @@ Two interface points are important in the current code:
 - capability-gated Conv2D output-channel blocking and spatial micro-tile hints
 - stable device keys used by runtime planning caches
 
-Those caps are no longer purely backend-wide defaults. The current runtime tags devices by family through `GpuDeviceFamily` and feeds that into planning and cache keys. Current families include:
+Those caps are no longer purely backend-wide defaults. Metal, OpenCL, and Vulkan buffer managers can tag devices by family through `GpuDeviceFamily`, and the shared planner feeds that into planning and cache keys. Current families include:
 - `apple`
 - `adreno`
 - `broadcom_v3d`
@@ -96,7 +98,7 @@ During inference, `execute_pipeline_with_submission()` groups recorded stages in
 - direct producer-consumer dependency tracking for soft-budget extension
 - backend support for incremental submit versus single-flight submit
 
-This lets Metal and Vulkan keep different submission mechanics while sharing the same stage-level batching logic.
+This lets Metal, OpenCL, and Vulkan keep different submission mechanics while sharing the same stage-level batching logic.
 
 Submission tuning is no longer a fixed constant table. The current infer path derives per-backend submit-window sizing from backend capability snapshots and records the selected tuning into the profiling path when profiling is enabled.
 When a stage directly consumes an output already recorded in the current window, the submit layer may extend past the soft stage/output/MAC budget up to a configured dependency-extension cap. That extension is deliberately blocked at layout or fan-out boundaries such as `Concat`, `Split`, `VariadicSplit`, `Transpose`, `Reshape`, `Softmax`, `LogSoftmax`, and fused attention so dependency tracking does not hide required synchronization points.
@@ -128,7 +130,7 @@ It is used for:
 
 Current lowering also supports absorbed input transforms. `CompiledModel` detects selected transpose patterns and forwards them as `GfxInputTransform` metadata to builders such as Add, Conv2D, GroupConv2D, and Split. This keeps the runtime pipeline smaller while preserving the original layout semantics.
 
-The MLIR pass pipeline also contains parallel-lowering and cleanup steps used by current Vulkan codegen, including Conv2D parallel lowering, Conv2D im2col rewrite/lowering, matmul parallel lowering, and post-fusion cleanup passes.
+The MLIR pass pipeline also contains parallel-lowering and cleanup steps used by current source-kernel codegen, including Conv2D parallel lowering, matmul parallel lowering, and post-fusion cleanup passes. Decomposed Conv2D experiments such as `im2col + matmul` are not an active production route unless a future typed multi-kernel manifest owns all intermediate buffers and launches.
 
 Recent MLIR-specific changes reflected in the current code:
 - OpenVINO `RMSFusion` now runs before plugin-local cleanup so common RMSNorm tails reach a dedicated `RMS` lowering path
@@ -151,6 +153,7 @@ Recent MLIR-specific changes reflected in the current code:
 - convolution parallel lowering now has a separate interior-tile fast path that skips lane guards for full tiles and keeps guarded edge handling only where needed
 - interior-tile eligibility is now factored through separate height and width window checks before the combined 2D interior fast path is selected
 - manual Vulkan MLIR kernels can now emit `gpu.func` entry points while materializing buffer ABI through the common `GfxKernelStageManifest` custom-kernel adapter rather than local `gfx.fixed_arg_count` shortcuts; this covers the executor's unary/binary, concat/split, slice, interpolate, transpose, convert, gather, reduce, RMS, MatMul, broadcast, and select routes; Conv2D and GroupConv no longer have separate manual Vulkan builders or executor-level direct/chunked routes and use the shared canonical MLIR lowering path instead
+- OpenCL source artifacts use the same manifest direction for baseline f32 data movement and elementwise-style kernels, but execute through source text and a dynamic OpenCL program cache rather than SPIR-V or Metal MSL
 - SPIR-V compact-memref preservation is manifest-native: `gfx.fixed_arg_count` is no longer a compile-path source for compact ABI reconstruction or entry metadata annotation
 - kernel-signature and metadata helpers now resolve `gpu.func` entry points before falling back to plain `func.func`, so Vulkan launch metadata stays aligned with GPU-entry modules
 - TopK now uses rank-aware MLIR indexing for the shared custom-kernel path. The Vulkan lowering does not depend on collapse/expand-shape legalization for TopK anymore, and `i64` index outputs are represented at the shader boundary as two `i32` lanes in the public `i64` output buffer to avoid relying on Vulkan shader `Int64` support on Android/RPi-class devices.
@@ -276,6 +279,7 @@ Profiling is split into compile-time and infer-time collection.
 
 - `src/runtime/gfx_compile_profiling.hpp` provides thread-local compile scopes used while `CompiledModel` creates backend state, builds stages, and compiles kernels
 - `src/runtime/gfx_profiling_report.*` owns the JSON-ready report model for nodes, segments, transfers, allocations, and counters
+- `src/runtime/gfx_target_profile.*` converts backend-reported `GpuExecutionDeviceInfo` into an `extended.target_profile` JSON record and `target_backend_*` counters
 - backend profilers under `src/backends/*/runtime/profiling/` populate runtime timing and backend-specific counters
 - `src/plugin/gfx_profiling_utils.hpp` merges compile and infer reports into the final `GFX_PROFILING_REPORT` JSON and can optionally emit Perfetto-style trace payloads
 - `src/plugin/infer_submission.cpp` now also attaches lightweight `bytes_in`, `bytes_out`, `macs_est`, and `flops_est` estimates to `stage_execute` segments so the extended summaries can derive simple roofline-style hints without a separate replay pass
@@ -291,7 +295,7 @@ When profiling is disabled, these paths stay out of the fast path.
 Direct Metal API usage lives in Objective-C++ files (`.mm`).
 
 The current Metal backend also shares immutable constant-buffer state across compatible requests through `MetalConstCache` and the backend-neutral immutable buffer cache helper.
-It now also reports execution-device limits through `GpuExecutionDeviceInfo`, so backend-neutral planning code can use real Metal subgroup and threadgroup limits.
+It now also reports execution-device limits through `GpuExecutionDeviceInfo`, so backend-neutral planning code can use real Metal subgroup, threadgroup, memory-alignment, and capability limits.
 Stage policy now splits Metal work into two internal domains:
 - Apple MPS image or matrix stages for selected conv/pool/interpolate/matmul/softmax/topk shapes
 - Apple MSL buffer dispatch for the remaining custom-kernel cases
@@ -339,13 +343,32 @@ That same transform pipeline can also collapse supported LLaMA rotate-half arith
 For attention-heavy LLM graphs, the same frontend/backend split now also allows Metal-only `GfxSDPAWithCausalMask` lowering while leaving Vulkan on the conservative unsupported path for that exact fused form.
 Recent Metal codegen changes also make Conv2D and MaxPool honor dilation metadata directly and allow Conv2D dispatch planning to block output channels and output width per thread for selected float-like kernels.
 
+## OpenCL Backend
+`src/backends/opencl/` contains:
+- `plugin/`: backend state, infer request, tensor binding, and stubs for builds where OpenCL is unavailable
+- `runtime/opencl_api.*`: dynamic OpenCL loader, GPU-device selection, context/queue setup, and target-profile discovery
+- `runtime/opencl_buffer_manager.*`: OpenCL buffer allocation and upload/download/copy operations through the shared memory API
+- `runtime/opencl_program_cache.*`: source build and kernel cache for baseline OpenCL artifacts
+- `runtime/opencl_source_stage.*`: runtime materialization of `GfxOpenClSourceArtifact` records into executable source stages
+
+The OpenCL backend is selected on non-Apple builds when `GFX_ENABLE_OPENCL` is on and the source files are present. It does not require a compile-time OpenCL SDK because the backend loads the platform OpenCL library dynamically at runtime.
+
+The current OpenCL route is intentionally explicit:
+- it executes source artifacts described by `src/kernel_ir/gfx_opencl_source_artifacts.*`
+- each artifact carries entry point, source id, role ABI, scalar ABI, element-count source, and local-size metadata
+- baseline coverage focuses on f32 linear copy/layout, transpose, slice/strided-slice, gather families, shape/list movement, concat/split, unary elementwise, binary elementwise, compare, and select families
+- unsupported ops fail during compilation or stage creation instead of falling back to CPU or silently switching to another backend
+- remote-context import is not a polished public portability layer for OpenCL yet
+
+OpenCL shares the same `GpuExecutionDeviceInfo`, `GfxTargetProfile`, stage policy, memory ops, and infer submission concepts as the other backends. Do not add executor-local OpenCL shortcuts for new production behavior until the route is represented in the shared manifest/stage policy contract.
+
 ## Vulkan Backend
 `src/backends/vulkan/` mirrors the same broad split:
 - `plugin/`: backend state, infer request, remote context, remote tensor
 - `runtime/`: executor, buffers, profiling, runtime helpers
 - `codegen/`: SPIR-V / Vulkan codegen helpers
 
-This backend is built only when Vulkan support is available and enabled in CMake.
+This backend is built only when Vulkan support is available and enabled in CMake. It is currently treated as a legacy diagnostic backend for SPIR-V/Vulkan investigations when OpenCL is not the selected non-Apple route.
 
 The current Vulkan runtime also:
 - records physical-device limits such as subgroup size and compute workgroup limits in `VulkanContext`
@@ -383,7 +406,7 @@ This is model serialization, not compiled-kernel caching.
 
 ## Important Constraints
 - no partial CPU fallback
-- backend implementation parity is not automatic: Mac uses the Metal/MPS/MSL backend, while Android and Raspberry Pi use the Vulkan/SPIR-V backend. The public OpenVINO tensor contract and compare-runner acceptance criteria are shared, so a Mac-only pass is not enough evidence for Android/RPi correctness.
+- backend implementation parity is not automatic: Mac uses the Metal/MPS/MSL backend, non-Apple default builds may use OpenCL source kernels, and Vulkan/SPIR-V remains a separate diagnostic path. The public OpenVINO tensor contract and compare-runner acceptance criteria are shared, so a Mac-only pass is not enough evidence for Android/RPi correctness.
 - targeted per-op skips are represented as explicit compare-runner outcomes (`PER_OP_SKIPPED`) and preserved by `bench/gfx_eval.py`; backend gaps should not be hidden as successful matches or per-device test exclusions.
 - once an Apple MPS vendor contract is selected, its typed input/output descriptors own the MPSRT ABI and storage-bridge assignment; the intermediate MLIR helper signature must not remain a second source of descriptor counts.
 - Apple MPS Pool2D materialization is single-output only; indexed `MaxPool` variants with a second indices output must remain in the custom-kernel path until the typed vendor contract can represent both outputs.

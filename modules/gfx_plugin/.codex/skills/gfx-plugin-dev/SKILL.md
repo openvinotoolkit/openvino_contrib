@@ -1,6 +1,6 @@
 ---
 name: gfx-plugin-dev
-description: Use when working on OpenVINO GFX plugin code in modules/gfx_plugin, especially MLIR lowering, runtime stages, backend routing, plugin properties, or architecture-sensitive refactors across Metal and Vulkan backends.
+description: Use when working on OpenVINO GFX plugin code in modules/gfx_plugin, especially MLIR lowering, runtime stages, backend routing, plugin properties, or architecture-sensitive refactors across Metal, OpenCL, and Vulkan backends.
 ---
 
 # GFX Plugin Development
@@ -11,7 +11,7 @@ This skill is for implementing or refactoring the `GFX` OpenVINO plugin in `modu
 
 - The task touches `src/`, `include/`, `tests/`, `CMakeLists.txt`, or backend-specific code.
 - The user asks for architecture changes, new ops, runtime fixes, property behavior, backend routing, or MLIR/codegen work.
-- The task mentions Metal, Vulkan, `GFX`, `CompiledModel`, `InferRequest`, remote tensors, or MLIR lowering.
+- The task mentions Metal, OpenCL, Vulkan, `GFX`, `CompiledModel`, `InferRequest`, remote tensors, or MLIR lowering.
 
 ## Primary References
 
@@ -29,6 +29,7 @@ Then read the relevant code path:
 - MLIR builders and stage planning: `src/mlir/`
 - Parallel and graph rewrites: `src/transforms/`
 - Metal backend: `src/backends/metal/`
+- OpenCL backend: `src/backends/opencl/`
 - Vulkan backend: `src/backends/vulkan/`
 - Public API surface: `include/openvino/gfx_plugin/`
 
@@ -48,6 +49,8 @@ Then read the relevant code path:
 - For Metal custom MSL source changes, prefer `src/mlir/msl_codegen_apple_msl*`, `src/mlir/msl_codegen_apple_mps.*`, `src/mlir/msl_codegen_matmul_*`, and `GfxMslRuntimeBindingPlan`; keep module operand annotations, manifest external-buffer roles, inferred `[[buffer(N)]]` counts, and MPSRT `kernel_buffer_order` aligned.
 - For Vulkan compact-ABI changes, prefer `src/mlir/spirv_kernel_binding_adapter.hpp` so SPIR-V fixed-argument metadata stays separate from Apple MSL binding attrs.
 - For Vulkan Conv2D dispatch tuning, keep output-channel blocking and spatial micro-tiling in `gfx_parallelism.*`, `gfx.dispatch_channel_block` metadata, and shared convolution lowering; do not add executor-local Conv variants or device-name tables.
+- For OpenCL source-kernel work, keep source artifacts in `src/kernel_ir/gfx_opencl_source_artifacts.*` and runtime execution in `src/backends/opencl/runtime/opencl_source_stage.*`; do not scatter source ids, scalar ABI, local sizes, or element-count rules through infer-request code.
+- For target-device profiling changes, keep `GpuExecutionDeviceInfo`, `gfx_target_profile.*`, backend buffer managers, and `GFX_PROFILING_REPORT` JSON aligned.
 
 ## Common Workflows
 
@@ -87,6 +90,8 @@ Check whether the change belongs to one of the current special families:
 - input-side fusion paths, such as `Multiply` absorbing an activation on one selected input instead of only post-op activation on the output
 - public `ov::hint::inference_precision` handling and precision-aware accuracy expectations
 - Vulkan Conv2D output-channel blocking, including `GpuExecutionDeviceInfo` capability flags, dispatch metadata, SPIR-V cache metadata, and shared lowering support
+- OpenCL source-artifact manifests for baseline f32 data movement and elementwise-style kernels
+- target profile recording through `extended.target_profile` and `target_backend_*` counters
 
 ### Runtime or backend scheduling change
 
@@ -97,6 +102,14 @@ Check whether the change belongs to one of the current special families:
 5. On Metal, inspect `src/backends/metal/runtime/metal_command_encoder.*` before adding new encoder/pipeline/buffer binding logic.
 6. If the change affects Apple placement or request-time Metal binding, also inspect `src/runtime/gfx_mpsrt_model.*`, `src/backends/metal/runtime/mpsrt/*`, `src/kernel_ir/gfx_kernel_manifest.hpp`, `src/kernel_ir/gfx_custom_kernel_families.*`, and the split `src/mlir/msl_codegen_apple_*` / `src/mlir/msl_codegen_matmul_*` files.
 7. For infer submission changes, keep direct producer-consumer dependency extension bounded by common stage/output/MAC budgets and keep layout, split, transpose, softmax, and attention stages as hard extension boundaries.
+
+### OpenCL source-artifact change
+
+1. Inspect `src/kernel_ir/gfx_opencl_source_artifacts.*` first; the artifact manifest is the source of truth for source id, entry point, role ABI, scalar ABI, element-count source, and local size.
+2. Keep `src/backends/opencl/runtime/opencl_source_stage.*` as a generic artifact executor. New op-specific behavior should reach it through artifact metadata, not local runtime branches.
+3. Check `src/backends/opencl/runtime/opencl_api.*` and `opencl_buffer_manager.*` only when device selection, dynamic loading, memory ops, or target-profile reporting changed.
+4. Update `tests/unit/gfx_opencl_source_artifacts_test.cpp` and docs when the supported OpenCL subset changes.
+5. Treat standalone OpenCL Conv2D microbench tools as experiments until the route is promoted into the plugin manifest/runtime/test contract.
 
 ### Stateful or reusable infer-path change
 

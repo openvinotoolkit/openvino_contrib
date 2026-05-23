@@ -14,6 +14,8 @@
 #include <sstream>
 #include <thread>
 
+#include "runtime/gfx_backend_utils.hpp"
+
 #if defined(__APPLE__)
 #    include <os/signpost.h>
 #endif
@@ -95,6 +97,41 @@ uint64_t monotonic_wall_us() {
 
 uint64_t current_thread_id_hash() {
     return static_cast<uint64_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
+}
+
+void append_target_profile_json(std::ostringstream& oss, const GfxTargetProfile& profile) {
+    oss << "\"target_profile\":{";
+    oss << "\"backend\":\"" << escape_json(backend_to_string(profile.backend)) << "\",";
+    oss << "\"family\":\"" << escape_json(gpu_device_family_name(profile.device_family)) << "\",";
+    oss << "\"device_key\":\"" << escape_json(profile.device_key) << "\",";
+    oss << "\"device_name\":\"" << escape_json(profile.device_name) << "\",";
+    oss << "\"vendor_id\":" << profile.vendor_id << ',';
+    oss << "\"device_id\":" << profile.device_id << ',';
+    oss << "\"driver_version\":" << profile.driver_version << ',';
+    oss << "\"api_version\":" << profile.api_version << ',';
+    oss << "\"preferred_simd_width\":" << profile.preferred_simd_width << ',';
+    oss << "\"subgroup_size\":" << profile.subgroup_size << ',';
+    oss << "\"max_total_threads_per_group\":" << profile.max_total_threads_per_group << ',';
+    oss << "\"max_threads_per_group\":["
+        << profile.max_threads_per_group[0] << ','
+        << profile.max_threads_per_group[1] << ','
+        << profile.max_threads_per_group[2] << "],";
+    oss << "\"min_storage_buffer_offset_alignment\":"
+        << profile.min_storage_buffer_offset_alignment << ',';
+    oss << "\"non_coherent_atom_size\":" << profile.non_coherent_atom_size << ',';
+    oss << "\"storage_buffer_8bit\":"
+        << (profile.supports_storage_buffer_8bit ? "true" : "false") << ',';
+    oss << "\"storage_buffer_16bit\":"
+        << (profile.supports_storage_buffer_16bit ? "true" : "false") << ',';
+    oss << "\"shader_float16\":"
+        << (profile.supports_shader_float16 ? "true" : "false") << ',';
+    oss << "\"shader_int8\":"
+        << (profile.supports_shader_int8 ? "true" : "false") << ',';
+    oss << "\"conv_output_channel_blocking\":"
+        << (profile.supports_conv_output_channel_blocking ? "true" : "false") << ',';
+    oss << "\"conv_channel_block_spatial_tiling\":"
+        << (profile.supports_conv_channel_block_spatial_tiling ? "true" : "false");
+    oss << "},";
 }
 
 #if defined(__APPLE__)
@@ -572,6 +609,9 @@ std::string GfxProfilingReport::to_json() const {
     oss << "\"total_wall_us\":" << total_wall_us << ',';
     oss << "\"total_h2d_bytes\":" << total_h2d_bytes << ',';
     oss << "\"total_d2h_bytes\":" << total_d2h_bytes << ',';
+    if (target_profile_present) {
+        append_target_profile_json(oss, target_profile);
+    }
 
     oss << "\"nodes\":[";
     for (size_t i = 0; i < nodes.size(); ++i) {
@@ -812,6 +852,11 @@ void GfxProfilingTrace::reset(ProfilingLevel level) {
 
 void GfxProfilingTrace::set_backend(std::string_view backend) {
     m_report.backend = std::string{backend};
+}
+
+void GfxProfilingTrace::set_target_profile(const GfxTargetProfile& profile) {
+    m_report.target_profile = profile;
+    m_report.target_profile_present = true;
 }
 
 void GfxProfilingTrace::set_counter_capability(bool supported, bool used) {

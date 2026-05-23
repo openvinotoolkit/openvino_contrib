@@ -504,6 +504,72 @@ struct SpatialMicroTile {
   uint32_t w = 1;
 };
 
+struct ConvWorkloadProfile {
+  uint64_t out_h = 1;
+  uint64_t out_w = 1;
+  uint64_t spatial = 1;
+  uint64_t output_area = 1;
+  uint32_t wave = 1;
+  uint32_t max_threads = 1;
+  uint32_t balanced_threads = 1;
+  uint32_t dense_threads = 1;
+  bool spatially_large = false;
+  bool spatially_huge = false;
+  bool channel_reuse = false;
+  bool dense_reduction = false;
+  bool very_dense_reduction = false;
+  bool ultra_dense_reduction = false;
+  bool pointwise_or_light_reduction = false;
+  bool pointwise_dense_reduction = false;
+};
+
+ConvWorkloadProfile make_conv_workload_profile(
+    const GfxParallelismCaps &caps, const ov::Shape &output_shape,
+    uint64_t input_channels, uint64_t output_channels, uint64_t kernel_work,
+    bool depthwise) {
+  ConvWorkloadProfile profile{};
+  profile.out_h =
+      output_shape.size() >= 2
+          ? std::max<uint64_t>(
+                1, static_cast<uint64_t>(output_shape[output_shape.size() - 2]))
+          : 1;
+  profile.out_w =
+      output_shape.size() >= 1
+          ? std::max<uint64_t>(
+                1, static_cast<uint64_t>(output_shape[output_shape.size() - 1]))
+          : 1;
+  profile.output_area = profile.out_h * profile.out_w;
+  profile.spatial = shape_prefix_product(output_shape) * profile.output_area;
+  profile.wave = std::max<uint32_t>(
+      1u, std::max(caps.subgroup_size, caps.preferred_simd_width));
+  profile.max_threads = clamp_threadgroup_candidate(
+      caps, std::max<uint32_t>(1u, caps.max_total_threads_per_group));
+  profile.balanced_threads = clamp_threadgroup_candidate(
+      caps, std::max<uint32_t>(profile.wave * 4u, profile.max_threads / 4u));
+  profile.dense_threads = clamp_threadgroup_candidate(
+      caps, std::max<uint32_t>(profile.wave * 8u, profile.max_threads / 2u));
+  const uint64_t wave = std::max<uint64_t>(1, profile.wave);
+  profile.spatially_large = profile.spatial >= wave * wave;
+  profile.spatially_huge = profile.spatial >= wave * wave * wave;
+  profile.channel_reuse = !depthwise && input_channels >= wave * 2u &&
+                          output_channels >= wave * 2u;
+  profile.dense_reduction =
+      profile.channel_reuse && kernel_work >= wave * wave;
+  profile.very_dense_reduction =
+      profile.channel_reuse && kernel_work >= wave * wave * 2u &&
+      input_channels >= wave * 4u && output_channels >= wave * 4u;
+  profile.ultra_dense_reduction =
+      profile.channel_reuse && kernel_work >= wave * wave * 4u &&
+      input_channels >= wave * 8u && output_channels >= wave * 8u;
+  profile.pointwise_or_light_reduction =
+      !depthwise && profile.spatially_huge && kernel_work <= wave * 4u &&
+      output_channels >= wave * 2u;
+  profile.pointwise_dense_reduction =
+      !depthwise && profile.spatially_huge && kernel_work >= wave * 8u &&
+      output_channels >= wave * 4u;
+  return profile;
+}
+
 ThreadPair choose_conv_thread_pair(const GfxParallelismCaps &caps,
                                    uint32_t target_threads, uint64_t out_h,
                                    uint64_t out_w, uint64_t spatial,
@@ -523,7 +589,9 @@ ThreadPair choose_conv_thread_pair(const GfxParallelismCaps &caps,
   if (depthwise) {
     target_aspect *= 0.5;
   }
-  if (kernel_work >= 1024) {
+  const uint32_t wave = std::max<uint32_t>(
+      1u, std::max(caps.subgroup_size, caps.preferred_simd_width));
+  if (kernel_work >= static_cast<uint64_t>(wave) * wave * 4u) {
     target_aspect = (target_aspect + 1.0) * 0.5;
   }
   target_aspect = clamp_double(target_aspect, 0.5, 4.0);
@@ -559,6 +627,26 @@ ThreadPair choose_conv_thread_pair(const GfxParallelismCaps &caps,
 
 uint32_t select_conv_accumulator_budget(const GfxParallelismCaps &caps);
 
+bool uses_compact_conv_channel_only_guard(const GfxParallelismCaps &caps) {
+  return caps.device_family == GpuDeviceFamily::BroadcomV3D;
+}
+
+uint64_t min_output_area_for_conv_spatial_micro_tile(
+    const GfxParallelismCaps &caps, uint32_t wave) {
+  if (!uses_compact_conv_channel_only_guard(caps)) {
+    return 1;
+  }
+  return static_cast<uint64_t>(std::max<uint32_t>(1u, wave)) *
+         static_cast<uint64_t>(
+             std::max<uint32_t>(1u, caps.max_total_threads_per_group));
+}
+
+bool can_use_conv_spatial_micro_tile_for_area(const GfxParallelismCaps &caps,
+                                              uint64_t output_area,
+                                              uint32_t wave) {
+  return output_area >= min_output_area_for_conv_spatial_micro_tile(caps, wave);
+}
+
 uint32_t select_conv_output_channel_block(
     const GfxParallelismCaps &caps, uint64_t spatial, uint64_t input_channels,
     uint64_t output_channels, uint64_t kernel_work, uint64_t output_area,
@@ -582,8 +670,31 @@ uint32_t select_conv_output_channel_block(
   // the hardware-relative wave size and accumulator budget rather than a
   // per-device correctness cap.
   const uint32_t accumulator_budget = select_conv_accumulator_budget(caps);
-  const uint32_t base_block =
+  uint32_t base_block =
       std::max<uint32_t>(1u, std::min<uint32_t>(wave / 4u, accumulator_budget));
+  const uint32_t threadgroup_waves = std::max<uint32_t>(
+      1u, std::max<uint32_t>(1u, caps.max_total_threads_per_group) / wave);
+  const bool can_spatial_micro_tile =
+      caps.supports_conv_channel_block_spatial_tiling && !stride2 &&
+      can_use_conv_spatial_micro_tile_for_area(caps, output_area, wave);
+  const bool pointwise_reduction = kernel_work <= input_channels;
+  const uint64_t dense_spatial_output_area =
+      static_cast<uint64_t>(wave) * static_cast<uint64_t>(wave) * 32u;
+  const bool in_dense_spatial_reuse_window =
+      !stride2 && (pointwise_reduction || output_area <= dense_spatial_output_area);
+  const bool compact_wave_dense_reuse =
+      !can_spatial_micro_tile &&
+      in_dense_spatial_reuse_window &&
+      threadgroup_waves >= wave &&
+      wave <= accumulator_budget * 2u &&
+      input_channels >= static_cast<uint64_t>(wave) * 2u &&
+      output_channels >= static_cast<uint64_t>(wave) * 2u &&
+      kernel_work >= static_cast<uint64_t>(wave) * 8u;
+  if (compact_wave_dense_reuse) {
+    base_block =
+        std::max<uint32_t>(base_block,
+                           std::min<uint32_t>(accumulator_budget, wave / 2u));
+  }
   const uint64_t compact_output_area =
       static_cast<uint64_t>(wave) * static_cast<uint64_t>(wave) * 8u;
   const bool dense_downsample_reduction =
@@ -650,6 +761,12 @@ SpatialMicroTile select_conv_spatial_micro_tile(
 
   const uint32_t channel_block = std::max<uint32_t>(1u, output_channel_block);
   const uint32_t accumulator_budget = select_conv_accumulator_budget(caps);
+  const uint32_t wave = std::max<uint32_t>(
+      1u, std::max(caps.subgroup_size, caps.preferred_simd_width));
+  const uint64_t output_area = out_h * out_w;
+  if (!can_use_conv_spatial_micro_tile_for_area(caps, output_area, wave)) {
+    return {};
+  }
   const bool dense_reduction =
       kernel_work >= static_cast<uint64_t>(accumulator_budget) * channel_block;
   if (!dense_reduction) {
@@ -718,38 +835,39 @@ ConvParallelismPlan make_conv_parallelism_plan(
     return plan;
   }
 
-  const uint64_t out_h = std::max<uint64_t>(
-      1, static_cast<uint64_t>(output_shape[output_shape.size() - 2]));
-  const uint64_t out_w = std::max<uint64_t>(
-      1, static_cast<uint64_t>(output_shape[output_shape.size() - 1]));
-  const uint64_t spatial = shape_prefix_product(output_shape) * out_h * out_w;
+  const auto profile =
+      make_conv_workload_profile(caps, output_shape, input_channels,
+                                 output_channels, kernel_work, depthwise);
   const uint64_t effective_work =
       std::max<uint64_t>(kernel_work, std::max<uint64_t>(1, input_channels));
   const uint32_t clamped_default = clamp_threadgroup_candidate(
       caps, std::max<uint32_t>(1u, default_threads));
   uint32_t target_threads = select_hardware_relative_threadgroup(
-      caps, spatial, effective_work, clamped_default);
+      caps, profile.spatial, effective_work, clamped_default);
   const bool dense_parallel_workload =
-      !depthwise && spatial >= static_cast<uint64_t>(clamped_default) * 4u &&
+      !depthwise &&
+      profile.spatial >= static_cast<uint64_t>(clamped_default) * 4u &&
       effective_work >= clamped_default;
   if (dense_parallel_workload) {
     target_threads = std::max(target_threads, clamped_default);
   }
   const auto pair =
-      choose_conv_thread_pair(caps, target_threads, out_h, out_w, spatial,
-                              kernel_work, stride2, depthwise);
+      choose_conv_thread_pair(caps, target_threads, profile.out_h,
+                              profile.out_w, profile.spatial, kernel_work,
+                              stride2, depthwise);
   const uint32_t output_channel_block = select_conv_output_channel_block(
-      caps, spatial, input_channels, output_channels, kernel_work,
-      out_h * out_w, stride2, depthwise);
+      caps, profile.spatial, input_channels, output_channels, kernel_work,
+      profile.output_area, stride2, depthwise);
   const auto micro_tile = select_conv_spatial_micro_tile(
-      caps, pair, out_h, out_w, spatial, kernel_work, stride2, depthwise,
-      output_channel_block);
+      caps, pair, profile.out_h, profile.out_w, profile.spatial, kernel_work,
+      stride2, depthwise, output_channel_block);
   const auto channel_block_accumulation =
       select_conv_channel_block_accumulation(caps, kernel_work,
                                              output_channel_block, micro_tile);
 
-  plan.prefer_parallel = (shape_prefix_product(output_shape) * output_channels *
-                          out_h * out_w) >= 256;
+  plan.prefer_parallel =
+      (shape_prefix_product(output_shape) * output_channels *
+       profile.output_area) >= 256;
   plan.variant =
       "conv_parallel_" + std::to_string(pair.h) + "x" + std::to_string(pair.w);
   plan.dispatch.enabled = true;
@@ -803,8 +921,9 @@ GfxParallelismCaps make_default_caps(GpuBackend backend) {
                                                     : GpuDeviceFamily::Generic;
   caps.preferred_simd_width = 32;
   caps.subgroup_size = 32;
-  if (backend == GpuBackend::Vulkan) {
-    caps.device_key = "vulkan:default";
+  if (backend == GpuBackend::OpenCL || backend == GpuBackend::Vulkan) {
+    caps.device_key =
+        backend == GpuBackend::OpenCL ? "opencl:default" : "vulkan:default";
     caps.max_total_threads_per_group = 128;
     caps.max_threads_per_group = {128, 128, 64};
   } else {
@@ -1093,66 +1212,42 @@ protected:
                           uint64_t input_channels, uint64_t output_channels,
                           uint64_t kernel_work, bool stride2, bool depthwise,
                           ConvParallelismPlan &plan) const override {
-    const uint32_t wave = std::max<uint32_t>(
-        1u, std::max(caps.subgroup_size, caps.preferred_simd_width));
-    const uint64_t out_h =
-        output_shape.size() >= 2
-            ? std::max<uint64_t>(1, static_cast<uint64_t>(
-                                        output_shape[output_shape.size() - 2]))
-            : 1;
-    const uint64_t out_w =
-        output_shape.size() >= 1
-            ? std::max<uint64_t>(1, static_cast<uint64_t>(
-                                        output_shape[output_shape.size() - 1]))
-            : 1;
-    const uint64_t spatial = shape_prefix_product(output_shape) * out_h * out_w;
-    const uint32_t max_threads = clamp_threadgroup_candidate(
-        caps, std::max<uint32_t>(1u, caps.max_total_threads_per_group));
-    const uint32_t occupancy_balanced_threads = clamp_threadgroup_candidate(
-        caps, std::max<uint32_t>(wave * 4u, max_threads / 4u));
-    const uint32_t occupancy_dense_threads = clamp_threadgroup_candidate(
-        caps, std::max<uint32_t>(wave * 8u, max_threads / 2u));
-    uint32_t default_threads = wave;
-    const bool spatially_large = spatial >= 4096;
-    const bool spatially_huge = spatial >= 16384;
-    const bool compute_dense = kernel_work >= 288 &&
-                               input_channels >= wave * 2u &&
-                               output_channels >= wave * 2u;
-    const bool compute_very_dense = kernel_work >= 512 &&
-                                    input_channels >= wave * 4u &&
-                                    output_channels >= wave * 4u;
-    const bool compute_ultra_dense = kernel_work >= 1024 &&
-                                     input_channels >= wave * 8u &&
-                                     output_channels >= wave * 8u;
-    const bool pointwise_or_light_reduction = !depthwise && spatially_huge &&
-                                              kernel_work <= wave * 4u &&
-                                              output_channels >= wave * 2u;
-    const bool pointwise_dense_reduction = !depthwise && spatially_huge &&
-                                           kernel_work >= wave * 8u &&
-                                           output_channels >= wave * 4u;
-    if (!depthwise && spatially_huge) {
+    const auto profile =
+        make_conv_workload_profile(caps, output_shape, input_channels,
+                                   output_channels, kernel_work, depthwise);
+    uint32_t default_threads = profile.wave;
+    if (!depthwise && profile.spatially_huge) {
       const uint32_t huge_spatial_threads =
-          output_channels >= wave * 2u ? occupancy_balanced_threads : wave * 2u;
+          output_channels >= static_cast<uint64_t>(profile.wave) * 2u
+              ? profile.balanced_threads
+              : profile.wave * 2u;
       default_threads = clamp_threadgroup_candidate(caps, huge_spatial_threads);
-    } else if (!depthwise && spatially_large && output_channels >= wave * 2u) {
-      default_threads = clamp_threadgroup_candidate(caps, wave * 2u);
+    } else if (!depthwise && profile.spatially_large &&
+               output_channels >= static_cast<uint64_t>(profile.wave) * 2u) {
+      default_threads = clamp_threadgroup_candidate(caps, profile.wave * 2u);
     }
-    if (!depthwise && compute_dense && spatial >= 1024) {
+    if (!depthwise && profile.dense_reduction &&
+        profile.spatial >= static_cast<uint64_t>(profile.wave) * profile.wave *
+                               4u) {
       default_threads =
-          clamp_threadgroup_candidate(caps, stride2 ? wave * 4u : wave * 2u);
-      if (!stride2 && compute_very_dense && spatially_large) {
-        default_threads = occupancy_dense_threads;
-      } else if (stride2 && compute_very_dense && spatial >= 2048) {
-        default_threads = occupancy_dense_threads;
+          clamp_threadgroup_candidate(caps, stride2 ? profile.wave * 4u
+                                                    : profile.wave * 2u);
+      if (!stride2 && profile.very_dense_reduction &&
+          profile.spatially_large) {
+        default_threads = profile.dense_threads;
+      } else if (stride2 && profile.very_dense_reduction &&
+                 profile.spatial >=
+                     static_cast<uint64_t>(profile.wave) * profile.wave * 8u) {
+        default_threads = profile.dense_threads;
       }
-      if (compute_ultra_dense && spatially_huge) {
-        default_threads = occupancy_dense_threads;
+      if (profile.ultra_dense_reduction && profile.spatially_huge) {
+        default_threads = profile.dense_threads;
       }
     }
-    if (pointwise_or_light_reduction) {
-      default_threads = occupancy_balanced_threads;
-    } else if (pointwise_dense_reduction) {
-      default_threads = occupancy_dense_threads;
+    if (profile.pointwise_or_light_reduction) {
+      default_threads = profile.balanced_threads;
+    } else if (profile.pointwise_dense_reduction) {
+      default_threads = profile.dense_threads;
     }
     plan = make_conv_parallelism_plan(caps, output_shape, input_channels,
                                       output_channels, kernel_work, stride2,
@@ -1163,8 +1258,8 @@ protected:
 const ParallelismStrategy &
 select_parallelism_strategy(const GfxParallelismCaps &caps) {
   static const MetalParallelismStrategy metal_strategy{};
-  static const GenericVulkanParallelismStrategy generic_vulkan_strategy{};
-  static const AdrenoVulkanParallelismStrategy adreno_vulkan_strategy{};
+  static const GenericVulkanParallelismStrategy generic_source_strategy{};
+  static const AdrenoVulkanParallelismStrategy adreno_source_strategy{};
   static const BroadcomV3DParallelismStrategy broadcom_v3d_strategy{};
 
   if (caps.backend == GpuBackend::Metal) {
@@ -1172,13 +1267,13 @@ select_parallelism_strategy(const GfxParallelismCaps &caps) {
   }
   switch (caps.device_family) {
   case GpuDeviceFamily::QualcommAdreno:
-    return adreno_vulkan_strategy;
+    return adreno_source_strategy;
   case GpuDeviceFamily::BroadcomV3D:
     return broadcom_v3d_strategy;
   case GpuDeviceFamily::Apple:
   case GpuDeviceFamily::Generic:
   default:
-    return generic_vulkan_strategy;
+    return generic_source_strategy;
   }
 }
 

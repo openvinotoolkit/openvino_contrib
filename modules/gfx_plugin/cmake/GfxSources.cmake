@@ -66,9 +66,11 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_args.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_opencl_source_artifacts.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_signature.hpp
     ${_gfx_src_dir}/runtime/gfx_profiler.hpp
     ${_gfx_src_dir}/runtime/gfx_profiling_report.hpp
+    ${_gfx_src_dir}/runtime/gfx_target_profile.hpp
     ${_gfx_src_dir}/runtime/gpu_backend_base.hpp
     ${_gfx_src_dir}/runtime/gpu_buffer.hpp
     ${_gfx_src_dir}/runtime/gpu_buffer_pool.hpp
@@ -104,6 +106,7 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/kernel_ir/gfx_custom_kernel_families.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.cpp
+    ${_gfx_src_dir}/kernel_ir/gfx_opencl_source_artifacts.cpp
     ${_gfx_src_dir}/runtime/execution_dispatcher.cpp
     ${_gfx_src_dir}/runtime/immutable_gpu_buffer_cache.cpp
     ${_gfx_src_dir}/runtime/memory_manager.cpp
@@ -111,6 +114,7 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/gfx_op_utils.cpp
     ${_gfx_src_dir}/runtime/gfx_parallelism.cpp
     ${_gfx_src_dir}/runtime/gfx_profiling_report.cpp
+    ${_gfx_src_dir}/runtime/gfx_target_profile.cpp
     ${_gfx_src_dir}/runtime/gfx_remote_context.cpp
     ${_gfx_src_dir}/runtime/gfx_remote_tensor.cpp
     ${_gfx_src_dir}/runtime/gfx_stage_policy.cpp
@@ -304,6 +308,24 @@ set(GFX_RUNTIME_VULKAN_HEADERS
     ${_gfx_src_dir}/backends/vulkan/runtime/stage_factory.hpp
 )
 
+set(GFX_RUNTIME_OPENCL_SOURCES
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_api.cpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_buffer_manager.cpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_program_cache.cpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_source_stage.cpp
+    ${_gfx_src_dir}/backends/opencl/runtime/memory_api.cpp
+    ${_gfx_src_dir}/backends/opencl/runtime/memory_ops.cpp
+)
+
+set(GFX_RUNTIME_OPENCL_HEADERS
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_api.hpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_buffer_manager.hpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_program_cache.hpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_source_stage.hpp
+    ${_gfx_src_dir}/backends/opencl/runtime/memory_api.hpp
+    ${_gfx_src_dir}/backends/opencl/runtime/stage_factory.hpp
+)
+
 set(GFX_RUNTIME_VULKAN_CODEGEN_HEADERS
     ${_gfx_src_dir}/mlir/spirv_codegen.hpp
     ${_gfx_src_dir}/backends/vulkan/codegen/vulkan_codegen_backend.hpp
@@ -358,9 +380,31 @@ set(GFX_PLUGIN_VULKAN_HEADERS
     ${_gfx_src_dir}/backends/vulkan/plugin/compiled_model_state.hpp
 )
 
+set(GFX_PLUGIN_OPENCL_SOURCES
+    ${_gfx_src_dir}/backends/opencl/plugin/infer_request.cpp
+    ${_gfx_src_dir}/backends/opencl/plugin/infer_io_opencl.cpp
+    ${_gfx_src_dir}/backends/opencl/plugin/compiled_model_backend.cpp
+)
+
+set(GFX_PLUGIN_OPENCL_STUB_SOURCES
+    ${_gfx_src_dir}/backends/opencl/plugin/infer_request_stub.cpp
+    ${_gfx_src_dir}/backends/opencl/plugin/compiled_model_backend_stub.cpp
+)
+
+set(GFX_PLUGIN_OPENCL_HEADERS
+    ${_gfx_src_dir}/backends/opencl/plugin/compiled_model_backend.hpp
+    ${_gfx_src_dir}/backends/opencl/plugin/compiled_model_state.hpp
+    ${_gfx_src_dir}/backends/opencl/plugin/infer_io_opencl.hpp
+)
+
 set(GFX_HAS_METAL_SOURCES OFF)
 if(GFX_RUNTIME_METAL_SOURCES)
     set(GFX_HAS_METAL_SOURCES ON)
+endif()
+
+set(GFX_HAS_OPENCL_SOURCES OFF)
+if(GFX_RUNTIME_OPENCL_SOURCES AND GFX_PLUGIN_OPENCL_SOURCES)
+    set(GFX_HAS_OPENCL_SOURCES ON)
 endif()
 
 set(GFX_HAS_VULKAN_SOURCES OFF)

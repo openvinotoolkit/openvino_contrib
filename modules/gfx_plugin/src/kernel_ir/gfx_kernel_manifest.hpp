@@ -26,12 +26,20 @@ enum class GfxKernelBackendDomain : uint32_t {
     AppleMps = 1,
     AppleMsl = 2,
     Spirv = 3,
+    OpenCl = 4,
 };
 
 enum class GfxKernelExecutionKind : uint32_t {
     Unknown = 0,
     VendorPrimitive = 1,
     CustomKernel = 2,
+};
+
+enum class GfxKernelArtifactKind : uint32_t {
+    Unknown = 0,
+    VendorPrimitive = 1,
+    MetalSource = 2,
+    OpenClSource = 3,
 };
 
 enum class GfxKernelStorageKind : uint32_t {
@@ -105,6 +113,8 @@ inline const char* gfx_kernel_backend_domain_name(GfxKernelBackendDomain domain)
             return "apple_mps";
         case GfxKernelBackendDomain::AppleMsl:
             return "apple_msl";
+        case GfxKernelBackendDomain::OpenCl:
+            return "opencl";
         case GfxKernelBackendDomain::Spirv:
             return "spirv";
         case GfxKernelBackendDomain::Unknown:
@@ -116,6 +126,7 @@ inline const char* gfx_kernel_backend_domain_name(GfxKernelBackendDomain domain)
 inline GfxKernelBackendDomain gfx_kernel_backend_domain_from_name(std::string_view name) {
     if (name == "apple_mps") return GfxKernelBackendDomain::AppleMps;
     if (name == "apple_msl") return GfxKernelBackendDomain::AppleMsl;
+    if (name == "opencl") return GfxKernelBackendDomain::OpenCl;
     if (name == "spirv") return GfxKernelBackendDomain::Spirv;
     return GfxKernelBackendDomain::Unknown;
 }
@@ -136,6 +147,27 @@ inline GfxKernelExecutionKind gfx_kernel_execution_kind_from_name(std::string_vi
     if (name == "vendor_primitive") return GfxKernelExecutionKind::VendorPrimitive;
     if (name == "custom_kernel") return GfxKernelExecutionKind::CustomKernel;
     return GfxKernelExecutionKind::Unknown;
+}
+
+inline const char* gfx_kernel_artifact_kind_name(GfxKernelArtifactKind kind) {
+    switch (kind) {
+        case GfxKernelArtifactKind::VendorPrimitive:
+            return "vendor_primitive";
+        case GfxKernelArtifactKind::MetalSource:
+            return "metal_source";
+        case GfxKernelArtifactKind::OpenClSource:
+            return "opencl_source";
+        case GfxKernelArtifactKind::Unknown:
+        default:
+            return "unknown";
+    }
+}
+
+inline GfxKernelArtifactKind gfx_kernel_artifact_kind_from_name(std::string_view name) {
+    if (name == "vendor_primitive") return GfxKernelArtifactKind::VendorPrimitive;
+    if (name == "metal_source") return GfxKernelArtifactKind::MetalSource;
+    if (name == "opencl_source") return GfxKernelArtifactKind::OpenClSource;
+    return GfxKernelArtifactKind::Unknown;
 }
 
 inline const char* gfx_kernel_storage_kind_name(GfxKernelStorageKind storage) {
@@ -273,6 +305,15 @@ struct GfxKernelCustomManifest {
     std::vector<int32_t> scalar_args;
 };
 
+struct GfxKernelArtifactRef {
+    bool valid = false;
+    GfxKernelArtifactKind kind = GfxKernelArtifactKind::Unknown;
+    GfxKernelBackendDomain backend_domain = GfxKernelBackendDomain::Unknown;
+    std::string source_id;
+    std::string entry_point;
+    std::vector<std::string> build_options;
+};
+
 struct GfxKernelStageManifest {
     bool valid = false;
     GfxKernelStageFamily stage_family = GfxKernelStageFamily::Unknown;
@@ -368,6 +409,59 @@ inline GfxKernelCustomManifest make_gfx_custom_kernel_manifest(std::string kerne
     manifest.external_buffer_abi = std::move(external_buffer_abi);
     manifest.dispatch_policy = dispatch_policy;
     return manifest;
+}
+
+inline GfxKernelArtifactKind gfx_kernel_artifact_kind_for_stage(
+    GfxKernelBackendDomain domain,
+    GfxKernelExecutionKind execution_kind) {
+    if (execution_kind == GfxKernelExecutionKind::VendorPrimitive) {
+        return GfxKernelArtifactKind::VendorPrimitive;
+    }
+    if (execution_kind != GfxKernelExecutionKind::CustomKernel) {
+        return GfxKernelArtifactKind::Unknown;
+    }
+    switch (domain) {
+        case GfxKernelBackendDomain::AppleMsl:
+            return GfxKernelArtifactKind::MetalSource;
+        case GfxKernelBackendDomain::OpenCl:
+            return GfxKernelArtifactKind::OpenClSource;
+        case GfxKernelBackendDomain::AppleMps:
+        case GfxKernelBackendDomain::Spirv:
+        case GfxKernelBackendDomain::Unknown:
+        default:
+            return GfxKernelArtifactKind::Unknown;
+    }
+}
+
+inline bool gfx_kernel_artifact_is_source(GfxKernelArtifactKind kind) {
+    return kind == GfxKernelArtifactKind::MetalSource ||
+           kind == GfxKernelArtifactKind::OpenClSource;
+}
+
+inline GfxKernelArtifactRef make_gfx_kernel_artifact_ref(
+    const GfxKernelStageManifest& manifest) {
+    GfxKernelArtifactRef ref{};
+    if (!manifest.valid) {
+        return ref;
+    }
+    ref.kind = gfx_kernel_artifact_kind_for_stage(manifest.backend_domain,
+                                                 manifest.execution_kind);
+    ref.backend_domain = manifest.backend_domain;
+    ref.valid = ref.kind != GfxKernelArtifactKind::Unknown;
+    if (!ref.valid) {
+        return ref;
+    }
+    if (manifest.execution_kind == GfxKernelExecutionKind::VendorPrimitive) {
+        ref.source_id = manifest.specialization_key;
+        return ref;
+    }
+    if (!manifest.custom_kernel.valid) {
+        ref.valid = false;
+        return ref;
+    }
+    ref.source_id = manifest.custom_kernel.kernel_family;
+    ref.entry_point = manifest.custom_kernel.entry_point;
+    return ref;
 }
 
 inline GfxKernelStageManifest make_gfx_vendor_stage_manifest(GfxKernelStageFamily family,

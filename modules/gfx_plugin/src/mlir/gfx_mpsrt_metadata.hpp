@@ -101,6 +101,8 @@ inline GfxStageBackendDomain gfx_mpsrt_backend_domain_from_name(llvm::StringRef 
         return GfxStageBackendDomain::AppleMps;
     if (name == "apple_msl")
         return GfxStageBackendDomain::AppleMsl;
+    if (name == "opencl")
+        return GfxStageBackendDomain::OpenCl;
     if (name == "spirv")
         return GfxStageBackendDomain::Spirv;
     return GfxStageBackendDomain::Unknown;
@@ -429,6 +431,8 @@ inline GfxStageBackendDomain gfx_mpsrt_stage_domain_from_kernel_domain(GfxKernel
             return GfxStageBackendDomain::AppleMps;
         case GfxKernelBackendDomain::AppleMsl:
             return GfxStageBackendDomain::AppleMsl;
+        case GfxKernelBackendDomain::OpenCl:
+            return GfxStageBackendDomain::OpenCl;
         case GfxKernelBackendDomain::Spirv:
             return GfxStageBackendDomain::Spirv;
         case GfxKernelBackendDomain::Unknown:

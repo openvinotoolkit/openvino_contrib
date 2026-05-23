@@ -147,7 +147,10 @@ VulkanContext::VulkanContext() {
     m_device_name = props.deviceName;
     m_vendor_id = props.vendorID;
     m_device_id = props.deviceID;
+    m_driver_version = props.driverVersion;
+    m_api_version = props.apiVersion;
     m_device_family = classify_vulkan_device_family(m_vendor_id, m_device_name);
+    m_min_storage_buffer_offset_alignment = static_cast<size_t>(props.limits.minStorageBufferOffsetAlignment);
     m_noncoherent_atom_size = static_cast<size_t>(props.limits.nonCoherentAtomSize);
     m_max_compute_workgroup_invocations = props.limits.maxComputeWorkGroupInvocations;
     m_max_compute_workgroup_size = {props.limits.maxComputeWorkGroupSize[0],
@@ -215,6 +218,10 @@ VulkanContext::VulkanContext() {
         enable_storage8 = (storage8.storageBuffer8BitAccess == VK_TRUE);
         enable_shader_f16 = (float16_int8.shaderFloat16 == VK_TRUE);
         enable_shader_int8 = (float16_int8.shaderInt8 == VK_TRUE);
+        m_supports_storage_buffer_16bit = enable_storage16;
+        m_supports_storage_buffer_8bit = enable_storage8;
+        m_supports_shader_float16 = enable_shader_f16;
+        m_supports_shader_int8 = enable_shader_int8;
         storage16.storageBuffer16BitAccess = enable_storage16 ? VK_TRUE : VK_FALSE;
         storage16.uniformAndStorageBuffer16BitAccess =
             (storage16.uniformAndStorageBuffer16BitAccess == VK_TRUE) ? VK_TRUE : VK_FALSE;

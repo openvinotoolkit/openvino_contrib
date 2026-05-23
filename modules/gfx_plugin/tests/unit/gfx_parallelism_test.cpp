@@ -231,8 +231,38 @@ TEST(GfxParallelism,
       256, 256 * 3 * 3, false, false);
 
   ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_EQ(plan.output_channel_block, 8u);
+  EXPECT_EQ(plan.dispatch.channel_block, 8u);
+  EXPECT_EQ(plan.channel_block_accumulation,
+            ov::gfx_plugin::ConvChannelBlockAccumulation::Fused);
+  EXPECT_EQ(plan.dispatch.tile_h, plan.dispatch.threads_h);
+  EXPECT_EQ(plan.dispatch.tile_w, plan.dispatch.threads_w);
+}
+
+TEST(GfxParallelism,
+     SelectBroadcomCapabilityEnabledLargeStride2KeepsOc4WithoutMicroTile) {
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      make_broadcom_channel_blocking_caps(), ov::Shape{1, 192, 160, 160}, 96,
+      192, 96 * 3 * 3, true, false);
+
+  ASSERT_TRUE(plan.prefer_parallel);
   EXPECT_EQ(plan.output_channel_block, 4u);
   EXPECT_EQ(plan.dispatch.channel_block, 4u);
+  EXPECT_EQ(plan.channel_block_accumulation,
+            ov::gfx_plugin::ConvChannelBlockAccumulation::Fused);
+  EXPECT_EQ(plan.dispatch.tile_h, plan.dispatch.threads_h);
+  EXPECT_EQ(plan.dispatch.tile_w, plan.dispatch.threads_w);
+}
+
+TEST(GfxParallelism,
+     SelectBroadcomCapabilityEnabledDensePointwiseUsesOc8WithoutMicroTile) {
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      make_broadcom_channel_blocking_caps(), ov::Shape{1, 384, 160, 160}, 384,
+      384, 384, false, false);
+
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_EQ(plan.output_channel_block, 8u);
+  EXPECT_EQ(plan.dispatch.channel_block, 8u);
   EXPECT_EQ(plan.channel_block_accumulation,
             ov::gfx_plugin::ConvChannelBlockAccumulation::Fused);
   EXPECT_EQ(plan.dispatch.tile_h, plan.dispatch.threads_h);
@@ -256,6 +286,22 @@ TEST(GfxParallelism,
 }
 
 TEST(GfxParallelism,
+     SelectBroadcomCapabilityEnabledCompactDenseConvKeepsChannelOnlyReuse) {
+  auto caps = make_broadcom_channel_blocking_caps();
+  caps.supports_conv_channel_block_spatial_tiling = true;
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      caps, ov::Shape{1, 192, 40, 40}, 192, 192, 192 * 3 * 3, false, false);
+
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_EQ(plan.output_channel_block, 8u);
+  EXPECT_EQ(plan.dispatch.channel_block, 8u);
+  EXPECT_EQ(plan.channel_block_accumulation,
+            ov::gfx_plugin::ConvChannelBlockAccumulation::Fused);
+  EXPECT_EQ(plan.dispatch.tile_h, plan.dispatch.threads_h);
+  EXPECT_EQ(plan.dispatch.tile_w, plan.dispatch.threads_w);
+}
+
+TEST(GfxParallelism,
      SelectBroadcomCapabilityEnabledStride2DenseConvUsesAccumulatorBudgetBlock) {
   auto caps = make_broadcom_channel_blocking_caps();
   caps.supports_conv_channel_block_spatial_tiling = true;
@@ -267,6 +313,22 @@ TEST(GfxParallelism,
   EXPECT_EQ(plan.dispatch.channel_block, 8u);
   EXPECT_EQ(plan.channel_block_accumulation,
             ov::gfx_plugin::ConvChannelBlockAccumulation::Fused);
+  EXPECT_EQ(plan.dispatch.tile_h, plan.dispatch.threads_h);
+  EXPECT_EQ(plan.dispatch.tile_w, plan.dispatch.threads_w);
+}
+
+TEST(GfxParallelism,
+     SelectBroadcomCapabilityEnabledCompactMediumDenseConvKeepsChannelOnlyReuse) {
+  auto caps = make_broadcom_channel_blocking_caps();
+  caps.supports_conv_channel_block_spatial_tiling = true;
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      caps, ov::Shape{1, 192, 40, 40}, 192, 192, 192 * 3 * 3, true, false);
+
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_EQ(plan.output_channel_block, 8u);
+  EXPECT_EQ(plan.dispatch.channel_block, 8u);
+  EXPECT_EQ(plan.dispatch.tile_h, plan.dispatch.threads_h);
+  EXPECT_EQ(plan.dispatch.tile_w, plan.dispatch.threads_w);
 }
 
 TEST(GfxParallelism,
@@ -327,6 +389,22 @@ TEST(
   EXPECT_GT(tile_lanes, thread_lanes);
   EXPECT_EQ(tile_lanes % thread_lanes, 0u);
   EXPECT_LE(tile_lanes, 4u * thread_lanes);
+}
+
+TEST(
+    GfxParallelism,
+    SelectCapabilityEnabledCompactDenseConvKeepsSpatialMicroTilesOutsideBroadcomGuard) {
+  const auto plan = ov::gfx_plugin::select_conv_parallelism(
+      make_channel_blocking_caps(), ov::Shape{1, 192, 40, 40}, 192, 192,
+      192 * 3 * 3, false, false);
+
+  ASSERT_TRUE(plan.prefer_parallel);
+  EXPECT_EQ(plan.output_channel_block, 8u);
+  EXPECT_EQ(plan.dispatch.channel_block, 8u);
+  EXPECT_EQ(plan.channel_block_accumulation,
+            ov::gfx_plugin::ConvChannelBlockAccumulation::Fused);
+  EXPECT_GT(plan.dispatch.tile_h * plan.dispatch.tile_w,
+            plan.dispatch.threads_h * plan.dispatch.threads_w);
 }
 
 TEST(

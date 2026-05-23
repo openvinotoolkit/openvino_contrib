@@ -11,6 +11,7 @@
 #include "openvino/runtime/profiling_info.hpp"
 #include "openvino/gfx_plugin/profiling.hpp"
 #include "runtime/gfx_profiling_report.hpp"
+#include "runtime/gfx_target_profile.hpp"
 #include "runtime/gpu_buffer.hpp"
 
 namespace ov {
@@ -43,6 +44,7 @@ public:
                                  bool /*h2d*/,
                                  std::chrono::microseconds /*cpu_us*/,
                                  uint64_t /*gpu_us*/ = 0) {}
+    virtual void set_target_profile(const GfxTargetProfile& /*profile*/) {}
     virtual void increment_counter(std::string_view /*name*/, uint64_t /*delta*/ = 1) {}
     virtual void set_counter(std::string_view /*name*/, uint64_t /*value*/) {}
 

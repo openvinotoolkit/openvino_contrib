@@ -96,6 +96,7 @@ protected:
   void apply_kernel_runtime_binding_state(KernelRuntimeBindingState binding);
   void apply_source_plan_kernel_runtime_binding_state(
       KernelRuntimeBindingState binding);
+  void prepare_constant_input_buffers(bool skip_matmul_weight_const);
 
   void *profiler_handle() const { return m_profiler; }
   uint32_t profile_node_id() const { return m_profile_node_id; }

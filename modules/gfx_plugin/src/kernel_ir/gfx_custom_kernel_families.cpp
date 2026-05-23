@@ -74,12 +74,12 @@ const char *gfx_kernel_family_name(GfxKernelFamily family) {
     return "masked_softmax_attention";
   case GfxKernelFamily::KvCacheUpdate:
     return "kv_cache_update";
-  case GfxKernelFamily::Conv3DDirectOrIm2col:
-    return "conv3d_direct_or_im2col";
+  case GfxKernelFamily::Conv3DDirect:
+    return "conv3d_direct";
   case GfxKernelFamily::ReductionBuffer:
     return "reduction_buffer";
-  case GfxKernelFamily::Conv2DDirectOrIm2col:
-    return "conv2d_direct_or_im2col";
+  case GfxKernelFamily::Conv2DDirect:
+    return "conv2d_direct";
   case GfxKernelFamily::MatMulBuffer:
     return "matmul_buffer";
   case GfxKernelFamily::Pool2DWindow:
@@ -117,11 +117,11 @@ gfx_kernel_stage_family_from_kernel_family(GfxKernelFamily family) {
     return GfxKernelStageFamily::AttentionSoftmax;
   case GfxKernelFamily::KvCacheUpdate:
     return GfxKernelStageFamily::KvCache;
-  case GfxKernelFamily::Conv3DDirectOrIm2col:
+  case GfxKernelFamily::Conv3DDirect:
     return GfxKernelStageFamily::Conv3D;
   case GfxKernelFamily::ReductionBuffer:
     return GfxKernelStageFamily::Reduction;
-  case GfxKernelFamily::Conv2DDirectOrIm2col:
+  case GfxKernelFamily::Conv2DDirect:
     return GfxKernelStageFamily::Convolution;
   case GfxKernelFamily::MatMulBuffer:
     return GfxKernelStageFamily::Gemm;
@@ -149,7 +149,7 @@ gfx_kernel_external_buffer_abi_spec_for_family(GfxKernelFamily family) {
     return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
                                       GfxKernelBufferRole::TensorOutput,
                                       GfxKernelBufferRole::RuntimeParams});
-  case GfxKernelFamily::Conv2DDirectOrIm2col:
+  case GfxKernelFamily::Conv2DDirect:
     return spec;
   case GfxKernelFamily::MatMulBuffer:
     return spec;
@@ -171,7 +171,7 @@ GfxKernelExternalBufferAbiSpec
 gfx_kernel_external_buffer_abi_spec_for_stage(std::string_view stage_type,
                                               std::string_view entry_point,
                                               GfxKernelFamily family) {
-  if (family == GfxKernelFamily::Conv2DDirectOrIm2col &&
+  if (family == GfxKernelFamily::Conv2DDirect &&
       (stage_type == "Convolution" || stage_type == "GroupConvolution" ||
        stage_type == "GroupConv2D" || entry_point == "conv2d_kernel")) {
     return make_gfx_kernel_roles_abi(
@@ -181,7 +181,7 @@ gfx_kernel_external_buffer_abi_spec_for_stage(std::string_view stage_type,
          GfxKernelBufferRole::ConstTensor, GfxKernelBufferRole::RuntimeParams,
          GfxKernelBufferRole::TensorOutput});
   }
-  if (family == GfxKernelFamily::Conv3DDirectOrIm2col &&
+  if (family == GfxKernelFamily::Conv3DDirect &&
       entry_point == "conv3d_kernel") {
     return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
                                       GfxKernelBufferRole::ConstTensor,
@@ -416,7 +416,7 @@ gfx_kernel_dispatch_policy_for_family(GfxKernelFamily family) {
   GfxKernelDispatchGrid grid = GfxKernelDispatchGrid::Linear1D;
   switch (family) {
   case GfxKernelFamily::MaskedSoftmaxAttention:
-  case GfxKernelFamily::Conv3DDirectOrIm2col:
+  case GfxKernelFamily::Conv3DDirect:
   case GfxKernelFamily::ReductionBuffer:
     threads_per_threadgroup = 128;
     break;
@@ -428,7 +428,7 @@ gfx_kernel_dispatch_policy_for_family(GfxKernelFamily family) {
     grid = GfxKernelDispatchGrid::Tiled2D;
     threads_per_threadgroup = 256;
     break;
-  case GfxKernelFamily::Conv2DDirectOrIm2col:
+  case GfxKernelFamily::Conv2DDirect:
     grid = GfxKernelDispatchGrid::Tiled2D;
     threads_per_threadgroup = 256;
     break;
@@ -534,11 +534,11 @@ classify_gfx_custom_kernel_family(std::string_view stage_type,
   }
   if (stage_type == "Convolution3D" || stage_type == "Conv3D" ||
       entry_point == "conv3d_kernel") {
-    return GfxKernelFamily::Conv3DDirectOrIm2col;
+    return GfxKernelFamily::Conv3DDirect;
   }
   if (stage_type == "Convolution" || stage_type == "GroupConvolution" ||
       stage_type == "GroupConv2D" || entry_point == "conv2d_kernel") {
-    return GfxKernelFamily::Conv2DDirectOrIm2col;
+    return GfxKernelFamily::Conv2DDirect;
   }
   if (stage_type == "MatMul" || entry_point == "matmul_kernel" ||
       entry_point == "compressed_matmul_kernel") {

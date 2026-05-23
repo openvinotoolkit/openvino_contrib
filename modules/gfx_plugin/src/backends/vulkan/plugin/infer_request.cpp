@@ -20,6 +20,7 @@
 #include "runtime/gpu_types.hpp"
 #include "runtime/gfx_backend_utils.hpp"
 #include "runtime/gfx_profiler.hpp"
+#include "runtime/gfx_target_profile.hpp"
 #include "backends/vulkan/runtime/gpu_memory.hpp"
 #include "backends/vulkan/codegen/vulkan_codegen_backend.hpp"
 #include "backends/vulkan/runtime/vulkan_backend.hpp"
@@ -670,6 +671,9 @@ void InferRequest::infer_vulkan_impl(const std::shared_ptr<const CompiledModel>&
     GfxProfiler* profiler = prepare_infer_profiler(*cm, state, "GFX Vulkan");
     if (profiler) {
         profiler->begin_infer(descs.size());
+        if (auto info = resources.const_manager->query_execution_device_info()) {
+            record_gfx_target_profile(make_gfx_target_profile(*info), profiler);
+        }
     }
     const bool profiling = (profiler != nullptr);
     const bool profiling_enabled = (profiler != nullptr);

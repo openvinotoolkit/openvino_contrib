@@ -506,6 +506,9 @@ void record_mpsrt_plan_counters(mlir::ModuleOp module) {
     case GfxStageBackendDomain::AppleMsl:
       increment_compile_counter("mpsrt_plan_apple_msl_count");
       break;
+    case GfxStageBackendDomain::OpenCl:
+      increment_compile_counter("mpsrt_plan_opencl_count");
+      break;
     case GfxStageBackendDomain::Spirv:
       increment_compile_counter("mpsrt_plan_spirv_count");
       break;

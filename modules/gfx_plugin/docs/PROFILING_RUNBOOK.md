@@ -35,6 +35,7 @@ The helper script uses generic public defaults. Override them with command-line 
    - `benchmarks[].profile_digest`
    - `GFX_PROFILING_REPORT.compile`
    - `GFX_PROFILING_REPORT.extended`
+   - `GFX_PROFILING_REPORT.extended.target_profile`
 
 Recent infer profiling also records lightweight per-stage estimates on `stage_execute` segments:
 - `bytes_in`
@@ -43,6 +44,11 @@ Recent infer profiling also records lightweight per-stage estimates on `stage_ex
 - `flops_est`
 
 These are estimates, not hardware counters, but they are useful when comparing trace hot spots with the roofline-style summaries in the profiling report.
+
+Recent backend profiling also records a target profile when the active buffer
+manager reports device information. Check `extended.target_profile` and counters
+such as `target_backend_opencl`, `target_backend_metal`, and
+`target_backend_vulkan` before comparing runs from different backend routes.
 
 If you want the script-generated commands instead of following the sections manually:
 
@@ -80,6 +86,11 @@ Treat these as triage flags, not as automatic proof of a bug.
   Meaning: pipeline or shader creation happened during infer.
   Read from: `profile_digest.pipeline_creation_count`.
   Triage meaning: prewarm or cache persistence is incomplete.
+
+- `target_backend_opencl`, `target_backend_metal`, `target_backend_vulkan`
+  Meaning: which backend route produced the profiled request.
+  Read from: `extended.summary.counter_map` and `extended.target_profile`.
+  Triage meaning: confirm that `auto` resolved to the intended backend before interpreting route-specific counters.
 
 - `descriptor_update_count` or binding-preparation diagnostics
   Meaning: CPU work is spent rebinding descriptors or backend-specific binding tables.
@@ -123,6 +134,10 @@ adb shell '
 '
 ```
 
+For an OpenCL-capable Android build, use `--backend opencl` to profile the
+source-artifact backend. Keep `--backend vulkan` when the goal is a legacy
+SPIR-V/Vulkan comparison.
+
 ### Raspberry Pi 5
 
 ```bash
@@ -135,6 +150,10 @@ LD_LIBRARY_PATH=/path/to/gfx_eval/libs/Release:/path/to/gfx_eval \
   --output /path/to/gfx_eval/gfx-microbench-rpi.json \
   --calibration-output /path/to/gfx_eval/gfx-calibration-rpi.json
 ```
+
+If the deployed bundle includes the OpenCL backend and the target exposes a
+working OpenCL GPU runtime, run the same command with `--backend opencl` to
+separate OpenCL source-kernel behavior from the Vulkan/SPIR-V diagnostic path.
 
 ## Real Workload Profiling
 
@@ -175,6 +194,12 @@ counters. Runtime counters such as `mpsrt_mps_graph_gemm_request_encode_count`,
 `mpsrt_mps_graph_sdpa_request_encode_count` identify MPSGraph-backed encodes.
 Use these counters before changing Apple `f32` placement policy or assuming a
 kernel route is the bottleneck.
+
+For OpenCL source-kernel runs, the most important first checks are the selected
+backend counters, `extended.target_profile`, source program creation spans, and
+transfer/wait shares. A standalone OpenCL microbench result is only a kernel
+experiment until the same route is represented in the plugin source-artifact
+manifest and validated through GFX tests.
 
 ## Android Runbook
 

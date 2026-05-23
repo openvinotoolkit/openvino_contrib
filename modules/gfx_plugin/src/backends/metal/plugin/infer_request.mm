@@ -24,6 +24,7 @@
 #include "openvino/runtime/tensor.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_profiler.hpp"
+#include "runtime/gfx_target_profile.hpp"
 #include "runtime/gfx_shape_utils.hpp"
 #include "runtime/gpu_buffer_pool.hpp"
 #include "runtime/memory_manager.hpp"
@@ -231,6 +232,12 @@ void InferRequest::infer_metal_impl(const std::shared_ptr<const CompiledModel>& 
         const bool profiling = (profiler != nullptr);
         if (profiler) {
             profiler->begin_infer(cm->pipeline_desc().size());
+            auto* metal_backend = dynamic_cast<const MetalBackendState*>(cm->backend_state());
+            if (metal_backend && metal_backend->const_manager) {
+                if (auto info = metal_backend->const_manager->query_execution_device_info()) {
+                    record_gfx_target_profile(make_gfx_target_profile(*info), profiler);
+                }
+            }
         }
         const auto bind_inputs_start = profiling ? std::chrono::steady_clock::now()
                                                  : std::chrono::steady_clock::time_point{};

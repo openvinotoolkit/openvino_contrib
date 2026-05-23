@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "openvino/gfx_plugin/profiling.hpp"
+#include "runtime/gfx_target_profile.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -71,6 +72,8 @@ struct GfxProfilingReport {
     ProfilingLevel level = ProfilingLevel::Off;
     bool counters_supported = false;
     bool counters_used = false;
+    bool target_profile_present = false;
+    GfxTargetProfile target_profile;
 
     uint64_t total_gpu_us = 0;
     uint64_t total_cpu_us = 0;
@@ -92,6 +95,7 @@ class GfxProfilingTrace {
 public:
     void reset(ProfilingLevel level);
     void set_backend(std::string_view backend);
+    void set_target_profile(const GfxTargetProfile& profile);
 
     void set_counter_capability(bool supported, bool used);
     void set_total_gpu_us(uint64_t value);

@@ -6,6 +6,7 @@
 
 #include <unordered_map>
 
+#include "kernel_ir/gfx_opencl_source_artifacts.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/result.hpp"
@@ -48,6 +49,14 @@ bool is_supported_node(const std::shared_ptr<const ov::Node>& node, GpuBackend b
     }
     if (is_decompression_node(node)) {
         return true;
+    }
+    if (backend == GpuBackend::OpenCL) {
+        const bool supported = resolve_gfx_opencl_source_artifact(node).has_value();
+        if (!supported && gfx_log_debug_enabled()) {
+            gfx_log_debug("Plugin") << "Unsupported node: " << node->get_friendly_name()
+                                                         << " (" << node->get_type_name() << ")";
+        }
+        return supported;
     }
     if (is_view_node(node)) {
         return true;

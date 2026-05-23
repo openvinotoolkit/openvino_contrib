@@ -7,6 +7,7 @@ This document is for contributors working inside `modules/gfx_plugin`.
 - an OpenVINO Developer Package build
 - Ninja recommended
 - Metal toolchain on macOS for the Metal backend
+- OpenCL runtime on the target system for the OpenCL source-kernel backend
 - Vulkan SDK or system Vulkan development files for the Vulkan backend
 
 The module vendors LLVM/MLIR under `third_party/llvm-project` and can build the required MLIR pieces as part of the CMake flow.
@@ -33,11 +34,12 @@ cmake --build build-gfx-plugin --target ov_gfx_unit_tests ov_gfx_runtime_micro_t
 
 Useful CMake options:
 - `GFX_ENABLE_METAL`
+- `GFX_ENABLE_OPENCL`
 - `GFX_ENABLE_VULKAN`
 - `GFX_DEFAULT_BACKEND`
 - `ENABLE_TESTS`
 
-On macOS, Vulkan is disabled by `cmake/GfxBackendConfig.cmake`.
+On macOS, OpenCL and Vulkan are disabled by `cmake/GfxBackendConfig.cmake`; the Apple path is Metal/MPS/MPSRT/MSL. On non-Apple builds, `GFX_DEFAULT_BACKEND=auto` prefers OpenCL when the OpenCL source backend is available and falls back to legacy Vulkan only when needed.
 
 Current build-system notes:
 - vendored LLVM/MLIR is built as a static external toolchain under `third_party/llvm-project`
@@ -48,6 +50,7 @@ Current build-system notes:
 - when cross-compiling, the nested LLVM native-tool build also receives host compiler/sysroot flags via `CROSS_TOOLCHAIN_FLAGS_NATIVE` / `CROSS_TOOLCHAIN_FLAGS_LLVM_NATIVE`; keep the `|` list separator intact because those values are passed as CMake list payloads
 - LLVM tools are disabled in the vendored external build; do not re-enable them for the plugin path unless a concrete build target starts consuming those tools
 - Apple MSL source planning now builds with `gfx_runtime_mlir`; keep target wiring in `cmake/GfxSources.cmake` and `src/CMakeLists.txt` aligned when adding `msl_codegen_apple_*` or `msl_codegen_matmul_*` files
+- OpenCL backend sources build into `gfx_plugin_opencl` and `gfx_runtime_opencl`; they dynamically load the target OpenCL runtime instead of requiring a compile-time OpenCL SDK link
 - the module build treats warnings as errors by default through `-Werror` on Clang/GCC and `/WX` on MSVC
 - `cmake/GfxAndroidRuntimeBundle.cmake.in` is used to copy Android runtime-side dependencies next to deployed plugin artifacts
 
@@ -125,6 +128,7 @@ For runtime execution, follow:
 If the behavior depends on route or scheduling selection, also read:
 - `src/runtime/gfx_stage_policy.*`
 - `src/runtime/gfx_parallelism.*`
+- `src/runtime/gfx_target_profile.*`
 - `src/runtime/gfx_mpsrt_abi.hpp`
 - `src/runtime/gfx_mpsrt_plan.hpp`
 - `src/runtime/gfx_mpsrt_builder_plan.hpp`
@@ -133,6 +137,7 @@ If the behavior depends on route or scheduling selection, also read:
 - `src/runtime/gfx_mpsrt_storage_bridge.hpp`
 - `src/kernel_ir/gfx_kernel_manifest.hpp`
 - `src/kernel_ir/gfx_custom_kernel_families.*`
+- `src/kernel_ir/gfx_opencl_source_artifacts.*`
 - `src/runtime/gfx_mpsrt_kernel_manifest_adapter.hpp`
 - `src/mlir/gfx_apple_vendor_descriptors.*`
 - `src/mlir/gfx_apple_stage_pipeline.*`
@@ -149,6 +154,7 @@ If the behavior depends on route or scheduling selection, also read:
 - `src/mlir/msl_codegen_attention.*`
 - `src/mlir/msl_codegen_compressed_matmul.*`
 - `src/mlir/spirv_kernel_binding_adapter.hpp`
+- `src/backends/opencl/` when the selected path is OpenCL source execution
 
 `tests/unit/gfx_parallelism_test.cpp` now covers Broadcom-oriented matmul
 selection plus dense stride-1, huge-spatial, and ultra-dense convolution
@@ -161,6 +167,7 @@ threadgroup decisions.
 The current planning path is no longer just backend-wide. It includes family-specific tuning hooks, especially for:
 - Broadcom V3D Vulkan devices
 - Qualcomm Adreno Vulkan devices
+- OpenCL device snapshots reported through `GpuExecutionDeviceInfo` and `GfxTargetProfile`
 - explicit convolution dispatch attrs forwarded into MLIR lowering
 - Metal placement decisions between Apple MPS image or matrix primitives and Apple MSL buffer dispatch
 - manifest-backed execution-kind selection between vendor primitives and custom kernels
@@ -172,6 +179,7 @@ The current planning path is no longer just backend-wide. It includes family-spe
 - MPSRT const payload materialization from typed program input descriptors: vendor stages and typed model-owned resources should attach const data for inputs marked as `ConstTensor`/`GfxMpsrtTensorFlagConst`, not by checking individual OpenVINO op types such as Conv2D
 - Metal runtime preparation must consume model-owned const tensors through the prepared-resource table (`MpsrtPreparedResource`), leaving the const-pack cache as the upload/backing layer rather than a stage-local lookup API
 - Single-stage Apple MSL dispatch keeps `ConstTensor` and runtime-parameter buffers in the external `KernelBindingPlan` ABI unless a typed multi-stage/vendor plan explicitly owns the payload; for that path `ConstTensor` means immutable kernel argument semantics, not model-owned lifetime
+- OpenCL source-artifact routes are manifest-backed source kernels. Keep their role ABI, scalar ABI, source id, local size, and element-count source in `gfx_opencl_source_artifacts.*` instead of scattering OpenCL-specific argument rules through runtime code.
 
 For current convolution work, there are now two important lowering details to keep in mind:
 - full interior tiles in conv parallel lowering can skip lane-level bounds guards on the fast path
@@ -183,6 +191,16 @@ For current convolution work, there are now two important lowering details to ke
 - Decomposed Conv2D algorithms such as `im2col + matmul + restore` are not a valid replacement for a single custom-kernel stage until the planner/runtime has a typed subgraph or multi-kernel manifest that owns all intermediate buffers and launches. A device policy must not select such a decomposition through `gfx.conv_algorithm_kind` if the final `KernelSource` still has one entry point and one request-time binding plan; that silently compiles only part of the decomposition and breaks accuracy.
 - MaxPool2D and AvgPool2D custom-kernel builders must also stay on the shared MLIR dispatch contract. They emit `scf.parallel` over channel/tiled-spatial/thread lanes with explicit `gfx.dispatch_tile_*`, `gfx.dispatch_threads_*`, and `gfx.parallel_loop_dims` attrs; do not reintroduce serial `scf.for` Pool2D builders that force Vulkan/SPIR-V into `grid=(1,1,1)` single-dispatch execution.
 - Conv3D custom kernels use the common `GfxKernelStageManifest` ABI on every backend that executes them. Keep the role order as `TensorInput`, `ConstTensor`, `TensorOutput`, `RuntimeParams`; `MlirStage` must materialize the const weights and packed runtime params as extra buffers in that order, annotate rank-5 convolution modules as the `conv3d` custom-kernel family before `KernelSource` creation, and derive source signatures from that exact manifest on Metal and Vulkan. Do not add Conv3D-only binding shortcuts, do not let the Conv2D direct/im2col manifest leak into Conv3D, and do not revive `gfx.fixed_arg_count` for this path.
+
+For OpenCL work, start from the shared contract rather than from a one-off runtime kernel:
+- `cmake/GfxBackendConfig.cmake` controls availability and default backend resolution
+- `src/plugin/backend_factory.cpp` selects the OpenCL backend state
+- `src/backends/opencl/plugin/` owns infer-request and tensor-binding glue
+- `src/backends/opencl/runtime/opencl_api.*` owns dynamic loading, device selection, and `GpuExecutionDeviceInfo`
+- `src/backends/opencl/runtime/opencl_source_stage.*` executes artifacts from `src/kernel_ir/gfx_opencl_source_artifacts.*`
+- `tests/unit/gfx_opencl_source_artifacts_test.cpp` is the first regression target when artifact coverage or ABI metadata changes
+
+OpenCL currently covers baseline source artifacts for f32 data movement and elementwise-style families. A new OpenCL op is production-ready only after support probing, artifact metadata, runtime binding, and tests describe the same shape/type contract; the standalone OpenCL Conv2D microbench tools are for kernel-family experiments and are not a plugin execution path by themselves.
 
 Infer submission parallelism follows the same hierarchy as kernel dispatch
 parallelism: first derive a common workload profile from pipeline depth, SIMD
@@ -386,6 +404,7 @@ Current device-selection contract:
 - `ov::device::id` should be validated against those numeric ids
 - `ov::hint::inference_precision` accepts `f16`/`fp16`/`half` or `f32`/`fp32`/`float`; default GFX compilation uses `f16`
 - `GFX_DIAGNOSTIC_F32_MPS_IMAGE` is diagnostic Metal placement plumbing for localizing selected `f32` image-family MPSRT routes through the normal stage planner; it must not be treated as a runtime switch or test-skip mechanism
+- `GFX_BACKEND` accepts `metal`, `opencl`, or `vulkan` when the corresponding backend is available; `vulkan` is a legacy diagnostic route on non-Apple builds
 
 ## Debugging
 Useful environment variables:

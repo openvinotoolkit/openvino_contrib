@@ -119,6 +119,10 @@ void MetalProfiler::record_transfer(const char* tag,
     m_trace.add_transfer(tag, bytes, h2d, static_cast<uint64_t>(cpu_us.count()), gpu_us);
 }
 
+void MetalProfiler::set_target_profile(const GfxTargetProfile& profile) {
+    m_trace.set_target_profile(profile);
+}
+
 void MetalProfiler::increment_counter(std::string_view name, uint64_t delta) {
     m_trace.increment_counter(name, delta);
 }

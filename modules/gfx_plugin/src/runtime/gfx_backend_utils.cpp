@@ -11,6 +11,8 @@ const char* backend_to_string(GpuBackend backend) {
     switch (backend) {
     case GpuBackend::Metal:
         return kBackendMetal;
+    case GpuBackend::OpenCL:
+        return kBackendOpenCL;
     case GpuBackend::Vulkan:
         return kBackendVulkan;
     default:
@@ -23,10 +25,13 @@ GpuBackend parse_backend_kind(const std::string& value) {
     if (backend == kBackendMetal) {
         return GpuBackend::Metal;
     }
+    if (backend == kBackendOpenCL) {
+        return GpuBackend::OpenCL;
+    }
     if (backend == kBackendVulkan) {
         return GpuBackend::Vulkan;
     }
-    OPENVINO_THROW("Unsupported GFX_BACKEND value: ", value, ". Expected 'metal' or 'vulkan'.");
+    OPENVINO_THROW("Unsupported GFX_BACKEND value: ", value, ". Expected 'metal', 'opencl', or 'vulkan'.");
 }
 
 GpuBackend default_backend_kind() {
@@ -37,6 +42,8 @@ bool backend_supported(GpuBackend backend) {
     switch (backend) {
     case GpuBackend::Metal:
         return kGfxBackendMetalAvailable;
+    case GpuBackend::OpenCL:
+        return kGfxBackendOpenCLAvailable;
     case GpuBackend::Vulkan:
         return kGfxBackendVulkanAvailable;
     default:

@@ -50,6 +50,7 @@ public:
                          bool h2d,
                          std::chrono::microseconds cpu_us,
                          uint64_t gpu_us = 0) override;
+    void set_target_profile(const GfxTargetProfile& profile) override;
     void increment_counter(std::string_view name, uint64_t delta = 1) override;
     void set_counter(std::string_view name, uint64_t value) override;
 

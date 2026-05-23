@@ -115,6 +115,7 @@ endif()
 target_compile_definitions(${TARGET_NAME} PRIVATE
     GFX_PLUGIN_PATH="$<TARGET_FILE:openvino_gfx_plugin>"
     GFX_BACKEND_METAL_AVAILABLE=$<BOOL:${GFX_BACKEND_METAL_AVAILABLE}>
+    GFX_BACKEND_OPENCL_AVAILABLE=$<BOOL:${GFX_BACKEND_OPENCL_AVAILABLE}>
     GFX_BACKEND_VULKAN_AVAILABLE=$<BOOL:${GFX_BACKEND_VULKAN_AVAILABLE}>)
 
 add_custom_target(${TARGET_NAME}_remove_plugins_xml
@@ -158,6 +159,7 @@ target_sources(${UNIT_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_profiling_report_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/ov_gfx_microbench_calibration_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_stage_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_source_artifacts_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_stage_policy_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_parallelism_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/basic_ops_internal_test.cpp
@@ -189,6 +191,7 @@ target_link_libraries(${UNIT_TARGET_NAME} PRIVATE ${GFX_UNIT_TEST_LINK_LIBS})
 target_compile_definitions(${UNIT_TARGET_NAME} PRIVATE
     GFX_PLUGIN_PATH="$<TARGET_FILE:openvino_gfx_plugin>"
     GFX_BACKEND_METAL_AVAILABLE=$<BOOL:${GFX_BACKEND_METAL_AVAILABLE}>
+    GFX_BACKEND_OPENCL_AVAILABLE=$<BOOL:${GFX_BACKEND_OPENCL_AVAILABLE}>
     GFX_BACKEND_VULKAN_AVAILABLE=$<BOOL:${GFX_BACKEND_VULKAN_AVAILABLE}>)
 target_include_directories(${UNIT_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -232,6 +235,7 @@ target_link_libraries(${RUNTIME_MICRO_TARGET_NAME} PRIVATE
 target_compile_definitions(${RUNTIME_MICRO_TARGET_NAME} PRIVATE
     GFX_PLUGIN_PATH="$<TARGET_FILE:openvino_gfx_plugin>"
     GFX_BACKEND_METAL_AVAILABLE=$<BOOL:${GFX_BACKEND_METAL_AVAILABLE}>
+    GFX_BACKEND_OPENCL_AVAILABLE=$<BOOL:${GFX_BACKEND_OPENCL_AVAILABLE}>
     GFX_BACKEND_VULKAN_AVAILABLE=$<BOOL:${GFX_BACKEND_VULKAN_AVAILABLE}>)
 target_include_directories(${RUNTIME_MICRO_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -266,6 +270,7 @@ add_executable(ov_gfx_conv_shape_bench
 )
 target_link_libraries(ov_gfx_conv_shape_bench PRIVATE
     openvino::runtime
+    common_test_utils
 )
 if(TARGET gfx_plugin_build_settings)
     target_link_libraries(ov_gfx_conv_shape_bench PRIVATE gfx_plugin_build_settings)
@@ -273,6 +278,16 @@ endif()
 target_compile_definitions(ov_gfx_conv_shape_bench PRIVATE
     GFX_PLUGIN_PATH="$<TARGET_FILE:openvino_gfx_plugin>"
 )
+
+if(ANDROID)
+    add_executable(ov_gfx_opencl_conv_microbench_android
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools/ov_gfx_opencl_conv_microbench_android.cpp
+    )
+    target_link_libraries(ov_gfx_opencl_conv_microbench_android PRIVATE dl)
+    if(TARGET gfx_plugin_build_settings)
+        target_link_libraries(ov_gfx_opencl_conv_microbench_android PRIVATE gfx_plugin_build_settings)
+    endif()
+endif()
 
 add_executable(ov_gfx_microbench
     ${CMAKE_CURRENT_SOURCE_DIR}/tools/ov_gfx_microbench.cpp
