@@ -9,16 +9,23 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "backends/opencl/runtime/opencl_program_cache.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
+#include "mlir/gfx_stage_runtime_values.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
+#include "openvino/op/constant.hpp"
+#include "openvino/op/slice.hpp"
+#include "openvino/op/strided_slice.hpp"
 #include "runtime/gfx_shape_utils.hpp"
 #include "runtime/gpu_backend_base.hpp"
+#include "runtime/gfx_logger.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -37,8 +44,45 @@ uint32_t scalar_value_for_opencl_source_arg(GfxOpenClSourceScalarArg scalar,
                                             GfxOpenClBaselineOp op,
                                             GfxOpenClBaselineInputMode input_mode,
                                             float scalar_constant_f32,
+                                            const std::vector<ov::Shape>& input_shapes,
+                                            const ov::Shape& output0_shape,
                                             const std::vector<uint32_t>& static_u32_scalars,
                                             size_t& static_u32_idx) {
+    const auto raw_scalar = static_cast<uint32_t>(scalar);
+    auto resolve_dim = [&](GfxOpenClSourceScalarArg base,
+                           size_t shape_idx,
+                           const std::vector<ov::Shape>& shapes) -> std::optional<uint32_t> {
+        const auto base_value = static_cast<uint32_t>(base);
+        if (raw_scalar < base_value || raw_scalar >= base_value + 8u) {
+            return std::nullopt;
+        }
+        const size_t axis = static_cast<size_t>(raw_scalar - base_value);
+        if (shape_idx >= shapes.size() || axis >= shapes[shape_idx].size()) {
+            return 0;
+        }
+        OPENVINO_ASSERT(shapes[shape_idx][axis] <= std::numeric_limits<uint32_t>::max(),
+                        "GFX OpenCL: runtime input dim exceeds source scalar ABI");
+        return static_cast<uint32_t>(shapes[shape_idx][axis]);
+    };
+    for (size_t input_idx = 0; input_idx < 4; ++input_idx) {
+        const auto base = static_cast<GfxOpenClSourceScalarArg>(
+            static_cast<uint32_t>(GfxOpenClSourceScalarArg::Input0Dim0) +
+            static_cast<uint32_t>(input_idx * 8));
+        if (const auto value = resolve_dim(base, input_idx, input_shapes)) {
+            return *value;
+        }
+    }
+    if (raw_scalar >= static_cast<uint32_t>(GfxOpenClSourceScalarArg::Output0Dim0) &&
+        raw_scalar <= static_cast<uint32_t>(GfxOpenClSourceScalarArg::Output0Dim7)) {
+        const size_t axis = static_cast<size_t>(
+            raw_scalar - static_cast<uint32_t>(GfxOpenClSourceScalarArg::Output0Dim0));
+        if (axis >= output0_shape.size()) {
+            return 0;
+        }
+        OPENVINO_ASSERT(output0_shape[axis] <= std::numeric_limits<uint32_t>::max(),
+                        "GFX OpenCL: runtime output dim exceeds source scalar ABI");
+        return static_cast<uint32_t>(output0_shape[axis]);
+    }
     switch (scalar) {
         case GfxOpenClSourceScalarArg::ElementCount:
             return element_count;
@@ -128,6 +172,7 @@ public:
                 output_type = m_node->get_output_element_type(output_idx);
             }
             OPENVINO_ASSERT(output_type == ov::element::dynamic ||
+                                output_type == ov::element::f16 ||
                                 output_type == ov::element::f32 ||
                                 output_type == ov::element::boolean ||
                                 output_type == ov::element::i32 ||
@@ -137,6 +182,10 @@ public:
         const auto count = checked_element_count(resolve_element_count_shape(outputs),
                                                  "GFX OpenCL");
         OPENVINO_ASSERT(count > 0, "GFX OpenCL: zero-sized baseline dispatch is not supported yet");
+
+        if (try_alias_linear_slice_view(outputs)) {
+            return;
+        }
 
         const auto roles = materialize_gfx_kernel_external_buffer_roles(
             m_artifact.stage_manifest.custom_kernel.external_buffer_abi);
@@ -154,6 +203,12 @@ public:
         args.reserve(roles.size());
         m_scalar_storage.clear();
         m_scalar_storage.reserve(m_artifact.scalar_args.size());
+        std::vector<ov::Shape> input_shapes;
+        input_shapes.reserve(std::min<size_t>(m_node ? m_node->get_input_size() : 0, 4));
+        for (size_t idx = 0; m_node && idx < m_node->get_input_size() && idx < 4; ++idx) {
+            input_shapes.push_back(resolve_input_shape(idx));
+        }
+        const ov::Shape output0_shape = resolve_output_shape(*outputs.front(), 0);
         size_t input_idx = 0;
         size_t output_idx = 0;
         size_t scalar_idx = 0;
@@ -165,15 +220,14 @@ public:
                                     "GFX OpenCL: tensor ABI has no input slot mapping for ",
                                     m_name);
                     const size_t node_input_idx = m_artifact.direct_input_indices[input_idx];
-                    OPENVINO_ASSERT(node_input_idx < m_inputs.size() &&
-                                        m_inputs[node_input_idx] &&
-                                        m_inputs[node_input_idx]->buf.valid(),
+                    GpuTensor* input = resolve_tensor_input(node_input_idx);
+                    OPENVINO_ASSERT(input && input->buf.valid(),
                                     "GFX OpenCL: input slot ",
                                     node_input_idx,
                                     " is not materialized for ",
                                     m_name);
                     args.push_back(make_buffer_arg(static_cast<uint32_t>(arg_idx),
-                                                   m_inputs[node_input_idx]->buf));
+                                                   input->buf));
                     ++input_idx;
                     break;
                 }
@@ -196,6 +250,8 @@ public:
                         m_artifact.op,
                         m_artifact.input_mode,
                         m_artifact.scalar_constant_f32,
+                        input_shapes,
+                        output0_shape,
                         m_artifact.static_u32_scalars,
                         static_u32_idx));
                     args.push_back(make_bytes_arg(static_cast<uint32_t>(arg_idx),
@@ -224,6 +280,41 @@ public:
         OPENVINO_ASSERT(static_u32_idx == m_artifact.static_u32_scalars.size(),
                         "GFX OpenCL: not all source static u32 scalars were consumed for ",
                         m_name);
+
+        if (gfx_log_debug_enabled()) {
+            std::ostringstream oss;
+            oss << "source_stage name=" << m_name
+                << " entry=" << m_artifact.artifact_ref.entry_point
+                << " count=" << count
+                << " inputs=" << input_shapes.size()
+                << " output0=[";
+            for (size_t i = 0; i < output0_shape.size(); ++i) {
+                if (i) {
+                    oss << ",";
+                }
+                oss << output0_shape[i];
+            }
+            oss << "] scalars=[";
+            for (size_t i = 0; i < m_scalar_storage.size(); ++i) {
+                if (i) {
+                    oss << ",";
+                }
+                oss << m_scalar_storage[i];
+            }
+            oss << "]";
+            for (size_t input_idx = 0; input_idx < input_shapes.size(); ++input_idx) {
+                oss << " input" << input_idx << "=[";
+                const auto& shape = input_shapes[input_idx];
+                for (size_t dim = 0; dim < shape.size(); ++dim) {
+                    if (dim) {
+                        oss << ",";
+                    }
+                    oss << shape[dim];
+                }
+                oss << "]";
+            }
+            gfx_log_debug("OpenCLSource") << oss.str();
+        }
 
         const size_t local = std::max<size_t>(1, m_kernel->clamp_threadgroup_size(m_artifact.baseline_local_size));
         KernelDispatch dispatch{};
@@ -305,6 +396,64 @@ private:
         return {};
     }
 
+    GpuTensor* resolve_tensor_input(size_t node_input_idx) {
+        if (node_input_idx < m_inputs.size() &&
+            m_inputs[node_input_idx] &&
+            m_inputs[node_input_idx]->buf.valid()) {
+            return m_inputs[node_input_idx];
+        }
+        return materialize_constant_input(node_input_idx);
+    }
+
+    GpuTensor* materialize_constant_input(size_t node_input_idx) {
+        if (!m_node || node_input_idx >= m_node->get_input_size()) {
+            return nullptr;
+        }
+        auto constant = ov::as_type_ptr<const ov::op::v0::Constant>(
+            m_node->input_value(node_input_idx).get_node_shared_ptr());
+        if (!constant) {
+            return nullptr;
+        }
+        if (m_const_inputs.size() < m_node->get_input_size()) {
+            m_const_inputs.resize(m_node->get_input_size());
+        }
+        auto& cached = m_const_inputs[node_input_idx];
+        if (cached && cached->buf.valid()) {
+            return cached.get();
+        }
+
+        OPENVINO_ASSERT(m_buffer_manager,
+                        "GFX OpenCL: const input buffer manager is required for ",
+                        m_name);
+        const auto et = constant->get_output_element_type(0);
+        const auto shape = constant->get_output_shape(0);
+        const size_t bytes = constant->get_byte_size();
+        std::string key = "gfx/opencl_source_const/";
+        key += m_name;
+        key += "/";
+        key += std::to_string(node_input_idx);
+        key += "/";
+        key += constant->get_friendly_name();
+        key += "/";
+        key += std::to_string(bytes);
+
+        GpuBuffer buf = m_buffer_manager->wrap_const(key,
+                                                     constant->get_data_ptr(),
+                                                     bytes,
+                                                     et);
+        OPENVINO_ASSERT(buf.valid(),
+                        "GFX OpenCL: failed to materialize const input slot ",
+                        node_input_idx,
+                        " for ",
+                        m_name);
+        cached = std::make_unique<GpuTensor>();
+        cached->buf = buf;
+        cached->shape = shape;
+        cached->expected_type = et;
+        cached->prefer_private = false;
+        return cached.get();
+    }
+
     ov::Shape resolve_element_count_shape(const std::vector<GpuTensor*>& outputs) const {
         switch (m_artifact.element_count_source) {
             case GfxOpenClSourceElementCountSource::Output0:
@@ -320,6 +469,44 @@ private:
         OPENVINO_THROW("GFX OpenCL: unsupported element-count source for ", m_name);
     }
 
+    bool try_alias_linear_slice_view(const std::vector<GpuTensor*>& outputs) {
+        if (!m_node ||
+            !(ov::as_type_ptr<const ov::op::v8::Slice>(m_node) ||
+              ov::as_type_ptr<const ov::op::v1::StridedSlice>(m_node))) {
+            return false;
+        }
+
+        RuntimeInputResolver runtime_inputs{&m_inputs, nullptr, nullptr, m_node};
+        const auto slice_plan =
+            plan_slice_runtime_values(runtime_inputs, outputs, false, m_name);
+        if (!slice_plan.linear_view) {
+            return false;
+        }
+
+        GpuTensor* input = runtime_inputs.tensor(0);
+        OPENVINO_ASSERT(input && input->buf.valid(),
+                        "GFX OpenCL: missing input buffer for runtime Slice view ",
+                        m_name);
+        for (auto* out : outputs) {
+            if (!out) {
+                continue;
+            }
+            out->buf = input->buf;
+            out->buf.external = true;
+            out->buf.owned = false;
+            out->shape = slice_plan.values.output_shape;
+            out->expected_type = slice_plan.values.output_type;
+            out->gqa_broadcast_view = input->gqa_broadcast_view;
+            out->gqa_storage_shape = input->gqa_storage_shape;
+            out->gqa_kv_heads = input->gqa_kv_heads;
+            if (!input->i64_values.empty() &&
+                input->i64_values.size() == ov::shape_size(out->shape)) {
+                out->i64_values = input->i64_values;
+            }
+        }
+        return true;
+    }
+
     std::shared_ptr<const ov::Node> m_node;
     std::shared_ptr<OpenClRuntimeContext> m_context;
     std::shared_ptr<OpenClProgramCache> m_program_cache;
@@ -329,6 +516,7 @@ private:
     std::vector<uint32_t> m_scalar_storage;
     std::vector<GpuTensor*> m_inputs;
     std::vector<GpuTensor*> m_outputs;
+    std::vector<std::unique_ptr<GpuTensor>> m_const_inputs;
     GpuTensor* m_output = nullptr;
     std::string m_name;
     std::string m_type;

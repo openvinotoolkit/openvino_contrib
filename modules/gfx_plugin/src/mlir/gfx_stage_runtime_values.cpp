@@ -89,7 +89,8 @@ int64_t normalize_slice_index(int64_t index, int64_t dim, bool is_begin) {
   return std::clamp<int64_t>(index, -1, dim);
 }
 
-void build_slice_runtime_spec(const ov::Node &node, const ov::Shape &in_shape,
+void build_slice_runtime_spec(const RuntimeInputResolver &inputs,
+                              const ov::Node &node, const ov::Shape &in_shape,
                               const ov::Shape &out_shape,
                               std::vector<int32_t> &starts_full,
                               std::vector<int32_t> &steps_full,
@@ -103,26 +104,31 @@ void build_slice_runtime_spec(const ov::Node &node, const ov::Shape &in_shape,
   steps_full.assign(rank, 1);
 
   if (auto slice = dynamic_cast<const ov::op::v8::Slice *>(&node)) {
-    auto starts =
-        constant_source_i64(slice->input_value(1), "Slice starts", stage_name);
-    auto ends = optional_constant_source_i64(slice->input_value(2));
-    auto steps =
-        constant_source_i64(slice->input_value(3), "Slice steps", stage_name);
+    auto starts = inputs.i64_values(1);
+    auto ends = inputs.i64_values(2);
+    auto steps = inputs.i64_values(3);
+    OPENVINO_ASSERT(starts, "GFX MLIR: Slice starts must be available for stage ",
+                    stage_name);
+    OPENVINO_ASSERT(steps, "GFX MLIR: Slice steps must be available for stage ",
+                    stage_name);
     std::vector<int64_t> axes;
     if (slice->get_input_size() > 4) {
-      axes =
-          constant_source_i64(slice->input_value(4), "Slice axes", stage_name);
+      auto runtime_axes = inputs.i64_values(4);
+      OPENVINO_ASSERT(runtime_axes,
+                      "GFX MLIR: Slice axes must be available for stage ",
+                      stage_name);
+      axes = std::move(*runtime_axes);
     } else {
-      axes.resize(starts.size());
+      axes.resize(starts->size());
       std::iota(axes.begin(), axes.end(), 0);
     }
     OPENVINO_ASSERT(
-        starts.size() == steps.size() && starts.size() == axes.size(),
+        starts->size() == steps->size() && starts->size() == axes.size(),
         "GFX MLIR: Slice starts/ends/steps/axes size mismatch for stage ",
         stage_name);
     if (ends.has_value()) {
       OPENVINO_ASSERT(
-          starts.size() == ends->size(),
+          starts->size() == ends->size(),
           "GFX MLIR: Slice starts/ends/steps/axes size mismatch for stage ",
           stage_name);
     }
@@ -134,14 +140,15 @@ void build_slice_runtime_spec(const ov::Node &node, const ov::Shape &in_shape,
       OPENVINO_ASSERT(axis >= 0 && static_cast<size_t>(axis) < rank,
                       "GFX MLIR: Slice axis out of range for stage ",
                       stage_name);
-      OPENVINO_ASSERT(steps[i] != 0,
+      OPENVINO_ASSERT((*steps)[i] != 0,
                       "GFX MLIR: Slice zero step is not supported for stage ",
                       stage_name);
       const auto dim =
           static_cast<int64_t>(in_shape[static_cast<size_t>(axis)]);
       starts_full[static_cast<size_t>(axis)] =
-          static_cast<int32_t>(normalize_slice_index(starts[i], dim, true));
-      steps_full[static_cast<size_t>(axis)] = static_cast<int32_t>(steps[i]);
+          static_cast<int32_t>(normalize_slice_index((*starts)[i], dim, true));
+      steps_full[static_cast<size_t>(axis)] =
+          static_cast<int32_t>((*steps)[i]);
     }
     return;
   }
@@ -224,7 +231,8 @@ bool slice_requires_runtime_indexing(const ov::Node &node) {
   return false;
 }
 
-ov::Shape infer_slice_output_shape(const ov::Node &node,
+ov::Shape infer_slice_output_shape(const RuntimeInputResolver &inputs,
+                                   const ov::Node &node,
                                    const ov::Shape &in_shape,
                                    const std::vector<GpuTensor *> &outputs,
                                    std::string_view stage_name) {
@@ -238,12 +246,12 @@ ov::Shape infer_slice_output_shape(const ov::Node &node,
   const size_t rank = in_shape.size();
   ov::Shape out_shape;
   if (auto slice = dynamic_cast<const ov::op::v8::Slice *>(&node)) {
-    auto starts = optional_constant_source_i64(slice->input_value(1));
-    auto ends = optional_constant_source_i64(slice->input_value(2));
-    auto steps = optional_constant_source_i64(slice->input_value(3));
+    auto starts = inputs.i64_values(1);
+    auto ends = inputs.i64_values(2);
+    auto steps = inputs.i64_values(3);
     std::optional<std::vector<int64_t>> axes;
     if (slice->get_input_size() > 4) {
-      axes = optional_constant_source_i64(slice->input_value(4));
+      axes = inputs.i64_values(4);
     }
     if (starts && ends && steps) {
       out_shape = in_shape;
@@ -279,6 +287,68 @@ ov::Shape infer_slice_output_shape(const ov::Node &node,
         const int64_t extent = std::max<int64_t>(0, finish - start);
         out_shape[static_cast<size_t>(axis)] =
             static_cast<size_t>((extent + step - 1) / step);
+      }
+    }
+  } else if (auto slice =
+                 dynamic_cast<const ov::op::v1::StridedSlice *>(&node)) {
+    OPENVINO_ASSERT(
+        std::all_of(slice->get_new_axis_mask().begin(),
+                    slice->get_new_axis_mask().end(),
+                    [](int64_t v) { return v == 0; }),
+        "GFX MLIR: StridedSlice new_axis_mask is not supported for stage ",
+        stage_name);
+    OPENVINO_ASSERT(
+        std::all_of(slice->get_shrink_axis_mask().begin(),
+                    slice->get_shrink_axis_mask().end(),
+                    [](int64_t v) { return v == 0; }),
+        "GFX MLIR: StridedSlice shrink_axis_mask is not supported for stage ",
+        stage_name);
+    OPENVINO_ASSERT(
+        std::all_of(slice->get_ellipsis_mask().begin(),
+                    slice->get_ellipsis_mask().end(),
+                    [](int64_t v) { return v == 0; }),
+        "GFX MLIR: StridedSlice ellipsis_mask is not supported for stage ",
+        stage_name);
+
+    auto begin = inputs.i64_values(1);
+    auto end = inputs.i64_values(2);
+    std::optional<std::vector<int64_t>> strides;
+    if (slice->get_input_size() > 3) {
+      strides = inputs.i64_values(3);
+    }
+    if (begin && end) {
+      OPENVINO_ASSERT(begin->size() <= rank && end->size() <= rank,
+                      "GFX MLIR: StridedSlice begin/end rank mismatch for stage ",
+                      stage_name);
+      if (strides) {
+        OPENVINO_ASSERT(strides->size() <= rank,
+                        "GFX MLIR: StridedSlice strides rank mismatch for stage ",
+                        stage_name);
+      }
+      const auto &begin_mask = slice->get_begin_mask();
+      const auto &end_mask = slice->get_end_mask();
+      out_shape.reserve(rank);
+      for (size_t axis = 0; axis < rank; ++axis) {
+        const auto dim = static_cast<int64_t>(in_shape[axis]);
+        const int64_t step =
+            strides && axis < strides->size() ? (*strides)[axis] : 1;
+        OPENVINO_ASSERT(step != 0,
+                        "GFX MLIR: StridedSlice zero step is not supported for stage ",
+                        stage_name);
+        const bool masked_begin =
+            axis < begin_mask.size() && begin_mask[axis] != 0;
+        const bool masked_end = axis < end_mask.size() && end_mask[axis] != 0;
+        int64_t start = axis < begin->size() ? (*begin)[axis] : 0;
+        int64_t finish = axis < end->size() ? (*end)[axis] : dim;
+        start = masked_begin ? (step < 0 ? dim - 1 : 0)
+                             : normalize_slice_index(start, dim, true);
+        finish = masked_end ? (step < 0 ? -1 : dim)
+                            : normalize_slice_index(finish, dim, false);
+        const int64_t extent =
+            step > 0 ? std::max<int64_t>(0, finish - start)
+                     : std::max<int64_t>(0, start - finish);
+        const int64_t stride = step > 0 ? step : -step;
+        out_shape.push_back(static_cast<size_t>((extent + stride - 1) / stride));
       }
     }
   }
@@ -1223,7 +1293,7 @@ plan_slice_runtime_values(const RuntimeInputResolver &inputs,
   }
 
   plan.values.output_shape =
-      infer_slice_output_shape(node, plan.input_shape, outputs, stage_name);
+      infer_slice_output_shape(inputs, node, plan.input_shape, outputs, stage_name);
   OPENVINO_ASSERT(
       !plan.values.output_shape.empty(),
       "GFX MLIR: Slice/StridedSlice output shape is unknown for stage ",
@@ -1232,7 +1302,7 @@ plan_slice_runtime_values(const RuntimeInputResolver &inputs,
                   "GFX MLIR: Slice/StridedSlice rank mismatch for stage ",
                   stage_name);
 
-  build_slice_runtime_spec(node, plan.input_shape, plan.values.output_shape,
+  build_slice_runtime_spec(inputs, node, plan.input_shape, plan.values.output_shape,
                            plan.starts_full, plan.steps_full, stage_name);
 
   plan.values.value_shape = plan.values.output_shape;

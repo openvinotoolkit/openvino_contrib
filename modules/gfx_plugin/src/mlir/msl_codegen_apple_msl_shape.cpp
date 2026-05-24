@@ -7,6 +7,8 @@
 #include <memory>
 
 #include "mlir/codegen_common.hpp"
+#include "mlir/gfx_backend_custom_kernel_adapter.hpp"
+#include "mlir/msl_codegen_apple_msl_common.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/broadcast.hpp"
@@ -78,17 +80,38 @@ std::optional<KernelSource> make_apple_metal_shape_kernel_source(
       std::dynamic_pointer_cast<const ov::op::v3::Broadcast>(node)) {
     BroadcastCodegenDesc desc{};
     desc.element_type = node->get_output_element_type(0);
+    desc.has_target_shape_input =
+        source.module && get_entry_func(source.module) &&
+        get_entry_func(source.module).getNumArguments() > 1;
     source.entry_point = "broadcast_kernel";
     source.msl_generator = [desc](mlir::ModuleOp module) mutable {
       return generate_msl_from_mlir(module, desc);
     };
-    const auto input_shape = node->get_input_shape(0);
-    const auto output_shape = node->get_output_shape(0);
+    const auto input_shape = shape_from_entry_argument_or_partial(
+        source.module, 0, node->get_input_partial_shape(0));
+    const auto output_shape = output_shape_for_codegen(source.module, node);
     require_apple_msl_generated_kernel_source_binding(
         source, "Broadcast", "broadcast_kernel",
         {static_cast<int32_t>(ov::shape_size(output_shape)),
          static_cast<int32_t>(output_shape.size()),
          static_cast<int32_t>(input_shape.size())});
+    if (desc.has_target_shape_input) {
+      auto plan = make_backend_custom_kernel_roles_binding_plan(
+          "Broadcast", "broadcast_kernel",
+          {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorInput,
+           GfxKernelBufferRole::TensorOutput,
+           GfxKernelBufferRole::ScalarParam,
+           GfxKernelBufferRole::ScalarParam,
+           GfxKernelBufferRole::ScalarParam,
+           GfxKernelBufferRole::RuntimeParams,
+           GfxKernelBufferRole::RuntimeParams,
+           GfxKernelBufferRole::RuntimeParams,
+           GfxKernelBufferRole::RuntimeParams});
+      OPENVINO_ASSERT(configure_backend_custom_kernel_source_from_binding_plan(
+                          source, plan),
+                      "GFX Metal Broadcast: failed to configure dynamic "
+                      "target-shape binding");
+    }
     return source;
   }
 

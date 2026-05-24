@@ -70,6 +70,10 @@ std::optional<ReduceKind> reduce_kind_from_node(const ov::Node &node) {
     return ReduceKind::L1;
   if (type == "ReduceL2")
     return ReduceKind::L2;
+  if (type == "ReduceLogicalAnd")
+    return ReduceKind::LogicalAnd;
+  if (type == "ReduceLogicalOr")
+    return ReduceKind::LogicalOr;
   return std::nullopt;
 }
 
@@ -104,6 +108,8 @@ unary_activation_kind_from_node(const ov::Node &node) {
     return ActivationKind::Sign;
   if (type == "Clamp")
     return ActivationKind::Clamp;
+  if (type == "LogicalNot")
+    return ActivationKind::LogicalNot;
   if (type == "Exp")
     return ActivationKind::Exp;
   if (type == "Log")

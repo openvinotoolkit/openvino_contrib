@@ -29,6 +29,8 @@
 #include "openvino/op/matmul.hpp"
 #include "openvino/op/multiply.hpp"
 #include "openvino/op/parameter.hpp"
+#include "openvino/op/reduce_logical_and.hpp"
+#include "openvino/op/reduce_logical_or.hpp"
 #include "openvino/op/result.hpp"
 #include "openvino/op/reshape.hpp"
 #include "openvino/op/softmax.hpp"
@@ -155,6 +157,39 @@ void require_allclose(const ov::Tensor& a, const ov::Tensor& b, float atol = 1e-
     }
 }
 
+void require_bool_equal(const ov::Tensor& a, const ov::Tensor& b) {
+    if (a.get_element_type() != ov::element::boolean || b.get_element_type() != ov::element::boolean) {
+        throw std::runtime_error("expected boolean tensors");
+    }
+    if (a.get_byte_size() != b.get_byte_size() || a.get_shape() != b.get_shape()) {
+        throw std::runtime_error("tensor shape mismatch");
+    }
+    auto* pa = a.data<const uint8_t>();
+    auto* pb = b.data<const uint8_t>();
+    const size_t count = a.get_size();
+    for (size_t i = 0; i < count; ++i) {
+        const uint8_t va = static_cast<uint8_t>(pa[i] != 0);
+        const uint8_t vb = static_cast<uint8_t>(pb[i] != 0);
+        if (va != vb) {
+            throw std::runtime_error("boolean tensor mismatch at index " + std::to_string(i) +
+                                     ": ref=" + std::to_string(va) +
+                                     " gfx=" + std::to_string(vb));
+        }
+    }
+}
+
+void require_tensor_match(const ov::Tensor& a, const ov::Tensor& b, float atol = 1e-5f, float rtol = 0.f) {
+    if (a.get_element_type() != b.get_element_type()) {
+        throw std::runtime_error("tensor element type mismatch: ref=" + a.get_element_type().to_string() +
+                                 " gfx=" + b.get_element_type().to_string());
+    }
+    if (a.get_element_type() == ov::element::boolean) {
+        require_bool_equal(a, b);
+        return;
+    }
+    require_allclose(a, b, atol, rtol);
+}
+
 #ifndef _WIN32
 void run_in_subprocess_with_timeout(const std::function<void()>& fn, int timeout_seconds) {
 #ifdef __APPLE__
@@ -235,7 +270,7 @@ void compare_model_in_subprocess(const std::shared_ptr<ov::Model>& model,
             const auto ref_out = ref_req.get_output_tensor(i);
             const auto gfx_out = gfx_req.get_output_tensor(i);
             try {
-                require_allclose(ref_out, gfx_out, atol, rtol);
+                require_tensor_match(ref_out, gfx_out, atol, rtol);
             } catch (const std::exception& ex) {
                 throw std::runtime_error("output[" + std::to_string(i) + "] " + ex.what());
             }
@@ -270,7 +305,7 @@ void compare_model_repeated_infer_in_subprocess(const std::shared_ptr<ov::Model>
                 const auto ref_out = ref_req.get_output_tensor(output_index);
                 const auto gfx_out = gfx_req.get_output_tensor(output_index);
                 try {
-                    require_allclose(ref_out, gfx_out, atol, rtol);
+                    require_tensor_match(ref_out, gfx_out, atol, rtol);
                 } catch (const std::exception& ex) {
                     throw std::runtime_error("infer[" + std::to_string(infer_index) +
                                              "] output[" + std::to_string(output_index) + "] " + ex.what());
@@ -427,6 +462,50 @@ TEST(GfxRuntime, SoftmaxSubgraphMatchesTemplate) {
 
 #ifndef _WIN32
     compare_model_in_subprocess(model, {input}, 15, 1e-5f, 0.f);
+#else
+    GTEST_SKIP() << "subprocess watchdog requires POSIX";
+#endif
+}
+
+TEST(GfxRuntime, ReduceLogicalAndSubgraphMatchesTemplate) {
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::boolean, ov::Shape{2, 3, 4});
+    auto axes = std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{1}, std::vector<int64_t>{1});
+    auto reduce = std::make_shared<ov::op::v1::ReduceLogicalAnd>(param, axes, false);
+    auto res = std::make_shared<ov::op::v0::Result>(reduce);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{param},
+                                             "reduce_logical_and_runtime");
+
+    ov::Tensor input(ov::element::boolean, ov::Shape{2, 3, 4});
+    auto* data = input.data<uint8_t>();
+    for (size_t i = 0; i < input.get_size(); ++i) {
+        data[i] = static_cast<uint8_t>((i % 5) != 2);
+    }
+
+#ifndef _WIN32
+    compare_model_in_subprocess(model, {input}, 15, 0.f, 0.f);
+#else
+    GTEST_SKIP() << "subprocess watchdog requires POSIX";
+#endif
+}
+
+TEST(GfxRuntime, ReduceLogicalOrKeepDimsSubgraphMatchesTemplate) {
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::boolean, ov::Shape{2, 3, 4});
+    auto axes = std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{2}, std::vector<int64_t>{1, 2});
+    auto reduce = std::make_shared<ov::op::v1::ReduceLogicalOr>(param, axes, true);
+    auto res = std::make_shared<ov::op::v0::Result>(reduce);
+    auto model = std::make_shared<ov::Model>(ov::ResultVector{res},
+                                             ov::ParameterVector{param},
+                                             "reduce_logical_or_keepdims_runtime");
+
+    ov::Tensor input(ov::element::boolean, ov::Shape{2, 3, 4});
+    auto* data = input.data<uint8_t>();
+    for (size_t i = 0; i < input.get_size(); ++i) {
+        data[i] = static_cast<uint8_t>((i % 7) == 3 || i == 22);
+    }
+
+#ifndef _WIN32
+    compare_model_in_subprocess(model, {input}, 15, 0.f, 0.f);
 #else
     GTEST_SKIP() << "subprocess watchdog requires POSIX";
 #endif

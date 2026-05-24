@@ -208,7 +208,7 @@ enum class EltwiseKind {
   GreaterEqual
 };
 
-enum class ReduceKind { Sum, Mean, Max, Min, Prod, L1, L2 };
+enum class ReduceKind { Sum, Mean, Max, Min, Prod, L1, L2, LogicalAnd, LogicalOr };
 
 enum class TopKSortType { None = 0, SortValues = 1, SortIndices = 2 };
 
@@ -483,7 +483,9 @@ struct PadCodegenDesc : BaseCodegenDesc {
 };
 
 struct TileCodegenDesc : BaseCodegenDesc {};
-struct BroadcastCodegenDesc : BaseCodegenDesc {};
+struct BroadcastCodegenDesc : BaseCodegenDesc {
+  bool has_target_shape_input = false;
+};
 struct RangeCodegenDesc : BaseCodegenDesc {
   ov::element::Type start_type{ov::element::dynamic};
   ov::element::Type stop_type{ov::element::dynamic};

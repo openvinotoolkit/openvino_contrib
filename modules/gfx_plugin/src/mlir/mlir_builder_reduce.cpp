@@ -25,6 +25,8 @@
 #include "openvino/op/reduce_prod.hpp"
 #include "openvino/op/reduce_l1.hpp"
 #include "openvino/op/reduce_l2.hpp"
+#include "openvino/op/reduce_logical_and.hpp"
+#include "openvino/op/reduce_logical_or.hpp"
 #include "openvino/op/util/reduction_base.hpp"
 
 #include <algorithm>
@@ -35,7 +37,7 @@ namespace gfx_plugin {
 
 namespace {
 
-enum class ReduceKind { Sum, Mean, Max, Min, Prod, L1, L2 };
+enum class ReduceKind { Sum, Mean, Max, Min, Prod, L1, L2, LogicalAnd, LogicalOr };
 
 struct ReduceOpInfo {
     ov::AxisSet axes;
@@ -59,7 +61,9 @@ mlir::Value make_init_value(mlir::OpBuilder& b, mlir::Location loc, mlir::Type e
             case ReduceKind::Sum:
             case ReduceKind::Mean:
             case ReduceKind::L1:
+            case ReduceKind::LogicalOr:
             case ReduceKind::L2: init = 0.0; break;
+            case ReduceKind::LogicalAnd:
             case ReduceKind::Prod: init = 1.0; break;
             case ReduceKind::Max: init = -std::numeric_limits<double>::infinity(); break;
             case ReduceKind::Min: init = std::numeric_limits<double>::infinity(); break;
@@ -72,7 +76,9 @@ mlir::Value make_init_value(mlir::OpBuilder& b, mlir::Location loc, mlir::Type e
         case ReduceKind::Sum:
         case ReduceKind::Mean:
         case ReduceKind::L1:
+        case ReduceKind::LogicalOr:
         case ReduceKind::L2: init = 0; break;
+        case ReduceKind::LogicalAnd:
         case ReduceKind::Prod: init = 1; break;
         case ReduceKind::Max:
             init = ity.isUnsigned() ? 0 : std::numeric_limits<int64_t>::min();
@@ -112,6 +118,10 @@ mlir::Value reduce_update(mlir::OpBuilder& b,
     };
 
     switch (kind) {
+        case ReduceKind::LogicalAnd:
+            return b.create<mlir::arith::AndIOp>(loc, acc, val).getResult();
+        case ReduceKind::LogicalOr:
+            return b.create<mlir::arith::OrIOp>(loc, acc, val).getResult();
         case ReduceKind::Sum:
         case ReduceKind::Mean:
             return is_float ? b.create<mlir::arith::AddFOp>(loc, acc, val).getResult()
@@ -164,7 +174,9 @@ mlir::ModuleOp build_reduce_impl(const std::shared_ptr<const ov::Model>& model,
             ov::as_type_ptr<const ov::op::v1::ReduceMin>(node) ||
             ov::as_type_ptr<const ov::op::v1::ReduceProd>(node) ||
             ov::as_type_ptr<const ov::op::v4::ReduceL1>(node) ||
-            ov::as_type_ptr<const ov::op::v4::ReduceL2>(node)) {
+            ov::as_type_ptr<const ov::op::v4::ReduceL2>(node) ||
+            ov::as_type_ptr<const ov::op::v1::ReduceLogicalAnd>(node) ||
+            ov::as_type_ptr<const ov::op::v1::ReduceLogicalOr>(node)) {
             OPENVINO_ASSERT(!reduce_node, "Reduce MLIR builder: expected single Reduce op");
             reduce_node = node;
         }
@@ -200,6 +212,14 @@ mlir::ModuleOp build_reduce_impl(const std::shared_ptr<const ov::Model>& model,
             OPENVINO_ASSERT(reduce->reduction_axes_constant(), "Reduce MLIR: reduction axes must be constant");
             return ReduceOpInfo{reduce->get_reduction_axes(), reduce->get_keep_dims()};
         }
+        if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceLogicalAnd>(node)) {
+            OPENVINO_ASSERT(reduce->reduction_axes_constant(), "Reduce MLIR: reduction axes must be constant");
+            return ReduceOpInfo{reduce->get_reduction_axes(), reduce->get_keep_dims()};
+        }
+        if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceLogicalOr>(node)) {
+            OPENVINO_ASSERT(reduce->reduction_axes_constant(), "Reduce MLIR: reduction axes must be constant");
+            return ReduceOpInfo{reduce->get_reduction_axes(), reduce->get_keep_dims()};
+        }
         return std::nullopt;
     };
 
@@ -227,7 +247,8 @@ mlir::ModuleOp build_reduce_impl(const std::shared_ptr<const ov::Model>& model,
                                 /*allow_unsigned=*/true,
                                 /*allow_small_ints=*/true,
                                 /*allow_bf16=*/false,
-                                /*allow_boolean=*/false,
+                                /*allow_boolean=*/kind == ReduceKind::LogicalAnd ||
+                                    kind == ReduceKind::LogicalOr,
                                 /*signless_integers=*/true);
     mlir::SmallVector<int64_t> in_dims = to_shape(in_pshape);
     mlir::SmallVector<int64_t> out_dims = to_shape(out_pshape);
@@ -366,6 +387,16 @@ mlir::ModuleOp build_mlir_reducel1_from_model(const std::shared_ptr<const ov::Mo
 
 mlir::ModuleOp build_mlir_reducel2_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx) {
     return build_reduce_impl(model, ctx, ReduceKind::L2);
+}
+
+mlir::ModuleOp build_mlir_reduce_logical_and_from_model(const std::shared_ptr<const ov::Model>& model,
+                                                        mlir::MLIRContext& ctx) {
+    return build_reduce_impl(model, ctx, ReduceKind::LogicalAnd);
+}
+
+mlir::ModuleOp build_mlir_reduce_logical_or_from_model(const std::shared_ptr<const ov::Model>& model,
+                                                       mlir::MLIRContext& ctx) {
+    return build_reduce_impl(model, ctx, ReduceKind::LogicalOr);
 }
 
 }  // namespace gfx_plugin

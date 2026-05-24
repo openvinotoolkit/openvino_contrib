@@ -37,7 +37,7 @@ void finalize_device_info(GfxDeviceInfo& info) {
         }
     }
     if (info.available_devices.empty()) {
-        info.available_devices = {info.device_name};
+        info.available_devices = {info.device_id.empty() ? std::string{"0"} : info.device_id};
     }
     if (info.capabilities.empty()) {
         info.capabilities = query_backend_caps(info.backend, ov::AnyMap{}).device_capabilities();

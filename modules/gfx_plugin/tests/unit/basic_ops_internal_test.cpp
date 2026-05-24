@@ -30,6 +30,8 @@
 #include "openvino/op/multiply.hpp"
 #include "openvino/op/prelu.hpp"
 #include "openvino/op/reduce_max.hpp"
+#include "openvino/op/reduce_logical_and.hpp"
+#include "openvino/op/reduce_logical_or.hpp"
 #include "openvino/op/reduce_sum.hpp"
 #include "openvino/op/reshape.hpp"
 #include "openvino/op/sigmoid.hpp"
@@ -5071,6 +5073,36 @@ TEST(GfxMlir, ReduceSumBuilderProducesModule) {
   EXPECT_TRUE(ov::gfx_plugin::mlir_supports_node(reduce));
   ASSERT_NO_THROW(ov::gfx_plugin::run_mlir_pipeline(
       module, /*use_alloca=*/true, /*use_parallel_loops=*/false));
+}
+
+TEST(GfxMlir, ReduceLogicalBuildersProduceBooleanModules) {
+  auto input = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::boolean, ov::Shape{2, 3, 4});
+
+  auto axes_and =
+      ov::op::v0::Constant::create(ov::element::i64, ov::Shape{1}, {1});
+  auto reduce_and =
+      std::make_shared<ov::op::v1::ReduceLogicalAnd>(input, axes_and, false);
+  auto &ctx = ov::gfx_plugin::gfx_mlir_context();
+  auto and_module = ov::gfx_plugin::build_mlir_for_node(reduce_and, ctx);
+  ASSERT_TRUE(and_module);
+  ASSERT_TRUE(static_cast<bool>(
+      and_module.lookupSymbol<mlir::func::FuncOp>("reduce_main")));
+  EXPECT_TRUE(ov::gfx_plugin::mlir_supports_node(reduce_and));
+  ASSERT_NO_THROW(ov::gfx_plugin::run_mlir_pipeline(
+      and_module, /*use_alloca=*/true, /*use_parallel_loops=*/false));
+
+  auto axes_or =
+      ov::op::v0::Constant::create(ov::element::i64, ov::Shape{2}, {1, 2});
+  auto reduce_or =
+      std::make_shared<ov::op::v1::ReduceLogicalOr>(input, axes_or, true);
+  auto or_module = ov::gfx_plugin::build_mlir_for_node(reduce_or, ctx);
+  ASSERT_TRUE(or_module);
+  ASSERT_TRUE(static_cast<bool>(
+      or_module.lookupSymbol<mlir::func::FuncOp>("reduce_main")));
+  EXPECT_TRUE(ov::gfx_plugin::mlir_supports_node(reduce_or));
+  ASSERT_NO_THROW(ov::gfx_plugin::run_mlir_pipeline(
+      or_module, /*use_alloca=*/true, /*use_parallel_loops=*/false));
 }
 
 TEST(GfxMlir, MatMulCodegenProducesMsl) {

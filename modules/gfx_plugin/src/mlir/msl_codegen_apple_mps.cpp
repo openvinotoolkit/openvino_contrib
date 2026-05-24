@@ -54,7 +54,7 @@ bool has_apple_msl_custom_kernel_manifest(mlir::ModuleOp module) {
 bool is_io_only_apple_mps_vendor_stage(std::string_view stage_type) {
   return stage_type == "MaxPool" || stage_type == "AvgPool" ||
          stage_type == "Interpolate" || stage_type == "Softmax" ||
-         stage_type == "LogSoftmax" || stage_type == "TopK";
+         stage_type == "TopK";
 }
 
 bool has_legacy_output_arg_abi(mlir::ModuleOp module) {

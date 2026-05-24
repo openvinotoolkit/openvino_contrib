@@ -150,6 +150,10 @@ mlir::ModuleOp build_mlir_reducemin_from_model(const std::shared_ptr<const ov::M
 mlir::ModuleOp build_mlir_reduceprod_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_reducel1_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_reducel2_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_reduce_logical_and_from_model(const std::shared_ptr<const ov::Model>& model,
+                                                        mlir::MLIRContext& ctx);
+mlir::ModuleOp build_mlir_reduce_logical_or_from_model(const std::shared_ptr<const ov::Model>& model,
+                                                       mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_rms_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_rope_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);
 mlir::ModuleOp build_mlir_pad_from_model(const std::shared_ptr<const ov::Model>& model, mlir::MLIRContext& ctx);

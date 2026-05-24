@@ -161,9 +161,10 @@ OpenClApi::OpenClApi() {
 
 OpenClApi::~OpenClApi() {
 #if !defined(_WIN32)
-    if (m_library) {
-        dlclose(m_library);
-    }
+    // Keep the ICD loaded for the process lifetime. Some GPU OpenCL stacks
+    // register their own process-exit teardown and are not safe to unload from
+    // a plugin-local singleton destructor after contexts/programs were used.
+    // The OS reclaims this handle at process exit.
 #endif
 }
 

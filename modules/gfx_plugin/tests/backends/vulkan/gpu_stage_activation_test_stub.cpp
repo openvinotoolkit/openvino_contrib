@@ -75,7 +75,7 @@ void run_activation(const ActivationCase& tc) {
 
         auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{tc.in.size()});
         auto node = OpFactory::make_node(param);
-        auto stage = GpuStageFactory::create(node, default_backend_kind());
+        auto stage = GpuStageFactory::create(node, GpuBackend::Vulkan);
         ASSERT_NE(stage, nullptr);
         stage->set_inputs({&input});
         stage->set_output(&output);

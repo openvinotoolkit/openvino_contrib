@@ -221,6 +221,18 @@ make_backend_custom_kernel_binding_plan_from_module_or_request(
     auto plan =
         make_backend_custom_kernel_binding_plan_from_stage_manifest(manifest);
     if (plan.valid) {
+      const bool can_override_manifest =
+          manifest.backend_domain != GfxKernelBackendDomain::AppleMsl;
+      const bool requested_entry =
+          !entry_point.empty() &&
+          manifest.custom_kernel.entry_point != entry_point;
+      const bool requested_scalars =
+          !scalar_args.empty() && plan.scalar_arg_count != scalar_args.size();
+      if (requested_scalars || (can_override_manifest && requested_entry)) {
+        return make_backend_custom_kernel_binding_plan(
+            stage_type, entry_point, std::move(scalar_args), backend_domain,
+            storage, specialization_prefix);
+      }
       if (plan.scalar_arg_count == 0 || !scalar_args.empty()) {
         if (plan.scalar_arg_count != scalar_args.size()) {
           return {};

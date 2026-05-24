@@ -12,6 +12,17 @@
 namespace ov {
 namespace gfx_plugin {
 
+namespace {
+
+size_t opencl_allocation_bytes(size_t bytes, ov::element::Type type) {
+    if (type != ov::element::boolean && type != ov::element::f16) {
+        return bytes;
+    }
+    return ((bytes + 3u) / 4u) * 4u;
+}
+
+}  // namespace
+
 OpenClBufferManager::OpenClBufferManager(std::shared_ptr<OpenClRuntimeContext> context)
     : m_context(std::move(context)) {
     OPENVINO_ASSERT(m_context, "GFX OpenCL: buffer manager requires runtime context");
@@ -34,17 +45,18 @@ GpuBuffer OpenClBufferManager::allocate_buffer(size_t bytes,
     if (bytes == 0) {
         return {};
     }
+    const size_t allocation_bytes = opencl_allocation_bytes(bytes, type);
     cl_int status = CL_SUCCESS;
     cl_mem mem = m_context->api().fn().clCreateBuffer(m_context->context(),
                                                       CL_MEM_READ_WRITE,
-                                                      bytes,
+                                                      allocation_bytes,
                                                       nullptr,
                                                       &status);
     opencl_check(status, "clCreateBuffer");
     OPENVINO_ASSERT(mem, "GFX OpenCL: clCreateBuffer returned null");
     GpuBuffer buf;
     buf.buffer = reinterpret_cast<GpuBufferHandle>(mem);
-    buf.size = bytes;
+    buf.size = allocation_bytes;
     buf.type = type;
     buf.backend = GpuBackend::OpenCL;
     buf.host_visible = host_visible;

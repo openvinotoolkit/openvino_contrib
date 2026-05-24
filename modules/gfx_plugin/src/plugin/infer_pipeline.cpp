@@ -4,7 +4,15 @@
 
 #include "infer_pipeline.hpp"
 
+#include "mlir/gfx_stage_runtime_values.hpp"
+#include "openvino/op/broadcast.hpp"
+#include "openvino/op/concat.hpp"
 #include "openvino/op/constant.hpp"
+#include "openvino/op/range.hpp"
+#include "openvino/op/select.hpp"
+#include "openvino/op/shape_of.hpp"
+#include "openvino/op/slice.hpp"
+#include "openvino/op/strided_slice.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 
 namespace ov {
@@ -92,6 +100,81 @@ size_t find_pipeline_stage_index(const std::vector<InferStage>& pipeline,
         }
     }
     return pipeline.size();
+}
+
+void assign_runtime_shapes_for_stage(InferStage& stage,
+                                     const std::vector<GpuTensor*>& inputs,
+                                     GpuBackend backend,
+                                     const char* error_prefix) {
+    if (!stage.node) {
+        for (size_t out_idx = 0; out_idx < stage.outputs.size(); ++out_idx) {
+            ensure_stage_output_shape(stage, out_idx);
+        }
+        return;
+    }
+
+    std::vector<GpuTensor*> outputs;
+    outputs.reserve(stage.outputs.size());
+    for (auto& out : stage.outputs) {
+        outputs.push_back(out.get());
+    }
+
+    RuntimeInputResolver runtime_inputs{&inputs, nullptr, nullptr, stage.node};
+    const auto stage_name = stage.node->get_friendly_name();
+
+    if (auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(stage.node)) {
+        const auto plan = plan_concat_runtime_values(runtime_inputs, *concat, stage_name);
+        assign_runtime_value_outputs(plan.values, outputs);
+        return;
+    }
+
+    if (ov::as_type_ptr<const ov::op::v1::Broadcast>(stage.node) ||
+        ov::as_type_ptr<const ov::op::v3::Broadcast>(stage.node)) {
+        const ov::Shape in_shape = runtime_inputs.shape(0);
+        OPENVINO_ASSERT(!in_shape.empty(),
+                        error_prefix,
+                        ": Broadcast input shape is unknown for stage ",
+                        stage_name);
+        const auto plan = plan_broadcast_runtime_values(runtime_inputs, *stage.node, in_shape, stage_name);
+        assign_runtime_value_outputs(plan, outputs);
+        return;
+    }
+
+    if (ov::as_type_ptr<const ov::op::v1::Select>(stage.node)) {
+        const auto plan = plan_select_runtime_values(runtime_inputs, *stage.node, stage_name);
+        OPENVINO_ASSERT(plan.valid(),
+                        error_prefix,
+                        ": Select runtime shapes are unknown for stage ",
+                        stage_name);
+        assign_runtime_value_outputs(plan.values, outputs);
+        return;
+    }
+
+    if (ov::as_type_ptr<const ov::op::v3::ShapeOf>(stage.node)) {
+        const auto plan = plan_shapeof_runtime_values(runtime_inputs, stage.node.get(), stage_name);
+        assign_runtime_value_outputs(plan, outputs);
+        return;
+    }
+
+    if (ov::as_type_ptr<const ov::op::v8::Slice>(stage.node) ||
+        ov::as_type_ptr<const ov::op::v1::StridedSlice>(stage.node)) {
+        const auto plan = plan_slice_runtime_values(runtime_inputs,
+                                                    outputs,
+                                                    backend == GpuBackend::Vulkan,
+                                                    stage_name);
+        assign_runtime_value_outputs(plan.values, outputs);
+        return;
+    }
+
+    if (ov::as_type_ptr<const ov::op::v4::Range>(stage.node)) {
+        const auto plan = plan_range_runtime_values(runtime_inputs, stage.node.get(), stage_name);
+        assign_runtime_value_outputs(plan, outputs);
+        return;
+    }
+
+    for (size_t out_idx = 0; out_idx < stage.outputs.size(); ++out_idx) {
+        ensure_stage_output_shape(stage, out_idx);
+    }
 }
 
 }  // namespace
@@ -364,6 +447,52 @@ void prepare_reusable_execution_plan(
             prepared.input_refs.push_back(ref);
             prepared.resolved_inputs.push_back(resolved);
         }
+    }
+}
+
+void assign_runtime_stage_output_shapes(
+    std::vector<InferStage>& pipeline,
+    PreparedInferExecutionPlan& plan,
+    const std::vector<GpuTensor>& input_tensors,
+    GpuBackend backend,
+    const char* error_prefix) {
+    OPENVINO_ASSERT(plan.stages.size() == pipeline.size(),
+                    error_prefix,
+                    ": prepared execution plan does not match pipeline");
+
+    for (size_t stage_idx = 0; stage_idx < pipeline.size(); ++stage_idx) {
+        auto& stage = pipeline[stage_idx];
+        auto& prepared = plan.stages[stage_idx];
+        if (prepared.resolved_inputs.size() != prepared.input_refs.size()) {
+            prepared.resolved_inputs.resize(prepared.input_refs.size(), nullptr);
+        }
+
+        for (size_t input_idx = 0; input_idx < prepared.input_refs.size(); ++input_idx) {
+            const auto& ref = prepared.input_refs[input_idx];
+            auto* resolved = prepared.resolved_inputs[input_idx];
+            switch (ref.kind) {
+            case PreparedStageInputKind::Parameter:
+                resolved = ref.index < input_tensors.size()
+                               ? const_cast<GpuTensor*>(&input_tensors[ref.index])
+                               : nullptr;
+                break;
+            case PreparedStageInputKind::StageOutput:
+                if (ref.index < pipeline.size() &&
+                    ref.port < pipeline[ref.index].outputs.size()) {
+                    resolved = pipeline[ref.index].outputs[ref.port].get();
+                } else {
+                    resolved = nullptr;
+                }
+                break;
+            case PreparedStageInputKind::None:
+            default:
+                resolved = nullptr;
+                break;
+            }
+            prepared.resolved_inputs[input_idx] = resolved;
+        }
+
+        assign_runtime_shapes_for_stage(stage, prepared.resolved_inputs, backend, error_prefix);
     }
 }
 

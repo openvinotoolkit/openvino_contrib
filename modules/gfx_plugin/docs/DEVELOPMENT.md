@@ -55,6 +55,11 @@ Current build-system notes:
 - `cmake/GfxAndroidRuntimeBundle.cmake.in` is used to copy Android runtime-side dependencies next to deployed plugin artifacts
 
 ## Hermetic RPi Vulkan Toolchain
+This is legacy diagnostic tooling. Current non-Apple runtime work should prefer
+the normal OpenCL source-kernel backend when the target exposes a suitable
+OpenCL GPU runtime, and use the Vulkan bundle only for SPIR-V/Vulkan-specific
+diagnosis or regression coverage.
+
 To build a Raspberry Pi Vulkan cross-toolchain bundle for this module, use:
 
 ```bash
@@ -200,7 +205,11 @@ For OpenCL work, start from the shared contract rather than from a one-off runti
 - `src/backends/opencl/runtime/opencl_source_stage.*` executes artifacts from `src/kernel_ir/gfx_opencl_source_artifacts.*`
 - `tests/unit/gfx_opencl_source_artifacts_test.cpp` is the first regression target when artifact coverage or ABI metadata changes
 
-OpenCL currently covers baseline source artifacts for f32 data movement and elementwise-style families. A new OpenCL op is production-ready only after support probing, artifact metadata, runtime binding, and tests describe the same shape/type contract; the standalone OpenCL Conv2D microbench tools are for kernel-family experiments and are not a plugin execution path by themselves.
+OpenCL currently covers baseline source artifacts for f32 data movement, dynamic f16 data movement, typed f32/i32/i64 convert casts, MatMul/Softmax, Range/Tile, gather/scatter, shape, concat/split, and elementwise-style families including rank-1..4 f32 broadcast binary, compare, Select, boolean logical, and boolean logical-reduction cases. Keep OpenCL artifacts narrow and role-based: source bundles should include only the entry points they need, broadcast kernels should use explicit scalar metadata instead of dynamic private-array indexing, and `Select` kernels should select values rather than source pointers. Kernels that produce boolean tensors must write logical bytes through aligned 32-bit stores, with OpenCL boolean buffers padded to a 4-byte allocation size. Direct-input `Constant` operands must either be scalarized through artifact metadata or materialized by the OpenCL source stage via `GpuBufferManager::wrap_const`, never treated as host runtime input slots. A new OpenCL op is production-ready only after support probing, artifact metadata, runtime binding, and tests describe the same shape/type contract; the standalone OpenCL Conv2D microbench tools are for kernel-family experiments and are not a plugin execution path by themselves.
+Dynamic f16 OpenCL data-movement kernels must copy f16 storage through packed
+`uint` lanes rather than assuming native `half`, `ushort`, or byte-addressed
+storage support. OpenCL f16 allocations are padded to 4 bytes so the last
+packed word remains in-bounds for odd element counts.
 
 Infer submission parallelism follows the same hierarchy as kernel dispatch
 parallelism: first derive a common workload profile from pipeline depth, SIMD
@@ -378,7 +387,7 @@ Compile-time stage routes must use the required binding helpers in `gfx_backend_
 MSL source-family files must call `require_backend_custom_kernel_source_binding()` directly. Do not reintroduce Apple-only source binding wrappers; the backend custom-kernel adapter is the single source-binding boundary for Apple MSL and SPIR-V.
 For Vulkan compact-ABI changes, first express the buffer order through the shared `GfxKernelStageManifest` custom-kernel adapter, then let `src/mlir/spirv_kernel_binding_adapter.hpp` serialize the final SPIR-V attrs. If SPIR-V lowering changes the launch ABI by scalarizing or reordering operands, reconcile that final launch order back into the stage manifest when the common role model can represent it. When final scalar byte-buffer ordering still has to live in `gfx.kernel_operand_*` / `gfx.kernel_scalar_values`, runtime metadata may read those attrs only under a valid `backend_domain=spirv`, `execution_kind=CustomKernel` manifest; no-manifest legacy operand attrs must remain rejected. Cache hits must restore the lowered metadata and reconcile the manifest before runtime metadata is extracted; otherwise a cached SPIR-V binary can be executed with the pre-lowering source-plan ABI. Do not add new per-op `gfx.fixed_arg_count` shortcuts for manual Vulkan builders; that attr is not a runtime metadata source or arg-count source, and the SPIR-V lowering path must use manifest state to preserve compact memref ABI.
 
-When debugging Android/RPi SPIR-V failures, keep the diagnostic path explicit. `run_mlir_pipeline()` reports the verifier text from the pre-SPIR-V normalization pipeline, and retry logic may rebuild from the original module only for known alloca/normalization failures. Do not turn a device failure into a test skip until the same op has been checked through the Mac build and the real Android/RPi runners. Mac results and Android/RPi results are not expected to be byte-for-byte evidence for the same implementation path: Mac may execute through Metal MPS/MSL, while Android/RPi execute through Vulkan/SPIR-V. The acceptance contract is still shared accuracy against the same reference/template outputs on each device.
+When debugging Android/RPi OpenCL or legacy SPIR-V failures, keep the diagnostic path explicit. `run_mlir_pipeline()` reports the verifier text from the pre-SPIR-V normalization pipeline for legacy routes, and retry logic may rebuild from the original module only for known alloca/normalization failures. Do not turn a device failure into a test skip until the same op has been checked through the Mac build and the real Android/RPi runners. Mac results and Android/RPi results are not expected to be byte-for-byte evidence for the same implementation path: Mac may execute through Metal MPS/MSL, while non-Apple targets execute through OpenCL source kernels or the explicitly selected legacy Vulkan/SPIR-V path. The acceptance contract is still shared accuracy against the same reference/template outputs on each device.
 
 For layout-cleanup work around DFL-style postprocessing tails, the current rewrite target is a value-preserving `Softmax -> MatMul -> Reshape/Transpose` form. Do not describe the older synthetic 1x1 convolution rewrite as the active implementation.
 

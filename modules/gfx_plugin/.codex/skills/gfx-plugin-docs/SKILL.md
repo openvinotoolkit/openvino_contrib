@@ -39,7 +39,7 @@ Additional operational docs:
    - architecture or runtime flow
    - property semantics
    - backend-specific route selection
-   - OpenCL source-artifact coverage, dynamic OpenCL runtime behavior, or non-Apple default-backend resolution
+   - OpenCL source-artifact coverage, dynamic OpenCL runtime behavior, runtime-shape handling, boolean-buffer behavior, constant materialization, or non-Apple default-backend resolution
    - Metal placement-domain or storage selection such as `apple_mps` image/matrix stages versus `apple_msl` buffer dispatch
    - manifest-backed execution-kind or hybrid-stage planning such as vendor `MPSGemm` plus custom MSL epilogues
    - Apple MPS/MPSGraph vendor primitive descriptor support such as Conv2D, Pool2D, Resize2D, Softmax, TopK, GEMM, or SDPA
@@ -95,6 +95,12 @@ Additional operational docs:
   - `docs/DEVELOPMENT.md`
   - `docs/TESTING.md`
   - `docs/USAGE.md` if public backend selection or runtime behavior changed
+
+- `src/plugin/infer_pipeline.*` or `src/mlir/gfx_stage_runtime_values.*` dynamic-shape changes:
+  - `README.md` if supported runtime behavior changed
+  - `docs/ARCHITECTURE.md`
+  - `docs/DEVELOPMENT.md`
+  - `docs/TESTING.md` if regression coverage changed
 
 - `src/mlir/` or `src/transforms/` changes:
   - `README.md` when user-visible behavior shifts

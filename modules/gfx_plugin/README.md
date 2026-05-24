@@ -13,7 +13,7 @@ GFX is an OpenVINO runtime plugin that compiles an `ov::Model` into a backend-sp
 The current direction is mobile-class GPU execution rather than large datacenter GPUs:
 - Metal on macOS
 - OpenCL source kernels on non-Apple builds when the dynamic OpenCL runtime is available
-- Vulkan as a legacy diagnostic backend for Android Adreno-class and Raspberry Pi Vulkan/SPIR-V investigations
+- Vulkan as a legacy diagnostic backend for SPIR-V/Vulkan investigations
 
 The codebase uses a shared frontend and a stage-based runtime:
 1. OpenVINO graph transformations run in `src/transforms/`
@@ -34,7 +34,7 @@ Recent runtime work extends this model in two directions:
 - the Metal compile path can serialize that placement into a backend-neutral MPSRT runtime model under `src/runtime/gfx_mpsrt_model.*` with explicit tensor descriptors, external-buffer roles, a typed `GfxMpsrtProgram` facade, generated `gfx_mpsrt_ops` materialization, and explicit storage-bridge descriptors before request-time execution
 - that MPSRT path is no longer limited to one annotated MSL dispatch; it can now carry vendor-only and hybrid multi-stage plans covering Apple MPS/MPSGraph GEMM, Conv2D, GroupConv, Pool2D, Resize2D, Softmax, TopK, and SDPA stages together with custom MSL epilogues or dispatch stages
 - Metal MSL source planning is now part of the shared MLIR/runtime layer and is split by responsibility into Apple MSL custom-kernel helpers, Apple MPS vendor-source-plan helpers, MatMul-specific Metal/MPSRT helpers, an OpenCL source-artifact path, and a SPIR-V binding adapter for the Vulkan side
-- OpenCL source-kernel execution now has its own backend plugin/runtime layer, dynamic OpenCL API loader, source-artifact manifest path, program cache, buffer manager, and baseline f32 data-movement and elementwise kernels
+- OpenCL source-kernel execution now has its own backend plugin/runtime layer, dynamic OpenCL API loader, source-artifact manifest path, program cache, buffer manager, baseline f32 data-movement kernels, typed f32/i32/i64 convert casts, and elementwise kernels
 - infer requests can also keep per-request stateful variable buffers for `ReadValue` / `Assign` style subgraphs instead of treating them as ordinary stateless stage edges
 - output allocation can now reuse workspace-managed intermediate slots across stages based on liveness instead of always keeping one dedicated buffer per stage output
 - shared prepared-binding caches can now grow beyond their initial capacity when a workload introduces many distinct compatible binding tables
@@ -50,8 +50,8 @@ This is not the old monolithic `MlirBackend` architecture that earlier design no
 - Expected integration: recent OpenVINO Developer Package builds
 - Tested on:
   - Apple M1 Pro via Metal
-  - Samsung Galaxy S25 via Vulkan
-  - Raspberry Pi 5B via Vulkan
+  - Samsung Galaxy S25 through OpenCL source-kernel validation and legacy Vulkan diagnostics
+  - Raspberry Pi 5B through OpenCL source-kernel validation and legacy Vulkan diagnostics
 - OpenCL is the preferred non-Apple default when enabled and available; Vulkan remains available for legacy SPIR-V diagnostics
 - No partial CPU fallback: unsupported models fail during `compile_model()`
 - `query_model()` is backend-aware and follows the same support probing path as compilation
@@ -212,7 +212,8 @@ Important constraints:
 Current lowering/runtime special cases:
 - selected transpose inputs can be absorbed into Add, Conv2D, GroupConv2D, and Split lowering instead of staying as standalone runtime stages
 - transformation now depends on the resolved backend, so compile/query can preserve or decompose backend-sensitive patterns differently
-- OpenCL currently executes baseline source artifacts for f32 linear copy/layout, transpose, slice, strided-slice, gather, gather-elements, gather-nd, shapeof, concat, split, variadic-split, unary elementwise, binary elementwise, compare, and select families when their artifact contracts match
+- OpenCL currently executes baseline source artifacts for f32 linear copy/layout, dynamic f16 data movement, f32/i32/i64 convert casts, MatMul, Softmax, transpose, slice, strided-slice, Range, Tile, gather, gather-elements, gather-nd, scatter-update, scatter-elements, scatter-nd, ShapeOf, Concat, Split, VariadicSplit, unary elementwise, same-shape/scalar/broadcast binary elementwise, same-shape/broadcast compare, same-shape/broadcast Select, boolean logical, and boolean logical-reduction families when their artifact contracts match
+- OpenCL source artifacts are intentionally small and role-based: constant tensor operands can be materialized by the source stage, boolean buffers are padded for aligned 32-bit stores, dynamic runtime dimensions are passed through scalar ABI metadata, and portable kernels avoid pointer-selection and wide-integer assumptions that are not guaranteed on mobile-class OpenCL stacks
 - Vulkan contains specialized direct or chunked paths for unary, binary, softmax, split/concat, transpose, and convert cases; Conv2D and GroupConv2D are intentionally kept on the shared MLIR/SPIR-V custom-kernel path
 - Vulkan now also has specialized chunked paths for `RMS` and binary `Concat`
 - decomposed Conv2D routes such as `im2col + matmul` are not an active production route; convolution policy must stay on a single typed custom-kernel or a future typed multi-kernel manifest

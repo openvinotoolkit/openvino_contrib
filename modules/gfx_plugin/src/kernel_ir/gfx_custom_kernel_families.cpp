@@ -555,7 +555,8 @@ classify_gfx_custom_kernel_family(std::string_view stage_type,
   if (stage_type == "ReduceSum" || stage_type == "ReduceMean" ||
       stage_type == "ReduceMax" || stage_type == "ReduceMin" ||
       stage_type == "ReduceProd" || stage_type == "ReduceL1" ||
-      stage_type == "ReduceL2" || entry_point == "reduce_kernel") {
+      stage_type == "ReduceL2" || stage_type == "ReduceLogicalAnd" ||
+      stage_type == "ReduceLogicalOr" || entry_point == "reduce_kernel") {
     return GfxKernelFamily::ReductionBuffer;
   }
   return GfxKernelFamily::Unknown;

@@ -145,6 +145,13 @@ void prepare_reusable_execution_plan(
     const std::unordered_map<const ov::Node*, size_t>& node_map,
     const std::unordered_map<const ov::Node*, size_t>& param_map);
 
+void assign_runtime_stage_output_shapes(
+    std::vector<InferStage>& pipeline,
+    PreparedInferExecutionPlan& plan,
+    const std::vector<GpuTensor>& input_tensors,
+    GpuBackend backend,
+    const char* error_prefix = "GFX");
+
 void prepare_reusable_output_plan(
     PreparedInferOutputPlan& plan,
     const std::vector<ov::Output<const ov::Node>>& public_outputs,

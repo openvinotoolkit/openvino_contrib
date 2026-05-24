@@ -27,19 +27,29 @@ std::string generate_msl_for_broadcast(const BroadcastCodegenDesc& d, mlir::Modu
     }
 
     std::ostringstream ss;
+    const uint32_t target_shape_arg = d.has_target_shape_input ? 1u : 0u;
+    const uint32_t output_arg = d.has_target_shape_input ? 2u : 1u;
+    const uint32_t scalar_base = output_arg + 1u;
     ss << "#include <metal_stdlib>\n";
     ss << "using namespace metal;\n";
     ss << "using scalar_t = " << scalar_t << ";\n";
     ss << "kernel void broadcast_kernel(device const scalar_t* A [[buffer(0)]],\n";
-    ss << "                            device scalar_t* O [[buffer(1)]],\n";
-    ss << "                            constant uint& NUM_ELEMS [[buffer(2)]],\n";
-    ss << "                            constant uint& OUT_RANK [[buffer(3)]],\n";
-    ss << "                            constant uint& IN_RANK [[buffer(4)]],\n";
-    ss << "                            constant int* OUT_DIMS [[buffer(5)]],\n";
-    ss << "                            constant int* IN_DIMS [[buffer(6)]],\n";
-    ss << "                            constant int* IN_STRIDES [[buffer(7)]],\n";
-    ss << "                            constant int* AXES [[buffer(8)]],\n";
+    if (d.has_target_shape_input) {
+        ss << "                            device const uchar* target_shape [[buffer("
+           << target_shape_arg << ")]],\n";
+    }
+    ss << "                            device scalar_t* O [[buffer(" << output_arg << ")]],\n";
+    ss << "                            constant uint& NUM_ELEMS [[buffer(" << scalar_base << ")]],\n";
+    ss << "                            constant uint& OUT_RANK [[buffer(" << (scalar_base + 1u) << ")]],\n";
+    ss << "                            constant uint& IN_RANK [[buffer(" << (scalar_base + 2u) << ")]],\n";
+    ss << "                            constant int* OUT_DIMS [[buffer(" << (scalar_base + 3u) << ")]],\n";
+    ss << "                            constant int* IN_DIMS [[buffer(" << (scalar_base + 4u) << ")]],\n";
+    ss << "                            constant int* IN_STRIDES [[buffer(" << (scalar_base + 5u) << ")]],\n";
+    ss << "                            constant int* AXES [[buffer(" << (scalar_base + 6u) << ")]],\n";
     ss << "                            uint gid [[thread_position_in_grid]]) {\n";
+    if (d.has_target_shape_input) {
+        ss << "    (void)target_shape;\n";
+    }
     ss << "    if (gid >= NUM_ELEMS) return;\n";
     ss << "    uint idx = gid;\n";
     ss << "    int out_coords[8];\n";
@@ -61,4 +71,3 @@ std::string generate_msl_for_broadcast(const BroadcastCodegenDesc& d, mlir::Modu
 
 }  // namespace gfx_plugin
 }  // namespace ov
-

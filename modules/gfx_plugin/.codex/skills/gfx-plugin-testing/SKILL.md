@@ -18,7 +18,7 @@ This skill is for test selection, regression coverage, and profiling-oriented va
 - The task changes custom-kernel family classification, external-buffer ABI roles, semantic input/output roles, or dispatch-grid policy.
 - The task changes Metal MSL runtime binding plans, explicit kernel-buffer order, inferred MSL buffer-argument counts, split Apple MSL/MPS source plans, compressed `MatMul` source plans, or SDPA source plans.
 - The task changes SPIR-V fixed-argument adapters, compact Vulkan ABI metadata, or MLIR-side binding overrides.
-- The task changes OpenCL source-artifact metadata, dynamic OpenCL runtime selection, source-stage execution, or OpenCL baseline op coverage.
+- The task changes OpenCL source-artifact metadata, dynamic OpenCL runtime selection, source-stage execution, dynamic runtime-shape allocation, boolean-buffer behavior, constant materialization, or OpenCL baseline op coverage.
 - The task changes Vulkan Conv2D output-channel blocking, `gfx.dispatch_channel_block`, or capability-gated spatial micro-tiling.
 - The task changes infer submission dependency-window extension, soft-budget caps, or boundary-stage behavior.
 - The task changes target-profile reporting through `GpuExecutionDeviceInfo`, `GfxTargetProfile`, `extended.target_profile`, or `target_backend_*` counters.
@@ -96,8 +96,9 @@ If the change touches `GfxMslRuntimeBindingPlan` or MLIR-owned MSL source plans,
 If the change touches `src/runtime/gfx_mpsrt_model.*`, cover external tensor bindings, tensor binding plans, resource lifetime classification, and ABI adaptation in `tests/unit/gfx_stage_policy_test.cpp`, then cover Metal prepared resource binding in `tests/backends/metal/gpu_backend_test.mm` when the behavior reaches encode time.
 If the change touches `spirv_kernel_binding_adapter.hpp`, cover fixed-argument compact ABI attrs in `tests/unit/basic_ops_internal_test.cpp` and a Vulkan-facing plan path in `tests/unit/gfx_stage_policy_test.cpp` when route selection is affected.
 If the change touches `gfx_backend_custom_kernel_adapter.*`, `gfx_stage_kernel_binding.hpp`, or `gfx_stage_runtime_values.*`, cover both the shared manifest/binding contract and at least one backend-facing Apple MSL or SPIR-V route that consumes it.
-If the change touches OpenCL source artifacts, start with `tests/unit/gfx_opencl_source_artifacts_test.cpp`, then add runtime coverage only when the behavior depends on dynamic OpenCL loading, buffer binding, or command execution.
+If the change touches OpenCL source artifacts, start with `tests/unit/gfx_opencl_source_artifacts_test.cpp`, then add runtime coverage when the behavior depends on dynamic OpenCL loading, buffer binding, runtime output shapes, constant materialization, boolean storage, or command execution.
 If the change touches OpenCL device discovery or memory behavior, inspect `src/backends/opencl/runtime/opencl_api.*`, `opencl_buffer_manager.*`, and `opencl_source_stage.*`, and validate with an OpenCL-capable target in addition to unit tests.
+If the change touches dynamic shape execution, include `tests/unit/plugin_tests.cpp` or `tests/unit/runtime_subgraph_test.cpp` coverage for runtime shape assignment before relying on full model compare runs.
 If the change touches target-profile JSON or counters, extend `tests/unit/gfx_profiling_report_test.cpp` and then run a backend path that records a real `GpuExecutionDeviceInfo`.
 If the change touches MPSGraph-backed GEMM, TopK, or SDPA routes, include both compile/source-plan coverage in `tests/unit/gfx_stage_policy_test.cpp` or `tests/unit/basic_ops_internal_test.cpp` and encode/counter coverage in `tests/backends/metal/gpu_backend_test.mm`.
 If the change touches `ov_gfx_compare_runner`, shared-test tolerances, or `ov::hint::inference_precision`, keep `tests/gfx_accuracy_tolerance.hpp`, `tests/shared_tests_instances/test_utils.hpp`, and `tests/tools/ov_gfx_compare_runner.cpp` aligned.

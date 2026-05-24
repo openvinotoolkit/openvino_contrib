@@ -25,6 +25,9 @@ std::string generate_msl_for_reduce(const ReduceCodegenDesc& d, mlir::ModuleOp m
             default: break;
         }
     }
+    if (d.element_type == ov::element::boolean) {
+        scalar_t = "uchar";
+    }
     const bool is_int = (scalar_t == "int" || scalar_t == "long");
     std::ostringstream ss;
     ss << "#include <metal_stdlib>\n";
@@ -49,7 +52,11 @@ std::string generate_msl_for_reduce(const ReduceCodegenDesc& d, mlir::ModuleOp m
     ss << "    }\n";
     ss << "    uint reduce_size = 1;\n";
     ss << "    for (uint d = 0; d < RANK; ++d) reduce_size *= (AXIS_MASK[d] ? (uint)REDUCE_DIMS[d] : 1u);\n";
-    if (d.kind == ReduceKind::Prod) {
+    if (d.kind == ReduceKind::LogicalAnd) {
+        ss << "    scalar_t acc = static_cast<scalar_t>(1);\n";
+    } else if (d.kind == ReduceKind::LogicalOr) {
+        ss << "    scalar_t acc = static_cast<scalar_t>(0);\n";
+    } else if (d.kind == ReduceKind::Prod) {
         ss << "    scalar_t acc = static_cast<scalar_t>(1);\n";
     } else if (d.kind == ReduceKind::Max || d.kind == ReduceKind::Min) {
         ss << "    scalar_t acc = 0;\n";
@@ -70,7 +77,11 @@ std::string generate_msl_for_reduce(const ReduceCodegenDesc& d, mlir::ModuleOp m
     ss << "            in_idx += coord * IN_STRIDES[d];\n";
     ss << "        }\n";
     ss << "        scalar_t v = A[in_idx];\n";
-    if (d.kind == ReduceKind::Max) {
+    if (d.kind == ReduceKind::LogicalAnd) {
+        ss << "        acc = static_cast<scalar_t>(((acc != 0) && (v != 0)) ? 1 : 0);\n";
+    } else if (d.kind == ReduceKind::LogicalOr) {
+        ss << "        acc = static_cast<scalar_t>(((acc != 0) || (v != 0)) ? 1 : 0);\n";
+    } else if (d.kind == ReduceKind::Max) {
         ss << "        if (first) { acc = v; first = false; } else { acc = (v > acc ? v : acc); }\n";
     } else if (d.kind == ReduceKind::Min) {
         ss << "        if (first) { acc = v; first = false; } else { acc = (v < acc ? v : acc); }\n";

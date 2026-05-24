@@ -69,10 +69,13 @@ std::string generate_msl_for_unary(const UnaryCodegenDesc& d, mlir::ModuleOp mod
     } else {
         scalar = (d.element_type == ov::element::f16) ? "half" : "float";
     }
-    const bool is_int_scalar = (scalar != "float" && scalar != "half");
     const bool is_bool = (scalar == "bool");
+    if (is_bool) {
+        scalar = "uchar";
+    }
+    const bool is_int_scalar = (scalar != "float" && scalar != "half");
     const bool is_unsigned = (scalar == "uchar" || scalar == "ushort" || scalar == "uint" ||
-                              scalar == "ulong" || scalar == "bool");
+                              scalar == "ulong" || is_bool);
     ss << "#include <metal_stdlib>\n";
     ss << "using namespace metal;\n";
     ss << "kernel void unary_kernel(\n";
@@ -91,11 +94,7 @@ std::string generate_msl_for_unary(const UnaryCodegenDesc& d, mlir::ModuleOp mod
          d.activation == ActivationKind::RoundAway)) {
         ss << "    " << scalar << " x = in0[gid];\n";
         if (d.activation == ActivationKind::LogicalNot) {
-            if (is_bool) {
-                ss << "    out[gid] = !x;\n";
-            } else {
-                ss << "    out[gid] = (x == 0) ? (" << scalar << ")1 : (" << scalar << ")0;\n";
-            }
+            ss << "    out[gid] = (x == 0) ? (" << scalar << ")1 : (" << scalar << ")0;\n";
         } else if (d.activation == ActivationKind::Floor ||
                    d.activation == ActivationKind::Ceil ||
                    d.activation == ActivationKind::RoundEven ||

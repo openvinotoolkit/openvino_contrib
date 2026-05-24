@@ -4,11 +4,14 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <cctype>
+#include <cstdint>
 #include <string>
 #include <vector>
 
+#include "openvino/core/type/float16.hpp"
 #include "openvino/openvino.hpp"
 #include "plugin/gfx_backend_config.hpp"
 
@@ -40,6 +43,56 @@ void register_gfx_plugin(ov::Core& core) {
 #else
     (void)core;
 #endif
+}
+
+ov::Tensor make_f16_tensor(const ov::Shape& shape, const std::vector<float>& values) {
+    ov::Tensor tensor(ov::element::f16, shape);
+    EXPECT_EQ(tensor.get_size(), values.size());
+    auto* data = tensor.data<ov::float16>();
+    for (size_t i = 0; i < values.size(); ++i) {
+        data[i] = ov::float16(values[i]);
+    }
+    return tensor;
+}
+
+ov::Tensor make_i64_tensor(const ov::Shape& shape, const std::vector<int64_t>& values) {
+    ov::Tensor tensor(ov::element::i64, shape);
+    EXPECT_EQ(tensor.get_size(), values.size());
+    auto* data = tensor.data<int64_t>();
+    std::copy(values.begin(), values.end(), data);
+    return tensor;
+}
+
+ov::Tensor make_bool_tensor(const ov::Shape& shape, const std::vector<uint8_t>& values) {
+    ov::Tensor tensor(ov::element::boolean, shape);
+    EXPECT_EQ(tensor.get_size(), values.size());
+    auto* data = tensor.data<uint8_t>();
+    std::copy(values.begin(), values.end(), data);
+    return tensor;
+}
+
+void expect_f16_tensor(const ov::Tensor& tensor,
+                       const ov::Shape& shape,
+                       const std::vector<float>& expected) {
+    ASSERT_EQ(tensor.get_element_type(), ov::element::f16);
+    ASSERT_EQ(tensor.get_shape(), shape);
+    ASSERT_EQ(tensor.get_size(), expected.size());
+    const auto* data = tensor.data<const ov::float16>();
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_EQ(static_cast<float>(data[i]), expected[i]) << "at index " << i;
+    }
+}
+
+void expect_i64_tensor(const ov::Tensor& tensor,
+                       const ov::Shape& shape,
+                       const std::vector<int64_t>& expected) {
+    ASSERT_EQ(tensor.get_element_type(), ov::element::i64);
+    ASSERT_EQ(tensor.get_shape(), shape);
+    ASSERT_EQ(tensor.get_size(), expected.size());
+    const auto* data = tensor.data<const int64_t>();
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_EQ(data[i], expected[i]) << "at index " << i;
+    }
 }
 
 }  // namespace
@@ -259,12 +312,13 @@ TEST(GfxDynamicShapeSupport, QueryModelWithDynamicShapeDataMovementOps) {
 
     auto data0 = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::PartialShape{1, -1, 4});
     auto data1 = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::PartialShape{1, -1, 4});
+    auto data2 = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::PartialShape{1, -1, 4});
     auto cond = std::make_shared<ov::op::v0::Parameter>(ov::element::boolean, ov::PartialShape{1, -1, 4});
     auto target_shape = std::make_shared<ov::op::v0::Parameter>(ov::element::i64, ov::PartialShape{3});
     auto slice_end = std::make_shared<ov::op::v0::Parameter>(ov::element::i64, ov::PartialShape{3});
     auto range_stop = std::make_shared<ov::op::v0::Parameter>(ov::element::i64, ov::PartialShape{});
 
-    auto concat = std::make_shared<ov::op::v0::Concat>(ov::OutputVector{data0, data1}, 1);
+    auto concat = std::make_shared<ov::op::v0::Concat>(ov::OutputVector{data0, data1, data2}, 1);
     concat->set_friendly_name("dyn_concat");
     auto broadcast = std::make_shared<ov::op::v3::Broadcast>(data0, target_shape, ov::op::BroadcastType::BIDIRECTIONAL);
     broadcast->set_friendly_name("dyn_broadcast");
@@ -292,7 +346,7 @@ TEST(GfxDynamicShapeSupport, QueryModelWithDynamicShapeDataMovementOps) {
                          std::make_shared<ov::op::v0::Result>(select),
                          std::make_shared<ov::op::v0::Result>(slice),
                          std::make_shared<ov::op::v0::Result>(range)},
-        ov::ParameterVector{data0, data1, cond, target_shape, slice_end, range_stop},
+        ov::ParameterVector{data0, data1, data2, cond, target_shape, slice_end, range_stop},
         "dynamic_data_movement");
 
     EXPECT_NO_THROW({
@@ -303,4 +357,76 @@ TEST(GfxDynamicShapeSupport, QueryModelWithDynamicShapeDataMovementOps) {
         EXPECT_TRUE(supported.count("dyn_slice") != 0);
         EXPECT_TRUE(supported.count("dyn_range") != 0);
     });
+}
+
+TEST(GfxDynamicShapeSupport, CompileAndInferDynamicShapeDataMovementOps) {
+    ov::Core core;
+    register_gfx_plugin(core);
+
+    auto data0 = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::PartialShape{1, -1, 4});
+    auto data1 = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::PartialShape{1, -1, 4});
+    auto data2 = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::PartialShape{1, -1, 4});
+    auto cond = std::make_shared<ov::op::v0::Parameter>(ov::element::boolean, ov::PartialShape{1, -1, 4});
+    auto target_shape = std::make_shared<ov::op::v0::Parameter>(ov::element::i64, ov::PartialShape{3});
+    auto slice_end = std::make_shared<ov::op::v0::Parameter>(ov::element::i64, ov::PartialShape{3});
+    auto range_stop = std::make_shared<ov::op::v0::Parameter>(ov::element::i64, ov::PartialShape{});
+
+    auto concat = std::make_shared<ov::op::v0::Concat>(ov::OutputVector{data0, data1, data2}, 1);
+    concat->set_friendly_name("dyn_concat");
+    auto broadcast = std::make_shared<ov::op::v3::Broadcast>(data0, target_shape, ov::op::BroadcastType::BIDIRECTIONAL);
+    broadcast->set_friendly_name("dyn_broadcast");
+    auto select = std::make_shared<ov::op::v1::Select>(cond, data0, data1);
+    select->set_friendly_name("dyn_select");
+
+    auto begin = ov::op::v0::Constant::create(ov::element::i64, {3}, {0, 0, 0});
+    auto strides = ov::op::v0::Constant::create(ov::element::i64, {3}, {1, 1, 1});
+    auto slice = std::make_shared<ov::op::v1::StridedSlice>(data0,
+                                                            begin,
+                                                            slice_end,
+                                                            strides,
+                                                            std::vector<int64_t>{0, 0, 0},
+                                                            std::vector<int64_t>{0, 0, 0});
+    slice->set_friendly_name("dyn_slice");
+
+    auto range_start = ov::op::v0::Constant::create(ov::element::i64, {}, {0});
+    auto range_step = ov::op::v0::Constant::create(ov::element::i64, {}, {1});
+    auto range = std::make_shared<ov::op::v4::Range>(range_start, range_stop, range_step, ov::element::i64);
+    range->set_friendly_name("dyn_range");
+
+    auto model = std::make_shared<ov::Model>(
+        ov::ResultVector{std::make_shared<ov::op::v0::Result>(concat),
+                         std::make_shared<ov::op::v0::Result>(broadcast),
+                         std::make_shared<ov::op::v0::Result>(select),
+                         std::make_shared<ov::op::v0::Result>(slice),
+                         std::make_shared<ov::op::v0::Result>(range)},
+        ov::ParameterVector{data0, data1, data2, cond, target_shape, slice_end, range_stop},
+        "dynamic_data_movement_infer");
+
+    auto compiled = core.compile_model(model, "GFX");
+    auto request = compiled.create_infer_request();
+    request.set_input_tensor(0, make_f16_tensor({1, 2, 4}, {0, 1, 2, 3, 4, 5, 6, 7}));
+    request.set_input_tensor(1, make_f16_tensor({1, 2, 4}, {100, 101, 102, 103, 104, 105, 106, 107}));
+    request.set_input_tensor(2, make_f16_tensor({1, 2, 4}, {200, 201, 202, 203, 204, 205, 206, 207}));
+    request.set_input_tensor(3, make_bool_tensor({1, 2, 4}, {1, 0, 1, 0, 1, 0, 1, 0}));
+    request.set_input_tensor(4, make_i64_tensor({3}, {1, 2, 4}));
+    request.set_input_tensor(5, make_i64_tensor({3}, {1, 1, 4}));
+    request.set_input_tensor(6, make_i64_tensor({}, {5}));
+
+    request.infer();
+
+    expect_f16_tensor(request.get_output_tensor(0),
+                      {1, 6, 4},
+                      {0, 1, 2, 3, 4, 5, 6, 7,
+                       100, 101, 102, 103, 104, 105, 106, 107,
+                       200, 201, 202, 203, 204, 205, 206, 207});
+    expect_f16_tensor(request.get_output_tensor(1),
+                      {1, 2, 4},
+                      {0, 1, 2, 3, 4, 5, 6, 7});
+    expect_f16_tensor(request.get_output_tensor(2),
+                      {1, 2, 4},
+                      {0, 101, 2, 103, 4, 105, 6, 107});
+    expect_f16_tensor(request.get_output_tensor(3),
+                      {1, 1, 4},
+                      {0, 1, 2, 3});
+    expect_i64_tensor(request.get_output_tensor(4), {5}, {0, 1, 2, 3, 4});
 }

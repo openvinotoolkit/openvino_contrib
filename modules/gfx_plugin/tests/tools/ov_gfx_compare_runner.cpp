@@ -147,6 +147,20 @@ void fill_tensor_data(ov::Tensor &tensor, uint64_t input_seed) {
   }
 }
 
+void fill_bool_tensor_data(ov::Tensor &tensor, uint64_t input_seed) {
+  auto *data = tensor.data<uint8_t>();
+  const size_t count = tensor.get_size();
+  for (size_t i = 0; i < count; ++i) {
+    if (input_seed == 0) {
+      data[i] = static_cast<uint8_t>((i % 3) != 1 ? 1 : 0);
+      continue;
+    }
+    const uint64_t mixed =
+        mix_input_value(input_seed ^ static_cast<uint64_t>(i));
+    data[i] = static_cast<uint8_t>(mixed & 1u);
+  }
+}
+
 void fill_tensor(ov::Tensor &tensor, uint64_t input_seed = 0) {
   switch (tensor.get_element_type()) {
   case ov::element::f32:
@@ -163,6 +177,9 @@ void fill_tensor(ov::Tensor &tensor, uint64_t input_seed = 0) {
     return;
   case ov::element::u8:
     fill_tensor_data<uint8_t>(tensor, input_seed);
+    return;
+  case ov::element::boolean:
+    fill_bool_tensor_data(tensor, input_seed);
     return;
   default:
     throw std::runtime_error("unsupported input type: " +

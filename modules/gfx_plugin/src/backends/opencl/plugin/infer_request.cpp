@@ -129,6 +129,29 @@ void InferRequest::infer_opencl_impl(
   const auto &node_map = cm->node_to_stage();
   const auto &param_map = cm->parameter_index();
   void *stage_profiler = profiler ? profiler->native_handle() : nullptr;
+
+  std::vector<GpuTensor> input_tensors(get_inputs().size());
+  ensure_input_handles(get_inputs().size(), /*with_staging=*/false,
+                       "GFX OpenCL");
+  auto &input_handles = opencl_state->input_handles;
+  const auto bind_inputs_start = profiling
+                                     ? std::chrono::steady_clock::now()
+                                     : std::chrono::steady_clock::time_point{};
+  bind_inputs_for_infer(
+      GpuBackend::OpenCL,
+      [&](size_t idx, const GpuTensor &dev) { input_tensors[idx] = dev; },
+      [&](size_t idx, const ov::Tensor &host) {
+        input_tensors[idx] = bind_host_input_opencl(
+            host, &pool, &input_handles[idx], profiler, "GFX OpenCL");
+      },
+      "GFX OpenCL");
+  if (profiling) {
+    profiler->record_segment(
+        "upload", "bind_inputs_for_infer",
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - bind_inputs_start));
+  }
+
   const auto pipeline_prepare_start =
       profiling ? std::chrono::steady_clock::now()
                 : std::chrono::steady_clock::time_point{};
@@ -138,7 +161,14 @@ void InferRequest::infer_opencl_impl(
       node_map, param_map, state.bound_remote_outputs,
       state.bound_remote_inputs, GpuBackend::OpenCL, pool,
       opencl_state->stage_output_handles, &opencl_state->stage_output_workspace,
-      [](std::vector<InferStage> &) {},
+      [&](std::vector<InferStage> &prepared_pipeline) {
+        prepare_reusable_execution_plan(opencl_state->reusable_execution_plan,
+                                        prepared_pipeline, node_map,
+                                        param_map);
+        assign_runtime_stage_output_shapes(
+            prepared_pipeline, opencl_state->reusable_execution_plan,
+            input_tensors, GpuBackend::OpenCL, "GFX OpenCL");
+      },
       [&](InferStage &stage, size_t oi, GpuTensor &out_ref, GpuBufferDesc &desc,
           const char *error_prefix) {
         const bool is_model_output =
@@ -169,28 +199,6 @@ void InferRequest::infer_opencl_impl(
         "compile", "prepare_reusable_pipeline",
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - pipeline_prepare_start));
-  }
-
-  std::vector<GpuTensor> input_tensors(get_inputs().size());
-  ensure_input_handles(get_inputs().size(), /*with_staging=*/false,
-                       "GFX OpenCL");
-  auto &input_handles = opencl_state->input_handles;
-  const auto bind_inputs_start = profiling
-                                     ? std::chrono::steady_clock::now()
-                                     : std::chrono::steady_clock::time_point{};
-  bind_inputs_for_infer(
-      GpuBackend::OpenCL,
-      [&](size_t idx, const GpuTensor &dev) { input_tensors[idx] = dev; },
-      [&](size_t idx, const ov::Tensor &host) {
-        input_tensors[idx] = bind_host_input_opencl(
-            host, &pool, &input_handles[idx], profiler, "GFX OpenCL");
-      },
-      "GFX OpenCL");
-  if (profiling) {
-    profiler->record_segment(
-        "upload", "bind_inputs_for_infer",
-        std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::steady_clock::now() - bind_inputs_start));
   }
 
   auto input_lookup = [&](size_t input_idx) -> GpuTensor * {

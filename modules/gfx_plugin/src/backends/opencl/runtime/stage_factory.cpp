@@ -23,8 +23,8 @@ std::unique_ptr<GpuStage> create_opencl_stage(const std::shared_ptr<const ov::No
     }
     OPENVINO_THROW("GFX OpenCL: source-kernel stage materialization is not wired for op ",
                    node ? node->get_type_name() : "<null>",
-                   ". Baseline OpenCL source artifacts currently cover f32 linear copy/layout and "
-                   "transpose/slice/strided-slice/gather/gather-elements/gather-nd/shapeof/concat/split/variadic-split plus unary/binary/compare/select elementwise seeds, including scalar binary cases; "
+                   ". Baseline OpenCL source artifacts currently cover f32 linear copy/layout, f32/i32/i64 convert casts, and "
+                   "static f32 matmul/softmax plus transpose/slice/strided-slice/range/tile/gather/gather-elements/gather-nd/scatter-update/scatter-elements/scatter-nd/shapeof/concat/split/variadic-split plus unary/binary/compare/select elementwise seeds, including scalar and rank-1..4 broadcast binary/compare/select cases; "
                    "add the next operation through the common manifest/artifact/stage path before enabling it.");
 }
 

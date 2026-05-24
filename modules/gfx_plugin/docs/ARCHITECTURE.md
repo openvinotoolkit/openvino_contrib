@@ -153,7 +153,7 @@ Recent MLIR-specific changes reflected in the current code:
 - convolution parallel lowering now has a separate interior-tile fast path that skips lane guards for full tiles and keeps guarded edge handling only where needed
 - interior-tile eligibility is now factored through separate height and width window checks before the combined 2D interior fast path is selected
 - manual Vulkan MLIR kernels can now emit `gpu.func` entry points while materializing buffer ABI through the common `GfxKernelStageManifest` custom-kernel adapter rather than local `gfx.fixed_arg_count` shortcuts; this covers the executor's unary/binary, concat/split, slice, interpolate, transpose, convert, gather, reduce, RMS, MatMul, broadcast, and select routes; Conv2D and GroupConv no longer have separate manual Vulkan builders or executor-level direct/chunked routes and use the shared canonical MLIR lowering path instead
-- OpenCL source artifacts use the same manifest direction for baseline f32 data movement and elementwise-style kernels, but execute through source text and a dynamic OpenCL program cache rather than SPIR-V or Metal MSL
+- OpenCL source artifacts use the same manifest direction for baseline f32 data movement, dynamic f16 data movement, f32/i32/i64 convert casts, MatMul/Softmax, Range/Tile, gather/scatter, shape, concat/split, elementwise, logical, and logical-reduction kernels, but execute through source text and a dynamic OpenCL program cache rather than SPIR-V or Metal MSL
 - SPIR-V compact-memref preservation is manifest-native: `gfx.fixed_arg_count` is no longer a compile-path source for compact ABI reconstruction or entry metadata annotation
 - kernel-signature and metadata helpers now resolve `gpu.func` entry points before falling back to plain `func.func`, so Vulkan launch metadata stays aligned with GPU-entry modules
 - TopK now uses rank-aware MLIR indexing for the shared custom-kernel path. The Vulkan lowering does not depend on collapse/expand-shape legalization for TopK anymore, and `i64` index outputs are represented at the shader boundary as two `i32` lanes in the public `i64` output buffer to avoid relying on Vulkan shader `Int64` support on Android/RPi-class devices.
@@ -356,7 +356,8 @@ The OpenCL backend is selected on non-Apple builds when `GFX_ENABLE_OPENCL` is o
 The current OpenCL route is intentionally explicit:
 - it executes source artifacts described by `src/kernel_ir/gfx_opencl_source_artifacts.*`
 - each artifact carries entry point, source id, role ABI, scalar ABI, element-count source, and local-size metadata
-- baseline coverage focuses on f32 linear copy/layout, transpose, slice/strided-slice, gather families, shape/list movement, concat/split, unary elementwise, binary elementwise, compare, and select families
+- baseline coverage focuses on f32 linear copy/layout, dynamic f16 data movement, typed casts, MatMul/Softmax, Range/Tile, gather/scatter families, shape/list movement, concat/split, unary/binary elementwise, compare, Select, boolean logical, and boolean logical-reduction families
+- constant tensor inputs may be materialized by the OpenCL source stage and dynamic runtime shapes flow through scalar ABI metadata instead of backend-local shape parsing
 - unsupported ops fail during compilation or stage creation instead of falling back to CPU or silently switching to another backend
 - remote-context import is not a polished public portability layer for OpenCL yet
 

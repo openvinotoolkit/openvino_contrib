@@ -74,6 +74,8 @@
 #include "openvino/op/multiply.hpp"
 #include "openvino/op/reduce_l1.hpp"
 #include "openvino/op/reduce_l2.hpp"
+#include "openvino/op/reduce_logical_and.hpp"
+#include "openvino/op/reduce_logical_or.hpp"
 #include "openvino/op/reduce_max.hpp"
 #include "openvino/op/reduce_mean.hpp"
 #include "openvino/op/reduce_min.hpp"
@@ -626,6 +628,18 @@ get_runtime_reduce_info(const std::shared_ptr<const ov::Node> &node) {
     return RuntimeReduceInfo{reduce->get_reduction_axes(),
                              reduce->get_keep_dims()};
   }
+  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceLogicalAnd>(node)) {
+    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
+                    "GFX MLIR: ReduceLogicalAnd axes must be constant");
+    return RuntimeReduceInfo{reduce->get_reduction_axes(),
+                             reduce->get_keep_dims()};
+  }
+  if (auto reduce = ov::as_type_ptr<const ov::op::v1::ReduceLogicalOr>(node)) {
+    OPENVINO_ASSERT(reduce->reduction_axes_constant(),
+                    "GFX MLIR: ReduceLogicalOr axes must be constant");
+    return RuntimeReduceInfo{reduce->get_reduction_axes(),
+                             reduce->get_keep_dims()};
+  }
   return std::nullopt;
 }
 
@@ -792,6 +806,23 @@ bool try_alias_gqa_broadcast_view(const std::shared_ptr<const ov::Node> &node,
       ov::Shape{in_shape[0], in_shape[1], in_shape[3], in_shape[4]};
   out->gqa_kv_heads = in_shape[1];
   return true;
+}
+
+bool concat_has_runtime_shape(const std::shared_ptr<const ov::Node> &node) {
+  auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(node);
+  if (!concat) {
+    return false;
+  }
+  if (!concat->get_output_partial_shape(0).is_static()) {
+    return true;
+  }
+  for (size_t input_idx = 0; input_idx < concat->get_input_size();
+       ++input_idx) {
+    if (!concat->get_input_partial_shape(input_idx).is_static()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 } // namespace
@@ -1301,6 +1332,10 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
     compressed_matmul_info = detect_compressed_matmul_weights(m_node);
   }
   prepare_constant_input_buffers(compressed_matmul_info.has_value());
+  if (!is_vulkan_backend() && m_type == "Concat" &&
+      concat_has_runtime_shape(m_node) && !has_absorbed_input_transpose()) {
+    return;
+  }
   if (compressed_matmul_info) {
     OPENVINO_ASSERT(m_buffer_manager,
                     "GFX MLIR: const buffer manager is required for compressed "
@@ -1798,7 +1833,8 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
            m_type == "Elu" || m_type == "Gelu" || m_type == "Swish" ||
            m_type == "HSwish" || m_type == "HSigmoid" || m_type == "SoftPlus" ||
            m_type == "Mish" || m_type == "SoftSign" || m_type == "Abs" ||
-           m_type == "Sign" || m_type == "Clamp" || m_type == "Exp" ||
+           m_type == "Sign" || m_type == "Clamp" || m_type == "LogicalNot" ||
+           m_type == "Exp" ||
            m_type == "Log" || m_type == "Sqrt" || m_type == "Floor" ||
            m_type == "Ceiling" || m_type == "Negative" || m_type == "Sin" ||
            m_type == "Cos" || m_type == "Tan" || m_type == "Erf" ||
@@ -2973,7 +3009,8 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
            m_type == "Elu" || m_type == "Gelu" || m_type == "Swish" ||
            m_type == "HSwish" || m_type == "HSigmoid" || m_type == "SoftPlus" ||
            m_type == "Mish" || m_type == "SoftSign" || m_type == "Abs" ||
-           m_type == "Sign" || m_type == "Clamp" || m_type == "Exp" ||
+           m_type == "Sign" || m_type == "Clamp" || m_type == "LogicalNot" ||
+           m_type == "Exp" ||
            m_type == "Log" || m_type == "Sqrt" || m_type == "Floor" ||
            m_type == "Ceiling" || m_type == "Negative" || m_type == "Sin" ||
            m_type == "Cos" || m_type == "Tan" || m_type == "Erf" ||
@@ -3139,8 +3176,34 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
         *m_buffer_manager, m_name, in_shape, out_shape);
     const auto broadcast_scalars = broadcast_payload.scalar_args;
     m_kernel_extra_inputs = std::move(broadcast_payload.extra_inputs);
-    set_backend_custom_kernel_binding_override("Broadcast", "broadcast_kernel",
-                                               broadcast_scalars);
+    const bool has_target_shape_input =
+        m_node && m_node->get_input_size() > 1 &&
+        !ov::as_type_ptr<const ov::op::v0::Constant>(
+            m_node->get_input_node_shared_ptr(1));
+    if (!is_vulkan_backend() && has_target_shape_input) {
+      auto binding_plan = make_backend_custom_kernel_roles_binding_plan(
+          "Broadcast", "broadcast_kernel",
+          {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorInput,
+           GfxKernelBufferRole::TensorOutput,
+           GfxKernelBufferRole::ScalarParam,
+           GfxKernelBufferRole::ScalarParam,
+           GfxKernelBufferRole::ScalarParam,
+           GfxKernelBufferRole::RuntimeParams,
+           GfxKernelBufferRole::RuntimeParams,
+           GfxKernelBufferRole::RuntimeParams,
+           GfxKernelBufferRole::RuntimeParams});
+      OPENVINO_ASSERT(binding_plan.valid &&
+                          binding_plan.scalar_arg_count ==
+                              broadcast_scalars.size(),
+                      "GFX MLIR: Broadcast dynamic target-shape binding is "
+                      "invalid for stage ",
+                      m_name);
+      binding_plan.runtime_binding.scalar_args = broadcast_scalars;
+      set_kernel_binding_override(std::move(binding_plan.runtime_binding));
+    } else {
+      set_backend_custom_kernel_binding_override("Broadcast", "broadcast_kernel",
+                                                 broadcast_scalars);
+    }
   }
 
   if (m_type == "Convert") {
@@ -3307,8 +3370,10 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
     return;
   }
 
-  if (m_type == "Concat" && !has_absorbed_input_transpose() &&
-      !prefer_specialized_concat_execution()) {
+  const bool use_concat_buffer_copy =
+      m_type == "Concat" && !has_absorbed_input_transpose() &&
+      (!prefer_specialized_concat_execution() || concat_has_runtime_shape(m_node));
+  if (use_concat_buffer_copy) {
     auto concat = ov::as_type_ptr<const ov::op::v0::Concat>(m_node);
     OPENVINO_ASSERT(concat, "GFX MLIR: expected v0::Concat for stage ", m_name);
     auto *output = outputs.front();

@@ -19,12 +19,14 @@
 #include "mlir/msl_codegen_apple_msl_dispatch.hpp"
 #include "mlir/msl_codegen_apple_msl_ops.hpp"
 #include "mlir/msl_codegen_apple_msl_split.hpp"
+#include "openvino/op/batch_norm.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/concat.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/convolution.hpp"
 #include "openvino/op/group_conv.hpp"
 #include "openvino/op/interpolate.hpp"
+#include "openvino/op/log_softmax.hpp"
 #include "openvino/op/matmul.hpp"
 #include "openvino/op/max_pool.hpp"
 #include "openvino/op/multiply.hpp"
@@ -223,6 +225,27 @@ std::shared_ptr<const ov::Node> make_last_dim_softmax_node() {
   auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f16,
                                                        ov::Shape{2, 8, 16});
   return std::make_shared<ov::op::v1::Softmax>(input, 2);
+}
+
+std::shared_ptr<const ov::Node> make_last_dim_log_softmax_node() {
+  auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f16,
+                                                       ov::Shape{2, 8, 16});
+  return std::make_shared<ov::op::v5::LogSoftmax>(input, 2);
+}
+
+std::shared_ptr<const ov::Node> make_batchnorm_node() {
+  auto input = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f16, ov::Shape{1, 4, 16, 16});
+  auto gamma = ov::op::v0::Constant::create(ov::element::f16, ov::Shape{4},
+                                            std::vector<float>(4, 1.f));
+  auto beta = ov::op::v0::Constant::create(ov::element::f16, ov::Shape{4},
+                                           std::vector<float>(4, 0.f));
+  auto mean = ov::op::v0::Constant::create(ov::element::f16, ov::Shape{4},
+                                           std::vector<float>(4, 0.f));
+  auto variance = ov::op::v0::Constant::create(ov::element::f16, ov::Shape{4},
+                                               std::vector<float>(4, 1.f));
+  return std::make_shared<ov::op::v5::BatchNormInference>(
+      input, gamma, beta, mean, variance, 1e-5);
 }
 
 std::shared_ptr<const ov::Node> make_last_dim_topk_node() {
@@ -955,6 +978,22 @@ TEST(GfxStagePolicyTest, MetalIndexedMaxPoolDoesNotUseMpsPool2DPlacement) {
 }
 
 TEST(GfxStagePolicyTest,
+     MetalStandaloneBatchNormDoesNotAdvertiseMissingMpsPrimitive) {
+  const auto batchnorm = make_batchnorm_node();
+  const auto plan = select_stage_optimization_plan(
+      nullptr, GpuBackend::Metal, "BatchNormInference", batchnorm,
+      ov::element::f16,
+      /*has_bias=*/false,
+      /*has_activation=*/false,
+      /*has_batchnorm=*/false, {});
+
+  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMsl);
+  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Buffer);
+  EXPECT_FALSE(plan.placement.uses_vendor_primitive);
+  EXPECT_TRUE(plan.placement.uses_custom_kernel);
+}
+
+TEST(GfxStagePolicyTest,
      AppleMpsPoolSoftmaxTopKDescriptorsAcceptSupportedVendorCases) {
   GfxMpsrtPool2DAbiDesc pool_desc{};
   ASSERT_TRUE(
@@ -968,6 +1007,9 @@ TEST(GfxStagePolicyTest,
                                               softmax_desc));
   EXPECT_EQ(softmax_desc.axis, 2u);
   EXPECT_EQ(softmax_desc.log_softmax, 0u);
+  EXPECT_FALSE(
+      gfx_apple_make_mps_softmax_desc(make_last_dim_log_softmax_node(),
+                                      softmax_desc));
 
   GfxMpsrtTopKAbiDesc topk_desc{};
   ASSERT_TRUE(
@@ -1109,6 +1151,21 @@ TEST(GfxStagePolicyTest, MetalF32SoftmaxWithoutRankingKeepsMps) {
   EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Matrix);
   EXPECT_TRUE(plan.placement.uses_vendor_primitive);
   EXPECT_FALSE(plan.placement.uses_custom_kernel);
+}
+
+TEST(GfxStagePolicyTest,
+     MetalLogSoftmaxDoesNotAdvertiseMissingMpsSoftmaxPrimitive) {
+  const auto log_softmax = make_last_dim_log_softmax_node();
+  const auto plan = select_stage_optimization_plan(
+      nullptr, GpuBackend::Metal, "LogSoftmax", log_softmax, ov::element::f16,
+      /*has_bias=*/false,
+      /*has_activation=*/false,
+      /*has_batchnorm=*/false, {});
+
+  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::AppleMsl);
+  EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Buffer);
+  EXPECT_FALSE(plan.placement.uses_vendor_primitive);
+  EXPECT_TRUE(plan.placement.uses_custom_kernel);
 }
 
 TEST(GfxStagePolicyTest, MetalF32AttentionValueMatMulWithoutRankingKeepsMps) {

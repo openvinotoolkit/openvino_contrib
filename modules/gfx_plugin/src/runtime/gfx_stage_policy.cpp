@@ -390,7 +390,7 @@ bool is_mps_image_vendor_element_type(
 bool is_mps_image_stage_type(std::string_view stage_type) {
   return stage_type == "Convolution" || stage_type == "GroupConvolution" ||
          stage_type == "MaxPool" || stage_type == "AvgPool" ||
-         stage_type == "BatchNormInference" || stage_type == "Interpolate";
+         stage_type == "Interpolate";
 }
 
 bool stage_has_real_output(const std::shared_ptr<const ov::Node> &node) {
@@ -451,8 +451,7 @@ bool is_mps_image_candidate(std::string_view stage_type,
                                 stage_type);
     return accepted;
   }
-  if (stage_type == "MaxPool" || stage_type == "AvgPool" ||
-      stage_type == "BatchNormInference") {
+  if (stage_type == "MaxPool" || stage_type == "AvgPool") {
     if (!is_mps_image_vendor_element_type(declared_type, traits)) {
       record_stage_policy_counter("mps_image_reject_element_type", stage_type);
       return false;
@@ -489,8 +488,7 @@ bool is_mps_matrix_candidate(std::string_view stage_type,
   if (stage_type == "MatMul") {
     return true;
   }
-  if ((stage_type == "Softmax" || stage_type == "LogSoftmax") &&
-      is_last_dim_softmax(node)) {
+  if (stage_type == "Softmax" && is_last_dim_softmax(node)) {
     return true;
   }
   if (stage_type == "TopK" && is_last_dim_topk(node)) {
