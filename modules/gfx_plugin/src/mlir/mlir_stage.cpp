@@ -88,6 +88,7 @@
 #include "openvino/op/softmax.hpp"
 #include "openvino/op/split.hpp"
 #include "openvino/op/transpose.hpp"
+#include "openvino/op/util/gather_nd_base.hpp"
 #include "openvino/op/util/topk_base.hpp"
 #include "openvino/op/variadic_split.hpp"
 #include "transformations/rt_info/disable_fp16_compression.hpp"
@@ -1756,17 +1757,27 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
     }
   }
   if (m_type == "Tile" && m_node && module) {
-    OPENVINO_ASSERT(
-        m_node->get_input_partial_shape(0).is_static() &&
-            m_node->get_output_partial_shape(0).is_static(),
-        "GFX MLIR: Tile requires static input/output shapes for stage ",
-        m_name);
-    const ov::Shape in_shape = m_node->get_input_shape(0);
-    const ov::Shape out_shape = m_node->get_output_shape(0);
-    auto tile_payload = make_tile_runtime_param_payload(
-        *m_buffer_manager, m_name, in_shape, out_shape);
-    const auto tile_scalars = tile_payload.scalar_args;
-    m_kernel_extra_inputs = std::move(tile_payload.extra_inputs);
+    const auto in_pshape = m_node->get_input_partial_shape(0);
+    const auto out_pshape = m_node->get_output_partial_shape(0);
+    OPENVINO_ASSERT(in_pshape.rank().is_static() && out_pshape.rank().is_static(),
+                    "GFX MLIR: Tile requires static input/output ranks for stage ",
+                    m_name);
+    OPENVINO_ASSERT(in_pshape.rank().get_length() == out_pshape.rank().get_length(),
+                    "GFX MLIR: Tile input/output rank mismatch for stage ",
+                    m_name);
+    std::vector<int32_t> tile_scalars = {
+        out_pshape.is_static()
+            ? static_cast<int32_t>(ov::shape_size(out_pshape.to_shape()))
+            : 0,
+        static_cast<int32_t>(std::max<int64_t>(out_pshape.rank().get_length(), 1))};
+    if (in_pshape.is_static() && out_pshape.is_static()) {
+      auto tile_payload = make_tile_runtime_param_payload(
+          *m_buffer_manager, m_name, in_pshape.to_shape(), out_pshape.to_shape());
+      tile_scalars = tile_payload.scalar_args;
+      m_kernel_extra_inputs = std::move(tile_payload.extra_inputs);
+    } else {
+      m_kernel_extra_inputs.clear();
+    }
     auto tile_plan = annotate_required_backend_custom_kernel_binding(
         module, is_vulkan_backend(), "Tile", "tile_kernel", tile_scalars,
         m_name);
@@ -1796,6 +1807,29 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
         gather_elements_scalars, m_name);
     if (is_vulkan_backend()) {
       apply_kernel_runtime_binding_state(gather_elements_plan.runtime_binding);
+    }
+  }
+  if (!is_vulkan_backend()) {
+    if (auto gather_nd = ov::as_type_ptr<const ov::op::util::GatherNDBase>(m_node)) {
+      OPENVINO_ASSERT(gather_nd->get_batch_dims() == 0,
+                      "GFX MLIR: GatherND batch_dims not supported for stage ",
+                      m_name);
+      OPENVINO_ASSERT(
+          m_node->get_input_partial_shape(0).is_static() &&
+              m_node->get_input_partial_shape(1).is_static() &&
+              m_node->get_output_partial_shape(0).is_static(),
+          "GFX MLIR: GatherND requires static shapes for stage ", m_name);
+      auto gather_nd_payload = make_gather_nd_runtime_param_payload(
+          *m_buffer_manager,
+          m_name,
+          m_node->get_input_shape(0),
+          m_node->get_input_shape(1),
+          m_node->get_output_shape(0));
+      m_kernel_extra_inputs = std::move(gather_nd_payload.extra_inputs);
+      auto gather_nd_plan = annotate_required_backend_custom_kernel_binding(
+          module, is_vulkan_backend(), "GatherND", "gathernd_kernel", {},
+          m_name);
+      apply_kernel_runtime_binding_state(gather_nd_plan.runtime_binding);
     }
   }
   if (!is_vulkan_backend()) {
@@ -2771,6 +2805,14 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
           (void)annotate_required_backend_custom_kernel_binding(
               module, /*is_vulkan_backend=*/false, "Slice", "slice_kernel", {},
               m_name);
+        } else if (!is_vulkan_backend()) {
+          auto slice_binding_plan =
+              annotate_required_backend_custom_kernel_direct_io_binding(
+                  module, /*is_vulkan_backend=*/false, "Slice",
+                  "slice_kernel", /*tensor_input_count=*/1,
+                  outputs.size(), m_name);
+          apply_source_plan_kernel_runtime_binding_state(
+              slice_binding_plan.runtime_binding);
         } else if (is_vulkan_backend()) {
           set_spirv_kernel_binding_override(
               module, make_stage_direct_kernel_runtime_binding(
@@ -3234,6 +3276,15 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                                                range_scalars);
   }
 
+  if (m_type == "Tile" && m_node && !outputs.empty()) {
+    const auto tile_plan =
+        plan_tile_runtime_values(runtime_inputs, outputs, m_name);
+    if (tile_plan.valid()) {
+      assign_runtime_value_outputs(tile_plan.values, outputs);
+      m_output_shape = tile_plan.output_shape;
+    }
+  }
+
   if (m_type == "RMS" && m_node && !outputs.empty()) {
     const auto rms_values =
         plan_shape_preserving_runtime_values(runtime_inputs, *m_node, m_name);
@@ -3521,7 +3572,8 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
 
   if (m_type == "Tile" && !outputs.empty() && outputs.front() &&
       !outputs.front()->shape.empty()) {
-    const auto tile_plan = plan_tile_runtime_values(runtime_inputs, outputs);
+    const auto tile_plan =
+        plan_tile_runtime_values(runtime_inputs, outputs, m_name);
     if (tile_plan.valid()) {
       std::vector<int32_t> tile_scalars = tile_plan.scalar_args;
       if (!tile_plan.input_shape.empty()) {

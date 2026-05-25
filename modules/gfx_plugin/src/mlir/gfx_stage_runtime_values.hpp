@@ -74,11 +74,13 @@ struct RuntimeReducePlan {
 };
 
 struct RuntimeTilePlan {
+  RuntimeValuePlan values;
   ov::Shape input_shape;
   ov::Shape output_shape;
   std::vector<int32_t> scalar_args;
+  bool available = false;
 
-  bool valid() const { return !output_shape.empty(); }
+  bool valid() const { return available; }
 };
 
 struct RuntimeConcatPlan {
@@ -216,7 +218,8 @@ plan_reduce_runtime_values(const RuntimeInputResolver &inputs,
 
 RuntimeTilePlan
 plan_tile_runtime_values(const RuntimeInputResolver &inputs,
-                         const std::vector<GpuTensor *> &outputs);
+                         const std::vector<GpuTensor *> &outputs,
+                         std::string_view stage_name);
 
 RuntimeConcatPlan plan_concat_runtime_values(const RuntimeInputResolver &inputs,
                                              const ov::Node &node,

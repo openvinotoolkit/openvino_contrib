@@ -39,7 +39,7 @@ Additional operational docs:
    - architecture or runtime flow
    - property semantics
    - backend-specific route selection
-   - OpenCL source-artifact coverage, dynamic OpenCL runtime behavior, runtime-shape handling, boolean-buffer behavior, constant materialization, or non-Apple default-backend resolution
+   - OpenCL source-artifact coverage, dynamic OpenCL runtime behavior, runtime-shape handling, chunked Concat/Split artifact behavior, boolean-buffer behavior, constant materialization, or non-Apple default-backend resolution
    - Metal placement-domain or storage selection such as `apple_mps` image/matrix stages versus `apple_msl` buffer dispatch
    - manifest-backed execution-kind or hybrid-stage planning such as vendor `MPSGemm` plus custom MSL epilogues
    - Apple MPS/MPSGraph vendor primitive descriptor support such as Conv2D, Pool2D, Resize2D, Softmax, TopK, GEMM, or SDPA

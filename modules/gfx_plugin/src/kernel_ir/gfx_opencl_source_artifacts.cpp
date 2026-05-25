@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <sstream>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -71,6 +72,14 @@ static inline float gfx_binary_f32(float lhs, float rhs, uint op) {
     case 8u: {
         const float diff = lhs - rhs;
         return diff * diff;
+    }
+    case 9u: {
+        const float rem = fmod(lhs, rhs);
+        return fabs(rem) >= fabs(rhs) ? 0.0f : rem;
+    }
+    case 10u: {
+        const float rem = lhs - floor(lhs / rhs) * rhs;
+        return fabs(rem) >= fabs(rhs) ? 0.0f : rem;
     }
     default: return lhs;
     }
@@ -513,6 +522,41 @@ __kernel void gfx_opencl_baseline_tile_f32(__global const float* src,
         const uint in_axis_coord =
             in_dim[axis] == 0u ? 0u : out_axis_coord % in_dim[axis];
         src_offset += in_axis_coord * in_stride[axis];
+    }
+    dst[gid] = src[src_offset];
+}
+
+__kernel void gfx_opencl_baseline_tile_dynamic_f32(__global const float* src,
+                                                   __global float* dst,
+                                                   uint count,
+                                                   uint rank,
+                                                   uint out_dim0,
+                                                   uint out_dim1,
+                                                   uint out_dim2,
+                                                   uint out_dim3,
+                                                   uint in_dim0,
+                                                   uint in_dim1,
+                                                   uint in_dim2,
+                                                   uint in_dim3) {
+    const uint gid = get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const uint out_dim[4] = {out_dim0, out_dim1, out_dim2, out_dim3};
+    const uint in_dim[4] = {in_dim0, in_dim1, in_dim2, in_dim3};
+    uint rem = gid;
+    uint src_offset = 0u;
+    for (uint axis = 0u; axis < rank; ++axis) {
+        uint out_suffix = 1u;
+        uint in_suffix = 1u;
+        for (uint inner_axis = axis + 1u; inner_axis < rank; ++inner_axis) {
+            out_suffix *= out_dim[inner_axis];
+            in_suffix *= in_dim[inner_axis];
+        }
+        const uint coord = out_suffix == 0u ? 0u : rem / out_suffix;
+        rem = out_suffix == 0u ? 0u : rem - coord * out_suffix;
+        const uint in_coord = in_dim[axis] == 0u ? 0u : coord % in_dim[axis];
+        src_offset += in_coord * in_suffix;
     }
     dst[gid] = src[src_offset];
 }
@@ -1336,97 +1380,6 @@ __kernel void gfx_opencl_baseline_concat4_f32(__global const float* src0,
     dst[gid] = value;
 }
 
-static inline void gfx_split_store_f32(__global const float* src,
-                                       __global float* dst,
-                                       uint gid,
-                                       uint axis_idx,
-                                       uint outer_idx,
-                                       uint inner_idx,
-                                       uint inner,
-                                       uint axis_offset,
-                                       uint axis_len) {
-    if (axis_idx < axis_offset || axis_idx >= axis_offset + axis_len) {
-        return;
-    }
-    const uint dst_axis_idx = axis_idx - axis_offset;
-    const uint dst_idx = (outer_idx * axis_len + dst_axis_idx) * inner + inner_idx;
-    dst[dst_idx] = src[gid];
-}
-
-__kernel void gfx_opencl_baseline_split2_f32(__global const float* src,
-                                             __global float* dst0,
-                                             __global float* dst1,
-                                             uint count,
-                                             uint axis_total,
-                                             uint inner,
-                                             uint offset0,
-                                             uint len0,
-                                             uint offset1,
-                                             uint len1) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint inner_idx = gid % inner;
-    const uint axis_idx = (gid / inner) % axis_total;
-    const uint outer_idx = gid / (axis_total * inner);
-    gfx_split_store_f32(src, dst0, gid, axis_idx, outer_idx, inner_idx, inner, offset0, len0);
-    gfx_split_store_f32(src, dst1, gid, axis_idx, outer_idx, inner_idx, inner, offset1, len1);
-}
-
-__kernel void gfx_opencl_baseline_split3_f32(__global const float* src,
-                                             __global float* dst0,
-                                             __global float* dst1,
-                                             __global float* dst2,
-                                             uint count,
-                                             uint axis_total,
-                                             uint inner,
-                                             uint offset0,
-                                             uint len0,
-                                             uint offset1,
-                                             uint len1,
-                                             uint offset2,
-                                             uint len2) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint inner_idx = gid % inner;
-    const uint axis_idx = (gid / inner) % axis_total;
-    const uint outer_idx = gid / (axis_total * inner);
-    gfx_split_store_f32(src, dst0, gid, axis_idx, outer_idx, inner_idx, inner, offset0, len0);
-    gfx_split_store_f32(src, dst1, gid, axis_idx, outer_idx, inner_idx, inner, offset1, len1);
-    gfx_split_store_f32(src, dst2, gid, axis_idx, outer_idx, inner_idx, inner, offset2, len2);
-}
-
-__kernel void gfx_opencl_baseline_split4_f32(__global const float* src,
-                                             __global float* dst0,
-                                             __global float* dst1,
-                                             __global float* dst2,
-                                             __global float* dst3,
-                                             uint count,
-                                             uint axis_total,
-                                             uint inner,
-                                             uint offset0,
-                                             uint len0,
-                                             uint offset1,
-                                             uint len1,
-                                             uint offset2,
-                                             uint len2,
-                                             uint offset3,
-                                             uint len3) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint inner_idx = gid % inner;
-    const uint axis_idx = (gid / inner) % axis_total;
-    const uint outer_idx = gid / (axis_total * inner);
-    gfx_split_store_f32(src, dst0, gid, axis_idx, outer_idx, inner_idx, inner, offset0, len0);
-    gfx_split_store_f32(src, dst1, gid, axis_idx, outer_idx, inner_idx, inner, offset1, len1);
-    gfx_split_store_f32(src, dst2, gid, axis_idx, outer_idx, inner_idx, inner, offset2, len2);
-    gfx_split_store_f32(src, dst3, gid, axis_idx, outer_idx, inner_idx, inner, offset3, len3);
-}
 )CLC";
 
 constexpr const char* kOpenClMatMulSource = R"CLC(
@@ -1495,6 +1448,580 @@ __kernel void gfx_opencl_baseline_softmax_f32(__global const float* src,
     }
     dst[gid] = exp(src[gid] - max_value) / denom;
 }
+)CLC";
+
+constexpr const char* kOpenClTransposeF32Source = R"CLC(
+__kernel void gfx_opencl_baseline_transpose_f32(__global const float* src,
+                                                __global float* dst,
+                                                uint count,
+                                                uint rank,
+                                                uint out_dim0,
+                                                uint out_dim1,
+                                                uint out_dim2,
+                                                uint out_dim3,
+                                                uint in_stride0,
+                                                uint in_stride1,
+                                                uint in_stride2,
+                                                uint in_stride3,
+                                                uint perm0,
+                                                uint perm1,
+                                                uint perm2,
+                                                uint perm3) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+
+    const uint out_dim[4] = {out_dim0, out_dim1, out_dim2, out_dim3};
+    const uint in_stride[4] = {in_stride0, in_stride1, in_stride2, in_stride3};
+    const uint perm[4] = {perm0, perm1, perm2, perm3};
+    uint coord[4] = {0u, 0u, 0u, 0u};
+    uint rem = gid;
+    for (uint axis = 0u; axis < rank; ++axis) {
+        uint suffix = 1u;
+        for (uint inner = axis + 1u; inner < rank; ++inner) {
+            suffix *= out_dim[inner];
+        }
+        coord[axis] = suffix == 0u ? 0u : rem / suffix;
+        rem = suffix == 0u ? 0u : rem - coord[axis] * suffix;
+    }
+
+    uint src_offset = 0u;
+    for (uint axis = 0u; axis < rank; ++axis) {
+        src_offset += coord[axis] * in_stride[perm[axis]];
+    }
+    dst[gid] = src[src_offset];
+}
+)CLC";
+
+constexpr const char* kOpenClSliceF32Source = R"CLC(
+__kernel void gfx_opencl_baseline_slice_f32(__global const float* src,
+                                            __global float* dst,
+                                            uint count,
+                                            uint rank,
+                                            uint out_dim0,
+                                            uint out_dim1,
+                                            uint out_dim2,
+                                            uint out_dim3,
+                                            uint in_stride0,
+                                            uint in_stride1,
+                                            uint in_stride2,
+                                            uint in_stride3,
+                                            uint begin0,
+                                            uint begin1,
+                                            uint begin2,
+                                            uint begin3,
+                                            uint step0,
+                                            uint step1,
+                                            uint step2,
+                                            uint step3) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const uint out_dim[4] = {out_dim0, out_dim1, out_dim2, out_dim3};
+    const uint in_stride[4] = {in_stride0, in_stride1, in_stride2, in_stride3};
+    const uint begin[4] = {begin0, begin1, begin2, begin3};
+    const uint step[4] = {step0, step1, step2, step3};
+    uint coord[4] = {0u, 0u, 0u, 0u};
+    uint rem = gid;
+    for (uint axis = 0u; axis < rank; ++axis) {
+        uint suffix = 1u;
+        for (uint inner_axis = axis + 1u; inner_axis < rank; ++inner_axis) {
+            suffix *= out_dim[inner_axis];
+        }
+        coord[axis] = suffix == 0u ? 0u : rem / suffix;
+        rem = suffix == 0u ? 0u : rem - coord[axis] * suffix;
+    }
+
+    uint src_offset = 0u;
+    for (uint axis = 0u; axis < rank; ++axis) {
+        src_offset += (begin[axis] + coord[axis] * step[axis]) * in_stride[axis];
+    }
+    dst[gid] = src[src_offset];
+}
+)CLC";
+
+constexpr const char* kOpenClRangeF32Source = R"CLC(
+__kernel void gfx_opencl_baseline_range_f32(__global const float* start,
+                                            __global const float* stop,
+                                            __global const float* step,
+                                            __global float* dst,
+                                            uint count) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    (void)stop;
+    dst[gid] = start[0] + (float)gid * step[0];
+}
+)CLC";
+
+constexpr const char* kOpenClTileF32Source = R"CLC(
+__kernel void gfx_opencl_baseline_tile_f32(__global const float* src,
+                                           __global float* dst,
+                                           uint count,
+                                           uint rank,
+                                           uint out_dim0,
+                                           uint out_dim1,
+                                           uint out_dim2,
+                                           uint out_dim3,
+                                           uint in_dim0,
+                                           uint in_dim1,
+                                           uint in_dim2,
+                                           uint in_dim3,
+                                           uint out_stride0,
+                                           uint out_stride1,
+                                           uint out_stride2,
+                                           uint out_stride3,
+                                           uint in_stride0,
+                                           uint in_stride1,
+                                           uint in_stride2,
+                                           uint in_stride3) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const uint out_dim[4] = {out_dim0, out_dim1, out_dim2, out_dim3};
+    const uint in_dim[4] = {in_dim0, in_dim1, in_dim2, in_dim3};
+    const uint out_stride[4] = {out_stride0, out_stride1, out_stride2, out_stride3};
+    const uint in_stride[4] = {in_stride0, in_stride1, in_stride2, in_stride3};
+
+    uint src_offset = 0u;
+    for (uint axis = 0u; axis < rank; ++axis) {
+        const uint out_axis_coord =
+            out_stride[axis] == 0u ? 0u : (gid / out_stride[axis]) % out_dim[axis];
+        const uint in_axis_coord =
+            in_dim[axis] == 0u ? 0u : out_axis_coord % in_dim[axis];
+        src_offset += in_axis_coord * in_stride[axis];
+    }
+    dst[gid] = src[src_offset];
+}
+
+__kernel void gfx_opencl_baseline_tile_dynamic_f32(__global const float* src,
+                                                   __global float* dst,
+                                                   uint count,
+                                                   uint rank,
+                                                   uint out_dim0,
+                                                   uint out_dim1,
+                                                   uint out_dim2,
+                                                   uint out_dim3,
+                                                   uint in_dim0,
+                                                   uint in_dim1,
+                                                   uint in_dim2,
+                                                   uint in_dim3) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const uint out_dim[4] = {out_dim0, out_dim1, out_dim2, out_dim3};
+    const uint in_dim[4] = {in_dim0, in_dim1, in_dim2, in_dim3};
+    uint rem = gid;
+    uint src_offset = 0u;
+    for (uint axis = 0u; axis < rank; ++axis) {
+        uint out_suffix = 1u;
+        uint in_suffix = 1u;
+        for (uint inner_axis = axis + 1u; inner_axis < rank; ++inner_axis) {
+            out_suffix *= out_dim[inner_axis];
+            in_suffix *= in_dim[inner_axis];
+        }
+        const uint coord = out_suffix == 0u ? 0u : rem / out_suffix;
+        rem = out_suffix == 0u ? 0u : rem - coord * out_suffix;
+        const uint in_coord = in_dim[axis] == 0u ? 0u : coord % in_dim[axis];
+        src_offset += in_coord * in_suffix;
+    }
+    dst[gid] = src[src_offset];
+}
+)CLC";
+
+constexpr const char* kOpenClGatherF32I32Source = R"CLC(
+__kernel void gfx_opencl_baseline_gather_i32_f32(__global const float* data,
+                                                 __global const int* indices,
+                                                 __global float* dst,
+                                                 uint count,
+                                                 uint outer,
+                                                 uint inner,
+                                                 uint axis_dim,
+                                                 uint indices_count) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    uint tmp = gid;
+    const uint inner_idx = tmp % inner;
+    tmp /= inner;
+    const uint idx_idx = tmp % indices_count;
+    tmp /= indices_count;
+    const uint outer_idx = tmp;
+
+    int index = indices[idx_idx];
+    if (index < 0) {
+        index += (int)axis_dim;
+    }
+    if (index < 0) {
+        index = 0;
+    }
+    if (index >= (int)axis_dim) {
+        index = (int)axis_dim - 1;
+    }
+    const uint src_idx = ((outer_idx * axis_dim + (uint)index) * inner) + inner_idx;
+    dst[gid] = data[src_idx];
+}
+
+__kernel void gfx_opencl_baseline_gather_elements_i32_f32(__global const float* data,
+                                                          __global const int* indices,
+                                                          __global float* dst,
+                                                          uint count,
+                                                          uint rank,
+                                                          uint axis,
+                                                          uint out_dim0,
+                                                          uint out_dim1,
+                                                          uint out_dim2,
+                                                          uint out_dim3,
+                                                          uint out_stride0,
+                                                          uint out_stride1,
+                                                          uint out_stride2,
+                                                          uint out_stride3,
+                                                          uint data_dim0,
+                                                          uint data_dim1,
+                                                          uint data_dim2,
+                                                          uint data_dim3,
+                                                          uint data_stride0,
+                                                          uint data_stride1,
+                                                          uint data_stride2,
+                                                          uint data_stride3) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const uint out_dim[4] = {out_dim0, out_dim1, out_dim2, out_dim3};
+    const uint out_stride[4] = {out_stride0, out_stride1, out_stride2, out_stride3};
+    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
+    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
+    uint coord[4] = {0u, 0u, 0u, 0u};
+    for (uint i = 0u; i < rank; ++i) {
+        const uint stride = out_stride[i];
+        coord[i] = stride == 0u ? 0u : (gid / stride) % out_dim[i];
+    }
+
+    int index = indices[gid];
+    const int axis_dim = (int)data_dim[axis];
+    if (index < 0) {
+        index += axis_dim;
+    }
+    if (index < 0) {
+        index = 0;
+    }
+    if (index >= axis_dim) {
+        index = axis_dim - 1;
+    }
+
+    uint src_idx = 0u;
+    for (uint i = 0u; i < rank; ++i) {
+        const uint c = i == axis ? (uint)index : coord[i];
+        src_idx += c * data_stride[i];
+    }
+    dst[gid] = data[src_idx];
+}
+
+__kernel void gfx_opencl_baseline_gather_nd_i32_f32(__global const float* data,
+                                                    __global const int* indices,
+                                                    __global float* dst,
+                                                    uint count,
+                                                    uint index_depth,
+                                                    uint slice_rank,
+                                                    uint slice_size,
+                                                    uint data_dim0,
+                                                    uint data_dim1,
+                                                    uint data_dim2,
+                                                    uint data_dim3,
+                                                    uint data_stride0,
+                                                    uint data_stride1,
+                                                    uint data_stride2,
+                                                    uint data_stride3) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
+    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
+    const uint tuple_idx = slice_size == 0u ? 0u : gid / slice_size;
+    const uint slice_gid = slice_size == 0u ? 0u : gid - tuple_idx * slice_size;
+
+    uint src_idx = 0u;
+    for (uint i = 0u; i < index_depth; ++i) {
+        int index = indices[tuple_idx * index_depth + i];
+        const int dim = (int)data_dim[i];
+        if (index < 0) {
+            index += dim;
+        }
+        if (index < 0) {
+            index = 0;
+        }
+        if (index >= dim) {
+            index = dim - 1;
+        }
+        src_idx += (uint)index * data_stride[i];
+    }
+
+    for (uint i = 0u; i < slice_rank; ++i) {
+        const uint axis = index_depth + i;
+        const uint stride = data_stride[axis];
+        const uint coord = stride == 0u ? 0u : (slice_gid / stride) % data_dim[axis];
+        src_idx += coord * stride;
+    }
+    dst[gid] = data[src_idx];
+}
+)CLC";
+
+constexpr const char* kOpenClGatherF32I64Source = R"CLC(
+__kernel void gfx_opencl_baseline_gather_i64_f32(__global const float* data,
+                                                 __global const long* indices,
+                                                 __global float* dst,
+                                                 uint count,
+                                                 uint outer,
+                                                 uint inner,
+                                                 uint axis_dim,
+                                                 uint indices_count) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    uint tmp = gid;
+    const uint inner_idx = tmp % inner;
+    tmp /= inner;
+    const uint idx_idx = tmp % indices_count;
+    tmp /= indices_count;
+    const uint outer_idx = tmp;
+
+    long index = indices[idx_idx];
+    if (index < 0) {
+        index += (long)axis_dim;
+    }
+    if (index < 0) {
+        index = 0;
+    }
+    if (index >= (long)axis_dim) {
+        index = (long)axis_dim - 1;
+    }
+    const uint src_idx = ((outer_idx * axis_dim + (uint)index) * inner) + inner_idx;
+    dst[gid] = data[src_idx];
+}
+
+__kernel void gfx_opencl_baseline_gather_elements_i64_f32(__global const float* data,
+                                                          __global const long* indices,
+                                                          __global float* dst,
+                                                          uint count,
+                                                          uint rank,
+                                                          uint axis,
+                                                          uint out_dim0,
+                                                          uint out_dim1,
+                                                          uint out_dim2,
+                                                          uint out_dim3,
+                                                          uint out_stride0,
+                                                          uint out_stride1,
+                                                          uint out_stride2,
+                                                          uint out_stride3,
+                                                          uint data_dim0,
+                                                          uint data_dim1,
+                                                          uint data_dim2,
+                                                          uint data_dim3,
+                                                          uint data_stride0,
+                                                          uint data_stride1,
+                                                          uint data_stride2,
+                                                          uint data_stride3) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const uint out_dim[4] = {out_dim0, out_dim1, out_dim2, out_dim3};
+    const uint out_stride[4] = {out_stride0, out_stride1, out_stride2, out_stride3};
+    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
+    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
+    uint coord[4] = {0u, 0u, 0u, 0u};
+    for (uint i = 0u; i < rank; ++i) {
+        const uint stride = out_stride[i];
+        coord[i] = stride == 0u ? 0u : (gid / stride) % out_dim[i];
+    }
+
+    long index = indices[gid];
+    const long axis_dim = (long)data_dim[axis];
+    if (index < 0) {
+        index += axis_dim;
+    }
+    if (index < 0) {
+        index = 0;
+    }
+    if (index >= axis_dim) {
+        index = axis_dim - 1;
+    }
+
+    uint src_idx = 0u;
+    for (uint i = 0u; i < rank; ++i) {
+        const uint c = i == axis ? (uint)index : coord[i];
+        src_idx += c * data_stride[i];
+    }
+    dst[gid] = data[src_idx];
+}
+
+__kernel void gfx_opencl_baseline_gather_nd_i64_f32(__global const float* data,
+                                                    __global const long* indices,
+                                                    __global float* dst,
+                                                    uint count,
+                                                    uint index_depth,
+                                                    uint slice_rank,
+                                                    uint slice_size,
+                                                    uint data_dim0,
+                                                    uint data_dim1,
+                                                    uint data_dim2,
+                                                    uint data_dim3,
+                                                    uint data_stride0,
+                                                    uint data_stride1,
+                                                    uint data_stride2,
+                                                    uint data_stride3) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
+    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
+    const uint tuple_idx = slice_size == 0u ? 0u : gid / slice_size;
+    const uint slice_gid = slice_size == 0u ? 0u : gid - tuple_idx * slice_size;
+
+    uint src_idx = 0u;
+    for (uint i = 0u; i < index_depth; ++i) {
+        long index = indices[tuple_idx * index_depth + i];
+        const long dim = (long)data_dim[i];
+        if (index < 0) {
+            index += dim;
+        }
+        if (index < 0) {
+            index = 0;
+        }
+        if (index >= dim) {
+            index = dim - 1;
+        }
+        src_idx += (uint)index * data_stride[i];
+    }
+
+    for (uint i = 0u; i < slice_rank; ++i) {
+        const uint axis = index_depth + i;
+        const uint stride = data_stride[axis];
+        const uint coord = stride == 0u ? 0u : (slice_gid / stride) % data_dim[axis];
+        src_idx += coord * stride;
+    }
+    dst[gid] = data[src_idx];
+}
+)CLC";
+
+constexpr const char* kOpenClConcatSplitF32Source = R"CLC(
+static inline uint gfx_concat_load_f32(__global const float* src,
+                                       __private float* value,
+                                       uint axis_idx,
+                                       uint outer_idx,
+                                       uint inner_idx,
+                                       uint inner,
+                                       uint axis_offset,
+                                       uint axis_len) {
+    if (axis_idx < axis_offset || axis_idx >= axis_offset + axis_len) {
+        return 0u;
+    }
+    const uint src_axis_idx = axis_idx - axis_offset;
+    const uint src_idx = (outer_idx * axis_len + src_axis_idx) * inner + inner_idx;
+    *value = src[src_idx];
+    return 1u;
+}
+
+__kernel void gfx_opencl_baseline_concat2_f32(__global const float* src0,
+                                              __global const float* src1,
+                                              __global float* dst,
+                                              uint count,
+                                              uint out_axis,
+                                              uint inner,
+                                              uint src0_axis_offset,
+                                              uint src0_axis_len,
+                                              uint src1_axis_offset,
+                                              uint src1_axis_len) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const uint inner_idx = gid % inner;
+    const uint axis_idx = (gid / inner) % out_axis;
+    const uint outer_idx = gid / (out_axis * inner);
+    float value = 0.0f;
+    (void)(gfx_concat_load_f32(src0, &value, axis_idx, outer_idx, inner_idx, inner,
+                              src0_axis_offset, src0_axis_len) ||
+           gfx_concat_load_f32(src1, &value, axis_idx, outer_idx, inner_idx, inner,
+                              src1_axis_offset, src1_axis_len));
+    dst[gid] = value;
+}
+
+__kernel void gfx_opencl_baseline_concat3_f32(__global const float* src0,
+                                              __global const float* src1,
+                                              __global const float* src2,
+                                              __global float* dst,
+                                              uint count,
+                                              uint out_axis,
+                                              uint inner,
+                                              uint src0_axis_offset,
+                                              uint src0_axis_len,
+                                              uint src1_axis_offset,
+                                              uint src1_axis_len,
+                                              uint src2_axis_offset,
+                                              uint src2_axis_len) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const uint inner_idx = gid % inner;
+    const uint axis_idx = (gid / inner) % out_axis;
+    const uint outer_idx = gid / (out_axis * inner);
+    float value = 0.0f;
+    (void)(gfx_concat_load_f32(src0, &value, axis_idx, outer_idx, inner_idx, inner,
+                              src0_axis_offset, src0_axis_len) ||
+           gfx_concat_load_f32(src1, &value, axis_idx, outer_idx, inner_idx, inner,
+                              src1_axis_offset, src1_axis_len) ||
+           gfx_concat_load_f32(src2, &value, axis_idx, outer_idx, inner_idx, inner,
+                              src2_axis_offset, src2_axis_len));
+    dst[gid] = value;
+}
+
+__kernel void gfx_opencl_baseline_concat4_f32(__global const float* src0,
+                                              __global const float* src1,
+                                              __global const float* src2,
+                                              __global const float* src3,
+                                              __global float* dst,
+                                              uint count,
+                                              uint out_axis,
+                                              uint inner,
+                                              uint src0_axis_offset,
+                                              uint src0_axis_len,
+                                              uint src1_axis_offset,
+                                              uint src1_axis_len,
+                                              uint src2_axis_offset,
+                                              uint src2_axis_len,
+                                              uint src3_axis_offset,
+                                              uint src3_axis_len) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const uint inner_idx = gid % inner;
+    const uint axis_idx = (gid / inner) % out_axis;
+    const uint outer_idx = gid / (out_axis * inner);
+    float value = 0.0f;
+    (void)(gfx_concat_load_f32(src0, &value, axis_idx, outer_idx, inner_idx, inner,
+                              src0_axis_offset, src0_axis_len) ||
+           gfx_concat_load_f32(src1, &value, axis_idx, outer_idx, inner_idx, inner,
+                              src1_axis_offset, src1_axis_len) ||
+           gfx_concat_load_f32(src2, &value, axis_idx, outer_idx, inner_idx, inner,
+                              src2_axis_offset, src2_axis_len) ||
+           gfx_concat_load_f32(src3, &value, axis_idx, outer_idx, inner_idx, inner,
+                              src3_axis_offset, src3_axis_len));
+    dst[gid] = value;
+}
+
 )CLC";
 
 constexpr const char* kOpenClShapeOfSource = R"CLC(
@@ -1584,6 +2111,14 @@ static inline float gfx_binary_f32(float lhs, float rhs, uint op) {
         const float diff = lhs - rhs;
         return diff * diff;
     }
+    case 9u: {
+        const float rem = fmod(lhs, rhs);
+        return fabs(rem) >= fabs(rhs) ? 0.0f : rem;
+    }
+    case 10u: {
+        const float rem = lhs - floor(lhs / rhs) * rhs;
+        return fabs(rem) >= fabs(rhs) ? 0.0f : rem;
+    }
     default: return lhs;
     }
 }
@@ -1614,6 +2149,14 @@ static inline float gfx_binary_f32(float lhs, float rhs, uint op) {
     case 8u: {
         const float diff = lhs - rhs;
         return diff * diff;
+    }
+    case 9u: {
+        const float rem = fmod(lhs, rhs);
+        return fabs(rem) >= fabs(rhs) ? 0.0f : rem;
+    }
+    case 10u: {
+        const float rem = lhs - floor(lhs / rhs) * rhs;
+        return fabs(rem) >= fabs(rhs) ? 0.0f : rem;
     }
     default: return lhs;
     }
@@ -1648,6 +2191,14 @@ static inline float gfx_binary_f32(float lhs, float rhs, uint op) {
     case 8u: {
         const float diff = lhs - rhs;
         return diff * diff;
+    }
+    case 9u: {
+        const float rem = fmod(lhs, rhs);
+        return fabs(rem) >= fabs(rhs) ? 0.0f : rem;
+    }
+    case 10u: {
+        const float rem = lhs - floor(lhs / rhs) * rhs;
+        return fabs(rem) >= fabs(rhs) ? 0.0f : rem;
     }
     default: return lhs;
     }
@@ -1928,6 +2479,64 @@ constexpr const char* kOpenClDynamicDataMovementF16Source = R"CLC(
 #define GFX_SELECT_F16_BITS(mask, then_bits, else_bits) \
     (((else_bits) & ~(mask)) | ((then_bits) & (mask)))
 
+static inline float gfx_f16_bits_to_f32(uint bits) {
+    const uint sign = (bits & 32768u) << 16u;
+    uint exp = (bits >> 10u) & 31u;
+    uint mant = bits & 1023u;
+    uint out = sign;
+    if (exp == 0u) {
+        if (mant == 0u) {
+            return as_float(out);
+        }
+        int normalized_exp = -14;
+        while ((mant & 1024u) == 0u) {
+            mant <<= 1u;
+            --normalized_exp;
+        }
+        mant &= 1023u;
+        out |= (uint)(normalized_exp + 127) << 23u;
+        out |= mant << 13u;
+        return as_float(out);
+    }
+    if (exp == 31u) {
+        out |= 2139095040u | (mant << 13u);
+        return as_float(out);
+    }
+    out |= (exp + 112u) << 23u;
+    out |= mant << 13u;
+    return as_float(out);
+}
+
+static inline uint gfx_f32_to_f16_bits(float value) {
+    const uint bits = as_uint(value);
+    const uint sign = (bits >> 16u) & 32768u;
+    const uint exp_bits = (bits >> 23u) & 255u;
+    const uint mant = bits & 8388607u;
+    if (exp_bits == 255u) {
+        return sign | 31744u | (mant != 0u ? 512u : 0u);
+    }
+    int exp = (int)exp_bits - 127 + 15;
+    if (exp <= 0) {
+        if (exp < -10) {
+            return sign;
+        }
+        uint sub = (mant | 8388608u) >> (uint)(1 - exp);
+        return sign | ((sub + 4096u) >> 13u);
+    }
+    if (exp >= 31) {
+        return sign | 31744u;
+    }
+    uint half_mant = (mant + 4096u) >> 13u;
+    if (half_mant == 1024u) {
+        half_mant = 0u;
+        ++exp;
+        if (exp >= 31) {
+            return sign | 31744u;
+        }
+    }
+    return sign | ((uint)exp << 10u) | half_mant;
+}
+
 static inline uint gfx_offset_from_dims(uint idx,
                                         uint rank,
                                         uint dim0,
@@ -2207,6 +2816,158 @@ __kernel void gfx_opencl_baseline_broadcast_f16_i64shape(__global const uint* sr
     GFX_STORE_F16_PAIR(dst, word_idx, lo, hi);
 }
 
+__kernel void gfx_opencl_baseline_tile_f16(__global const uint* src,
+                                           __global uint* dst,
+                                           uint count,
+                                           uint rank,
+                                           uint out_dim0,
+                                           uint out_dim1,
+                                           uint out_dim2,
+                                           uint out_dim3,
+                                           uint in_dim0,
+                                           uint in_dim1,
+                                           uint in_dim2,
+                                           uint in_dim3,
+                                           uint out_stride0,
+                                           uint out_stride1,
+                                           uint out_stride2,
+                                           uint out_stride3,
+                                           uint in_stride0,
+                                           uint in_stride1,
+                                           uint in_stride2,
+                                           uint in_stride3) {
+    const uint word_idx = (uint)get_global_id(0);
+    const uint elem0 = word_idx * 2u;
+    if (elem0 >= count) {
+        return;
+    }
+    const uint out_dim[4] = {out_dim0, out_dim1, out_dim2, out_dim3};
+    const uint in_dim[4] = {in_dim0, in_dim1, in_dim2, in_dim3};
+    const uint out_stride[4] = {out_stride0, out_stride1, out_stride2, out_stride3};
+    const uint in_stride[4] = {in_stride0, in_stride1, in_stride2, in_stride3};
+
+    uint src_offset0 = 0u;
+    for (uint axis = 0u; axis < rank; ++axis) {
+        const uint out_axis_coord =
+            out_stride[axis] == 0u ? 0u : (elem0 / out_stride[axis]) % out_dim[axis];
+        const uint in_axis_coord =
+            in_dim[axis] == 0u ? 0u : out_axis_coord % in_dim[axis];
+        src_offset0 += in_axis_coord * in_stride[axis];
+    }
+    const uint lo = GFX_LOAD_F16_BITS(src, src_offset0);
+    uint hi = 0u;
+    if (elem0 + 1u < count) {
+        uint src_offset1 = 0u;
+        const uint elem1 = elem0 + 1u;
+        for (uint axis = 0u; axis < rank; ++axis) {
+            const uint out_axis_coord =
+                out_stride[axis] == 0u ? 0u : (elem1 / out_stride[axis]) % out_dim[axis];
+            const uint in_axis_coord =
+                in_dim[axis] == 0u ? 0u : out_axis_coord % in_dim[axis];
+            src_offset1 += in_axis_coord * in_stride[axis];
+        }
+        hi = GFX_LOAD_F16_BITS(src, src_offset1);
+    }
+    GFX_STORE_F16_PAIR(dst, word_idx, lo, hi);
+}
+
+static inline uint gfx_tile_dynamic_src_offset(uint elem,
+                                               uint rank,
+                                               uint out_dim0,
+                                               uint out_dim1,
+                                               uint out_dim2,
+                                               uint out_dim3,
+                                               uint in_dim0,
+                                               uint in_dim1,
+                                               uint in_dim2,
+                                               uint in_dim3) {
+    const uint out_dim[4] = {out_dim0, out_dim1, out_dim2, out_dim3};
+    const uint in_dim[4] = {in_dim0, in_dim1, in_dim2, in_dim3};
+    uint rem = elem;
+    uint src_offset = 0u;
+    for (uint axis = 0u; axis < rank; ++axis) {
+        uint out_suffix = 1u;
+        uint in_suffix = 1u;
+        for (uint inner_axis = axis + 1u; inner_axis < rank; ++inner_axis) {
+            out_suffix *= out_dim[inner_axis];
+            in_suffix *= in_dim[inner_axis];
+        }
+        const uint coord = out_suffix == 0u ? 0u : rem / out_suffix;
+        rem = out_suffix == 0u ? 0u : rem - coord * out_suffix;
+        const uint in_coord = in_dim[axis] == 0u ? 0u : coord % in_dim[axis];
+        src_offset += in_coord * in_suffix;
+    }
+    return src_offset;
+}
+
+__kernel void gfx_opencl_baseline_tile_dynamic_f16(__global const uint* src,
+                                                   __global uint* dst,
+                                                   uint count,
+                                                   uint rank,
+                                                   uint out_dim0,
+                                                   uint out_dim1,
+                                                   uint out_dim2,
+                                                   uint out_dim3,
+                                                   uint in_dim0,
+                                                   uint in_dim1,
+                                                   uint in_dim2,
+                                                   uint in_dim3) {
+    const uint word_idx = (uint)get_global_id(0);
+    const uint elem0 = word_idx * 2u;
+    if (elem0 >= count) {
+        return;
+    }
+    const uint lo = GFX_LOAD_F16_BITS(
+        src,
+        gfx_tile_dynamic_src_offset(elem0,
+                                    rank,
+                                    out_dim0,
+                                    out_dim1,
+                                    out_dim2,
+                                    out_dim3,
+                                    in_dim0,
+                                    in_dim1,
+                                    in_dim2,
+                                    in_dim3));
+    uint hi = 0u;
+    if (elem0 + 1u < count) {
+        hi = GFX_LOAD_F16_BITS(
+            src,
+            gfx_tile_dynamic_src_offset(elem0 + 1u,
+                                        rank,
+                                        out_dim0,
+                                        out_dim1,
+                                        out_dim2,
+                                        out_dim3,
+                                        in_dim0,
+                                        in_dim1,
+                                        in_dim2,
+                                        in_dim3));
+    }
+    GFX_STORE_F16_PAIR(dst, word_idx, lo, hi);
+}
+
+__kernel void gfx_opencl_baseline_range_f16(__global const uint* start_words,
+                                            __global const uint* stop_words,
+                                            __global const uint* step_words,
+                                            __global uint* dst,
+                                            uint count) {
+    const uint word_idx = (uint)get_global_id(0);
+    const uint elem0 = word_idx * 2u;
+    if (elem0 >= count) {
+        return;
+    }
+    (void)stop_words;
+    const float start = gfx_f16_bits_to_f32(GFX_LOAD_F16_BITS(start_words, 0u));
+    const float step = gfx_f16_bits_to_f32(GFX_LOAD_F16_BITS(step_words, 0u));
+    const uint lo = gfx_f32_to_f16_bits(start + (float)elem0 * step);
+    uint hi = 0u;
+    if (elem0 + 1u < count) {
+        hi = gfx_f32_to_f16_bits(start + (float)(elem0 + 1u) * step);
+    }
+    GFX_STORE_F16_PAIR(dst, word_idx, lo, hi);
+}
+
 __kernel void gfx_opencl_baseline_slice_f16(__global const uint* src,
                                             __global const uint* end_words,
                                             __global uint* dst,
@@ -2239,7 +3000,7 @@ __kernel void gfx_opencl_baseline_slice_f16(__global const uint* src,
     const uint begin[4] = {begin0, begin1, begin2, begin3};
     const uint step[4] = {step0, step1, step2, step3};
     uint in_stride[4] = {1u, 1u, 1u, 1u};
-    for (int axis = 2; axis >= 0; --axis) {
+    for (int axis = (int)rank - 2; axis >= 0; --axis) {
         in_stride[(uint)axis] = in_stride[(uint)axis + 1u] * input_dim[(uint)axis + 1u];
     }
     uint src_offset0 = 0u;
@@ -2324,7 +3085,7 @@ __kernel void gfx_opencl_baseline_slice_v8_f16(__global const uint* src,
         }
     }
     uint in_stride[4] = {1u, 1u, 1u, 1u};
-    for (int axis = 2; axis >= 0; --axis) {
+    for (int axis = (int)rank - 2; axis >= 0; --axis) {
         in_stride[(uint)axis] = in_stride[(uint)axis + 1u] * input_dim[(uint)axis + 1u];
     }
     uint src_offset0 = 0u;
@@ -2783,6 +3544,14 @@ static inline float gfx_binary_f32(float lhs, float rhs, uint op) {
         const float diff = lhs - rhs;
         return diff * diff;
     }
+    case 9u: {
+        const float rem = fmod(lhs, rhs);
+        return fabs(rem) >= fabs(rhs) ? 0.0f : rem;
+    }
+    case 10u: {
+        const float rem = lhs - floor(lhs / rhs) * rhs;
+        return fabs(rem) >= fabs(rhs) ? 0.0f : rem;
+    }
     default: return lhs;
     }
 }
@@ -2844,6 +3613,349 @@ __kernel void gfx_opencl_baseline_binary_broadcast_f32(__global const float* lhs
 }
 )CLC";
 
+constexpr const char* kOpenClBinaryI32Source = R"CLC(
+static inline int gfx_binary_i32(int lhs, int rhs, uint op) {
+    switch (op) {
+    case 1u: return lhs + rhs;
+    case 2u: return lhs - rhs;
+    case 3u: return lhs * rhs;
+    case 4u: return lhs / rhs;
+    case 5u: return lhs > rhs ? lhs : rhs;
+    case 6u: return lhs < rhs ? lhs : rhs;
+    case 7u: return (int)pow((float)lhs, (float)rhs);
+    case 8u: {
+        const int diff = lhs - rhs;
+        return diff * diff;
+    }
+    case 9u: return lhs % rhs;
+    case 10u: {
+        const int rem = lhs % rhs;
+        const int fix = ((rhs < 0) != (rem < 0)) ? rhs : 0;
+        return rem + fix;
+    }
+    default: return lhs;
+    }
+}
+
+static inline uint gfx_broadcast_offset_i32(uint idx,
+                                            uint rank,
+                                            uint out_dim1,
+                                            uint out_dim2,
+                                            uint out_dim3,
+                                            uint stride0,
+                                            uint stride1,
+                                            uint stride2,
+                                            uint stride3) {
+    uint coord0 = 0u;
+    uint coord1 = 0u;
+    uint coord2 = 0u;
+    uint coord3 = 0u;
+    if (rank == 1u) {
+        coord0 = idx;
+    } else if (rank == 2u) {
+        coord0 = idx / out_dim1;
+        coord1 = idx - coord0 * out_dim1;
+    } else if (rank == 3u) {
+        const uint plane0 = out_dim1 * out_dim2;
+        const uint rem0 = idx - (idx / plane0) * plane0;
+        coord0 = idx / plane0;
+        coord1 = rem0 / out_dim2;
+        coord2 = rem0 - coord1 * out_dim2;
+    } else {
+        const uint plane0 = out_dim1 * out_dim2 * out_dim3;
+        const uint rem0 = idx - (idx / plane0) * plane0;
+        const uint plane1 = out_dim2 * out_dim3;
+        const uint rem1 = rem0 - (rem0 / plane1) * plane1;
+        coord0 = idx / plane0;
+        coord1 = rem0 / plane1;
+        coord2 = rem1 / out_dim3;
+        coord3 = rem1 - coord2 * out_dim3;
+    }
+    return coord0 * stride0 + coord1 * stride1 + coord2 * stride2 + coord3 * stride3;
+}
+
+__kernel void gfx_opencl_baseline_binary_i32(__global const int* lhs,
+                                             __global const int* rhs,
+                                             __global int* dst,
+                                             uint count,
+                                             uint op) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    dst[gid] = gfx_binary_i32(lhs[gid], rhs[gid], op);
+}
+
+__kernel void gfx_opencl_baseline_binary_scalar_i32(__global const int* lhs,
+                                                    __global const int* rhs,
+                                                    __global int* dst,
+                                                    uint count,
+                                                    uint op,
+                                                    uint input_mode) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const int l = input_mode == 2u ? lhs[0] : lhs[gid];
+    const int r = input_mode == 1u ? rhs[0] : rhs[gid];
+    dst[gid] = gfx_binary_i32(l, r, op);
+}
+
+__kernel void gfx_opencl_baseline_binary_broadcast_i32(__global const int* lhs,
+                                                       __global const int* rhs,
+                                                       __global int* dst,
+                                                       uint count,
+                                                       uint op,
+                                                       uint rank,
+                                                       uint out_dim0,
+                                                       uint out_dim1,
+                                                       uint out_dim2,
+                                                       uint out_dim3,
+                                                       uint lhs_stride0,
+                                                       uint lhs_stride1,
+                                                       uint lhs_stride2,
+                                                       uint lhs_stride3,
+                                                       uint rhs_stride0,
+                                                       uint rhs_stride1,
+                                                       uint rhs_stride2,
+                                                       uint rhs_stride3) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    (void)out_dim0;
+    const uint lhs_offset = gfx_broadcast_offset_i32(gid, rank, out_dim1, out_dim2, out_dim3,
+                                                     lhs_stride0, lhs_stride1, lhs_stride2, lhs_stride3);
+    const uint rhs_offset = gfx_broadcast_offset_i32(gid, rank, out_dim1, out_dim2, out_dim3,
+                                                     rhs_stride0, rhs_stride1, rhs_stride2, rhs_stride3);
+    dst[gid] = gfx_binary_i32(lhs[lhs_offset], rhs[rhs_offset], op);
+}
+)CLC";
+
+constexpr const char* kOpenClBinaryF16Source = R"CLC(
+#define GFX_LOAD_F16_BITS(src, idx) \
+    (((idx) & 1u) == 0u ? ((src)[(idx) >> 1u] & 65535u) : (((src)[(idx) >> 1u] >> 16u) & 65535u))
+#define GFX_STORE_F16_PAIR(dst, word_idx, lo, hi) \
+    ((dst)[(word_idx)] = ((lo) & 65535u) | (((hi) & 65535u) << 16u))
+
+static inline float gfx_f16_bits_to_f32(uint bits) {
+    const uint sign = (bits & 32768u) << 16u;
+    uint exp = (bits >> 10u) & 31u;
+    uint mant = bits & 1023u;
+    uint out = sign;
+    if (exp == 0u) {
+        if (mant == 0u) {
+            return as_float(out);
+        }
+        int normalized_exp = -14;
+        while ((mant & 1024u) == 0u) {
+            mant <<= 1u;
+            --normalized_exp;
+        }
+        mant &= 1023u;
+        out |= (uint)(normalized_exp + 127) << 23u;
+        out |= mant << 13u;
+        return as_float(out);
+    }
+    if (exp == 31u) {
+        out |= 2139095040u | (mant << 13u);
+        return as_float(out);
+    }
+    out |= (exp + 112u) << 23u;
+    out |= mant << 13u;
+    return as_float(out);
+}
+
+static inline uint gfx_f32_to_f16_bits(float value) {
+    const uint bits = as_uint(value);
+    const uint sign = (bits >> 16u) & 32768u;
+    const uint exp_bits = (bits >> 23u) & 255u;
+    const uint mant = bits & 8388607u;
+    if (exp_bits == 255u) {
+        return sign | 31744u | (mant != 0u ? 512u : 0u);
+    }
+    int exp = (int)exp_bits - 127 + 15;
+    if (exp <= 0) {
+        if (exp < -10) {
+            return sign;
+        }
+        uint sub = (mant | 8388608u) >> (uint)(1 - exp);
+        return sign | ((sub + 4096u) >> 13u);
+    }
+    if (exp >= 31) {
+        return sign | 31744u;
+    }
+    uint half_mant = (mant + 4096u) >> 13u;
+    if (half_mant == 1024u) {
+        half_mant = 0u;
+        ++exp;
+        if (exp >= 31) {
+            return sign | 31744u;
+        }
+    }
+    return sign | ((uint)exp << 10u) | half_mant;
+}
+
+static inline uint gfx_binary_f16_bits(uint lhs_bits, uint rhs_bits, uint op) {
+    const float lhs = gfx_f16_bits_to_f32(lhs_bits);
+    const float rhs = gfx_f16_bits_to_f32(rhs_bits);
+    float out = lhs;
+    switch (op) {
+    case 1u: out = lhs + rhs; break;
+    case 2u: out = lhs - rhs; break;
+    case 3u: out = lhs * rhs; break;
+    case 4u: out = lhs / rhs; break;
+    case 5u: out = fmax(lhs, rhs); break;
+    case 6u: out = fmin(lhs, rhs); break;
+    case 7u: out = pow(lhs, rhs); break;
+    case 8u: {
+        const float diff = lhs - rhs;
+        out = diff * diff;
+        break;
+    }
+    case 9u: {
+        const float rem = fmod(lhs, rhs);
+        out = fabs(rem) >= fabs(rhs) ? 0.0f : rem;
+        break;
+    }
+    case 10u: {
+        const float rem = lhs - floor(lhs / rhs) * rhs;
+        out = fabs(rem) >= fabs(rhs) ? 0.0f : rem;
+        break;
+    }
+    default: break;
+    }
+    return gfx_f32_to_f16_bits(out);
+}
+
+static inline uint gfx_broadcast_offset_f16(uint idx,
+                                            uint rank,
+                                            uint out_dim1,
+                                            uint out_dim2,
+                                            uint out_dim3,
+                                            uint stride0,
+                                            uint stride1,
+                                            uint stride2,
+                                            uint stride3) {
+    uint coord0 = 0u;
+    uint coord1 = 0u;
+    uint coord2 = 0u;
+    uint coord3 = 0u;
+    if (rank == 1u) {
+        coord0 = idx;
+    } else if (rank == 2u) {
+        coord0 = idx / out_dim1;
+        coord1 = idx - coord0 * out_dim1;
+    } else if (rank == 3u) {
+        const uint plane0 = out_dim1 * out_dim2;
+        const uint rem0 = idx - (idx / plane0) * plane0;
+        coord0 = idx / plane0;
+        coord1 = rem0 / out_dim2;
+        coord2 = rem0 - coord1 * out_dim2;
+    } else {
+        const uint plane0 = out_dim1 * out_dim2 * out_dim3;
+        const uint rem0 = idx - (idx / plane0) * plane0;
+        const uint plane1 = out_dim2 * out_dim3;
+        const uint rem1 = rem0 - (rem0 / plane1) * plane1;
+        coord0 = idx / plane0;
+        coord1 = rem0 / plane1;
+        coord2 = rem1 / out_dim3;
+        coord3 = rem1 - coord2 * out_dim3;
+    }
+    return coord0 * stride0 + coord1 * stride1 + coord2 * stride2 + coord3 * stride3;
+}
+
+__kernel void gfx_opencl_baseline_binary_f16(__global const uint* lhs,
+                                             __global const uint* rhs,
+                                             __global uint* dst,
+                                             uint count,
+                                             uint op) {
+    const uint word_idx = (uint)get_global_id(0);
+    const uint elem0 = word_idx * 2u;
+    if (elem0 >= count) {
+        return;
+    }
+    const uint lo = gfx_binary_f16_bits(GFX_LOAD_F16_BITS(lhs, elem0),
+                                        GFX_LOAD_F16_BITS(rhs, elem0),
+                                        op);
+    uint hi = 0u;
+    if (elem0 + 1u < count) {
+        hi = gfx_binary_f16_bits(GFX_LOAD_F16_BITS(lhs, elem0 + 1u),
+                                 GFX_LOAD_F16_BITS(rhs, elem0 + 1u),
+                                 op);
+    }
+    GFX_STORE_F16_PAIR(dst, word_idx, lo, hi);
+}
+
+__kernel void gfx_opencl_baseline_binary_scalar_f16(__global const uint* lhs,
+                                                    __global const uint* rhs,
+                                                    __global uint* dst,
+                                                    uint count,
+                                                    uint op,
+                                                    uint input_mode) {
+    const uint word_idx = (uint)get_global_id(0);
+    const uint elem0 = word_idx * 2u;
+    if (elem0 >= count) {
+        return;
+    }
+    const uint lhs0 = input_mode == 2u ? GFX_LOAD_F16_BITS(lhs, 0u) : GFX_LOAD_F16_BITS(lhs, elem0);
+    const uint rhs0 = input_mode == 1u ? GFX_LOAD_F16_BITS(rhs, 0u) : GFX_LOAD_F16_BITS(rhs, elem0);
+    const uint lo = gfx_binary_f16_bits(lhs0, rhs0, op);
+    uint hi = 0u;
+    if (elem0 + 1u < count) {
+        const uint lhs1 = input_mode == 2u ? GFX_LOAD_F16_BITS(lhs, 0u) : GFX_LOAD_F16_BITS(lhs, elem0 + 1u);
+        const uint rhs1 = input_mode == 1u ? GFX_LOAD_F16_BITS(rhs, 0u) : GFX_LOAD_F16_BITS(rhs, elem0 + 1u);
+        hi = gfx_binary_f16_bits(lhs1, rhs1, op);
+    }
+    GFX_STORE_F16_PAIR(dst, word_idx, lo, hi);
+}
+
+__kernel void gfx_opencl_baseline_binary_broadcast_f16(__global const uint* lhs,
+                                                       __global const uint* rhs,
+                                                       __global uint* dst,
+                                                       uint count,
+                                                       uint op,
+                                                       uint rank,
+                                                       uint out_dim0,
+                                                       uint out_dim1,
+                                                       uint out_dim2,
+                                                       uint out_dim3,
+                                                       uint lhs_stride0,
+                                                       uint lhs_stride1,
+                                                       uint lhs_stride2,
+                                                       uint lhs_stride3,
+                                                       uint rhs_stride0,
+                                                       uint rhs_stride1,
+                                                       uint rhs_stride2,
+                                                       uint rhs_stride3) {
+    const uint word_idx = (uint)get_global_id(0);
+    const uint elem0 = word_idx * 2u;
+    if (elem0 >= count) {
+        return;
+    }
+    (void)out_dim0;
+    const uint lhs0 = gfx_broadcast_offset_f16(elem0, rank, out_dim1, out_dim2, out_dim3,
+                                               lhs_stride0, lhs_stride1, lhs_stride2, lhs_stride3);
+    const uint rhs0 = gfx_broadcast_offset_f16(elem0, rank, out_dim1, out_dim2, out_dim3,
+                                               rhs_stride0, rhs_stride1, rhs_stride2, rhs_stride3);
+    const uint lo = gfx_binary_f16_bits(GFX_LOAD_F16_BITS(lhs, lhs0),
+                                        GFX_LOAD_F16_BITS(rhs, rhs0),
+                                        op);
+    uint hi = 0u;
+    if (elem0 + 1u < count) {
+        const uint elem1 = elem0 + 1u;
+        const uint lhs1 = gfx_broadcast_offset_f16(elem1, rank, out_dim1, out_dim2, out_dim3,
+                                                   lhs_stride0, lhs_stride1, lhs_stride2, lhs_stride3);
+        const uint rhs1 = gfx_broadcast_offset_f16(elem1, rank, out_dim1, out_dim2, out_dim3,
+                                                   rhs_stride0, rhs_stride1, rhs_stride2, rhs_stride3);
+        hi = gfx_binary_f16_bits(GFX_LOAD_F16_BITS(lhs, lhs1),
+                                 GFX_LOAD_F16_BITS(rhs, rhs1),
+                                 op);
+    }
+    GFX_STORE_F16_PAIR(dst, word_idx, lo, hi);
+}
+)CLC";
+
 bool is_f32_tensor_type(const ov::element::Type& type) {
     return type == ov::element::f32;
 }
@@ -2865,7 +3977,7 @@ bool is_i64_tensor_type(const ov::element::Type& type) {
 }
 
 bool is_opencl_range_tensor_type(const ov::element::Type& type) {
-    return is_f32_tensor_type(type) || is_i32_tensor_type(type) ||
+    return is_f16_tensor_type(type) || is_f32_tensor_type(type) || is_i32_tensor_type(type) ||
            is_i64_tensor_type(type);
 }
 
@@ -2874,7 +3986,15 @@ bool is_opencl_convert_tensor_type(const ov::element::Type& type) {
            is_i64_tensor_type(type);
 }
 
+bool is_opencl_binary_tensor_type(const ov::element::Type& type) {
+    return is_f16_tensor_type(type) || is_f32_tensor_type(type) ||
+           is_i32_tensor_type(type);
+}
+
 const char* opencl_scalar_type_suffix(const ov::element::Type& type) {
+    if (is_f16_tensor_type(type)) {
+        return "f16";
+    }
     if (is_f32_tensor_type(type)) {
         return "f32";
     }
@@ -2943,6 +4063,8 @@ std::optional<GfxOpenClBaselineOp> binary_op_code(std::string_view type) {
     if (type == "Minimum") return GfxOpenClBaselineOp::Minimum;
     if (type == "Power") return GfxOpenClBaselineOp::Power;
     if (type == "SquaredDifference") return GfxOpenClBaselineOp::SquaredDifference;
+    if (type == "Mod") return GfxOpenClBaselineOp::Mod;
+    if (type == "FloorMod") return GfxOpenClBaselineOp::FloorMod;
     return std::nullopt;
 }
 
@@ -3179,9 +4301,14 @@ std::optional<std::vector<uint32_t>> broadcast_static_u32_scalars(
 
 std::optional<std::vector<uint32_t>> binary_broadcast_static_u32_scalars(
     const std::shared_ptr<const ov::Node>& node) {
-    return broadcast_static_u32_scalars(node,
-                                        {ov::element::f32, ov::element::f32},
-                                        ov::element::f32);
+    if (!node || node->get_input_size() != 2 || node->get_output_size() != 1) {
+        return std::nullopt;
+    }
+    const auto element_type = node->get_output_element_type(0);
+    if (!is_opencl_binary_tensor_type(element_type)) {
+        return std::nullopt;
+    }
+    return broadcast_static_u32_scalars(node, {element_type, element_type}, element_type);
 }
 
 std::optional<std::vector<uint32_t>> compare_broadcast_static_u32_scalars(
@@ -3974,8 +5101,9 @@ std::optional<std::vector<uint32_t>> tile_static_u32_scalars(
         tile->get_output_size() != 1 ||
         !tile->get_input_partial_shape(0).is_static() ||
         !tile->get_output_partial_shape(0).is_static() ||
-        !is_f32_tensor_type(tile->get_input_element_type(0)) ||
-        !is_f32_tensor_type(tile->get_output_element_type(0))) {
+        tile->get_input_element_type(0) != tile->get_output_element_type(0) ||
+        (!is_f32_tensor_type(tile->get_input_element_type(0)) &&
+         !is_f16_tensor_type(tile->get_input_element_type(0)))) {
         return std::nullopt;
     }
     const auto& input_shape = tile->get_input_shape(0);
@@ -4015,6 +5143,57 @@ std::optional<std::vector<uint32_t>> tile_static_u32_scalars(
         return std::nullopt;
     }
     return scalars;
+}
+
+std::optional<uint32_t> tile_dynamic_static_rank(
+    const std::shared_ptr<const ov::Node>& node) {
+    if (!node ||
+        node->get_input_size() != 2 ||
+        node->get_output_size() != 1 ||
+        node->get_input_element_type(0) != node->get_output_element_type(0) ||
+        (!is_f32_tensor_type(node->get_input_element_type(0)) &&
+         !is_f16_tensor_type(node->get_input_element_type(0)))) {
+        return std::nullopt;
+    }
+    const auto input_rank = node->get_input_partial_shape(0).rank();
+    if (!input_rank.is_static() ||
+        input_rank.get_length() <= 0 ||
+        input_rank.get_length() > 4) {
+        return std::nullopt;
+    }
+    const auto output_rank = node->get_output_partial_shape(0).rank();
+    if (output_rank.is_static() &&
+        output_rank.get_length() != input_rank.get_length()) {
+        return std::nullopt;
+    }
+    const auto repeats_shape = node->get_input_partial_shape(1);
+    if (repeats_shape.is_static()) {
+        const auto repeats_count = ov::shape_size(repeats_shape.to_shape());
+        if (repeats_count != static_cast<size_t>(input_rank.get_length())) {
+            return std::nullopt;
+        }
+    }
+    if (node->get_output_partial_shape(0).is_static() &&
+        ov::shape_size(node->get_output_shape(0)) == 0) {
+        return std::nullopt;
+    }
+    return static_cast<uint32_t>(input_rank.get_length());
+}
+
+std::vector<GfxOpenClSourceScalarArg> tile_dynamic_shape_scalar_args() {
+    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+        GfxOpenClSourceScalarArg::ElementCount,
+        GfxOpenClSourceScalarArg::StaticU32};
+    scalar_args.reserve(10);
+    for (uint32_t axis = 0; axis < 4; ++axis) {
+        scalar_args.push_back(static_cast<GfxOpenClSourceScalarArg>(
+            static_cast<uint32_t>(GfxOpenClSourceScalarArg::Output0Dim0) + axis));
+    }
+    for (uint32_t axis = 0; axis < 4; ++axis) {
+        scalar_args.push_back(static_cast<GfxOpenClSourceScalarArg>(
+            static_cast<uint32_t>(GfxOpenClSourceScalarArg::Input0Dim0) + axis));
+    }
+    return scalar_args;
 }
 
 std::optional<std::vector<uint32_t>> gather_elements_static_u32_scalars(
@@ -4511,8 +5690,11 @@ GfxOpenClSourceScalarArg output0_dim_scalar_arg(size_t axis) {
 
 struct ConcatStaticU32Scalars {
     uint32_t input_count = 0;
+    std::string type_suffix;
     std::vector<uint32_t> values;
 };
+
+constexpr uint32_t kOpenClMaxStaticConcatInputs = 30;
 
 std::optional<ConcatStaticU32Scalars> concat_static_u32_scalars(
     const std::shared_ptr<const ov::Node>& node) {
@@ -4522,17 +5704,19 @@ std::optional<ConcatStaticU32Scalars> concat_static_u32_scalars(
         return std::nullopt;
     }
     const size_t input_count = concat->get_input_size();
-    if (input_count < 2 || input_count > 4) {
+    if (input_count < 2 || input_count > kOpenClMaxStaticConcatInputs) {
+        return std::nullopt;
+    }
+    const bool is_f32 = is_f32_tensor_type(concat->get_output_element_type(0));
+    const bool is_f16 = is_f16_tensor_type(concat->get_output_element_type(0));
+    if (!is_f32 && !is_f16) {
         return std::nullopt;
     }
     for (size_t input_idx = 0; input_idx < input_count; ++input_idx) {
         if (!concat->get_input_partial_shape(input_idx).is_static() ||
-            !is_f32_tensor_type(concat->get_input_element_type(input_idx))) {
+            concat->get_input_element_type(input_idx) != concat->get_output_element_type(0)) {
             return std::nullopt;
         }
-    }
-    if (!is_f32_tensor_type(concat->get_output_element_type(0))) {
-        return std::nullopt;
     }
     const auto& output_shape = concat->get_output_shape(0);
     const size_t rank = output_shape.size();
@@ -4580,11 +5764,17 @@ std::optional<ConcatStaticU32Scalars> concat_static_u32_scalars(
 
     ConcatStaticU32Scalars metadata;
     metadata.input_count = static_cast<uint32_t>(input_count);
+    metadata.type_suffix = is_f16 ? "f16" : "f32";
     metadata.values.reserve(2 + input_count * 2);
     metadata.values.push_back(static_cast<uint32_t>(output_shape[*axis]));
     metadata.values.push_back(static_cast<uint32_t>(inner));
     uint32_t offset = 0;
     for (uint32_t len : axis_lengths) {
+        if (is_f16 &&
+            (((static_cast<uint64_t>(offset) * inner) % 2u) != 0u ||
+             ((static_cast<uint64_t>(len) * inner) % 2u) != 0u)) {
+            return std::nullopt;
+        }
         metadata.values.push_back(offset);
         metadata.values.push_back(len);
         offset += len;
@@ -4766,6 +5956,70 @@ std::optional<SliceDynamicScalars> slice_v8_dynamic_f16_scalars(
     return metadata;
 }
 
+std::optional<SliceDynamicScalars> strided_slice_runtime_f16_scalars(
+    const std::shared_ptr<const ov::Node>& node) {
+    auto slice = ov::as_type_ptr<const ov::op::v1::StridedSlice>(node);
+    if (!slice ||
+        slice->get_input_size() != 4 ||
+        slice->get_output_size() != 1 ||
+        slice->get_output_partial_shape(0).is_static() ||
+        !is_f16_tensor_type(slice->get_input_element_type(0)) ||
+        !is_f16_tensor_type(slice->get_output_element_type(0)) ||
+        slice->get_input_element_type(1) != ov::element::i64 ||
+        slice->get_input_element_type(2) != ov::element::i64 ||
+        slice->get_input_element_type(3) != ov::element::i64) {
+        return std::nullopt;
+    }
+    for (const int64_t value : slice->get_begin_mask()) {
+        if (value != 0) {
+            return std::nullopt;
+        }
+    }
+    for (const int64_t value : slice->get_end_mask()) {
+        if (value != 0) {
+            return std::nullopt;
+        }
+    }
+    for (const int64_t value : slice->get_new_axis_mask()) {
+        if (value != 0) {
+            return std::nullopt;
+        }
+    }
+    for (const int64_t value : slice->get_shrink_axis_mask()) {
+        if (value != 0) {
+            return std::nullopt;
+        }
+    }
+    for (const int64_t value : slice->get_ellipsis_mask()) {
+        if (value != 0) {
+            return std::nullopt;
+        }
+    }
+    if (constant_i64_vector_input(node, 1) &&
+        constant_i64_vector_input(node, 3)) {
+        return std::nullopt;
+    }
+    const auto input_rank = static_rank(slice->get_input_partial_shape(0));
+    const auto output_rank = static_rank(slice->get_output_partial_shape(0));
+    if (!input_rank || !output_rank || *input_rank != *output_rank ||
+        *input_rank == 0 || *input_rank > 4) {
+        return std::nullopt;
+    }
+    for (size_t input_idx = 1; input_idx <= 3; ++input_idx) {
+        const auto shape = slice->get_input_partial_shape(input_idx);
+        if (!shape.is_static() ||
+            shape.size() != 1 ||
+            shape[0].is_dynamic() ||
+            static_cast<size_t>(shape[0].get_length()) != *input_rank) {
+            return std::nullopt;
+        }
+    }
+
+    SliceDynamicScalars metadata;
+    metadata.rank = static_cast<uint32_t>(*input_rank);
+    return metadata;
+}
+
 std::optional<SliceDynamicScalars> strided_slice_dynamic_f16_scalars(
     const std::shared_ptr<const ov::Node>& node) {
     auto slice = ov::as_type_ptr<const ov::op::v1::StridedSlice>(node);
@@ -4868,8 +6122,11 @@ bool range_dynamic_i64_unit_supported(const std::shared_ptr<const ov::Node>& nod
 
 struct SplitStaticU32Scalars {
     uint32_t output_count = 0;
+    std::string type_suffix;
     std::vector<uint32_t> values;
 };
+
+constexpr uint32_t kOpenClMaxStaticSplitOutputs = 30;
 
 std::optional<SplitStaticU32Scalars> split_static_u32_scalars_from_outputs(
     const std::shared_ptr<const ov::Node>& node,
@@ -4884,19 +6141,20 @@ std::optional<SplitStaticU32Scalars> split_static_u32_scalars_from_outputs(
         !node->get_input_partial_shape(data_input_idx).is_static()) {
         return std::nullopt;
     }
-    if (output_count < 2 || output_count > 4 ||
+    if (output_count < 1 || output_count > kOpenClMaxStaticSplitOutputs ||
         node->get_output_size() != output_count) {
         return std::nullopt;
     }
     if (explicit_axis_lengths && explicit_axis_lengths->size() != output_count) {
         return std::nullopt;
     }
-    if (!is_f32_tensor_type(node->get_input_element_type(data_input_idx))) {
+    const auto data_type = node->get_input_element_type(data_input_idx);
+    if (!is_f32_tensor_type(data_type) && !is_f16_tensor_type(data_type)) {
         return std::nullopt;
     }
     for (size_t output_idx = 0; output_idx < output_count; ++output_idx) {
         if (!node->get_output_partial_shape(output_idx).is_static() ||
-            !is_f32_tensor_type(node->get_output_element_type(output_idx))) {
+            node->get_output_element_type(output_idx) != data_type) {
             return std::nullopt;
         }
     }
@@ -4969,6 +6227,7 @@ std::optional<SplitStaticU32Scalars> split_static_u32_scalars_from_outputs(
 
     SplitStaticU32Scalars metadata;
     metadata.output_count = static_cast<uint32_t>(output_count);
+    metadata.type_suffix = opencl_scalar_type_suffix(data_type);
     metadata.values.reserve(2 + output_count * 2);
     metadata.values.push_back(static_cast<uint32_t>(input_shape[*axis]));
     metadata.values.push_back(static_cast<uint32_t>(inner));
@@ -5062,6 +6321,318 @@ GfxKernelStageManifest make_opencl_baseline_manifest(
                                                  std::move(custom));
 }
 
+std::optional<uint32_t> split_output_count_from_entry_point(
+    std::string_view entry_point,
+    std::string_view type_suffix) {
+    constexpr std::string_view prefix = "gfx_opencl_baseline_split";
+    if (entry_point.size() <= prefix.size() + type_suffix.size() + 1 ||
+        entry_point.substr(0, prefix.size()) != prefix ||
+        entry_point.substr(entry_point.size() - type_suffix.size()) != type_suffix ||
+        entry_point[entry_point.size() - type_suffix.size() - 1] != '_') {
+        return std::nullopt;
+    }
+    const auto digits = entry_point.substr(
+        prefix.size(),
+        entry_point.size() - prefix.size() - type_suffix.size() - 1);
+    uint32_t output_count = 0;
+    for (const char ch : digits) {
+        if (ch < '0' || ch > '9') {
+            return std::nullopt;
+        }
+        output_count = output_count * 10u + static_cast<uint32_t>(ch - '0');
+    }
+    if (output_count < 1 || output_count > kOpenClMaxStaticSplitOutputs) {
+        return std::nullopt;
+    }
+    return output_count;
+}
+
+std::optional<uint32_t> concat_input_count_from_entry_point(
+    std::string_view entry_point,
+    std::string_view type_suffix) {
+    constexpr std::string_view prefix = "gfx_opencl_baseline_concat";
+    if (entry_point.size() <= prefix.size() + type_suffix.size() + 1 ||
+        entry_point.substr(0, prefix.size()) != prefix ||
+        entry_point.substr(entry_point.size() - type_suffix.size()) != type_suffix ||
+        entry_point[entry_point.size() - type_suffix.size() - 1] != '_') {
+        return std::nullopt;
+    }
+    const auto digits = entry_point.substr(
+        prefix.size(),
+        entry_point.size() - prefix.size() - type_suffix.size() - 1);
+    uint32_t input_count = 0;
+    for (const char ch : digits) {
+        if (ch < '0' || ch > '9') {
+            return std::nullopt;
+        }
+        input_count = input_count * 10u + static_cast<uint32_t>(ch - '0');
+    }
+    if (input_count < 1 || input_count > kOpenClMaxStaticConcatInputs) {
+        return std::nullopt;
+    }
+    return input_count;
+}
+
+std::string make_opencl_static_concat_f32_source(
+    uint32_t input_count,
+    std::string_view entry_point,
+    const std::vector<uint32_t>& static_u32_scalars) {
+    if (static_u32_scalars.size() != 2 + input_count * 2) {
+        return {};
+    }
+    std::vector<uint32_t> local_axis_offsets;
+    local_axis_offsets.reserve(input_count);
+    uint32_t copy_axis_total = 0;
+    for (uint32_t input_idx = 0; input_idx < input_count; ++input_idx) {
+        const size_t value_idx = 2 + static_cast<size_t>(input_idx) * 2;
+        local_axis_offsets.push_back(copy_axis_total);
+        copy_axis_total += static_u32_scalars[value_idx + 1];
+    }
+    std::ostringstream cl;
+    cl << "__kernel void " << entry_point << "(";
+    for (uint32_t input_idx = 0; input_idx < input_count; ++input_idx) {
+        if (input_idx != 0) {
+            cl << ",\n                                             ";
+        }
+        cl << "__global const float* src" << input_idx;
+    }
+    cl << ",\n                                             __global float* dst,"
+       << "\n                                             uint count) {\n";
+    cl << "    const uint axis_total = " << static_u32_scalars[0] << "u;\n";
+    cl << "    const uint inner = " << static_u32_scalars[1] << "u;\n";
+    cl << "    const uint copy_axis_total = " << copy_axis_total << "u;\n";
+    cl << R"CLC(
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const uint inner_idx = gid % inner;
+    const uint chunk_axis_idx = (gid / inner) % copy_axis_total;
+    const uint outer_idx = gid / (copy_axis_total * inner);
+)CLC";
+    for (uint32_t input_idx = 0; input_idx < input_count; ++input_idx) {
+        const size_t value_idx = 2 + static_cast<size_t>(input_idx) * 2;
+        const uint32_t axis_offset = static_u32_scalars[value_idx];
+        const uint32_t axis_len = static_u32_scalars[value_idx + 1];
+        const uint32_t local_axis_offset = local_axis_offsets[input_idx];
+        cl << (input_idx == 0 ? "    if" : " else if")
+           << " (chunk_axis_idx >= " << local_axis_offset
+           << "u && chunk_axis_idx < " << (local_axis_offset + axis_len)
+           << "u) {\n"
+           << "        const uint src_axis_idx = chunk_axis_idx - "
+           << local_axis_offset << "u;\n"
+           << "        const uint dst_axis_idx = " << axis_offset
+           << "u + src_axis_idx;\n"
+           << "        const uint src_idx = (outer_idx * "
+           << axis_len << "u + src_axis_idx) * inner + inner_idx;\n"
+           << "        const uint dst_idx = (outer_idx * axis_total + dst_axis_idx) * inner + inner_idx;\n"
+           << "        dst[dst_idx] = src" << input_idx << "[src_idx];\n"
+           << "        return;\n"
+           << "    }";
+    }
+    cl << "\n    dst[gid] = 0.0f;\n}\n";
+    return cl.str();
+}
+
+std::string make_opencl_static_concat_f16_source(
+    uint32_t input_count,
+    std::string_view entry_point,
+    const std::vector<uint32_t>& static_u32_scalars) {
+    if (static_u32_scalars.size() != 2 + input_count * 2) {
+        return {};
+    }
+    std::vector<uint32_t> local_axis_offsets;
+    local_axis_offsets.reserve(input_count);
+    uint32_t copy_axis_total = 0;
+    for (uint32_t input_idx = 0; input_idx < input_count; ++input_idx) {
+        const size_t value_idx = 2 + static_cast<size_t>(input_idx) * 2;
+        local_axis_offsets.push_back(copy_axis_total);
+        copy_axis_total += static_u32_scalars[value_idx + 1];
+    }
+    std::ostringstream cl;
+    cl << R"CLC(
+#define GFX_LOAD_F16_BITS(src, idx) \
+    (((idx) & 1u) == 0u ? ((src)[(idx) >> 1u] & 65535u) : (((src)[(idx) >> 1u] >> 16u) & 65535u))
+#define GFX_STORE_F16_PAIR(dst, word_idx, lo, hi) \
+    ((dst)[(word_idx)] = ((lo) & 65535u) | (((hi) & 65535u) << 16u))
+
+)CLC";
+    cl << "__kernel void " << entry_point << "(";
+    for (uint32_t input_idx = 0; input_idx < input_count; ++input_idx) {
+        if (input_idx != 0) {
+            cl << ",\n                                             ";
+        }
+        cl << "__global const uint* src" << input_idx;
+    }
+    cl << ",\n                                             __global uint* dst,"
+       << "\n                                             uint count) {\n";
+    cl << "    const uint axis_total = " << static_u32_scalars[0] << "u;\n";
+    cl << "    const uint inner = " << static_u32_scalars[1] << "u;\n";
+    cl << "    const uint copy_axis_total = " << copy_axis_total << "u;\n";
+    cl << R"CLC(
+    const uint word_idx = (uint)get_global_id(0);
+    const uint elem0 = word_idx * 2u;
+    if (elem0 >= count) {
+        return;
+    }
+    const uint inner_idx0 = elem0 % inner;
+    const uint chunk_axis_idx0 = (elem0 / inner) % copy_axis_total;
+    const uint outer_idx0 = elem0 / (copy_axis_total * inner);
+)CLC";
+    for (uint32_t input_idx = 0; input_idx < input_count; ++input_idx) {
+        const size_t value_idx = 2 + static_cast<size_t>(input_idx) * 2;
+        const uint32_t axis_offset = static_u32_scalars[value_idx];
+        const uint32_t axis_len = static_u32_scalars[value_idx + 1];
+        const uint32_t local_axis_offset = local_axis_offsets[input_idx];
+        cl << (input_idx == 0 ? "    if" : " else if")
+           << " (chunk_axis_idx0 >= " << local_axis_offset
+           << "u && chunk_axis_idx0 < " << (local_axis_offset + axis_len)
+           << "u) {\n"
+           << "        const uint src_axis_idx = chunk_axis_idx0 - "
+           << local_axis_offset << "u;\n"
+           << "        const uint dst_axis_idx = " << axis_offset
+           << "u + src_axis_idx;\n"
+           << "        const uint src_idx = (outer_idx0 * "
+           << axis_len << "u + src_axis_idx) * inner + inner_idx0;\n"
+           << "        const uint dst_elem = (outer_idx0 * axis_total + dst_axis_idx) * inner + inner_idx0;\n"
+           << "        const uint lo = GFX_LOAD_F16_BITS(src" << input_idx << ", src_idx);\n"
+           << "        const uint hi = elem0 + 1u < count ? GFX_LOAD_F16_BITS(src"
+           << input_idx << ", src_idx + 1u) : 0u;\n"
+           << "        GFX_STORE_F16_PAIR(dst, dst_elem >> 1u, lo, hi);\n"
+           << "        return;\n"
+           << "    }";
+    }
+    cl << R"CLC(
+}
+)CLC";
+    return cl.str();
+}
+
+std::string make_opencl_static_split_f32_source(
+    uint32_t output_count,
+    std::string_view entry_point,
+    const std::vector<uint32_t>& static_u32_scalars) {
+    if (static_u32_scalars.size() != 2 + output_count * 2) {
+        return {};
+    }
+    std::ostringstream cl;
+    cl << R"CLC(
+static inline void gfx_split_store_f32(__global const float* src,
+                                       __global float* dst,
+                                       uint gid,
+                                       uint axis_idx,
+                                       uint outer_idx,
+                                       uint inner_idx,
+                                       uint inner,
+                                       uint axis_offset,
+                                       uint axis_len) {
+    if (axis_idx < axis_offset || axis_idx >= axis_offset + axis_len) {
+        return;
+    }
+    const uint dst_axis_idx = axis_idx - axis_offset;
+    const uint dst_idx = (outer_idx * axis_len + dst_axis_idx) * inner + inner_idx;
+    dst[dst_idx] = src[gid];
+}
+
+)CLC";
+    cl << "__kernel void " << entry_point << "(__global const float* src";
+    for (uint32_t output_idx = 0; output_idx < output_count; ++output_idx) {
+        cl << ",\n                                             __global float* dst"
+           << output_idx;
+    }
+    cl << ",\n                                             uint count) {\n";
+    cl << "    const uint axis_total = " << static_u32_scalars[0] << "u;\n";
+    cl << "    const uint inner = " << static_u32_scalars[1] << "u;\n";
+    cl << R"CLC(
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const uint inner_idx = gid % inner;
+    const uint axis_idx = (gid / inner) % axis_total;
+    const uint outer_idx = gid / (axis_total * inner);
+)CLC";
+    for (uint32_t output_idx = 0; output_idx < output_count; ++output_idx) {
+        const size_t value_idx = 2 + static_cast<size_t>(output_idx) * 2;
+        cl << "    gfx_split_store_f32(src, dst" << output_idx
+           << ", gid, axis_idx, outer_idx, inner_idx, inner, "
+           << static_u32_scalars[value_idx] << "u, "
+           << static_u32_scalars[value_idx + 1] << "u);\n";
+    }
+    cl << "}\n";
+    return cl.str();
+}
+
+std::string make_opencl_static_split_f16_source(
+    uint32_t output_count,
+    std::string_view entry_point,
+    const std::vector<uint32_t>& static_u32_scalars) {
+    if (static_u32_scalars.size() != 2 + output_count * 2) {
+        return {};
+    }
+    std::ostringstream cl;
+    cl << R"CLC(
+#define GFX_LOAD_F16_BITS(src, idx) \
+    (((idx) & 1u) == 0u ? ((src)[(idx) >> 1u] & 65535u) : (((src)[(idx) >> 1u] >> 16u) & 65535u))
+#define GFX_STORE_F16_PAIR(dst, word_idx, lo, hi) \
+    ((dst)[(word_idx)] = ((lo) & 65535u) | (((hi) & 65535u) << 16u))
+
+static inline void gfx_split_store_word_f16(__global const uint* src,
+                                            __global uint* dst,
+                                            uint word_idx,
+                                            uint count,
+                                            uint axis_total,
+                                            uint inner,
+                                            uint axis_offset,
+                                            uint axis_len) {
+    if (axis_total == 0u || inner == 0u || axis_len == 0u) {
+        return;
+    }
+    const uint outer_times_inner = count / axis_total;
+    const uint out_total = outer_times_inner * axis_len;
+    const uint elem0 = word_idx * 2u;
+    if (elem0 >= out_total) {
+        return;
+    }
+    uint out_elem = elem0;
+    uint inner_idx = out_elem % inner;
+    uint axis_idx = (out_elem / inner) % axis_len;
+    uint outer_idx = out_elem / (axis_len * inner);
+    uint src_idx = (outer_idx * axis_total + axis_offset + axis_idx) * inner + inner_idx;
+    const uint lo = GFX_LOAD_F16_BITS(src, src_idx);
+    uint hi = 0u;
+    if (elem0 + 1u < out_total) {
+        out_elem = elem0 + 1u;
+        inner_idx = out_elem % inner;
+        axis_idx = (out_elem / inner) % axis_len;
+        outer_idx = out_elem / (axis_len * inner);
+        src_idx = (outer_idx * axis_total + axis_offset + axis_idx) * inner + inner_idx;
+        hi = GFX_LOAD_F16_BITS(src, src_idx);
+    }
+    GFX_STORE_F16_PAIR(dst, word_idx, lo, hi);
+}
+
+)CLC";
+    cl << "__kernel void " << entry_point << "(__global const uint* src";
+    for (uint32_t output_idx = 0; output_idx < output_count; ++output_idx) {
+        cl << ",\n                                             __global uint* dst"
+           << output_idx;
+    }
+    cl << ",\n                                             uint count) {\n";
+    cl << "    const uint axis_total = " << static_u32_scalars[0] << "u;\n";
+    cl << "    const uint inner = " << static_u32_scalars[1] << "u;\n";
+    cl << "    const uint word_idx = (uint)get_global_id(0);\n";
+    for (uint32_t output_idx = 0; output_idx < output_count; ++output_idx) {
+        const size_t value_idx = 2 + static_cast<size_t>(output_idx) * 2;
+        cl << "    gfx_split_store_word_f16(src, dst" << output_idx
+           << ", word_idx, count, axis_total, inner, "
+           << static_u32_scalars[value_idx] << "u, "
+           << static_u32_scalars[value_idx + 1] << "u);\n";
+    }
+    cl << "}\n";
+    return cl.str();
+}
+
 GfxOpenClSourceArtifact make_opencl_baseline_artifact(
     GfxKernelStageManifest manifest,
     std::string source_id,
@@ -5079,7 +6650,31 @@ GfxOpenClSourceArtifact make_opencl_baseline_artifact(
     artifact.artifact_ref = make_gfx_kernel_artifact_ref(artifact.stage_manifest);
     artifact.artifact_ref.source_id = std::move(source_id);
     artifact.artifact_ref.entry_point = artifact.stage_manifest.custom_kernel.entry_point;
-    if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_matmul_f32") {
+    bool source_inlines_static_u32_scalars = false;
+    if (auto concat_inputs =
+            concat_input_count_from_entry_point(artifact.artifact_ref.entry_point, "f32");
+        concat_inputs && static_u32_scalars.size() == 2 + static_cast<size_t>(*concat_inputs) * 2) {
+        artifact.source = make_opencl_static_concat_f32_source(
+            *concat_inputs, artifact.artifact_ref.entry_point, static_u32_scalars);
+        source_inlines_static_u32_scalars = true;
+    } else if (auto concat_inputs =
+                   concat_input_count_from_entry_point(artifact.artifact_ref.entry_point, "f16");
+               concat_inputs &&
+               static_u32_scalars.size() == 2 + static_cast<size_t>(*concat_inputs) * 2) {
+        artifact.source = make_opencl_static_concat_f16_source(
+            *concat_inputs, artifact.artifact_ref.entry_point, static_u32_scalars);
+        source_inlines_static_u32_scalars = true;
+    } else if (auto split_outputs =
+            split_output_count_from_entry_point(artifact.artifact_ref.entry_point, "f32")) {
+        artifact.source = make_opencl_static_split_f32_source(
+            *split_outputs, artifact.artifact_ref.entry_point, static_u32_scalars);
+        source_inlines_static_u32_scalars = true;
+    } else if (auto split_outputs =
+                   split_output_count_from_entry_point(artifact.artifact_ref.entry_point, "f16")) {
+        artifact.source = make_opencl_static_split_f16_source(
+            *split_outputs, artifact.artifact_ref.entry_point, static_u32_scalars);
+        source_inlines_static_u32_scalars = true;
+    } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_matmul_f32") {
         artifact.source = kOpenClMatMulSource;
     } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_softmax_f32") {
         artifact.source = kOpenClSoftmaxSource;
@@ -5104,6 +6699,20 @@ GfxOpenClSourceArtifact make_opencl_baseline_artifact(
                "gfx_opencl_baseline_binary_const_f32") {
         artifact.source = kOpenClBinaryConstF32Source;
     } else if (artifact.artifact_ref.entry_point ==
+                   "gfx_opencl_baseline_binary_i32" ||
+               artifact.artifact_ref.entry_point ==
+                   "gfx_opencl_baseline_binary_scalar_i32" ||
+               artifact.artifact_ref.entry_point ==
+                   "gfx_opencl_baseline_binary_broadcast_i32") {
+        artifact.source = kOpenClBinaryI32Source;
+    } else if (artifact.artifact_ref.entry_point ==
+                   "gfx_opencl_baseline_binary_f16" ||
+               artifact.artifact_ref.entry_point ==
+                   "gfx_opencl_baseline_binary_scalar_f16" ||
+               artifact.artifact_ref.entry_point ==
+                   "gfx_opencl_baseline_binary_broadcast_f16") {
+        artifact.source = kOpenClBinaryF16Source;
+    } else if (artifact.artifact_ref.entry_point ==
                "gfx_opencl_baseline_compare_f32") {
         artifact.source = kOpenClCompareF32Source;
     } else if (artifact.artifact_ref.entry_point ==
@@ -5115,11 +6724,38 @@ GfxOpenClSourceArtifact make_opencl_baseline_artifact(
     } else if (artifact.artifact_ref.entry_point ==
                "gfx_opencl_baseline_select_broadcast_f32") {
         artifact.source = kOpenClSelectBroadcastF32Source;
+    } else if (artifact.artifact_ref.entry_point ==
+               "gfx_opencl_baseline_transpose_f32") {
+        artifact.source = kOpenClTransposeF32Source;
+    } else if (artifact.artifact_ref.entry_point ==
+               "gfx_opencl_baseline_slice_f32") {
+        artifact.source = kOpenClSliceF32Source;
+    } else if (artifact.artifact_ref.entry_point ==
+               "gfx_opencl_baseline_range_f32") {
+        artifact.source = kOpenClRangeF32Source;
+    } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_tile_f32" ||
+               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_tile_dynamic_f32") {
+        artifact.source = kOpenClTileF32Source;
+    } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_gather_i32_f32" ||
+               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_gather_elements_i32_f32" ||
+               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_gather_nd_i32_f32") {
+        artifact.source = kOpenClGatherF32I32Source;
+    } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_gather_i64_f32" ||
+               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_gather_elements_i64_f32" ||
+               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_gather_nd_i64_f32") {
+        artifact.source = kOpenClGatherF32I64Source;
+    } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_concat2_f32" ||
+               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_concat3_f32" ||
+               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_concat4_f32") {
+        artifact.source = kOpenClConcatSplitF32Source;
     } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_select_f16" ||
                artifact.artifact_ref.entry_point == "gfx_opencl_baseline_concat2_f16" ||
                artifact.artifact_ref.entry_point == "gfx_opencl_baseline_concat3_f16" ||
                artifact.artifact_ref.entry_point == "gfx_opencl_baseline_concat4_f16" ||
                artifact.artifact_ref.entry_point == "gfx_opencl_baseline_broadcast_f16_i64shape" ||
+               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_tile_f16" ||
+               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_tile_dynamic_f16" ||
+               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_range_f16" ||
                artifact.artifact_ref.entry_point == "gfx_opencl_baseline_slice_f16" ||
                artifact.artifact_ref.entry_point == "gfx_opencl_baseline_slice_v8_f16" ||
                artifact.artifact_ref.entry_point == "gfx_opencl_baseline_range_i64_unit") {
@@ -5138,6 +6774,10 @@ GfxOpenClSourceArtifact make_opencl_baseline_artifact(
         artifact.source = kOpenClReduceLogicalBoolSource;
     } else {
         artifact.source = kOpenClBaselineSource;
+    }
+    if (source_inlines_static_u32_scalars) {
+        artifact.source_static_u32_scalars = static_u32_scalars;
+        static_u32_scalars.clear();
     }
     artifact.scalar_args = std::move(scalar_args);
     artifact.static_u32_scalars = std::move(static_u32_scalars);
@@ -5158,7 +6798,8 @@ GfxOpenClSourceArtifact make_opencl_baseline_artifact(
     artifact.scalar_constant_f32 = scalar_constant_f32;
     artifact.valid = artifact.valid &&
                      artifact.artifact_ref.valid &&
-                     artifact.artifact_ref.kind == GfxKernelArtifactKind::OpenClSource;
+                     artifact.artifact_ref.kind == GfxKernelArtifactKind::OpenClSource &&
+                     !artifact.source.empty();
     return artifact;
 }
 
@@ -5280,6 +6921,33 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     }
 
     if (type == "StridedSlice") {
+        auto runtime_scalars = strided_slice_runtime_f16_scalars(node);
+        if (runtime_scalars) {
+            std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+                GfxOpenClSourceScalarArg::ElementCount,
+                GfxOpenClSourceScalarArg::StaticU32};
+            for (uint32_t axis = 0; axis < 4; ++axis) {
+                scalar_args.push_back(output0_dim_scalar_arg(axis));
+            }
+            for (uint32_t axis = 0; axis < 4; ++axis) {
+                scalar_args.push_back(input_dim_scalar_arg(0, axis));
+            }
+            auto manifest = make_opencl_baseline_manifest(
+                GfxKernelStageFamily::GatherScatter,
+                "opencl:baseline:StridedSlice:f16:dynamic_runtime_static_rank",
+                "gfx_opencl_baseline_slice_v8_f16",
+                /*direct_inputs=*/4,
+                static_cast<uint32_t>(scalar_args.size()));
+            return make_opencl_baseline_artifact(std::move(manifest),
+                                                 "opencl/baseline/strided_slice_f16_dynamic_runtime",
+                                                 std::move(scalar_args),
+                                                 {0, 1, 2, 3},
+                                                 GfxOpenClBaselineOp::Identity,
+                                                 GfxOpenClBaselineInputMode::Direct,
+                                                 0.0f,
+                                                 {runtime_scalars->rank});
+        }
+
         auto dynamic_scalars = strided_slice_dynamic_f16_scalars(node);
         if (dynamic_scalars) {
             std::vector<GfxOpenClSourceScalarArg> scalar_args = {
@@ -5330,6 +6998,52 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
                                              {GfxOpenClSourceScalarArg::ElementCount},
                                              {1},
                                              GfxOpenClBaselineOp::Identity);
+    }
+
+    if (type == "Tile") {
+        auto static_u32_scalars = tile_static_u32_scalars(node);
+        const bool f16 = is_f16_tensor_type(node->get_input_element_type(0));
+        const std::string type_suffix = f16 ? "f16" : "f32";
+        if (!static_u32_scalars) {
+            auto rank = tile_dynamic_static_rank(node);
+            if (!rank) {
+                return std::nullopt;
+            }
+            auto scalar_args = tile_dynamic_shape_scalar_args();
+            auto manifest = make_opencl_baseline_manifest(
+                GfxKernelStageFamily::Layout,
+                "opencl:baseline:Tile:" + type_suffix + ":dynamic_static_rank",
+                "gfx_opencl_baseline_tile_dynamic_" + type_suffix,
+                /*direct_inputs=*/1,
+                static_cast<uint32_t>(scalar_args.size()));
+            return make_opencl_baseline_artifact(std::move(manifest),
+                                                 "opencl/baseline/tile_dynamic_" + type_suffix,
+                                                 std::move(scalar_args),
+                                                 {0},
+                                                 GfxOpenClBaselineOp::Identity,
+                                                 GfxOpenClBaselineInputMode::Direct,
+                                                 0.0f,
+                                                 {*rank});
+        }
+        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+            GfxOpenClSourceScalarArg::ElementCount};
+        scalar_args.insert(scalar_args.end(),
+                           static_u32_scalars->size(),
+                           GfxOpenClSourceScalarArg::StaticU32);
+        auto manifest = make_opencl_baseline_manifest(
+            GfxKernelStageFamily::Layout,
+            "opencl:baseline:Tile:" + type_suffix,
+            "gfx_opencl_baseline_tile_" + type_suffix,
+            /*direct_inputs=*/1,
+            static_cast<uint32_t>(scalar_args.size()));
+        return make_opencl_baseline_artifact(std::move(manifest),
+                                             "opencl/baseline/tile_" + type_suffix,
+                                             std::move(scalar_args),
+                                             {0},
+                                             GfxOpenClBaselineOp::Identity,
+                                             GfxOpenClBaselineInputMode::Direct,
+                                             0.0f,
+                                             std::move(*static_u32_scalars));
     }
 
     if (!node->get_output_partial_shape(0).is_static()) {
@@ -5519,32 +7233,6 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
                                              {0, 1, 2},
                                              GfxOpenClBaselineOp::Identity,
                                              GfxOpenClBaselineInputMode::Direct);
-    }
-
-    if (type == "Tile") {
-        auto static_u32_scalars = tile_static_u32_scalars(node);
-        if (!static_u32_scalars) {
-            return std::nullopt;
-        }
-        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-            GfxOpenClSourceScalarArg::ElementCount};
-        scalar_args.insert(scalar_args.end(),
-                           static_u32_scalars->size(),
-                           GfxOpenClSourceScalarArg::StaticU32);
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::Layout,
-            "opencl:baseline:Tile:f32",
-            "gfx_opencl_baseline_tile_f32",
-            /*direct_inputs=*/1,
-            static_cast<uint32_t>(scalar_args.size()));
-        return make_opencl_baseline_artifact(std::move(manifest),
-                                             "opencl/baseline/tile_f32",
-                                             std::move(scalar_args),
-                                             {0},
-                                             GfxOpenClBaselineOp::Identity,
-                                             GfxOpenClBaselineInputMode::Direct,
-                                             0.0f,
-                                             std::move(*static_u32_scalars));
     }
 
     if (type == "Gather") {
@@ -5793,12 +7481,10 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         }
         std::vector<GfxOpenClSourceScalarArg> scalar_args = {
             GfxOpenClSourceScalarArg::ElementCount};
-        scalar_args.insert(scalar_args.end(),
-                           static_u32_scalars->values.size(),
-                           GfxOpenClSourceScalarArg::StaticU32);
         const std::string entry_point =
             "gfx_opencl_baseline_concat" +
-            std::to_string(static_u32_scalars->input_count) + "_f32";
+            std::to_string(static_u32_scalars->input_count) + "_" +
+            static_u32_scalars->type_suffix;
         std::vector<size_t> direct_input_indices;
         direct_input_indices.reserve(static_u32_scalars->input_count);
         for (size_t input_idx = 0;
@@ -5808,7 +7494,7 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         }
         auto manifest = make_opencl_baseline_manifest(
             GfxKernelStageFamily::ConcatSplit,
-            "opencl:baseline:Concat:f32:inputs" +
+            "opencl:baseline:Concat:" + static_u32_scalars->type_suffix + ":inputs" +
                 std::to_string(static_u32_scalars->input_count),
             entry_point,
             static_u32_scalars->input_count,
@@ -5816,7 +7502,8 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         return make_opencl_baseline_artifact(
             std::move(manifest),
             "opencl/baseline/concat" +
-                std::to_string(static_u32_scalars->input_count) + "_f32",
+                std::to_string(static_u32_scalars->input_count) + "_" +
+                static_u32_scalars->type_suffix,
             std::move(scalar_args),
             std::move(direct_input_indices),
             GfxOpenClBaselineOp::Identity,
@@ -5834,15 +7521,14 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         }
         std::vector<GfxOpenClSourceScalarArg> scalar_args = {
             GfxOpenClSourceScalarArg::ElementCount};
-        scalar_args.insert(scalar_args.end(),
-                           static_u32_scalars->values.size(),
-                           GfxOpenClSourceScalarArg::StaticU32);
         const std::string entry_point =
             "gfx_opencl_baseline_split" +
-            std::to_string(static_u32_scalars->output_count) + "_f32";
+            std::to_string(static_u32_scalars->output_count) + "_" +
+            static_u32_scalars->type_suffix;
         auto manifest = make_opencl_baseline_manifest(
             GfxKernelStageFamily::ConcatSplit,
-            "opencl:baseline:" + type + ":f32:outputs" +
+            "opencl:baseline:" + type + ":" +
+                static_u32_scalars->type_suffix + ":outputs" +
                 std::to_string(static_u32_scalars->output_count),
             entry_point,
             /*direct_inputs=*/1,
@@ -5851,7 +7537,8 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         return make_opencl_baseline_artifact(
             std::move(manifest),
             "opencl/baseline/split" +
-                std::to_string(static_u32_scalars->output_count) + "_f32",
+                std::to_string(static_u32_scalars->output_count) + "_" +
+                static_u32_scalars->type_suffix,
             std::move(scalar_args),
             {0},
             GfxOpenClBaselineOp::Identity,
@@ -5883,30 +7570,35 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
 
     if (auto op = binary_op_code(type)) {
         if (node->get_input_size() != 2 ||
-            !is_f32_tensor_type(node->get_output_element_type(0)) ||
-            !is_f32_tensor_type(node->get_input_element_type(0)) ||
-            !is_f32_tensor_type(node->get_input_element_type(1))) {
+            node->get_output_element_type(0) != node->get_input_element_type(0) ||
+            node->get_output_element_type(0) != node->get_input_element_type(1) ||
+            !is_opencl_binary_tensor_type(node->get_output_element_type(0))) {
             return std::nullopt;
         }
+        const auto element_type = node->get_output_element_type(0);
+        const bool is_f32 = is_f32_tensor_type(element_type);
+        const std::string type_suffix = opencl_scalar_type_suffix(element_type);
         const bool lhs_matches_output = input_static_element_count_matches_output(node, 0, 0);
         const bool rhs_matches_output = input_static_element_count_matches_output(node, 1, 0);
         const auto lhs_constant = scalar_f32_constant_input(node, 0);
         const auto rhs_constant = scalar_f32_constant_input(node, 1);
         if (same_static_shape(node, 0, 1) && lhs_matches_output && rhs_matches_output) {
+            const std::string entry_point =
+                "gfx_opencl_baseline_binary_" + type_suffix;
             auto manifest = make_opencl_baseline_manifest(
                 GfxKernelStageFamily::Eltwise,
-                "opencl:baseline:" + type + ":f32:same_shape",
-                "gfx_opencl_baseline_binary_f32",
+                "opencl:baseline:" + type + ":" + type_suffix + ":same_shape",
+                entry_point,
                 /*direct_inputs=*/2,
                 /*scalar_arg_count=*/2);
             return make_opencl_baseline_artifact(std::move(manifest),
-                                                 "opencl/baseline/eltwise_binary_f32",
+                                                 "opencl/baseline/eltwise_binary_" + type_suffix,
                                                  {GfxOpenClSourceScalarArg::ElementCount,
                                                   GfxOpenClSourceScalarArg::OpCode},
                                                  {0, 1},
                                                  *op);
         }
-        if (rhs_constant && lhs_matches_output) {
+        if (is_f32 && rhs_constant && lhs_matches_output) {
             auto manifest = make_opencl_baseline_manifest(
                 GfxKernelStageFamily::Eltwise,
                 "opencl:baseline:" + type + ":f32:rhs_scalar_const",
@@ -5924,7 +7616,7 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
                                                  GfxOpenClBaselineInputMode::RhsScalarConstant,
                                                  *rhs_constant);
         }
-        if (lhs_constant && rhs_matches_output) {
+        if (is_f32 && lhs_constant && rhs_matches_output) {
             auto manifest = make_opencl_baseline_manifest(
                 GfxKernelStageFamily::Eltwise,
                 "opencl:baseline:" + type + ":f32:lhs_scalar_const",
@@ -5943,14 +7635,16 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
                                                  *lhs_constant);
         }
         if (is_static_scalar_like_input(node, 1) && lhs_matches_output) {
+            const std::string entry_point =
+                "gfx_opencl_baseline_binary_scalar_" + type_suffix;
             auto manifest = make_opencl_baseline_manifest(
                 GfxKernelStageFamily::Eltwise,
-                "opencl:baseline:" + type + ":f32:rhs_scalar",
-                "gfx_opencl_baseline_binary_scalar_f32",
+                "opencl:baseline:" + type + ":" + type_suffix + ":rhs_scalar",
+                entry_point,
                 /*direct_inputs=*/2,
                 /*scalar_arg_count=*/3);
             return make_opencl_baseline_artifact(std::move(manifest),
-                                                 "opencl/baseline/eltwise_binary_scalar_f32",
+                                                 "opencl/baseline/eltwise_binary_scalar_" + type_suffix,
                                                  {GfxOpenClSourceScalarArg::ElementCount,
                                                   GfxOpenClSourceScalarArg::OpCode,
                                                   GfxOpenClSourceScalarArg::InputMode},
@@ -5959,14 +7653,16 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
                                                  GfxOpenClBaselineInputMode::RhsScalar);
         }
         if (is_static_scalar_like_input(node, 0) && rhs_matches_output) {
+            const std::string entry_point =
+                "gfx_opencl_baseline_binary_scalar_" + type_suffix;
             auto manifest = make_opencl_baseline_manifest(
                 GfxKernelStageFamily::Eltwise,
-                "opencl:baseline:" + type + ":f32:lhs_scalar",
-                "gfx_opencl_baseline_binary_scalar_f32",
+                "opencl:baseline:" + type + ":" + type_suffix + ":lhs_scalar",
+                entry_point,
                 /*direct_inputs=*/2,
                 /*scalar_arg_count=*/3);
             return make_opencl_baseline_artifact(std::move(manifest),
-                                                 "opencl/baseline/eltwise_binary_scalar_f32",
+                                                 "opencl/baseline/eltwise_binary_scalar_" + type_suffix,
                                                  {GfxOpenClSourceScalarArg::ElementCount,
                                                   GfxOpenClSourceScalarArg::OpCode,
                                                   GfxOpenClSourceScalarArg::InputMode},
@@ -5976,6 +7672,8 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
         }
         auto static_u32_scalars = binary_broadcast_static_u32_scalars(node);
         if (static_u32_scalars) {
+            const std::string entry_point =
+                "gfx_opencl_baseline_binary_broadcast_" + type_suffix;
             std::vector<GfxOpenClSourceScalarArg> scalar_args = {
                 GfxOpenClSourceScalarArg::ElementCount,
                 GfxOpenClSourceScalarArg::OpCode};
@@ -5984,12 +7682,12 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
                                GfxOpenClSourceScalarArg::StaticU32);
             auto manifest = make_opencl_baseline_manifest(
                 GfxKernelStageFamily::Eltwise,
-                "opencl:baseline:" + type + ":f32:broadcast",
-                "gfx_opencl_baseline_binary_broadcast_f32",
+                "opencl:baseline:" + type + ":" + type_suffix + ":broadcast",
+                entry_point,
                 /*direct_inputs=*/2,
                 static_cast<uint32_t>(scalar_args.size()));
             return make_opencl_baseline_artifact(std::move(manifest),
-                                                 "opencl/baseline/eltwise_binary_broadcast_f32",
+                                                 "opencl/baseline/eltwise_binary_broadcast_" + type_suffix,
                                                  std::move(scalar_args),
                                                  {0, 1},
                                                  *op,
@@ -6203,6 +7901,153 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     }
 
     return std::nullopt;
+}
+
+std::optional<GfxOpenClSourceArtifact> make_gfx_opencl_concat_chunk_source_artifact(
+    const GfxOpenClSourceArtifact& base_artifact,
+    uint32_t input_begin,
+    uint32_t input_count) {
+    if (!base_artifact.valid ||
+        input_count < 1 ||
+        input_count > 4 ||
+        base_artifact.direct_output_count != 1 ||
+        base_artifact.direct_input_indices.size() != base_artifact.direct_input_count) {
+        return std::nullopt;
+    }
+
+    std::string type_suffix;
+    auto total_inputs =
+        concat_input_count_from_entry_point(base_artifact.artifact_ref.entry_point, "f32");
+    if (total_inputs) {
+        type_suffix = "f32";
+    } else {
+        total_inputs =
+            concat_input_count_from_entry_point(base_artifact.artifact_ref.entry_point, "f16");
+        if (!total_inputs) {
+            return std::nullopt;
+        }
+        type_suffix = "f16";
+    }
+    if (input_begin >= *total_inputs ||
+        input_begin + input_count > *total_inputs ||
+        base_artifact.direct_input_count != *total_inputs ||
+        base_artifact.source_static_u32_scalars.size() !=
+            2 + static_cast<size_t>(*total_inputs) * 2) {
+        return std::nullopt;
+    }
+
+    std::vector<uint32_t> chunk_static_u32_scalars = {
+        base_artifact.source_static_u32_scalars[0],
+        base_artifact.source_static_u32_scalars[1],
+    };
+    chunk_static_u32_scalars.reserve(2 + static_cast<size_t>(input_count) * 2);
+    for (uint32_t local_input = 0; local_input < input_count; ++local_input) {
+        const size_t source_idx =
+            2 + static_cast<size_t>(input_begin + local_input) * 2;
+        chunk_static_u32_scalars.push_back(
+            base_artifact.source_static_u32_scalars[source_idx]);
+        chunk_static_u32_scalars.push_back(
+            base_artifact.source_static_u32_scalars[source_idx + 1]);
+    }
+
+    std::vector<size_t> direct_input_indices;
+    direct_input_indices.reserve(input_count);
+    for (uint32_t local_input = 0; local_input < input_count; ++local_input) {
+        direct_input_indices.push_back(
+            base_artifact.direct_input_indices[input_begin + local_input]);
+    }
+
+    const std::string entry_point =
+        "gfx_opencl_baseline_concat" + std::to_string(input_count) + "_" +
+        type_suffix;
+    auto manifest = make_opencl_baseline_manifest(
+        base_artifact.stage_manifest.stage_family,
+        base_artifact.stage_manifest.specialization_key + ":chunk" +
+            std::to_string(input_begin) + "x" + std::to_string(input_count),
+        entry_point,
+        input_count,
+        /*scalar_arg_count=*/1);
+    return make_opencl_baseline_artifact(
+        std::move(manifest),
+        base_artifact.artifact_ref.source_id + "/chunk" +
+            std::to_string(input_begin) + "x" + std::to_string(input_count),
+        {GfxOpenClSourceScalarArg::ElementCount},
+        std::move(direct_input_indices),
+        base_artifact.op,
+        base_artifact.input_mode,
+        base_artifact.scalar_constant_f32,
+        std::move(chunk_static_u32_scalars),
+        base_artifact.element_count_source);
+}
+
+std::optional<GfxOpenClSourceArtifact> make_gfx_opencl_split_chunk_source_artifact(
+    const GfxOpenClSourceArtifact& base_artifact,
+    uint32_t output_begin,
+    uint32_t output_count) {
+    if (!base_artifact.valid ||
+        output_count < 1 ||
+        output_count > 4 ||
+        base_artifact.direct_input_count != 1 ||
+        base_artifact.direct_input_indices.empty()) {
+        return std::nullopt;
+    }
+
+    std::string type_suffix;
+    auto total_outputs =
+        split_output_count_from_entry_point(base_artifact.artifact_ref.entry_point, "f32");
+    if (total_outputs) {
+        type_suffix = "f32";
+    } else {
+        total_outputs =
+            split_output_count_from_entry_point(base_artifact.artifact_ref.entry_point, "f16");
+        if (!total_outputs) {
+            return std::nullopt;
+        }
+        type_suffix = "f16";
+    }
+    if (output_begin >= *total_outputs ||
+        output_begin + output_count > *total_outputs ||
+        base_artifact.source_static_u32_scalars.size() !=
+            2 + static_cast<size_t>(*total_outputs) * 2) {
+        return std::nullopt;
+    }
+
+    std::vector<uint32_t> chunk_static_u32_scalars = {
+        base_artifact.source_static_u32_scalars[0],
+        base_artifact.source_static_u32_scalars[1],
+    };
+    chunk_static_u32_scalars.reserve(2 + static_cast<size_t>(output_count) * 2);
+    for (uint32_t local_output = 0; local_output < output_count; ++local_output) {
+        const size_t source_idx =
+            2 + static_cast<size_t>(output_begin + local_output) * 2;
+        chunk_static_u32_scalars.push_back(
+            base_artifact.source_static_u32_scalars[source_idx]);
+        chunk_static_u32_scalars.push_back(
+            base_artifact.source_static_u32_scalars[source_idx + 1]);
+    }
+
+    const std::string entry_point =
+        "gfx_opencl_baseline_split" + std::to_string(output_count) + "_" +
+        type_suffix;
+    auto manifest = make_opencl_baseline_manifest(
+        base_artifact.stage_manifest.stage_family,
+        base_artifact.stage_manifest.specialization_key + ":chunk" +
+            std::to_string(output_begin) + "x" + std::to_string(output_count),
+        entry_point,
+        /*direct_inputs=*/1,
+        /*scalar_arg_count=*/1,
+        output_count);
+    return make_opencl_baseline_artifact(
+        std::move(manifest),
+        base_artifact.artifact_ref.source_id + "/chunk" +
+            std::to_string(output_begin) + "x" + std::to_string(output_count),
+        {GfxOpenClSourceScalarArg::ElementCount},
+        base_artifact.direct_input_indices,
+        base_artifact.op,
+        base_artifact.input_mode,
+        base_artifact.scalar_constant_f32,
+        std::move(chunk_static_u32_scalars),
+        base_artifact.element_count_source);
 }
 
 std::string gfx_opencl_source_artifact_build_options(

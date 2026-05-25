@@ -13,6 +13,7 @@
 #include "openvino/op/shape_of.hpp"
 #include "openvino/op/slice.hpp"
 #include "openvino/op/strided_slice.hpp"
+#include "openvino/op/tile.hpp"
 #include "runtime/gfx_stage_policy.hpp"
 
 namespace ov {
@@ -169,6 +170,16 @@ void assign_runtime_shapes_for_stage(InferStage& stage,
     if (ov::as_type_ptr<const ov::op::v4::Range>(stage.node)) {
         const auto plan = plan_range_runtime_values(runtime_inputs, stage.node.get(), stage_name);
         assign_runtime_value_outputs(plan, outputs);
+        return;
+    }
+
+    if (ov::as_type_ptr<const ov::op::v0::Tile>(stage.node)) {
+        const auto plan = plan_tile_runtime_values(runtime_inputs, outputs, stage_name);
+        OPENVINO_ASSERT(plan.valid(),
+                        error_prefix,
+                        ": Tile runtime shape is unknown for stage ",
+                        stage_name);
+        assign_runtime_value_outputs(plan.values, outputs);
         return;
     }
 

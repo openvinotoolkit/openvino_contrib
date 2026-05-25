@@ -17,6 +17,7 @@
 #include "openvino/op/gather.hpp"
 #include "openvino/op/gather_elements.hpp"
 #include "openvino/op/gather_nd.hpp"
+#include "openvino/op/util/gather_nd_base.hpp"
 #include "openvino/op/interpolate.hpp"
 #include "openvino/op/scatter_elements_update.hpp"
 #include "openvino/op/scatter_nd_update.hpp"
@@ -210,10 +211,11 @@ std::optional<KernelSource> make_apple_metal_data_movement_kernel_source(
   }
 
   if (auto gather_nd =
-          std::dynamic_pointer_cast<const ov::op::v5::GatherND>(node)) {
+          std::dynamic_pointer_cast<const ov::op::util::GatherNDBase>(node)) {
     GatherNDCodegenDesc desc{};
     const auto data = gather_nd->get_input_shape(0);
     const auto indices = gather_nd->get_input_shape(1);
+    const auto output = gather_nd->get_output_shape(0);
     desc.index_type = gather_nd->get_input_element_type(1);
     desc.k = static_cast<uint32_t>(indices.back());
     desc.num_indices = static_cast<uint32_t>(ov::shape_size(indices) / desc.k);
@@ -226,9 +228,17 @@ std::optional<KernelSource> make_apple_metal_data_movement_kernel_source(
       desc.strides[static_cast<size_t>(i)] = stride;
       stride *= desc.dims[static_cast<size_t>(i)];
     }
-    desc.inner = desc.strides[desc.k];
-    desc.total = static_cast<uint32_t>(ov::shape_size(data));
+    desc.inner = 1;
+    for (size_t axis = desc.k; axis < rank; ++axis) {
+      desc.inner *= static_cast<uint32_t>(data[axis]);
+    }
+    desc.total = static_cast<uint32_t>(ov::shape_size(output));
+    OPENVINO_ASSERT(
+        desc.total == desc.num_indices * desc.inner,
+        "GFX Metal GatherND: output shape does not match indices and slice");
     set_desc(desc, "gathernd_kernel");
+    require_apple_msl_generated_kernel_source_binding(source, "GatherND",
+                                                      "gathernd_kernel");
     return source;
   }
 

@@ -68,11 +68,16 @@ std::optional<KernelSource> make_apple_metal_shape_kernel_source(
     source.msl_generator = [desc](mlir::ModuleOp module) mutable {
       return generate_msl_from_mlir(module, desc);
     };
-    const auto output_shape = node->get_output_shape(0);
+    const auto output_pshape = node->get_output_partial_shape(0);
+    const auto rank = output_pshape.rank().is_static()
+                          ? static_cast<int32_t>(std::max<int64_t>(output_pshape.rank().get_length(), 1))
+                          : 1;
+    const auto output_count = output_pshape.is_static()
+                                  ? static_cast<int32_t>(ov::shape_size(output_pshape.to_shape()))
+                                  : 0;
     require_apple_msl_generated_kernel_source_binding(
         source, "Tile", "tile_kernel",
-        {static_cast<int32_t>(ov::shape_size(output_shape)),
-         static_cast<int32_t>(std::max<size_t>(output_shape.size(), 1))});
+        {output_count, rank});
     return source;
   }
 

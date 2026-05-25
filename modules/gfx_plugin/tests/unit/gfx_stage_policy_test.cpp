@@ -1279,6 +1279,7 @@ TEST(GfxStagePolicyTest, VulkanPlacementRemainsSharedSpirvBufferDomain) {
   EXPECT_TRUE(plan.placement.uses_custom_kernel);
 }
 
+#if GFX_BACKEND_OPENCL_AVAILABLE
 TEST(GfxStagePolicyTest, OpenClPlacementUsesSourceKernelBufferDomain) {
   const auto add = make_large_add_node();
   GfxStageRuntimeTraits traits{};
@@ -1324,6 +1325,7 @@ TEST(GfxStagePolicyTest, OpenClCustomKernelManifestUsesOpenClDomain) {
   EXPECT_EQ(artifact.source_id, std::string("eltwise_fused_buffer"));
   EXPECT_EQ(artifact.entry_point, std::string("eltwise_fused_buffer"));
 }
+#endif
 
 TEST(GfxStagePolicyTest,
      MpsrtImageTensorDescriptorUsesLogicalNchwShapeAndNhwc4StorageContract) {

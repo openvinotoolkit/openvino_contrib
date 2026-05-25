@@ -80,18 +80,31 @@ SliceSpec build_slice_spec(const std::shared_ptr<const ov::Node>& node,
     spec.steps_full.assign(rank, 1);
 
     if (auto sl = ov::as_type_ptr<const ov::op::v8::Slice>(node)) {
-        auto starts = get_const_i64(sl->input_value(1), "Slice starts");
-        auto ends = get_const_i64(sl->input_value(2), "Slice ends");
-        auto steps = get_const_i64(sl->input_value(3), "Slice steps");
+        auto starts_opt = get_optional_const_i64(sl->input_value(1));
+        auto ends_opt = get_optional_const_i64(sl->input_value(2));
+        auto steps_opt = get_optional_const_i64(sl->input_value(3));
+        if (!starts_opt || !steps_opt) {
+            return spec;
+        }
+        const auto& starts = *starts_opt;
+        const auto& steps = *steps_opt;
         std::vector<int64_t> axes;
         if (sl->get_input_size() > 4) {
-            axes = get_const_i64(sl->input_value(4), "Slice axes");
+            auto axes_opt = get_optional_const_i64(sl->input_value(4));
+            if (!axes_opt) {
+                return spec;
+            }
+            axes = std::move(*axes_opt);
         } else {
             axes.resize(starts.size());
             std::iota(axes.begin(), axes.end(), 0);
         }
-        OPENVINO_ASSERT(starts.size() == ends.size() && starts.size() == steps.size() && starts.size() == axes.size(),
+        OPENVINO_ASSERT(starts.size() == steps.size() && starts.size() == axes.size(),
                         "Slice MLIR: starts/ends/steps/axes size mismatch");
+        if (ends_opt) {
+            OPENVINO_ASSERT(starts.size() == ends_opt->size(),
+                            "Slice MLIR: starts/ends/steps/axes size mismatch");
+        }
         for (size_t i = 0; i < axes.size(); ++i) {
             int64_t axis = axes[i];
             if (axis < 0) {
@@ -130,12 +143,20 @@ SliceSpec build_slice_spec(const std::shared_ptr<const ov::Node>& node,
     OPENVINO_ASSERT(std::all_of(ellipsis_mask.begin(), ellipsis_mask.end(), [](int64_t v) { return v == 0; }),
                     "Slice MLIR: StridedSlice ellipsis_mask is not supported");
 
-    auto begin = get_const_i64(ss->input_value(1), "StridedSlice begin");
+    auto begin_opt = get_optional_const_i64(ss->input_value(1));
+    if (!begin_opt) {
+        return spec;
+    }
+    const auto& begin = *begin_opt;
     auto end_const = get_optional_const_i64(ss->input_value(2));
     std::vector<int64_t> end = end_const.value_or(std::vector<int64_t>{});
     std::vector<int64_t> strides(rank, 1);
     if (ss->get_input_size() > 3) {
-        auto values = get_const_i64(ss->input_value(3), "StridedSlice strides");
+        auto values_opt = get_optional_const_i64(ss->input_value(3));
+        if (!values_opt) {
+            return spec;
+        }
+        const auto& values = *values_opt;
         OPENVINO_ASSERT(values.size() <= rank, "Slice MLIR: StridedSlice strides rank mismatch");
         std::copy(values.begin(), values.end(), strides.begin());
     }

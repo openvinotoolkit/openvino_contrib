@@ -20,14 +20,18 @@
 #include "openvino/op/constant.hpp"
 #include "openvino/op/tile.hpp"
 
+#include <optional>
+
 namespace ov {
 namespace gfx_plugin {
 
 namespace {
 
-std::vector<int64_t> get_const_i64(const std::shared_ptr<const ov::Node>& node) {
+std::optional<std::vector<int64_t>> try_get_const_i64(const std::shared_ptr<const ov::Node>& node) {
     auto c = ov::as_type_ptr<const ov::op::v0::Constant>(node);
-    OPENVINO_ASSERT(c, "Tile MLIR: repeats must be Constant");
+    if (!c) {
+        return std::nullopt;
+    }
     return c->cast_vector<int64_t>();
 }
 
@@ -46,15 +50,33 @@ mlir::ModuleOp build_mlir_tile_from_model(const std::shared_ptr<const ov::Model>
     }
     OPENVINO_ASSERT(tile, "Tile MLIR builder: Tile op not found");
 
-    auto in_shape = tile->get_input_shape(0);
-    auto out_shape = tile->get_output_shape(0);
-    auto repeats = get_const_i64(tile->get_input_node_shared_ptr(1));
-    OPENVINO_ASSERT(in_shape.size() == repeats.size(), "Tile MLIR: repeats rank mismatch");
-    for (size_t i = 0; i < in_shape.size(); ++i) {
-        const int64_t expected = static_cast<int64_t>(in_shape[i]) * repeats[i];
-        OPENVINO_ASSERT(expected == static_cast<int64_t>(out_shape[i]),
-                        "Tile MLIR: output shape mismatch at axis ",
-                        i);
+    const auto in_pshape = tile->get_input_partial_shape(0);
+    const auto out_pshape = tile->get_output_partial_shape(0);
+    OPENVINO_ASSERT(in_pshape.rank().is_static() && out_pshape.rank().is_static(),
+                    "Tile MLIR: input/output ranks must be static");
+    const size_t rank = static_cast<size_t>(in_pshape.rank().get_length());
+    OPENVINO_ASSERT(rank == static_cast<size_t>(out_pshape.rank().get_length()),
+                    "Tile MLIR: input/output rank mismatch");
+    const auto repeats_pshape = tile->get_input_partial_shape(1);
+    if (repeats_pshape.is_static()) {
+        OPENVINO_ASSERT(ov::shape_size(repeats_pshape.to_shape()) == rank,
+                        "Tile MLIR: repeats rank mismatch");
+    }
+    auto repeats = try_get_const_i64(tile->get_input_node_shared_ptr(1));
+    if (repeats) {
+        OPENVINO_ASSERT(repeats->size() == rank, "Tile MLIR: repeats rank mismatch");
+    }
+    if (in_pshape.is_static() && out_pshape.is_static()) {
+        const auto in_shape = in_pshape.to_shape();
+        const auto out_shape = out_pshape.to_shape();
+        if (repeats) {
+            for (size_t i = 0; i < rank; ++i) {
+                const int64_t expected = static_cast<int64_t>(in_shape[i]) * (*repeats)[i];
+                OPENVINO_ASSERT(expected == static_cast<int64_t>(out_shape[i]),
+                                "Tile MLIR: output shape mismatch at axis ",
+                                i);
+            }
+        }
     }
 
     const auto output_element_type = tile->get_output_element_type(0);
@@ -63,7 +85,6 @@ mlir::ModuleOp build_mlir_tile_from_model(const std::shared_ptr<const ov::Model>
     const bool use_i64_lane_storage =
         output_element_type == ov::element::i64 ||
         output_element_type == ov::element::u64;
-    const int64_t out_total = static_cast<int64_t>(ov::shape_size(out_shape));
 
     mlir::OpBuilder mb(&ctx);
     auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
@@ -75,7 +96,7 @@ mlir::ModuleOp build_mlir_tile_from_model(const std::shared_ptr<const ov::Model>
     auto storage_ty = use_i64_lane_storage ? static_cast<mlir::Type>(mb.getI32Type()) : elem_ty;
     auto flat_data_ty = mlir::MemRefType::get({mlir::ShapedType::kDynamic}, storage_ty);
     auto scalar_ty = mlir::MemRefType::get({1}, mb.getI32Type());
-    auto shape_ty = mlir::MemRefType::get({static_cast<int64_t>(std::max<size_t>(out_shape.size(), 1))},
+    auto shape_ty = mlir::MemRefType::get({static_cast<int64_t>(std::max<size_t>(rank, 1))},
                                           mb.getI32Type());
     auto func = mb.create<mlir::func::FuncOp>(mlir::UnknownLoc::get(&ctx), "tile_main",
                                               mb.getFunctionType({flat_data_ty,
@@ -102,12 +123,10 @@ mlir::ModuleOp build_mlir_tile_from_model(const std::shared_ptr<const ov::Model>
     };
     auto c_out = load_i32_as_index(b, func.getArgument(2), c0);
     auto c_rank = load_i32_as_index(b, func.getArgument(3), c0);
-    auto c_static_out = b.create<mlir::arith::ConstantIndexOp>(loc, out_total);
-    auto out_limit = b.create<mlir::arith::MinUIOp>(loc, c_out, c_static_out).getResult();
 
     auto loop = b.create<mlir::scf::ParallelOp>(loc,
                                                 mlir::ValueRange{c0},
-                                                mlir::ValueRange{out_limit},
+                                                mlir::ValueRange{c_out},
                                                 mlir::ValueRange{c1});
     {
         auto* body = loop.getBody();
@@ -117,7 +136,7 @@ mlir::ModuleOp build_mlir_tile_from_model(const std::shared_ptr<const ov::Model>
         mlir::Value idx = iv;
         mlir::Value in_linear = lb.create<mlir::arith::ConstantIndexOp>(loc, 0);
 
-        for (size_t d = 0; d < out_shape.size(); ++d) {
+        for (size_t d = 0; d < rank; ++d) {
             auto axis = lb.create<mlir::arith::ConstantIndexOp>(loc, static_cast<int64_t>(d));
             auto stride = load_i32_as_index(lb, func.getArgument(6), axis);
             auto out_i = lb.create<mlir::arith::DivUIOp>(loc, idx, stride).getResult();

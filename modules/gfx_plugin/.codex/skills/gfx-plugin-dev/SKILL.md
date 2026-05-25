@@ -49,7 +49,7 @@ Then read the relevant code path:
 - For Metal custom MSL source changes, prefer `src/mlir/msl_codegen_apple_msl*`, `src/mlir/msl_codegen_apple_mps.*`, `src/mlir/msl_codegen_matmul_*`, and `GfxMslRuntimeBindingPlan`; keep module operand annotations, manifest external-buffer roles, inferred `[[buffer(N)]]` counts, and MPSRT `kernel_buffer_order` aligned.
 - For Vulkan compact-ABI changes, prefer `src/mlir/spirv_kernel_binding_adapter.hpp` so SPIR-V fixed-argument metadata stays separate from Apple MSL binding attrs.
 - For Vulkan Conv2D dispatch tuning, keep output-channel blocking and spatial micro-tiling in `gfx_parallelism.*`, `gfx.dispatch_channel_block` metadata, and shared convolution lowering; do not add executor-local Conv variants or device-name tables.
-- For OpenCL source-kernel work, keep source artifacts in `src/kernel_ir/gfx_opencl_source_artifacts.*` and runtime execution in `src/backends/opencl/runtime/opencl_source_stage.*`; do not scatter source ids, scalar ABI, local sizes, element-count rules, runtime-shape scalars, constant materialization, or boolean-buffer packing through infer-request code.
+- For OpenCL source-kernel work, keep source artifacts in `src/kernel_ir/gfx_opencl_source_artifacts.*` and runtime execution in `src/backends/opencl/runtime/opencl_source_stage.*`; do not scatter source ids, scalar ABI, source-static scalars, local sizes, element-count rules, runtime-shape scalars, constant materialization, chunked Concat/Split generation, or boolean-buffer packing through infer-request code.
 - For target-device profiling changes, keep `GpuExecutionDeviceInfo`, `gfx_target_profile.*`, backend buffer managers, and `GFX_PROFILING_REPORT` JSON aligned.
 
 ## Common Workflows
@@ -64,7 +64,7 @@ Then read the relevant code path:
 
 Check whether the change belongs to one of the current special families:
 
-- dynamic-shape data movement and shape ops such as `ShapeOf`, `Concat`, `Broadcast`, `Select`, `StridedSlice`, and `Range`
+- dynamic-shape data movement and shape ops such as `ShapeOf`, `Concat`, `Broadcast`, `Select`, `Slice`, `StridedSlice`, `Range`, and `Tile`
 - dedicated lowered ops such as `RMS`, `ScatterUpdate`, and `RoPE`
 - stateful `ReadValue` / `Assign` handling through infer-request variable storage
 - source-node-aware output routing for fused stages or direct stateful-assign prebinding
@@ -90,8 +90,8 @@ Check whether the change belongs to one of the current special families:
 - input-side fusion paths, such as `Multiply` absorbing an activation on one selected input instead of only post-op activation on the output
 - public `ov::hint::inference_precision` handling and precision-aware accuracy expectations
 - Vulkan Conv2D output-channel blocking, including `GpuExecutionDeviceInfo` capability flags, dispatch metadata, SPIR-V cache metadata, and shared lowering support
-- OpenCL source-artifact manifests for baseline f32/f16 data movement, typed casts, MatMul/Softmax, Range/Tile, gather/scatter, elementwise, logical, and logical-reduction kernels
-- dynamic runtime-shape planning for OpenCL `Concat`, `Broadcast`, `Select`, `ShapeOf`, `Slice` / `StridedSlice`, and `Range`
+- OpenCL source-artifact manifests for baseline f32/f16 data movement, typed casts, MatMul/Softmax, Range/Tile, gather/scatter, f32/f16/i32 elementwise, logical, and logical-reduction kernels
+- dynamic runtime-shape planning for OpenCL `Concat`, `Broadcast`, `Select`, `ShapeOf`, `Slice` / `StridedSlice`, `Range`, and `Tile`
 - target profile recording through `extended.target_profile` and `target_backend_*` counters
 
 ### Runtime or backend scheduling change
@@ -106,8 +106,8 @@ Check whether the change belongs to one of the current special families:
 
 ### OpenCL source-artifact change
 
-1. Inspect `src/kernel_ir/gfx_opencl_source_artifacts.*` first; the artifact manifest is the source of truth for source id, entry point, role ABI, scalar ABI, element-count source, local size, and dynamic shape scalar metadata.
-2. Keep `src/backends/opencl/runtime/opencl_source_stage.*` as a generic artifact executor. New op-specific behavior should reach it through artifact metadata, constant materialization, or shared runtime-value planners, not local runtime branches.
+1. Inspect `src/kernel_ir/gfx_opencl_source_artifacts.*` first; the artifact manifest is the source of truth for source id, entry point, role ABI, scalar ABI, source-static scalars, element-count source, local size, chunk helpers, and dynamic shape scalar metadata.
+2. Keep `src/backends/opencl/runtime/opencl_source_stage.*` as a generic artifact executor. New op-specific behavior should reach it through artifact metadata, generated chunk artifacts, constant materialization, or shared runtime-value planners, not local runtime branches.
 3. Check `src/plugin/infer_pipeline.*` when dynamic output shapes or runtime input metadata affect OpenCL stage allocation before execution.
 4. Check `src/backends/opencl/runtime/opencl_api.*` and `opencl_buffer_manager.*` only when device selection, dynamic loading, memory ops, aligned allocation, or target-profile reporting changed.
 5. Update `tests/unit/gfx_opencl_source_artifacts_test.cpp` and docs when the supported OpenCL subset changes.

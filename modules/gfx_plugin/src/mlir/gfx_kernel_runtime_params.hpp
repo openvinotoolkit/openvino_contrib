@@ -732,6 +732,63 @@ inline GfxKernelRuntimeParamPayload make_gather_runtime_param_payload(GpuBufferM
     return payload;
 }
 
+inline GfxKernelRuntimeParamPayload make_gather_nd_runtime_param_payload(GpuBufferManager& buffer_manager,
+                                                                         std::string_view stage_name,
+                                                                         const ov::Shape& data_shape,
+                                                                         const ov::Shape& indices_shape,
+                                                                         const ov::Shape& output_shape) {
+    OPENVINO_ASSERT(!data_shape.empty(),
+                    "GFX MLIR: GatherND data rank must be static and non-zero for stage ",
+                    stage_name);
+    OPENVINO_ASSERT(!indices_shape.empty(),
+                    "GFX MLIR: GatherND indices rank must be static and non-zero for stage ",
+                    stage_name);
+    OPENVINO_ASSERT(data_shape.size() <= GatherNDCodegenDesc::kMaxDims,
+                    "GFX MLIR: GatherND rank exceeds kernel metadata capacity for stage ",
+                    stage_name);
+    struct GatherNDParams {
+        uint32_t inner = 0;
+        uint32_t num_indices = 0;
+        uint32_t k = 0;
+        uint32_t total = 0;
+        uint32_t strides[GatherNDCodegenDesc::kMaxDims]{};
+        uint32_t dims[GatherNDCodegenDesc::kMaxDims]{};
+    } params{};
+
+    params.k = static_cast<uint32_t>(indices_shape.back());
+    OPENVINO_ASSERT(params.k >= 1 && params.k <= data_shape.size(),
+                    "GFX MLIR: GatherND invalid index depth for stage ",
+                    stage_name);
+    params.inner = static_cast<uint32_t>(shape_product(data_shape, params.k, data_shape.size()));
+    params.num_indices = static_cast<uint32_t>(ov::shape_size(indices_shape) / params.k);
+    params.total = static_cast<uint32_t>(ov::shape_size(output_shape));
+    OPENVINO_ASSERT(params.total == params.num_indices * params.inner,
+                    "GFX MLIR: GatherND output shape does not match index/inner contract for stage ",
+                    stage_name);
+
+    const auto data_strides = gfx_shape_strides_u32(data_shape);
+    for (size_t i = 0; i < data_shape.size(); ++i) {
+        params.dims[i] = static_cast<uint32_t>(data_shape[i]);
+        params.strides[i] = data_strides[i];
+    }
+
+    std::ostringstream suffix;
+    suffix << "gather_nd_params/"
+           << params.total << 'x'
+           << params.num_indices << 'x'
+           << params.k << 'x'
+           << params.inner;
+    GfxKernelRuntimeParamPayload payload;
+    payload.extra_inputs.push_back(make_kernel_bytes_param_tensor(buffer_manager,
+                                                                  stage_name,
+                                                                  suffix.str(),
+                                                                  &params,
+                                                                  sizeof(params),
+                                                                  ov::element::u8,
+                                                                  ov::Shape{sizeof(params)}));
+    return payload;
+}
+
 inline GfxKernelRuntimeParamPayload make_transpose_runtime_param_payload(GpuBufferManager& buffer_manager,
                                                                          std::string_view stage_name,
                                                                          const ov::Shape& input_shape,

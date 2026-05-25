@@ -50,8 +50,22 @@ mlir::ModuleOp build_mlir_gathernd_from_model(const std::shared_ptr<const ov::Mo
     auto idx_shape = to_shape(gather_node->get_input_partial_shape(1));
     auto out_shape = to_shape(gather_node->get_output_partial_shape(0));
 
-    auto elem_ty = to_mlir_type(gather_node->get_output_element_type(0), ctx);
-    auto idx_ty = to_mlir_type(gather_node->get_input_element_type(1), ctx, /*fallback_f32=*/true);
+    auto elem_ty = to_mlir_type(gather_node->get_output_element_type(0),
+                                ctx,
+                                /*fallback_f32=*/false,
+                                /*allow_unsigned=*/true,
+                                /*allow_small_ints=*/true,
+                                /*allow_bf16=*/false,
+                                /*allow_boolean=*/true,
+                                /*signless_integers=*/true);
+    auto idx_ty = to_mlir_type(gather_node->get_input_element_type(1),
+                               ctx,
+                               /*fallback_f32=*/false,
+                               /*allow_unsigned=*/true,
+                               /*allow_small_ints=*/true,
+                               /*allow_bf16=*/false,
+                               /*allow_boolean=*/false,
+                               /*signless_integers=*/true);
 
     auto in_tensor_ty = mlir::RankedTensorType::get(in_shape, elem_ty);
     auto idx_tensor_ty = mlir::RankedTensorType::get(idx_shape, idx_ty);

@@ -159,7 +159,6 @@ target_sources(${UNIT_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_profiling_report_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/ov_gfx_microbench_calibration_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_stage_test.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_source_artifacts_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_stage_policy_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_parallelism_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/basic_ops_internal_test.cpp
@@ -167,6 +166,10 @@ target_sources(${UNIT_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/mlir_matmul_parallel_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/mlir_conv3d_lowering_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/mlir_conv_parallel_test.cpp)
+if(GFX_BACKEND_OPENCL_AVAILABLE)
+    target_sources(${UNIT_TARGET_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_source_artifacts_test.cpp)
+endif()
 if(APPLE)
     target_sources(${UNIT_TARGET_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/set_device_name.cpp

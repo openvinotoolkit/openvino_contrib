@@ -506,7 +506,9 @@ materialize_kernel_external_buffer_roles(
 
 inline bool extract_kernel_operand_metadata_from_custom_kernel_manifest(
     const GfxKernelStageManifest &manifest, KernelOperandMetadata &meta,
-    size_t &kernel_input_arg_count, std::string_view entry_point = {},
+    size_t &kernel_input_arg_count,
+    std::vector<size_t> *kernel_inputs = nullptr,
+    std::string_view entry_point = {},
     std::optional<GfxKernelBackendDomain> expected_backend_domain =
         std::nullopt) {
   if (!manifest.valid ||
@@ -544,6 +546,8 @@ inline bool extract_kernel_operand_metadata_from_custom_kernel_manifest(
   manifest_meta.operand_kinds.reserve(roles.size());
   manifest_meta.operand_arg_indices.reserve(roles.size());
   manifest_meta.scalar_args = manifest.custom_kernel.scalar_args;
+  std::vector<size_t> manifest_kernel_inputs;
+  manifest_kernel_inputs.reserve(tensor_input_count);
 
   size_t next_tensor_input = 0;
   size_t next_extra_buffer = 0;
@@ -562,7 +566,8 @@ inline bool extract_kernel_operand_metadata_from_custom_kernel_manifest(
     switch (role) {
     case GfxKernelBufferRole::TensorInput:
       manifest_meta.operand_arg_indices.push_back(
-          static_cast<int32_t>(next_tensor_input++));
+          static_cast<int32_t>(next_tensor_input));
+      manifest_kernel_inputs.push_back(next_tensor_input++);
       break;
     case GfxKernelBufferRole::ConstTensor:
     case GfxKernelBufferRole::RuntimeParams:
@@ -586,12 +591,17 @@ inline bool extract_kernel_operand_metadata_from_custom_kernel_manifest(
 
   meta = std::move(manifest_meta);
   kernel_input_arg_count = logical_input_arg_count;
+  if (kernel_inputs) {
+    *kernel_inputs = std::move(manifest_kernel_inputs);
+  }
   return true;
 }
 
 inline bool extract_kernel_operand_metadata_from_stage_manifest(
     mlir::ModuleOp module, KernelOperandMetadata &meta,
-    size_t &kernel_input_arg_count, std::string_view entry_point = {},
+    size_t &kernel_input_arg_count,
+    std::vector<size_t> *kernel_inputs = nullptr,
+    std::string_view entry_point = {},
     std::optional<GfxKernelBackendDomain> expected_backend_domain =
         std::nullopt) {
   GfxKernelStageManifest manifest{};
@@ -599,13 +609,15 @@ inline bool extract_kernel_operand_metadata_from_stage_manifest(
     return false;
   }
   return extract_kernel_operand_metadata_from_custom_kernel_manifest(
-      manifest, meta, kernel_input_arg_count, entry_point,
+      manifest, meta, kernel_input_arg_count, kernel_inputs, entry_point,
       expected_backend_domain);
 }
 
 inline bool extract_kernel_operand_metadata_from_mpsrt_typed_program_manifest(
     mlir::ModuleOp module, KernelOperandMetadata &meta,
-    size_t &kernel_input_arg_count, std::string_view entry_point = {},
+    size_t &kernel_input_arg_count,
+    std::vector<size_t> *kernel_inputs = nullptr,
+    std::string_view entry_point = {},
     std::optional<GfxKernelBackendDomain> expected_backend_domain =
         std::nullopt) {
   if (expected_backend_domain &&
@@ -629,8 +641,8 @@ inline bool extract_kernel_operand_metadata_from_mpsrt_typed_program_manifest(
     }
     saw_msl_stage = true;
     if (extract_kernel_operand_metadata_from_custom_kernel_manifest(
-            stage.stage_manifest, meta, kernel_input_arg_count, entry_point,
-            GfxKernelBackendDomain::AppleMsl)) {
+            stage.stage_manifest, meta, kernel_input_arg_count, kernel_inputs,
+            entry_point, GfxKernelBackendDomain::AppleMsl)) {
       return true;
     }
   }
@@ -645,7 +657,7 @@ inline bool extract_kernel_operand_metadata_from_mpsrt_typed_program_manifest(
       continue;
     }
     if (extract_kernel_operand_metadata_from_custom_kernel_manifest(
-            stage.stage_manifest, meta, kernel_input_arg_count,
+            stage.stage_manifest, meta, kernel_input_arg_count, kernel_inputs,
             /*entry_point=*/{}, GfxKernelBackendDomain::AppleMsl)) {
       return true;
     }
@@ -655,7 +667,8 @@ inline bool extract_kernel_operand_metadata_from_mpsrt_typed_program_manifest(
 
 inline bool extract_kernel_operand_metadata_from_mpsrt_external_buffer_abi(
     mlir::ModuleOp module, KernelOperandMetadata &meta,
-    size_t &kernel_input_arg_count) {
+    size_t &kernel_input_arg_count,
+    std::vector<size_t> *kernel_inputs = nullptr) {
   const auto external_buffer_abi =
       read_module_mpsrt_external_buffer_abi(module);
   if (!external_buffer_abi.valid || !external_buffer_abi.has_buffer_roles ||
@@ -678,6 +691,8 @@ inline bool extract_kernel_operand_metadata_from_mpsrt_external_buffer_abi(
   abi_meta.operand_kinds.reserve(external_buffer_abi.buffer_roles.size());
   abi_meta.operand_arg_indices.reserve(external_buffer_abi.buffer_roles.size());
   abi_meta.scalar_args = extract_kernel_scalar_values(module);
+  std::vector<size_t> abi_kernel_inputs;
+  abi_kernel_inputs.reserve(tensor_input_count);
 
   size_t next_tensor_input = 0;
   size_t next_extra_buffer = 0;
@@ -687,7 +702,8 @@ inline bool extract_kernel_operand_metadata_from_mpsrt_external_buffer_abi(
     switch (role) {
     case GfxMpsrtExternalBufferRole::TensorInput:
       abi_meta.operand_arg_indices.push_back(
-          static_cast<int32_t>(next_tensor_input++));
+          static_cast<int32_t>(next_tensor_input));
+      abi_kernel_inputs.push_back(next_tensor_input++);
       break;
     case GfxMpsrtExternalBufferRole::ConstBuffer:
     case GfxMpsrtExternalBufferRole::RuntimeParams:
@@ -713,6 +729,9 @@ inline bool extract_kernel_operand_metadata_from_mpsrt_external_buffer_abi(
 
   meta = std::move(abi_meta);
   kernel_input_arg_count = logical_input_arg_count;
+  if (kernel_inputs) {
+    *kernel_inputs = std::move(abi_kernel_inputs);
+  }
   return true;
 }
 
@@ -953,8 +972,8 @@ extract_kernel_runtime_metadata(mlir::ModuleOp module, size_t output_arg_count,
     return meta;
   }
   if (extract_kernel_operand_metadata_from_mpsrt_typed_program_manifest(
-          module, meta.operands, meta.kernel_input_arg_count, entry_point,
-          expected_backend_domain)) {
+          module, meta.operands, meta.kernel_input_arg_count,
+          &meta.kernel_inputs, entry_point, expected_backend_domain)) {
     return meta;
   }
   if ((!expected_backend_domain ||
@@ -964,14 +983,15 @@ extract_kernel_runtime_metadata(mlir::ModuleOp module, size_t output_arg_count,
     return meta;
   }
   if (extract_kernel_operand_metadata_from_stage_manifest(
-          module, meta.operands, meta.kernel_input_arg_count, entry_point,
-          expected_backend_domain)) {
+          module, meta.operands, meta.kernel_input_arg_count,
+          &meta.kernel_inputs, entry_point, expected_backend_domain)) {
     return meta;
   }
   if ((!expected_backend_domain ||
        *expected_backend_domain == GfxKernelBackendDomain::AppleMsl) &&
       extract_kernel_operand_metadata_from_mpsrt_external_buffer_abi(
-          module, meta.operands, meta.kernel_input_arg_count)) {
+          module, meta.operands, meta.kernel_input_arg_count,
+          &meta.kernel_inputs)) {
     return meta;
   }
   if (has_legacy_kernel_operand_metadata_attrs(module)) {

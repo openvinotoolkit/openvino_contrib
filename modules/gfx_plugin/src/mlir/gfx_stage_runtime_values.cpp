@@ -176,20 +176,24 @@ void build_slice_runtime_spec(const RuntimeInputResolver &inputs,
       "GFX MLIR: StridedSlice ellipsis_mask is not supported for stage ",
       stage_name);
 
-  auto begin = constant_source_i64(slice->input_value(1), "StridedSlice begin",
-                                   stage_name);
-  auto end = optional_constant_source_i64(slice->input_value(2));
+  auto begin = inputs.i64_values(1);
+  OPENVINO_ASSERT(begin,
+                  "GFX MLIR: StridedSlice begin must be available for stage ",
+                  stage_name);
+  auto end = inputs.i64_values(2);
   std::vector<int64_t> strides(rank, 1);
   if (slice->get_input_size() > 3) {
-    auto values = constant_source_i64(slice->input_value(3),
-                                      "StridedSlice strides", stage_name);
-    OPENVINO_ASSERT(values.size() <= rank,
+    auto values = inputs.i64_values(3);
+    OPENVINO_ASSERT(values,
+                    "GFX MLIR: StridedSlice strides must be available for stage ",
+                    stage_name);
+    OPENVINO_ASSERT(values->size() <= rank,
                     "GFX MLIR: StridedSlice strides rank mismatch for stage ",
                     stage_name);
-    std::copy(values.begin(), values.end(), strides.begin());
+    std::copy(values->begin(), values->end(), strides.begin());
   }
   OPENVINO_ASSERT(
-      begin.size() <= rank && (!end.has_value() || end->size() <= rank),
+      begin->size() <= rank && (!end.has_value() || end->size() <= rank),
       "GFX MLIR: StridedSlice begin/end rank mismatch for stage ", stage_name);
   const auto &begin_mask = slice->get_begin_mask();
   const auto &end_mask = slice->get_end_mask();
@@ -202,7 +206,7 @@ void build_slice_runtime_spec(const RuntimeInputResolver &inputs,
         step != 0,
         "GFX MLIR: StridedSlice zero step is not supported for stage ",
         stage_name);
-    int64_t start = axis < begin.size() ? begin[axis] : 0;
+    int64_t start = axis < begin->size() ? (*begin)[axis] : 0;
     int64_t finish = end.has_value() && axis < end->size() ? (*end)[axis] : dim;
     start = masked_begin ? (step < 0 ? dim - 1 : 0)
                          : normalize_slice_index(start, dim, true);
@@ -216,17 +220,38 @@ void build_slice_runtime_spec(const RuntimeInputResolver &inputs,
 
 bool slice_requires_runtime_indexing(const ov::Node &node) {
   if (auto slice = dynamic_cast<const ov::op::v8::Slice *>(&node)) {
+    auto starts = optional_constant_source_i64(slice->input_value(1));
+    if (!starts) {
+      return true;
+    }
     auto steps = optional_constant_source_i64(slice->input_value(3));
-    return steps && std::any_of(steps->begin(), steps->end(),
-                                [](int64_t step) { return step < 0; });
+    if (!steps) {
+      return true;
+    }
+    if (slice->get_input_size() > 4 &&
+        !optional_constant_source_i64(slice->input_value(4))) {
+      return true;
+    }
+    return std::any_of(steps->begin(), steps->end(),
+                       [](int64_t step) { return step < 0; });
   }
   if (auto slice = dynamic_cast<const ov::op::v1::StridedSlice *>(&node)) {
+    auto begin = optional_constant_source_i64(slice->input_value(1));
+    if (!begin) {
+      return true;
+    }
+    if (!optional_constant_source_i64(slice->input_value(2))) {
+      return true;
+    }
     if (slice->get_input_size() <= 3) {
       return false;
     }
     auto steps = optional_constant_source_i64(slice->input_value(3));
-    return steps && std::any_of(steps->begin(), steps->end(),
-                                [](int64_t step) { return step < 0; });
+    if (!steps) {
+      return true;
+    }
+    return std::any_of(steps->begin(), steps->end(),
+                       [](int64_t step) { return step < 0; });
   }
   return false;
 }
@@ -934,16 +959,50 @@ plan_reduce_runtime_values(const RuntimeInputResolver &inputs,
 
 RuntimeTilePlan
 plan_tile_runtime_values(const RuntimeInputResolver &inputs,
-                         const std::vector<GpuTensor *> &outputs) {
+                         const std::vector<GpuTensor *> &outputs,
+                         std::string_view stage_name) {
   RuntimeTilePlan plan;
-  if (outputs.empty() || !outputs.front() || outputs.front()->shape.empty()) {
+  if (outputs.empty() || !outputs.front()) {
     return plan;
   }
   plan.input_shape = inputs.shape(0);
-  plan.output_shape = outputs.front()->shape;
+  if (plan.input_shape.empty()) {
+    return plan;
+  }
+  if (!outputs.front()->shape.empty()) {
+    plan.output_shape = outputs.front()->shape;
+  } else if (inputs.node &&
+             inputs.node->get_output_size() > 0 &&
+             inputs.node->get_output_partial_shape(0).is_static()) {
+    plan.output_shape = inputs.node->get_output_shape(0);
+  } else if (auto repeats = inputs.i64_values(1)) {
+    OPENVINO_ASSERT(repeats->size() == plan.input_shape.size(),
+                    "GFX MLIR: Tile repeats rank mismatch for stage ",
+                    stage_name);
+    plan.output_shape.reserve(plan.input_shape.size());
+    for (size_t axis = 0; axis < plan.input_shape.size(); ++axis) {
+      OPENVINO_ASSERT((*repeats)[axis] > 0,
+                      "GFX MLIR: Tile repeats must be positive for stage ",
+                      stage_name);
+      plan.output_shape.push_back(
+          plan.input_shape[axis] * static_cast<size_t>((*repeats)[axis]));
+    }
+  }
+  if (plan.output_shape.empty()) {
+    return plan;
+  }
+  if (plan.input_shape.size() != plan.output_shape.size()) {
+    plan.output_shape.clear();
+    return plan;
+  }
+  plan.values.output_shape = plan.output_shape;
+  plan.values.value_shape = plan.output_shape;
+  plan.values.output_type =
+      inputs.node ? inputs.node->get_output_element_type(0) : ov::element::dynamic;
   plan.scalar_args = {
       static_cast<int32_t>(ov::shape_size(plan.output_shape)),
       static_cast<int32_t>(std::max<size_t>(plan.output_shape.size(), 1))};
+  plan.available = true;
   return plan;
 }
 

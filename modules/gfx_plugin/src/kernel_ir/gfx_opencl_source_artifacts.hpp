@@ -25,6 +25,8 @@ enum class GfxOpenClBaselineOp : uint32_t {
     Minimum = 6,
     Power = 7,
     SquaredDifference = 8,
+    Mod = 9,
+    FloorMod = 10,
     Relu = 16,
     Sigmoid = 17,
     Tanh = 18,
@@ -118,6 +120,7 @@ struct GfxOpenClSourceArtifact {
     std::vector<std::string> build_options;
     std::vector<GfxOpenClSourceScalarArg> scalar_args;
     std::vector<uint32_t> static_u32_scalars;
+    std::vector<uint32_t> source_static_u32_scalars;
     std::vector<size_t> direct_input_indices;
     uint32_t arg_count = 0;
     uint32_t baseline_local_size = 64;
@@ -132,6 +135,16 @@ struct GfxOpenClSourceArtifact {
 
 std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     const std::shared_ptr<const ov::Node>& node);
+
+std::optional<GfxOpenClSourceArtifact> make_gfx_opencl_concat_chunk_source_artifact(
+    const GfxOpenClSourceArtifact& base_artifact,
+    uint32_t input_begin,
+    uint32_t input_count);
+
+std::optional<GfxOpenClSourceArtifact> make_gfx_opencl_split_chunk_source_artifact(
+    const GfxOpenClSourceArtifact& base_artifact,
+    uint32_t output_begin,
+    uint32_t output_count);
 
 std::string gfx_opencl_source_artifact_build_options(
     const GfxOpenClSourceArtifact& artifact);

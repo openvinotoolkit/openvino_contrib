@@ -3765,6 +3765,37 @@ TEST(GfxMlir, TileBuilderUsesFlatMemrefCustomKernelAbiWithoutTensorReshapes) {
   EXPECT_NE(text.find("memref<?xi32>"), std::string::npos);
 }
 
+TEST(GfxMlir, TileBuilderAcceptsStaticRankRuntimeRepeatsForMslKernelAbi) {
+  auto input = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f16, ov::PartialShape{1, -1, 3});
+  auto repeats = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::i64, ov::PartialShape{3});
+  auto tile = std::make_shared<ov::op::v0::Tile>(input, repeats);
+  auto result = std::make_shared<ov::op::v0::Result>(tile);
+  auto model = std::make_shared<ov::Model>(ov::ResultVector{result},
+                                           ov::ParameterVector{input, repeats});
+
+  mlir::MLIRContext ctx;
+  auto module = ov::gfx_plugin::build_mlir_tile_from_model(model, ctx);
+  ASSERT_TRUE(module);
+  auto func = module.lookupSymbol<mlir::func::FuncOp>("tile_main");
+  ASSERT_TRUE(func);
+  EXPECT_EQ(func.getFunctionType().getNumInputs(), 8u);
+  EXPECT_EQ(func.getFunctionType().getNumResults(), 0u);
+  EXPECT_TRUE(module->getAttrOfType<mlir::BoolAttr>("gfx.prefer_parallel")
+                  .getValue());
+
+  const auto binding =
+      ov::gfx_plugin::annotate_required_backend_custom_kernel_binding(
+          module, /*is_vulkan_backend=*/false, "Tile", "tile_kernel", {0, 3},
+          "dynamic_tile_stage");
+  ASSERT_TRUE(binding.valid);
+  EXPECT_EQ(binding.runtime_binding.operand_kinds,
+            std::vector<int32_t>({1, 1, 0, 0, 1, 1, 1, 1}));
+  EXPECT_EQ(binding.runtime_binding.operand_arg_indices,
+            std::vector<int32_t>({0, 5, -1, -1, 1, 2, 3, 4}));
+}
+
 #if GFX_BACKEND_VULKAN_AVAILABLE
 TEST(GfxMlir, TileSpirvLoweringPreservesCompactCustomKernelRuntimeMapping) {
   auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::i64,
@@ -4110,6 +4141,66 @@ TEST(GfxMlir, MslScalarRuntimeArgsAreStoredOnStageManifest) {
             std::vector<int32_t>({1, 1, 0, 0, 1, 1, 1, 1}));
   EXPECT_EQ(metadata.operands.operand_arg_indices,
             std::vector<int32_t>({0, 5, -1, -1, 1, 2, 3, 4}));
+}
+
+TEST(GfxMlir, MslSliceManifestKeepsOnlyDataInputAsKernelInput) {
+  mlir::MLIRContext ctx;
+  auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+
+  const auto plan = ov::gfx_plugin::make_backend_custom_kernel_binding_plan(
+      "Slice", "slice_kernel");
+  ASSERT_TRUE(plan.valid);
+  ASSERT_TRUE(
+      ov::gfx_plugin::annotate_backend_custom_kernel_module_with_binding_plan(
+          module, plan));
+
+  const auto metadata = ov::gfx_plugin::extract_kernel_runtime_metadata(
+      module,
+      /*output_arg_count=*/1,
+      /*fallback_input_arg_count=*/999, "gather_scatter_indexed",
+      ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl);
+  ASSERT_TRUE(metadata.valid);
+  EXPECT_EQ(metadata.kernel_inputs, std::vector<size_t>({0}));
+  EXPECT_EQ(metadata.kernel_input_arg_count, 7u);
+  EXPECT_EQ(metadata.operands.operand_kinds,
+            std::vector<int32_t>({1, 1, 1, 1, 1, 1, 1, 1}));
+  EXPECT_EQ(metadata.operands.operand_arg_indices,
+            std::vector<int32_t>({0, 7, 1, 2, 3, 4, 5, 6}));
+}
+
+TEST(GfxMlir, MslStaticSliceDirectIoManifestMatchesInlineConstants) {
+  mlir::MLIRContext ctx;
+  auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+
+  const auto plan =
+      ov::gfx_plugin::make_backend_custom_kernel_direct_io_binding_plan(
+          "Slice", "slice_kernel",
+          /*tensor_input_count=*/1,
+          /*output_count=*/1,
+          ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl,
+          ov::gfx_plugin::GfxKernelStorageKind::Buffer, "apple_msl:buffer:");
+  ASSERT_TRUE(plan.valid);
+  ASSERT_TRUE(
+      ov::gfx_plugin::annotate_backend_custom_kernel_module_with_binding_plan(
+          module, plan));
+
+  const auto metadata = ov::gfx_plugin::extract_kernel_runtime_metadata(
+      module,
+      /*output_arg_count=*/1,
+      /*fallback_input_arg_count=*/999, "slice_kernel",
+      ov::gfx_plugin::GfxKernelBackendDomain::AppleMsl);
+  ASSERT_TRUE(metadata.valid);
+  EXPECT_EQ(metadata.kernel_inputs, std::vector<size_t>({0}));
+  EXPECT_EQ(metadata.kernel_input_arg_count, 1u);
+  EXPECT_EQ(metadata.operands.operand_kinds, std::vector<int32_t>({1, 1}));
+  EXPECT_EQ(metadata.operands.operand_arg_indices,
+            std::vector<int32_t>({0, 1}));
+
+  ov::gfx_plugin::KernelSource source;
+  ASSERT_TRUE(ov::gfx_plugin::configure_backend_custom_kernel_source_signature(
+      source, plan));
+  EXPECT_EQ(source.signature.arg_count, 2u);
+  EXPECT_EQ(source.signature.output_arg_count, 1u);
 }
 
 TEST(GfxMlir, StageManifestSuppliesElementwiseRoleAbiWithoutLegacyMpsrtAttrs) {
@@ -4858,6 +4949,7 @@ TEST(GfxMlir, AppleMslStructuralArgCountsComeFromStageManifest) {
   const std::vector<Case> cases = {
       {"ShapeOf", "shapeof_kernel", {0}, 4u},
       {"Tile", "tile_kernel", {16, 4}, 8u},
+      {"GatherND", "gathernd_kernel", {}, 4u},
       {"GatherElements", "gather_elements_kernel", {}, 4u},
       {"MaxPool", "pool2d_kernel", {}, 3u},
       {"AvgPool", "pool2d_kernel", {}, 3u},
@@ -4895,6 +4987,7 @@ TEST(GfxMlir, MslKernelSourceSignatureCanBeConfiguredFromModuleManifest) {
   };
   const std::vector<Case> cases = {
       {"Convert", "convert_kernel", {16}, 3u, 1u},
+      {"GatherND", "gathernd_kernel", {}, 4u, 1u},
       {"GatherElements", "gather_elements_kernel", {}, 4u, 1u},
       {"Tile", "tile_kernel", {16, 4}, 8u, 1u},
       {"MatMul", "matmul_kernel", {}, 3u, 1u},

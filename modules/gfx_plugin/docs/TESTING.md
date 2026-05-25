@@ -46,7 +46,7 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 Recent additions in the tree include:
 - `tests/unit/mlir_conv_parallel_test.cpp` for canonical Conv2D lowering, per-axis and combined interior-tile bounds checks, Vulkan batch-1 parallel-launch coverage, batch>1 serial-fallback coverage, MaxPool2D/AvgPool2D parallel-dispatch regression checks, absorbed-input-transform regression checks, and guards that keep decomposed Conv2D experiments out of the production lowering path until a typed multi-kernel manifest exists
 - `tests/unit/gfx_parallelism_test.cpp` for backend-neutral parallelism-plan selection
-- `tests/unit/gfx_opencl_source_artifacts_test.cpp` for OpenCL source-artifact manifest coverage, entry-point metadata, role/scalar ABI contracts, and baseline op-family mapping, including current convert, MatMul/Softmax, Range/Tile, gather/scatter, shape, concat/split, logical reductions, and same-shape/scalar/broadcast elementwise source artifacts. These tests also lock narrow per-entry source bundles, aligned broadcast metadata, padded boolean output behavior, and constant-vector operands that the OpenCL source stage materializes as const buffers.
+- `tests/unit/gfx_opencl_source_artifacts_test.cpp` for OpenCL source-artifact manifest coverage, entry-point metadata, role/scalar ABI contracts, and baseline op-family mapping when `GFX_BACKEND_OPENCL_AVAILABLE` is enabled, including current convert, MatMul/Softmax, Range/Tile, gather/scatter, shape, concat/split, logical reductions, and f32/f16/i32 same-shape/scalar/broadcast elementwise source artifacts. These tests also lock narrow per-entry source bundles, aligned broadcast metadata, padded boolean output behavior, constant-vector operands that the OpenCL source stage materializes as const buffers, and generated chunks for wide static Concat/Split artifacts.
 - `tests/unit/mlir_matmul_parallel_test.cpp` for linear matmul parallel-lowering behavior
 - `tests/unit/basic_ops_internal_test.cpp` for internal transform, fusion, plugin regression coverage, focused builder coverage such as ReduceSum, generated `gfx_mpsrt_ops` / `GfxMpsrtProgram` readback, Apple stage-pipeline cleanup behavior, manifest-only Apple MSL metadata checks, SPIR-V fixed-argument adapter checks, and typed MPSRT builder-plan/runtime-model readback
 - `tests/unit/layout_cleanup_test.cpp` for MLIR layout-cleanup behavior, including DFL softmax expectation rewrites
@@ -76,7 +76,7 @@ Recent focused updates in existing tests include:
 - stronger Broadcom V3D expectations for dense stride-1, huge-spatial, and ultra-dense convolution threadgroup selection in `tests/unit/gfx_parallelism_test.cpp`
 - Pool2D parallel dispatch expectations in `tests/unit/mlir_conv_parallel_test.cpp`, including the guard against reverting MaxPool2D/AvgPool2D to single-dispatch serial lowering
 - plugin property checks that `ov::available_devices` and `ov::device::id` expose numeric ids in `tests/unit/plugin_tests.cpp`
-- dynamic-shape compile/query coverage for `ShapeOf` and query-time support coverage for `Concat`, `Broadcast`, `Select`, `StridedSlice`, and `Range` in `tests/unit/plugin_tests.cpp`
+- dynamic-shape compile/query coverage for `ShapeOf` and query-time support coverage for `Concat`, `Broadcast`, `Select`, `Slice`, `StridedSlice`, `Range`, and `Tile` in `tests/unit/plugin_tests.cpp`
 - MatMul-based DFL softmax expectation rewrite checks, including value-preservation against the template plugin, in `tests/unit/layout_cleanup_test.cpp`
 
 ## Typical Test Suites

@@ -237,7 +237,7 @@ ov::CompiledModel compiled = core.compile_model(
     {{"GFX_BACKEND", "opencl"}});
 ```
 
-The backend loads the target OpenCL runtime dynamically and executes the source-artifact subset described by the plugin's manifest metadata. Unsupported ops fail during compilation or stage creation; they do not fall back to CPU or silently switch to Vulkan.
+The backend loads the target OpenCL runtime dynamically and executes the source-artifact subset described by the plugin's manifest metadata. Current public coverage includes typed data movement, selected f32/f16/i32 elementwise kernels, shape/list movement, Range/Tile, gather/scatter families, Concat/Split, Compare/Select, and boolean logical reductions when the model matches the artifact contracts. Unsupported ops fail during compilation or stage creation; they do not fall back to CPU or silently switch to Vulkan.
 
 ### Microbench Suite
 `ov_gfx_microbench` provides the `MB0` to `MB3` suite used by the local profiling workflow docs.
