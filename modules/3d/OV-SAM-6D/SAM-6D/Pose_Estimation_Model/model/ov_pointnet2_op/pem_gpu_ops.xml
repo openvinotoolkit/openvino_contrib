@@ -1,0 +1,101 @@
+<!-- Copyright (C) 2018-2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0 -->
+
+<CustomLayer name="FurthestPointSampling" type="SimpleGPU" version="1">
+    <Kernel entry="ov_furthest_point_sampling">
+	    <Source filename="furthest_point_sampling.cl"/>
+        <!-- <Define name="npoint" type="int"   param="npoint"/> -->
+        <!-- <Define name="MAX_NPOINT" type="int" param="max_npoint" default="196"/> -->
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input" port-index="0" />   <!-- pts -->
+        <Tensor arg-index="1" type="input" port-index="1" />   <!-- npoint scalar -->
+        <Tensor arg-index="2" type="output" port-index="0" format="BFYX"/>  <!-- output -->
+        <Tensor arg-index="3" type="internal" port-index="0" size="INPUT0_DIMS[0]*INPUT0_DIMS[1]*4" format="BFYX" /> <!-- FP32 dist -->
+    </Buffers>
+
+    <CompilerOptions options="-cl-mad-enable"/>
+    <WorkSizes global="256,B,1" local="256,1,1"/>
+</CustomLayer>
+
+<CustomLayer name="GatherOperation" type="SimpleGPU" version="1">
+    <Kernel entry="gather_operation">
+        <Source filename="gather_operation.cl" />
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input" port-index="0" />
+        <Tensor arg-index="1" type="input" port-index="1" />
+        <Tensor arg-index="2" type="output" port-index="0" format="BFYX" />
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable" />
+    <WorkSizes global="B*F*Y*X,1,1" />
+        <!--<WorkSizes global="B,1,1" />-->
+</CustomLayer>
+
+<CustomLayer name="BallQuery" type="SimpleGPU" version="1">
+    <Kernel entry="ov_ball_query">
+        <Source filename="ball_query.cl"/>
+        <Define name="nsample" type="int"   param="nsample"/>
+        <Define name="radius"  type="float" param="radius"/>
+    </Kernel>
+    <Buffers><!-- use the same order as the kernel entry function, so in this case (input0,input1,output0,int,float,weights) -->
+        <Tensor arg-index="0" type="input" port-index="0" />   <!-- new_xyz (B, npoint, 3) -->
+        <Tensor arg-index="1" type="input" port-index="1" />                <!-- xyz (B, n, 3) -->
+        <Tensor arg-index="2" type="output" port-index="0" format="BFYX"/>                <!-- idx (B, npoint, nsample) -->
+
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable"/>
+    <WorkSizes global="B,F,1" local="1,64,1"/>
+</CustomLayer>
+
+<CustomLayer name="CustomDet" type="SimpleGPU" version="1">
+    <Kernel entry="ov_custom_det">
+        <Source filename="custom_det.cl"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input" port-index="0" />   <!-- input (B, n, n) --> 
+        <Tensor arg-index="1" type="output" port-index="0" format="BFYX"/> <!-- output (B,) --> 
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable"/>
+    <WorkSizes global="B,1,1"/>
+</CustomLayer>
+
+<CustomLayer name="GroupingOperation" type="SimpleGPU" version="1">
+    <Kernel entry="grouping_operation">
+        <Source filename="grouping_operation.cl" />
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input" port-index="0" />
+        <Tensor arg-index="1" type="input" port-index="1" />
+        <Tensor arg-index="2" type="output" port-index="0" format="BFYX" />
+    </Buffers>
+    <CompilerOptions options="-cl-mad-enable" />
+        <WorkSizes global="B*F*Y*X,1,1" />
+        <!--<WorkSizes global="B,1,1" /> -->
+</CustomLayer>
+
+<CustomLayer name="CustomSVDu" type="SimpleGPU" version="1">
+    <Kernel entry="ov_custom_svd_u">
+        <Source filename="custom_svd_u.cl"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input" port-index="0" format="BFYX"/>   <!-- input (B, M, N) -->
+        <Tensor arg-index="1" type="output" port-index="0"/> <!-- U (B, M, M) -->
+    </Buffers>
+    <!-- <CompilerOptions options="-cl-mad-enable -cl-fast-relaxed-math -cl-no-signed-zeros"/> -->
+    <CompilerOptions options="-cl-mad-enable"/>
+    <WorkSizes global="B,1,1"/>
+</CustomLayer>
+
+<CustomLayer name="CustomSVDv" type="SimpleGPU" version="1">
+    <Kernel entry="ov_custom_svd_v">
+        <Source filename="custom_svd_v.cl"/>
+    </Kernel>
+    <Buffers>
+        <Tensor arg-index="0" type="input" port-index="0" format="BFYX"/>   <!-- input (B, M, N) -->
+        <Tensor arg-index="1" type="output" port-index="0"/> <!-- V (B, N, N) -->
+    </Buffers>
+    <!-- <CompilerOptions options="-cl-mad-enable -cl-fast-relaxed-math -cl-no-signed-zeros"/> -->
+    <CompilerOptions options="-cl-mad-enable"/>
+    <WorkSizes global="B,1,1"/>
+</CustomLayer>
