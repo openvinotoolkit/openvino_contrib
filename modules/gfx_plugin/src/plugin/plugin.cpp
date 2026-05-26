@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "compiler/gfx_compiler_service.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/validation_util.hpp"
 #include "openvino/gfx_plugin/compiled_model.hpp"
@@ -20,7 +21,6 @@
 #include "openvino/util/common_util.hpp"
 #include "plugin/gfx_backend_config.hpp"
 #include "plugin/gfx_device_info.hpp"
-#include "plugin/gfx_op_support.hpp"
 #include "plugin/gfx_profiling_utils.hpp"
 #include "plugin/gfx_property_lists.hpp"
 #include "plugin/gfx_property_utils.hpp"
@@ -30,7 +30,6 @@
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_precision.hpp"
 #include "runtime/gfx_remote_context.hpp"
-#include "transforms/pipeline.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -115,35 +114,23 @@ Plugin::compile_model_impl(const std::shared_ptr<const ov::Model> &model,
   const auto resolved = resolve_backend_for_properties(
       compile_properties, /*log_fallback=*/true, "Plugin");
   const auto backend_kind = resolved.backend;
+  const auto backend_module =
+      compiler::BackendRegistry::default_registry().resolve(backend_kind);
+  if (!backend_module) {
+    OPENVINO_THROW("GFX: backend target is not registered: ",
+                   resolved.backend_name);
+  }
   gfx_log_info("Plugin") << "Selected GFX backend: " << resolved.backend_name;
-  auto transformed =
-      ov::gfx_plugin::transforms::run_pipeline(model, backend_kind);
-
-  if (!model_supported_by_backend(transformed, backend_kind)) {
-    auto summary = collect_unsupported(transformed, backend_kind);
-    std::ostringstream oss;
-    oss << "GFX: model contains unsupported ops for MLIR/GFX execution.";
-    if (!summary.type_counts.empty()) {
-      oss << " Types: ";
-      size_t shown = 0;
-      for (const auto &kv : summary.type_counts) {
-        if (shown++)
-          oss << ", ";
-        oss << kv.first << " x" << kv.second;
-      }
-    }
-    if (!summary.node_names.empty()) {
-      oss << ". Nodes: ";
-      for (size_t i = 0; i < summary.node_names.size(); ++i) {
-        if (i)
-          oss << ", ";
-        oss << summary.node_names[i];
-      }
-    }
-    OPENVINO_THROW(oss.str());
+  const compiler::GfxCompilerService compiler_service;
+  const auto compile_result =
+      compiler_service.compile({model, backend_module->target()});
+  if (!compile_result.supported()) {
+    OPENVINO_THROW(compile_result.unsupported_message());
   }
 
-  return std::make_shared<CompiledModel>(transformed, shared_from_this(), model,
+  return std::make_shared<CompiledModel>(compile_result.transformed_model,
+                                         shared_from_this(),
+                                         compile_result.executable, model,
                                          compile_properties, context);
 }
 
@@ -201,25 +188,26 @@ Plugin::query_model(const std::shared_ptr<const ov::Model> &model,
     merged[kv.first] = kv.second;
   }
   const auto request = get_backend_request(merged);
-  if (request.explicit_request && !backend_supported(request.kind)) {
+  const auto& registry = compiler::BackendRegistry::default_registry();
+  if (request.explicit_request && !registry.resolve(request.kind)) {
     gfx_log_warn("Plugin") << "query_model: requested backend '"
                            << request.requested << "' is not supported";
     return {};
   }
   const auto backend_kind = resolve_backend_kind_from_properties(
       merged, /*log_fallback=*/false, "Plugin");
-  if (!backend_supported(backend_kind)) {
+  const auto backend_module = registry.resolve(backend_kind);
+  if (!backend_module) {
     gfx_log_warn("Plugin") << "query_model: backend '"
                            << backend_to_string(backend_kind)
                            << "' is not supported";
     return {};
   }
   ov::SupportedOpsMap res;
-  // Use the same transformation pipeline as compile_model to keep support
-  // checks consistent.
-  const auto transformed =
-      ov::gfx_plugin::transforms::run_pipeline(model, backend_kind);
-  if (!model_supported_by_backend(transformed, backend_kind)) {
+  const compiler::GfxCompilerService compiler_service;
+  const auto compile_result =
+      compiler_service.compile({model, backend_module->target()});
+  if (!compile_result.supported()) {
     // No partial fallback to CPU/HETERO: all-or-nothing support.
     return res;
   }

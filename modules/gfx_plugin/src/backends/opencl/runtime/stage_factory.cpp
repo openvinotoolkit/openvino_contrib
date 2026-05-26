@@ -4,7 +4,6 @@
 
 #include "backends/opencl/runtime/stage_factory.hpp"
 
-#include "backends/opencl/runtime/opencl_source_stage.hpp"
 #include "openvino/core/except.hpp"
 #include "plugin/stateful_stage.hpp"
 #include "runtime/execution_dispatcher.hpp"
@@ -18,14 +17,9 @@ std::unique_ptr<GpuStage> create_opencl_stage(const std::shared_ptr<const ov::No
     if (auto stateful = create_stateful_stage(node)) {
         return stateful;
     }
-    if (auto source_stage = create_opencl_source_stage(node, OpenClRuntimeContext::instance())) {
-        return source_stage;
-    }
-    OPENVINO_THROW("GFX OpenCL: source-kernel stage materialization is not wired for op ",
+    OPENVINO_THROW("GFX OpenCL: runtime stage materialization requires a compiler-owned executable descriptor and artifact payload for op ",
                    node ? node->get_type_name() : "<null>",
-                   ". Baseline OpenCL source artifacts currently cover f32 linear copy/layout, f32/i32/i64 convert casts, and "
-                   "static f32 matmul/softmax plus transpose/slice/strided-slice/range/tile/gather/gather-elements/gather-nd/scatter-update/scatter-elements/scatter-nd/shapeof, static f32/f16 concat up to 30 inputs, static f32/f16 split/variadic-split up to 30 outputs, static f16 range/tile, static-rank dynamic f16 tile, plus unary/binary/compare/select elementwise seeds, including scalar and rank-1..4 broadcast binary/compare/select cases; "
-                   "add the next operation through the common manifest/artifact/stage path before enabling it.");
+                   ". Add or fix the route in compiler manifest/artifact packaging; runtime is not allowed to resolve OpenCL source artifacts.");
 }
 
 void ensure_opencl_stage_factory_registered() {

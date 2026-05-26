@@ -126,12 +126,20 @@ class OpenClSourceStage final : public GpuStage {
 public:
     OpenClSourceStage(std::shared_ptr<const ov::Node> node,
                       std::shared_ptr<OpenClRuntimeContext> context,
+                      RuntimeStageExecutableDescriptor descriptor,
                       GfxOpenClSourceArtifact artifact)
         : m_node(std::move(node)),
           m_context(std::move(context)),
+          m_descriptor(std::move(descriptor)),
           m_artifact(std::move(artifact)) {
         OPENVINO_ASSERT(m_node, "GFX OpenCL: source stage requires a node");
         OPENVINO_ASSERT(m_context, "GFX OpenCL: source stage requires a runtime context");
+        OPENVINO_ASSERT(m_descriptor.payload_kind == compiler::KernelArtifactPayloadKind::OpenClSource,
+                        "GFX OpenCL: source stage requires OpenCL source runtime descriptor");
+        OPENVINO_ASSERT(m_descriptor.backend_domain == "opencl",
+                        "GFX OpenCL: source stage descriptor backend domain drift");
+        OPENVINO_ASSERT(m_descriptor.entry_point == m_artifact.artifact_ref.entry_point,
+                        "GFX OpenCL: source stage descriptor entry point drift");
         m_program_cache = std::make_shared<OpenClProgramCache>(m_context);
         m_name = m_node->get_friendly_name();
         m_type = m_node->get_type_name();
@@ -367,7 +375,10 @@ public:
     const std::string& type() const override { return m_type; }
 
     std::unique_ptr<GpuStage> clone() const override {
-        auto cloned = std::make_unique<OpenClSourceStage>(m_node, m_context, m_artifact);
+        auto cloned = std::make_unique<OpenClSourceStage>(m_node,
+                                                          m_context,
+                                                          m_descriptor,
+                                                          m_artifact);
         cloned->m_name = m_name;
         cloned->m_type = m_type;
         cloned->m_program_cache = m_program_cache;
@@ -772,6 +783,7 @@ private:
     std::shared_ptr<const ov::Node> m_node;
     std::shared_ptr<OpenClRuntimeContext> m_context;
     std::shared_ptr<OpenClProgramCache> m_program_cache;
+    RuntimeStageExecutableDescriptor m_descriptor;
     GfxOpenClSourceArtifact m_artifact;
     std::shared_ptr<ICompiledKernel> m_kernel;
     std::vector<std::shared_ptr<ICompiledKernel>> m_concat_chunk_kernels;
@@ -790,12 +802,13 @@ private:
 
 std::unique_ptr<GpuStage> create_opencl_source_stage(
     const std::shared_ptr<const ov::Node>& node,
-    std::shared_ptr<OpenClRuntimeContext> context) {
-    auto artifact = resolve_gfx_opencl_source_artifact(node);
-    if (!artifact || !artifact->valid) {
-        return {};
-    }
-    return std::make_unique<OpenClSourceStage>(node, std::move(context), std::move(*artifact));
+    std::shared_ptr<OpenClRuntimeContext> context,
+    RuntimeStageExecutableDescriptor descriptor,
+    GfxOpenClSourceArtifact artifact) {
+    return std::make_unique<OpenClSourceStage>(node,
+                                               std::move(context),
+                                               std::move(descriptor),
+                                               std::move(artifact));
 }
 
 }  // namespace gfx_plugin

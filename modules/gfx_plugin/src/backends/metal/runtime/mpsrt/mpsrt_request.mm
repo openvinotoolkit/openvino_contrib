@@ -13,6 +13,9 @@
 #include <sstream>
 
 #include "backends/metal/runtime/metal_command_encoder.hpp"
+#include "backends/metal/runtime/mpsrt/mpsrt_msl_kernel_loader.hpp"
+#include "kernel_ir/metal_kernels/mpsrt_image_bridge_kernels.hpp"
+#include "kernel_ir/metal_kernels/mpsrt_topk_kernels.hpp"
 #include "openvino/core/except.hpp"
 #include "runtime/gfx_mpsrt_kernel_manifest_adapter.hpp"
 
@@ -200,128 +203,16 @@ uint32_t mpsrt_image_slice_count(uint32_t feature_channels) {
   return (feature_channels + 3) / 4;
 }
 
-const char *
-mpsrt_image_bridge_entry_point(const GfxMpsrtTensorAbiDesc &desc,
+MpsrtImageBridgeKernelKind
+mpsrt_image_bridge_kernel_kind(const GfxMpsrtTensorAbiDesc &desc,
                                GfxMpsrtStorageBridgeDirection direction) {
   const bool f16 = desc.dtype == static_cast<uint32_t>(GfxMpsrtDType::F16);
   if (direction == GfxMpsrtStorageBridgeDirection::BufferToImage) {
-    return f16 ? "gfx_mpsrt_buffer_to_image_f16"
-               : "gfx_mpsrt_buffer_to_image_f32";
+    return f16 ? MpsrtImageBridgeKernelKind::BufferToImageF16
+               : MpsrtImageBridgeKernelKind::BufferToImageF32;
   }
-  return f16 ? "gfx_mpsrt_image_to_buffer_f16"
-             : "gfx_mpsrt_image_to_buffer_f32";
-}
-
-const char *mpsrt_image_bridge_source() {
-  return R"MSL(
-#include <metal_stdlib>
-using namespace metal;
-
-struct GfxMpsrtImageBridgeParams {
-    uint width;
-    uint height;
-    uint channels;
-    uint batch;
-};
-
-inline uint gfx_mpsrt_image_bridge_slices(uint channels) {
-    return (channels + 3u) / 4u;
-}
-
-inline uint gfx_mpsrt_image_bridge_nchw_index(constant GfxMpsrtImageBridgeParams& p,
-                                              uint n,
-                                              uint c,
-                                              uint y,
-                                              uint x) {
-    return ((n * p.channels + c) * p.height + y) * p.width + x;
-}
-
-kernel void gfx_mpsrt_buffer_to_image_f32(device const float* src [[buffer(0)]],
-                                          texture2d_array<float, access::write> dst [[texture(0)]],
-                                          constant GfxMpsrtImageBridgeParams& p [[buffer(1)]],
-                                          uint3 gid [[thread_position_in_grid]]) {
-    const uint x = gid.x;
-    const uint y = gid.y;
-    const uint plane = gid.z;
-    const uint slices = gfx_mpsrt_image_bridge_slices(p.channels);
-    const uint n = plane / slices;
-    const uint slice = plane - n * slices;
-    if (x >= p.width || y >= p.height || n >= p.batch) {
-        return;
-    }
-    float4 value = float4(0.0f);
-    const uint c0 = slice * 4u;
-    if (c0 + 0u < p.channels) value.x = src[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 0u, y, x)];
-    if (c0 + 1u < p.channels) value.y = src[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 1u, y, x)];
-    if (c0 + 2u < p.channels) value.z = src[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 2u, y, x)];
-    if (c0 + 3u < p.channels) value.w = src[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 3u, y, x)];
-    dst.write(value, uint2(x, y), plane);
-}
-
-kernel void gfx_mpsrt_buffer_to_image_f16(device const half* src [[buffer(0)]],
-                                          texture2d_array<half, access::write> dst [[texture(0)]],
-                                          constant GfxMpsrtImageBridgeParams& p [[buffer(1)]],
-                                          uint3 gid [[thread_position_in_grid]]) {
-    const uint x = gid.x;
-    const uint y = gid.y;
-    const uint plane = gid.z;
-    const uint slices = gfx_mpsrt_image_bridge_slices(p.channels);
-    const uint n = plane / slices;
-    const uint slice = plane - n * slices;
-    if (x >= p.width || y >= p.height || n >= p.batch) {
-        return;
-    }
-    half4 value = half4(0.0h);
-    const uint c0 = slice * 4u;
-    if (c0 + 0u < p.channels) value.x = src[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 0u, y, x)];
-    if (c0 + 1u < p.channels) value.y = src[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 1u, y, x)];
-    if (c0 + 2u < p.channels) value.z = src[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 2u, y, x)];
-    if (c0 + 3u < p.channels) value.w = src[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 3u, y, x)];
-    dst.write(value, uint2(x, y), plane);
-}
-
-kernel void gfx_mpsrt_image_to_buffer_f32(texture2d_array<float, access::read> src [[texture(0)]],
-                                          device float* dst [[buffer(0)]],
-                                          constant GfxMpsrtImageBridgeParams& p [[buffer(1)]],
-                                          uint3 gid [[thread_position_in_grid]]) {
-    const uint x = gid.x;
-    const uint y = gid.y;
-    const uint plane = gid.z;
-    const uint slices = gfx_mpsrt_image_bridge_slices(p.channels);
-    const uint n = plane / slices;
-    const uint slice = plane - n * slices;
-    if (x >= p.width || y >= p.height || n >= p.batch) {
-        return;
-    }
-    const float4 value = src.read(uint2(x, y), plane);
-    const uint c0 = slice * 4u;
-    if (c0 + 0u < p.channels) dst[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 0u, y, x)] = value.x;
-    if (c0 + 1u < p.channels) dst[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 1u, y, x)] = value.y;
-    if (c0 + 2u < p.channels) dst[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 2u, y, x)] = value.z;
-    if (c0 + 3u < p.channels) dst[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 3u, y, x)] = value.w;
-}
-
-kernel void gfx_mpsrt_image_to_buffer_f16(texture2d_array<half, access::read> src [[texture(0)]],
-                                          device half* dst [[buffer(0)]],
-                                          constant GfxMpsrtImageBridgeParams& p [[buffer(1)]],
-                                          uint3 gid [[thread_position_in_grid]]) {
-    const uint x = gid.x;
-    const uint y = gid.y;
-    const uint plane = gid.z;
-    const uint slices = gfx_mpsrt_image_bridge_slices(p.channels);
-    const uint n = plane / slices;
-    const uint slice = plane - n * slices;
-    if (x >= p.width || y >= p.height || n >= p.batch) {
-        return;
-    }
-    const half4 value = src.read(uint2(x, y), plane);
-    const uint c0 = slice * 4u;
-    if (c0 + 0u < p.channels) dst[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 0u, y, x)] = value.x;
-    if (c0 + 1u < p.channels) dst[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 1u, y, x)] = value.y;
-    if (c0 + 2u < p.channels) dst[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 2u, y, x)] = value.z;
-    if (c0 + 3u < p.channels) dst[gfx_mpsrt_image_bridge_nchw_index(p, n, c0 + 3u, y, x)] = value.w;
-}
-)MSL";
+  return f16 ? MpsrtImageBridgeKernelKind::ImageToBufferF16
+             : MpsrtImageBridgeKernelKind::ImageToBufferF32;
 }
 
 bool encode_mpsrt_image_bridge_copy(GpuCommandBufferHandle command_buffer,
@@ -333,19 +224,12 @@ bool encode_mpsrt_image_bridge_copy(GpuCommandBufferHandle command_buffer,
     return fail(error, "GFX MPSRT: image bridge copy has incomplete resources");
   }
 
-  runtime_mpsrt::MpsrtRuntimeStage stage;
-  stage.kind = GfxMpsrtStageKind::MSLDispatch;
-  stage.stage_record_key =
-      copy.direction == GfxMpsrtStorageBridgeDirection::BufferToImage
-          ? "mpsrt_bridge_buffer_to_image"
-          : "mpsrt_bridge_image_to_buffer";
-  stage.dispatch_entry_point =
-      mpsrt_image_bridge_entry_point(copy.desc, copy.direction);
-  stage.dispatch_threads_per_threadgroup = 64;
-  stage.dispatch_flags = GfxMpsrtMslDispatchFlagNone;
+  const auto &kernel = mpsrt_image_bridge_kernel_source(
+      mpsrt_image_bridge_kernel_kind(copy.desc, copy.direction));
   bool cache_hit = false;
-  id<MTLComputePipelineState> pipeline = context.get_or_create_pipeline(
-      stage, mpsrt_image_bridge_source(), cache_hit, error);
+  id<MTLComputePipelineState> pipeline =
+      MpsrtMslKernelLoader::load_pipeline(context, kernel, 64, cache_hit,
+                                          error);
   if (!pipeline) {
     return false;
   }
@@ -944,43 +828,6 @@ struct MpsrtTopKI64PackParams {
   uint32_t dst_matrix_stride_i32 = 0;
 };
 
-const char *mpsrt_topk_i64_pack_source() {
-  return R"MSL(
-#include <metal_stdlib>
-using namespace metal;
-
-struct MpsrtTopKI64PackParams {
-  uint rows;
-  uint k;
-  uint matrix_count;
-  uint src_matrix_stride_u32;
-  uint dst_row_stride_i32;
-  uint dst_matrix_stride_i32;
-};
-
-kernel void gfx_mpsrt_topk_pack_u32_to_i64(
-    device const uint* src [[buffer(0)]],
-    device int* dst [[buffer(1)]],
-    constant MpsrtTopKI64PackParams& p [[buffer(2)]],
-    uint gid [[thread_position_in_grid]]) {
-  const uint row_items = p.rows * p.k;
-  const uint total = row_items * p.matrix_count;
-  if (gid >= total || p.k == 0) {
-    return;
-  }
-  const uint matrix = gid / row_items;
-  const uint rem = gid - matrix * row_items;
-  const uint row = rem / p.k;
-  const uint col = rem - row * p.k;
-  const uint v = src[matrix * p.src_matrix_stride_u32 + rem];
-  const uint dst_base = matrix * p.dst_matrix_stride_i32 +
-                        row * p.dst_row_stride_i32 + col * 2u;
-  dst[dst_base] = static_cast<int>(v);
-  dst[dst_base + 1u] = 0;
-}
-)MSL";
-}
-
 bool encode_mps_topk_i64_pack_bridge(GpuCommandBufferHandle command_buffer,
                                      MpsrtContext &context,
                                      id<MTLBuffer> src,
@@ -990,16 +837,12 @@ bool encode_mps_topk_i64_pack_bridge(GpuCommandBufferHandle command_buffer,
                                      const GfxMpsrtTensorAbiDesc &dst_desc,
                                      const KernelExecutionHooks *hooks,
                                      std::string *error) {
-  runtime_mpsrt::MpsrtRuntimeStage stage;
-  stage.kind = GfxMpsrtStageKind::MSLDispatch;
-  stage.stage_record_key = "mpsrt_topk_pack_u32_to_i64";
-  stage.dispatch_entry_point = "gfx_mpsrt_topk_pack_u32_to_i64";
-  stage.dispatch_threads_per_threadgroup = 64;
-  stage.dispatch_flags = GfxMpsrtMslDispatchFlagNone;
+  const auto &kernel = mpsrt_topk_pack_u32_to_i64_kernel_source();
 
   bool cache_hit = false;
-  id<MTLComputePipelineState> pipeline = context.get_or_create_pipeline(
-      stage, mpsrt_topk_i64_pack_source(), cache_hit, error);
+  id<MTLComputePipelineState> pipeline =
+      MpsrtMslKernelLoader::load_pipeline(context, kernel, 64, cache_hit,
+                                          error);
   if (!pipeline) {
     return false;
   }
@@ -1051,85 +894,16 @@ bool encode_mps_topk_i64_pack_bridge(GpuCommandBufferHandle command_buffer,
   return true;
 }
 
-const char *mpsrt_topk_value_msl_type(uint32_t dtype) {
+bool mpsrt_topk_value_type(uint32_t dtype, MpsrtTopKValueType *out) {
   if (dtype == static_cast<uint32_t>(GfxMpsrtDType::F16)) {
-    return "half";
+    *out = MpsrtTopKValueType::F16;
+    return true;
   }
   if (dtype == static_cast<uint32_t>(GfxMpsrtDType::F32)) {
-    return "float";
+    *out = MpsrtTopKValueType::F32;
+    return true;
   }
-  return nullptr;
-}
-
-std::string mpsrt_topk_stable_i64_index_resolve_source(uint32_t value_dtype) {
-  const char *value_type = mpsrt_topk_value_msl_type(value_dtype);
-  if (!value_type) {
-    return {};
-  }
-  std::ostringstream ss;
-  ss << "#include <metal_stdlib>\n"
-        "using namespace metal;\n\n"
-        "struct MpsrtTopKStableIndexParams {\n"
-        "  uint rows;\n"
-        "  uint k;\n"
-        "  uint source_columns;\n"
-        "  uint matrix_count;\n"
-        "  uint input_matrix_stride;\n"
-        "  uint input_row_stride;\n"
-        "  uint values_matrix_stride;\n"
-        "  uint values_row_stride;\n"
-        "  uint fallback_matrix_stride;\n"
-        "  uint dst_row_stride_i32;\n"
-        "  uint dst_matrix_stride_i32;\n"
-        "};\n\n"
-        "kernel void gfx_mpsrt_topk_stable_i64_indices(\n"
-        "    device const "
-     << value_type
-     << "* input [[buffer(0)]],\n"
-        "    device const "
-     << value_type
-     << "* values [[buffer(1)]],\n"
-        "    device const uint* fallback_indices [[buffer(2)]],\n"
-        "    device int* dst [[buffer(3)]],\n"
-        "    constant MpsrtTopKStableIndexParams& p [[buffer(4)]],\n"
-        "    uint gid [[thread_position_in_grid]]) {\n"
-        "  const uint row_items = p.rows * p.k;\n"
-        "  const uint total = row_items * p.matrix_count;\n"
-        "  if (gid >= total || p.k == 0 || p.source_columns == 0) {\n"
-        "    return;\n"
-        "  }\n"
-        "  const uint matrix = gid / row_items;\n"
-        "  const uint rem = gid - matrix * row_items;\n"
-        "  const uint row = rem / p.k;\n"
-        "  const uint col = rem - row * p.k;\n"
-        "  const uint values_row_base = matrix * p.values_matrix_stride +\n"
-        "                               row * p.values_row_stride;\n"
-        "  const auto target = values[values_row_base + col];\n"
-        "  uint duplicate_rank = 0;\n"
-        "  for (uint prev = 0; prev < col; ++prev) {\n"
-        "    if (values[values_row_base + prev] == target) {\n"
-        "      ++duplicate_rank;\n"
-        "    }\n"
-        "  }\n"
-        "  uint selected = fallback_indices[matrix * p.fallback_matrix_stride + rem];\n"
-        "  uint seen = 0;\n"
-        "  const uint input_row_base = matrix * p.input_matrix_stride +\n"
-        "                              row * p.input_row_stride;\n"
-        "  for (uint source_col = 0; source_col < p.source_columns; ++source_col) {\n"
-        "    if (input[input_row_base + source_col] == target) {\n"
-        "      if (seen == duplicate_rank) {\n"
-        "        selected = source_col;\n"
-        "        break;\n"
-        "      }\n"
-        "      ++seen;\n"
-        "    }\n"
-        "  }\n"
-        "  const uint dst_base = matrix * p.dst_matrix_stride_i32 +\n"
-        "                        row * p.dst_row_stride_i32 + col * 2u;\n"
-        "  dst[dst_base] = static_cast<int>(selected);\n"
-        "  dst[dst_base + 1u] = 0;\n"
-        "}\n";
-  return ss.str();
+  return false;
 }
 
 struct MpsrtTopKStableIndexParams {
@@ -1155,24 +929,18 @@ bool encode_mps_topk_stable_i64_index_resolve(
     const GfxMpsrtTensorAbiDesc &fallback_desc,
     const GfxMpsrtTensorAbiDesc &dst_desc, const KernelExecutionHooks *hooks,
     std::string *error) {
-  const auto source = mpsrt_topk_stable_i64_index_resolve_source(input_desc.dtype);
-  if (source.empty() ||
+  MpsrtTopKValueType value_type{};
+  if (!mpsrt_topk_value_type(input_desc.dtype, &value_type) ||
       dst_desc.dtype != static_cast<uint32_t>(GfxMpsrtDType::I64)) {
     return fail(error,
                 "GFX MPSRT: stable TopK i64 index resolve dtype is unsupported");
   }
-
-  runtime_mpsrt::MpsrtRuntimeStage stage;
-  stage.kind = GfxMpsrtStageKind::MSLDispatch;
-  stage.stage_record_key = "mpsrt_topk_stable_i64_indices|" +
-                           std::to_string(input_desc.dtype);
-  stage.dispatch_entry_point = "gfx_mpsrt_topk_stable_i64_indices";
-  stage.dispatch_threads_per_threadgroup = 64;
-  stage.dispatch_flags = GfxMpsrtMslDispatchFlagNone;
+  const auto &kernel = mpsrt_topk_stable_i64_indices_kernel_source(value_type);
 
   bool cache_hit = false;
   id<MTLComputePipelineState> pipeline =
-      context.get_or_create_pipeline(stage, source, cache_hit, error);
+      MpsrtMslKernelLoader::load_pipeline(context, kernel, 64, cache_hit,
+                                          error);
   if (!pipeline) {
     return false;
   }

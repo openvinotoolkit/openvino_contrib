@@ -19,11 +19,15 @@ notes or deleted backend code as current behavior.
 - `src/plugin/`: OpenVINO runtime integration, properties, backend resolution,
   compiled-model state, infer-request helpers, output resolution, model
   serialization, and stateful graph handling
+- `src/compiler/`: backend target description, backend module registry,
+  operation support policies, operation legalization, lowering plans, manifest
+  bundles, executable bundles, and artifact payload routing
 - `src/runtime/`: backend-neutral stage interfaces, execution dispatcher,
   submission windows, target profiles, profiling reports, remote tensor/context
   helpers, common buffer abstractions, MPSRT model records, and reusable caches
 - `src/kernel_ir/`: kernel manifests, custom-kernel family registry, dispatch
-  metadata, argument helpers, cache keys, and OpenCL source artifacts
+  metadata, argument helpers, cache keys, embedded helper kernel sources, and
+  OpenCL source artifacts
 - `src/mlir/`: support probing, MLIR builders, pass helpers, runtime-value
   planning, Apple MSL/MPS source planning, and typed MPSRT materialization
 - `src/backends/metal/`: Metal plugin glue, Objective-C++ runtime, MSL compiler,
@@ -51,12 +55,19 @@ notes or deleted backend code as current behavior.
 The backend parser accepts only `metal` and `opencl`. `auto` is resolved at
 configure time by `cmake/GfxBackendConfig.cmake`.
 
+`compile_model()` delegates support probing, transformation, lowering,
+manifest construction, and executable-bundle construction to
+`compiler::GfxCompilerService`. `query_model()` uses the same compiler service
+and keeps support probing aligned with compilation. Plugin code should not grow
+parallel support tables.
+
 ### `CompiledModel`
 
 `src/plugin/compiled_model.cpp` owns the compiled graph:
 
 - transformed OpenVINO model
 - selected backend state from `create_backend_state()`
+- runtime executable descriptor derived from the compiler executable bundle
 - `build_op_pipeline()` stage construction
 - compiled-model properties
 - profiling configuration and report ownership
@@ -66,6 +77,12 @@ The compiled pipeline is a sequence of `PipelineStageDesc` records wrapping
 backend-specific `GpuStage` instances. One stage may represent one OpenVINO node,
 a fused sequence, a stateful helper, a view-style alias, or a materialized
 constant output.
+
+`build_op_pipeline()` passes the matching `RuntimeStageExecutableDescriptor` to
+backend stage creation when the compiler produced one. Backends may consume that
+descriptor for payload kind, entry point, ABI fingerprint, explicit roles, and
+artifact payload. If a descriptor is missing or invalid, the backend must fail
+or fall back only to a supported current path, never to a removed route.
 
 ### `InferRequest`
 
@@ -139,6 +156,30 @@ planner considers stage count, recorded output bytes, MAC estimates,
 producer-consumer dependencies, and boundary stages such as layout, split,
 transpose, softmax, and attention.
 
+## Compiler Service
+
+`src/compiler/` is the current boundary between OpenVINO graph semantics and
+runtime execution. The main objects are:
+
+- `BackendTarget`: immutable backend id, runtime API, feature bits, and cache
+  compatibility fingerprint for one selected backend.
+- `BackendRegistry`: compiled-backend registry. It creates Metal and OpenCL
+  modules only when their build-time backend is available.
+- `OperationSupportPolicy` and `OperationLegalizer`: backend-aware operation
+  legality and route selection.
+- `LoweringPlanner`: converts a transformed model into ordered
+  `PlannedOperation` records with a `KernelUnit` route.
+- `ManifestBuilder`: emits a `ManifestBundle` with stage records, tensor
+  contracts, runtime parameter contracts, dispatch contract, and memory
+  contract.
+- `ExecutableBundleBuilder`: converts the manifest and lowering plan into
+  executable stage records, artifact descriptors, ABI fingerprints, and optional
+  artifact payloads.
+
+The compiler service currently builds an in-memory executable description. It
+does not emit or load a native backend binary cache. `export_model()` still
+serializes the OpenVINO model.
+
 ## MLIR Pipeline
 
 MLIR lives under `src/mlir/` and is shared infrastructure:
@@ -164,30 +205,38 @@ Apple source planning is split by responsibility:
 
 ## Kernel Manifests
 
-`src/kernel_ir/gfx_kernel_manifest.hpp` and
-`src/kernel_ir/gfx_custom_kernel_families.*` describe stage contracts that need
-to survive from MLIR/source planning into runtime binding:
+Kernel contracts are split across the current compiler and kernel IR layers:
 
-- execution kind: vendor primitive or custom kernel
-- backend domain and storage family
-- semantic input/output roles
-- external-buffer ABI roles
-- dispatch policy
-- family id and required entry point
+- `src/compiler/manifest.*`: normalized stage records, tensor contracts,
+  runtime-parameter contracts, dispatch contracts, and memory contracts
+- `src/compiler/executable_bundle.*`: artifact descriptors, ABI fingerprints,
+  payload kind, manifest references, and runtime-facing stage records
+- `src/runtime/executable_descriptor.*`: backend-neutral runtime descriptor
+  consumed by stage factories
+- `src/kernel_ir/gfx_kernel_manifest.hpp` and
+  `src/kernel_ir/gfx_custom_kernel_families.*`: custom-kernel family metadata
+  and source-plan contracts
+- `src/kernel_ir/gfx_kernel_source.*`: embedded source payload wrapper for
+  generated MSL/OpenCL helper sources
 
 New custom-kernel paths should express their buffer order and scalar payloads
 through these shared structures first. Backend runtime code should consume the
 manifested contract instead of inferring argument layout from local conventions.
+When an operation needs a source payload, the backend compiler policy should
+materialize it through an artifact resolver; request-time code should load it
+from the runtime descriptor.
 
 ## Metal Architecture
 
 The Metal backend is split into:
 
+- compiler policy and artifact materialization in `src/backends/metal/compiler/`
 - plugin glue in `src/backends/metal/plugin/`
 - runtime/memory/profiling in `src/backends/metal/runtime/`
 - MSL compilation in `src/backends/metal/codegen/`
 - MPSRT preparation and request encoding in
   `src/backends/metal/runtime/mpsrt/`
+- embedded helper kernels in `src/kernel_ir/metal_kernels/`
 
 Metal stages can use Apple MPS/MPSGraph vendor primitives or Apple MSL custom
 kernels. The shared stage policy selects placement and storage. The compile path
@@ -201,20 +250,32 @@ kernel-buffer order before encoding commands. MSL dispatch stages must not
 depend on implicit positional conventions when a manifest supplies explicit
 roles.
 
+Generated MSL payloads are loaded through runtime descriptors. Current
+descriptor-backed Metal payload coverage includes generated `ShapeOf` MSL and
+embedded MPSRT helper kernels for image bridges and TopK post-processing.
+
 ## OpenCL Architecture
 
 The OpenCL backend is split into:
 
+- compiler policy and kernel-unit registration in `src/backends/opencl/compiler/`
 - plugin glue in `src/backends/opencl/plugin/`
 - dynamic loader and device selection in `src/backends/opencl/runtime/opencl_api.*`
 - buffer manager and memory ops in `src/backends/opencl/runtime/`
 - program cache in `src/backends/opencl/runtime/opencl_program_cache.*`
 - source-stage execution in `src/backends/opencl/runtime/opencl_source_stage.*`
+- runtime source loading in `src/backends/opencl/runtime/opencl_runtime_kernel_loader.*`
+- embedded baseline OpenCL helper sources in `src/kernel_ir/opencl_kernels/`
 
 Source kernels are described by `src/kernel_ir/gfx_opencl_source_artifacts.*`.
 The source-stage executor is intentionally generic. Op-specific behavior should
 reach it through artifact metadata, generated chunk artifacts, shared
 runtime-value planners, constant materialization, and boolean-buffer contracts.
+
+OpenCL support may be reported as a handwritten source-artifact exception or a
+generated-kernel route. Current source execution still requires a matching
+artifact payload and runtime validation; a route in the compiler plan alone is
+not enough to guarantee backend parity.
 
 Current OpenCL source artifacts cover data movement, selected converts, MatMul,
 Softmax, Range, Tile, gather/scatter families, ShapeOf, Concat/Split, unary and
@@ -255,13 +316,16 @@ Metal and OpenCL measurements.
 
 ## Extension Rules
 
-- Prefer shared contracts in `src/runtime/`, `src/kernel_ir/`, and `src/mlir/`.
+- Prefer shared contracts in `src/compiler/`, `src/runtime/`, `src/kernel_ir/`,
+  and `src/mlir/`.
 - Add backend-specific code only when the shared contract reaches a real backend
   boundary.
 - Keep `query_model()`, compilation, runtime binding, and tests aligned.
+- Add operation support and route selection through compiler policies, not
+  separate plugin-side tables.
 - Keep OpenCL source ids, scalar ABI, constant materialization, chunk helpers,
   and boolean padding in `gfx_opencl_source_artifacts.*`.
 - Keep Metal placement, MPSRT records, MSL source plans, and runtime binding on
-  the manifest/MPSRT contract.
+  the compiler manifest/MPSRT contract.
 - Do not reintroduce removed backend routes, CPU fallback, runtime defines, or
   stale architecture notes.

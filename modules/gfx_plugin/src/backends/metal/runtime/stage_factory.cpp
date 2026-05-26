@@ -14,10 +14,18 @@ namespace gfx_plugin {
 std::unique_ptr<GpuStage> create_metal_stage(const std::shared_ptr<const ov::Node>& node,
                                              void* device,
                                              void* queue) {
+    return create_metal_stage(node, device, queue, nullptr);
+}
+
+std::unique_ptr<GpuStage> create_metal_stage(
+    const std::shared_ptr<const ov::Node>& node,
+    void* device,
+    void* queue,
+    const RuntimeStageExecutableDescriptor* descriptor) {
     if (auto stateful = create_stateful_stage(node)) {
         return stateful;
     }
-    return std::make_unique<MetalStage>(node, device, queue);
+    return std::make_unique<MetalStage>(node, device, queue, descriptor);
 }
 
 void ensure_metal_stage_factory_registered() {

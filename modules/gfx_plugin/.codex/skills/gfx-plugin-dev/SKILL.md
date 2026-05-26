@@ -27,6 +27,7 @@ This skill is for implementing or refactoring the `GFX` OpenVINO plugin in
 Then inspect the relevant code path:
 
 - plugin contract: `src/plugin/`
+- compiler contracts: `src/compiler/`
 - backend-neutral runtime: `src/runtime/`
 - kernel manifests and source artifacts: `src/kernel_ir/`
 - MLIR builders and source planning: `src/mlir/`
@@ -40,6 +41,8 @@ Then inspect the relevant code path:
 - Treat module docs as the public source of truth.
 - Keep shared behavior in `src/plugin/`, `src/runtime/`, `src/kernel_ir/`, or
   `src/mlir/` unless the code is truly backend-specific.
+- Keep backend target, operation support, lowering plans, manifests,
+  executable bundles, and artifact descriptors in `src/compiler/`.
 - Keep Metal-specific code under `src/backends/metal/` and OpenCL-specific code
   under `src/backends/opencl/`.
 - Do not add CPU fallback for unsupported GPU stages.
@@ -47,6 +50,8 @@ Then inspect the relevant code path:
   paths alive.
 - Keep support probing, lowering, runtime binding, and tests aligned for each
   operation.
+- Do not add plugin-side support tables that bypass `GfxCompilerService` or
+  `BackendRegistry`.
 - When changing plugin-visible behavior, check properties, `query_model()`,
   compiled-model properties, and docs.
 - Do not modify `third_party/llvm-project/` unless the task explicitly requires
@@ -56,6 +61,8 @@ Then inspect the relevant code path:
 
 For Metal placement, MPSRT, or MSL source changes, keep these aligned:
 
+- `src/compiler/*`
+- `src/backends/metal/compiler/`
 - `src/runtime/gfx_stage_policy.*`
 - `src/kernel_ir/gfx_kernel_manifest.hpp`
 - `src/kernel_ir/gfx_custom_kernel_families.*`
@@ -74,6 +81,7 @@ For Metal placement, MPSRT, or MSL source changes, keep these aligned:
 - `src/mlir/msl_codegen_matmul_*`
 - `src/mlir/msl_codegen_attention.*`
 - `src/mlir/msl_codegen_compressed_matmul.*`
+- `src/backends/metal/runtime/metal_runtime_kernel_loader.*`
 - `src/backends/metal/runtime/mpsrt/`
 
 Manifest external-buffer roles are the semantic ABI. Do not let MSL buffer
@@ -84,12 +92,14 @@ scans or stale signature hints widen or shrink a typed MPSRT runtime contract.
 For OpenCL source-artifact work:
 
 1. Inspect `src/kernel_ir/gfx_opencl_source_artifacts.*` first.
-2. Keep `src/backends/opencl/runtime/opencl_source_stage.*` generic.
-3. Add source id, entry point, role ABI, scalar ABI, dynamic-shape metadata,
+2. Check `src/backends/opencl/compiler/` for route selection and kernel-unit
+   registration.
+3. Keep `src/backends/opencl/runtime/opencl_source_stage.*` generic.
+4. Add source id, entry point, role ABI, scalar ABI, dynamic-shape metadata,
    constant materialization, chunk helpers, local size, and boolean-buffer rules
    to the artifact contract.
-4. Update `tests/unit/gfx_opencl_source_artifacts_test.cpp`.
-5. Add runtime coverage only when dynamic OpenCL loading, memory, command
+5. Update `tests/unit/gfx_opencl_source_artifacts_test.cpp`.
+6. Add runtime coverage only when dynamic OpenCL loading, memory, command
    enqueue, or runtime-shape behavior changed.
 
 Standalone OpenCL Conv2D microbench tools are experiments. A result there is
@@ -101,13 +111,16 @@ artifacts, runtime binding, and tests.
 ### New Or Changed Op
 
 1. Update support probing in `src/mlir/`.
-2. Add lowering/source planning in `src/mlir/` or a transform in
+2. Update compiler operation support, kernel registry, and artifact routing in
+   `src/compiler/` or `src/backends/*/compiler/`.
+3. Add lowering/source planning in `src/mlir/` or a transform in
    `src/transforms/`.
-3. Express the shared contract through stage policy, kernel manifests,
-   runtime-value payloads, OpenCL artifacts, or MPSRT/Apple MSL plans.
-4. Add backend code only at a real Metal/OpenCL boundary.
-5. Add focused unit tests, then backend/functional tests if externally visible.
-6. Update docs if supported shapes, route selection, properties, profiling, or
+4. Express the shared contract through compiler manifest/executable records,
+   stage policy, kernel manifests, runtime-value payloads, OpenCL artifacts, or
+   MPSRT/Apple MSL plans.
+5. Add backend code only at a real Metal/OpenCL boundary.
+6. Add focused unit tests, then backend/functional tests if externally visible.
+7. Update docs if supported shapes, route selection, properties, profiling, or
    test workflows changed.
 
 ### Runtime Or Scheduling Change

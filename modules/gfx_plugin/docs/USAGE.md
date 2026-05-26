@@ -98,6 +98,11 @@ auto supported = core.query_model(model, "GFX", {
 
 There is no partial CPU fallback for unsupported stages.
 
+Internally the selected backend is compiled through an in-memory compiler
+service that builds a lowering plan, manifest, executable bundle, and runtime
+descriptor. That descriptor is not a public cache format and is not exported by
+`export_model()`.
+
 ## Inference Precision
 
 Use standard OpenVINO `ov::hint::inference_precision` when precision selection

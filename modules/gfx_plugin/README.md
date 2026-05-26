@@ -41,6 +41,9 @@ Read these files first:
 ## Source Layout
 
 - `include/openvino/gfx_plugin/`: public plugin headers and property names
+- `src/compiler/`: backend target registry, operation support policies,
+  lowering-plan construction, manifest building, executable-bundle assembly, and
+  artifact payload routing used by query and compilation
 - `src/plugin/`: OpenVINO-facing `Plugin`, `CompiledModel`, infer-request
   plumbing, properties, model serialization, backend selection, and stateful
   `ReadValue` / `Assign` handling
@@ -48,14 +51,17 @@ Read these files first:
   profiling report assembly, liveness-aware output workspaces, remote
   context/tensor helpers, target profiles, and shared MPSRT runtime-model types
 - `src/kernel_ir/`: backend-neutral kernel manifests, custom-kernel family
-  metadata, cache keys, dispatch descriptions, and OpenCL source artifacts
+  metadata, cache keys, dispatch descriptions, embedded Metal/OpenCL helper
+  sources, and OpenCL source artifacts
 - `src/mlir/`: support probing, OpenVINO-node lowering, pass helpers, Apple
   stage-pipeline materialization, MPSRT dialect/program helpers, Apple MSL/MPS
   source-plan helpers, and shared runtime-value planning
 - `src/backends/metal/`: Metal plugin glue, Objective-C++ runtime, memory
-  management, profiling, MSL compilation, MPSRT preparation, and MPSGraph stages
+  management, profiling, backend compiler policy, MSL compilation, runtime
+  kernel loading, MPSRT preparation, and MPSGraph stages
 - `src/backends/opencl/`: OpenCL plugin glue, dynamic API loader, buffer
-  manager, program cache, memory ops, and generic source-artifact execution
+  manager, backend compiler policy, program cache, memory ops, runtime kernel
+  loading, and generic source-artifact execution
 - `src/transforms/`: OpenVINO graph rewrites, fusion passes, and layout cleanup
 - `tests/`: unit, functional, backend, integration, compare, and microbench
   coverage
@@ -68,20 +74,31 @@ Read these files first:
 The high-level path is:
 
 1. `Plugin::compile_model()` parses properties and resolves `GFX_BACKEND`.
-2. `src/transforms/pipeline.cpp` runs backend-aware OpenVINO graph rewrites.
-3. `CompiledModel::build_op_pipeline()` creates a sequence of stage descriptors.
-4. `src/runtime/gfx_stage_policy.*` selects placement, storage, fusion, and
+2. `src/compiler/BackendRegistry` resolves the compiled backend module and
+   immutable `BackendTarget`.
+3. `GfxCompilerService` runs backend-aware transforms, operation support
+   checks, lowering-plan creation, manifest building, and executable-bundle
+   assembly.
+4. `CompiledModel` validates the executable bundle and builds a
+   `RuntimeExecutableDescriptor` that is passed into backend stage creation.
+5. `CompiledModel::build_op_pipeline()` creates a sequence of stage descriptors.
+6. `src/runtime/gfx_stage_policy.*` selects placement, storage, fusion, and
    submit policy from node type, shape, element type, backend, and device caps.
-5. `src/mlir/` lowers supported nodes and materializes backend source plans.
-6. The active backend creates concrete `GpuStage` objects through
+7. `src/mlir/` lowers supported nodes and materializes backend source plans.
+8. The active backend creates concrete `GpuStage` objects through
    `ExecutionDispatcher`.
-7. Infer requests bind host or remote tensors, allocate or reuse backend
+9. Infer requests bind host or remote tensors, allocate or reuse backend
    buffers, execute submission windows, and collect profiling data.
 
 The pipeline is intentionally stage-based. Fused stages, view-style split
 outputs, stateful variable buffers, reusable host outputs, prepared binding
 caches, immutable const caches, and workspace-managed intermediate outputs all
 live in the shared runtime/plugin layer instead of being duplicated per backend.
+
+The compiler layer is the public architecture boundary between OpenVINO graph
+semantics and runtime execution. Do not add new support checks directly in
+`Plugin` or backend request code when the same decision belongs in
+`src/compiler/`.
 
 ## Backend Split
 
@@ -93,7 +110,10 @@ The Metal backend is the Apple production path. It combines:
   Resize, MatMul/GEMM, Softmax, TopK, and attention-style stages
 - Apple MSL custom kernels for general elementwise, layout, reduction, shape,
   slice, scatter/gather, RoPE, RMS, compressed MatMul, and SDPA helper paths
+- backend compiler policy and generated MSL artifact payloads under
+  `src/backends/metal/compiler/`
 - MPSRT runtime-model records under `src/runtime/gfx_mpsrt_*`
+- embedded MPSRT helper kernels under `src/kernel_ir/metal_kernels/`
 - Objective-C++ request-time execution under `src/backends/metal/runtime/`
 
 Metal placement is selected by shared stage policy. Do not bypass it with
@@ -109,6 +129,9 @@ OpenCL artifacts are role-based. Source id, entry point, local size, tensor
 roles, scalar ABI, runtime-shape scalars, constant materialization, boolean
 buffer padding, and generated Concat/Split chunk helpers should stay in the
 artifact manifest rather than being reimplemented in infer-request code.
+Backend operation support and kernel-unit registration live under
+`src/backends/opencl/compiler/`; runtime loading and enqueue stay under
+`src/backends/opencl/runtime/`.
 
 ## MLIR Role
 
@@ -123,6 +146,10 @@ MLIR is shared infrastructure, not a separate backend object. It is used for:
 
 When adding or changing an op, keep support probing, lowering, backend source
 planning, runtime binding, and tests on the same contract.
+
+The current compiler service does not serialize a native backend executable
+cache. It constructs an in-memory manifest/executable bundle for the selected
+backend and the runtime consumes that descriptor during stage creation.
 
 ## Supported Operation Families
 
@@ -198,27 +225,33 @@ evidence, and do not use compare-runner timing as performance evidence.
 ## Adding A New Operation
 
 1. Add or update support probing in `src/mlir/`.
-2. Add MLIR lowering or a transform in the appropriate `src/mlir/` or
+2. Update the backend operation support policy and route selection under
+   `src/compiler/` or `src/backends/*/compiler/` when the supported route
+   changes.
+3. Add MLIR lowering or a transform in the appropriate `src/mlir/` or
    `src/transforms/` file.
-3. Choose the shared runtime contract first: stage policy, kernel manifest,
+4. Choose the shared runtime contract first: stage policy, kernel manifest,
    runtime-value payloads, OpenCL artifact metadata, or Metal MPSRT/Apple MSL
    source planning.
-4. Add backend-specific code only under `src/backends/metal/` or
+5. Add backend-specific code only under `src/backends/metal/` or
    `src/backends/opencl/` when the shared path cannot express the behavior.
-5. Add focused unit tests first, then backend or functional coverage when the
+6. Add focused unit tests first, then backend or functional coverage when the
    behavior is externally visible.
-6. Update this README and the relevant file under `docs/` when supported
+7. Update this README and the relevant file under `docs/` when supported
    shapes, public properties, runtime routing, profiling, or test workflows
    change.
 
 ## Development Rules
 
 - Keep shared behavior in `src/plugin/`, `src/runtime/`, `src/kernel_ir/`, or
-  `src/mlir/`; keep backend-only code under the matching backend directory.
+  `src/mlir/`; keep compiler contracts in `src/compiler/`; keep backend-only
+  code under the matching backend directory.
 - Do not add CPU fallback for unsupported GPU stages.
 - Do not add runtime switches to preserve obsolete execution routes.
 - Do not duplicate OpenCL artifact ABI rules in request code.
 - Do not bypass Metal placement through one-off MPS/MSL selection logic.
+- Do not bypass `GfxCompilerService`, `ManifestBundle`, or
+  `ExecutableBundle` with ad-hoc backend support checks.
 - Do not modify `third_party/llvm-project/` unless the task explicitly requires
   vendored LLVM/MLIR changes.
 - Keep local artifacts, build trees, sensitive access material, machine names, and agent notes

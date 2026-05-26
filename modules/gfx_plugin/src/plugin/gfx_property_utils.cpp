@@ -6,11 +6,19 @@
 
 #include <cstdint>
 
+#include "compiler/backend_registry.hpp"
 #include "openvino/core/except.hpp"
 #include "plugin/gfx_profiling_utils.hpp"
 
 namespace ov {
 namespace gfx_plugin {
+namespace {
+
+bool backend_registered(GpuBackend backend) {
+    return static_cast<bool>(compiler::BackendRegistry::default_registry().resolve(backend));
+}
+
+}  // namespace
 
 BackendRequest get_backend_request(const ov::AnyMap& properties) {
     if (auto it = properties.find(kGfxBackendProperty); it != properties.end()) {
@@ -24,7 +32,7 @@ GpuBackend resolve_backend_kind_from_properties(const ov::AnyMap& properties,
                                                 bool log_fallback,
                                                 const char* log_tag) {
     auto request = get_backend_request(properties);
-    if (backend_supported(request.kind)) {
+    if (backend_registered(request.kind)) {
         return request.kind;
     }
     if (request.explicit_request) {
@@ -86,12 +94,12 @@ RemoteContextParams normalize_remote_context_params(const ov::AnyMap& remote_pro
     RemoteContextParams params;
     params.merged = remote_properties;
     const auto request = get_backend_request(params.merged);
-    if (request.explicit_request && !backend_supported(request.kind)) {
+    if (request.explicit_request && !backend_registered(request.kind)) {
         OPENVINO_THROW("GFX: backend '", request.requested,
                        "' is not available for remote context");
     }
     GpuBackend resolved_backend = request.explicit_request ? request.kind : default_backend_kind();
-    if (!backend_supported(resolved_backend)) {
+    if (!backend_registered(resolved_backend)) {
         OPENVINO_THROW("GFX: default backend '",
                        backend_to_string(resolved_backend),
                        "' is not available for remote context");

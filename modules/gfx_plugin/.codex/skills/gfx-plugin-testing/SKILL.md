@@ -33,8 +33,8 @@ validation in `modules/gfx_plugin/`.
 ## Main Targets
 
 - `ov_gfx_func_tests`: plugin-facing and functional behavior
-- `ov_gfx_unit_tests`: focused runtime, MLIR, cache, property, profiling, and
-  backend regressions
+- `ov_gfx_unit_tests`: focused compiler, manifest, runtime, MLIR, cache,
+  property, profiling, and backend regressions
 - `ov_gfx_runtime_micro_tests`: smaller runtime-subgraph checks
 - `ov_gfx_compare_runner`: accuracy-only diff tool
 - `ov_gfx_microbench`: MB0-MB3 microbench and calibration workflow
@@ -62,6 +62,15 @@ Prefer:
 - property-list and device-selection checks
 - compiled-model property checks
 - dynamic-shape query/compile checks when support boundaries moved
+
+### Compiler, Manifest, Or Runtime Descriptor
+
+Prefer:
+
+- `tests/unit/gpu_backend_base_test.cpp`
+- `tests/unit/plugin_tests.cpp` when `query_model()` or compile behavior moved
+- backend artifact tests when payload materialization reaches Metal or OpenCL
+  runtime loaders
 
 ### Scheduling, Partitioning, Cache, Or Infer Reuse
 

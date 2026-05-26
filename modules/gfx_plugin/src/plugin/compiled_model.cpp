@@ -17,6 +17,7 @@
 #include "plugin/gfx_property_utils.hpp"
 #include "plugin/model_serialization.hpp"
 #include "runtime/fused_sequence_stage.hpp"
+#include "runtime/executable_descriptor.hpp"
 #include "runtime/gfx_backend_utils.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gfx_logger.hpp"
@@ -386,10 +387,18 @@ std::shared_ptr<const ov::op::v1::Add> residual_add_for_rms(
 CompiledModel::CompiledModel(
     const std::shared_ptr<const ov::Model> &model,
     const std::shared_ptr<const ov::IPlugin> &plugin,
+    const compiler::ExecutableBundle &executable,
     const std::shared_ptr<const ov::Model> &original_model,
     const ov::AnyMap &properties, const ov::SoPtr<ov::IRemoteContext> &context)
     : ov::ICompiledModel(model, plugin, context), m_runtime_model(model),
       m_original_model(original_model ? original_model : model) {
+  auto runtime_descriptor =
+      std::make_shared<RuntimeExecutableDescriptor>(
+          RuntimeExecutableDescriptorBuilder{}.build(executable));
+  OPENVINO_ASSERT(runtime_descriptor->valid(executable),
+                  "GFX: compiler executable bundle does not match runtime descriptor");
+  m_runtime_descriptor = std::move(runtime_descriptor);
+
   // GFX exposes f16 as the performance preference, while codegen preserves
   // f32 arithmetic for declared f32 and fp32-sensitive stages.
   if (auto it = properties.find(ov::hint::inference_precision.name());
@@ -703,6 +712,41 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
   const auto ordered_ops = m_runtime_model->get_ordered_ops();
   gfx_log_info("StageFactory") << "Ordered ops count=" << ordered_ops.size();
   m_pipeline.reserve(ordered_ops.size());
+  std::unordered_map<const ov::Node *, const RuntimeStageExecutableDescriptor *>
+      runtime_stage_descriptors;
+  if (m_runtime_descriptor) {
+    const size_t count =
+        std::min(ordered_ops.size(), m_runtime_descriptor->stages.size());
+    runtime_stage_descriptors.reserve(count);
+    for (size_t i = 0; i < count; ++i) {
+      const auto &node = ordered_ops[i];
+      const auto &descriptor = m_runtime_descriptor->stages[i];
+      if (!node) {
+        continue;
+      }
+      if (descriptor.op_family != node->get_type_name() &&
+          gfx_log_debug_enabled()) {
+        gfx_log_debug("StageFactory")
+            << "Runtime descriptor op-family drift at ordered op " << i
+            << ": descriptor=" << descriptor.op_family
+            << " node=" << node->get_type_name();
+      }
+      runtime_stage_descriptors.emplace(node.get(), &descriptor);
+    }
+  }
+  auto runtime_descriptor_for_node =
+      [&](const std::shared_ptr<const ov::Node> &node)
+          -> const RuntimeStageExecutableDescriptor * {
+    if (!node) {
+      return nullptr;
+    }
+    const auto it = runtime_stage_descriptors.find(node.get());
+    return it == runtime_stage_descriptors.end() ? nullptr : it->second;
+  };
+  auto create_backend_stage =
+      [&](const std::shared_ptr<const ov::Node> &node) {
+    return backend_state->create_stage(node, runtime_descriptor_for_node(node));
+  };
 
   const bool has_unobserved_stage_edges = [&]() {
     for (const auto &node : ordered_ops) {
@@ -902,8 +946,7 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
             !input_activation_has_exclusive_consumer()) {
           return false;
         }
-        auto probe_stage =
-            backend_state->create_stage(ordered_ops[primary_idx]);
+        auto probe_stage = create_backend_stage(ordered_ops[primary_idx]);
         configure_stage_runtime_options(probe_stage);
         return probe_stage &&
                probe_stage->fuse_input_activation(group.input_activation_input,
@@ -939,7 +982,7 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
     if (!add) {
       continue;
     }
-    auto probe_stage = backend_state->create_stage(node);
+    auto probe_stage = create_backend_stage(node);
     configure_stage_runtime_options(probe_stage);
     if (!probe_stage || !probe_stage->fuse_residual_add()) {
       continue;
@@ -1199,7 +1242,7 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
               break;
             }
             const auto &stage_node = ordered_ops[idx];
-            auto stage = backend_state->create_stage(stage_node);
+            auto stage = create_backend_stage(stage_node);
             configure_stage_runtime_options(stage);
             if (compile_trace) {
               compile_trace->increment_counter("stage_create_count");
@@ -1329,7 +1372,7 @@ void CompiledModel::build_op_pipeline(GfxProfilingTrace *compile_trace) {
         !ov::fp16_compression_is_disabled(node)) {
       ov::disable_fp16_compression(node);
     }
-    auto gpu_stage = backend_state->create_stage(node);
+    auto gpu_stage = create_backend_stage(node);
     configure_stage_runtime_options(gpu_stage);
     if (compile_trace) {
       compile_trace->increment_counter("stage_create_count");

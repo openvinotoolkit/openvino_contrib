@@ -970,12 +970,17 @@ GfxParallelismCaps query_stage_caps(const GpuBufferManager *buffer_manager,
 
 bool allow_stage_bias_fusion(GpuBackend backend,
                              const std::string &stage_type) {
-  (void)backend;
+  if (backend == GpuBackend::OpenCL) {
+    return stage_type == "Convolution";
+  }
   return is_conv_like(stage_type);
 }
 
-bool allow_stage_batchnorm_fusion(GpuBackend /*backend*/,
+bool allow_stage_batchnorm_fusion(GpuBackend backend,
                                   const std::string &stage_type) {
+  if (backend == GpuBackend::OpenCL) {
+    return stage_type == "Convolution";
+  }
   return is_conv_like(stage_type);
 }
 
@@ -986,7 +991,8 @@ bool allow_stage_activation_fusion(GpuBackend backend,
     return false;
   }
   if (backend == GpuBackend::OpenCL) {
-    return is_conv_like(stage_type);
+    return stage_type == "Convolution" &&
+           (kind == ActivationKind::Relu || kind == ActivationKind::Swish);
   }
   if (backend == GpuBackend::Metal) {
     return is_conv_like(stage_type) &&

@@ -10,7 +10,13 @@
 #include <utility>
 #include <vector>
 
+#include "backends/opencl/compiler/opencl_operation_support.hpp"
+#include "compiler/lowering_planner.hpp"
+#include "compiler/kernel_registry.hpp"
+#include "compiler/manifest.hpp"
+#include "compiler/operation_support.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
+#include "mlir/mlir_support.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/broadcast.hpp"
 #include "openvino/op/concat.hpp"
@@ -34,6 +40,7 @@
 #include "openvino/op/range.hpp"
 #include "openvino/op/reduce_logical_and.hpp"
 #include "openvino/op/reduce_logical_or.hpp"
+#include "openvino/op/result.hpp"
 #include "openvino/op/relu.hpp"
 #include "openvino/op/reshape.hpp"
 #include "openvino/op/scatter_elements_update.hpp"
@@ -54,10 +61,20 @@
 #include "openvino/op/transpose.hpp"
 #include "openvino/op/unsqueeze.hpp"
 #include "openvino/op/variadic_split.hpp"
-#include "plugin/gfx_op_support.hpp"
 #include "runtime/gpu_buffer.hpp"
 
 using namespace ov::gfx_plugin;
+using ov::gfx_plugin::compiler::BackendCapabilities;
+using ov::gfx_plugin::compiler::BackendTarget;
+using ov::gfx_plugin::compiler::is_supported_node;
+using ov::gfx_plugin::compiler::KernelRegistry;
+using ov::gfx_plugin::compiler::KernelUnitKind;
+using ov::gfx_plugin::compiler::LoweringPlanner;
+using ov::gfx_plugin::compiler::LoweringRouteKind;
+using ov::gfx_plugin::compiler::ManifestBuilder;
+using ov::gfx_plugin::compiler::OperationLegalizer;
+using ov::gfx_plugin::compiler::make_opencl_kernel_registry;
+using ov::gfx_plugin::compiler::make_opencl_operation_support_policy;
 
 namespace {
 
@@ -159,6 +176,61 @@ void expect_opencl_source_excludes(const std::shared_ptr<const ov::Node>& node,
 }
 
 }  // namespace
+
+TEST(GfxOpenClSourceArtifactsTest, BackendTargetIsStableAndCapabilityDriven) {
+  const auto target = BackendTarget::from_backend(GpuBackend::OpenCL);
+  EXPECT_EQ(target.backend(), GpuBackend::OpenCL);
+  EXPECT_NE(target.fingerprint().find("backend=opencl"), std::string::npos);
+  EXPECT_TRUE(target.is_compatible_with_fingerprint(target.fingerprint()));
+
+  BackendCapabilities capabilities(target, make_opencl_operation_support_policy());
+  const auto kernel_registry = make_opencl_kernel_registry(target);
+  const auto audit = kernel_registry.audit();
+  ASSERT_TRUE(audit.valid());
+  EXPECT_EQ(audit.handwritten_exception_count, 1u);
+  EXPECT_EQ(kernel_registry.route_count(LoweringRouteKind::GeneratedKernel), 1u);
+  EXPECT_EQ(kernel_registry.route_count(LoweringRouteKind::HandwrittenKernelException), 1u);
+  OperationLegalizer legalizer(capabilities);
+  LoweringPlanner planner(target, kernel_registry);
+  auto lhs = param(ov::element::f32, ov::Shape{2, 3});
+  auto rhs = param(ov::element::f32, ov::Shape{2, 3});
+  auto add = std::make_shared<ov::op::v1::Add>(lhs, rhs);
+  const auto support = capabilities.query_operation({add});
+  EXPECT_TRUE(support.semantic_legal);
+  EXPECT_EQ(support.preferred_route_kind, LoweringRouteKind::GeneratedKernel);
+
+  auto result = std::make_shared<ov::op::v0::Result>(add);
+  auto model = std::make_shared<ov::Model>(ov::ResultVector{result},
+                                           ov::ParameterVector{lhs, rhs});
+  const auto plan = planner.plan(model, legalizer);
+  EXPECT_TRUE(plan.executable());
+  EXPECT_EQ(plan.route_count(LoweringRouteKind::GeneratedKernel), 1u);
+  bool found_generated_kernel_unit = false;
+  for (const auto& op : plan.operations) {
+    if (op.kernel_unit.route_kind() == LoweringRouteKind::GeneratedKernel) {
+      found_generated_kernel_unit = true;
+      EXPECT_TRUE(op.kernel_unit.valid());
+      EXPECT_EQ(op.kernel_unit.kind(), KernelUnitKind::GeneratedKernel);
+      EXPECT_EQ(op.kernel_unit.backend_domain(), target.backend_id());
+    }
+  }
+  EXPECT_TRUE(found_generated_kernel_unit);
+
+  const auto manifest = ManifestBuilder{}.build(plan);
+  EXPECT_TRUE(manifest.verify().valid());
+  EXPECT_EQ(manifest.schema_version, 2u);
+  EXPECT_EQ(manifest.route_count(LoweringRouteKind::GeneratedKernel), 1u);
+  for (const auto& stage : manifest.stages) {
+    EXPECT_FALSE(stage.memory.hidden_host_copy_allowed);
+    EXPECT_EQ(stage.dispatch.execution_kind, stage.execution_kind);
+    EXPECT_EQ(stage.dispatch.backend_domain, stage.backend_domain);
+    EXPECT_EQ(stage.dispatch.kernel_unit_id, stage.kernel_unit_id);
+    EXPECT_EQ(stage.dispatch.kernel_unit_kind, stage.kernel_unit_kind);
+    if (stage.execution_kind == LoweringRouteKind::GeneratedKernel) {
+      EXPECT_EQ(stage.kernel_unit_kind, "generated_kernel");
+    }
+  }
+}
 
 TEST(GfxOpenClSourceArtifactsTest,
      UnaryElementwiseArtifactsUseSharedOpenClManifest) {
@@ -2441,7 +2513,7 @@ TEST(GfxOpenClSourceArtifactsTest,
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
-     UnsupportedCasesStayRejectedUntilBaselineArtifactExists) {
+     MissingBaselineArtifactsUseGeneratedKernelWhenMlirCoversThem) {
   const auto f32 = param(ov::element::f32, ov::Shape{2, 3});
   const auto f16 = param(ov::element::f16, ov::Shape{2, 3});
   const auto high_rank_lhs = param(ov::element::f32, ov::Shape{1, 1, 1, 1, 3});
@@ -2457,7 +2529,10 @@ TEST(GfxOpenClSourceArtifactsTest,
   EXPECT_FALSE(resolve_gfx_opencl_source_artifact(high_rank_broadcast_add).has_value());
   EXPECT_FALSE(resolve_gfx_opencl_source_artifact(convert_to_f16).has_value());
 
-  EXPECT_FALSE(is_supported_node(f16_relu, GpuBackend::OpenCL));
-  EXPECT_FALSE(is_supported_node(high_rank_broadcast_add, GpuBackend::OpenCL));
-  EXPECT_FALSE(is_supported_node(convert_to_f16, GpuBackend::OpenCL));
+  EXPECT_EQ(is_supported_node(f16_relu, GpuBackend::OpenCL),
+            mlir_supports_node(f16_relu));
+  EXPECT_EQ(is_supported_node(high_rank_broadcast_add, GpuBackend::OpenCL),
+            mlir_supports_node(high_rank_broadcast_add));
+  EXPECT_EQ(is_supported_node(convert_to_f16, GpuBackend::OpenCL),
+            mlir_supports_node(convert_to_f16));
 }

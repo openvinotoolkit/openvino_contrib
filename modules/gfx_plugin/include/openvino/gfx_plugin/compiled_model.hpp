@@ -22,10 +22,15 @@
 namespace ov {
 namespace gfx_plugin {
 
+namespace compiler {
+struct ExecutableBundle;
+}  // namespace compiler
+
 class Plugin;
 class InferRequest;
 class GfxProfilingTrace;
 struct BackendState;
+struct RuntimeExecutableDescriptor;
 struct OutputDesc {
   ov::Shape shape;
   ov::element::Type type = ov::element::dynamic;
@@ -56,6 +61,7 @@ public:
   CompiledModel(
       const std::shared_ptr<const ov::Model> &model,
       const std::shared_ptr<const ov::IPlugin> &plugin,
+      const compiler::ExecutableBundle &executable,
       const std::shared_ptr<const ov::Model> &original_model = nullptr,
       const ov::AnyMap &properties = {},
       const ov::SoPtr<ov::IRemoteContext> &context = {});
@@ -115,6 +121,7 @@ private:
   bool m_diagnostic_f32_vendor_image = false;
   bool m_pipeline_built = false;
   bool m_loaded_from_cache = false;
+  std::shared_ptr<const RuntimeExecutableDescriptor> m_runtime_descriptor;
   mutable std::vector<PipelineStageDesc> m_pipeline;
   std::unordered_map<const ov::Node *, size_t> m_node_to_stage;
   std::unordered_map<const ov::Node *, size_t> m_param_index;

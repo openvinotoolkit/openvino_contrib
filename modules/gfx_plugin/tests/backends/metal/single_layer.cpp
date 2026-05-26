@@ -1,2 +1,2 @@
-// Temporary stub to satisfy legacy build references; real single-layer tests live in
-// functional/shared_tests_instances/single_layer_tests/*.cpp
+// Placeholder translation unit for shared-test build references. Single-layer
+// coverage lives in tests/shared_tests_instances/single_layer_tests/*.cpp.

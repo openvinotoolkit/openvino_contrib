@@ -4,6 +4,7 @@
 
 #include "plugin/backend_factory.hpp"
 
+#include "compiler/backend_registry.hpp"
 #include "openvino/core/except.hpp"
 #include "runtime/gfx_backend_utils.hpp"
 #include "backends/opencl/plugin/compiled_model_backend.hpp"
@@ -15,7 +16,7 @@ namespace gfx_plugin {
 std::unique_ptr<BackendState> create_backend_state(GpuBackend backend,
                                                    const ov::AnyMap& properties,
                                                    const ov::SoPtr<ov::IRemoteContext>& context) {
-    if (!backend_supported(backend)) {
+    if (!compiler::BackendRegistry::default_registry().resolve(backend)) {
         OPENVINO_THROW("GFX ", backend_to_string(backend), " backend is not available in this build.");
     }
     switch (backend) {

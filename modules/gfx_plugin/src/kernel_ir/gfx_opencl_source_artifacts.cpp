@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "kernel_ir/gfx_custom_kernel_families.hpp"
+#include "kernel_ir/opencl_kernels/binary_f32_kernel.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/core/type/element_type.hpp"
 #include "openvino/op/broadcast.hpp"
@@ -2479,45 +2480,6 @@ __kernel void gfx_opencl_baseline_unary_f32(__global const float* src,
         return;
     }
     dst[gid] = gfx_unary_f32(src[gid], op);
-}
-)CLC";
-
-constexpr const char* kOpenClBinaryF32Source = R"CLC(
-static inline float gfx_binary_f32(float lhs, float rhs, uint op) {
-    switch (op) {
-    case 1u: return lhs + rhs;
-    case 2u: return lhs - rhs;
-    case 3u: return lhs * rhs;
-    case 4u: return lhs / rhs;
-    case 5u: return fmax(lhs, rhs);
-    case 6u: return fmin(lhs, rhs);
-    case 7u: return pow(lhs, rhs);
-    case 8u: {
-        const float diff = lhs - rhs;
-        return diff * diff;
-    }
-    case 9u: {
-        const float rem = fmod(lhs, rhs);
-        return fabs(rem) >= fabs(rhs) ? 0.0f : rem;
-    }
-    case 10u: {
-        const float rem = lhs - floor(lhs / rhs) * rhs;
-        return fabs(rem) >= fabs(rhs) ? 0.0f : rem;
-    }
-    default: return lhs;
-    }
-}
-
-__kernel void gfx_opencl_baseline_binary_f32(__global const float* lhs,
-                                             __global const float* rhs,
-                                             __global float* dst,
-                                             uint count,
-                                             uint op) {
-    const uint gid = (uint)get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    dst[gid] = gfx_binary_f32(lhs[gid], rhs[gid], op);
 }
 )CLC";
 
@@ -7153,7 +7115,7 @@ GfxOpenClSourceArtifact make_opencl_baseline_artifact(
         artifact.source = kOpenClUnaryF32Source;
     } else if (artifact.artifact_ref.entry_point ==
                "gfx_opencl_baseline_binary_f32") {
-        artifact.source = kOpenClBinaryF32Source;
+        artifact.source = opencl_baseline_binary_f32_kernel_source().source;
     } else if (artifact.artifact_ref.entry_point ==
                "gfx_opencl_baseline_binary_broadcast_f32") {
         artifact.source = kOpenClBinaryBroadcastF32Source;
@@ -7273,6 +7235,33 @@ GfxOpenClSourceArtifact make_opencl_baseline_artifact(
 }
 
 }  // namespace
+
+GfxOpenClSourceArtifactPayload::GfxOpenClSourceArtifactPayload(GfxOpenClSourceArtifact artifact)
+    : m_artifact(std::move(artifact)) {}
+
+compiler::KernelArtifactPayloadKind GfxOpenClSourceArtifactPayload::payload_kind() const noexcept {
+    return compiler::KernelArtifactPayloadKind::OpenClSource;
+}
+
+std::string_view GfxOpenClSourceArtifactPayload::backend_domain() const noexcept {
+    return "opencl";
+}
+
+std::string_view GfxOpenClSourceArtifactPayload::source_id() const noexcept {
+    return m_artifact.artifact_ref.source_id;
+}
+
+std::string_view GfxOpenClSourceArtifactPayload::entry_point() const noexcept {
+    return m_artifact.artifact_ref.entry_point;
+}
+
+bool GfxOpenClSourceArtifactPayload::valid() const noexcept {
+    return m_artifact.valid &&
+           m_artifact.artifact_ref.valid &&
+           m_artifact.artifact_ref.kind == GfxKernelArtifactKind::OpenClSource &&
+           m_artifact.artifact_ref.backend_domain == GfxKernelBackendDomain::OpenCl &&
+           !m_artifact.source.empty();
+}
 
 std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
     const std::shared_ptr<const ov::Node>& node) {

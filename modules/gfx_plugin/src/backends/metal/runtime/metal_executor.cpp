@@ -10,6 +10,7 @@
 
 #include "backends/metal/codegen/metal_codegen_backend.hpp"
 #include "backends/metal/runtime/metal_memory.hpp"
+#include "backends/metal/runtime/metal_runtime_kernel_loader.hpp"
 #include "backends/metal/runtime/profiling/profiler.hpp"
 #include "mlir/msl_codegen.hpp"
 #include "openvino/core/except.hpp"
@@ -19,8 +20,14 @@ namespace ov {
 namespace gfx_plugin {
 
 MetalStage::MetalStage(const std::shared_ptr<const ov::Node> &node,
-                       MetalDeviceHandle device, MetalCommandQueueHandle queue)
-    : MlirStage(node), m_device(device), m_queue(queue) {}
+                       MetalDeviceHandle device, MetalCommandQueueHandle queue,
+                       const RuntimeStageExecutableDescriptor *descriptor)
+    : MlirStage(node), m_device(device), m_queue(queue) {
+  if (descriptor) {
+    m_executable_descriptor =
+        std::make_shared<RuntimeStageExecutableDescriptor>(*descriptor);
+  }
+}
 
 namespace {
 
@@ -69,6 +76,11 @@ resolve_shape_for_stage(const MlirStage &stage,
     return node->get_output_shape(0);
   }
   return {};
+}
+
+inline bool is_metal_descriptor_domain(std::string_view domain) {
+  return domain == "metal" || domain == "apple_msl" ||
+         domain == "apple_mps" || domain == "common";
 }
 
 } // namespace
@@ -126,7 +138,8 @@ void MetalStage::set_profiler(void *profiler, uint32_t node_id,
 }
 
 std::unique_ptr<GpuStage> MetalStage::clone() const {
-  auto stage = std::make_unique<MetalStage>(m_node, m_device, m_queue);
+  auto stage = std::make_unique<MetalStage>(
+      m_node, m_device, m_queue, m_executable_descriptor.get());
   clone_into(*stage);
   return stage;
 }
@@ -134,8 +147,31 @@ std::unique_ptr<GpuStage> MetalStage::clone() const {
 std::shared_ptr<ICompiledKernel>
 MetalStage::compile_kernel(const KernelSource &source, std::string *log) {
   OPENVINO_ASSERT(m_device, "MetalStage: Metal device handle is null");
+  if (m_executable_descriptor) {
+    OPENVINO_ASSERT(
+        is_metal_descriptor_domain(m_executable_descriptor->backend_domain),
+        "MetalStage: runtime descriptor backend domain mismatch: ",
+        m_executable_descriptor->backend_domain);
+    OPENVINO_ASSERT(
+        m_executable_descriptor->payload_kind !=
+            compiler::KernelArtifactPayloadKind::OpenClSource,
+        "MetalStage: OpenCL source payload cannot execute on Metal");
+    if (m_executable_descriptor->payload_kind ==
+        compiler::KernelArtifactPayloadKind::MslSource) {
+      OPENVINO_ASSERT(m_executable_descriptor->payload,
+                      "MetalStage: MSL source descriptor is missing payload");
+    }
+  }
   KernelSource src = source;
   MetalCodegenBackend backend(m_device);
+  if (m_executable_descriptor &&
+      m_executable_descriptor->payload_kind ==
+          compiler::KernelArtifactPayloadKind::MslSource) {
+    auto descriptor_source =
+        MetalRuntimeKernelLoader::load_msl_source(*m_executable_descriptor);
+    m_last_compiled_kernel_entry_point = descriptor_source.entry_point;
+    return backend.compile(descriptor_source, log);
+  }
   ov::element::Type storage_type = ov::element::dynamic;
   if (!m_inputs.empty() && m_inputs.front()) {
     storage_type = m_inputs.front()->expected_type;

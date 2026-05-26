@@ -25,6 +25,7 @@ namespace gfx_plugin {
 class GpuStage;
 
 struct InferRequestState;
+struct RuntimeStageExecutableDescriptor;
 
 struct VendorAttentionStageSpec {
     std::string name;
@@ -53,6 +54,9 @@ struct BackendState {
     virtual void init_infer_state(InferRequestState& /*state*/) const {}
     virtual std::unique_ptr<GfxProfiler> create_profiler(const GfxProfilerConfig& /*cfg*/) const { return {}; }
     virtual std::unique_ptr<GpuStage> create_stage(const std::shared_ptr<const ov::Node>& node) const = 0;
+    virtual std::unique_ptr<GpuStage> create_stage(
+        const std::shared_ptr<const ov::Node>& node,
+        const RuntimeStageExecutableDescriptor* descriptor) const;
     virtual bool enable_generic_attention_fusion() const { return true; }
     virtual bool supports_vendor_attention_stage() const { return false; }
     virtual bool enable_conv_activation_fusion() const { return true; }

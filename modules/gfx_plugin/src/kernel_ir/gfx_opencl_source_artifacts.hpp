@@ -7,8 +7,10 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
+#include "compiler/executable_bundle.hpp"
 #include "kernel_ir/gfx_kernel_manifest.hpp"
 #include "openvino/core/node.hpp"
 
@@ -131,6 +133,24 @@ struct GfxOpenClSourceArtifact {
     GfxOpenClBaselineOp op = GfxOpenClBaselineOp::Identity;
     GfxOpenClBaselineInputMode input_mode = GfxOpenClBaselineInputMode::Direct;
     float scalar_constant_f32 = 0.0f;
+};
+
+class GfxOpenClSourceArtifactPayload final : public compiler::KernelArtifactPayload {
+public:
+    explicit GfxOpenClSourceArtifactPayload(GfxOpenClSourceArtifact artifact);
+
+    compiler::KernelArtifactPayloadKind payload_kind() const noexcept override;
+    std::string_view backend_domain() const noexcept override;
+    std::string_view source_id() const noexcept override;
+    std::string_view entry_point() const noexcept override;
+    bool valid() const noexcept override;
+
+    const GfxOpenClSourceArtifact& artifact() const noexcept {
+        return m_artifact;
+    }
+
+private:
+    GfxOpenClSourceArtifact m_artifact;
 };
 
 std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(

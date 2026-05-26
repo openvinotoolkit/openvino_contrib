@@ -176,11 +176,12 @@ TEST(GfxBackendProperty, DefaultAndExplicitSelection) {
     }
 
     if (opencl_available) {
-        core.set_property("GFX", {{"GFX_BACKEND", "VULKAN"}});
+        core.set_property("GFX", {{"GFX_BACKEND", "OPENCL"}});
         EXPECT_EQ(core.get_property("GFX", "GFX_BACKEND").as<std::string>(), "opencl");
     } else {
-        EXPECT_THROW(core.set_property("GFX", {{"GFX_BACKEND", "VULKAN"}}), ov::Exception);
+        EXPECT_THROW(core.set_property("GFX", {{"GFX_BACKEND", "OPENCL"}}), ov::Exception);
     }
+    EXPECT_THROW(core.set_property("GFX", {{"GFX_BACKEND", "invalid_backend"}}), ov::Exception);
 }
 
 TEST(GfxBackendProperty, CompileModelHonorsBackend) {

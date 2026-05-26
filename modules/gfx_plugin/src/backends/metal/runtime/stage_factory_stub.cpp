@@ -16,6 +16,14 @@ std::unique_ptr<GpuStage> create_metal_stage(const std::shared_ptr<const ov::Nod
     OPENVINO_THROW("GFX Metal backend is not available in this build");
 }
 
+std::unique_ptr<GpuStage> create_metal_stage(
+    const std::shared_ptr<const ov::Node>&,
+    void*,
+    void*,
+    const RuntimeStageExecutableDescriptor*) {
+    OPENVINO_THROW("GFX Metal backend is not available in this build");
+}
+
 void ensure_metal_stage_factory_registered() {
     static const bool registered = GpuStageFactory::register_factory(GpuBackend::Metal, &create_metal_stage);
     (void)registered;

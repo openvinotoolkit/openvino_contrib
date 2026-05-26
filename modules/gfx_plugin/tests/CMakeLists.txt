@@ -98,6 +98,10 @@ if(APPLE)
     target_sources(${TARGET_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/memory_device_integration_test.mm
     )
+else()
+    target_sources(${TARGET_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/set_device_name_stub.cpp
+    )
 endif()
 
 # Device-specific bits: path to the built plugin and access to local src headers.

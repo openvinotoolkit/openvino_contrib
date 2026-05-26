@@ -42,14 +42,19 @@ The intended plugin content should stay identical across both publication target
 
 ### 3. Commit clearly
 
-- Use concise `GFX: ...` subjects.
+- Use the commit message requested by the user when one is provided; otherwise
+  use a concise external-review-friendly subject.
 - Keep commit scope coherent.
 - Mention docs in the same commit when they were updated to match behavior.
 
 ### 4. Push to both publication targets
 
-- Push the openvino_contrib branch normally.
+- Push the `openvino_contrib` PR branch explicitly. For the current public PR
+  flow this is usually `allnes:an/gfx-plugin`.
 - Then apply the same plugin change set to the mirrored `ov-ext-labs/gfx-plugin` repository and push there as well.
+- Check mirror branch heads before pushing. Do not push to mirror `main`
+  without verifying that it is the expected compatible publication branch.
+- Never force push unless the user explicitly authorizes that exact operation.
 
 If the mirrored repository is not present locally, first discover whether:
 

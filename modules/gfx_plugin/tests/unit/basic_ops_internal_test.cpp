@@ -3289,8 +3289,8 @@ TEST(GfxMlir, RequiredOpenClCustomKernelBindingAnnotatesStageManifest) {
       "opencl");
   ASSERT_TRUE(
       module->hasAttr("gfx.stage_manifest.kernel.external_buffer_abi.roles"));
-  ASSERT_TRUE(module->hasAttr("gfx.kernel_operand_kinds"));
-  ASSERT_TRUE(module->hasAttr("gfx.kernel_operand_arg_indices"));
+  ASSERT_FALSE(module->hasAttr("gfx.kernel_operand_kinds"));
+  ASSERT_FALSE(module->hasAttr("gfx.kernel_operand_arg_indices"));
 
   const auto metadata = ov::gfx_plugin::extract_kernel_runtime_metadata(
       module,
@@ -3364,7 +3364,8 @@ TEST(GfxMlir, OpenClCustomKernelArgCountIncludesScalarRoles) {
 
   size_t manifest_arg_count = 0;
   ASSERT_TRUE(ov::gfx_plugin::infer_kernel_arg_count_from_stage_manifest(
-      module, manifest_arg_count, "gfx_kernel",
+      module, manifest_arg_count,
+      plan.stage_manifest.custom_kernel.entry_point,
       ov::gfx_plugin::GfxKernelBackendDomain::OpenCl));
   EXPECT_EQ(manifest_arg_count, plan.runtime_binding.operand_kinds.size());
 

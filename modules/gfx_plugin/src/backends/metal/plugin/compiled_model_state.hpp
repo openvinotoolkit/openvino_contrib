@@ -43,6 +43,11 @@ struct MetalBackendState final : BackendState {
     std::unique_ptr<GpuStage> create_stage(const std::shared_ptr<const ov::Node>& node) const override {
         return create_metal_stage(node, device, command_queue);
     }
+    std::unique_ptr<GpuStage> create_stage(
+        const std::shared_ptr<const ov::Node>& node,
+        const RuntimeStageExecutableDescriptor* descriptor) const override {
+        return create_metal_stage(node, device, command_queue, descriptor);
+    }
     bool enable_generic_attention_fusion() const override { return false; }
     bool supports_vendor_attention_stage() const override { return true; }
     bool enable_conv_activation_fusion() const override { return true; }

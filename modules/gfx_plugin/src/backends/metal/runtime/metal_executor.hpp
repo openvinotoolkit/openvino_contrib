@@ -9,6 +9,7 @@
 
 #include "mlir/mlir_stage.hpp"
 #include "backends/metal/runtime/memory/buffer.hpp"
+#include "runtime/executable_descriptor.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -20,7 +21,8 @@ class MetalStage final : public MlirStage {
 public:
     MetalStage(const std::shared_ptr<const ov::Node>& node,
                MetalDeviceHandle device,
-               MetalCommandQueueHandle queue);
+               MetalCommandQueueHandle queue,
+               const RuntimeStageExecutableDescriptor* descriptor = nullptr);
 
     void init(GpuBufferManager* buffer_manager) override;
     void compile(GpuBufferManager* buffer_manager) override;
@@ -51,6 +53,7 @@ private:
 
     MetalDeviceHandle m_device = nullptr;
     [[maybe_unused]] MetalCommandQueueHandle m_queue = nullptr;
+    std::shared_ptr<const RuntimeStageExecutableDescriptor> m_executable_descriptor;
 };
 
 }  // namespace gfx_plugin

@@ -7,11 +7,26 @@ include_guard(GLOBAL)
 set(_gfx_src_dir "${CMAKE_CURRENT_LIST_DIR}/../src")
 
 set(GFX_PLUGIN_SOURCES
+    ${_gfx_src_dir}/backends/metal/compiler/metal_kernel_artifacts.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/metal_kernel_registry.cpp
+    ${_gfx_src_dir}/backends/metal/compiler/metal_operation_support.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_kernel_registry.cpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_operation_support.cpp
+    ${_gfx_src_dir}/compiler/backend_registry.cpp
+    ${_gfx_src_dir}/compiler/backend_target.cpp
+    ${_gfx_src_dir}/compiler/executable_bundle.cpp
+    ${_gfx_src_dir}/compiler/gfx_compiler_service.cpp
+    ${_gfx_src_dir}/compiler/kernel_registry.cpp
+    ${_gfx_src_dir}/compiler/kernel_unit.cpp
+    ${_gfx_src_dir}/compiler/lowering_planner.cpp
+    ${_gfx_src_dir}/compiler/manifest.cpp
+    ${_gfx_src_dir}/compiler/operation_legalizer.cpp
+    ${_gfx_src_dir}/compiler/operation_support.cpp
+    ${_gfx_src_dir}/plugin/backend_state.cpp
     ${_gfx_src_dir}/plugin/backend_factory.cpp
     ${_gfx_src_dir}/plugin/compiled_model.cpp
     ${_gfx_src_dir}/plugin/compiled_model_backend_resources.cpp
     ${_gfx_src_dir}/plugin/gfx_device_info.cpp
-    ${_gfx_src_dir}/plugin/gfx_op_support.cpp
     ${_gfx_src_dir}/plugin/gfx_property_lists.cpp
     ${_gfx_src_dir}/plugin/gfx_property_utils.cpp
     ${_gfx_src_dir}/plugin/gfx_remote_utils.cpp
@@ -29,10 +44,22 @@ set(GFX_PLUGIN_SOURCES
 )
 
 set(GFX_PLUGIN_HEADERS
+    ${_gfx_src_dir}/backends/metal/compiler/metal_kernel_artifacts.hpp
+    ${_gfx_src_dir}/backends/metal/compiler/metal_operation_support.hpp
+    ${_gfx_src_dir}/backends/opencl/compiler/opencl_operation_support.hpp
+    ${_gfx_src_dir}/compiler/backend_registry.hpp
+    ${_gfx_src_dir}/compiler/backend_target.hpp
+    ${_gfx_src_dir}/compiler/executable_bundle.hpp
+    ${_gfx_src_dir}/compiler/gfx_compiler_service.hpp
+    ${_gfx_src_dir}/compiler/kernel_registry.hpp
+    ${_gfx_src_dir}/compiler/kernel_unit.hpp
+    ${_gfx_src_dir}/compiler/lowering_planner.hpp
+    ${_gfx_src_dir}/compiler/manifest.hpp
+    ${_gfx_src_dir}/compiler/operation_legalizer.hpp
+    ${_gfx_src_dir}/compiler/operation_support.hpp
     ${_gfx_src_dir}/plugin/backend_factory.hpp
     ${_gfx_src_dir}/plugin/backend_state.hpp
     ${_gfx_src_dir}/plugin/gfx_device_info.hpp
-    ${_gfx_src_dir}/plugin/gfx_op_support.hpp
     ${_gfx_src_dir}/plugin/gfx_profiling_utils.hpp
     ${_gfx_src_dir}/plugin/gfx_remote_utils.hpp
     ${_gfx_src_dir}/plugin/gfx_property_utils.hpp
@@ -55,6 +82,7 @@ set(GFX_PLUGIN_HEADERS
 )
 
 set(GFX_RUNTIME_COMMON_HEADERS
+    ${_gfx_src_dir}/runtime/executable_descriptor.hpp
     ${_gfx_src_dir}/runtime/gfx_activation.hpp
     ${_gfx_src_dir}/runtime/gfx_batchnorm.hpp
     ${_gfx_src_dir}/runtime/gfx_backend_caps.hpp
@@ -64,10 +92,13 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/kernel_ir/gfx_codegen_desc.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_custom_kernel_families.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_args.hpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_source.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_opencl_source_artifacts.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_signature.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/binary_f32_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/binary_f32_kernel.hpp
     ${_gfx_src_dir}/runtime/gfx_profiler.hpp
     ${_gfx_src_dir}/runtime/gfx_profiling_report.hpp
     ${_gfx_src_dir}/runtime/gfx_target_profile.hpp
@@ -99,14 +130,17 @@ set(GFX_RUNTIME_COMMON_HEADERS
 )
 
 set(GFX_RUNTIME_COMMON_SOURCES
+    ${_gfx_src_dir}/runtime/executable_descriptor.cpp
     ${_gfx_src_dir}/runtime/gfx_backend_caps.cpp
     ${_gfx_src_dir}/runtime/gfx_backend_utils.cpp
     ${_gfx_src_dir}/runtime/fused_sequence_stage.cpp
     ${_gfx_src_dir}/runtime/gpu_memory_ops.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_custom_kernel_families.cpp
+    ${_gfx_src_dir}/kernel_ir/gfx_kernel_source.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_opencl_source_artifacts.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/binary_f32_kernel.cpp
     ${_gfx_src_dir}/runtime/execution_dispatcher.cpp
     ${_gfx_src_dir}/runtime/immutable_gpu_buffer_cache.cpp
     ${_gfx_src_dir}/runtime/memory_manager.cpp
@@ -235,11 +269,15 @@ set(GFX_RUNTIME_METAL_MSL_SOURCES
 )
 
 set(GFX_RUNTIME_METAL_SOURCES
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_image_bridge_kernels.cpp
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_topk_kernels.cpp
     ${_gfx_src_dir}/backends/metal/runtime/metal_command_encoder.mm
     ${_gfx_src_dir}/backends/metal/runtime/memory_ops.mm
     ${_gfx_src_dir}/backends/metal/runtime/metal_executor.cpp
+    ${_gfx_src_dir}/backends/metal/runtime/metal_runtime_kernel_loader.cpp
     ${_gfx_src_dir}/backends/metal/runtime/mps_graph_attention_stage.mm
     ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_context.mm
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_msl_kernel_loader.mm
     ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_request.mm
     ${_gfx_src_dir}/backends/metal/runtime/gpu_memory.mm
     ${_gfx_src_dir}/backends/metal/codegen/metal_compiler.mm
@@ -260,6 +298,15 @@ set(GFX_RUNTIME_METAL_SOURCES
 )
 
 set(GFX_RUNTIME_METAL_HEADERS
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_image_bridge_kernels.hpp
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_topk_kernels.hpp
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_buffer_to_image_f16.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_buffer_to_image_f32.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_image_to_buffer_f16.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_image_to_buffer_f32.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_topk_pack_u32_to_i64.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_topk_stable_i64_indices_f16.metal
+    ${_gfx_src_dir}/kernel_ir/metal_kernels/mpsrt_topk_stable_i64_indices_f32.metal
     ${_gfx_src_dir}/backends/metal/runtime/metal_command_encoder.hpp
     ${_gfx_src_dir}/backends/metal/codegen/metal_compiler.hpp
     ${_gfx_src_dir}/backends/metal/codegen/metal_codegen_backend.hpp
@@ -278,12 +325,14 @@ set(GFX_RUNTIME_METAL_HEADERS
     ${_gfx_src_dir}/backends/metal/runtime/memory/memory_stats.hpp
     ${_gfx_src_dir}/backends/metal/runtime/memory/staging_pool.hpp
     ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_context.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_msl_kernel_loader.hpp
     ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_request.hpp
     ${_gfx_src_dir}/backends/metal/runtime/profiling/gpu_timestamps.hpp
     ${_gfx_src_dir}/backends/metal/runtime/profiling/profiler.hpp
     ${_gfx_src_dir}/backends/metal/runtime/profiling/profiler_config.hpp
     ${_gfx_src_dir}/backends/metal/runtime/profiling/profiling_report.hpp
     ${_gfx_src_dir}/backends/metal/runtime/metal_executor.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/metal_runtime_kernel_loader.hpp
     ${_gfx_src_dir}/backends/metal/runtime/mps_graph_attention_stage.hpp
     ${_gfx_src_dir}/backends/metal/runtime/stage_factory.hpp
 )
@@ -292,6 +341,7 @@ set(GFX_RUNTIME_OPENCL_SOURCES
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_api.cpp
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_buffer_manager.cpp
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_program_cache.cpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_runtime_kernel_loader.cpp
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_source_stage.cpp
     ${_gfx_src_dir}/backends/opencl/runtime/memory_api.cpp
     ${_gfx_src_dir}/backends/opencl/runtime/memory_ops.cpp
@@ -301,6 +351,7 @@ set(GFX_RUNTIME_OPENCL_HEADERS
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_api.hpp
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_buffer_manager.hpp
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_program_cache.hpp
+    ${_gfx_src_dir}/backends/opencl/runtime/opencl_runtime_kernel_loader.hpp
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_source_stage.hpp
     ${_gfx_src_dir}/backends/opencl/runtime/memory_api.hpp
     ${_gfx_src_dir}/backends/opencl/runtime/stage_factory.hpp

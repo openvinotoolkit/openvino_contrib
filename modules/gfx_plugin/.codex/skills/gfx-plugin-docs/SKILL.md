@@ -46,6 +46,8 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
 1. Inspect the live source tree and current diff first.
 2. Identify whether the change affects:
    - backend availability or default backend resolution
+   - compiler service, backend registry, lowering-plan, manifest, executable
+     bundle, or runtime descriptor behavior
    - public properties
    - `query_model()` or compile behavior
    - MLIR support/lowering/source planning
@@ -67,6 +69,13 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
   - `README.md`
   - `docs/USAGE.md`
   - `docs/DEVELOPMENT.md`
+
+- `src/compiler/`, compiler backend policies, manifests, executable bundles, or
+  runtime descriptors:
+  - `README.md`
+  - `docs/ARCHITECTURE.md`
+  - `docs/DEVELOPMENT.md`
+  - `docs/TESTING.md`
 
 - `src/runtime/`, scheduling, caches, memory, or profiling:
   - `README.md`

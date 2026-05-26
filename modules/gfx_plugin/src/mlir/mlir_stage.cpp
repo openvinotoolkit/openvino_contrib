@@ -1478,7 +1478,7 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
     }
   }
   // Convolution: build fixed extra inputs (bias + BN + params) to align with
-  // MSL/Spir-V kernel signatures and avoid runtime CPU-side packing.
+  // backend kernel signatures and avoid runtime CPU-side packing.
   if (m_node && is_conv_like()) {
     m_kernel_extra_inputs.clear();
     const auto &out_shape = m_node->get_output_shape(0);

@@ -8,6 +8,53 @@ include(GNUInstallDirs)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/GfxSources.cmake)
 
+function(gfx_embed_kernel_source input_file output_file symbol_name)
+    file(READ "${input_file}" GFX_KERNEL_SOURCE)
+    set(GFX_KERNEL_INPUT "${input_file}")
+    set(GFX_KERNEL_SYMBOL "${symbol_name}")
+    get_filename_component(_output_dir "${output_file}" DIRECTORY)
+    file(MAKE_DIRECTORY "${_output_dir}")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${input_file}")
+    configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/KernelSource.hpp.in
+        "${output_file}"
+        @ONLY)
+endfunction()
+
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/binary_f32_kernel.cl"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/binary_f32_kernel_source.hpp"
+    "kOpenClBaselineBinaryF32KernelSource")
+
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/metal_kernels/mpsrt_buffer_to_image_f32.metal"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/metal_kernels/generated/mpsrt_buffer_to_image_f32_source.hpp"
+    "kMpsrtBufferToImageF32Source")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/metal_kernels/mpsrt_buffer_to_image_f16.metal"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/metal_kernels/generated/mpsrt_buffer_to_image_f16_source.hpp"
+    "kMpsrtBufferToImageF16Source")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/metal_kernels/mpsrt_image_to_buffer_f32.metal"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/metal_kernels/generated/mpsrt_image_to_buffer_f32_source.hpp"
+    "kMpsrtImageToBufferF32Source")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/metal_kernels/mpsrt_image_to_buffer_f16.metal"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/metal_kernels/generated/mpsrt_image_to_buffer_f16_source.hpp"
+    "kMpsrtImageToBufferF16Source")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/metal_kernels/mpsrt_topk_pack_u32_to_i64.metal"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/metal_kernels/generated/mpsrt_topk_pack_u32_to_i64_source.hpp"
+    "kMpsrtTopKPackU32ToI64Source")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/metal_kernels/mpsrt_topk_stable_i64_indices_f32.metal"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/metal_kernels/generated/mpsrt_topk_stable_i64_indices_f32_source.hpp"
+    "kMpsrtTopKStableI64IndicesF32Source")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/metal_kernels/mpsrt_topk_stable_i64_indices_f16.metal"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/metal_kernels/generated/mpsrt_topk_stable_i64_indices_f16_source.hpp"
+    "kMpsrtTopKStableI64IndicesF16Source")
+
 set(GFX_PLUGIN_COMMON_SOURCES ${GFX_PLUGIN_SOURCES})
 set(GFX_PLUGIN_ENTRY_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/plugin/plugin.cpp")
 list(FILTER GFX_PLUGIN_COMMON_SOURCES EXCLUDE REGEX "plugin/plugin\\.cpp$")

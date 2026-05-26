@@ -7,8 +7,8 @@ This guide summarizes validation for `modules/gfx_plugin`.
 `tests/CMakeLists.txt` defines the primary test binaries:
 
 - `ov_gfx_func_tests`: plugin-facing behavior and OpenVINO shared-test coverage
-- `ov_gfx_unit_tests`: focused runtime, MLIR, cache, property, profiling, and
-  backend tests
+- `ov_gfx_unit_tests`: focused compiler, manifest, runtime, MLIR, cache,
+  property, profiling, and backend tests
 - `ov_gfx_runtime_micro_tests`: small runtime-subgraph regression checks
 - `ov_gfx_compare_runner`: accuracy and per-op diff tool
 - `ov_gfx_microbench`: MB0-MB3 microbench and calibration workflow
@@ -59,6 +59,8 @@ Add or update tests when changing:
 
 - public properties or backend selection
 - `query_model()` or support probing
+- compiler backend registry, operation policies, lowering plans, manifests,
+  executable bundles, runtime executable descriptors, or artifact payloads
 - MLIR builders, passes, source plans, or runtime-value planning
 - stage policy, placement, fusion, precision, or submit policy
 - OpenCL source-artifact metadata, source coverage, chunking, constant
@@ -87,6 +89,13 @@ For plugin/property changes:
 - update `tests/unit/plugin_tests.cpp`
 - check `ov::available_devices`, `ov::device::id`, `ov::supported_properties`,
   `GFX_BACKEND`, and compiled-model property behavior
+
+For compiler-service, manifest, or executable-descriptor changes:
+
+- `tests/unit/gpu_backend_base_test.cpp`
+- `tests/unit/plugin_tests.cpp` when `query_model()` or compile behavior moves
+- backend artifact tests when payload materialization reaches Metal or OpenCL
+  runtime loaders
 
 For scheduling, cache, or infer-path changes:
 

@@ -1,0 +1,52 @@
+// Copyright (C) 2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+#pragma once
+
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "compiler/executable_bundle.hpp"
+#include "compiler/kernel_registry.hpp"
+#include "compiler/lowering_planner.hpp"
+#include "compiler/operation_legalizer.hpp"
+#include "compiler/operation_support.hpp"
+
+namespace ov {
+namespace gfx_plugin {
+namespace compiler {
+
+class BackendModule {
+public:
+    virtual ~BackendModule() = default;
+
+    virtual const std::string& id() const noexcept = 0;
+    virtual const BackendTarget& target() const noexcept = 0;
+    virtual const BackendCapabilities& capabilities() const noexcept = 0;
+    virtual const OperationLegalizer& legalizer() const noexcept = 0;
+    virtual const KernelRegistry& kernel_registry() const noexcept = 0;
+    virtual const LoweringPlanner& lowering_planner() const noexcept = 0;
+    virtual std::shared_ptr<const KernelArtifactPayload> materialize_artifact_payload(
+        KernelArtifactDescriptor& descriptor,
+        const PlannedOperation& op) const = 0;
+};
+
+class BackendRegistry final {
+public:
+    BackendRegistry();
+    explicit BackendRegistry(std::vector<std::shared_ptr<const BackendModule>> modules);
+
+    static const BackendRegistry& default_registry();
+
+    std::shared_ptr<const BackendModule> resolve(GpuBackend backend) const;
+    std::shared_ptr<const BackendModule> resolve(const BackendTarget& target) const;
+    std::vector<BackendTarget> available_targets() const;
+
+private:
+    std::vector<std::shared_ptr<const BackendModule>> m_modules;
+};
+
+}  // namespace compiler
+}  // namespace gfx_plugin
+}  // namespace ov

@@ -4,6 +4,7 @@
 
 #include "plugin/remote_context_support.hpp"
 
+#include "compiler/backend_registry.hpp"
 #include "openvino/core/except.hpp"
 #include "plugin/gfx_property_utils.hpp"
 #include "runtime/gfx_remote_context.hpp"
@@ -34,7 +35,7 @@ std::string get_remote_backend(const ov::SoPtr<ov::IRemoteContext>& context) {
 ov::SoPtr<ov::IRemoteContext> make_gfx_remote_context(const std::string& device_name,
                                                       const ov::AnyMap& remote_properties) {
     auto params = normalize_remote_context_params(remote_properties);
-    if (!backend_supported(params.backend)) {
+    if (!compiler::BackendRegistry::default_registry().resolve(params.backend)) {
         OPENVINO_THROW("GFX: backend '", params.backend_name, "' is not available for remote context");
     }
     const std::string resolved_name = device_name.empty() ? "GFX" : device_name;
