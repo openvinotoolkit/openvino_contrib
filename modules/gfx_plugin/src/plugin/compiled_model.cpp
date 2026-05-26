@@ -24,7 +24,6 @@
 #include "runtime/gfx_profiling_report.hpp"
 #include "runtime/gfx_remote_context.hpp"
 #include "runtime/gfx_stage_policy.hpp"
-#include "runtime/gfx_vulkan_pipeline_cache_scope.hpp"
 
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
@@ -499,24 +498,9 @@ CompiledModel::CompiledModel(
                 .count()));
   }
   gfx_log_info("CompiledModel") << "Backend state created";
-  if (m_backend == GpuBackend::Vulkan) {
-    gfx_log_info("CompiledModel") << "Vulkan backend selected";
-  }
-
   // Build GpuStage pipeline eagerly; fail early if unsupported ops encountered.
   gfx_log_info("CompiledModel") << "Building stage pipeline";
-  const auto cache_dir_it = resolved_props.find(ov::cache_dir.name());
-  const bool has_vulkan_pipeline_cache_dir =
-      m_backend == GpuBackend::Vulkan && cache_dir_it != resolved_props.end() &&
-      cache_dir_it->second.is<std::string>() &&
-      !cache_dir_it->second.as<std::string>().empty();
-  if (has_vulkan_pipeline_cache_dir) {
-    ScopedVulkanPipelineCacheDir cache_scope(
-        cache_dir_it->second.as<std::string>());
-    build_op_pipeline(compile_trace_ptr);
-  } else {
-    build_op_pipeline(compile_trace_ptr);
-  }
+  build_op_pipeline(compile_trace_ptr);
   if (compile_trace_ptr) {
     uint64_t total_cpu_us = 0;
     for (const auto &segment : compile_trace_ptr->report().segments) {

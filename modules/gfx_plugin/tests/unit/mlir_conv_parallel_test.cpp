@@ -64,7 +64,7 @@ TEST(GfxMlirTransforms, Conv2DParallelLowering) {
       has_parallel = true;
     }
   });
-  EXPECT_FALSE(has_conv) << "Conv2D should be lowered before SPIR-V";
+  EXPECT_FALSE(has_conv) << "Conv2D should be lowered before OpenCL";
   EXPECT_TRUE(has_parallel) << "Expected scf.parallel after lowering";
 }
 

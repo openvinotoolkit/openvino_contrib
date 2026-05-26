@@ -161,7 +161,7 @@ void assign_runtime_shapes_for_stage(InferStage& stage,
         ov::as_type_ptr<const ov::op::v1::StridedSlice>(stage.node)) {
         const auto plan = plan_slice_runtime_values(runtime_inputs,
                                                     outputs,
-                                                    backend == GpuBackend::Vulkan,
+                                                    backend == GpuBackend::OpenCL,
                                                     stage_name);
         assign_runtime_value_outputs(plan.values, outputs);
         return;

@@ -16,7 +16,7 @@ namespace {
 TEST(OvGfxMicrobenchCalibrationTest, ArtifactRoundTripPreservesCoreFields) {
     CalibrationArtifact artifact;
     artifact.device_key = "0x5143:0x44050001:2150760449";
-    artifact.backend = "vulkan";
+    artifact.backend = "opencl";
     artifact.device_name = "Adreno (TM) 830";
     artifact.platform = "linux_or_android";
     artifact.vendor_id = "0x5143";
@@ -32,7 +32,7 @@ TEST(OvGfxMicrobenchCalibrationTest, ArtifactRoundTripPreservesCoreFields) {
 
     CalibrationProbe probe;
     probe.name = "MB3";
-    probe.actual_backend = "vulkan";
+    probe.actual_backend = "opencl";
     probe.arithmetic_intensity = 341.333;
     probe.overhead_subtracted_ms = 29.53;
     probe.adjusted_gbps = 0.213;

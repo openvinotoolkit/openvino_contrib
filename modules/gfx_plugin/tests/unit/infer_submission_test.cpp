@@ -641,7 +641,7 @@ TEST(InferSubmissionTest, SubmissionDoesNotExtendDirectDependencyPastConfiguredB
 
 TEST(InferSubmissionTest, SubmissionTuningUsesMultipleSlotsForDeepIncrementalPipelines) {
     InferSubmissionTuningCaps caps{};
-    caps.backend = GpuBackend::Vulkan;
+    caps.backend = GpuBackend::OpenCL;
     caps.preferred_simd_width = 64u;
     caps.subgroup_size = 64u;
     caps.max_total_threads_per_group = 1024u;
@@ -655,7 +655,7 @@ TEST(InferSubmissionTest, SubmissionTuningUsesMultipleSlotsForDeepIncrementalPip
 
 TEST(InferSubmissionTest, SubmissionTuningWidensWindowBudgetWhenMultipleSlotsAreAvailable) {
     InferSubmissionTuningCaps caps{};
-    caps.backend = GpuBackend::Vulkan;
+    caps.backend = GpuBackend::OpenCL;
     caps.preferred_simd_width = 32u;
     caps.subgroup_size = 32u;
     caps.max_total_threads_per_group = 256u;
@@ -670,9 +670,9 @@ TEST(InferSubmissionTest, SubmissionTuningWidensWindowBudgetWhenMultipleSlotsAre
               4ull * 1000ull * 1000ull * 1000ull);
 }
 
-TEST(InferSubmissionTest, SubmissionTuningKeepsBoundedWindowsForExtremelyDeepVulkanPipelines) {
+TEST(InferSubmissionTest, SubmissionTuningKeepsBoundedWindowsForExtremelyDeepOpenClPipelines) {
     InferSubmissionTuningCaps caps{};
-    caps.backend = GpuBackend::Vulkan;
+    caps.backend = GpuBackend::OpenCL;
     caps.preferred_simd_width = 64u;
     caps.subgroup_size = 64u;
     caps.max_total_threads_per_group = 1024u;
@@ -687,9 +687,9 @@ TEST(InferSubmissionTest, SubmissionTuningKeepsBoundedWindowsForExtremelyDeepVul
     EXPECT_TRUE(tuning.config.allow_incremental_submit);
 }
 
-TEST(InferSubmissionTest, SubmissionTuningAvoidsTinyWindowsForConstrainedDeepVulkanPipelines) {
+TEST(InferSubmissionTest, SubmissionTuningAvoidsTinyWindowsForConstrainedDeepOpenClPipelines) {
     InferSubmissionTuningCaps caps{};
-    caps.backend = GpuBackend::Vulkan;
+    caps.backend = GpuBackend::OpenCL;
     caps.preferred_simd_width = 16u;
     caps.subgroup_size = 16u;
     caps.max_total_threads_per_group = 256u;
@@ -709,7 +709,7 @@ TEST(InferSubmissionTest, SubmissionTuningAvoidsTinyWindowsForConstrainedDeepVul
 
 TEST(InferSubmissionTest, SubmissionTuningDerivesBroadcomBudgetFromCommonConstrainedProfile) {
     InferSubmissionTuningCaps caps{};
-    caps.backend = GpuBackend::Vulkan;
+    caps.backend = GpuBackend::OpenCL;
     caps.preferred_simd_width = 16u;
     caps.subgroup_size = 16u;
     caps.max_total_threads_per_group = 256u;

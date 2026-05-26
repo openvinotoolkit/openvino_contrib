@@ -16,5 +16,5 @@ Mb0Result run_metal_mb0(size_t warmup, size_t iterations);
 #endif
 
 #if !defined(__APPLE__)
-Mb0Result run_vulkan_mb0(size_t warmup, size_t iterations);
+Mb0Result run_opencl_mb0(size_t warmup, size_t iterations);
 #endif

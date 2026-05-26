@@ -1,13 +1,16 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-#include "mlir/msl_codegen_apple_msl_binding.hpp"
+#include "mlir/msl_codegen_apple_msl_shape.hpp"
 
 #include <algorithm>
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "mlir/codegen_common.hpp"
 #include "mlir/gfx_backend_custom_kernel_adapter.hpp"
+#include "mlir/msl_codegen_apple_msl_binding.hpp"
 #include "mlir/msl_codegen_apple_msl_common.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
@@ -21,6 +24,128 @@
 
 namespace ov {
 namespace gfx_plugin {
+namespace {
+
+std::vector<int32_t>
+make_shapeof_msl_scalar_args(const std::shared_ptr<const ov::Node> &node) {
+  OPENVINO_ASSERT(node, "GFX Metal ShapeOf: node is null");
+  const auto input_pshape = node->get_input_partial_shape(0);
+  OPENVINO_ASSERT(input_pshape.rank().is_static(),
+                  "GFX Metal ShapeOf: input rank must be static");
+  return {static_cast<int32_t>(input_pshape.rank().get_length())};
+}
+
+KernelSource make_shapeof_msl_kernel_source(
+    const std::shared_ptr<const ov::Node> &node, mlir::ModuleOp module) {
+  OPENVINO_ASSERT(node, "GFX Metal ShapeOf: node is null");
+  ShapeOfCodegenDesc desc{};
+  const auto input_pshape = node->get_input_partial_shape(0);
+  OPENVINO_ASSERT(input_pshape.rank().is_static(),
+                  "GFX Metal ShapeOf: input rank must be static");
+  desc.rank = static_cast<uint32_t>(input_pshape.rank().get_length());
+  desc.element_type = node->get_output_element_type(0);
+  return make_kernel_source(module, "shapeof_kernel",
+                            generate_msl_from_mlir(module, desc));
+}
+
+std::vector<int32_t>
+make_tile_msl_scalar_args(const std::shared_ptr<const ov::Node> &node) {
+  OPENVINO_ASSERT(node, "GFX Metal Tile: node is null");
+  const auto output_pshape = node->get_output_partial_shape(0);
+  const auto rank = output_pshape.rank().is_static()
+                        ? static_cast<int32_t>(std::max<int64_t>(
+                              output_pshape.rank().get_length(), 1))
+                        : 1;
+  const auto output_count =
+      output_pshape.is_static()
+          ? static_cast<int32_t>(ov::shape_size(output_pshape.to_shape()))
+          : 0;
+  return {output_count, rank};
+}
+
+KernelSource make_tile_msl_kernel_source(
+    const std::shared_ptr<const ov::Node> &node, mlir::ModuleOp module) {
+  OPENVINO_ASSERT(node, "GFX Metal Tile: node is null");
+  TileCodegenDesc desc{};
+  desc.element_type = node->get_output_element_type(0);
+  auto source = make_kernel_source(module, "tile_kernel",
+                                   generate_msl_from_mlir(module, desc));
+  return source;
+}
+
+std::vector<int32_t>
+make_range_msl_scalar_args(const std::shared_ptr<const ov::Node> &node) {
+  OPENVINO_ASSERT(node, "GFX Metal Range: node is null");
+  const auto output_count =
+      node->get_output_partial_shape(0).is_static()
+          ? static_cast<int32_t>(ov::shape_size(node->get_output_shape(0)))
+          : int32_t{0};
+  return {output_count};
+}
+
+KernelSource make_range_msl_kernel_source(
+    const std::shared_ptr<const ov::Node> &node, mlir::ModuleOp module) {
+  OPENVINO_ASSERT(node, "GFX Metal Range: node is null");
+  RangeCodegenDesc desc{};
+  desc.element_type = node->get_output_element_type(0);
+  desc.output_type = node->get_output_element_type(0);
+  desc.start_type = node->get_input_element_type(0);
+  desc.stop_type = node->get_input_element_type(1);
+  desc.step_type = node->get_input_element_type(2);
+  auto source = make_kernel_source(module, "range_kernel",
+                                   generate_msl_from_mlir(module, desc));
+  return source;
+}
+
+} // namespace
+
+GfxMslGeneratedKernelSourcePlan make_shapeof_msl_kernel_source_plan(
+    const std::shared_ptr<const ov::Node> &node, mlir::ModuleOp module) {
+  auto binding = make_backend_custom_kernel_binding_plan(
+      "ShapeOf", "shapeof_kernel", make_shapeof_msl_scalar_args(node));
+  if (!binding.valid) {
+    return {};
+  }
+
+  auto plan = make_msl_generated_custom_kernel_source_plan(
+      make_shapeof_msl_kernel_source(node, module), binding);
+  // The source plan owns the exact ABI; keep stale typed-program attrs out of
+  // the direct compile path after the concrete MSL has been generated.
+  plan.source.module = {};
+  return plan;
+}
+
+GfxMslGeneratedKernelSourcePlan make_tile_msl_kernel_source_plan(
+    const std::shared_ptr<const ov::Node> &node, mlir::ModuleOp module) {
+  auto binding = make_backend_custom_kernel_binding_plan(
+      "Tile", "tile_kernel", make_tile_msl_scalar_args(node));
+  if (!binding.valid) {
+    return {};
+  }
+
+  auto plan = make_msl_generated_custom_kernel_source_plan(
+      make_tile_msl_kernel_source(node, module), binding);
+  // The source plan owns the exact ABI; keep stale typed-program attrs out of
+  // the direct compile path after the concrete MSL has been generated.
+  plan.source.module = {};
+  return plan;
+}
+
+GfxMslGeneratedKernelSourcePlan make_range_msl_kernel_source_plan(
+    const std::shared_ptr<const ov::Node> &node, mlir::ModuleOp module) {
+  auto binding = make_backend_custom_kernel_binding_plan(
+      "Range", "range_kernel", make_range_msl_scalar_args(node));
+  if (!binding.valid) {
+    return {};
+  }
+
+  auto plan = make_msl_generated_custom_kernel_source_plan(
+      make_range_msl_kernel_source(node, module), binding);
+  // The source plan owns the exact ABI; keep stale typed-program attrs out of
+  // the direct compile path after the concrete MSL has been generated.
+  plan.source.module = {};
+  return plan;
+}
 
 std::optional<KernelSource> make_apple_metal_shape_kernel_source(
     KernelSource source, const std::shared_ptr<const ov::Node> &node) {
@@ -30,16 +155,9 @@ std::optional<KernelSource> make_apple_metal_shape_kernel_source(
 
   if (std::dynamic_pointer_cast<const ov::op::v0::ShapeOf>(node) ||
       std::dynamic_pointer_cast<const ov::op::v3::ShapeOf>(node)) {
-    ShapeOfCodegenDesc desc{};
-    const auto input_pshape = node->get_input_partial_shape(0);
-    OPENVINO_ASSERT(input_pshape.rank().is_static(),
-                    "ShapeOf: input rank must be static");
-    desc.rank = static_cast<uint32_t>(input_pshape.rank().get_length());
-    desc.element_type = node->get_output_element_type(0);
-    source.entry_point = "shapeof_kernel";
-    source.msl_generator = [desc](mlir::ModuleOp module) mutable {
-      return generate_msl_from_mlir(module, desc);
-    };
+    source = make_shapeof_msl_kernel_source(node, source.module);
+    require_apple_msl_generated_kernel_source_binding(
+        source, "ShapeOf", "shapeof_kernel", make_shapeof_msl_scalar_args(node));
     return source;
   }
 
@@ -62,22 +180,9 @@ std::optional<KernelSource> make_apple_metal_shape_kernel_source(
   }
 
   if (std::dynamic_pointer_cast<const ov::op::v0::Tile>(node)) {
-    TileCodegenDesc desc{};
-    desc.element_type = node->get_output_element_type(0);
-    source.entry_point = "tile_kernel";
-    source.msl_generator = [desc](mlir::ModuleOp module) mutable {
-      return generate_msl_from_mlir(module, desc);
-    };
-    const auto output_pshape = node->get_output_partial_shape(0);
-    const auto rank = output_pshape.rank().is_static()
-                          ? static_cast<int32_t>(std::max<int64_t>(output_pshape.rank().get_length(), 1))
-                          : 1;
-    const auto output_count = output_pshape.is_static()
-                                  ? static_cast<int32_t>(ov::shape_size(output_pshape.to_shape()))
-                                  : 0;
+    source = make_tile_msl_kernel_source(node, source.module);
     require_apple_msl_generated_kernel_source_binding(
-        source, "Tile", "tile_kernel",
-        {output_count, rank});
+        source, "Tile", "tile_kernel", make_tile_msl_scalar_args(node));
     return source;
   }
 
@@ -121,22 +226,9 @@ std::optional<KernelSource> make_apple_metal_shape_kernel_source(
   }
 
   if (std::dynamic_pointer_cast<const ov::op::v4::Range>(node)) {
-    RangeCodegenDesc desc{};
-    desc.element_type = node->get_output_element_type(0);
-    desc.output_type = node->get_output_element_type(0);
-    desc.start_type = node->get_input_element_type(0);
-    desc.stop_type = node->get_input_element_type(1);
-    desc.step_type = node->get_input_element_type(2);
-    source.entry_point = "range_kernel";
-    source.msl_generator = [desc](mlir::ModuleOp module) mutable {
-      return generate_msl_from_mlir(module, desc);
-    };
-    const auto output_count =
-        node->get_output_partial_shape(0).is_static()
-            ? static_cast<int32_t>(ov::shape_size(node->get_output_shape(0)))
-            : int32_t{0};
+    source = make_range_msl_kernel_source(node, source.module);
     require_apple_msl_generated_kernel_source_binding(
-        source, "Range", "range_kernel", {output_count});
+        source, "Range", "range_kernel", make_range_msl_scalar_args(node));
     return source;
   }
 

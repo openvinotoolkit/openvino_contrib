@@ -30,8 +30,8 @@ private:
 
 ov::gfx_plugin::GfxParallelismCaps make_caps() {
   ov::gfx_plugin::GfxParallelismCaps caps;
-  caps.backend = ov::gfx_plugin::GpuBackend::Vulkan;
-  caps.device_key = "test:vulkan";
+  caps.backend = ov::gfx_plugin::GpuBackend::OpenCL;
+  caps.device_key = "test:opencl";
   caps.preferred_simd_width = 32;
   caps.subgroup_size = 32;
   caps.max_total_threads_per_group = 64;
@@ -90,7 +90,7 @@ TEST(GfxParallelism,
 
 TEST(GfxParallelism, QueryParallelismCapsUsesBackendNeutralDeviceInfo) {
   ov::gfx_plugin::GpuExecutionDeviceInfo info;
-  info.backend = ov::gfx_plugin::GpuBackend::Vulkan;
+  info.backend = ov::gfx_plugin::GpuBackend::OpenCL;
   info.device_key = "test-device";
   info.preferred_simd_width = 16;
   info.subgroup_size = 32;
@@ -102,7 +102,7 @@ TEST(GfxParallelism, QueryParallelismCapsUsesBackendNeutralDeviceInfo) {
   TestDeviceInfoBufferManager buffer_manager(info);
   const auto caps = ov::gfx_plugin::query_parallelism_caps(&buffer_manager);
 
-  EXPECT_EQ(caps.backend, ov::gfx_plugin::GpuBackend::Vulkan);
+  EXPECT_EQ(caps.backend, ov::gfx_plugin::GpuBackend::OpenCL);
   EXPECT_EQ(caps.device_key, "test-device");
   EXPECT_EQ(caps.preferred_simd_width, 16u);
   EXPECT_EQ(caps.subgroup_size, 32u);
@@ -362,8 +362,8 @@ TEST(
     GfxParallelism,
     SelectCapabilityEnabledDenseConvKeepsOneSpatialOutputWithoutMicroTileCapability) {
   auto caps = make_channel_blocking_caps();
-  caps.device_key = "test:vulkan:channel-blocking-no-microtile";
-  caps.backend = ov::gfx_plugin::GpuBackend::Vulkan;
+  caps.device_key = "test:opencl:channel-blocking-no-microtile";
+  caps.backend = ov::gfx_plugin::GpuBackend::OpenCL;
   caps.supports_conv_channel_block_spatial_tiling = false;
   const auto plan = ov::gfx_plugin::select_conv_parallelism(
       caps, ov::Shape{1, 256, 80, 80}, 256, 256, 256 * 3 * 3, false, false);
@@ -526,7 +526,7 @@ TEST(GfxParallelism, RememberMatMulParallelismAllowsSerialFallbackOverride) {
 }
 
 TEST(GfxParallelism,
-     SelectChunkDispatchPlanUsesLargeSingleDispatchForMidSizeVulkanWorkloads) {
+     SelectChunkDispatchPlanUsesLargeSingleDispatchForMidSizeOpenClWorkloads) {
   const auto plan = ov::gfx_plugin::select_chunk_dispatch_plan(
       make_caps(), "conv2d", 8192, 576);
 
@@ -536,7 +536,7 @@ TEST(GfxParallelism,
 }
 
 TEST(GfxParallelism,
-     SelectChunkDispatchPlanCapsLargeVulkanWorkloadsToFewDispatches) {
+     SelectChunkDispatchPlanCapsLargeOpenClWorkloadsToFewDispatches) {
   const auto plan = ov::gfx_plugin::select_chunk_dispatch_plan(
       make_caps(), "conv2d", 131072, 1152);
 

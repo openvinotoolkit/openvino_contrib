@@ -42,8 +42,6 @@ inline GfxKernelBackendDomain gfx_mpsrt_kernel_backend_domain_from_stage_domain(
             return GfxKernelBackendDomain::AppleMsl;
         case GfxStageBackendDomain::OpenCl:
             return GfxKernelBackendDomain::OpenCl;
-        case GfxStageBackendDomain::Spirv:
-            return GfxKernelBackendDomain::Spirv;
         case GfxStageBackendDomain::Unknown:
         default:
             return GfxKernelBackendDomain::Unknown;

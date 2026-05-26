@@ -15,12 +15,17 @@ namespace {
 std::string generate_msl_for_concat(const ConcatCodegenDesc& d, mlir::ModuleOp module) {
     std::ostringstream ss;
     std::string scalar_t = "float";
-    if (auto func = get_entry_func(module)) {
-        auto ft = func.getFunctionType();
-        if (ft.getNumInputs() >= 1) {
-            scalar_t = msl_type_from_mlir(ft.getInput(0));
+    bool type_from_module = false;
+    if (module) {
+        if (auto func = get_entry_func(module)) {
+            auto ft = func.getFunctionType();
+            if (ft.getNumInputs() >= 1) {
+                scalar_t = msl_type_from_mlir(ft.getInput(0));
+                type_from_module = true;
+            }
         }
-    } else {
+    }
+    if (!type_from_module) {
         switch (d.element_type) {
             case ov::element::f16: scalar_t = "half"; break;
             case ov::element::f32: scalar_t = "float"; break;

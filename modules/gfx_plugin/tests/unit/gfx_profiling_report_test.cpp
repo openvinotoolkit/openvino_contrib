@@ -19,11 +19,11 @@ namespace {
 TEST(GfxProfilingReportTest, TraceAggregatesCountersSegmentsAndTransfers) {
     GfxProfilingTrace trace;
     trace.reset(ProfilingLevel::Detailed);
-    trace.set_backend("vulkan");
+    trace.set_backend("opencl");
     GfxTargetProfile profile;
-    profile.backend = GpuBackend::Vulkan;
+    profile.backend = GpuBackend::OpenCL;
     profile.device_family = GpuDeviceFamily::BroadcomV3D;
-    profile.device_key = "vulkan:broadcom_v3d:demo";
+    profile.device_key = "opencl:broadcom_v3d:demo";
     profile.device_name = "V3D 7.1.7";
     profile.vendor_id = 0x14E4;
     profile.device_id = 0x2712;
@@ -55,7 +55,7 @@ TEST(GfxProfilingReportTest, TraceAggregatesCountersSegmentsAndTransfers) {
     const auto& report = trace.report();
     ASSERT_EQ(report.level, ProfilingLevel::Detailed);
     EXPECT_EQ(report.schema_version, 2u);
-    EXPECT_EQ(report.backend, "vulkan");
+    EXPECT_EQ(report.backend, "opencl");
     ASSERT_TRUE(report.target_profile_present);
     EXPECT_EQ(report.target_profile.device_family, GpuDeviceFamily::BroadcomV3D);
     EXPECT_FALSE(report.target_profile.supports_conv_output_channel_blocking);
@@ -77,7 +77,7 @@ TEST(GfxProfilingReportTest, TraceAggregatesCountersSegmentsAndTransfers) {
     EXPECT_EQ(report.counters[1].value, 5u);
     const auto json = trace.to_json();
     EXPECT_NE(json.find("\"schema_version\":2"), std::string::npos);
-    EXPECT_NE(json.find("\"backend\":\"vulkan\""), std::string::npos);
+    EXPECT_NE(json.find("\"backend\":\"opencl\""), std::string::npos);
     EXPECT_NE(json.find("\"target_profile\""), std::string::npos);
     EXPECT_NE(json.find("\"family\":\"broadcom_v3d\""), std::string::npos);
     EXPECT_NE(json.find("\"device_name\":\"V3D 7.1.7\""), std::string::npos);
@@ -99,12 +99,12 @@ TEST(GfxProfilingReportTest, TraceAggregatesCountersSegmentsAndTransfers) {
 }
 
 TEST(GfxProfilingReportTest, RootJsonCanEmbedCompileAndExtendedReports) {
-    const std::string compile_json = R"({"schema_version":2,"backend":"vulkan","level":"detailed","segments":[{"phase":"compile","name":"build_op_pipeline"}]})";
-    const std::string extended_json = R"({"schema_version":2,"backend":"vulkan","level":"detailed","segments":[{"phase":"infer","name":"submit"}]})";
-    const auto json = build_profiling_report_json("vulkan", ProfilingLevel::Detailed, {}, extended_json, compile_json);
+    const std::string compile_json = R"({"schema_version":2,"backend":"opencl","level":"detailed","segments":[{"phase":"compile","name":"build_op_pipeline"}]})";
+    const std::string extended_json = R"({"schema_version":2,"backend":"opencl","level":"detailed","segments":[{"phase":"infer","name":"submit"}]})";
+    const auto json = build_profiling_report_json("opencl", ProfilingLevel::Detailed, {}, extended_json, compile_json);
     EXPECT_NE(json.find("\"compile\":{\"schema_version\":2"), std::string::npos);
     EXPECT_NE(json.find("\"extended\":{\"schema_version\":2"), std::string::npos);
-    EXPECT_NE(json.find("\"backend\":\"vulkan\""), std::string::npos);
+    EXPECT_NE(json.find("\"backend\":\"opencl\""), std::string::npos);
 }
 
 TEST(GfxProfilingReportTest, PerfettoTraceEventsExportWhenRequested) {
@@ -114,7 +114,7 @@ TEST(GfxProfilingReportTest, PerfettoTraceEventsExportWhenRequested) {
 
     GfxProfilingTrace trace;
     trace.reset(ProfilingLevel::Detailed);
-    trace.set_backend("vulkan");
+    trace.set_backend("opencl");
     trace.increment_counter("submit_count", 3);
     trace.add_segment("submit", "window#1", 25, 0, 0, 0, 0, 0, 0, 2, 7, 9);
     trace.add_transfer("input_h2d", 128, true, 6);
@@ -151,10 +151,10 @@ TEST(GfxProfilingReportTest, RootProfilingReportCanExportMergedTraceFile) {
     setenv("OV_GFX_PROFILE_TRACE_FILE", trace_path.string().c_str(), 1);
 
     const std::string compile_json =
-        R"({"schema_version":2,"backend":"vulkan","level":"detailed","trace_sink":"perfetto","traceEvents":[{"name":"compile.stage","cat":"compile","ph":"X","ts":1,"dur":2,"pid":1,"tid":11,"args":{"backend":"vulkan"}}]})";
+        R"({"schema_version":2,"backend":"opencl","level":"detailed","trace_sink":"perfetto","traceEvents":[{"name":"compile.stage","cat":"compile","ph":"X","ts":1,"dur":2,"pid":1,"tid":11,"args":{"backend":"opencl"}}]})";
     const std::string extended_json =
-        R"({"schema_version":2,"backend":"vulkan","level":"detailed","trace_sink":"perfetto","traceEvents":[{"name":"infer.submit","cat":"submit","ph":"X","ts":3,"dur":4,"pid":1,"tid":22,"args":{"backend":"vulkan"}}]})";
-    const auto root_json = build_profiling_report_json("vulkan", ProfilingLevel::Detailed, {}, extended_json, compile_json);
+        R"({"schema_version":2,"backend":"opencl","level":"detailed","trace_sink":"perfetto","traceEvents":[{"name":"infer.submit","cat":"submit","ph":"X","ts":3,"dur":4,"pid":1,"tid":22,"args":{"backend":"opencl"}}]})";
+    const auto root_json = build_profiling_report_json("opencl", ProfilingLevel::Detailed, {}, extended_json, compile_json);
 
     if (old_path) {
         setenv("OV_GFX_PROFILE_TRACE_FILE", saved_path.c_str(), 1);

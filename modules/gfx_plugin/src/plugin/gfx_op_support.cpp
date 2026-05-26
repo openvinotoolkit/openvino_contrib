@@ -38,7 +38,6 @@ bool is_decompression_node(const std::shared_ptr<const ov::Node>& node) {
 }  // namespace
 
 bool metal_supports_node(const std::shared_ptr<const ov::Node>& node);
-bool vulkan_supports_node(const std::shared_ptr<const ov::Node>& node);
 
 bool is_supported_node(const std::shared_ptr<const ov::Node>& node, GpuBackend backend) {
     if (ov::as_type_ptr<const ov::op::v0::Parameter>(node) ||
@@ -65,18 +64,6 @@ bool is_supported_node(const std::shared_ptr<const ov::Node>& node, GpuBackend b
     try {
         if (backend == GpuBackend::Metal) {
             const bool supported = metal_supports_node(node);
-            if (!supported && gfx_log_debug_enabled()) {
-                gfx_log_debug("Plugin") << "Unsupported node: " << node->get_friendly_name()
-                                                             << " (" << node->get_type_name() << ")";
-            }
-            return supported;
-        }
-        if (backend == GpuBackend::Vulkan) {
-            if (gfx_log_debug_enabled()) {
-                gfx_log_debug("Plugin") << "Check node: " << node->get_friendly_name()
-                                                       << " (" << node->get_type_name() << ")";
-            }
-            const bool supported = vulkan_supports_node(node);
             if (!supported && gfx_log_debug_enabled()) {
                 gfx_log_debug("Plugin") << "Unsupported node: " << node->get_friendly_name()
                                                              << " (" << node->get_type_name() << ")";

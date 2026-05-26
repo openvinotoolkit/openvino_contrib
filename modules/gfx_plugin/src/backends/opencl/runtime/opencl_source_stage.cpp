@@ -12,6 +12,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -117,6 +118,10 @@ size_t round_up(size_t value, size_t step) {
     return ((value + step - 1) / step) * step;
 }
 
+bool is_linear_shape_view_op(std::string_view type) {
+    return type == "Reshape" || type == "Squeeze" || type == "Unsqueeze";
+}
+
 class OpenClSourceStage final : public GpuStage {
 public:
     OpenClSourceStage(std::shared_ptr<const ov::Node> node,
@@ -168,6 +173,10 @@ public:
         OPENVINO_ASSERT(!outputs.empty(),
                         "GFX OpenCL: source artifact must bind at least one output for ",
                         m_name);
+        if (try_alias_linear_shape_view(outputs) ||
+            try_alias_linear_slice_view(outputs)) {
+            return;
+        }
         for (size_t output_idx = 0; output_idx < outputs.size(); ++output_idx) {
             GpuTensor* output = outputs[output_idx];
             OPENVINO_ASSERT(output && output->buf.valid(),
@@ -194,10 +203,6 @@ public:
 
         if (try_execute_chunked_static_concat(command_buffer, outputs, count) ||
             try_execute_chunked_static_split(command_buffer, outputs, count)) {
-            return;
-        }
-
-        if (try_alias_linear_slice_view(outputs)) {
             return;
         }
 
@@ -685,6 +690,45 @@ private:
                 break;
         }
         OPENVINO_THROW("GFX OpenCL: unsupported element-count source for ", m_name);
+    }
+
+    bool try_alias_linear_shape_view(const std::vector<GpuTensor*>& outputs) {
+        if (!m_node || !is_linear_shape_view_op(m_type)) {
+            return false;
+        }
+        if (outputs.size() != 1 || !outputs.front()) {
+            return false;
+        }
+        GpuTensor* input = resolve_tensor_input(0);
+        OPENVINO_ASSERT(input && input->buf.valid(),
+                        "GFX OpenCL: missing input buffer for linear view ",
+                        m_name);
+        OPENVINO_ASSERT(m_node->get_input_partial_shape(0).is_static() &&
+                            m_node->get_output_partial_shape(0).is_static(),
+                        "GFX OpenCL: linear view requires static input/output shapes for ",
+                        m_name);
+        const auto input_shape = m_node->get_input_shape(0);
+        const auto output_shape = m_node->get_output_shape(0);
+        OPENVINO_ASSERT(ov::shape_size(input_shape) == ov::shape_size(output_shape),
+                        "GFX OpenCL: linear view element count mismatch for ",
+                        m_name);
+
+        GpuTensor* output = outputs.front();
+        output->buf = input->buf;
+        output->buf.external = true;
+        output->buf.owned = false;
+        output->shape = output_shape;
+        output->expected_type = m_node->get_output_element_type(0);
+        output->gqa_broadcast_view = input->gqa_broadcast_view;
+        output->gqa_storage_shape = input->gqa_storage_shape;
+        output->gqa_kv_heads = input->gqa_kv_heads;
+        if (!input->i64_values.empty() &&
+            input->i64_values.size() == ov::shape_size(output_shape)) {
+            output->i64_values = input->i64_values;
+        } else {
+            output->i64_values.clear();
+        }
+        return true;
     }
 
     bool try_alias_linear_slice_view(const std::vector<GpuTensor*>& outputs) {

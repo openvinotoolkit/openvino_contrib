@@ -1418,23 +1418,18 @@ __kernel void gfx_opencl_baseline_matmul_f32(__global const float* lhs,
 }
 )CLC";
 
-constexpr const char* kOpenClSoftmaxSource = R"CLC(
-__kernel void gfx_opencl_baseline_softmax_f32(__global const float* src,
-                                              __global float* dst,
-                                              uint count,
-                                              uint outer,
-                                              uint axis_dim,
-                                              uint inner) {
-    const uint gid = (uint)get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
+constexpr const char* kOpenClSoftmaxF32Source = R"CLC(
+static inline float gfx_softmax_f32_value(__global const float* src,
+                                          uint elem,
+                                          uint outer,
+                                          uint axis_dim,
+                                          uint inner) {
     const uint plane = axis_dim * inner;
-    const uint outer_idx = gid / plane;
+    const uint outer_idx = elem / plane;
     if (outer_idx >= outer) {
-        return;
+        return 0.0f;
     }
-    const uint inner_idx = gid % inner;
+    const uint inner_idx = elem % inner;
     const uint base = outer_idx * plane + inner_idx;
 
     float max_value = src[base];
@@ -1446,7 +1441,197 @@ __kernel void gfx_opencl_baseline_softmax_f32(__global const float* src,
     for (uint axis_idx = 0u; axis_idx < axis_dim; ++axis_idx) {
         denom += exp(src[base + axis_idx * inner] - max_value);
     }
-    dst[gid] = exp(src[gid] - max_value) / denom;
+    return exp(src[elem] - max_value) / denom;
+}
+
+__kernel void gfx_opencl_baseline_softmax_f32(__global const float* src,
+                                              __global float* dst,
+                                              uint count,
+                                              uint outer,
+                                              uint axis_dim,
+                                              uint inner) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    dst[gid] = gfx_softmax_f32_value(src, gid, outer, axis_dim, inner);
+}
+
+__kernel void gfx_opencl_baseline_softmax_dynamic_f32(__global const float* src,
+                                                      __global float* dst,
+                                                      uint count,
+                                                      uint rank,
+                                                      uint axis,
+                                                      uint dim0,
+                                                      uint dim1,
+                                                      uint dim2,
+                                                      uint dim3,
+                                                      uint dim4,
+                                                      uint dim5,
+                                                      uint dim6,
+                                                      uint dim7) {
+    const uint dim[8] = {dim0, dim1, dim2, dim3, dim4, dim5, dim6, dim7};
+    uint outer = 1u;
+    for (uint i = 0u; i < axis; ++i) {
+        outer *= dim[i];
+    }
+    const uint axis_dim = dim[axis];
+    uint inner = 1u;
+    for (uint i = axis + 1u; i < rank; ++i) {
+        inner *= dim[i];
+    }
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    dst[gid] = gfx_softmax_f32_value(src, gid, outer, axis_dim, inner);
+}
+)CLC";
+
+constexpr const char* kOpenClSoftmaxF16Source = R"CLC(
+#define GFX_LOAD_F16_BITS(src, idx) \
+    (((idx) & 1u) == 0u ? ((src)[(idx) >> 1u] & 65535u) : (((src)[(idx) >> 1u] >> 16u) & 65535u))
+#define GFX_STORE_F16_PAIR(dst, word_idx, lo, hi) \
+    ((dst)[(word_idx)] = ((lo) & 65535u) | (((hi) & 65535u) << 16u))
+
+static inline float gfx_f16_bits_to_f32(uint bits) {
+    const uint sign = (bits & 32768u) << 16u;
+    uint exp = (bits >> 10u) & 31u;
+    uint mant = bits & 1023u;
+    uint out = sign;
+    if (exp == 0u) {
+        if (mant == 0u) {
+            return as_float(out);
+        }
+        int normalized_exp = -14;
+        while ((mant & 1024u) == 0u) {
+            mant <<= 1u;
+            --normalized_exp;
+        }
+        mant &= 1023u;
+        out |= (uint)(normalized_exp + 127) << 23u;
+        out |= mant << 13u;
+        return as_float(out);
+    }
+    if (exp == 31u) {
+        out |= 2139095040u | (mant << 13u);
+        return as_float(out);
+    }
+    out |= (exp + 112u) << 23u;
+    out |= mant << 13u;
+    return as_float(out);
+}
+
+static inline uint gfx_f32_to_f16_bits(float value) {
+    const uint bits = as_uint(value);
+    const uint sign = (bits >> 16u) & 32768u;
+    const uint exp_bits = (bits >> 23u) & 255u;
+    const uint mant = bits & 8388607u;
+    if (exp_bits == 255u) {
+        return sign | 31744u | (mant != 0u ? 512u : 0u);
+    }
+    int exp = (int)exp_bits - 127 + 15;
+    if (exp <= 0) {
+        if (exp < -10) {
+            return sign;
+        }
+        uint sub = (mant | 8388608u) >> (uint)(1 - exp);
+        return sign | ((sub + 4096u) >> 13u);
+    }
+    if (exp >= 31) {
+        return sign | 31744u;
+    }
+    uint half_mant = (mant + 4096u) >> 13u;
+    if (half_mant == 1024u) {
+        half_mant = 0u;
+        ++exp;
+        if (exp >= 31) {
+            return sign | 31744u;
+        }
+    }
+    return sign | ((uint)exp << 10u) | half_mant;
+}
+
+static inline uint gfx_softmax_f16_bits(__global const uint* src,
+                                        uint elem,
+                                        uint outer,
+                                        uint axis_dim,
+                                        uint inner) {
+    const uint plane = axis_dim * inner;
+    const uint outer_idx = elem / plane;
+    if (outer_idx >= outer) {
+        return 0u;
+    }
+    const uint inner_idx = elem % inner;
+    const uint base = outer_idx * plane + inner_idx;
+
+    float max_value = gfx_f16_bits_to_f32(GFX_LOAD_F16_BITS(src, base));
+    for (uint axis_idx = 1u; axis_idx < axis_dim; ++axis_idx) {
+        max_value = fmax(max_value,
+                         gfx_f16_bits_to_f32(GFX_LOAD_F16_BITS(src, base + axis_idx * inner)));
+    }
+
+    float denom = 0.0f;
+    for (uint axis_idx = 0u; axis_idx < axis_dim; ++axis_idx) {
+        denom += exp(gfx_f16_bits_to_f32(GFX_LOAD_F16_BITS(src, base + axis_idx * inner)) - max_value);
+    }
+    const float value = gfx_f16_bits_to_f32(GFX_LOAD_F16_BITS(src, elem));
+    return gfx_f32_to_f16_bits(exp(value - max_value) / denom);
+}
+
+__kernel void gfx_opencl_baseline_softmax_f16(__global const uint* src,
+                                             __global uint* dst,
+                                             uint count,
+                                             uint outer,
+                                             uint axis_dim,
+                                             uint inner) {
+    const uint word_idx = (uint)get_global_id(0);
+    const uint elem0 = word_idx * 2u;
+    if (elem0 >= count) {
+        return;
+    }
+    const uint lo = gfx_softmax_f16_bits(src, elem0, outer, axis_dim, inner);
+    uint hi = 0u;
+    if (elem0 + 1u < count) {
+        hi = gfx_softmax_f16_bits(src, elem0 + 1u, outer, axis_dim, inner);
+    }
+    GFX_STORE_F16_PAIR(dst, word_idx, lo, hi);
+}
+
+__kernel void gfx_opencl_baseline_softmax_dynamic_f16(__global const uint* src,
+                                                     __global uint* dst,
+                                                     uint count,
+                                                     uint rank,
+                                                     uint axis,
+                                                     uint dim0,
+                                                     uint dim1,
+                                                     uint dim2,
+                                                     uint dim3,
+                                                     uint dim4,
+                                                     uint dim5,
+                                                     uint dim6,
+                                                     uint dim7) {
+    const uint dim[8] = {dim0, dim1, dim2, dim3, dim4, dim5, dim6, dim7};
+    uint outer = 1u;
+    for (uint i = 0u; i < axis; ++i) {
+        outer *= dim[i];
+    }
+    const uint axis_dim = dim[axis];
+    uint inner = 1u;
+    for (uint i = axis + 1u; i < rank; ++i) {
+        inner *= dim[i];
+    }
+    const uint word_idx = (uint)get_global_id(0);
+    const uint elem0 = word_idx * 2u;
+    if (elem0 >= count) {
+        return;
+    }
+    const uint lo = gfx_softmax_f16_bits(src, elem0, outer, axis_dim, inner);
+    uint hi = 0u;
+    if (elem0 + 1u < count) {
+        hi = gfx_softmax_f16_bits(src, elem0 + 1u, outer, axis_dim, inner);
+    }
+    GFX_STORE_F16_PAIR(dst, word_idx, lo, hi);
 }
 )CLC";
 
@@ -1911,6 +2096,206 @@ __kernel void gfx_opencl_baseline_gather_nd_i64_f32(__global const float* data,
         src_idx += coord * stride;
     }
     dst[gid] = data[src_idx];
+}
+)CLC";
+
+constexpr const char* kOpenClScatterF32I32Source = R"CLC(
+__kernel void gfx_opencl_baseline_scatter_update_i32_f32(__global const float* data,
+                                                         __global const int* indices,
+                                                         __global const float* updates,
+                                                         __global float* dst,
+                                                         uint count,
+                                                         uint data_rank,
+                                                         uint idx_rank,
+                                                         uint update_rank,
+                                                         uint axis,
+                                                         uint idx_total,
+                                                         uint data_dim0,
+                                                         uint data_dim1,
+                                                         uint data_dim2,
+                                                         uint data_dim3,
+                                                         uint data_stride0,
+                                                         uint data_stride1,
+                                                         uint data_stride2,
+                                                         uint data_stride3,
+                                                         uint idx_dim0,
+                                                         uint idx_dim1,
+                                                         uint idx_dim2,
+                                                         uint idx_dim3,
+                                                         uint idx_stride0,
+                                                         uint idx_stride1,
+                                                         uint idx_stride2,
+                                                         uint idx_stride3,
+                                                         uint update_stride0,
+                                                         uint update_stride1,
+                                                         uint update_stride2,
+                                                         uint update_stride3,
+                                                         uint update_stride4,
+                                                         uint update_stride5,
+                                                         uint update_stride6) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
+    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
+    const uint idx_dim[4] = {idx_dim0, idx_dim1, idx_dim2, idx_dim3};
+    const uint idx_stride[4] = {idx_stride0, idx_stride1, idx_stride2, idx_stride3};
+    const uint update_stride[7] = {
+        update_stride0, update_stride1, update_stride2, update_stride3,
+        update_stride4, update_stride5, update_stride6};
+    uint coord[4] = {0u, 0u, 0u, 0u};
+    uint rem = gid;
+    for (uint d = 0u; d < data_rank; ++d) {
+        const uint stride = data_stride[d];
+        coord[d] = stride == 0u ? 0u : rem / stride;
+        rem = stride == 0u ? 0u : rem - coord[d] * stride;
+    }
+
+    float value = data[gid];
+    for (uint linear = 0u; linear < idx_total; ++linear) {
+        uint idx_coord[4] = {0u, 0u, 0u, 0u};
+        for (uint d = 0u; d < idx_rank; ++d) {
+            const uint stride = idx_stride[d];
+            idx_coord[d] = stride == 0u ? 0u : (linear / stride) % idx_dim[d];
+        }
+        int index = indices[linear];
+        const int axis_dim = (int)data_dim[axis];
+        if (index < 0) {
+            index += axis_dim;
+        }
+        if (index < 0) {
+            index = 0;
+        }
+        if (index >= axis_dim) {
+            index = axis_dim - 1;
+        }
+        if ((uint)index != coord[axis]) {
+            continue;
+        }
+        uint update_offset = 0u;
+        uint update_dim = 0u;
+        for (uint d = 0u; d < axis; ++d) {
+            update_offset += coord[d] * update_stride[update_dim++];
+        }
+        for (uint d = 0u; d < idx_rank; ++d) {
+            update_offset += idx_coord[d] * update_stride[update_dim++];
+        }
+        for (uint d = axis + 1u; d < data_rank; ++d) {
+            update_offset += coord[d] * update_stride[update_dim++];
+        }
+        (void)update_rank;
+        value = updates[update_offset];
+    }
+    dst[gid] = value;
+}
+
+__kernel void gfx_opencl_baseline_scatter_elements_i32_f32(__global const float* data,
+                                                           __global const int* indices,
+                                                           __global const float* updates,
+                                                           __global float* dst,
+                                                           uint count,
+                                                           uint rank,
+                                                           uint axis,
+                                                           uint update_count,
+                                                           uint update_dim0,
+                                                           uint update_dim1,
+                                                           uint update_dim2,
+                                                           uint update_dim3,
+                                                           uint update_stride0,
+                                                           uint update_stride1,
+                                                           uint update_stride2,
+                                                           uint update_stride3,
+                                                           uint data_dim0,
+                                                           uint data_dim1,
+                                                           uint data_dim2,
+                                                           uint data_dim3,
+                                                           uint data_stride0,
+                                                           uint data_stride1,
+                                                           uint data_stride2,
+                                                           uint data_stride3) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const uint update_dim[4] = {update_dim0, update_dim1, update_dim2, update_dim3};
+    const uint update_stride[4] = {update_stride0, update_stride1, update_stride2, update_stride3};
+    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
+    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
+    float value = data[gid];
+    for (uint linear = 0u; linear < update_count; ++linear) {
+        uint coord[4] = {0u, 0u, 0u, 0u};
+        for (uint i = 0u; i < rank; ++i) {
+            const uint stride = update_stride[i];
+            coord[i] = stride == 0u ? 0u : (linear / stride) % update_dim[i];
+        }
+        int index = indices[linear];
+        const int axis_dim = (int)data_dim[axis];
+        if (index < 0) {
+            index += axis_dim;
+        }
+        if (index < 0) {
+            index = 0;
+        }
+        if (index >= axis_dim) {
+            index = axis_dim - 1;
+        }
+        uint out_idx = 0u;
+        for (uint i = 0u; i < rank; ++i) {
+            const uint c = i == axis ? (uint)index : coord[i];
+            out_idx += c * data_stride[i];
+        }
+        if (out_idx == gid) {
+            value = updates[linear];
+        }
+    }
+    dst[gid] = value;
+}
+
+__kernel void gfx_opencl_baseline_scatter_nd_i32_f32(__global const float* data,
+                                                     __global const int* indices,
+                                                     __global const float* updates,
+                                                     __global float* dst,
+                                                     uint count,
+                                                     uint index_depth,
+                                                     uint slice_size,
+                                                     uint tuple_count,
+                                                     uint data_dim0,
+                                                     uint data_dim1,
+                                                     uint data_dim2,
+                                                     uint data_dim3,
+                                                     uint data_stride0,
+                                                     uint data_stride1,
+                                                     uint data_stride2,
+                                                     uint data_stride3) {
+    const uint gid = (uint)get_global_id(0);
+    if (gid >= count) {
+        return;
+    }
+    const uint data_dim[4] = {data_dim0, data_dim1, data_dim2, data_dim3};
+    const uint data_stride[4] = {data_stride0, data_stride1, data_stride2, data_stride3};
+    float value = data[gid];
+    for (uint tuple_idx = 0u; tuple_idx < tuple_count; ++tuple_idx) {
+        uint base = 0u;
+        for (uint i = 0u; i < index_depth; ++i) {
+            int index = indices[tuple_idx * index_depth + i];
+            const int dim = (int)data_dim[i];
+            if (index < 0) {
+                index += dim;
+            }
+            if (index < 0) {
+                index = 0;
+            }
+            if (index >= dim) {
+                index = dim - 1;
+            }
+            base += (uint)index * data_stride[i];
+        }
+        if (gid >= base && gid < base + slice_size) {
+            value = updates[tuple_idx * slice_size + (gid - base)];
+        }
+    }
+    dst[gid] = value;
 }
 )CLC";
 
@@ -3614,6 +3999,25 @@ __kernel void gfx_opencl_baseline_binary_broadcast_f32(__global const float* lhs
 )CLC";
 
 constexpr const char* kOpenClBinaryI32Source = R"CLC(
+static inline int gfx_pow_i32_exact(int base, int exp) {
+    if (exp < 0) {
+        return (int)pow((float)base, (float)exp);
+    }
+    int result = 1;
+    int factor = base;
+    uint e = (uint)exp;
+    while (e != 0u) {
+        if ((e & 1u) != 0u) {
+            result *= factor;
+        }
+        e >>= 1u;
+        if (e != 0u) {
+            factor *= factor;
+        }
+    }
+    return result;
+}
+
 static inline int gfx_binary_i32(int lhs, int rhs, uint op) {
     switch (op) {
     case 1u: return lhs + rhs;
@@ -3622,7 +4026,7 @@ static inline int gfx_binary_i32(int lhs, int rhs, uint op) {
     case 4u: return lhs / rhs;
     case 5u: return lhs > rhs ? lhs : rhs;
     case 6u: return lhs < rhs ? lhs : rhs;
-    case 7u: return (int)pow((float)lhs, (float)rhs);
+    case 7u: return gfx_pow_i32_exact(lhs, rhs);
     case 8u: {
         const int diff = lhs - rhs;
         return diff * diff;
@@ -5056,12 +5460,13 @@ std::optional<std::vector<uint32_t>> softmax_static_u32_scalars(
         return std::nullopt;
     }
 
+    const auto element_type = node->get_input_element_type(0);
     if (node->get_input_size() != 1 ||
         node->get_output_size() != 1 ||
         !node->get_input_partial_shape(0).is_static() ||
         !node->get_output_partial_shape(0).is_static() ||
-        !is_f32_tensor_type(node->get_input_element_type(0)) ||
-        !is_f32_tensor_type(node->get_output_element_type(0))) {
+        element_type != node->get_output_element_type(0) ||
+        (!is_f32_tensor_type(element_type) && !is_f16_tensor_type(element_type))) {
         return std::nullopt;
     }
 
@@ -5091,6 +5496,62 @@ std::optional<std::vector<uint32_t>> softmax_static_u32_scalars(
     (void)output_count;
 
     return std::vector<uint32_t>{outer, axis_dim, inner};
+}
+
+std::optional<std::vector<uint32_t>> softmax_dynamic_static_rank_scalars(
+    const std::shared_ptr<const ov::Node>& node) {
+    int64_t raw_axis = 0;
+    if (auto softmax_v8 = ov::as_type_ptr<const ov::op::v8::Softmax>(node)) {
+        raw_axis = softmax_v8->get_axis();
+    } else if (auto softmax_v1 = ov::as_type_ptr<const ov::op::v1::Softmax>(node)) {
+        raw_axis = static_cast<int64_t>(softmax_v1->get_axis());
+    } else {
+        return std::nullopt;
+    }
+
+    const auto element_type = node->get_input_element_type(0);
+    if (node->get_input_size() != 1 ||
+        node->get_output_size() != 1 ||
+        element_type != node->get_output_element_type(0) ||
+        (!is_f32_tensor_type(element_type) && !is_f16_tensor_type(element_type))) {
+        return std::nullopt;
+    }
+    const auto input_rank = node->get_input_partial_shape(0).rank();
+    const auto output_rank = node->get_output_partial_shape(0).rank();
+    if (!input_rank.is_static() ||
+        !output_rank.is_static() ||
+        input_rank.get_length() != output_rank.get_length() ||
+        input_rank.get_length() <= 0 ||
+        input_rank.get_length() > 8) {
+        return std::nullopt;
+    }
+    if (node->get_output_partial_shape(0).is_static()) {
+        return std::nullopt;
+    }
+
+    const auto rank = static_cast<size_t>(input_rank.get_length());
+    const auto axis = normalize_axis(raw_axis, rank);
+    if (!axis) {
+        return std::nullopt;
+    }
+
+    return std::vector<uint32_t>{
+        static_cast<uint32_t>(rank),
+        static_cast<uint32_t>(*axis),
+    };
+}
+
+std::vector<GfxOpenClSourceScalarArg> softmax_dynamic_shape_scalar_args() {
+    std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+        GfxOpenClSourceScalarArg::ElementCount,
+        GfxOpenClSourceScalarArg::StaticU32,
+        GfxOpenClSourceScalarArg::StaticU32};
+    scalar_args.reserve(11);
+    for (uint32_t axis = 0; axis < 8; ++axis) {
+        scalar_args.push_back(static_cast<GfxOpenClSourceScalarArg>(
+            static_cast<uint32_t>(GfxOpenClSourceScalarArg::Input0Dim0) + axis));
+    }
+    return scalar_args;
 }
 
 std::optional<std::vector<uint32_t>> tile_static_u32_scalars(
@@ -6676,8 +7137,12 @@ GfxOpenClSourceArtifact make_opencl_baseline_artifact(
         source_inlines_static_u32_scalars = true;
     } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_matmul_f32") {
         artifact.source = kOpenClMatMulSource;
-    } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_softmax_f32") {
-        artifact.source = kOpenClSoftmaxSource;
+    } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_softmax_f32" ||
+               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_softmax_dynamic_f32") {
+        artifact.source = kOpenClSoftmaxF32Source;
+    } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_softmax_f16" ||
+               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_softmax_dynamic_f16") {
+        artifact.source = kOpenClSoftmaxF16Source;
     } else if (artifact.artifact_ref.entry_point ==
                    "gfx_opencl_baseline_shapeof_i32" ||
                artifact.artifact_ref.entry_point ==
@@ -6744,6 +7209,10 @@ GfxOpenClSourceArtifact make_opencl_baseline_artifact(
                artifact.artifact_ref.entry_point == "gfx_opencl_baseline_gather_elements_i64_f32" ||
                artifact.artifact_ref.entry_point == "gfx_opencl_baseline_gather_nd_i64_f32") {
         artifact.source = kOpenClGatherF32I64Source;
+    } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_scatter_update_i32_f32" ||
+               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_scatter_elements_i32_f32" ||
+               artifact.artifact_ref.entry_point == "gfx_opencl_baseline_scatter_nd_i32_f32") {
+        artifact.source = kOpenClScatterF32I32Source;
     } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_concat2_f32" ||
                artifact.artifact_ref.entry_point == "gfx_opencl_baseline_concat3_f32" ||
                artifact.artifact_ref.entry_point == "gfx_opencl_baseline_concat4_f32") {
@@ -7046,6 +7515,54 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
                                              std::move(*static_u32_scalars));
     }
 
+    if (type == "Softmax") {
+        const auto element_type = node->get_input_element_type(0);
+        if (!is_f32_tensor_type(element_type) && !is_f16_tensor_type(element_type)) {
+            return std::nullopt;
+        }
+        const std::string type_suffix = opencl_scalar_type_suffix(element_type);
+        if (auto static_u32_scalars = softmax_static_u32_scalars(node)) {
+            std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+                GfxOpenClSourceScalarArg::ElementCount};
+            scalar_args.insert(scalar_args.end(),
+                               static_u32_scalars->size(),
+                               GfxOpenClSourceScalarArg::StaticU32);
+            auto manifest = make_opencl_baseline_manifest(
+                GfxKernelStageFamily::Softmax,
+                "opencl:baseline:Softmax:" + type_suffix,
+                "gfx_opencl_baseline_softmax_" + type_suffix,
+                /*direct_inputs=*/1,
+                static_cast<uint32_t>(scalar_args.size()));
+            return make_opencl_baseline_artifact(std::move(manifest),
+                                                 "opencl/baseline/softmax_" + type_suffix,
+                                                 std::move(scalar_args),
+                                                 {0},
+                                                 GfxOpenClBaselineOp::Identity,
+                                                 GfxOpenClBaselineInputMode::Direct,
+                                                 0.0f,
+                                                 std::move(*static_u32_scalars));
+        }
+        if (auto dynamic_static_rank = softmax_dynamic_static_rank_scalars(node)) {
+            auto scalar_args = softmax_dynamic_shape_scalar_args();
+            auto manifest = make_opencl_baseline_manifest(
+                GfxKernelStageFamily::Softmax,
+                "opencl:baseline:Softmax:" + type_suffix + ":dynamic_static_rank",
+                "gfx_opencl_baseline_softmax_dynamic_" + type_suffix,
+                /*direct_inputs=*/1,
+                static_cast<uint32_t>(scalar_args.size()));
+            return make_opencl_baseline_artifact(
+                std::move(manifest),
+                "opencl/baseline/softmax_" + type_suffix + "_dynamic_static_rank",
+                std::move(scalar_args),
+                {0},
+                GfxOpenClBaselineOp::Identity,
+                GfxOpenClBaselineInputMode::Direct,
+                0.0f,
+                std::move(*dynamic_static_rank));
+        }
+        return std::nullopt;
+    }
+
     if (!node->get_output_partial_shape(0).is_static()) {
         return std::nullopt;
     }
@@ -7120,32 +7637,6 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
                                              "opencl/baseline/matmul_f32",
                                              std::move(scalar_args),
                                              {0, 1},
-                                             GfxOpenClBaselineOp::Identity,
-                                             GfxOpenClBaselineInputMode::Direct,
-                                             0.0f,
-                                             std::move(*static_u32_scalars));
-    }
-
-    if (type == "Softmax") {
-        auto static_u32_scalars = softmax_static_u32_scalars(node);
-        if (!static_u32_scalars) {
-            return std::nullopt;
-        }
-        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-            GfxOpenClSourceScalarArg::ElementCount};
-        scalar_args.insert(scalar_args.end(),
-                           static_u32_scalars->size(),
-                           GfxOpenClSourceScalarArg::StaticU32);
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::Softmax,
-            "opencl:baseline:Softmax:f32",
-            "gfx_opencl_baseline_softmax_f32",
-            /*direct_inputs=*/1,
-            static_cast<uint32_t>(scalar_args.size()));
-        return make_opencl_baseline_artifact(std::move(manifest),
-                                             "opencl/baseline/softmax_f32",
-                                             std::move(scalar_args),
-                                             {0},
                                              GfxOpenClBaselineOp::Identity,
                                              GfxOpenClBaselineInputMode::Direct,
                                              0.0f,

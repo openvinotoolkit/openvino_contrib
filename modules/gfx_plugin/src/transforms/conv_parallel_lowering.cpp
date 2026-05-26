@@ -783,7 +783,7 @@ bool lower_conv2d_op(mlir::linalg::Conv2DNchwFchwOp op,
   };
 
   // Map parallel loops to output C/H/W tiles with thread-level micro-tiles,
-  // so Vulkan dispatch grid maps blocks to [C_out, H_tiles, W_tiles].
+  // so backend dispatch grid maps blocks to [C_out, H_tiles, W_tiles].
   const auto activation = parse_activation_kind(op);
   float activation_alpha = 0.0f;
   if (auto alpha_attr =

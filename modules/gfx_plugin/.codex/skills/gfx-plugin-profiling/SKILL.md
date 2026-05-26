@@ -1,22 +1,25 @@
 ---
 name: gfx-plugin-profiling
-description: Use when analyzing GFX plugin performance, profiling reports, microbench output, trace correlation, or backend overhead on macOS, Android, or Raspberry Pi for Metal, OpenCL, and Vulkan paths.
+description: Use when analyzing GFX plugin performance, profiling reports, microbench output, trace correlation, or backend overhead on macOS, Android, Linux, or Raspberry Pi for Metal and OpenCL paths.
 ---
 
 # GFX Plugin Profiling
 
-This skill is for performance triage and profiling workflows in `modules/gfx_plugin/`.
+This skill is for performance triage and profiling workflows in
+`modules/gfx_plugin/`.
 
 ## Use This Skill When
 
-- The user asks about performance, bottlenecks, slow inference, submit overhead, cache effects, transfer pressure, or synchronization cost.
-- The task mentions `GFX_PROFILING_REPORT`, `ov_gfx_microbench`, `MB0` to `MB3`, Perfetto, AGI, Xcode/Instruments, or `perf`.
-- The task needs interpretation of profiling JSON, calibration artifacts, or trace-event output.
-- The task compares `metal`, `opencl`, `vulkan`, or `auto` backend behavior and needs to confirm which route actually ran.
+- The user asks about performance, bottlenecks, slow inference, submit overhead,
+  cache effects, transfer pressure, or synchronization cost.
+- The task mentions `GFX_PROFILING_REPORT`, `ov_gfx_microbench`, MB0-MB3,
+  Perfetto, AGI, Xcode/Instruments, or `perf`.
+- The task needs interpretation of profiling JSON, calibration artifacts, or
+  trace output.
+- The task compares `metal`, `opencl`, or `auto` and needs to confirm which
+  backend route actually ran.
 
-## Primary References
-
-Read in this order:
+## Read First
 
 1. `docs/PROFILING_RUNBOOK.md`
 2. `docs/MICROBENCH_SCHEMA.md`
@@ -26,8 +29,6 @@ Read in this order:
 
 ## Tooling Surface
 
-Main tools and outputs:
-
 - `ov_gfx_microbench`
 - `GFX_PROFILING_REPORT`
 - `tools/gfx_profile_runbook.py`
@@ -35,20 +36,18 @@ Main tools and outputs:
 - `tools/gfx_calibration_diff.py`
 - `tools/gfx_external_trace_summary.py`
 
-Native trace surfaces by platform:
+Native trace surfaces:
 
-- macOS: `xctrace`, Instruments, Xcode GPU capture, signposts
-- Android: AGI, Perfetto, validation layers
-- Raspberry Pi: `perf stat`, `perf record`
+- macOS: Instruments, `xcrun xctrace`, Xcode GPU capture, signposts
+- Android: Perfetto or AGI
+- Linux/Raspberry Pi: `perf stat`, `perf record`
 
 ## Core Workflow
 
-1. Rebuild the relevant binary in the existing build directory.
-2. Run `ov_gfx_microbench` and save:
-   - full report JSON
-   - calibration artifact JSON
+1. Rebuild the relevant binary.
+2. Run `ov_gfx_microbench` and save report plus calibration JSON.
 3. Run the real workload with profiling enabled.
-4. Capture the platform-native trace.
+4. Capture a platform trace only when plugin counters point to a category.
 5. Correlate:
    - `analysis.triage_hints`
    - `benchmarks[].derived`
@@ -57,81 +56,81 @@ Native trace surfaces by platform:
    - `GFX_PROFILING_REPORT.extended`
    - `GFX_PROFILING_REPORT.extended.target_profile`
 
-## What To Inspect First
+## Inspect First
 
-### Fixed overhead or sync suspicion
+### Fixed Overhead
 
-Check:
+- MB0 fixed overhead
+- `fixed_overhead_us`
+- `fixed_overhead_share`
+- first-to-steady ratios
 
-- `MB0.fixed_overhead_us`
+### Synchronization
+
+- wait segments
 - `wait_share_of_wall`
-- `final_fence_wait_seen`
-- `submit_count`
-- `barrier_count`
+- final fence wait counters
+- submit and barrier counts
+- dependency-window extension counters
 
-### Transfer-heavy suspicion
+### Transfers
 
-Check:
-
-- `bytes_in`, `bytes_out`, `bytes_moved`
+- H2D/D2H bytes
+- upload/download spans
 - `transfer_share_of_wall`
-- H2D/D2H transfer spans
-- upload/download segments in profiling report
+- remote tensor and output reuse paths
 
-### Descriptor or binding churn suspicion
+### Binding Or Descriptor Churn
 
-Check:
-
-- `descriptor_update_count`
+- descriptor or binding update counters
+- prepared binding cache behavior
 - `binding_prepare_in_infer`
-- `submission_dependency_window_extension_count`
-- `submission_dependency_extension_budget_num` / `submission_dependency_extension_budget_den`
-- backend setup spans in trace output
-- Metal MPSRT counters such as `mpsrt_*_bound_resource_count`, `mpsrt_mps_resize2d_*`, `mpsrt_mps_graph_*`, and `mpsrt_encode` segments when the shared `gfx_mpsrt_model.*` resource table, external-buffer binding plan, prepared heap, storage-bridge path, or MPSGraph-backed vendor route is in use
+- Metal `mpsrt_*` resource-binding counters
+- OpenCL program/kernel setup spans
 
-### Compile or cache regression suspicion
-
-Check:
+### Compile Or Cache Regression
 
 - `compile_ms`
-- `pipeline_creation_count`
-- `target_backend_opencl`, `target_backend_metal`, `target_backend_vulkan`
-- `extended.target_profile`
-- MPSRT vendor-kernel cache counters such as `mpsrt_mps_resize2d_kernel_cache_hit_count` and `mpsrt_mps_resize2d_kernel_cache_miss_count`
-- `ov::cache_dir` usage
-- whether pipeline creation moved into infer-time spans
+- pipeline creation counters
+- OpenCL program-cache behavior
+- Metal MSL/MPSRT prepared-pipeline cache counters
+- first-infer versus steady-state timing
 
 ## Interpretation Rules
 
-- Treat microbench numbers as heuristics, not calibrated peak hardware measurements.
-- Use `ov_gfx_compare_runner` for correctness and `ov_gfx_microbench` for profiling triage; do not mix their purposes.
-- Distinguish wall-time, GPU-time, and overhead-subtracted estimates.
-- Correlate plugin-internal profiling with platform-native traces before concluding that a backend route is the bottleneck.
-- Prefer `ov_gfx_compare_runner --dump-gfx-profile --gfx-profiling-level detailed` when accuracy triage and placement counters need to be captured in the same run; keep it accuracy-only and use `benchmark_app` or microbench tools for performance numbers.
-- Always confirm `extended.target_profile` or `target_backend_*` counters before comparing `auto`, OpenCL, and Vulkan runs from the same target.
-- Treat standalone OpenCL microbench output as kernel evidence only; plugin performance claims need the source artifact route to execute through `GFX`.
+- Treat microbench numbers as heuristics, not peak hardware claims.
+- Use `ov_gfx_compare_runner` for correctness and `ov_gfx_microbench` for
+  profiling triage.
+- Distinguish wall time, GPU time, and overhead-subtracted estimates.
+- Confirm `actual_backend`, `extended.target_profile`, or target backend
+  counters before comparing `auto`, Metal, and OpenCL runs.
+- Treat standalone OpenCL microbench output as kernel evidence only; plugin
+  performance claims require execution through the GFX OpenCL backend.
 
 ## Platform Notes
 
 ### macOS
 
-- Prefer signposts or Perfetto-style export when correlating CPU and Metal execution.
-- Compare command-buffer timing with plugin segment timing.
+- Prefer signposts or `xctrace` when correlating CPU and Metal execution.
+- Compare command-buffer timing with plugin stage/segment timing.
+- Capture GFX profile output with compare-runner when placement counters and
+  accuracy need to be tied to the same run.
 
-### Android
+### Android / OpenCL
 
-- Use AGI or Perfetto for GPU busy/idle gaps and CPU blocking around queue submit or fence waits.
-- Use validation layers only for correctness, not for performance numbers.
-- Use `--backend opencl` for OpenCL source-kernel triage and `--backend vulkan` only when investigating the legacy SPIR-V route.
+- Use Perfetto or AGI for GPU busy/idle gaps and CPU blocking around queue
+  submits or waits.
+- Confirm the target has a working OpenCL GPU runtime before interpreting
+  backend performance.
 
-### Raspberry Pi
+### Linux / Raspberry Pi OpenCL
 
-- Use `perf stat` and `perf record` for coarse CPU-side evidence.
-- Correlate Broadcom/Vulkan driver overhead with plugin-side submit, wait, and transfer counters.
-- When both OpenCL and Vulkan are available, record separate calibration artifacts and keep the backend field in the artifact as part of the comparison key.
+- Use `perf stat` and `perf record` for CPU-side attribution.
+- Keep backend, device key, model, runtime libraries, and calibration artifact
+  matched before comparing runs.
 
 ## Output Expectations
 
-- State the most likely bottleneck category first: fixed overhead, sync, transfer, binding churn, compile-in-infer, or compute pressure.
-- Point to the exact fields or tool outputs that support the conclusion.
-- Recommend the next measurement step, not just a diagnosis.
+- State the most likely bottleneck category first.
+- Point to exact fields or tool outputs.
+- Recommend the next measurement step or fix target.

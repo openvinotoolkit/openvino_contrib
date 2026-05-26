@@ -8,9 +8,11 @@
 #include <cstdint>
 #include <numeric>
 #include <sstream>
+#include <utility>
 #include <vector>
 
 #include "mlir/codegen_common.hpp"
+#include "mlir/gfx_backend_custom_kernel_adapter.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/core/validation_util.hpp"
@@ -217,6 +219,21 @@ generate_static_msl_for_slice(const std::shared_ptr<const ov::Node> &node,
   ss << "    C[gid] = A[in_off];\n";
   ss << "}\n";
   return ss.str();
+}
+
+GfxMslGeneratedKernelSourcePlan make_direct_static_slice_msl_kernel_source_plan(
+    const std::shared_ptr<const ov::Node> &node,
+    const ov::element::Type &storage_type, mlir::ModuleOp module) {
+  auto binding = make_backend_custom_kernel_direct_io_binding_plan(
+      "Slice", "slice_kernel", /*tensor_input_count=*/1, /*output_count=*/1);
+  if (!binding.valid) {
+    return {};
+  }
+
+  auto source = make_kernel_source(
+      module, "slice_kernel", generate_static_msl_for_slice(node, storage_type));
+  return make_msl_generated_custom_kernel_source_plan(std::move(source),
+                                                      binding);
 }
 
 } // namespace gfx_plugin

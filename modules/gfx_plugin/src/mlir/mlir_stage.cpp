@@ -28,11 +28,12 @@
 #include "mlir/mlir_kernel_plan_utils.hpp"
 #include "mlir/msl_codegen.hpp"
 #include "mlir/msl_codegen_apple_mps.hpp"
+#include "mlir/msl_codegen_apple_msl_shape.hpp"
+#include "mlir/msl_codegen_apple_msl_slice_static.hpp"
 #include "mlir/msl_codegen_apple_msl_split.hpp"
 #include "mlir/msl_codegen_attention.hpp"
 #include "mlir/msl_codegen_compressed_matmul.hpp"
 #include "mlir/msl_codegen_matmul_metal.hpp"
-#include "mlir/spirv_kernel_binding_adapter.hpp"
 #include "runtime/gfx_compile_profiling.hpp"
 #include "runtime/gfx_logger.hpp"
 #include "runtime/gfx_parallelism.hpp"
@@ -83,6 +84,8 @@
 #include "openvino/op/reduce_sum.hpp"
 #include "openvino/op/reshape.hpp"
 #include "openvino/op/scaled_dot_product_attention.hpp"
+#include "openvino/op/scatter_elements_update.hpp"
+#include "openvino/op/scatter_nd_update.hpp"
 #include "openvino/op/scatter_update.hpp"
 #include "openvino/op/select.hpp"
 #include "openvino/op/softmax.hpp"
@@ -395,11 +398,6 @@ const char *conv_algorithm_kind_attr(GfxConvAlgorithmKind kind) {
   default:
     return "none";
   }
-}
-
-bool is_vulkan_pipeline_creation_failure(const std::exception &ex) {
-  return std::string(ex.what()).find("vkCreateComputePipelines failed") !=
-         std::string::npos;
 }
 
 std::optional<MatMulParallelismPlan>
@@ -976,7 +974,7 @@ bool MlirStage::refresh_conv2d_kernel_extra_inputs(
     return false;
   }
 
-  if (!is_vulkan_backend() && m_type == "Convolution") {
+  if (!false && m_type == "Convolution") {
     Conv2DCodegenDesc desc{};
     desc.input_type = m_node->get_input_element_type(0);
     desc.weight_type = m_node->get_input_element_type(1);
@@ -1112,12 +1110,6 @@ void MlirStage::compile_from_plan(MlirKernelPlanContext &plan_ctx,
   if (!has_custom_kernel_signature) {
     src.signature.output_arg_count = static_cast<uint32_t>(output_arg_count);
   }
-  if (is_vulkan_backend() && !has_custom_kernel_signature) {
-    src.signature.arg_count =
-        static_cast<uint32_t>(infer_kernel_arg_count_from_module(
-            src.module, buffer_inputs + output_arg_count, src.entry_point,
-            GfxKernelBackendDomain::Spirv));
-  }
   if (backend_kind() == GpuBackend::Metal) {
     gfx_attach_mpsrt_const_tensors(src, m_node);
   }
@@ -1152,14 +1144,10 @@ void MlirStage::compile_from_plan(MlirKernelPlanContext &plan_ctx,
     return;
   }
   if (src.module) {
-    const std::string metadata_entry_point =
-        is_vulkan_backend() ? runtime_metadata_entry_point : std::string{};
+    (void)runtime_metadata_entry_point;
     auto runtime_meta = extract_kernel_runtime_metadata(
-        src.module, output_arg_count, buffer_inputs, metadata_entry_point,
-        is_vulkan_backend() ? std::optional<GfxKernelBackendDomain>(
-                                  GfxKernelBackendDomain::Spirv)
-                            : std::optional<GfxKernelBackendDomain>(
-                                  GfxKernelBackendDomain::AppleMsl));
+        src.module, output_arg_count, buffer_inputs, std::string{},
+        GfxKernelBackendDomain::AppleMsl);
     apply_kernel_metadata(runtime_meta, scalar_inputs);
   } else if (module) {
     auto runtime_meta =
@@ -1329,11 +1317,11 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
     }
   }
   std::optional<CompressedMatMulInfo> compressed_matmul_info;
-  if (!is_vulkan_backend()) {
+  if (!false) {
     compressed_matmul_info = detect_compressed_matmul_weights(m_node);
   }
   prepare_constant_input_buffers(compressed_matmul_info.has_value());
-  if (!is_vulkan_backend() && m_type == "Concat" &&
+  if (!false && m_type == "Concat" &&
       concat_has_runtime_shape(m_node) && !has_absorbed_input_transpose()) {
     return;
   }
@@ -1571,14 +1559,22 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
     const auto shapeof_scalars = shapeof_payload.scalar_args;
     m_kernel_extra_inputs = std::move(shapeof_payload.extra_inputs);
     auto shapeof_plan = require_backend_custom_kernel_binding_plan(
-        is_vulkan_backend(), "ShapeOf", "shapeof_kernel", shapeof_scalars,
+        false, "ShapeOf", "shapeof_kernel", shapeof_scalars,
         m_name);
     apply_kernel_runtime_binding_state(shapeof_plan.runtime_binding);
+    if (!false) {
+      auto shapeof_source_plan = make_shapeof_msl_kernel_source_plan(m_node);
+      compile_generated_msl_source_plan(shapeof_source_plan, "direct ShapeOf");
+      return;
+    }
+  }
+  if (!false && m_type == "Concat" && m_node &&
+      !concat_has_runtime_shape(m_node) && !has_absorbed_input_transpose()) {
+    auto concat_source_plan = make_concat_msl_kernel_source_plan(m_node);
+    compile_generated_msl_source_plan(concat_source_plan, "direct Concat");
+    return;
   }
   if (m_type == "GfxSDPAWithCausalMask") {
-    if (is_vulkan_backend()) {
-      OPENVINO_THROW("GFX Vulkan SDPA causal mask fusion is not enabled yet");
-    }
     const auto et =
         m_node ? m_node->get_output_element_type(0) : ov::element::dynamic;
     auto sdpa_source_plan = make_causal_sdpa_msl_kernel_source_plan(et);
@@ -1587,10 +1583,6 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
     return;
   }
   if (m_type == "ScaledDotProductAttention") {
-    if (is_vulkan_backend()) {
-      OPENVINO_THROW("GFX Vulkan SDPA: native ScaledDotProductAttention is not "
-                     "enabled yet");
-    }
     KernelSource sdpa_mps_source;
     sdpa_mps_source.module =
         mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
@@ -1657,37 +1649,6 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
     return plan_builder.build_plan(m_node, ctx, 0);
   }();
   auto module = plan.module();
-  auto should_skip_vulkan_conv_parallel = [&]() {
-    if (!is_vulkan_backend() || m_type != "Convolution" ||
-        has_absorbed_input_transpose() || !m_node) {
-      return false;
-    }
-    if (optimization_plan.conv.kind != GfxConvRouteKind::None) {
-      return false;
-    }
-    auto conv = ov::as_type_ptr<const ov::op::v1::Convolution>(m_node);
-    if (!conv || conv->get_input_size() != 2 || conv->get_output_size() != 1) {
-      return false;
-    }
-    const auto &in_shape = conv->get_input_shape(0);
-    const auto &w_shape = conv->get_input_shape(1);
-    const auto &out_shape = conv->get_output_shape(0);
-    if (in_shape.size() != 4 || w_shape.size() != 4 || out_shape.size() != 4) {
-      return false;
-    }
-    return out_shape[1] == 1 && w_shape[2] == 1 && w_shape[3] == 1 &&
-           conv->get_strides().at(0) == 1 && conv->get_strides().at(1) == 1 &&
-           conv->get_dilations().at(0) == 1 &&
-           conv->get_dilations().at(1) == 1 &&
-           conv->get_pads_begin().at(0) == 0 &&
-           conv->get_pads_begin().at(1) == 0 &&
-           conv->get_pads_end().at(0) == 0 && conv->get_pads_end().at(1) == 0 &&
-           in_shape[2] == out_shape[2] && in_shape[3] == out_shape[3];
-  };
-  const bool force_vulkan_conv_serial_fallback =
-      is_vulkan_backend() && m_vulkan_conv_serial_retry_attempted &&
-      is_conv_like() && !has_absorbed_input_transpose() &&
-      optimization_plan.conv.kind == GfxConvRouteKind::None;
   apply_stage_optimization_attrs(module, optimization_plan);
   apply_input_transform_attrs(module);
   set_parallel_preference(module);
@@ -1699,62 +1660,30 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
                       mlir::BoolAttr::get(module.getContext(), true));
     }
   }
-  if (should_skip_vulkan_conv_parallel() || force_vulkan_conv_serial_fallback) {
-    module->setAttr("gfx.skip_conv_parallel",
-                    mlir::BoolAttr::get(module.getContext(), true));
-    module->setAttr("gfx.prefer_parallel",
-                    mlir::BoolAttr::get(module.getContext(), false));
-    // This path keeps the shared serial loop nest instead of rewriting the
-    // convolution to scf.parallel. Launch it as a single kernel instance;
-    // default element-wise dispatch would otherwise execute the full serial
-    // loop body once per output element and corrupt the accumulation.
-    m_force_single_dispatch = true;
-  }
-  if (is_vulkan_backend() && m_type == "GroupConvolution" &&
-      optimization_plan.conv.algorithm.kind !=
-          GfxConvAlgorithmKind::DepthwiseDirect) {
-    // Unsupported grouped convolutions still use the shared serial MLIR loop
-    // nest. Depthwise group convs are lowered later to scf.parallel.
-    m_force_single_dispatch = true;
-  }
   apply_fused_operations(module);
   if (module && is_conv_like() && m_node &&
       m_node->get_input_partial_shape(0).is_static()) {
     const auto input_rank = m_node->get_input_shape(0).size();
     if (m_type == "Convolution" && input_rank == 5) {
-      auto conv3d_plan = annotate_required_backend_custom_kernel_abi_binding(
-          module, is_vulkan_backend(), "Conv3D", "conv3d_kernel", m_name);
-      if (is_vulkan_backend()) {
-        apply_kernel_runtime_binding_state(conv3d_plan.runtime_binding);
-      }
+      (void)annotate_required_backend_custom_kernel_abi_binding(
+          module, false, "Conv3D", "conv3d_kernel", m_name);
     } else if (input_rank == 4) {
-      if (force_vulkan_conv_serial_fallback) {
-        auto conv2d_plan =
-            annotate_required_backend_custom_kernel_direct_io_binding(
-                module, /*is_vulkan_backend=*/true, m_type, "conv2d_main",
-                /*tensor_input_count=*/2, /*output_count=*/1, m_name);
-        auto direct_binding = make_stage_direct_kernel_runtime_binding(
-            {0, 1}, /*input_arg_count=*/2, {1, 1, 1}, {0, 1, 2});
-        annotate_spirv_kernel_binding_attrs(module, direct_binding);
-        apply_kernel_runtime_binding_state(std::move(direct_binding));
-        m_kernel_extra_inputs.clear();
-        (void)conv2d_plan;
-      } else {
-        auto conv2d_plan = annotate_required_backend_custom_kernel_abi_binding(
-            module, is_vulkan_backend(), m_type, "conv2d_kernel", m_name);
-        if (is_vulkan_backend()) {
-          apply_kernel_runtime_binding_state(conv2d_plan.runtime_binding);
-        }
-      }
+      (void)annotate_required_backend_custom_kernel_abi_binding(
+          module, false, m_type, "conv2d_kernel", m_name);
     }
   }
   if (m_type == "ShapeOf" && module) {
     auto shapeof_plan = annotate_required_backend_custom_kernel_binding(
-        module, is_vulkan_backend(), "ShapeOf", "shapeof_kernel",
+        module, false, "ShapeOf", "shapeof_kernel",
         m_kernel_binding.scalar_args, m_name);
-    if (is_vulkan_backend()) {
+    if (false) {
       apply_kernel_runtime_binding_state(shapeof_plan.runtime_binding);
     }
+  }
+  if (!false && m_type == "Range" && m_node && module) {
+    auto range_source_plan = make_range_msl_kernel_source_plan(m_node, module);
+    compile_generated_msl_source_plan(range_source_plan, "direct Range");
+    return;
   }
   if (m_type == "Tile" && m_node && module) {
     const auto in_pshape = m_node->get_input_partial_shape(0);
@@ -1778,10 +1707,15 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
     } else {
       m_kernel_extra_inputs.clear();
     }
+    if (!false) {
+      auto tile_source_plan = make_tile_msl_kernel_source_plan(m_node, module);
+      compile_generated_msl_source_plan(tile_source_plan, "direct Tile");
+      return;
+    }
     auto tile_plan = annotate_required_backend_custom_kernel_binding(
-        module, is_vulkan_backend(), "Tile", "tile_kernel", tile_scalars,
+        module, false, "Tile", "tile_kernel", tile_scalars,
         m_name);
-    if (is_vulkan_backend()) {
+    if (false) {
       apply_kernel_runtime_binding_state(tile_plan.runtime_binding);
     }
   }
@@ -1803,13 +1737,13 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
     m_kernel_extra_inputs = std::move(gather_elements_payload.extra_inputs);
     const std::vector<int32_t> gather_elements_scalars;
     auto gather_elements_plan = annotate_required_backend_custom_kernel_binding(
-        module, is_vulkan_backend(), "GatherElements", "gather_elements_kernel",
+        module, false, "GatherElements", "gather_elements_kernel",
         gather_elements_scalars, m_name);
-    if (is_vulkan_backend()) {
+    if (false) {
       apply_kernel_runtime_binding_state(gather_elements_plan.runtime_binding);
     }
   }
-  if (!is_vulkan_backend()) {
+  if (!false) {
     if (auto gather_nd = ov::as_type_ptr<const ov::op::util::GatherNDBase>(m_node)) {
       OPENVINO_ASSERT(gather_nd->get_batch_dims() == 0,
                       "GFX MLIR: GatherND batch_dims not supported for stage ",
@@ -1827,12 +1761,12 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
           m_node->get_output_shape(0));
       m_kernel_extra_inputs = std::move(gather_nd_payload.extra_inputs);
       auto gather_nd_plan = annotate_required_backend_custom_kernel_binding(
-          module, is_vulkan_backend(), "GatherND", "gathernd_kernel", {},
+          module, false, "GatherND", "gathernd_kernel", {},
           m_name);
       apply_kernel_runtime_binding_state(gather_nd_plan.runtime_binding);
     }
   }
-  if (!is_vulkan_backend()) {
+  if (!false) {
     if (auto gather = ov::as_type_ptr<const ov::op::util::GatherBase>(m_node)) {
       int64_t batch_dims = 0;
       if (auto gather_v7 = ov::as_type_ptr<const ov::op::v7::Gather>(m_node)) {
@@ -1858,7 +1792,7 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
           static_cast<uint32_t>(axis_norm));
       m_kernel_extra_inputs = std::move(gather_payload.extra_inputs);
       auto gather_plan = annotate_required_backend_custom_kernel_binding(
-          module, is_vulkan_backend(), "Gather", "gather_kernel", {}, m_name);
+          module, false, "Gather", "gather_kernel", {}, m_name);
       apply_kernel_runtime_binding_state(gather_plan.runtime_binding);
     }
   }
@@ -1886,34 +1820,34 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
            m_type == "LogicalOr" || m_type == "LogicalXor" ||
            m_type == "SquaredDifference" || m_type == "PRelu";
   };
-  if (is_vulkan_backend() && module && is_unary_eltwise_compile_stage()) {
+  if (false && module && is_unary_eltwise_compile_stage()) {
     auto unary_plan = annotate_required_backend_custom_kernel_abi_binding(
-        module, /*is_vulkan_backend=*/true, m_type, "unary_kernel", m_name);
+        module, /*is_opencl_backend=*/true, m_type, "unary_kernel", m_name);
     apply_kernel_runtime_binding_state(unary_plan.runtime_binding);
   }
-  if (is_vulkan_backend() && module && is_binary_eltwise_compile_stage()) {
+  if (false && module && is_binary_eltwise_compile_stage()) {
     auto binary_plan = annotate_required_backend_custom_kernel_abi_binding(
-        module, /*is_vulkan_backend=*/true, m_type, "eltwise_kernel", m_name);
+        module, /*is_opencl_backend=*/true, m_type, "eltwise_kernel", m_name);
     apply_kernel_runtime_binding_state(binary_plan.runtime_binding);
   }
-  if (!is_vulkan_backend() && (m_type == "MaxPool" || m_type == "AvgPool") &&
+  if (!false && (m_type == "MaxPool" || m_type == "AvgPool") &&
       module) {
     const std::vector<int32_t> pool_scalars;
     (void)annotate_required_backend_custom_kernel_binding(
-        module, /*is_vulkan_backend=*/false, m_type, "pool2d_kernel",
+        module, /*is_opencl_backend=*/false, m_type, "pool2d_kernel",
         pool_scalars, m_name);
   }
-  if (!is_vulkan_backend() && m_type == "Concat" && module) {
+  if (!false && m_type == "Concat" && module) {
     auto concat_binding_plan =
         annotate_required_backend_custom_kernel_direct_io_binding(
-            module, /*is_vulkan_backend=*/false, "Concat", "concat_kernel",
+            module, /*is_opencl_backend=*/false, "Concat", "concat_kernel",
             m_node ? m_node->get_input_size() : 0,
             m_node ? m_node->get_output_size() : 0, m_name);
     apply_source_plan_kernel_runtime_binding_state(
         concat_binding_plan.runtime_binding);
   }
   const bool use_msl_stage_manifest_arg_count =
-      !is_vulkan_backend() &&
+      !false &&
       (m_type == "ShapeOf" || m_type == "Tile" || m_type == "GatherElements" ||
        m_type == "MaxPool" || m_type == "AvgPool" || m_type == "Concat");
   auto plan_ctx = build_mlir_kernel_plan(
@@ -1923,8 +1857,8 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
         const size_t fallback = fallback_arg_count_from_func_signature(
             info, m_node ? m_node->get_output_size() : 0);
         return use_msl_stage_manifest_arg_count
-                   ? resolve_apple_msl_manifest_arg_count_or_fallback(
-                         module, /*is_vulkan_backend=*/false, fallback)
+                   ? resolve_backend_manifest_arg_count_or_fallback(
+                         module, /*is_opencl_backend=*/false, fallback)
                    : fallback;
       });
   if (m_type == "MaxPool" || m_type == "AvgPool") {
@@ -1936,15 +1870,15 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
           const size_t fallback = fallback_arg_count_from_kernel_mapping(
               info, info.output_args, m_kernel_extra_inputs.size());
           return use_msl_stage_manifest_arg_count
-                     ? resolve_apple_msl_manifest_arg_count_or_fallback(
-                           module, /*is_vulkan_backend=*/false, fallback)
+                     ? resolve_backend_manifest_arg_count_or_fallback(
+                           module, /*is_opencl_backend=*/false, fallback)
                      : fallback;
         });
   }
-  if (is_vulkan_backend() && is_matmul_like() && module) {
+  if (false && is_matmul_like() && module) {
     auto matmul_binding_plan =
         annotate_required_backend_custom_kernel_direct_io_binding(
-            module, /*is_vulkan_backend=*/true, "MatMul", plan.entry_point(),
+            module, /*is_opencl_backend=*/true, "MatMul", plan.entry_point(),
             /*tensor_input_count=*/2,
             /*output_count=*/1, m_name);
     apply_kernel_runtime_binding_state(matmul_binding_plan.runtime_binding);
@@ -1978,32 +1912,23 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
         << " node_inputs=" << node_inputs;
   }
   if (m_type == "Concat") {
-    if (is_vulkan_backend()) {
+    if (false) {
       module->setAttr("gfx.prefer_parallel",
                       mlir::BoolAttr::get(module.getContext(), false));
       m_force_single_dispatch = true;
     }
   }
-  if (is_vulkan_backend() &&
+  if (false &&
       (m_type == "Interpolate" || m_type == "Transpose")) {
     m_force_single_dispatch = true;
-  }
-  if (gfx_log_debug_enabled() && is_vulkan_backend() &&
-      (m_type == "Convolution" || m_type == "GroupConvolution")) {
-    gfx_log_debug("MLIRExec")
-        << "Vulkan conv lowering: stage=" << m_name << " type=" << m_type
-        << " route=" << conv_route_kind_attr(optimization_plan.conv.kind)
-        << " algorithm="
-        << conv_algorithm_kind_attr(optimization_plan.conv.algorithm.kind)
-        << " lowering=shared_mlir";
   }
   if (m_has_residual_add && module) {
     module->setAttr("gfx.fused_residual_add",
                     mlir::BoolAttr::get(module.getContext(), true));
   }
-  if (!is_vulkan_backend() && m_has_residual_add && m_type == "RMS" && module) {
+  if (!false && m_has_residual_add && m_type == "RMS" && module) {
     (void)annotate_required_backend_custom_kernel_binding(
-        module, /*is_vulkan_backend=*/false, "RMSResidual", "rms_kernel", {},
+        module, /*is_opencl_backend=*/false, "RMSResidual", "rms_kernel", {},
         m_name);
   }
   compile_from_plan(plan_ctx, module, "stage");
@@ -2018,14 +1943,14 @@ void MlirStage::compile(GpuBufferManager *buffer_manager) {
     m_last_input_shape.clear();
   }
   if (m_type == "ShapeOf") {
-    if (is_vulkan_backend()) {
+    if (false) {
       apply_kernel_runtime_binding_state(
           make_stage_direct_kernel_runtime_binding({0}, 1, {1, 1, 1},
                                                    {0, 1, 2}));
     }
   }
   if (m_has_residual_add && m_type == "RMS") {
-    if (is_vulkan_backend()) {
+    if (false) {
       apply_kernel_runtime_binding_state(
           make_stage_direct_kernel_runtime_binding({0, 1, 2}, 3, {1, 1, 1, 1},
                                                    {0, 1, 2, 3}));
@@ -2142,9 +2067,9 @@ void MlirStage::prepare_prewarm_kernel_runtime_state(
       &m_inputs, m_const_buffers ? &m_const_buffers->buffers : nullptr,
       m_const_buffers ? &m_const_buffers->present : nullptr, m_node};
 
-  if (!is_vulkan_backend() && m_type == "Interpolate") {
+  if (!false && m_type == "Interpolate") {
     const auto interpolate_plan = plan_interpolate_runtime_values(
-        runtime_inputs, outputs, *m_node, is_vulkan_backend(), m_name);
+        runtime_inputs, outputs, *m_node, false, m_name);
     assign_runtime_value_outputs(interpolate_plan.values, outputs);
     m_output_shape = interpolate_plan.values.output_shape;
     m_kernel_extra_inputs.clear();
@@ -2179,8 +2104,8 @@ void MlirStage::prepare_prewarm_kernel_runtime_state(
           [&](const KernelArgMappingInfo &info) -> size_t {
             const size_t fallback = fallback_arg_count_from_kernel_mapping(
                 info, outputs.size(), m_kernel_extra_inputs.size());
-            return resolve_apple_msl_manifest_arg_count_or_fallback(
-                module, is_vulkan_backend(), fallback);
+            return resolve_backend_manifest_arg_count_or_fallback(
+                module, false, fallback);
           });
       compile_from_plan(plan_ctx, module, "interpolate");
       m_last_input_shape = interpolate_plan.input_shape;
@@ -2288,19 +2213,9 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
         }
         set_kernel_binding_override(
             require_stage_backend_custom_kernel_runtime_binding(
-                is_vulkan_backend(), stage_type, entry_point, scalar_args,
+                false, stage_type, entry_point, scalar_args,
                 m_name));
       };
-  auto set_spirv_kernel_binding_override = [&](mlir::ModuleOp module,
-                                               KernelRuntimeBindingState
-                                                   binding) {
-    OPENVINO_ASSERT(
-        is_vulkan_backend(),
-        "GFX MLIR: SPIR-V execute binding override used on non-Vulkan backend");
-    annotate_spirv_kernel_binding_attrs(module, binding);
-    set_kernel_binding_override(std::move(binding));
-  };
-
   auto bind_small_i64_const_outputs = [&](std::string_view suffix) -> bool {
     return bind_small_i64_const_stage_outputs(
         m_buffer_manager, outputs, m_small_i64_const_output_cache, m_node,
@@ -2522,7 +2437,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
       return;
     }
 
-    if (!is_vulkan_backend()) {
+    if (!false) {
       const auto gather_plan =
           plan_gather_runtime_values(runtime_inputs, *m_node, m_name);
       auto gather_payload = make_gather_runtime_param_payload(
@@ -2534,7 +2449,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
     }
   }
 
-  if (!is_vulkan_backend()) {
+  if (!false) {
     if (ov::as_type_ptr<const ov::op::v1::Transpose>(m_node)) {
       const auto transpose_plan =
           plan_transpose_runtime_values(runtime_inputs, *m_node, m_name);
@@ -2562,7 +2477,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
           *m_buffer_manager, m_name, transpose_plan.input_shape,
           transpose_plan.values.output_shape, transpose_plan.permutation);
       m_kernel_extra_inputs = std::move(transpose_payload.extra_inputs);
-      if (is_vulkan_backend()) {
+      if (false) {
         set_direct_kernel_binding_override({0}, 1, {1, 1, 1, 1, 1, 1, 1},
                                            {0, 1, 2, 3, 4, 5, 6});
       }
@@ -2674,7 +2589,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
             gfx_matmul_parallel_reduction_threads(desc);
 
         std::string log;
-        if (!is_vulkan_backend()) {
+        if (!false) {
           auto source_plan = make_apple_metal_runtime_matmul_kernel_source_plan(
               gfx_mlir_context(), m_buffer_manager, m_node, desc, a_shape,
               b_shape, m_name);
@@ -2702,7 +2617,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
             apply_kernel_metadata(runtime_meta, /*scalar_inputs=*/0);
           }
         }
-        if (is_vulkan_backend()) {
+        if (false) {
           set_direct_kernel_binding_override({0, 1}, 2, {1, 1, 1}, {0, 1, 2});
         }
         m_kernel_extra_inputs.clear();
@@ -2727,6 +2642,64 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
       set_backend_custom_kernel_binding_override("Select", "select_kernel",
                                                  select_scalars);
     }
+  } else if (auto scatter = ov::as_type_ptr<
+                 const ov::op::v3::ScatterElementsUpdate>(m_node)) {
+    ov::Shape data_shape;
+    ov::Shape indices_shape;
+    ov::Shape updates_shape;
+    if (runtime_inputs.shape_known(0, data_shape) &&
+        runtime_inputs.shape_known(1, indices_shape) &&
+        runtime_inputs.shape_known(2, updates_shape)) {
+      assign_runtime_value_outputs(
+          RuntimeValuePlan{data_shape, data_shape,
+                           scatter->get_output_element_type(0), true, {},
+                           false},
+          outputs);
+      m_output_shape = data_shape;
+      auto axis_const =
+          ov::util::get_constant_from_source(scatter->input_value(3));
+      OPENVINO_ASSERT(axis_const,
+                      "GFX MLIR: ScatterElementsUpdate axis must be constant "
+                      "for stage ",
+                      m_name);
+      const auto axis_values = axis_const->cast_vector<int64_t>();
+      OPENVINO_ASSERT(axis_values.size() == 1,
+                      "GFX MLIR: ScatterElementsUpdate axis must be scalar for "
+                      "stage ",
+                      m_name);
+      int64_t axis_norm = axis_values[0];
+      if (axis_norm < 0) {
+        axis_norm += static_cast<int64_t>(data_shape.size());
+      }
+      OPENVINO_ASSERT(axis_norm >= 0 &&
+                          static_cast<size_t>(axis_norm) < data_shape.size(),
+                      "GFX MLIR: ScatterElementsUpdate axis out of range for "
+                      "stage ",
+                      m_name);
+      auto scatter_elements_payload =
+          make_scatter_elements_update_runtime_param_payload(
+              *m_buffer_manager, m_name, data_shape, indices_shape,
+              static_cast<uint32_t>(axis_norm));
+      m_kernel_extra_inputs = std::move(scatter_elements_payload.extra_inputs);
+    }
+  } else if (auto scatter =
+                 ov::as_type_ptr<const ov::op::v3::ScatterNDUpdate>(m_node)) {
+    ov::Shape data_shape;
+    ov::Shape indices_shape;
+    ov::Shape updates_shape;
+    if (runtime_inputs.shape_known(0, data_shape) &&
+        runtime_inputs.shape_known(1, indices_shape) &&
+        runtime_inputs.shape_known(2, updates_shape)) {
+      assign_runtime_value_outputs(
+          RuntimeValuePlan{data_shape, data_shape,
+                           scatter->get_output_element_type(0), true, {},
+                           false},
+          outputs);
+      m_output_shape = data_shape;
+      auto scatter_nd_payload = make_scatter_nd_update_runtime_param_payload(
+          *m_buffer_manager, m_name, data_shape, indices_shape, updates_shape);
+      m_kernel_extra_inputs = std::move(scatter_nd_payload.extra_inputs);
+    }
   } else if (auto scatter =
                  ov::as_type_ptr<const ov::op::v3::ScatterUpdate>(m_node)) {
     const auto scatter_plan =
@@ -2740,14 +2713,14 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
           scatter_plan.indices_shape, scatter_plan.updates_shape,
           static_cast<uint32_t>(scatter_plan.axis_norm));
       m_kernel_extra_inputs = std::move(scatter_update_payload.extra_inputs);
-      if (is_vulkan_backend()) {
+      if (false) {
         set_direct_kernel_binding_override({0, 1, 2}, 4, {1, 1, 1, 1, 1},
                                            {0, 1, 2, 4, 3});
       }
     }
   } else if (m_type == "Slice" || m_type == "StridedSlice") {
     const auto slice_plan = plan_slice_runtime_values(
-        runtime_inputs, outputs, is_vulkan_backend(), m_name);
+        runtime_inputs, outputs, false, m_name);
     assign_runtime_value_outputs(slice_plan.values, outputs);
     m_output_shape = slice_plan.values.output_shape;
 
@@ -2800,61 +2773,39 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
       }
       auto &ctx = gfx_mlir_context();
       auto module = build_mlir_for_node(m_node, ctx);
-      if (module) {
-        if (!is_vulkan_backend() && slice_plan.use_runtime_args) {
-          (void)annotate_required_backend_custom_kernel_binding(
-              module, /*is_vulkan_backend=*/false, "Slice", "slice_kernel", {},
-              m_name);
-        } else if (!is_vulkan_backend()) {
-          auto slice_binding_plan =
-              annotate_required_backend_custom_kernel_direct_io_binding(
-                  module, /*is_vulkan_backend=*/false, "Slice",
-                  "slice_kernel", /*tensor_input_count=*/1,
-                  outputs.size(), m_name);
-          apply_source_plan_kernel_runtime_binding_state(
-              slice_binding_plan.runtime_binding);
-        } else if (is_vulkan_backend()) {
-          set_spirv_kernel_binding_override(
-              module, make_stage_direct_kernel_runtime_binding(
-                          {0}, 1,
-                          slice_plan.use_runtime_args
-                              ? std::vector<int32_t>{1, 1, 1, 1, 1, 1, 1, 1}
-                              : std::vector<int32_t>{1, 1},
-                          slice_plan.use_runtime_args
-                              ? std::vector<int32_t>{0, 1, 2, 3, 4, 5, 6, 7}
-                              : std::vector<int32_t>{0, 1}));
+      if (!false && !slice_plan.use_runtime_args) {
+        auto source_plan = make_direct_static_slice_msl_kernel_source_plan(
+            m_node, m_node->get_output_element_type(0), module);
+        compile_generated_msl_source_plan(source_plan, "direct Slice");
+      } else {
+        if (module) {
+          if (!false && slice_plan.use_runtime_args) {
+            (void)annotate_required_backend_custom_kernel_binding(
+                module, /*is_opencl_backend=*/false, "Slice", "slice_kernel",
+                {}, m_name);
+          }
         }
-      }
-      auto plan_ctx = build_mlir_kernel_plan(
-          module, {}, m_node, outputs.size(), m_kernel_extra_inputs.size(),
-          m_name.c_str(), "slice_main",
-          [&](const KernelArgMappingInfo &info) -> size_t {
-            const size_t fallback = fallback_arg_count_from_kernel_mapping(
-                info, outputs.size(), m_kernel_extra_inputs.size());
-            return resolve_apple_msl_manifest_arg_count_or_fallback(
-                module, is_vulkan_backend(), fallback);
-          });
-      compile_from_plan(plan_ctx, module, "slice");
-      if (is_vulkan_backend()) {
-        set_direct_kernel_binding_override(
-            {0}, 1,
-            slice_plan.use_runtime_args
-                ? std::vector<int32_t>{1, 1, 1, 1, 1, 1, 1, 1}
-                : std::vector<int32_t>{1, 1},
-            slice_plan.use_runtime_args
-                ? std::vector<int32_t>{0, 1, 2, 3, 4, 5, 6, 7}
-                : std::vector<int32_t>{0, 1});
+        auto plan_ctx = build_mlir_kernel_plan(
+            module, {}, m_node, outputs.size(), m_kernel_extra_inputs.size(),
+            m_name.c_str(), "slice_main",
+            [&](const KernelArgMappingInfo &info) -> size_t {
+              const size_t fallback = fallback_arg_count_from_kernel_mapping(
+                  info, outputs.size(), m_kernel_extra_inputs.size());
+              return resolve_backend_manifest_arg_count_or_fallback(
+                  module, false, fallback);
+            });
+        compile_from_plan(plan_ctx, module, "slice");
       }
       m_last_input_shape = slice_plan.input_shape;
     }
   } else if (m_type == "Interpolate") {
     const auto interpolate_plan = plan_interpolate_runtime_values(
-        runtime_inputs, outputs, *m_node, is_vulkan_backend(), m_name);
+        runtime_inputs, outputs, *m_node, false, m_name);
     assign_runtime_value_outputs(interpolate_plan.values, outputs);
     m_output_shape = interpolate_plan.values.output_shape;
     m_kernel_extra_inputs.clear();
     const bool use_interpolate_runtime_params =
-        !is_vulkan_backend() || interpolate_plan.use_runtime_params;
+        !false || interpolate_plan.use_runtime_params;
     if (use_interpolate_runtime_params) {
       auto interpolate_payload = make_interpolate_runtime_param_payload(
           *m_buffer_manager, m_name, interpolate_plan.input_shape,
@@ -2867,7 +2818,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
       auto &ctx = gfx_mlir_context();
       auto module = build_mlir_for_node(m_node, ctx);
       if (module) {
-        if (!is_vulkan_backend() && use_interpolate_runtime_params) {
+        if (!false && use_interpolate_runtime_params) {
           const auto binding = make_backend_custom_kernel_roles_binding_plan(
               "Interpolate", "interpolate_kernel",
               {GfxKernelBufferRole::TensorInput,
@@ -2882,16 +2833,6 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
               m_name);
           apply_source_plan_kernel_runtime_binding_state(
               binding.runtime_binding);
-        } else if (is_vulkan_backend()) {
-          set_spirv_kernel_binding_override(
-              module, make_stage_direct_kernel_runtime_binding(
-                          {0}, 1,
-                          interpolate_plan.use_runtime_params
-                              ? std::vector<int32_t>{1, 1, 1}
-                              : std::vector<int32_t>{1, 1},
-                          interpolate_plan.use_runtime_params
-                              ? std::vector<int32_t>{0, 1, 2}
-                              : std::vector<int32_t>{0, 1}));
         }
       }
       auto plan_ctx = build_mlir_kernel_plan(
@@ -2900,11 +2841,11 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
           [&](const KernelArgMappingInfo &info) -> size_t {
             const size_t fallback = fallback_arg_count_from_kernel_mapping(
                 info, outputs.size(), m_kernel_extra_inputs.size());
-            return resolve_apple_msl_manifest_arg_count_or_fallback(
-                module, is_vulkan_backend(), fallback);
+            return resolve_backend_manifest_arg_count_or_fallback(
+                module, false, fallback);
           });
       compile_from_plan(plan_ctx, module, "interpolate");
-      if (is_vulkan_backend()) {
+      if (false) {
         set_direct_kernel_binding_override(
             {0}, 1,
             interpolate_plan.use_runtime_params ? std::vector<int32_t>{1, 1, 1}
@@ -2938,17 +2879,9 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
       if (module) {
         module->setAttr("gfx.prefer_parallel",
                         mlir::BoolAttr::get(module.getContext(), false));
-        if (!is_vulkan_backend()) {
-          (void)annotate_required_backend_custom_kernel_binding(
-              module, /*is_vulkan_backend=*/false, m_type, "softmax_kernel", {},
-              m_name);
-        } else {
-          // Vulkan keeps a straightforward 0,1,2 mapping to avoid
-          // backend-specific descriptor ordering issues.
-          set_spirv_kernel_binding_override(
-              module, make_stage_direct_kernel_runtime_binding(
-                          {0}, 1, {1, 1, 1}, {0, 1, 2}));
-        }
+        (void)annotate_required_backend_custom_kernel_binding(
+            module, /*is_opencl_backend=*/false, m_type, "softmax_kernel", {},
+            m_name);
       }
       auto plan_ctx = build_mlir_kernel_plan(
           module, {}, m_node, outputs.size(), m_kernel_extra_inputs.size(),
@@ -2956,11 +2889,11 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
           [&](const KernelArgMappingInfo &info) -> size_t {
             const size_t fallback = fallback_arg_count_from_kernel_mapping(
                 info, outputs.size(), /*extra_inputs=*/0);
-            return resolve_apple_msl_manifest_arg_count_or_fallback(
-                module, is_vulkan_backend(), fallback);
+            return resolve_backend_manifest_arg_count_or_fallback(
+                module, false, fallback);
           });
       compile_from_plan(plan_ctx, module, "softmax");
-      if (is_vulkan_backend()) {
+      if (false) {
         set_direct_kernel_binding_override({0}, 1, {1, 1, 1}, {0, 1, 2});
       }
       m_last_input_shape = softmax_plan.values.output_shape;
@@ -3031,7 +2964,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
                                          : m_node->get_output_shape(0);
       if (refresh_conv2d_kernel_extra_inputs(
               input_shape, output_shape, m_node->get_output_element_type(0))) {
-        if (!is_vulkan_backend()) {
+        if (!false) {
           set_backend_custom_kernel_binding_override(m_type, "conv2d_kernel");
         }
       }
@@ -3222,7 +3155,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
         m_node && m_node->get_input_size() > 1 &&
         !ov::as_type_ptr<const ov::op::v0::Constant>(
             m_node->get_input_node_shared_ptr(1));
-    if (!is_vulkan_backend() && has_target_shape_input) {
+    if (!false && has_target_shape_input) {
       auto binding_plan = make_backend_custom_kernel_roles_binding_plan(
           "Broadcast", "broadcast_kernel",
           {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorInput,
@@ -3583,7 +3516,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
         tile_scalars = tile_payload.scalar_args;
         m_kernel_extra_inputs = std::move(tile_payload.extra_inputs);
       }
-      if (!is_vulkan_backend()) {
+      if (!false) {
         set_backend_custom_kernel_binding_override("Tile", "tile_kernel",
                                                    tile_scalars);
       }
@@ -3828,65 +3761,7 @@ void MlirStage::execute(GpuCommandBufferHandle command_buffer) {
 
   try {
     m_kernel->execute(command_buffer, dispatch, bound_args, hooks_ptr);
-  } catch (const std::exception &ex) {
-    const auto opt_plan = stage_optimization_plan();
-    const bool is_shared_vulkan_conv =
-        is_vulkan_backend() && is_conv_like() &&
-        opt_plan.conv.kind == GfxConvRouteKind::None &&
-        !m_vulkan_conv_serial_retry_attempted;
-    if (!is_vulkan_backend() || !is_vulkan_pipeline_creation_failure(ex) ||
-        (!is_matmul_like() && !is_shared_vulkan_conv) || !m_buffer_manager ||
-        (is_matmul_like() && m_matmul_serial_retry_attempted)) {
-      throw;
-    }
-
-    ov::Shape tuning_shape = m_output_shape;
-    const auto caps = query_parallelism_caps(m_buffer_manager);
-    if (!m_matmul_safe_retry_attempted) {
-      auto safe_plan = select_safe_matmul_fallback_plan(caps, tuning_shape);
-      if (safe_plan.has_value()) {
-        gfx_log_info("MLIRExec")
-            << "Retrying " << m_name << " with safe matmul variant "
-            << safe_plan->variant
-            << " after pipeline creation failure: " << ex.what();
-        remember_matmul_parallelism(caps, tuning_shape, *safe_plan);
-        m_matmul_safe_retry_attempted = true;
-        m_kernel.reset();
-        m_last_input_shape = {};
-        compile(m_buffer_manager);
-        execute(command_buffer);
-        return;
-      }
-    }
-
-    if (!m_matmul_serial_retry_attempted) {
-      gfx_log_info("MLIRExec")
-          << "Retrying " << m_name
-          << " with serial matmul fallback after pipeline creation failure: "
-          << ex.what();
-      remember_matmul_parallelism(caps, tuning_shape,
-                                  make_serial_matmul_fallback_plan());
-      m_matmul_serial_retry_attempted = true;
-      m_kernel.reset();
-      m_last_input_shape = {};
-      compile(m_buffer_manager);
-      execute(command_buffer);
-      return;
-    }
-
-    if (is_shared_vulkan_conv) {
-      gfx_log_info("MLIRExec") << "Retrying " << m_name
-                               << " with serial Vulkan convolution fallback "
-                                  "after pipeline creation failure: "
-                               << ex.what();
-      m_vulkan_conv_serial_retry_attempted = true;
-      m_kernel.reset();
-      m_last_input_shape = {};
-      compile(m_buffer_manager);
-      execute(command_buffer);
-      return;
-    }
-
+  } catch (const std::exception &) {
     throw;
   }
 
@@ -3996,7 +3871,7 @@ bool MlirStage::fuse_input_activation(size_t input_idx, ActivationKind kind,
 }
 
 bool MlirStage::fuse_residual_add() {
-  if (m_type != "RMS" || is_vulkan_backend()) {
+  if (m_type != "RMS" || false) {
     return false;
   }
   OPENVINO_ASSERT(!m_kernel,
@@ -4134,8 +4009,6 @@ void MlirStage::clone_into(MlirStage &dst) const {
   dst.m_conv_weights_packed_oc4 = m_conv_weights_packed_oc4;
   dst.m_rms_reduction_threads = m_rms_reduction_threads;
   dst.m_rms_hidden = m_rms_hidden;
-  dst.m_vulkan_conv_serial_retry_attempted =
-      m_vulkan_conv_serial_retry_attempted;
   dst.m_has_activation = m_has_activation;
   dst.m_activation = m_activation;
   dst.m_activation_alpha = m_activation_alpha;

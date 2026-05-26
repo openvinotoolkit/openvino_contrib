@@ -22,8 +22,7 @@
 #if defined(__APPLE__)
 #    include "backends/metal/runtime/metal_memory.hpp"
 #else
-#    include "backends/vulkan/runtime/vulkan_backend.hpp"
-#    include <vulkan/vulkan.h>
+#    include "backends/opencl/runtime/opencl_api.hpp"
 #endif
 
 namespace {
@@ -442,15 +441,21 @@ BenchResult run_model_bench(ov::Core& core,
 
 Mb0Result run_mb0(const std::string& backend, size_t warmup, size_t iterations) {
 #if defined(__APPLE__)
-    if (backend == "vulkan") {
-        throw std::runtime_error("MB0 Vulkan is not available in the macOS tool build");
+    if (backend == "opencl") {
+        throw std::runtime_error("MB0 OpenCL is not available in the macOS tool build");
+    }
+    if (backend != "auto" && backend != "metal") {
+        throw std::runtime_error("unknown MB0 backend: " + backend);
     }
     return run_metal_mb0(warmup, iterations);
 #else
     if (backend == "metal") {
-        throw std::runtime_error("MB0 Metal is not available in the Vulkan tool build");
+        throw std::runtime_error("MB0 Metal is not available in the OpenCL tool build");
     }
-    return run_vulkan_mb0(warmup, iterations);
+    if (backend != "auto" && backend != "opencl") {
+        throw std::runtime_error("unknown MB0 backend: " + backend);
+    }
+    return run_opencl_mb0(warmup, iterations);
 #endif
 }
 
@@ -1088,7 +1093,7 @@ Options parse_options(int argc, char** argv) {
         } else if (arg == "--include-conv-probe") {
             options.include_conv_probe = true;
         } else if (arg == "--help") {
-            std::cout << "Usage: ov_gfx_microbench [--backend auto|metal|vulkan] [--warmup N] [--iterations N] "
+            std::cout << "Usage: ov_gfx_microbench [--backend auto|metal|opencl] [--warmup N] [--iterations N] "
                          "[--output path] [--calibration-output path] [--calibration-input path] "
                          "[--include-conv-probe]\n";
             std::exit(0);
@@ -1105,91 +1110,26 @@ Options parse_options(int argc, char** argv) {
 }  // namespace
 
 #if !defined(__APPLE__)
-Mb0Result run_vulkan_mb0(size_t warmup, size_t iterations) {
+Mb0Result run_opencl_mb0(size_t warmup, size_t iterations) {
     using namespace ov::gfx_plugin;
 
-    VulkanContext& ctx = VulkanContext::instance();
-    VkDevice device = ctx.device();
-    VkQueue queue = ctx.queue();
-
-    VkCommandPool pool = VK_NULL_HANDLE;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    VkFence fence = VK_NULL_HANDLE;
-
-    VkCommandPoolCreateInfo pool_info{};
-    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    pool_info.queueFamilyIndex = ctx.queue_family_index();
-    pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    VkResult res = vkCreateCommandPool(device, &pool_info, nullptr, &pool);
-    if (res != VK_SUCCESS) {
-        throw std::runtime_error("MB0 Vulkan: vkCreateCommandPool failed");
-    }
-
-    VkCommandBufferAllocateInfo alloc{};
-    alloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    alloc.commandPool = pool;
-    alloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    alloc.commandBufferCount = 1;
-    res = vkAllocateCommandBuffers(device, &alloc, &cmd);
-    if (res != VK_SUCCESS) {
-        vkDestroyCommandPool(device, pool, nullptr);
-        throw std::runtime_error("MB0 Vulkan: vkAllocateCommandBuffers failed");
-    }
-
-    VkFenceCreateInfo fence_info{};
-    fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    res = vkCreateFence(device, &fence_info, nullptr, &fence);
-    if (res != VK_SUCCESS) {
-        vkFreeCommandBuffers(device, pool, 1, &cmd);
-        vkDestroyCommandPool(device, pool, nullptr);
-        throw std::runtime_error("MB0 Vulkan: vkCreateFence failed");
-    }
+    auto ctx = OpenClRuntimeContext::instance();
 
     std::vector<double> wall_us;
     wall_us.reserve(iterations);
     const size_t total_iters = warmup + iterations;
     for (size_t i = 0; i < total_iters; ++i) {
-        vkResetFences(device, 1, &fence);
-        vkResetCommandPool(device, pool, 0);
-
-        VkCommandBufferBeginInfo begin{};
-        begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        res = vkBeginCommandBuffer(cmd, &begin);
-        if (res != VK_SUCCESS) {
-            throw std::runtime_error("MB0 Vulkan: vkBeginCommandBuffer failed");
-        }
-        res = vkEndCommandBuffer(cmd);
-        if (res != VK_SUCCESS) {
-            throw std::runtime_error("MB0 Vulkan: vkEndCommandBuffer failed");
-        }
-
-        VkSubmitInfo submit{};
-        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submit.commandBufferCount = 1;
-        submit.pCommandBuffers = &cmd;
-
         const auto start = std::chrono::steady_clock::now();
-        res = vkQueueSubmit(queue, 1, &submit, fence);
-        if (res != VK_SUCCESS) {
-            throw std::runtime_error("MB0 Vulkan: vkQueueSubmit failed");
-        }
-        res = vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
-        if (res != VK_SUCCESS) {
-            throw std::runtime_error("MB0 Vulkan: vkWaitForFences failed");
-        }
+        ctx->finish();
         const auto stop = std::chrono::steady_clock::now();
         if (i >= warmup) {
             wall_us.push_back(std::chrono::duration<double, std::micro>(stop - start).count());
         }
     }
 
-    vkDestroyFence(device, fence, nullptr);
-    vkFreeCommandBuffers(device, pool, 1, &cmd);
-    vkDestroyCommandPool(device, pool, nullptr);
-
     const auto [min_us, max_us] = minmax_of(wall_us);
     Mb0Result result;
-    result.backend = "vulkan";
+    result.backend = "opencl";
     result.median_wall_us = median_of(wall_us);
     result.min_wall_us = min_us;
     result.max_wall_us = max_us;
@@ -1215,15 +1155,14 @@ DeviceFingerprint query_device_fingerprint(const std::string& selected_backend, 
     }
 #else
     info.platform = "linux_or_android";
-    const auto& ctx = ov::gfx_plugin::VulkanContext::instance();
-    VkPhysicalDeviceProperties props{};
-    vkGetPhysicalDeviceProperties(ctx.physical_device(), &props);
-    info.device_name = props.deviceName;
-    info.full_name = std::string("GFX (") + props.deviceName + ")";
-    info.vendor_id = hex_u32(props.vendorID);
-    info.device_id = hex_u32(props.deviceID);
-    info.driver_version = std::to_string(props.driverVersion);
-    info.architecture = "vulkan";
+    auto ctx = ov::gfx_plugin::OpenClRuntimeContext::instance();
+    const auto& selection = ctx->selection();
+    info.device_name = selection.device_name;
+    info.full_name = "GFX (" + selection.device_name + ")";
+    info.vendor_id = hex_u32(selection.vendor_id);
+    info.device_id = "opencl_gpu";
+    info.driver_version = selection.driver_version;
+    info.architecture = "opencl";
 #endif
     return info;
 }

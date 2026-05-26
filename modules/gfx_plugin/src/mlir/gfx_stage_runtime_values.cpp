@@ -1333,14 +1333,14 @@ RuntimeSplitPlan plan_split_runtime_values(const ov::Node *node,
 RuntimeSlicePlan
 plan_slice_runtime_values(const RuntimeInputResolver &inputs,
                           const std::vector<GpuTensor *> &outputs,
-                          bool is_vulkan_backend, std::string_view stage_name) {
+                          bool is_opencl_backend, std::string_view stage_name) {
   OPENVINO_ASSERT(inputs.node,
                   "GFX MLIR: Slice/StridedSlice node is missing for stage ",
                   stage_name);
   const auto &node = *inputs.node;
 
   RuntimeSlicePlan plan;
-  plan.use_runtime_args = is_vulkan_backend ||
+  plan.use_runtime_args = is_opencl_backend ||
                           !node.get_input_partial_shape(0).is_static() ||
                           !node.get_output_partial_shape(0).is_static() ||
                           slice_requires_runtime_indexing(node);
@@ -1413,7 +1413,7 @@ plan_transpose_runtime_values(const RuntimeInputResolver &inputs,
 
 RuntimeInterpolatePlan plan_interpolate_runtime_values(
     const RuntimeInputResolver &inputs, const std::vector<GpuTensor *> &outputs,
-    const ov::Node &node, bool is_vulkan_backend, std::string_view stage_name) {
+    const ov::Node &node, bool is_opencl_backend, std::string_view stage_name) {
   RuntimeInterpolatePlan plan;
   plan.input_shape = inputs.shape(0);
   if (plan.input_shape.empty()) {
@@ -1478,7 +1478,7 @@ RuntimeInterpolatePlan plan_interpolate_runtime_values(
   plan.values.value_shape = plan.values.output_shape;
   plan.values.output_type = node.get_output_element_type(0);
   plan.values.force_output_type = true;
-  plan.use_runtime_params = !is_vulkan_backend;
+  plan.use_runtime_params = !is_opencl_backend;
   plan.available = true;
   return plan;
 }

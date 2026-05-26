@@ -20,7 +20,7 @@ using GpuCommandQueueHandle = void*;
 using GpuCommandBufferHandle = void*;
 using GpuCommandEncoderHandle = void*;
 
-enum class GpuBackend { Metal, OpenCL, Vulkan };
+enum class GpuBackend { Metal, OpenCL };
 
 enum class BufferUsage { IO, Const, Intermediate, Temp, Staging };
 

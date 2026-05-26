@@ -14,7 +14,6 @@
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/Dialect/SPIRV/IR/SPIRVDialect.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/InitAllDialects.h"
@@ -36,7 +35,7 @@ bool mlir_supports_node(const std::shared_ptr<const ov::Node>& node) {
 mlir::MLIRContext& gfx_mlir_context() {
     static mlir::MLIRContext* ctx = []() {
         mlir::DialectRegistry registry;
-        // Core IR + math/scf/memref/tensor/linalg/vector/affine/func/gpu/spirv.
+        // Core IR + math/scf/memref/tensor/linalg/vector/affine/func/gpu.
         registry.insert<mlir::BuiltinDialect,
                         mlir::arith::ArithDialect,
                         mlir::math::MathDialect,
@@ -47,8 +46,7 @@ mlir::MLIRContext& gfx_mlir_context() {
                         mlir::linalg::LinalgDialect,
                         mlir::vector::VectorDialect,
                         mlir::func::FuncDialect,
-                        mlir::gpu::GPUDialect,
-                        mlir::spirv::SPIRVDialect>();
+                        mlir::gpu::GPUDialect>();
 
         auto* c = new mlir::MLIRContext(registry);
         c->disableMultithreading();
@@ -68,7 +66,6 @@ mlir::MLIRContext& gfx_mlir_context() {
         c->getOrLoadDialect<mlir::vector::VectorDialect>();
         c->getOrLoadDialect<mlir::func::FuncDialect>();
         c->getOrLoadDialect<mlir::gpu::GPUDialect>();
-        c->getOrLoadDialect<mlir::spirv::SPIRVDialect>();
 
         return c;
     }();

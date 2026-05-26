@@ -24,7 +24,6 @@ enum class GfxMpsrtStageKind {
     MPSTopK,
     MPSSdpa,
     MSLDispatch,
-    SPIRVDispatch,
     Alias,
 };
 
@@ -65,8 +64,6 @@ inline const char* gfx_mpsrt_stage_kind_name(GfxMpsrtStageKind kind) {
             return "mps_sdpa";
         case GfxMpsrtStageKind::MSLDispatch:
             return "msl_dispatch";
-        case GfxMpsrtStageKind::SPIRVDispatch:
-            return "spirv_dispatch";
         case GfxMpsrtStageKind::Alias:
             return "alias";
         case GfxMpsrtStageKind::Unknown:
@@ -85,16 +82,12 @@ inline GfxMpsrtStageKind gfx_mpsrt_stage_kind_from_name(std::string_view name) {
     if (name == "mps_topk") return GfxMpsrtStageKind::MPSTopK;
     if (name == "mps_sdpa") return GfxMpsrtStageKind::MPSSdpa;
     if (name == "msl_dispatch") return GfxMpsrtStageKind::MSLDispatch;
-    if (name == "spirv_dispatch") return GfxMpsrtStageKind::SPIRVDispatch;
     if (name == "alias") return GfxMpsrtStageKind::Alias;
     return GfxMpsrtStageKind::Unknown;
 }
 
 inline GfxMpsrtStageKind gfx_mpsrt_stage_kind_from_plan(const GfxStagePlacementPlan& placement,
                                                         const std::string& stage_type) {
-    if (placement.domain == GfxStageBackendDomain::Spirv) {
-        return GfxMpsrtStageKind::SPIRVDispatch;
-    }
     if (placement.domain == GfxStageBackendDomain::AppleMsl) {
         return GfxMpsrtStageKind::MSLDispatch;
     }
@@ -136,9 +129,6 @@ inline GfxMpsrtStageKind gfx_mpsrt_stage_kind_from_manifest(const GfxKernelStage
     if (manifest.execution_kind == GfxKernelExecutionKind::CustomKernel) {
         if (manifest.backend_domain == GfxKernelBackendDomain::AppleMsl) {
             return GfxMpsrtStageKind::MSLDispatch;
-        }
-        if (manifest.backend_domain == GfxKernelBackendDomain::Spirv) {
-            return GfxMpsrtStageKind::SPIRVDispatch;
         }
         return GfxMpsrtStageKind::Unknown;
     }
@@ -241,7 +231,6 @@ inline GfxKernelStageFamily gfx_kernel_stage_family_from_mpsrt_kind(GfxMpsrtStag
         case GfxMpsrtStageKind::MPSSdpa:
             return GfxKernelStageFamily::AttentionSoftmax;
         case GfxMpsrtStageKind::MSLDispatch:
-        case GfxMpsrtStageKind::SPIRVDispatch:
             if (stage_type == "Convolution") {
                 return GfxKernelStageFamily::Convolution;
             }
@@ -287,7 +276,6 @@ inline GfxMpsrtLayout gfx_mpsrt_stage_layout_for_storage(GfxMpsrtStorage storage
 inline std::string gfx_mpsrt_default_kernel_name(GfxMpsrtStageKind kind, const std::string& stage_type) {
     switch (kind) {
         case GfxMpsrtStageKind::MSLDispatch:
-        case GfxMpsrtStageKind::SPIRVDispatch:
             return stage_type;
         default:
             return gfx_mpsrt_stage_kind_name(kind);
@@ -312,7 +300,6 @@ inline const char* gfx_mpsrt_builder_symbol(GfxMpsrtStageKind kind) {
         case GfxMpsrtStageKind::MPSSdpa:
             return "ovgfx_mpsrt_encode_sdpa";
         case GfxMpsrtStageKind::MSLDispatch:
-        case GfxMpsrtStageKind::SPIRVDispatch:
             return "ovgfx_mpsrt_encode_dispatch";
         case GfxMpsrtStageKind::Alias:
             return "ovgfx_mpsrt_encode_alias";
@@ -370,8 +357,7 @@ inline GfxMpsrtStageDesc gfx_mpsrt_make_stage_desc(const GfxStageOptimizationPla
             gfx_mpsrt_kernel_storage_from_stage_storage(plan.placement.storage),
             plan.placement.specialization_key);
     }
-    if (desc.kind == GfxMpsrtStageKind::MSLDispatch ||
-        desc.kind == GfxMpsrtStageKind::SPIRVDispatch) {
+    if (desc.kind == GfxMpsrtStageKind::MSLDispatch) {
         const auto manifest_entry = kernel_entry_point.empty() ? std::string_view(desc.kernel_name)
                                                                : kernel_entry_point;
         const auto custom_kernel_stage = gfx_mpsrt_resolve_custom_kernel_stage_manifest(

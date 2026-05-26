@@ -384,13 +384,6 @@ std::vector<Insight> build_insights(const GfxProfilingReport& report,
                             msg.str()});
     }
 
-    if (counter_value(report, "vulkan_owns_command_buffer") > 0 ||
-        counter_value(report, "vulkan_internal_submit_wait") > 0) {
-        insights.push_back({"hazard",
-                            "warning",
-                            "Fallback kernel-owned command buffer submissions were observed; this usually indicates micro-submit overhead."});
-    }
-
     if (phase_count(phase_summaries, "compile") > 0) {
         insights.push_back({"compile", "info", "Compilation/setup work was recorded inside the profiled infer path."});
     }

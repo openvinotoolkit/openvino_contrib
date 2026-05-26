@@ -9,7 +9,7 @@ namespace ov {
 namespace gfx_plugin {
 
 // Lower linalg::Conv3DNcdhwFcdhwOp to explicit scf.for loops with padding bounds checks.
-// Intended to avoid explicit padded buffer allocations on Vulkan.
+// Intended to avoid explicit padded buffer allocations in backend kernels.
 void run_conv3d_parallel_lowering(mlir::ModuleOp module);
 
 }  // namespace gfx_plugin

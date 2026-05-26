@@ -207,6 +207,8 @@ std::optional<KernelSource> make_apple_metal_data_movement_kernel_source(
     desc.axis_dim = 1;
     desc.indices_count = 1;
     set_desc(desc, "gather_kernel");
+    require_apple_msl_generated_kernel_source_binding(source, "Gather",
+                                                      "gather_kernel");
     return source;
   }
 
@@ -293,13 +295,19 @@ std::optional<KernelSource> make_apple_metal_data_movement_kernel_source(
       desc.strides[static_cast<size_t>(i)] = stride;
       stride *= desc.dims[static_cast<size_t>(i)];
     }
-    desc.inner = desc.strides[desc.k];
+    desc.inner = 1;
+    for (size_t axis = static_cast<size_t>(desc.k); axis < data.size();
+         ++axis) {
+      desc.inner *= static_cast<uint32_t>(data[axis]);
+    }
     desc.num_indices = static_cast<uint32_t>(ov::shape_size(indices) / desc.k);
     desc.total_updates =
         static_cast<uint32_t>(ov::shape_size(scatter->get_input_shape(2)));
     desc.total_data = static_cast<uint32_t>(ov::shape_size(data));
     desc.element_type = scatter->get_output_element_type(0);
     set_desc(desc, "scatter_nd_update");
+    require_apple_msl_generated_kernel_source_binding(source, "ScatterNDUpdate",
+                                                      "scatter_nd_update");
     return source;
   }
 
@@ -311,9 +319,13 @@ std::optional<KernelSource> make_apple_metal_data_movement_kernel_source(
     const auto indices = scatter->get_input_shape(1);
     desc.index_type = scatter->get_input_element_type(1);
     auto axis_const = ov::as_type_ptr<const ov::op::v0::Constant>(
-        scatter->input_value(2).get_node_shared_ptr());
+        scatter->input_value(3).get_node_shared_ptr());
     OPENVINO_ASSERT(axis_const, "ScatterElementsUpdate axis must be constant");
-    desc.axis = static_cast<uint32_t>(axis_const->cast_vector<int64_t>()[0]);
+    const auto axis_values = axis_const->cast_vector<int64_t>();
+    OPENVINO_ASSERT(axis_values.size() == 1,
+                    "ScatterElementsUpdate axis must be scalar");
+    desc.axis = static_cast<uint32_t>(normalize_axis(
+        axis_values.front(), data.size(), "GFX Metal ScatterElementsUpdate"));
     desc.rank = static_cast<uint32_t>(data.size());
     desc.total_updates = static_cast<uint32_t>(ov::shape_size(indices));
     desc.total_data = static_cast<uint32_t>(ov::shape_size(data));
@@ -329,6 +341,8 @@ std::optional<KernelSource> make_apple_metal_data_movement_kernel_source(
     }
     desc.element_type = scatter->get_output_element_type(0);
     set_desc(desc, "scatter_elements_update");
+    require_apple_msl_generated_kernel_source_binding(
+        source, "ScatterElementsUpdate", "scatter_elements_update");
     return source;
   }
 

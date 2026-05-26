@@ -64,7 +64,6 @@ enum class GfxStageBackendDomain {
   AppleMps,
   AppleMsl,
   OpenCl,
-  Spirv,
 };
 
 enum class GfxStageStorageKind {

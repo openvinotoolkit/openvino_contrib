@@ -242,7 +242,7 @@ RuntimeSplitPlan plan_split_runtime_values(const ov::Node *node,
 RuntimeSlicePlan
 plan_slice_runtime_values(const RuntimeInputResolver &inputs,
                           const std::vector<GpuTensor *> &outputs,
-                          bool is_vulkan_backend, std::string_view stage_name);
+                          bool is_opencl_backend, std::string_view stage_name);
 
 RuntimeTransposePlan
 plan_transpose_runtime_values(const RuntimeInputResolver &inputs,
@@ -251,7 +251,7 @@ plan_transpose_runtime_values(const RuntimeInputResolver &inputs,
 
 RuntimeInterpolatePlan plan_interpolate_runtime_values(
     const RuntimeInputResolver &inputs, const std::vector<GpuTensor *> &outputs,
-    const ov::Node &node, bool is_vulkan_backend, std::string_view stage_name);
+    const ov::Node &node, bool is_opencl_backend, std::string_view stage_name);
 
 RuntimeSoftmaxPlan
 plan_softmax_runtime_values(const RuntimeInputResolver &inputs,

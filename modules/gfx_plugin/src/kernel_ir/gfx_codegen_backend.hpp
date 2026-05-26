@@ -28,8 +28,6 @@ struct KernelSource {
     std::string entry_point;
     std::string msl_source;
     std::function<std::string(mlir::ModuleOp)> msl_generator;
-    std::vector<uint32_t> spirv_binary;
-    std::function<std::vector<uint32_t>(mlir::ModuleOp)> spirv_generator;
     KernelSignature signature{};
     std::vector<MpsrtConstTensorSource> mpsrt_const_tensors;
 };
@@ -73,18 +71,6 @@ inline uint32_t infer_msl_buffer_arg_count_from_source(std::string_view source) 
         }
     }
     return found_buffer ? max_buffer_index + 1u : 0u;
-}
-
-inline std::vector<uint32_t> resolve_spirv_binary_from_source(const KernelSource& source,
-                                                              std::string* log = nullptr) {
-    std::vector<uint32_t> spirv = source.spirv_binary;
-    if (spirv.empty() && source.spirv_generator) {
-        spirv = source.spirv_generator(source.module);
-        if (spirv.empty() && log) {
-            *log = "SPIR-V generator returned empty output";
-        }
-    }
-    return spirv;
 }
 
 inline KernelSource make_kernel_source(mlir::ModuleOp module,

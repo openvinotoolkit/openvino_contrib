@@ -156,28 +156,6 @@ make_kernel_i32_array_attr(mlir::MLIRContext *ctx,
   return builder.getArrayAttr(attrs);
 }
 
-inline void annotate_kernel_operand_abi_attrs_for_spirv_adapter(
-    mlir::ModuleOp module, const KernelRuntimeBindingState &binding) {
-  OPENVINO_ASSERT(
-      module, "GFX MLIR: SPIR-V kernel operand adapter attrs require a module");
-  OPENVINO_ASSERT(
-      binding.operand_kinds.size() == binding.operand_arg_indices.size(),
-      "GFX MLIR: SPIR-V kernel operand adapter attr sizes mismatch");
-  module->setAttr(
-      "gfx.kernel_operand_kinds",
-      make_kernel_i32_array_attr(module.getContext(), binding.operand_kinds));
-  module->setAttr("gfx.kernel_operand_arg_indices",
-                  make_kernel_i32_array_attr(module.getContext(),
-                                             binding.operand_arg_indices));
-  if (!binding.scalar_args.empty()) {
-    module->setAttr(
-        "gfx.kernel_scalar_values",
-        make_kernel_i32_array_attr(module.getContext(), binding.scalar_args));
-  } else {
-    module->removeAttr("gfx.kernel_scalar_values");
-  }
-}
-
 struct KernelRuntimeMetadata {
   bool valid = false;
   ParallelDispatchConfig dispatch;
@@ -520,7 +498,6 @@ inline bool extract_kernel_operand_metadata_from_custom_kernel_manifest(
     return false;
   }
   if (!entry_point.empty() &&
-      manifest.backend_domain != GfxKernelBackendDomain::Spirv &&
       manifest.custom_kernel.entry_point != entry_point) {
     return false;
   }
@@ -735,63 +712,6 @@ inline bool extract_kernel_operand_metadata_from_mpsrt_external_buffer_abi(
   return true;
 }
 
-inline bool extract_spirv_kernel_operand_metadata_from_adapter_attrs(
-    mlir::ModuleOp module, KernelOperandMetadata &meta,
-    size_t &kernel_input_arg_count, size_t output_arg_count,
-    std::vector<size_t> *kernel_inputs = nullptr,
-    std::optional<GfxKernelBackendDomain> expected_backend_domain =
-        std::nullopt) {
-  if (!module ||
-      (expected_backend_domain &&
-       *expected_backend_domain != GfxKernelBackendDomain::Spirv)) {
-    return false;
-  }
-
-  GfxKernelStageManifest manifest{};
-  if (!detail::gfx_mpsrt_read_stage_manifest_attrs(module, manifest) ||
-      !manifest.valid || manifest.backend_domain != GfxKernelBackendDomain::Spirv ||
-      manifest.execution_kind != GfxKernelExecutionKind::CustomKernel ||
-      !manifest.custom_kernel.valid) {
-    return false;
-  }
-
-  auto adapter_meta = extract_kernel_operand_metadata(module);
-  if (adapter_meta.operand_kinds.empty() ||
-      adapter_meta.operand_arg_indices.size() !=
-          adapter_meta.operand_kinds.size()) {
-    return false;
-  }
-
-  if (kernel_inputs) {
-    kernel_inputs->clear();
-    const auto roles = materialize_kernel_external_buffer_roles(
-        manifest.custom_kernel.external_buffer_abi);
-    size_t next_tensor_input = 0;
-    for (const auto role : roles) {
-      if (role == GfxKernelBufferRole::TensorInput) {
-        kernel_inputs->push_back(next_tensor_input++);
-      }
-    }
-  }
-
-  meta = std::move(adapter_meta);
-  int32_t max_idx = -1;
-  for (auto idx : meta.operand_arg_indices) {
-    if (idx > max_idx) {
-      max_idx = idx;
-    }
-  }
-  if (max_idx < 0) {
-    return false;
-  }
-  const size_t total_buffer_args = static_cast<size_t>(max_idx) + 1;
-  if (output_arg_count > total_buffer_args) {
-    return false;
-  }
-  kernel_input_arg_count = total_buffer_args - output_arg_count;
-  return true;
-}
-
 inline bool
 infer_kernel_arg_count_from_manifest(const GfxKernelStageManifest &manifest,
                                      size_t &arg_count,
@@ -808,7 +728,6 @@ infer_kernel_arg_count_from_manifest(const GfxKernelStageManifest &manifest,
     return false;
   }
   if (!entry_point.empty() &&
-      manifest.backend_domain != GfxKernelBackendDomain::Spirv &&
       manifest.custom_kernel.entry_point != entry_point) {
     return false;
   }
@@ -966,11 +885,6 @@ extract_kernel_runtime_metadata(mlir::ModuleOp module, size_t output_arg_count,
   meta.valid = true;
   meta.dispatch = extract_kernel_dispatch_metadata(module);
   meta.force_single_dispatch = extract_kernel_force_single_dispatch(module);
-  if (extract_spirv_kernel_operand_metadata_from_adapter_attrs(
-          module, meta.operands, meta.kernel_input_arg_count,
-          output_arg_count, &meta.kernel_inputs, expected_backend_domain)) {
-    return meta;
-  }
   if (extract_kernel_operand_metadata_from_mpsrt_typed_program_manifest(
           module, meta.operands, meta.kernel_input_arg_count,
           &meta.kernel_inputs, entry_point, expected_backend_domain)) {
@@ -1024,17 +938,6 @@ infer_kernel_arg_count_from_module(mlir::ModuleOp module, size_t fallback,
                                            std::nullopt) {
   if (!module) {
     return fallback;
-  }
-  KernelOperandMetadata adapter_meta;
-  size_t adapter_arg_count = 0;
-  if (extract_spirv_kernel_operand_metadata_from_adapter_attrs(
-          module, adapter_meta, adapter_arg_count,
-          /*output_arg_count=*/0, /*kernel_inputs=*/nullptr,
-          expected_backend_domain)) {
-    if (!adapter_meta.operand_kinds.empty()) {
-      return adapter_meta.operand_kinds.size();
-    }
-    return adapter_arg_count;
   }
   size_t typed_program_arg_count = 0;
   if (infer_kernel_arg_count_from_mpsrt_typed_program_manifest(

@@ -903,7 +903,7 @@ def main() -> int:
             raise RuntimeError("--platform ssh requires host/user/password directly or via --ssh-device-file")
         remote_dir = args.remote_dir
         if remote_dir == "/data/local/tmp/gfx_eval":
-            work_directory = device_config.get("work_directory") or f"/home/{user}"
+            work_directory = device_config.get("work_directory") or "."
             remote_dir = f"{work_directory.rstrip('/')}/gfx_eval"
         ctx = SshExecContext(host, user, password, remote_dir)
     else:

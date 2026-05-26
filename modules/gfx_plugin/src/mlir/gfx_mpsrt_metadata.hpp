@@ -103,8 +103,6 @@ inline GfxStageBackendDomain gfx_mpsrt_backend_domain_from_name(llvm::StringRef 
         return GfxStageBackendDomain::AppleMsl;
     if (name == "opencl")
         return GfxStageBackendDomain::OpenCl;
-    if (name == "spirv")
-        return GfxStageBackendDomain::Spirv;
     return GfxStageBackendDomain::Unknown;
 }
 
@@ -433,8 +431,6 @@ inline GfxStageBackendDomain gfx_mpsrt_stage_domain_from_kernel_domain(GfxKernel
             return GfxStageBackendDomain::AppleMsl;
         case GfxKernelBackendDomain::OpenCl:
             return GfxStageBackendDomain::OpenCl;
-        case GfxKernelBackendDomain::Spirv:
-            return GfxStageBackendDomain::Spirv;
         case GfxKernelBackendDomain::Unknown:
         default:
             return GfxStageBackendDomain::Unknown;
@@ -1090,7 +1086,6 @@ inline bool gfx_mpsrt_finalize_external_buffer_abi(GfxMpsrtExternalBufferAbiPlan
 inline bool gfx_mpsrt_program_has_custom_dispatch_stage(const GfxMpsrtProgram& program) {
     for (const auto& stage : program.stages) {
         if (stage.stage.kind == GfxMpsrtStageKind::MSLDispatch ||
-            stage.stage.kind == GfxMpsrtStageKind::SPIRVDispatch ||
             gfx_mpsrt_stage_uses_custom_kernel(stage.stage)) {
             return true;
         }

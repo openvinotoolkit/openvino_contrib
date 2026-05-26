@@ -921,9 +921,8 @@ GfxParallelismCaps make_default_caps(GpuBackend backend) {
                                                     : GpuDeviceFamily::Generic;
   caps.preferred_simd_width = 32;
   caps.subgroup_size = 32;
-  if (backend == GpuBackend::OpenCL || backend == GpuBackend::Vulkan) {
-    caps.device_key =
-        backend == GpuBackend::OpenCL ? "opencl:default" : "vulkan:default";
+  if (backend == GpuBackend::OpenCL) {
+    caps.device_key = "opencl:default";
     caps.max_total_threads_per_group = 128;
     caps.max_threads_per_group = {128, 128, 64};
   } else {
@@ -1108,7 +1107,7 @@ public:
   }
 };
 
-class VulkanParallelismStrategyBase : public ParallelismStrategy {
+class OpenClParallelismStrategyBase : public ParallelismStrategy {
 public:
   std::vector<MatMulParallelismPlan>
   enumerate_matmul(const GfxParallelismCaps &caps,
@@ -1169,14 +1168,14 @@ protected:
                                   ConvParallelismPlan & /*plan*/) const {}
 };
 
-class GenericVulkanParallelismStrategy final
-    : public VulkanParallelismStrategyBase {};
+class GenericOpenClParallelismStrategy final
+    : public OpenClParallelismStrategyBase {};
 
-class AdrenoVulkanParallelismStrategy final
-    : public VulkanParallelismStrategyBase {};
+class AdrenoOpenClParallelismStrategy final
+    : public OpenClParallelismStrategyBase {};
 
 class BroadcomV3DParallelismStrategy final
-    : public VulkanParallelismStrategyBase {
+    : public OpenClParallelismStrategyBase {
 protected:
   std::vector<MatMulParallelismPlan>
   enumerate_matmul(const GfxParallelismCaps &caps,
@@ -1258,8 +1257,8 @@ protected:
 const ParallelismStrategy &
 select_parallelism_strategy(const GfxParallelismCaps &caps) {
   static const MetalParallelismStrategy metal_strategy{};
-  static const GenericVulkanParallelismStrategy generic_source_strategy{};
-  static const AdrenoVulkanParallelismStrategy adreno_source_strategy{};
+  static const GenericOpenClParallelismStrategy generic_source_strategy{};
+  static const AdrenoOpenClParallelismStrategy adreno_source_strategy{};
   static const BroadcomV3DParallelismStrategy broadcom_v3d_strategy{};
 
   if (caps.backend == GpuBackend::Metal) {

@@ -41,7 +41,6 @@ void record_gfx_target_profile(const GfxTargetProfile& profile, GfxProfiler* pro
     profiler->set_target_profile(profile);
     profiler->set_counter("target_backend_metal", profile.backend == GpuBackend::Metal ? 1 : 0);
     profiler->set_counter("target_backend_opencl", profile.backend == GpuBackend::OpenCL ? 1 : 0);
-    profiler->set_counter("target_backend_vulkan", profile.backend == GpuBackend::Vulkan ? 1 : 0);
     profiler->set_counter("target_preferred_simd_width", profile.preferred_simd_width);
     profiler->set_counter("target_subgroup_size", profile.subgroup_size);
     profiler->set_counter("target_max_total_threads_per_group", profile.max_total_threads_per_group);

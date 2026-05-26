@@ -27,6 +27,9 @@
 #include "openvino/op/mod.hpp"
 #include "openvino/op/multiply.hpp"
 #include "openvino/op/range.hpp"
+#include "openvino/op/scatter_elements_update.hpp"
+#include "openvino/op/scatter_nd_update.hpp"
+#include "openvino/op/scatter_update.hpp"
 #include "openvino/op/shape_of.hpp"
 #include "openvino/op/select.hpp"
 #include "openvino/op/slice.hpp"
@@ -155,9 +158,9 @@ TEST(GfxBackendProperty, DefaultAndExplicitSelection) {
     register_gfx_plugin(core);
 
     const auto metal_available = ov::gfx_plugin::kGfxBackendMetalAvailable;
-    const auto vulkan_available = ov::gfx_plugin::kGfxBackendVulkanAvailable;
+    const auto opencl_available = ov::gfx_plugin::kGfxBackendOpenCLAvailable;
 
-    if (!metal_available && !vulkan_available) {
+    if (!metal_available && !opencl_available) {
         EXPECT_THROW(core.get_property("GFX", "GFX_BACKEND"), ov::Exception);
         return;
     }
@@ -172,9 +175,9 @@ TEST(GfxBackendProperty, DefaultAndExplicitSelection) {
         EXPECT_THROW(core.set_property("GFX", {{"GFX_BACKEND", "metal"}}), ov::Exception);
     }
 
-    if (vulkan_available) {
+    if (opencl_available) {
         core.set_property("GFX", {{"GFX_BACKEND", "VULKAN"}});
-        EXPECT_EQ(core.get_property("GFX", "GFX_BACKEND").as<std::string>(), "vulkan");
+        EXPECT_EQ(core.get_property("GFX", "GFX_BACKEND").as<std::string>(), "opencl");
     } else {
         EXPECT_THROW(core.set_property("GFX", {{"GFX_BACKEND", "VULKAN"}}), ov::Exception);
     }
@@ -185,7 +188,7 @@ TEST(GfxBackendProperty, CompileModelHonorsBackend) {
     register_gfx_plugin(core);
 
     const auto metal_available = ov::gfx_plugin::kGfxBackendMetalAvailable;
-    const auto vulkan_available = ov::gfx_plugin::kGfxBackendVulkanAvailable;
+    const auto opencl_available = ov::gfx_plugin::kGfxBackendOpenCLAvailable;
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
     auto relu = std::make_shared<ov::op::v0::Relu>(param);
@@ -199,11 +202,11 @@ TEST(GfxBackendProperty, CompileModelHonorsBackend) {
         EXPECT_THROW(core.compile_model(model, "GFX", {{"GFX_BACKEND", "metal"}}), ov::Exception);
     }
 
-    if (vulkan_available) {
-        auto cm_vulkan = core.compile_model(model, "GFX", {{"GFX_BACKEND", "vulkan"}});
-        EXPECT_EQ(cm_vulkan.get_property("GFX_BACKEND").as<std::string>(), "vulkan");
+    if (opencl_available) {
+        auto cm_opencl = core.compile_model(model, "GFX", {{"GFX_BACKEND", "opencl"}});
+        EXPECT_EQ(cm_opencl.get_property("GFX_BACKEND").as<std::string>(), "opencl");
     } else {
-        EXPECT_THROW(core.compile_model(model, "GFX", {{"GFX_BACKEND", "vulkan"}}), ov::Exception);
+        EXPECT_THROW(core.compile_model(model, "GFX", {{"GFX_BACKEND", "opencl"}}), ov::Exception);
     }
 }
 
@@ -211,7 +214,7 @@ TEST(GfxPrecisionProperty, PluginAndCompiledModelHonorExplicitPrecision) {
     ov::Core core;
     register_gfx_plugin(core);
 
-    if (!ov::gfx_plugin::kGfxBackendMetalAvailable && !ov::gfx_plugin::kGfxBackendVulkanAvailable) {
+    if (!ov::gfx_plugin::kGfxBackendMetalAvailable && !ov::gfx_plugin::kGfxBackendOpenCLAvailable) {
         GTEST_SKIP() << "GFX backend unavailable";
     }
 
@@ -300,7 +303,7 @@ TEST(GfxBackendProperty, InferenceWithSelectedBackend) {
     register_gfx_plugin(core);
 
     const auto metal_available = ov::gfx_plugin::kGfxBackendMetalAvailable;
-    const auto vulkan_available = ov::gfx_plugin::kGfxBackendVulkanAvailable;
+    const auto opencl_available = ov::gfx_plugin::kGfxBackendOpenCLAvailable;
 
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
     auto relu = std::make_shared<ov::op::v0::Relu>(param);
@@ -318,15 +321,15 @@ TEST(GfxBackendProperty, InferenceWithSelectedBackend) {
         EXPECT_THROW(core.compile_model(model, "GFX", {{"GFX_BACKEND", "metal"}}), ov::Exception);
     }
 
-    if (vulkan_available) {
-        auto cm = core.compile_model(model, "GFX", {{"GFX_BACKEND", "vulkan"}});
+    if (opencl_available) {
+        auto cm = core.compile_model(model, "GFX", {{"GFX_BACKEND", "opencl"}});
         auto req = cm.create_infer_request();
         ov::Tensor input{ov::element::f32, {1}};
         input.data<float>()[0] = 1.0f;
         req.set_input_tensor(input);
         req.infer();
     } else {
-        EXPECT_THROW(core.compile_model(model, "GFX", {{"GFX_BACKEND", "vulkan"}}), ov::Exception);
+        EXPECT_THROW(core.compile_model(model, "GFX", {{"GFX_BACKEND", "opencl"}}), ov::Exception);
     }
 }
 
@@ -353,12 +356,12 @@ TEST(GfxBackendProperty, LogsBackendSelection) {
     }
 
     testing::internal::CaptureStderr();
-    if (ov::gfx_plugin::kGfxBackendVulkanAvailable) {
-        (void)core.compile_model(model, "GFX", {{"GFX_BACKEND", "vulkan"}});
-        auto log_vulkan = testing::internal::GetCapturedStderr();
-        EXPECT_NE(log_vulkan.find("Selected GFX backend: vulkan"), std::string::npos);
+    if (ov::gfx_plugin::kGfxBackendOpenCLAvailable) {
+        (void)core.compile_model(model, "GFX", {{"GFX_BACKEND", "opencl"}});
+        auto log_opencl = testing::internal::GetCapturedStderr();
+        EXPECT_NE(log_opencl.find("Selected GFX backend: opencl"), std::string::npos);
     } else {
-        EXPECT_THROW(core.compile_model(model, "GFX", {{"GFX_BACKEND", "vulkan"}}), ov::Exception);
+        EXPECT_THROW(core.compile_model(model, "GFX", {{"GFX_BACKEND", "opencl"}}), ov::Exception);
         (void)testing::internal::GetCapturedStderr();
     }
 
@@ -1314,6 +1317,83 @@ TEST(GfxDataMovementSupport, CompileAndInferStaticF32GatherNDI32) {
     request.infer();
 
     expect_f32_tensor(request.get_output_tensor(0), {2, 2}, {2, 3, 4, 5});
+}
+
+TEST(GfxDataMovementSupport, CompileAndInferStaticF32ScatterUpdateI32) {
+    ov::Core core;
+    register_gfx_plugin(core);
+
+    auto data = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 3});
+    auto indices = std::make_shared<ov::op::v0::Parameter>(ov::element::i32, ov::Shape{2});
+    auto updates = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 2});
+    auto axis = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{}, {1});
+    auto scatter = std::make_shared<ov::op::v3::ScatterUpdate>(data, indices, updates, axis);
+    scatter->set_friendly_name("static_f32_scatter_update_i32");
+    auto model = std::make_shared<ov::Model>(
+        ov::ResultVector{std::make_shared<ov::op::v0::Result>(scatter)},
+        ov::ParameterVector{data, indices, updates},
+        "static_f32_scatter_update_i32_infer");
+
+    auto compiled = core.compile_model(model, "GFX");
+    auto request = compiled.create_infer_request();
+    request.set_input_tensor(0, make_f32_tensor({2, 3}, {0, 1, 2, 10, 11, 12}));
+    request.set_input_tensor(1, make_i32_tensor({2}, {2, 0}));
+    request.set_input_tensor(2, make_f32_tensor({2, 2}, {20, 21, 30, 31}));
+
+    request.infer();
+
+    expect_f32_tensor(request.get_output_tensor(0), {2, 3}, {21, 1, 20, 31, 11, 30});
+}
+
+TEST(GfxDataMovementSupport, CompileAndInferStaticF32ScatterElementsI32) {
+    ov::Core core;
+    register_gfx_plugin(core);
+
+    auto data = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 3});
+    auto indices = std::make_shared<ov::op::v0::Parameter>(ov::element::i32, ov::Shape{2, 2});
+    auto updates = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 2});
+    auto axis = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{}, {1});
+    auto scatter = std::make_shared<ov::op::v3::ScatterElementsUpdate>(data, indices, updates, axis);
+    scatter->set_friendly_name("static_f32_scatter_elements_i32");
+    auto model = std::make_shared<ov::Model>(
+        ov::ResultVector{std::make_shared<ov::op::v0::Result>(scatter)},
+        ov::ParameterVector{data, indices, updates},
+        "static_f32_scatter_elements_i32_infer");
+
+    auto compiled = core.compile_model(model, "GFX");
+    auto request = compiled.create_infer_request();
+    request.set_input_tensor(0, make_f32_tensor({2, 3}, {0, 1, 2, 10, 11, 12}));
+    request.set_input_tensor(1, make_i32_tensor({2, 2}, {2, 0, 1, 2}));
+    request.set_input_tensor(2, make_f32_tensor({2, 2}, {20, 21, 30, 31}));
+
+    request.infer();
+
+    expect_f32_tensor(request.get_output_tensor(0), {2, 3}, {21, 1, 20, 10, 30, 31});
+}
+
+TEST(GfxDataMovementSupport, CompileAndInferStaticF32ScatterNDI32) {
+    ov::Core core;
+    register_gfx_plugin(core);
+
+    auto data = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 2, 2});
+    auto indices = std::make_shared<ov::op::v0::Parameter>(ov::element::i32, ov::Shape{2, 2});
+    auto updates = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{2, 2});
+    auto scatter = std::make_shared<ov::op::v3::ScatterNDUpdate>(data, indices, updates);
+    scatter->set_friendly_name("static_f32_scatter_nd_i32");
+    auto model = std::make_shared<ov::Model>(
+        ov::ResultVector{std::make_shared<ov::op::v0::Result>(scatter)},
+        ov::ParameterVector{data, indices, updates},
+        "static_f32_scatter_nd_i32_infer");
+
+    auto compiled = core.compile_model(model, "GFX");
+    auto request = compiled.create_infer_request();
+    request.set_input_tensor(0, make_f32_tensor({2, 2, 2}, {0, 1, 2, 3, 4, 5, 6, 7}));
+    request.set_input_tensor(1, make_i32_tensor({2, 2}, {0, 1, 1, 0}));
+    request.set_input_tensor(2, make_f32_tensor({2, 2}, {20, 21, 30, 31}));
+
+    request.infer();
+
+    expect_f32_tensor(request.get_output_tensor(0), {2, 2, 2}, {0, 1, 20, 21, 30, 31, 6, 7});
 }
 
 TEST(GfxDataMovementSupport, CompileAndInferStaticF16Range) {

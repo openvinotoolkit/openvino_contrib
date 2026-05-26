@@ -29,12 +29,15 @@
 #include "openvino/op/maximum.hpp"
 #include "openvino/op/multiply.hpp"
 #include "openvino/op/prelu.hpp"
+#include "openvino/op/range.hpp"
 #include "openvino/op/reduce_max.hpp"
 #include "openvino/op/reduce_logical_and.hpp"
 #include "openvino/op/reduce_logical_or.hpp"
 #include "openvino/op/reduce_sum.hpp"
 #include "openvino/op/reshape.hpp"
+#include "openvino/op/shape_of.hpp"
 #include "openvino/op/sigmoid.hpp"
+#include "openvino/op/slice.hpp"
 #include "openvino/op/softmax.hpp"
 #include "openvino/op/split.hpp"
 #include "openvino/op/swish.hpp"
@@ -64,10 +67,12 @@
 #include "mlir/msl_codegen_apple_mps.hpp"
 #include "mlir/msl_codegen_apple_msl.hpp"
 #include "mlir/msl_codegen_apple_msl_dispatch.hpp"
+#include "mlir/msl_codegen_apple_msl_shape.hpp"
+#include "mlir/msl_codegen_apple_msl_slice_static.hpp"
+#include "mlir/msl_codegen_apple_msl_split.hpp"
 #include "mlir/msl_codegen_attention.hpp"
 #include "mlir/msl_codegen_matmul_metal.hpp"
 #include "mlir/msl_codegen_matmul_mpsrt.hpp"
-#include "mlir/spirv_kernel_binding_adapter.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
 #include "openvino/op/result.hpp"
@@ -81,10 +86,6 @@
 #include "transforms/pipeline.hpp"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
-#if GFX_BACKEND_VULKAN_AVAILABLE
-#include "mlir/spirv_codegen.hpp"
-#endif
-
 namespace {
 
 ov::gfx_plugin::GfxMpsrtCustomKernelDispatchSpec
@@ -1853,7 +1854,7 @@ TEST(GfxMlir, AppleMpsrtProgramPlanMaterializesExplicitMixedValueEdges) {
 
   auto invalid_plan = program_plan;
   invalid_plan.stages[0].stage.domain =
-      ov::gfx_plugin::GfxStageBackendDomain::Spirv;
+      ov::gfx_plugin::GfxStageBackendDomain::OpenCl;
   auto invalid_module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
   const auto rejected = ov::gfx_plugin::materialize_apple_mpsrt_program_plan(
       invalid_module, invalid_plan);
@@ -2558,7 +2559,7 @@ TEST(GfxMlir, AppleStagePipelineRunsNamedPassBoundariesBeforeTypedProgram) {
       module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_runtime_abi_plan")));
 }
 
-TEST(GfxMlir, SpirvStageManifestDoesNotMaterializeAppleMpsrtOps) {
+TEST(GfxMlir, OpenClStageManifestDoesNotMaterializeAppleMpsrtOps) {
   auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
                                                      ov::Shape{1, 4, 2});
   auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
@@ -2570,13 +2571,13 @@ TEST(GfxMlir, SpirvStageManifestDoesNotMaterializeAppleMpsrtOps) {
   ASSERT_TRUE(module);
 
   const auto plan = ov::gfx_plugin::select_stage_optimization_plan(
-      nullptr, ov::gfx_plugin::GpuBackend::Vulkan, "Multiply", multiply,
+      nullptr, ov::gfx_plugin::GpuBackend::OpenCL, "Multiply", multiply,
       ov::element::f32,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
   ASSERT_EQ(plan.placement.domain,
-            ov::gfx_plugin::GfxStageBackendDomain::Spirv);
+            ov::gfx_plugin::GfxStageBackendDomain::OpenCl);
 
   const auto result = ov::gfx_plugin::run_gfx_apple_stage_pipeline(
       module, plan, "Multiply", "eltwise_main",
@@ -2585,9 +2586,9 @@ TEST(GfxMlir, SpirvStageManifestDoesNotMaterializeAppleMpsrtOps) {
   ASSERT_FALSE(result.typed_program_materialized);
   ASSERT_FALSE(module->hasAttr("gfx.apple.pipeline.placement.backend_domain"));
   ASSERT_EQ(result.stage_plan.stage.domain,
-            ov::gfx_plugin::GfxStageBackendDomain::Spirv);
+            ov::gfx_plugin::GfxStageBackendDomain::OpenCl);
   ASSERT_EQ(result.stage_plan.stage.stage_manifest.backend_domain,
-            ov::gfx_plugin::GfxKernelBackendDomain::Spirv);
+            ov::gfx_plugin::GfxKernelBackendDomain::OpenCl);
   ASSERT_FALSE(static_cast<bool>(
       module.lookupSymbol<mlir::func::FuncOp>("gfx_mpsrt_ops")));
 }
@@ -3234,7 +3235,7 @@ TEST(GfxMlir,
             8u);
 }
 
-TEST(GfxMlir, SpirvMetadataReaderIgnoresAppleMslStageManifest) {
+TEST(GfxMlir, OpenClMetadataReaderIgnoresAppleMslStageManifest) {
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
@@ -3251,32 +3252,32 @@ TEST(GfxMlir, SpirvMetadataReaderIgnoresAppleMslStageManifest) {
       module, manifest_arg_count, "eltwise_fused_buffer"));
   EXPECT_FALSE(ov::gfx_plugin::infer_kernel_arg_count_from_stage_manifest(
       module, manifest_arg_count, "eltwise_fused_buffer",
-      ov::gfx_plugin::GfxKernelBackendDomain::Spirv));
+      ov::gfx_plugin::GfxKernelBackendDomain::OpenCl));
   EXPECT_EQ(ov::gfx_plugin::infer_kernel_arg_count_from_module(
                 module,
                 /*fallback=*/3, "eltwise_fused_buffer",
-                ov::gfx_plugin::GfxKernelBackendDomain::Spirv),
+                ov::gfx_plugin::GfxKernelBackendDomain::OpenCl),
             3u);
 
   const auto metadata = ov::gfx_plugin::extract_kernel_runtime_metadata(
       module,
       /*output_arg_count=*/1,
       /*fallback_input_arg_count=*/2, "eltwise_fused_buffer",
-      ov::gfx_plugin::GfxKernelBackendDomain::Spirv);
+      ov::gfx_plugin::GfxKernelBackendDomain::OpenCl);
   ASSERT_TRUE(metadata.valid);
   EXPECT_EQ(metadata.kernel_input_arg_count, 2u);
   EXPECT_TRUE(metadata.operands.operand_kinds.empty());
   EXPECT_TRUE(metadata.operands.operand_arg_indices.empty());
 }
 
-TEST(GfxMlir, RequiredVulkanCustomKernelBindingAnnotatesStageManifest) {
+TEST(GfxMlir, RequiredOpenClCustomKernelBindingAnnotatesStageManifest) {
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
   const auto plan =
       ov::gfx_plugin::annotate_required_backend_custom_kernel_binding(
           module,
-          /*is_vulkan_backend=*/true, "SquaredDifference", "eltwise_kernel",
+          /*is_opencl_backend=*/true, "SquaredDifference", "eltwise_kernel",
           std::vector<int32_t>{7, 11}, "sqdiff_test");
 
   ASSERT_TRUE(plan.valid);
@@ -3285,7 +3286,7 @@ TEST(GfxMlir, RequiredVulkanCustomKernelBindingAnnotatesStageManifest) {
       module
           ->getAttrOfType<mlir::StringAttr>("gfx.stage_manifest.backend_domain")
           .str(),
-      "spirv");
+      "opencl");
   ASSERT_TRUE(
       module->hasAttr("gfx.stage_manifest.kernel.external_buffer_abi.roles"));
   ASSERT_TRUE(module->hasAttr("gfx.kernel_operand_kinds"));
@@ -3295,7 +3296,7 @@ TEST(GfxMlir, RequiredVulkanCustomKernelBindingAnnotatesStageManifest) {
       module,
       /*output_arg_count=*/1,
       /*fallback_input_arg_count=*/999, "eltwise_fused_buffer",
-      ov::gfx_plugin::GfxKernelBackendDomain::Spirv);
+      ov::gfx_plugin::GfxKernelBackendDomain::OpenCl);
   ASSERT_TRUE(metadata.valid);
   EXPECT_EQ(metadata.kernel_input_arg_count,
             plan.runtime_binding.input_arg_count);
@@ -3306,7 +3307,7 @@ TEST(GfxMlir, RequiredVulkanCustomKernelBindingAnnotatesStageManifest) {
   EXPECT_EQ(metadata.operands.scalar_args, std::vector<int32_t>({7, 11}));
 }
 
-TEST(GfxMlir, VulkanLinearBinaryCustomKernelUsesRuntimeParamManifest) {
+TEST(GfxMlir, OpenClLinearBinaryCustomKernelUsesRuntimeParamManifest) {
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
@@ -3317,8 +3318,8 @@ TEST(GfxMlir, VulkanLinearBinaryCustomKernelUsesRuntimeParamManifest) {
            ov::gfx_plugin::GfxKernelBufferRole::TensorInput,
            ov::gfx_plugin::GfxKernelBufferRole::RuntimeParams,
            ov::gfx_plugin::GfxKernelBufferRole::TensorOutput},
-          ov::gfx_plugin::GfxKernelBackendDomain::Spirv,
-          ov::gfx_plugin::GfxKernelStorageKind::Buffer, "spirv:buffer:");
+          ov::gfx_plugin::GfxKernelBackendDomain::OpenCl,
+          ov::gfx_plugin::GfxKernelStorageKind::Buffer, "opencl:buffer:");
   ASSERT_TRUE(plan.valid);
   ASSERT_TRUE(
       ov::gfx_plugin::annotate_backend_custom_kernel_module_with_binding_plan(
@@ -3334,7 +3335,7 @@ TEST(GfxMlir, VulkanLinearBinaryCustomKernelUsesRuntimeParamManifest) {
       module,
       /*output_arg_count=*/1,
       /*fallback_input_arg_count=*/999, "linear_binary",
-      ov::gfx_plugin::GfxKernelBackendDomain::Spirv);
+      ov::gfx_plugin::GfxKernelBackendDomain::OpenCl);
   ASSERT_TRUE(metadata.valid);
   EXPECT_EQ(metadata.kernel_input_arg_count, 3u);
   EXPECT_EQ(metadata.operands.operand_kinds,
@@ -3344,17 +3345,17 @@ TEST(GfxMlir, VulkanLinearBinaryCustomKernelUsesRuntimeParamManifest) {
   EXPECT_EQ(ov::gfx_plugin::infer_kernel_arg_count_from_module(
                 module,
                 /*fallback=*/999, "linear_binary",
-                ov::gfx_plugin::GfxKernelBackendDomain::Spirv),
+                ov::gfx_plugin::GfxKernelBackendDomain::OpenCl),
             4u);
 }
 
-TEST(GfxMlir, SpirvCustomKernelArgCountIncludesScalarRoles) {
+TEST(GfxMlir, OpenClCustomKernelArgCountIncludesScalarRoles) {
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
   auto plan = ov::gfx_plugin::make_backend_custom_kernel_binding_plan(
-      "Add", "eltwise_kernel", ov::gfx_plugin::GfxKernelBackendDomain::Spirv,
-      ov::gfx_plugin::GfxKernelStorageKind::Buffer, "spirv:buffer:");
+      "Add", "eltwise_kernel", ov::gfx_plugin::GfxKernelBackendDomain::OpenCl,
+      ov::gfx_plugin::GfxKernelStorageKind::Buffer, "opencl:buffer:");
   ASSERT_TRUE(plan.valid);
   ASSERT_EQ(plan.scalar_arg_count, 2u);
   ASSERT_TRUE(
@@ -3364,7 +3365,7 @@ TEST(GfxMlir, SpirvCustomKernelArgCountIncludesScalarRoles) {
   size_t manifest_arg_count = 0;
   ASSERT_TRUE(ov::gfx_plugin::infer_kernel_arg_count_from_stage_manifest(
       module, manifest_arg_count, "gfx_kernel",
-      ov::gfx_plugin::GfxKernelBackendDomain::Spirv));
+      ov::gfx_plugin::GfxKernelBackendDomain::OpenCl));
   EXPECT_EQ(manifest_arg_count, plan.runtime_binding.operand_kinds.size());
 
   ov::gfx_plugin::KernelSource source;
@@ -3471,7 +3472,7 @@ TEST(GfxMlir, FixedArgRuntimeMetadataIsRejectedWithoutManifest) {
 }
 
 TEST(GfxMlir,
-     SpirvStageManifestSuppliesKernelRuntimeMetadataWithoutLegacyAttrs) {
+     OpenClStageManifestSuppliesKernelRuntimeMetadataWithoutLegacyAttrs) {
   mlir::MLIRContext ctx;
   auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
 
@@ -3483,8 +3484,8 @@ TEST(GfxMlir,
            ov::gfx_plugin::GfxKernelBufferRole::TensorInput,
            ov::gfx_plugin::GfxKernelBufferRole::RuntimeParams,
            ov::gfx_plugin::GfxKernelBufferRole::TensorOutput},
-          ov::gfx_plugin::GfxKernelBackendDomain::Spirv,
-          ov::gfx_plugin::GfxKernelStorageKind::Buffer, "spirv:buffer:");
+          ov::gfx_plugin::GfxKernelBackendDomain::OpenCl,
+          ov::gfx_plugin::GfxKernelStorageKind::Buffer, "opencl:buffer:");
   ASSERT_TRUE(plan.valid);
   ASSERT_TRUE(
       ov::gfx_plugin::annotate_backend_custom_kernel_module_with_binding_plan(
@@ -3505,93 +3506,6 @@ TEST(GfxMlir,
                                                                /*fallback=*/999,
                                                                "select_kernel"),
             5u);
-}
-
-TEST(GfxMlir, SpirvFinalAdapterAttrsOverridePreLoweringConv2DManifestBinding) {
-  mlir::MLIRContext ctx;
-  auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
-
-  const auto plan =
-      ov::gfx_plugin::make_backend_custom_kernel_roles_binding_plan(
-          "Convolution", "conv2d_kernel",
-          {ov::gfx_plugin::GfxKernelBufferRole::TensorInput,
-           ov::gfx_plugin::GfxKernelBufferRole::ConstTensor,
-           ov::gfx_plugin::GfxKernelBufferRole::RuntimeParams,
-           ov::gfx_plugin::GfxKernelBufferRole::TensorOutput},
-          ov::gfx_plugin::GfxKernelBackendDomain::Spirv,
-          ov::gfx_plugin::GfxKernelStorageKind::Buffer, "spirv:buffer:");
-  ASSERT_TRUE(plan.valid);
-  ASSERT_TRUE(
-      ov::gfx_plugin::annotate_backend_custom_kernel_module_with_binding_plan(
-          module, plan));
-
-  ov::gfx_plugin::replace_spirv_kernel_binding_attrs(
-      module,
-      /*operand_kinds=*/{0, 0, 0, 0, 1, 1, 0, 0, 1},
-      /*operand_arg_indices=*/{0, 1, 2, 3, 4, 5, 6, 7, 8},
-      /*scalar_values=*/{28, 28, 3, 3, 1, 0},
-      /*scalar_args=*/{28, 28, 3, 3, 1, 0});
-
-  const auto metadata = ov::gfx_plugin::extract_kernel_runtime_metadata(
-      module,
-      /*output_arg_count=*/1,
-      /*fallback_input_arg_count=*/999, "conv2d_kernel",
-      ov::gfx_plugin::GfxKernelBackendDomain::Spirv);
-  ASSERT_TRUE(metadata.valid);
-  EXPECT_EQ(metadata.kernel_input_arg_count, 8u);
-  EXPECT_EQ(metadata.operands.operand_kinds,
-            std::vector<int32_t>({0, 0, 0, 0, 1, 1, 0, 0, 1}));
-  EXPECT_EQ(metadata.operands.operand_arg_indices,
-            std::vector<int32_t>({0, 1, 2, 3, 4, 5, 6, 7, 8}));
-  EXPECT_EQ(metadata.operands.scalar_args,
-            std::vector<int32_t>({28, 28, 3, 3, 1, 0}));
-  EXPECT_EQ(ov::gfx_plugin::infer_kernel_arg_count_from_module(
-                module,
-                /*fallback=*/999, "conv2d_kernel",
-                ov::gfx_plugin::GfxKernelBackendDomain::Spirv),
-            9u);
-}
-
-TEST(GfxMlir, SpirvFinalAdapterArgCountIncludesNegativeIndexedScalars) {
-  mlir::MLIRContext ctx;
-  auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
-
-  const auto plan =
-      ov::gfx_plugin::make_backend_custom_kernel_roles_binding_plan(
-          "Convolution", "conv2d_kernel",
-          {ov::gfx_plugin::GfxKernelBufferRole::TensorInput,
-           ov::gfx_plugin::GfxKernelBufferRole::ConstTensor,
-           ov::gfx_plugin::GfxKernelBufferRole::TensorOutput},
-          ov::gfx_plugin::GfxKernelBackendDomain::Spirv,
-          ov::gfx_plugin::GfxKernelStorageKind::Buffer, "spirv:buffer:");
-  ASSERT_TRUE(plan.valid);
-  ASSERT_TRUE(
-      ov::gfx_plugin::annotate_backend_custom_kernel_module_with_binding_plan(
-          module, plan));
-
-  ov::gfx_plugin::replace_spirv_kernel_binding_attrs(
-      module,
-      /*operand_kinds=*/{0, 0, 1, 1, 0, 1},
-      /*operand_arg_indices=*/{-1, -1, 0, 1, -1, 2},
-      /*scalar_values=*/{7, 11, 13},
-      /*scalar_args=*/{7, 11, 13});
-
-  const auto metadata = ov::gfx_plugin::extract_kernel_runtime_metadata(
-      module,
-      /*output_arg_count=*/1,
-      /*fallback_input_arg_count=*/999, "conv2d_kernel",
-      ov::gfx_plugin::GfxKernelBackendDomain::Spirv);
-  ASSERT_TRUE(metadata.valid);
-  EXPECT_EQ(metadata.kernel_input_arg_count, 2u);
-  EXPECT_EQ(metadata.operands.operand_kinds,
-            std::vector<int32_t>({0, 0, 1, 1, 0, 1}));
-  EXPECT_EQ(metadata.operands.operand_arg_indices,
-            std::vector<int32_t>({-1, -1, 0, 1, -1, 2}));
-  EXPECT_EQ(ov::gfx_plugin::infer_kernel_arg_count_from_module(
-                module,
-                /*fallback=*/999, "conv2d_kernel",
-                ov::gfx_plugin::GfxKernelBackendDomain::Spirv),
-            6u);
 }
 
 TEST(GfxMlir, AppleMslArgCountCanUseStageManifestWithoutMlirEntryMatch) {
@@ -3787,7 +3701,7 @@ TEST(GfxMlir, TileBuilderAcceptsStaticRankRuntimeRepeatsForMslKernelAbi) {
 
   const auto binding =
       ov::gfx_plugin::annotate_required_backend_custom_kernel_binding(
-          module, /*is_vulkan_backend=*/false, "Tile", "tile_kernel", {0, 3},
+          module, /*is_opencl_backend=*/false, "Tile", "tile_kernel", {0, 3},
           "dynamic_tile_stage");
   ASSERT_TRUE(binding.valid);
   EXPECT_EQ(binding.runtime_binding.operand_kinds,
@@ -3796,49 +3710,129 @@ TEST(GfxMlir, TileBuilderAcceptsStaticRankRuntimeRepeatsForMslKernelAbi) {
             std::vector<int32_t>({0, 5, -1, -1, 1, 2, 3, 4}));
 }
 
-#if GFX_BACKEND_VULKAN_AVAILABLE
-TEST(GfxMlir, TileSpirvLoweringPreservesCompactCustomKernelRuntimeMapping) {
-  auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::i64,
-                                                       ov::Shape{1, 300, 1});
-  auto repeats = ov::op::v0::Constant::create(ov::element::i64,
-                                              ov::Shape{3},
-                                              {1, 1, 80});
-  auto tile = std::make_shared<ov::op::v0::Tile>(input, repeats);
-  auto result = std::make_shared<ov::op::v0::Result>(tile);
-  auto model = std::make_shared<ov::Model>(ov::ResultVector{result},
-                                           ov::ParameterVector{input});
-
+TEST(GfxMlir, AppleShapeRangeTileAndConcatSourcePlansOwnManifestAbi) {
   mlir::MLIRContext ctx;
-  auto module = ov::gfx_plugin::build_mlir_tile_from_model(model, ctx);
-  ASSERT_TRUE(module);
-  auto binding = ov::gfx_plugin::annotate_required_backend_custom_kernel_binding(
-      module,
-      /*is_vulkan_backend=*/true,
-      "Tile",
-      "tile_kernel",
-      {24000, 3},
-      "tile_stage");
-  ASSERT_TRUE(binding.valid);
-  const std::vector<int32_t> expected_plan_arg_indices{0, 5, -1, -1, 1, 2, 3, 4};
-  ASSERT_EQ(binding.runtime_binding.operand_arg_indices, expected_plan_arg_indices);
 
-  std::string log;
-  auto spirv = ov::gfx_plugin::lower_to_spirv(module, "tile_main", &log);
-  ASSERT_FALSE(spirv.empty()) << log;
-  std::string lowered_text;
-  llvm::raw_string_ostream lowered_os(lowered_text);
-  module.print(lowered_os);
-  EXPECT_EQ(lowered_text.find("Int64"), std::string::npos);
-  EXPECT_EQ(lowered_text.find("xi64"), std::string::npos);
-  // SPIR-V lowering rewrites the high-level custom-kernel binding into the
-  // compact launch ABI order. The runtime metadata must follow the lowered
-  // launch operands, not the pre-lowering logical plan.
-  EXPECT_EQ(ov::gfx_plugin::extract_kernel_operand_arg_indices(module),
-            std::vector<int32_t>({-1, -1, 3, 2, 4, -1, 0, 5}));
-  EXPECT_EQ(ov::gfx_plugin::extract_kernel_operand_kinds(module),
-            std::vector<int32_t>({0, 0, 1, 1, 1, 0, 1, 1}));
+  auto concat_lhs = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f16, ov::Shape{1, 2, 4});
+  auto concat_rhs = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f16, ov::Shape{1, 3, 4});
+  auto concat = std::make_shared<ov::op::v0::Concat>(
+      ov::OutputVector{concat_lhs, concat_rhs}, 1);
+  auto concat_result = std::make_shared<ov::op::v0::Result>(concat);
+  auto concat_model = std::make_shared<ov::Model>(
+      ov::ResultVector{concat_result},
+      ov::ParameterVector{concat_lhs, concat_rhs});
+  auto concat_module =
+      ov::gfx_plugin::build_mlir_concat_from_model(concat_model, ctx);
+  ASSERT_TRUE(concat_module);
+
+  auto concat_source_plan =
+      ov::gfx_plugin::make_concat_msl_kernel_source_plan(concat,
+                                                         concat_module);
+  ASSERT_TRUE(concat_source_plan.valid());
+  EXPECT_FALSE(static_cast<bool>(concat_source_plan.source.module));
+  EXPECT_EQ(concat_source_plan.source.entry_point, "concat_kernel");
+  EXPECT_EQ(concat_source_plan.source.signature.arg_count, 3u);
+  EXPECT_EQ(concat_source_plan.source.signature.output_arg_count, 1u);
+  EXPECT_EQ(concat_source_plan.binding.runtime_binding.inputs,
+            std::vector<size_t>({0, 1}));
+  EXPECT_EQ(concat_source_plan.binding.runtime_binding.input_arg_count, 2u);
+  EXPECT_EQ(concat_source_plan.binding.runtime_binding.operand_kinds,
+            std::vector<int32_t>({1, 1, 1}));
+  EXPECT_EQ(concat_source_plan.binding.runtime_binding.operand_arg_indices,
+            std::vector<int32_t>({0, 1, 2}));
+  EXPECT_NE(
+      concat_source_plan.source.msl_source.find("kernel void concat_kernel"),
+      std::string::npos);
+
+  auto shape_input = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f16, ov::Shape{1, 2, 64});
+  auto shape_of =
+      std::make_shared<ov::op::v3::ShapeOf>(shape_input, ov::element::i64);
+  auto shape_result = std::make_shared<ov::op::v0::Result>(shape_of);
+  auto shape_model = std::make_shared<ov::Model>(
+      ov::ResultVector{shape_result}, ov::ParameterVector{shape_input});
+  auto shape_module =
+      ov::gfx_plugin::build_mlir_shapeof_from_model(shape_model, ctx);
+  ASSERT_TRUE(shape_module);
+
+  auto shape_source_plan =
+      ov::gfx_plugin::make_shapeof_msl_kernel_source_plan(shape_of,
+                                                          shape_module);
+  ASSERT_TRUE(shape_source_plan.valid());
+  EXPECT_FALSE(static_cast<bool>(shape_source_plan.source.module));
+  EXPECT_EQ(shape_source_plan.source.entry_point, "shapeof_kernel");
+  EXPECT_EQ(shape_source_plan.source.signature.arg_count, 4u);
+  EXPECT_EQ(shape_source_plan.source.signature.output_arg_count, 1u);
+  EXPECT_EQ(shape_source_plan.binding.runtime_binding.scalar_args,
+            std::vector<int32_t>({3}));
+  EXPECT_EQ(shape_source_plan.binding.runtime_binding.operand_kinds,
+            std::vector<int32_t>({1, 1, 0, 1}));
+  EXPECT_EQ(shape_source_plan.binding.runtime_binding.operand_arg_indices,
+            std::vector<int32_t>({0, 2, -1, 1}));
+  EXPECT_NE(
+      shape_source_plan.source.msl_source.find("kernel void shapeof_kernel"),
+      std::string::npos);
+
+  auto tile_input = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f32, ov::Shape{2, 3});
+  auto repeats =
+      ov::op::v0::Constant::create(ov::element::i64, ov::Shape{2}, {1, 2});
+  auto tile = std::make_shared<ov::op::v0::Tile>(tile_input, repeats);
+  auto tile_result = std::make_shared<ov::op::v0::Result>(tile);
+  auto tile_model = std::make_shared<ov::Model>(
+      ov::ResultVector{tile_result}, ov::ParameterVector{tile_input});
+  auto tile_module = ov::gfx_plugin::build_mlir_tile_from_model(tile_model, ctx);
+  ASSERT_TRUE(tile_module);
+
+  auto tile_source_plan =
+      ov::gfx_plugin::make_tile_msl_kernel_source_plan(tile, tile_module);
+  ASSERT_TRUE(tile_source_plan.valid());
+  EXPECT_FALSE(static_cast<bool>(tile_source_plan.source.module));
+  EXPECT_EQ(tile_source_plan.source.entry_point, "tile_kernel");
+  EXPECT_EQ(tile_source_plan.source.signature.arg_count, 8u);
+  EXPECT_EQ(tile_source_plan.source.signature.output_arg_count, 1u);
+  EXPECT_EQ(tile_source_plan.binding.runtime_binding.scalar_args,
+            std::vector<int32_t>({12, 2}));
+  EXPECT_EQ(tile_source_plan.binding.runtime_binding.operand_kinds,
+            std::vector<int32_t>({1, 1, 0, 0, 1, 1, 1, 1}));
+  EXPECT_EQ(tile_source_plan.binding.runtime_binding.operand_arg_indices,
+            std::vector<int32_t>({0, 5, -1, -1, 1, 2, 3, 4}));
+  EXPECT_NE(tile_source_plan.source.msl_source.find("constant uint& NUM_ELEMS"),
+            std::string::npos);
+
+  auto start =
+      ov::op::v0::Constant::create(ov::element::f32, ov::Shape{}, {0.0f});
+  auto stop =
+      ov::op::v0::Constant::create(ov::element::f32, ov::Shape{}, {10.0f});
+  auto step =
+      ov::op::v0::Constant::create(ov::element::f32, ov::Shape{}, {2.0f});
+  auto range =
+      std::make_shared<ov::op::v4::Range>(start, stop, step, ov::element::f32);
+  auto range_result = std::make_shared<ov::op::v0::Result>(range);
+  auto range_model = std::make_shared<ov::Model>(
+      ov::ResultVector{range_result}, ov::ParameterVector{});
+  auto range_module =
+      ov::gfx_plugin::build_mlir_range_from_model(range_model, ctx);
+  ASSERT_TRUE(range_module);
+
+  auto range_source_plan =
+      ov::gfx_plugin::make_range_msl_kernel_source_plan(range, range_module);
+  ASSERT_TRUE(range_source_plan.valid());
+  EXPECT_FALSE(static_cast<bool>(range_source_plan.source.module));
+  EXPECT_EQ(range_source_plan.source.entry_point, "range_kernel");
+  EXPECT_EQ(range_source_plan.source.signature.arg_count, 5u);
+  EXPECT_EQ(range_source_plan.source.signature.output_arg_count, 1u);
+  EXPECT_EQ(range_source_plan.binding.runtime_binding.scalar_args,
+            std::vector<int32_t>({5}));
+  EXPECT_EQ(range_source_plan.binding.runtime_binding.operand_kinds,
+            std::vector<int32_t>({1, 1, 1, 1, 0}));
+  EXPECT_EQ(range_source_plan.binding.runtime_binding.operand_arg_indices,
+            std::vector<int32_t>({0, 1, 2, 3, -1}));
+  EXPECT_NE(range_source_plan.source.msl_source.find("kernel void range_kernel"),
+            std::string::npos);
 }
-#endif
 
 TEST(GfxMlir, TypedMslStageManifestSuppliesRuntimeMetadataOverExternalAbi) {
   mlir::MLIRContext ctx;
@@ -4105,7 +4099,7 @@ TEST(GfxMlir, StageKernelBindingHelpersOwnDirectAndCustomRuntimeBinding) {
 
   const auto custom =
       ov::gfx_plugin::require_stage_backend_custom_kernel_runtime_binding(
-          /*is_vulkan_backend=*/false, "Tile", "tile_kernel", {16, 4},
+          /*is_opencl_backend=*/false, "Tile", "tile_kernel", {16, 4},
           "tile_stage");
   EXPECT_EQ(custom.scalar_args, std::vector<int32_t>({16, 4}));
   EXPECT_EQ(custom.operand_kinds,
@@ -4201,6 +4195,29 @@ TEST(GfxMlir, MslStaticSliceDirectIoManifestMatchesInlineConstants) {
       source, plan));
   EXPECT_EQ(source.signature.arg_count, 2u);
   EXPECT_EQ(source.signature.output_arg_count, 1u);
+
+  auto data =
+      std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
+                                              ov::Shape{2, 3, 4});
+  auto slice = std::make_shared<ov::op::v8::Slice>(
+      data, ov::op::v0::Constant::create(ov::element::i64, {3}, {0, 1, 0}),
+      ov::op::v0::Constant::create(ov::element::i64, {3}, {2, 3, 4}),
+      ov::op::v0::Constant::create(ov::element::i64, {3}, {1, 1, 2}),
+      ov::op::v0::Constant::create(ov::element::i64, {3}, {0, 1, 2}));
+  auto source_module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx));
+  auto source_plan =
+      ov::gfx_plugin::make_direct_static_slice_msl_kernel_source_plan(
+          slice, ov::element::f32, source_module);
+  ASSERT_TRUE(source_plan.valid());
+  EXPECT_EQ(source_plan.source.signature.arg_count, 2u);
+  EXPECT_EQ(source_plan.source.signature.output_arg_count, 1u);
+  EXPECT_EQ(source_plan.binding.runtime_binding.input_arg_count, 1u);
+  EXPECT_EQ(source_plan.binding.runtime_binding.operand_arg_indices,
+            std::vector<int32_t>({0, 1}));
+  EXPECT_NE(source_plan.source.msl_source.find("constant uint TOTAL_C"),
+            std::string::npos);
+  EXPECT_EQ(source_plan.source.msl_source.find("constant uint& TOTAL"),
+            std::string::npos);
 }
 
 TEST(GfxMlir, StageManifestSuppliesElementwiseRoleAbiWithoutLegacyMpsrtAttrs) {
@@ -4721,7 +4738,7 @@ TEST(GfxMlir, MslSourcePlanKeepsSourceBindingWhenLegacySignatureIsWider) {
   const auto source_binding =
       ov::gfx_plugin::make_backend_custom_kernel_source_binding_plan(
           source,
-          /*is_vulkan_backend=*/false, "Add", source.entry_point);
+          /*is_opencl_backend=*/false, "Add", source.entry_point);
   ASSERT_TRUE(source_binding.valid);
 
   auto source_plan = ov::gfx_plugin::make_msl_generated_custom_kernel_source_plan(
@@ -4949,6 +4966,7 @@ TEST(GfxMlir, AppleMslStructuralArgCountsComeFromStageManifest) {
   const std::vector<Case> cases = {
       {"ShapeOf", "shapeof_kernel", {0}, 4u},
       {"Tile", "tile_kernel", {16, 4}, 8u},
+      {"Gather", "gather_kernel", {}, 4u},
       {"GatherND", "gathernd_kernel", {}, 4u},
       {"GatherElements", "gather_elements_kernel", {}, 4u},
       {"MaxPool", "pool2d_kernel", {}, 3u},
@@ -4987,6 +5005,7 @@ TEST(GfxMlir, MslKernelSourceSignatureCanBeConfiguredFromModuleManifest) {
   };
   const std::vector<Case> cases = {
       {"Convert", "convert_kernel", {16}, 3u, 1u},
+      {"Gather", "gather_kernel", {}, 4u, 1u},
       {"GatherND", "gathernd_kernel", {}, 4u, 1u},
       {"GatherElements", "gather_elements_kernel", {}, 4u, 1u},
       {"Tile", "tile_kernel", {16, 4}, 8u, 1u},
@@ -5325,117 +5344,6 @@ TEST(GfxMlir, CompactAbiPreserveRequiresSameLaunchOperandKinds) {
   EXPECT_TRUE(ov::gfx_plugin::compact_kernel_operand_layout_matches_launch(
       existing_buffer_only_kinds, existing_indices, existing_buffer_only_kinds));
 }
-
-#if GFX_BACKEND_VULKAN_AVAILABLE
-TEST(GfxMlir, MatMulCompactAbiSpirvLoweringExpandsOperandMetadata) {
-  auto lhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
-                                                     ov::Shape{4, 2, 32, 400});
-  auto rhs = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
-                                                     ov::Shape{4, 2, 32, 400});
-  auto matmul = std::make_shared<ov::op::v0::MatMul>(lhs, rhs, true, false);
-
-  auto &ctx = ov::gfx_plugin::gfx_mlir_context();
-  auto module = ov::gfx_plugin::build_mlir_for_node(matmul, ctx);
-  ASSERT_TRUE(module);
-
-  const auto plan =
-      ov::gfx_plugin::make_backend_custom_kernel_direct_io_binding_plan(
-          "MatMul", "gfx_kernel",
-          /*tensor_input_count=*/2,
-          /*output_count=*/1, ov::gfx_plugin::GfxKernelBackendDomain::Spirv,
-          ov::gfx_plugin::GfxKernelStorageKind::Buffer, "spirv:buffer:");
-  ASSERT_TRUE(plan.valid);
-  ASSERT_TRUE(
-      ov::gfx_plugin::annotate_backend_custom_kernel_module_with_binding_plan(
-          module, plan));
-  ASSERT_TRUE(
-      module->hasAttr("gfx.stage_manifest.kernel.external_buffer_abi.valid"));
-  ASSERT_TRUE(module->hasAttr(
-      "gfx.stage_manifest.kernel.external_buffer_abi.direct_input_count"));
-  ASSERT_TRUE(module->hasAttr(
-      "gfx.stage_manifest.kernel.external_buffer_abi.direct_output_count"));
-  ASSERT_FALSE(module->hasAttr("gfx.fixed_arg_count"));
-
-  std::string log;
-  const auto spirv = ov::gfx_plugin::lower_to_spirv(module, "gfx_kernel", &log);
-  ASSERT_FALSE(spirv.empty()) << log;
-  ASSERT_FALSE(module->hasAttr("gfx.fixed_arg_count"));
-
-  const auto kinds = ov::gfx_plugin::extract_kernel_operand_kinds(module);
-  const auto arg_indices =
-      ov::gfx_plugin::extract_kernel_operand_arg_indices(module);
-  const auto scalar_values =
-      ov::gfx_plugin::extract_kernel_scalar_values(module);
-
-  ASSERT_EQ(kinds.size(), 9u);
-  ASSERT_EQ(arg_indices.size(), 9u);
-  ASSERT_EQ(scalar_values.size(), 6u);
-
-  EXPECT_EQ(kinds, std::vector<int32_t>({0, 0, 0, 0, 1, 1, 0, 0, 1}));
-  EXPECT_EQ(arg_indices,
-            std::vector<int32_t>({-1, -1, -1, -1, 2, 0, -1, -1, 1}));
-  EXPECT_EQ(scalar_values, std::vector<int32_t>({1, 0, 8, 400, 32, 0}));
-}
-
-TEST(GfxMlir, DepthwiseGroupConvCompactAbiSpirvLoweringUsesLaunchOperandLayout) {
-  auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32,
-                                                       ov::Shape{1, 8, 20, 20});
-  std::vector<float> weights_data(8 * 1 * 1 * 3 * 3, 0.1f);
-  auto weights = ov::op::v0::Constant::create(ov::element::f32,
-                                              ov::Shape{8, 1, 1, 3, 3},
-                                              weights_data);
-  auto gconv = std::make_shared<ov::op::v1::GroupConvolution>(
-      input,
-      weights,
-      ov::Strides{1, 1},
-      ov::CoordinateDiff{1, 1},
-      ov::CoordinateDiff{1, 1},
-      ov::Strides{1, 1});
-  auto result = std::make_shared<ov::op::v0::Result>(gconv);
-  auto model = std::make_shared<ov::Model>(ov::ResultVector{result},
-                                           ov::ParameterVector{input},
-                                           "depthwise_group_conv_spirv_abi");
-
-  auto &ctx = ov::gfx_plugin::gfx_mlir_context();
-  auto module = ov::gfx_plugin::build_mlir_group_conv2d_from_model(model, ctx);
-  ASSERT_TRUE(module);
-  module->setAttr("gfx.conv_algorithm_kind",
-                  mlir::StringAttr::get(&ctx, "depthwise_direct"));
-  module->setAttr("gfx.prefer_parallel", mlir::BoolAttr::get(&ctx, true));
-
-  auto plan = ov::gfx_plugin::annotate_required_backend_custom_kernel_abi_binding(
-      module, /*is_vulkan_backend=*/true, "GroupConvolution", "conv2d_kernel",
-      "depthwise_group_conv_spirv_abi");
-  ASSERT_TRUE(plan.valid);
-  ASSERT_EQ(ov::gfx_plugin::extract_kernel_operand_kinds(module),
-            std::vector<int32_t>({1, 1, 1, 1, 1, 1, 1, 1, 1}));
-
-  std::string log;
-  const auto spirv =
-      ov::gfx_plugin::lower_to_spirv(module, "group_conv2d_main", &log);
-  ASSERT_FALSE(spirv.empty()) << log;
-
-  const auto kinds = ov::gfx_plugin::extract_kernel_operand_kinds(module);
-  const auto arg_indices =
-      ov::gfx_plugin::extract_kernel_operand_arg_indices(module);
-  const auto scalar_values =
-      ov::gfx_plugin::extract_kernel_scalar_values(module);
-
-  EXPECT_EQ(kinds, std::vector<int32_t>({0, 0, 0, 0, 0, 1, 1, 0, 0, 1}));
-  ASSERT_EQ(arg_indices.size(), kinds.size());
-  for (size_t i = 0; i < kinds.size(); ++i) {
-    if (kinds[i] == 0) {
-      EXPECT_EQ(arg_indices[i], -1) << "scalar operand " << i;
-    }
-  }
-  EXPECT_EQ(arg_indices[5], 1);
-  EXPECT_EQ(arg_indices[6], 0);
-  EXPECT_EQ(arg_indices[9], 2);
-  EXPECT_EQ(scalar_values.size(),
-            static_cast<size_t>(
-                std::count(kinds.begin(), kinds.end(), int32_t{0})));
-}
-#endif
 
 TEST(GfxMlir, BiasBroadcastAddI32MlirLoweringUsesGenericAddPath) {
   auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::i32,

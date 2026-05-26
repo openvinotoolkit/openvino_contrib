@@ -9,6 +9,7 @@
 #include <memory>
 #include <sstream>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "mlir/codegen_common.hpp"
@@ -25,6 +26,90 @@
 
 namespace ov {
 namespace gfx_plugin {
+namespace {
+
+ConcatCodegenDesc make_concat_msl_codegen_desc(
+    const std::shared_ptr<const ov::op::v0::Concat> &concat) {
+  OPENVINO_ASSERT(concat, "GFX Metal Concat: node is null");
+  ConcatCodegenDesc desc{};
+  desc.element_type = concat->get_output_element_type(0);
+  const auto out_pshape = concat->get_output_partial_shape(0);
+  OPENVINO_ASSERT(out_pshape.rank().is_static(),
+                  "GFX Metal Concat: output rank must be static");
+  const size_t rank = static_cast<size_t>(out_pshape.rank().get_length());
+  OPENVINO_ASSERT(rank > 0, "GFX Metal Concat: output rank must be positive");
+  const size_t axis =
+      normalize_axis(concat->get_axis(), rank, "GFX Metal Concat");
+  desc.inner = 1;
+  desc.outer = 1;
+  desc.axis_total = 1;
+  const auto out_shape = out_pshape.to_shape();
+  for (size_t i = 0; i < axis; ++i) {
+    desc.outer *= out_shape[i];
+  }
+  for (size_t i = axis + 1; i < out_shape.size(); ++i) {
+    desc.inner *= out_shape[i];
+  }
+  desc.axis_total = out_shape[axis];
+  desc.input_axis_lengths.reserve(concat->get_input_size());
+  for (size_t input_idx = 0; input_idx < concat->get_input_size();
+       ++input_idx) {
+    OPENVINO_ASSERT(concat->get_input_partial_shape(input_idx).is_static(),
+                    "GFX Metal Concat: input shape must be static");
+    const auto input_shape = concat->get_input_shape(input_idx);
+    OPENVINO_ASSERT(input_shape.size() == rank,
+                    "GFX Metal Concat: input rank mismatch");
+    desc.input_axis_lengths.push_back(input_shape[axis]);
+  }
+  return desc;
+}
+
+} // namespace
+
+GfxMslGeneratedKernelSourcePlan make_direct_concat_msl_kernel_source_plan(
+    KernelSource source, const ConcatCodegenDesc &desc) {
+  if (desc.input_axis_lengths.empty() || desc.outer == 0 || desc.inner == 0 ||
+      desc.axis_total == 0) {
+    return {};
+  }
+
+  auto binding = make_backend_custom_kernel_direct_io_binding_plan(
+      "Concat", "concat_kernel", desc.input_axis_lengths.size(), 1);
+  if (!binding.valid) {
+    return {};
+  }
+
+  source.entry_point = "concat_kernel";
+  source.msl_source.clear();
+  source.msl_generator = [desc](mlir::ModuleOp module) mutable {
+    return generate_msl_from_mlir(module, desc);
+  };
+  return make_msl_generated_custom_kernel_source_plan(std::move(source),
+                                                      binding);
+}
+
+GfxMslGeneratedKernelSourcePlan make_concat_msl_kernel_source_plan(
+    const std::shared_ptr<const ov::Node> &node, mlir::ModuleOp module) {
+  auto concat = std::dynamic_pointer_cast<const ov::op::v0::Concat>(node);
+  if (!concat) {
+    return {};
+  }
+  const auto desc = make_concat_msl_codegen_desc(concat);
+  auto binding = make_backend_custom_kernel_direct_io_binding_plan(
+      "Concat", "concat_kernel", desc.input_axis_lengths.size(), 1);
+  if (!binding.valid) {
+    return {};
+  }
+
+  auto source = make_kernel_source(module, "concat_kernel",
+                                   generate_msl_from_mlir(module, desc));
+  auto plan =
+      make_msl_generated_custom_kernel_source_plan(std::move(source), binding);
+  // The direct source-plan owns the concrete MSL and ABI; do not leave stale
+  // MLIR attrs on the compile path after source generation.
+  plan.source.module = {};
+  return plan;
+}
 
 GfxMslGeneratedKernelSourcePlan make_direct_split_msl_kernel_source_plan(
     std::string_view stage_type, const ov::element::Type &element_type,
@@ -100,53 +185,17 @@ std::optional<KernelSource> make_apple_metal_concat_split_kernel_source(
   }
 
   if (auto concat = std::dynamic_pointer_cast<const ov::op::v0::Concat>(node)) {
-    ConcatCodegenDesc desc{};
-    desc.element_type = concat->get_output_element_type(0);
-    const auto out_pshape = concat->get_output_partial_shape(0);
-    OPENVINO_ASSERT(out_pshape.rank().is_static(),
-                    "GFX Metal Concat: output rank must be static");
-    const size_t rank = static_cast<size_t>(out_pshape.rank().get_length());
-    OPENVINO_ASSERT(rank > 0, "GFX Metal Concat: output rank must be positive");
-    const size_t axis =
-        normalize_axis(concat->get_axis(), rank, "GFX Metal Concat");
-    (void)axis;
-    desc.inner = 1;
-    desc.outer = 1;
-    desc.axis_total = 1;
-    const auto out_shape = out_pshape.to_shape();
-    for (size_t i = 0; i < axis; ++i) {
-      desc.outer *= out_shape[i];
-    }
-    for (size_t i = axis + 1; i < out_shape.size(); ++i) {
-      desc.inner *= out_shape[i];
-    }
-    desc.axis_total = out_shape[axis];
-    desc.input_axis_lengths.reserve(concat->get_input_size());
-    for (size_t input_idx = 0; input_idx < concat->get_input_size();
-         ++input_idx) {
-      OPENVINO_ASSERT(concat->get_input_partial_shape(input_idx).is_static(),
-                      "GFX Metal Concat: input shape must be static");
-      const auto input_shape = concat->get_input_shape(input_idx);
-      OPENVINO_ASSERT(input_shape.size() == rank,
-                      "GFX Metal Concat: input rank mismatch");
-      desc.input_axis_lengths.push_back(input_shape[axis]);
-    }
-    auto binding = make_backend_custom_kernel_direct_io_binding_plan(
-        "Concat", "concat_kernel", concat->get_input_size(), 1);
-    OPENVINO_ASSERT(binding.valid,
-                    "GFX Metal Concat: direct IO binding is invalid");
-    source.entry_point = "concat_kernel";
-    source.msl_generator = [desc](mlir::ModuleOp module) mutable {
-      return generate_msl_from_mlir(module, desc);
-    };
-    OPENVINO_ASSERT(configure_backend_custom_kernel_source_from_binding_plan(
-                        source, binding),
-                    "GFX Metal Concat: failed to configure direct IO binding");
-    return source;
+    const auto desc = make_concat_msl_codegen_desc(concat);
+    auto source_plan = make_direct_concat_msl_kernel_source_plan(
+        std::move(source), desc);
+    OPENVINO_ASSERT(source_plan.valid(),
+                    "GFX Metal Concat: direct IO source plan is invalid");
+    return std::move(source_plan.source);
   }
 
   if (auto split = std::dynamic_pointer_cast<const ov::op::v1::Split>(node)) {
     SplitCodegenDesc desc{};
+    desc.element_type = split->get_output_element_type(0);
     auto axis_const = ov::as_type_ptr<const ov::op::v0::Constant>(
         split->input_value(1).get_node_shared_ptr());
     OPENVINO_ASSERT(axis_const, "Split axis must be constant");
@@ -168,16 +217,28 @@ std::optional<KernelSource> make_apple_metal_concat_split_kernel_source(
       outer *= in_shape[i];
     desc.inner = inner;
     desc.outer = outer;
+    if (desc.input_permutation.empty()) {
+      auto source_plan = make_direct_split_msl_kernel_source_plan(
+          "Split", desc.element_type, in_shape, desc.split_sizes,
+          static_cast<uint32_t>(in_shape[axis]), static_cast<uint32_t>(inner),
+          source.module);
+      OPENVINO_ASSERT(source_plan.valid(),
+                      "GFX Metal Split: direct IO source plan is invalid");
+      return std::move(source_plan.source);
+    }
     source.entry_point = "split_kernel";
     source.msl_generator = [desc](mlir::ModuleOp module) mutable {
       return generate_msl_from_mlir(module, desc);
     };
+    require_apple_msl_generated_kernel_source_binding(source, "Split",
+                                                      "split_kernel");
     return source;
   }
 
   if (auto split =
           std::dynamic_pointer_cast<const ov::op::v1::VariadicSplit>(node)) {
     SplitCodegenDesc desc{};
+    desc.element_type = split->get_output_element_type(0);
     auto axis_const = ov::as_type_ptr<const ov::op::v0::Constant>(
         split->input_value(1).get_node_shared_ptr());
     OPENVINO_ASSERT(axis_const, "VariadicSplit axis must be constant");
@@ -202,10 +263,22 @@ std::optional<KernelSource> make_apple_metal_concat_split_kernel_source(
       outer *= in_shape[i];
     desc.inner = inner;
     desc.outer = outer;
+    if (desc.input_permutation.empty()) {
+      auto source_plan = make_direct_split_msl_kernel_source_plan(
+          "VariadicSplit", desc.element_type, in_shape, desc.split_sizes,
+          static_cast<uint32_t>(in_shape[axis]), static_cast<uint32_t>(inner),
+          source.module);
+      OPENVINO_ASSERT(
+          source_plan.valid(),
+          "GFX Metal VariadicSplit: direct IO source plan is invalid");
+      return std::move(source_plan.source);
+    }
     source.entry_point = "split_kernel";
     source.msl_generator = [desc](mlir::ModuleOp module) mutable {
       return generate_msl_from_mlir(module, desc);
     };
+    require_apple_msl_generated_kernel_source_binding(source, "VariadicSplit",
+                                                      "split_kernel");
     return source;
   }
 

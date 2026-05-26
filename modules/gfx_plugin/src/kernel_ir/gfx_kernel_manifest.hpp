@@ -25,7 +25,6 @@ enum class GfxKernelBackendDomain : uint32_t {
     Unknown = 0,
     AppleMps = 1,
     AppleMsl = 2,
-    Spirv = 3,
     OpenCl = 4,
 };
 
@@ -115,8 +114,6 @@ inline const char* gfx_kernel_backend_domain_name(GfxKernelBackendDomain domain)
             return "apple_msl";
         case GfxKernelBackendDomain::OpenCl:
             return "opencl";
-        case GfxKernelBackendDomain::Spirv:
-            return "spirv";
         case GfxKernelBackendDomain::Unknown:
         default:
             return "unknown";
@@ -127,7 +124,6 @@ inline GfxKernelBackendDomain gfx_kernel_backend_domain_from_name(std::string_vi
     if (name == "apple_mps") return GfxKernelBackendDomain::AppleMps;
     if (name == "apple_msl") return GfxKernelBackendDomain::AppleMsl;
     if (name == "opencl") return GfxKernelBackendDomain::OpenCl;
-    if (name == "spirv") return GfxKernelBackendDomain::Spirv;
     return GfxKernelBackendDomain::Unknown;
 }
 
@@ -426,7 +422,6 @@ inline GfxKernelArtifactKind gfx_kernel_artifact_kind_for_stage(
         case GfxKernelBackendDomain::OpenCl:
             return GfxKernelArtifactKind::OpenClSource;
         case GfxKernelBackendDomain::AppleMps:
-        case GfxKernelBackendDomain::Spirv:
         case GfxKernelBackendDomain::Unknown:
         default:
             return GfxKernelArtifactKind::Unknown;

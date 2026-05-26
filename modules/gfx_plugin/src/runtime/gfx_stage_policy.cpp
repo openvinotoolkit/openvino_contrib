@@ -537,12 +537,6 @@ select_stage_placement(GpuBackend backend, const std::string &stage_type,
                           /*vendor_primitive=*/false,
                           /*custom_kernel=*/true);
   }
-  if (backend == GpuBackend::Vulkan) {
-    return make_placement(GfxStageBackendDomain::Spirv,
-                          GfxStageStorageKind::Buffer, stage_type,
-                          /*vendor_primitive=*/false,
-                          /*custom_kernel=*/true);
-  }
   if (backend != GpuBackend::Metal) {
     return {};
   }
@@ -956,7 +950,7 @@ GfxParallelismCaps query_stage_caps(const GpuBufferManager *buffer_manager,
   caps.backend = backend;
   caps.device_family = backend == GpuBackend::Metal ? GpuDeviceFamily::Apple
                                                     : GpuDeviceFamily::Generic;
-  if (backend == GpuBackend::OpenCL || backend == GpuBackend::Vulkan) {
+  if (backend == GpuBackend::OpenCL) {
     caps.preferred_simd_width = 32;
     caps.subgroup_size = 32;
     caps.max_total_threads_per_group = 128;
@@ -976,9 +970,7 @@ GfxParallelismCaps query_stage_caps(const GpuBufferManager *buffer_manager,
 
 bool allow_stage_bias_fusion(GpuBackend backend,
                              const std::string &stage_type) {
-  if (backend == GpuBackend::Vulkan) {
-    return stage_type == "Convolution";
-  }
+  (void)backend;
   return is_conv_like(stage_type);
 }
 
@@ -992,10 +984,6 @@ bool allow_stage_activation_fusion(GpuBackend backend,
                                    ActivationKind kind) {
   if (!is_safe_shared_activation(kind)) {
     return false;
-  }
-  if (backend == GpuBackend::Vulkan) {
-    return stage_type == "Convolution" &&
-           (kind == ActivationKind::Relu || kind == ActivationKind::Swish);
   }
   if (backend == GpuBackend::OpenCL) {
     return is_conv_like(stage_type);
@@ -1015,8 +1003,6 @@ const char *gfx_stage_backend_domain_name(GfxStageBackendDomain domain) {
     return "apple_msl";
   case GfxStageBackendDomain::OpenCl:
     return "opencl";
-  case GfxStageBackendDomain::Spirv:
-    return "spirv";
   case GfxStageBackendDomain::Unknown:
   default:
     return "unknown";
@@ -1117,8 +1103,7 @@ GfxStageOptimizationPlan select_stage_optimization_plan(
         select_conv_route_plan(buffer_manager, backend, node, element_type,
                                has_bias, has_activation, has_batchnorm);
   }
-  const bool source_kernel_backend =
-      backend == GpuBackend::OpenCL || backend == GpuBackend::Vulkan;
+  const bool source_kernel_backend = backend == GpuBackend::OpenCL;
   if (!source_kernel_backend) {
     return plan;
   }
@@ -1234,8 +1219,7 @@ select_conv_route_plan(const GpuBufferManager *buffer_manager,
                        const ov::element::Type &element_type, bool has_bias,
                        bool has_activation, bool has_batchnorm) {
   GfxConvRoutePlan plan{};
-  const bool source_kernel_backend =
-      backend == GpuBackend::OpenCL || backend == GpuBackend::Vulkan;
+  const bool source_kernel_backend = backend == GpuBackend::OpenCL;
   if (!source_kernel_backend || !node) {
     return plan;
   }
@@ -1363,7 +1347,7 @@ select_conv_route_plan(const GpuBufferManager *buffer_manager,
                                 node->get_type_name());
   }
 
-  // Plain Conv2D normally stays on the shared MLIR/SPIR-V custom-kernel path.
+  // Plain Conv2D normally stays on the shared MLIR custom-kernel path.
   // Cooperative multi-kernel reductions require a subgraph/stage manifest that
   // owns partial-sum buffers and all launches. They must not be selected as a
   // single custom-kernel stage.

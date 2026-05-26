@@ -328,13 +328,13 @@ std::string generate_msl_for_sdpa_with_causal_mask(ov::element::Type type) {
 
 GfxKernelRuntimeBindingPlan make_causal_sdpa_backend_binding_plan() {
   return make_backend_custom_kernel_binding_plan(
-      /*is_vulkan_backend=*/false, "GfxSDPAWithCausalMask",
+      /*is_opencl_backend=*/false, "GfxSDPAWithCausalMask",
       "sdpa_causal_mask_kernel");
 }
 
 GfxKernelRuntimeBindingPlan make_sdpa_backend_binding_plan(bool has_mask) {
   return make_backend_custom_kernel_binding_plan(
-      /*is_vulkan_backend=*/false, "ScaledDotProductAttention",
+      /*is_opencl_backend=*/false, "ScaledDotProductAttention",
       has_mask ? "sdpa_kernel" : "sdpa_nomask_kernel");
 }
 

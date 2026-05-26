@@ -70,7 +70,7 @@ private:
 
 GpuExecutionDeviceInfo make_broadcom_v3d_info() {
   GpuExecutionDeviceInfo info;
-  info.backend = GpuBackend::Vulkan;
+  info.backend = GpuBackend::OpenCL;
   info.device_key = "test-rpi";
   info.device_family = GpuDeviceFamily::BroadcomV3D;
   info.preferred_simd_width = 16u;
@@ -414,10 +414,10 @@ std::shared_ptr<const ov::Node> make_chunked_conv_with_reshape_consumer() {
 
 TEST(
     GfxStagePolicyTest,
-    VulkanPointwiseConvolutionStaysOnSharedMlirRouteAndAllowsBiasAndReluFusion) {
+    OpenClPointwiseConvolutionStaysOnSharedMlirRouteAndAllowsBiasAndReluFusion) {
   const auto conv = make_pointwise_conv_node();
   const auto plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::Vulkan, "Convolution", conv, ov::element::f16,
+      nullptr, GpuBackend::OpenCL, "Convolution", conv, ov::element::f16,
       /*has_bias=*/true,
       /*has_activation=*/true,
       /*has_batchnorm=*/false, {});
@@ -441,7 +441,7 @@ TEST(
   FakeDeviceInfoBufferManager buffer_manager(info);
   const auto conv = make_heavy_spatial_conv_node();
   const auto plan =
-      select_stage_optimization_plan(&buffer_manager, GpuBackend::Vulkan,
+      select_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/false,
                                      /*has_activation=*/false,
@@ -550,7 +550,7 @@ TEST(GfxStagePolicyTest,
   FakeDeviceInfoBufferManager buffer_manager(info);
   const auto conv = make_heavy_spatial_conv_node();
   const auto plan =
-      select_stage_optimization_plan(&buffer_manager, GpuBackend::Vulkan,
+      select_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/false,
                                      /*has_activation=*/false,
@@ -577,7 +577,7 @@ TEST(GfxStagePolicyTest,
   FakeDeviceInfoBufferManager buffer_manager(info);
   const auto conv = make_width_reuse_stride2_conv_node();
   const auto plan =
-      select_stage_optimization_plan(&buffer_manager, GpuBackend::Vulkan,
+      select_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/false,
                                      /*has_activation=*/false,
@@ -1264,17 +1264,17 @@ TEST(GfxStagePolicyTest, MetalBinaryElementwiseStaysInMslBufferDomain) {
   EXPECT_TRUE(plan.placement.uses_custom_kernel);
 }
 
-TEST(GfxStagePolicyTest, VulkanPlacementRemainsSharedSpirvBufferDomain) {
+TEST(GfxStagePolicyTest, OpenClPlacementRemainsSharedOpenClBufferDomain) {
   const auto add = make_large_add_node();
   GfxStageRuntimeTraits traits{};
   traits.binary_chunked = true;
   const auto plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::Vulkan, "Add", add, ov::element::f16,
+      nullptr, GpuBackend::OpenCL, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, traits);
 
-  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::Spirv);
+  EXPECT_EQ(plan.placement.domain, GfxStageBackendDomain::OpenCl);
   EXPECT_EQ(plan.placement.storage, GfxStageStorageKind::Buffer);
   EXPECT_TRUE(plan.placement.uses_custom_kernel);
 }
@@ -2696,6 +2696,49 @@ TEST(GfxStagePolicyTest,
       "split_kernel", GfxKernelBackendDomain::AppleMsl));
   EXPECT_EQ(split_manifest_arg_count, 4u);
 
+  ConcatCodegenDesc concat_desc{};
+  concat_desc.element_type = ov::element::f16;
+  concat_desc.outer = 1;
+  concat_desc.inner = 2;
+  concat_desc.axis_total = 30;
+  concat_desc.input_axis_lengths.assign(30, 1);
+  mlir::MLIRContext concat_ctx;
+  auto concat_module =
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(&concat_ctx));
+  KernelSource concat_source;
+  concat_source.module = concat_module;
+  const auto concat_source_plan =
+      make_direct_concat_msl_kernel_source_plan(concat_source, concat_desc);
+  ASSERT_TRUE(concat_source_plan.valid());
+  EXPECT_EQ(concat_source_plan.source.entry_point, "concat_kernel");
+  EXPECT_EQ(concat_source_plan.source.signature.arg_count, 31u);
+  EXPECT_EQ(concat_source_plan.source.signature.output_arg_count, 1u);
+  EXPECT_EQ(concat_source_plan.binding.runtime_binding.inputs.size(), 30u);
+  EXPECT_EQ(concat_source_plan.binding.runtime_binding.input_arg_count, 30u);
+  ASSERT_EQ(
+      concat_source_plan.binding.runtime_binding.operand_arg_indices.size(),
+      31u);
+  EXPECT_EQ(concat_source_plan.binding.runtime_binding.operand_arg_indices[0],
+            0);
+  EXPECT_EQ(concat_source_plan.binding.runtime_binding.operand_arg_indices[30],
+            30);
+  const auto concat_external_abi = read_module_mpsrt_external_buffer_abi(
+      concat_source_plan.source.module);
+  ASSERT_TRUE(concat_external_abi.valid);
+  ASSERT_TRUE(concat_external_abi.has_buffer_count);
+  ASSERT_TRUE(concat_external_abi.has_output_buffer_count);
+  EXPECT_EQ(concat_external_abi.buffer_count, 31u);
+  EXPECT_EQ(concat_external_abi.output_buffer_count, 1u);
+  size_t concat_manifest_arg_count = 0;
+  ASSERT_TRUE(infer_kernel_arg_count_from_stage_manifest(
+      concat_source_plan.source.module, concat_manifest_arg_count,
+      "concat_kernel", GfxKernelBackendDomain::AppleMsl));
+  EXPECT_EQ(concat_manifest_arg_count, 31u);
+  const auto concat_msl = resolve_msl_source(concat_source_plan.source);
+  EXPECT_NE(concat_msl.find("using scalar_t = half"), std::string::npos);
+  EXPECT_NE(concat_msl.find("src29 [[buffer(29)]]"), std::string::npos);
+  EXPECT_NE(concat_msl.find("dst [[buffer(30)]]"), std::string::npos);
+
   const auto select_binding = make_backend_custom_kernel_binding_plan(
       "Select", "select_kernel", {16, 4});
   ASSERT_TRUE(select_binding.valid);
@@ -2894,6 +2937,17 @@ TEST(GfxStagePolicyTest,
         GfxKernelBufferRole::RuntimeParams);
   }
 
+  const auto shapeof_plan =
+      make_gfx_custom_kernel_stage_plan("ShapeOf", "shapeof_kernel");
+  ASSERT_TRUE(shapeof_plan.valid);
+  EXPECT_EQ(shapeof_plan.family, GfxKernelFamily::GatherScatterIndexed);
+  EXPECT_EQ(
+      shapeof_plan.stage_manifest.custom_kernel.external_buffer_abi.roles,
+      std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
+                                        GfxKernelBufferRole::TensorOutput,
+                                        GfxKernelBufferRole::ScalarParam,
+                                        GfxKernelBufferRole::RuntimeParams}));
+
   const auto concat_plan =
       make_gfx_custom_kernel_stage_plan("Concat", "concat_kernel");
   ASSERT_TRUE(concat_plan.valid);
@@ -2996,10 +3050,10 @@ TEST(GfxStagePolicyTest,
            GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
            GfxKernelBufferRole::ScalarParam}));
   const auto range_binding = make_backend_custom_kernel_binding_plan(
-      /*is_vulkan_backend=*/true, "Range", "range_kernel", {32});
+      /*is_opencl_backend=*/true, "Range", "range_kernel", {32});
   ASSERT_TRUE(range_binding.valid);
   EXPECT_EQ(range_binding.stage_manifest.backend_domain,
-            GfxKernelBackendDomain::Spirv);
+            GfxKernelBackendDomain::OpenCl);
   EXPECT_EQ(range_binding.runtime_binding.inputs,
             std::vector<size_t>({0, 1, 2}));
   EXPECT_EQ(range_binding.runtime_binding.input_arg_count, 3u);
@@ -3027,8 +3081,20 @@ TEST(GfxStagePolicyTest,
           .external_buffer_abi.roles,
       std::vector<GfxKernelBufferRole>({GfxKernelBufferRole::TensorInput,
                                         GfxKernelBufferRole::TensorInput,
+                                        GfxKernelBufferRole::TensorInput,
                                         GfxKernelBufferRole::TensorOutput,
                                         GfxKernelBufferRole::RuntimeParams}));
+
+  const auto scatter_nd_update_plan = make_gfx_custom_kernel_stage_plan(
+      "ScatterNDUpdate", "scatter_nd_update");
+  ASSERT_TRUE(scatter_nd_update_plan.valid);
+  EXPECT_EQ(
+      scatter_nd_update_plan.stage_manifest.custom_kernel.external_buffer_abi
+          .roles,
+      std::vector<GfxKernelBufferRole>(
+          {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorInput,
+           GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
+           GfxKernelBufferRole::RuntimeParams}));
 
   const auto scatter_update_plan = make_gfx_custom_kernel_stage_plan(
       "ScatterUpdate", "scatter_update_kernel");
@@ -3922,15 +3988,15 @@ TEST(GfxStagePolicyTest,
   EXPECT_EQ(binding_plan[2].arg_index, 1u);
 }
 
-TEST(GfxStagePolicyTest, VulkanConvolutionAllowsReluAndSwishActivationFusion) {
-  EXPECT_TRUE(allow_stage_activation_fusion(GpuBackend::Vulkan, "Convolution",
+TEST(GfxStagePolicyTest, OpenClConvolutionAllowsReluAndSwishActivationFusion) {
+  EXPECT_TRUE(allow_stage_activation_fusion(GpuBackend::OpenCL, "Convolution",
                                             ActivationKind::Relu));
-  EXPECT_TRUE(allow_stage_activation_fusion(GpuBackend::Vulkan, "Convolution",
+  EXPECT_TRUE(allow_stage_activation_fusion(GpuBackend::OpenCL, "Convolution",
                                             ActivationKind::Swish));
-  EXPECT_FALSE(allow_stage_activation_fusion(GpuBackend::Vulkan, "Convolution",
+  EXPECT_FALSE(allow_stage_activation_fusion(GpuBackend::OpenCL, "Convolution",
                                              ActivationKind::Sigmoid));
   EXPECT_FALSE(allow_stage_activation_fusion(
-      GpuBackend::Vulkan, "GroupConvolution", ActivationKind::Relu));
+      GpuBackend::OpenCL, "GroupConvolution", ActivationKind::Relu));
 }
 
 TEST(GfxStagePolicyTest, MetalConvolutionAllowsOnlyMpsBackedActivationFusion) {
@@ -3951,10 +4017,10 @@ TEST(GfxStagePolicyTest, MetalConvolutionAllowsOnlyMpsBackedActivationFusion) {
 }
 
 TEST(GfxStagePolicyTest,
-     VulkanGroupConvolutionKeepsSharedMlirRouteWithBiasOrActivation) {
+     OpenClGroupConvolutionKeepsSharedMlirRouteWithBiasOrActivation) {
   const auto gconv = make_depthwise_group_conv_node();
   const auto plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::Vulkan, "GroupConvolution", gconv, ov::element::f16,
+      nullptr, GpuBackend::OpenCL, "GroupConvolution", gconv, ov::element::f16,
       /*has_bias=*/true,
       /*has_activation=*/true,
       /*has_batchnorm=*/false, {});
@@ -3965,9 +4031,9 @@ TEST(GfxStagePolicyTest,
   EXPECT_EQ(plan.conv.algorithm.kind, GfxConvAlgorithmKind::DepthwiseDirect);
 }
 
-TEST(GfxStagePolicyTest, VulkanMatMulUsesAdaptiveSubmitWindow) {
+TEST(GfxStagePolicyTest, OpenClMatMulUsesAdaptiveSubmitWindow) {
   const auto plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::Vulkan, "MatMul", nullptr, ov::element::f16,
+      nullptr, GpuBackend::OpenCL, "MatMul", nullptr, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
@@ -3978,12 +4044,12 @@ TEST(GfxStagePolicyTest, VulkanMatMulUsesAdaptiveSubmitWindow) {
 }
 
 TEST(GfxStagePolicyTest,
-     VulkanLargeBinaryChunkedStageUsesIsolatedSubmitWindow) {
+     OpenClLargeBinaryChunkedStageUsesIsolatedSubmitWindow) {
   const auto add = make_large_add_node();
   GfxStageRuntimeTraits traits{};
   traits.binary_chunked = true;
   const auto plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::Vulkan, "Add", add, ov::element::f16,
+      nullptr, GpuBackend::OpenCL, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, traits);
@@ -3994,12 +4060,12 @@ TEST(GfxStagePolicyTest,
 }
 
 TEST(GfxStagePolicyTest,
-     VulkanConvAdjacentLargeBinaryChunkedStageCanShareSubmitWindow) {
+     OpenClConvAdjacentLargeBinaryChunkedStageCanShareSubmitWindow) {
   const auto add = make_conv_adjacent_large_add_node();
   GfxStageRuntimeTraits traits{};
   traits.binary_chunked = true;
   const auto plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::Vulkan, "Add", add, ov::element::f16,
+      nullptr, GpuBackend::OpenCL, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, traits);
@@ -4009,12 +4075,12 @@ TEST(GfxStagePolicyTest,
   EXPECT_GE(plan.execution.submit.weight, 8u);
 }
 
-TEST(GfxStagePolicyTest, VulkanLargeConcatUsesIsolatedSubmitWindow) {
+TEST(GfxStagePolicyTest, OpenClLargeConcatUsesIsolatedSubmitWindow) {
   const auto concat = make_large_concat_node();
   GfxStageRuntimeTraits traits{};
   traits.split_concat_chunked = true;
   const auto plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::Vulkan, "Concat", concat, ov::element::f16,
+      nullptr, GpuBackend::OpenCL, "Concat", concat, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, traits);
@@ -4025,9 +4091,9 @@ TEST(GfxStagePolicyTest, VulkanLargeConcatUsesIsolatedSubmitWindow) {
 }
 
 TEST(GfxStagePolicyTest,
-     VulkanConstrainedLargeBinaryChunkedStageCanShareSubmitWindow) {
+     OpenClConstrainedLargeBinaryChunkedStageCanShareSubmitWindow) {
   GpuExecutionDeviceInfo info;
-  info.backend = GpuBackend::Vulkan;
+  info.backend = GpuBackend::OpenCL;
   info.device_key = "test-rpi";
   info.preferred_simd_width = 16u;
   info.subgroup_size = 16u;
@@ -4038,7 +4104,7 @@ TEST(GfxStagePolicyTest,
   GfxStageRuntimeTraits traits{};
   traits.binary_chunked = true;
   const auto plan = select_stage_optimization_plan(
-      &buffer_manager, GpuBackend::Vulkan, "Add", add, ov::element::f16,
+      &buffer_manager, GpuBackend::OpenCL, "Add", add, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, traits);
@@ -4049,9 +4115,9 @@ TEST(GfxStagePolicyTest,
 }
 
 TEST(GfxStagePolicyTest,
-     VulkanConstrainedLargeUnaryChunkedStageCanShareSubmitWindow) {
+     OpenClConstrainedLargeUnaryChunkedStageCanShareSubmitWindow) {
   GpuExecutionDeviceInfo info;
-  info.backend = GpuBackend::Vulkan;
+  info.backend = GpuBackend::OpenCL;
   info.device_key = "test-rpi";
   info.preferred_simd_width = 16u;
   info.subgroup_size = 16u;
@@ -4062,7 +4128,7 @@ TEST(GfxStagePolicyTest,
   GfxStageRuntimeTraits traits{};
   traits.unary_chunked = true;
   const auto plan = select_stage_optimization_plan(
-      &buffer_manager, GpuBackend::Vulkan, "Sigmoid", sigmoid, ov::element::f16,
+      &buffer_manager, GpuBackend::OpenCL, "Sigmoid", sigmoid, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, traits);
@@ -4073,12 +4139,12 @@ TEST(GfxStagePolicyTest,
 }
 
 TEST(GfxStagePolicyTest,
-     VulkanConvAdjacentLargeUnaryChunkedStageCanShareSubmitWindow) {
+     OpenClConvAdjacentLargeUnaryChunkedStageCanShareSubmitWindow) {
   const auto sigmoid = make_conv_adjacent_large_sigmoid_node();
   GfxStageRuntimeTraits traits{};
   traits.unary_chunked = true;
   const auto plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::Vulkan, "Sigmoid", sigmoid, ov::element::f16,
+      nullptr, GpuBackend::OpenCL, "Sigmoid", sigmoid, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, traits);
@@ -4088,9 +4154,9 @@ TEST(GfxStagePolicyTest,
   EXPECT_EQ(plan.execution.submit.weight, 6u);
 }
 
-TEST(GfxStagePolicyTest, VulkanConstrainedLargeConcatCanShareSubmitWindow) {
+TEST(GfxStagePolicyTest, OpenClConstrainedLargeConcatCanShareSubmitWindow) {
   GpuExecutionDeviceInfo info;
-  info.backend = GpuBackend::Vulkan;
+  info.backend = GpuBackend::OpenCL;
   info.device_key = "test-rpi";
   info.preferred_simd_width = 16u;
   info.subgroup_size = 16u;
@@ -4101,7 +4167,7 @@ TEST(GfxStagePolicyTest, VulkanConstrainedLargeConcatCanShareSubmitWindow) {
   GfxStageRuntimeTraits traits{};
   traits.split_concat_chunked = true;
   const auto plan = select_stage_optimization_plan(
-      &buffer_manager, GpuBackend::Vulkan, "Concat", concat, ov::element::f16,
+      &buffer_manager, GpuBackend::OpenCL, "Concat", concat, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, traits);
@@ -4111,12 +4177,12 @@ TEST(GfxStagePolicyTest, VulkanConstrainedLargeConcatCanShareSubmitWindow) {
   EXPECT_EQ(plan.execution.submit.weight, 4u);
 }
 
-TEST(GfxStagePolicyTest, VulkanLargeTransposeUsesChunkedSubmitTraits) {
+TEST(GfxStagePolicyTest, OpenClLargeTransposeUsesChunkedSubmitTraits) {
   const auto transpose = make_large_transpose_node();
   GfxStageRuntimeTraits traits{};
   traits.transpose_chunked = true;
   const auto plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::Vulkan, "Transpose", transpose, ov::element::f16,
+      nullptr, GpuBackend::OpenCL, "Transpose", transpose, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, traits);
@@ -4127,10 +4193,10 @@ TEST(GfxStagePolicyTest, VulkanLargeTransposeUsesChunkedSubmitTraits) {
 }
 
 TEST(GfxStagePolicyTest,
-     VulkanLargePlainConvolutionUsesSharedMlirRouteWithIsolatedSubmitWindow) {
+     OpenClLargePlainConvolutionUsesSharedMlirRouteWithIsolatedSubmitWindow) {
   const auto conv = make_large_chunked_conv_node();
   const auto plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::Vulkan, "Convolution", conv, ov::element::f16,
+      nullptr, GpuBackend::OpenCL, "Convolution", conv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
@@ -4142,10 +4208,10 @@ TEST(GfxStagePolicyTest,
 }
 
 TEST(GfxStagePolicyTest,
-     VulkanMediumPlainConvolutionUsesSharedMlirRouteWithIsolatedSubmitWindow) {
+     OpenClMediumPlainConvolutionUsesSharedMlirRouteWithIsolatedSubmitWindow) {
   const auto conv = make_medium_chunked_conv_node();
   const auto plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::Vulkan, "Convolution", conv, ov::element::f16,
+      nullptr, GpuBackend::OpenCL, "Convolution", conv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
@@ -4161,7 +4227,7 @@ TEST(GfxStagePolicyTest,
   FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
   const auto conv = make_large_chunked_conv_node();
   const auto plan =
-      select_stage_optimization_plan(&buffer_manager, GpuBackend::Vulkan,
+      select_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/false,
                                      /*has_activation=*/false,
@@ -4190,7 +4256,7 @@ TEST(GfxStagePolicyTest,
   FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
   const auto conv = make_large_chunked_conv_node();
   const auto plan =
-      select_stage_optimization_plan(&buffer_manager, GpuBackend::Vulkan,
+      select_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/true,
                                      /*has_activation=*/false,
@@ -4212,7 +4278,7 @@ TEST(GfxStagePolicyTest,
   FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
   const auto conv = make_large_chunked_conv_node();
   const auto plan =
-      select_stage_optimization_plan(&buffer_manager, GpuBackend::Vulkan,
+      select_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/true,
                                      /*has_activation=*/true,
@@ -4228,7 +4294,7 @@ TEST(GfxStagePolicyTest,
   FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
   const auto conv = make_large_chunked_conv_node();
   const auto plan =
-      select_stage_optimization_plan(&buffer_manager, GpuBackend::Vulkan,
+      select_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/false,
                                      /*has_activation=*/false,
@@ -4244,7 +4310,7 @@ TEST(GfxStagePolicyTest,
   FakeDeviceInfoBufferManager buffer_manager(make_broadcom_v3d_info());
   const auto conv = make_pointwise_conv_node();
   const auto plan =
-      select_stage_optimization_plan(&buffer_manager, GpuBackend::Vulkan,
+      select_stage_optimization_plan(&buffer_manager, GpuBackend::OpenCL,
                                      "Convolution", conv, ov::element::f16,
                                      /*has_bias=*/false,
                                      /*has_activation=*/false,
@@ -4259,10 +4325,10 @@ TEST(GfxStagePolicyTest,
 
 TEST(
     GfxStagePolicyTest,
-    VulkanLightDepthwiseGroupConvolutionUsesSharedMlirRouteWithIsolatedSubmitWindow) {
+    OpenClLightDepthwiseGroupConvolutionUsesSharedMlirRouteWithIsolatedSubmitWindow) {
   const auto gconv = make_light_depthwise_group_conv_node();
   const auto plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::Vulkan, "GroupConvolution", gconv, ov::element::f16,
+      nullptr, GpuBackend::OpenCL, "GroupConvolution", gconv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
@@ -4275,10 +4341,10 @@ TEST(
 }
 
 TEST(GfxStagePolicyTest,
-     VulkanLightSpatial3x3ConvolutionFallsBackToSharedMlirRoute) {
+     OpenClLightSpatial3x3ConvolutionFallsBackToSharedMlirRoute) {
   const auto conv = make_light_spatial3x3_conv_node();
   const auto plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::Vulkan, "Convolution", conv, ov::element::f16,
+      nullptr, GpuBackend::OpenCL, "Convolution", conv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
@@ -4290,16 +4356,16 @@ TEST(GfxStagePolicyTest,
 }
 
 TEST(GfxStagePolicyTest,
-     VulkanSerialConvolutionChainCanShareAdaptiveSubmitWindow) {
+     OpenClSerialConvolutionChainCanShareAdaptiveSubmitWindow) {
   const auto [conv0, conv1] = make_light_spatial3x3_conv_chain();
 
   const auto first_plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::Vulkan, "Convolution", conv0, ov::element::f16,
+      nullptr, GpuBackend::OpenCL, "Convolution", conv0, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
   const auto second_plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::Vulkan, "Convolution", conv1, ov::element::f16,
+      nullptr, GpuBackend::OpenCL, "Convolution", conv1, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
@@ -4312,10 +4378,10 @@ TEST(GfxStagePolicyTest,
   EXPECT_GE(second_plan.execution.submit.weight, 8u);
 }
 
-TEST(GfxStagePolicyTest, VulkanConcatAdjacentConvolutionRemainsIsolated) {
+TEST(GfxStagePolicyTest, OpenClConcatAdjacentConvolutionRemainsIsolated) {
   const auto conv = make_concat_fed_spatial3x3_conv_node();
   const auto plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::Vulkan, "Convolution", conv, ov::element::f16,
+      nullptr, GpuBackend::OpenCL, "Convolution", conv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});
@@ -4325,10 +4391,10 @@ TEST(GfxStagePolicyTest, VulkanConcatAdjacentConvolutionRemainsIsolated) {
 }
 
 TEST(GfxStagePolicyTest,
-     VulkanLayoutAdjacentPlainConvolutionRemainsSharedMlirAndIsolated) {
+     OpenClLayoutAdjacentPlainConvolutionRemainsSharedMlirAndIsolated) {
   const auto conv = make_chunked_conv_with_reshape_consumer();
   const auto plan = select_stage_optimization_plan(
-      nullptr, GpuBackend::Vulkan, "Convolution", conv, ov::element::f16,
+      nullptr, GpuBackend::OpenCL, "Convolution", conv, ov::element::f16,
       /*has_bias=*/false,
       /*has_activation=*/false,
       /*has_batchnorm=*/false, {});

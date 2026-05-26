@@ -4,7 +4,6 @@
 
 #include "mlir/gfx_backend_custom_kernel_adapter.hpp"
 
-#include "mlir/spirv_kernel_binding_adapter.hpp"
 #include "openvino/core/except.hpp"
 
 #include <string>
@@ -28,34 +27,6 @@ bool is_backend_custom_kernel_manifest_for_domain(
          manifest.backend_domain == backend_domain;
 }
 
-void apply_spirv_direct_io_compact_launch_binding(
-    GfxKernelRuntimeBindingPlan &plan, size_t tensor_input_count,
-    size_t output_count) {
-  if (!plan.valid || tensor_input_count == 0 || output_count == 0) {
-    return;
-  }
-
-  KernelRuntimeBindingState binding{};
-  binding.input_arg_count = tensor_input_count;
-  binding.operand_kinds.reserve(output_count + tensor_input_count);
-  binding.operand_arg_indices.reserve(output_count + tensor_input_count);
-  binding.inputs.reserve(tensor_input_count);
-
-  for (size_t output_idx = 0; output_idx < output_count; ++output_idx) {
-    binding.operand_kinds.push_back(1);
-    binding.operand_arg_indices.push_back(
-        static_cast<int32_t>(tensor_input_count + output_idx));
-  }
-  for (size_t input_idx = 0; input_idx < tensor_input_count; ++input_idx) {
-    binding.operand_kinds.push_back(1);
-    binding.operand_arg_indices.push_back(static_cast<int32_t>(input_idx));
-    binding.inputs.push_back(input_idx);
-  }
-
-  plan.runtime_binding = std::move(binding);
-  plan.scalar_arg_count = 0;
-}
-
 void set_semantic_io_roles_from_external_roles(
     GfxKernelStageManifest &manifest,
     const std::vector<GfxKernelBufferRole> &roles) {
@@ -71,13 +42,13 @@ void set_semantic_io_roles_from_external_roles(
   }
 }
 
-GfxKernelBackendDomain backend_domain_from_selector(bool is_vulkan_backend) {
-  return is_vulkan_backend ? GfxKernelBackendDomain::Spirv
+GfxKernelBackendDomain backend_domain_from_selector(bool is_opencl_backend) {
+  return is_opencl_backend ? GfxKernelBackendDomain::OpenCl
                            : GfxKernelBackendDomain::AppleMsl;
 }
 
-std::string_view specialization_prefix_from_selector(bool is_vulkan_backend) {
-  return is_vulkan_backend ? "spirv:buffer:" : "apple_msl:buffer:";
+std::string_view specialization_prefix_from_selector(bool is_opencl_backend) {
+  return is_opencl_backend ? "opencl:buffer:" : "apple_msl:buffer:";
 }
 
 } // namespace
@@ -126,23 +97,23 @@ GfxKernelRuntimeBindingPlan make_backend_custom_kernel_binding_plan(
 }
 
 GfxKernelRuntimeBindingPlan
-make_backend_custom_kernel_binding_plan(bool is_vulkan_backend,
+make_backend_custom_kernel_binding_plan(bool is_opencl_backend,
                                         std::string_view stage_type,
                                         std::string_view entry_point) {
   return make_backend_custom_kernel_binding_plan(
-      stage_type, entry_point, backend_domain_from_selector(is_vulkan_backend),
+      stage_type, entry_point, backend_domain_from_selector(is_opencl_backend),
       GfxKernelStorageKind::Buffer,
-      specialization_prefix_from_selector(is_vulkan_backend));
+      specialization_prefix_from_selector(is_opencl_backend));
 }
 
 GfxKernelRuntimeBindingPlan make_backend_custom_kernel_binding_plan(
-    bool is_vulkan_backend, std::string_view stage_type,
+    bool is_opencl_backend, std::string_view stage_type,
     std::string_view entry_point, std::vector<int32_t> scalar_args) {
   return make_backend_custom_kernel_binding_plan(
       stage_type, entry_point, std::move(scalar_args),
-      backend_domain_from_selector(is_vulkan_backend),
+      backend_domain_from_selector(is_opencl_backend),
       GfxKernelStorageKind::Buffer,
-      specialization_prefix_from_selector(is_vulkan_backend));
+      specialization_prefix_from_selector(is_opencl_backend));
 }
 
 GfxCustomKernelStagePlan make_backend_custom_kernel_stage_plan_view(
@@ -179,10 +150,6 @@ GfxKernelRuntimeBindingPlan make_backend_custom_kernel_direct_io_binding_plan(
                                         GfxKernelBufferRole::TensorOutput);
   auto plan =
       make_backend_custom_kernel_binding_plan_from_stage_manifest(manifest);
-  if (backend_domain == GfxKernelBackendDomain::Spirv) {
-    apply_spirv_direct_io_compact_launch_binding(plan, tensor_input_count,
-                                                 output_count);
-  }
   return plan;
 }
 
@@ -256,16 +223,16 @@ make_backend_custom_kernel_binding_plan_from_module_or_request(
 }
 
 GfxKernelRuntimeBindingPlan make_backend_custom_kernel_source_binding_plan(
-    const KernelSource &source, bool is_vulkan_backend,
+    const KernelSource &source, bool is_opencl_backend,
     std::string_view stage_type, std::string_view entry_point,
     std::vector<int32_t> scalar_args) {
   const std::string resolved_entry =
       entry_point.empty() ? source.entry_point : std::string(entry_point);
   return make_backend_custom_kernel_binding_plan_from_module_or_request(
       source.module, stage_type, resolved_entry, std::move(scalar_args),
-      backend_domain_from_selector(is_vulkan_backend),
+      backend_domain_from_selector(is_opencl_backend),
       GfxKernelStorageKind::Buffer,
-      specialization_prefix_from_selector(is_vulkan_backend));
+      specialization_prefix_from_selector(is_opencl_backend));
 }
 
 bool annotate_backend_custom_kernel_module_with_binding_plan(
@@ -274,13 +241,9 @@ bool annotate_backend_custom_kernel_module_with_binding_plan(
     return false;
   }
   detail::gfx_mpsrt_set_stage_manifest_attrs(module, plan.stage_manifest);
-  if (plan.stage_manifest.backend_domain == GfxKernelBackendDomain::Spirv) {
-    annotate_spirv_kernel_binding_attrs(module, plan.runtime_binding);
-  } else {
-    module->removeAttr("gfx.kernel_operand_kinds");
-    module->removeAttr("gfx.kernel_operand_arg_indices");
-    module->removeAttr("gfx.kernel_scalar_values");
-  }
+  module->removeAttr("gfx.kernel_operand_kinds");
+  module->removeAttr("gfx.kernel_operand_arg_indices");
+  module->removeAttr("gfx.kernel_scalar_values");
   return true;
 }
 
@@ -297,19 +260,19 @@ bool configure_backend_custom_kernel_source_from_binding_plan(
 }
 
 bool configure_backend_custom_kernel_source_binding(
-    KernelSource &source, bool is_vulkan_backend, std::string_view stage_type,
+    KernelSource &source, bool is_opencl_backend, std::string_view stage_type,
     std::string_view entry_point, std::vector<int32_t> scalar_args) {
   auto plan = make_backend_custom_kernel_source_binding_plan(
-      source, is_vulkan_backend, stage_type, entry_point,
+      source, is_opencl_backend, stage_type, entry_point,
       std::move(scalar_args));
   return configure_backend_custom_kernel_source_from_binding_plan(source, plan);
 }
 
 void require_backend_custom_kernel_source_binding(
-    KernelSource &source, bool is_vulkan_backend, std::string_view stage_type,
+    KernelSource &source, bool is_opencl_backend, std::string_view stage_type,
     std::string_view entry_point, std::vector<int32_t> scalar_args) {
   OPENVINO_ASSERT(
-      configure_backend_custom_kernel_source_binding(source, is_vulkan_backend,
+      configure_backend_custom_kernel_source_binding(source, is_opencl_backend,
                                                      stage_type, entry_point,
                                                      std::move(scalar_args)),
       "GFX MLIR: failed to configure custom-kernel source binding for ",
@@ -317,11 +280,11 @@ void require_backend_custom_kernel_source_binding(
 }
 
 GfxKernelRuntimeBindingPlan require_backend_custom_kernel_binding_plan(
-    bool is_vulkan_backend, std::string_view stage_type,
+    bool is_opencl_backend, std::string_view stage_type,
     std::string_view entry_point, const std::vector<int32_t> &scalar_args,
     std::string_view stage_name) {
   auto plan = make_backend_custom_kernel_binding_plan(
-      is_vulkan_backend, stage_type, entry_point, scalar_args);
+      is_opencl_backend, stage_type, entry_point, scalar_args);
   OPENVINO_ASSERT(plan.valid, "GFX MLIR: ", stage_type, " / ", entry_point,
                   " custom-kernel runtime binding manifest is invalid for "
                   "stage ",
@@ -330,29 +293,29 @@ GfxKernelRuntimeBindingPlan require_backend_custom_kernel_binding_plan(
 }
 
 KernelRuntimeBindingState require_backend_custom_kernel_runtime_binding(
-    bool is_vulkan_backend, std::string_view stage_type,
+    bool is_opencl_backend, std::string_view stage_type,
     std::string_view entry_point, const std::vector<int32_t> &scalar_args,
     std::string_view stage_name) {
-  return require_backend_custom_kernel_binding_plan(is_vulkan_backend,
+  return require_backend_custom_kernel_binding_plan(is_opencl_backend,
                                                     stage_type, entry_point,
                                                     scalar_args, stage_name)
       .runtime_binding;
 }
 
 GfxKernelRuntimeBindingPlan annotate_required_backend_custom_kernel_binding(
-    mlir::ModuleOp module, bool is_vulkan_backend, std::string_view stage_type,
+    mlir::ModuleOp module, bool is_opencl_backend, std::string_view stage_type,
     std::string_view entry_point, const std::vector<int32_t> &scalar_args,
     std::string_view stage_name) {
   auto plan = require_backend_custom_kernel_binding_plan(
-      is_vulkan_backend, stage_type, entry_point, scalar_args, stage_name);
+      is_opencl_backend, stage_type, entry_point, scalar_args, stage_name);
   annotate_backend_custom_kernel_module_with_binding_plan(module, plan);
   return plan;
 }
 
 GfxKernelRuntimeBindingPlan annotate_required_backend_custom_kernel_abi_binding(
-    mlir::ModuleOp module, bool is_vulkan_backend, std::string_view stage_type,
+    mlir::ModuleOp module, bool is_opencl_backend, std::string_view stage_type,
     std::string_view entry_point, std::string_view stage_name) {
-  auto plan = make_backend_custom_kernel_binding_plan(is_vulkan_backend,
+  auto plan = make_backend_custom_kernel_binding_plan(is_opencl_backend,
                                                       stage_type, entry_point);
   OPENVINO_ASSERT(plan.valid, "GFX MLIR: ", stage_type, " / ", entry_point,
                   " custom-kernel ABI binding manifest is invalid for stage ",
@@ -366,14 +329,14 @@ GfxKernelRuntimeBindingPlan annotate_required_backend_custom_kernel_abi_binding(
 
 GfxKernelRuntimeBindingPlan
 annotate_required_backend_custom_kernel_direct_io_binding(
-    mlir::ModuleOp module, bool is_vulkan_backend, std::string_view stage_type,
+    mlir::ModuleOp module, bool is_opencl_backend, std::string_view stage_type,
     std::string_view entry_point, size_t tensor_input_count,
     size_t output_count, std::string_view stage_name) {
   auto plan = make_backend_custom_kernel_direct_io_binding_plan(
       stage_type, entry_point, tensor_input_count, output_count,
-      backend_domain_from_selector(is_vulkan_backend),
+      backend_domain_from_selector(is_opencl_backend),
       GfxKernelStorageKind::Buffer,
-      specialization_prefix_from_selector(is_vulkan_backend));
+      specialization_prefix_from_selector(is_opencl_backend));
   OPENVINO_ASSERT(plan.valid, "GFX MLIR: ", stage_type, " / ", entry_point,
                   " direct-IO custom-kernel runtime binding manifest is "
                   "invalid for stage ",
@@ -433,13 +396,14 @@ bool configure_backend_custom_kernel_source_signature(
                            source, plan.stage_manifest);
 }
 
-size_t resolve_apple_msl_manifest_arg_count_or_fallback(mlir::ModuleOp module,
-                                                        bool is_vulkan_backend,
-                                                        size_t fallback) {
-  return is_vulkan_backend
-             ? fallback
-             : infer_backend_custom_kernel_arg_count(
-                   module, GfxKernelBackendDomain::AppleMsl, fallback);
+size_t resolve_backend_manifest_arg_count_or_fallback(mlir::ModuleOp module,
+                                                      bool is_opencl_backend,
+                                                      size_t fallback) {
+  return infer_backend_custom_kernel_arg_count(
+      module,
+      is_opencl_backend ? GfxKernelBackendDomain::OpenCl
+                        : GfxKernelBackendDomain::AppleMsl,
+      fallback);
 }
 
 size_t infer_backend_custom_kernel_arg_count(

@@ -65,9 +65,6 @@ bool finalize_apple_program_stage_desc(GfxMpsrtStageDesc& stage) {
             case GfxKernelBackendDomain::OpenCl:
                 stage.domain = GfxStageBackendDomain::OpenCl;
                 break;
-            case GfxKernelBackendDomain::Spirv:
-                stage.domain = GfxStageBackendDomain::Spirv;
-                break;
             case GfxKernelBackendDomain::Unknown:
             default:
                 break;

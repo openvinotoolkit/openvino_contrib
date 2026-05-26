@@ -63,9 +63,9 @@ struct SubmissionDeviceProfile {
     size_t stages_per_slot = 96;
     uint64_t mac_budget_scale_num = 1;
     uint64_t mac_budget_scale_den = 1;
-    size_t extremely_deep_vulkan_stage_floor = 0;
-    size_t extremely_deep_vulkan_output_floor = 0;
-    uint64_t extremely_deep_vulkan_mac_floor = 0;
+    size_t extremely_deep_source_stage_floor = 0;
+    size_t extremely_deep_source_output_floor = 0;
+    uint64_t extremely_deep_source_mac_floor = 0;
 };
 
 struct SubmissionBudget {
@@ -140,16 +140,16 @@ SubmissionDeviceProfile make_submission_device_profile(const InferSubmissionTuni
     case SubmissionDeviceClass::Constrained:
         profile.max_slots = 6u;
         profile.stages_per_slot = workload.simd_width >= 64u ? 64u : 48u;
-        profile.extremely_deep_vulkan_stage_floor =
+        profile.extremely_deep_source_stage_floor =
             profile.stages_per_slot + profile.stages_per_slot / 2u;
-        profile.extremely_deep_vulkan_output_floor = workload.simd_width >= 64u ? MiB(96u) : MiB(64u);
-        profile.extremely_deep_vulkan_mac_floor = workload.simd_width >= 64u ? GMacs(8u) : GMacs(4u);
+        profile.extremely_deep_source_output_floor = workload.simd_width >= 64u ? MiB(96u) : MiB(64u);
+        profile.extremely_deep_source_mac_floor = workload.simd_width >= 64u ? GMacs(8u) : GMacs(4u);
         break;
     case SubmissionDeviceClass::Wide:
-        profile.max_slots = caps.backend == GpuBackend::Vulkan ? 6u : 4u;
+        profile.max_slots = caps.backend == GpuBackend::OpenCL ? 6u : 4u;
         profile.stages_per_slot = workload.simd_width >= 64u
-                                      ? (caps.backend == GpuBackend::Vulkan ? 72u : 96u)
-                                      : (caps.backend == GpuBackend::Vulkan ? 56u : 64u);
+                                      ? (caps.backend == GpuBackend::OpenCL ? 72u : 96u)
+                                      : (caps.backend == GpuBackend::OpenCL ? 56u : 64u);
         break;
     }
 
@@ -237,13 +237,13 @@ void apply_submission_profile_budget(const InferSubmissionTuningCaps& caps,
                                      const SubmissionWorkloadProfile& workload,
                                      const SubmissionDeviceProfile& profile,
                                      SubmissionBudget& budget) {
-    if (caps.backend == GpuBackend::Vulkan &&
+    if (caps.backend == GpuBackend::OpenCL &&
         workload.depth_class == SubmissionDepthClass::ExtremelyDeep &&
-        profile.extremely_deep_vulkan_stage_floor != 0u) {
+        profile.extremely_deep_source_stage_floor != 0u) {
         budget.weighted_stages =
-            std::max<size_t>(budget.weighted_stages, profile.extremely_deep_vulkan_stage_floor);
-        budget.output_bytes = std::max<size_t>(budget.output_bytes, profile.extremely_deep_vulkan_output_floor);
-        budget.macs = std::max<uint64_t>(budget.macs, profile.extremely_deep_vulkan_mac_floor);
+            std::max<size_t>(budget.weighted_stages, profile.extremely_deep_source_stage_floor);
+        budget.output_bytes = std::max<size_t>(budget.output_bytes, profile.extremely_deep_source_output_floor);
+        budget.macs = std::max<uint64_t>(budget.macs, profile.extremely_deep_source_mac_floor);
     }
     budget.macs = scale_macs(budget.macs, profile.mac_budget_scale_num, profile.mac_budget_scale_den);
 }
@@ -639,7 +639,7 @@ InferSubmissionTuning select_infer_submission_tuning(const InferSubmissionTuning
     tuning.config.max_stages_per_submit = std::max<size_t>(budget.weighted_stages, 1u);
     tuning.config.max_output_bytes_per_submit = std::max<size_t>(budget.output_bytes, 1u);
     tuning.config.max_macs_per_submit = std::max<uint64_t>(budget.macs, 1u);
-    if (caps.backend == GpuBackend::Vulkan &&
+    if (caps.backend == GpuBackend::OpenCL &&
         workload.depth_class == SubmissionDepthClass::ExtremelyDeep &&
         workload.device_class != SubmissionDeviceClass::Wide &&
         slot_parallelism > 1u) {
@@ -908,7 +908,7 @@ void execute_pipeline_with_submission(
             // "force this stage to be the only stage in that window". Keeping the
             // stage and its immediate epilogue/consumer chain in the same command
             // buffer avoids pathological submit-wait-submit fragmentation on deep
-            // mobile Vulkan graphs while still respecting the weighted window budget.
+            // mobile OpenCL graphs while still respecting the weighted window budget.
             const bool window_reached_soft_budget =
                 recorded_stage_count >= config.max_stages_per_submit ||
                 recorded_output_bytes >= config.max_output_bytes_per_submit ||

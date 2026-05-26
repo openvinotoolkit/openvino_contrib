@@ -27,7 +27,7 @@ protected:
         }
         if (net_precision == ov::element::f16 &&
             eltwise_type == ov::test::utils::EltwiseTypes::DIVIDE) {
-            // FP16 division on Vulkan can differ by ~1 ULP vs FP32 reference.
+            // FP16 division can differ by ~1 ULP vs FP32 reference.
             using ThresholdT = decltype(this->abs_threshold);
             const auto loosen = static_cast<ThresholdT>(7e-4);
             this->abs_threshold = std::max(this->abs_threshold, loosen);

@@ -141,7 +141,6 @@ set(GFX_RUNTIME_MLIR_HEADERS
     ${_gfx_src_dir}/mlir/mlir_kernel_plan_utils.hpp
     ${_gfx_src_dir}/mlir/mlir_stage.hpp
     ${_gfx_src_dir}/mlir/mlir_support.hpp
-    ${_gfx_src_dir}/mlir/spirv_kernel_binding_adapter.hpp
 )
 
 set(GFX_RUNTIME_MLIR_SOURCES
@@ -164,6 +163,7 @@ set(GFX_RUNTIME_METAL_MSL_HEADERS
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_ops.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_common.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_op_kinds.hpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_shape.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_slice_static.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_mps.hpp
     ${_gfx_src_dir}/mlir/msl_codegen.hpp
@@ -288,26 +288,6 @@ set(GFX_RUNTIME_METAL_HEADERS
     ${_gfx_src_dir}/backends/metal/runtime/stage_factory.hpp
 )
 
-set(GFX_RUNTIME_VULKAN_SOURCES
-    ${_gfx_src_dir}/backends/vulkan/runtime/op_support.cpp
-    ${_gfx_src_dir}/backends/vulkan/runtime/memory_ops.cpp
-    ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_backend.cpp
-    ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_buffer_manager.cpp
-    ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_executor.cpp
-    ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_memory.cpp
-    ${_gfx_src_dir}/backends/vulkan/runtime/gpu_memory.cpp
-    ${_gfx_src_dir}/backends/vulkan/runtime/profiling/profiler.cpp
-)
-
-set(GFX_RUNTIME_VULKAN_HEADERS
-    ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_backend.hpp
-    ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_buffer_manager.hpp
-    ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_executor.hpp
-    ${_gfx_src_dir}/backends/vulkan/runtime/vulkan_memory.hpp
-    ${_gfx_src_dir}/backends/vulkan/runtime/profiling/profiler.hpp
-    ${_gfx_src_dir}/backends/vulkan/runtime/stage_factory.hpp
-)
-
 set(GFX_RUNTIME_OPENCL_SOURCES
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_api.cpp
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_buffer_manager.cpp
@@ -324,16 +304,6 @@ set(GFX_RUNTIME_OPENCL_HEADERS
     ${_gfx_src_dir}/backends/opencl/runtime/opencl_source_stage.hpp
     ${_gfx_src_dir}/backends/opencl/runtime/memory_api.hpp
     ${_gfx_src_dir}/backends/opencl/runtime/stage_factory.hpp
-)
-
-set(GFX_RUNTIME_VULKAN_CODEGEN_HEADERS
-    ${_gfx_src_dir}/mlir/spirv_codegen.hpp
-    ${_gfx_src_dir}/backends/vulkan/codegen/vulkan_codegen_backend.hpp
-)
-
-set(GFX_RUNTIME_VULKAN_CODEGEN_SOURCES
-    ${_gfx_src_dir}/mlir/spirv_codegen.cpp
-    ${_gfx_src_dir}/backends/vulkan/codegen/vulkan_codegen_backend.cpp
 )
 
 set(GFX_PLUGIN_METAL_SOURCES
@@ -356,28 +326,6 @@ set(GFX_PLUGIN_METAL_STUB_SOURCES
 set(GFX_PLUGIN_METAL_HEADERS
     ${_gfx_src_dir}/backends/metal/plugin/metal_properties.hpp
     ${_gfx_src_dir}/backends/metal/plugin/compiled_model_state.hpp
-)
-
-set(GFX_PLUGIN_VULKAN_SOURCES
-    ${_gfx_src_dir}/backends/vulkan/plugin/infer_request.cpp
-    ${_gfx_src_dir}/backends/vulkan/plugin/infer_io_vulkan.cpp
-    ${_gfx_src_dir}/backends/vulkan/plugin/compiled_model_backend.cpp
-    ${_gfx_src_dir}/backends/vulkan/plugin/remote_tensor.cpp
-    ${_gfx_src_dir}/backends/vulkan/plugin/remote_context.cpp
-    ${_gfx_src_dir}/backends/vulkan/plugin/device_info.cpp
-)
-
-set(GFX_PLUGIN_VULKAN_STUB_SOURCES
-    ${_gfx_src_dir}/backends/vulkan/plugin/infer_request_stub.cpp
-    ${_gfx_src_dir}/backends/vulkan/plugin/compiled_model_backend_stub.cpp
-    ${_gfx_src_dir}/backends/vulkan/plugin/device_info_stub.cpp
-    ${_gfx_src_dir}/backends/vulkan/plugin/remote_context_stub.cpp
-    ${_gfx_src_dir}/backends/vulkan/plugin/remote_tensor_stub.cpp
-)
-
-set(GFX_PLUGIN_VULKAN_HEADERS
-    ${_gfx_src_dir}/backends/vulkan/plugin/vulkan_properties.hpp
-    ${_gfx_src_dir}/backends/vulkan/plugin/compiled_model_state.hpp
 )
 
 set(GFX_PLUGIN_OPENCL_SOURCES
@@ -405,11 +353,6 @@ endif()
 set(GFX_HAS_OPENCL_SOURCES OFF)
 if(GFX_RUNTIME_OPENCL_SOURCES AND GFX_PLUGIN_OPENCL_SOURCES)
     set(GFX_HAS_OPENCL_SOURCES ON)
-endif()
-
-set(GFX_HAS_VULKAN_SOURCES OFF)
-if(GFX_RUNTIME_VULKAN_SOURCES)
-    set(GFX_HAS_VULKAN_SOURCES ON)
 endif()
 
 unset(_gfx_src_dir)

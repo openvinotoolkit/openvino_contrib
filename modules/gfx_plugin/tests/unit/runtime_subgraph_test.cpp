@@ -51,13 +51,6 @@ void gfx_try_catch_fail(const std::function<void()>& fn) {
             msg.find("output tensors are device-only") != std::string::npos) {
             FAIL() << "GFX outputs are device-only; host readback required for test";
         }
-        if (msg.find("GFX Vulkan") != std::string::npos ||
-            msg.find("SPIR-V") != std::string::npos ||
-            msg.find("spirv") != std::string::npos ||
-            msg.find("vulkan") != std::string::npos) {
-            FAIL() << "Vulkan backend did not support this case: " << msg;
-            return;
-        }
         throw;
     }
 }

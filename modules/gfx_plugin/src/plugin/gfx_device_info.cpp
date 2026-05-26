@@ -14,7 +14,6 @@
 namespace ov {
 namespace gfx_plugin {
 void fill_metal_device_info(GfxDeviceInfo& info, const ov::AnyMap& properties);
-void fill_vulkan_device_info(GfxDeviceInfo& info, const ov::AnyMap& properties);
 }  // namespace gfx_plugin
 }  // namespace ov
 
@@ -63,10 +62,6 @@ GfxDeviceInfo query_device_info(GpuBackend backend, const ov::AnyMap& properties
     case GpuBackend::OpenCL: {
         info.device_name = "OpenCL";
         info.full_name = "GFX (OpenCL source kernels)";
-        break;
-    }
-    case GpuBackend::Vulkan: {
-        fill_vulkan_device_info(info, properties);
         break;
     }
     default:

@@ -1,304 +1,216 @@
 # Usage Guide
 
-This document shows how to use the GFX plugin from an OpenVINO Runtime application.
+This guide covers the public runtime surface of the `GFX` plugin.
 
-## Registering A Local Build
-For a plugin library built directly from this module, explicit registration is the most reliable workflow:
+## Registering The Plugin
+
+When the plugin is not discovered through OpenVINO's plugin registry, register
+the built library explicitly:
 
 ```cpp
 #include <openvino/openvino.hpp>
 
 ov::Core core;
 core.register_plugin("/path/to/libopenvino_gfx_plugin.so", "GFX");
+auto model = core.read_model("/path/to/model.xml");
+auto compiled = core.compile_model(model, "GFX");
+auto request = compiled.create_infer_request();
 ```
 
-If the plugin is packaged into an OpenVINO deployment with plugin discovery metadata, explicit registration may not be required. For development builds, use `register_plugin()`.
+Python follows the normal OpenVINO flow:
 
-## Reading Device Properties
+```python
+import openvino as ov
+
+core = ov.Core()
+core.register_plugin("/path/to/libopenvino_gfx_plugin.so", "GFX")
+model = core.read_model("/path/to/model.xml")
+compiled = core.compile_model(model, "GFX")
+request = compiled.create_infer_request()
+```
+
+## Backend Selection
+
+Use `GFX_BACKEND` to request a runtime backend:
+
 ```cpp
-auto available_devices = core.get_property("GFX", ov::available_devices);
-std::string selected_device_id = core.get_property("GFX", ov::device::id).as<std::string>();
-std::string backend = core.get_property("GFX", "GFX_BACKEND").as<std::string>();
-std::string full_name = core.get_property("GFX", ov::device::full_name).as<std::string>();
-auto capabilities = core.get_property("GFX", ov::device::capabilities);
+auto compiled = core.compile_model(model, "GFX", {
+    {"GFX_BACKEND", "metal"},
+});
 ```
 
-Useful properties include:
-- `GFX_BACKEND`
-- `GFX_ENABLE_FUSION`
-- `GFX_PROFILING_LEVEL`
-- `GFX_PROFILING_REPORT`
-- `GFX_MEM_STATS`
-- `GFX_DIAGNOSTIC_F32_MPS_IMAGE`
-- `ov::hint::inference_precision`
+Supported values:
+
+- `metal`
+- `opencl`
+
+If `GFX_BACKEND` is omitted, the configured default from
+`GFX_DEFAULT_BACKEND=auto|metal|opencl` is used. On macOS the available route is
+Metal. On non-Apple builds, OpenCL is the source-kernel route when it is enabled
+in the build.
+
+The selected backend affects support probing, transforms, MLIR/source planning,
+runtime binding, profiling counters, and which backend-specific infer request is
+created.
+
+## Public Properties
+
+GFX-specific property names are declared in
+`include/openvino/gfx_plugin/properties.hpp`.
+
+Common properties:
+
+- `GFX_BACKEND`: requested backend, `metal` or `opencl`
+- `GFX_ENABLE_FUSION`: enable or disable plugin-level graph/stage fusion
+- `GFX_PROFILING_LEVEL`: profiling detail level
+- `GFX_PROFILING_REPORT`: read-only JSON profiling report on compiled models
+- `GFX_MEM_STATS`: read-only memory statistics on compiled models
+- `GFX_DIAGNOSTIC_F32_MPS_IMAGE`: Metal diagnostic route for selected f32
+  MPS image placement checks
+
+The plugin also exposes standard OpenVINO properties such as:
+
 - `ov::available_devices`
 - `ov::device::id`
-- `ov::cache_dir`
+- `ov::device::full_name`
+- `ov::device::architecture`
+- `ov::device::capabilities`
+- `ov::execution_devices`
+- `ov::hint::inference_precision`
 - `ov::enable_profiling`
-- `PERF_COUNT`
+- `ov::cache_dir`
 
-`ov::available_devices` now exposes stable numeric ids such as `"0"`. Use
-`ov::device::full_name` when you need the human-readable backend device name.
+`ov::cache_dir` participates in normal OpenVINO model caching behavior. The
+current GFX export path serializes the OpenVINO model, not a native backend
+pipeline cache.
 
-`ov::hint::inference_precision` accepts `f16`/`fp16`/`half` or
-`f32`/`fp32`/`float` for GFX compilation; the default is `f16`.
+## Query And Compile
 
-`GFX_DIAGNOSTIC_F32_MPS_IMAGE` is a Metal-only diagnostic compile property for
-quality investigations of selected `f32` Conv/GroupConv/Pool MPSImage routes.
-Do not use it as a runtime switch or test-skip mechanism.
-
-## Selecting The Backend
-The backend can be selected globally for the device:
+`query_model()` and `compile_model()` use the same backend-aware support rules.
+If a model contains unsupported ops, shapes, or element types for the selected
+backend, compilation should fail clearly.
 
 ```cpp
-core.set_property("GFX", {{"GFX_BACKEND", "metal"}});
+auto supported = core.query_model(model, "GFX", {
+    {"GFX_BACKEND", "opencl"},
+});
 ```
 
-Device selection is separate from backend selection:
+There is no partial CPU fallback for unsupported stages.
+
+## Inference Precision
+
+Use standard OpenVINO `ov::hint::inference_precision` when precision selection
+is needed:
 
 ```cpp
-core.set_property("GFX", {{ov::device::id.name(), "0"}});
-```
-
-Or per compilation request:
-
-```cpp
-ov::CompiledModel compiled = core.compile_model(
-    model,
-    "GFX",
-    {{"GFX_BACKEND", "opencl"}});
-```
-
-The compiled model reports the resolved backend:
-
-```cpp
-std::string actual_backend = compiled.get_property("GFX_BACKEND").as<std::string>();
-```
-
-The selected backend affects both support probing and runtime route selection. `metal` uses the Apple MPS/MPSRT/MSL path, `opencl` uses the source-artifact OpenCL path, and `vulkan` keeps the legacy SPIR-V/Vulkan diagnostic path.
-
-## Compiling A Model
-```cpp
-auto model = core.read_model("/path/to/model.xml");
-
-ov::AnyMap config = {
-    {"GFX_BACKEND", "metal"},
-    {"GFX_ENABLE_FUSION", true},
+auto compiled = core.compile_model(model, "GFX", {
     {ov::hint::inference_precision.name(), ov::element::f16},
+});
+```
+
+Tests and compare tooling use precision-aware tolerances. Do not treat an FP16
+route as if it must satisfy FP32-only thresholds unless a test explicitly asks
+for strict thresholds.
+
+## Profiling
+
+Enable standard profiling and request a GFX profiling level:
+
+```cpp
+auto compiled = core.compile_model(model, "GFX", {
     {ov::enable_profiling.name(), true},
-};
+    {"GFX_PROFILING_LEVEL", "detailed"},
+});
 
-ov::CompiledModel compiled = core.compile_model(model, "GFX", config);
-```
-
-If the requested backend is unavailable on the current build or platform, `compile_model()` throws.
-
-## Running Inference
-```cpp
-ov::InferRequest request = compiled.create_infer_request();
-request.set_input_tensor(input_tensor);
+auto request = compiled.create_infer_request();
 request.infer();
-ov::Tensor output = request.get_output_tensor();
+auto report = compiled.get_property("GFX_PROFILING_REPORT").as<std::string>();
 ```
 
-Standard OpenVINO infer-request APIs for indexed or named inputs and outputs apply as usual.
+The report contains compile and infer sections, target-profile fields, backend
+counters, stage estimates, and backend-specific timing/counter data when
+available. Confirm `extended.target_profile` or counters such as
+`target_backend_metal` and `target_backend_opencl` before comparing runs.
 
-## Profiling And Memory Statistics
-Compiled models expose profiling and memory-related properties:
+## Remote Context And Remote Tensor
 
-```cpp
-ov::CompiledModel compiled = core.compile_model(
-    model,
-    "GFX",
-    {
-        {ov::enable_profiling.name(), true},
-        {"GFX_PROFILING_LEVEL", 1},
-    });
+The public types are implemented as:
 
-auto report = compiled.get_property("GFX_PROFILING_REPORT");
-auto mem_stats = compiled.get_property("GFX_MEM_STATS");
-```
+- `ov::gfx_plugin::GfxRemoteContext`
+- `ov::gfx_plugin::GfxRemoteTensor`
 
-The exact type returned by `GFX_MEM_STATS` depends on the active backend implementation and the headers visible to the caller.
+Remote tensor support is backend-dependent. Use the public keys from
+`properties.hpp` when passing backend buffers:
 
-`GFX_PROFILING_REPORT` returns a JSON string. When profiling is enabled, the report may contain:
-- a `compile` section with compile-time stage creation and compilation timings
-  compile may also include kernel-cache and backend compiler subphases such as MSL/SPIR-V resolution, backend compilation, and shader/pipeline creation
-- a node-level `nodes` section for standard OpenVINO profiling output
-- an `extended` section with backend/runtime segments, counters, transfer totals, target profile, roofline heuristics, and diagnostics
-- an `extended.target_profile` object with the resolved backend, device family, workgroup limits, alignment traits, and capability flags when the active backend reports them
+- `GFX_BUFFER`
+- `GFX_MEMORY`
+- `GFX_BUFFER_BYTES`
+- `GFX_HOST_VISIBLE`
+- `GFX_STORAGE_MODE`
 
-`GFX_PROFILING_LEVEL` controls the amount of collected data:
-- `0`: off
-- `1`: standard infer and node-level profiling
-- `2`: detailed profiling with extended runtime segments and counters
+The backend validates handle ownership, storage mode, size, and visibility
+before binding.
 
-The profiling fast path stays disabled when profiling is off. The plugin does not collect runtime timestamps or extended counters unless profiling is explicitly enabled.
+## OpenCL Source Backend
 
-### Optional Trace Sinks
-Detailed profiling can also expose an optional trace sink for external timeline analysis.
+The OpenCL backend dynamically loads the target OpenCL runtime and executes
+source artifacts described by `src/kernel_ir/gfx_opencl_source_artifacts.*`.
 
-Current implementation uses the `OV_GFX_PROFILE_TRACE` environment variable:
-- `perfetto` or `trace_event`: adds a `traceEvents` array to `GFX_PROFILING_REPORT`
-- `signpost` or `os_signpost`: emits live `os_signpost` events on macOS
+Current public coverage includes selected data movement, shape/list movement,
+Range/Tile, MatMul/Softmax, gather/scatter families, Concat/Split, typed
+elementwise families, compare/select, and boolean logical/reduction families
+when the model matches the artifact contracts.
 
-If `OV_GFX_PROFILE_TRACE_FILE` is set together with `OV_GFX_PROFILE_TRACE=perfetto`, the plugin also writes a merged Perfetto-compatible trace file that combines available compile and infer `traceEvents`.
+Unsupported OpenCL cases fail during support probing, compilation, stage
+creation, or runtime validation. They do not fall back to CPU or switch backend.
 
-The trace payload may include:
-- segment spans for compile, submit, wait, upload, infer, download, and backend-specific hazard phases
-- transfer spans for H2D and D2H activity
-- allocation spans when allocation profiling is enabled
-- backend binding/setup spans such as descriptor pool/create-write activity on Vulkan and pipeline/buffer binding on Metal
-- final counter snapshots as Perfetto counter events
+## Metal Backend
 
-The extended JSON summary also includes lightweight roofline-style heuristics derived from recorded `flops_est`, `macs_est`, `bytes_in`, and `bytes_out`:
-- per-phase arithmetic intensity and estimated achieved TFLOPS / GB/s
-- an infer-level `roofline` aggregate
-- a heuristic `dominant_regime` of `memory`, `mixed`, `compute`, or `unknown`
+The Metal backend may select Apple MPS/MPSGraph vendor stages or Apple MSL
+custom-kernel stages through shared stage policy. The request path uses explicit
+MPSRT resource records, storage bridges, prepared resources, and kernel-buffer
+orders when a typed MPSRT plan is present.
 
-These values are inferential rather than hardware-calibrated peaks; they are intended for quick triage, not as a substitute for AGI, Perfetto, or vendor counters.
+`GFX_DIAGNOSTIC_F32_MPS_IMAGE` is a diagnostic compile property for selected
+f32 MPS image placement checks. It should be used for localization, not as a
+general runtime switch.
 
-Example:
+## Compare Runner
+
+`ov_gfx_compare_runner` is the preferred correctness triage tool:
 
 ```bash
-OV_GFX_PROFILE_TRACE=perfetto \
-OV_GFX_PROFILE_TRACE_FILE=/path/to/gfx-trace.json \
-./your_app
-```
-
-This sink selection is currently an internal activation path. The plugin does not expose a separate public property for trace sink selection.
-
-`ov_gfx_compare_runner` can enable and print the same report without relying on
-environment-only switches:
-
-```bash
-ov_gfx_compare_runner <model.xml> \
+ov_gfx_compare_runner \
+  --model /path/to/model.xml \
+  --device GFX \
   --reference-device TEMPLATE \
-  --dump-gfx-profile \
-  --gfx-profiling-level detailed
+  --gfx-backend metal
 ```
 
-For YOLO-style vision accuracy checks, prefer reproducible real images over
-synthetic random tensors. The compare runner accepts portable RGB PPM files and
-can run a batch of images in one compiled-model session:
+Use it for numeric diffs, per-op narrowing, boolean output checks,
+golden-reference comparisons, and real-image PPM inputs. Use `benchmark_app` or
+`ov_gfx_microbench` for performance work.
+
+## Microbench
+
+`ov_gfx_microbench` supports `auto`, `metal`, and `opencl`:
 
 ```bash
-ov_gfx_compare_runner yolo26x_ir/yolo26x.xml \
-  --reference-device TEMPLATE \
-  --abs-threshold 0.000001 \
-  --rel-threshold 0.000001 \
-  --input-image /path/to/image-a.ppm \
-  --input-image /path/to/image-b.ppm \
-  --input-image /path/to/image-c.ppm
+ov_gfx_microbench --backend opencl --warmup 1 --iterations 3 \
+  --output /tmp/gfx-microbench.json \
+  --calibration-output /tmp/gfx-calibration.json
 ```
 
-The image path uses RGB resize into the model's rank-4 batch-1 NCHW/NHWC input;
-floating-point tensors receive values in `[0, 1]`. Use `benchmark_app`, not this
-accuracy tool, for performance.
+See `docs/MICROBENCH_SCHEMA.md` for the JSON contract and
+`docs/PROFILING_RUNBOOK.md` for platform profiling flows.
 
-For slow remote targets, generate reference outputs once with
-`--dump-reference-dir DIR` on a machine that can run the reference backend, then
-stage the same PPM inputs and use `--golden-dir DIR` for the target GFX run. The
-target still executes only `GFX`; golden outputs are not a plugin CPU fallback.
+## Known Constraints
 
-For Apple MPSRT placement triage, inspect the compile counters named
-`mpsrt_stage_backend_*`, `mpsrt_stage_family_*`,
-`mpsrt_stage_precision_*`, and `stage_policy_mps_*`. These counters are the
-shared way to decide which `f32` subgraphs are still on Apple MSL and why they
-were rejected by the MPS route before changing placement policy.
-
-For target selection triage across backends, inspect `extended.target_profile`
-and counters such as `target_backend_metal`, `target_backend_opencl`, and
-`target_backend_vulkan`. These fields describe the backend that actually ran
-the request and the device limits reported to the shared planner.
-
-### Vulkan Pipeline Cache Persistence
-On Vulkan, the plugin can reuse the standard OpenVINO cache directory for backend pipeline-cache persistence:
-
-```cpp
-ov::CompiledModel compiled = core.compile_model(
-    model,
-    "GFX",
-    {
-        {"GFX_BACKEND", "vulkan"},
-        {ov::cache_dir.name(), "/path/to/cache_dir"},
-    });
-```
-
-This does not change `export_model()` semantics. It only gives the Vulkan backend a stable directory for native pipeline-cache files.
-
-### OpenCL Runtime Notes
-The OpenCL backend is selected with `GFX_BACKEND=opencl` when it is available in the build:
-
-```cpp
-ov::CompiledModel compiled = core.compile_model(
-    model,
-    "GFX",
-    {{"GFX_BACKEND", "opencl"}});
-```
-
-The backend loads the target OpenCL runtime dynamically and executes the source-artifact subset described by the plugin's manifest metadata. Current public coverage includes typed data movement, selected f32/f16/i32 elementwise kernels, shape/list movement, Range/Tile, gather/scatter families, Concat/Split, Compare/Select, and boolean logical reductions when the model matches the artifact contracts. Unsupported ops fail during compilation or stage creation; they do not fall back to CPU or silently switch to Vulkan.
-
-### Microbench Suite
-`ov_gfx_microbench` provides the `MB0` to `MB3` suite used by the local profiling workflow docs.
-
-- `MB0`: raw backend empty submit or empty Metal command-buffer commit with sync
-- `MB1`: synthetic FP16 `Relu` model as a copy+dispatch approximation
-- `MB2`: synthetic FP16 `Add` model as a bandwidth-pressure approximation
-- `MB3`: synthetic FP16 `MatMul` model as a compute-pressure approximation
-
-Example:
-
-```bash
-./ov_gfx_microbench \
-  --backend metal \
-  --warmup 3 \
-  --iterations 10 \
-  --output gfx-microbench.json \
-  --calibration-output gfx-calibration.json
-```
-
-Assumptions:
-- `MB1` to `MB3` reuse the normal GFX plugin path with `ov::enable_profiling=true` and `GFX_PROFILING_LEVEL=2`
-- `MB1` to `MB3` are synthetic OpenVINO graphs, not backend-specific handwritten kernels
-- each synthetic benchmark embeds the raw `GFX_PROFILING_REPORT` JSON so the same diagnostics pipeline can be reused on macOS, Android, and Raspberry Pi
-
-Use `--backend opencl` on OpenCL-capable non-Apple builds when profiling the source-artifact backend.
-
-The microbench JSON also includes a derived `analysis` section plus per-benchmark `workload`, `derived`, and `profile_digest` blocks:
-- `device_key = vendor_id:device_id:driver_version` for device-keyed autotuning caches
-- `fixed_overhead_us` from `MB0`
-- `bandwidth_estimate_gbps` from `MB2`
-- `compute_estimate_tflops` from `MB3`
-- per-benchmark overhead-subtracted throughput estimates and lightweight hints such as `sync_heavy`, `transfer_heavy`, `binding_or_descriptor_churn`, or `compute_pressure_candidate`
-
-These values are explicit heuristics from the synthetic suite. They are intended for quick per-device triage and autotuning seeds, not as calibrated peak hardware measurements.
-
-For the complete contract and the reduced calibration artifact format, see:
-- `MICROBENCH_SCHEMA.md`
-
-For the cross-device profiling workflow, external trace capture, validation layers, and `perf` commands, see:
-- `PROFILING_RUNBOOK.md`
-
-Current runtime implementations also reuse some immutable device resources internally, such as constant buffers or prepared kernel bindings. These caches are internal optimization layers and do not require extra user API calls.
-
-For static output signatures, infer requests may also reuse internal host output tensors when the application does not bind explicit output storage. If the application sets its own output tensor with `set_tensor()`, that user-provided tensor remains authoritative.
-
-## Remote Contexts And Tensors
-The plugin implements remote context and remote tensor interfaces, but effective capabilities remain backend-specific. If your integration depends on remote memory workflows, inspect:
-- `src/runtime/gfx_remote_context.*`
-- `src/runtime/gfx_remote_tensor.*`
-- the active backend implementation under `src/backends/metal/plugin/`, `src/backends/opencl/plugin/`, or `src/backends/vulkan/plugin/`
-
-## Error Model
-The plugin intentionally rejects unsupported models during compilation:
-- there is no silent partial CPU fallback
-- backend-specific capability differences surface through exceptions
-- `query_model()` and `compile_model()` follow aligned support logic
-
-For deployment, treat backend acceptance as backend-specific: a model accepted on one backend is not automatically guaranteed to compile on the other if a required optimized route, shape restriction, or device capability is missing.
-
-For architectural and contributor details, continue with:
-- `../README.md`
-- `ARCHITECTURE.md`
-- `DEVELOPMENT.md`
+- Backend parity is not guaranteed between Metal and OpenCL.
+- Many ops require static rank, static shape, or constant attributes.
+- OpenCL source artifacts intentionally cover a bounded set of role contracts.
+- Metal vendor stages require strict descriptor, storage, and resource-binding
+  contracts.
+- Unsupported cases should fail clearly rather than taking hidden CPU or
+  alternate backend routes.

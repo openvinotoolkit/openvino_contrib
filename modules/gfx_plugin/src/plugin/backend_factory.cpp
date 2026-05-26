@@ -8,7 +8,6 @@
 #include "runtime/gfx_backend_utils.hpp"
 #include "backends/opencl/plugin/compiled_model_backend.hpp"
 #include "backends/metal/plugin/compiled_model_backend.hpp"
-#include "backends/vulkan/plugin/compiled_model_backend.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -24,8 +23,6 @@ std::unique_ptr<BackendState> create_backend_state(GpuBackend backend,
             return create_metal_backend_state(properties, context);
         case GpuBackend::OpenCL:
             return create_opencl_backend_state(properties, context);
-        case GpuBackend::Vulkan:
-            return create_vulkan_backend_state();
         default:
             break;
     }

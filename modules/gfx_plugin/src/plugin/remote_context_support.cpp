@@ -13,8 +13,6 @@ namespace ov {
 namespace gfx_plugin {
 ov::SoPtr<ov::IRemoteContext> create_metal_remote_context(const std::string& resolved_name,
                                                           const RemoteContextParams& params);
-ov::SoPtr<ov::IRemoteContext> create_vulkan_remote_context(const std::string& resolved_name,
-                                                           const RemoteContextParams& params);
 }  // namespace gfx_plugin
 }  // namespace ov
 
@@ -43,9 +41,6 @@ ov::SoPtr<ov::IRemoteContext> make_gfx_remote_context(const std::string& device_
     switch (params.backend) {
         case GpuBackend::Metal: {
             return create_metal_remote_context(resolved_name, params);
-        }
-        case GpuBackend::Vulkan: {
-            return create_vulkan_remote_context(resolved_name, params);
         }
         default:
             break;

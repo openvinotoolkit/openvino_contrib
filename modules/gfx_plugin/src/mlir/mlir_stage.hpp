@@ -78,14 +78,13 @@ protected:
 
   virtual std::shared_ptr<ICompiledKernel>
   compile_kernel(const KernelSource &source, std::string *log) = 0;
-  virtual bool is_vulkan_backend() const { return false; }
   virtual bool prefer_specialized_concat_execution() const { return true; }
   virtual bool should_skip_generic_kernel_compile(
       const GfxStageOptimizationPlan & /*plan*/) const {
     return false;
   }
   GpuBackend backend_kind() const {
-    return is_vulkan_backend() ? GpuBackend::Vulkan : GpuBackend::Metal;
+    return GpuBackend::Metal;
   }
   virtual KernelExecutionHooks *prepare_profiling(ProfileState &state,
                                                   KernelExecutionHooks &hooks);
@@ -136,7 +135,6 @@ protected:
   uint32_t m_rms_hidden = 0;
   bool m_matmul_safe_retry_attempted = false;
   bool m_matmul_serial_retry_attempted = false;
-  bool m_vulkan_conv_serial_retry_attempted = false;
   bool m_has_activation = false;
   ActivationKind m_activation = ActivationKind::Relu;
   float m_activation_alpha = 0.0f;

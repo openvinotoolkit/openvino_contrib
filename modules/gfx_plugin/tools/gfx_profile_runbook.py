@@ -129,7 +129,7 @@ def build_plan(platform: str, args: argparse.Namespace) -> Dict[str, object]:
                     + shlex.quote(
                         f"cd {remote_dir} && "
                         f"GFX_PLUGIN_PATH={plugin_path} LD_LIBRARY_PATH={remote_dir} "
-                        f"./ov_gfx_microbench --backend vulkan --warmup {args.warmup} --iterations {args.iterations} "
+                        f"./ov_gfx_microbench --backend opencl --warmup {args.warmup} --iterations {args.iterations} "
                         f"--output {remote_dir}/gfx-microbench-android.json "
                         f"--calibration-output {remote_dir}/gfx-calibration-android.json"
                     )
@@ -139,7 +139,7 @@ def build_plan(platform: str, args: argparse.Namespace) -> Dict[str, object]:
                     str(Path(__file__).with_name("gfx_microbench_smoke.py")),
                     "--platform", "android",
                     "--binary", microbench,
-                    "--backend", "vulkan",
+                    "--backend", "opencl",
                     "--plugin-path", plugin_path,
                     "--android-dir", remote_dir,
                 ]),
@@ -152,16 +152,8 @@ def build_plan(platform: str, args: argparse.Namespace) -> Dict[str, object]:
                         f"./benchmark_app -m {args.remote_model or f'{remote_dir}/yolo26x.xml'} -d GFX -pc -niter 10"
                     )
                 ),
-                "validation_enable": None if not package else "\n".join([
-                    "adb shell settings put global enable_gpu_debug_layers 1",
-                    f"adb shell settings put global gpu_debug_app {shlex.quote(package)}",
-                    "adb shell settings put global gpu_debug_layers VK_LAYER_KHRONOS_validation",
-                ]),
-                "validation_disable": "\n".join([
-                    "adb shell settings delete global enable_gpu_debug_layers",
-                    "adb shell settings delete global gpu_debug_app",
-                    "adb shell settings delete global gpu_debug_layers",
-                ]),
+                "validation_enable": None,
+                "validation_disable": None,
             },
         }
 
@@ -178,7 +170,7 @@ def build_plan(platform: str, args: argparse.Namespace) -> Dict[str, object]:
                 f"LD_LIBRARY_PATH={shlex.quote(remote_dir + '/libs/Release')}:{shlex.quote(remote_dir)} "
                 + shell_join([
                     microbench,
-                    "--backend", "vulkan",
+                    "--backend", "opencl",
                     "--warmup", str(args.warmup),
                     "--iterations", str(args.iterations),
                     "--output", f"{remote_dir}/gfx-microbench-rpi.json",

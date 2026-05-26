@@ -103,9 +103,6 @@ if(ENABLE_GFX_MLIR)
         MLIRBytecodeWriter
         MLIRBytecodeOpInterface
         MLIRUBDialect
-        MLIRUBToSPIRV
-        MLIRSPIRVImageInterfaces
-        MLIRSPIRVBinaryUtils
         MLIRAffineTransforms
         MLIRAffineToStandard
         MLIRAffineUtils
@@ -117,22 +114,7 @@ if(ENABLE_GFX_MLIR)
         MLIRPresburger
         MLIRArithUtils
         MLIRSCFUtils
-        MLIRMemRefUtils
-        MLIRVectorToSPIRV
-        MLIRSPIRVDialect
-        MLIRSPIRVSerialization
-        MLIRSPIRVTransforms
-        MLIRSPIRVUtils
-        MLIRSPIRVConversion
-        MLIRGPUToSPIRV
-        MLIRArithToSPIRV
-        MLIRMathToSPIRV
-        MLIRSCFToSPIRV
-        MLIRTensorToSPIRV
-        MLIRMemRefToSPIRV
-        MLIRFuncToSPIRV
-        MLIRIndexToSPIRV
-        MLIRControlFlowToSPIRV)
+        MLIRMemRefUtils)
 
     set(_gfx_llvm_toolchain_args "")
     if(ANDROID)

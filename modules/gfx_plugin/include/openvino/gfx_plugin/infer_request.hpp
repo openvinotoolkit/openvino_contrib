@@ -44,7 +44,6 @@ private:
     const std::shared_ptr<const CompiledModel> get_compiled_model_typed() const;
     void infer_metal_impl(const std::shared_ptr<const CompiledModel>& cm);
     void infer_opencl_impl(const std::shared_ptr<const CompiledModel>& cm);
-    void infer_vulkan_impl(const std::shared_ptr<const CompiledModel>& cm);
     ov::Tensor resolve_host_input_tensor(size_t idx);
     GpuTensor resolve_remote_input_tensor(size_t idx,
                                           GpuBackend expected_backend,

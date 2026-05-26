@@ -176,9 +176,6 @@ void InferRequest::infer() {
         case GpuBackend::OpenCL:
             infer_opencl_impl(cm);
             break;
-        case GpuBackend::Vulkan:
-            infer_vulkan_impl(cm);
-            break;
         default:
             OPENVINO_THROW("GFX: unsupported backend for infer");
     }

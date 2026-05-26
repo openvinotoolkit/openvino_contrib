@@ -283,7 +283,14 @@ TEST(GfxOpenClSourceArtifactsTest,
                  "gfx_opencl_baseline_binary_broadcast_f32",
                  "gfx_opencl_baseline_binary_scalar_f32",
                  "gfx_opencl_baseline_binary_const_f32"});
-    EXPECT_EQ(resolve_gfx_opencl_source_artifact(c.node)->op, c.op);
+    const auto artifact = resolve_gfx_opencl_source_artifact(c.node);
+    ASSERT_TRUE(artifact.has_value());
+    EXPECT_EQ(artifact->op, c.op);
+    if (c.name == "i32 Power") {
+      EXPECT_NE(artifact->source.find("gfx_pow_i32_exact"), std::string::npos);
+      EXPECT_EQ(artifact->source.find("(int)pow((float)lhs, (float)rhs)"),
+                std::string::npos);
+    }
     EXPECT_TRUE(is_supported_node(c.node, GpuBackend::OpenCL));
   }
 }
@@ -1030,6 +1037,8 @@ TEST(GfxOpenClSourceArtifactsTest,
      SoftmaxArtifactsUseStaticAxisMetadata) {
   const auto data = param(ov::element::f32, ov::Shape{2, 3, 4});
   const auto softmax = std::make_shared<ov::op::v1::Softmax>(data, 1);
+  const auto f16_data = param(ov::element::f16, ov::Shape{2, 3, 4});
+  const auto f16_softmax = std::make_shared<ov::op::v1::Softmax>(f16_data, 1);
   std::vector<GfxOpenClSourceScalarArg> scalar_args = {
       GfxOpenClSourceScalarArg::ElementCount};
   scalar_args.insert(scalar_args.end(), 3,
@@ -1052,6 +1061,22 @@ TEST(GfxOpenClSourceArtifactsTest,
   ASSERT_TRUE(artifact.has_value());
   EXPECT_EQ(artifact->source.find("__global long*"), std::string::npos);
   EXPECT_TRUE(is_supported_node(softmax, GpuBackend::OpenCL));
+
+  expect_opencl_artifact(f16_softmax, GfxKernelStageFamily::Softmax,
+                         "opencl/baseline/softmax_f16",
+                         "gfx_opencl_baseline_softmax_f16",
+                         /*arg_count=*/6,
+                         /*direct_input_count=*/1,
+                         scalar_args,
+                         {0},
+                         static_u32_scalars);
+  const auto f16_artifact = resolve_gfx_opencl_source_artifact(f16_softmax);
+  ASSERT_TRUE(f16_artifact.has_value());
+  EXPECT_NE(f16_artifact->source.find("gfx_f16_bits_to_f32"),
+            std::string::npos);
+  EXPECT_EQ(f16_artifact->source.find("__global half"), std::string::npos);
+  EXPECT_EQ(f16_artifact->source.find("__global long*"), std::string::npos);
+  EXPECT_TRUE(is_supported_node(f16_softmax, GpuBackend::OpenCL));
 }
 
 TEST(GfxOpenClSourceArtifactsTest,
@@ -1076,6 +1101,42 @@ TEST(GfxOpenClSourceArtifactsTest,
                          scalar_args,
                          {0},
                          static_u32_scalars);
+  EXPECT_TRUE(is_supported_node(softmax, GpuBackend::OpenCL));
+}
+
+TEST(GfxOpenClSourceArtifactsTest,
+     SoftmaxDynamicStaticRankArtifactsUseRuntimeShapeMetadata) {
+  const auto data = std::make_shared<ov::op::v0::Parameter>(
+      ov::element::f16, ov::PartialShape{ov::Dimension::dynamic(), 3, 4});
+  const auto softmax = std::make_shared<ov::op::v8::Softmax>(data, -2);
+
+  std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+      GfxOpenClSourceScalarArg::ElementCount,
+      GfxOpenClSourceScalarArg::StaticU32,
+      GfxOpenClSourceScalarArg::StaticU32};
+  for (uint32_t axis = 0; axis < 8; ++axis) {
+    scalar_args.push_back(static_cast<GfxOpenClSourceScalarArg>(
+        static_cast<uint32_t>(GfxOpenClSourceScalarArg::Input0Dim0) + axis));
+  }
+  const std::vector<uint32_t> static_u32_scalars = {
+      3,  // rank
+      1,  // normalized axis
+  };
+
+  expect_opencl_artifact(
+      softmax, GfxKernelStageFamily::Softmax,
+      "opencl/baseline/softmax_f16_dynamic_static_rank",
+      "gfx_opencl_baseline_softmax_dynamic_f16",
+      /*arg_count=*/13,
+      /*direct_input_count=*/1,
+      scalar_args,
+      {0},
+      static_u32_scalars);
+  const auto artifact = resolve_gfx_opencl_source_artifact(softmax);
+  ASSERT_TRUE(artifact.has_value());
+  EXPECT_NE(artifact->source.find("gfx_opencl_baseline_softmax_dynamic_f16"),
+            std::string::npos);
+  EXPECT_EQ(artifact->source.find("__global half"), std::string::npos);
   EXPECT_TRUE(is_supported_node(softmax, GpuBackend::OpenCL));
 }
 
@@ -2386,19 +2447,16 @@ TEST(GfxOpenClSourceArtifactsTest,
   const auto high_rank_lhs = param(ov::element::f32, ov::Shape{1, 1, 1, 1, 3});
   const auto high_rank_rhs = param(ov::element::f32, ov::Shape{3});
 
-  const auto f16_softmax = std::make_shared<ov::op::v1::Softmax>(f16, 1);
   const auto f16_relu = std::make_shared<ov::op::v0::Relu>(f16);
   const auto high_rank_broadcast_add =
       std::make_shared<ov::op::v1::Add>(high_rank_lhs, high_rank_rhs);
   const auto convert_to_f16 =
       std::make_shared<ov::op::v0::Convert>(f32, ov::element::f16);
 
-  EXPECT_FALSE(resolve_gfx_opencl_source_artifact(f16_softmax).has_value());
   EXPECT_FALSE(resolve_gfx_opencl_source_artifact(f16_relu).has_value());
   EXPECT_FALSE(resolve_gfx_opencl_source_artifact(high_rank_broadcast_add).has_value());
   EXPECT_FALSE(resolve_gfx_opencl_source_artifact(convert_to_f16).has_value());
 
-  EXPECT_FALSE(is_supported_node(f16_softmax, GpuBackend::OpenCL));
   EXPECT_FALSE(is_supported_node(f16_relu, GpuBackend::OpenCL));
   EXPECT_FALSE(is_supported_node(high_rank_broadcast_add, GpuBackend::OpenCL));
   EXPECT_FALSE(is_supported_node(convert_to_f16, GpuBackend::OpenCL));

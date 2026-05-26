@@ -276,6 +276,7 @@ gfx_kernel_external_buffer_abi_spec_for_stage(std::string_view stage_type,
        entry_point == "scatter_nd_update")) {
     return make_gfx_kernel_roles_abi({GfxKernelBufferRole::TensorInput,
                                       GfxKernelBufferRole::TensorInput,
+                                      GfxKernelBufferRole::TensorInput,
                                       GfxKernelBufferRole::TensorOutput,
                                       GfxKernelBufferRole::RuntimeParams});
   }
@@ -352,7 +353,8 @@ gfx_kernel_external_buffer_abi_spec_for_stage(std::string_view stage_type,
     if (stage_type == "ShapeOf" || entry_point == "shapeof_kernel") {
       return make_gfx_kernel_roles_abi(
           {GfxKernelBufferRole::TensorInput, GfxKernelBufferRole::TensorOutput,
-           GfxKernelBufferRole::ScalarParam, GfxKernelBufferRole::ConstTensor});
+           GfxKernelBufferRole::ScalarParam,
+           GfxKernelBufferRole::RuntimeParams});
     }
     if (stage_type == "Range" || entry_point == "range_kernel") {
       return make_gfx_kernel_roles_abi(

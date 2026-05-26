@@ -44,7 +44,7 @@ bool is_conv_tile_input_interior(int64_t oh_base,
 }  // namespace detail
 
 // Lower linalg::Conv2DNchwFchwOp to explicit scf.parallel + scf.for loops.
-// Intended to stabilize Vulkan SPIR-V parallel path for Conv2D.
+// Intended to stabilize the shared MLIR parallel path for Conv2D.
 void run_conv2d_parallel_lowering(mlir::ModuleOp module);
 
 }  // namespace gfx_plugin

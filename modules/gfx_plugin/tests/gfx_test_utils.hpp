@@ -60,8 +60,8 @@ inline bool gfx_backend_is_metal() {
     return gfx_backend_name() == "metal";
 }
 
-inline bool gfx_backend_is_vulkan() {
-    return gfx_backend_name() == "vulkan";
+inline bool gfx_backend_is_opencl() {
+    return gfx_backend_name() == "opencl";
 }
 
 inline bool device_available(const std::string& name) {

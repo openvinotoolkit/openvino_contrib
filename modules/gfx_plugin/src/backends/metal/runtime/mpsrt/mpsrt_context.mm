@@ -1224,7 +1224,6 @@ bool is_first_class_mps_stage(GfxMpsrtStageKind kind) {
     case GfxMpsrtStageKind::MPSSdpa:
         return true;
     case GfxMpsrtStageKind::MSLDispatch:
-    case GfxMpsrtStageKind::SPIRVDispatch:
     case GfxMpsrtStageKind::Alias:
     case GfxMpsrtStageKind::Unknown:
     default:

@@ -50,19 +50,6 @@ public:
         return src;
     }
 
-    KernelSource to_source_with_spirv(std::vector<uint32_t> spirv_binary) const {
-        KernelSource src = to_source();
-        src.spirv_binary = std::move(spirv_binary);
-        return src;
-    }
-
-    KernelSource to_source_with_spirv_generator(
-        std::function<std::vector<uint32_t>(mlir::ModuleOp)> generator) const {
-        KernelSource src = to_source();
-        src.spirv_generator = std::move(generator);
-        return src;
-    }
-
     KernelRuntimeMetadata runtime_metadata(const KernelArgMappingInfo& mapping,
                                            const std::shared_ptr<const ov::Node>& node,
                                            size_t outputs_hint = 0) const {
@@ -75,10 +62,9 @@ public:
 
     static KernelDispatch make_default_dispatch(const ov::Shape& shape,
                                                 const ICompiledKernel& kernel) {
-        // Linear MLIR kernels are indexed by the global invocation id, so using
+        // Linear kernels are indexed by the global invocation id, so using
         // a reasonable workgroup size reduces dispatch group counts without
-        // changing semantics. This is required for large mobile-Vulkan tensors
-        // where a 1-thread group would overflow practical dispatch limits.
+        // changing semantics on mobile GPUs.
         constexpr size_t kDefaultLinearThreadsPerGroup = 64;
         return gfx_plugin::make_default_dispatch(shape,
                                                  kernel.clamp_threadgroup_size(kDefaultLinearThreadsPerGroup));

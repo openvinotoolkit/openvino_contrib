@@ -13,7 +13,6 @@ set(GFX_PLUGIN_ENTRY_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/plugin/plugin.cpp")
 list(FILTER GFX_PLUGIN_COMMON_SOURCES EXCLUDE REGEX "plugin/plugin\\.cpp$")
 set(GFX_PLUGIN_METAL_SOURCES_EFFECTIVE "")
 set(GFX_PLUGIN_OPENCL_SOURCES_EFFECTIVE "")
-set(GFX_PLUGIN_VULKAN_SOURCES_EFFECTIVE "")
 set(GFX_RUNTIME_COMMON_SOURCES ${GFX_RUNTIME_COMMON_SOURCES})
 
 if(GFX_BACKEND_METAL_AVAILABLE)
@@ -42,20 +41,6 @@ else()
         ${GFX_PLUGIN_OPENCL_STUB_SOURCES})
 endif()
 
-if(GFX_BACKEND_VULKAN_AVAILABLE)
-    list(APPEND GFX_PLUGIN_VULKAN_SOURCES_EFFECTIVE
-        ${GFX_PLUGIN_VULKAN_SOURCES})
-    list(APPEND GFX_RUNTIME_VULKAN_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime/stage_factory.cpp)
-else()
-    list(APPEND GFX_PLUGIN_VULKAN_SOURCES_EFFECTIVE
-        ${GFX_PLUGIN_VULKAN_STUB_SOURCES})
-    list(APPEND GFX_RUNTIME_COMMON_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime/stage_factory_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime/op_support_stub.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backends/vulkan/runtime/memory_api_stub.cpp)
-endif()
-
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/plugin/gfx_backend_config.hpp.in
     ${CMAKE_CURRENT_BINARY_DIR}/plugin/gfx_backend_config.hpp
@@ -76,8 +61,7 @@ add_subdirectory(mlir)
 add_library(gfx_plugin_build_settings INTERFACE)
 target_compile_definitions(gfx_plugin_build_settings INTERFACE
     GFX_BACKEND_METAL_AVAILABLE=$<BOOL:${GFX_BACKEND_METAL_AVAILABLE}>
-    GFX_BACKEND_OPENCL_AVAILABLE=$<BOOL:${GFX_BACKEND_OPENCL_AVAILABLE}>
-    GFX_BACKEND_VULKAN_AVAILABLE=$<BOOL:${GFX_BACKEND_VULKAN_AVAILABLE}>)
+    GFX_BACKEND_OPENCL_AVAILABLE=$<BOOL:${GFX_BACKEND_OPENCL_AVAILABLE}>)
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(gfx_plugin_build_settings INTERFACE -Werror)
 elseif(MSVC)
@@ -163,18 +147,6 @@ target_link_libraries(gfx_plugin_metal PRIVATE
     openvino::runtime::dev)
 set_target_properties(gfx_plugin_metal PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-add_library(gfx_plugin_vulkan STATIC)
-target_sources(gfx_plugin_vulkan PRIVATE
-    ${GFX_PLUGIN_VULKAN_SOURCES_EFFECTIVE}
-    ${GFX_PLUGIN_VULKAN_HEADERS})
-target_link_libraries(gfx_plugin_vulkan PRIVATE
-    gfx_plugin_build_settings
-    gfx_plugin_public_headers
-    gfx_plugin_private_headers
-    openvino::runtime
-    openvino::runtime::dev)
-set_target_properties(gfx_plugin_vulkan PROPERTIES POSITION_INDEPENDENT_CODE ON)
-
 add_library(gfx_plugin_opencl STATIC)
 target_sources(gfx_plugin_opencl PRIVATE
     ${GFX_PLUGIN_OPENCL_SOURCES_EFFECTIVE}
@@ -199,8 +171,7 @@ target_link_libraries(${TARGET_NAME}
 target_link_libraries(${TARGET_NAME} PRIVATE
     gfx_plugin_core
     gfx_plugin_metal
-    gfx_plugin_opencl
-    gfx_plugin_vulkan)
+    gfx_plugin_opencl)
 
 # On macOS, force ".so" suffix so OpenVINO loader picks the plugin consistently.
 if(APPLE)
@@ -262,149 +233,9 @@ if(GFX_BACKEND_OPENCL_AVAILABLE)
     target_link_libraries(${TARGET_NAME} PRIVATE gfx_runtime_opencl)
 endif()
 
-if(GFX_BACKEND_VULKAN_AVAILABLE)
-    add_library(gfx_runtime_vulkan STATIC)
-    target_sources(gfx_runtime_vulkan PRIVATE
-        ${GFX_RUNTIME_COMMON_HEADERS}
-        ${GFX_RUNTIME_VULKAN_SOURCES}
-        ${GFX_RUNTIME_VULKAN_HEADERS}
-        ${GFX_RUNTIME_VULKAN_CODEGEN_HEADERS}
-        ${GFX_RUNTIME_VULKAN_CODEGEN_SOURCES})
-    set(GFX_VULKAN_MLIR_LIBS
-        MLIRSPIRVSerialization
-        MLIRSPIRVTransforms
-        MLIRSPIRVConversion
-        MLIRGPUToSPIRV
-        MLIRArithToSPIRV
-        MLIRMathToSPIRV
-        MLIRSCFToSPIRV
-        MLIRTensorToSPIRV
-        MLIRMemRefToSPIRV
-        MLIRFuncToSPIRV
-        MLIRIndexToSPIRV
-        MLIRControlFlowToSPIRV
-        MLIRVectorDialect
-        MLIRVectorInterfaces
-        MLIRMaskableOpInterface
-        MLIRMaskingOpInterface
-        MLIRSPIRVDialect
-        MLIRSPIRVImageInterfaces
-        MLIRSPIRVUtils
-        MLIRSPIRVBinaryUtils
-        MLIRUBDialect
-        MLIRUBToSPIRV
-        MLIRControlFlowDialect
-        MLIRControlFlowInterfaces
-        MLIRDLTIDialect
-        MLIRIndexDialect
-        MLIRMemRefDialect
-        MLIRMemOpInterfaces
-        MLIRFunctionInterfaces
-        MLIRDestinationStyleOpInterface
-        MLIRShapedOpInterfaces
-        MLIRIndexingMapOpInterface
-        MLIRLoopLikeInterface
-        MLIRParallelCombiningOpInterface
-        MLIRMemorySlotInterfaces
-        MLIRArithValueBoundsOpInterfaceImpl
-        MLIRTensorInferTypeOpInterfaceImpl
-        MLIRTensorTilingInterfaceImpl
-        MLIRInferIntRangeCommon
-        MLIRInferIntRangeInterface
-        MLIRInferTypeOpInterface
-        MLIRSideEffectInterfaces
-        MLIRViewLikeInterface
-        MLIRCastInterfaces
-        MLIRDataLayoutInterfaces
-        MLIRTransformUtils
-        MLIRRewrite
-        MLIRRewritePDL
-        MLIRPDLToPDLInterp
-        MLIRPDLInterpDialect
-        MLIRPDLDialect
-        MLIRPDLLAST
-        MLIRSubsetOpInterface
-        MLIRReconcileUnrealizedCasts
-        MLIRParser
-        MLIRAsmParser
-        MLIRBytecodeReader
-        MLIRBytecodeWriter
-        MLIRBytecodeOpInterface
-        MLIRDialect
-        MLIRDialectUtils
-        MLIRIR
-        MLIRSupport
-        MLIRPass
-        MLIRTransforms
-        MLIRAffineTransforms
-        MLIRAffineToStandard
-        MLIRAffineUtils
-        MLIRAffineAnalysis
-        MLIRAffineDialect
-        MLIRTensorUtils
-        MLIRTensorTransforms
-        MLIRTensorTransformOps
-        MLIRPresburger
-        MLIRArithUtils
-        MLIRSCFTransforms
-        MLIRSCFUtils
-        MLIRMemRefUtils
-        MLIRVectorToSPIRV)
-    set(GFX_VULKAN_MLIR_LINK_LIBS "")
-    set(_gfx_mlir_lib_dir "")
-    if(DEFINED MLIR_DIR)
-        get_filename_component(_gfx_mlir_cmake_dir "${MLIR_DIR}" DIRECTORY)
-        get_filename_component(_gfx_mlir_lib_dir "${_gfx_mlir_cmake_dir}" DIRECTORY)
-    endif()
-    foreach(_gfx_mlir_lib IN LISTS GFX_VULKAN_MLIR_LIBS)
-        if(TARGET ${_gfx_mlir_lib})
-            list(APPEND GFX_VULKAN_MLIR_LINK_LIBS ${_gfx_mlir_lib})
-        elseif(_gfx_mlir_lib_dir)
-            set(_gfx_mlir_lib_path "${_gfx_mlir_lib_dir}/lib${_gfx_mlir_lib}.a")
-            if(EXISTS "${_gfx_mlir_lib_path}")
-                list(APPEND GFX_VULKAN_MLIR_LINK_LIBS "${_gfx_mlir_lib_path}")
-            else()
-                list(APPEND GFX_VULKAN_MLIR_LINK_LIBS ${_gfx_mlir_lib})
-            endif()
-        else()
-            list(APPEND GFX_VULKAN_MLIR_LINK_LIBS ${_gfx_mlir_lib})
-        endif()
-    endforeach()
-    if(UNIX AND NOT APPLE AND NOT (DEFINED LLVM_FOUND AND LLVM_FOUND AND DEFINED MLIR_FOUND AND MLIR_FOUND))
-        list(JOIN GFX_VULKAN_MLIR_LINK_LIBS "," GFX_VULKAN_MLIR_LIBS_JOINED)
-        set(GFX_VULKAN_MLIR_LINK_LIBS "$<LINK_GROUP:RESCAN,${GFX_VULKAN_MLIR_LIBS_JOINED}>")
-    endif()
-    unset(_gfx_mlir_lib_dir)
-    unset(_gfx_mlir_cmake_dir)
-    unset(_gfx_mlir_lib_path)
-    unset(_gfx_mlir_lib)
-    add_library(gfx_vulkan_mlir_deps INTERFACE)
-    target_link_libraries(gfx_vulkan_mlir_deps INTERFACE ${GFX_VULKAN_MLIR_LINK_LIBS})
-    target_link_libraries(gfx_runtime_vulkan PRIVATE
-        gfx_plugin_build_settings
-        gfx_plugin_public_headers
-        gfx_plugin_private_headers
-        openvino::runtime
-        openvino::runtime::dev
-        gfx_vulkan_mlir_deps)
-    set_target_properties(gfx_runtime_vulkan PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    target_link_libraries(${TARGET_NAME} PRIVATE gfx_runtime_vulkan)
-    if(DEFINED GFX_LLVM_EXTERNAL_TARGET)
-        add_dependencies(gfx_runtime_vulkan ${GFX_LLVM_EXTERNAL_TARGET})
-    endif()
-    if(TARGET GFX::Vulkan)
-        target_link_libraries(gfx_runtime_vulkan PRIVATE GFX::Vulkan)
-    endif()
-    target_link_libraries(${TARGET_NAME} PRIVATE gfx_vulkan_mlir_deps)
-endif()
-
 target_link_libraries(${TARGET_NAME} PRIVATE
     gfx_runtime_common
     gfx_runtime_mlir)
-
-if(TARGET GFX::Vulkan)
-    target_link_libraries(${TARGET_NAME} PRIVATE GFX::Vulkan)
-endif()
 
 ov_mark_target_as_cc(${TARGET_NAME})
 ov_abi_free_target(${TARGET_NAME})

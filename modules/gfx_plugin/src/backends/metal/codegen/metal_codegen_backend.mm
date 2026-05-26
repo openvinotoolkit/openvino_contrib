@@ -509,9 +509,6 @@ void record_mpsrt_plan_counters(mlir::ModuleOp module) {
     case GfxStageBackendDomain::OpenCl:
       increment_compile_counter("mpsrt_plan_opencl_count");
       break;
-    case GfxStageBackendDomain::Spirv:
-      increment_compile_counter("mpsrt_plan_spirv_count");
-      break;
     case GfxStageBackendDomain::Unknown:
     default:
       break;

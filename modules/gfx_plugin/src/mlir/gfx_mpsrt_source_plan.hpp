@@ -42,12 +42,9 @@ namespace detail {
 struct GfxMpsrtKernelSourceOptions {
   std::string msl_source;
   std::function<std::string(mlir::ModuleOp)> msl_generator;
-  std::vector<uint32_t> spirv_binary;
-  std::function<std::vector<uint32_t>(mlir::ModuleOp)> spirv_generator;
 
   bool has_source_payload() const {
-    return !msl_source.empty() || static_cast<bool>(msl_generator) ||
-           !spirv_binary.empty() || static_cast<bool>(spirv_generator);
+    return !msl_source.empty() || static_cast<bool>(msl_generator);
   }
 };
 
@@ -56,7 +53,6 @@ struct GfxMpsrtKernelSourceOptions {
 inline bool
 gfx_mpsrt_stage_needs_custom_kernel_source(const GfxMpsrtStageDesc &stage) {
   return stage.kind == GfxMpsrtStageKind::MSLDispatch ||
-         stage.kind == GfxMpsrtStageKind::SPIRVDispatch ||
          stage.stage_manifest.execution_kind ==
              GfxKernelExecutionKind::CustomKernel;
 }
@@ -277,8 +273,6 @@ make_mpsrt_kernel_source_plan_from_module(mlir::ModuleOp module,
   plan.source.entry_point = gfx_mpsrt_stage_entry_point(*source_stage);
   plan.source.msl_source = std::move(options.msl_source);
   plan.source.msl_generator = std::move(options.msl_generator);
-  plan.source.spirv_binary = std::move(options.spirv_binary);
-  plan.source.spirv_generator = std::move(options.spirv_generator);
   if (has_manifest_signature) {
     plan.source.signature.arg_count = manifest_arg_count;
     plan.source.signature.output_arg_count = manifest_output_arg_count;
@@ -331,8 +325,6 @@ make_mpsrt_kernel_source_plan_from_configured_source(KernelSource source) {
   detail::GfxMpsrtKernelSourceOptions options{};
   options.msl_source = std::move(source.msl_source);
   options.msl_generator = std::move(source.msl_generator);
-  options.spirv_binary = std::move(source.spirv_binary);
-  options.spirv_generator = std::move(source.spirv_generator);
   return detail::make_mpsrt_kernel_source_plan_from_module(source.module,
                                                            std::move(options));
 }

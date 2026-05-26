@@ -61,7 +61,7 @@ TEST(GfxMlirTransforms, Conv3DLoweringExplicitPadding) {
             }
         }
     });
-    EXPECT_FALSE(has_conv) << "Conv3D should be lowered before SPIR-V";
+    EXPECT_FALSE(has_conv) << "Conv3D should be lowered before OpenCL";
     EXPECT_TRUE(has_for) << "Expected scf.for after lowering";
     EXPECT_FALSE(has_rank5_alloc) << "Padding alloc should be eliminated";
 }
