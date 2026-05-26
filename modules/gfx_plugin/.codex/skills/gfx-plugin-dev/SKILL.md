@@ -82,10 +82,14 @@ For Metal placement, MPSRT, or MSL source changes, keep these aligned:
 - `src/mlir/msl_codegen_attention.*`
 - `src/mlir/msl_codegen_compressed_matmul.*`
 - `src/backends/metal/runtime/metal_runtime_kernel_loader.*`
+- `src/backends/metal/runtime/mpsrt_vendor_primitive_stage.*`
 - `src/backends/metal/runtime/mpsrt/`
 
 Manifest external-buffer roles are the semantic ABI. Do not let MSL buffer
 scans or stale signature hints widen or shrink a typed MPSRT runtime contract.
+MPS/MPSGraph vendor primitive routes must flow through the compiler
+`VendorDescriptor` payload and the MPSRT vendor primitive stage; do not recreate
+vendor descriptors from request-time node checks.
 
 ## OpenCL Work
 
@@ -98,8 +102,13 @@ For OpenCL source-artifact work:
 4. Add source id, entry point, role ABI, scalar ABI, dynamic-shape metadata,
    constant materialization, chunk helpers, local size, and boolean-buffer rules
    to the artifact contract.
-5. Update `tests/unit/gfx_opencl_source_artifacts_test.cpp`.
-6. Add runtime coverage only when dynamic OpenCL loading, memory, command
+5. For embedded `.cl` units, add the wrapper under
+   `src/kernel_ir/opencl_kernels/`, the `gfx_embed_kernel_source()` entry in
+   `src/CMakeLists.txt`, and the source/header entries in
+   `cmake/GfxSources.cmake`.
+6. Update `tests/unit/gfx_opencl_source_artifacts_test.cpp` and
+   `tests/unit/gpu_backend_base_test.cpp` when compiler payload routing changes.
+7. Add runtime coverage only when dynamic OpenCL loading, memory, command
    enqueue, or runtime-shape behavior changed.
 
 Standalone OpenCL Conv2D microbench tools are experiments. A result there is

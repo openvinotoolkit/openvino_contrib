@@ -16,10 +16,12 @@ std::string generate_msl_for_tile(const TileCodegenDesc& d, mlir::ModuleOp modul
         module &&
         module->getAttrOfType<mlir::BoolAttr>("gfx.i64_storage_i32_lanes") &&
         module->getAttrOfType<mlir::BoolAttr>("gfx.i64_storage_i32_lanes").getValue();
-    if (auto func = get_entry_func(module)) {
-        auto ft = func.getFunctionType();
-        if (ft.getNumInputs() >= 1) {
-            scalar = msl_type_from_mlir(ft.getInput(0));
+    if (module) {
+        if (auto func = get_entry_func(module)) {
+            auto ft = func.getFunctionType();
+            if (ft.getNumInputs() >= 1) {
+                scalar = msl_type_from_mlir(ft.getInput(0));
+            }
         }
     }
     if (use_i64_lane_storage) {

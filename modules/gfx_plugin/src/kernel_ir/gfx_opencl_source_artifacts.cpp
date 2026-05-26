@@ -16,6 +16,10 @@
 
 #include "kernel_ir/gfx_custom_kernel_families.hpp"
 #include "kernel_ir/opencl_kernels/binary_f32_kernel.hpp"
+#include "kernel_ir/opencl_kernels/interpolate_f16_kernel.hpp"
+#include "kernel_ir/opencl_kernels/interpolate_f32_kernel.hpp"
+#include "kernel_ir/opencl_kernels/softmax_f16_kernel.hpp"
+#include "kernel_ir/opencl_kernels/softmax_f32_kernel.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/core/type/element_type.hpp"
 #include "openvino/op/broadcast.hpp"
@@ -24,6 +28,7 @@
 #include "openvino/op/gather.hpp"
 #include "openvino/op/gather_elements.hpp"
 #include "openvino/op/gather_nd.hpp"
+#include "openvino/op/interpolate.hpp"
 #include "openvino/op/matmul.hpp"
 #include "openvino/op/range.hpp"
 #include "openvino/op/reduce_logical_and.hpp"
@@ -39,6 +44,7 @@
 #include "openvino/op/tile.hpp"
 #include "openvino/op/util/scatter_elements_update_base.hpp"
 #include "openvino/op/variadic_split.hpp"
+#include "openvino/util/common_util.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -1416,223 +1422,6 @@ __kernel void gfx_opencl_baseline_matmul_f32(__global const float* lhs,
         acc += lhs[lhs_idx] * rhs[rhs_idx];
     }
     dst[gid] = acc;
-}
-)CLC";
-
-constexpr const char* kOpenClSoftmaxF32Source = R"CLC(
-static inline float gfx_softmax_f32_value(__global const float* src,
-                                          uint elem,
-                                          uint outer,
-                                          uint axis_dim,
-                                          uint inner) {
-    const uint plane = axis_dim * inner;
-    const uint outer_idx = elem / plane;
-    if (outer_idx >= outer) {
-        return 0.0f;
-    }
-    const uint inner_idx = elem % inner;
-    const uint base = outer_idx * plane + inner_idx;
-
-    float max_value = src[base];
-    for (uint axis_idx = 1u; axis_idx < axis_dim; ++axis_idx) {
-        max_value = fmax(max_value, src[base + axis_idx * inner]);
-    }
-
-    float denom = 0.0f;
-    for (uint axis_idx = 0u; axis_idx < axis_dim; ++axis_idx) {
-        denom += exp(src[base + axis_idx * inner] - max_value);
-    }
-    return exp(src[elem] - max_value) / denom;
-}
-
-__kernel void gfx_opencl_baseline_softmax_f32(__global const float* src,
-                                              __global float* dst,
-                                              uint count,
-                                              uint outer,
-                                              uint axis_dim,
-                                              uint inner) {
-    const uint gid = (uint)get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    dst[gid] = gfx_softmax_f32_value(src, gid, outer, axis_dim, inner);
-}
-
-__kernel void gfx_opencl_baseline_softmax_dynamic_f32(__global const float* src,
-                                                      __global float* dst,
-                                                      uint count,
-                                                      uint rank,
-                                                      uint axis,
-                                                      uint dim0,
-                                                      uint dim1,
-                                                      uint dim2,
-                                                      uint dim3,
-                                                      uint dim4,
-                                                      uint dim5,
-                                                      uint dim6,
-                                                      uint dim7) {
-    const uint dim[8] = {dim0, dim1, dim2, dim3, dim4, dim5, dim6, dim7};
-    uint outer = 1u;
-    for (uint i = 0u; i < axis; ++i) {
-        outer *= dim[i];
-    }
-    const uint axis_dim = dim[axis];
-    uint inner = 1u;
-    for (uint i = axis + 1u; i < rank; ++i) {
-        inner *= dim[i];
-    }
-    const uint gid = (uint)get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    dst[gid] = gfx_softmax_f32_value(src, gid, outer, axis_dim, inner);
-}
-)CLC";
-
-constexpr const char* kOpenClSoftmaxF16Source = R"CLC(
-#define GFX_LOAD_F16_BITS(src, idx) \
-    (((idx) & 1u) == 0u ? ((src)[(idx) >> 1u] & 65535u) : (((src)[(idx) >> 1u] >> 16u) & 65535u))
-#define GFX_STORE_F16_PAIR(dst, word_idx, lo, hi) \
-    ((dst)[(word_idx)] = ((lo) & 65535u) | (((hi) & 65535u) << 16u))
-
-static inline float gfx_f16_bits_to_f32(uint bits) {
-    const uint sign = (bits & 32768u) << 16u;
-    uint exp = (bits >> 10u) & 31u;
-    uint mant = bits & 1023u;
-    uint out = sign;
-    if (exp == 0u) {
-        if (mant == 0u) {
-            return as_float(out);
-        }
-        int normalized_exp = -14;
-        while ((mant & 1024u) == 0u) {
-            mant <<= 1u;
-            --normalized_exp;
-        }
-        mant &= 1023u;
-        out |= (uint)(normalized_exp + 127) << 23u;
-        out |= mant << 13u;
-        return as_float(out);
-    }
-    if (exp == 31u) {
-        out |= 2139095040u | (mant << 13u);
-        return as_float(out);
-    }
-    out |= (exp + 112u) << 23u;
-    out |= mant << 13u;
-    return as_float(out);
-}
-
-static inline uint gfx_f32_to_f16_bits(float value) {
-    const uint bits = as_uint(value);
-    const uint sign = (bits >> 16u) & 32768u;
-    const uint exp_bits = (bits >> 23u) & 255u;
-    const uint mant = bits & 8388607u;
-    if (exp_bits == 255u) {
-        return sign | 31744u | (mant != 0u ? 512u : 0u);
-    }
-    int exp = (int)exp_bits - 127 + 15;
-    if (exp <= 0) {
-        if (exp < -10) {
-            return sign;
-        }
-        uint sub = (mant | 8388608u) >> (uint)(1 - exp);
-        return sign | ((sub + 4096u) >> 13u);
-    }
-    if (exp >= 31) {
-        return sign | 31744u;
-    }
-    uint half_mant = (mant + 4096u) >> 13u;
-    if (half_mant == 1024u) {
-        half_mant = 0u;
-        ++exp;
-        if (exp >= 31) {
-            return sign | 31744u;
-        }
-    }
-    return sign | ((uint)exp << 10u) | half_mant;
-}
-
-static inline uint gfx_softmax_f16_bits(__global const uint* src,
-                                        uint elem,
-                                        uint outer,
-                                        uint axis_dim,
-                                        uint inner) {
-    const uint plane = axis_dim * inner;
-    const uint outer_idx = elem / plane;
-    if (outer_idx >= outer) {
-        return 0u;
-    }
-    const uint inner_idx = elem % inner;
-    const uint base = outer_idx * plane + inner_idx;
-
-    float max_value = gfx_f16_bits_to_f32(GFX_LOAD_F16_BITS(src, base));
-    for (uint axis_idx = 1u; axis_idx < axis_dim; ++axis_idx) {
-        max_value = fmax(max_value,
-                         gfx_f16_bits_to_f32(GFX_LOAD_F16_BITS(src, base + axis_idx * inner)));
-    }
-
-    float denom = 0.0f;
-    for (uint axis_idx = 0u; axis_idx < axis_dim; ++axis_idx) {
-        denom += exp(gfx_f16_bits_to_f32(GFX_LOAD_F16_BITS(src, base + axis_idx * inner)) - max_value);
-    }
-    const float value = gfx_f16_bits_to_f32(GFX_LOAD_F16_BITS(src, elem));
-    return gfx_f32_to_f16_bits(exp(value - max_value) / denom);
-}
-
-__kernel void gfx_opencl_baseline_softmax_f16(__global const uint* src,
-                                             __global uint* dst,
-                                             uint count,
-                                             uint outer,
-                                             uint axis_dim,
-                                             uint inner) {
-    const uint word_idx = (uint)get_global_id(0);
-    const uint elem0 = word_idx * 2u;
-    if (elem0 >= count) {
-        return;
-    }
-    const uint lo = gfx_softmax_f16_bits(src, elem0, outer, axis_dim, inner);
-    uint hi = 0u;
-    if (elem0 + 1u < count) {
-        hi = gfx_softmax_f16_bits(src, elem0 + 1u, outer, axis_dim, inner);
-    }
-    GFX_STORE_F16_PAIR(dst, word_idx, lo, hi);
-}
-
-__kernel void gfx_opencl_baseline_softmax_dynamic_f16(__global const uint* src,
-                                                     __global uint* dst,
-                                                     uint count,
-                                                     uint rank,
-                                                     uint axis,
-                                                     uint dim0,
-                                                     uint dim1,
-                                                     uint dim2,
-                                                     uint dim3,
-                                                     uint dim4,
-                                                     uint dim5,
-                                                     uint dim6,
-                                                     uint dim7) {
-    const uint dim[8] = {dim0, dim1, dim2, dim3, dim4, dim5, dim6, dim7};
-    uint outer = 1u;
-    for (uint i = 0u; i < axis; ++i) {
-        outer *= dim[i];
-    }
-    const uint axis_dim = dim[axis];
-    uint inner = 1u;
-    for (uint i = axis + 1u; i < rank; ++i) {
-        inner *= dim[i];
-    }
-    const uint word_idx = (uint)get_global_id(0);
-    const uint elem0 = word_idx * 2u;
-    if (elem0 >= count) {
-        return;
-    }
-    const uint lo = gfx_softmax_f16_bits(src, elem0, outer, axis_dim, inner);
-    uint hi = 0u;
-    if (elem0 + 1u < count) {
-        hi = gfx_softmax_f16_bits(src, elem0 + 1u, outer, axis_dim, inner);
-    }
-    GFX_STORE_F16_PAIR(dst, word_idx, lo, hi);
 }
 )CLC";
 
@@ -6032,6 +5821,177 @@ std::optional<size_t> static_rank(const ov::PartialShape& shape) {
     return static_cast<size_t>(shape.rank().get_length());
 }
 
+bool all_zero_size_t(const std::vector<size_t>& values) {
+    return std::all_of(values.begin(), values.end(), [](size_t value) {
+        return value == 0;
+    });
+}
+
+bool axes_are_spatial_nchw(std::vector<int64_t> axes) {
+    if (axes.size() != 2) {
+        return false;
+    }
+    for (auto& axis : axes) {
+        if (axis < 0) {
+            axis += 4;
+        }
+    }
+    std::sort(axes.begin(), axes.end());
+    return axes == std::vector<int64_t>{2, 3};
+}
+
+bool axes_are_spatial_nchw(const ov::AxisSet& axes) {
+    std::vector<int64_t> values;
+    values.reserve(axes.size());
+    for (const auto axis : axes) {
+        values.push_back(static_cast<int64_t>(axis));
+    }
+    return axes_are_spatial_nchw(std::move(values));
+}
+
+bool constant_axes_input_is_spatial_nchw_or_absent(
+    const std::shared_ptr<const ov::Node>& node) {
+    if (!node || node->get_input_size() < 4) {
+        return true;
+    }
+    const auto axes = constant_i64_vector_input(node, 3);
+    return axes && axes_are_spatial_nchw(*axes);
+}
+
+bool static_nchw_spatial_resize_shape(
+    const std::shared_ptr<const ov::Node>& node) {
+    if (!node ||
+        !node->get_input_partial_shape(0).is_static() ||
+        !node->get_output_partial_shape(0).is_static()) {
+        return false;
+    }
+    const auto input_shape = node->get_input_shape(0);
+    const auto output_shape = node->get_output_shape(0);
+    return input_shape.size() == 4 &&
+           output_shape.size() == 4 &&
+           input_shape[0] == output_shape[0] &&
+           input_shape[1] == output_shape[1] &&
+           input_shape[2] != 0 &&
+           input_shape[3] != 0 &&
+           output_shape[2] != 0 &&
+           output_shape[3] != 0;
+}
+
+struct OpenClInterpolateArtifactMetadata {
+    std::string type_suffix;
+    uint32_t nearest = 0;
+    uint32_t align_corners = 0;
+    uint32_t use_half_pixel = 1;
+    uint32_t nearest_mode = 0;
+};
+
+std::optional<OpenClInterpolateArtifactMetadata>
+opencl_interpolate_artifact_metadata(
+    const std::shared_ptr<const ov::Node>& node) {
+    if (!static_nchw_spatial_resize_shape(node) ||
+        node->get_input_size() < 1 ||
+        node->get_output_element_type(0) != node->get_input_element_type(0) ||
+        (!is_f32_tensor_type(node->get_output_element_type(0)) &&
+         !is_f16_tensor_type(node->get_output_element_type(0)))) {
+        return std::nullopt;
+    }
+
+    OpenClInterpolateArtifactMetadata metadata{};
+    metadata.type_suffix = opencl_scalar_type_suffix(node->get_output_element_type(0));
+
+    if (auto interp = ov::as_type_ptr<const ov::op::v0::Interpolate>(node)) {
+        const auto mode = ov::util::to_lower(interp->get_attrs().mode);
+        if (mode == "nearest") {
+            metadata.nearest = 1;
+        } else if (mode == "linear") {
+            metadata.nearest = 0;
+        } else {
+            return std::nullopt;
+        }
+        if (interp->get_attrs().antialias ||
+            !all_zero_size_t(interp->get_attrs().pads_begin) ||
+            !all_zero_size_t(interp->get_attrs().pads_end) ||
+            !axes_are_spatial_nchw(interp->get_attrs().axes)) {
+            return std::nullopt;
+        }
+        metadata.align_corners = interp->get_attrs().align_corners ? 1u : 0u;
+        metadata.use_half_pixel = metadata.align_corners == 0u ? 1u : 0u;
+        metadata.nearest_mode = 0u;
+        return metadata;
+    }
+
+    const auto configure_base_attrs =
+        [&metadata](const ov::op::util::InterpolateBase::InterpolateAttrs& attrs) {
+            using Base = ov::op::util::InterpolateBase;
+            if (attrs.antialias ||
+                !all_zero_size_t(attrs.pads_begin) ||
+                !all_zero_size_t(attrs.pads_end)) {
+                return false;
+            }
+            switch (attrs.mode) {
+                case Base::InterpolateMode::NEAREST:
+                    metadata.nearest = 1u;
+                    break;
+                case Base::InterpolateMode::LINEAR:
+                case Base::InterpolateMode::LINEAR_ONNX:
+                case Base::InterpolateMode::BILINEAR_PILLOW:
+                    metadata.nearest = 0u;
+                    break;
+                default:
+                    return false;
+            }
+            switch (attrs.coordinate_transformation_mode) {
+                case Base::CoordinateTransformMode::HALF_PIXEL:
+                    metadata.align_corners = 0u;
+                    metadata.use_half_pixel = 1u;
+                    break;
+                case Base::CoordinateTransformMode::ALIGN_CORNERS:
+                    metadata.align_corners = 1u;
+                    metadata.use_half_pixel = 1u;
+                    break;
+                case Base::CoordinateTransformMode::ASYMMETRIC:
+                    metadata.align_corners = 0u;
+                    metadata.use_half_pixel = 0u;
+                    break;
+                default:
+                    return false;
+            }
+            switch (attrs.nearest_mode) {
+                case Base::NearestMode::FLOOR:
+                case Base::NearestMode::ROUND_PREFER_FLOOR:
+                    metadata.nearest_mode = 1u;
+                    break;
+                case Base::NearestMode::CEIL:
+                case Base::NearestMode::ROUND_PREFER_CEIL:
+                    metadata.nearest_mode = 2u;
+                    break;
+                case Base::NearestMode::SIMPLE:
+                default:
+                    metadata.nearest_mode = 0u;
+                    break;
+            }
+            return true;
+        };
+
+    if (auto interp = ov::as_type_ptr<const ov::op::v4::Interpolate>(node)) {
+        if (!constant_axes_input_is_spatial_nchw_or_absent(node) ||
+            !configure_base_attrs(interp->get_attrs())) {
+            return std::nullopt;
+        }
+        return metadata;
+    }
+
+    if (auto interp = ov::as_type_ptr<const ov::op::v11::Interpolate>(node)) {
+        if (!constant_axes_input_is_spatial_nchw_or_absent(node) ||
+            !configure_base_attrs(interp->get_attrs())) {
+            return std::nullopt;
+        }
+        return metadata;
+    }
+
+    return std::nullopt;
+}
+
 bool partial_dim_compatible(const ov::Dimension& lhs, const ov::Dimension& rhs) {
     return lhs.is_dynamic() || rhs.is_dynamic() || lhs.get_length() == rhs.get_length();
 }
@@ -7101,10 +7061,16 @@ GfxOpenClSourceArtifact make_opencl_baseline_artifact(
         artifact.source = kOpenClMatMulSource;
     } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_softmax_f32" ||
                artifact.artifact_ref.entry_point == "gfx_opencl_baseline_softmax_dynamic_f32") {
-        artifact.source = kOpenClSoftmaxF32Source;
+        artifact.source = opencl_baseline_softmax_f32_kernel_source().source;
     } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_softmax_f16" ||
                artifact.artifact_ref.entry_point == "gfx_opencl_baseline_softmax_dynamic_f16") {
-        artifact.source = kOpenClSoftmaxF16Source;
+        artifact.source = opencl_baseline_softmax_f16_kernel_source().source;
+    } else if (artifact.artifact_ref.entry_point ==
+               "gfx_opencl_generated_interpolate_f32") {
+        artifact.source = opencl_generated_interpolate_f32_kernel_source().source;
+    } else if (artifact.artifact_ref.entry_point ==
+               "gfx_opencl_generated_interpolate_f16") {
+        artifact.source = opencl_generated_interpolate_f16_kernel_source().source;
     } else if (artifact.artifact_ref.entry_point ==
                    "gfx_opencl_baseline_shapeof_i32" ||
                artifact.artifact_ref.entry_point ==
@@ -7550,6 +7516,45 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
                 std::move(*dynamic_static_rank));
         }
         return std::nullopt;
+    }
+
+    if (type == "Interpolate") {
+        auto metadata = opencl_interpolate_artifact_metadata(node);
+        if (!metadata) {
+            return std::nullopt;
+        }
+        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+            GfxOpenClSourceScalarArg::ElementCount,
+            GfxOpenClSourceScalarArg::StaticU32,
+            GfxOpenClSourceScalarArg::StaticU32,
+            GfxOpenClSourceScalarArg::StaticU32,
+            GfxOpenClSourceScalarArg::StaticU32,
+            GfxOpenClSourceScalarArg::Input0Dim0,
+            GfxOpenClSourceScalarArg::Input0Dim1,
+            GfxOpenClSourceScalarArg::Input0Dim2,
+            GfxOpenClSourceScalarArg::Input0Dim3,
+            GfxOpenClSourceScalarArg::Output0Dim2,
+            GfxOpenClSourceScalarArg::Output0Dim3};
+        const std::string entry_point =
+            "gfx_opencl_generated_interpolate_" + metadata->type_suffix;
+        auto manifest = make_opencl_baseline_manifest(
+            GfxKernelStageFamily::Layout,
+            "opencl:generated:Interpolate:" + metadata->type_suffix,
+            entry_point,
+            /*direct_inputs=*/1,
+            static_cast<uint32_t>(scalar_args.size()));
+        return make_opencl_baseline_artifact(
+            std::move(manifest),
+            "opencl/generated/interpolate_" + metadata->type_suffix,
+            std::move(scalar_args),
+            {0},
+            GfxOpenClBaselineOp::Identity,
+            GfxOpenClBaselineInputMode::Direct,
+            0.0f,
+            {metadata->nearest,
+             metadata->align_corners,
+             metadata->use_half_pixel,
+             metadata->nearest_mode});
     }
 
     if (!node->get_output_partial_shape(0).is_static()) {

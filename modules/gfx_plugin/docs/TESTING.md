@@ -96,6 +96,8 @@ For compiler-service, manifest, or executable-descriptor changes:
 - `tests/unit/plugin_tests.cpp` when `query_model()` or compile behavior moves
 - backend artifact tests when payload materialization reaches Metal or OpenCL
   runtime loaders
+- Metal vendor-descriptor coverage when MPS/MPSGraph payloads reach
+  `MpsrtVendorPrimitiveStage`
 
 For scheduling, cache, or infer-path changes:
 
@@ -111,6 +113,8 @@ For scheduling, cache, or infer-path changes:
 For OpenCL source-artifact changes:
 
 - start with `tests/unit/gfx_opencl_source_artifacts_test.cpp`
+- use `tests/unit/gpu_backend_base_test.cpp` when a source artifact is expected
+  to appear in the compiler executable bundle
 - add runtime coverage when dynamic OpenCL loading, buffer binding, runtime
   output shape, constant materialization, boolean storage, or command execution
   changes
@@ -120,8 +124,11 @@ For OpenCL source-artifact changes:
 
 For Metal placement or MPSRT changes:
 
-- cover manifest/source-plan records in `tests/unit/gfx_stage_policy_test.cpp`
-  or `tests/unit/basic_ops_internal_test.cpp`
+- cover manifest/source-plan records in `tests/unit/gfx_stage_policy_test.cpp`,
+  `tests/unit/basic_ops_internal_test.cpp`, or
+  `tests/unit/gpu_backend_base_test.cpp`
+- cover compiler-owned generated MSL and MPS/MPSGraph `VendorDescriptor`
+  payloads in `tests/unit/gpu_backend_base_test.cpp`
 - cover request-time execution in `tests/backends/metal/gpu_backend_test.mm`
   when the route reaches encode time
 - use `tests/unit/memory_device_integration_test.mm` for Metal memory/device

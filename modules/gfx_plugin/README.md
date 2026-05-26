@@ -58,7 +58,8 @@ Read these files first:
   source-plan helpers, and shared runtime-value planning
 - `src/backends/metal/`: Metal plugin glue, Objective-C++ runtime, memory
   management, profiling, backend compiler policy, MSL compilation, runtime
-  kernel loading, MPSRT preparation, and MPSGraph stages
+  kernel loading, MPSRT preparation, descriptor-backed vendor primitive stages,
+  and MPSGraph stages
 - `src/backends/opencl/`: OpenCL plugin glue, dynamic API loader, buffer
   manager, backend compiler policy, program cache, memory ops, runtime kernel
   loading, and generic source-artifact execution
@@ -110,7 +111,8 @@ The Metal backend is the Apple production path. It combines:
   Resize, MatMul/GEMM, Softmax, TopK, and attention-style stages
 - Apple MSL custom kernels for general elementwise, layout, reduction, shape,
   slice, scatter/gather, RoPE, RMS, compressed MatMul, and SDPA helper paths
-- backend compiler policy and generated MSL artifact payloads under
+- backend compiler policy, generated MSL artifact payloads, and MPS/MPSGraph
+  vendor descriptor payloads under
   `src/backends/metal/compiler/`
 - MPSRT runtime-model records under `src/runtime/gfx_mpsrt_*`
 - embedded MPSRT helper kernels under `src/kernel_ir/metal_kernels/`
@@ -118,6 +120,14 @@ The Metal backend is the Apple production path. It combines:
 
 Metal placement is selected by shared stage policy. Do not bypass it with
 ad-hoc backend switches when adding new Metal routes.
+
+Compiler-owned Metal payloads currently cover generated MSL units such as
+`ShapeOf`, `Range`, `Tile`, `Concat`, `Split`, `Slice`, and causal SDPA helper
+forms. MPS/MPSGraph vendor descriptor payloads are consumed by the
+`MpsrtVendorPrimitive` runtime stage for supported `Softmax`, Pool2D,
+Resize2D, and SDPA forms. Vendor selection remains contract-limited: if the
+descriptor, storage, or external-buffer ABI cannot be built, the route must be
+rejected or use another supported current route.
 
 ### OpenCL
 
@@ -132,6 +142,13 @@ artifact manifest rather than being reimplemented in infer-request code.
 Backend operation support and kernel-unit registration live under
 `src/backends/opencl/compiler/`; runtime loading and enqueue stay under
 `src/backends/opencl/runtime/`.
+
+Embedded OpenCL source units live under `src/kernel_ir/opencl_kernels/`.
+Current named units include the binary f32 helper, f32/f16 Softmax helpers, and
+f32/f16 Interpolate helpers. The Interpolate OpenCL route is a generated
+kernel-unit path for bounded static NCHW spatial resize cases with f32/f16
+tensors; unsupported modes, axes, padding, shapes, or element types fail during
+support probing instead of falling through to a hidden runtime path.
 
 ## MLIR Role
 

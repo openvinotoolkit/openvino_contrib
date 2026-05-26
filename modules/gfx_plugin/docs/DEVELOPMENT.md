@@ -101,6 +101,7 @@ For Metal placement, MPSRT, or MSL source planning, also inspect:
 
 - `src/backends/metal/compiler/`
 - `src/backends/metal/runtime/metal_runtime_kernel_loader.*`
+- `src/backends/metal/runtime/mpsrt_vendor_primitive_stage.*`
 - `src/runtime/gfx_mpsrt_abi.hpp`
 - `src/runtime/gfx_mpsrt_model.*`
 - `src/runtime/gfx_mpsrt_plan.hpp`
@@ -162,6 +163,7 @@ Common operation families that need extra care:
 - Metal custom MSL source plans with explicit kernel-buffer order
 - OpenCL source artifacts with scalar ABI, constants, chunking, and boolean
   output padding
+- OpenCL generated kernel units such as bounded f32/f16 Interpolate
 - LLM-oriented fusions such as `RoPE`, compressed `MatMul`, and SDPA variants
 
 ## Shared Versus Backend-Specific Code
@@ -215,6 +217,18 @@ Generated or embedded source payloads should flow through compiler artifact
 descriptors and runtime kernel loaders. Do not pass ad-hoc source strings
 through plugin or infer-request properties.
 
+When adding an embedded OpenCL source unit:
+
+- place the `.cl`, `.cpp`, and `.hpp` wrapper under
+  `src/kernel_ir/opencl_kernels/`
+- add the source to `src/CMakeLists.txt` through `gfx_embed_kernel_source()`
+- add the wrapper source/header to `cmake/GfxSources.cmake`
+- route it from `gfx_opencl_source_artifacts.*` with explicit source id,
+  entry point, route kind, scalar ABI, and shape/type limitations
+- cover source identity, scalar metadata, support probing, and payload routing
+  in `tests/unit/gfx_opencl_source_artifacts_test.cpp` and
+  `tests/unit/gpu_backend_base_test.cpp` when the compiler bundle is affected
+
 ## Metal MPSRT And MSL
 
 Metal placement must stay coordinated across:
@@ -235,6 +249,14 @@ inputs only; they must not widen or shrink a typed MPSRT binding contract.
 Embedded MPSRT helper kernels live under `src/kernel_ir/metal_kernels/` and are
 exposed through runtime loaders. Keep helper source ownership there instead of
 reintroducing large inline MSL strings in request encoders.
+
+Compiler-owned Metal payloads now include both generated MSL sources and
+MPS/MPSGraph `VendorDescriptor` payloads. When adding a vendor primitive route,
+update the Metal operation policy, `metal_kernel_artifacts.*`, the typed vendor
+descriptor helpers in `src/mlir/gfx_apple_vendor_descriptors.*`, and
+`mpsrt_vendor_primitive_stage.*` only if the existing runtime contract cannot
+express the new primitive. Do not rebuild vendor descriptors from request-time
+node checks.
 
 ## Properties
 

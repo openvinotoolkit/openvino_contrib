@@ -16,6 +16,10 @@
 #include "compiler/manifest.hpp"
 #include "compiler/operation_support.hpp"
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
+#include "kernel_ir/opencl_kernels/interpolate_f16_kernel.hpp"
+#include "kernel_ir/opencl_kernels/interpolate_f32_kernel.hpp"
+#include "kernel_ir/opencl_kernels/softmax_f16_kernel.hpp"
+#include "kernel_ir/opencl_kernels/softmax_f32_kernel.hpp"
 #include "mlir/mlir_support.hpp"
 #include "openvino/op/add.hpp"
 #include "openvino/op/broadcast.hpp"
@@ -27,6 +31,7 @@
 #include "openvino/op/gather.hpp"
 #include "openvino/op/gather_elements.hpp"
 #include "openvino/op/gather_nd.hpp"
+#include "openvino/op/interpolate.hpp"
 #include "openvino/op/greater.hpp"
 #include "openvino/op/logical_and.hpp"
 #include "openvino/op/logical_not.hpp"
@@ -1131,6 +1136,8 @@ TEST(GfxOpenClSourceArtifactsTest,
                          static_u32_scalars);
   const auto artifact = resolve_gfx_opencl_source_artifact(softmax);
   ASSERT_TRUE(artifact.has_value());
+  EXPECT_EQ(artifact->source,
+            opencl_baseline_softmax_f32_kernel_source().source);
   EXPECT_EQ(artifact->source.find("__global long*"), std::string::npos);
   EXPECT_TRUE(is_supported_node(softmax, GpuBackend::OpenCL));
 
@@ -1144,6 +1151,8 @@ TEST(GfxOpenClSourceArtifactsTest,
                          static_u32_scalars);
   const auto f16_artifact = resolve_gfx_opencl_source_artifact(f16_softmax);
   ASSERT_TRUE(f16_artifact.has_value());
+  EXPECT_EQ(f16_artifact->source,
+            opencl_baseline_softmax_f16_kernel_source().source);
   EXPECT_NE(f16_artifact->source.find("gfx_f16_bits_to_f32"),
             std::string::npos);
   EXPECT_EQ(f16_artifact->source.find("__global half"), std::string::npos);
@@ -1206,10 +1215,111 @@ TEST(GfxOpenClSourceArtifactsTest,
       static_u32_scalars);
   const auto artifact = resolve_gfx_opencl_source_artifact(softmax);
   ASSERT_TRUE(artifact.has_value());
+  EXPECT_EQ(artifact->source,
+            opencl_baseline_softmax_f16_kernel_source().source);
   EXPECT_NE(artifact->source.find("gfx_opencl_baseline_softmax_dynamic_f16"),
             std::string::npos);
   EXPECT_EQ(artifact->source.find("__global half"), std::string::npos);
   EXPECT_TRUE(is_supported_node(softmax, GpuBackend::OpenCL));
+}
+
+TEST(GfxOpenClSourceArtifactsTest,
+     InterpolateArtifactsUseGeneratedKernelUnits) {
+  const auto data = param(ov::element::f32, ov::Shape{1, 4, 16, 16});
+  const auto output_shape = i64_const(ov::Shape{2}, {32, 32});
+  ov::op::v0::Interpolate::Attributes attrs;
+  attrs.axes = ov::AxisSet{2, 3};
+  attrs.mode = "linear";
+  attrs.align_corners = false;
+  const auto interpolate =
+      std::make_shared<ov::op::v0::Interpolate>(data, output_shape, attrs);
+
+  std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+      GfxOpenClSourceScalarArg::ElementCount,
+      GfxOpenClSourceScalarArg::StaticU32,
+      GfxOpenClSourceScalarArg::StaticU32,
+      GfxOpenClSourceScalarArg::StaticU32,
+      GfxOpenClSourceScalarArg::StaticU32,
+      GfxOpenClSourceScalarArg::Input0Dim0,
+      GfxOpenClSourceScalarArg::Input0Dim1,
+      GfxOpenClSourceScalarArg::Input0Dim2,
+      GfxOpenClSourceScalarArg::Input0Dim3,
+      GfxOpenClSourceScalarArg::Output0Dim2,
+      GfxOpenClSourceScalarArg::Output0Dim3};
+  const std::vector<uint32_t> bilinear_half_pixel_scalars = {
+      0,  // nearest
+      0,  // align_corners
+      1,  // use_half_pixel
+      0,  // nearest_mode
+  };
+
+  expect_opencl_artifact(interpolate, GfxKernelStageFamily::Layout,
+                         "opencl/generated/interpolate_f32",
+                         "gfx_opencl_generated_interpolate_f32",
+                         /*arg_count=*/13,
+                         /*direct_input_count=*/1,
+                         scalar_args,
+                         {0},
+                         bilinear_half_pixel_scalars);
+  const auto artifact = resolve_gfx_opencl_source_artifact(interpolate);
+  ASSERT_TRUE(artifact.has_value());
+  EXPECT_EQ(artifact->source,
+            opencl_generated_interpolate_f32_kernel_source().source);
+  EXPECT_TRUE(is_supported_node(interpolate, GpuBackend::OpenCL));
+
+  const auto f16_data = param(ov::element::f16, ov::Shape{1, 4, 16, 16});
+  const auto f16_output_shape = i64_const(ov::Shape{2}, {32, 32});
+  attrs.mode = "nearest";
+  const auto f16_interpolate =
+      std::make_shared<ov::op::v0::Interpolate>(f16_data,
+                                                f16_output_shape,
+                                                attrs);
+  const std::vector<uint32_t> nearest_half_pixel_scalars = {
+      1,  // nearest
+      0,  // align_corners
+      1,  // use_half_pixel
+      0,  // nearest_mode
+  };
+  expect_opencl_artifact(f16_interpolate, GfxKernelStageFamily::Layout,
+                         "opencl/generated/interpolate_f16",
+                         "gfx_opencl_generated_interpolate_f16",
+                         /*arg_count=*/13,
+                         /*direct_input_count=*/1,
+                         scalar_args,
+                         {0},
+                         nearest_half_pixel_scalars);
+  const auto f16_artifact =
+      resolve_gfx_opencl_source_artifact(f16_interpolate);
+  ASSERT_TRUE(f16_artifact.has_value());
+  EXPECT_EQ(f16_artifact->source,
+            opencl_generated_interpolate_f16_kernel_source().source);
+  EXPECT_NE(f16_artifact->source.find("gfx_f16_bits_to_f32"),
+            std::string::npos);
+  EXPECT_EQ(f16_artifact->source.find("__global half"), std::string::npos);
+  EXPECT_TRUE(is_supported_node(f16_interpolate, GpuBackend::OpenCL));
+}
+
+TEST(GfxOpenClSourceArtifactsTest,
+     InterpolateRejectsUnsupportedOpenClKernelUnitContract) {
+  const auto data = param(ov::element::f32, ov::Shape{1, 4, 16, 16});
+  const auto output_shape = i64_const(ov::Shape{2}, {1, 4});
+  const auto scales = f32_const(ov::Shape{2}, {1.0f, 1.0f});
+  const auto axes = i64_const(ov::Shape{2}, {0, 1});
+  using Base = ov::op::util::InterpolateBase;
+  ov::op::v4::Interpolate::InterpolateAttrs attrs;
+  attrs.mode = Base::InterpolateMode::LINEAR;
+  attrs.shape_calculation_mode = Base::ShapeCalcMode::SIZES;
+  attrs.coordinate_transformation_mode =
+      Base::CoordinateTransformMode::HALF_PIXEL;
+  const auto interpolate =
+      std::make_shared<ov::op::v4::Interpolate>(data,
+                                                output_shape,
+                                                scales,
+                                                axes,
+                                                attrs);
+
+  EXPECT_FALSE(resolve_gfx_opencl_source_artifact(interpolate).has_value());
+  EXPECT_FALSE(is_supported_node(interpolate, GpuBackend::OpenCL));
 }
 
 TEST(GfxOpenClSourceArtifactsTest,

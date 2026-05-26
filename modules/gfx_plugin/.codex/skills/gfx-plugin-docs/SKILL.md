@@ -51,7 +51,8 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
    - public properties
    - `query_model()` or compile behavior
    - MLIR support/lowering/source planning
-   - Metal placement, MPSRT records, MPS/MPSGraph descriptors, or MSL binding
+   - Metal placement, MPSRT records, MPS/MPSGraph descriptors,
+     `VendorDescriptor` payloads, or MSL binding
    - OpenCL source-artifact coverage, runtime-shape handling, constants,
      chunking, or boolean-buffer behavior
    - stage policy, parallelism, partitioning, submission, caches, or workspace

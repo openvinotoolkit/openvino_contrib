@@ -71,6 +71,8 @@ Prefer:
 - `tests/unit/plugin_tests.cpp` when `query_model()` or compile behavior moved
 - backend artifact tests when payload materialization reaches Metal or OpenCL
   runtime loaders
+- Metal `VendorDescriptor` tests when MPS/MPSGraph payloads are routed through
+  the compiler bundle or consumed by `MpsrtVendorPrimitiveStage`
 
 ### Scheduling, Partitioning, Cache, Or Infer Reuse
 
@@ -92,6 +94,8 @@ For Metal placement, MPSRT, MSL source planning, or request binding:
 - cover source-plan/manifest/model records in
   `tests/unit/gfx_stage_policy_test.cpp` or
   `tests/unit/basic_ops_internal_test.cpp`
+- cover compiler-owned generated MSL and MPS/MPSGraph vendor-descriptor
+  payloads in `tests/unit/gpu_backend_base_test.cpp`
 - cover request-time execution in `tests/backends/metal/gpu_backend_test.mm`
   when the route reaches encode time
 - use `tests/unit/memory_device_integration_test.mm` for memory/device
@@ -102,6 +106,8 @@ For Metal placement, MPSRT, MSL source planning, or request binding:
 For OpenCL source-artifact changes:
 
 - start with `tests/unit/gfx_opencl_source_artifacts_test.cpp`
+- add `tests/unit/gpu_backend_base_test.cpp` coverage when the artifact should
+  be present in the compiler executable bundle
 - add runtime coverage when dynamic runtime loading, buffer binding,
   runtime-shape allocation, constant materialization, boolean storage, chunking,
   or command execution changes

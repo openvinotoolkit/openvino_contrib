@@ -233,6 +233,8 @@ The Metal backend is split into:
 - compiler policy and artifact materialization in `src/backends/metal/compiler/`
 - plugin glue in `src/backends/metal/plugin/`
 - runtime/memory/profiling in `src/backends/metal/runtime/`
+- descriptor-backed vendor primitive execution in
+  `src/backends/metal/runtime/mpsrt_vendor_primitive_stage.*`
 - MSL compilation in `src/backends/metal/codegen/`
 - MPSRT preparation and request encoding in
   `src/backends/metal/runtime/mpsrt/`
@@ -250,9 +252,20 @@ kernel-buffer order before encoding commands. MSL dispatch stages must not
 depend on implicit positional conventions when a manifest supplies explicit
 roles.
 
-Generated MSL payloads are loaded through runtime descriptors. Current
-descriptor-backed Metal payload coverage includes generated `ShapeOf` MSL and
-embedded MPSRT helper kernels for image bridges and TopK post-processing.
+Generated MSL and vendor descriptor payloads are loaded through runtime
+descriptors. Current descriptor-backed Metal payload coverage includes generated
+MSL for `ShapeOf`, `Range`, `Tile`, `Concat`, `Split`, `Slice`, and causal SDPA
+helper forms, plus embedded MPSRT helper kernels for image bridges and TopK
+post-processing.
+
+MPS/MPSGraph vendor routes are compiler-owned `VendorDescriptor` payloads. The
+Metal compiler policy can select descriptor-backed payloads for supported
+`Softmax`, Pool2D, Resize2D, and SDPA forms. At runtime,
+`MpsrtVendorPrimitiveStage` validates the descriptor payload, builds a typed
+single-stage MPSRT model from the vendor contract, adapts the external-buffer
+ABI, and encodes the prepared MPSRT model with explicit input/output roles.
+Request code should not reconstruct vendor primitive descriptors from local
+node checks.
 
 ## OpenCL Architecture
 
@@ -265,7 +278,7 @@ The OpenCL backend is split into:
 - program cache in `src/backends/opencl/runtime/opencl_program_cache.*`
 - source-stage execution in `src/backends/opencl/runtime/opencl_source_stage.*`
 - runtime source loading in `src/backends/opencl/runtime/opencl_runtime_kernel_loader.*`
-- embedded baseline OpenCL helper sources in `src/kernel_ir/opencl_kernels/`
+- embedded OpenCL helper sources in `src/kernel_ir/opencl_kernels/`
 
 Source kernels are described by `src/kernel_ir/gfx_opencl_source_artifacts.*`.
 The source-stage executor is intentionally generic. Op-specific behavior should
@@ -278,9 +291,17 @@ artifact payload and runtime validation; a route in the compiler plan alone is
 not enough to guarantee backend parity.
 
 Current OpenCL source artifacts cover data movement, selected converts, MatMul,
-Softmax, Range, Tile, gather/scatter families, ShapeOf, Concat/Split, unary and
-binary elementwise families, compare/select, and boolean logical/reduction
-families when shapes and element types match their contracts.
+Softmax, bounded static NCHW spatial Interpolate, Range, Tile, gather/scatter
+families, ShapeOf, Concat/Split, unary and binary elementwise families,
+compare/select, and boolean logical/reduction families when shapes and element
+types match their contracts.
+
+Some OpenCL sources are baseline exception artifacts and some are generated
+kernel units. For example, Softmax uses embedded f32/f16 baseline sources,
+while Interpolate uses embedded f32/f16 generated kernel units with explicit
+scalar metadata for resize mode, coordinate transform, nearest rounding, and
+NCHW spatial dimensions. Keep those distinctions in the artifact contract
+rather than duplicating them in the OpenCL stage executor.
 
 ## Stateful And Reusable Inference
 

@@ -5,6 +5,7 @@
 #include "backends/metal/runtime/stage_factory.hpp"
 
 #include "backends/metal/runtime/metal_executor.hpp"
+#include "backends/metal/runtime/mpsrt_vendor_primitive_stage.hpp"
 #include "plugin/stateful_stage.hpp"
 #include "runtime/execution_dispatcher.hpp"
 
@@ -24,6 +25,9 @@ std::unique_ptr<GpuStage> create_metal_stage(
     const RuntimeStageExecutableDescriptor* descriptor) {
     if (auto stateful = create_stateful_stage(node)) {
         return stateful;
+    }
+    if (descriptor && is_metal_mpsrt_vendor_primitive_descriptor(*descriptor)) {
+        return create_metal_mpsrt_vendor_primitive_stage(node, device, queue, *descriptor);
     }
     return std::make_unique<MetalStage>(node, device, queue, descriptor);
 }

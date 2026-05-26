@@ -33,42 +33,44 @@ std::string generate_msl_for_range(const RangeCodegenDesc& d, mlir::ModuleOp mod
     if (d.step_type != ov::element::dynamic) {
         step_t = type_from_element(d.step_type);
     }
-    if (auto func = get_entry_func(module);
-        func && (d.output_type == ov::element::dynamic && d.element_type == ov::element::dynamic)) {
-        auto ft = func.getFunctionType();
-        if (ft.getNumResults() >= 1) {
-            scalar_t = msl_type_from_mlir(ft.getResult(0));
+    if (module) {
+        if (auto func = get_entry_func(module);
+            func && (d.output_type == ov::element::dynamic && d.element_type == ov::element::dynamic)) {
+            auto ft = func.getFunctionType();
+            if (ft.getNumResults() >= 1) {
+                scalar_t = msl_type_from_mlir(ft.getResult(0));
+            }
         }
     }
-    if (auto func = get_entry_func(module);
-        func && (d.start_type == ov::element::dynamic ||
-                 d.stop_type == ov::element::dynamic ||
-                 d.step_type == ov::element::dynamic)) {
-        auto ft = func.getFunctionType();
-        if (ft.getNumInputs() >= 3) {
-            if (d.start_type == ov::element::dynamic) {
-                start_t = msl_type_from_mlir(ft.getInput(0));
+    if (module) {
+        if (auto func = get_entry_func(module);
+            func && (d.start_type == ov::element::dynamic ||
+                     d.stop_type == ov::element::dynamic ||
+                     d.step_type == ov::element::dynamic)) {
+            auto ft = func.getFunctionType();
+            if (ft.getNumInputs() >= 3) {
+                if (d.start_type == ov::element::dynamic) {
+                    start_t = msl_type_from_mlir(ft.getInput(0));
+                }
+                if (d.stop_type == ov::element::dynamic) {
+                    stop_t = msl_type_from_mlir(ft.getInput(1));
+                }
+                if (d.step_type == ov::element::dynamic) {
+                    step_t = msl_type_from_mlir(ft.getInput(2));
+                }
+            } else {
+                start_t = scalar_t;
+                stop_t = scalar_t;
+                step_t = scalar_t;
             }
-            if (d.stop_type == ov::element::dynamic) {
-                stop_t = msl_type_from_mlir(ft.getInput(1));
-            }
-            if (d.step_type == ov::element::dynamic) {
-                step_t = msl_type_from_mlir(ft.getInput(2));
-            }
-        } else {
-            start_t = scalar_t;
-            stop_t = scalar_t;
-            step_t = scalar_t;
         }
-    } else if (!module &&
-               d.start_type == ov::element::dynamic &&
+    } else if (d.start_type == ov::element::dynamic &&
                d.stop_type == ov::element::dynamic &&
                d.step_type == ov::element::dynamic) {
         start_t = scalar_t;
         stop_t = scalar_t;
         step_t = scalar_t;
     }
-
     const bool is_half = (scalar_t == "half");
     const bool is_int = (scalar_t == "int" || scalar_t == "long");
 

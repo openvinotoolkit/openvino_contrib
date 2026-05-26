@@ -28,6 +28,10 @@ GfxMslGeneratedKernelSourcePlan make_concat_msl_kernel_source_plan(
     const std::shared_ptr<const ov::Node> &node,
     mlir::ModuleOp module = {});
 
+GfxMslGeneratedKernelSourcePlan make_split_msl_kernel_source_plan(
+    const std::shared_ptr<const ov::Node> &node,
+    mlir::ModuleOp module = {});
+
 GfxMslGeneratedKernelSourcePlan make_direct_split_msl_kernel_source_plan(
     std::string_view stage_type, const ov::element::Type &element_type,
     const ov::Shape &input_shape, const std::vector<size_t> &split_sizes,

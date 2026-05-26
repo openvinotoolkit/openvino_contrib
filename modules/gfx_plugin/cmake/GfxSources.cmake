@@ -99,6 +99,14 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_signature.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/binary_f32_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/binary_f32_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f32_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f32_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f16_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f16_kernel.hpp
     ${_gfx_src_dir}/runtime/gfx_profiler.hpp
     ${_gfx_src_dir}/runtime/gfx_profiling_report.hpp
     ${_gfx_src_dir}/runtime/gfx_target_profile.hpp
@@ -141,6 +149,10 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_opencl_source_artifacts.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/binary_f32_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f32_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f16_kernel.cpp
     ${_gfx_src_dir}/runtime/execution_dispatcher.cpp
     ${_gfx_src_dir}/runtime/immutable_gpu_buffer_cache.cpp
     ${_gfx_src_dir}/runtime/memory_manager.cpp
@@ -276,6 +288,7 @@ set(GFX_RUNTIME_METAL_SOURCES
     ${_gfx_src_dir}/backends/metal/runtime/metal_executor.cpp
     ${_gfx_src_dir}/backends/metal/runtime/metal_runtime_kernel_loader.cpp
     ${_gfx_src_dir}/backends/metal/runtime/mps_graph_attention_stage.mm
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt_vendor_primitive_stage.mm
     ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_context.mm
     ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_msl_kernel_loader.mm
     ${_gfx_src_dir}/backends/metal/runtime/mpsrt/mpsrt_request.mm
@@ -334,6 +347,7 @@ set(GFX_RUNTIME_METAL_HEADERS
     ${_gfx_src_dir}/backends/metal/runtime/metal_executor.hpp
     ${_gfx_src_dir}/backends/metal/runtime/metal_runtime_kernel_loader.hpp
     ${_gfx_src_dir}/backends/metal/runtime/mps_graph_attention_stage.hpp
+    ${_gfx_src_dir}/backends/metal/runtime/mpsrt_vendor_primitive_stage.hpp
     ${_gfx_src_dir}/backends/metal/runtime/stage_factory.hpp
 )
 

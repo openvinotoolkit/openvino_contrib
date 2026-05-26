@@ -178,6 +178,68 @@ GfxMslGeneratedKernelSourcePlan make_direct_split_msl_kernel_source_plan(
                                                       binding);
 }
 
+GfxMslGeneratedKernelSourcePlan make_split_msl_kernel_source_plan(
+    const std::shared_ptr<const ov::Node> &node, mlir::ModuleOp module) {
+  if (!node ||
+      (!std::dynamic_pointer_cast<const ov::op::v1::Split>(node) &&
+       !std::dynamic_pointer_cast<const ov::op::v1::VariadicSplit>(node))) {
+    return {};
+  }
+  if (!node->get_input_partial_shape(0).is_static() ||
+      node->get_output_size() == 0) {
+    return {};
+  }
+
+  const auto axis_const = ov::as_type_ptr<const ov::op::v0::Constant>(
+      node->input_value(1).get_node_shared_ptr());
+  if (!axis_const || axis_const->get_shape().size() > 0) {
+    return {};
+  }
+  if (std::dynamic_pointer_cast<const ov::op::v1::VariadicSplit>(node) &&
+      !ov::as_type_ptr<const ov::op::v0::Constant>(
+          node->input_value(2).get_node_shared_ptr())) {
+    return {};
+  }
+
+  const auto input_shape = node->get_input_shape(0);
+  const size_t rank = input_shape.size();
+  if (rank == 0) {
+    return {};
+  }
+  const auto axis = normalize_axis(axis_const->cast_vector<int64_t>().at(0),
+                                   rank,
+                                   "GFX Metal Split");
+  uint64_t inner = 1;
+  for (size_t i = axis + 1; i < input_shape.size(); ++i) {
+    inner *= input_shape[i];
+  }
+
+  std::vector<size_t> split_sizes;
+  split_sizes.reserve(node->get_output_size());
+  for (size_t i = 0; i < node->get_output_size(); ++i) {
+    const auto output_pshape = node->get_output_partial_shape(i);
+    if (!output_pshape.is_static()) {
+      return {};
+    }
+    const auto output_shape = output_pshape.to_shape();
+    if (output_shape.size() != rank) {
+      return {};
+    }
+    split_sizes.push_back(output_shape[axis]);
+  }
+
+  const uint64_t axis_total = std::accumulate(split_sizes.begin(),
+                                             split_sizes.end(),
+                                             uint64_t{0});
+  if (axis_total != input_shape[axis]) {
+    return {};
+  }
+  return make_direct_split_msl_kernel_source_plan(
+      node->get_type_name(), node->get_output_element_type(0), input_shape,
+      split_sizes, static_cast<uint32_t>(input_shape[axis]),
+      static_cast<uint32_t>(inner), module);
+}
+
 std::optional<KernelSource> make_apple_metal_concat_split_kernel_source(
     KernelSource source, const std::shared_ptr<const ov::Node> &node) {
   if (!node) {
