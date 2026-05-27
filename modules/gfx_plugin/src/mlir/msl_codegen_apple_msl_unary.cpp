@@ -13,6 +13,7 @@
 #include "openvino/core/shape_util.hpp"
 #include "openvino/op/clamp.hpp"
 #include "openvino/op/elu.hpp"
+#include "openvino/op/gelu.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -38,6 +39,10 @@ std::optional<KernelSource> make_apple_metal_unary_kernel_source(
   if (auto clamp = ov::as_type_ptr<const ov::op::v0::Clamp>(node)) {
     desc.clamp_min = clamp->get_min();
     desc.clamp_max = clamp->get_max();
+  }
+  if (auto gelu = ov::as_type_ptr<const ov::op::v7::Gelu>(node)) {
+    desc.gelu_tanh_approximation =
+        gelu->get_approximation_mode() == ov::op::GeluApproximationMode::TANH;
   }
 
   source.entry_point = "unary_kernel";

@@ -51,7 +51,9 @@ uint32_t scalar_value_for_opencl_source_arg(GfxOpenClSourceScalarArg scalar,
                                             const std::vector<ov::Shape>& input_shapes,
                                             const ov::Shape& output0_shape,
                                             const std::vector<uint32_t>& static_u32_scalars,
-                                            size_t& static_u32_idx) {
+                                            const std::vector<float>& static_f32_scalars,
+                                            size_t& static_u32_idx,
+                                            size_t& static_f32_idx) {
     const auto raw_scalar = static_cast<uint32_t>(scalar);
     auto resolve_dim = [&](GfxOpenClSourceScalarArg base,
                            size_t shape_idx,
@@ -105,6 +107,16 @@ uint32_t scalar_value_for_opencl_source_arg(GfxOpenClSourceScalarArg scalar,
             OPENVINO_ASSERT(static_u32_idx < static_u32_scalars.size(),
                             "GFX OpenCL: static u32 scalar ABI has no value mapping");
             return static_u32_scalars[static_u32_idx++];
+        case GfxOpenClSourceScalarArg::StaticF32: {
+            OPENVINO_ASSERT(static_f32_idx < static_f32_scalars.size(),
+                            "GFX OpenCL: static f32 scalar ABI has no value mapping");
+            const float value = static_f32_scalars[static_f32_idx++];
+            uint32_t bits = 0;
+            static_assert(sizeof(bits) == sizeof(value),
+                          "GFX OpenCL: f32 scalar ABI must be 32-bit");
+            std::memcpy(&bits, &value, sizeof(bits));
+            return bits;
+        }
         default:
             break;
     }
@@ -240,6 +252,7 @@ public:
         size_t output_idx = 0;
         size_t scalar_idx = 0;
         size_t static_u32_idx = 0;
+        size_t static_f32_idx = 0;
         for (size_t arg_idx = 0; arg_idx < roles.size(); ++arg_idx) {
             switch (roles[arg_idx]) {
                 case GfxKernelBufferRole::TensorInput: {
@@ -280,7 +293,9 @@ public:
                         input_shapes,
                         output0_shape,
                         m_artifact.static_u32_scalars,
-                        static_u32_idx));
+                        m_artifact.static_f32_scalars,
+                        static_u32_idx,
+                        static_f32_idx));
                     args.push_back(make_bytes_arg(static_cast<uint32_t>(arg_idx),
                                                   &m_scalar_storage.back(),
                                                   sizeof(m_scalar_storage.back())));
@@ -306,6 +321,9 @@ public:
                         m_name);
         OPENVINO_ASSERT(static_u32_idx == m_artifact.static_u32_scalars.size(),
                         "GFX OpenCL: not all source static u32 scalars were consumed for ",
+                        m_name);
+        OPENVINO_ASSERT(static_f32_idx == m_artifact.static_f32_scalars.size(),
+                        "GFX OpenCL: not all source static f32 scalars were consumed for ",
                         m_name);
 
         if (gfx_log_debug_enabled()) {

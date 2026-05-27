@@ -7,42 +7,89 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <optional>
 #include <sstream>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include "kernel_ir/gfx_custom_kernel_families.hpp"
-#include "kernel_ir/opencl_kernels/binary_f32_kernel.hpp"
+#include "kernel_ir/opencl_kernels/activation_kernel.hpp"
+#include "kernel_ir/opencl_kernels/eltwise_kernel.hpp"
 #include "kernel_ir/opencl_kernels/interpolate_f16_kernel.hpp"
 #include "kernel_ir/opencl_kernels/interpolate_f32_kernel.hpp"
+#include "kernel_ir/opencl_kernels/matmul_f32_kernel.hpp"
 #include "kernel_ir/opencl_kernels/softmax_f16_kernel.hpp"
 #include "kernel_ir/opencl_kernels/softmax_f32_kernel.hpp"
 #include "openvino/core/shape_util.hpp"
 #include "openvino/core/type/element_type.hpp"
+#include "openvino/op/abs.hpp"
+#include "openvino/op/acos.hpp"
+#include "openvino/op/acosh.hpp"
+#include "openvino/op/add.hpp"
+#include "openvino/op/asin.hpp"
+#include "openvino/op/asinh.hpp"
+#include "openvino/op/atan.hpp"
+#include "openvino/op/atanh.hpp"
 #include "openvino/op/broadcast.hpp"
 #include "openvino/op/concat.hpp"
 #include "openvino/op/constant.hpp"
+#include "openvino/op/ceiling.hpp"
+#include "openvino/op/clamp.hpp"
+#include "openvino/op/cos.hpp"
+#include "openvino/op/cosh.hpp"
+#include "openvino/op/divide.hpp"
+#include "openvino/op/elu.hpp"
+#include "openvino/op/erf.hpp"
+#include "openvino/op/exp.hpp"
+#include "openvino/op/floor.hpp"
+#include "openvino/op/floor_mod.hpp"
 #include "openvino/op/gather.hpp"
 #include "openvino/op/gather_elements.hpp"
 #include "openvino/op/gather_nd.hpp"
+#include "openvino/op/gelu.hpp"
+#include "openvino/op/hsigmoid.hpp"
+#include "openvino/op/hswish.hpp"
 #include "openvino/op/interpolate.hpp"
+#include "openvino/op/log.hpp"
 #include "openvino/op/matmul.hpp"
+#include "openvino/op/maximum.hpp"
+#include "openvino/op/minimum.hpp"
+#include "openvino/op/mish.hpp"
+#include "openvino/op/mod.hpp"
+#include "openvino/op/multiply.hpp"
+#include "openvino/op/negative.hpp"
+#include "openvino/op/power.hpp"
 #include "openvino/op/range.hpp"
 #include "openvino/op/reduce_logical_and.hpp"
 #include "openvino/op/reduce_logical_or.hpp"
+#include "openvino/op/relu.hpp"
+#include "openvino/op/round.hpp"
 #include "openvino/op/scatter_elements_update.hpp"
 #include "openvino/op/scatter_nd_update.hpp"
 #include "openvino/op/scatter_update.hpp"
 #include "openvino/op/shape_of.hpp"
+#include "openvino/op/sign.hpp"
+#include "openvino/op/sigmoid.hpp"
+#include "openvino/op/sin.hpp"
+#include "openvino/op/sinh.hpp"
 #include "openvino/op/slice.hpp"
 #include "openvino/op/softmax.hpp"
+#include "openvino/op/softplus.hpp"
+#include "openvino/op/softsign.hpp"
 #include "openvino/op/split.hpp"
+#include "openvino/op/squared_difference.hpp"
+#include "openvino/op/sqrt.hpp"
 #include "openvino/op/strided_slice.hpp"
+#include "openvino/op/subtract.hpp"
+#include "openvino/op/tan.hpp"
+#include "openvino/op/tanh.hpp"
 #include "openvino/op/tile.hpp"
 #include "openvino/op/util/scatter_elements_update_base.hpp"
+#include "openvino/op/util/binary_elementwise_arithmetic.hpp"
 #include "openvino/op/variadic_split.hpp"
 #include "openvino/util/common_util.hpp"
 
@@ -276,40 +323,6 @@ __kernel void gfx_opencl_baseline_binary_broadcast_f32(__global const float* lhs
     const uint rhs_offset = coord0 * rhs_stride0 + coord1 * rhs_stride1 +
                             coord2 * rhs_stride2 + coord3 * rhs_stride3;
     dst[gid] = gfx_binary_f32(lhs[lhs_offset], rhs[rhs_offset], op);
-}
-
-__kernel void gfx_opencl_baseline_matmul_f32(__global const float* lhs,
-                                             __global const float* rhs,
-                                             __global float* dst,
-                                             uint count,
-                                             uint m,
-                                             uint n,
-                                             uint k_dim,
-                                             uint lhs_batch_stride,
-                                             uint rhs_batch_stride,
-                                             uint lhs_row_stride,
-                                             uint lhs_col_stride,
-                                             uint rhs_row_stride,
-                                             uint rhs_col_stride) {
-    const uint gid = get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint mn = m * n;
-    const uint batch_idx = gid / mn;
-    const uint rem = gid - batch_idx * mn;
-    const uint row = rem / n;
-    const uint col = rem - row * n;
-    const uint lhs_base = lhs_batch_stride == 0u ? 0u : batch_idx * lhs_batch_stride;
-    const uint rhs_base = rhs_batch_stride == 0u ? 0u : batch_idx * rhs_batch_stride;
-
-    float acc = 0.0f;
-    for (uint k = 0u; k < k_dim; ++k) {
-        const uint lhs_idx = lhs_base + row * lhs_row_stride + k * lhs_col_stride;
-        const uint rhs_idx = rhs_base + k * rhs_row_stride + col * rhs_col_stride;
-        acc += lhs[lhs_idx] * rhs[rhs_idx];
-    }
-    dst[gid] = acc;
 }
 
 __kernel void gfx_opencl_baseline_binary_scalar_f32(__global const float* lhs,
@@ -1387,42 +1400,6 @@ __kernel void gfx_opencl_baseline_concat4_f32(__global const float* src0,
     dst[gid] = value;
 }
 
-)CLC";
-
-constexpr const char* kOpenClMatMulSource = R"CLC(
-__kernel void gfx_opencl_baseline_matmul_f32(__global const float* lhs,
-                                             __global const float* rhs,
-                                             __global float* dst,
-                                             uint count,
-                                             uint m,
-                                             uint n,
-                                             uint k_dim,
-                                             uint lhs_batch_stride,
-                                             uint rhs_batch_stride,
-                                             uint lhs_row_stride,
-                                             uint lhs_col_stride,
-                                             uint rhs_row_stride,
-                                             uint rhs_col_stride) {
-    const uint gid = (uint)get_global_id(0);
-    if (gid >= count) {
-        return;
-    }
-    const uint mn = m * n;
-    const uint batch_idx = gid / mn;
-    const uint rem = gid - batch_idx * mn;
-    const uint row = rem / n;
-    const uint col = rem - row * n;
-    const uint lhs_base = lhs_batch_stride == 0u ? 0u : batch_idx * lhs_batch_stride;
-    const uint rhs_base = rhs_batch_stride == 0u ? 0u : batch_idx * rhs_batch_stride;
-
-    float acc = 0.0f;
-    for (uint k = 0u; k < k_dim; ++k) {
-        const uint lhs_idx = lhs_base + row * lhs_row_stride + k * lhs_col_stride;
-        const uint rhs_idx = rhs_base + k * rhs_row_stride + col * rhs_col_stride;
-        acc += lhs[lhs_idx] * rhs[rhs_idx];
-    }
-    dst[gid] = acc;
-}
 )CLC";
 
 constexpr const char* kOpenClTransposeF32Source = R"CLC(
@@ -4195,31 +4172,146 @@ bool same_static_element_count_input_output(const std::shared_ptr<const ov::Node
            ov::shape_size(node->get_output_shape(output_idx));
 }
 
-std::optional<GfxOpenClBaselineOp> unary_op_code(std::string_view type) {
-    if (type == "Relu") return GfxOpenClBaselineOp::Relu;
-    if (type == "Sigmoid") return GfxOpenClBaselineOp::Sigmoid;
-    if (type == "Tanh") return GfxOpenClBaselineOp::Tanh;
-    if (type == "Abs") return GfxOpenClBaselineOp::Abs;
-    if (type == "Negative") return GfxOpenClBaselineOp::Negative;
-    if (type == "Exp") return GfxOpenClBaselineOp::Exp;
-    if (type == "Log") return GfxOpenClBaselineOp::Log;
-    if (type == "Sqrt") return GfxOpenClBaselineOp::Sqrt;
-    if (type == "Floor") return GfxOpenClBaselineOp::Floor;
-    if (type == "Ceiling") return GfxOpenClBaselineOp::Ceiling;
+std::optional<GfxOpenClBaselineOp> activation_op_code(
+    const std::shared_ptr<const ov::Node>& node) {
+    if (ov::as_type_ptr<const ov::op::v0::Relu>(node)) {
+        return GfxOpenClBaselineOp::Relu;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Sigmoid>(node)) {
+        return GfxOpenClBaselineOp::Sigmoid;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Tanh>(node)) {
+        return GfxOpenClBaselineOp::Tanh;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Gelu>(node)) {
+        return GfxOpenClBaselineOp::GeluErf;
+    }
+    if (auto gelu = ov::as_type_ptr<const ov::op::v7::Gelu>(node)) {
+        return gelu->get_approximation_mode() == ov::op::GeluApproximationMode::TANH
+                   ? GfxOpenClBaselineOp::GeluTanh
+                   : GfxOpenClBaselineOp::GeluErf;
+    }
+    if (ov::as_type_ptr<const ov::op::v4::HSwish>(node)) {
+        return GfxOpenClBaselineOp::HSwish;
+    }
+    if (ov::as_type_ptr<const ov::op::v5::HSigmoid>(node)) {
+        return GfxOpenClBaselineOp::HSigmoid;
+    }
+    if (ov::as_type_ptr<const ov::op::v4::SoftPlus>(node)) {
+        return GfxOpenClBaselineOp::SoftPlus;
+    }
+    if (ov::as_type_ptr<const ov::op::v4::Mish>(node)) {
+        return GfxOpenClBaselineOp::Mish;
+    }
+    if (ov::as_type_ptr<const ov::op::v9::SoftSign>(node)) {
+        return GfxOpenClBaselineOp::SoftSign;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Abs>(node)) {
+        return GfxOpenClBaselineOp::Abs;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Sign>(node)) {
+        return GfxOpenClBaselineOp::Sign;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Clamp>(node)) {
+        return GfxOpenClBaselineOp::Clamp;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Negative>(node)) {
+        return GfxOpenClBaselineOp::Negative;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Sin>(node)) {
+        return GfxOpenClBaselineOp::Sin;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Cos>(node)) {
+        return GfxOpenClBaselineOp::Cos;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Tan>(node)) {
+        return GfxOpenClBaselineOp::Tan;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Erf>(node)) {
+        return GfxOpenClBaselineOp::Erf;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Asin>(node)) {
+        return GfxOpenClBaselineOp::Asin;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Acos>(node)) {
+        return GfxOpenClBaselineOp::Acos;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Atan>(node)) {
+        return GfxOpenClBaselineOp::Atan;
+    }
+    if (ov::as_type_ptr<const ov::op::v3::Asinh>(node)) {
+        return GfxOpenClBaselineOp::Asinh;
+    }
+    if (ov::as_type_ptr<const ov::op::v3::Acosh>(node)) {
+        return GfxOpenClBaselineOp::Acosh;
+    }
+    if (ov::as_type_ptr<const ov::op::v3::Atanh>(node)) {
+        return GfxOpenClBaselineOp::Atanh;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Sinh>(node)) {
+        return GfxOpenClBaselineOp::Sinh;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Cosh>(node)) {
+        return GfxOpenClBaselineOp::Cosh;
+    }
+    if (auto round = ov::as_type_ptr<const ov::op::v5::Round>(node)) {
+        return round->get_mode() == ov::op::v5::Round::RoundMode::HALF_TO_EVEN
+                   ? GfxOpenClBaselineOp::RoundEven
+                   : GfxOpenClBaselineOp::RoundAway;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Exp>(node)) {
+        return GfxOpenClBaselineOp::Exp;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Log>(node)) {
+        return GfxOpenClBaselineOp::Log;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Sqrt>(node)) {
+        return GfxOpenClBaselineOp::Sqrt;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Floor>(node)) {
+        return GfxOpenClBaselineOp::Floor;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Ceiling>(node)) {
+        return GfxOpenClBaselineOp::Ceiling;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::Elu>(node)) {
+        return GfxOpenClBaselineOp::Elu;
+    }
     return std::nullopt;
 }
 
-std::optional<GfxOpenClBaselineOp> binary_op_code(std::string_view type) {
-    if (type == "Add") return GfxOpenClBaselineOp::Add;
-    if (type == "Subtract") return GfxOpenClBaselineOp::Subtract;
-    if (type == "Multiply") return GfxOpenClBaselineOp::Multiply;
-    if (type == "Divide") return GfxOpenClBaselineOp::Divide;
-    if (type == "Maximum") return GfxOpenClBaselineOp::Maximum;
-    if (type == "Minimum") return GfxOpenClBaselineOp::Minimum;
-    if (type == "Power") return GfxOpenClBaselineOp::Power;
-    if (type == "SquaredDifference") return GfxOpenClBaselineOp::SquaredDifference;
-    if (type == "Mod") return GfxOpenClBaselineOp::Mod;
-    if (type == "FloorMod") return GfxOpenClBaselineOp::FloorMod;
+std::optional<GfxOpenClBaselineOp> binary_op_code(
+    const std::shared_ptr<const ov::Node>& node) {
+    if (ov::as_type_ptr<const ov::op::v1::Add>(node)) {
+        return GfxOpenClBaselineOp::Add;
+    }
+    if (ov::as_type_ptr<const ov::op::v1::Subtract>(node)) {
+        return GfxOpenClBaselineOp::Subtract;
+    }
+    if (ov::as_type_ptr<const ov::op::v1::Multiply>(node)) {
+        return GfxOpenClBaselineOp::Multiply;
+    }
+    if (ov::as_type_ptr<const ov::op::v1::Divide>(node)) {
+        return GfxOpenClBaselineOp::Divide;
+    }
+    if (ov::as_type_ptr<const ov::op::v1::Maximum>(node)) {
+        return GfxOpenClBaselineOp::Maximum;
+    }
+    if (ov::as_type_ptr<const ov::op::v1::Minimum>(node)) {
+        return GfxOpenClBaselineOp::Minimum;
+    }
+    if (ov::as_type_ptr<const ov::op::v1::Power>(node)) {
+        return GfxOpenClBaselineOp::Power;
+    }
+    if (ov::as_type_ptr<const ov::op::v0::SquaredDifference>(node)) {
+        return GfxOpenClBaselineOp::SquaredDifference;
+    }
+    if (ov::as_type_ptr<const ov::op::v1::Mod>(node)) {
+        return GfxOpenClBaselineOp::Mod;
+    }
+    if (ov::as_type_ptr<const ov::op::v1::FloorMod>(node)) {
+        return GfxOpenClBaselineOp::FloorMod;
+    }
     return std::nullopt;
 }
 
@@ -4464,6 +4556,239 @@ std::optional<std::vector<uint32_t>> binary_broadcast_static_u32_scalars(
         return std::nullopt;
     }
     return broadcast_static_u32_scalars(node, {element_type, element_type}, element_type);
+}
+
+GfxKernelStageManifest make_opencl_baseline_manifest(
+    GfxKernelStageFamily family,
+    std::string specialization_key,
+    std::string entry_point,
+    uint32_t direct_inputs,
+    uint32_t scalar_arg_count,
+    uint32_t direct_outputs = 1);
+
+GfxOpenClSourceArtifact make_opencl_baseline_artifact(
+    GfxKernelStageManifest manifest,
+    std::string source_id,
+    std::vector<GfxOpenClSourceScalarArg> scalar_args,
+    std::vector<size_t> direct_input_indices,
+    GfxOpenClBaselineOp op,
+    GfxOpenClBaselineInputMode input_mode = GfxOpenClBaselineInputMode::Direct,
+    float scalar_constant_f32 = 0.0f,
+    std::vector<uint32_t> static_u32_scalars = {},
+    GfxOpenClSourceElementCountSource element_count_source =
+        GfxOpenClSourceElementCountSource::Output0,
+    std::vector<float> static_f32_scalars = {});
+
+bool is_numpy_aligned_binary_broadcast(
+    const ov::op::util::BinaryElementwiseArithmetic& op) {
+    return op.get_autob().m_type == ov::op::AutoBroadcastType::NUMPY;
+}
+
+std::optional<GfxOpenClSourceArtifact> make_opencl_activation_artifact(
+    const std::shared_ptr<const ov::Node>& node) {
+    const auto op = activation_op_code(node);
+    if (!op ||
+        !node ||
+        node->get_input_size() != 1 ||
+        node->get_output_size() != 1 ||
+        node->get_input_element_type(0) != node->get_output_element_type(0) ||
+        (!is_f32_tensor_type(node->get_output_element_type(0)) &&
+         !is_f16_tensor_type(node->get_output_element_type(0))) ||
+        !input_static_element_count_matches_output(node, 0, 0)) {
+        return std::nullopt;
+    }
+
+    const std::string type_suffix =
+        opencl_scalar_type_suffix(node->get_output_element_type(0));
+    const std::string entry_point =
+        "gfx_opencl_generated_activation_" + type_suffix;
+    float alpha = 0.0f;
+    float beta = 0.0f;
+    if (auto elu = ov::as_type_ptr<const ov::op::v0::Elu>(node)) {
+        alpha = static_cast<float>(elu->get_alpha());
+    }
+    if (auto clamp = ov::as_type_ptr<const ov::op::v0::Clamp>(node)) {
+        alpha = static_cast<float>(clamp->get_min());
+        beta = static_cast<float>(clamp->get_max());
+    }
+    auto manifest = make_opencl_baseline_manifest(
+        GfxKernelStageFamily::Activation,
+        "opencl:generated:activation:" + std::string(node->get_type_name()) +
+            ":" + type_suffix,
+        entry_point,
+        /*direct_inputs=*/1,
+        /*scalar_arg_count=*/4);
+    return make_opencl_baseline_artifact(
+        std::move(manifest),
+        "opencl/generated/activation_" + type_suffix,
+        {GfxOpenClSourceScalarArg::ElementCount,
+         GfxOpenClSourceScalarArg::OpCode,
+         GfxOpenClSourceScalarArg::StaticF32,
+         GfxOpenClSourceScalarArg::StaticF32},
+        {0},
+        *op,
+        GfxOpenClBaselineInputMode::Direct,
+        0.0f,
+        {},
+        GfxOpenClSourceElementCountSource::Output0,
+        {alpha, beta});
+}
+
+std::optional<GfxOpenClSourceArtifact> make_opencl_eltwise_artifact(
+    const std::shared_ptr<const ov::Node>& node) {
+    auto eltwise =
+        ov::as_type_ptr<const ov::op::util::BinaryElementwiseArithmetic>(node);
+    const auto op = binary_op_code(node);
+    if (!eltwise ||
+        !op ||
+        eltwise->get_input_size() != 2 ||
+        eltwise->get_output_size() != 1 ||
+        eltwise->get_output_element_type(0) != eltwise->get_input_element_type(0) ||
+        eltwise->get_output_element_type(0) != eltwise->get_input_element_type(1) ||
+        !is_opencl_binary_tensor_type(eltwise->get_output_element_type(0))) {
+        return std::nullopt;
+    }
+
+    const auto element_type = eltwise->get_output_element_type(0);
+    const bool is_f32 = is_f32_tensor_type(element_type);
+    const std::string type_suffix = opencl_scalar_type_suffix(element_type);
+    const bool lhs_matches_output = input_static_element_count_matches_output(node, 0, 0);
+    const bool rhs_matches_output = input_static_element_count_matches_output(node, 1, 0);
+    const auto lhs_constant = scalar_f32_constant_input(node, 0);
+    const auto rhs_constant = scalar_f32_constant_input(node, 1);
+    const std::string type = node->get_type_name();
+    const auto source_id = [&type_suffix](std::string_view variant) {
+        const std::string suffix = variant.empty() ? "binary_" + type_suffix
+                                                   : std::string(variant);
+        return "opencl/generated/eltwise_" + suffix;
+    };
+
+    if (same_static_shape(node, 0, 1) && lhs_matches_output && rhs_matches_output) {
+        const std::string entry_point =
+            "gfx_opencl_generated_eltwise_binary_" + type_suffix;
+        auto manifest = make_opencl_baseline_manifest(
+            GfxKernelStageFamily::Eltwise,
+            "opencl:generated:eltwise:" + type + ":" + type_suffix + ":same_shape",
+            entry_point,
+            /*direct_inputs=*/2,
+            /*scalar_arg_count=*/2);
+        return make_opencl_baseline_artifact(
+            std::move(manifest),
+            source_id({}),
+            {GfxOpenClSourceScalarArg::ElementCount,
+             GfxOpenClSourceScalarArg::OpCode},
+            {0, 1},
+            *op);
+    }
+
+    if (!is_numpy_aligned_binary_broadcast(*eltwise)) {
+        return std::nullopt;
+    }
+
+    if (is_f32 && rhs_constant && lhs_matches_output) {
+        auto manifest = make_opencl_baseline_manifest(
+            GfxKernelStageFamily::Eltwise,
+            "opencl:generated:eltwise:" + type + ":f32:rhs_scalar_const",
+            "gfx_opencl_generated_eltwise_const_f32",
+            /*direct_inputs=*/1,
+            /*scalar_arg_count=*/4);
+        return make_opencl_baseline_artifact(
+            std::move(manifest),
+            source_id("const_f32"),
+            {GfxOpenClSourceScalarArg::ElementCount,
+             GfxOpenClSourceScalarArg::OpCode,
+             GfxOpenClSourceScalarArg::InputMode,
+             GfxOpenClSourceScalarArg::ScalarConstantF32},
+            {0},
+            *op,
+            GfxOpenClBaselineInputMode::RhsScalarConstant,
+            *rhs_constant);
+    }
+    if (is_f32 && lhs_constant && rhs_matches_output) {
+        auto manifest = make_opencl_baseline_manifest(
+            GfxKernelStageFamily::Eltwise,
+            "opencl:generated:eltwise:" + type + ":f32:lhs_scalar_const",
+            "gfx_opencl_generated_eltwise_const_f32",
+            /*direct_inputs=*/1,
+            /*scalar_arg_count=*/4);
+        return make_opencl_baseline_artifact(
+            std::move(manifest),
+            source_id("const_f32"),
+            {GfxOpenClSourceScalarArg::ElementCount,
+             GfxOpenClSourceScalarArg::OpCode,
+             GfxOpenClSourceScalarArg::InputMode,
+             GfxOpenClSourceScalarArg::ScalarConstantF32},
+            {1},
+            *op,
+            GfxOpenClBaselineInputMode::LhsScalarConstant,
+            *lhs_constant);
+    }
+    if (is_static_scalar_like_input(node, 1) && lhs_matches_output) {
+        const std::string entry_point =
+            "gfx_opencl_generated_eltwise_scalar_" + type_suffix;
+        auto manifest = make_opencl_baseline_manifest(
+            GfxKernelStageFamily::Eltwise,
+            "opencl:generated:eltwise:" + type + ":" + type_suffix + ":rhs_scalar",
+            entry_point,
+            /*direct_inputs=*/2,
+            /*scalar_arg_count=*/3);
+        return make_opencl_baseline_artifact(
+            std::move(manifest),
+            source_id("scalar_" + type_suffix),
+            {GfxOpenClSourceScalarArg::ElementCount,
+             GfxOpenClSourceScalarArg::OpCode,
+             GfxOpenClSourceScalarArg::InputMode},
+            {0, 1},
+            *op,
+            GfxOpenClBaselineInputMode::RhsScalar);
+    }
+    if (is_static_scalar_like_input(node, 0) && rhs_matches_output) {
+        const std::string entry_point =
+            "gfx_opencl_generated_eltwise_scalar_" + type_suffix;
+        auto manifest = make_opencl_baseline_manifest(
+            GfxKernelStageFamily::Eltwise,
+            "opencl:generated:eltwise:" + type + ":" + type_suffix + ":lhs_scalar",
+            entry_point,
+            /*direct_inputs=*/2,
+            /*scalar_arg_count=*/3);
+        return make_opencl_baseline_artifact(
+            std::move(manifest),
+            source_id("scalar_" + type_suffix),
+            {GfxOpenClSourceScalarArg::ElementCount,
+             GfxOpenClSourceScalarArg::OpCode,
+             GfxOpenClSourceScalarArg::InputMode},
+            {0, 1},
+            *op,
+            GfxOpenClBaselineInputMode::LhsScalar);
+    }
+
+    auto static_u32_scalars = binary_broadcast_static_u32_scalars(node);
+    if (static_u32_scalars) {
+        const std::string entry_point =
+            "gfx_opencl_generated_eltwise_broadcast_" + type_suffix;
+        std::vector<GfxOpenClSourceScalarArg> scalar_args = {
+            GfxOpenClSourceScalarArg::ElementCount,
+            GfxOpenClSourceScalarArg::OpCode};
+        scalar_args.insert(scalar_args.end(),
+                           static_u32_scalars->size(),
+                           GfxOpenClSourceScalarArg::StaticU32);
+        auto manifest = make_opencl_baseline_manifest(
+            GfxKernelStageFamily::Eltwise,
+            "opencl:generated:eltwise:" + type + ":" + type_suffix + ":broadcast",
+            entry_point,
+            /*direct_inputs=*/2,
+            static_cast<uint32_t>(scalar_args.size()));
+        return make_opencl_baseline_artifact(
+            std::move(manifest),
+            source_id("broadcast_" + type_suffix),
+            std::move(scalar_args),
+            {0, 1},
+            *op,
+            GfxOpenClBaselineInputMode::Direct,
+            0.0f,
+            std::move(*static_u32_scalars));
+    }
+    return std::nullopt;
 }
 
 std::optional<std::vector<uint32_t>> compare_broadcast_static_u32_scalars(
@@ -6682,7 +7007,7 @@ GfxKernelStageManifest make_opencl_baseline_manifest(
     std::string entry_point,
     uint32_t direct_inputs,
     uint32_t scalar_arg_count,
-    uint32_t direct_outputs = 1) {
+    uint32_t direct_outputs) {
     GfxKernelExternalBufferAbiSpec abi{};
     abi.valid = true;
     abi.roles.insert(abi.roles.end(), direct_inputs, GfxKernelBufferRole::TensorInput);
@@ -7022,11 +7347,11 @@ GfxOpenClSourceArtifact make_opencl_baseline_artifact(
     std::vector<GfxOpenClSourceScalarArg> scalar_args,
     std::vector<size_t> direct_input_indices,
     GfxOpenClBaselineOp op,
-    GfxOpenClBaselineInputMode input_mode = GfxOpenClBaselineInputMode::Direct,
-    float scalar_constant_f32 = 0.0f,
-    std::vector<uint32_t> static_u32_scalars = {},
-    GfxOpenClSourceElementCountSource element_count_source =
-        GfxOpenClSourceElementCountSource::Output0) {
+    GfxOpenClBaselineInputMode input_mode,
+    float scalar_constant_f32,
+    std::vector<uint32_t> static_u32_scalars,
+    GfxOpenClSourceElementCountSource element_count_source,
+    std::vector<float> static_f32_scalars) {
     GfxOpenClSourceArtifact artifact{};
     artifact.valid = manifest.valid;
     artifact.stage_manifest = std::move(manifest);
@@ -7057,8 +7382,17 @@ GfxOpenClSourceArtifact make_opencl_baseline_artifact(
         artifact.source = make_opencl_static_split_f16_source(
             *split_outputs, artifact.artifact_ref.entry_point, static_u32_scalars);
         source_inlines_static_u32_scalars = true;
-    } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_matmul_f32") {
-        artifact.source = kOpenClMatMulSource;
+    } else if (std::string_view(artifact.artifact_ref.entry_point).substr(
+                   0, std::string_view("gfx_opencl_generated_eltwise_").size()) ==
+               std::string_view("gfx_opencl_generated_eltwise_")) {
+        artifact.source = opencl_generated_eltwise_kernel_source().source;
+    } else if (std::string_view(artifact.artifact_ref.entry_point).substr(
+                   0, std::string_view("gfx_opencl_generated_activation_").size()) ==
+               std::string_view("gfx_opencl_generated_activation_")) {
+        artifact.source = opencl_generated_activation_kernel_source().source;
+    } else if (artifact.artifact_ref.entry_point ==
+               "gfx_opencl_generated_matmul_f32") {
+        artifact.source = opencl_generated_matmul_f32_kernel_source().source;
     } else if (artifact.artifact_ref.entry_point == "gfx_opencl_baseline_softmax_f32" ||
                artifact.artifact_ref.entry_point == "gfx_opencl_baseline_softmax_dynamic_f32") {
         artifact.source = opencl_baseline_softmax_f32_kernel_source().source;
@@ -7079,9 +7413,6 @@ GfxOpenClSourceArtifact make_opencl_baseline_artifact(
     } else if (artifact.artifact_ref.entry_point ==
                "gfx_opencl_baseline_unary_f32") {
         artifact.source = kOpenClUnaryF32Source;
-    } else if (artifact.artifact_ref.entry_point ==
-               "gfx_opencl_baseline_binary_f32") {
-        artifact.source = opencl_baseline_binary_f32_kernel_source().source;
     } else if (artifact.artifact_ref.entry_point ==
                "gfx_opencl_baseline_binary_broadcast_f32") {
         artifact.source = kOpenClBinaryBroadcastF32Source;
@@ -7178,6 +7509,7 @@ GfxOpenClSourceArtifact make_opencl_baseline_artifact(
     }
     artifact.scalar_args = std::move(scalar_args);
     artifact.static_u32_scalars = std::move(static_u32_scalars);
+    artifact.static_f32_scalars = std::move(static_f32_scalars);
     artifact.direct_input_indices = std::move(direct_input_indices);
     const auto roles = materialize_gfx_kernel_external_buffer_roles(
         artifact.stage_manifest.custom_kernel.external_buffer_abi);
@@ -7623,12 +7955,12 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
                            GfxOpenClSourceScalarArg::StaticU32);
         auto manifest = make_opencl_baseline_manifest(
             GfxKernelStageFamily::Gemm,
-            "opencl:baseline:MatMul:f32",
-            "gfx_opencl_baseline_matmul_f32",
+            "opencl:generated:MatMul:f32",
+            "gfx_opencl_generated_matmul_f32",
             /*direct_inputs=*/2,
             static_cast<uint32_t>(scalar_args.size()));
         return make_opencl_baseline_artifact(std::move(manifest),
-                                             "opencl/baseline/matmul_f32",
+                                             "opencl/generated/matmul_f32",
                                              std::move(scalar_args),
                                              {0, 1},
                                              GfxOpenClBaselineOp::Identity,
@@ -8033,153 +8365,18 @@ std::optional<GfxOpenClSourceArtifact> resolve_gfx_opencl_source_artifact(
             GfxOpenClSourceElementCountSource::Input0);
     }
 
-    if (auto op = unary_op_code(type)) {
-        if (node->get_input_size() != 1 ||
-            !is_f32_tensor_type(node->get_output_element_type(0)) ||
-            !is_f32_tensor_type(node->get_input_element_type(0))) {
-            return std::nullopt;
-        }
-        auto manifest = make_opencl_baseline_manifest(
-            GfxKernelStageFamily::Eltwise,
-            "opencl:baseline:" + type + ":f32",
-            "gfx_opencl_baseline_unary_f32",
-            /*direct_inputs=*/1,
-            /*scalar_arg_count=*/2);
-        return make_opencl_baseline_artifact(std::move(manifest),
-                                             "opencl/baseline/eltwise_unary_f32",
-                                             {GfxOpenClSourceScalarArg::ElementCount,
-                                              GfxOpenClSourceScalarArg::OpCode},
-                                             {0},
-                                             *op);
+    if (auto activation_artifact = make_opencl_activation_artifact(node)) {
+        return activation_artifact;
+    }
+    if (activation_op_code(node)) {
+        return std::nullopt;
     }
 
-    if (auto op = binary_op_code(type)) {
-        if (node->get_input_size() != 2 ||
-            node->get_output_element_type(0) != node->get_input_element_type(0) ||
-            node->get_output_element_type(0) != node->get_input_element_type(1) ||
-            !is_opencl_binary_tensor_type(node->get_output_element_type(0))) {
-            return std::nullopt;
-        }
-        const auto element_type = node->get_output_element_type(0);
-        const bool is_f32 = is_f32_tensor_type(element_type);
-        const std::string type_suffix = opencl_scalar_type_suffix(element_type);
-        const bool lhs_matches_output = input_static_element_count_matches_output(node, 0, 0);
-        const bool rhs_matches_output = input_static_element_count_matches_output(node, 1, 0);
-        const auto lhs_constant = scalar_f32_constant_input(node, 0);
-        const auto rhs_constant = scalar_f32_constant_input(node, 1);
-        if (same_static_shape(node, 0, 1) && lhs_matches_output && rhs_matches_output) {
-            const std::string entry_point =
-                "gfx_opencl_baseline_binary_" + type_suffix;
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::Eltwise,
-                "opencl:baseline:" + type + ":" + type_suffix + ":same_shape",
-                entry_point,
-                /*direct_inputs=*/2,
-                /*scalar_arg_count=*/2);
-            return make_opencl_baseline_artifact(std::move(manifest),
-                                                 "opencl/baseline/eltwise_binary_" + type_suffix,
-                                                 {GfxOpenClSourceScalarArg::ElementCount,
-                                                  GfxOpenClSourceScalarArg::OpCode},
-                                                 {0, 1},
-                                                 *op);
-        }
-        if (is_f32 && rhs_constant && lhs_matches_output) {
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::Eltwise,
-                "opencl:baseline:" + type + ":f32:rhs_scalar_const",
-                "gfx_opencl_baseline_binary_const_f32",
-                /*direct_inputs=*/1,
-                /*scalar_arg_count=*/4);
-            return make_opencl_baseline_artifact(std::move(manifest),
-                                                 "opencl/baseline/eltwise_binary_const_f32",
-                                                 {GfxOpenClSourceScalarArg::ElementCount,
-                                                  GfxOpenClSourceScalarArg::OpCode,
-                                                  GfxOpenClSourceScalarArg::InputMode,
-                                                  GfxOpenClSourceScalarArg::ScalarConstantF32},
-                                                 {0},
-                                                 *op,
-                                                 GfxOpenClBaselineInputMode::RhsScalarConstant,
-                                                 *rhs_constant);
-        }
-        if (is_f32 && lhs_constant && rhs_matches_output) {
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::Eltwise,
-                "opencl:baseline:" + type + ":f32:lhs_scalar_const",
-                "gfx_opencl_baseline_binary_const_f32",
-                /*direct_inputs=*/1,
-                /*scalar_arg_count=*/4);
-            return make_opencl_baseline_artifact(std::move(manifest),
-                                                 "opencl/baseline/eltwise_binary_const_f32",
-                                                 {GfxOpenClSourceScalarArg::ElementCount,
-                                                  GfxOpenClSourceScalarArg::OpCode,
-                                                  GfxOpenClSourceScalarArg::InputMode,
-                                                  GfxOpenClSourceScalarArg::ScalarConstantF32},
-                                                 {1},
-                                                 *op,
-                                                 GfxOpenClBaselineInputMode::LhsScalarConstant,
-                                                 *lhs_constant);
-        }
-        if (is_static_scalar_like_input(node, 1) && lhs_matches_output) {
-            const std::string entry_point =
-                "gfx_opencl_baseline_binary_scalar_" + type_suffix;
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::Eltwise,
-                "opencl:baseline:" + type + ":" + type_suffix + ":rhs_scalar",
-                entry_point,
-                /*direct_inputs=*/2,
-                /*scalar_arg_count=*/3);
-            return make_opencl_baseline_artifact(std::move(manifest),
-                                                 "opencl/baseline/eltwise_binary_scalar_" + type_suffix,
-                                                 {GfxOpenClSourceScalarArg::ElementCount,
-                                                  GfxOpenClSourceScalarArg::OpCode,
-                                                  GfxOpenClSourceScalarArg::InputMode},
-                                                 {0, 1},
-                                                 *op,
-                                                 GfxOpenClBaselineInputMode::RhsScalar);
-        }
-        if (is_static_scalar_like_input(node, 0) && rhs_matches_output) {
-            const std::string entry_point =
-                "gfx_opencl_baseline_binary_scalar_" + type_suffix;
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::Eltwise,
-                "opencl:baseline:" + type + ":" + type_suffix + ":lhs_scalar",
-                entry_point,
-                /*direct_inputs=*/2,
-                /*scalar_arg_count=*/3);
-            return make_opencl_baseline_artifact(std::move(manifest),
-                                                 "opencl/baseline/eltwise_binary_scalar_" + type_suffix,
-                                                 {GfxOpenClSourceScalarArg::ElementCount,
-                                                  GfxOpenClSourceScalarArg::OpCode,
-                                                  GfxOpenClSourceScalarArg::InputMode},
-                                                 {0, 1},
-                                                 *op,
-                                                 GfxOpenClBaselineInputMode::LhsScalar);
-        }
-        auto static_u32_scalars = binary_broadcast_static_u32_scalars(node);
-        if (static_u32_scalars) {
-            const std::string entry_point =
-                "gfx_opencl_baseline_binary_broadcast_" + type_suffix;
-            std::vector<GfxOpenClSourceScalarArg> scalar_args = {
-                GfxOpenClSourceScalarArg::ElementCount,
-                GfxOpenClSourceScalarArg::OpCode};
-            scalar_args.insert(scalar_args.end(),
-                               static_u32_scalars->size(),
-                               GfxOpenClSourceScalarArg::StaticU32);
-            auto manifest = make_opencl_baseline_manifest(
-                GfxKernelStageFamily::Eltwise,
-                "opencl:baseline:" + type + ":" + type_suffix + ":broadcast",
-                entry_point,
-                /*direct_inputs=*/2,
-                static_cast<uint32_t>(scalar_args.size()));
-            return make_opencl_baseline_artifact(std::move(manifest),
-                                                 "opencl/baseline/eltwise_binary_broadcast_" + type_suffix,
-                                                 std::move(scalar_args),
-                                                 {0, 1},
-                                                 *op,
-                                                 GfxOpenClBaselineInputMode::Direct,
-                                                 0.0f,
-                                                 std::move(*static_u32_scalars));
-        }
+    if (auto eltwise_artifact = make_opencl_eltwise_artifact(node)) {
+        return eltwise_artifact;
+    }
+    if (binary_op_code(node)) {
+        return std::nullopt;
     }
 
     if (auto op = compare_op_code(type)) {

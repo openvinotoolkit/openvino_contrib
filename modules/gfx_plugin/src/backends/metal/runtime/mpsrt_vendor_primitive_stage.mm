@@ -14,7 +14,9 @@
 #include "backends/metal/compiler/metal_kernel_artifacts.hpp"
 #include "backends/metal/runtime/mpsrt/mpsrt_context.hpp"
 #include "backends/metal/runtime/mpsrt/mpsrt_request.hpp"
+#include "kernel_ir/gfx_kernel_cache.hpp"
 #include "kernel_ir/gfx_kernel_manifest.hpp"
+#include "mlir/gfx_mpsrt_const_tensor_sources.hpp"
 #include "openvino/core/except.hpp"
 #include "runtime/gfx_mpsrt_model.hpp"
 #include "runtime/gfx_mpsrt_program.hpp"
@@ -312,10 +314,101 @@ metal::mpsrt::MpsrtBoundBuffer tensor_bound_buffer(const GpuTensor& tensor) {
   return {tensor.buf.buffer, tensor.buf.offset};
 }
 
+struct VendorConstInputBuffers {
+  std::vector<GpuTensor> buffers;
+  std::vector<bool> present;
+};
+
+std::string make_vendor_const_input_key(const std::string& kernel_id,
+                                        const ov::Node& node,
+                                        size_t input_index,
+                                        const ov::Tensor& tensor) {
+  std::ostringstream key;
+  key << "metal/vendor/" << kernel_id << "/const/"
+      << node.get_friendly_name() << "/" << input_index << "/"
+      << tensor.get_element_type().get_type_name() << "/"
+      << tensor.get_byte_size() << "/"
+      << gfx_hash_bytes(tensor.data(), tensor.get_byte_size());
+  return key.str();
+}
+
+void prepare_vendor_const_inputs(const std::shared_ptr<const ov::Node>& node,
+                                 GpuBufferManager* buffer_manager,
+                                 const std::string& kernel_id,
+                                 VendorConstInputBuffers& const_inputs) {
+  if (!node) {
+    return;
+  }
+  const size_t input_count = node->get_input_size();
+  if (const_inputs.buffers.size() < input_count) {
+    const_inputs.buffers.resize(input_count);
+    const_inputs.present.assign(input_count, false);
+  }
+
+  bool const_cache_checked = false;
+  for (size_t input_index = 0; input_index < input_count; ++input_index) {
+    if (const_inputs.present[input_index] &&
+        const_inputs.buffers[input_index].buf.valid()) {
+      continue;
+    }
+    auto tensor =
+        gfx_evaluate_constant_source_tensor(node->input_value(input_index));
+    if (!tensor.has_value() || tensor->get_byte_size() == 0) {
+      continue;
+    }
+    if (!const_cache_checked) {
+      OPENVINO_ASSERT(buffer_manager,
+                      "GFX Metal MPSRT: const buffer manager is required for "
+                      "vendor primitive ",
+                      kernel_id);
+      OPENVINO_ASSERT(buffer_manager->supports_const_cache(),
+                      "GFX Metal MPSRT: const cache is required for vendor "
+                      "primitive ",
+                      kernel_id);
+      const_cache_checked = true;
+    }
+
+    const auto key =
+        make_vendor_const_input_key(kernel_id, *node, input_index, *tensor);
+    GpuBuffer buffer = buffer_manager->wrap_const(
+        key, tensor->data(), tensor->get_byte_size(),
+        tensor->get_element_type());
+    OPENVINO_ASSERT(buffer.valid(),
+                    "GFX Metal MPSRT: failed to materialize const input ",
+                    input_index, " for ", kernel_id);
+    buffer.owned = false;
+
+    auto& const_tensor = const_inputs.buffers[input_index];
+    const_tensor.buf = buffer;
+    const_tensor.shape = tensor->get_shape();
+    const_tensor.expected_type = tensor->get_element_type();
+    const_tensor.prefer_private = false;
+    const_inputs.present[input_index] = true;
+  }
+}
+
+GpuTensor* resolve_vendor_input_tensor(
+    const std::vector<GpuTensor*>& inputs,
+    const VendorConstInputBuffers& const_inputs,
+    size_t input_index) {
+  if (input_index < inputs.size() && inputs[input_index] &&
+      inputs[input_index]->buf.valid()) {
+    return inputs[input_index];
+  }
+  if (input_index < const_inputs.buffers.size() &&
+      input_index < const_inputs.present.size() &&
+      const_inputs.present[input_index] &&
+      const_inputs.buffers[input_index].buf.valid()) {
+    return const_cast<GpuTensor*>(&const_inputs.buffers[input_index]);
+  }
+  return nullptr;
+}
+
 std::vector<metal::mpsrt::MpsrtBoundBuffer>
 make_external_buffers_for_roles(
     const GfxAppleMpsVendorPrimitiveContract& contract,
     const std::vector<GpuTensor*>& inputs,
+    const VendorConstInputBuffers& const_inputs,
     const std::vector<GpuTensor*>& outputs,
     const std::string& kernel_id) {
   OPENVINO_ASSERT(contract.external_buffer_abi.valid &&
@@ -331,11 +424,15 @@ make_external_buffers_for_roles(
     switch (role) {
       case GfxMpsrtExternalBufferRole::TensorInput:
       case GfxMpsrtExternalBufferRole::ConstBuffer:
-        OPENVINO_ASSERT(input_index < inputs.size() && inputs[input_index],
+        if (auto* input =
+                resolve_vendor_input_tensor(inputs, const_inputs, input_index)) {
+          buffers.push_back(tensor_bound_buffer(*input));
+          ++input_index;
+          break;
+        }
+        OPENVINO_ASSERT(false,
                         "GFX Metal MPSRT: missing input binding ",
                         input_index, " for ", kernel_id);
-        buffers.push_back(tensor_bound_buffer(*inputs[input_index]));
-        ++input_index;
         break;
       case GfxMpsrtExternalBufferRole::TensorOutput:
         OPENVINO_ASSERT(output_index < outputs.size() && outputs[output_index],
@@ -388,6 +485,8 @@ public:
     OPENVINO_ASSERT(m_device,
                     "GFX Metal MPSRT: Metal device handle is null for ",
                     m_descriptor.kernel_id);
+    prepare_vendor_const_inputs(m_node, m_buffer_manager,
+                                m_descriptor.kernel_id, m_const_inputs);
     m_model = make_mpsrt_model_from_contract(m_descriptor, m_node, m_contract);
     auto context =
         std::make_shared<metal::mpsrt::MpsrtContext>((id<MTLDevice>)m_device);
@@ -409,7 +508,7 @@ public:
     materialize_output_contracts(m_contract.output_descs, outputs);
 
     const auto external_buffers = make_external_buffers_for_roles(
-        m_contract, m_inputs, outputs, m_descriptor.kernel_id);
+        m_contract, m_inputs, m_const_inputs, outputs, m_descriptor.kernel_id);
     metal::mpsrt::MpsrtRequest request;
     metal::mpsrt::MpsrtRequestBindingSet binding_set;
     KernelExecutionHooks hooks;
@@ -484,6 +583,7 @@ public:
     stage->m_model = m_model;
     stage->m_context = m_context;
     stage->m_prepared = m_prepared;
+    stage->m_const_inputs = m_const_inputs;
     stage->m_buffer_manager = m_buffer_manager;
     stage->m_profiling_enabled = m_profiling_enabled;
     stage->m_profiler = m_profiler;
@@ -531,6 +631,7 @@ private:
   std::vector<GpuTensor*> m_inputs;
   std::vector<GpuTensor*> m_outputs;
   GpuTensor* m_output = nullptr;
+  VendorConstInputBuffers m_const_inputs;
   runtime_mpsrt::MpsrtModel m_model;
   std::shared_ptr<metal::mpsrt::MpsrtContext> m_context;
   std::shared_ptr<metal::mpsrt::MpsrtPreparedModel> m_prepared;

@@ -64,6 +64,7 @@ For Metal placement, MPSRT, or MSL source changes, keep these aligned:
 - `src/compiler/*`
 - `src/backends/metal/compiler/`
 - `src/runtime/gfx_stage_policy.*`
+- `src/runtime/view_only_stage.*`
 - `src/kernel_ir/gfx_kernel_manifest.hpp`
 - `src/kernel_ir/gfx_custom_kernel_families.*`
 - `src/runtime/gfx_mpsrt_abi.hpp`
@@ -90,6 +91,10 @@ scans or stale signature hints widen or shrink a typed MPSRT runtime contract.
 MPS/MPSGraph vendor primitive routes must flow through the compiler
 `VendorDescriptor` payload and the MPSRT vendor primitive stage; do not recreate
 vendor descriptors from request-time node checks.
+Generated activation and elementwise MSL routes must stay aligned across the
+Metal operation policy, kernel registry, artifact materialization, and
+`src/mlir/msl_codegen_apple_msl_activation.*` /
+`src/mlir/msl_codegen_apple_msl_eltwise.*`.
 
 ## OpenCL Work
 
@@ -99,15 +104,17 @@ For OpenCL source-artifact work:
 2. Check `src/backends/opencl/compiler/` for route selection and kernel-unit
    registration.
 3. Keep `src/backends/opencl/runtime/opencl_source_stage.*` generic.
-4. Add source id, entry point, role ABI, scalar ABI, dynamic-shape metadata,
-   constant materialization, chunk helpers, local size, and boolean-buffer rules
-   to the artifact contract.
+4. Add source id, entry point, role ABI, scalar ABI, source-static u32/f32
+   scalars, dynamic-shape metadata, constant materialization, chunk helpers,
+   local size, and boolean-buffer rules to the artifact contract.
 5. For embedded `.cl` units, add the wrapper under
    `src/kernel_ir/opencl_kernels/`, the `gfx_embed_kernel_source()` entry in
    `src/CMakeLists.txt`, and the source/header entries in
    `cmake/GfxSources.cmake`.
 6. Update `tests/unit/gfx_opencl_source_artifacts_test.cpp` and
    `tests/unit/gpu_backend_base_test.cpp` when compiler payload routing changes.
+   Use the focused activation, elementwise, MatMul, and backend-architecture
+   contract tests when generated kernel-unit registration changes.
 7. Add runtime coverage only when dynamic OpenCL loading, memory, command
    enqueue, or runtime-shape behavior changed.
 
@@ -140,7 +147,8 @@ artifacts, runtime binding, and tests.
 3. Add or update `tests/unit/gfx_stage_policy_test.cpp`,
    `tests/unit/gfx_parallelism_test.cpp`, `tests/unit/infer_submission_test.cpp`,
    or cache/reuse tests as appropriate.
-4. For backend-visible behavior, add Metal or OpenCL runtime coverage.
+4. For backend-visible behavior, add Metal tests or focused
+   `ov_gfx_runtime_micro_tests` scenarios as appropriate.
 
 ### Property Or Device Selection
 

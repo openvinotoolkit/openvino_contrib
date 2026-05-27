@@ -39,6 +39,12 @@ enum class GfxOpenClBaselineOp : uint32_t {
     Sqrt = 23,
     Floor = 24,
     Ceiling = 25,
+    Elu = 26,
+    GeluErf = 27,
+    GeluTanh = 28,
+    HSwish = 29,
+    HSigmoid = 30,
+    SoftPlus = 31,
     Equal = 32,
     NotEqual = 33,
     Greater = 34,
@@ -51,6 +57,24 @@ enum class GfxOpenClBaselineOp : uint32_t {
     LogicalXor = 51,
     ReduceLogicalAnd = 64,
     ReduceLogicalOr = 65,
+    Mish = 80,
+    SoftSign = 81,
+    Sign = 82,
+    Clamp = 83,
+    Sin = 84,
+    Cos = 85,
+    Tan = 86,
+    Erf = 87,
+    Asin = 88,
+    Acos = 89,
+    Atan = 90,
+    Asinh = 91,
+    Acosh = 92,
+    Atanh = 93,
+    Sinh = 94,
+    Cosh = 95,
+    RoundEven = 96,
+    RoundAway = 97,
 };
 
 enum class GfxOpenClBaselineInputMode : uint32_t {
@@ -67,6 +91,7 @@ enum class GfxOpenClSourceScalarArg : uint32_t {
     InputMode = 2,
     ScalarConstantF32 = 3,
     StaticU32 = 4,
+    StaticF32 = 5,
     Input0Dim0 = 16,
     Input0Dim1 = 17,
     Input0Dim2 = 18,
@@ -122,6 +147,7 @@ struct GfxOpenClSourceArtifact {
     std::vector<std::string> build_options;
     std::vector<GfxOpenClSourceScalarArg> scalar_args;
     std::vector<uint32_t> static_u32_scalars;
+    std::vector<float> static_f32_scalars;
     std::vector<uint32_t> source_static_u32_scalars;
     std::vector<size_t> direct_input_indices;
     uint32_t arg_count = 0;

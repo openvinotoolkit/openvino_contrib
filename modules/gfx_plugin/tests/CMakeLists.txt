@@ -140,6 +140,11 @@ endif()
 add_executable(${UNIT_TARGET_NAME})
 add_dependencies(${UNIT_TARGET_NAME} ${GFX_TEST_DEPENDENCIES})
 target_sources(${UNIT_TARGET_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_backend_contracts.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_backend_architecture_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_activation_kernel_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_eltwise_kernel_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_matmul_kernel_contract_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_backend_base_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gpu_const_cache_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/kernel_arg_reuse_test.cpp
@@ -151,13 +156,14 @@ target_sources(${UNIT_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_stage_policy_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_parallelism_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/basic_ops_internal_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_source_artifacts_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/layout_cleanup_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/mlir_matmul_parallel_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/mlir_conv3d_lowering_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/mlir_conv_parallel_test.cpp)
 if(GFX_BACKEND_OPENCL_AVAILABLE)
     target_sources(${UNIT_TARGET_NAME} PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_source_artifacts_test.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_opencl_device_profile_contract_test.cpp)
 endif()
 if(APPLE)
     target_sources(${UNIT_TARGET_NAME} PRIVATE
@@ -169,6 +175,7 @@ if(APPLE)
         ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/gpu_backend_test.mm)
 else()
     target_sources(${UNIT_TARGET_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/backends/metal/set_device_name_stub.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../src/backends/metal/runtime/dtype.cpp)
 endif()
 target_link_libraries(${UNIT_TARGET_NAME} PRIVATE ${GFX_UNIT_TEST_LINK_LIBS})
@@ -203,8 +210,22 @@ set_tests_properties(${UNIT_TARGET_NAME} PROPERTIES LABELS "OV;GFX")
 
 add_executable(${RUNTIME_MICRO_TARGET_NAME})
 add_dependencies(${RUNTIME_MICRO_TARGET_NAME} ${GFX_TEST_DEPENDENCIES})
+set(GFX_RUNTIME_EXECUTION_POLICY_SOURCE
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_runtime_execution_fork.cpp)
+if(APPLE OR WIN32 OR ANDROID OR GFX_BACKEND_OPENCL_AVAILABLE)
+    set(GFX_RUNTIME_EXECUTION_POLICY_SOURCE
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_runtime_execution_inline.cpp)
+endif()
 target_sources(${RUNTIME_MICRO_TARGET_NAME} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_subgraph_test.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_runtime_model_runner.cpp
+    ${GFX_RUNTIME_EXECUTION_POLICY_SOURCE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_activation_runtime_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_add_runtime_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_matmul_runtime_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_multiply_runtime_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_reduce_logical_runtime_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_softmax_runtime_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/gfx_split_runtime_test.cpp)
 target_link_libraries(${RUNTIME_MICRO_TARGET_NAME} PRIVATE
     openvino::runtime::dev
     openvino::runtime

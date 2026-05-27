@@ -17,8 +17,9 @@ validation in `modules/gfx_plugin/`.
   MPS/MPSGraph vendor descriptors, resource tables, storage bridges, or request
   binding.
 - The task changes OpenCL source artifacts, dynamic OpenCL runtime selection,
-  source-stage execution, runtime-shape allocation, chunked Concat/Split,
-  boolean-buffer behavior, constant materialization, or OpenCL op coverage.
+  source-stage execution, generated activation/elementwise/MatMul units,
+  runtime-shape allocation, chunked Concat/Split, boolean-buffer behavior,
+  constant materialization, or OpenCL op coverage.
 - The user wants compare-runner, microbench, profiling-runbook, Android, Linux,
   or Raspberry Pi validation guidance.
 
@@ -36,6 +37,8 @@ validation in `modules/gfx_plugin/`.
 - `ov_gfx_unit_tests`: focused compiler, manifest, runtime, MLIR, cache,
   property, profiling, and backend regressions
 - `ov_gfx_runtime_micro_tests`: smaller runtime-subgraph checks
+- `tests/unit/gfx_backend_architecture_contract_test.cpp`: backend-target,
+  kernel-registry, and manifest-routing contracts
 - `ov_gfx_compare_runner`: accuracy-only diff tool
 - `ov_gfx_microbench`: MB0-MB3 microbench and calibration workflow
 - `ov_gfx_conv_shape_bench`: representative Conv2D compile-plus-infer probe
@@ -68,6 +71,7 @@ Prefer:
 Prefer:
 
 - `tests/unit/gpu_backend_base_test.cpp`
+- `tests/unit/gfx_backend_architecture_contract_test.cpp`
 - `tests/unit/plugin_tests.cpp` when `query_model()` or compile behavior moved
 - backend artifact tests when payload materialization reaches Metal or OpenCL
   runtime loaders
@@ -85,7 +89,13 @@ Inspect and extend:
 - `tests/unit/gpu_const_cache_test.cpp`
 - `tests/unit/kernel_arg_reuse_test.cpp`
 - `tests/unit/gpu_backend_base_test.cpp`
-- `tests/unit/runtime_subgraph_test.cpp`
+- focused runtime micro tests such as `tests/unit/gfx_add_runtime_test.cpp`,
+  `tests/unit/gfx_activation_runtime_test.cpp`,
+  `tests/unit/gfx_matmul_runtime_test.cpp`,
+  `tests/unit/gfx_multiply_runtime_test.cpp`,
+  `tests/unit/gfx_reduce_logical_runtime_test.cpp`,
+  `tests/unit/gfx_softmax_runtime_test.cpp`, and
+  `tests/unit/gfx_split_runtime_test.cpp`
 
 ### Metal
 
@@ -106,11 +116,16 @@ For Metal placement, MPSRT, MSL source planning, or request binding:
 For OpenCL source-artifact changes:
 
 - start with `tests/unit/gfx_opencl_source_artifacts_test.cpp`
+- include `tests/unit/gfx_activation_kernel_contract_test.cpp`,
+  `tests/unit/gfx_eltwise_kernel_contract_test.cpp`,
+  `tests/unit/gfx_matmul_kernel_contract_test.cpp`, or
+  `tests/unit/gfx_backend_architecture_contract_test.cpp` when generated
+  kernel units or registry contracts change
 - add `tests/unit/gpu_backend_base_test.cpp` coverage when the artifact should
   be present in the compiler executable bundle
 - add runtime coverage when dynamic runtime loading, buffer binding,
-  runtime-shape allocation, constant materialization, boolean storage, chunking,
-  or command execution changes
+  runtime-shape allocation, static f32 scalar binding, constant materialization,
+  boolean storage, chunking, or command execution changes
 - validate with an OpenCL-capable target when the change depends on the real
   runtime rather than manifest-only logic
 

@@ -22,9 +22,13 @@ function(gfx_embed_kernel_source input_file output_file symbol_name)
 endfunction()
 
 gfx_embed_kernel_source(
-    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/binary_f32_kernel.cl"
-    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/binary_f32_kernel_source.hpp"
-    "kOpenClBaselineBinaryF32KernelSource")
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/eltwise_kernel.cl"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/eltwise_kernel_source.hpp"
+    "kOpenClGeneratedEltwiseKernelSource")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/activation_kernel.cl"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/activation_kernel_source.hpp"
+    "kOpenClGeneratedActivationKernelSource")
 gfx_embed_kernel_source(
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/softmax_f32_kernel.cl"
     "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/softmax_f32_kernel_source.hpp"
@@ -41,6 +45,10 @@ gfx_embed_kernel_source(
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/interpolate_f16_kernel.cl"
     "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/interpolate_f16_kernel_source.hpp"
     "kOpenClGeneratedInterpolateF16KernelSource")
+gfx_embed_kernel_source(
+    "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/opencl_kernels/matmul_f32_kernel.cl"
+    "${CMAKE_CURRENT_BINARY_DIR}/kernel_ir/opencl_kernels/generated/matmul_f32_kernel_source.hpp"
+    "kOpenClGeneratedMatMulF32KernelSource")
 
 gfx_embed_kernel_source(
     "${CMAKE_CURRENT_SOURCE_DIR}/kernel_ir/metal_kernels/mpsrt_buffer_to_image_f32.metal"

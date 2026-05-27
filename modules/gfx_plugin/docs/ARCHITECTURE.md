@@ -23,8 +23,9 @@ notes or deleted backend code as current behavior.
   operation support policies, operation legalization, lowering plans, manifest
   bundles, executable bundles, and artifact payload routing
 - `src/runtime/`: backend-neutral stage interfaces, execution dispatcher,
-  submission windows, target profiles, profiling reports, remote tensor/context
-  helpers, common buffer abstractions, MPSRT model records, and reusable caches
+  descriptor-backed view-only stages, submission windows, target profiles,
+  profiling reports, remote tensor/context helpers, common buffer abstractions,
+  MPSRT model records, and reusable caches
 - `src/kernel_ir/`: kernel manifests, custom-kernel family registry, dispatch
   metadata, argument helpers, cache keys, embedded helper kernel sources, and
   OpenCL source artifacts
@@ -135,6 +136,12 @@ Important stage hooks:
 `src/runtime/fused_sequence_stage.*` combines compatible stages when fusion
 rules allow one runtime path to cover several OpenVINO nodes.
 
+`src/runtime/view_only_stage.*` handles compiler-owned metadata descriptors for
+ops whose outputs can alias an input buffer without launching a backend kernel.
+The current use is limited to view-compatible stage-policy contracts such as
+compatible Split/VariadicSplit aliases. It must not become a hidden fallback for
+ops that need real computation.
+
 ## Planning And Scheduling
 
 `src/runtime/gfx_stage_policy.*` selects:
@@ -179,6 +186,9 @@ runtime execution. The main objects are:
 The compiler service currently builds an in-memory executable description. It
 does not emit or load a native backend binary cache. `export_model()` still
 serializes the OpenVINO model.
+
+Backend kernel registries are explicit. Generated and vendor routes must name a
+registered `KernelUnit`; generic catch-all ids are rejected by contract tests.
 
 ## MLIR Pipeline
 
@@ -254,13 +264,13 @@ roles.
 
 Generated MSL and vendor descriptor payloads are loaded through runtime
 descriptors. Current descriptor-backed Metal payload coverage includes generated
-MSL for `ShapeOf`, `Range`, `Tile`, `Concat`, `Split`, `Slice`, and causal SDPA
-helper forms, plus embedded MPSRT helper kernels for image bridges and TopK
-post-processing.
+MSL for `ShapeOf`, `Range`, `Tile`, `Concat`, `Split`, `Slice`, activation,
+elementwise, and causal SDPA helper forms, plus embedded MPSRT helper kernels
+for image bridges and TopK post-processing.
 
 MPS/MPSGraph vendor routes are compiler-owned `VendorDescriptor` payloads. The
 Metal compiler policy can select descriptor-backed payloads for supported
-`Softmax`, Pool2D, Resize2D, and SDPA forms. At runtime,
+MatMul/GEMM, `Softmax`, Pool2D, Resize2D, and SDPA forms. At runtime,
 `MpsrtVendorPrimitiveStage` validates the descriptor payload, builds a typed
 single-stage MPSRT model from the vendor contract, adapts the external-buffer
 ABI, and encodes the prepared MPSRT model with explicit input/output roles.
@@ -283,12 +293,15 @@ The OpenCL backend is split into:
 Source kernels are described by `src/kernel_ir/gfx_opencl_source_artifacts.*`.
 The source-stage executor is intentionally generic. Op-specific behavior should
 reach it through artifact metadata, generated chunk artifacts, shared
-runtime-value planners, constant materialization, and boolean-buffer contracts.
+runtime-value planners, static u32/f32 scalar payloads, constant
+materialization, and boolean-buffer contracts.
 
 OpenCL support may be reported as a handwritten source-artifact exception or a
 generated-kernel route. Current source execution still requires a matching
-artifact payload and runtime validation; a route in the compiler plan alone is
-not enough to guarantee backend parity.
+artifact payload, registered kernel unit, and runtime validation; a route in the
+compiler plan alone is not enough to guarantee backend parity. The OpenCL
+operation support policy intentionally does not fall back to generic MLIR
+support when no source artifact exists.
 
 Current OpenCL source artifacts cover data movement, selected converts, MatMul,
 Softmax, bounded static NCHW spatial Interpolate, Range, Tile, gather/scatter
@@ -297,11 +310,12 @@ compare/select, and boolean logical/reduction families when shapes and element
 types match their contracts.
 
 Some OpenCL sources are baseline exception artifacts and some are generated
-kernel units. For example, Softmax uses embedded f32/f16 baseline sources,
-while Interpolate uses embedded f32/f16 generated kernel units with explicit
-scalar metadata for resize mode, coordinate transform, nearest rounding, and
-NCHW spatial dimensions. Keep those distinctions in the artifact contract
-rather than duplicating them in the OpenCL stage executor.
+kernel units. Softmax uses embedded f32/f16 baseline sources. Interpolate uses
+embedded f32/f16 generated kernel units with explicit scalar metadata for resize
+mode, coordinate transform, nearest rounding, and NCHW spatial dimensions.
+MatMul, activation, and elementwise OpenCL paths use generated source units
+with explicit source ids under `opencl/generated/*`. Keep those distinctions in
+the artifact contract rather than duplicating them in the OpenCL stage executor.
 
 ## Stateful And Reusable Inference
 

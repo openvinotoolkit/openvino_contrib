@@ -7,8 +7,12 @@
 #include <string_view>
 
 #include "kernel_ir/gfx_opencl_source_artifacts.hpp"
-#include "mlir/mlir_support.hpp"
 #include "openvino/op/interpolate.hpp"
+#include "openvino/op/matmul.hpp"
+#include "openvino/op/util/binary_elementwise_arithmetic.hpp"
+#include "openvino/op/util/binary_elementwise_comparison.hpp"
+#include "openvino/op/util/binary_elementwise_logical.hpp"
+#include "openvino/op/util/unary_elementwise_arithmetic.hpp"
 
 namespace ov {
 namespace gfx_plugin {
@@ -28,6 +32,21 @@ bool is_interpolate_node(const std::shared_ptr<const ov::Node>& node) {
            ov::as_type_ptr<const ov::op::v11::Interpolate>(node);
 }
 
+bool is_matmul_node(const std::shared_ptr<const ov::Node>& node) {
+    return static_cast<bool>(ov::as_type_ptr<const ov::op::v0::MatMul>(node));
+}
+
+bool is_activation_node(const std::shared_ptr<const ov::Node>& node) {
+    return static_cast<bool>(
+        ov::as_type_ptr<const ov::op::util::UnaryElementwiseArithmetic>(node));
+}
+
+bool is_eltwise_node(const std::shared_ptr<const ov::Node>& node) {
+    return ov::as_type_ptr<const ov::op::util::BinaryElementwiseArithmetic>(node) ||
+           ov::as_type_ptr<const ov::op::util::BinaryElementwiseComparison>(node) ||
+           ov::as_type_ptr<const ov::op::util::BinaryElementwiseLogical>(node);
+}
+
 OperationSupportResult query_opencl_operation(const std::shared_ptr<const ov::Node>& node) {
     if (auto artifact = resolve_gfx_opencl_source_artifact(node)) {
         const bool generated = is_generated_opencl_kernel_unit(*artifact);
@@ -41,12 +60,16 @@ OperationSupportResult query_opencl_operation(const std::shared_ptr<const ov::No
     if (is_interpolate_node(node)) {
         return make_unsupported_operation("missing_opencl_interpolate_kernel_unit");
     }
-    if (mlir_supports_node(node)) {
-        return make_supported_operation("generated_kernel",
-                                        LoweringRouteKind::GeneratedKernel,
-                                        0.5);
+    if (is_matmul_node(node)) {
+        return make_unsupported_operation("missing_opencl_matmul_kernel_unit");
     }
-    return make_unsupported_operation("unsupported_by_opencl_capabilities");
+    if (is_activation_node(node)) {
+        return make_unsupported_operation("missing_opencl_activation_kernel_unit");
+    }
+    if (is_eltwise_node(node)) {
+        return make_unsupported_operation("missing_opencl_eltwise_kernel_unit");
+    }
+    return make_unsupported_operation("missing_opencl_kernel_unit");
 }
 
 class OpenCLOperationSupportPolicy final : public OperationSupportPolicy {

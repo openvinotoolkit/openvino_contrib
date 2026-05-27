@@ -143,6 +143,8 @@ std::optional<KernelSource> make_apple_metal_msl_kernel_source_for_stage_type(
       return configured;
     }
     return apply_shape_source();
+  case GfxKernelStageFamily::Activation:
+    return apply_unary_source();
   case GfxKernelStageFamily::Transpose:
     if (auto configured = apply_data_movement_source()) {
       return configured;

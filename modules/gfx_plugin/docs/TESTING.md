@@ -39,7 +39,8 @@ DYLD_LIBRARY_PATH=/path/to/openvino/runtime/libs \
 ## Test Layout
 
 - `tests/unit/`: focused unit tests for plugin logic, MLIR lowering, runtime
-  helpers, caches, submission, profiling, and OpenCL source artifacts
+  helpers, caches, submission, profiling, backend registry contracts, and
+  OpenCL source artifacts
 - `tests/backends/metal/`: Metal-specific runtime, MPSRT, memory, and behavior
   coverage
 - `tests/integration/`: plugin integration checks
@@ -93,6 +94,8 @@ For plugin/property changes:
 For compiler-service, manifest, or executable-descriptor changes:
 
 - `tests/unit/gpu_backend_base_test.cpp`
+- `tests/unit/gfx_backend_architecture_contract_test.cpp` when backend target
+  identity, kernel-unit registration, or manifest contracts move
 - `tests/unit/plugin_tests.cpp` when `query_model()` or compile behavior moves
 - backend artifact tests when payload materialization reaches Metal or OpenCL
   runtime loaders
@@ -108,16 +111,27 @@ For scheduling, cache, or infer-path changes:
 - `tests/unit/gpu_const_cache_test.cpp`
 - `tests/unit/kernel_arg_reuse_test.cpp`
 - `tests/unit/gpu_backend_base_test.cpp`
-- `tests/unit/runtime_subgraph_test.cpp`
+- `ov_gfx_runtime_micro_tests` focused files such as
+  `tests/unit/gfx_activation_runtime_test.cpp`,
+  `tests/unit/gfx_add_runtime_test.cpp`,
+  `tests/unit/gfx_matmul_runtime_test.cpp`,
+  `tests/unit/gfx_multiply_runtime_test.cpp`,
+  `tests/unit/gfx_reduce_logical_runtime_test.cpp`,
+  `tests/unit/gfx_softmax_runtime_test.cpp`, and
+  `tests/unit/gfx_split_runtime_test.cpp`
 
 For OpenCL source-artifact changes:
 
 - start with `tests/unit/gfx_opencl_source_artifacts_test.cpp`
+- include `tests/unit/gfx_activation_kernel_contract_test.cpp`,
+  `tests/unit/gfx_eltwise_kernel_contract_test.cpp`, or
+  `tests/unit/gfx_matmul_kernel_contract_test.cpp` when the generated source
+  unit contract for those families changes
 - use `tests/unit/gpu_backend_base_test.cpp` when a source artifact is expected
   to appear in the compiler executable bundle
 - add runtime coverage when dynamic OpenCL loading, buffer binding, runtime
-  output shape, constant materialization, boolean storage, or command execution
-  changes
+  output shape, static f32 scalar binding, constant materialization, boolean
+  storage, or command execution changes
 - use `tests/tools/ov_gfx_opencl_conv_microbench.py` and
   `tests/tools/ov_gfx_opencl_conv_microbench_android.cpp` only as kernel-family
   experiments before promotion into the plugin contract

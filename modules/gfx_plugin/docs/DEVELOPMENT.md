@@ -89,6 +89,7 @@ For runtime planning, also inspect:
 - `src/runtime/gfx_parallelism.*`
 - `src/runtime/gfx_partitioning.*`
 - `src/runtime/executable_descriptor.*`
+- `src/runtime/view_only_stage.*`
 - `src/runtime/gfx_target_profile.*`
 - `src/kernel_ir/gfx_kernel_manifest.hpp`
 - `src/kernel_ir/gfx_custom_kernel_families.*`
@@ -128,6 +129,7 @@ For OpenCL source execution, start with:
 - `src/backends/opencl/runtime/opencl_program_cache.*`
 - `src/backends/opencl/runtime/opencl_runtime_kernel_loader.*`
 - `src/backends/opencl/runtime/opencl_source_stage.*`
+- `src/backends/opencl/runtime/stage_factory.*`
 - `tests/unit/gfx_opencl_source_artifacts_test.cpp`
 
 ## Adding Or Changing An Operation
@@ -161,9 +163,10 @@ Common operation families that need extra care:
 - view-style `Split` / `VariadicSplit` aliases
 - Metal MPS/MPSGraph vendor stages and MPSRT storage bridges
 - Metal custom MSL source plans with explicit kernel-buffer order
-- OpenCL source artifacts with scalar ABI, constants, chunking, and boolean
-  output padding
-- OpenCL generated kernel units such as bounded f32/f16 Interpolate
+- OpenCL source artifacts with scalar ABI, static u32/f32 scalars, constants,
+  chunking, and boolean output padding
+- OpenCL generated kernel units such as activation, elementwise, f32 MatMul,
+  and bounded f32/f16 Interpolate
 - LLM-oriented fusions such as `RoPE`, compressed `MatMul`, and SDPA variants
 
 ## Shared Versus Backend-Specific Code
@@ -201,7 +204,7 @@ Do not duplicate shared ABI, route, or shape rules in backend request code.
 - source id and entry point
 - tensor role order
 - scalar ABI
-- source-static scalar values
+- source-static u32/f32 scalar values
 - local size
 - element-count source
 - dynamic-shape scalar metadata
@@ -228,6 +231,8 @@ When adding an embedded OpenCL source unit:
 - cover source identity, scalar metadata, support probing, and payload routing
   in `tests/unit/gfx_opencl_source_artifacts_test.cpp` and
   `tests/unit/gpu_backend_base_test.cpp` when the compiler bundle is affected
+- update `tests/unit/gfx_backend_architecture_contract_test.cpp` when kernel
+  registry, backend-target identity, or manifest-routing contracts change
 
 ## Metal MPSRT And MSL
 
@@ -257,6 +262,12 @@ descriptor helpers in `src/mlir/gfx_apple_vendor_descriptors.*`, and
 `mpsrt_vendor_primitive_stage.*` only if the existing runtime contract cannot
 express the new primitive. Do not rebuild vendor descriptors from request-time
 node checks.
+
+Generated Metal activation and elementwise paths are planned through
+`src/mlir/msl_codegen_apple_msl_activation.*` and
+`src/mlir/msl_codegen_apple_msl_eltwise.*`. Keep those source plans aligned
+with `src/backends/metal/compiler/metal_kernel_registry.cpp` and
+`metal_kernel_artifacts.cpp`.
 
 ## Properties
 
@@ -295,6 +306,12 @@ usually enough unless build files, public properties, or source lists changed.
 For compiler, manifest, or executable-descriptor changes, include
 `GpuBackendBaseTest.*` or a narrower relevant filter from
 `tests/unit/gpu_backend_base_test.cpp`.
+
+For backend registry or generated source-unit changes, also include the focused
+contract suites in `tests/unit/gfx_backend_architecture_contract_test.cpp`,
+`tests/unit/gfx_activation_kernel_contract_test.cpp`,
+`tests/unit/gfx_eltwise_kernel_contract_test.cpp`, and
+`tests/unit/gfx_matmul_kernel_contract_test.cpp` as applicable.
 
 ## Public Repository Hygiene
 

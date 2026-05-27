@@ -49,7 +49,8 @@ Read these files first:
   `ReadValue` / `Assign` handling
 - `src/runtime/`: backend-neutral stage interfaces, submission planning,
   profiling report assembly, liveness-aware output workspaces, remote
-  context/tensor helpers, target profiles, and shared MPSRT runtime-model types
+  context/tensor helpers, descriptor-backed view-only stages, target profiles,
+  and shared MPSRT runtime-model types
 - `src/kernel_ir/`: backend-neutral kernel manifests, custom-kernel family
   metadata, cache keys, dispatch descriptions, embedded Metal/OpenCL helper
   sources, and OpenCL source artifacts
@@ -86,15 +87,16 @@ The high-level path is:
 6. `src/runtime/gfx_stage_policy.*` selects placement, storage, fusion, and
    submit policy from node type, shape, element type, backend, and device caps.
 7. `src/mlir/` lowers supported nodes and materializes backend source plans.
-8. The active backend creates concrete `GpuStage` objects through
-   `ExecutionDispatcher`.
+8. The active backend creates descriptor-backed view-only stages or concrete
+   backend `GpuStage` objects through `ExecutionDispatcher`.
 9. Infer requests bind host or remote tensors, allocate or reuse backend
    buffers, execute submission windows, and collect profiling data.
 
-The pipeline is intentionally stage-based. Fused stages, view-style split
-outputs, stateful variable buffers, reusable host outputs, prepared binding
-caches, immutable const caches, and workspace-managed intermediate outputs all
-live in the shared runtime/plugin layer instead of being duplicated per backend.
+The pipeline is intentionally stage-based. Fused stages, descriptor-backed
+view-only stages, view-style split outputs, stateful variable buffers, reusable
+host outputs, prepared binding caches, immutable const caches, and
+workspace-managed intermediate outputs all live in the shared runtime/plugin
+layer instead of being duplicated per backend.
 
 The compiler layer is the public architecture boundary between OpenVINO graph
 semantics and runtime execution. Do not add new support checks directly in
@@ -122,12 +124,12 @@ Metal placement is selected by shared stage policy. Do not bypass it with
 ad-hoc backend switches when adding new Metal routes.
 
 Compiler-owned Metal payloads currently cover generated MSL units such as
-`ShapeOf`, `Range`, `Tile`, `Concat`, `Split`, `Slice`, and causal SDPA helper
-forms. MPS/MPSGraph vendor descriptor payloads are consumed by the
-`MpsrtVendorPrimitive` runtime stage for supported `Softmax`, Pool2D,
-Resize2D, and SDPA forms. Vendor selection remains contract-limited: if the
-descriptor, storage, or external-buffer ABI cannot be built, the route must be
-rejected or use another supported current route.
+`ShapeOf`, `Range`, `Tile`, `Concat`, `Split`, `Slice`, activation, elementwise,
+and causal SDPA helper forms. MPS/MPSGraph vendor descriptor payloads are
+consumed by the `MpsrtVendorPrimitive` runtime stage for supported MatMul/GEMM,
+`Softmax`, Pool2D, Resize2D, and SDPA forms. Vendor selection remains
+contract-limited: if the descriptor, storage, or external-buffer ABI cannot be
+built, the route must be rejected or use another supported current route.
 
 ### OpenCL
 
@@ -137,18 +139,20 @@ at runtime and executes source artifacts described by
 
 OpenCL artifacts are role-based. Source id, entry point, local size, tensor
 roles, scalar ABI, runtime-shape scalars, constant materialization, boolean
-buffer padding, and generated Concat/Split chunk helpers should stay in the
-artifact manifest rather than being reimplemented in infer-request code.
+buffer padding, static u32/f32 scalar payloads, and generated Concat/Split
+chunk helpers should stay in the artifact manifest rather than being
+reimplemented in infer-request code.
 Backend operation support and kernel-unit registration live under
 `src/backends/opencl/compiler/`; runtime loading and enqueue stay under
 `src/backends/opencl/runtime/`.
 
 Embedded OpenCL source units live under `src/kernel_ir/opencl_kernels/`.
-Current named units include the binary f32 helper, f32/f16 Softmax helpers, and
-f32/f16 Interpolate helpers. The Interpolate OpenCL route is a generated
-kernel-unit path for bounded static NCHW spatial resize cases with f32/f16
-tensors; unsupported modes, axes, padding, shapes, or element types fail during
-support probing instead of falling through to a hidden runtime path.
+Current named units include generated activation, elementwise, f32 MatMul, and
+f32/f16 Interpolate helpers, plus f32/f16 Softmax baseline helpers. The OpenCL
+compiler registry requires an explicit kernel unit for generated routes; there
+is no generic MLIR fallback for OpenCL operation support. Unsupported modes,
+axes, padding, shapes, or element types fail during support probing instead of
+falling through to a hidden runtime path.
 
 ## MLIR Role
 

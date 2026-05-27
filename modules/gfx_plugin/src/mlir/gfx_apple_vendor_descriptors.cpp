@@ -5,16 +5,19 @@
 #include "mlir/gfx_apple_vendor_descriptors.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <cmath>
 #include <vector>
 
 #include "openvino/core/node.hpp"
+#include "openvino/core/shape_util.hpp"
 #include "openvino/op/avg_pool.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/convolution.hpp"
 #include "openvino/op/group_conv.hpp"
 #include "openvino/op/interpolate.hpp"
 #include "openvino/op/log_softmax.hpp"
+#include "openvino/op/matmul.hpp"
 #include "openvino/op/max_pool.hpp"
 #include "openvino/op/scaled_dot_product_attention.hpp"
 #include "openvino/op/softmax.hpp"
@@ -151,6 +154,104 @@ std::vector<int64_t> gfx_shape_to_i64_vector(const ov::Shape& shape) {
         dims.push_back(static_cast<int64_t>(dim));
     }
     return dims;
+}
+
+bool is_mps_matrix_tensor_type(const ov::element::Type& type) {
+    return type == ov::element::f32 || type == ov::element::f16;
+}
+
+std::vector<int64_t> matmul_matrix_shape(int64_t batch,
+                                         int64_t rows,
+                                         int64_t columns) {
+    if (batch == 1) {
+        return {rows, columns};
+    }
+    return {batch, rows, columns};
+}
+
+bool make_mps_gemm_desc_from_matmul(const std::shared_ptr<const ov::Node>& node,
+                                    GfxMpsrtGemmAbiDesc& desc,
+                                    GfxMpsrtTensorDesc& lhs_desc,
+                                    GfxMpsrtTensorDesc& rhs_desc,
+                                    GfxMpsrtTensorDesc& output_desc) {
+    desc = {};
+    lhs_desc = {};
+    rhs_desc = {};
+    output_desc = {};
+
+    auto matmul = ov::as_type_ptr<const ov::op::v0::MatMul>(node);
+    if (!matmul ||
+        matmul->get_input_size() != 2 ||
+        matmul->get_output_size() != 1 ||
+        !matmul->get_input_partial_shape(0).is_static() ||
+        !matmul->get_input_partial_shape(1).is_static() ||
+        !matmul->get_output_partial_shape(0).is_static() ||
+        !is_mps_matrix_tensor_type(matmul->get_input_element_type(0)) ||
+        !is_mps_matrix_tensor_type(matmul->get_input_element_type(1)) ||
+        !is_mps_matrix_tensor_type(matmul->get_output_element_type(0))) {
+        return false;
+    }
+
+    const auto lhs_shape = matmul->get_input_shape(0);
+    const auto rhs_shape = matmul->get_input_shape(1);
+    const auto out_shape = matmul->get_output_shape(0);
+    if (lhs_shape.size() < 2 ||
+        rhs_shape.size() < 2 ||
+        out_shape.size() < 2) {
+        return false;
+    }
+
+    const bool transpose_lhs = matmul->get_transpose_a();
+    const bool transpose_rhs = matmul->get_transpose_b();
+    const size_t lhs_rank = lhs_shape.size();
+    const size_t out_rank = out_shape.size();
+    const int64_t m = static_cast<int64_t>(out_shape[out_rank - 2]);
+    const int64_t n = static_cast<int64_t>(out_shape[out_rank - 1]);
+    const int64_t k = static_cast<int64_t>(
+        transpose_lhs ? lhs_shape[lhs_rank - 2] : lhs_shape[lhs_rank - 1]);
+    if (m <= 0 || n <= 0 || k <= 0) {
+        return false;
+    }
+
+    const auto matrix_a = static_cast<uint64_t>(m * k);
+    const auto matrix_b = static_cast<uint64_t>(k * n);
+    const auto matrix_output = static_cast<uint64_t>(m * n);
+    if (matrix_a == 0 || matrix_b == 0 || matrix_output == 0) {
+        return false;
+    }
+    const int64_t batch = static_cast<int64_t>(
+        ov::shape_size(out_shape) / matrix_output);
+    const int64_t batch_a = static_cast<int64_t>(
+        ov::shape_size(lhs_shape) / matrix_a);
+    const int64_t batch_b = static_cast<int64_t>(
+        ov::shape_size(rhs_shape) / matrix_b);
+    if (batch <= 0 ||
+        !((batch_a == batch || batch_a == 1) &&
+          (batch_b == batch || batch_b == 1))) {
+        return false;
+    }
+
+    desc.transpose_lhs = transpose_lhs ? 1u : 0u;
+    desc.transpose_rhs = transpose_rhs ? 1u : 0u;
+    desc.alpha = 1.0f;
+    desc.beta = 0.0f;
+
+    lhs_desc = gfx_mpsrt_make_tensor_desc(
+        gfx_shape_to_i64_vector(lhs_shape),
+        matmul->get_input_element_type(0),
+        GfxStageStorageKind::Matrix,
+        GfxMpsrtTensorFlagExternalIo);
+    rhs_desc = gfx_mpsrt_make_tensor_desc(
+        gfx_shape_to_i64_vector(rhs_shape),
+        matmul->get_input_element_type(1),
+        GfxStageStorageKind::Matrix,
+        GfxMpsrtTensorFlagExternalIo);
+    output_desc = gfx_mpsrt_make_tensor_desc(
+        matmul_matrix_shape(batch, m, n),
+        matmul->get_output_element_type(0),
+        GfxStageStorageKind::Matrix,
+        GfxMpsrtTensorFlagExternalIo);
+    return true;
 }
 
 bool configure_from_interpolate_base_attrs(
@@ -342,6 +443,27 @@ bool gfx_apple_make_mps_gemm_contract(const GfxMpsrtGemmAbiDesc& desc,
         contract = {};
     }
     return contract.valid;
+}
+
+bool gfx_apple_make_mps_gemm_contract(const std::shared_ptr<const ov::Node>& node,
+                                      GfxAppleMpsVendorPrimitiveContract& contract) {
+    contract = {};
+    GfxMpsrtGemmAbiDesc desc{};
+    GfxMpsrtTensorDesc lhs_desc{};
+    GfxMpsrtTensorDesc rhs_desc{};
+    GfxMpsrtTensorDesc output_desc{};
+    if (!make_mps_gemm_desc_from_matmul(node,
+                                        desc,
+                                        lhs_desc,
+                                        rhs_desc,
+                                        output_desc)) {
+        return false;
+    }
+    return gfx_apple_make_mps_gemm_contract(desc,
+                                            lhs_desc,
+                                            rhs_desc,
+                                            output_desc,
+                                            contract);
 }
 
 bool gfx_apple_make_mps_pool2d_desc(const std::shared_ptr<const ov::Node>& node,

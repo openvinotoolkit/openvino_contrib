@@ -12,28 +12,81 @@ namespace compiler {
 
 namespace {
 
-KernelUnit make_opencl_generated_kernel_unit(const BackendTarget& target) {
+KernelUnit make_opencl_generated_kernel_unit(const BackendTarget& target,
+                                             const char* unit_id,
+                                             const char* op_family) {
     return KernelUnit::describe(LoweringRouteKind::GeneratedKernel,
                                 KernelUnitKind::GeneratedKernel,
-                                "opencl_generated_kernel",
+                                unit_id,
                                 target.backend_id(),
-                                "opencl_generated_kernel");
+                                op_family);
 }
 
-KernelUnit make_opencl_exception_unit(const BackendTarget& target) {
+KernelUnit make_opencl_exception_unit(const BackendTarget& target,
+                                      const char* unit_id,
+                                      const char* op_family) {
     return KernelUnit::describe(LoweringRouteKind::HandwrittenKernelException,
                                 KernelUnitKind::HandwrittenException,
-                                "opencl_handwritten_exception",
+                                unit_id,
                                 target.backend_id(),
-                                "opencl_source_exception");
+                                op_family);
 }
 
 }  // namespace
 
 KernelRegistry make_opencl_kernel_registry(const BackendTarget& target) {
     auto units = make_common_kernel_units(target);
-    units.push_back(make_opencl_generated_kernel_unit(target));
-    units.push_back(make_opencl_exception_unit(target));
+    units.push_back(make_opencl_generated_kernel_unit(target,
+                                                      "opencl/generated/interpolate_f32",
+                                                      "Interpolate"));
+    units.push_back(make_opencl_generated_kernel_unit(target,
+                                                      "opencl/generated/interpolate_f16",
+                                                      "Interpolate"));
+    units.push_back(make_opencl_generated_kernel_unit(target,
+                                                      "opencl/generated/matmul_f32",
+                                                      "MatMul"));
+    units.push_back(make_opencl_generated_kernel_unit(target,
+                                                      "opencl/generated/activation_f32",
+                                                      "Activation"));
+    units.push_back(make_opencl_generated_kernel_unit(target,
+                                                      "opencl/generated/activation_f16",
+                                                      "Activation"));
+    units.push_back(make_opencl_generated_kernel_unit(target,
+                                                      "opencl/generated/eltwise_binary_f32",
+                                                      "Eltwise"));
+    units.push_back(make_opencl_generated_kernel_unit(target,
+                                                      "opencl/generated/eltwise_scalar_f32",
+                                                      "Eltwise"));
+    units.push_back(make_opencl_generated_kernel_unit(target,
+                                                      "opencl/generated/eltwise_const_f32",
+                                                      "Eltwise"));
+    units.push_back(make_opencl_generated_kernel_unit(target,
+                                                      "opencl/generated/eltwise_broadcast_f32",
+                                                      "Eltwise"));
+    units.push_back(make_opencl_generated_kernel_unit(target,
+                                                      "opencl/generated/eltwise_binary_f16",
+                                                      "Eltwise"));
+    units.push_back(make_opencl_generated_kernel_unit(target,
+                                                      "opencl/generated/eltwise_scalar_f16",
+                                                      "Eltwise"));
+    units.push_back(make_opencl_generated_kernel_unit(target,
+                                                      "opencl/generated/eltwise_broadcast_f16",
+                                                      "Eltwise"));
+    units.push_back(make_opencl_generated_kernel_unit(target,
+                                                      "opencl/generated/eltwise_binary_i32",
+                                                      "Eltwise"));
+    units.push_back(make_opencl_generated_kernel_unit(target,
+                                                      "opencl/generated/eltwise_scalar_i32",
+                                                      "Eltwise"));
+    units.push_back(make_opencl_generated_kernel_unit(target,
+                                                      "opencl/generated/eltwise_broadcast_i32",
+                                                      "Eltwise"));
+    units.push_back(make_opencl_exception_unit(target,
+                                               "opencl/baseline/softmax_f32",
+                                               "Softmax"));
+    units.push_back(make_opencl_exception_unit(target,
+                                               "opencl/baseline/softmax_f16",
+                                               "Softmax"));
     return KernelRegistry(target, std::move(units));
 }
 

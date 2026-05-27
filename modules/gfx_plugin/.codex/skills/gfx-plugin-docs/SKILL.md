@@ -52,17 +52,25 @@ Do not edit `AGENTS.md` unless the user explicitly asks.
    - `query_model()` or compile behavior
    - MLIR support/lowering/source planning
    - Metal placement, MPSRT records, MPS/MPSGraph descriptors,
-     `VendorDescriptor` payloads, or MSL binding
-   - OpenCL source-artifact coverage, runtime-shape handling, constants,
+     `VendorDescriptor` payloads, generated activation/elementwise MSL routes,
+     or MSL binding
+   - OpenCL source-artifact coverage, runtime-shape handling, static f32
+     scalars, constants, generated activation/elementwise/MatMul units,
      chunking, or boolean-buffer behavior
    - stage policy, parallelism, partitioning, submission, caches, or workspace
      allocation
    - stateful `ReadValue` / `Assign`
    - output aliasing or source-node-aware output resolution
+   - descriptor-backed view-only stages
    - compare-runner, profiling, microbench, or target-profile output
    - test layout or validation workflow
 3. Patch only docs/skills whose contract changed.
 4. Keep wording concrete and tied to actual files that exist.
+
+For documentation/security publication tasks, do not run build or test targets
+unless the user explicitly asks for that validation. Use source inspection,
+security/stale-reference grep, `git diff --check`, and staged diff review for
+the publication gate.
 
 ## Mapping
 

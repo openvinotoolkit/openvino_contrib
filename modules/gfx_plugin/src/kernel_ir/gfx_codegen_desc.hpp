@@ -9,6 +9,8 @@
 #include <vector>
 
 #include "openvino/core/type/element_type.hpp"
+#include <string>
+
 #include "runtime/gfx_activation.hpp"
 
 namespace ov {
@@ -279,9 +281,11 @@ struct BatchNorm2DCodegenDesc : BaseCodegenDesc {
 
 struct UnaryCodegenDesc : BaseCodegenDesc {
   ActivationKind activation = ActivationKind::Relu;
+  std::string entry_point = "unary_kernel";
   float alpha = 0.0f;
   double clamp_min = 0.0;
   double clamp_max = 0.0;
+  bool gelu_tanh_approximation = false;
 };
 
 struct InterpolateCodegenDesc : BaseCodegenDesc {

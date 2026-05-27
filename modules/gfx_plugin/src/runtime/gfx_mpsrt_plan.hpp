@@ -185,6 +185,8 @@ inline std::string gfx_mpsrt_stage_type_from_manifest(const GfxKernelStageManife
             return "TopK";
         case GfxKernelStageFamily::Eltwise:
             return "Eltwise";
+        case GfxKernelStageFamily::Activation:
+            return "Activation";
         case GfxKernelStageFamily::Transpose:
             return "Transpose";
         case GfxKernelStageFamily::ConcatSplit:
@@ -245,6 +247,9 @@ inline GfxKernelStageFamily gfx_kernel_stage_family_from_mpsrt_kind(GfxMpsrtStag
             }
             if (stage_type == "TopK") {
                 return GfxKernelStageFamily::TopK;
+            }
+            if (stage_type == "Activation") {
+                return GfxKernelStageFamily::Activation;
             }
             if (stage_type == "ScaledDotProductAttention") {
                 return GfxKernelStageFamily::AttentionSoftmax;

@@ -189,7 +189,9 @@ gfx_kernel_external_buffer_abi_spec_for_stage(std::string_view stage_type,
                                       GfxKernelBufferRole::RuntimeParams});
   }
   if (family == GfxKernelFamily::EltwiseFusedBuffer) {
-    if (entry_point == "unary_kernel" || entry_point == "convert_kernel" ||
+    if (entry_point == "unary_kernel" ||
+        entry_point == "activation_kernel" ||
+        entry_point == "convert_kernel" ||
         is_gfx_kernel_unary_eltwise_stage(stage_type)) {
       return make_gfx_kernel_unary_eltwise_abi();
     }
@@ -477,9 +479,12 @@ classify_gfx_custom_kernel_family(std::string_view stage_type,
       stage_type == "Acos" || stage_type == "Atan" || stage_type == "Asinh" ||
       stage_type == "Acosh" || stage_type == "Atanh" || stage_type == "Sinh" ||
       stage_type == "Cosh" || stage_type == "Round" ||
-      stage_type == "Convert" || entry_point == "eltwise_kernel" ||
+      stage_type == "Convert" || stage_type == "Activation" ||
+      entry_point == "eltwise_kernel" ||
       entry_point == "eltwise_fused_buffer" ||
-      entry_point == "unary_kernel" || entry_point == "select_kernel" ||
+      entry_point == "unary_kernel" ||
+      entry_point == "activation_kernel" ||
+      entry_point == "select_kernel" ||
       entry_point == "broadcast_kernel" || entry_point == "convert_kernel" ||
       stage_type == "ConvTextureSwishEpilogue" ||
       entry_point == "gfx_mpsrt_conv_texture_swish_epilogue") {
@@ -590,9 +595,14 @@ GfxCustomKernelStagePlan make_gfx_custom_kernel_stage_plan(
       dispatch_policy);
   std::string specialization_key(specialization_prefix);
   specialization_key += stage_type;
+  auto stage_family = gfx_kernel_stage_family_from_kernel_family(plan.family);
+  if (plan.family == GfxKernelFamily::EltwiseFusedBuffer &&
+      (stage_type == "Activation" || entry_point == "activation_kernel")) {
+    stage_family = GfxKernelStageFamily::Activation;
+  }
   plan.stage_manifest = make_gfx_custom_kernel_stage_manifest(
-      gfx_kernel_stage_family_from_kernel_family(plan.family), backend_domain,
-      storage, std::move(specialization_key), std::move(kernel_manifest));
+      stage_family, backend_domain, storage, std::move(specialization_key),
+      std::move(kernel_manifest));
   return plan;
 }
 

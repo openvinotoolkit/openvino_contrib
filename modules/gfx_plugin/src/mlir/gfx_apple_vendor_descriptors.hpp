@@ -70,6 +70,8 @@ bool gfx_apple_make_mps_gemm_contract(const GfxMpsrtGemmAbiDesc& desc,
                                       const GfxMpsrtTensorDesc& rhs,
                                       const GfxMpsrtTensorDesc& output,
                                       GfxAppleMpsVendorPrimitiveContract& contract);
+bool gfx_apple_make_mps_gemm_contract(const std::shared_ptr<const ov::Node>& node,
+                                      GfxAppleMpsVendorPrimitiveContract& contract);
 bool gfx_apple_make_mps_pool2d_desc(const std::shared_ptr<const ov::Node>& node,
                                     GfxMpsrtPool2DAbiDesc& desc);
 bool gfx_apple_make_mps_resize2d_desc(const std::shared_ptr<const ov::Node>& node,

@@ -48,6 +48,7 @@
 #include "openvino/op/variadic_split.hpp"
 #include "openvino/openvino.hpp"
 #define HAS_OV_LAYER_NORM 0
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/codegen_common.hpp"
 #include "mlir/gfx_apple_stage_pipeline.hpp"
@@ -1685,8 +1686,15 @@ TEST(GfxMlir, MpsrtModuleMetadataRoundTripsMultiStageMpsGemmPlusMslDispatch) {
   const auto dispatch_entry_point =
       dispatch_op->getAttrOfType<mlir::StringAttr>(
           "gfx.stage_manifest.kernel.entry_point");
+  auto verify_ops_func_with_expected_failure = [&]() {
+    mlir::ScopedDiagnosticHandler diag(module.getContext(),
+                                       [](mlir::Diagnostic&) {
+                                         return mlir::success();
+                                       });
+    return mlir::verify(ops_func);
+  };
   dispatch_op->removeAttr("gfx.stage_manifest.kernel.entry_point");
-  ASSERT_TRUE(mlir::failed(mlir::verify(ops_func)));
+  ASSERT_TRUE(mlir::failed(verify_ops_func_with_expected_failure()));
   dispatch_op->setAttr("gfx.stage_manifest.kernel.entry_point",
                        dispatch_entry_point);
   ASSERT_TRUE(mlir::succeeded(mlir::verify(ops_func)));
@@ -1696,7 +1704,7 @@ TEST(GfxMlir, MpsrtModuleMetadataRoundTripsMultiStageMpsGemmPlusMslDispatch) {
           "gfx.stage_manifest.backend_domain");
   dispatch_op->setAttr("gfx.stage_manifest.backend_domain",
                        op_builder.getStringAttr("apple_mps"));
-  ASSERT_TRUE(mlir::failed(mlir::verify(ops_func)));
+  ASSERT_TRUE(mlir::failed(verify_ops_func_with_expected_failure()));
   dispatch_op->setAttr("gfx.stage_manifest.backend_domain",
                        dispatch_backend_domain);
   ASSERT_TRUE(mlir::succeeded(mlir::verify(ops_func)));

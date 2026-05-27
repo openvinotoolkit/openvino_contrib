@@ -9,6 +9,8 @@
 #include <utility>
 
 #include "kernel_ir/gfx_kernel_source.hpp"
+#include "mlir/msl_codegen_apple_msl_activation.hpp"
+#include "mlir/msl_codegen_apple_msl_eltwise.hpp"
 #include "mlir/msl_codegen_apple_msl_slice_static.hpp"
 #include "mlir/msl_codegen_apple_msl_shape.hpp"
 #include "mlir/msl_codegen_apple_msl_split.hpp"
@@ -27,8 +29,13 @@ constexpr const char* kMetalSplitMslKernelUnit = "metal/generated/split";
 constexpr const char* kMetalSliceMslKernelUnit = "metal/generated/slice";
 constexpr const char* kMetalCausalSdpaMslKernelUnit =
     "metal/generated/sdpa_causal_mask";
+constexpr const char* kMetalActivationMslKernelUnit =
+    "metal/generated/activation";
+constexpr const char* kMetalEltwiseMslKernelUnit = "metal/generated/eltwise";
 constexpr const char* kMetalMpsSoftmaxVendorUnit =
     "metal/vendor/mps_softmax";
+constexpr const char* kMetalMpsGemmVendorUnit =
+    "metal/vendor/mps_gemm";
 constexpr const char* kMetalMpsPool2DVendorUnit =
     "metal/vendor/mps_pool2d";
 constexpr const char* kMetalMpsResize2DVendorUnit =
@@ -108,6 +115,17 @@ std::shared_ptr<const KernelArtifactPayload> materialize_mps_softmax_payload(
                                       std::move(contract));
 }
 
+std::shared_ptr<const KernelArtifactPayload> materialize_mps_gemm_payload(
+    KernelArtifactDescriptor& descriptor,
+    const std::shared_ptr<const ov::Node>& node) {
+    GfxAppleMpsVendorPrimitiveContract contract{};
+    if (!gfx_apple_make_mps_gemm_contract(node, contract)) {
+        return {};
+    }
+    return materialize_vendor_payload(descriptor, "mps_gemm",
+                                      std::move(contract));
+}
+
 std::shared_ptr<const KernelArtifactPayload> materialize_mps_pool2d_payload(
     KernelArtifactDescriptor& descriptor,
     const std::shared_ptr<const ov::Node>& node) {
@@ -161,6 +179,10 @@ std::shared_ptr<const KernelArtifactPayload> resolve_metal_payload(
         return {};
     }
     if (descriptor.payload_kind == KernelArtifactPayloadKind::VendorDescriptor) {
+        if (descriptor.kernel.kernel_id == kMetalMpsGemmVendorUnit) {
+            return materialize_mps_gemm_payload(descriptor,
+                                                op.source_node);
+        }
         if (descriptor.kernel.kernel_id == kMetalMpsSoftmaxVendorUnit) {
             return materialize_mps_softmax_payload(descriptor,
                                                    op.source_node);
@@ -220,6 +242,16 @@ std::shared_ptr<const KernelArtifactPayload> resolve_metal_payload(
             descriptor,
             make_causal_sdpa_msl_kernel_source_plan(
                 op.source_node->get_output_element_type(0)));
+    }
+    if (descriptor.kernel.kernel_id == kMetalActivationMslKernelUnit) {
+        return materialize_generated_msl_payload(
+            descriptor,
+            make_activation_msl_kernel_source_plan(op.source_node));
+    }
+    if (descriptor.kernel.kernel_id == kMetalEltwiseMslKernelUnit) {
+        return materialize_generated_msl_payload(
+            descriptor,
+            make_eltwise_msl_kernel_source_plan(op.source_node));
     }
 
     return {};

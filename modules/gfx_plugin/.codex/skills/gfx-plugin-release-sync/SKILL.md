@@ -18,7 +18,7 @@ This skill is for commit/push/release workflow on the mirrored GFX plugin reposi
 Unless the user explicitly says otherwise, treat dual publication as required:
 
 1. `openvino_contrib/modules/gfx_plugin`
-2. `ov-ext-labs/gfx-plugin`
+2. `ov-ext-labs/gfx-plugin` `main`
 
 The intended plugin content should stay identical across both publication targets.
 
@@ -39,6 +39,9 @@ The intended plugin content should stay identical across both publication target
 
 - Stage only the plugin code and documentation that belong to the change.
 - Verify the cached set before commit.
+- For docs/security publication tasks, do not run build or test targets unless
+  the user explicitly requests them. Prefer `git diff --check`, security grep,
+  and staged diff review for this workflow.
 
 ### 3. Commit clearly
 
@@ -51,10 +54,11 @@ The intended plugin content should stay identical across both publication target
 
 - Push the `openvino_contrib` PR branch explicitly. For the current public PR
   flow this is usually `allnes:an/gfx-plugin`.
-- Then apply the same plugin change set to the mirrored `ov-ext-labs/gfx-plugin` repository and push there as well.
-- Check mirror branch heads before pushing. Do not push to mirror `main`
-  without verifying that it is the expected compatible publication branch.
-- Never force push unless the user explicitly authorizes that exact operation.
+- Then apply the same plugin change set to the mirrored `ov-ext-labs/gfx-plugin`
+  repository and push it to `main`.
+- Check `origin/main` in the mirror before pushing and require a fast-forward or
+  otherwise compatible history. Do not force push unless the user explicitly
+  authorizes that exact operation.
 
 If the mirrored repository is not present locally, first discover whether:
 

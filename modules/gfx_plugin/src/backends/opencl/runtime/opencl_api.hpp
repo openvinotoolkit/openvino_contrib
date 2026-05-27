@@ -71,6 +71,8 @@ constexpr cl_uint CL_DRIVER_VERSION = 0x102D;
 constexpr cl_uint CL_DEVICE_VERSION = 0x102F;
 constexpr cl_uint CL_DEVICE_EXTENSIONS = 0x1030;
 
+constexpr cl_uint CL_PLATFORM_NAME = 0x0902;
+
 constexpr cl_uint CL_PROGRAM_BUILD_LOG = 0x1183;
 constexpr cl_uint CL_PROGRAM_NUM_DEVICES = 0x1162;
 constexpr cl_uint CL_PROGRAM_BINARY_SIZES = 0x1165;
@@ -78,6 +80,7 @@ constexpr cl_uint CL_PROGRAM_BINARIES = 0x1166;
 
 struct OpenClFunctionTable {
     cl_int (*clGetPlatformIDs)(cl_uint, cl_platform_id*, cl_uint*) = nullptr;
+    cl_int (*clGetPlatformInfo)(cl_platform_id, cl_uint, size_t, void*, size_t*) = nullptr;
     cl_int (*clGetDeviceIDs)(cl_platform_id, cl_device_type, cl_uint, cl_device_id*, cl_uint*) = nullptr;
     cl_int (*clGetDeviceInfo)(cl_device_id, cl_uint, size_t, void*, size_t*) = nullptr;
     cl_context (*clCreateContext)(const cl_context_properties*, cl_uint, const cl_device_id*,
@@ -154,6 +157,7 @@ struct OpenClDeviceSelection {
 };
 
 OpenClDeviceSelection select_opencl_gpu_device(const OpenClApi& api);
+void validate_opencl_device_selection(const OpenClDeviceSelection& selection);
 GpuExecutionDeviceInfo make_opencl_execution_device_info(const OpenClDeviceSelection& selection);
 std::string opencl_error_string(cl_int error);
 void opencl_check(cl_int status, const char* action);

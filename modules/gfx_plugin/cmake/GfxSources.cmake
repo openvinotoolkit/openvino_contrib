@@ -88,6 +88,7 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/runtime/gfx_backend_caps.hpp
     ${_gfx_src_dir}/runtime/gfx_backend_utils.hpp
     ${_gfx_src_dir}/runtime/fused_sequence_stage.hpp
+    ${_gfx_src_dir}/runtime/view_only_stage.hpp
     ${_gfx_src_dir}/runtime/gpu_memory_ops.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_codegen_desc.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_custom_kernel_families.hpp
@@ -97,8 +98,10 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_opencl_source_artifacts.hpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_signature.hpp
-    ${_gfx_src_dir}/kernel_ir/opencl_kernels/binary_f32_kernel.cl
-    ${_gfx_src_dir}/kernel_ir/opencl_kernels/binary_f32_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/activation_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/activation_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_kernel.cl
@@ -107,6 +110,8 @@ set(GFX_RUNTIME_COMMON_HEADERS
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f32_kernel.hpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f16_kernel.cl
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f16_kernel.hpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/matmul_f32_kernel.cl
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/matmul_f32_kernel.hpp
     ${_gfx_src_dir}/runtime/gfx_profiler.hpp
     ${_gfx_src_dir}/runtime/gfx_profiling_report.hpp
     ${_gfx_src_dir}/runtime/gfx_target_profile.hpp
@@ -142,17 +147,20 @@ set(GFX_RUNTIME_COMMON_SOURCES
     ${_gfx_src_dir}/runtime/gfx_backend_caps.cpp
     ${_gfx_src_dir}/runtime/gfx_backend_utils.cpp
     ${_gfx_src_dir}/runtime/fused_sequence_stage.cpp
+    ${_gfx_src_dir}/runtime/view_only_stage.cpp
     ${_gfx_src_dir}/runtime/gpu_memory_ops.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_custom_kernel_families.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_source.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_inputs.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_kernel_cache.cpp
     ${_gfx_src_dir}/kernel_ir/gfx_opencl_source_artifacts.cpp
-    ${_gfx_src_dir}/kernel_ir/opencl_kernels/binary_f32_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/activation_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/eltwise_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f32_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/softmax_f16_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f32_kernel.cpp
     ${_gfx_src_dir}/kernel_ir/opencl_kernels/interpolate_f16_kernel.cpp
+    ${_gfx_src_dir}/kernel_ir/opencl_kernels/matmul_f32_kernel.cpp
     ${_gfx_src_dir}/runtime/execution_dispatcher.cpp
     ${_gfx_src_dir}/runtime/immutable_gpu_buffer_cache.cpp
     ${_gfx_src_dir}/runtime/memory_manager.cpp
@@ -206,6 +214,8 @@ set(GFX_RUNTIME_METAL_MSL_HEADERS
     ${_gfx_src_dir}/mlir/codegen_common.hpp
     ${_gfx_src_dir}/mlir/index_expr_utils.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl.hpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_activation.hpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_eltwise.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_ops.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_common.hpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_op_kinds.hpp
@@ -231,6 +241,8 @@ set(GFX_RUNTIME_METAL_MSL_SOURCES
     ${_gfx_src_dir}/mlir/gathernd_codegen.cpp
     ${_gfx_src_dir}/mlir/interpolate_codegen.cpp
     ${_gfx_src_dir}/mlir/matmul_codegen.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_activation.cpp
+    ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_eltwise.cpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_binding.cpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_data_movement.cpp
     ${_gfx_src_dir}/mlir/msl_codegen_apple_msl_concat_split.cpp

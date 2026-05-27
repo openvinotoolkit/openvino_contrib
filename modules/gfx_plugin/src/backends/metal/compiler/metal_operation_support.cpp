@@ -8,6 +8,8 @@
 #include <exception>
 
 #include "mlir/gfx_apple_vendor_descriptors.hpp"
+#include "mlir/msl_codegen_apple_msl_activation.hpp"
+#include "mlir/msl_codegen_apple_msl_eltwise.hpp"
 #include "openvino/op/concat.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/range.hpp"
@@ -131,6 +133,12 @@ bool supports_mps_softmax_vendor(
     return gfx_apple_make_mps_softmax_desc(node, desc);
 }
 
+bool supports_mps_gemm_vendor(
+    const std::shared_ptr<const ov::Node>& node) {
+    GfxAppleMpsVendorPrimitiveContract contract{};
+    return gfx_apple_make_mps_gemm_contract(node, contract);
+}
+
 bool supports_mps_pool2d_vendor(
     const std::shared_ptr<const ov::Node>& node) {
     GfxMpsrtPool2DAbiDesc desc{};
@@ -157,8 +165,22 @@ bool supports_mpsgraph_sdpa_vendor(
     return gfx_apple_make_mps_sdpa_desc(node, desc);
 }
 
+bool supports_generated_eltwise_msl(const std::shared_ptr<const ov::Node>& node) {
+    return make_eltwise_msl_kernel_source_plan(node).valid();
+}
+
+bool supports_generated_activation_msl(const std::shared_ptr<const ov::Node>& node) {
+    return make_activation_msl_kernel_source_plan(node).valid();
+}
+
 OperationSupportResult query_metal_operation(const std::shared_ptr<const ov::Node>& node) {
     try {
+        if (node && supports_mps_gemm_vendor(node)) {
+            return make_supported_operation("mps_vendor_primitive",
+                                            LoweringRouteKind::VendorPrimitive,
+                                            0.80,
+                                            "metal/vendor/mps_gemm");
+        }
         if (node && supports_mps_softmax_vendor(node)) {
             return make_supported_operation("mps_vendor_primitive",
                                             LoweringRouteKind::VendorPrimitive,
@@ -233,6 +255,18 @@ OperationSupportResult query_metal_operation(const std::shared_ptr<const ov::Nod
                                             LoweringRouteKind::GeneratedKernel,
                                             0.60,
                                             "metal/generated/sdpa_causal_mask");
+        }
+        if (node && supports_generated_activation_msl(node)) {
+            return make_supported_operation("generated_msl_source",
+                                            LoweringRouteKind::GeneratedKernel,
+                                            0.55,
+                                            "metal/generated/activation");
+        }
+        if (node && supports_generated_eltwise_msl(node)) {
+            return make_supported_operation("generated_msl_source",
+                                            LoweringRouteKind::GeneratedKernel,
+                                            0.55,
+                                            "metal/generated/eltwise");
         }
         const bool supported = metal_supports_node(node);
         if (supported) {

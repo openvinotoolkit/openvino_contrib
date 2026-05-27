@@ -76,6 +76,7 @@ enum class GfxKernelStageFamily : uint32_t {
     Reduction = 16,
     Layout = 17,
     Convert = 18,
+    Activation = 19,
 };
 
 enum class GfxKernelDispatchGrid : uint32_t {
@@ -229,6 +230,8 @@ inline const char* gfx_kernel_stage_family_name(GfxKernelStageFamily family) {
             return "topk";
         case GfxKernelStageFamily::Eltwise:
             return "eltwise";
+        case GfxKernelStageFamily::Activation:
+            return "activation";
         case GfxKernelStageFamily::Transpose:
             return "transpose";
         case GfxKernelStageFamily::ConcatSplit:
@@ -264,6 +267,7 @@ inline GfxKernelStageFamily gfx_kernel_stage_family_from_name(std::string_view n
     if (name == "softmax") return GfxKernelStageFamily::Softmax;
     if (name == "topk") return GfxKernelStageFamily::TopK;
     if (name == "eltwise") return GfxKernelStageFamily::Eltwise;
+    if (name == "activation") return GfxKernelStageFamily::Activation;
     if (name == "transpose") return GfxKernelStageFamily::Transpose;
     if (name == "concat_split") return GfxKernelStageFamily::ConcatSplit;
     if (name == "gather_scatter") return GfxKernelStageFamily::GatherScatter;

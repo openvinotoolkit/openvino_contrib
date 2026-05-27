@@ -12,14 +12,21 @@ namespace ov {
 namespace gfx_plugin {
 namespace {
 
-std::string activation_expr(ActivationKind kind, float alpha, double clamp_min, double clamp_max) {
+std::string activation_expr(ActivationKind kind,
+                            float alpha,
+                            double clamp_min,
+                            double clamp_max,
+                            bool gelu_tanh_approximation) {
     switch (kind) {
         case ActivationKind::Relu: return "max(x, 0.0f)";
         case ActivationKind::Sigmoid: return "1.0f / (1.0f + precise::exp(-x))";
         case ActivationKind::Tanh: return msl_stable_tanh_expr("x");
         case ActivationKind::Elu: return "(x > 0.0f) ? x : (exp(x) - 1.0f) * " + std::to_string(alpha);
         case ActivationKind::Prelu: return "(x >= 0.0f) ? x : x * " + std::to_string(alpha);
-        case ActivationKind::Gelu: return msl_stable_gelu_tanh_expr("x");
+        case ActivationKind::Gelu:
+            return gelu_tanh_approximation
+                       ? msl_stable_gelu_tanh_expr("x")
+                       : "0.5f * x * (1.0f + erf(x * 0.70710678118f))";
         case ActivationKind::Swish: return "x / (1.0f + precise::exp(-x))";
         case ActivationKind::HSwish: return "x * clamp(x + 3.0f, 0.0f, 6.0f) / 6.0f";
         case ActivationKind::HSigmoid: return "clamp(x + 3.0f, 0.0f, 6.0f) / 6.0f";
@@ -60,14 +67,15 @@ std::string activation_expr(ActivationKind kind, float alpha, double clamp_min, 
 
 std::string generate_msl_for_unary(const UnaryCodegenDesc& d, mlir::ModuleOp module) {
     std::ostringstream ss;
-    std::string scalar = "float";
-    if (auto func = get_entry_func(module)) {
-        auto ft = func.getFunctionType();
-        if (ft.getNumInputs() >= 1) {
-            scalar = msl_type_from_mlir(ft.getInput(0));
+    std::string scalar = (d.element_type == ov::element::f16) ? "half" : "float";
+    if (module) {
+        auto func = get_entry_func(module);
+        if (func) {
+            auto ft = func.getFunctionType();
+            if (ft.getNumInputs() >= 1) {
+                scalar = msl_type_from_mlir(ft.getInput(0));
+            }
         }
-    } else {
-        scalar = (d.element_type == ov::element::f16) ? "half" : "float";
     }
     const bool is_bool = (scalar == "bool");
     if (is_bool) {
@@ -78,7 +86,7 @@ std::string generate_msl_for_unary(const UnaryCodegenDesc& d, mlir::ModuleOp mod
                               scalar == "ulong" || is_bool);
     ss << "#include <metal_stdlib>\n";
     ss << "using namespace metal;\n";
-    ss << "kernel void unary_kernel(\n";
+    ss << "kernel void " << d.entry_point << "(\n";
     ss << "  device const " << scalar << "* in0 [[buffer(0)]],\n";
     ss << "  device " << scalar << "* out [[buffer(1)]],\n";
     ss << "  constant uint& NUM_ELEMS [[buffer(2)]],\n";
@@ -115,7 +123,13 @@ std::string generate_msl_for_unary(const UnaryCodegenDesc& d, mlir::ModuleOp mod
         }
     } else {
         ss << "    float x = static_cast<float>(in0[gid]);\n";
-        ss << "    out[gid] = " << activation_expr(d.activation, d.alpha, d.clamp_min, d.clamp_max) << ";\n";
+        ss << "    out[gid] = "
+           << activation_expr(d.activation,
+                              d.alpha,
+                              d.clamp_min,
+                              d.clamp_max,
+                              d.gelu_tanh_approximation)
+           << ";\n";
     }
     ss << "}\n";
     return ss.str();

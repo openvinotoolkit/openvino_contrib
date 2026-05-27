@@ -168,11 +168,13 @@ gather/scatter families, Concat/Split, typed elementwise families,
 compare/select, and boolean logical/reduction families when the model matches
 the artifact contracts.
 
-Softmax and Interpolate OpenCL sources are embedded under
+Generated activation, elementwise, f32 MatMul, and f32/f16 Interpolate sources
+plus f32/f16 Softmax baseline sources are embedded under
 `src/kernel_ir/opencl_kernels/`. Interpolate is limited to f32/f16 static NCHW
 spatial resize cases with supported modes, axes, padding, coordinate transforms,
-and nearest-rounding metadata. Unsupported variants fail during support probing
-or compilation.
+and nearest-rounding metadata. OpenCL operation support requires a matching
+source artifact and registered kernel unit; unsupported variants fail during
+support probing or compilation.
 
 Unsupported OpenCL cases fail during support probing, compilation, stage
 creation, or runtime validation. They do not fall back to CPU or switch backend.
@@ -185,9 +187,12 @@ MPSRT resource records, storage bridges, prepared resources, and kernel-buffer
 orders when a typed MPSRT plan is present.
 
 Compiler-owned Metal descriptors can also carry `VendorDescriptor` payloads for
-supported MPS/MPSGraph primitives such as Softmax, Pool2D, Resize2D, and SDPA.
-Those payloads are executed through the `MpsrtVendorPrimitive` runtime stage
-only when the typed descriptor and external-buffer ABI are valid.
+supported MPS/MPSGraph primitives such as MatMul/GEMM, Softmax, Pool2D,
+Resize2D, and SDPA. Those payloads are executed through the
+`MpsrtVendorPrimitive` runtime stage only when the typed descriptor and
+external-buffer ABI are valid. Generated Metal activation and elementwise
+sources are planned through compiler-owned MSL descriptors rather than
+request-time node checks.
 
 `GFX_DIAGNOSTIC_F32_MPS_IMAGE` is a diagnostic compile property for selected
 f32 MPS image placement checks. It should be used for localization, not as a

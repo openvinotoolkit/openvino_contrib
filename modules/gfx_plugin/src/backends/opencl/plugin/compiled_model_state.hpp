@@ -51,7 +51,7 @@ struct OpenClBackendState final : BackendState {
             OPENVINO_THROW("GFX OpenCL: runtime descriptor has non-OpenCL source payload for ",
                            node ? node->get_type_name() : "<null>");
         }
-        return create_stage(node);
+        return create_opencl_stage(node, descriptor);
     }
     std::unique_ptr<GfxProfiler> create_profiler(const GfxProfilerConfig& cfg) const override;
 };

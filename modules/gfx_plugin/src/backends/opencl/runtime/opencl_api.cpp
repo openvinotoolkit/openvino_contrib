@@ -63,6 +63,24 @@ std::string read_device_string(const OpenClApi& api, cl_device_id device, cl_uin
     return value;
 }
 
+std::string read_platform_string(const OpenClApi& api, cl_platform_id platform, cl_uint param) {
+    size_t bytes = 0;
+    const auto& cl = api.fn();
+    cl_int status = cl.clGetPlatformInfo(platform, param, 0, nullptr, &bytes);
+    if (status != CL_SUCCESS || bytes == 0) {
+        return {};
+    }
+    std::string value(bytes, '\0');
+    status = cl.clGetPlatformInfo(platform, param, value.size(), value.data(), nullptr);
+    if (status != CL_SUCCESS) {
+        return {};
+    }
+    while (!value.empty() && value.back() == '\0') {
+        value.pop_back();
+    }
+    return value;
+}
+
 template <typename T>
 T read_device_scalar(const OpenClApi& api, cl_device_id device, cl_uint param, T fallback) {
     T value{};
@@ -93,16 +111,28 @@ GpuDeviceFamily classify_opencl_device(const OpenClDeviceSelection& selection) {
     return GpuDeviceFamily::Generic;
 }
 
-void reject_cpu_or_pocl(const OpenClDeviceSelection& selection) {
-    OPENVINO_ASSERT(selection.is_gpu(),
-                    "GFX OpenCL: selected device is not a GPU; CPU/accelerator fallback is forbidden");
+bool is_broadcom_v3d_selection(const OpenClDeviceSelection& selection) {
     const std::string combined = selection.vendor_name + " " + selection.device_name + " " + selection.device_version +
-                                 " " + selection.extensions;
-    OPENVINO_ASSERT(!contains_token(combined, "pocl"),
-                    "GFX OpenCL: PoCL/CPU style OpenCL device is not allowed for GFX inference");
+                                 " " + selection.driver_version;
+    return contains_token(combined, "broadcom") || contains_token(combined, "v3d") ||
+           contains_token(combined, "videocore");
 }
 
 }  // namespace
+
+void validate_opencl_device_selection(const OpenClDeviceSelection& selection) {
+    OPENVINO_ASSERT(selection.is_gpu(),
+                    "GFX OpenCL: selected device is not a GPU; CPU/accelerator fallback is forbidden");
+    const std::string combined = selection.platform_name + " " + selection.vendor_name + " " + selection.device_name +
+                                 " " + selection.device_version + " " + selection.driver_version + " " +
+                                 selection.extensions;
+    OPENVINO_ASSERT(!contains_token(combined, "pocl"),
+                    "GFX OpenCL: PoCL/CPU style OpenCL device is not allowed for GFX inference");
+    OPENVINO_ASSERT(!contains_token(combined, "rusticl"),
+                    "GFX OpenCL: Mesa Rusticl is not an allowed Raspberry Pi route; use CLVK/LLVM");
+    OPENVINO_ASSERT(!is_broadcom_v3d_selection(selection) || contains_token(combined, "clvk"),
+                    "GFX OpenCL: Broadcom V3D route must use CLVK/LLVM");
+}
 
 OpenClApi::OpenClApi() {
 #if defined(_WIN32)
@@ -128,6 +158,7 @@ OpenClApi::OpenClApi() {
                     "Only GPU OpenCL is allowed; CPU fallback is forbidden.");
 
     load_required_symbol(m_library, "clGetPlatformIDs", m_fn.clGetPlatformIDs);
+    load_required_symbol(m_library, "clGetPlatformInfo", m_fn.clGetPlatformInfo);
     load_required_symbol(m_library, "clGetDeviceIDs", m_fn.clGetDeviceIDs);
     load_required_symbol(m_library, "clGetDeviceInfo", m_fn.clGetDeviceInfo);
     load_required_symbol(m_library, "clCreateContext", m_fn.clCreateContext);
@@ -198,6 +229,7 @@ OpenClDeviceSelection select_opencl_gpu_device(const OpenClApi& api) {
             selection.platform = platform;
             selection.device = device;
             selection.device_type = read_device_scalar<cl_device_type>(api, device, CL_DEVICE_TYPE, 0);
+            selection.platform_name = read_platform_string(api, platform, CL_PLATFORM_NAME);
             selection.device_name = read_device_string(api, device, CL_DEVICE_NAME);
             selection.vendor_name = read_device_string(api, device, CL_DEVICE_VENDOR);
             selection.driver_version = read_device_string(api, device, CL_DRIVER_VERSION);
@@ -218,7 +250,7 @@ OpenClDeviceSelection select_opencl_gpu_device(const OpenClApi& api) {
                                selection.max_work_item_sizes.size() * sizeof(size_t),
                                selection.max_work_item_sizes.data(),
                                nullptr);
-            reject_cpu_or_pocl(selection);
+            validate_opencl_device_selection(selection);
             return selection;
         }
     }
@@ -271,7 +303,7 @@ void opencl_check(cl_int status, const char* action) {
 OpenClRuntimeContext::OpenClRuntimeContext()
     : m_api(OpenClApi::instance()),
       m_selection(select_opencl_gpu_device(m_api)) {
-    reject_cpu_or_pocl(m_selection);
+    validate_opencl_device_selection(m_selection);
     cl_int status = CL_SUCCESS;
     m_context = m_api.fn().clCreateContext(nullptr, 1, &m_selection.device, nullptr, nullptr, &status);
     opencl_check(status, "clCreateContext");
